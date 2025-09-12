@@ -283,10 +283,11 @@ func TestNewTracingFromEnv_OpenInferenceRedaction(t *testing.T) {
 			req := &openai.ChatCompletionRequest{
 				Model: openai.ModelGPT5Nano,
 				Messages: []openai.ChatCompletionMessageParamUnion{{
-					Type: openai.ChatMessageRoleUser,
-					Value: openai.ChatCompletionUserMessageParam{
-						Content: openai.StringOrUserRoleContentUnion{Value: "Hello, sensitive data!"},
-						Role:    openai.ChatMessageRoleUser,
+					OfUser: &openai.ChatCompletionUserMessageParam{
+						Content: openai.StringOrUserRoleContentUnion{
+							Value: "Hello, sensitive data!",
+						},
+						Role: openai.ChatMessageRoleUser,
 					},
 				}},
 			}

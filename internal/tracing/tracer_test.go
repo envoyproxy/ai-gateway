@@ -32,8 +32,7 @@ var (
 	req = &openai.ChatCompletionRequest{
 		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{{
-			Type: openai.ChatMessageRoleUser,
-			Value: openai.ChatCompletionUserMessageParam{
+			OfUser: &openai.ChatCompletionUserMessageParam{
 				Content: openai.StringOrUserRoleContentUnion{Value: "Hello!"},
 				Role:    openai.ChatMessageRoleUser,
 			},

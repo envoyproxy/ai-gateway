@@ -49,8 +49,7 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 				Model: "gemini-1.5-pro",
 				Messages: []ChatCompletionMessageParamUnion{
 					{
-						Type: ChatMessageRoleUser,
-						Value: ChatCompletionUserMessageParam{
+						OfUser: &ChatCompletionUserMessageParam{
 							Role:    ChatMessageRoleUser,
 							Content: StringOrUserRoleContentUnion{Value: "Hello, world!"},
 						},
@@ -97,8 +96,7 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 				Model: "claude-3",
 				Messages: []ChatCompletionMessageParamUnion{
 					{
-						Type: ChatMessageRoleUser,
-						Value: ChatCompletionUserMessageParam{
+						OfUser: &ChatCompletionUserMessageParam{
 							Role:    ChatMessageRoleUser,
 							Content: StringOrUserRoleContentUnion{Value: "Multiple vendors test"},
 						},
@@ -137,8 +135,7 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 				Model: "gpt-4",
 				Messages: []ChatCompletionMessageParamUnion{
 					{
-						Type: ChatMessageRoleUser,
-						Value: ChatCompletionUserMessageParam{
+						OfUser: &ChatCompletionUserMessageParam{
 							Role:    ChatMessageRoleUser,
 							Content: StringOrUserRoleContentUnion{Value: "Standard request"},
 						},
@@ -161,8 +158,7 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 				Model: "gemini-pro",
 				Messages: []ChatCompletionMessageParamUnion{
 					{
-						Type: ChatMessageRoleUser,
-						Value: ChatCompletionUserMessageParam{
+						OfUser: &ChatCompletionUserMessageParam{
 							Role:    ChatMessageRoleUser,
 							Content: StringOrUserRoleContentUnion{Value: "Empty vendor fields"},
 						},
@@ -185,8 +181,7 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 				Model: "gpt-3.5",
 				Messages: []ChatCompletionMessageParamUnion{
 					{
-						Type: ChatMessageRoleUser,
-						Value: ChatCompletionUserMessageParam{
+						OfUser: &ChatCompletionUserMessageParam{
 							Role:    ChatMessageRoleUser,
 							Content: StringOrUserRoleContentUnion{Value: "Null vendor fields"},
 						},
