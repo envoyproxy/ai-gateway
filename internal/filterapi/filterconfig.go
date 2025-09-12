@@ -6,9 +6,6 @@
 // Package filterapi provides the configuration for the AI Gateway-implemented filter
 // which is currently an external processor (See https://github.com/envoyproxy/ai-gateway/issues/90).
 //
-// This is a public package so that the filter can be testable without
-// depending on the Envoy Gateway as well as it can be used outside the Envoy AI Gateway.
-//
 // This configuration must be decoupled from the Envoy Gateway types as well as its implementation
 // details. Also, the configuration must not be tied with k8s so it can be tested and iterated
 // without the need for the k8s cluster.

@@ -17,10 +17,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )

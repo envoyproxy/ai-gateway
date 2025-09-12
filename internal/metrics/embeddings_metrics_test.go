@@ -12,7 +12,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 
-	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
 func TestEmbeddings_RecordTokenUsage(t *testing.T) {

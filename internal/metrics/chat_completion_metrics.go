@@ -12,7 +12,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
-	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
 // chatCompletion is the implementation for the chat completion AI Gateway metrics.
