@@ -22,9 +22,39 @@
       }
     },
     {
+      "key": "output.value",
+      "value": {
+        "stringValue": "{\"data\":[{\"embedding\":\"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\",\"index\":0,\"object\":\"embedding\"}],\"model\":\"text-embedding-3-small\",\"object\":\"list\",\"usage\":{\"prompt_tokens\":4,\"total_tokens\":4}}"
+      }
+    },
+    {
+      "key": "output.mime_type",
+      "value": {
+        "stringValue": "application/json"
+      }
+    },
+    {
       "key": "llm.invocation_parameters",
       "value": {
         "stringValue": "{\"model\": \"text-embedding-3-small\", \"encoding_format\": \"base64\"}"
+      }
+    },
+    {
+      "key": "llm.token_count.total",
+      "value": {
+        "intValue": "4"
+      }
+    },
+    {
+      "key": "llm.token_count.prompt",
+      "value": {
+        "intValue": "4"
+      }
+    },
+    {
+      "key": "embedding.model_name",
+      "value": {
+        "stringValue": "text-embedding-3-small"
       }
     },
     {
@@ -34,39 +64,7 @@
       }
     }
   ],
-  "events": [
-    {
-      "name": "exception",
-      "attributes": [
-        {
-          "key": "exception.type",
-          "value": {
-            "stringValue": "openai.ConflictError"
-          }
-        },
-        {
-          "key": "exception.message",
-          "value": {
-            "stringValue": "TestOpenAI Error: Interaction out of date for POST /v1/embeddings. To re-record, delete /Users/codefromthecrypt/oss/ai-gateway/tests/internal/testopenai/cassettes/embeddings-tokens.yaml and re-run with OPENAI_API_KEY set."
-          }
-        },
-        {
-          "key": "exception.stacktrace",
-          "value": {
-            "stringValue": "Traceback (most recent call last):\n  File \"/usr/local/lib/python3.13/site-packages/openinference/instrumentation/openai/_request.py\", line 363, in __call__\n    response = await wrapped(*args, **kwargs)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.13/site-packages/openai/_base_client.py\", line 1594, in request\n    raise self._make_status_error_from_response(err.response) from None\nopenai.ConflictError: TestOpenAI Error: Interaction out of date for POST /v1/embeddings. To re-record, delete /Users/codefromthecrypt/oss/ai-gateway/tests/internal/testopenai/cassettes/embeddings-tokens.yaml and re-run with OPENAI_API_KEY set.\n"
-          }
-        },
-        {
-          "key": "exception.escaped",
-          "value": {
-            "stringValue": "False"
-          }
-        }
-      ]
-    }
-  ],
   "status": {
-    "message": "ConflictError: TestOpenAI Error: Interaction out of date for POST /v1/embeddings. To re-record, delete /Users/codefromthecrypt/oss/ai-gateway/tests/internal/testopenai/cassettes/embeddings-tokens.yaml and re-run with OPENAI_API_KEY set.",
-    "code": "STATUS_CODE_ERROR"
+    "code": "STATUS_CODE_OK"
   }
 }

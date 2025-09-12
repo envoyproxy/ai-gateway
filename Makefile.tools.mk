@@ -3,6 +3,8 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
+GO_TOOL := go tool -modfile=tools/go.mod
+
 LOCALBIN ?= $(shell pwd)/.bin
 $(LOCALBIN):
 	mkdir -p $(LOCALBIN)

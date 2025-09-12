@@ -765,8 +765,10 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 		{
 			name: "text",
 			input: &openai.ChatCompletionRequest{
-				ResponseFormat: &openai.ChatCompletionResponseFormat{
-					Type: openai.ChatCompletionResponseFormatTypeText,
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfText: &openai.ChatCompletionResponseFormatTextParam{
+						Type: openai.ChatCompletionResponseFormatTypeText,
+					},
 				},
 			},
 			expectedGenerationConfig: &genai.GenerationConfig{ResponseMIMEType: "text/plain"},
@@ -774,8 +776,10 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 		{
 			name: "json object",
 			input: &openai.ChatCompletionRequest{
-				ResponseFormat: &openai.ChatCompletionResponseFormat{
-					Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfJSONObject: &openai.ChatCompletionResponseFormatJSONObjectParam{
+						Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+					},
 				},
 			},
 			expectedGenerationConfig: &genai.GenerationConfig{ResponseMIMEType: "application/json"},
@@ -783,11 +787,13 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 		{
 			name: "json schema (map)",
 			input: &openai.ChatCompletionRequest{
-				ResponseFormat: &openai.ChatCompletionResponseFormat{
-					Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
-					JSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
-						Schema: map[string]any{
-							"type": "string",
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
+							Schema: map[string]any{
+								"type": "string",
+							},
 						},
 					},
 				},
@@ -800,10 +806,12 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 		{
 			name: "json schema (string)",
 			input: &openai.ChatCompletionRequest{
-				ResponseFormat: &openai.ChatCompletionResponseFormat{
-					Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
-					JSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
-						Schema: `{"type":"string"}`,
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
+							Schema: `{"type":"string"}`,
+						},
 					},
 				},
 			},
@@ -815,10 +823,12 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 		{
 			name: "json schema (invalid string)",
 			input: &openai.ChatCompletionRequest{
-				ResponseFormat: &openai.ChatCompletionResponseFormat{
-					Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
-					JSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
-						Schema: `{"type":`, // invalid JSON.
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
+							Schema: `{"type":`, // invalid JSON.
+						},
 					},
 				},
 			},

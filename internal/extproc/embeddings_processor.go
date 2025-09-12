@@ -19,10 +19,10 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
@@ -240,8 +240,15 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseHeaders(ctx context.C
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
 func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+	recordRequestCompletionErr := false
 	defer func() {
-		e.metrics.RecordRequestCompletion(ctx, err == nil, e.requestHeaders)
+		if err != nil || recordRequestCompletionErr {
+			e.metrics.RecordRequestCompletion(ctx, false, e.requestHeaders)
+			return
+		}
+		if body.EndOfStream {
+			e.metrics.RecordRequestCompletion(ctx, true, e.requestHeaders)
+		}
 	}()
 	var br io.Reader
 	var isGzip bool
@@ -264,6 +271,8 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 		if err != nil {
 			return nil, fmt.Errorf("failed to transform response error: %w", err)
 		}
+		// Mark so the deferred handler records failure.
+		recordRequestCompletionErr = true
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_ResponseBody{
 				ResponseBody: &extprocv3.BodyResponse{
@@ -324,7 +333,9 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 // SetBackend implements [Processor.SetBackend].
 func (e *embeddingsProcessorUpstreamFilter) SetBackend(ctx context.Context, b *filterapi.Backend, backendHandler backendauth.Handler, routeProcessor Processor) (err error) {
 	defer func() {
-		e.metrics.RecordRequestCompletion(ctx, err == nil, e.requestHeaders)
+		if err != nil {
+			e.metrics.RecordRequestCompletion(ctx, false, e.requestHeaders)
+		}
 	}()
 	rp, ok := routeProcessor.(*embeddingsProcessorRouterFilter)
 	if !ok {
@@ -338,6 +349,10 @@ func (e *embeddingsProcessorUpstreamFilter) SetBackend(ctx context.Context, b *f
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
 	e.handler = backendHandler
+	// Sync header with backend model so header-derived labels/CEL use the actual model.
+	if e.modelNameOverride != "" {
+		e.requestHeaders[e.config.modelNameHeaderKey] = e.modelNameOverride
+	}
 	e.originalRequestBody = rp.originalRequestBody
 	e.originalRequestBodyRaw = rp.originalRequestBodyRaw
 	e.onRetry = rp.upstreamFilterCount > 1

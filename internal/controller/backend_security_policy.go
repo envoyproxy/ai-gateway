@@ -300,16 +300,6 @@ func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.
 	// Handle both old and new patterns.
 	var allAIServiceBackends []aigv1a1.AIServiceBackend
 
-	// Old pattern: AIServiceBackend references BackendSecurityPolicy.
-	key := backendSecurityPolicyKey(bsp.Namespace, bsp.Name)
-	var referencingBackends aigv1a1.AIServiceBackendList
-	err := c.client.List(ctx, &referencingBackends, client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: key})
-	if err != nil {
-		return fmt.Errorf("failed to list AIServiceBackendList (old pattern): %w", err)
-	}
-	allAIServiceBackends = append(allAIServiceBackends, referencingBackends.Items...)
-
-	// New pattern: BackendSecurityPolicy targets AIServiceBackend via targetRefs.
 	for _, targetRef := range bsp.Spec.TargetRefs {
 		var aiBackend aigv1a1.AIServiceBackend
 		err := c.client.Get(ctx, client.ObjectKey{

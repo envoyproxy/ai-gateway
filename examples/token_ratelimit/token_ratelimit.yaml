@@ -28,15 +28,7 @@ metadata:
   name: envoy-ai-gateway-token-ratelimit
   namespace: default
 spec:
-  schema:
-    name: OpenAI
-  # parentRefs:
-  #   - name: envoy-ai-gateway-token-ratelimit
-  #     kind: Gateway
-  #     group: gateway.networking.k8s.io
-  # Use parentRefs above instead of targetRefs below, targetRefs will be deprecated in the next version.
-  # Here, we use targetRefs just for the reference as well as to ensure there's an upgrade path.
-  targetRefs:
+  parentRefs:
     - name: envoy-ai-gateway-token-ratelimit
       kind: Gateway
       group: gateway.networking.k8s.io
@@ -57,8 +49,8 @@ spec:
     - metadataKey: llm_total_token
       type: TotalToken
     # This configures the token limit based on the CEL expression.
-    # For a demonstration purpose, the CEL expression returns 100000000 only when the input token is 3,
-    # otherwise it returns 0 (no token usage).
+    # For a demonstration purpose, the CEL expression returns 100000000 only when the input token is 3.
+    # Otherwise, it returns 0 (no token usage).
     - metadataKey: llm_cel_calculated_token
       type: CEL
       cel: "input_tokens == uint(3) ? 100000000 : 0"

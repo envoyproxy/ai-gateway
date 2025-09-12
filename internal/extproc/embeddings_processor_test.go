@@ -17,9 +17,9 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
@@ -216,6 +216,37 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
 		require.NotNil(t, commonRes)
 		require.True(t, mt.responseErrorCalled)
+		// Ensure failure metric recorded for non-2xx.
+		mm.RequireRequestFailure(t)
+	})
+
+	// Success should be recorded only when EndOfStream is true.
+	t.Run("completion only at end", func(t *testing.T) {
+		mm := &mockEmbeddingsMetrics{}
+		mt := &mockEmbeddingTranslator{t: t}
+		p := &embeddingsProcessorUpstreamFilter{
+			translator:        mt,
+			logger:            slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+			metrics:           mm,
+			config:            &processorConfig{},
+			backendName:       "some_backend",
+			modelNameOverride: "some_model",
+			responseHeaders:   map[string]string{":status": "200"},
+		}
+
+		// First chunk (not end of stream) should not complete the request.
+		chunk := &extprocv3.HttpBody{Body: []byte("chunk-1"), EndOfStream: false}
+		mt.expResponseBody = chunk
+		_, err := p.ProcessResponseBody(t.Context(), chunk)
+		require.NoError(t, err)
+		mm.RequireRequestNotCompleted(t)
+
+		// Final chunk should mark success.
+		final := &extprocv3.HttpBody{Body: []byte("chunk-final"), EndOfStream: true}
+		mt.expResponseBody = final
+		_, err = p.ProcessResponseBody(t.Context(), final)
+		require.NoError(t, err)
+		mm.RequireRequestSuccess(t)
 	})
 }
 
@@ -236,6 +267,29 @@ func Test_embeddingsProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	mm.RequireRequestFailure(t)
 	mm.RequireTokensRecorded(t, 0)
 	mm.RequireSelectedBackend(t, "some-backend")
+}
+
+func Test_embeddingsProcessorUpstreamFilter_SetBackend_Success(t *testing.T) {
+	headers := map[string]string{":path": "/foo", "x-model-name": "some-model"}
+	mm := &mockEmbeddingsMetrics{}
+	p := &embeddingsProcessorUpstreamFilter{
+		config:         &processorConfig{modelNameHeaderKey: "x-model-name"},
+		requestHeaders: headers,
+		logger:         slog.Default(),
+		metrics:        mm,
+	}
+	rp := &embeddingsProcessorRouterFilter{
+		originalRequestBody: &openai.EmbeddingRequest{},
+	}
+	err := p.SetBackend(t.Context(), &filterapi.Backend{
+		Name:              "openai",
+		Schema:            filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"},
+		ModelNameOverride: "override-model",
+	}, nil, rp)
+	require.NoError(t, err)
+	mm.RequireSelectedBackend(t, "openai")
+	require.Equal(t, "override-model", p.requestHeaders["x-model-name"])
+	require.NotNil(t, p.translator)
 }
 
 func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {

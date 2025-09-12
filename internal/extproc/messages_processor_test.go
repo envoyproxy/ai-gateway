@@ -18,9 +18,9 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/envoyproxy/ai-gateway/filterapi"
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
@@ -465,6 +465,60 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_WithMocks(t *testin
 	require.NotNil(t, response)
 }
 
+func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_ErrorRecordsFailure(t *testing.T) {
+	// Translator returns error; ensure failure is recorded.
+	mockTranslator := mockAnthropicTranslator{
+		t:      t,
+		retErr: errors.New("translate error"),
+	}
+
+	mm := &mockChatCompletionMetrics{}
+	processor := &messagesProcessorUpstreamFilter{
+		config:         &processorConfig{},
+		requestHeaders: make(map[string]string),
+		logger:         slog.Default(),
+		metrics:        mm,
+		translator:     mockTranslator,
+	}
+
+	ctx := context.Background()
+	_, err := processor.ProcessResponseBody(ctx, &extprocv3.HttpBody{})
+	require.Error(t, err)
+	mm.RequireRequestFailure(t)
+}
+
+func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_CompletionOnlyAtEnd(t *testing.T) {
+	// Verify success is recorded only at EndOfStream by checking that no error occurs mid-stream
+	// and the call completes successfully at end.
+	mockTranslator := mockAnthropicTranslator{
+		t:                 t,
+		retHeaderMutation: &extprocv3.HeaderMutation{},
+		retBodyMutation:   &extprocv3.BodyMutation{},
+		retErr:            nil,
+	}
+
+	mm := &mockChatCompletionMetrics{}
+	processor := &messagesProcessorUpstreamFilter{
+		config:         &processorConfig{},
+		requestHeaders: make(map[string]string),
+		logger:         slog.Default(),
+		metrics:        mm,
+		translator:     mockTranslator,
+		stream:         true,
+	}
+
+	ctx := context.Background()
+	// Mid-stream.
+	_, err := processor.ProcessResponseBody(ctx, &extprocv3.HttpBody{Body: []byte("chunk"), EndOfStream: false})
+	require.NoError(t, err)
+	mm.RequireRequestNotCompleted(t)
+
+	// End-of-stream.
+	_, err = processor.ProcessResponseBody(ctx, &extprocv3.HttpBody{Body: []byte("final"), EndOfStream: true})
+	require.NoError(t, err)
+	mm.RequireRequestSuccess(t)
+}
+
 func TestMessagesProcessorUpstreamFilter_MergeWithTokenLatencyMetadata(t *testing.T) {
 	chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
 	processor := &messagesProcessorUpstreamFilter{
@@ -519,4 +573,28 @@ func TestMessagesProcessorUpstreamFilter_SetBackend(t *testing.T) {
 		logger: slog.Default(),
 	})
 	require.ErrorContains(t, err, "only supports backends that return native Anthropic format")
+}
+
+func Test_messagesProcessorUpstreamFilter_SetBackend_Success(t *testing.T) {
+	const modelKey = "x-model-name"
+	headers := map[string]string{":path": "/anthropic/v1/messages", modelKey: "claude"}
+	chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+	p := &messagesProcessorUpstreamFilter{
+		config:         &processorConfig{modelNameHeaderKey: modelKey},
+		requestHeaders: headers,
+		logger:         slog.Default(),
+		metrics:        chatMetrics,
+	}
+	rp := &messagesProcessorRouterFilter{
+		originalRequestBody: &anthropicschema.MessagesRequest{"model": "claude", "stream": true},
+	}
+	err := p.SetBackend(t.Context(), &filterapi.Backend{
+		Name:              "gcp",
+		Schema:            filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPAnthropic, Version: "vertex-2023-10-16"},
+		ModelNameOverride: "claude-vertex",
+	}, nil, rp)
+	require.NoError(t, err)
+	require.Equal(t, "claude-vertex", p.requestHeaders[modelKey])
+	require.True(t, p.stream)
+	require.NotNil(t, p.translator)
 }
