@@ -200,16 +200,15 @@ func TestChatCompletionRecorder_WithConfig_HideImages(t *testing.T) {
 	multimodalReq := &openai.ChatCompletionRequest{
 		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{{
-			Type: openai.ChatMessageRoleUser,
-			Value: openai.ChatCompletionUserMessageParam{
+			OfUser: &openai.ChatCompletionUserMessageParam{
 				Role: openai.ChatMessageRoleUser,
 				Content: openai.StringOrUserRoleContentUnion{
 					Value: []openai.ChatCompletionContentPartUserUnionParam{
-						{TextContent: &openai.ChatCompletionContentPartTextParam{
+						{OfText: &openai.ChatCompletionContentPartTextParam{
 							Text: "What is in this image?",
 							Type: "text",
 						}},
-						{ImageContent: &openai.ChatCompletionContentPartImageParam{
+						{OfImageURL: &openai.ChatCompletionContentPartImageParam{
 							ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
 								URL: "https://example.com/image.jpg",
 							},
@@ -289,12 +288,11 @@ func TestChatCompletionRecorder_WithConfig_Base64ImageMaxLength(t *testing.T) {
 	base64ImageReq := &openai.ChatCompletionRequest{
 		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{{
-			Type: openai.ChatMessageRoleUser,
-			Value: openai.ChatCompletionUserMessageParam{
+			OfUser: &openai.ChatCompletionUserMessageParam{
 				Role: openai.ChatMessageRoleUser,
 				Content: openai.StringOrUserRoleContentUnion{
 					Value: []openai.ChatCompletionContentPartUserUnionParam{
-						{ImageContent: &openai.ChatCompletionContentPartImageParam{
+						{OfImageURL: &openai.ChatCompletionContentPartImageParam{
 							ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
 								URL: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg==",
 							},
@@ -382,8 +380,7 @@ func TestChatCompletionRecorder_WithConfig_NoJSONMarshalWhenHidden(t *testing.T)
 	invalidReq := &openai.ChatCompletionRequest{
 		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{{
-			Type: openai.ChatMessageRoleUser,
-			Value: openai.ChatCompletionUserMessageParam{
+			OfUser: &openai.ChatCompletionUserMessageParam{
 				Content: openai.StringOrUserRoleContentUnion{Value: "Hello!"},
 				Role:    openai.ChatMessageRoleUser,
 			},

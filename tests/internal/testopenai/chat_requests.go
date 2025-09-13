@@ -30,8 +30,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
-				Type: openai.ChatMessageRoleUser,
-				Value: openai.ChatCompletionUserMessageParam{
+				OfUser: &openai.ChatCompletionUserMessageParam{
 					Role: openai.ChatMessageRoleUser,
 					Content: openai.StringOrUserRoleContentUnion{
 						Value: "What is the weather like in Boston today?",
@@ -68,19 +67,18 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
-				Type: openai.ChatMessageRoleUser,
-				Value: openai.ChatCompletionUserMessageParam{
+				OfUser: &openai.ChatCompletionUserMessageParam{
 					Role: openai.ChatMessageRoleUser,
 					Content: openai.StringOrUserRoleContentUnion{
 						Value: []openai.ChatCompletionContentPartUserUnionParam{
 							{
-								TextContent: &openai.ChatCompletionContentPartTextParam{
+								OfText: &openai.ChatCompletionContentPartTextParam{
 									Type: string(openai.ChatCompletionContentPartTextTypeText),
 									Text: "What is in this image?",
 								},
 							},
 							{
-								ImageContent: &openai.ChatCompletionContentPartImageParam{
+								OfImageURL: &openai.ChatCompletionContentPartImageParam{
 									Type: openai.ChatCompletionContentPartImageTypeImageURL,
 									ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
 										URL: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg",
@@ -98,8 +96,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
-				Type: openai.ChatMessageRoleDeveloper,
-				Value: openai.ChatCompletionDeveloperMessageParam{
+				OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
 					Role: openai.ChatMessageRoleDeveloper,
 					Content: openai.StringOrArray{
 						Value: "You are a helpful assistant.",
@@ -107,8 +104,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 				},
 			},
 			{
-				Type: openai.ChatMessageRoleUser,
-				Value: openai.ChatCompletionUserMessageParam{
+				OfUser: &openai.ChatCompletionUserMessageParam{
 					Role: openai.ChatMessageRoleUser,
 					Content: openai.StringOrUserRoleContentUnion{
 						Value: "Hello!",
@@ -116,8 +112,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 				},
 			},
 			{
-				Type: openai.ChatMessageRoleAssistant,
-				Value: openai.ChatCompletionAssistantMessageParam{
+				OfAssistant: &openai.ChatCompletionAssistantMessageParam{
 					Role: openai.ChatMessageRoleAssistant,
 					Content: openai.StringOrAssistantRoleContentUnion{
 						Value: "Hello! How can I assist you today?",
@@ -125,8 +120,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 				},
 			},
 			{
-				Type: openai.ChatMessageRoleUser,
-				Value: openai.ChatCompletionUserMessageParam{
+				OfUser: &openai.ChatCompletionUserMessageParam{
 					Role: openai.ChatMessageRoleUser,
 					Content: openai.StringOrUserRoleContentUnion{
 						Value: "Answer in up to 5 words: What's the weather like?",
@@ -140,8 +134,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
-				Type: openai.ChatMessageRoleUser,
-				Value: openai.ChatCompletionUserMessageParam{
+				OfUser: &openai.ChatCompletionUserMessageParam{
 					Role: openai.ChatMessageRoleUser,
 					Content: openai.StringOrUserRoleContentUnion{
 						Value: "Generate a JSON object with three properties: name, age, and city.",
@@ -163,8 +156,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
-				Type: openai.ChatMessageRoleUser,
-				Value: openai.ChatCompletionUserMessageParam{
+				OfUser: &openai.ChatCompletionUserMessageParam{
 					Role: openai.ChatMessageRoleUser,
 					Content: openai.StringOrUserRoleContentUnion{
 						Value: "What is the weather like in San Francisco?",
@@ -202,8 +194,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
-				Type: openai.ChatMessageRoleUser,
-				Value: openai.ChatCompletionUserMessageParam{
+				OfUser: &openai.ChatCompletionUserMessageParam{
 					Role: openai.ChatMessageRoleUser,
 					Content: openai.StringOrUserRoleContentUnion{
 						Value: nil,
@@ -218,19 +209,18 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
-				Type: openai.ChatMessageRoleUser,
-				Value: openai.ChatCompletionUserMessageParam{
+				OfUser: &openai.ChatCompletionUserMessageParam{
 					Role: openai.ChatMessageRoleUser,
 					Content: openai.StringOrUserRoleContentUnion{
 						Value: []openai.ChatCompletionContentPartUserUnionParam{
 							{
-								TextContent: &openai.ChatCompletionContentPartTextParam{
+								OfText: &openai.ChatCompletionContentPartTextParam{
 									Type: string(openai.ChatCompletionContentPartTextTypeText),
 									Text: "Answer in up to 5 words: What's in this image?",
 								},
 							},
 							{
-								ImageContent: &openai.ChatCompletionContentPartImageParam{
+								OfImageURL: &openai.ChatCompletionContentPartImageParam{
 									Type: openai.ChatCompletionContentPartImageTypeImageURL,
 									ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
 										URL: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAXElEQVR42mNgoAkofv8fBVOkmQyD/sPwn1UlYAzlE6cZpgGmGZlPkgHYDCHKCcia0AwgHlCm+c+f/9gwabajG0CsK+DOxmIA8YZQ6gXkhISG6W8ALj7RtuMTgwMA0WTdqiU1ensAAAAASUVORK5CYII=",
@@ -247,8 +237,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 		Model: "gpt-4.1-nano-wrong",
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
-				Type: openai.ChatMessageRoleUser,
-				Value: openai.ChatCompletionUserMessageParam{
+				OfUser: &openai.ChatCompletionUserMessageParam{
 					Role: openai.ChatMessageRoleUser,
 					Content: openai.StringOrUserRoleContentUnion{
 						Value: "Hello!",
@@ -261,8 +250,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 		Model: openai.ModelO3Mini,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
-				Type: openai.ChatMessageRoleUser,
-				Value: openai.ChatCompletionUserMessageParam{
+				OfUser: &openai.ChatCompletionUserMessageParam{
 					Role: openai.ChatMessageRoleUser,
 					Content: openai.StringOrUserRoleContentUnion{
 						Value: "A bat and ball cost $1.10. Bat costs $1 more than ball. Ball cost?",
@@ -275,19 +263,18 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 		Model: openai.ModelGPT4oAudioPreview,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
-				Type: openai.ChatMessageRoleUser,
-				Value: openai.ChatCompletionUserMessageParam{
+				OfUser: &openai.ChatCompletionUserMessageParam{
 					Role: openai.ChatMessageRoleUser,
 					Content: openai.StringOrUserRoleContentUnion{
 						Value: []openai.ChatCompletionContentPartUserUnionParam{
 							{
-								TextContent: &openai.ChatCompletionContentPartTextParam{
+								OfText: &openai.ChatCompletionContentPartTextParam{
 									Type: string(openai.ChatCompletionContentPartTextTypeText),
 									Text: "Answer in up to 5 words: What do you hear in this audio?",
 								},
 							},
 							{
-								InputAudioContent: &openai.ChatCompletionContentPartInputAudioParam{
+								OfInputAudio: &openai.ChatCompletionContentPartInputAudioParam{
 									Type: openai.ChatCompletionContentPartInputAudioTypeInputAudio,
 									InputAudio: openai.ChatCompletionContentPartInputAudioInputAudioParam{
 										Data:   "UklGRlwEAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YTgEAADY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2CcnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2CcnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2CcnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2CcnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2NgnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2CcnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycnv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/v0BAQEBAv7+/v79AQEBAQL+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA=", // 8-bit style jump sound, 0.135s, 8kHz mono WAV.
@@ -305,8 +292,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 		Model: openai.ModelGPT4oMiniAudioPreview,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
-				Type: openai.ChatMessageRoleUser,
-				Value: openai.ChatCompletionUserMessageParam{
+				OfUser: &openai.ChatCompletionUserMessageParam{
 					Role: openai.ChatMessageRoleUser,
 					Content: openai.StringOrUserRoleContentUnion{
 						Value: "Say a single short 'beep' sound, as brief as possible.",
@@ -329,8 +315,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
-				Type: openai.ChatMessageRoleSystem,
-				Value: openai.ChatCompletionSystemMessageParam{
+				OfSystem: &openai.ChatCompletionSystemMessageParam{
 					Role: openai.ChatMessageRoleSystem,
 					Content: openai.StringOrArray{
 						Value: "You are an AI assistant that generates simple, sketch-style images with minimal detail. When asked to generate an image, create it with low quality settings for cost efficiency.",
@@ -338,8 +323,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 				},
 			},
 			{
-				Type: openai.ChatMessageRoleUser,
-				Value: openai.ChatCompletionUserMessageParam{
+				OfUser: &openai.ChatCompletionUserMessageParam{
 					Role: openai.ChatMessageRoleUser,
 					Content: openai.StringOrUserRoleContentUnion{
 						Value: "Draw a simple, minimalist image of a cute cat playing with a ball of yarn in a sketch style.",
@@ -380,8 +364,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
-				Type: openai.ChatMessageRoleSystem,
-				Value: openai.ChatCompletionSystemMessageParam{
+				OfSystem: &openai.ChatCompletionSystemMessageParam{
 					Role: openai.ChatMessageRoleSystem,
 					Content: openai.StringOrArray{
 						Value: "You are a financial research planner. Given a request for financial analysis, produce a set of web searches to gather the context needed. Aim for recent headlines, earnings  calls or 10‑K snippets, analyst commentary, and industry background. Output between 5 and 15 search terms to query for.",
@@ -389,8 +372,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 				},
 			},
 			{
-				Type: openai.ChatMessageRoleUser,
-				Value: openai.ChatCompletionUserMessageParam{
+				OfUser: &openai.ChatCompletionUserMessageParam{
 					Role: openai.ChatMessageRoleUser,
 					Content: openai.StringOrUserRoleContentUnion{
 						Value: "Query: tell me about acme",
@@ -450,8 +432,7 @@ var (
 		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
-				Type: openai.ChatMessageRoleUser,
-				Value: openai.ChatCompletionUserMessageParam{
+				OfUser: &openai.ChatCompletionUserMessageParam{
 					Role: openai.ChatMessageRoleUser,
 					Content: openai.StringOrUserRoleContentUnion{
 						Value: "Hello!",
@@ -464,8 +445,7 @@ var (
 		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
-				Type: openai.ChatMessageRoleDeveloper,
-				Value: openai.ChatCompletionDeveloperMessageParam{
+				OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
 					Role: openai.ChatMessageRoleDeveloper,
 					Content: openai.StringOrArray{
 						Value: "Hello, I'm a developer!",
@@ -480,8 +460,7 @@ var (
 		Model: openai.ModelGPT4oMiniSearchPreview,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
-				Type: openai.ChatMessageRoleUser,
-				Value: openai.ChatCompletionUserMessageParam{
+				OfUser: &openai.ChatCompletionUserMessageParam{
 					Role: openai.ChatMessageRoleUser,
 					Content: openai.StringOrUserRoleContentUnion{
 						Value: "In up to 5 words, tell me what's at https://httpbin.org/base64/dGVzdA== and include citations",
