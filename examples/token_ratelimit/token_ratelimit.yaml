@@ -233,3 +233,47 @@ spec:
           # Note: this is to clear the large default memory/cpu requirements for local tests.
           # In production, you should set these to values that make sense for your environment.
           resources: {}
+---
+# Redis deployment for rate limiting - only needed when using rate limit features
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: redis-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: redis-system
+  labels:
+    app: redis
+spec:
+  ports:
+    - name: redis
+      port: 6379
+  selector:
+    app: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: redis-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - image: redis:alpine
+          imagePullPolicy: IfNotPresent
+          name: redis
+          ports:
+            - name: redis
+              containerPort: 6379
+      restartPolicy: Always

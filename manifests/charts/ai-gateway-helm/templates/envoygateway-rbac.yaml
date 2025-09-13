@@ -3,11 +3,14 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
+{{- if .Values.envoyGateway.enabled }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: list-ai-gateway-controller
+  labels:
+    {{- include "ai-gateway-helm.labels" . | nindent 4 }}
 rules:
   - apiGroups:
       - "aigateway.envoyproxy.io"
@@ -32,6 +35,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: list-ai-gateway-controller
+  labels:
+    {{- include "ai-gateway-helm.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -39,5 +44,5 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: envoy-gateway
-    namespace: envoy-gateway-system
----
+    namespace: {{ .Values.envoyGateway.namespace }}
+{{- end }}
