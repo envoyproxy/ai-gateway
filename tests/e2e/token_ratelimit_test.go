@@ -31,6 +31,9 @@ const userIDMetricsLabel = "user_id"
 func Test_Examples_TokenRateLimit(t *testing.T) {
 	const manifest = "../../examples/token_ratelimit/token_ratelimit.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
+	t.Cleanup(func() {
+		_ = e2elib.KubectlDeleteManifest(t.Context(), manifest)
+	})
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-token-ratelimit"
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)

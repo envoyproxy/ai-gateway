@@ -39,50 +39,56 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Model:  "gpt-4o",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Value: openai.ChatCompletionSystemMessageParam{
+						OfSystem: &openai.ChatCompletionSystemMessageParam{
 							Content: openai.StringOrArray{
 								Value: "from-system",
 							},
-						}, Type: openai.ChatMessageRoleSystem,
+							Role: openai.ChatMessageRoleSystem,
+						},
 					},
 					{
-						Value: openai.ChatCompletionDeveloperMessageParam{
+						OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
 							Content: openai.StringOrArray{
 								Value: "from-developer",
 							},
-						}, Type: openai.ChatMessageRoleDeveloper,
+							Role: openai.ChatMessageRoleDeveloper,
+						},
 					},
 					{
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "from-user",
 							},
-						}, Type: openai.ChatMessageRoleUser,
+							Role: openai.ChatMessageRoleUser,
+						},
 					},
 					{
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "part1",
 							},
-						}, Type: openai.ChatMessageRoleUser,
+							Role: openai.ChatMessageRoleUser,
+						},
 					},
 					{
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "part2",
 							},
-						}, Type: openai.ChatMessageRoleUser,
+							Role: openai.ChatMessageRoleUser,
+						},
 					},
 					{
-						Value: openai.ChatCompletionToolMessageParam{
+						OfTool: &openai.ChatCompletionToolMessageParam{
 							Content: openai.StringOrArray{
 								Value: "Weather in Queens, NY is 70F and clear skies.",
 							},
 							ToolCallID: "call_6g7a",
-						}, Type: openai.ChatMessageRoleTool,
+							Role:       openai.ChatMessageRoleTool,
+						},
 					},
 					{
-						Value: openai.ChatCompletionAssistantMessageParam{
+						OfAssistant: &openai.ChatCompletionAssistantMessageParam{
 							Content: openai.StringOrAssistantRoleContentUnion{
 								Value: openai.ChatCompletionAssistantMessageParamContent{
 									Type: openai.ChatCompletionAssistantMessageParamContentTypeText,
@@ -99,21 +105,24 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 									Type: openai.ChatCompletionMessageToolCallTypeFunction,
 								},
 							},
-						}, Type: openai.ChatMessageRoleAssistant,
+							Role: openai.ChatMessageRoleAssistant,
+						},
 					},
 					{
-						Value: openai.ChatCompletionAssistantMessageParam{
+						OfAssistant: &openai.ChatCompletionAssistantMessageParam{
 							Content: openai.StringOrAssistantRoleContentUnion{
 								Value: "I also dunno",
 							},
-						}, Type: openai.ChatMessageRoleAssistant,
+							Role: openai.ChatMessageRoleAssistant,
+						},
 					},
 					{
-						Value: openai.ChatCompletionAssistantMessageParam{
+						OfAssistant: &openai.ChatCompletionAssistantMessageParam{
 							Content: openai.StringOrAssistantRoleContentUnion{
 								Value: "",
 							},
-						}, Type: openai.ChatMessageRoleAssistant,
+							Role: openai.ChatMessageRoleAssistant,
+						},
 					},
 				},
 			},
@@ -204,49 +213,54 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Model:  "gpt-4o",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Value: openai.ChatCompletionSystemMessageParam{
+						OfSystem: &openai.ChatCompletionSystemMessageParam{
 							Content: openai.StringOrArray{
 								Value: []openai.ChatCompletionContentPartTextParam{
 									{Text: "from-system"},
 								},
 							},
-						}, Type: openai.ChatMessageRoleSystem,
+							Role: openai.ChatMessageRoleSystem,
+						},
 					},
 					{
-						Value: openai.ChatCompletionDeveloperMessageParam{
+						OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
 							Content: openai.StringOrArray{
 								Value: []openai.ChatCompletionContentPartTextParam{
 									{Text: "from-developer"},
 								},
 							},
-						}, Type: openai.ChatMessageRoleDeveloper,
+							Role: openai.ChatMessageRoleDeveloper,
+						},
 					},
 					{
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: []openai.ChatCompletionContentPartUserUnionParam{
-									{TextContent: &openai.ChatCompletionContentPartTextParam{Text: "from-user"}},
+									{OfText: &openai.ChatCompletionContentPartTextParam{Text: "from-user"}},
 								},
 							},
-						}, Type: openai.ChatMessageRoleUser,
+							Role: openai.ChatMessageRoleUser,
+						},
 					},
 					{
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: []openai.ChatCompletionContentPartUserUnionParam{
-									{TextContent: &openai.ChatCompletionContentPartTextParam{Text: "user1"}},
+									{OfText: &openai.ChatCompletionContentPartTextParam{Text: "user1"}},
 								},
 							},
-						}, Type: openai.ChatMessageRoleUser,
+							Role: openai.ChatMessageRoleUser,
+						},
 					},
 					{
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: []openai.ChatCompletionContentPartUserUnionParam{
-									{TextContent: &openai.ChatCompletionContentPartTextParam{Text: "user2"}},
+									{OfText: &openai.ChatCompletionContentPartTextParam{Text: "user2"}},
 								},
 							},
-						}, Type: openai.ChatMessageRoleUser,
+							Role: openai.ChatMessageRoleUser,
+						},
 					},
 				},
 			},
@@ -295,26 +309,28 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Model:  "gpt-4o",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Value: openai.ChatCompletionSystemMessageParam{
+						OfSystem: &openai.ChatCompletionSystemMessageParam{
 							Content: openai.StringOrArray{
 								Value: []openai.ChatCompletionContentPartTextParam{
 									{Text: "from-system"},
 								},
 							},
-						}, Type: openai.ChatMessageRoleSystem,
+							Role: openai.ChatMessageRoleSystem,
+						},
 					},
 					{
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: []openai.ChatCompletionContentPartUserUnionParam{
-									{ImageContent: &openai.ChatCompletionContentPartImageParam{
+									{OfImageURL: &openai.ChatCompletionContentPartImageParam{
 										ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
 											URL: "data:image/jpeg;base64,dGVzdA==",
 										},
 									}},
 								},
 							},
-						}, Type: openai.ChatMessageRoleUser,
+							Role: openai.ChatMessageRoleUser,
+						},
 					},
 				},
 			},
@@ -352,11 +368,12 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Temperature: ptr.To(0.7),
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "from-user",
 							},
-						}, Type: openai.ChatMessageRoleUser,
+							Role: openai.ChatMessageRoleUser,
+						},
 					},
 				},
 			},
@@ -388,11 +405,12 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Temperature: ptr.To(0.7),
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "from-user",
 							},
-						}, Type: openai.ChatMessageRoleUser,
+							Role: openai.ChatMessageRoleUser,
+						},
 					},
 				},
 				Tools: []openai.Tool{
@@ -469,11 +487,12 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Model: "gpt-4o",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "from-user",
 							},
-						}, Type: openai.ChatMessageRoleUser,
+							Role: openai.ChatMessageRoleUser,
+						},
 					},
 				},
 				Tools: []openai.Tool{
@@ -519,11 +538,12 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Model: "gpt-4o",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "from-user",
 							},
-						}, Type: openai.ChatMessageRoleUser,
+							Role: openai.ChatMessageRoleUser,
+						},
 					},
 				},
 				Tools: []openai.Tool{
@@ -569,11 +589,12 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Model: "bedrock.anthropic.claude-3-5-sonnet-20240620-v1:0",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "from-user",
 							},
-						}, Type: openai.ChatMessageRoleUser,
+							Role: openai.ChatMessageRoleUser,
+						},
 					},
 				},
 				Tools: []openai.Tool{
@@ -623,11 +644,12 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Model: "bedrock.anthropic.claude-3-5-sonnet-20240620-v1:0",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "from-user",
 							},
-						}, Type: openai.ChatMessageRoleUser,
+							Role: openai.ChatMessageRoleUser,
+						},
 					},
 				},
 				Tools: []openai.Tool{
@@ -682,11 +704,12 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Model: "gpt-4o",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "from-user",
 							},
-						}, Type: openai.ChatMessageRoleUser,
+							Role: openai.ChatMessageRoleUser,
+						},
 					},
 				},
 				Stop: []*string{ptr.To("stop_only")},
@@ -713,8 +736,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Model: "bedrock.anthropic.claude-3-5-sonnet-20240620-v1:0",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Type: openai.ChatMessageRoleUser,
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Role: openai.ChatMessageRoleUser,
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "What is the weather in Dallas, Texas and Orlando, Florida in Fahrenheit?",
@@ -722,8 +744,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						},
 					},
 					{
-						Type: openai.ChatMessageRoleAssistant,
-						Value: openai.ChatCompletionAssistantMessageParam{
+						OfAssistant: &openai.ChatCompletionAssistantMessageParam{
 							Role: openai.ChatMessageRoleAssistant,
 							ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 								{
@@ -746,8 +767,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						},
 					},
 					{
-						Type: openai.ChatMessageRoleTool,
-						Value: openai.ChatCompletionToolMessageParam{
+						OfTool: &openai.ChatCompletionToolMessageParam{
 							Content: openai.StringOrArray{
 								Value: "The weather in Dallas TX is 98 degrees fahrenheit with mostly cloudy skies and a change of rain in the evening.",
 							},
@@ -756,8 +776,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						},
 					},
 					{
-						Type: openai.ChatMessageRoleTool,
-						Value: openai.ChatCompletionToolMessageParam{
+						OfTool: &openai.ChatCompletionToolMessageParam{
 							Content: openai.StringOrArray{
 								Value: "The weather in Orlando FL is 78 degrees fahrenheit with clear skies.",
 							},
@@ -827,11 +846,11 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Model: "anthropic.claude-3-sonnet-20240229-v1:0",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Type: openai.ChatMessageRoleUser,
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "Hello",
 							},
+							Role: openai.ChatMessageRoleUser,
 						},
 					},
 				},

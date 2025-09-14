@@ -26,8 +26,6 @@ func Test_Examples_ProviderFallback(t *testing.T) {
 	const baseManifest = "../../examples/provider_fallback/base.yaml"
 	const fallbackManifest = "../../examples/provider_fallback/fallback.yaml"
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=provider-fallback"
-	// Delete the fallback configuration if it exists so that multiple runs of this test do not conflict.
-	_ = e2elib.KubectlDeleteManifest(t.Context(), fallbackManifest)
 
 	// This requires the following environment variables to be set:
 	//   - TEST_AWS_ACCESS_KEY_ID
@@ -47,6 +45,10 @@ func Test_Examples_ProviderFallback(t *testing.T) {
 	replaced = strings.ReplaceAll(replaced, "AWS_SECRET_ACCESS_KEY", cmp.Or(awsSecretAccessKey, "dummy-aws-secret-access-key"))
 	require.NoError(t, e2elib.KubectlApplyManifestStdin(t.Context(), replaced))
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
+	t.Cleanup(func() {
+		_ = e2elib.KubectlDeleteManifest(t.Context(), baseManifest)
+		_ = e2elib.KubectlDeleteManifest(t.Context(), fallbackManifest)
+	})
 
 	const body = `{"model": "us.meta.llama3-2-1b-instruct-v1:0","messages": [{"role": "user", "content": "Say this is a test!"}],"temperature": 0.7}`
 

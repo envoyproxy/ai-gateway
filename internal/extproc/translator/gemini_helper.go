@@ -41,10 +41,10 @@ func openAIMessagesToGeminiContents(messages []openai.ChatCompletionMessageParam
 	var gcpParts []*genai.Part
 
 	for _, msgUnion := range messages {
-		switch msgUnion.Type {
-		case openai.ChatMessageRoleDeveloper:
-			msg := msgUnion.Value.(openai.ChatCompletionDeveloperMessageParam)
-			inst, err := developerMsgToGeminiParts(msg)
+		switch {
+		case msgUnion.OfDeveloper != nil:
+			msg := msgUnion.OfDeveloper
+			inst, err := developerMsgToGeminiParts(*msg)
 			if err != nil {
 				return nil, nil, fmt.Errorf("error converting developer message: %w", err)
 			}
@@ -54,9 +54,9 @@ func openAIMessagesToGeminiContents(messages []openai.ChatCompletionMessageParam
 				}
 				systemInstruction.Parts = append(systemInstruction.Parts, inst...)
 			}
-		case openai.ChatMessageRoleSystem:
-			msg := msgUnion.Value.(openai.ChatCompletionSystemMessageParam)
-			devMsg := systemMsgToDeveloperMsg(msg)
+		case msgUnion.OfSystem != nil:
+			msg := msgUnion.OfSystem
+			devMsg := systemMsgToDeveloperMsg(*msg)
 			inst, err := developerMsgToGeminiParts(devMsg)
 			if err != nil {
 				return nil, nil, fmt.Errorf("error converting developer message: %w", err)
@@ -67,35 +67,35 @@ func openAIMessagesToGeminiContents(messages []openai.ChatCompletionMessageParam
 				}
 				systemInstruction.Parts = append(systemInstruction.Parts, inst...)
 			}
-		case openai.ChatMessageRoleUser:
-			msg := msgUnion.Value.(openai.ChatCompletionUserMessageParam)
-			parts, err := userMsgToGeminiParts(msg)
+		case msgUnion.OfUser != nil:
+			msg := msgUnion.OfUser
+			parts, err := userMsgToGeminiParts(*msg)
 			if err != nil {
 				return nil, nil, fmt.Errorf("error converting user message: %w", err)
 			}
 			gcpParts = append(gcpParts, parts...)
-		case openai.ChatMessageRoleTool:
-			msg := msgUnion.Value.(openai.ChatCompletionToolMessageParam)
-			part, err := toolMsgToGeminiParts(msg, knownToolCalls)
+		case msgUnion.OfTool != nil:
+			msg := msgUnion.OfTool
+			part, err := toolMsgToGeminiParts(*msg, knownToolCalls)
 			if err != nil {
 				return nil, nil, fmt.Errorf("error converting tool message: %w", err)
 			}
 			gcpParts = append(gcpParts, part)
-		case openai.ChatMessageRoleAssistant:
+		case msgUnion.OfAssistant != nil:
 			// Flush any accumulated user/tool parts before assistant.
 			if len(gcpParts) > 0 {
 				gcpContents = append(gcpContents, genai.Content{Role: genai.RoleUser, Parts: gcpParts})
 				gcpParts = nil
 			}
-			msg := msgUnion.Value.(openai.ChatCompletionAssistantMessageParam)
-			assistantParts, toolCalls, err := assistantMsgToGeminiParts(msg)
+			msg := msgUnion.OfAssistant
+			assistantParts, toolCalls, err := assistantMsgToGeminiParts(*msg)
 			if err != nil {
 				return nil, nil, fmt.Errorf("error converting assistant message: %w", err)
 			}
 			maps.Copy(knownToolCalls, toolCalls)
 			gcpContents = append(gcpContents, genai.Content{Role: genai.RoleModel, Parts: assistantParts})
 		default:
-			return nil, nil, fmt.Errorf("invalid role in message: %s", msgUnion.Type)
+			return nil, nil, fmt.Errorf("invalid role in message")
 		}
 	}
 
@@ -141,10 +141,10 @@ func userMsgToGeminiParts(msg openai.ChatCompletionUserMessageParam) ([]*genai.P
 	case []openai.ChatCompletionContentPartUserUnionParam:
 		for _, content := range contentValue {
 			switch {
-			case content.TextContent != nil:
-				parts = append(parts, genai.NewPartFromText(content.TextContent.Text))
-			case content.ImageContent != nil:
-				imgURL := content.ImageContent.ImageURL.URL
+			case content.OfText != nil:
+				parts = append(parts, genai.NewPartFromText(content.OfText.Text))
+			case content.OfImageURL != nil:
+				imgURL := content.OfImageURL.ImageURL.URL
 				if imgURL == "" {
 					// If image URL is empty, we skip it.
 					continue
@@ -170,9 +170,12 @@ func userMsgToGeminiParts(msg openai.ChatCompletionUserMessageParam) ([]*genai.P
 
 					parts = append(parts, genai.NewPartFromURI(imgURL, mimeType))
 				}
-			case content.InputAudioContent != nil:
+			case content.OfInputAudio != nil:
 				// Audio content is currently not supported in this implementation.
 				return nil, fmt.Errorf("audio content not supported yet")
+			case content.OfFile != nil:
+				// File content is currently not supported in this implementation.
+				return nil, fmt.Errorf("file content not supported yet")
 			}
 		}
 	default:
