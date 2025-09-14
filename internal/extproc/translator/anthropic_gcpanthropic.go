@@ -99,7 +99,7 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, bo
 	// For streaming chunks, parse SSE format to extract token usage.
 	if !endOfStream {
 		// Parse SSE format - split by lines and look for data: lines.
-		for _, line := range bytes.Lines(bodyBytes) {
+		for line := range bytes.Lines(bodyBytes) {
 			line = bytes.TrimSpace(line)
             dataPrefix := []byte("data: ")
 			if bytes.HasPrefix(line, dataPrefix) {
