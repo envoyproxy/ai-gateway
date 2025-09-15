@@ -1303,7 +1303,7 @@ type ChatCompletionResponseChunkChoiceDelta struct {
 	Role             string                               `json:"role,omitempty"`
 	ToolCalls        []ChatCompletionMessageToolCallParam `json:"tool_calls,omitempty"`
 	Annotations      *[]Annotation                        `json:"annotations,omitempty"`
-	ReasoningContent *AWSBedrockStreamReasoningContent    `json:"reasoning_content,omitempty"`
+	ReasoningContent *AWSBedRockStreamReasoningContent    `json:"reasoning_content,omitempty"`
 }
 
 // Error is described in the OpenAI API documentation
@@ -1522,14 +1522,14 @@ type AWSBedrockResponseVendorFields struct {
 	// Note: This object is a Union. Only one member of this object can be specified or returned.
 	// Required: No
 	// See https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ReasoningContentBlock.html for more information.
-	ReasoningContent *AWSBedrockReasoningContent `json:"reasoning_content,omitzero"`
+	ReasoningContent *AWSBedRockReasoningContent `json:"reasoning_content,omitzero"`
 }
 
-type AWSBedrockReasoningContent struct {
+type AWSBedRockReasoningContent struct {
 	ReasoningContent *awsbedrock.ReasoningContentBlock `json:"reasoningContent,omitzero"`
 }
 
-type AWSBedrockStreamReasoningContent struct {
+type AWSBedRockStreamReasoningContent struct {
 	Text            string `json:"text,omitzero"`
 	Signature       string `json:"signature,omitzero"`
 	RedactedContent []byte `json:"redactedContent,omitzero"`
