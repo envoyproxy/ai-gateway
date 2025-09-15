@@ -6,7 +6,6 @@ linters:
     - depguard
     - errorlint
     - gocritic
-    - godot
     - gosec
     - importas
     - misspell
@@ -27,11 +26,6 @@ linters:
               desc: use sigs.k8s.io/yaml instead
             - pkg: k8s.io/utils/pointer
               desc: use k8s.io/utils/ptr instead
-    godot:
-      scope: all
-      exclude:
-        - ^\+.+
-        - coverage-ignore
     govet:
       disable:
         - fieldalignment
