@@ -18,29 +18,26 @@ import (
 type contentDecodingResult struct {
 	reader    io.Reader
 	isEncoded bool
-	encoding  string
 }
 
 // decodeContentIfNeeded decompresses the response body based on the content-encoding header.
 // Currently supports gzip encoding, but can be extended to support other encodings in the future.
 // Returns a reader for the (potentially decompressed) body and metadata about the encoding.
-func decodeContentIfNeeded(body []byte, contentEncoding string) (*contentDecodingResult, error) {
+func decodeContentIfNeeded(body []byte, contentEncoding string) (contentDecodingResult, error) {
 	switch contentEncoding {
 	case "gzip":
 		reader, err := gzip.NewReader(bytes.NewReader(body))
 		if err != nil {
-			return nil, fmt.Errorf("failed to decode gzip: %w", err)
+			return contentDecodingResult{}, fmt.Errorf("failed to decode gzip: %w", err)
 		}
-		return &contentDecodingResult{
+		return contentDecodingResult{
 			reader:    reader,
 			isEncoded: true,
-			encoding:  "gzip",
 		}, nil
 	default:
-		return &contentDecodingResult{
+		return contentDecodingResult{
 			reader:    bytes.NewReader(body),
 			isEncoded: false,
-			encoding:  "",
 		}, nil
 	}
 }

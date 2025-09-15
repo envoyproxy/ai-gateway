@@ -84,7 +84,6 @@ func TestDecodeContentIfNeeded(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Equal(t, tt.wantEncoded, res.isEncoded)
-			require.Equal(t, tt.wantEncoding, res.encoding)
 			if !tt.wantEncoded {
 				out, _ := io.ReadAll(res.reader)
 				require.Equal(t, tt.body, out)
