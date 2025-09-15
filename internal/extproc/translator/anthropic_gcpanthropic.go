@@ -6,6 +6,7 @@
 package translator
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -95,18 +96,44 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, bo
 		return nil, nil, LLMTokenUsage{}, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// For streaming chunks, try to extract token usage from message_delta events.
+	// For streaming chunks, parse SSE format to extract token usage.
 	if !endOfStream {
-		// Try to parse as a message_delta event to extract usage.
-		var eventData map[string]any
-		if unmarshalErr := json.Unmarshal(bodyBytes, &eventData); unmarshalErr == nil {
-			if eventType, ok := eventData["type"].(string); ok && eventType == "message_delta" {
-				if usageData, ok := eventData["usage"].(map[string]any); ok {
-					// Extract token usage from the message_delta event.
-					if outputTokens, ok := usageData["output_tokens"].(float64); ok {
-						tokenUsage = LLMTokenUsage{
-							OutputTokens: uint32(outputTokens), //nolint:gosec
-							TotalTokens:  uint32(outputTokens), //nolint:gosec // Only output tokens available in streaming
+		// Parse SSE format - split by lines and look for data: lines.
+		for line := range bytes.Lines(bodyBytes) {
+			line = bytes.TrimSpace(line)
+			dataPrefix := []byte("data: ")
+			if bytes.HasPrefix(line, dataPrefix) {
+				jsonData := bytes.TrimPrefix(line, dataPrefix)
+
+				var eventData map[string]any
+				if unmarshalErr := json.Unmarshal(jsonData, &eventData); unmarshalErr != nil {
+					// Skip lines with invalid JSON (like ping events or malformed data).
+					continue
+				}
+				if eventType, ok := eventData["type"].(string); ok {
+					switch eventType {
+					case "message_start":
+						// Extract input tokens from message.usage.
+						if messageData, ok := eventData["message"].(map[string]any); ok {
+							if usageData, ok := messageData["usage"].(map[string]any); ok {
+								if inputTokens, ok := usageData["input_tokens"].(float64); ok {
+									tokenUsage.InputTokens = uint32(inputTokens) //nolint:gosec
+								}
+								// Some message_start events may include initial output tokens.
+								if outputTokens, ok := usageData["output_tokens"].(float64); ok && outputTokens > 0 {
+									tokenUsage.OutputTokens = uint32(outputTokens) //nolint:gosec
+								}
+								tokenUsage.TotalTokens = tokenUsage.InputTokens + tokenUsage.OutputTokens
+							}
+						}
+
+					case "message_delta":
+						if usageData, ok := eventData["usage"].(map[string]any); ok {
+							if outputTokens, ok := usageData["output_tokens"].(float64); ok {
+								// Add to existing output tokens (in case message_start had some initial ones).
+								tokenUsage.OutputTokens += uint32(outputTokens) //nolint:gosec
+								tokenUsage.TotalTokens = tokenUsage.InputTokens + tokenUsage.OutputTokens
+							}
 						}
 					}
 				}
