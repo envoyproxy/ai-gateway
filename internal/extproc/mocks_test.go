@@ -179,7 +179,10 @@ type mockChatCompletionMetrics struct {
 func (m *mockChatCompletionMetrics) StartRequest(_ map[string]string) { m.requestStart = time.Now() }
 
 // SetModel implements [metrics.ChatCompletion].
-func (m *mockChatCompletionMetrics) SetModel(requestModel, responseModel string) { m.requestModel = requestModel; m.responseModel = responseModel }
+func (m *mockChatCompletionMetrics) SetModel(requestModel, responseModel string) {
+	m.requestModel = requestModel
+	m.responseModel = responseModel
+}
 
 // SetBackend implements [metrics.ChatCompletion].
 func (m *mockChatCompletionMetrics) SetBackend(backend *filterapi.Backend) { m.backend = backend.Name }
@@ -308,7 +311,10 @@ type mockEmbeddingsMetrics struct {
 func (m *mockEmbeddingsMetrics) StartRequest(_ map[string]string) { m.requestStart = time.Now() }
 
 // SetModel implements [x.EmbeddingsMetrics].
-func (m *mockEmbeddingsMetrics) SetModel(requestModel, responseModel string) { m.requestModel = requestModel; m.responseModel = responseModel }
+func (m *mockEmbeddingsMetrics) SetModel(requestModel, responseModel string) {
+	m.requestModel = requestModel
+	m.responseModel = responseModel
+}
 
 // SetBackend implements [x.EmbeddingsMetrics].
 func (m *mockEmbeddingsMetrics) SetBackend(backend *filterapi.Backend) { m.backend = backend.Name }
