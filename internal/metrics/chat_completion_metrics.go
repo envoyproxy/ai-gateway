@@ -88,6 +88,7 @@ func (c *chatCompletion) RecordTokenLatency(ctx context.Context, tokens uint32, 
 		c.firstTokenSent = true
 		c.timeToFirstToken = time.Since(c.requestStart)
 		c.metrics.firstTokenLatency.Record(ctx, c.timeToFirstToken.Seconds(), metric.WithAttributeSet(attrs))
+		return
 	}
 
 	// Track max cumulative tokens across the stream.
