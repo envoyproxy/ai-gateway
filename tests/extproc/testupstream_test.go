@@ -293,6 +293,36 @@ data: [DONE]
 `,
 		},
 		{
+			name:         "aws-bedrock - /v1/chat/completions - streaming with thinking config",
+			backend:      "aws-bedrock",
+			path:         "/v1/chat/completions",
+			responseType: "aws-event-stream",
+			method:       http.MethodPost,
+			requestBody: `{
+		"model":"something",
+		"messages":[{"role":"system","content":"You are a chatbot."}],
+		"stream": true,
+		"thinking": {"type": "enabled", "budget_tokens": 4096}
+	}`,
+			expRequestBody: `{"additionalModelRequestFields":{"thinking":{"budget_tokens":4096,"type":"enabled"}},"inferenceConfig":{},"messages":[],"system":[{"text":"You are a chatbot."}]}`,
+			expPath:        "/model/something/converse-stream",
+			responseBody: `{"role":"assistant"}
+	{"delta":{"reasoningContent":{"reasoningText":{"text":"First, I'll start by acknowledging the user..."}}}}
+	{"delta":{"text":"Hello!"}}
+	{"stopReason":"end_turn"}`,
+			expStatus: http.StatusOK,
+			expResponseBody: `data: {"choices":[{"index":0,"delta":{"content":"","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":{"text":"First, I'll start by acknowledging the user..."}}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"index":0,"delta":{"content":"Hello!","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"stop"}],"object":"chat.completion.chunk"}
+
+data: [DONE]
+`,
+		},
+		{
 			name:         "openai - /v1/chat/completions - streaming",
 			backend:      "openai",
 			path:         "/v1/chat/completions",
