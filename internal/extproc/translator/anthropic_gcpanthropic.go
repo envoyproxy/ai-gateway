@@ -101,7 +101,7 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, bo
 		// Parse SSE format - split by lines and look for data: lines.
 		for line := range bytes.Lines(bodyBytes) {
 			line = bytes.TrimSpace(line)
-            dataPrefix := []byte("data: ")
+			dataPrefix := []byte("data: ")
 			if bytes.HasPrefix(line, dataPrefix) {
 				jsonData := bytes.TrimPrefix(line, dataPrefix)
 
