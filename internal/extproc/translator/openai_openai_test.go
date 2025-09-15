@@ -235,7 +235,7 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		usedToken := o.extractUsageFromBufferEvent(s)
 		require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
 		require.False(t, o.bufferingDone)
-		require.Len(t, o.buffered, 0)
+		require.Empty(t, o.buffered)
 		require.Len(t, s.RespChunks, 1)
 	})
 
@@ -245,7 +245,7 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		usedToken := o.extractUsageFromBufferEvent(nil)
 		require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
 		require.False(t, o.bufferingDone)
-		require.Len(t, o.buffered, 0)
+		require.Empty(t, o.buffered)
 	})
 
 	t.Run("no usage data and then become valid", func(t *testing.T) {
@@ -260,7 +260,7 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		usedToken = o.extractUsageFromBufferEvent(nil)
 		require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
 		require.False(t, o.bufferingDone)
-		require.Len(t, o.buffered, 0)
+		require.Empty(t, o.buffered)
 	})
 
 	t.Run("invalid JSON", func(t *testing.T) {
@@ -269,6 +269,6 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		usedToken := o.extractUsageFromBufferEvent(nil)
 		require.Equal(t, LLMTokenUsage{}, usedToken)
 		require.False(t, o.bufferingDone)
-		require.Len(t, o.buffered, 0)
+		require.Empty(t, o.buffered)
 	})
 }

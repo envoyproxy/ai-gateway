@@ -349,7 +349,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		// First chunk (not end of stream) should not complete the request.
 		chunk := &extprocv3.HttpBody{Body: []byte("chunk-1"), EndOfStream: false}
 		mt.expResponseBody = chunk
-		mt.retUsedToken = translator.LLMTokenUsage{} // no usage yet in early chunks
+		mt.retUsedToken = translator.LLMTokenUsage{} // no usage yet in early chunks.
 		_, err := p.ProcessResponseBody(t.Context(), chunk)
 		require.NoError(t, err)
 		mm.RequireRequestNotCompleted(t)
