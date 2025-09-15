@@ -79,6 +79,10 @@ metadata:
   name: envoy-ai-gateway
   namespace: default
 spec:
+  provider:
+    type: Host
+    host:
+      envoyVersion: "{{ .EnvoyVersion }}"
   logging:
     level:
       default: error

@@ -36,11 +36,20 @@ type (
 	}
 	// cmdRun corresponds to `aigw run` command.
 	cmdRun struct {
-		Debug       bool   `help:"Enable debug logging emitted to stderr."`
-		Path        string `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional. When this is not given, aigw runs the default configuration. Use --show-default to check the default configuration's behavior" type:"path"`
-		ShowDefault bool   `help:"Show the default configuration, and exit."`
+		Debug        bool   `help:"Enable debug logging emitted to stderr."`
+		Path         string `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional. When this is not given, aigw runs the default configuration. Use --show-default to check the default configuration's behavior" type:"path"`
+		EnvoyVersion string `help:"Force the use of a concrete version of Envoy when using the default config. If you use your own config, you need to configure the version in a custom EnvoyProxy resource."`
+		ShowDefault  bool   `help:"Show the default configuration, and exit."`
 	}
 )
+
+func (c cmdRun) Validate() error {
+	if c.Path != "" && c.EnvoyVersion != "" {
+		return fmt.Errorf("cannot use --envoy-version with custom config. " +
+			"To use a custom Envoy version in your configuration file, set it in the EnvoyProxy resource")
+	}
+	return nil
+}
 
 type (
 	subCmdFn[T any] func(context.Context, T, io.Writer, io.Writer) error
