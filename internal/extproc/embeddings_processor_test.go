@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
@@ -402,5 +403,289 @@ func TestEmbeddingsProcessorRouterFilter_ProcessResponseHeaders_ProcessResponseB
 		require.NotNil(t, re.ResponseBody.Response)
 		require.IsType(t, &extprocv3.BodyMutation{}, re.ResponseBody.Response.BodyMutation)
 		require.IsType(t, &extprocv3.HeaderMutation{}, re.ResponseBody.Response.HeaderMutation)
+	})
+}
+
+func TestEmbeddingsProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutations(t *testing.T) {
+	const testModelKey = "x-ai-gateway-model-key"
+	t.Run("header mutations applied correctly", func(t *testing.T) {
+		headers := map[string]string{
+			":path":         "/v1/embeddings",
+			testModelKey:    "some-model",
+			"authorization": "bearer token123",
+			"x-api-key":     "secret-key",
+			"x-custom":      "custom-value",
+		}
+		someBody := embeddingBodyFromModel(t, "some-model")
+		var body openai.EmbeddingRequest
+		require.NoError(t, json.Unmarshal(someBody, &body))
+
+		// Create header mutations.
+		headerMutations := &filterapi.HTTPHeaderMutation{
+			Remove: []string{"authorization", "x-api-key"},
+			Set:    []filterapi.HTTPHeader{{Name: "x-new-header", Value: "new-value"}},
+		}
+
+		mt := &mockEmbeddingTranslator{t: t, expRequestBody: &body}
+		mm := &mockEmbeddingsMetrics{}
+		p := &embeddingsProcessorUpstreamFilter{
+			config:                 &processorConfig{modelNameHeaderKey: testModelKey},
+			requestHeaders:         headers,
+			logger:                 slog.Default(),
+			metrics:                mm,
+			translator:             mt,
+			originalRequestBodyRaw: someBody,
+			originalRequestBody:    &body,
+			handler:                &mockBackendAuthHandler{},
+		}
+
+		// Set header mutator.
+		originalHeaders := map[string]string{
+			"authorization": "bearer original-token",
+			"x-api-key":     "original-secret",
+		}
+		p.headerMutator = headermutator.NewHeaderMutator(headerMutations, originalHeaders)
+
+		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		commonRes := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response
+
+		// Check that header mutations were applied.
+		require.NotNil(t, commonRes.HeaderMutation)
+		require.ElementsMatch(t, []string{"authorization", "x-api-key"}, commonRes.HeaderMutation.RemoveHeaders)
+		require.Len(t, commonRes.HeaderMutation.SetHeaders, 1)
+		require.Equal(t, "x-new-header", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
+		require.Equal(t, []byte("new-value"), commonRes.HeaderMutation.SetHeaders[0].Header.RawValue)
+
+		// Check that headers were modified in the request headers.
+		require.Equal(t, "new-value", headers["x-new-header"])
+		require.NotContains(t, headers, "authorization")
+		require.NotContains(t, headers, "x-api-key")
+		// x-custom remains unchanged since it wasn't in the mutations.
+		require.Equal(t, "custom-value", headers["x-custom"])
+	})
+
+	t.Run("header mutations restored on retry", func(t *testing.T) {
+		headers := map[string]string{
+			":path":      "/v1/embeddings",
+			testModelKey: "some-model",
+			// "x-custom" is not present in current headers, so it can be restored.
+			"x-new-header": "new-value", // Already set from previous mutation.
+		}
+		someBody := embeddingBodyFromModel(t, "some-model")
+		var body openai.EmbeddingRequest
+		require.NoError(t, json.Unmarshal(someBody, &body))
+
+		// Create header mutations that don't remove x-custom (so it can be restored).
+		headerMutations := &filterapi.HTTPHeaderMutation{
+			Remove: []string{"authorization", "x-api-key"},
+			Set:    []filterapi.HTTPHeader{{Name: "x-new-header", Value: "updated-value"}},
+		}
+
+		mt := &mockEmbeddingTranslator{t: t, expRequestBody: &body}
+		mm := &mockEmbeddingsMetrics{}
+		p := &embeddingsProcessorUpstreamFilter{
+			config:                 &processorConfig{modelNameHeaderKey: testModelKey},
+			requestHeaders:         headers,
+			logger:                 slog.Default(),
+			metrics:                mm,
+			translator:             mt,
+			originalRequestBodyRaw: someBody,
+			originalRequestBody:    &body,
+			handler:                &mockBackendAuthHandler{},
+			onRetry:                true, // This is a retry request.
+		}
+
+		// Use the same headers map as the original headers (this simulates the router filter's requestHeaders).
+		originalHeaders := map[string]string{
+			":path":         "/v1/embeddings",
+			testModelKey:    "some-model",
+			"authorization": "bearer original-token", // This will be removed, so won't be restored.
+			"x-api-key":     "original-secret",       // This will be removed, so won't be restored.
+			"x-custom":      "original-custom",       // This won't be removed, so can be restored.
+			"x-new-header":  "original-value",        // This will be set, so won't be restored.
+		}
+		p.headerMutator = headermutator.NewHeaderMutator(headerMutations, originalHeaders)
+
+		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		commonRes := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response
+
+		// Check that header mutations were applied.
+		require.NotNil(t, commonRes.HeaderMutation)
+		// RemoveHeaders should be empty because authorization/x-api-key don't exist in current headers.
+		require.Empty(t, commonRes.HeaderMutation.RemoveHeaders)
+		require.Len(t, commonRes.HeaderMutation.SetHeaders, 2) // Updated header + restored header.
+
+		// Check that x-custom header was restored on retry (it's not being removed or set).
+		var restoredHeader *corev3.HeaderValueOption
+		var updatedHeader *corev3.HeaderValueOption
+		for _, h := range commonRes.HeaderMutation.SetHeaders {
+			switch h.Header.Key {
+			case "x-custom":
+				restoredHeader = h
+			case "x-new-header":
+				updatedHeader = h
+			}
+		}
+		require.NotNil(t, restoredHeader)
+		require.Equal(t, []byte("original-custom"), restoredHeader.Header.RawValue)
+		require.NotNil(t, updatedHeader)
+		require.Equal(t, []byte("updated-value"), updatedHeader.Header.RawValue)
+
+		// Check that headers were updated in the request headers.
+		require.Equal(t, "updated-value", headers["x-new-header"])
+		require.Equal(t, "original-custom", headers["x-custom"])
+	})
+
+	t.Run("no header mutations when mutator is nil", func(t *testing.T) {
+		headers := map[string]string{
+			":path":         "/v1/embeddings",
+			testModelKey:    "some-model",
+			"authorization": "bearer token123",
+		}
+		someBody := embeddingBodyFromModel(t, "some-model")
+		var body openai.EmbeddingRequest
+		require.NoError(t, json.Unmarshal(someBody, &body))
+
+		mt := &mockEmbeddingTranslator{t: t, expRequestBody: &body}
+		mm := &mockEmbeddingsMetrics{}
+		p := &embeddingsProcessorUpstreamFilter{
+			config:                 &processorConfig{modelNameHeaderKey: testModelKey},
+			requestHeaders:         headers,
+			logger:                 slog.Default(),
+			metrics:                mm,
+			translator:             mt,
+			originalRequestBodyRaw: someBody,
+			originalRequestBody:    &body,
+			handler:                &mockBackendAuthHandler{},
+			headerMutator:          nil, // No header mutator.
+		}
+
+		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		commonRes := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response
+
+		// Check that no header mutations were applied.
+		require.NotNil(t, commonRes.HeaderMutation)
+		require.Empty(t, commonRes.HeaderMutation.RemoveHeaders)
+		require.Empty(t, commonRes.HeaderMutation.SetHeaders)
+
+		// Check that original headers remain unchanged.
+		require.Equal(t, "bearer token123", headers["authorization"])
+	})
+}
+
+func TestEmbeddingsProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *testing.T) {
+	t.Run("header mutator created correctly", func(t *testing.T) {
+		headers := map[string]string{":path": "/foo"}
+		mm := &mockEmbeddingsMetrics{}
+		p := &embeddingsProcessorUpstreamFilter{
+			config:         &processorConfig{},
+			requestHeaders: headers,
+			logger:         slog.Default(),
+			metrics:        mm,
+		}
+
+		// Create backend with header mutations.
+		headerMutations := &filterapi.HTTPHeaderMutation{
+			Remove: []string{"x-sensitive"},
+			Set:    []filterapi.HTTPHeader{{Name: "x-backend", Value: "backend-value"}},
+		}
+
+		rp := &embeddingsProcessorRouterFilter{
+			requestHeaders: headers,
+		}
+
+		err := p.SetBackend(t.Context(), &filterapi.Backend{
+			Name:           "test-backend",
+			Schema:         filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+			HeaderMutation: headerMutations,
+		}, nil, rp)
+		require.NoError(t, err)
+
+		// Verify header mutator was created.
+		require.NotNil(t, p.headerMutator)
+
+		// Test that the header mutator works correctly.
+		testHeaders := map[string]string{
+			"x-sensitive": "secret",
+			"x-existing":  "value",
+		}
+		mutation := p.headerMutator.Mutate(testHeaders, false) // onRetry = false.
+
+		require.NotNil(t, mutation)
+		require.ElementsMatch(t, []string{"x-sensitive"}, mutation.RemoveHeaders)
+		require.Len(t, mutation.SetHeaders, 1)
+		require.Equal(t, "x-backend", mutation.SetHeaders[0].Header.Key)
+		require.Equal(t, []byte("backend-value"), mutation.SetHeaders[0].Header.RawValue)
+	})
+
+	t.Run("header mutator with original headers", func(t *testing.T) {
+		headers := map[string]string{":path": "/foo"}
+		mm := &mockEmbeddingsMetrics{}
+		p := &embeddingsProcessorUpstreamFilter{
+			config:         &processorConfig{},
+			requestHeaders: headers,
+			logger:         slog.Default(),
+			metrics:        mm,
+		}
+
+		// Create backend with header mutations that don't remove x-custom.
+		headerMutations := &filterapi.HTTPHeaderMutation{
+			Remove: []string{"authorization"},
+		}
+
+		// Original headers from router filter (simulate what would be in rp.requestHeaders).
+		originalHeaders := map[string]string{
+			":path":         "/foo",
+			"authorization": "bearer original-token", // This will be removed, so won't be restored.
+			"x-custom":      "original-value",        // This won't be removed, so can be restored.
+			"x-existing":    "existing-value",        // This won't be removed, so can be restored.
+		}
+
+		rp := &embeddingsProcessorRouterFilter{
+			requestHeaders: originalHeaders,
+		}
+
+		err := p.SetBackend(t.Context(), &filterapi.Backend{
+			Name:           "test-backend",
+			Schema:         filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+			HeaderMutation: headerMutations,
+		}, nil, rp)
+		require.NoError(t, err)
+
+		// Verify header mutator was created with original headers.
+		require.NotNil(t, p.headerMutator)
+
+		// Test retry scenario - original headers should be restored.
+		testHeaders := map[string]string{
+			"x-existing": "current-value", // This exists, so won't be restored.
+		}
+		mutation := p.headerMutator.Mutate(testHeaders, true) // onRetry = true.
+
+		require.NotNil(t, mutation)
+		// RemoveHeaders should be empty because authorization doesn't exist in testHeaders.
+		require.Empty(t, mutation.RemoveHeaders)
+
+		// Should restore x-custom header (not being removed and not already present).
+		var restoredHeader *corev3.HeaderValueOption
+		for _, h := range mutation.SetHeaders {
+			if h.Header.Key == "x-custom" {
+				restoredHeader = h
+				break
+			}
+		}
+		require.NotNil(t, restoredHeader)
+		require.Equal(t, []byte("original-value"), restoredHeader.Header.RawValue)
+		require.Equal(t, "original-value", testHeaders["x-custom"])
+		// x-existing should not be restored because it already exists.
+		require.Equal(t, "current-value", testHeaders["x-existing"])
 	})
 }
