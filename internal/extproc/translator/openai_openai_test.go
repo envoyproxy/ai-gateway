@@ -234,8 +234,8 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		o.buffered = []byte("data: {\"usage\": {\"total_tokens\": 42}}\n")
 		usedToken := o.extractUsageFromBufferEvent(s)
 		require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
-		require.True(t, o.bufferingDone)
-		require.Nil(t, o.buffered)
+		require.False(t, o.bufferingDone)
+		require.Len(t, o.buffered, 0)
 		require.Len(t, s.RespChunks, 1)
 	})
 
@@ -244,8 +244,8 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		o.buffered = []byte("data: invalid\ndata: {\"usage\": {\"total_tokens\": 42}}\n")
 		usedToken := o.extractUsageFromBufferEvent(nil)
 		require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
-		require.True(t, o.bufferingDone)
-		require.Nil(t, o.buffered)
+		require.False(t, o.bufferingDone)
+		require.Len(t, o.buffered, 0)
 	})
 
 	t.Run("no usage data and then become valid", func(t *testing.T) {
@@ -254,13 +254,13 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		usedToken := o.extractUsageFromBufferEvent(nil)
 		require.Equal(t, LLMTokenUsage{}, usedToken)
 		require.False(t, o.bufferingDone)
-		require.NotNil(t, o.buffered)
+		require.GreaterOrEqual(t, len(o.buffered), 1)
 
 		o.buffered = append(o.buffered, []byte("{\"usage\": {\"total_tokens\": 42}}\n")...)
 		usedToken = o.extractUsageFromBufferEvent(nil)
 		require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
-		require.True(t, o.bufferingDone)
-		require.Nil(t, o.buffered)
+		require.False(t, o.bufferingDone)
+		require.Len(t, o.buffered, 0)
 	})
 
 	t.Run("invalid JSON", func(t *testing.T) {
@@ -269,6 +269,6 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		usedToken := o.extractUsageFromBufferEvent(nil)
 		require.Equal(t, LLMTokenUsage{}, usedToken)
 		require.False(t, o.bufferingDone)
-		require.NotNil(t, o.buffered)
+		require.Len(t, o.buffered, 0)
 	})
 }

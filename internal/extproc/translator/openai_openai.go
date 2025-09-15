@@ -121,14 +121,13 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]str
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
 	if o.stream {
-		if !o.bufferingDone {
-			buf, err := io.ReadAll(body)
-			if err != nil {
-				return nil, nil, tokenUsage, fmt.Errorf("failed to read body: %w", err)
-			}
-			o.buffered = append(o.buffered, buf...)
-			tokenUsage = o.extractUsageFromBufferEvent(span)
+		var buf []byte
+		buf, err = io.ReadAll(body)
+		if err != nil {
+			return nil, nil, tokenUsage, fmt.Errorf("failed to read body: %w", err)
 		}
+		o.buffered = append(o.buffered, buf...)
+		tokenUsage = o.extractUsageFromBufferEvent(span)
 		return
 	}
 	resp := &openai.ChatCompletionResponse{}
@@ -174,9 +173,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent(s
 				OutputTokens: uint32(usage.CompletionTokens), //nolint:gosec
 				TotalTokens:  uint32(usage.TotalTokens),      //nolint:gosec
 			}
-			o.bufferingDone = true
-			o.buffered = nil
-			return
+			// Do not mark buffering done; keep scanning to return the latest usage in this batch.
 		}
 	}
 }

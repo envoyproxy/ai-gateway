@@ -378,21 +378,32 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 		},
 	}
 
+	// Update accumulated token usage.
 	// TODO: we need to investigate if we need to accumulate the token usage for streaming responses.
-	c.costs.InputTokens += tokenUsage.InputTokens
-	c.costs.OutputTokens += tokenUsage.OutputTokens
-	c.costs.TotalTokens += tokenUsage.TotalTokens
+	if c.stream {
+		// For streaming, translators report cumulative usage; keep the latest totals.
+		if tokenUsage != (translator.LLMTokenUsage{}) {
+			c.costs = tokenUsage
+		}
+	} else {
+		// Non-streaming: single-shot totals.
+		c.costs = tokenUsage
+	}
 
-	// Update metrics with token usage.
-	c.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.OutputTokens, c.requestHeaders)
+	// Record metrics.
 	if c.stream {
 		// Token latency is only recorded for streaming responses, otherwise it doesn't make sense since
 		// these metrics are defined as a difference between the two output events.
 		c.metrics.RecordTokenLatency(ctx, tokenUsage.OutputTokens, body.EndOfStream, c.requestHeaders)
-
+		// Emit usage once at end-of-stream using final totals.
+		if body.EndOfStream {
+			c.metrics.RecordTokenUsage(ctx, c.costs.InputTokens, c.costs.OutputTokens, c.requestHeaders)
+		}
 		// TODO: if c.forcedStreamOptionIncludeUsage is true, we should not include usage in the response body since
 		// that's what the clients would expect. However, it is a little bit tricky as we simply just reading the streaming
 		// chunk by chunk, we only want to drop a specific line before the last chunk.
+	} else {
+		c.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.OutputTokens, c.requestHeaders)
 	}
 
 	if body.EndOfStream && len(c.config.requestCosts) > 0 {
