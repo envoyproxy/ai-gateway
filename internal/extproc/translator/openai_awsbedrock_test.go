@@ -1603,8 +1603,8 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 						Message: openai.ChatCompletionResponseChoiceMessage{
 							Role:    awsbedrock.ConversationRoleAssistant,
 							Content: ptr.To("This is the final answer."),
-							AWSBedRockResponseVendorFields: &openai.AWSBedRockResponseVendorFields{
-								ReasoningContent: &openai.AWSBedRockReasoningContent{
+							AWSBedrockResponseVendorFields: &openai.AWSBedrockResponseVendorFields{
+								ReasoningContent: &openai.AWSBedrockReasoningContent{
 									ReasoningContent: &awsbedrock.ReasoningContentBlock{
 										ReasoningText: &awsbedrock.ReasoningTextBlock{
 											Text: "This is the model's thought process.",
@@ -1807,7 +1807,7 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 				Choices: []openai.ChatCompletionResponseChunkChoice{
 					{
 						Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
-							ReasoningContent: &openai.AWSBedRockStreamReasoningContent{
+							ReasoningContent: &openai.AWSBedrockStreamReasoningContent{
 								Text: "thinking...",
 							},
 						},
