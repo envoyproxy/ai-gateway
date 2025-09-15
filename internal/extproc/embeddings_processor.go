@@ -318,7 +318,7 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 	e.costs.TotalTokens += tokenUsage.TotalTokens
 
 	// Update metrics with token usage.
-	e.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.TotalTokens, e.requestHeaders)
+	e.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, e.requestHeaders)
 
 	if body.EndOfStream && len(e.config.requestCosts) > 0 {
 		resp.DynamicMetadata, err = buildDynamicMetadata(e.config, &e.costs, e.requestHeaders, e.modelNameOverride, e.backendName)

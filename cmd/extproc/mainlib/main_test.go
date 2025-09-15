@@ -166,7 +166,7 @@ func TestStartMetricsServer(t *testing.T) {
 	ccm.StartRequest(nil)
 	ccm.SetModel("test-model")
 	ccm.SetBackend(&filterapi.Backend{Name: "test-backend"})
-	ccm.RecordTokenUsage(t.Context(), 10, 5, 15, nil)
+	ccm.RecordTokenUsage(t.Context(), 10, 5, nil)
 	ccm.RecordRequestCompletion(t.Context(), true, nil)
 	ccm.RecordTokenLatency(t.Context(), 10, true, nil)
 

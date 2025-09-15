@@ -402,7 +402,7 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 	c.costs.TotalTokens += tokenUsage.TotalTokens
 
 	// Update metrics with token usage.
-	c.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.OutputTokens, tokenUsage.TotalTokens, c.requestHeaders)
+	c.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.OutputTokens, c.requestHeaders)
 	if c.stream {
 		// Token latency is only recorded for streaming responses, otherwise it doesn't make sense since
 		// these metrics are defined as a difference between the two output events.
