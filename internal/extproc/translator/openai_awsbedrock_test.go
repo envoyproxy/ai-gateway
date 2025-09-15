@@ -885,15 +885,13 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Model: "unit-test-model",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Type: openai.ChatMessageRoleUser,
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Role:    openai.ChatMessageRoleUser,
 							Content: openai.StringOrUserRoleContentUnion{Value: "How do I list prime numbers?"},
 						},
 					},
 					{
-						Type: openai.ChatMessageRoleAssistant,
-						Value: openai.ChatCompletionAssistantMessageParam{
+						OfAssistant: &openai.ChatCompletionAssistantMessageParam{
 							Role: openai.ChatMessageRoleAssistant,
 							Content: openai.StringOrAssistantRoleContentUnion{
 								Value: []openai.ChatCompletionAssistantMessageParamContent{
@@ -935,15 +933,13 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Model: "unit-test-model",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Type: openai.ChatMessageRoleUser,
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Role:    openai.ChatMessageRoleUser,
 							Content: openai.StringOrUserRoleContentUnion{Value: "How do I list prime numbers?"},
 						},
 					},
 					{
-						Type: openai.ChatMessageRoleAssistant,
-						Value: openai.ChatCompletionAssistantMessageParam{
+						OfAssistant: &openai.ChatCompletionAssistantMessageParam{
 							Role: openai.ChatMessageRoleAssistant,
 							Content: openai.StringOrAssistantRoleContentUnion{
 								Value: []openai.ChatCompletionAssistantMessageParamContent{
@@ -983,15 +979,13 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Model: "unit-test-model",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Type: openai.ChatMessageRoleUser,
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Role:    openai.ChatMessageRoleUser,
 							Content: openai.StringOrUserRoleContentUnion{Value: "What's the weather in Paris?"},
 						},
 					},
 					{
-						Type: openai.ChatMessageRoleAssistant,
-						Value: openai.ChatCompletionAssistantMessageParam{
+						OfAssistant: &openai.ChatCompletionAssistantMessageParam{
 							Role: openai.ChatMessageRoleAssistant,
 							ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 								{
@@ -1015,8 +1009,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						},
 					},
 					{
-						Type: openai.ChatMessageRoleTool,
-						Value: openai.ChatCompletionToolMessageParam{
+						OfTool: &openai.ChatCompletionToolMessageParam{
 							Role:       openai.ChatMessageRoleTool,
 							ToolCallID: "tool_call_123",
 							Content:    openai.StringOrArray{Value: "{\"temperature\": 88}"},
@@ -1072,7 +1065,12 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 			input: openai.ChatCompletionRequest{
 				Model: "bedrock.unit-test-model",
 				Messages: []openai.ChatCompletionMessageParamUnion{
-					{Type: openai.ChatMessageRoleUser, Value: openai.ChatCompletionUserMessageParam{Role: openai.ChatMessageRoleUser, Content: openai.StringOrUserRoleContentUnion{Value: "Hello"}}},
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Role:    openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+						},
+					},
 				},
 				AnthropicVendorFields: &openai.AnthropicVendorFields{
 					Thinking: &anthropic.ThinkingConfigParamUnion{
@@ -1101,7 +1099,12 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 			input: openai.ChatCompletionRequest{
 				Model: "bedrock.unit-test-model",
 				Messages: []openai.ChatCompletionMessageParamUnion{
-					{Type: openai.ChatMessageRoleUser, Value: openai.ChatCompletionUserMessageParam{Role: openai.ChatMessageRoleUser, Content: openai.StringOrUserRoleContentUnion{Value: "Hello"}}},
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Role:    openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+						},
+					},
 				},
 				AnthropicVendorFields: &openai.AnthropicVendorFields{
 					Thinking: &anthropic.ThinkingConfigParamUnion{
@@ -1130,8 +1133,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Model: "unit-test-model",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Type: openai.ChatMessageRoleAssistant,
-						Value: openai.ChatCompletionAssistantMessageParam{
+						OfAssistant: &openai.ChatCompletionAssistantMessageParam{
 							Role: openai.ChatMessageRoleAssistant,
 							Content: openai.StringOrAssistantRoleContentUnion{
 								Value: []openai.ChatCompletionAssistantMessageParamContent{
