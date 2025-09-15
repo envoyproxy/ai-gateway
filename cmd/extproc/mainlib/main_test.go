@@ -164,7 +164,7 @@ func TestStartMetricsServer(t *testing.T) {
 	require.NotNil(t, m)
 	ccm := metrics.NewChatCompletion(m, nil)
 	ccm.StartRequest(nil)
-	ccm.SetModel("test-model")
+	ccm.SetModel("test-model", "test-model")
 	ccm.SetBackend(&filterapi.Backend{Name: "test-backend"})
 	ccm.RecordTokenUsage(t.Context(), 10, 5, 15, nil)
 	ccm.RecordRequestCompletion(t.Context(), true, nil)

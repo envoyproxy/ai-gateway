@@ -164,7 +164,8 @@ var _ extprocv3.ExternalProcessor_ProcessServer = &mockExternalProcessingStream{
 // mockChatCompletionMetrics implements [metrics.ChatCompletion] for testing.
 type mockChatCompletionMetrics struct {
 	requestStart        time.Time
-	model               string
+	requestModel        string
+	responseModel       string
 	backend             string
 	requestSuccessCount int
 	requestErrorCount   int
@@ -178,7 +179,7 @@ type mockChatCompletionMetrics struct {
 func (m *mockChatCompletionMetrics) StartRequest(_ map[string]string) { m.requestStart = time.Now() }
 
 // SetModel implements [metrics.ChatCompletion].
-func (m *mockChatCompletionMetrics) SetModel(model string) { m.model = model }
+func (m *mockChatCompletionMetrics) SetModel(requestModel, responseModel string) { m.requestModel = requestModel; m.responseModel = responseModel }
 
 // SetBackend implements [metrics.ChatCompletion].
 func (m *mockChatCompletionMetrics) SetBackend(backend *filterapi.Backend) { m.backend = backend.Name }
@@ -215,8 +216,9 @@ func (m *mockChatCompletionMetrics) RecordRequestCompletion(_ context.Context, s
 }
 
 // RequireSelectedModel asserts the model and backend set on the metrics.
-func (m *mockChatCompletionMetrics) RequireSelectedModel(t *testing.T, model string) {
-	require.Equal(t, model, m.model)
+func (m *mockChatCompletionMetrics) RequireSelectedModel(t *testing.T, requestModel, responseModel string) {
+	require.Equal(t, requestModel, m.requestModel)
+	require.Equal(t, responseModel, m.responseModel)
 }
 
 // RequireModelAndBackendSet asserts the model and backend set on the metrics.
@@ -294,7 +296,8 @@ func (m *mockEmbeddingTranslator) ResponseError(map[string]string, io.Reader) (h
 // mockEmbeddingsMetrics implements [x.EmbeddingsMetrics] for testing.
 type mockEmbeddingsMetrics struct {
 	requestStart        time.Time
-	model               string
+	requestModel        string
+	responseModel       string
 	backend             string
 	requestSuccessCount int
 	requestErrorCount   int
@@ -305,7 +308,7 @@ type mockEmbeddingsMetrics struct {
 func (m *mockEmbeddingsMetrics) StartRequest(_ map[string]string) { m.requestStart = time.Now() }
 
 // SetModel implements [x.EmbeddingsMetrics].
-func (m *mockEmbeddingsMetrics) SetModel(model string) { m.model = model }
+func (m *mockEmbeddingsMetrics) SetModel(requestModel, responseModel string) { m.requestModel = requestModel; m.responseModel = responseModel }
 
 // SetBackend implements [x.EmbeddingsMetrics].
 func (m *mockEmbeddingsMetrics) SetBackend(backend *filterapi.Backend) { m.backend = backend.Name }
@@ -325,8 +328,9 @@ func (m *mockEmbeddingsMetrics) RecordRequestCompletion(_ context.Context, succe
 }
 
 // RequireSelectedModel asserts the model set on the metrics.
-func (m *mockEmbeddingsMetrics) RequireSelectedModel(t *testing.T, model string) {
-	require.Equal(t, model, m.model)
+func (m *mockEmbeddingsMetrics) RequireSelectedModel(t *testing.T, requestModel, responseModel string) {
+	require.Equal(t, requestModel, m.requestModel)
+	require.Equal(t, responseModel, m.responseModel)
 }
 
 // RequireSelectedBackend asserts the backend set on the metrics.

@@ -24,11 +24,12 @@ func TestEmbeddings_RecordTokenUsage(t *testing.T) {
 		attribute.Key(genaiAttributeOperationName).String(genaiOperationEmbedding),
 		attribute.Key(genaiAttributeSystemName).String(genaiSystemOpenAI),
 		attribute.Key(genaiAttributeRequestModel).String("text-embedding-ada-002"),
+		attribute.Key(genaiAttributeResponseModel).String("text-embedding-ada-002"),
 	}
 	inputAttrs := attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput))...)
 	totalAttrs := attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeTotal))...)
 
-	em.SetModel("text-embedding-ada-002")
+	em.SetModel("text-embedding-ada-002", "text-embedding-ada-002")
 	em.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 	em.RecordTokenUsage(t.Context(), 10, 10, nil)
 
@@ -47,7 +48,7 @@ func TestEmbeddings_RecordTokenUsage_MultipleRecords(t *testing.T) {
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
 	em := NewEmbeddings(meter, nil).(*embeddings)
 
-	em.SetModel("text-embedding-3-small")
+	em.SetModel("text-embedding-3-small", "text-embedding-3-small")
 	em.SetBackend(&filterapi.Backend{
 		Name:   "custom-backend",
 		Schema: filterapi.VersionedAPISchema{Name: "CustomAPI"},
@@ -57,6 +58,7 @@ func TestEmbeddings_RecordTokenUsage_MultipleRecords(t *testing.T) {
 		attribute.Key(genaiAttributeOperationName).String(genaiOperationEmbedding),
 		attribute.Key(genaiAttributeSystemName).String("custom-backend"),
 		attribute.Key(genaiAttributeRequestModel).String("text-embedding-3-small"),
+		attribute.Key(genaiAttributeResponseModel).String("text-embedding-3-small"),
 	}
 	inputAttrs := attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput))...)
 	totalAttrs := attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeTotal))...)
@@ -96,7 +98,7 @@ func TestEmbeddings_HeaderLabelMapping(t *testing.T) {
 		"x-other":     "ignored", // This should be ignored as it's not in the mapping.
 	}
 
-	em.SetModel("text-embedding-ada-002")
+	em.SetModel("text-embedding-ada-002", "text-embedding-ada-002")
 	em.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 	em.RecordTokenUsage(t.Context(), 10, 10, requestHeaders)
 
@@ -108,6 +110,7 @@ func TestEmbeddings_HeaderLabelMapping(t *testing.T) {
 		attribute.Key(genaiAttributeOperationName).String(genaiOperationEmbedding),
 		attribute.Key(genaiAttributeSystemName).String(genaiSystemOpenAI),
 		attribute.Key(genaiAttributeRequestModel).String("text-embedding-ada-002"),
+		attribute.Key(genaiAttributeResponseModel).String("text-embedding-ada-002"),
 		attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput),
 		attribute.Key("tenant_id").String("tenant789"),
 		attribute.Key("api_key").String("key123"),
@@ -115,4 +118,25 @@ func TestEmbeddings_HeaderLabelMapping(t *testing.T) {
 
 	count, _ := getHistogramValues(t, mr, genaiMetricClientTokenUsage, attrs)
 	assert.Equal(t, uint64(1), count)
+}
+
+func TestEmbeddings_Labels_SetModel_RequestAndResponseDiffer(t *testing.T) {
+	mr := sdkmetric.NewManualReader()
+	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
+	em := NewEmbeddings(meter, nil).(*embeddings)
+
+	em.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
+	em.SetModel("req-embed", "res-embed")
+	em.RecordTokenUsage(t.Context(), 7, 7, nil)
+
+	attrs := attribute.NewSet(
+		attribute.Key(genaiAttributeOperationName).String(genaiOperationEmbedding),
+		attribute.Key(genaiAttributeSystemName).String(genaiSystemOpenAI),
+		attribute.Key(genaiAttributeRequestModel).String("req-embed"),
+		attribute.Key(genaiAttributeResponseModel).String("res-embed"),
+		attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput),
+	)
+	count, sum := getHistogramValues(t, mr, genaiMetricClientTokenUsage, attrs)
+	assert.Equal(t, uint64(1), count)
+	assert.Equal(t, 7.0, sum)
 }

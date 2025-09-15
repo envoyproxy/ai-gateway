@@ -24,7 +24,7 @@ type EmbeddingsMetrics interface {
 	// StartRequest initializes timing for a new request.
 	StartRequest(headers map[string]string)
 	// SetModel sets the model the request. This is usually called after parsing the request body .
-	SetModel(model string)
+	SetModel(requestModel, responseModel string)
 	// SetBackend sets the selected backend when the routing decision has been made. This is usually called
 	// after parsing the request body to determine the model and invoke the routing logic.
 	SetBackend(backend *filterapi.Backend)

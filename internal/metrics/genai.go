@@ -19,6 +19,7 @@ const (
 	genaiAttributeOperationName = "gen_ai.operation.name"
 	genaiAttributeSystemName    = "gen_ai.system.name"
 	genaiAttributeRequestModel  = "gen_ai.request.model"
+	genaiAttributeResponseModel = "gen_ai.response.model"
 	genaiAttributeTokenType     = "gen_ai.token.type" // #nosec G101: Potential hardcoded credentials
 	genaiAttributeErrorType     = "error.type"
 

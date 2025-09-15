@@ -170,7 +170,13 @@ func (c *messagesProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Cont
 
 	// Start tracking metrics for this request.
 	c.metrics.StartRequest(c.requestHeaders)
-	c.metrics.SetModel(c.requestHeaders[c.config.modelNameHeaderKey])
+	// Request label should reflect the original user-provided model; fall back to header if body is unavailable.
+	reqModel := c.requestHeaders[c.config.modelNameHeaderKey]
+	if c.originalRequestBody != nil && c.originalRequestBody.GetModel() != "" {
+		reqModel = c.originalRequestBody.GetModel()
+	}
+	respModel := c.requestHeaders[c.config.modelNameHeaderKey]
+	c.metrics.SetModel(reqModel, respModel)
 
 	// Force body mutation for retry requests as the body mutation might have happened in previous iteration.
 	forceBodyMutation := c.onRetry

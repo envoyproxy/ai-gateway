@@ -316,7 +316,7 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) 
 		require.ErrorContains(t, err, "failed to transform request: test error")
 		mm.RequireRequestFailure(t)
 		mm.RequireTokensRecorded(t, 0)
-		mm.RequireSelectedModel(t, "some-model")
+		mm.RequireSelectedModel(t, "some-model", "some-model")
 	})
 	t.Run("ok", func(t *testing.T) {
 		someBody := embeddingBodyFromModel(t, "some-model")
@@ -349,8 +349,27 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) 
 		require.Equal(t, bodyMut, commonRes.BodyMutation)
 
 		mm.RequireRequestNotCompleted(t)
-		mm.RequireSelectedModel(t, "some-model")
+		mm.RequireSelectedModel(t, "some-model", "some-model")
 	})
+}
+
+func TestEmbeddings_ProcessRequestHeaders_SetsRequestAndResponseModels(t *testing.T) {
+	const modelKey = "x-ai-eg-model"
+	headers := map[string]string{":path": "/v1/embeddings", modelKey: "header-model"}
+	body := openai.EmbeddingRequest{Model: "body-model"}
+	raw, _ := json.Marshal(body)
+	mm := &mockEmbeddingsMetrics{}
+	p := &embeddingsProcessorUpstreamFilter{
+		config:                 &processorConfig{modelNameHeaderKey: modelKey},
+		requestHeaders:         headers,
+		logger:                 slog.Default(),
+		metrics:                mm,
+		translator:             &mockEmbeddingTranslator{t: t, expRequestBody: &body},
+		originalRequestBodyRaw: raw,
+		originalRequestBody:    &body,
+	}
+	_, _ = p.ProcessRequestHeaders(t.Context(), nil)
+	mm.RequireSelectedModel(t, "body-model", "header-model")
 }
 
 func TestEmbeddings_ParseBody(t *testing.T) {

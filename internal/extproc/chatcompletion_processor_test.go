@@ -458,7 +458,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				require.ErrorContains(t, err, "failed to transform request: test error")
 				mm.RequireRequestFailure(t)
 				mm.RequireTokensRecorded(t, 0)
-				mm.RequireSelectedModel(t, "some-model")
+				mm.RequireSelectedModel(t, "some-model", "some-model")
 			})
 			t.Run("ok", func(t *testing.T) {
 				someBody := bodyFromModel(t, "some-model", tc.stream, nil)
@@ -496,7 +496,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				require.Equal(t, bodyMut, commonRes.BodyMutation)
 
 				mm.RequireRequestNotCompleted(t)
-				mm.RequireSelectedModel(t, "some-model")
+				mm.RequireSelectedModel(t, "some-model", "some-model")
 				require.Equal(t, tc.stream, p.stream)
 			})
 		})
@@ -751,4 +751,23 @@ func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestor
 		require.Equal(t, "key123", p.requestHeaders["x-api-key"])
 		require.Equal(t, "value", p.requestHeaders["other"])
 	})
+}
+
+func Test_ProcessRequestHeaders_SetsRequestAndResponseModels(t *testing.T) {
+	const modelKey = "x-ai-eg-model"
+	headers := map[string]string{":path": "/v1/chat/completions", modelKey: "header-model"}
+	body := openai.ChatCompletionRequest{Model: "body-model"}
+	raw, _ := json.Marshal(body)
+	mm := &mockChatCompletionMetrics{}
+	p := &chatCompletionProcessorUpstreamFilter{
+		config:                 &processorConfig{modelNameHeaderKey: modelKey},
+		requestHeaders:         headers,
+		logger:                 slog.Default(),
+		metrics:                mm,
+		translator:             &mockTranslator{t: t, expRequestBody: &body},
+		originalRequestBodyRaw: raw,
+		originalRequestBody:    &body,
+	}
+	_, _ = p.ProcessRequestHeaders(t.Context(), nil)
+	mm.RequireSelectedModel(t, "body-model", "header-model")
 }

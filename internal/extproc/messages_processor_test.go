@@ -598,3 +598,22 @@ func Test_messagesProcessorUpstreamFilter_SetBackend_Success(t *testing.T) {
 	require.True(t, p.stream)
 	require.NotNil(t, p.translator)
 }
+
+func TestMessages_ProcessRequestHeaders_SetsRequestAndResponseModels(t *testing.T) {
+	const modelKey = "x-ai-eg-model"
+	headers := map[string]string{":path": "/anthropic/v1/messages", modelKey: "header-model"}
+	requestBody := &anthropicschema.MessagesRequest{"model": "body-model", "messages": []any{"hello"}}
+	requestBodyRaw := []byte(`{"model":"body-model","messages":["hello"]}`)
+	mm := &mockChatCompletionMetrics{}
+	p := &messagesProcessorUpstreamFilter{
+		config:                 &processorConfig{modelNameHeaderKey: modelKey},
+		requestHeaders:         headers,
+		logger:                 slog.Default(),
+		metrics:                mm,
+		translator:             mockAnthropicTranslator{t: t, expRequestBody: requestBody},
+		originalRequestBodyRaw: requestBodyRaw,
+		originalRequestBody:    requestBody,
+	}
+	_, _ = p.ProcessRequestHeaders(t.Context(), nil)
+	mm.RequireSelectedModel(t, "body-model", "header-model")
+}
