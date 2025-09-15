@@ -17,11 +17,11 @@ import (
 
 // baseMetrics provides shared functionality for AI Gateway metrics implementations.
 type baseMetrics struct {
-	metrics                   *genAI
-	operation                 string
-	requestStart              time.Time
+	metrics      *genAI
+	operation    string
+	requestStart time.Time
 	// requestModel is the original model from the request body.
-	requestModel              string
+	requestModel string
 	// responseModel is the model that ultimately generated the response (may differ due to backend override).
 	responseModel             string
 	backend                   string
