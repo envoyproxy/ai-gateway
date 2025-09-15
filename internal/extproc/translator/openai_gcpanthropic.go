@@ -238,18 +238,20 @@ func convertContentPartsToAnthropic(parts []openai.ChatCompletionContentPartUser
 	resultContent := make([]anthropic.ContentBlockParamUnion, 0, len(parts))
 	for _, contentPart := range parts {
 		switch {
-		case contentPart.TextContent != nil:
-			resultContent = append(resultContent, anthropic.NewTextBlock(contentPart.TextContent.Text))
+		case contentPart.OfText != nil:
+			resultContent = append(resultContent, anthropic.NewTextBlock(contentPart.OfText.Text))
 
-		case contentPart.ImageContent != nil:
-			block, err := convertImageContentToAnthropic(contentPart.ImageContent.ImageURL.URL)
+		case contentPart.OfImageURL != nil:
+			block, err := convertImageContentToAnthropic(contentPart.OfImageURL.ImageURL.URL)
 			if err != nil {
 				return nil, err
 			}
 			resultContent = append(resultContent, block)
 
-		case contentPart.InputAudioContent != nil:
+		case contentPart.OfInputAudio != nil:
 			return nil, fmt.Errorf("input audio content not supported yet")
+		case contentPart.OfFile != nil:
+			return nil, fmt.Errorf("file content not supported yet")
 		}
 	}
 	return resultContent, nil
@@ -297,8 +299,8 @@ func extractSystemPromptFromDeveloperMsg(msg openai.ChatCompletionDeveloperMessa
 		// Concatenate all text parts for completeness.
 		var sb strings.Builder
 		for _, part := range v {
-			if part.TextContent != nil {
-				sb.WriteString(part.TextContent.Text)
+			if part.OfText != nil {
+				sb.WriteString(part.OfText.Text)
 			}
 		}
 		return sb.String()
@@ -309,8 +311,8 @@ func extractSystemPromptFromDeveloperMsg(msg openai.ChatCompletionDeveloperMessa
 		case []openai.ChatCompletionContentPartUserUnionParam:
 			var sb strings.Builder
 			for _, part := range val {
-				if part.TextContent != nil {
-					sb.WriteString(part.TextContent.Text)
+				if part.OfText != nil {
+					sb.WriteString(part.OfText.Text)
 				}
 			}
 			return sb.String()
@@ -381,20 +383,16 @@ func openAIMessageToAnthropicMessageRoleAssistant(openAiMessage *openai.ChatComp
 func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUnion) (anthropicMessages []anthropic.MessageParam, systemBlocks []anthropic.TextBlockParam, err error) {
 	for i := 0; i < len(openAIMsgs); {
 		msg := &openAIMsgs[i]
-		switch msg.Type {
-		case openai.ChatMessageRoleSystem:
-			if param, ok := msg.Value.(openai.ChatCompletionSystemMessageParam); ok {
-				devParam := systemMsgToDeveloperMsg(param)
-				systemBlocks = append(systemBlocks, anthropic.TextBlockParam{Text: extractSystemPromptFromDeveloperMsg(devParam)})
-			}
+		switch {
+		case msg.OfSystem != nil:
+			devParam := systemMsgToDeveloperMsg(*msg.OfSystem)
+			systemBlocks = append(systemBlocks, anthropic.TextBlockParam{Text: extractSystemPromptFromDeveloperMsg(devParam)})
 			i++
-		case openai.ChatMessageRoleDeveloper:
-			if param, ok := msg.Value.(openai.ChatCompletionDeveloperMessageParam); ok {
-				systemBlocks = append(systemBlocks, anthropic.TextBlockParam{Text: extractSystemPromptFromDeveloperMsg(param)})
-			}
+		case msg.OfDeveloper != nil:
+			systemBlocks = append(systemBlocks, anthropic.TextBlockParam{Text: extractSystemPromptFromDeveloperMsg(*msg.OfDeveloper)})
 			i++
-		case openai.ChatMessageRoleUser:
-			message := msg.Value.(openai.ChatCompletionUserMessageParam)
+		case msg.OfUser != nil:
+			message := *msg.OfUser
 			var content []anthropic.ContentBlockParamUnion
 			content, err = openAIToAnthropicContent(message.Content.Value)
 			if err != nil {
@@ -406,22 +404,22 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 			}
 			anthropicMessages = append(anthropicMessages, anthropicMsg)
 			i++
-		case openai.ChatMessageRoleAssistant:
-			assistantMessage := msg.Value.(openai.ChatCompletionAssistantMessageParam)
+		case msg.OfAssistant != nil:
+			assistantMessage := msg.OfAssistant
 			var messages anthropic.MessageParam
-			messages, err = openAIMessageToAnthropicMessageRoleAssistant(&assistantMessage)
+			messages, err = openAIMessageToAnthropicMessageRoleAssistant(assistantMessage)
 			if err != nil {
 				return
 			}
 			anthropicMessages = append(anthropicMessages, messages)
 			i++
-		case openai.ChatMessageRoleTool:
+		case msg.OfTool != nil:
 			// Aggregate all consecutive tool messages into a single user message
 			// to support parallel tool use.
 			var toolResultBlocks []anthropic.ContentBlockParamUnion
-			for i < len(openAIMsgs) && openAIMsgs[i].Type == openai.ChatMessageRoleTool {
+			for i < len(openAIMsgs) && openAIMsgs[i].ExtractMessgaeRole() == openai.ChatMessageRoleTool {
 				currentMsg := &openAIMsgs[i]
-				toolMsg := currentMsg.Value.(openai.ChatCompletionToolMessageParam)
+				toolMsg := currentMsg.OfTool
 				var contentBlocks []anthropic.ContentBlockParamUnion
 				contentBlocks, err = openAIToAnthropicContent(toolMsg.Content)
 				if err != nil {
@@ -464,7 +462,7 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 			}
 			anthropicMessages = append(anthropicMessages, anthropicMsg)
 		default:
-			err = fmt.Errorf("unsupported OpenAI role type: %s", msg.Type)
+			err = fmt.Errorf("unsupported OpenAI role type: %s", msg.ExtractMessgaeRole())
 			return
 		}
 	}

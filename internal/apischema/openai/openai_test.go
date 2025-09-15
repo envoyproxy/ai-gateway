@@ -30,7 +30,7 @@ func TestOpenAIChatCompletionContentPartUserUnionParamUnmarshal(t *testing.T) {
 "text": "what do you see in this image"
 }`),
 			out: &ChatCompletionContentPartUserUnionParam{
-				TextContent: &ChatCompletionContentPartTextParam{
+				OfText: &ChatCompletionContentPartTextParam{
 					Type: string(ChatCompletionContentPartTextTypeText),
 					Text: "what do you see in this image",
 				},
@@ -43,7 +43,7 @@ func TestOpenAIChatCompletionContentPartUserUnionParamUnmarshal(t *testing.T) {
 "image_url": {"url": "https://example.com/image.jpg"}
 }`),
 			out: &ChatCompletionContentPartUserUnionParam{
-				ImageContent: &ChatCompletionContentPartImageParam{
+				OfImageURL: &ChatCompletionContentPartImageParam{
 					Type: ChatCompletionContentPartImageTypeImageURL,
 					ImageURL: ChatCompletionContentPartImageImageURLParam{
 						URL: "https://example.com/image.jpg",
@@ -58,7 +58,7 @@ func TestOpenAIChatCompletionContentPartUserUnionParamUnmarshal(t *testing.T) {
 "input_audio": {"data": "somebinarydata"}
 }`),
 			out: &ChatCompletionContentPartUserUnionParam{
-				InputAudioContent: &ChatCompletionContentPartInputAudioParam{
+				OfInputAudio: &ChatCompletionContentPartInputAudioParam{
 					Type: ChatCompletionContentPartInputAudioTypeInputAudio,
 					InputAudio: ChatCompletionContentPartInputAudioInputAudioParam{
 						Data: "somebinarydata",
@@ -192,46 +192,41 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 				Model: "gpu-o4",
 				Messages: []ChatCompletionMessageParamUnion{
 					{
-						Value: ChatCompletionSystemMessageParam{
+						OfSystem: &ChatCompletionSystemMessageParam{
 							Role: ChatMessageRoleSystem,
 							Content: StringOrArray{
 								Value: "you are a helpful assistant",
 							},
 						},
-						Type: ChatMessageRoleSystem,
 					},
 					{
-						Value: ChatCompletionDeveloperMessageParam{
+						OfDeveloper: &ChatCompletionDeveloperMessageParam{
 							Role: ChatMessageRoleDeveloper,
 							Content: StringOrArray{
 								Value: "you are a helpful dev assistant",
 							},
 						},
-						Type: ChatMessageRoleDeveloper,
 					},
 					{
-						Value: ChatCompletionUserMessageParam{
+						OfUser: &ChatCompletionUserMessageParam{
 							Role: ChatMessageRoleUser,
 							Content: StringOrUserRoleContentUnion{
 								Value: "what do you see in this image",
 							},
 						},
-						Type: ChatMessageRoleUser,
 					},
 					{
-						Value: ChatCompletionToolMessageParam{
+						OfTool: &ChatCompletionToolMessageParam{
 							Role:       ChatMessageRoleTool,
 							ToolCallID: "123",
 							Content:    StringOrArray{Value: "some tool"},
 						},
-						Type: ChatMessageRoleTool,
 					},
 					{
-						Value: ChatCompletionAssistantMessageParam{
+						OfAssistant: &ChatCompletionAssistantMessageParam{
 							Role:    ChatMessageRoleAssistant,
 							Content: StringOrAssistantRoleContentUnion{Value: "you are a helpful assistant"},
 						},
-						Type: ChatMessageRoleAssistant,
 					},
 				},
 			},
@@ -248,20 +243,18 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 				Model: "gpu-o4",
 				Messages: []ChatCompletionMessageParamUnion{
 					{
-						Value: ChatCompletionAssistantMessageParam{
+						OfAssistant: &ChatCompletionAssistantMessageParam{
 							Role:    ChatMessageRoleAssistant,
 							Content: StringOrAssistantRoleContentUnion{Value: "you are a helpful assistant"},
 						},
-						Type: ChatMessageRoleAssistant,
 					},
 					{
-						Value: ChatCompletionAssistantMessageParam{
+						OfAssistant: &ChatCompletionAssistantMessageParam{
 							Role: ChatMessageRoleAssistant,
 							Content: StringOrAssistantRoleContentUnion{Value: []ChatCompletionAssistantMessageParamContent{
 								{Text: ptr.To("you are a helpful assistant content"), Type: "text"},
 							}},
 						},
-						Type: ChatMessageRoleAssistant,
 					},
 				},
 			},
@@ -277,7 +270,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 				Model: "gpu-o4",
 				Messages: []ChatCompletionMessageParamUnion{
 					{
-						Value: ChatCompletionSystemMessageParam{
+						OfSystem: &ChatCompletionSystemMessageParam{
 							Role: ChatMessageRoleSystem,
 							Content: StringOrArray{
 								Value: []ChatCompletionContentPartTextParam{
@@ -288,10 +281,9 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 								},
 							},
 						},
-						Type: ChatMessageRoleSystem,
 					},
 					{
-						Value: ChatCompletionDeveloperMessageParam{
+						OfDeveloper: &ChatCompletionDeveloperMessageParam{
 							Role: ChatMessageRoleDeveloper,
 							Content: StringOrArray{
 								Value: []ChatCompletionContentPartTextParam{
@@ -302,20 +294,18 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 								},
 							},
 						},
-						Type: ChatMessageRoleDeveloper,
 					},
 					{
-						Value: ChatCompletionUserMessageParam{
+						OfUser: &ChatCompletionUserMessageParam{
 							Role: ChatMessageRoleUser,
 							Content: StringOrUserRoleContentUnion{
 								Value: []ChatCompletionContentPartUserUnionParam{
 									{
-										TextContent: &ChatCompletionContentPartTextParam{Text: "what do you see in this image", Type: "text"},
+										OfText: &ChatCompletionContentPartTextParam{Text: "what do you see in this image", Type: "text"},
 									},
 								},
 							},
 						},
-						Type: ChatMessageRoleUser,
 					},
 				},
 			},
@@ -338,13 +328,12 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 				Model: "azure.gpt-4o",
 				Messages: []ChatCompletionMessageParamUnion{
 					{
-						Value: ChatCompletionUserMessageParam{
+						OfUser: &ChatCompletionUserMessageParam{
 							Role: ChatMessageRoleUser,
 							Content: StringOrUserRoleContentUnion{
 								Value: "Tell me a story",
 							},
 						},
-						Type: ChatMessageRoleUser,
 					},
 				},
 				ResponseFormat: &ChatCompletionResponseFormatUnion{
@@ -384,11 +373,10 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 				Model: "gpu-o4",
 				Messages: []ChatCompletionMessageParamUnion{
 					{
-						Value: ChatCompletionUserMessageParam{
+						OfUser: &ChatCompletionUserMessageParam{
 							Role:    ChatMessageRoleUser,
 							Content: StringOrUserRoleContentUnion{Value: "hello"},
 						},
-						Type: ChatMessageRoleUser,
 					},
 				},
 				MaxCompletionTokens: ptr.To[int64](1024),
@@ -410,11 +398,10 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 				Model: "gpu-o4",
 				Messages: []ChatCompletionMessageParamUnion{
 					{
-						Value: ChatCompletionUserMessageParam{
+						OfUser: &ChatCompletionUserMessageParam{
 							Role:    ChatMessageRoleUser,
 							Content: StringOrUserRoleContentUnion{Value: "hello"},
 						},
-						Type: ChatMessageRoleUser,
 					},
 				},
 				Stop: "stop",
@@ -431,11 +418,10 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 				Model: "gpt-4o-mini-search-preview",
 				Messages: []ChatCompletionMessageParamUnion{
 					{
-						Value: ChatCompletionUserMessageParam{
+						OfUser: &ChatCompletionUserMessageParam{
 							Role:    ChatMessageRoleUser,
 							Content: StringOrUserRoleContentUnion{Value: "What's the latest news?"},
 						},
-						Type: ChatMessageRoleUser,
 					},
 				},
 				WebSearchOptions: &WebSearchOptions{
@@ -495,8 +481,7 @@ func TestChatCompletionMessageParamUnionMarshal(t *testing.T) {
 		{
 			name: "user message",
 			input: ChatCompletionMessageParamUnion{
-				Type: ChatMessageRoleUser,
-				Value: ChatCompletionUserMessageParam{
+				OfUser: &ChatCompletionUserMessageParam{
 					Role: ChatMessageRoleUser,
 					Content: StringOrUserRoleContentUnion{
 						Value: "Hello!",
@@ -508,8 +493,7 @@ func TestChatCompletionMessageParamUnionMarshal(t *testing.T) {
 		{
 			name: "system message",
 			input: ChatCompletionMessageParamUnion{
-				Type: ChatMessageRoleSystem,
-				Value: ChatCompletionSystemMessageParam{
+				OfSystem: &ChatCompletionSystemMessageParam{
 					Role: ChatMessageRoleSystem,
 					Content: StringOrArray{
 						Value: "You are a helpful assistant",
@@ -521,8 +505,7 @@ func TestChatCompletionMessageParamUnionMarshal(t *testing.T) {
 		{
 			name: "assistant message",
 			input: ChatCompletionMessageParamUnion{
-				Type: ChatMessageRoleAssistant,
-				Value: ChatCompletionAssistantMessageParam{
+				OfAssistant: &ChatCompletionAssistantMessageParam{
 					Role: ChatMessageRoleAssistant,
 					Content: StringOrAssistantRoleContentUnion{
 						Value: "I can help you with that",
@@ -534,8 +517,7 @@ func TestChatCompletionMessageParamUnionMarshal(t *testing.T) {
 		{
 			name: "tool message",
 			input: ChatCompletionMessageParamUnion{
-				Type: ChatMessageRoleTool,
-				Value: ChatCompletionToolMessageParam{
+				OfTool: &ChatCompletionToolMessageParam{
 					Role:       ChatMessageRoleTool,
 					ToolCallID: "123",
 					Content:    StringOrArray{Value: "tool result"},
@@ -610,7 +592,7 @@ func TestStringOrUserRoleContentUnionMarshal(t *testing.T) {
 			input: StringOrUserRoleContentUnion{
 				Value: []ChatCompletionContentPartUserUnionParam{
 					{
-						TextContent: &ChatCompletionContentPartTextParam{
+						OfText: &ChatCompletionContentPartTextParam{
 							Type: "text",
 							Text: "What's in this image?",
 						},
@@ -730,7 +712,7 @@ func TestChatCompletionContentPartUserUnionParamMarshal(t *testing.T) {
 		{
 			name: "text content",
 			input: ChatCompletionContentPartUserUnionParam{
-				TextContent: &ChatCompletionContentPartTextParam{
+				OfText: &ChatCompletionContentPartTextParam{
 					Type: "text",
 					Text: "Hello world",
 				},
@@ -740,7 +722,7 @@ func TestChatCompletionContentPartUserUnionParamMarshal(t *testing.T) {
 		{
 			name: "image content",
 			input: ChatCompletionContentPartUserUnionParam{
-				ImageContent: &ChatCompletionContentPartImageParam{
+				OfImageURL: &ChatCompletionContentPartImageParam{
 					Type: ChatCompletionContentPartImageTypeImageURL,
 					ImageURL: ChatCompletionContentPartImageImageURLParam{
 						URL: "https://example.com/image.jpg",
@@ -752,7 +734,7 @@ func TestChatCompletionContentPartUserUnionParamMarshal(t *testing.T) {
 		{
 			name: "audio content",
 			input: ChatCompletionContentPartUserUnionParam{
-				InputAudioContent: &ChatCompletionContentPartInputAudioParam{
+				OfInputAudio: &ChatCompletionContentPartInputAudioParam{
 					Type: ChatCompletionContentPartInputAudioTypeInputAudio,
 					InputAudio: ChatCompletionContentPartInputAudioInputAudioParam{
 						Data: "audio-data",
@@ -778,26 +760,24 @@ func TestMarshalUnmarshalRoundTrip(t *testing.T) {
 		Model: "gpt-4",
 		Messages: []ChatCompletionMessageParamUnion{
 			{
-				Type: ChatMessageRoleSystem,
-				Value: ChatCompletionSystemMessageParam{
+				OfSystem: &ChatCompletionSystemMessageParam{
 					Role:    ChatMessageRoleSystem,
 					Content: StringOrArray{Value: "You are helpful"},
 				},
 			},
 			{
-				Type: ChatMessageRoleUser,
-				Value: ChatCompletionUserMessageParam{
+				OfUser: &ChatCompletionUserMessageParam{
 					Role: ChatMessageRoleUser,
 					Content: StringOrUserRoleContentUnion{
 						Value: []ChatCompletionContentPartUserUnionParam{
 							{
-								TextContent: &ChatCompletionContentPartTextParam{
+								OfText: &ChatCompletionContentPartTextParam{
 									Type: "text",
 									Text: "What's in this image?",
 								},
 							},
 							{
-								ImageContent: &ChatCompletionContentPartImageParam{
+								OfImageURL: &ChatCompletionContentPartImageParam{
 									Type: ChatCompletionContentPartImageTypeImageURL,
 									ImageURL: ChatCompletionContentPartImageImageURLParam{
 										URL: "https://example.com/image.jpg",
@@ -981,8 +961,7 @@ func TestChatCompletionRequest(t *testing.T) {
 				Model: "gpt-4o-audio-preview",
 				Messages: []ChatCompletionMessageParamUnion{
 					{
-						Type: ChatMessageRoleUser,
-						Value: ChatCompletionUserMessageParam{
+						OfUser: &ChatCompletionUserMessageParam{
 							Role:    ChatMessageRoleUser,
 							Content: StringOrUserRoleContentUnion{Value: "Hello!"},
 						},
@@ -1002,8 +981,7 @@ func TestChatCompletionRequest(t *testing.T) {
 				Model: "gpt-4.1-nano",
 				Messages: []ChatCompletionMessageParamUnion{
 					{
-						Type: ChatMessageRoleUser,
-						Value: ChatCompletionUserMessageParam{
+						OfUser: &ChatCompletionUserMessageParam{
 							Role:    ChatMessageRoleUser,
 							Content: StringOrUserRoleContentUnion{Value: "Hi"},
 						},
@@ -1027,8 +1005,7 @@ func TestChatCompletionRequest(t *testing.T) {
 				Model: "gpt-4o-audio-preview",
 				Messages: []ChatCompletionMessageParamUnion{
 					{
-						Type: ChatMessageRoleUser,
-						Value: ChatCompletionUserMessageParam{
+						OfUser: &ChatCompletionUserMessageParam{
 							Role:    ChatMessageRoleUser,
 							Content: StringOrUserRoleContentUnion{Value: "Hello!"},
 						},
@@ -1055,8 +1032,7 @@ func TestChatCompletionRequest(t *testing.T) {
 				Model: "gpt-4.1-nano",
 				Messages: []ChatCompletionMessageParamUnion{
 					{
-						Type: ChatMessageRoleUser,
-						Value: ChatCompletionUserMessageParam{
+						OfUser: &ChatCompletionUserMessageParam{
 							Role:    ChatMessageRoleUser,
 							Content: StringOrUserRoleContentUnion{Value: "Complete this: Hello"},
 						},
@@ -1079,8 +1055,7 @@ func TestChatCompletionRequest(t *testing.T) {
 				Model: "gpt-4o-mini-search-preview",
 				Messages: []ChatCompletionMessageParamUnion{
 					{
-						Type: ChatMessageRoleUser,
-						Value: ChatCompletionUserMessageParam{
+						OfUser: &ChatCompletionUserMessageParam{
 							Role:    ChatMessageRoleUser,
 							Content: StringOrUserRoleContentUnion{Value: "What's the latest news?"},
 						},
