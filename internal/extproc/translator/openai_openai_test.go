@@ -206,6 +206,17 @@ data: [DONE]
 			}
 		}
 	})
+
+	t.Run("streaming read error", func(t *testing.T) {
+		o := &openAIToOpenAITranslatorV1ChatCompletion{stream: true}
+		pr, pw := io.Pipe()
+		// Close the writer immediately with an error so reads fail.
+		_ = pw.CloseWithError(fmt.Errorf("error reading body"))
+		_, _, _, err := o.ResponseBody(nil, pr, false, nil)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to read body")
+	})
+
 	t.Run("non-streaming", func(t *testing.T) {
 		t.Run("invalid body", func(t *testing.T) {
 			o := &openAIToOpenAITranslatorV1ChatCompletion{}
