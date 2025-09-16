@@ -114,7 +114,7 @@ This configures the OTLP endpoint to otel-tui on port 4318.
 
 2. **Send a test request**:
    ```bash
-   docker compose -f docker-compose-otel.yaml run --build --rm chat-completion
+   COMPOSE_PROFILES=<profile> docker compose -f docker-compose-otel.yaml run --build --rm chat-completion
    ```
 
 3. **Check telemetry output**:
