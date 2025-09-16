@@ -19,8 +19,8 @@ import (
 type chatCompletion struct {
 	baseMetrics
 	firstTokenSent    bool
-	timeToFirstToken  float64
-	interTokenLatency float64
+	timeToFirstToken  time.Duration // Duration to first token.
+	interTokenLatency time.Duration // Average time per token after first.
 	totalOutputTokens uint32
 }
 
@@ -35,7 +35,7 @@ type ChatCompletionMetrics interface {
 	SetBackend(backend *filterapi.Backend)
 
 	// RecordTokenUsage records token usage metrics.
-	RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32, requestHeaderLabelMapping map[string]string)
+	RecordTokenUsage(ctx context.Context, inputTokens, outputTokens uint32, requestHeaderLabelMapping map[string]string)
 	// RecordRequestCompletion records latency metrics for the entire request.
 	RecordRequestCompletion(ctx context.Context, success bool, requestHeaderLabelMapping map[string]string)
 	// RecordTokenLatency records latency metrics for token generation.
@@ -58,10 +58,12 @@ func (c *chatCompletion) StartRequest(headers map[string]string) {
 	c.baseMetrics.StartRequest(headers)
 	c.firstTokenSent = false
 	c.totalOutputTokens = 0
+	c.timeToFirstToken = 0
+	c.interTokenLatency = 0
 }
 
 // RecordTokenUsage implements [ChatCompletion.RecordTokenUsage].
-func (c *chatCompletion) RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32, requestHeaders map[string]string) {
+func (c *chatCompletion) RecordTokenUsage(ctx context.Context, inputTokens, outputTokens uint32, requestHeaders map[string]string) {
 	attrs := c.buildBaseAttributes(requestHeaders)
 
 	c.metrics.tokenUsage.Record(ctx, float64(inputTokens),
@@ -72,20 +74,20 @@ func (c *chatCompletion) RecordTokenUsage(ctx context.Context, inputTokens, outp
 		metric.WithAttributeSet(attrs),
 		metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeOutput)),
 	)
-	c.metrics.tokenUsage.Record(ctx, float64(totalTokens),
-		metric.WithAttributeSet(attrs),
-		metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeTotal)),
-	)
+	// Note: We don't record totalTokens separately as it causes double counting.
+	// The OTEL spec only defines "input" and "output" token types.
 }
 
 // RecordTokenLatency implements [ChatCompletion.RecordTokenLatency].
 func (c *chatCompletion) RecordTokenLatency(ctx context.Context, tokens uint32, endOfStream bool, requestHeaders map[string]string) {
 	attrs := c.buildBaseAttributes(requestHeaders)
 
+	// Record time to first token on the first call for streaming responses.
+	// This ensures we capture the metric even when token counts aren't available in streaming chunks.
 	if !c.firstTokenSent {
 		c.firstTokenSent = true
-		c.timeToFirstToken = time.Since(c.requestStart).Seconds()
-		c.metrics.firstTokenLatency.Record(ctx, c.timeToFirstToken, metric.WithAttributeSet(attrs))
+		c.timeToFirstToken = time.Since(c.requestStart)
+		c.metrics.firstTokenLatency.Record(ctx, c.timeToFirstToken.Seconds(), metric.WithAttributeSet(attrs))
 		return
 	}
 
@@ -95,19 +97,24 @@ func (c *chatCompletion) RecordTokenLatency(ctx context.Context, tokens uint32, 
 	}
 
 	// Record once at end-of-stream using average from first token.
-	if endOfStream && c.totalOutputTokens > 0 {
-		firstTokenTime := c.requestStart.Add(time.Duration(c.timeToFirstToken * float64(time.Second)))
-		c.interTokenLatency = time.Since(firstTokenTime).Seconds() / float64(c.totalOutputTokens)
-		c.metrics.outputTokenLatency.Record(ctx, c.interTokenLatency, metric.WithAttributeSet(attrs))
+	// Per OTEL spec: time_per_output_token = (request_duration - time_to_first_token) / (output_tokens - 1).
+	// This measures the average time for ALL tokens after the first one, not just after the first chunk.
+	if endOfStream && c.totalOutputTokens > 1 {
+		// Calculate time elapsed since first token was sent.
+		currentElapsed := time.Since(c.requestStart)
+		timeSinceFirstToken := currentElapsed - c.timeToFirstToken
+		// Divide by (total_tokens - 1) as per spec, not by tokens after first chunk.
+		c.interTokenLatency = timeSinceFirstToken / time.Duration(c.totalOutputTokens-1)
+		c.metrics.outputTokenLatency.Record(ctx, c.interTokenLatency.Seconds(), metric.WithAttributeSet(attrs))
 	}
 }
 
 // GetTimeToFirstTokenMs implements [x.ChatCompletionMetrics.GetTimeToFirstTokenMs].
 func (c *chatCompletion) GetTimeToFirstTokenMs() float64 {
-	return c.timeToFirstToken * 1000 // Convert seconds to milliseconds.
+	return float64(c.timeToFirstToken.Milliseconds())
 }
 
 // GetInterTokenLatencyMs implements [x.ChatCompletionMetrics.GetInterTokenLatencyMs].
 func (c *chatCompletion) GetInterTokenLatencyMs() float64 {
-	return c.interTokenLatency * 1000 // Convert seconds to milliseconds.
+	return float64(c.interTokenLatency.Milliseconds())
 }
