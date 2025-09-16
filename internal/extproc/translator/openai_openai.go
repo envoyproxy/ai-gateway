@@ -31,7 +31,6 @@ type openAIToOpenAITranslatorV1ChatCompletion struct {
 	modelNameOverride string
 	stream            bool
 	buffered          []byte
-	bufferingDone     bool
 	// The path of the chat completions endpoint to be used for the request. It is prefixed with the OpenAI path prefix.
 	path string
 }
@@ -148,7 +147,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]str
 var dataPrefix = []byte("data: ")
 
 // extractUsageFromBufferEvent extracts the token usage from the buffered event.
-// Once the usage is extracted, it returns the number of tokens used, and bufferingDone is set to true.
+// It scans complete lines and returns the latest usage found in this batch.
 func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent(span tracing.ChatCompletionSpan) (tokenUsage LLMTokenUsage) {
 	for {
 		i := bytes.IndexByte(o.buffered, '\n')
