@@ -44,14 +44,34 @@ func (t *tracingImpl) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-// NewTracingFromEnv configures OpenTelemetry tracing based on environment
+// NewTracingFromEnv configures OpenTelemetry tracing based on environment.
 // variables. Returns a tracing graph that is noop when disabled.
 func NewTracingFromEnv(ctx context.Context, stdout io.Writer) (tracing.Tracing, error) {
-	// Return no-op tracing if disabled or no exporter/endpoint is configured.
-	exporter := os.Getenv("OTEL_TRACES_EXPORTER")
-	if os.Getenv("OTEL_SDK_DISABLED") == "true" || exporter == "none" ||
-		(exporter == "" && os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") == "") {
+	// Return no-op tracing if disabled.
+	if os.Getenv("OTEL_SDK_DISABLED") == "true" {
 		return tracing.NoopTracing{}, nil
+	}
+
+	// Check for traces-specific exporter first.
+	exporter := os.Getenv("OTEL_TRACES_EXPORTER")
+	if exporter == "none" {
+		return tracing.NoopTracing{}, nil
+	}
+
+	// If no traces-specific exporter is set, check if OTLP endpoints are configured.
+	// According to OTEL spec, we should use OTLP if any endpoint is configured.
+	// The autoexport library will handle the endpoint precedence correctly:
+	// 1. OTEL_EXPORTER_OTLP_TRACES_ENDPOINT (traces-specific)
+	// 2. OTEL_EXPORTER_OTLP_ENDPOINT (generic base endpoint).
+	if exporter == "" {
+		hasOTLPEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "" ||
+			os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") != ""
+
+		if !hasOTLPEndpoint {
+			// No tracing configured.
+			return tracing.NoopTracing{}, nil
+		}
+		// Fall through to use autoexport which will handle OTLP configuration.
 	}
 
 	// Create resource with service name, defaulting to "ai-gateway" if not set.
@@ -66,7 +86,7 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer) (tracing.Tracing, 
 		return nil, fmt.Errorf("failed to create resource from env: %w", err)
 	}
 
-	// Only set our default if service.name wasn't set via env.
+	// Only set our default if service.name wasn't set via env
 	fallbackRes := resource.NewSchemaless(
 		semconv.ServiceName("ai-gateway"),
 	)

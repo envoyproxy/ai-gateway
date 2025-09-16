@@ -157,12 +157,17 @@ func TestStartMetricsServer(t *testing.T) {
 	require.NoError(t, err)
 	defer lis.Close() //nolint:errcheck
 
-	s, m := startMetricsServer(lis, slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})))
-	t.Cleanup(func() { _ = s.Shutdown(t.Context()) })
+	metricsConfig, s, meter := startMetricsServer(t.Context(), lis, slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})))
+	t.Cleanup(func() {
+		if s != nil {
+			_ = s.Shutdown(t.Context())
+		}
+		_ = metricsConfig.Shutdown(t.Context())
+	})
 
 	require.NotNil(t, s)
-	require.NotNil(t, m)
-	ccm := metrics.NewChatCompletion(m, nil)
+	require.NotNil(t, meter)
+	ccm := metrics.NewChatCompletion(meter, nil)
 	ccm.StartRequest(nil)
 	ccm.SetModel("test-model")
 	ccm.SetBackend(&filterapi.Backend{Name: "test-backend"})

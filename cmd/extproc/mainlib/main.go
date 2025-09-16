@@ -11,7 +11,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"net"
 	"net/http"
@@ -21,11 +20,8 @@ import (
 	"time"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/metric"
-	metricsdk "go.opentelemetry.io/otel/sdk/metric"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -158,7 +154,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		return fmt.Errorf("failed to parse metrics header mapping: %w", err)
 	}
 
-	metricsServer, meter := startMetricsServer(metricsLis, l)
+	metricsConfig, metricsServer, meter := startMetricsServer(ctx, metricsLis, l)
 	chatCompletionMetrics := metrics.NewChatCompletion(meter, metricsRequestHeaderLabels)
 	embeddingsMetrics := metrics.NewEmbeddings(meter, metricsRequestHeaderLabels)
 
@@ -191,14 +187,19 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if err := metricsServer.Shutdown(shutdownCtx); err != nil {
-			l.Error("Failed to shutdown metrics server gracefully", "error", err)
+		if metricsServer != nil {
+			if err := metricsServer.Shutdown(shutdownCtx); err != nil {
+				l.Error("Failed to shutdown metrics server gracefully", "error", err)
+			}
 		}
 		if err := healthServer.Shutdown(shutdownCtx); err != nil {
 			l.Error("Failed to shutdown health check server gracefully", "error", err)
 		}
 		if err := tracing.Shutdown(shutdownCtx); err != nil {
 			l.Error("Failed to shutdown tracing gracefully", "error", err)
+		}
+		if err := metricsConfig.Shutdown(shutdownCtx); err != nil {
+			l.Error("Failed to shutdown metrics gracefully", "error", err)
 		}
 	}()
 
@@ -227,14 +228,23 @@ func listenAddress(addrFlag string) (string, string) {
 }
 
 // startMetricsServer starts the HTTP server for Prometheus metrics.
-func startMetricsServer(lis net.Listener, logger *slog.Logger) (*http.Server, metric.Meter) {
-	registry := prometheus.NewRegistry()
-	exporter, err := otelprom.New(otelprom.WithRegisterer(registry))
+func startMetricsServer(ctx context.Context, lis net.Listener, logger *slog.Logger) (metrics.Metrics, *http.Server, metric.Meter) {
+	// Configure metrics from environment, falling back to prometheus if not configured.
+	metricsConfig, err := metrics.NewMetricsFromEnv(ctx)
 	if err != nil {
-		log.Fatal("failed to create metrics exporter")
+		logger.Error("Failed to create metrics from env", "error", err)
+		// Fall back to no-op metrics.
+		return metrics.NoopMetrics{}, nil, metrics.NoopMetrics{}.Meter()
 	}
-	provider := metricsdk.NewMeterProvider(metricsdk.WithReader(exporter))
-	meter := provider.Meter("envoyproxy/ai-gateway")
+
+	meter := metricsConfig.Meter()
+	registry := metricsConfig.Registry()
+
+	// Only start HTTP server if we have a prometheus registry.
+	if registry == nil {
+		// OTLP or other exporters, no separate metrics server needed.
+		return metricsConfig, nil, meter
+	}
 
 	// Create a new HTTP server for metrics.
 	mux := http.NewServeMux()
@@ -260,7 +270,7 @@ func startMetricsServer(lis net.Listener, logger *slog.Logger) (*http.Server, me
 		}
 	}()
 
-	return server, meter
+	return metricsConfig, server, meter
 }
 
 // startHealthCheckServer is a proxy for the gRPC health check server.
