@@ -21,18 +21,18 @@ import (
 // This test validates that:
 // 1. A Gateway in one namespace (gateway-ns) can be referenced by an AIGatewayRoute in another namespace (route-ns)
 // 2. The generated HTTPRoute and other resources work correctly across namespaces
-// 3. Traffic routing works end-to-end through the cross-namespace setup
+// 3. Traffic routing works end-to-end through the cross-namespace setup.
 func TestCrossNamespace(t *testing.T) {
 	const manifest = "testdata/cross_namespace.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
 
-	// Wait for the Gateway pod to be ready with the correct selector
+	// Wait for the Gateway pod to be ready with the correct selector.
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=cross-namespace-gateway"
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
 
 	t.Run("cross-namespace-routing", func(t *testing.T) {
-		// Test that the AIGatewayRoute in route-ns can successfully route traffic
-		// through the Gateway in gateway-ns
+		// Test that the AIGatewayRoute in route-ns can successfully route traffic.
+		// through the Gateway in gateway-ns.
 		require.Eventually(t, func() bool {
 			fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
 			defer fwd.Kill()
@@ -53,7 +53,7 @@ func TestCrossNamespace(t *testing.T) {
 				return false
 			}
 
-			// print httproute status
+			// print httproute status.
 			cmd := e2elib.Kubectl(t.Context(), "get", "httproute", "cross-namespace-route", "-n", "route-ns", "-o", "jsonpath={.status}")
 			cmd.Stdout = nil
 			out, err := cmd.Output()
@@ -76,7 +76,7 @@ func TestCrossNamespace(t *testing.T) {
 
 	t.Run("verify-resources-created", func(t *testing.T) {
 		// Verify that the HTTPRoute was created in the same namespace as the AIGatewayRoute (route-ns)
-		// and that it correctly references the Gateway in gateway-ns
+		// and that it correctly references the Gateway in gateway-ns.
 		require.Eventually(t, func() bool {
 			cmd := e2elib.Kubectl(t.Context(), "get", "httproute", "cross-namespace-route", "-n", "route-ns", "-o", "jsonpath={.spec.parentRefs[0].name}")
 			cmd.Stdout = nil
@@ -85,11 +85,11 @@ func TestCrossNamespace(t *testing.T) {
 				t.Logf("error getting HTTPRoute: %v", err)
 				return false
 			}
-			// Verify the HTTPRoute references the correct Gateway
+			// Verify the HTTPRoute references the correct Gateway.
 			return string(out) == "cross-namespace-gateway"
 		}, 30*time.Second, 2*time.Second)
 
-		// Verify that the HTTPRoute has the correct namespace reference for the Gateway
+		// Verify that the HTTPRoute has the correct namespace reference for the Gateway.
 		require.Eventually(t, func() bool {
 			cmd := e2elib.Kubectl(t.Context(), "get", "httproute", "cross-namespace-route", "-n", "route-ns", "-o", "jsonpath={.spec.parentRefs[0].namespace}")
 			cmd.Stdout = nil
@@ -98,7 +98,7 @@ func TestCrossNamespace(t *testing.T) {
 				t.Logf("error getting HTTPRoute namespace: %v", err)
 				return false
 			}
-			// Verify the HTTPRoute references the Gateway in the correct namespace
+			// Verify the HTTPRoute references the Gateway in the correct namespace.
 			return string(out) == "gateway-ns"
 		}, 30*time.Second, 2*time.Second)
 	})

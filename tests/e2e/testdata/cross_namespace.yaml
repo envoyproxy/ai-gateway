@@ -34,6 +34,25 @@ spec:
     - name: http
       protocol: HTTP
       port: 80
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: cross-namespace-gateway
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: cross-namespace-gateway
+  namespace: gateway-ns
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        container:
+          # Clear the default memory/cpu requirements for local tests.
+          resources: {}
 ---
 # AIGatewayRoute in route-ns namespace referencing Gateway in gateway-ns
 apiVersion: aigateway.envoyproxy.io/v1alpha1
