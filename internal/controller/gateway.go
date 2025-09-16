@@ -164,6 +164,10 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, con
 	var err error
 	llmCosts := map[string]struct{}{}
 	for i := range aiGatewayRoutes {
+		if !aiGatewayRoutes[i].GetDeletionTimestamp().IsZero() {
+			c.logger.Info("AIGatewayRoute is being deleted, skipping extproc secret update", "namespace", aiGatewayRoutes[i].Namespace, "name", aiGatewayRoutes[i].Name)
+			continue
+		}
 		aiGatewayRoute := &aiGatewayRoutes[i]
 		spec := aiGatewayRoute.Spec
 		for ruleIndex := range spec.Rules {

@@ -66,11 +66,15 @@ type ChatCompletionContentPartTextType string
 // ChatCompletionContentPartImageType The type of the content part.
 type ChatCompletionContentPartImageType string
 
+// ChatCompletionContentPartImageType The type of the content part.
+type ChatCompletionContentPartFileType string
+
 const (
 	ChatCompletionContentPartTextTypeText             ChatCompletionContentPartTextType       = "text"
 	ChatCompletionContentPartRefusalTypeRefusal       ChatCompletionContentPartRefusalType    = "refusal"
 	ChatCompletionContentPartInputAudioTypeInputAudio ChatCompletionContentPartInputAudioType = "input_audio"
 	ChatCompletionContentPartImageTypeImageURL        ChatCompletionContentPartImageType      = "image_url"
+	ChatCompletionContentPartFileTypeFile             ChatCompletionContentPartFileType       = "file"
 )
 
 // ChatCompletionContentPartTextParam Learn about
@@ -134,12 +138,32 @@ type ChatCompletionContentPartImageParam struct {
 	Type ChatCompletionContentPartImageType `json:"type"`
 }
 
+type ChatCompletionContentPartFileFileParam struct {
+	// The base64 encoded file data, used when passing the file to the model as a
+	// string.
+	FileData string `json:"file_data,omitzero"`
+	// The ID of an uploaded file to use as input.
+	FileID string `json:"file_id,omitzero"`
+	// The name of the file, used when passing the file to the model as a string.
+	Filename string `json:"filename,omitzero"`
+}
+
+// ChatCompletionContentPartFileParam .
+type ChatCompletionContentPartFileParam struct {
+	File ChatCompletionContentPartFileFileParam `json:"file,omitzero"`
+	// The type of the content part. Always `file`.
+	//
+	// This field can be elided, and will marshal its zero value as "file".
+	Type ChatCompletionContentPartFileType `json:"type"`
+}
+
 // ChatCompletionContentPartUserUnionParam Learn about
 // [text inputs](https://platform.openai.com/docs/guides/text-generation).
 type ChatCompletionContentPartUserUnionParam struct {
-	TextContent       *ChatCompletionContentPartTextParam
-	InputAudioContent *ChatCompletionContentPartInputAudioParam
-	ImageContent      *ChatCompletionContentPartImageParam
+	OfText       *ChatCompletionContentPartTextParam       `json:",omitzero,inline"`
+	OfInputAudio *ChatCompletionContentPartInputAudioParam `json:",omitzero,inline"`
+	OfImageURL   *ChatCompletionContentPartImageParam      `json:",omitzero,inline"`
+	OfFile       *ChatCompletionContentPartFileParam       `json:",omitzero,inline"`
 }
 
 func (c *ChatCompletionContentPartUserUnionParam) UnmarshalJSON(data []byte) error {
@@ -157,19 +181,26 @@ func (c *ChatCompletionContentPartUserUnionParam) UnmarshalJSON(data []byte) err
 		if err := json.Unmarshal(data, &textContent); err != nil {
 			return err
 		}
-		c.TextContent = &textContent
+		c.OfText = &textContent
 	case string(ChatCompletionContentPartInputAudioTypeInputAudio):
 		var audioContent ChatCompletionContentPartInputAudioParam
 		if err := json.Unmarshal(data, &audioContent); err != nil {
 			return err
 		}
-		c.InputAudioContent = &audioContent
+		c.OfInputAudio = &audioContent
 	case string(ChatCompletionContentPartImageTypeImageURL):
 		var imageContent ChatCompletionContentPartImageParam
 		if err := json.Unmarshal(data, &imageContent); err != nil {
 			return err
 		}
-		c.ImageContent = &imageContent
+		c.OfImageURL = &imageContent
+	case string(ChatCompletionContentPartFileTypeFile):
+		var fileContent ChatCompletionContentPartFileParam
+		if err := json.Unmarshal(data, &fileContent); err != nil {
+			return err
+		}
+		c.OfFile = &fileContent
+
 	default:
 		return fmt.Errorf("unknown ChatCompletionContentPartUnionParam type: %v", contentType)
 	}
@@ -177,14 +208,14 @@ func (c *ChatCompletionContentPartUserUnionParam) UnmarshalJSON(data []byte) err
 }
 
 func (c ChatCompletionContentPartUserUnionParam) MarshalJSON() ([]byte, error) {
-	if c.TextContent != nil {
-		return json.Marshal(c.TextContent)
+	if c.OfText != nil {
+		return json.Marshal(c.OfText)
 	}
-	if c.InputAudioContent != nil {
-		return json.Marshal(c.InputAudioContent)
+	if c.OfInputAudio != nil {
+		return json.Marshal(c.OfInputAudio)
 	}
-	if c.ImageContent != nil {
-		return json.Marshal(c.ImageContent)
+	if c.OfImageURL != nil {
+		return json.Marshal(c.OfImageURL)
 	}
 	return nil, errors.New("no content to marshal")
 }
@@ -205,6 +236,13 @@ func (s *StringOrAssistantRoleContentUnion) UnmarshalJSON(data []byte) error {
 	err = json.Unmarshal(data, &content)
 	if err == nil {
 		s.Value = content
+		return nil
+	}
+
+	var singleContent ChatCompletionAssistantMessageParamContent
+	err = json.Unmarshal(data, &singleContent)
+	if err == nil {
+		s.Value = singleContent
 		return nil
 	}
 
@@ -284,9 +322,13 @@ func (s StringOrUserRoleContentUnion) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.Value)
 }
 
+// Function message is deprecated and we do not allow it.
 type ChatCompletionMessageParamUnion struct {
-	Value any
-	Type  string
+	OfDeveloper *ChatCompletionDeveloperMessageParam `json:",omitzero,inline"`
+	OfSystem    *ChatCompletionSystemMessageParam    `json:",omitzero,inline"`
+	OfUser      *ChatCompletionUserMessageParam      `json:",omitzero,inline"`
+	OfAssistant *ChatCompletionAssistantMessageParam `json:",omitzero,inline"`
+	OfTool      *ChatCompletionToolMessageParam      `json:",omitzero,inline"`
 }
 
 func (c *ChatCompletionMessageParamUnion) UnmarshalJSON(data []byte) error {
@@ -304,36 +346,31 @@ func (c *ChatCompletionMessageParamUnion) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &userMessage); err != nil {
 			return err
 		}
-		c.Value = userMessage
-		c.Type = ChatMessageRoleUser
+		c.OfUser = &userMessage
 	case ChatMessageRoleAssistant:
 		var assistantMessage ChatCompletionAssistantMessageParam
 		if err := json.Unmarshal(data, &assistantMessage); err != nil {
 			return err
 		}
-		c.Value = assistantMessage
-		c.Type = ChatMessageRoleAssistant
+		c.OfAssistant = &assistantMessage
 	case ChatMessageRoleSystem:
 		var systemMessage ChatCompletionSystemMessageParam
 		if err := json.Unmarshal(data, &systemMessage); err != nil {
 			return err
 		}
-		c.Value = systemMessage
-		c.Type = ChatMessageRoleSystem
+		c.OfSystem = &systemMessage
 	case ChatMessageRoleDeveloper:
 		var developerMessage ChatCompletionDeveloperMessageParam
 		if err := json.Unmarshal(data, &developerMessage); err != nil {
 			return err
 		}
-		c.Value = developerMessage
-		c.Type = ChatMessageRoleDeveloper
+		c.OfDeveloper = &developerMessage
 	case ChatMessageRoleTool:
 		var toolMessage ChatCompletionToolMessageParam
 		if err := json.Unmarshal(data, &toolMessage); err != nil {
 			return err
 		}
-		c.Value = toolMessage
-		c.Type = ChatMessageRoleTool
+		c.OfTool = &toolMessage
 	default:
 		return fmt.Errorf("unknown ChatCompletionMessageParam type: %v", role)
 	}
@@ -341,7 +378,23 @@ func (c *ChatCompletionMessageParamUnion) UnmarshalJSON(data []byte) error {
 }
 
 func (c ChatCompletionMessageParamUnion) MarshalJSON() ([]byte, error) {
-	return json.Marshal(c.Value)
+	if c.OfUser != nil {
+		return json.Marshal(c.OfUser)
+	}
+	if c.OfAssistant != nil {
+		return json.Marshal(c.OfAssistant)
+	}
+	if c.OfSystem != nil {
+		return json.Marshal(c.OfSystem)
+	}
+	if c.OfDeveloper != nil {
+		return json.Marshal(c.OfDeveloper)
+	}
+	if c.OfTool != nil {
+		return json.Marshal(c.OfTool)
+	}
+
+	return nil, errors.New("no message to marshal")
 }
 
 // ChatCompletionUserMessageParam Messages sent by an end user, containing prompts or additional context
@@ -402,8 +455,10 @@ type ChatCompletionAssistantMessageParamAudio struct {
 type ChatCompletionAssistantMessageParamContentType string
 
 const (
-	ChatCompletionAssistantMessageParamContentTypeText    ChatCompletionAssistantMessageParamContentType = "text"
-	ChatCompletionAssistantMessageParamContentTypeRefusal ChatCompletionAssistantMessageParamContentType = "refusal"
+	ChatCompletionAssistantMessageParamContentTypeText             ChatCompletionAssistantMessageParamContentType = "text"
+	ChatCompletionAssistantMessageParamContentTypeRefusal          ChatCompletionAssistantMessageParamContentType = "refusal"
+	ChatCompletionAssistantMessageParamContentTypeThinking         ChatCompletionAssistantMessageParamContentType = "thinking"
+	ChatCompletionAssistantMessageParamContentTypeRedactedThinking ChatCompletionAssistantMessageParamContentType = "redacted_thinking"
 )
 
 // ChatCompletionAssistantMessageParamContent Learn about
@@ -415,6 +470,10 @@ type ChatCompletionAssistantMessageParamContent struct {
 	Refusal *string `json:"refusal,omitempty"`
 	// The text content.
 	Text *string `json:"text,omitempty"`
+
+	// The signature for a thinking block.
+	Signature       *string `json:"signature,omitempty"`
+	RedactedContent []byte  `json:"redactedContent,omitempty"`
 }
 
 // ChatCompletionAssistantMessageParam Messages sent by the model in response to user messages.
@@ -463,6 +522,25 @@ type ChatCompletionMessageToolCallParam struct {
 	Function ChatCompletionMessageToolCallFunctionParam `json:"function"`
 	// The type of the tool. Currently, only `function` is supported.
 	Type ChatCompletionMessageToolCallType `json:"type,omitempty"`
+}
+
+// extractMessageRole extracts role from OpenAI message union types.
+func (c ChatCompletionMessageParamUnion) ExtractMessgaeRole() string {
+	switch {
+	case c.OfDeveloper != nil:
+		return c.OfDeveloper.Role
+	case c.OfSystem != nil:
+		return c.OfSystem.Role
+	case c.OfAssistant != nil:
+		return c.OfAssistant.Role
+	case c.OfTool != nil:
+		return c.OfTool.Role
+	case c.OfUser != nil:
+		return c.OfUser.Role
+	// Add other cases here for any other message types in the union.
+	default:
+		return "[unknown message type]"
+	}
 }
 
 type ChatCompletionResponseFormatType string
@@ -1089,9 +1167,9 @@ type ChatCompletionResponseChoiceMessage struct {
 	// Audio is the audio response generated by the model, if applicable.
 	Audio *ChatCompletionResponseChoiceMessageAudio `json:"audio,omitempty"`
 
-	// AWSBedRockResponseVendorFields is used to hold any non-standard fields from the backend,
+	// AWSBedrockResponseVendorFields is used to hold any non-standard fields from the backend,
 	// like "reasoningContent" from AWS Bedrock.
-	*AWSBedRockResponseVendorFields `json:",inline,omitempty"`
+	*AWSBedrockResponseVendorFields `json:",inline,omitempty"`
 }
 
 // URLCitation contains citation information for web search results.
@@ -1221,10 +1299,11 @@ type ChatCompletionResponseChunkChoice struct {
 // ChatCompletionResponseChunkChoiceDelta is described in the OpenAI API documentation:
 // https://platform.openai.com/docs/api-reference/chat/streaming#chat/streaming-choices
 type ChatCompletionResponseChunkChoiceDelta struct {
-	Content     *string                              `json:"content,omitempty"`
-	Role        string                               `json:"role,omitempty"`
-	ToolCalls   []ChatCompletionMessageToolCallParam `json:"tool_calls,omitempty"`
-	Annotations *[]Annotation                        `json:"annotations,omitempty"`
+	Content          *string                              `json:"content,omitempty"`
+	Role             string                               `json:"role,omitempty"`
+	ToolCalls        []ChatCompletionMessageToolCallParam `json:"tool_calls,omitempty"`
+	Annotations      *[]Annotation                        `json:"annotations,omitempty"`
+	ReasoningContent *AWSBedrockStreamReasoningContent    `json:"reasoning_content,omitempty"`
 }
 
 // Error is described in the OpenAI API documentation
@@ -1437,11 +1516,21 @@ type AnthropicVendorFields struct {
 	Thinking *anthropic.ThinkingConfigParamUnion `json:"thinking,omitzero"`
 }
 
-// AWSBedRockResponseVendorFields contains extra vendor-specific fields to add to the openai response.
-type AWSBedRockResponseVendorFields struct {
+// AWSBedrockResponseVendorFields contains extra vendor-specific fields to add to the openai response.
+type AWSBedrockResponseVendorFields struct {
 	// Contains content regarding the reasoning that is carried out by the model. Reasoning refers to a Chain of Thought (CoT) that the model generates to enhance the accuracy of its final response.
 	// Note: This object is a Union. Only one member of this object can be specified or returned.
 	// Required: No
 	// See https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ReasoningContentBlock.html for more information.
+	ReasoningContent *AWSBedrockReasoningContent `json:"reasoning_content,omitzero"`
+}
+
+type AWSBedrockReasoningContent struct {
 	ReasoningContent *awsbedrock.ReasoningContentBlock `json:"reasoningContent,omitzero"`
+}
+
+type AWSBedrockStreamReasoningContent struct {
+	Text            string `json:"text,omitzero"`
+	Signature       string `json:"signature,omitzero"`
+	RedactedContent []byte `json:"redactedContent,omitzero"`
 }

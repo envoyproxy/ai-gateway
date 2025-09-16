@@ -22,6 +22,9 @@ import (
 func TestTrafficSplittingFallback(t *testing.T) {
 	const manifest = "testdata/traffic_splitting_fallback.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
+	t.Cleanup(func() {
+		_ = e2elib.KubectlDeleteManifest(t.Context(), manifest)
+	})
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=traffic-splitting-fallback"
 

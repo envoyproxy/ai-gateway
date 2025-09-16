@@ -11,24 +11,23 @@ const (
 	// Metric names, attributes and values according to the Semantic Conventions for Generative AI Metrics.
 	// See: https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/
 
-	genaiMetricClientTokenUsage         = "gen_ai.client.token.usage" // #nosec G101: Potential hardcoded credentials
+	genaiMetricClientTokenUsage         = "gen_ai.client.token.usage" //nolint:gosec // metric name, not credential
 	genaiMetricServerRequestDuration    = "gen_ai.server.request.duration"
-	genaiMetricServerTimeToFirstToken   = "gen_ai.server.time_to_first_token"   // #nosec G101: Potential hardcoded credentials
-	genaiMetricServerTimePerOutputToken = "gen_ai.server.time_per_output_token" // #nosec G101: Potential hardcoded credentials
+	genaiMetricServerTimeToFirstToken   = "gen_ai.server.time_to_first_token"   //nolint:gosec // metric name, not credential
+	genaiMetricServerTimePerOutputToken = "gen_ai.server.time_per_output_token" //nolint:gosec // metric name, not credential
 
 	genaiAttributeOperationName = "gen_ai.operation.name"
-	genaiAttributeSystemName    = "gen_ai.system.name"
+	genaiAttributeProviderName  = "gen_ai.provider.name"
 	genaiAttributeRequestModel  = "gen_ai.request.model"
-	genaiAttributeTokenType     = "gen_ai.token.type" // #nosec G101: Potential hardcoded credentials
+	genaiAttributeTokenType     = "gen_ai.token.type" //nolint:gosec // metric name, not credential
 	genaiAttributeErrorType     = "error.type"
 
 	genaiOperationChat      = "chat"
-	genaiOperationEmbedding = "embedding"
-	genaiSystemOpenAI       = "openai"
-	genAISystemAWSBedrock   = "aws.bedrock"
+	genaiOperationEmbedding = "embeddings"
+	genaiProviderOpenAI     = "openai"
+	genaiProviderAWSBedrock = "aws.bedrock"
 	genaiTokenTypeInput     = "input"
 	genaiTokenTypeOutput    = "output"
-	genaiTokenTypeTotal     = "total"
 	genaiErrorTypeFallback  = "_OTHER"
 )
 
@@ -36,6 +35,9 @@ const (
 // See: https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/.
 type genAI struct {
 	// Number of tokens processed.
+	// Note: We record gen_ai.client.token.usage because the AI Gateway acts as a client to upstream AI services.
+	// Since we pass through token counts without manipulation, this metric accurately reflects token usage
+	// from our perspective as a client of the upstream AI provider.
 	// See: https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#metric-gen_aiclienttokenusage
 	tokenUsage metric.Float64Histogram
 	// requestLatency is the total latency of the request.
@@ -46,7 +48,8 @@ type genAI struct {
 	// Measured from the start of the received request headers in extproc to the receiving of the first token in the response body in extproc.
 	// See: https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#metric-gen_aiservertime_to_first_token
 	firstTokenLatency metric.Float64Histogram
-	// outputTokenLatency is the latency between consecutive tokens, if supported, or by chunks/tokens otherwise, by backend, model.
+	// outputTokenLatency is the time per output token generated after the first token.
+	// Calculated by: (request_duration - time_to_first_token) / (output_tokens - 1)
 	// See: https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#metric-gen_aiservertime_per_output_token
 	outputTokenLatency metric.Float64Histogram
 }
@@ -62,7 +65,7 @@ func newGenAI(meter metric.Meter) *genAI {
 		),
 		requestLatency: mustRegisterHistogram(meter,
 			genaiMetricServerRequestDuration,
-			metric.WithDescription("Time spent processing request."),
+			metric.WithDescription("Generative AI server request duration such as time-to-last byte or last output token."),
 			metric.WithUnit("s"),
 			metric.WithExplicitBucketBoundaries(0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64, 1.28, 2.56, 5.12, 10.24, 20.48, 40.96, 81.92),
 		),
@@ -74,7 +77,7 @@ func newGenAI(meter metric.Meter) *genAI {
 		),
 		outputTokenLatency: mustRegisterHistogram(meter,
 			genaiMetricServerTimePerOutputToken,
-			metric.WithDescription("Time between consecutive tokens in streaming responses."),
+			metric.WithDescription("Time per output token generated after the first token for successful responses."),
 			metric.WithUnit("s"),
 			metric.WithExplicitBucketBoundaries(0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.75, 1.0, 2.5),
 		),

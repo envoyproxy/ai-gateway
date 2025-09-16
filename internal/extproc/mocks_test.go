@@ -184,7 +184,7 @@ func (m *mockChatCompletionMetrics) SetModel(model string) { m.model = model }
 func (m *mockChatCompletionMetrics) SetBackend(backend *filterapi.Backend) { m.backend = backend.Name }
 
 // RecordTokenUsage implements [metrics.ChatCompletion].
-func (m *mockChatCompletionMetrics) RecordTokenUsage(_ context.Context, _, _, _ uint32, _ map[string]string) {
+func (m *mockChatCompletionMetrics) RecordTokenUsage(_ context.Context, _, _ uint32, _ map[string]string) {
 	m.tokenUsageCount++
 }
 
@@ -311,7 +311,7 @@ func (m *mockEmbeddingsMetrics) SetModel(model string) { m.model = model }
 func (m *mockEmbeddingsMetrics) SetBackend(backend *filterapi.Backend) { m.backend = backend.Name }
 
 // RecordTokenUsage implements [x.EmbeddingsMetrics].
-func (m *mockEmbeddingsMetrics) RecordTokenUsage(_ context.Context, _, _ uint32, _ map[string]string) {
+func (m *mockEmbeddingsMetrics) RecordTokenUsage(_ context.Context, _ uint32, _ map[string]string) {
 	m.tokenUsageCount++
 }
 

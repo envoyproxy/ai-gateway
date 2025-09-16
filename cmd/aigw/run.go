@@ -13,11 +13,14 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/a8m/envsubst"
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/envoyproxy/gateway/cmd/envoy-gateway/root"
 	egextension "github.com/envoyproxy/gateway/proto/extension"
 	"google.golang.org/grpc"
@@ -27,6 +30,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/yaml"
 
 	"github.com/envoyproxy/ai-gateway/internal/controller"
@@ -152,7 +156,7 @@ func run(ctx context.Context, c cmdRun, o runOpts, stdout, stderr io.Writer) err
 	if err != nil {
 		return err
 	}
-	fakeClient, extProxDone, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, aiGatewayResourcesYaml)
+	fakeClient, extProxDone, envoyAdminAddr, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, aiGatewayResourcesYaml)
 	if err != nil {
 		return fmt.Errorf("failed to write envoy resources and run extproc: %w", err)
 	}
@@ -204,11 +208,43 @@ func run(ctx context.Context, c cmdRun, o runOpts, stdout, stderr io.Writer) err
 		server.SetErr(io.Discard)
 	}
 	server.SetArgs([]string{"server", "--config-path", egConfigPath})
+	go pollEnvoyReadiness(ctx, stderrLogger, envoyAdminAddr, 2*time.Second) // Start the goroutine to inform about the readiness of Envoy.
 	if err := server.ExecuteContext(serverCtx); err != nil {
 		return fmt.Errorf("failed to execute server: %w", err)
 	}
 
 	return extProcErr
+}
+
+// pollEnvoyReadiness polls the Envoy readiness endpoint on the given address until it is ready or the context is done.
+func pollEnvoyReadiness(ctx context.Context, l *slog.Logger, addr string, interval time.Duration) {
+	if addr == "" {
+		return
+	}
+
+	t := time.NewTicker(interval)
+	defer t.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			status := "UNAVAILABLE"
+			resp, _ := http.Get(fmt.Sprintf("http://%s/ready", addr))
+			if resp != nil && resp.Body != nil {
+				if st, err := io.ReadAll(resp.Body); err == nil {
+					status = strings.TrimSpace(string(st))
+				}
+				_ = resp.Body.Close()
+				if resp.StatusCode == 200 {
+					l.Info("Envoy is ready!", "status", status)
+					return
+				}
+			}
+			l.Info("Waiting for Envoy to be ready...", "status", status)
+		}
+	}
 }
 
 // readConfig returns config from the given path, substituting ENV variables
@@ -240,32 +276,32 @@ func recreateDir(path string) error {
 
 // writeEnvoyResourcesAndRunExtProc reads all resources from the given string, writes them to the output file, and runs
 // external processes for EnvoyExtensionPolicy resources.
-func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Context, original string) (client.Client, <-chan error, error) {
-	aigwRoutes, aigwBackends, backendSecurityPolicies, gateways, secrets, err := collectObjects(original, runCtx.envoyGatewayResourcesOut, runCtx.stderrLogger)
+func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Context, original string) (client.Client, <-chan error, string, error) {
+	aigwRoutes, aigwBackends, backendSecurityPolicies, gateways, secrets, envoyProxies, err := collectObjects(original, runCtx.envoyGatewayResourcesOut, runCtx.stderrLogger)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error collecting: %w", err)
+		return nil, nil, "", fmt.Errorf("error collecting: %w", err)
 	}
 	if len(gateways) > 1 {
-		return nil, nil, fmt.Errorf("multiple gateways are not supported: %s", gateways[0].Name)
+		return nil, nil, "", fmt.Errorf("multiple gateways are not supported: %s", gateways[0].Name)
 	}
 	for _, bsp := range backendSecurityPolicies {
 		spec := bsp.Spec
 		if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {
 			// TODO: We can make it work by generalizing the rotation logic.
-			return nil, nil, fmt.Errorf("OIDC exchange token is not supported: %s", bsp.Name)
+			return nil, nil, "", fmt.Errorf("OIDC exchange token is not supported: %s", bsp.Name)
 		}
 	}
 
 	// Do the substitution for the secrets.
 	for _, s := range secrets {
 		if err = runCtx.rewriteSecretWithAnnotatedLocation(s); err != nil {
-			return nil, nil, fmt.Errorf("failed to rewrite secret %s: %w", s.Name, err)
+			return nil, nil, "", fmt.Errorf("failed to rewrite secret %s: %w", s.Name, err)
 		}
 	}
 
 	fakeClient, _fakeClientSet, httpRoutes, eps, httpRouteFilter, backends, _, err := translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, gateways, secrets, runCtx.stderrLogger)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error translating: %w", err)
+		return nil, nil, "", fmt.Errorf("error translating: %w", err)
 	}
 	runCtx.fakeClientSet = _fakeClientSet
 
@@ -288,20 +324,20 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 		Secrets("").Get(ctx,
 		controller.FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), metav1.GetOptions{})
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get filter config secret: %w", err)
+		return nil, nil, "", fmt.Errorf("failed to get filter config secret: %w", err)
 	}
 
 	rawConfig, ok := filterConfigSecret.StringData[controller.FilterConfigKeyInSecret]
 	if !ok {
-		return nil, nil, fmt.Errorf("failed to get filter config from secret: %w", err)
+		return nil, nil, "", fmt.Errorf("failed to get filter config from secret: %w", err)
 	}
 	var fc filterapi.Config
 	if err = yaml.Unmarshal([]byte(rawConfig), &fc); err != nil {
-		return nil, nil, fmt.Errorf("failed to unmarshal filter config: %w", err)
+		return nil, nil, "", fmt.Errorf("failed to unmarshal filter config: %w", err)
 	}
 	runCtx.stderrLogger.Info("Running external process", "config", fc)
 	done := runCtx.mustStartExtProc(ctx, &fc)
-	return fakeClient, done, nil
+	return fakeClient, done, runCtx.tryFindEnvoyAdminAddress(gw, envoyProxies), nil
 }
 
 // mustStartExtProc starts the external process with the given working directory, port, and filter configuration.
@@ -405,6 +441,54 @@ func (runCtx *runCmdContext) rewriteSecretWithAnnotatedLocation(s *corev1.Secret
 	s.Data = allData
 	s.StringData = nil
 	return nil
+}
+
+// tryFindEnvoyAdminAddress tries to find the address where the Envoy Admin interface is listening to.
+// By default, Envoy Gateway assigns a random port to the Envoy Admin interface, and we may not be able to find it. This method
+// attempts to find an EnvoyProxy instance attached to the standalone Gateway, and reads the bootstrap config to check if there
+// is a custom address configured for the admin interface.
+// If there is no EnvoyProxy or the admin address is not configured, this returns an empty string.
+func (runCtx *runCmdContext) tryFindEnvoyAdminAddress(gw *gwapiv1.Gateway, proxies []*egv1a1.EnvoyProxy) string {
+	if gw.Spec.Infrastructure == nil ||
+		gw.Spec.Infrastructure.ParametersRef == nil ||
+		gw.Spec.Infrastructure.ParametersRef.Kind != "EnvoyProxy" ||
+		gw.Spec.Infrastructure.ParametersRef.Name == "" {
+		return ""
+	}
+
+	var bootstrap *egv1a1.ProxyBootstrap
+	for _, p := range proxies {
+		if p.Name == gw.Spec.Infrastructure.ParametersRef.Name {
+			bootstrap = p.Spec.Bootstrap
+			break
+		}
+	}
+
+	if bootstrap == nil || bootstrap.Value == nil {
+		return ""
+	}
+
+	type adminSettings struct {
+		Admin struct {
+			Address struct {
+				SocketAddress struct {
+					Address   string `json:"address"`
+					PortValue int    `json:"port_value"`
+				} `json:"socket_address,omitempty"`
+			} `json:"address"`
+		} `json:"admin"`
+	}
+
+	var admin adminSettings
+	if err := yaml.Unmarshal([]byte(*bootstrap.Value), &admin); err != nil {
+		runCtx.stderrLogger.Error("Failed to read EnvoyProxy bootstrap settings", "error", err)
+		return ""
+	}
+
+	if admin.Admin.Address.SocketAddress.Address == "" || admin.Admin.Address.SocketAddress.PortValue == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s:%d", admin.Admin.Address.SocketAddress.Address, admin.Admin.Address.SocketAddress.PortValue)
 }
 
 func maybeResolveHome(p string) string {

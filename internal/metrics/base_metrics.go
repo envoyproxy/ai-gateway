@@ -47,13 +47,13 @@ func (b *baseMetrics) SetModel(model string) {
 }
 
 // SetBackend sets the name of the backend to be reported in the metrics according to:
-// https://opentelemetry.io/docs/specs/semconv/attributes-registry/gen-ai/#gen-ai-system
+// https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/
 func (b *baseMetrics) SetBackend(backend *filterapi.Backend) {
 	switch backend.Schema.Name {
 	case filterapi.APISchemaOpenAI:
-		b.backend = genaiSystemOpenAI
+		b.backend = genaiProviderOpenAI
 	case filterapi.APISchemaAWSBedrock:
-		b.backend = genAISystemAWSBedrock
+		b.backend = genaiProviderAWSBedrock
 	default:
 		b.backend = backend.Name
 	}
@@ -62,14 +62,14 @@ func (b *baseMetrics) SetBackend(backend *filterapi.Backend) {
 // buildBaseAttributes creates the base attributes for metrics recording.
 func (b *baseMetrics) buildBaseAttributes(headers map[string]string) attribute.Set {
 	opt := attribute.Key(genaiAttributeOperationName).String(b.operation)
-	sys := attribute.Key(genaiAttributeSystemName).String(b.backend)
+	provider := attribute.Key(genaiAttributeProviderName).String(b.backend)
 	model := attribute.Key(genaiAttributeRequestModel).String(b.model)
 	if len(b.requestHeaderLabelMapping) == 0 {
-		return attribute.NewSet(opt, sys, model)
+		return attribute.NewSet(opt, provider, model)
 	}
 
 	// Add header values as attributes based on the header mapping if headers are provided.
-	attrs := []attribute.KeyValue{opt, sys, model}
+	attrs := []attribute.KeyValue{opt, provider, model}
 	for headerName, labelName := range b.requestHeaderLabelMapping {
 		if headerValue, exists := headers[headerName]; exists {
 			attrs = append(attrs, attribute.Key(labelName).String(headerValue))
