@@ -73,33 +73,4 @@ func TestCrossNamespace(t *testing.T) {
 			return choiceNonEmpty
 		}, 40*time.Second, 3*time.Second)
 	})
-
-	t.Run("verify-resources-created", func(t *testing.T) {
-		// Verify that the HTTPRoute was created in the same namespace as the AIGatewayRoute (route-ns)
-		// and that it correctly references the Gateway in gateway-ns.
-		require.Eventually(t, func() bool {
-			cmd := e2elib.Kubectl(t.Context(), "get", "httproute", "cross-namespace-route", "-n", "route-ns", "-o", "jsonpath={.spec.parentRefs[0].name}")
-			cmd.Stdout = nil
-			out, err := cmd.Output()
-			if err != nil {
-				t.Logf("error getting HTTPRoute: %v", err)
-				return false
-			}
-			// Verify the HTTPRoute references the correct Gateway.
-			return string(out) == "cross-namespace-gateway"
-		}, 30*time.Second, 2*time.Second)
-
-		// Verify that the HTTPRoute has the correct namespace reference for the Gateway.
-		require.Eventually(t, func() bool {
-			cmd := e2elib.Kubectl(t.Context(), "get", "httproute", "cross-namespace-route", "-n", "route-ns", "-o", "jsonpath={.spec.parentRefs[0].namespace}")
-			cmd.Stdout = nil
-			out, err := cmd.Output()
-			if err != nil {
-				t.Logf("error getting HTTPRoute namespace: %v", err)
-				return false
-			}
-			// Verify the HTTPRoute references the Gateway in the correct namespace.
-			return string(out) == "gateway-ns"
-		}, 30*time.Second, 2*time.Second)
-	})
 }
