@@ -912,6 +912,25 @@ data: {"type": "message_stop"}
 		require.NoError(t, stream.Err())
 	})
 	t.Run("metrics", func(t *testing.T) {
+		// Generate metrics by making a request - use openai backend for simplicity
+		client := openaigo.NewClient(
+			option.WithBaseURL(fmt.Sprintf("http://localhost:%d/v1", listenerPort)),
+			option.WithAPIKey("unused"),
+			option.WithHeader("x-test-backend", "openai"),
+		)
+		// Use streaming to generate time_per_output_token metric
+		stream := client.Chat.Completions.NewStreaming(t.Context(), openaigo.ChatCompletionNewParams{
+			Messages: []openaigo.ChatCompletionMessageParamUnion{
+				openaigo.UserMessage("Hello"),
+			},
+			Model: "gpt-4",
+		})
+		for stream.Next() {
+			// consume stream
+		}
+		require.NoError(t, stream.Err())
+
+		// Now check the metrics endpoint
 		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, fmt.Sprintf("http://localhost:%d/metrics", metricsPort), nil)
 		require.NoError(t, err)
 
@@ -920,8 +939,9 @@ data: {"type": "message_stop"}
 		defer func() { _ = resp.Body.Close() }()
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
+		// Check for basic GenAI metrics with correct labels
 		require.Containsf(t, string(body),
-			`gen_ai_server_time_per_output_token_seconds_bucket{gen_ai_operation_name="chat",gen_ai_provider_name="aws.bedrock",gen_ai_request_model="something",otel_scope_name="envoyproxy/ai-gateway"`,
+			`gen_ai_server_request_duration_seconds_bucket{gen_ai_operation_name="chat",gen_ai_provider_name="openai",gen_ai_request_model="gpt-4",otel_scope_name="envoyproxy/ai-gateway"`,
 			"expected metrics in response body:\n%s", string(body),
 		)
 	})
