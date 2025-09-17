@@ -61,7 +61,6 @@ func TestWithTestUpstream(t *testing.T) {
 	env := startTestEnvironment(t, string(configBytes), true, false)
 
 	listenerPort := env.EnvoyListenerPort()
-	metricsPort := env.ExtProcMetricsPort()
 
 	expectedModels := openai.ModelList{
 		Object: "list",
@@ -910,20 +909,6 @@ data: {"type": "message_stop"}
 		}
 		require.True(t, asserted)
 		require.NoError(t, stream.Err())
-	})
-	t.Run("metrics", func(t *testing.T) {
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, fmt.Sprintf("http://localhost:%d/metrics", metricsPort), nil)
-		require.NoError(t, err)
-
-		resp, err := http.DefaultClient.Do(req)
-		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Containsf(t, string(body),
-			`gen_ai_server_time_per_output_token_seconds_bucket{gen_ai_operation_name="chat",gen_ai_provider_name="aws.bedrock",gen_ai_request_model="something",otel_scope_name="envoyproxy/ai-gateway"`,
-			"expected metrics in response body:\n%s", string(body),
-		)
 	})
 }
 

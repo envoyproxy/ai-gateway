@@ -18,6 +18,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
@@ -134,6 +135,7 @@ type embeddingsProcessorUpstreamFilter struct {
 	modelNameOverride      string
 	backendName            string
 	handler                backendauth.Handler
+	headerMutator          *headermutator.HeaderMutator
 	originalRequestBodyRaw []byte
 	originalRequestBody    *openai.EmbeddingRequest
 	translator             translator.OpenAIEmbeddingTranslator
@@ -179,10 +181,18 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Co
 	}
 	if headerMutation == nil {
 		headerMutation = &extprocv3.HeaderMutation{}
-	} else {
-		for _, h := range headerMutation.SetHeaders {
-			e.requestHeaders[h.Header.Key] = string(h.Header.RawValue)
+	}
+
+	// Apply header mutations from the route and also restore original headers on retry.
+	if h := e.headerMutator; h != nil {
+		if hm := e.headerMutator.Mutate(e.requestHeaders, e.onRetry); hm != nil {
+			headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, hm.RemoveHeaders...)
+			headerMutation.SetHeaders = append(headerMutation.SetHeaders, hm.SetHeaders...)
 		}
+	}
+
+	for _, h := range headerMutation.SetHeaders {
+		e.requestHeaders[h.Header.Key] = string(h.Header.RawValue)
 	}
 	if h := e.handler; h != nil {
 		if err = h.Do(ctx, e.requestHeaders, headerMutation, bodyMutation); err != nil {
@@ -331,6 +341,7 @@ func (e *embeddingsProcessorUpstreamFilter) SetBackend(ctx context.Context, b *f
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
 	e.handler = backendHandler
+	e.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
 	// Sync header with backend model so header-derived labels/CEL use the actual model.
 	if e.modelNameOverride != "" {
 		e.requestHeaders[e.config.modelNameHeaderKey] = e.modelNameOverride

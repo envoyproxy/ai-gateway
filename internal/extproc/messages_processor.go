@@ -18,6 +18,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -137,6 +138,7 @@ type messagesProcessorUpstreamFilter struct {
 	modelNameOverride      string
 	backendName            string
 	handler                backendauth.Handler
+	headerMutator          *headermutator.HeaderMutator
 	originalRequestBody    *anthropic.MessagesRequest
 	originalRequestBodyRaw []byte
 	translator             translator.AnthropicMessagesTranslator
@@ -180,10 +182,18 @@ func (c *messagesProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Cont
 	}
 	if headerMutation == nil {
 		headerMutation = &extprocv3.HeaderMutation{}
-	} else {
-		for _, h := range headerMutation.SetHeaders {
-			c.requestHeaders[h.Header.Key] = string(h.Header.RawValue)
+	}
+
+	// Apply header mutations from the route and also restore original headers on retry.
+	if h := c.headerMutator; h != nil {
+		if hm := c.headerMutator.Mutate(c.requestHeaders, c.onRetry); hm != nil {
+			headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, hm.RemoveHeaders...)
+			headerMutation.SetHeaders = append(headerMutation.SetHeaders, hm.SetHeaders...)
 		}
+	}
+
+	for _, h := range headerMutation.SetHeaders {
+		c.requestHeaders[h.Header.Key] = string(h.Header.RawValue)
 	}
 	if h := c.handler; h != nil {
 		if err = h.Do(ctx, c.requestHeaders, headerMutation, bodyMutation); err != nil {
@@ -324,6 +334,7 @@ func (c *messagesProcessorUpstreamFilter) SetBackend(ctx context.Context, b *fil
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
 	c.handler = backendHandler
+	c.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
 	// Sync header with backend model so header-derived labels/CEL use the actual model.
 	if c.modelNameOverride != "" {
 		c.requestHeaders[c.config.modelNameHeaderKey] = c.modelNameOverride
