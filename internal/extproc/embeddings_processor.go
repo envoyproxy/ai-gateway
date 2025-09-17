@@ -6,12 +6,9 @@
 package extproc
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"strconv"
 
@@ -21,6 +18,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
@@ -137,6 +135,7 @@ type embeddingsProcessorUpstreamFilter struct {
 	modelNameOverride      string
 	backendName            string
 	handler                backendauth.Handler
+	headerMutator          *headermutator.HeaderMutator
 	originalRequestBodyRaw []byte
 	originalRequestBody    *openai.EmbeddingRequest
 	translator             translator.OpenAIEmbeddingTranslator
@@ -182,10 +181,18 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Co
 	}
 	if headerMutation == nil {
 		headerMutation = &extprocv3.HeaderMutation{}
-	} else {
-		for _, h := range headerMutation.SetHeaders {
-			e.requestHeaders[h.Header.Key] = string(h.Header.RawValue)
+	}
+
+	// Apply header mutations from the route and also restore original headers on retry.
+	if h := e.headerMutator; h != nil {
+		if hm := e.headerMutator.Mutate(e.requestHeaders, e.onRetry); hm != nil {
+			headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, hm.RemoveHeaders...)
+			headerMutation.SetHeaders = append(headerMutation.SetHeaders, hm.SetHeaders...)
 		}
+	}
+
+	for _, h := range headerMutation.SetHeaders {
+		e.requestHeaders[h.Header.Key] = string(h.Header.RawValue)
 	}
 	if h := e.handler; h != nil {
 		if err = h.Do(ctx, e.requestHeaders, headerMutation, bodyMutation); err != nil {
@@ -250,24 +257,18 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 			e.metrics.RecordRequestCompletion(ctx, true, e.requestHeaders)
 		}
 	}()
-	var br io.Reader
-	var isGzip bool
-	switch e.responseEncoding {
-	case "gzip":
-		br, err = gzip.NewReader(bytes.NewReader(body.Body))
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode gzip: %w", err)
-		}
-		isGzip = true
-	default:
-		br = bytes.NewReader(body.Body)
+
+	// Decompress the body if needed using common utility.
+	decodingResult, err := decodeContentIfNeeded(body.Body, e.responseEncoding)
+	if err != nil {
+		return nil, err
 	}
 
 	// Assume all responses have a valid status code header.
 	if code, _ := strconv.Atoi(e.responseHeaders[":status"]); !isGoodStatusCode(code) {
 		var headerMutation *extprocv3.HeaderMutation
 		var bodyMutation *extprocv3.BodyMutation
-		headerMutation, bodyMutation, err = e.translator.ResponseError(e.responseHeaders, br)
+		headerMutation, bodyMutation, err = e.translator.ResponseError(e.responseHeaders, decodingResult.reader)
 		if err != nil {
 			return nil, fmt.Errorf("failed to transform response error: %w", err)
 		}
@@ -285,22 +286,13 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 		}, nil
 	}
 
-	headerMutation, bodyMutation, tokenUsage, err := e.translator.ResponseBody(e.responseHeaders, br, body.EndOfStream)
+	headerMutation, bodyMutation, tokenUsage, err := e.translator.ResponseBody(e.responseHeaders, decodingResult.reader, body.EndOfStream)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}
-	if bodyMutation != nil && isGzip {
-		if headerMutation == nil {
-			headerMutation = &extprocv3.HeaderMutation{}
-		}
-		// TODO: this is a hotfix, we should update this to recompress since its in the header
-		// If the response was gzipped, ensure we remove the content-encoding header.
-		//
-		// This is only needed when the transformation is actually modifying the body. When the backend
-		// is in OpenAI format (and it's the first try before any retry), the response body is not modified,
-		// so we don't need to remove the header in that case.
-		headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, "content-encoding")
-	}
+
+	// Remove content-encoding header if original body encoded but was mutated in the processor.
+	headerMutation = removeContentEncodingIfNeeded(headerMutation, bodyMutation, decodingResult.isEncoded)
 
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ResponseBody{
@@ -318,7 +310,7 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 	e.costs.TotalTokens += tokenUsage.TotalTokens
 
 	// Update metrics with token usage.
-	e.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.TotalTokens, e.requestHeaders)
+	e.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, e.requestHeaders)
 
 	if body.EndOfStream && len(e.config.requestCosts) > 0 {
 		resp.DynamicMetadata, err = buildDynamicMetadata(e.config, &e.costs, e.requestHeaders, e.modelNameOverride, e.backendName)
@@ -349,6 +341,7 @@ func (e *embeddingsProcessorUpstreamFilter) SetBackend(ctx context.Context, b *f
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
 	e.handler = backendHandler
+	e.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
 	// Sync header with backend model so header-derived labels/CEL use the actual model.
 	if e.modelNameOverride != "" {
 		e.requestHeaders[e.config.modelNameHeaderKey] = e.modelNameOverride

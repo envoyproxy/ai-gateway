@@ -38,6 +38,7 @@ services:
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:6006
       - OTEL_BSP_SCHEDULE_DELAY=100
+      - OTEL_METRIC_EXPORT_INTERVAL=100
     # ExtProc ports (internal to Docker network, consumed by Envoy):
     # - 1063: gRPC service
     # - 1064: metrics
@@ -89,6 +90,7 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:6006
       - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
       - OTEL_BSP_SCHEDULE_DELAY=100
+      - OTEL_METRIC_EXPORT_INTERVAL=100
     depends_on:
       envoy:
         condition: service_started

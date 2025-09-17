@@ -149,10 +149,9 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 			require.True(t, ok, userIDMetricsLabel+" should be present in the metric")
 			t.Logf("Type: %s, Value: %v, User ID: %s", typ, result.Value, uID)
 		}
-		// We should see input, output, and total token types.
+		// We should see input and output token types (total was removed per OTEL spec).
 		require.Contains(t, actualTypes, "input")
 		require.Contains(t, actualTypes, "output")
-		require.Contains(t, actualTypes, "total")
 		return true
 	}, 2*time.Minute, 1*time.Second)
 }
