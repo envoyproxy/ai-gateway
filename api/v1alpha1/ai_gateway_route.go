@@ -53,6 +53,7 @@ type AIGatewayRouteList struct {
 // AIGatewayRouteSpec details the AIGatewayRoute configuration.
 type AIGatewayRouteSpec struct {
 	// ParentRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.
+	// Currently, each reference's Kind must be Gateway.
 	//
 	// +kubebuilder:validation:MaxItems=16
 	// +kubebuilder:validation:XValidation:rule="self.all(match, match.kind == 'Gateway')", message="only Gateway is supported"
