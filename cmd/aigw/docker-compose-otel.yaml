@@ -8,6 +8,28 @@ volumes:
   envoy-cache:  # Stores downloaded Envoy versions
 
 services:
+  # otel-tui is a terminal UI for viewing OpenTelemetry traces and metrics
+  otel-tui:
+    image: ymtdzzz/otel-tui:latest
+    container_name: otel-tui
+    profiles: ["otel-tui"]
+    ports:
+      - "4318:4318"
+    stdin_open: true
+    tty: true
+
+  # phoenix is an OpenTelemetry compatible LLM eval system which accepts trace
+  # spans and has special handling for OpenInference LLM semantic conventions.
+  # See https://arize.com/docs/phoenix
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: phoenix
+    profiles: ["phoenix"]  # Only start when explicitly requested
+    ports:
+      - "6006:6006"
+    environment:
+      PHOENIX_ENABLE_AUTH: "false"
+
   # aigw-build builds the Envoy AI Gateway CLI binary, so you can use main code.
   aigw-build:
     image: golang:1.25
@@ -17,17 +39,6 @@ services:
       - ../..:/workspace
       - aigw-target:/workspace/out
     command: ["bash", "-c", "go build -buildvcs=false -o /workspace/out/aigw ./cmd/aigw"]
-
-  # phoenix is an OpenTelemetry compatible LLM eval system which accepts trace
-  # spans and has special handling for OpenInference LLM semantic conventions.
-  # See https://arize.com/docs/phoenix
-  phoenix:
-    image: arizephoenix/phoenix:latest
-    container_name: phoenix
-    ports:
-      - "6006:6006"
-    environment:
-      PHOENIX_ENABLE_AUTH: "false"
 
   # ollama-pull pulls the models defined in .env.ollama, to avoid 404s.
   ollama-pull:
@@ -42,27 +53,18 @@ services:
     extra_hosts:  # send localhost traffic to the docker host, e.g. your laptop
       - "localhost:host-gateway"
 
-  # aigw is the Envoy AI Gateway CLI a.k.a standlane mode.
+  # aigw is the Envoy AI Gateway CLI a.k.a standalone mode.
   aigw:
     image: debian:trixie-slim
     container_name: aigw
     depends_on:
       aigw-build:
         condition: service_completed_successfully
-      phoenix:
-        condition: service_started
       ollama-pull:
         condition: service_completed_successfully
+    env_file:
+      - .env.otel.${COMPOSE_PROFILES:-console}
     environment:
-      # Below sets the OTLP collector to Phoenix, using a shorter span delay.
-      # See https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:6006
-      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
-      - OTEL_BSP_SCHEDULE_DELAY=100
-      # Below are default values for span redaction in OpenInference.
-      # See https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
-      - OPENINFERENCE_HIDE_INPUTS=false
-      - OPENINFERENCE_HIDE_OUTPUTS=false
       - OPENAI_HOST=host.docker.internal
     ports:
       - "1975:1975"  # OpenAI compatible endpoint at /v1
@@ -85,15 +87,12 @@ services:
       context: ../../tests/internal/testopeninference
       dockerfile: Dockerfile.openai_client
     container_name: chat-completion
-    profiles: ["test"]
     env_file:
       - ../../.env.ollama
+      - .env.otel.${COMPOSE_PROFILES:-console}
     environment:
       - OPENAI_BASE_URL=http://aigw:1975/v1
       - OPENAI_API_KEY=unused
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:6006
-      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
-      - OTEL_BSP_SCHEDULE_DELAY=100
     depends_on:
       aigw:
         condition: service_started

@@ -153,9 +153,14 @@ requests captured in OpenTelemetry spans.
 `aigw run` supports OpenTelemetry tracing via environment variables:
 
 - **[OTEL SDK][otel-env]**: OTLP exporter configuration that controls span
-  export such as:
+  and metrics export such as:
     - `OTEL_EXPORTER_OTLP_ENDPOINT`: Collector endpoint (e.g., `http://phoenix:6006`)
+    - `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`: Override traces endpoint separately
+    - `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`: Override metrics endpoint separately
+    - `OTEL_TRACES_EXPORTER`: Traces exporter type (e.g., `console`, `otlp`, `none`)
+    - `OTEL_METRICS_EXPORTER`: Metrics exporter type (e.g., `console`, `otlp`, `none`)
     - `OTEL_BSP_SCHEDULE_DELAY`: Batch span processor delay (default: 5000ms)
+    - `OTEL_METRIC_EXPORT_INTERVAL`: Metrics export interval (default: 60000ms)
 
 - **[OpenInference][openinference-config]**: Control sensitive data redaction,
   such as:

@@ -283,6 +283,116 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 	}
 }
 
+func TestGatewayController_reconcileFilterConfigSecret_SkipsDeletedRoutes(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+	c := NewGatewayController(fakeClient, kube, ctrl.Log,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil)
+
+	const gwNamespace = "ns"
+	now := metav1.Now()
+
+	// Create routes: one active, one being deleted.
+	routes := []aigv1a1.AIGatewayRoute{
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:              "active-route",
+				Namespace:         gwNamespace,
+				DeletionTimestamp: nil, // Active route.
+			},
+			Spec: aigv1a1.AIGatewayRouteSpec{
+				Rules: []aigv1a1.AIGatewayRouteRule{
+					{
+						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+							{Name: "apple"},
+						},
+						Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+							{
+								Headers: []gwapiv1.HTTPHeaderMatch{
+									{
+										Name:  aigv1a1.AIModelHeaderKey,
+										Value: "mymodel",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:              "deleting-route",
+				Namespace:         gwNamespace,
+				DeletionTimestamp: &now, // Route being deleted.
+			},
+			Spec: aigv1a1.AIGatewayRouteSpec{
+				Rules: []aigv1a1.AIGatewayRouteRule{
+					{
+						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+							{Name: "orange"},
+						},
+						Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+							{
+								Headers: []gwapiv1.HTTPHeaderMatch{
+									{
+										Name:  aigv1a1.AIModelHeaderKey,
+										Value: "deletedmodel",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Create AIServiceBackends for both routes.
+	for _, backend := range []*aigv1a1.AIServiceBackend{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: gwNamespace},
+			Spec: aigv1a1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: gwNamespace},
+			Spec: aigv1a1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+			},
+		},
+	} {
+		err := fakeClient.Create(t.Context(), backend)
+		require.NoError(t, err)
+	}
+
+	const someNamespace = "some-namespace"
+	configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
+
+	// Reconcile filter config secret.
+	err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, "foouuid")
+	require.NoError(t, err)
+
+	// Verify the secret was created and only contains data from the active route.
+	secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
+	require.NoError(t, err)
+	configStr, ok := secret.StringData[FilterConfigKeyInSecret]
+	require.True(t, ok)
+
+	var fc filterapi.Config
+	require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
+
+	// Should only have one model (from the active route), not two (deleted route should be skipped).
+	require.Len(t, fc.Models, 1)
+	require.Equal(t, "mymodel", fc.Models[0].Name)
+
+	// Should only have one backend (from the active route).
+	require.Len(t, fc.Backends, 1)
+	require.Contains(t, fc.Backends[0].Name, "apple")
+}
+
 func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()

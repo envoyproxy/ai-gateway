@@ -9,18 +9,25 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -198,7 +205,7 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 	content, err := os.ReadFile(resourcePath)
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(t.Context())
-	_, done, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, string(content))
+	_, done, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, string(content))
 	require.NoError(t, err)
 	time.Sleep(1 * time.Second)
 	cancel()
@@ -236,4 +243,117 @@ func checkIfOllamaReady(t *testing.T, modelName string) bool {
 	tags := string(body)
 	t.Logf("Ollama tags: %s", tags)
 	return strings.Contains(tags, modelName)
+}
+
+func TestTryFindEnvoyAdminAddress(t *testing.T) {
+	gwWithProxy := func(name string) *gwapiv1.Gateway {
+		return &gwapiv1.Gateway{
+			Spec: gwapiv1.GatewaySpec{
+				Infrastructure: &gwapiv1.GatewayInfrastructure{
+					ParametersRef: &gwapiv1.LocalParametersReference{
+						Kind: "EnvoyProxy",
+						Name: name,
+					},
+				},
+			},
+		}
+	}
+
+	proxyWithAdminAddr := func(name string, host string, port int) *egv1a1.EnvoyProxy {
+		return &egv1a1.EnvoyProxy{
+			ObjectMeta: metav1.ObjectMeta{Name: name},
+			Spec: egv1a1.EnvoyProxySpec{
+				Bootstrap: &egv1a1.ProxyBootstrap{
+					Value: ptr.To(fmt.Sprintf(`
+admin:
+  address:
+    socket_address:
+      address: %s
+      port_value: %d`, host, port)),
+				},
+			},
+		}
+	}
+
+	tests := []struct {
+		name    string
+		gw      *gwapiv1.Gateway
+		proxies []*egv1a1.EnvoyProxy
+		want    string
+	}{
+		{
+			name: "gateway with no envoy proxy",
+			gw:   &gwapiv1.Gateway{Spec: gwapiv1.GatewaySpec{}},
+			want: "",
+		},
+		{
+			name:    "gateway with non matching envoy proxy",
+			gw:      gwWithProxy("non-matching-proxy"),
+			proxies: []*egv1a1.EnvoyProxy{proxyWithAdminAddr("proxy", "localhost", 8080)},
+			want:    "",
+		},
+		{
+			name: "gateway with custom proxy no bootstrap",
+			gw:   gwWithProxy("proxy"),
+			proxies: []*egv1a1.EnvoyProxy{
+				{ObjectMeta: metav1.ObjectMeta{Name: "proxy"}, Spec: egv1a1.EnvoyProxySpec{}},
+			},
+			want: "",
+		},
+		{
+			name: "gateway with custom bootstrap",
+			gw:   gwWithProxy("proxy"),
+			proxies: []*egv1a1.EnvoyProxy{
+				proxyWithAdminAddr("no-match", "localhost", 8081),
+				proxyWithAdminAddr("proxy", "127.0.0.1", 9901),
+			},
+			want: "127.0.0.1:9901",
+		},
+	}
+
+	runCtx := &runCmdContext{
+		tmpdir:       t.TempDir(),
+		stderrLogger: slog.New(slog.DiscardHandler),
+	}
+
+	for _, tt := range tests {
+		addr := runCtx.tryFindEnvoyAdminAddress(tt.gw, tt.proxies)
+		require.Equal(t, tt.want, addr)
+	}
+}
+
+func TestPollEnvoyReady(t *testing.T) {
+	successAt := 5
+	callCount := 0
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		callCount++
+		if callCount < successAt {
+			http.Error(w, "not ready", http.StatusServiceUnavailable)
+			return
+		}
+	}))
+	u, err := url.Parse(s.URL)
+	require.NoError(t, err)
+
+	l := slog.New(slog.DiscardHandler)
+
+	t.Run("empty address", func(t *testing.T) {
+		t.Cleanup(func() { callCount = 0 })
+		pollEnvoyReadiness(t.Context(), l, "", 50*time.Millisecond)
+		require.Zero(t, callCount)
+	})
+
+	t.Run("ready", func(t *testing.T) {
+		t.Cleanup(func() { callCount = 0 })
+		pollEnvoyReadiness(t.Context(), l, u.Host, 50*time.Millisecond)
+		require.Equal(t, successAt, callCount)
+	})
+
+	t.Run("abort on context done", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+		t.Cleanup(cancel)
+		t.Cleanup(func() { callCount = 0 })
+		pollEnvoyReadiness(ctx, l, u.Host, 50*time.Millisecond)
+		require.Less(t, callCount, successAt)
+	})
 }
