@@ -53,16 +53,6 @@ func TestCrossNamespace(t *testing.T) {
 				return false
 			}
 
-			// print httproute status.
-			cmd := e2elib.Kubectl(t.Context(), "get", "httproute", "cross-namespace-route", "-n", "route-ns", "-o", "jsonpath={.status}")
-			cmd.Stdout = nil
-			out, err := cmd.Output()
-			if err != nil {
-				t.Logf("error getting HTTPRoute status: %v", err)
-				return false
-			}
-			t.Logf("HTTPRoute status: %s", string(out))
-
 			var choiceNonEmpty bool
 			for _, choice := range chatCompletion.Choices {
 				t.Logf("choice: %s", choice.Message.Content)
