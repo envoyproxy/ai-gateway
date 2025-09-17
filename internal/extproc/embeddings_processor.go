@@ -173,11 +173,11 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Co
 
 	// Start tracking metrics for this request.
 	e.metrics.StartRequest(e.requestHeaders)
-	reqModel := e.requestHeaders[e.config.modelNameHeaderKey]
+	respModel := e.requestHeaders[e.config.modelNameHeaderKey]
+	reqModel := respModel
 	if e.originalRequestBody != nil && e.originalRequestBody.Model != "" {
 		reqModel = e.originalRequestBody.Model
 	}
-	respModel := e.requestHeaders[e.config.modelNameHeaderKey]
 	e.metrics.SetModel(reqModel, respModel)
 
 	headerMutation, bodyMutation, err := e.translator.RequestBody(e.originalRequestBodyRaw, e.originalRequestBody, e.onRetry)

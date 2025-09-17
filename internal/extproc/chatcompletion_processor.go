@@ -227,13 +227,13 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 
 	// Start tracking metrics for this request.
 	c.metrics.StartRequest(c.requestHeaders)
+	// Response label at this stage defaults to the effective header model; backend override (if any) will be applied in SetBackend.
+	respModel := c.requestHeaders[c.config.modelNameHeaderKey]
 	// Request label should reflect the original user-provided model; fall back to header if body is unavailable.
-	reqModel := c.requestHeaders[c.config.modelNameHeaderKey]
+	reqModel := respModel
 	if c.originalRequestBody != nil && c.originalRequestBody.Model != "" {
 		reqModel = c.originalRequestBody.Model
 	}
-	// Response label at this stage defaults to the effective header model; backend override (if any) will be applied in SetBackend.
-	respModel := c.requestHeaders[c.config.modelNameHeaderKey]
 	c.metrics.SetModel(reqModel, respModel)
 
 	// We force the body mutation in the following cases:
