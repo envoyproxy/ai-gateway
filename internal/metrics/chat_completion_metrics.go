@@ -49,7 +49,7 @@ type ChatCompletionMetrics interface {
 // NewChatCompletion creates a new x.ChatCompletionMetrics instance.
 func NewChatCompletion(meter metric.Meter, requestHeaderLabelMapping map[string]string) ChatCompletionMetrics {
 	return &chatCompletion{
-		baseMetrics: newBaseMetrics(meter, genaiOperationChat, requestHeaderLabelMapping),
+		baseMetrics: newBaseMetrics(meter, genaiOperationChat, requestHeaderLabelMapping, true),
 	}
 }
 

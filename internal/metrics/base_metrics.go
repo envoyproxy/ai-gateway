@@ -17,7 +17,7 @@ import (
 
 // baseMetrics provides shared functionality for AI Gateway metrics implementations.
 type baseMetrics struct {
-	metrics                   *genAI
+	metrics                   *apiMetrics
 	operation                 string
 	requestStart              time.Time
 	model                     string
@@ -26,9 +26,9 @@ type baseMetrics struct {
 }
 
 // newBaseMetrics creates a new baseMetrics instance with the specified operation.
-func newBaseMetrics(meter metric.Meter, operation string, requestHeaderLabelMapping map[string]string) baseMetrics {
+func newBaseMetrics(meter metric.Meter, operation string, requestHeaderLabelMapping map[string]string, isGen bool) baseMetrics {
 	return baseMetrics{
-		metrics:                   newGenAI(meter),
+		metrics:                   newAPIMetrics(meter, isGen),
 		operation:                 operation,
 		model:                     "unknown",
 		backend:                   "unknown",

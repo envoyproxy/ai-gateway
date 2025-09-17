@@ -31,9 +31,8 @@ const (
 	genaiErrorTypeFallback  = "_OTHER"
 )
 
-// genAI holds metrics according to the Semantic Conventions for Generative AI Metrics.
-// See: https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/.
-type genAI struct {
+// commonMetrics contains the metrics for both embedding and generative apis.
+type commonMetrics struct {
 	// Number of tokens processed.
 	// Note: We record gen_ai.client.token.usage because the AI Gateway acts as a client to upstream AI services.
 	// Since we pass through token counts without manipulation, this metric accurately reflects token usage
@@ -44,19 +43,11 @@ type genAI struct {
 	// Measured from the start of the received request headers in extproc to the end of the processed response body in extproc.
 	// See: https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#metric-gen_aiserverrequestduration
 	requestLatency metric.Float64Histogram
-	// firstTokenLatency is the latency to receive the first token.
-	// Measured from the start of the received request headers in extproc to the receiving of the first token in the response body in extproc.
-	// See: https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#metric-gen_aiservertime_to_first_token
-	firstTokenLatency metric.Float64Histogram
-	// outputTokenLatency is the time per output token generated after the first token.
-	// Calculated by: (request_duration - time_to_first_token) / (output_tokens - 1)
-	// See: https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#metric-gen_aiservertime_per_output_token
-	outputTokenLatency metric.Float64Histogram
 }
 
-// newGenAI creates a new genAI metrics instance.
-func newGenAI(meter metric.Meter) *genAI {
-	return &genAI{
+// newCommonMetrics creates a new commonMetrics instance.
+func newCommonMetrics(meter metric.Meter) *commonMetrics {
+	return &commonMetrics{
 		tokenUsage: mustRegisterHistogram(meter,
 			genaiMetricClientTokenUsage,
 			metric.WithDescription("Number of tokens processed."),
@@ -69,6 +60,23 @@ func newGenAI(meter metric.Meter) *genAI {
 			metric.WithUnit("s"),
 			metric.WithExplicitBucketBoundaries(0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64, 1.28, 2.56, 5.12, 10.24, 20.48, 40.96, 81.92),
 		),
+	}
+}
+
+// genExtensionMetrics contains the additional metrics like firstTokenLatency and outputTokenLatency.
+type genExtensionMetrics struct {
+	// firstTokenLatency is the latency to receive the first token.
+	// Measured from the start of the received request headers in extproc to the receiving of the first token in the response body in extproc.
+	// See: https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#metric-gen_aiservertime_to_first_token
+	firstTokenLatency metric.Float64Histogram
+	// outputTokenLatency is the time per output token generated after the first token.
+	// Calculated by: (request_duration - time_to_first_token) / (output_tokens - 1)
+	outputTokenLatency metric.Float64Histogram
+}
+
+// newGenExtensionMetrics creates a new genExtensionMetrics instance.
+func newGenExtensionMetrics(meter metric.Meter) *genExtensionMetrics {
+	return &genExtensionMetrics{
 		firstTokenLatency: mustRegisterHistogram(meter,
 			genaiMetricServerTimeToFirstToken,
 			metric.WithDescription("Time to receive first token in streaming responses."),
@@ -81,6 +89,27 @@ func newGenAI(meter metric.Meter) *genAI {
 			metric.WithUnit("s"),
 			metric.WithExplicitBucketBoundaries(0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.75, 1.0, 2.5),
 		),
+	}
+}
+
+// apiMetrics holds metrics according to the Semantic Conventions for Generative AI Metrics, which can be both embedding metrics or generative metrics
+// See: https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/.
+type apiMetrics struct {
+	commonMetrics
+	*genExtensionMetrics
+}
+
+// newGenAI creates a new genAI metrics instance.
+func newAPIMetrics(meter metric.Meter, isGen bool) *apiMetrics {
+	if isGen {
+		return &apiMetrics{
+			commonMetrics:       *newCommonMetrics(meter),
+			genExtensionMetrics: newGenExtensionMetrics(meter),
+		}
+	}
+
+	return &apiMetrics{
+		commonMetrics: *newCommonMetrics(meter),
 	}
 }
 

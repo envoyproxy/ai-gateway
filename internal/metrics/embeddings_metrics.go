@@ -38,7 +38,7 @@ type EmbeddingsMetrics interface {
 // NewEmbeddings creates a new Embeddings instance.
 func NewEmbeddings(meter metric.Meter, requestHeaderLabelMapping map[string]string) EmbeddingsMetrics {
 	return &embeddings{
-		baseMetrics: newBaseMetrics(meter, genaiOperationEmbedding, requestHeaderLabelMapping),
+		baseMetrics: newBaseMetrics(meter, genaiOperationEmbedding, requestHeaderLabelMapping, false),
 	}
 }
 
