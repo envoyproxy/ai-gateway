@@ -34,16 +34,6 @@ This getting started guide is organized into several sections:
    - Configuring AWS Bedrock
    - Managing credentials securely
 
-### Make a request
-
-Check out Making a Request in the [Basic Usage Guide](./basic-usage.md)
-
-:::tip
-
-For detailed instructions and explanations, start with the [Prerequisites](./prerequisites.md) section.
-
-:::
-
 ## Need Help?
 
 If you run into any issues:
