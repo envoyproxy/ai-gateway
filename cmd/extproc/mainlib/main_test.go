@@ -20,8 +20,10 @@ import (
 	"testing"
 	"time"
 
+	promregistry "github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/exporters/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -157,12 +159,21 @@ func TestStartMetricsServer(t *testing.T) {
 	require.NoError(t, err)
 	defer lis.Close() //nolint:errcheck
 
-	metricsConfig, s, meter := startMetricsServer(t.Context(), lis, slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})))
+	// Create a prometheus registry and meter for testing
+	registry := promregistry.NewRegistry()
+	promReader, err := prometheus.New(prometheus.WithRegisterer(registry))
+	require.NoError(t, err)
+
+	meter, shutdown, err := metrics.NewMetricsFromEnv(t.Context(), io.Discard, promReader)
+	require.NoError(t, err)
+	require.NotNil(t, meter)
+
+	s := startMetricsServer(lis, slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})), registry)
 	t.Cleanup(func() {
 		if s != nil {
-			_ = s.Shutdown(t.Context())
+			_ = s.Shutdown(context.Background())
 		}
-		_ = metricsConfig.Shutdown(t.Context())
+		_ = shutdown(context.Background())
 	})
 
 	require.NotNil(t, s)

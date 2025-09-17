@@ -6,228 +6,214 @@
 package metrics
 
 import (
+	"bytes"
 	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"testing/synctest"
+	"time"
 
-	promregistry "github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/noop"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
-// TestNewMetricsFromEnv_DefaultServiceName tests that the service name.
-// defaults to "ai-gateway" when OTEL_SERVICE_NAME is not set.
-func TestNewMetricsFromEnv_DefaultServiceName(t *testing.T) {
-	tests := []struct {
-		name              string
-		env               map[string]string
-		expectServiceName string
-		expectNoop        bool
-	}{
-		{
-			name: "default service name when OTEL_SERVICE_NAME not set",
-			env: map[string]string{
-				"OTEL_METRICS_EXPORTER": "console",
-			},
-			expectServiceName: "ai-gateway",
-		},
-		{
-			name: "OTEL_SERVICE_NAME overrides default",
-			env: map[string]string{
-				"OTEL_METRICS_EXPORTER": "console",
-				"OTEL_SERVICE_NAME":     "custom-service",
-			},
-			expectServiceName: "custom-service",
-		},
-		{
-			name:              "prometheus default when no metrics exporter set",
-			env:               map[string]string{},
-			expectServiceName: "ai-gateway",
-		},
-		{
-			name: "disabled when OTEL_SDK_DISABLED is true",
-			env: map[string]string{
-				"OTEL_SDK_DISABLED":     "true",
-				"OTEL_METRICS_EXPORTER": "console",
-			},
-			expectNoop: true,
-		},
-		{
-			name: "disabled when OTEL_METRICS_EXPORTER is none",
-			env: map[string]string{
-				"OTEL_METRICS_EXPORTER": "none",
-			},
-			expectNoop: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			for k, v := range tt.env {
-				t.Setenv(k, v)
-			}
-
-			result, err := NewMetricsFromEnv(t.Context())
-			require.NoError(t, err)
-			t.Cleanup(func() {
-				_ = result.Shutdown(context.Background())
-			})
-
-			if tt.expectNoop {
-				_, ok := result.(NoopMetrics)
-				require.True(t, ok, "expected NoopMetrics")
-			} else {
-				_, ok := result.(NoopMetrics)
-				require.False(t, ok, "expected non-noop metrics")
-
-				// For console exporter, we should see output containing service name.
-				if tt.env["OTEL_METRICS_EXPORTER"] == "console" {
-					meter := result.Meter()
-					require.NotNil(t, meter)
-					_, ok := meter.(noop.Meter)
-					require.False(t, ok, "expected non-noop meter")
-				}
-
-				// For prometheus, check registry exists.
-				if tt.env["OTEL_METRICS_EXPORTER"] == "" || tt.env["OTEL_METRICS_EXPORTER"] == "prometheus" {
-					registry := result.Registry()
-					require.NotNil(t, registry, "expected prometheus registry")
-				}
-			}
-		})
-	}
-}
-
-// TestNewMetricsFromEnv_ExporterPrecedence tests that metrics-specific.
-// exporter configuration takes precedence over generic OTLP configuration.
-func TestNewMetricsFromEnv_ExporterPrecedence(t *testing.T) {
-	tests := []struct {
-		name           string
-		env            map[string]string
-		expectExporter string
-		expectNoop     bool
-	}{
-		{
-			name: "metrics-specific exporter takes precedence over generic OTLP",
-			env: map[string]string{
-				"OTEL_METRICS_EXPORTER":       "console",
-				"OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317",
-			},
-			expectExporter: "console",
-		},
-		{
-			name: "uses OTLP when generic endpoint is configured",
-			env: map[string]string{
-				"OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317",
-			},
-			expectExporter: "otlp",
-		},
-		{
-			name: "uses metrics-specific OTLP endpoint",
-			env: map[string]string{
-				"OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": "http://localhost:4318",
-			},
-			expectExporter: "otlp",
-		},
-		{
-			name: "metrics-specific endpoint takes precedence over generic",
-			env: map[string]string{
-				"OTEL_EXPORTER_OTLP_ENDPOINT":         "http://localhost:4317",
-				"OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": "http://localhost:4318",
-			},
-			expectExporter: "otlp",
-		},
-		{
-			name:           "defaults to prometheus when no configuration",
-			env:            map[string]string{},
-			expectExporter: "prometheus",
-		},
-		{
-			name: "respects none exporter",
-			env: map[string]string{
-				"OTEL_METRICS_EXPORTER":       "none",
-				"OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317",
-			},
-			expectNoop: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			for k, v := range tt.env {
-				t.Setenv(k, v)
-			}
-
-			result, err := NewMetricsFromEnv(t.Context())
-			require.NoError(t, err)
-			t.Cleanup(func() {
-				_ = result.Shutdown(context.Background())
-			})
-
-			if tt.expectNoop {
-				_, ok := result.(NoopMetrics)
-				require.True(t, ok, "expected NoopMetrics")
-			} else {
-				_, ok := result.(NoopMetrics)
-				require.False(t, ok, "expected non-noop metrics")
-
-				// Verify the correct exporter type is configured.
-				switch tt.expectExporter {
-				case "console":
-					// Console writes to stdout.
-					meter := result.Meter()
-					require.NotNil(t, meter)
-				case "prometheus":
-					// Prometheus provides a registry.
-					registry := result.Registry()
-					require.NotNil(t, registry, "expected prometheus registry")
-				case "otlp":
-					// OTLP doesn't provide a registry.
-					registry := result.Registry()
-					require.Nil(t, registry, "expected no registry for OTLP")
-				}
-			}
-		})
-	}
-}
-
-// TestNewMetricsFromEnv_ConsoleExporter tests that console exporter works.
-// without requiring OTLP endpoints and doesn't make network calls.
+// TestNewMetricsFromEnv_ConsoleExporter tests console/none exporter configuration.
+// We use synctest here because console output relies on time.Sleep to wait for
+// the periodic exporter, and synctest makes these sleeps instant in wall-clock time.
 func TestNewMetricsFromEnv_ConsoleExporter(t *testing.T) {
 	tests := []struct {
-		name                string
-		env                 map[string]string
-		expectNoop          bool
-		expectRegistry      bool
-		expectConsoleOutput bool
+		name                    string
+		env                     map[string]string
+		expectedConsoleContains string
+		expectServiceName       string
+		expectResource          bool
 	}{
 		{
-			name: "console exporter without any endpoints",
+			name: "console exporter outputs to stdout",
 			env: map[string]string{
 				"OTEL_METRICS_EXPORTER": "console",
 			},
-			expectConsoleOutput: true,
-			expectRegistry:      false,
-		},
-		{
-			name: "console exporter ignores OTLP endpoints",
-			env: map[string]string{
-				"OTEL_METRICS_EXPORTER":               "console",
-				"OTEL_EXPORTER_OTLP_ENDPOINT":         "http://should-be-ignored:4317",
-				"OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": "http://should-be-ignored:4318",
-			},
-			expectConsoleOutput: true,
-			expectRegistry:      false,
+			expectedConsoleContains: "test.console.metric",
+			expectServiceName:       "ai-gateway",
+			expectResource:          true,
 		},
 		{
 			name: "console exporter with custom service name",
 			env: map[string]string{
 				"OTEL_METRICS_EXPORTER": "console",
-				"OTEL_SERVICE_NAME":     "test-console-service",
+				"OTEL_SERVICE_NAME":     "my-custom-service",
 			},
-			expectConsoleOutput: true,
-			expectRegistry:      false,
+			expectedConsoleContains: "test.console.metric",
+			expectServiceName:       "my-custom-service",
+			expectResource:          true,
+		},
+		{
+			name: "console with resource attributes overriding service name",
+			env: map[string]string{
+				"OTEL_METRICS_EXPORTER":    "console",
+				"OTEL_RESOURCE_ATTRIBUTES": "service.name=overridden-service",
+			},
+			expectedConsoleContains: "test.console.metric",
+			expectServiceName:       "overridden-service",
+			expectResource:          true,
+		},
+		{
+			name: "no console output with prometheus exporter",
+			env: map[string]string{
+				"OTEL_METRICS_EXPORTER": "prometheus",
+			},
+			expectedConsoleContains: "",
+			expectServiceName:       "",
+			expectResource:          false,
+		},
+		{
+			name: "no console output when disabled",
+			env: map[string]string{
+				"OTEL_METRICS_EXPORTER": "none",
+			},
+			expectedConsoleContains: "",
+			expectServiceName:       "",
+			expectResource:          false,
+		},
+		{
+			name: "no console output when SDK disabled",
+			env: map[string]string{
+				"OTEL_SDK_DISABLED":     "true",
+				"OTEL_METRICS_EXPORTER": "console",
+			},
+			expectedConsoleContains: "",
+			expectServiceName:       "",
+			expectResource:          false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				t.Helper()
+				t.Setenv("OTEL_METRIC_EXPORT_INTERVAL", "100")
+				for k, v := range tt.env {
+					t.Setenv(k, v)
+				}
+
+				var stdout bytes.Buffer
+				manualReader := sdkmetric.NewManualReader()
+
+				meter, shutdown, err := NewMetricsFromEnv(t.Context(), &stdout, manualReader)
+				require.NoError(t, err)
+				require.NotNil(t, meter)
+				require.NotNil(t, shutdown)
+				defer func() {
+					_ = shutdown(context.Background())
+				}()
+
+				// Create and record a metric
+				counter, err := meter.Int64Counter("test.console.metric",
+					metric.WithDescription("A test metric"),
+					metric.WithUnit("1"))
+				require.NoError(t, err)
+				counter.Add(t.Context(), 42)
+
+				// Collect metrics via Prometheus reader
+				var rm metricdata.ResourceMetrics
+				err = manualReader.Collect(t.Context(), &rm)
+				require.NoError(t, err)
+				require.NotEmpty(t, rm.ScopeMetrics, "Prometheus reader should collect metrics")
+
+				// Verify resource attributes
+				found := false
+				var serviceName string
+				for _, attr := range rm.Resource.Attributes() {
+					if attr.Key == "service.name" {
+						found = true
+						serviceName = attr.Value.AsString()
+						break
+					}
+				}
+				if tt.expectResource {
+					require.True(t, found, "service.name attribute should be present")
+					require.Equal(t, tt.expectServiceName, serviceName)
+				}
+
+				// Check console output
+				if tt.expectedConsoleContains != "" {
+					time.Sleep(150 * time.Millisecond)
+					synctest.Wait()
+					output := stdout.String()
+					// Single check for all expected content in console output
+					expectedParts := []string{tt.expectedConsoleContains, "42"}
+					if tt.expectServiceName != "" {
+						expectedParts = append(expectedParts, tt.expectServiceName)
+					}
+					for _, part := range expectedParts {
+						require.Contains(t, output, part)
+					}
+				} else {
+					output := stdout.String()
+					require.Empty(t, output, "no console output expected")
+				}
+			})
+		})
+	}
+}
+
+// TestNewMetricsFromEnv_NetworkExporters tests OTLP and other network-based exporters.
+// We CANNOT use synctest here because it creates a "bubble" where goroutines are isolated
+// and network operations that spawn goroutines outside the bubble cause a panic:
+// "select on synctest channel from outside bubble"
+// This happens because the HTTP client used by OTLP exporters uses net.Resolver which
+// spawns goroutines for DNS resolution that escape the synctest bubble.
+func TestNewMetricsFromEnv_NetworkExporters(t *testing.T) {
+	// Create a test server to avoid real network access
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	tests := []struct {
+		name              string
+		env               map[string]string
+		expectServiceName string
+		expectResource    bool
+	}{
+		{
+			name: "otlp exporter enabled with endpoint",
+			env: map[string]string{
+				"OTEL_METRICS_EXPORTER":       "otlp",
+				"OTEL_EXPORTER_OTLP_ENDPOINT": ts.URL,
+			},
+			expectServiceName: "ai-gateway",
+			expectResource:    true,
+		},
+		{
+			name: "default exporter (stdout) with otlp endpoint but no exporter set",
+			env: map[string]string{
+				"OTEL_EXPORTER_OTLP_ENDPOINT": ts.URL,
+			},
+			expectServiceName: "ai-gateway",
+			expectResource:    true,
+		},
+		{
+			name: "no additional exporter with prometheus and endpoint",
+			env: map[string]string{
+				"OTEL_METRICS_EXPORTER":       "prometheus",
+				"OTEL_EXPORTER_OTLP_ENDPOINT": ts.URL,
+			},
+			expectServiceName: "",
+			expectResource:    false,
+		},
+		{
+			name: "no additional exporter with none and endpoint",
+			env: map[string]string{
+				"OTEL_METRICS_EXPORTER":       "none",
+				"OTEL_EXPORTER_OTLP_ENDPOINT": ts.URL,
+			},
+			expectServiceName: "",
+			expectResource:    false,
 		},
 	}
 
@@ -237,90 +223,171 @@ func TestNewMetricsFromEnv_ConsoleExporter(t *testing.T) {
 				t.Setenv(k, v)
 			}
 
-			result, err := NewMetricsFromEnv(t.Context())
+			var stdout bytes.Buffer
+			manualReader := sdkmetric.NewManualReader()
+
+			meter, shutdown, err := NewMetricsFromEnv(t.Context(), &stdout, manualReader)
 			require.NoError(t, err)
-			t.Cleanup(func() {
-				_ = result.Shutdown(context.Background())
-			})
-
-			if tt.expectNoop {
-				_, ok := result.(NoopMetrics)
-				require.True(t, ok, "expected NoopMetrics")
-				return
-			}
-
-			// Verify it's not noop.
-			_, ok := result.(NoopMetrics)
-			require.False(t, ok, "expected non-noop metrics")
-
-			// Check registry expectation.
-			registry := result.Registry()
-			if tt.expectRegistry {
-				require.NotNil(t, registry, "expected prometheus registry")
-			} else {
-				require.Nil(t, registry, "expected no registry for console exporter")
-			}
-
-			// For console exporter, verify it has a valid meter.
-			meter := result.Meter()
 			require.NotNil(t, meter)
+			require.NotNil(t, shutdown)
+			defer func() {
+				_ = shutdown(context.Background())
+			}()
 
-			// Create a test counter to verify console output works.
-			if tt.expectConsoleOutput {
-				counter, err := meter.Int64Counter("test.counter")
-				require.NoError(t, err)
-				counter.Add(t.Context(), 1)
+			// Create and record a metric
+			counter, err := meter.Int64Counter("test.network.metric",
+				metric.WithDescription("A test metric"),
+				metric.WithUnit("1"))
+			require.NoError(t, err)
+			counter.Add(t.Context(), 42)
 
-				// Console exporter is periodic, but we can verify the meter was created.
-				// The actual output would appear after the export interval.
-				_, ok := meter.(noop.Meter)
-				require.False(t, ok, "console exporter should provide real meter, not noop")
+			// Collect metrics via Prometheus reader
+			var rm metricdata.ResourceMetrics
+			err = manualReader.Collect(t.Context(), &rm)
+			require.NoError(t, err)
+			require.NotEmpty(t, rm.ScopeMetrics, "Prometheus reader should collect metrics")
+
+			// Verify resource attributes
+			found := false
+			var serviceName string
+			for _, attr := range rm.Resource.Attributes() {
+				if attr.Key == "service.name" {
+					found = true
+					serviceName = attr.Value.AsString()
+					break
+				}
 			}
+			if tt.expectResource {
+				require.True(t, found, "service.name attribute should be present")
+				require.Equal(t, tt.expectServiceName, serviceName)
+			}
+
+			// No console output expected for network exporters
+			output := stdout.String()
+			require.Empty(t, output, "no console output expected for network exporters")
 		})
 	}
 }
 
-// TestNewMetrics tests the NewMetrics function with provided meter and registry.
-func TestNewMetrics(t *testing.T) {
+// TestNewMetricsFromEnv_PrometheusReader tests that the prometheus reader
+// is always included and functional.
+func TestNewMetricsFromEnv_PrometheusReader(t *testing.T) {
+	// Create a test server to avoid real network access
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
 	tests := []struct {
-		name       string
-		meter      func() metric.Meter
-		registry   *promregistry.Registry
-		expectNoop bool
+		name string
+		env  map[string]string
 	}{
 		{
-			name: "non-noop meter",
-			meter: func() metric.Meter {
-				mp := sdkmetric.NewMeterProvider()
-				return mp.Meter("test")
-			},
-			registry:   promregistry.NewRegistry(),
-			expectNoop: false,
+			name: "prometheus reader with no OTEL",
+			env:  map[string]string{},
 		},
 		{
-			name: "noop meter",
-			meter: func() metric.Meter {
-				return noop.NewMeterProvider().Meter("test")
+			name: "prometheus reader with console exporter",
+			env: map[string]string{
+				"OTEL_METRICS_EXPORTER": "console",
 			},
-			registry:   nil,
-			expectNoop: true,
+		},
+		{
+			name: "prometheus reader with OTLP endpoint",
+			env: map[string]string{
+				"OTEL_EXPORTER_OTLP_ENDPOINT": ts.URL,
+			},
+		},
+		{
+			name: "prometheus reader when OTEL disabled",
+			env: map[string]string{
+				"OTEL_SDK_DISABLED": "true",
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := NewMetrics(tt.meter(), tt.registry)
-
-			if tt.expectNoop {
-				_, ok := result.(NoopMetrics)
-				require.True(t, ok, "expected NoopMetrics")
-			} else {
-				impl, ok := result.(*metricsImpl)
-				require.True(t, ok, "expected metricsImpl")
-				require.NotNil(t, impl.meter)
-				require.Equal(t, tt.registry, impl.registry)
-				require.Nil(t, impl.shutdown, "shutdown should be nil when meter is provided")
+			for k, v := range tt.env {
+				t.Setenv(k, v)
 			}
+
+			manualReader := sdkmetric.NewManualReader()
+			meter, shutdown, err := NewMetricsFromEnv(t.Context(), io.Discard, manualReader)
+			require.NoError(t, err)
+			require.NotNil(t, meter)
+			require.NotNil(t, shutdown)
+			defer func() {
+				_ = shutdown(context.Background())
+			}()
+
+			// Create metrics
+			counter, err := meter.Int64Counter("prometheus.test.counter")
+			require.NoError(t, err)
+
+			histogram, err := meter.Float64Histogram("prometheus.test.histogram")
+			require.NoError(t, err)
+
+			// Record values
+			counter.Add(t.Context(), 1)
+			counter.Add(t.Context(), 2)
+			counter.Add(t.Context(), 3)
+			histogram.Record(t.Context(), 1.5)
+			histogram.Record(t.Context(), 2.5)
+
+			// Collect via prometheus reader
+			var rm metricdata.ResourceMetrics
+			err = manualReader.Collect(t.Context(), &rm)
+			require.NoError(t, err)
+
+			// Verify metrics were collected
+			require.NotEmpty(t, rm.ScopeMetrics)
+			require.Len(t, rm.ScopeMetrics[0].Metrics, 2)
+
+			// Verify counter sum and histogram count
+			for _, m := range rm.ScopeMetrics[0].Metrics {
+				switch m.Name {
+				case "prometheus.test.counter":
+					sum, ok := m.Data.(metricdata.Sum[int64])
+					require.True(t, ok)
+					require.Equal(t, int64(6), sum.DataPoints[0].Value)
+				case "prometheus.test.histogram":
+					hist, ok := m.Data.(metricdata.Histogram[float64])
+					require.True(t, ok)
+					require.Equal(t, uint64(2), hist.DataPoints[0].Count)
+				}
+			}
+		})
+	}
+}
+
+// TestNewMetricsFromEnv_ErrorHandling verifies error handling for invalid configurations.
+func TestNewMetricsFromEnv_ErrorHandling(t *testing.T) {
+	tests := []struct {
+		name        string
+		env         map[string]string
+		expectError string
+	}{
+		{
+			name: "invalid resource attributes",
+			env: map[string]string{
+				"OTEL_METRICS_EXPORTER":    "console",
+				"OTEL_RESOURCE_ATTRIBUTES": "invalid",
+			},
+			expectError: "missing value",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+
+			manualReader := sdkmetric.NewManualReader()
+			_, _, err := NewMetricsFromEnv(t.Context(), io.Discard, manualReader)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.expectError)
 		})
 	}
 }

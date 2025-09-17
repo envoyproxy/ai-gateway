@@ -58,7 +58,7 @@ func buildMetricsTestCases() []metricsTestCase {
 // TestOtelMetrics_ChatCompletions tests that metrics are properly exported via OTLP.
 // when processing chat completion requests.
 func TestOtelMetrics_ChatCompletions(t *testing.T) {
-	env := setupOtelTestEnvironment(t, "OTEL_METRICS_EXPORTER=otlp")
+	env := setupOtelTestEnvironment(t)
 
 	listenerPort := env.EnvoyListenerPort()
 
