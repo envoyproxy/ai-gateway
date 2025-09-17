@@ -206,6 +206,17 @@ data: [DONE]
 			}
 		}
 	})
+
+	t.Run("streaming read error", func(t *testing.T) {
+		o := &openAIToOpenAITranslatorV1ChatCompletion{stream: true}
+		pr, pw := io.Pipe()
+		// Close the writer immediately with an error so reads fail.
+		_ = pw.CloseWithError(fmt.Errorf("error reading body"))
+		_, _, _, err := o.ResponseBody(nil, pr, false, nil)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to read body")
+	})
+
 	t.Run("non-streaming", func(t *testing.T) {
 		t.Run("invalid body", func(t *testing.T) {
 			o := &openAIToOpenAITranslatorV1ChatCompletion{}
@@ -234,8 +245,7 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		o.buffered = []byte("data: {\"usage\": {\"total_tokens\": 42}}\n")
 		usedToken := o.extractUsageFromBufferEvent(s)
 		require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
-		require.True(t, o.bufferingDone)
-		require.Nil(t, o.buffered)
+		require.Empty(t, o.buffered)
 		require.Len(t, s.RespChunks, 1)
 	})
 
@@ -244,8 +254,7 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		o.buffered = []byte("data: invalid\ndata: {\"usage\": {\"total_tokens\": 42}}\n")
 		usedToken := o.extractUsageFromBufferEvent(nil)
 		require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
-		require.True(t, o.bufferingDone)
-		require.Nil(t, o.buffered)
+		require.Empty(t, o.buffered)
 	})
 
 	t.Run("no usage data and then become valid", func(t *testing.T) {
@@ -253,14 +262,12 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		o.buffered = []byte("data: {}\n\ndata: ")
 		usedToken := o.extractUsageFromBufferEvent(nil)
 		require.Equal(t, LLMTokenUsage{}, usedToken)
-		require.False(t, o.bufferingDone)
-		require.NotNil(t, o.buffered)
+		require.GreaterOrEqual(t, len(o.buffered), 1)
 
 		o.buffered = append(o.buffered, []byte("{\"usage\": {\"total_tokens\": 42}}\n")...)
 		usedToken = o.extractUsageFromBufferEvent(nil)
 		require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
-		require.True(t, o.bufferingDone)
-		require.Nil(t, o.buffered)
+		require.Empty(t, o.buffered)
 	})
 
 	t.Run("invalid JSON", func(t *testing.T) {
@@ -268,7 +275,6 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		o.buffered = []byte("data: invalid\n")
 		usedToken := o.extractUsageFromBufferEvent(nil)
 		require.Equal(t, LLMTokenUsage{}, usedToken)
-		require.False(t, o.bufferingDone)
-		require.NotNil(t, o.buffered)
+		require.Empty(t, o.buffered)
 	})
 }

@@ -50,6 +50,10 @@ const (
 // The input format is "header1:label1,header2:label2" where header names are HTTP request
 // headers and label names are Prometheus metric labels.
 // Example: "x-team-id:team_id,x-user-id:user_id".
+//
+// Note: This serves a different purpose than OTEL's OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST,
+// which captures headers as span attributes for tracing. This function creates Prometheus metric labels
+// from headers with custom naming (e.g., x-team-id → team_id) for proper Prometheus conventions.
 func ParseRequestHeaderLabelMapping(s string) (map[string]string, error) {
 	if s == "" {
 		return nil, nil
