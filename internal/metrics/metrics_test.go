@@ -161,6 +161,42 @@ func TestNewMetricsFromEnv_ConsoleExporter(t *testing.T) {
 	}
 }
 
+// TestNewMetricsFromEnv_ConsoleExporter_NoMetrics tests that the console exporter
+// does not output anything when no metrics are recorded.
+func TestNewMetricsFromEnv_ConsoleExporter_NoMetrics(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		t.Helper()
+		t.Setenv("OTEL_METRIC_EXPORT_INTERVAL", "100")
+		t.Setenv("OTEL_METRICS_EXPORTER", "console")
+
+		var stdout bytes.Buffer
+		manualReader := sdkmetric.NewManualReader()
+
+		meter, shutdown, err := NewMetricsFromEnv(t.Context(), &stdout, manualReader)
+		require.NoError(t, err)
+		require.NotNil(t, meter)
+		require.NotNil(t, shutdown)
+		defer func() {
+			_ = shutdown(context.Background())
+		}()
+
+		// Don't record any metrics, just wait for export interval
+		time.Sleep(150 * time.Millisecond)
+		synctest.Wait()
+
+		// Check that no output was generated
+		output := stdout.String()
+		require.Empty(t, output, "Expected no console output when no metrics are recorded")
+
+		// Verify that Prometheus reader still works but has empty metrics
+		var rm metricdata.ResourceMetrics
+		err = manualReader.Collect(t.Context(), &rm)
+		require.NoError(t, err)
+		// The ScopeMetrics should be empty since no metrics were created
+		require.Empty(t, rm.ScopeMetrics, "No metrics should be collected when none are recorded")
+	})
+}
+
 // TestNewMetricsFromEnv_NetworkExporters tests OTLP and other network-based exporters.
 // We CANNOT use synctest here because it creates a "bubble" where goroutines are isolated
 // and network operations that spawn goroutines outside the bubble cause a panic:

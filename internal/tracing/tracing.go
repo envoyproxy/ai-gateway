@@ -13,10 +13,10 @@ import (
 
 	"go.opentelemetry.io/contrib/exporters/autoexport"
 	"go.opentelemetry.io/contrib/propagators/autoprop"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 	"go.opentelemetry.io/otel/trace/noop"
 
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
@@ -87,8 +87,9 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer) (tracing.Tracing, 
 	}
 
 	// Only set our default if service.name wasn't set via env
+	// We hardcode "service.name" to avoid pinning semconv version.
 	fallbackRes := resource.NewSchemaless(
-		semconv.ServiceName("ai-gateway"),
+		attribute.String("service.name", "ai-gateway"),
 	)
 
 	// Merge in order: default -> fallback -> env (env takes precedence).

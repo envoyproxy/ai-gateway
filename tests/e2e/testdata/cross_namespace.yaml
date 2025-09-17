@@ -1,0 +1,179 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# Create namespaces for the test
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway-ns
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: route-ns
+---
+# GatewayClass (cluster-scoped resource)
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: cross-namespace-gatewayclass
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+# Gateway in gateway-ns namespace
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: cross-namespace-gateway
+  namespace: gateway-ns
+spec:
+  gatewayClassName: cross-namespace-gatewayclass
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: cross-namespace-gateway
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: cross-namespace-gateway
+  namespace: gateway-ns
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        container:
+          # Clear the default memory/cpu requirements for local tests.
+          resources: {}
+---
+# AIGatewayRoute in route-ns namespace referencing Gateway in gateway-ns
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: cross-namespace-route
+  namespace: route-ns
+spec:
+  parentRefs:
+    - name: cross-namespace-gateway
+      namespace: gateway-ns  # Cross-namespace reference
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: cross-namespace-test-model
+      backendRefs:
+        - name: cross-namespace-backend
+---
+# AIServiceBackend in route-ns namespace (same as AIGatewayRoute)
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: cross-namespace-backend
+  namespace: route-ns
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: cross-namespace-envoy-backend
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+# BackendSecurityPolicy for the AIServiceBackend
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: cross-namespace-backend-api-key
+  namespace: route-ns
+spec:
+  type: APIKey
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: cross-namespace-backend
+  apiKey:
+    secretRef:
+      name: cross-namespace-api-key-secret
+      namespace: route-ns
+---
+# Secret for API key
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cross-namespace-api-key-secret
+  namespace: route-ns
+type: Opaque
+stringData:
+  apiKey: dummy-cross-namespace-token
+---
+# Envoy Gateway Backend in route-ns namespace
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: cross-namespace-envoy-backend
+  namespace: route-ns
+spec:
+  endpoints:
+    - fqdn:
+        hostname: cross-namespace-testupstream.route-ns.svc.cluster.local
+        port: 80
+---
+# Test upstream deployment in route-ns
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cross-namespace-testupstream
+  namespace: route-ns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cross-namespace-testupstream
+  template:
+    metadata:
+      labels:
+        app: cross-namespace-testupstream
+    spec:
+      containers:
+        - name: testupstream
+          image: docker.io/envoyproxy/ai-gateway-testupstream:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: TESTUPSTREAM_ID
+              value: cross-namespace
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 1
+            periodSeconds: 1
+---
+# Service for the test upstream in route-ns
+apiVersion: v1
+kind: Service
+metadata:
+  name: cross-namespace-testupstream
+  namespace: route-ns
+spec:
+  selector:
+    app: cross-namespace-testupstream
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: ClusterIP

@@ -28,24 +28,24 @@
    The `chat-completion` service uses `curl` to send a simple chat completion
    request to the AI Gateway CLI (aigw) which routes it to Ollama.
    ```bash
-   docker compose run --rm chat-completion
+   docker compose run --rm --no-deps chat-completion
    ```
 
 4. **Shutdown the example stack**:
 
    `down` stops the containers and removes the volumes used by the stack.
    ```bash
-   docker compose down -v --remove-orphans
+   docker compose down --remove-orphans
    ```
 
 ## Quick Start with OpenTelemetry
 
 [docker-compose-otel.yaml](docker-compose-otel.yaml) includes OpenTelemetry
-support for observability of the AI Gateway and client applications.
+metrics and tracing.
 
-- **aigw** (port 1975): Envoy AI Gateway CLI (standalone mode) with OTEL support
+All profiles below use at least these two Docker services:
+- **aigw** (port 1975): Envoy AI Gateway CLI (standalone mode) with OTEL tracing
 - **chat-completion**: OpenAI Python client instrumented with OpenTelemetry
-- **Phoenix** (port 6006): Optional OpenTelemetry trace viewer for LLM observability
 
 ### Prerequisites
 
@@ -104,7 +104,7 @@ This configures the OTLP endpoint to otel-tui on port 4318.
 
 1. **Start the services**:
    ```bash
-   COMPOSE_PROFILES=<profile> docker compose -f docker-compose-otel.yaml up --wait -d
+   COMPOSE_PROFILES=<profile> docker compose -f docker-compose-otel.yaml up --build --wait -d
    ```
 
    Where `<profile>` is:
@@ -114,7 +114,7 @@ This configures the OTLP endpoint to otel-tui on port 4318.
 
 2. **Send a test request**:
    ```bash
-   COMPOSE_PROFILES=<profile> docker compose -f docker-compose-otel.yaml run --build --rm chat-completion
+   COMPOSE_PROFILES=<profile> docker compose -f docker-compose-otel.yaml run --build --rm --no-deps chat-completion
    ```
 
 3. **Check telemetry output**:
@@ -130,6 +130,12 @@ This configures the OTLP endpoint to otel-tui on port 4318.
 
    <details>
    <summary>For Phoenix export</summary>
+
+   If you configured Phoenix as your OTLP endpoint, you can view detailed traces
+   showing the OpenAI CLI (Python) joining a trace with the Envoy AI Gateway CLI
+   (aigw), including LLM inputs and outputs served by Ollama:
+
+   ![Phoenix Screenshot](phoenix.webp)
 
    ```bash
    # Verify Phoenix is receiving traces
@@ -156,20 +162,12 @@ This configures the OTLP endpoint to otel-tui on port 4318.
    docker compose -f docker-compose-otel.yaml logs aigw | grep "genai_model_name"
    ```
 
-### Phoenix UI (when using Phoenix export)
-
-If you configured Phoenix as your OTLP endpoint, you can view detailed traces
-showing the OpenAI CLI (Python) joining a trace with the Envoy AI Gateway CLI
-(aigw), including LLM inputs and outputs served by Ollama:
-
-![Phoenix Screenshot](phoenix.webp)
-
 ### Shutdown
 
 **Stop the services**:
 
 ```bash
-docker compose -f docker-compose-otel.yaml down -v --remove-orphans
+docker compose -f docker-compose-otel.yaml down --remove-orphans
 ```
 
 ---
