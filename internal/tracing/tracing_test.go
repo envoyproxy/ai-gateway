@@ -27,7 +27,7 @@ import (
 	openaitracing "github.com/envoyproxy/ai-gateway/internal/tracing/openinference/openai"
 )
 
-// TestNewTracingFromEnv_DefaultServiceName tests that the service name
+// TestNewTracingFromEnv_DefaultServiceName tests that the service name.
 // defaults to "ai-gateway" when OTEL_SERVICE_NAME is not set.
 func TestNewTracingFromEnv_DefaultServiceName(t *testing.T) {
 	tests := []struct {
@@ -98,8 +98,14 @@ func TestNewTracingFromEnv_DisabledByEnv(t *testing.T) {
 			},
 		},
 		{
-			name: "OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_TRACES_EXPORTER both unset",
+			name: "no endpoints or exporters configured",
 			env:  map[string]string{},
+		},
+		{
+			name: "no traces endpoint when only metrics endpoint is configured",
+			env: map[string]string{
+				"OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": "http://localhost:4318",
+			},
 		},
 	}
 
@@ -112,6 +118,153 @@ func TestNewTracingFromEnv_DisabledByEnv(t *testing.T) {
 			result, err := NewTracingFromEnv(t.Context(), io.Discard)
 			require.NoError(t, err)
 			require.IsType(t, tracing.NoopTracing{}, result)
+		})
+	}
+}
+
+// TestNewTracingFromEnv_EndpointHierarchy tests the OTEL endpoint hierarchy.
+// according to the OTEL spec where signal-specific endpoints override generic ones.
+func TestNewTracingFromEnv_EndpointHierarchy(t *testing.T) {
+	tests := []struct {
+		name         string
+		env          map[string]string
+		expectActive bool
+	}{
+		{
+			name: "uses generic OTLP endpoint when configured",
+			env: map[string]string{
+				"OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317",
+			},
+			expectActive: true,
+		},
+		{
+			name: "uses traces-specific endpoint when configured",
+			env: map[string]string{
+				"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://localhost:4318",
+			},
+			expectActive: true,
+		},
+		{
+			name: "traces-specific endpoint overrides generic",
+			env: map[string]string{
+				"OTEL_EXPORTER_OTLP_ENDPOINT":        "http://localhost:4317",
+				"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://localhost:4318",
+			},
+			expectActive: true,
+		},
+		{
+			name: "explicit exporter overrides endpoint detection",
+			env: map[string]string{
+				"OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317",
+				"OTEL_TRACES_EXPORTER":        "console",
+			},
+			expectActive: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+
+			result, err := NewTracingFromEnv(t.Context(), io.Discard)
+			require.NoError(t, err)
+
+			if tt.expectActive {
+				_, isNoop := result.(tracing.NoopTracing)
+				require.False(t, isNoop, "expected active tracing")
+			} else {
+				require.IsType(t, tracing.NoopTracing{}, result)
+			}
+
+			_ = result.Shutdown(context.Background())
+		})
+	}
+}
+
+// TestNewTracingFromEnv_ConsoleExporter tests that console exporter works.
+// without requiring OTLP endpoints and doesn't make network calls.
+func TestNewTracingFromEnv_ConsoleExporter(t *testing.T) {
+	tests := []struct {
+		name                string
+		env                 map[string]string
+		expectNoop          bool
+		expectConsoleOutput bool
+	}{
+		{
+			name: "console exporter without any endpoints",
+			env: map[string]string{
+				"OTEL_TRACES_EXPORTER": "console",
+			},
+			expectConsoleOutput: true,
+		},
+		{
+			name: "console exporter ignores OTLP endpoints",
+			env: map[string]string{
+				"OTEL_TRACES_EXPORTER":               "console",
+				"OTEL_EXPORTER_OTLP_ENDPOINT":        "http://should-be-ignored:4317",
+				"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://should-be-ignored:4318",
+			},
+			expectConsoleOutput: true,
+		},
+		{
+			name: "console exporter with custom service name",
+			env: map[string]string{
+				"OTEL_TRACES_EXPORTER": "console",
+				"OTEL_SERVICE_NAME":    "test-console-service",
+			},
+			expectConsoleOutput: true,
+		},
+		{
+			name: "console exporter with sampling",
+			env: map[string]string{
+				"OTEL_TRACES_EXPORTER": "console",
+				"OTEL_TRACES_SAMPLER":  "always_on",
+			},
+			expectConsoleOutput: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+
+			var stdout bytes.Buffer
+			result, err := NewTracingFromEnv(t.Context(), &stdout)
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				_ = result.Shutdown(context.Background())
+			})
+
+			if tt.expectNoop {
+				_, ok := result.(tracing.NoopTracing)
+				require.True(t, ok, "expected NoopTracing")
+				return
+			}
+
+			// Verify it's not noop.
+			_, ok := result.(tracing.NoopTracing)
+			require.False(t, ok, "expected non-noop tracing")
+
+			// For console exporter, create a span and verify output.
+			if tt.expectConsoleOutput {
+				span := startCompletionsSpan(t, result, nil)
+				require.NotNil(t, span, "expected span to be created")
+				span.EndSpan()
+
+				// Console exporter writes synchronously, so output should be immediate.
+				output := stdout.String()
+				require.Contains(t, output, "TraceID", "console output should contain TraceID")
+				require.Contains(t, output, "SpanID", "console output should contain SpanID")
+
+				// Verify service name if set.
+				if serviceName := tt.env["OTEL_SERVICE_NAME"]; serviceName != "" {
+					require.Contains(t, output, serviceName, "console output should contain custom service name")
+				}
+			}
 		})
 	}
 }
@@ -239,9 +392,9 @@ func TestNewTracingFromEnv_OtelPropagators(t *testing.T) {
 	}
 }
 
-// TestNewTracingFromEnv_OpenInferenceRedaction tests that the OpenInference
+// TestNewTracingFromEnv_OpenInferenceRedaction tests that the OpenInference.
 // environment variables (OPENINFERENCE_HIDE_INPUTS and OPENINFERENCE_HIDE_OUTPUTS)
-// work correctly to redact sensitive data from spans, following the OpenInference
+// work correctly to redact sensitive data from spans, following the OpenInference.
 // configuration specification.
 func TestNewTracingFromEnv_OpenInferenceRedaction(t *testing.T) {
 	tests := []struct {

@@ -34,42 +34,6 @@ This getting started guide is organized into several sections:
    - Configuring AWS Bedrock
    - Managing credentials securely
 
-## Quick Start
-
-If you're familiar with Kubernetes and want to get started quickly, run these commands to install Envoy Gateway, Envoy AI Gateway, and deploy a basic configuration:
-
-```shell
-helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \
-  --version v0.0.0-latest \
-  --namespace envoy-gateway-system \
-  --create-namespace
-
-helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm \
-  --version v0.0.0-latest \
-  --namespace envoy-ai-gateway-system \
-  --create-namespace
-
-helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
-  --version v0.0.0-latest \
-  --namespace envoy-ai-gateway-system \
-  --create-namespace
-
-kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/basic.yaml
-
-kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
-kubectl wait --timeout=2m -n envoy-ai-gateway-system deployment/ai-gateway-controller --for=condition=Available
-```
-
-### Make a request
-
-Check out Making a Request in the [Basic Usage Guide](./basic-usage.md)
-
-:::tip
-
-For detailed instructions and explanations, start with the [Prerequisites](./prerequisites.md) section.
-
-:::
-
 ## Need Help?
 
 If you run into any issues:

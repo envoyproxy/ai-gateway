@@ -35,19 +35,19 @@
 
    `down` stops the containers and removes the volumes used by the stack.
    ```bash
-   docker compose down -v
+   docker compose down -v --remove-orphans
    ```
 
 ## Quick Start with OpenTelemetry
 
 [docker-compose-otel.yaml](docker-compose-otel.yaml) includes OpenTelemetry
-tracing, visualized with [Arize Phoenix][phoenix], an open-source LLM tracing
-and evaluation system. It has UX features for LLM spans formatted with
-[OpenInference semantics][openinference].
+support for observability of the AI Gateway and client applications.
 
-- **aigw** (port 1975): Envoy AI Gateway CLI (standalone mode) with OTEL tracing
-- **Phoenix** (port 6006): OpenTelemetry trace viewer UI for LLM observability
+- **aigw** (port 1975): Envoy AI Gateway CLI (standalone mode) with OTEL support
 - **chat-completion**: OpenAI Python client instrumented with OpenTelemetry
+- **Phoenix** (port 6006): Optional OpenTelemetry trace viewer for LLM observability
+
+### Prerequisites
 
 1. **Start Ollama** on your host machine:
 
@@ -57,54 +57,120 @@ and evaluation system. It has UX features for LLM spans formatted with
    OLLAMA_CONTEXT_LENGTH=131072 OLLAMA_HOST=0.0.0.0 ollama serve
    ```
 
-2. **Run the example OpenTelemetry stack**:
+### Configure OpenTelemetry Export
 
-   `up` builds `aigw` from source and starts the stack, awaiting health checks.
+Choose how you want to export telemetry data (traces and metrics). We provide
+pre-configured `.env` files for common scenarios:
+
+<details>
+<summary>Console (Default - no external dependencies)</summary>
+
+Export telemetry directly to the console for debugging. The `.env.otel.console`
+file is already provided and will be used by default when no profile is specified
+or when you set `COMPOSE_PROFILES=console`.
+
+This outputs traces and metrics to stdout/stderr. Useful for debugging without
+requiring any external services.
+</details>
+
+<details>
+<summary>Arize Phoenix (LLM-specific observability)</summary>
+
+[Arize Phoenix][phoenix] is an open-source LLM tracing and evaluation system
+with UX features for spans formatted with [OpenInference semantics][openinference].
+
+The `.env.otel.phoenix` file is already provided and will be used automatically
+when you set `COMPOSE_PROFILES=phoenix`. This also starts the Phoenix service.
+
+This configures:
+- OTLP endpoint to Phoenix on port 6006
+- Metrics disabled (Phoenix only supports traces)
+- Reduced batch delay for demo purposes
+</details>
+
+<details>
+<summary>otel-tui (Terminal UI for OpenTelemetry)</summary>
+
+[otel-tui][otel-tui] provides a terminal-based UI for viewing OpenTelemetry
+traces and metrics in real-time.
+
+The `.env.otel.otel-tui` file is already provided and will be used automatically
+when you set `COMPOSE_PROFILES=otel-tui`. This also starts the otel-tui service.
+
+This configures the OTLP endpoint to otel-tui on port 4318.
+</details>
+
+### Run the Stack
+
+1. **Start the services**:
    ```bash
-   docker compose -f docker-compose-otel.yaml up --wait -d
+   COMPOSE_PROFILES=<profile> docker compose -f docker-compose-otel.yaml up --wait -d
    ```
 
-3. **Create a simple OpenAI chat completion**:
+   Where `<profile>` is:
+   - `console` - Export to console for debugging (default if omitted)
+   - `otel-tui` - Export to otel-tui Terminal UI (also starts otel-tui service)
+   - `phoenix` - Export to Phoenix (also starts Phoenix service)
 
-   `chat-completion` uses the OpenAI Python CLI to send a simple chat completion
-   to the AI Gateway CLI (aigw) which routes it to Ollama. Notably, this app
-   uses [OpenTelemetry Python][otel-python] to send traces transparently.
+2. **Send a test request**:
    ```bash
-   # Invoke the OpenTelemetry instrumented chat completion
-   docker compose -f docker-compose-otel.yaml run --build --rm chat-completion
+   COMPOSE_PROFILES=<profile> docker compose -f docker-compose-otel.yaml run --build --rm chat-completion
+   ```
 
-   # Now check you have logs, metrics and traces!
+3. **Check telemetry output**:
 
-   # Logs: access logging has GenAI fields
-   docker compose -f docker-compose-otel.yaml logs aigw | grep "genai_model_name"
+   <details>
+   <summary>For Console export</summary>
 
-   # Metrics: Prometheus endpoint has GenAI Metrics
-   curl -s localhost:1064/metrics | grep gen_ai_client_token_usage_token_sum
+   ```bash
+   # View traces and metrics in aigw logs
+   docker compose -f docker-compose-otel.yaml logs aigw | grep -E "(SpanContext|gen_ai)"
+   ```
+   </details>
 
-   # Traces: Phoenix received spans sent in OpenInference format
+   <details>
+   <summary>For Phoenix export</summary>
+
+   ```bash
+   # Verify Phoenix is receiving traces
    docker compose -f docker-compose-otel.yaml logs phoenix | grep "POST /v1/traces"
-   ```
 
-4. **View traces in Phoenix**:
-
-   Open your browser and navigate to the Phoenix UI to view the traces.
-   ```bash
+   # Open Phoenix UI
    open http://localhost:6006
    ```
+   </details>
 
-   You should see a trace like this, which shows the OpenAI CLI (Python)
-   joining a trace with the Envoy AI Gateway CLI (aigw), showing LLM inputs
-   and outputs to the LLM (served by Ollama). The Phoenix screenshot is
-   annotated to highlight the key parts of the trace:
+   <details>
+   <summary>For otel-tui export</summary>
 
-   ![Phoenix Screenshot](phoenix.webp)
-
-5. **Shutdown the example stack**:
-
-   `down` stops the containers and removes the volumes used by the stack.
    ```bash
-   docker compose -f docker-compose-otel.yaml down -v
+   # Show TUI in your current terminal session
+   docker compose -f docker-compose-otel.yaml attach otel-tui
+
+   # Detach by pressing Ctrl+p -> Ctrl+q
    ```
+   </details>
+
+   **Access logs with GenAI fields** (always available):
+   ```bash
+   docker compose -f docker-compose-otel.yaml logs aigw | grep "genai_model_name"
+   ```
+
+### Phoenix UI (when using Phoenix export)
+
+If you configured Phoenix as your OTLP endpoint, you can view detailed traces
+showing the OpenAI CLI (Python) joining a trace with the Envoy AI Gateway CLI
+(aigw), including LLM inputs and outputs served by Ollama:
+
+![Phoenix Screenshot](phoenix.webp)
+
+### Shutdown
+
+**Stop the services**:
+
+```bash
+docker compose -f docker-compose-otel.yaml down -v --remove-orphans
+```
 
 ---
 [ollama]: https://ollama.com/
@@ -112,4 +178,5 @@ and evaluation system. It has UX features for LLM spans formatted with
 [openinference]: https://github.com/Arize-ai/openinference/tree/main/spec
 [phoenix]: https://docs.arize.com/phoenix
 [otel-python]: https://opentelemetry.io/docs/zero-code/python/
+[otel-tui]: https://github.com/ymtdzzz/otel-tui
 

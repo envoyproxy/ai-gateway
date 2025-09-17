@@ -20,8 +20,10 @@ import (
 	"testing"
 	"time"
 
+	promregistry "github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/exporters/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -157,12 +159,26 @@ func TestStartMetricsServer(t *testing.T) {
 	require.NoError(t, err)
 	defer lis.Close() //nolint:errcheck
 
-	s, m := startMetricsServer(lis, slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})))
-	t.Cleanup(func() { _ = s.Shutdown(t.Context()) })
+	// Create a prometheus registry and meter for testing
+	registry := promregistry.NewRegistry()
+	promReader, err := prometheus.New(prometheus.WithRegisterer(registry))
+	require.NoError(t, err)
+
+	meter, shutdown, err := metrics.NewMetricsFromEnv(t.Context(), io.Discard, promReader)
+	require.NoError(t, err)
+	require.NotNil(t, meter)
+
+	s := startMetricsServer(lis, slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})), registry)
+	t.Cleanup(func() {
+		if s != nil {
+			_ = s.Shutdown(context.Background())
+		}
+		_ = shutdown(context.Background())
+	})
 
 	require.NotNil(t, s)
-	require.NotNil(t, m)
-	ccm := metrics.NewChatCompletion(m, nil)
+	require.NotNil(t, meter)
+	ccm := metrics.NewChatCompletion(meter, nil)
 	ccm.StartRequest(nil)
 	ccm.SetModel("test-model")
 	ccm.SetBackend(&filterapi.Backend{Name: "test-backend"})
