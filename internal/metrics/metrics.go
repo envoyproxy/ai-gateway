@@ -11,11 +11,10 @@ import (
 	"os"
 
 	"go.opentelemetry.io/contrib/exporters/autoexport"
-	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
-	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 )
 
 // NewMetricsFromEnv configures an OpenTelemetry MeterProvider based on environment variables,
@@ -53,8 +52,9 @@ func NewMetricsFromEnv(ctx context.Context, stdout io.Writer, promReader sdkmetr
 				return nil, nil, err
 			}
 			// Ensure a service name is set if not provided via environment.
+			// We hardcode "service.name" to avoid pinning semconv version.
 			fallbackRes := resource.NewSchemaless(
-				semconv.ServiceName("ai-gateway"),
+				attribute.String("service.name", "ai-gateway"),
 			)
 			res, err := resource.Merge(defaultRes, fallbackRes)
 			if err != nil {
@@ -68,9 +68,7 @@ func NewMetricsFromEnv(ctx context.Context, stdout io.Writer, promReader sdkmetr
 
 			if exporter == "console" {
 				// Configure console exporter with a PeriodicReader for aggregated metric export.
-				exp, err := stdoutmetric.New(
-					stdoutmetric.WithWriter(stdout),
-				)
+				exp, err := newNonEmptyConsoleExporter(stdout)
 				if err != nil {
 					return nil, nil, err
 				}

@@ -3,10 +3,6 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
-volumes:
-  aigw-target:  # Stores the binary between aigw-build and aigw
-  envoy-cache:  # Stores downloaded Envoy versions
-
 services:
   # otel-tui is a terminal UI for viewing OpenTelemetry traces and metrics
   otel-tui:
@@ -30,16 +26,6 @@ services:
     environment:
       PHOENIX_ENABLE_AUTH: "false"
 
-  # aigw-build builds the Envoy AI Gateway CLI binary, so you can use main code.
-  aigw-build:
-    image: golang:1.25
-    container_name: aigw-build
-    working_dir: /workspace
-    volumes:
-      - ../..:/workspace
-      - aigw-target:/workspace/out
-    command: ["bash", "-c", "go build -buildvcs=false -o /workspace/out/aigw ./cmd/aigw"]
-
   # ollama-pull pulls the models defined in .env.ollama, to avoid 404s.
   ollama-pull:
     image: alpine/ollama
@@ -54,12 +40,19 @@ services:
       - "localhost:host-gateway"
 
   # aigw is the Envoy AI Gateway CLI a.k.a standalone mode.
+  # Uses the official image by default, or builds from source with --build flag.
   aigw:
-    image: debian:trixie-slim
+    image: envoyproxy/ai-gateway-cli:latest
+    # Note: Run `make build.aigw GOOS_LIST=linux` from the project root prior
+    # to `docker compose -f docker-compose-otel.yaml up --build --wait -d` here.
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        VARIANT: base-nossl
+        COMMAND_NAME: aigw
     container_name: aigw
     depends_on:
-      aigw-build:
-        condition: service_completed_successfully
       ollama-pull:
         condition: service_completed_successfully
     env_file:
@@ -72,11 +65,8 @@ services:
     extra_hosts:  # localhost:host-gateway trick doesn't work with aigw
       - "host.docker.internal:host-gateway"
     volumes:
-      - aigw-target:/app
       - ./ai-gateway-local.yaml:/config.yaml:ro
-      - envoy-cache:/tmp/envoy-gateway
-    working_dir: /app
-    command: ["sh", "-c", "apt-get update && apt-get install -y ca-certificates && ./aigw run /config.yaml"]
+    command: ["run", "/config.yaml"]
 
   # chat-completion is the standard OpenAI client (`openai` in pip), instrumented
   # with the following OpenTelemetry instrumentation libraries:
