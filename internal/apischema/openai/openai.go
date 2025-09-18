@@ -1523,14 +1523,14 @@ type ReasoningContentUnion struct {
 }
 
 func (r *ReasoningContentUnion) UnmarshalJSON(data []byte) error {
-	// for qwen model it returns the reason content as a string
+	// For qwen model it returns the reason content as a string.
 	var str string
 	err := json.Unmarshal(data, &str)
 	if err == nil {
 		r.Value = str
 		return nil
 	}
-	// See https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ReasoningContentBlock.html for more information
+
 	var content *AWSBedrockReasoningContent
 	err = json.Unmarshal(data, &content)
 	if err == nil {
@@ -1552,6 +1552,7 @@ func (r ReasoningContentUnion) MarshalJSON() ([]byte, error) {
 }
 
 type AWSBedrockReasoningContent struct {
+	// See https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ReasoningContentBlock.html for more information.
 	ReasoningContent *awsbedrock.ReasoningContentBlock `json:"reasoningContent,omitzero"`
 }
 

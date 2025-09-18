@@ -1972,7 +1972,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody_WithReasoning
 	require.Equal(t, "9.11 is greater than 9.8.", *message.Content)
 
 	require.NotNil(t, message.ReasoningContent, "Reasoning content should not be nil")
-	reasoningBlock, ok := message.ReasoningContent.Value.(*openai.AWSBedrockReasoningContent)
+	reasoningBlock, _ := message.ReasoningContent.Value.(*openai.AWSBedrockReasoningContent)
 	require.NotNil(t, reasoningBlock, "The nested reasoning content block should not be nil")
 	require.NotEmpty(t, reasoningBlock.ReasoningContent.ReasoningText.Text, "The reasoning text itself should not be empty")
 
