@@ -668,10 +668,11 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 				choice.Message.Content = output.Text
 			}
 		case output.ReasoningContent != nil:
-			if choice.Message.AWSBedrockResponseVendorFields == nil {
-				choice.Message.AWSBedrockResponseVendorFields = &openai.AWSBedrockResponseVendorFields{}
+			choice.Message.ReasoningContent = &openai.ReasoningContentUnion{
+				Value: &openai.AWSBedrockReasoningContent{
+					ReasoningContent: output.ReasoningContent,
+				},
 			}
-			choice.Message.ReasoningContent = &openai.AWSBedrockReasoningContent{ReasoningContent: output.ReasoningContent}
 		}
 	}
 	openAIResp.Choices = append(openAIResp.Choices, choice)

@@ -236,6 +236,30 @@ data: [DONE]
 			require.Equal(t, &resp, s.Resp)
 		})
 	})
+	t.Run("response reasoning content", func(t *testing.T) {
+		t.Run("valid body", func(t *testing.T) {
+			s := &testotel.MockSpan{}
+			var resp openai.ChatCompletionResponse
+			resp.Usage.TotalTokens = 42
+			resp.Choices = []openai.ChatCompletionResponseChoice{
+				{
+					Message: openai.ChatCompletionResponseChoiceMessage{
+						Content: ptr.To("plain content"),
+						ReasoningContent: &openai.ReasoningContentUnion{
+							Value: "reasoning content",
+						},
+					},
+				},
+			}
+			body, err := json.Marshal(resp)
+			require.NoError(t, err)
+			o := &openAIToOpenAITranslatorV1ChatCompletion{}
+			_, _, usedToken, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, s)
+			require.NoError(t, err)
+			require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
+			require.Equal(t, &resp, s.Resp)
+		})
+	})
 }
 
 func TestExtractUsageFromBufferEvent(t *testing.T) {

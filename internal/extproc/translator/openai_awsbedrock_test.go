@@ -1603,8 +1603,8 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 						Message: openai.ChatCompletionResponseChoiceMessage{
 							Role:    awsbedrock.ConversationRoleAssistant,
 							Content: ptr.To("This is the final answer."),
-							AWSBedrockResponseVendorFields: &openai.AWSBedrockResponseVendorFields{
-								ReasoningContent: &openai.AWSBedrockReasoningContent{
+							ReasoningContent: &openai.ReasoningContentUnion{
+								Value: &openai.AWSBedrockReasoningContent{
 									ReasoningContent: &awsbedrock.ReasoningContentBlock{
 										ReasoningText: &awsbedrock.ReasoningTextBlock{
 											Text: "This is the model's thought process.",
@@ -1972,8 +1972,9 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody_WithReasoning
 	require.Equal(t, "9.11 is greater than 9.8.", *message.Content)
 
 	require.NotNil(t, message.ReasoningContent, "Reasoning content should not be nil")
-	require.NotNil(t, message.ReasoningContent.ReasoningContent, "The nested reasoning content block should not be nil")
-	require.NotEmpty(t, message.ReasoningContent.ReasoningContent.ReasoningText.Text, "The reasoning text itself should not be empty")
+	reasoningBlock, ok := message.ReasoningContent.Value.(*openai.AWSBedrockReasoningContent)
+	require.NotNil(t, reasoningBlock, "The nested reasoning content block should not be nil")
+	require.NotEmpty(t, reasoningBlock.ReasoningContent.ReasoningText.Text, "The reasoning text itself should not be empty")
 
 	var untypedResponse map[string]interface{}
 	err = json.Unmarshal(outputBody, &untypedResponse)
@@ -1989,7 +1990,6 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody_WithReasoning
 
 	messageMap, ok := choice["message"].(map[string]interface{})
 	require.True(t, ok, "Choice should have a 'message' map")
-
 	reasoningContent, ok := messageMap["reasoning_content"].(map[string]interface{})
 	require.True(t, ok, "Message should have a 'reasoning_content' map")
 
