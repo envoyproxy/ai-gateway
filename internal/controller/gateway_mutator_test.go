@@ -148,7 +148,7 @@ func newTestGatewayMutator(fakeClient client.Client, fakeKube *fake2.Clientset, 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	return newGatewayMutator(
 		fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
-		"info", "/tmp/extproc.sock", metricsRequestHeaderLabels, "/v1", extProcExtraEnvVars,
+		"info", "/tmp/extproc.sock", metricsRequestHeaderLabels, "/v1", extProcExtraEnvVars, 512*1024*1024,
 	)
 }
 
