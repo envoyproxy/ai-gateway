@@ -44,6 +44,8 @@ type extProcFlags struct {
 	metricsRequestHeaderLabels string     // comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels.
 	// rootPrefix is the root prefix for all the processors.
 	rootPrefix string
+	// maxRecvMsgSize is the maximum message size in bytes that the gRPC server can receive.
+	maxRecvMsgSize int
 }
 
 // parseAndValidateFlags parses and validates the flags passed to the external processor.
@@ -81,6 +83,11 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		"rootPrefix",
 		"/",
 		"The root path prefix for all the processors.",
+	)
+	fs.IntVar(&flags.maxRecvMsgSize,
+		"maxRecvMsgSize",
+		4*1024*1024,
+		"Maximum message size in bytes that the gRPC server can receive. Default is 4MB.",
 	)
 
 	if err := fs.Parse(args); err != nil {
@@ -191,7 +198,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		return fmt.Errorf("failed to start config watcher: %w", err)
 	}
 
-	s := grpc.NewServer()
+	s := grpc.NewServer(grpc.MaxRecvMsgSize(flags.maxRecvMsgSize))
 	extprocv3.RegisterExternalProcessorServer(s, server)
 	grpc_health_v1.RegisterHealthServer(s, server)
 

@@ -54,6 +54,7 @@ func TestStartControllers(t *testing.T) {
 		EnableLeaderElection:   false,
 		DisableMutatingWebhook: true,
 		RootPrefix:             "/root-prefix",
+		ExtProcMaxRecvMsgSize:  512 * 1024 * 1024, // 512MB
 	}
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
