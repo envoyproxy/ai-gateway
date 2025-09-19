@@ -134,9 +134,10 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]str
 		return nil, nil, tokenUsage, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 	tokenUsage = LLMTokenUsage{
-		InputTokens:  uint32(resp.Usage.PromptTokens),     //nolint:gosec
-		OutputTokens: uint32(resp.Usage.CompletionTokens), //nolint:gosec
-		TotalTokens:  uint32(resp.Usage.TotalTokens),      //nolint:gosec
+		InputTokens:   uint32(resp.Usage.PromptTokens),     //nolint:gosec
+		OutputTokens:  uint32(resp.Usage.CompletionTokens), //nolint:gosec
+		TotalTokens:   uint32(resp.Usage.TotalTokens),      //nolint:gosec
+		ResponseModel: resp.Model,
 	}
 	if span != nil {
 		span.RecordResponse(resp)
@@ -166,12 +167,14 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent(s
 		if span != nil {
 			span.RecordResponseChunk(event)
 		}
+		// Update response model if present
+		if event.Model != "" {
+			tokenUsage.ResponseModel = event.Model
+		}
 		if usage := event.Usage; usage != nil {
-			tokenUsage = LLMTokenUsage{
-				InputTokens:  uint32(usage.PromptTokens),     //nolint:gosec
-				OutputTokens: uint32(usage.CompletionTokens), //nolint:gosec
-				TotalTokens:  uint32(usage.TotalTokens),      //nolint:gosec
-			}
+			tokenUsage.InputTokens = uint32(usage.PromptTokens)      //nolint:gosec
+			tokenUsage.OutputTokens = uint32(usage.CompletionTokens) //nolint:gosec
+			tokenUsage.TotalTokens = uint32(usage.TotalTokens)       //nolint:gosec
 			// Do not mark buffering done; keep scanning to return the latest usage in this batch.
 		}
 	}

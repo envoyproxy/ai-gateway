@@ -71,7 +71,8 @@ func TestRecordTokenUsage(t *testing.T) {
 		outputAttrs = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeOutput))...)
 	)
 
-	pm.SetModel("test-model", "test-model")
+	pm.SetModel("test-model")
+	pm.SetResponseModel("test-model")
 	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 	pm.RecordTokenUsage(t.Context(), 10, 5, nil)
 
@@ -104,7 +105,8 @@ func testRecordTokenLatency(t *testing.T) {
 	)
 
 	pm.StartRequest(nil)
-	pm.SetModel("test-model", "test-model")
+	pm.SetModel("test-model")
+	pm.SetResponseModel("test-model")
 	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}})
 
 	time.Sleep(10 * time.Millisecond)
@@ -149,7 +151,8 @@ func testRecordRequestCompletion(t *testing.T) {
 	)
 
 	pm.StartRequest(nil)
-	pm.SetModel("test-model", "test-model")
+	pm.SetModel("test-model")
+	pm.SetResponseModel("test-model")
 	pm.SetBackend(&filterapi.Backend{Name: "custom"})
 
 	time.Sleep(10 * time.Millisecond)
@@ -194,7 +197,8 @@ func TestHeaderLabelMapping(t *testing.T) {
 		"x-other":   "ignored", // This should be ignored as it's not in the mapping.
 	}
 
-	pm.SetModel("test-model", "test-model")
+	pm.SetModel("test-model")
+	pm.SetResponseModel("test-model")
 	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 	pm.RecordTokenUsage(t.Context(), 10, 5, requestHeaders)
 
@@ -222,7 +226,8 @@ func TestLabels_SetModel_RequestAndResponseDiffer(t *testing.T) {
 	pm := NewChatCompletion(meter, nil).(*chatCompletion)
 
 	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
-	pm.SetModel("req-model", "res-model")
+	pm.SetModel("req-model")
+	pm.SetResponseModel("res-model")
 	pm.RecordTokenUsage(t.Context(), 1, 2, nil)
 
 	inputAttrs := attribute.NewSet(
@@ -289,7 +294,8 @@ func TestRecordTokenLatency_MaxAcrossStream_EndHasNoUsage(t *testing.T) {
 		)
 
 		pm.StartRequest(nil)
-		pm.SetModel("test-model", "test-model")
+		pm.SetModel("test-model")
+		pm.SetResponseModel("test-model")
 		pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}})
 
 		time.Sleep(5 * time.Millisecond)
@@ -327,7 +333,8 @@ func TestRecordTokenLatency_OnlyFinalUsage(t *testing.T) {
 		)
 
 		pm.StartRequest(nil)
-		pm.SetModel("test-model", "test-model")
+		pm.SetModel("test-model")
+		pm.SetResponseModel("test-model")
 		pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}})
 
 		time.Sleep(5 * time.Millisecond)
@@ -363,7 +370,8 @@ func TestRecordTokenLatency_ZeroTokensFirst(t *testing.T) {
 		)
 
 		pm.StartRequest(nil)
-		pm.SetModel("test-model", "test-model")
+		pm.SetModel("test-model")
+		pm.SetResponseModel("test-model")
 		pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 
 		// First token (records TTFT).
@@ -405,7 +413,8 @@ func TestRecordTokenLatency_SingleToken(t *testing.T) {
 		)
 
 		pm.StartRequest(nil)
-		pm.SetModel("test-model", "test-model")
+		pm.SetModel("test-model")
+		pm.SetResponseModel("test-model")
 		pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 
 		time.Sleep(5 * time.Millisecond)
@@ -446,7 +455,8 @@ func TestRecordTokenLatency_MultipleChunksFormula(t *testing.T) {
 		)
 
 		pm.StartRequest(nil)
-		pm.SetModel("test-model", "test-model")
+		pm.SetModel("test-model")
+		pm.SetResponseModel("test-model")
 		pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 
 		// First chunk: 3 tokens at 5ms (records TTFT).

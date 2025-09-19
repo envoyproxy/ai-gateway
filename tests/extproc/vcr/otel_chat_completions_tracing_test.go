@@ -18,7 +18,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/tests/internal/testopeninference"
 )
 
-func TestOtelOpenAIChatCompletions(t *testing.T) {
+func TestOtelOpenAIChatCompletions_span(t *testing.T) {
 	env := setupOtelTestEnvironment(t)
 
 	listenerPort := env.EnvoyListenerPort()

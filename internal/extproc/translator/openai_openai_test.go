@@ -203,6 +203,7 @@ data: [DONE]
 			require.Nil(t, bm)
 			if tokenUsage.OutputTokens > 0 {
 				require.Equal(t, uint32(12), tokenUsage.OutputTokens)
+				require.Equal(t, "gpt-4o-mini-2024-07-18", tokenUsage.ResponseModel)
 			}
 		}
 	})
@@ -233,6 +234,26 @@ data: [DONE]
 			_, _, usedToken, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, s)
 			require.NoError(t, err)
 			require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
+			require.Equal(t, &resp, s.Resp)
+		})
+		t.Run("valid body with different response model", func(t *testing.T) {
+			s := &testotel.MockSpan{}
+			var resp openai.ChatCompletionResponse
+			resp.Model = "gpt-4o-mini-2024-07-18"
+			resp.Usage.PromptTokens = 10
+			resp.Usage.CompletionTokens = 20
+			resp.Usage.TotalTokens = 30
+			body, err := json.Marshal(resp)
+			require.NoError(t, err)
+			o := &openAIToOpenAITranslatorV1ChatCompletion{}
+			_, _, usedToken, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, s)
+			require.NoError(t, err)
+			require.Equal(t, LLMTokenUsage{
+				InputTokens:   10,
+				OutputTokens:  20,
+				TotalTokens:   30,
+				ResponseModel: "gpt-4o-mini-2024-07-18",
+			}, usedToken)
 			require.Equal(t, &resp, s.Resp)
 		})
 	})

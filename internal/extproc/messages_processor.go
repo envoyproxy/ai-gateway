@@ -172,13 +172,12 @@ func (c *messagesProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Cont
 
 	// Start tracking metrics for this request.
 	c.metrics.StartRequest(c.requestHeaders)
-	respModel := c.requestHeaders[c.config.modelNameHeaderKey]
-	// Request label should reflect the original user-provided model; fall back to header if body is unavailable.
-	reqModel := respModel
+	// Set the request model for metrics. This should reflect the original user-provided model.
+	reqModel := c.requestHeaders[c.config.modelNameHeaderKey]
 	if c.originalRequestBody != nil && c.originalRequestBody.GetModel() != "" {
 		reqModel = c.originalRequestBody.GetModel()
 	}
-	c.metrics.SetModel(reqModel, respModel)
+	c.metrics.SetModel(reqModel)
 
 	// Force body mutation for retry requests as the body mutation might have happened in previous iteration.
 	forceBodyMutation := c.onRetry
@@ -279,6 +278,13 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseBody(ctx context.Contex
 	headerMutation, bodyMutation, tokenUsage, err := c.translator.ResponseBody(c.responseHeaders, decodingResult.reader, body.EndOfStream)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
+	}
+
+	// Set response model from actual response, fallback to header if not present
+	if tokenUsage.ResponseModel != "" {
+		c.metrics.SetResponseModel(tokenUsage.ResponseModel)
+	} else if headerModel := c.requestHeaders[c.config.modelNameHeaderKey]; headerModel != "" {
+		c.metrics.SetResponseModel(headerModel)
 	}
 
 	// Remove content-encoding header if original body encoded but was mutated in the processor.

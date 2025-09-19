@@ -23,8 +23,18 @@ type embeddings struct {
 type EmbeddingsMetrics interface {
 	// StartRequest initializes timing for a new request.
 	StartRequest(headers map[string]string)
-	// SetModel sets the model the request. This is usually called after parsing the request body .
-	SetModel(requestModel, responseModel string)
+	// SetModel sets the model from the request. This is usually called after parsing the request body.
+	// Example: text-embedding-3-small
+	SetModel(requestModel string)
+	// SetResponseModel sets the model that ultimately generated the response.
+	// This may differ from the request model due to:
+	//  - AI Gateway model virtualization via modelNameOverride
+	//  - Azure OpenAI deployments (where the URL deployment controls the actual model, not the request body)
+	//  - Backend-specific model aliasing or versioning
+	// The response model is the authoritative source for which model was actually used.
+	// If not called (e.g., on error responses where no model info is returned), the request model is used as fallback.
+	// Example: text-embedding-3-small-2025-02-18
+	SetResponseModel(responseModel string)
 	// SetBackend sets the selected backend when the routing decision has been made. This is usually called
 	// after parsing the request body to determine the model and invoke the routing logic.
 	SetBackend(backend *filterapi.Backend)

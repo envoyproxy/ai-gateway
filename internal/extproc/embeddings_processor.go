@@ -173,12 +173,12 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Co
 
 	// Start tracking metrics for this request.
 	e.metrics.StartRequest(e.requestHeaders)
-	respModel := e.requestHeaders[e.config.modelNameHeaderKey]
-	reqModel := respModel
+	// Set the request model for metrics. This should reflect the original user-provided model.
+	reqModel := e.requestHeaders[e.config.modelNameHeaderKey]
 	if e.originalRequestBody != nil && e.originalRequestBody.Model != "" {
 		reqModel = e.originalRequestBody.Model
 	}
-	e.metrics.SetModel(reqModel, respModel)
+	e.metrics.SetModel(reqModel)
 
 	headerMutation, bodyMutation, err := e.translator.RequestBody(e.originalRequestBodyRaw, e.originalRequestBody, e.onRetry)
 	if err != nil {
@@ -313,6 +313,14 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 	// Accumulate token usage for embeddings (only input and total tokens are relevant).
 	e.costs.InputTokens += tokenUsage.InputTokens
 	e.costs.TotalTokens += tokenUsage.TotalTokens
+
+	// Update response model in metrics if provided
+	// Set response model from actual response, fallback to header if not present
+	if tokenUsage.ResponseModel != "" {
+		e.metrics.SetResponseModel(tokenUsage.ResponseModel)
+	} else if headerModel := e.requestHeaders[e.config.modelNameHeaderKey]; headerModel != "" {
+		e.metrics.SetResponseModel(headerModel)
+	}
 
 	// Update metrics with token usage.
 	e.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, e.requestHeaders)

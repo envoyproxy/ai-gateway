@@ -112,9 +112,10 @@ func TestOpenAIToOpenAITranslatorV1EmbeddingResponseBody(t *testing.T) {
 				}
 			}`,
 			expTokenUsage: LLMTokenUsage{
-				InputTokens:  8,
-				OutputTokens: 0,
-				TotalTokens:  8,
+				InputTokens:   8,
+				OutputTokens:  0,
+				TotalTokens:   8,
+				ResponseModel: "text-embedding-ada-002",
 			},
 		},
 		{
