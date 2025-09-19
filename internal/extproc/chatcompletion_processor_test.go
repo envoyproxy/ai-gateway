@@ -252,7 +252,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{})
 		require.ErrorContains(t, err, "test error")
 		mm.RequireRequestFailure(t)
-		mm.RequireTokensRecorded(t, 0)
+		require.Zero(t, mm.tokenUsageCount)
 	})
 	t.Run("ok", func(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("some-body"), EndOfStream: true}
@@ -299,7 +299,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		require.Equal(t, expBodyMut, commonRes.BodyMutation)
 		require.Equal(t, expHeadMut, commonRes.HeaderMutation)
 		mm.RequireRequestSuccess(t)
-		mm.RequireTokensRecorded(t, 1)
+		require.Equal(t, 124, mm.tokenUsageCount) // 1 input + 123 output
 
 		md := res.DynamicMetadata
 		require.NotNil(t, md)
@@ -353,8 +353,8 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		_, err := p.ProcessResponseBody(t.Context(), chunk)
 		require.NoError(t, err)
 		mm.RequireRequestNotCompleted(t)
-		require.Equal(t, 0, mm.tokenUsageCount)
-		require.Equal(t, 1, mm.tokenLatencyCount)
+		require.Zero(t, mm.tokenUsageCount)
+		require.Zero(t, mm.streamingOutputTokens) // first chunk has 0 output tokens
 
 		// Final chunk should mark success and record usage once.
 		final := &extprocv3.HttpBody{Body: []byte("chunk-final"), EndOfStream: true}
@@ -363,8 +363,8 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		_, err = p.ProcessResponseBody(t.Context(), final)
 		require.NoError(t, err)
 		mm.RequireRequestSuccess(t)
-		require.Equal(t, 1, mm.tokenUsageCount)
-		require.Equal(t, 2, mm.tokenLatencyCount)
+		require.Equal(t, 143, mm.tokenUsageCount)       // 5 input + 138 output
+		require.Equal(t, 138, mm.streamingOutputTokens) // accumulated output tokens from stream
 	})
 }
 
@@ -398,7 +398,7 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	}, nil, &chatCompletionProcessorRouterFilter{})
 	require.ErrorContains(t, err, "unsupported API schema: backend={some-schema v10.0}")
 	mm.RequireRequestFailure(t)
-	mm.RequireTokensRecorded(t, 0)
+	require.Zero(t, mm.tokenUsageCount)
 	mm.RequireSelectedBackend(t, "some-backend")
 	require.False(t, p.stream) // On error, stream should be false regardless of the input.
 }
@@ -463,8 +463,9 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				_, err := p.ProcessRequestHeaders(t.Context(), nil)
 				require.ErrorContains(t, err, "failed to transform request: test error")
 				mm.RequireRequestFailure(t)
-				mm.RequireTokensRecorded(t, 0)
-				mm.RequireSelectedModel(t, "some-model", "some-model")
+				require.Zero(t, mm.tokenUsageCount)
+				// Verify request model was set even though processing failed
+				require.Equal(t, "some-model", mm.requestModel)
 			})
 			t.Run("ok", func(t *testing.T) {
 				someBody := bodyFromModel(t, "some-model", tc.stream, nil)
@@ -502,7 +503,10 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				require.Equal(t, bodyMut, commonRes.BodyMutation)
 
 				mm.RequireRequestNotCompleted(t)
-				mm.RequireSelectedModel(t, "some-model", "some-model")
+				// Verify request model was set
+				require.Equal(t, "some-model", mm.requestModel)
+				// Response model not set yet - only set when we get actual response
+				require.Empty(t, mm.responseModel)
 				require.Equal(t, tc.stream, p.stream)
 			})
 		})
@@ -759,7 +763,7 @@ func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestor
 	})
 }
 
-func Test_ProcessRequestHeaders_SetsRequestAndResponseModels(t *testing.T) {
+func Test_ProcessRequestHeaders_SetsRequestModel(t *testing.T) {
 	const modelKey = "x-ai-eg-model"
 	headers := map[string]string{":path": "/v1/chat/completions", modelKey: "header-model"}
 	body := openai.ChatCompletionRequest{Model: "body-model"}
@@ -775,5 +779,64 @@ func Test_ProcessRequestHeaders_SetsRequestAndResponseModels(t *testing.T) {
 		originalRequestBody:    &body,
 	}
 	_, _ = p.ProcessRequestHeaders(t.Context(), nil)
-	mm.RequireSelectedModel(t, "body-model", "header-model")
+	// Should use body model as request model
+	require.Equal(t, "body-model", mm.requestModel)
+	// Response model is not set until we get actual response
+	require.Empty(t, mm.responseModel)
+}
+
+func Test_ProcessResponseBody_OverridesHeaderModelWithResponseModel(t *testing.T) {
+	const modelKey = "x-ai-eg-model"
+	headers := map[string]string{":path": "/v1/chat/completions", modelKey: "header-model"}
+	body := openai.ChatCompletionRequest{Model: "body-model"}
+	raw, _ := json.Marshal(body)
+	mm := &mockChatCompletionMetrics{}
+
+	// Create a mock translator that returns token usage with response model
+	mt := &mockTranslator{
+		t:              t,
+		expRequestBody: &body,
+		expHeaders:     map[string]string{":status": "200"},
+		retUsedToken: translator.LLMTokenUsage{
+			InputTokens:   10,
+			OutputTokens:  20,
+			ResponseModel: "actual-response-model",
+		},
+	}
+
+	p := &chatCompletionProcessorUpstreamFilter{
+		config:                 &processorConfig{modelNameHeaderKey: modelKey},
+		requestHeaders:         headers,
+		logger:                 slog.Default(),
+		metrics:                mm,
+		translator:             mt,
+		originalRequestBodyRaw: raw,
+		originalRequestBody:    &body,
+	}
+
+	// First process request headers
+	_, _ = p.ProcessRequestHeaders(t.Context(), nil)
+
+	// Process response headers (required before body)
+	responseHeaders := &corev3.HeaderMap{
+		Headers: []*corev3.HeaderValue{
+			{Key: ":status", Value: "200"},
+		},
+	}
+	_, err := p.ProcessResponseHeaders(t.Context(), responseHeaders)
+	require.NoError(t, err)
+
+	// Now process response body (should override with actual response model)
+	// Simple response JSON that the translator will parse
+	responseBytes := []byte(`{"model":"actual-response-model","choices":[{"message":{"content":"test"}}],"usage":{"prompt_tokens":10,"completion_tokens":20}}`)
+	_, err = p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{
+		Body:        responseBytes,
+		EndOfStream: true,
+	})
+	require.NoError(t, err)
+
+	// Verify that response model was updated
+	mm.RequireSelectedModel(t, "body-model", "actual-response-model")
+	require.Equal(t, 30, mm.tokenUsageCount)
+	mm.RequireRequestSuccess(t)
 }

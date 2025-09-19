@@ -18,7 +18,11 @@ For example, `Claude 3.5 Sonnet` is hosted both on GCP and AWS Bedrock, but they
 * GCP: `claude-3-5-sonnet-v2@20241022`, etc.
 * AWS Bedrock: `arn:aws:bedrock:us-west-2:123456789012:provisioned-model/abc123xyz`
 
-From downstream GenAI applications' perspective, it is beneficial to have a unified model name that abstracts away these differences.
+Even within the same provider, model names may vary based on deployment configurations or versions.
+For example, an OpenAI Platform request to `gpt-5-nano` might result in a response from `gpt-5-nano-2025-08-07`.
+Azure OpenAI uses deployment names in the URL path rather than model names in the request body, so you won't know the model in use until you get the response.
+
+From downstream GenAI applications' perspective, it is beneficial to have a unified model name that abstracts away these differences. We do this while still availing the authoritative model name that served a response.
 
 ## Virtualization with modelNameOverride API
 

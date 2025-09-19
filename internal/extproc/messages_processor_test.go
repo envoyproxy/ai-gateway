@@ -323,6 +323,7 @@ type mockAnthropicTranslator struct {
 	expForceRequestBodyMutation bool
 	retHeaderMutation           *extprocv3.HeaderMutation
 	retBodyMutation             *extprocv3.BodyMutation
+	retTokenUsage               translator.LLMTokenUsage
 	retErr                      error
 }
 
@@ -342,7 +343,7 @@ func (m mockAnthropicTranslator) ResponseHeaders(_ map[string]string) (*extprocv
 
 // ResponseBody implements [translator.AnthropicMessagesTranslator].
 func (m mockAnthropicTranslator) ResponseBody(_ map[string]string, _ io.Reader, _ bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, translator.LLMTokenUsage, error) {
-	return m.retHeaderMutation, m.retBodyMutation, translator.LLMTokenUsage{}, m.retErr
+	return m.retHeaderMutation, m.retBodyMutation, m.retTokenUsage, m.retErr
 }
 
 func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithMocks(t *testing.T) {
@@ -600,7 +601,7 @@ func Test_messagesProcessorUpstreamFilter_SetBackend_Success(t *testing.T) {
 	require.NotNil(t, p.translator)
 }
 
-func TestMessages_ProcessRequestHeaders_SetsRequestAndResponseModels(t *testing.T) {
+func TestMessages_ProcessRequestHeaders_SetsRequestModel(t *testing.T) {
 	const modelKey = "x-ai-eg-model"
 	headers := map[string]string{":path": "/anthropic/v1/messages", modelKey: "header-model"}
 	requestBody := &anthropicschema.MessagesRequest{"model": "body-model", "messages": []any{"hello"}}
@@ -616,7 +617,69 @@ func TestMessages_ProcessRequestHeaders_SetsRequestAndResponseModels(t *testing.
 		originalRequestBody:    requestBody,
 	}
 	_, _ = p.ProcessRequestHeaders(t.Context(), nil)
-	mm.RequireSelectedModel(t, "body-model", "header-model")
+	// Should use body model as request model
+	require.Equal(t, "body-model", mm.requestModel)
+	// Response model is not set until we get actual response
+	require.Empty(t, mm.responseModel)
+}
+
+// TestMessages_ProcessResponseBody_UsesActualResponseModelOverHeaderOverride verifies that
+// the actual response model from the API response is used for metrics, not the header override.
+// This is important because the backend may return a more specific model version than what was
+// requested (e.g., "claude-3-opus-20240229" instead of "claude-3-opus").
+func TestMessages_ProcessResponseBody_UsesActualResponseModelOverHeaderOverride(t *testing.T) {
+	const modelKey = "x-ai-eg-model"
+	headers := map[string]string{":path": "/v1/messages", modelKey: "header-model"}
+	requestBody := &anthropicschema.MessagesRequest{"model": "body-model"}
+	requestBodyRaw := []byte(`{"model": "body-model"}`)
+	mm := &mockChatCompletionMetrics{}
+
+	// Create a mock translator that returns token usage with response model
+	mt := &mockAnthropicTranslator{
+		t:              t,
+		expRequestBody: requestBody,
+		retTokenUsage: translator.LLMTokenUsage{
+			InputTokens:   25,
+			OutputTokens:  35,
+			ResponseModel: "actual-anthropic-model",
+		},
+	}
+
+	p := &messagesProcessorUpstreamFilter{
+		config:                 &processorConfig{modelNameHeaderKey: modelKey},
+		requestHeaders:         headers,
+		logger:                 slog.Default(),
+		metrics:                mm,
+		translator:             mt,
+		originalRequestBodyRaw: requestBodyRaw,
+		originalRequestBody:    requestBody,
+	}
+
+	// First process request headers
+	_, _ = p.ProcessRequestHeaders(t.Context(), nil)
+
+	// Process response headers (required before body)
+	responseHeaders := &corev3.HeaderMap{
+		Headers: []*corev3.HeaderValue{
+			{Key: ":status", Value: "200"},
+		},
+	}
+	_, err := p.ProcessResponseHeaders(t.Context(), responseHeaders)
+	require.NoError(t, err)
+
+	// Now process response body (should set response model from response)
+	responseBytes := []byte(`{"model": "actual-anthropic-model", "content": [{"type": "text", "text": "test"}], "usage": {"input_tokens": 25, "output_tokens": 35}}`)
+	_, err = p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{
+		Body:        responseBytes,
+		EndOfStream: true,
+	})
+	require.NoError(t, err)
+
+	// Verify that response model was set from the response
+	mm.RequireSelectedModel(t, "body-model", "actual-anthropic-model")
+	// For non-streaming, only usage is recorded, not latency
+	require.Equal(t, 60, mm.tokenUsageCount)
+	mm.RequireRequestSuccess(t)
 }
 
 func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutations(t *testing.T) {

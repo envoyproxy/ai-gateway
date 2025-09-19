@@ -227,14 +227,12 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 
 	// Start tracking metrics for this request.
 	c.metrics.StartRequest(c.requestHeaders)
-	// Response label at this stage defaults to the effective header model; backend override (if any) will be applied in SetBackend.
-	respModel := c.requestHeaders[c.config.modelNameHeaderKey]
-	// Request label should reflect the original user-provided model; fall back to header if body is unavailable.
-	reqModel := respModel
+	// Set the request model for metrics. This should reflect the original user-provided model.
+	reqModel := c.requestHeaders[c.config.modelNameHeaderKey]
 	if c.originalRequestBody != nil && c.originalRequestBody.Model != "" {
 		reqModel = c.originalRequestBody.Model
 	}
-	c.metrics.SetModel(reqModel, respModel)
+	c.metrics.SetModel(reqModel)
 
 	// We force the body mutation in the following cases:
 	// * The request is a retry request because the body mutation might have happened the previous iteration.
@@ -369,6 +367,12 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 	headerMutation, bodyMutation, tokenUsage, err := c.translator.ResponseBody(c.responseHeaders, decodingResult.reader, body.EndOfStream, c.span)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
+	}
+
+	// Update response model in metrics
+	// Set response model from actual response when present
+	if tokenUsage.ResponseModel != "" {
+		c.metrics.SetResponseModel(tokenUsage.ResponseModel)
 	}
 
 	// Remove content-encoding header if original body encoded but was mutated in the processor.

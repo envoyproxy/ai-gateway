@@ -84,8 +84,9 @@ func (o *openAIToOpenAITranslatorV1Embedding) ResponseBody(_ map[string]string, 
 		return nil, nil, tokenUsage, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 	tokenUsage = LLMTokenUsage{
-		InputTokens: uint32(resp.Usage.PromptTokens), //nolint:gosec
-		TotalTokens: uint32(resp.Usage.TotalTokens),  //nolint:gosec
+		InputTokens:   uint32(resp.Usage.PromptTokens), //nolint:gosec
+		TotalTokens:   uint32(resp.Usage.TotalTokens),  //nolint:gosec
+		ResponseModel: resp.Model,
 		// Embeddings don't have output tokens, only input and total.
 		OutputTokens: 0,
 	}

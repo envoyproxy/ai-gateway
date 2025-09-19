@@ -163,6 +163,8 @@ type LLMTokenUsage struct {
 	OutputTokens uint32
 	// TotalTokens is the total number of tokens consumed.
 	TotalTokens uint32
+	// ResponseModel is the model name from the response (may differ from request model).
+	ResponseModel string
 }
 
 // SJSONOptions are the options used for sjson operations in the translator.
