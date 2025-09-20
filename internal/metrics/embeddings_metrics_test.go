@@ -28,7 +28,8 @@ func TestEmbeddings_RecordTokenUsage(t *testing.T) {
 	}
 	inputAttrs := attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput))...)
 
-	em.SetModel("text-embedding-ada-002", "text-embedding-ada-002")
+	em.SetRequestModel("text-embedding-ada-002")
+	em.SetResponseModel("text-embedding-ada-002")
 	em.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 	em.RecordTokenUsage(t.Context(), 10, nil)
 
@@ -43,7 +44,8 @@ func TestEmbeddings_RecordTokenUsage_MultipleRecords(t *testing.T) {
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
 	em := NewEmbeddings(meter, nil).(*embeddings)
 
-	em.SetModel("text-embedding-3-small", "text-embedding-3-small")
+	em.SetRequestModel("text-embedding-3-small")
+	em.SetResponseModel("text-embedding-3-small")
 	em.SetBackend(&filterapi.Backend{
 		Name:   "custom-backend",
 		Schema: filterapi.VersionedAPISchema{Name: "CustomAPI"},
@@ -87,7 +89,8 @@ func TestEmbeddings_HeaderLabelMapping(t *testing.T) {
 		"x-other":     "ignored", // This should be ignored as it's not in the mapping.
 	}
 
-	em.SetModel("text-embedding-ada-002", "text-embedding-ada-002")
+	em.SetRequestModel("text-embedding-ada-002")
+	em.SetResponseModel("text-embedding-ada-002")
 	em.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 	em.RecordTokenUsage(t.Context(), 10, requestHeaders)
 
@@ -115,7 +118,8 @@ func TestEmbeddings_Labels_SetModel_RequestAndResponseDiffer(t *testing.T) {
 	em := NewEmbeddings(meter, nil).(*embeddings)
 
 	em.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
-	em.SetModel("req-embed", "res-embed")
+	em.SetRequestModel("req-embed")
+	em.SetResponseModel("res-embed")
 	em.RecordTokenUsage(t.Context(), 7, nil)
 
 	attrs := attribute.NewSet(

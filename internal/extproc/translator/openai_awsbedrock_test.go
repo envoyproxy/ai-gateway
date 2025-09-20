@@ -1250,7 +1250,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_ResponseBody(t *
 
 		var results []string
 		for i := range buf {
-			hm, bm, tokenUsage, err := o.ResponseBody(nil, bytes.NewBuffer([]byte{buf[i]}), i == len(buf)-1, nil)
+			hm, bm, tokenUsage, _, err := o.ResponseBody(nil, bytes.NewBuffer([]byte{buf[i]}), i == len(buf)-1, nil)
 			require.NoError(t, err)
 			require.Nil(t, hm)
 			require.NotNil(t, bm)
@@ -1391,7 +1391,7 @@ func TestOpenAIToAWSBedrockTranslator_ResponseError(t *testing.T) {
 func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T) {
 	t.Run("invalid body", func(t *testing.T) {
 		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
-		_, _, _, err := o.ResponseBody(nil, bytes.NewBuffer([]byte("invalid")), false, nil)
+		_, _, _, _, err := o.ResponseBody(nil, bytes.NewBuffer([]byte("invalid")), false, nil)
 		require.Error(t, err)
 	})
 	tests := []struct {
@@ -1625,7 +1625,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			require.NoError(t, err)
 
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
-			hm, bm, usedToken, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, nil)
+			hm, bm, usedToken, _, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, nil)
 			require.NoError(t, err)
 			require.NotNil(t, bm)
 			require.NotNil(t, bm.Mutation)
@@ -1877,7 +1877,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_WithReasoning(t 
 	}
 	// Process the entire encoded stream through the translator.
 	o := &openAIToAWSBedrockTranslatorV1ChatCompletion{stream: true}
-	_, bm, _, err := o.ResponseBody(nil, buf, true, nil)
+	_, bm, _, _, err := o.ResponseBody(nil, buf, true, nil)
 	require.NoError(t, err)
 	require.NotNil(t, bm)
 
@@ -1963,7 +1963,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody_WithReasoning
 	require.NoError(t, err)
 
 	o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
-	_, bm, _, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, nil)
+	_, bm, _, _, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, nil)
 	require.NoError(t, err)
 	require.NotNil(t, bm)
 
@@ -2034,7 +2034,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_WithRedactedCont
 	}
 
 	o := &openAIToAWSBedrockTranslatorV1ChatCompletion{stream: true}
-	_, bm, _, err := o.ResponseBody(nil, buf, true, nil)
+	_, bm, _, _, err := o.ResponseBody(nil, buf, true, nil)
 	require.NoError(t, err)
 
 	lines := strings.Split(string(bm.Mutation.(*extprocv3.BodyMutation_Body).Body), "\n")
@@ -2070,4 +2070,39 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_WithRedactedCont
 		}
 	}
 	require.True(t, foundReasoningChunk, "A reasoning chunk with redacted content should have been found")
+}
+
+// TestResponseModel_AWSBedrock tests that AWS Bedrock returns the request model (no virtualization)
+func TestResponseModel_AWSBedrock(t *testing.T) {
+	modelName := "anthropic.claude-3-5-sonnet-20241022-v2:0"
+	translator := NewChatCompletionOpenAIToAWSBedrockTranslator(modelName)
+
+	// Initialize translator with the model
+	req := &openai.ChatCompletionRequest{
+		Model: "claude-3-5-sonnet",
+	}
+	reqBody, _ := json.Marshal(req)
+	_, _, err := translator.RequestBody(reqBody, req, false)
+	require.NoError(t, err)
+
+	// AWS Bedrock response doesn't have model field
+	bedrockResponse := `{
+		"output": {
+			"message": {
+				"content": [{"text": "Hello"}],
+				"role": "assistant"
+			}
+		},
+		"usage": {
+			"inputTokens": 10,
+			"outputTokens": 5,
+			"totalTokens": 15
+		}
+	}`
+
+	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader([]byte(bedrockResponse)), true, nil)
+	require.NoError(t, err)
+	require.Equal(t, modelName, responseModel) // Returns the request model since no virtualization
+	require.Equal(t, uint32(10), tokenUsage.InputTokens)
+	require.Equal(t, uint32(5), tokenUsage.OutputTokens)
 }

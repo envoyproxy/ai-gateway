@@ -15,6 +15,7 @@ import (
 
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -56,10 +57,12 @@ type OpenAIChatCompletionTranslator interface {
 	// 	- `body` is the response body either chunk or the entire body, depending on the context.
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
 	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
+	//  - This returns `responseModel` that is the model name from the response (may differ from request model).
 	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
 		headerMutation *extprocv3.HeaderMutation,
 		bodyMutation *extprocv3.BodyMutation,
 		tokenUsage LLMTokenUsage,
+		responseModel internalapi.ResponseModel,
 		err error,
 	)
 
@@ -106,10 +109,12 @@ type OpenAIEmbeddingTranslator interface {
 	// 	- `body` is the response body.
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
 	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
+	//  - This returns `responseModel` that is the model name from the response (may differ from request model).
 	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
 		headerMutation *extprocv3.HeaderMutation,
 		bodyMutation *extprocv3.BodyMutation,
 		tokenUsage LLMTokenUsage,
+		responseModel internalapi.ResponseModel,
 		err error,
 	)
 
@@ -147,10 +152,12 @@ type AnthropicMessagesTranslator interface {
 	// 	- `body` is the response body either chunk or the entire body, depending on the context.
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
 	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
+	//  - This returns `responseModel` that is the model name from the response (may differ from request model).
 	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
 		headerMutation *extprocv3.HeaderMutation,
 		bodyMutation *extprocv3.BodyMutation,
 		tokenUsage LLMTokenUsage,
+		responseModel internalapi.ResponseModel,
 		err error,
 	)
 }

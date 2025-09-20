@@ -36,6 +36,7 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/controller"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 )
@@ -109,7 +110,7 @@ func TestStartControllers(t *testing.T) {
 								{
 									Headers: []gwapiv1.HTTPHeaderMatch{
 										{
-											Name:  "x-ai-eg-model",
+											Name:  internalapi.ModelNameHeaderKeyDefault,
 											Value: "foo",
 										},
 									},
@@ -181,7 +182,7 @@ func TestStartControllers(t *testing.T) {
 				require.Len(t, httpRoute.Spec.Rules, 2) // 1 for rule, 1 for the default rule.
 				require.Len(t, httpRoute.Spec.Rules[0].Matches, 1)
 				require.Len(t, httpRoute.Spec.Rules[0].Matches[0].Headers, 1)
-				require.Equal(t, "x-ai-eg-model", string(httpRoute.Spec.Rules[0].Matches[0].Headers[0].Name))
+				require.Equal(t, internalapi.ModelNameHeaderKeyDefault, string(httpRoute.Spec.Rules[0].Matches[0].Headers[0].Name))
 				require.Equal(t, "foo", httpRoute.Spec.Rules[0].Matches[0].Headers[0].Value)
 
 				// Check all rule has the host rewrite filter except for the last rule.

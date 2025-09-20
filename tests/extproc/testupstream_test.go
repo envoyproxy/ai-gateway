@@ -28,6 +28,17 @@ import (
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
+// failIf5xx because 5xx errors are likely a sign of a broken ExtProc or Envoy.
+func failIf5xx(t *testing.T, resp *http.Response, was5xx *bool) {
+	if resp.StatusCode >= 500 && resp.StatusCode < 600 {
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		*was5xx = true
+		t.Fatalf("received %d response with body: %s", resp.StatusCode, string(body))
+	}
+}
+
 // TestWithTestUpstream tests the end-to-end flow of the external processor with Envoy and the test upstream.
 //
 // This does not require any environment variables to be set as it relies on the test upstream.
@@ -71,6 +82,7 @@ func TestWithTestUpstream(t *testing.T) {
 		},
 	}
 
+	was5xx := false
 	for _, tc := range []struct {
 		// name is the name of the test case.
 		name,
@@ -195,9 +207,9 @@ func TestWithTestUpstream(t *testing.T) {
 			method:          http.MethodPost,
 			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
 			expPath:         "/openai/deployments/something/chat/completions",
-			responseBody:    `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			responseBody:    `{"model":"gpt-4o-2024-08-01","choices":[{"message":{"content":"This is a test."}}]}`,
 			expStatus:       http.StatusOK,
-			expResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			expResponseBody: `{"model":"gpt-4o-2024-08-01","choices":[{"message":{"content":"This is a test."}}]}`,
 		},
 		{
 			name:            "gcp-vertexai - /v1/chat/completions",
@@ -812,6 +824,9 @@ data: {"type": "message_stop"}
 					return false
 				}
 				defer func() { _ = resp.Body.Close() }()
+
+				failIf5xx(t, resp, &was5xx)
+
 				if resp.StatusCode != tc.expStatus {
 					t.Logf("unexpected status code: %d", resp.StatusCode)
 					return false
@@ -847,6 +862,10 @@ data: {"type": "message_stop"}
 	}
 
 	t.Run("stream non blocking", func(t *testing.T) {
+		if was5xx {
+			return // rather than also failing subsequent tests, which confuses root cause.
+		}
+
 		// This receives a stream of 20 event messages. The testuptream server sleeps 200 ms between each message.
 		// Therefore, if envoy fails to process the response in a streaming manner, the test will fail taking more than 4 seconds.
 		listenerAddress := fmt.Sprintf("http://localhost:%d", listenerPort)

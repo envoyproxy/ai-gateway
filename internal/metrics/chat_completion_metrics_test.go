@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 func TestNewProcessorMetrics(t *testing.T) {
@@ -71,7 +72,8 @@ func TestRecordTokenUsage(t *testing.T) {
 		outputAttrs = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeOutput))...)
 	)
 
-	pm.SetModel("test-model", "test-model")
+	pm.SetRequestModel("test-model")
+	pm.SetResponseModel("test-model")
 	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 	pm.RecordTokenUsage(t.Context(), 10, 5, nil)
 
@@ -104,7 +106,8 @@ func testRecordTokenLatency(t *testing.T) {
 	)
 
 	pm.StartRequest(nil)
-	pm.SetModel("test-model", "test-model")
+	pm.SetRequestModel("test-model")
+	pm.SetResponseModel("test-model")
 	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}})
 
 	time.Sleep(10 * time.Millisecond)
@@ -149,7 +152,8 @@ func testRecordRequestCompletion(t *testing.T) {
 	)
 
 	pm.StartRequest(nil)
-	pm.SetModel("test-model", "test-model")
+	pm.SetRequestModel("test-model")
+	pm.SetResponseModel("test-model")
 	pm.SetBackend(&filterapi.Backend{Name: "custom"})
 
 	time.Sleep(10 * time.Millisecond)
@@ -194,7 +198,8 @@ func TestHeaderLabelMapping(t *testing.T) {
 		"x-other":   "ignored", // This should be ignored as it's not in the mapping.
 	}
 
-	pm.SetModel("test-model", "test-model")
+	pm.SetRequestModel("test-model")
+	pm.SetResponseModel("test-model")
 	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 	pm.RecordTokenUsage(t.Context(), 10, 5, requestHeaders)
 
@@ -216,13 +221,51 @@ func TestHeaderLabelMapping(t *testing.T) {
 	assert.Equal(t, uint64(1), count)
 }
 
+// TestModelNameHeaderKey tests that the model used in metrics is taken from
+// the internalapi.ModelNameHeaderKey when present, which allows backend-specific
+// model overrides to be tracked in metrics.
+func TestModelNameHeaderKey(t *testing.T) {
+	t.Parallel()
+	mr := metric.NewManualReader()
+	meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
+	pm := NewChatCompletion(meter, nil).(*chatCompletion)
+
+	// Simulate headers with model override
+	headers := map[string]string{
+		internalapi.ModelNameHeaderKeyDefault: "backend-specific-model",
+	}
+
+	pm.StartRequest(headers)
+	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}})
+
+	// This simulates the processor setting the model from the header
+	pm.SetRequestModel("backend-specific-model")
+	// Response model is what the backend actually used
+	pm.SetResponseModel("us.meta.llama3-2-1b-instruct-v1:0")
+
+	pm.RecordTokenUsage(t.Context(), 10, 5, headers)
+
+	// Verify metrics use the overridden request model
+	inputAttrs := attribute.NewSet(
+		attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
+		attribute.Key(genaiAttributeProviderName).String(genaiProviderAWSBedrock),
+		attribute.Key(genaiAttributeRequestModel).String("backend-specific-model"),
+		attribute.Key(genaiAttributeResponseModel).String("us.meta.llama3-2-1b-instruct-v1:0"),
+		attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput),
+	)
+	count, sum := getHistogramValues(t, mr, genaiMetricClientTokenUsage, inputAttrs)
+	assert.Equal(t, uint64(1), count)
+	assert.Equal(t, 10.0, sum)
+}
+
 func TestLabels_SetModel_RequestAndResponseDiffer(t *testing.T) {
 	mr := metric.NewManualReader()
 	meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
 	pm := NewChatCompletion(meter, nil).(*chatCompletion)
 
 	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
-	pm.SetModel("req-model", "res-model")
+	pm.SetRequestModel("req-model")
+	pm.SetResponseModel("res-model")
 	pm.RecordTokenUsage(t.Context(), 1, 2, nil)
 
 	inputAttrs := attribute.NewSet(
@@ -289,7 +332,8 @@ func TestRecordTokenLatency_MaxAcrossStream_EndHasNoUsage(t *testing.T) {
 		)
 
 		pm.StartRequest(nil)
-		pm.SetModel("test-model", "test-model")
+		pm.SetRequestModel("test-model")
+		pm.SetResponseModel("test-model")
 		pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}})
 
 		time.Sleep(5 * time.Millisecond)
@@ -327,7 +371,8 @@ func TestRecordTokenLatency_OnlyFinalUsage(t *testing.T) {
 		)
 
 		pm.StartRequest(nil)
-		pm.SetModel("test-model", "test-model")
+		pm.SetRequestModel("test-model")
+		pm.SetResponseModel("test-model")
 		pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}})
 
 		time.Sleep(5 * time.Millisecond)
@@ -363,7 +408,8 @@ func TestRecordTokenLatency_ZeroTokensFirst(t *testing.T) {
 		)
 
 		pm.StartRequest(nil)
-		pm.SetModel("test-model", "test-model")
+		pm.SetRequestModel("test-model")
+		pm.SetResponseModel("test-model")
 		pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 
 		// First token (records TTFT).
@@ -405,7 +451,8 @@ func TestRecordTokenLatency_SingleToken(t *testing.T) {
 		)
 
 		pm.StartRequest(nil)
-		pm.SetModel("test-model", "test-model")
+		pm.SetRequestModel("test-model")
+		pm.SetResponseModel("test-model")
 		pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 
 		time.Sleep(5 * time.Millisecond)
@@ -446,7 +493,8 @@ func TestRecordTokenLatency_MultipleChunksFormula(t *testing.T) {
 		)
 
 		pm.StartRequest(nil)
-		pm.SetModel("test-model", "test-model")
+		pm.SetRequestModel("test-model")
+		pm.SetResponseModel("test-model")
 		pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 
 		// First chunk: 3 tokens at 5ms (records TTFT).

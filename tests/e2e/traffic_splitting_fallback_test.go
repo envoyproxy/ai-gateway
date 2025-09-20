@@ -14,6 +14,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
@@ -45,7 +46,7 @@ func TestTrafficSplittingFallback(t *testing.T) {
 			req, err := http.NewRequest(http.MethodPost, fwd.Address()+"/v1/chat/completions", strings.NewReader(
 				`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"model-a"}`))
 			require.NoError(t, err)
-			req.Header.Set("x-ai-eg-model", "model-a")
+			req.Header.Set(internalapi.ModelNameHeaderKeyDefault, "model-a")
 
 			// Use a generic response that will be overridden by the testupstream server.
 			req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(`{"choices":[{"message":{"content":"test"}}]}`)))
@@ -99,7 +100,7 @@ func TestTrafficSplittingFallback(t *testing.T) {
 				req, err := http.NewRequest(http.MethodPost, fwd.Address()+"/v1/chat/completions", strings.NewReader(
 					`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"model-a"}`))
 				require.NoError(t, err)
-				req.Header.Set("x-ai-eg-model", "model-a")
+				req.Header.Set(internalapi.ModelNameHeaderKeyDefault, "model-a")
 				// Set all backends to return 500 errors.
 				req.Header.Set(testupstreamlib.ResponseStatusKey, "500")
 				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(`{"choices":[{"message":{"content":"Fallback response from backend C"}}]}`)))

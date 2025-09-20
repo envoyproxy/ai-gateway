@@ -22,6 +22,141 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 )
 
+// TestResponseModel_OpenAIStreaming tests that OpenAI streaming returns the actual model version
+// OpenAI supports automatic routing where generic models may resolve to specific versions
+func TestResponseModel_OpenAIStreaming(t *testing.T) {
+	translator := NewChatCompletionOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1ChatCompletion)
+
+	// Initialize as streaming
+	req := &openai.ChatCompletionRequest{
+		Model:  "gpt-4o",
+		Stream: true,
+	}
+	_, _, err := translator.RequestBody(nil, req, false)
+	require.NoError(t, err)
+	require.True(t, translator.stream)
+
+	// Simulate SSE stream chunks with model in response
+	sseChunks := `data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4o-2024-11-20","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4o-2024-11-20","choices":[{"index":0,"delta":{"content":" world"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4o-2024-11-20","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}
+
+data: [DONE]
+
+`
+
+	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader([]byte(sseChunks)), true, nil)
+	require.NoError(t, err)
+	require.Equal(t, "gpt-4o-2024-11-20", responseModel) // Returns actual versioned model
+	require.Equal(t, uint32(10), tokenUsage.InputTokens)
+	require.Equal(t, uint32(5), tokenUsage.OutputTokens)
+}
+
+// TestResponseModel_EmptyFallback tests the fallback to request model when response model is empty
+// This is a safeguard for test or non-compliant OpenAI backends that don't fill in the model field
+func TestResponseModel_EmptyFallback(t *testing.T) {
+	t.Run("non-streaming", func(t *testing.T) {
+		translator := NewChatCompletionOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1ChatCompletion)
+
+		// Set request model
+		req := &openai.ChatCompletionRequest{
+			Model:  "gpt-4o",
+			Stream: false,
+		}
+		_, _, err := translator.RequestBody(nil, req, false)
+		require.NoError(t, err)
+		require.False(t, translator.stream)
+
+		// Response without model field (empty model)
+		responseJSON := `{
+			"id": "chatcmpl-123",
+			"object": "chat.completion",
+			"created": 1234567890,
+			"choices": [{
+				"index": 0,
+				"message": {"role": "assistant", "content": "Hello world"},
+				"finish_reason": "stop"
+			}],
+			"usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+		}`
+
+		_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader([]byte(responseJSON)), false, nil)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o", responseModel) // Falls back to request model
+		require.Equal(t, uint32(10), tokenUsage.InputTokens)
+		require.Equal(t, uint32(5), tokenUsage.OutputTokens)
+	})
+
+	t.Run("streaming", func(t *testing.T) {
+		translator := NewChatCompletionOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1ChatCompletion)
+
+		// Set request model
+		req := &openai.ChatCompletionRequest{
+			Model:  "gpt-4o-mini",
+			Stream: true,
+		}
+		_, _, err := translator.RequestBody(nil, req, false)
+		require.NoError(t, err)
+		require.True(t, translator.stream)
+
+		// SSE chunks without model field
+		sseChunks := `data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"choices":[{"index":0,"delta":{"content":" world"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1234567890,"choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}
+
+data: [DONE]
+
+`
+
+		_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader([]byte(sseChunks)), true, nil)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o-mini", responseModel) // Falls back to request model
+		require.Equal(t, uint32(10), tokenUsage.InputTokens)
+		require.Equal(t, uint32(5), tokenUsage.OutputTokens)
+	})
+
+	t.Run("with model override", func(t *testing.T) {
+		translator := &openAIToOpenAITranslatorV1ChatCompletion{
+			modelNameOverride: "gpt-4o-2024-11-20",
+			path:              "/v1/chat/completions",
+		}
+
+		// Set request model (will be overridden)
+		req := &openai.ChatCompletionRequest{
+			Model:  "gpt-4o",
+			Stream: false,
+		}
+		original := []byte(`{"model":"gpt-4o"}`)
+		_, _, err := translator.RequestBody(original, req, false)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o-2024-11-20", translator.requestModel) // Override is stored
+
+		// Response without model field
+		responseJSON := `{
+			"id": "chatcmpl-123",
+			"object": "chat.completion",
+			"created": 1234567890,
+			"model": "",
+			"choices": [{
+				"index": 0,
+				"message": {"role": "assistant", "content": "Hello world"},
+				"finish_reason": "stop"
+			}],
+			"usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+		}`
+
+		_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader([]byte(responseJSON)), false, nil)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o-2024-11-20", responseModel) // Falls back to overridden model
+		require.Equal(t, uint32(10), tokenUsage.InputTokens)
+		require.Equal(t, uint32(5), tokenUsage.OutputTokens)
+	})
+}
+
 func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
 	t.Run("valid body", func(t *testing.T) {
 		for _, stream := range []bool{true, false} {
@@ -197,7 +332,7 @@ data: [DONE]
 
 		o := &openAIToOpenAITranslatorV1ChatCompletion{stream: true}
 		for i := range wholeBody {
-			hm, bm, tokenUsage, err := o.ResponseBody(nil, bytes.NewReader(wholeBody[i:i+1]), false, nil)
+			hm, bm, tokenUsage, _, err := o.ResponseBody(nil, bytes.NewReader(wholeBody[i:i+1]), false, nil)
 			require.NoError(t, err)
 			require.Nil(t, hm)
 			require.Nil(t, bm)
@@ -212,7 +347,7 @@ data: [DONE]
 		pr, pw := io.Pipe()
 		// Close the writer immediately with an error so reads fail.
 		_ = pw.CloseWithError(fmt.Errorf("error reading body"))
-		_, _, _, err := o.ResponseBody(nil, pr, false, nil)
+		_, _, _, _, err := o.ResponseBody(nil, pr, false, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to read body")
 	})
@@ -220,7 +355,7 @@ data: [DONE]
 	t.Run("non-streaming", func(t *testing.T) {
 		t.Run("invalid body", func(t *testing.T) {
 			o := &openAIToOpenAITranslatorV1ChatCompletion{}
-			_, _, _, err := o.ResponseBody(nil, bytes.NewBuffer([]byte("invalid")), false, nil)
+			_, _, _, _, err := o.ResponseBody(nil, bytes.NewBuffer([]byte("invalid")), false, nil)
 			require.Error(t, err)
 		})
 		t.Run("valid body", func(t *testing.T) {
@@ -230,9 +365,28 @@ data: [DONE]
 			body, err := json.Marshal(resp)
 			require.NoError(t, err)
 			o := &openAIToOpenAITranslatorV1ChatCompletion{}
-			_, _, usedToken, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, s)
+			_, _, usedToken, _, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, s)
 			require.NoError(t, err)
 			require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
+			require.Equal(t, &resp, s.Resp)
+		})
+		t.Run("valid body with different response model", func(t *testing.T) {
+			s := &testotel.MockSpan{}
+			var resp openai.ChatCompletionResponse
+			resp.Model = "gpt-4o-mini-2024-07-18"
+			resp.Usage.PromptTokens = 10
+			resp.Usage.CompletionTokens = 20
+			resp.Usage.TotalTokens = 30
+			body, err := json.Marshal(resp)
+			require.NoError(t, err)
+			o := &openAIToOpenAITranslatorV1ChatCompletion{}
+			_, _, usedToken, _, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, s)
+			require.NoError(t, err)
+			require.Equal(t, LLMTokenUsage{
+				InputTokens:  10,
+				OutputTokens: 20,
+				TotalTokens:  30,
+			}, usedToken)
 			require.Equal(t, &resp, s.Resp)
 		})
 	})
@@ -254,7 +408,7 @@ data: [DONE]
 			body, err := json.Marshal(resp)
 			require.NoError(t, err)
 			o := &openAIToOpenAITranslatorV1ChatCompletion{}
-			_, _, usedToken, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, s)
+			_, _, usedToken, _, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, s)
 			require.NoError(t, err)
 			require.Equal(t, LLMTokenUsage{TotalTokens: 42}, usedToken)
 			require.Equal(t, &resp, s.Resp)
@@ -301,4 +455,45 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		require.Equal(t, LLMTokenUsage{}, usedToken)
 		require.Empty(t, o.buffered)
 	})
+}
+
+// TestResponseModel_OpenAI tests that OpenAI returns the actual model version in response
+func TestResponseModel_OpenAI(t *testing.T) {
+	translator := NewChatCompletionOpenAIToOpenAITranslator("v1", "")
+
+	// Create a response like OpenAI would return - with the actual model version
+	var resp openai.ChatCompletionResponse
+	resp.Model = "gpt-4o-2024-08-06" // OpenAI returns actual version, not the alias
+	resp.Usage.TotalTokens = 15
+	resp.Usage.PromptTokens = 10
+	resp.Usage.CompletionTokens = 5
+
+	body, err := json.Marshal(resp)
+	require.NoError(t, err)
+
+	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewBuffer(body), true, nil)
+	require.NoError(t, err)
+	require.Equal(t, "gpt-4o-2024-08-06", responseModel)
+	require.Equal(t, uint32(10), tokenUsage.InputTokens)
+	require.Equal(t, uint32(5), tokenUsage.OutputTokens)
+}
+
+// TestResponseModel_OpenAIEmbeddings tests OpenAI embeddings (not virtualized but has response field)
+func TestResponseModel_OpenAIEmbeddings(t *testing.T) {
+	translator := NewEmbeddingOpenAIToOpenAITranslator("v1", "")
+
+	// OpenAI embeddings response includes model field even though no virtualization
+	var resp openai.EmbeddingResponse
+	resp.Model = "text-embedding-ada-002" // Returns exactly what was requested
+	resp.Usage.PromptTokens = 10
+	resp.Usage.TotalTokens = 10
+
+	body, err := json.Marshal(resp)
+	require.NoError(t, err)
+
+	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader(body), true)
+	require.NoError(t, err)
+	require.Equal(t, "text-embedding-ada-002", responseModel) // Uses response field as authoritative
+	require.Equal(t, uint32(10), tokenUsage.InputTokens)
+	require.Equal(t, uint32(0), tokenUsage.OutputTokens)
 }

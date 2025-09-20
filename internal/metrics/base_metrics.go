@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 // baseMetrics provides shared functionality for AI Gateway metrics implementations.
@@ -45,9 +46,13 @@ func (b *baseMetrics) StartRequest(_ map[string]string) {
 	b.requestStart = time.Now()
 }
 
-// SetModel sets the model for the request.
-func (b *baseMetrics) SetModel(requestModel, responseModel string) {
+// SetRequestModel sets the model the request. This is usually called after parsing the request body. e.g. gpt-5-nano
+func (b *baseMetrics) SetRequestModel(requestModel internalapi.RequestModel) {
 	b.requestModel = requestModel
+}
+
+// SetResponseModel is the model that ultimately generated the response. e.g. gpt-5-nano-2025-08-07
+func (b *baseMetrics) SetResponseModel(responseModel internalapi.ResponseModel) {
 	b.responseModel = responseModel
 }
 

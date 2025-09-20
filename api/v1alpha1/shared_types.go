@@ -64,12 +64,6 @@ const (
 	APISchemaGCPAnthropic APISchema = "GCPAnthropic"
 )
 
-const (
-	// AIModelHeaderKey is the header key whose value is extracted from the request by the ai-gateway.
-	// This can be used to describe the routing behavior in HTTPRoute referenced by AIGatewayRoute.
-	AIModelHeaderKey = "x-ai-eg-model"
-)
-
 // LLMRequestCost configures each request cost.
 type LLMRequestCost struct {
 	// MetadataKey is the key of the metadata to store this cost of the request.

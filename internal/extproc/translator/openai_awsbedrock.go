@@ -20,23 +20,27 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 // NewChatCompletionOpenAIToAWSBedrockTranslator implements [Factory] for OpenAI to AWS Bedrock translation.
-func NewChatCompletionOpenAIToAWSBedrockTranslator(modelNameOverride string) OpenAIChatCompletionTranslator {
+func NewChatCompletionOpenAIToAWSBedrockTranslator(modelNameOverride internalapi.ModelNameOverride) OpenAIChatCompletionTranslator {
 	return &openAIToAWSBedrockTranslatorV1ChatCompletion{modelNameOverride: modelNameOverride}
 }
 
-// openAIToAWSBedrockTranslator implements [Translator] for /v1/chat/completions.
+// openAIToAWSBedrockTranslator translates OpenAI Chat Completions API requests to AWS Bedrock Converse API.
+// Note: This uses the Converse API directly, not Bedrock's OpenAI-compatible API:
+// https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html
 type openAIToAWSBedrockTranslatorV1ChatCompletion struct {
-	modelNameOverride string
+	modelNameOverride internalapi.ModelNameOverride
 	stream            bool
 	bufferedBody      []byte
 	events            []awsbedrock.ConverseStreamEvent
 	// role is from MessageStartEvent in chunked messages, and used for all openai chat completion chunk choices.
 	// Translator is created for each request/response stream inside external processor, accordingly the role is not reused by multiple streams.
-	role string
+	role         string
+	requestModel internalapi.RequestModel
 }
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody].
@@ -51,17 +55,17 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, ope
 		pathTemplate = "/model/%s/converse"
 	}
 
-	modelName := openAIReq.Model
+	o.requestModel = openAIReq.Model
 	if o.modelNameOverride != "" {
 		// Use modelName override if set.
-		modelName = o.modelNameOverride
+		o.requestModel = o.modelNameOverride
 	}
 
 	headerMutation = &extprocv3.HeaderMutation{
 		SetHeaders: []*corev3.HeaderValueOption{
 			{Header: &corev3.HeaderValue{
 				Key:      ":path",
-				RawValue: fmt.Appendf(nil, pathTemplate, modelName),
+				RawValue: fmt.Appendf(nil, pathTemplate, o.requestModel),
 			}},
 		},
 	}
@@ -578,15 +582,18 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseError(respHeaders
 }
 
 // ResponseBody implements [OpenAIChatCompletionTranslator.ResponseBody].
+// AWS Bedrock uses static model execution without virtualization, where the requested model
+// is exactly what gets executed. The response does not contain a model field, so we return
+// the request model that was originally sent.
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel string, err error,
 ) {
 	mut := &extprocv3.BodyMutation_Body{}
 	if o.stream {
 		var buf []byte
 		buf, err = io.ReadAll(body)
 		if err != nil {
-			return nil, nil, tokenUsage, fmt.Errorf("failed to read body: %w", err)
+			return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to read body: %w", err)
 		}
 		o.bufferedBody = append(o.bufferedBody, buf...)
 		o.extractAmazonEventStreamEvents()
@@ -620,12 +627,12 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 		if endOfStream {
 			mut.Body = append(mut.Body, []byte("data: [DONE]\n")...)
 		}
-		return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, tokenUsage, nil
+		return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, tokenUsage, o.requestModel, nil
 	}
 
 	var bedrockResp awsbedrock.ConverseResponse
 	if err = json.NewDecoder(body).Decode(&bedrockResp); err != nil {
-		return nil, nil, tokenUsage, fmt.Errorf("failed to unmarshal body: %w", err)
+		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 	openAIResp := &openai.ChatCompletionResponse{
 		Object:  "chat.completion",
@@ -679,14 +686,14 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 
 	mut.Body, err = json.Marshal(openAIResp)
 	if err != nil {
-		return nil, nil, tokenUsage, fmt.Errorf("failed to marshal body: %w", err)
+		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to marshal body: %w", err)
 	}
 	headerMutation = &extprocv3.HeaderMutation{}
 	setContentLength(headerMutation, mut.Body)
 	if span != nil {
 		span.RecordResponse(openAIResp)
 	}
-	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, tokenUsage, nil
+	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, tokenUsage, o.requestModel, nil
 }
 
 // extractAmazonEventStreamEvents extracts [awsbedrock.ConverseStreamEvent] from the buffered body.

@@ -160,7 +160,7 @@ func headerMutationToFilterAPI(m *aigv1a1.HTTPHeaderMutation) *filterapi.HTTPHea
 func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, configSecretName, configSecretNamespace string, aiGatewayRoutes []aigv1a1.AIGatewayRoute, uuid string) error {
 	// Precondition: aiGatewayRoutes is not empty as we early return if it is empty.
 	ec := &filterapi.Config{UUID: uuid}
-	ec.ModelNameHeaderKey = aigv1a1.AIModelHeaderKey
+	ec.ModelNameHeaderKey = internalapi.ModelNameHeaderKeyDefault
 	var err error
 	llmCosts := map[string]struct{}{}
 	for i := range aiGatewayRoutes {
@@ -178,7 +178,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, con
 					// If not set, we assume it's an exact match.
 					//
 					// Also, we only care about the AIModel header to declare models.
-					if (h.Type != nil && *h.Type != gwapiv1.HeaderMatchExact) || string(h.Name) != aigv1a1.AIModelHeaderKey {
+					if (h.Type != nil && *h.Type != gwapiv1.HeaderMatchExact) || string(h.Name) != internalapi.ModelNameHeaderKeyDefault {
 						continue
 					}
 					ec.Models = append(ec.Models, filterapi.Model{

@@ -119,8 +119,8 @@ func (o *OTLPCollector) TakeSpan() *tracev1.Span {
 	}
 }
 
-// TakeMetrics returns metrics or nil if none were recorded.
-func (o *OTLPCollector) TakeMetrics() *metricsv1.ResourceMetrics {
+// DrainMetrics returns metrics or nil if none were recorded.
+func (o *OTLPCollector) DrainMetrics() *metricsv1.ResourceMetrics {
 	select {
 	case resourceMetrics := <-o.metricsCh:
 		return resourceMetrics
@@ -129,15 +129,40 @@ func (o *OTLPCollector) TakeMetrics() *metricsv1.ResourceMetrics {
 	}
 }
 
-// TakeAllMetrics returns all metrics received within the timeout period.
-func (o *OTLPCollector) TakeAllMetrics() []*metricsv1.ResourceMetrics {
+// TakeMetrics collects metrics until the expected count is reached or a timeout occurs.
+func (o *OTLPCollector) TakeMetrics(expectedCount int) []*metricsv1.ResourceMetrics {
 	var metrics []*metricsv1.ResourceMetrics
 	deadline := time.After(otlpTimeout)
+
+	// Helper to count total metrics across all ResourceMetrics.
+	countMetrics := func() int {
+		total := 0
+		for _, rm := range metrics {
+			for _, sm := range rm.ScopeMetrics {
+				total += len(sm.Metrics)
+			}
+		}
+		return total
+	}
 
 	for {
 		select {
 		case resourceMetrics := <-o.metricsCh:
 			metrics = append(metrics, resourceMetrics)
+			if countMetrics() >= expectedCount {
+				// Drain any additional metrics that arrive immediately after.
+				time.Sleep(50 * time.Millisecond)
+			drainLoop:
+				for {
+					select {
+					case rm := <-o.metricsCh:
+						metrics = append(metrics, rm)
+					default:
+						break drainLoop
+					}
+				}
+				return metrics
+			}
 		case <-deadline:
 			return metrics
 		}

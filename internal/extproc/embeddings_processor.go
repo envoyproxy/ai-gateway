@@ -21,6 +21,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
@@ -93,17 +94,17 @@ func (e *embeddingsProcessorRouterFilter) ProcessResponseBody(ctx context.Contex
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
 func (e *embeddingsProcessorRouterFilter) ProcessRequestBody(_ context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
-	model, body, err := parseOpenAIEmbeddingBody(rawBody)
+	originalModel, body, err := parseOpenAIEmbeddingBody(rawBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
 
-	e.requestHeaders[e.config.modelNameHeaderKey] = model
+	e.requestHeaders[e.config.modelNameHeaderKey] = originalModel
 
 	var additionalHeaders []*corev3.HeaderValueOption
 	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
 		// Set the model name to the request header with the key `x-ai-eg-model`.
-		Header: &corev3.HeaderValue{Key: e.config.modelNameHeaderKey, RawValue: []byte(model)},
+		Header: &corev3.HeaderValue{Key: e.config.modelNameHeaderKey, RawValue: []byte(originalModel)},
 	}, &corev3.HeaderValueOption{
 		Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(e.requestHeaders[":path"])},
 	})
@@ -132,7 +133,7 @@ type embeddingsProcessorUpstreamFilter struct {
 	requestHeaders         map[string]string
 	responseHeaders        map[string]string
 	responseEncoding       string
-	modelNameOverride      string
+	modelNameOverride      internalapi.ModelNameOverride
 	backendName            string
 	handler                backendauth.Handler
 	headerMutator          *headermutator.HeaderMutator
@@ -173,12 +174,12 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Co
 
 	// Start tracking metrics for this request.
 	e.metrics.StartRequest(e.requestHeaders)
-	respModel := e.requestHeaders[e.config.modelNameHeaderKey]
-	reqModel := respModel
-	if e.originalRequestBody != nil && e.originalRequestBody.Model != "" {
+	// Set the request model for metrics from the original model or override if applied.
+	reqModel := e.requestHeaders[e.config.modelNameHeaderKey]
+	if reqModel == "" && e.originalRequestBody != nil && e.originalRequestBody.Model != "" {
 		reqModel = e.originalRequestBody.Model
 	}
-	e.metrics.SetModel(reqModel, respModel)
+	e.metrics.SetRequestModel(reqModel)
 
 	headerMutation, bodyMutation, err := e.translator.RequestBody(e.originalRequestBodyRaw, e.originalRequestBody, e.onRetry)
 	if err != nil {
@@ -291,7 +292,7 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 		}, nil
 	}
 
-	headerMutation, bodyMutation, tokenUsage, err := e.translator.ResponseBody(e.responseHeaders, decodingResult.reader, body.EndOfStream)
+	headerMutation, bodyMutation, tokenUsage, responseModel, err := e.translator.ResponseBody(e.responseHeaders, decodingResult.reader, body.EndOfStream)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}
@@ -314,11 +315,13 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 	e.costs.InputTokens += tokenUsage.InputTokens
 	e.costs.TotalTokens += tokenUsage.TotalTokens
 
+	e.metrics.SetResponseModel(responseModel)
+
 	// Update metrics with token usage.
 	e.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, e.requestHeaders)
 
 	if body.EndOfStream && len(e.config.requestCosts) > 0 {
-		resp.DynamicMetadata, err = buildDynamicMetadata(e.config, &e.costs, e.requestHeaders, e.modelNameOverride, e.backendName)
+		resp.DynamicMetadata, err = buildDynamicMetadata(e.config, &e.costs, e.requestHeaders, e.backendName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
 		}
@@ -347,9 +350,11 @@ func (e *embeddingsProcessorUpstreamFilter) SetBackend(ctx context.Context, b *f
 	}
 	e.handler = backendHandler
 	e.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
-	// Sync header with backend model so header-derived labels/CEL use the actual model.
+	// Header-derived labels/CEL must be able to see the overridden request model.
 	if e.modelNameOverride != "" {
 		e.requestHeaders[e.config.modelNameHeaderKey] = e.modelNameOverride
+		// Update metrics with the overridden model
+		e.metrics.SetRequestModel(e.modelNameOverride)
 	}
 	e.originalRequestBody = rp.originalRequestBody
 	e.originalRequestBodyRaw = rp.originalRequestBodyRaw

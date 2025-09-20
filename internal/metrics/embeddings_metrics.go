@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 // embeddings is the implementation for the embeddings AI Gateway metrics.
@@ -23,8 +24,12 @@ type embeddings struct {
 type EmbeddingsMetrics interface {
 	// StartRequest initializes timing for a new request.
 	StartRequest(headers map[string]string)
-	// SetModel sets the model the request. This is usually called after parsing the request body .
-	SetModel(requestModel, responseModel string)
+	// SetRequestModel sets the model from the request. This is usually called after parsing the request body.
+	// Example: text-embedding-3-small
+	SetRequestModel(requestModel internalapi.RequestModel)
+	// SetResponseModel sets the model that ultimately generated the response.
+	// Example: text-embedding-3-small-2025-02-18
+	SetResponseModel(responseModel internalapi.ResponseModel)
 	// SetBackend sets the selected backend when the routing decision has been made. This is usually called
 	// after parsing the request body to determine the model and invoke the routing logic.
 	SetBackend(backend *filterapi.Backend)

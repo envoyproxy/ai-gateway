@@ -13,12 +13,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 func TestOpenAIToOpenAITranslatorV1EmbeddingRequestBody(t *testing.T) {
 	for _, tc := range []struct {
 		name              string
-		modelNameOverride string
+		modelNameOverride internalapi.ModelNameOverride
 		onRetry           bool
 		expPath           string
 		expBodyContains   string
@@ -141,7 +142,7 @@ func TestOpenAIToOpenAITranslatorV1EmbeddingResponseBody(t *testing.T) {
 				respHeaders[statusHeaderName] = "200"
 			}
 
-			headerMutation, bodyMutation, tokenUsage, err := translator.ResponseBody(
+			headerMutation, bodyMutation, tokenUsage, _, err := translator.ResponseBody(
 				respHeaders,
 				strings.NewReader(tc.responseBody),
 				true,

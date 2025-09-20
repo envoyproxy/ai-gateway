@@ -21,6 +21,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
@@ -82,6 +83,7 @@ type mockTranslator struct {
 	retHeaderMutation           *extprocv3.HeaderMutation
 	retBodyMutation             *extprocv3.BodyMutation
 	retUsedToken                translator.LLMTokenUsage
+	retResponseModel            internalapi.ResponseModel
 	retErr                      error
 	expForceRequestBodyMutation bool
 }
@@ -110,13 +112,13 @@ func (m mockTranslator) ResponseError(_ map[string]string, body io.Reader) (head
 }
 
 // ResponseBody implements [translator.OpenAIChatCompletionTranslator].
-func (m mockTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracing.ChatCompletionSpan) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage translator.LLMTokenUsage, err error) {
+func (m mockTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracing.ChatCompletionSpan) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage translator.LLMTokenUsage, responseModel string, err error) {
 	if m.expResponseBody != nil {
 		buf, err := io.ReadAll(body)
 		require.NoError(m.t, err)
 		require.Equal(m.t, m.expResponseBody.Body, buf)
 	}
-	return m.retHeaderMutation, m.retBodyMutation, m.retUsedToken, m.retErr
+	return m.retHeaderMutation, m.retBodyMutation, m.retUsedToken, m.retResponseModel, m.retErr
 }
 
 // mockExternalProcessingStream implements [extprocv3.ExternalProcessor_ProcessServer] for testing.
@@ -170,17 +172,22 @@ type mockChatCompletionMetrics struct {
 	requestSuccessCount int
 	requestErrorCount   int
 	tokenUsageCount     int
-	tokenLatencyCount   int
-	timeToFirstToken    float64
-	interTokenLatency   float64
+	// streamingOutputTokens tracks the cumulative output tokens recorded via RecordTokenLatency.
+	streamingOutputTokens int
+	timeToFirstToken      float64
+	interTokenLatency     float64
 }
 
 // StartRequest implements [metrics.ChatCompletion].
 func (m *mockChatCompletionMetrics) StartRequest(_ map[string]string) { m.requestStart = time.Now() }
 
-// SetModel implements [metrics.ChatCompletion].
-func (m *mockChatCompletionMetrics) SetModel(requestModel, responseModel string) {
+// SetRequestModel implements [metrics.ChatCompletion].
+func (m *mockChatCompletionMetrics) SetRequestModel(requestModel internalapi.RequestModel) {
 	m.requestModel = requestModel
+}
+
+// SetResponseModel implements [metrics.ChatCompletion].
+func (m *mockChatCompletionMetrics) SetResponseModel(responseModel internalapi.ResponseModel) {
 	m.responseModel = responseModel
 }
 
@@ -188,13 +195,14 @@ func (m *mockChatCompletionMetrics) SetModel(requestModel, responseModel string)
 func (m *mockChatCompletionMetrics) SetBackend(backend *filterapi.Backend) { m.backend = backend.Name }
 
 // RecordTokenUsage implements [metrics.ChatCompletion].
-func (m *mockChatCompletionMetrics) RecordTokenUsage(_ context.Context, _, _ uint32, _ map[string]string) {
-	m.tokenUsageCount++
+func (m *mockChatCompletionMetrics) RecordTokenUsage(_ context.Context, input, output uint32, _ map[string]string) {
+	m.tokenUsageCount += int(input + output)
 }
 
 // RecordTokenLatency implements [metrics.ChatCompletion].
-func (m *mockChatCompletionMetrics) RecordTokenLatency(_ context.Context, _ uint32, _ bool, _ map[string]string) {
-	m.tokenLatencyCount++
+// For streaming responses, this tracks output tokens incrementally to compute latency metrics.
+func (m *mockChatCompletionMetrics) RecordTokenLatency(_ context.Context, output uint32, _ bool, _ map[string]string) {
+	m.streamingOutputTokens += int(output)
 }
 
 // GetTimeToFirstTokenMs implements [metrics.ChatCompletion].
@@ -231,26 +239,20 @@ func (m *mockChatCompletionMetrics) RequireSelectedBackend(t *testing.T, backend
 
 // RequireRequestFailure asserts the request was marked as a failure.
 func (m *mockChatCompletionMetrics) RequireRequestFailure(t *testing.T) {
-	require.Equal(t, 0, m.requestSuccessCount)
+	require.Zero(t, m.requestSuccessCount)
 	require.Equal(t, 1, m.requestErrorCount)
 }
 
 // RequireRequestNotCompleted asserts the request was not completed.
 func (m *mockChatCompletionMetrics) RequireRequestNotCompleted(t *testing.T) {
-	require.Equal(t, 0, m.requestSuccessCount)
-	require.Equal(t, 0, m.requestErrorCount)
+	require.Zero(t, m.requestSuccessCount)
+	require.Zero(t, m.requestErrorCount)
 }
 
 // RequireRequestSuccess asserts the request was marked as a success.
 func (m *mockChatCompletionMetrics) RequireRequestSuccess(t *testing.T) {
 	require.Equal(t, 1, m.requestSuccessCount)
-	require.Equal(t, 0, m.requestErrorCount)
-}
-
-// RequireTokensRecorded asserts the number of tokens recorded.
-func (m *mockChatCompletionMetrics) RequireTokensRecorded(t *testing.T, count int) {
-	require.Equal(t, count, m.tokenUsageCount)
-	require.Equal(t, count, m.tokenLatencyCount)
+	require.Zero(t, m.requestErrorCount)
 }
 
 var _ metrics.ChatCompletionMetrics = &mockChatCompletionMetrics{}
@@ -264,6 +266,7 @@ type mockEmbeddingTranslator struct {
 	retHeaderMutation   *extprocv3.HeaderMutation
 	retBodyMutation     *extprocv3.BodyMutation
 	retUsedToken        translator.LLMTokenUsage
+	retResponseModel    string
 	responseErrorCalled bool
 	retErr              error
 }
@@ -281,13 +284,13 @@ func (m *mockEmbeddingTranslator) ResponseHeaders(headers map[string]string) (he
 }
 
 // ResponseBody implements [translator.OpenAIEmbeddingTranslator].
-func (m *mockEmbeddingTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage translator.LLMTokenUsage, err error) {
+func (m *mockEmbeddingTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage translator.LLMTokenUsage, responseModel string, err error) {
 	if m.expResponseBody != nil {
 		buf, err := io.ReadAll(body)
 		require.NoError(m.t, err)
 		require.Equal(m.t, m.expResponseBody.Body, buf)
 	}
-	return m.retHeaderMutation, m.retBodyMutation, m.retUsedToken, m.retErr
+	return m.retHeaderMutation, m.retBodyMutation, m.retUsedToken, m.retResponseModel, m.retErr
 }
 
 // ResponseError implements [translator.OpenAIEmbeddingTranslator].
@@ -299,8 +302,8 @@ func (m *mockEmbeddingTranslator) ResponseError(map[string]string, io.Reader) (h
 // mockEmbeddingsMetrics implements [x.EmbeddingsMetrics] for testing.
 type mockEmbeddingsMetrics struct {
 	requestStart        time.Time
-	requestModel        string
-	responseModel       string
+	requestModel        internalapi.RequestModel
+	responseModel       internalapi.ResponseModel
 	backend             string
 	requestSuccessCount int
 	requestErrorCount   int
@@ -310,9 +313,12 @@ type mockEmbeddingsMetrics struct {
 // StartRequest implements [x.EmbeddingsMetrics].
 func (m *mockEmbeddingsMetrics) StartRequest(_ map[string]string) { m.requestStart = time.Now() }
 
-// SetModel implements [x.EmbeddingsMetrics].
-func (m *mockEmbeddingsMetrics) SetModel(requestModel, responseModel string) {
+// SetRequestModel implements [x.EmbeddingsMetrics].
+func (m *mockEmbeddingsMetrics) SetRequestModel(requestModel string) {
 	m.requestModel = requestModel
+}
+
+func (m *mockEmbeddingsMetrics) SetResponseModel(responseModel string) {
 	m.responseModel = responseModel
 }
 
@@ -320,8 +326,8 @@ func (m *mockEmbeddingsMetrics) SetModel(requestModel, responseModel string) {
 func (m *mockEmbeddingsMetrics) SetBackend(backend *filterapi.Backend) { m.backend = backend.Name }
 
 // RecordTokenUsage implements [x.EmbeddingsMetrics].
-func (m *mockEmbeddingsMetrics) RecordTokenUsage(_ context.Context, _ uint32, _ map[string]string) {
-	m.tokenUsageCount++
+func (m *mockEmbeddingsMetrics) RecordTokenUsage(_ context.Context, inputTokens uint32, _ map[string]string) {
+	m.tokenUsageCount += int(inputTokens)
 }
 
 // RecordRequestCompletion implements [x.EmbeddingsMetrics].
@@ -346,24 +352,24 @@ func (m *mockEmbeddingsMetrics) RequireSelectedBackend(t *testing.T, backend str
 
 // RequireRequestFailure asserts the request was marked as a failure.
 func (m *mockEmbeddingsMetrics) RequireRequestFailure(t *testing.T) {
-	require.Equal(t, 0, m.requestSuccessCount)
+	require.Zero(t, m.requestSuccessCount)
 	require.Equal(t, 1, m.requestErrorCount)
 }
 
 // RequireRequestNotCompleted asserts the request was not completed.
 func (m *mockEmbeddingsMetrics) RequireRequestNotCompleted(t *testing.T) {
-	require.Equal(t, 0, m.requestSuccessCount)
-	require.Equal(t, 0, m.requestErrorCount)
+	require.Zero(t, m.requestSuccessCount)
+	require.Zero(t, m.requestErrorCount)
 }
 
 // RequireRequestSuccess asserts the request was marked as a success.
 func (m *mockEmbeddingsMetrics) RequireRequestSuccess(t *testing.T) {
 	require.Equal(t, 1, m.requestSuccessCount)
-	require.Equal(t, 0, m.requestErrorCount)
+	require.Zero(t, m.requestErrorCount)
 }
 
-// RequireTokensRecorded asserts the number of tokens recorded.
-func (m *mockEmbeddingsMetrics) RequireTokensRecorded(t *testing.T, count int) {
+// RequireTokenUsage asserts the number of tokens recorded.
+func (m *mockEmbeddingsMetrics) RequireTokenUsage(t *testing.T, count int) {
 	require.Equal(t, count, m.tokenUsageCount)
 }
 
