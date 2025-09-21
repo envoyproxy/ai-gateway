@@ -1795,10 +1795,8 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 			name: "reasoning delta",
 			in: awsbedrock.ConverseStreamEvent{
 				Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
-					ReasoningContent: &awsbedrock.ReasoningContentBlock{
-						ReasoningText: &awsbedrock.ReasoningTextBlock{
-							Text: "thinking...",
-						},
+					ReasoningContent: &awsbedrock.ReasoningContentBlockDelta{
+						Text: "thinking...",
 					},
 				},
 			},
@@ -1831,22 +1829,34 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_WithReasoning(t *testing.T) {
 	inputEvents := []awsbedrock.ConverseStreamEvent{
 		{Role: ptr.To(awsbedrock.ConversationRoleAssistant)},
-		{Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
-			ReasoningContent: &awsbedrock.ReasoningContentBlock{
-				ReasoningText: &awsbedrock.ReasoningTextBlock{Text: "Okay, 27 * 453. "},
+		{
+			ContentBlockIndex: 0,
+			Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
+				ReasoningContent: &awsbedrock.ReasoningContentBlockDelta{
+					Text: "Okay, 27 * 453. ",
+				},
 			},
-		}},
-		{Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
-			ReasoningContent: &awsbedrock.ReasoningContentBlock{
-				ReasoningText: &awsbedrock.ReasoningTextBlock{Text: "Let's do the math..."},
+		},
+		{
+			ContentBlockIndex: 0,
+			Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
+				ReasoningContent: &awsbedrock.ReasoningContentBlockDelta{
+					Text: "Let's do the math...",
+				},
 			},
-		}},
-		{Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
-			Text: ptr.To("The result of 27 multiplied by 453 is "),
-		}},
-		{Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
-			Text: ptr.To("12231."),
-		}},
+		},
+		{
+			ContentBlockIndex: 0,
+			Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
+				Text: ptr.To("The result of 27 multiplied by 453 is "),
+			},
+		},
+		{
+			ContentBlockIndex: 0,
+			Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
+				Text: ptr.To("12231."),
+			},
+		},
 		{StopReason: ptr.To(awsbedrock.StopReasonEndTurn)},
 	}
 
@@ -1865,7 +1875,6 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_WithReasoning(t 
 		})
 		require.NoError(t, err)
 	}
-
 	// Process the entire encoded stream through the translator.
 	o := &openAIToAWSBedrockTranslatorV1ChatCompletion{stream: true}
 	_, bm, _, err := o.ResponseBody(nil, buf, true, nil)
@@ -2002,7 +2011,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_WithRedactedCont
 	inputEvents := []awsbedrock.ConverseStreamEvent{
 		{Role: ptr.To(awsbedrock.ConversationRoleAssistant)},
 		{Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
-			ReasoningContent: &awsbedrock.ReasoningContentBlock{
+			ReasoningContent: &awsbedrock.ReasoningContentBlockDelta{
 				RedactedContent: redactedBytes,
 			},
 		}},

@@ -765,9 +765,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 			reasoningDelta := &openai.AWSBedrockStreamReasoningContent{}
 
 			// Map all relevant fields from the Bedrock delta to our flattened OpenAI delta struct.
-			if event.Delta.ReasoningContent.ReasoningText != nil {
-				reasoningDelta.Text = event.Delta.ReasoningContent.ReasoningText.Text
-				reasoningDelta.Signature = event.Delta.ReasoningContent.ReasoningText.Signature
+			if event.Delta.ReasoningContent != nil {
+				reasoningDelta.Text = event.Delta.ReasoningContent.Text
+				reasoningDelta.Signature = event.Delta.ReasoningContent.Signature
 			}
 			if event.Delta.ReasoningContent.RedactedContent != nil {
 				reasoningDelta.RedactedContent = event.Delta.ReasoningContent.RedactedContent
