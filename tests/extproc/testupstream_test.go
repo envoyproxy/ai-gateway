@@ -138,6 +138,30 @@ func TestWithTestUpstream(t *testing.T) {
 		expResponseBodyFunc func(require.TestingT, []byte)
 	}{
 		{
+			name:            "openai - /v1/images/generations",
+			backend:         "openai",
+			path:            "/v1/images/generations",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"dall-e-2","prompt":"a cat wearing sunglasses"}`,
+			expPath:         "/v1/images/generations",
+			responseBody:    `{"created":1736890000,"data":[{"url":"https://example.com/image1.png"}],"model":"dall-e-2","usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"created":1736890000,"data":[{"url":"https://example.com/image1.png"}],"model":"dall-e-2","usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}`,
+		},
+		{
+			name:            "openai - /v1/images/generations - non json upstream error mapped to OpenAI",
+			backend:         "openai",
+			path:            "/v1/images/generations",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"dall-e-3","prompt":"a scenic beach"}`,
+			expPath:         "/v1/images/generations",
+			responseHeaders: "content-type:text/plain",
+			responseStatus:  strconv.Itoa(http.StatusServiceUnavailable),
+			responseBody:    `backend timeout`,
+			expStatus:       http.StatusServiceUnavailable,
+			expResponseBody: `{"error":{"type":"OpenAIBackendError","message":"backend timeout","code":"503"}}`,
+		},
+		{
 			name:            "unknown path",
 			path:            "/unknown",
 			requestBody:     `{"prompt": "hello"}`,
