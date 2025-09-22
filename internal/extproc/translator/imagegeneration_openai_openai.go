@@ -39,7 +39,7 @@ func (o *openAIToOpenAIImageGenerationTranslator) RequestBody(original []byte, r
 	var newBody []byte
 	if o.modelNameOverride != "" {
 		// If modelName is set we override the model to be used for the request.
-		newBody, err = sjson.SetBytesOptions(original, "model", o.modelNameOverride, SJSONOptions)
+		newBody, err = sjson.SetBytesOptions(original, "model", o.modelNameOverride, sjsonOptions)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to set model name: %w", err)
 		}

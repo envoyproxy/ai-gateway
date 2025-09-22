@@ -217,10 +217,62 @@ type LLMTokenUsage struct {
 	CachedTokens uint32
 }
 
+// ImageGenerationMetadata contains metadata extracted from image generation responses
+// for metrics and observability.
+type ImageGenerationMetadata struct {
+	// ImageCount is the number of images generated in the response.
+	ImageCount int
+	// Model is the AI model used for image generation.
+	Model string
+	// Size is the size/dimensions of the generated images.
+	Size string
+}
+
 // sjsonOptions are the options used for sjson operations in the translator.
 var sjsonOptions = &sjson.Options{
 	Optimistic: true,
 	// Note: DO NOT set ReplaceInPlace to true since at the translation layer, which might be called multiple times per retry,
 	// it must be ensured that the original body is not modified, i.e. the operation must be idempotent.
 	ReplaceInPlace: false,
+}
+
+// ImageGenerationTranslator translates the request and response messages between the client and the backend API schemas
+// for /v1/images/generations endpoint of OpenAI.
+//
+// This is created per request and is not thread-safe.
+type ImageGenerationTranslator interface {
+	// RequestBody translates the request body.
+	// 	- raw is the raw request body.
+	// 	- body is the request body parsed into the [openai.ImageGenerationRequest].
+	//	- forceBodyMutation is true if the translator should always mutate the body, even if no changes are made.
+	//	- This returns headerMutation and bodyMutation that can be nil to indicate no mutation.
+	RequestBody(raw []byte, body *openai.ImageGenerationRequest, forceBodyMutation bool) (
+		headerMutation *extprocv3.HeaderMutation,
+		bodyMutation *extprocv3.BodyMutation,
+		err error,
+	)
+
+	// ResponseHeaders translates the response headers.
+	// 	- headers is the response headers.
+	//	- This returns headerMutation that can be nil to indicate no mutation.
+	ResponseHeaders(headers map[string]string) (
+		headerMutation *extprocv3.HeaderMutation,
+		err error,
+	)
+
+	// ResponseBody translates the response body.
+	// 	- body is the response body.
+	//	- This returns headerMutation and bodyMutation that can be nil to indicate no mutation.
+	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
+		headerMutation *extprocv3.HeaderMutation,
+		bodyMutation *extprocv3.BodyMutation,
+		tokenUsage LLMTokenUsage,
+		imageMetadata ImageGenerationMetadata,
+		err error,
+	)
+
+	// ResponseError translates the response error. This is called when the upstream response status code is not successful (2xx).
+	// 	- respHeaders is the response headers.
+	// 	- body is the response body that contains the error message.
+	ResponseError(respHeaders map[string]string, body io.Reader) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error)
 }
