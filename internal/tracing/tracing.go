@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference/openai"
@@ -25,9 +26,10 @@ import (
 var _ tracing.Tracing = (*tracingImpl)(nil)
 
 type tracingImpl struct {
-	chatCompletionTracer tracing.ChatCompletionTracer
-	embeddingsTracer     tracing.EmbeddingsTracer
-	mcpTracer            tracing.MCPTracer
+	chatCompletionTracer  tracing.ChatCompletionTracer
+	imageGenerationTracer tracing.ImageGenerationTracer
+	embeddingsTracer      tracing.EmbeddingsTracer
+	mcpTracer             tracing.MCPTracer
 	// shutdown is nil when we didn't create tp.
 	shutdown func(context.Context) error
 }
@@ -35,6 +37,11 @@ type tracingImpl struct {
 // ChatCompletionTracer implements the same method as documented on api.Tracing.
 func (t *tracingImpl) ChatCompletionTracer() tracing.ChatCompletionTracer {
 	return t.chatCompletionTracer
+}
+
+// ImageGenerationTracer implements the same method as documented on api.Tracing.
+func (t *tracingImpl) ImageGenerationTracer() tracing.ImageGenerationTracer {
+	return t.imageGenerationTracer
 }
 
 // EmbeddingsTracer implements the same method as documented on api.Tracing.
@@ -150,6 +157,7 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 
 	// Default to OpenInference trace span semantic conventions.
 	chatRecorder := openai.NewChatCompletionRecorderFromEnv()
+	imageRecorder := openai.NewImageGenerationRecorderFromEnv()
 	embeddingsRecorder := openai.NewEmbeddingsRecorderFromEnv()
 
 	tracer := tp.Tracer("envoyproxy/ai-gateway")
@@ -159,6 +167,11 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 			propagator,
 			chatRecorder,
 			headerAttrs,
+		),
+		imageGenerationTracer: newImageGenerationTracer(
+			tracer,
+			propagator,
+			imageRecorder,
 		),
 		embeddingsTracer: newEmbeddingsTracer(
 			tracer,
@@ -177,3 +190,32 @@ type Shutdown interface {
 type noopShutdown struct{}
 
 func (noopShutdown) Shutdown(context.Context) error { return nil }
+
+// NewTracing configures OpenTelemetry tracing based on the configuration.
+// Returns a tracing graph that is noop when the tracer provider is no-op.
+func NewTracing(config *tracing.TracingConfig) tracing.Tracing {
+	if _, ok := config.Tracer.(noop.Tracer); ok {
+		return tracing.NoopTracing{}
+	}
+	return &tracingImpl{
+		chatCompletionTracer: newChatCompletionTracer(
+			config.Tracer,
+			config.Propagator,
+			config.ChatCompletionRecorder,
+			nil, // no header attributes for this constructor
+		),
+		imageGenerationTracer: newImageGenerationTracer(
+			config.Tracer,
+			config.Propagator,
+			config.ImageGenerationRecorder,
+		),
+		embeddingsTracer: newEmbeddingsTracer(
+			config.Tracer,
+			config.Propagator,
+			config.EmbeddingsRecorder,
+			nil, // no header attributes for this constructor
+		),
+		mcpTracer: newMCPTracer(config.Tracer, config.Propagator),
+		shutdown:  nil, // shutdown is nil when we didn't create tp.
+	}
+}
