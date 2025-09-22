@@ -67,11 +67,6 @@ func (NoopTracing) ImageGenerationTracer() ImageGenerationTracer {
 	return NoopImageGenerationTracer{}
 }
 
-// EmbeddingsTracer implements Tracing.EmbeddingsTracer.
-func (NoopTracing) EmbeddingsTracer() EmbeddingsTracer {
-	return NoopEmbeddingsTracer{}
-}
-
 // Shutdown implements Tracing.Shutdown.
 func (NoopTracing) Shutdown(context.Context) error {
 	return nil
@@ -196,35 +191,6 @@ type ImageGenerationTracer interface {
 type ImageGenerationSpan interface {
 	// RecordResponse records the response attributes to the span.
 	RecordResponse(resp *openai.ImageGenerationResponse)
-
-	// EndSpanOnError finalizes and ends the span with an error status.
-	EndSpanOnError(statusCode int, body []byte)
-
-	// EndSpan finalizes and ends the span.
-	EndSpan()
-}
-
-// EmbeddingsTracer creates spans for OpenAI embeddings requests.
-type EmbeddingsTracer interface {
-	// StartSpanAndInjectHeaders starts a span and injects trace context into
-	// the header mutation.
-	//
-	// Parameters:
-	//   - ctx: might include a parent span context.
-	//   - headers: Incoming HTTP headers used to extract parent trace context.
-	//   - headerMutation: The new Embeddings Span will have its context
-	//     written to these headers unless NoopTracing is used.
-	//   - req: The OpenAI embeddings request. Used to record request attributes.
-	//   - body: contains the original raw request body as a byte slice.
-	//
-	// Returns nil unless the span is sampled.
-	StartSpanAndInjectHeaders(ctx context.Context, headers map[string]string, headerMutation *extprocv3.HeaderMutation, req *openai.EmbeddingRequest, body []byte) EmbeddingsSpan
-}
-
-// EmbeddingsSpan represents an OpenAI embeddings request.
-type EmbeddingsSpan interface {
-	// RecordResponse records the response attributes to the span.
-	RecordResponse(resp *openai.EmbeddingResponse)
 
 	// EndSpanOnError finalizes and ends the span with an error status.
 	EndSpanOnError(statusCode int, body []byte)
