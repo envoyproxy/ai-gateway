@@ -17,10 +17,13 @@ import (
 
 // baseMetrics provides shared functionality for AI Gateway metrics implementations.
 type baseMetrics struct {
-	metrics                   *genAI
-	operation                 string
-	requestStart              time.Time
-	model                     string
+	metrics      *genAI
+	operation    string
+	requestStart time.Time
+	// requestModel is the original model from the request body.
+	requestModel string
+	// responseModel is the model that ultimately generated the response (may differ due to backend override).
+	responseModel             string
 	backend                   string
 	requestHeaderLabelMapping map[string]string // maps HTTP headers to metric label names.
 }
@@ -30,7 +33,8 @@ func newBaseMetrics(meter metric.Meter, operation string, requestHeaderLabelMapp
 	return baseMetrics{
 		metrics:                   newGenAI(meter),
 		operation:                 operation,
-		model:                     "unknown",
+		requestModel:              "unknown",
+		responseModel:             "unknown",
 		backend:                   "unknown",
 		requestHeaderLabelMapping: requestHeaderLabelMapping,
 	}
@@ -42,18 +46,19 @@ func (b *baseMetrics) StartRequest(_ map[string]string) {
 }
 
 // SetModel sets the model for the request.
-func (b *baseMetrics) SetModel(model string) {
-	b.model = model
+func (b *baseMetrics) SetModel(requestModel, responseModel string) {
+	b.requestModel = requestModel
+	b.responseModel = responseModel
 }
 
 // SetBackend sets the name of the backend to be reported in the metrics according to:
-// https://opentelemetry.io/docs/specs/semconv/attributes-registry/gen-ai/#gen-ai-system
+// https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/
 func (b *baseMetrics) SetBackend(backend *filterapi.Backend) {
 	switch backend.Schema.Name {
 	case filterapi.APISchemaOpenAI:
-		b.backend = genaiSystemOpenAI
+		b.backend = genaiProviderOpenAI
 	case filterapi.APISchemaAWSBedrock:
-		b.backend = genAISystemAWSBedrock
+		b.backend = genaiProviderAWSBedrock
 	default:
 		b.backend = backend.Name
 	}
@@ -62,14 +67,15 @@ func (b *baseMetrics) SetBackend(backend *filterapi.Backend) {
 // buildBaseAttributes creates the base attributes for metrics recording.
 func (b *baseMetrics) buildBaseAttributes(headers map[string]string) attribute.Set {
 	opt := attribute.Key(genaiAttributeOperationName).String(b.operation)
-	sys := attribute.Key(genaiAttributeSystemName).String(b.backend)
-	model := attribute.Key(genaiAttributeRequestModel).String(b.model)
+	provider := attribute.Key(genaiAttributeProviderName).String(b.backend)
+	reqModel := attribute.Key(genaiAttributeRequestModel).String(b.requestModel)
+	respModel := attribute.Key(genaiAttributeResponseModel).String(b.responseModel)
 	if len(b.requestHeaderLabelMapping) == 0 {
-		return attribute.NewSet(opt, sys, model)
+		return attribute.NewSet(opt, provider, reqModel, respModel)
 	}
 
 	// Add header values as attributes based on the header mapping if headers are provided.
-	attrs := []attribute.KeyValue{opt, sys, model}
+	attrs := []attribute.KeyValue{opt, provider, reqModel, respModel}
 	for headerName, labelName := range b.requestHeaderLabelMapping {
 		if headerValue, exists := headers[headerName]; exists {
 			attrs = append(attrs, attribute.Key(labelName).String(headerValue))

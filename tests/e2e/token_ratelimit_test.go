@@ -31,6 +31,9 @@ const userIDMetricsLabel = "user_id"
 func Test_Examples_TokenRateLimit(t *testing.T) {
 	const manifest = "../../examples/token_ratelimit/token_ratelimit.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
+	t.Cleanup(func() {
+		_ = e2elib.KubectlDeleteManifest(t.Context(), manifest)
+	})
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-token-ratelimit"
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
@@ -146,10 +149,9 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 			require.True(t, ok, userIDMetricsLabel+" should be present in the metric")
 			t.Logf("Type: %s, Value: %v, User ID: %s", typ, result.Value, uID)
 		}
-		// We should see input, output, and total token types.
+		// We should see input and output token types (total was removed per OTEL spec).
 		require.Contains(t, actualTypes, "input")
 		require.Contains(t, actualTypes, "output")
-		require.Contains(t, actualTypes, "total")
 		return true
 	}, 2*time.Minute, 1*time.Second)
 }

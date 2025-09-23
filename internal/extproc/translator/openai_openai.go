@@ -31,7 +31,6 @@ type openAIToOpenAITranslatorV1ChatCompletion struct {
 	modelNameOverride string
 	stream            bool
 	buffered          []byte
-	bufferingDone     bool
 	// The path of the chat completions endpoint to be used for the request. It is prefixed with the OpenAI path prefix.
 	path string
 }
@@ -121,14 +120,13 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]str
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
 ) {
 	if o.stream {
-		if !o.bufferingDone {
-			buf, err := io.ReadAll(body)
-			if err != nil {
-				return nil, nil, tokenUsage, fmt.Errorf("failed to read body: %w", err)
-			}
-			o.buffered = append(o.buffered, buf...)
-			tokenUsage = o.extractUsageFromBufferEvent(span)
+		var buf []byte
+		buf, err = io.ReadAll(body)
+		if err != nil {
+			return nil, nil, tokenUsage, fmt.Errorf("failed to read body: %w", err)
 		}
+		o.buffered = append(o.buffered, buf...)
+		tokenUsage = o.extractUsageFromBufferEvent(span)
 		return
 	}
 	resp := &openai.ChatCompletionResponse{}
@@ -149,7 +147,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]str
 var dataPrefix = []byte("data: ")
 
 // extractUsageFromBufferEvent extracts the token usage from the buffered event.
-// Once the usage is extracted, it returns the number of tokens used, and bufferingDone is set to true.
+// It scans complete lines and returns the latest usage found in this batch.
 func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent(span tracing.ChatCompletionSpan) (tokenUsage LLMTokenUsage) {
 	for {
 		i := bytes.IndexByte(o.buffered, '\n')
@@ -174,9 +172,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent(s
 				OutputTokens: uint32(usage.CompletionTokens), //nolint:gosec
 				TotalTokens:  uint32(usage.TotalTokens),      //nolint:gosec
 			}
-			o.bufferingDone = true
-			o.buffered = nil
-			return
+			// Do not mark buffering done; keep scanning to return the latest usage in this batch.
 		}
 	}
 }

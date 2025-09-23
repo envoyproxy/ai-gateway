@@ -48,7 +48,7 @@ func translate(ctx context.Context, cmd cmdTranslate, output, stderr io.Writer) 
 	if err != nil {
 		return err
 	}
-	aigwRoutes, aigwBackends, backendSecurityPolicies, originalGateways, originalSecrets, err := collectObjects(yaml, output, stderrLogger)
+	aigwRoutes, aigwBackends, backendSecurityPolicies, originalGateways, originalSecrets, _, err := collectObjects(yaml, output, stderrLogger)
 	if err != nil {
 		return fmt.Errorf("error translating: %w", err)
 	}
@@ -108,6 +108,7 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 	backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy,
 	gws []*gwapiv1.Gateway,
 	secrets []*corev1.Secret,
+	envoyProxies []*egv1a1.EnvoyProxy,
 	err error,
 ) {
 	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader([]byte(yamlInput)), 4096)
@@ -152,6 +153,9 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 			mustExtractAndAppend(obj, &secrets)
 		case "Gateway":
 			mustExtractAndAppend(obj, &gws)
+		case "EnvoyProxy":
+			mustExtractAndAppend(obj, &envoyProxies)
+			fallthrough // We need to write the file as-is as well.
 		default:
 			// Now you can inspect or manipulate the CRD.
 			logger.Info("Writing back non-target object into the output as-is", "kind", obj.GetKind(), "name", obj.GetName())

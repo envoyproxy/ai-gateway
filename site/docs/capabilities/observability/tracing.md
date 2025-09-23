@@ -49,8 +49,11 @@ helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \
   --version v0.0.0-latest \
   --namespace envoy-ai-gateway-system \
   --set "extProc.extraEnvVars[0].name=OTEL_EXPORTER_OTLP_ENDPOINT" \
-  --set "extProc.extraEnvVars[0].value=http://phoenix-svc:6006"
+  --set "extProc.extraEnvVars[0].value=http://phoenix-svc:6006" \
+  --set "extProc.extraEnvVars[1].name=OTEL_METRICS_EXPORTER" \
+  --set "extProc.extraEnvVars[1].value=none"
 # OTEL_SERVICE_NAME defaults to "ai-gateway" if not set
+# OTEL_METRICS_EXPORTER=none because Phoenix only supports traces, not metrics
 ```
 
 Wait for the gateway pod to be ready:

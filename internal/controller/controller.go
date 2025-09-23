@@ -75,6 +75,8 @@ type Options struct {
 	RootPrefix string
 	// ExtProcExtraEnvVars is the semicolon-separated key=value pairs for extra environment variables in extProc container.
 	ExtProcExtraEnvVars string
+	// ExtProcMaxRecvMsgSize is the maximum message size in bytes that the gRPC server can receive for extProc.
+	ExtProcMaxRecvMsgSize int
 }
 
 // StartControllers starts the controllers for the AI Gateway.
@@ -185,6 +187,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.MetricsRequestHeaderLabels,
 			options.RootPrefix,
 			options.ExtProcExtraEnvVars,
+			options.ExtProcMaxRecvMsgSize,
 		))
 		mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{Handler: h})
 	}

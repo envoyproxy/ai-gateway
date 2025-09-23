@@ -185,20 +185,20 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				Model:  "gemini-pro",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Value: openai.ChatCompletionSystemMessageParam{
+						OfSystem: &openai.ChatCompletionSystemMessageParam{
 							Content: openai.StringOrArray{
 								Value: "You are a helpful assistant",
 							},
+							Role: openai.ChatMessageRoleSystem,
 						},
-						Type: openai.ChatMessageRoleSystem,
 					},
 					{
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "Tell me about AI Gateways",
 							},
+							Role: openai.ChatMessageRoleUser,
 						},
-						Type: openai.ChatMessageRoleUser,
 					},
 				},
 			},
@@ -234,20 +234,20 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				Model:  "gemini-pro",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Value: openai.ChatCompletionSystemMessageParam{
+						OfSystem: &openai.ChatCompletionSystemMessageParam{
 							Content: openai.StringOrArray{
 								Value: "You are a helpful assistant",
 							},
+							Role: openai.ChatMessageRoleSystem,
 						},
-						Type: openai.ChatMessageRoleSystem,
 					},
 					{
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "Tell me about AI Gateways",
 							},
+							Role: openai.ChatMessageRoleUser,
 						},
-						Type: openai.ChatMessageRoleUser,
 					},
 				},
 			},
@@ -284,20 +284,20 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				Model:  "gemini-pro",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Value: openai.ChatCompletionSystemMessageParam{
+						OfSystem: &openai.ChatCompletionSystemMessageParam{
 							Content: openai.StringOrArray{
 								Value: "You are a helpful assistant",
 							},
+							Role: openai.ChatMessageRoleSystem,
 						},
-						Type: openai.ChatMessageRoleSystem,
 					},
 					{
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "Tell me about AI Gateways",
 							},
+							Role: openai.ChatMessageRoleUser,
 						},
-						Type: openai.ChatMessageRoleUser,
 					},
 				},
 			},
@@ -333,20 +333,20 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				Model:  "gemini-pro",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Value: openai.ChatCompletionSystemMessageParam{
+						OfSystem: &openai.ChatCompletionSystemMessageParam{
 							Content: openai.StringOrArray{
 								Value: "You are a helpful assistant",
 							},
+							Role: openai.ChatMessageRoleSystem,
 						},
-						Type: openai.ChatMessageRoleSystem,
 					},
 					{
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "What's the weather in San Francisco?",
 							},
+							Role: openai.ChatMessageRoleUser,
 						},
-						Type: openai.ChatMessageRoleUser,
 					},
 				},
 				Tools: []openai.Tool{
@@ -405,8 +405,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				MaxTokens:   ptr.To(int64(1024)),
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Type: openai.ChatMessageRoleUser,
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Role:    openai.ChatMessageRoleUser,
 							Content: openai.StringOrUserRoleContentUnion{Value: "Test with standard fields"},
 						},
@@ -470,8 +469,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				MaxTokens:   ptr.To(int64(1024)),
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Type: openai.ChatMessageRoleUser,
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Role:    openai.ChatMessageRoleUser,
 							Content: openai.StringOrUserRoleContentUnion{Value: "Test with standard fields"},
 						},

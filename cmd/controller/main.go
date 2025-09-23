@@ -45,6 +45,8 @@ type flags struct {
 	metricsRequestHeaderLabels string
 	rootPrefix                 string
 	extProcExtraEnvVars        string
+	// extProcMaxRecvMsgSize is the maximum message size in bytes that the gRPC server can receive.
+	extProcMaxRecvMsgSize int
 }
 
 // parsePullPolicy parses string into a k8s PullPolicy.
@@ -127,6 +129,11 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		"",
 		"Semicolon-separated key=value pairs for extra environment variables in extProc container. Format: OTEL_SERVICE_NAME=ai-gateway;OTEL_TRACES_EXPORTER=otlp",
 	)
+	extProcMaxRecvMsgSize := fs.Int(
+		"extProcMaxRecvMsgSize",
+		512*1024*1024,
+		"Maximum message size in bytes that the gRPC server can receive for extProc. Default is 512MB.",
+	)
 
 	if err := fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
@@ -180,6 +187,7 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		metricsRequestHeaderLabels: *metricsRequestHeaderLabels,
 		rootPrefix:                 *rootPrefix,
 		extProcExtraEnvVars:        *extProcExtraEnvVars,
+		extProcMaxRecvMsgSize:      *extProcMaxRecvMsgSize,
 	}, nil
 }
 
@@ -255,6 +263,7 @@ func main() {
 		MetricsRequestHeaderLabels: flags.metricsRequestHeaderLabels,
 		RootPrefix:                 flags.rootPrefix,
 		ExtProcExtraEnvVars:        flags.extProcExtraEnvVars,
+		ExtProcMaxRecvMsgSize:      flags.extProcMaxRecvMsgSize,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}

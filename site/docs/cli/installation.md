@@ -23,9 +23,9 @@ The following example runs the AI Gateway with the default configuration for the
 
 ```shell
 $ docker run --rm -p 1975:1975 -e OPENAI_API_KEY=OPENAI_API_KEY envoyproxy/ai-gateway-cli run
-looking up the latest Envoy version
-downloading https://archive.tetratelabs.io/envoy/download/v1.35.0/envoy-v1.35.0-linux-arm64.tar.xz
-starting: /tmp/envoy-gateway/versions/1.35.0/bin/envoy in run directory /tmp/envoy-gateway/runs/1756912322973222887
+looking up the latest patch for Envoy version 1.35
+1.35.3 is already downloaded
+starting: /tmp/envoy-gateway/versions/1.35.3/bin/envoy in run directory /tmp/envoy-gateway/runs/1758086300246501521
 ```
 
 ## Building the latest version

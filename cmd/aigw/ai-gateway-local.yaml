@@ -56,7 +56,6 @@ spec:
               genai_model_name: "%REQ(X-AI-EG-MODEL)%"
               genai_model_name_override: "%DYNAMIC_METADATA(io.envoy.ai_gateway:model_name_override)%"
               genai_backend_name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:backend_name)%"
-              genai_tokens_total: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_total_token)%"
               genai_tokens_input: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_input_token)%"
               genai_tokens_output: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_output_token)%"
               # A few default fields
@@ -105,8 +104,6 @@ spec:
       type: InputToken
     - metadataKey: llm_output_token
       type: OutputToken
-    - metadataKey: llm_total_token
-      type: TotalToken
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
@@ -139,6 +136,7 @@ spec:
 # By default, Envoy Gateway sets the buffer limit to 32kiB which is not
 # sufficient for AI workloads. This ClientTrafficPolicy sets the buffer limit
 # to 50MiB as an example.
+# TODO: Remove after https://github.com/envoyproxy/ai-gateway/issues/1212
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: ClientTrafficPolicy
 metadata:

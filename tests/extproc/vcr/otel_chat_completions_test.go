@@ -52,11 +52,14 @@ func TestOtelOpenAIChatCompletions(t *testing.T) {
 
 			span := env.collector.TakeSpan()
 			testopeninference.RequireSpanEqual(t, expected, span)
+
+			// Also drain any metrics that might have been sent.
+			_ = env.collector.TakeAllMetrics()
 		})
 	}
 }
 
-// TestOtelOpenAIChatCompletions_propagation tests that the LLM span continues
+// TestOtelOpenAIChatCompletions_propagation tests that the LLM span continues.
 // the trace in headers.
 func TestOtelOpenAIChatCompletions_propagation(t *testing.T) {
 	env := setupOtelTestEnvironment(t)

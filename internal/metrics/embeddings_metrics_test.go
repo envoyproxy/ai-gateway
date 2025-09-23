@@ -22,22 +22,18 @@ func TestEmbeddings_RecordTokenUsage(t *testing.T) {
 
 	attrs := []attribute.KeyValue{
 		attribute.Key(genaiAttributeOperationName).String(genaiOperationEmbedding),
-		attribute.Key(genaiAttributeSystemName).String(genaiSystemOpenAI),
+		attribute.Key(genaiAttributeProviderName).String(genaiProviderOpenAI),
 		attribute.Key(genaiAttributeRequestModel).String("text-embedding-ada-002"),
+		attribute.Key(genaiAttributeResponseModel).String("text-embedding-ada-002"),
 	}
 	inputAttrs := attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput))...)
-	totalAttrs := attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeTotal))...)
 
-	em.SetModel("text-embedding-ada-002")
+	em.SetModel("text-embedding-ada-002", "text-embedding-ada-002")
 	em.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
-	em.RecordTokenUsage(t.Context(), 10, 10, nil)
+	em.RecordTokenUsage(t.Context(), 10, nil)
 
-	// For embeddings, input tokens and total tokens should be the same (no output tokens).
+	// Embeddings only consume input tokens to generate vectors.
 	count, sum := getHistogramValues(t, mr, genaiMetricClientTokenUsage, inputAttrs)
-	assert.Equal(t, uint64(1), count)
-	assert.Equal(t, 10.0, sum)
-
-	count, sum = getHistogramValues(t, mr, genaiMetricClientTokenUsage, totalAttrs)
 	assert.Equal(t, uint64(1), count)
 	assert.Equal(t, 10.0, sum)
 }
@@ -47,7 +43,7 @@ func TestEmbeddings_RecordTokenUsage_MultipleRecords(t *testing.T) {
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
 	em := NewEmbeddings(meter, nil).(*embeddings)
 
-	em.SetModel("text-embedding-3-small")
+	em.SetModel("text-embedding-3-small", "text-embedding-3-small")
 	em.SetBackend(&filterapi.Backend{
 		Name:   "custom-backend",
 		Schema: filterapi.VersionedAPISchema{Name: "CustomAPI"},
@@ -55,24 +51,19 @@ func TestEmbeddings_RecordTokenUsage_MultipleRecords(t *testing.T) {
 
 	attrs := []attribute.KeyValue{
 		attribute.Key(genaiAttributeOperationName).String(genaiOperationEmbedding),
-		attribute.Key(genaiAttributeSystemName).String("custom-backend"),
+		attribute.Key(genaiAttributeProviderName).String("custom-backend"),
 		attribute.Key(genaiAttributeRequestModel).String("text-embedding-3-small"),
+		attribute.Key(genaiAttributeResponseModel).String("text-embedding-3-small"),
 	}
 	inputAttrs := attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput))...)
-	totalAttrs := attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeTotal))...)
 
 	// Record multiple token usages.
-	em.RecordTokenUsage(t.Context(), 5, 5, nil)
-	em.RecordTokenUsage(t.Context(), 15, 15, nil)
-	em.RecordTokenUsage(t.Context(), 20, 20, nil)
+	em.RecordTokenUsage(t.Context(), 5, nil)
+	em.RecordTokenUsage(t.Context(), 15, nil)
+	em.RecordTokenUsage(t.Context(), 20, nil)
 
 	// Check input tokens: 5 + 15 + 20 = 40.
 	count, sum := getHistogramValues(t, mr, genaiMetricClientTokenUsage, inputAttrs)
-	assert.Equal(t, uint64(3), count)
-	assert.Equal(t, 40.0, sum)
-
-	// Check total tokens: 5 + 15 + 20 = 40.
-	count, sum = getHistogramValues(t, mr, genaiMetricClientTokenUsage, totalAttrs)
 	assert.Equal(t, uint64(3), count)
 	assert.Equal(t, 40.0, sum)
 }
@@ -96,9 +87,9 @@ func TestEmbeddings_HeaderLabelMapping(t *testing.T) {
 		"x-other":     "ignored", // This should be ignored as it's not in the mapping.
 	}
 
-	em.SetModel("text-embedding-ada-002")
+	em.SetModel("text-embedding-ada-002", "text-embedding-ada-002")
 	em.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
-	em.RecordTokenUsage(t.Context(), 10, 10, requestHeaders)
+	em.RecordTokenUsage(t.Context(), 10, requestHeaders)
 
 	// Verify that the header mapping is set correctly.
 	assert.Equal(t, headerMapping, em.requestHeaderLabelMapping)
@@ -106,8 +97,9 @@ func TestEmbeddings_HeaderLabelMapping(t *testing.T) {
 	// Verify that the metrics are recorded with the mapped header attributes.
 	attrs := attribute.NewSet(
 		attribute.Key(genaiAttributeOperationName).String(genaiOperationEmbedding),
-		attribute.Key(genaiAttributeSystemName).String(genaiSystemOpenAI),
+		attribute.Key(genaiAttributeProviderName).String(genaiProviderOpenAI),
 		attribute.Key(genaiAttributeRequestModel).String("text-embedding-ada-002"),
+		attribute.Key(genaiAttributeResponseModel).String("text-embedding-ada-002"),
 		attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput),
 		attribute.Key("tenant_id").String("tenant789"),
 		attribute.Key("api_key").String("key123"),
@@ -115,4 +107,25 @@ func TestEmbeddings_HeaderLabelMapping(t *testing.T) {
 
 	count, _ := getHistogramValues(t, mr, genaiMetricClientTokenUsage, attrs)
 	assert.Equal(t, uint64(1), count)
+}
+
+func TestEmbeddings_Labels_SetModel_RequestAndResponseDiffer(t *testing.T) {
+	mr := sdkmetric.NewManualReader()
+	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
+	em := NewEmbeddings(meter, nil).(*embeddings)
+
+	em.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
+	em.SetModel("req-embed", "res-embed")
+	em.RecordTokenUsage(t.Context(), 7, nil)
+
+	attrs := attribute.NewSet(
+		attribute.Key(genaiAttributeOperationName).String(genaiOperationEmbedding),
+		attribute.Key(genaiAttributeProviderName).String(genaiProviderOpenAI),
+		attribute.Key(genaiAttributeRequestModel).String("req-embed"),
+		attribute.Key(genaiAttributeResponseModel).String("res-embed"),
+		attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput),
+	)
+	count, sum := getHistogramValues(t, mr, genaiMetricClientTokenUsage, attrs)
+	assert.Equal(t, uint64(1), count)
+	assert.Equal(t, 7.0, sum)
 }

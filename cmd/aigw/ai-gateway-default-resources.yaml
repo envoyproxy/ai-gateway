@@ -105,7 +105,6 @@ spec:
               genai_model_name: "%REQ(X-AI-EG-MODEL)%"
               genai_model_name_override: "%DYNAMIC_METADATA(io.envoy.ai_gateway:model_name_override)%"
               genai_backend_name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:backend_name)%"
-              genai_tokens_total: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_total_token)%"
               genai_tokens_input: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_input_token)%"
               genai_tokens_output: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_output_token)%"
               # Default fields
@@ -150,8 +149,6 @@ spec:
       type: InputToken
     - metadataKey: llm_output_token
       type: OutputToken
-    - metadataKey: llm_total_token
-      type: TotalToken
   rules:
     # Special rule to unconditionally route to the Tetrate Agent Router Service (TARS) backend regardless of the model.
     - matches:
