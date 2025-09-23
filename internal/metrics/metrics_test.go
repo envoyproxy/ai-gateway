@@ -427,3 +427,37 @@ func TestNewMetricsFromEnv_ErrorHandling(t *testing.T) {
 		})
 	}
 }
+
+// TestNewMetricsFromEnv_OTLPHeaders tests that OTEL_EXPORTER_OTLP_HEADERS
+// is properly handled by the autoexport package.
+func TestNewMetricsFromEnv_OTLPHeaders(t *testing.T) {
+	expectedAuthorization := "ApiKey test-key-123"
+	actualAuthorization := make(chan string, 1)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		actualAuthorization <- r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(ts.Close)
+
+	t.Setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization="+expectedAuthorization)
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", ts.URL)
+	t.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")
+
+	manualReader := sdkmetric.NewManualReader()
+	meter, shutdown, err := NewMetricsFromEnv(t.Context(), io.Discard, manualReader)
+	require.NoError(t, err)
+	defer func() {
+		_ = shutdown(context.Background())
+	}()
+
+	// Create metric to trigger export
+	counter, err := meter.Int64Counter("test.metric")
+	require.NoError(t, err)
+	counter.Add(t.Context(), 1)
+
+	// Force flush
+	err = shutdown(t.Context())
+	require.NoError(t, err)
+
+	require.Equal(t, expectedAuthorization, <-actualAuthorization)
+}

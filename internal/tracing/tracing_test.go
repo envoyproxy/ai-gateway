@@ -10,6 +10,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"testing"
 
@@ -554,6 +556,40 @@ func TestNoopShutdown(t *testing.T) {
 	ns := noopShutdown{}
 	err := ns.Shutdown(t.Context())
 	require.NoError(t, err)
+}
+
+// TestNewTracingFromEnv_OTLPHeaders tests that OTEL_EXPORTER_OTLP_HEADERS
+// is properly handled by the autoexport package.
+func TestNewTracingFromEnv_OTLPHeaders(t *testing.T) {
+	expectedAuthorization := "ApiKey test-key-123"
+	actualAuthorization := make(chan string, 1)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		actualAuthorization <- r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(ts.Close)
+
+	t.Setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization="+expectedAuthorization)
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", ts.URL)
+	t.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")
+
+	result, err := NewTracingFromEnv(t.Context(), io.Discard)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = result.Shutdown(context.Background())
+	})
+
+	// Create span to trigger export
+	span := startCompletionsSpan(t, result, nil)
+	require.NotNil(t, span)
+	span.EndSpan()
+
+	// Force flush
+	if impl, ok := result.(*tracingImpl); ok {
+		_ = impl.shutdown(t.Context())
+	}
+
+	require.Equal(t, expectedAuthorization, <-actualAuthorization)
 }
 
 // startCompletionsSpan is a test helper that creates a span with a basic request.
