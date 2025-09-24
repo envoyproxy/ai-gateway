@@ -173,6 +173,12 @@ func (c *messagesProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Cont
 
 	// Start tracking metrics for this request.
 	c.metrics.StartRequest(c.requestHeaders)
+	// Set the original model from the request body before any overrides
+	c.metrics.SetOriginalModel(c.originalRequestBody.GetModel())
+	// Set the request model for metrics from the original model or override if applied.
+	reqModel := cmp.Or(c.requestHeaders[c.config.modelNameHeaderKey], c.originalRequestBody.GetModel())
+	c.metrics.SetRequestModel(reqModel)
+
 	// Force body mutation for retry requests as the body mutation might have happened in previous iteration.
 	forceBodyMutation := c.onRetry
 	headerMutation, bodyMutation, err := c.translator.RequestBody(c.originalRequestBodyRaw, c.originalRequestBody, forceBodyMutation)
@@ -180,9 +186,6 @@ func (c *messagesProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Cont
 		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
 
-	// Set the request model for metrics from the original model or override if applied.
-	reqModel := cmp.Or(c.requestHeaders[c.config.modelNameHeaderKey], c.originalRequestBody.GetModel())
-	c.metrics.SetRequestModel(reqModel)
 	if headerMutation == nil {
 		headerMutation = &extprocv3.HeaderMutation{}
 	}
