@@ -228,6 +228,8 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 
 	// Start tracking metrics for this request.
 	c.metrics.StartRequest(c.requestHeaders)
+	// Set the original model from the request body before any overrides
+	c.metrics.SetOriginalModel(c.originalRequestBody.Model)
 	// Set the request model for metrics from the original model or override if applied.
 	reqModel := cmp.Or(c.requestHeaders[c.config.modelNameHeaderKey], c.originalRequestBody.Model)
 	c.metrics.SetRequestModel(reqModel)

@@ -57,8 +57,8 @@ func failIf5xx(t *testing.T, resp *http.Response, was5xx *bool) {
 	}
 }
 
-// verifyTokenUsageMetrics verifies the gen_ai.client.token.usage metric including its values and attributes.
-func verifyTokenUsageMetrics(t *testing.T, op string, metrics *metricsv1.ScopeMetrics, span *tracev1.Span, requestModel, responseModel string, isError bool) {
+// verifyTokenUsageMetricsWithOriginal verifies token usage metrics including original model attribute
+func verifyTokenUsageMetricsWithOriginal(t *testing.T, op string, metrics *metricsv1.ScopeMetrics, span *tracev1.Span, originalModel, requestModel, responseModel string, isError bool) {
 	t.Helper()
 	if isError {
 		return // Token usage metrics are not verified for error cases.
@@ -81,6 +81,7 @@ func verifyTokenUsageMetrics(t *testing.T, op string, metrics *metricsv1.ScopeMe
 					expected := map[string]string{
 						"gen_ai.operation.name": op,
 						"gen_ai.provider.name":  "openai",
+						"gen_ai.original.model": originalModel,
 						"gen_ai.request.model":  requestModel,
 						"gen_ai.response.model": responseModel,
 						"gen_ai.token.type":     tokenType,
@@ -93,8 +94,8 @@ func verifyTokenUsageMetrics(t *testing.T, op string, metrics *metricsv1.ScopeMe
 	}
 }
 
-// verifyRequestDurationMetrics verifies the gen_ai.server.request.duration metric including its values and attributes.
-func verifyRequestDurationMetrics(t *testing.T, op string, metrics *metricsv1.ScopeMetrics, span *tracev1.Span, requestModel, responseModel string, isError bool) {
+// verifyRequestDurationMetricsWithOriginal verifies request duration metrics including original model attribute
+func verifyRequestDurationMetricsWithOriginal(t *testing.T, op string, metrics *metricsv1.ScopeMetrics, span *tracev1.Span, originalModel, requestModel, responseModel string, isError bool) {
 	t.Helper()
 
 	spanDurationSec := float64(span.EndTimeUnixNano-span.StartTimeUnixNano) / 1e9
@@ -115,6 +116,7 @@ func verifyRequestDurationMetrics(t *testing.T, op string, metrics *metricsv1.Sc
 					require.Equal(t, "_OTHER", attrs["error.type"])
 					require.Equal(t, op, attrs["gen_ai.operation.name"])
 					require.Equal(t, "openai", attrs["gen_ai.provider.name"])
+					require.Equal(t, originalModel, attrs["gen_ai.original.model"])
 					require.Equal(t, requestModel, attrs["gen_ai.request.model"])
 					// Don't validate response model for errors
 				}
@@ -128,6 +130,7 @@ func verifyRequestDurationMetrics(t *testing.T, op string, metrics *metricsv1.Sc
 	expectedAttrs := map[string]string{
 		"gen_ai.operation.name": op,
 		"gen_ai.provider.name":  "openai",
+		"gen_ai.original.model": originalModel,
 		"gen_ai.request.model":  requestModel,
 		"gen_ai.response.model": responseModel,
 	}
