@@ -6,6 +6,7 @@
 package extproc
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -228,10 +229,7 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 	// Start tracking metrics for this request.
 	c.metrics.StartRequest(c.requestHeaders)
 	// Set the request model for metrics from the original model or override if applied.
-	reqModel := c.requestHeaders[c.config.modelNameHeaderKey]
-	if reqModel == "" && c.originalRequestBody != nil && c.originalRequestBody.Model != "" {
-		reqModel = c.originalRequestBody.Model
-	}
+	reqModel := cmp.Or(c.requestHeaders[c.config.modelNameHeaderKey], c.originalRequestBody.Model)
 	c.metrics.SetRequestModel(reqModel)
 
 	// We force the body mutation in the following cases:
@@ -557,9 +555,8 @@ func buildDynamicMetadata(config *processorConfig, costs *translator.LLMTokenUsa
 
 	// Add the actual request model that was used (after any backend overrides were applied).
 	// At this point, the header contains the final model that was sent to the upstream.
-	if actualModel := requestHeaders[config.modelNameHeaderKey]; actualModel != "" {
-		metadata["model_name_override"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: actualModel}}
-	}
+	actualModel := requestHeaders[config.modelNameHeaderKey]
+	metadata["model_name_override"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: actualModel}}
 
 	if backendName != "" {
 		metadata["backend_name"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: backendName}}

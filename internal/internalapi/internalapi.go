@@ -10,6 +10,8 @@ package internalapi
 import (
 	"fmt"
 	"strings"
+
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
 
 const (
@@ -87,7 +89,7 @@ func ParseRequestHeaderLabelMapping(s string) (map[string]string, error) {
 }
 
 // ModelNameHeaderKeyDefault is the default header key for the model name.
-const ModelNameHeaderKeyDefault = "x-ai-eg-model"
+const ModelNameHeaderKeyDefault = aigv1a1.AIModelHeaderKey
 
 // ModelNameHeaderKey is the configurable header key whose value is set by the gateway
 // based on the model extracted from the request body.
@@ -106,7 +108,7 @@ type ModelNameHeaderKey = string
 // the OriginalModel in the client request to the router.
 //
 // Configuration:
-//   - Set via v1alpha1.AIGatewayRouteRuleBackendRef
+//   - Set via aigv1a1.AIGatewayRouteRuleBackendRef
 //   - Replaces the OriginalModel with a backend-specific model name
 //
 // Example:

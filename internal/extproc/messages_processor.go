@@ -6,6 +6,7 @@
 package extproc
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -180,10 +181,7 @@ func (c *messagesProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Cont
 	}
 
 	// Set the request model for metrics from the original model or override if applied.
-	reqModel := c.requestHeaders[c.config.modelNameHeaderKey]
-	if reqModel == "" && c.originalRequestBody != nil && c.originalRequestBody.GetModel() != "" {
-		reqModel = c.originalRequestBody.GetModel()
-	}
+	reqModel := cmp.Or(c.requestHeaders[c.config.modelNameHeaderKey], c.originalRequestBody.GetModel())
 	c.metrics.SetRequestModel(reqModel)
 	if headerMutation == nil {
 		headerMutation = &extprocv3.HeaderMutation{}
