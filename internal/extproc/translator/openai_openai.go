@@ -144,11 +144,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]str
 		o.buffered = append(o.buffered, buf...)
 		tokenUsage = o.extractUsageFromBufferEvent(span)
 		// Use stored streaming response model, fallback to request model for non-compliant backends
-		if o.streamingResponseModel != "" {
-			responseModel = o.streamingResponseModel
-		} else {
-			responseModel = o.requestModel
-		}
+		responseModel = cmp.Or(o.streamingResponseModel, o.requestModel)
 		return
 	}
 	resp := &openai.ChatCompletionResponse{}
