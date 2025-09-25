@@ -695,16 +695,20 @@ func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestor
 		"x-api-key":     "key123",
 		"other":         "value",
 	}
+	body := openai.ChatCompletionRequest{Model: "test-model"}
+	raw := []byte(`{"model":"test-model"}`)
 
 	t.Run("remove headers", func(t *testing.T) {
 		p := &chatCompletionProcessorUpstreamFilter{
-			requestHeaders: map[string]string{"authorization": "secret", "x-api-key": "key123", "other": "value"},
-			headerMutator:  headermutator.NewHeaderMutator(&headerMutation, originalHeaders),
-			onRetry:        true,
-			metrics:        &mockChatCompletionMetrics{},
-			logger:         slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
-			config:         &processorConfig{metadataNamespace: ""},
-			translator:     &mockTranslator{t: t, expForceRequestBodyMutation: true},
+			requestHeaders:         map[string]string{"authorization": "secret", "x-api-key": "key123", "other": "value"},
+			headerMutator:          headermutator.NewHeaderMutator(&headerMutation, originalHeaders),
+			onRetry:                true,
+			metrics:                &mockChatCompletionMetrics{},
+			logger:                 slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+			config:                 &processorConfig{metadataNamespace: ""},
+			translator:             &mockTranslator{t: t, expForceRequestBodyMutation: true, expRequestBody: &body},
+			originalRequestBody:    &body,
+			originalRequestBodyRaw: raw,
 		}
 
 		resp, err := p.ProcessRequestHeaders(context.Background(), nil)
@@ -721,13 +725,15 @@ func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestor
 	t.Run("set headers", func(t *testing.T) {
 		// Simulate that sensitive headers were removed and now need to be restored.
 		p := &chatCompletionProcessorUpstreamFilter{
-			requestHeaders: map[string]string{"other": "value"},
-			headerMutator:  headermutator.NewHeaderMutator(&filterapi.HTTPHeaderMutation{Set: headerMutation.Set}, originalHeaders),
-			onRetry:        true, // not a retry, so should restore.
-			metrics:        &mockChatCompletionMetrics{},
-			logger:         slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
-			config:         &processorConfig{metadataNamespace: ""},
-			translator:     &mockTranslator{t: t, expForceRequestBodyMutation: true},
+			requestHeaders:         map[string]string{"other": "value"},
+			headerMutator:          headermutator.NewHeaderMutator(&filterapi.HTTPHeaderMutation{Set: headerMutation.Set}, originalHeaders),
+			onRetry:                true, // not a retry, so should restore.
+			metrics:                &mockChatCompletionMetrics{},
+			logger:                 slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+			config:                 &processorConfig{metadataNamespace: ""},
+			translator:             &mockTranslator{t: t, expForceRequestBodyMutation: true, expRequestBody: &body},
+			originalRequestBody:    &body,
+			originalRequestBodyRaw: raw,
 		}
 
 		// Call the actual method to trigger restoration logic.
@@ -746,13 +752,15 @@ func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestor
 	t.Run("restore headers", func(t *testing.T) {
 		// Simulate that sensitive headers were removed and now need to be restored.
 		p := &chatCompletionProcessorUpstreamFilter{
-			requestHeaders: map[string]string{"other": "value"},
-			onRetry:        true, // not a retry, so should restore.
-			headerMutator:  headermutator.NewHeaderMutator(nil, originalHeaders),
-			metrics:        &mockChatCompletionMetrics{},
-			logger:         slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
-			config:         &processorConfig{metadataNamespace: ""},
-			translator:     &mockTranslator{t: t, expForceRequestBodyMutation: true},
+			requestHeaders:         map[string]string{"other": "value"},
+			onRetry:                true, // not a retry, so should restore.
+			headerMutator:          headermutator.NewHeaderMutator(nil, originalHeaders),
+			metrics:                &mockChatCompletionMetrics{},
+			logger:                 slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+			config:                 &processorConfig{metadataNamespace: ""},
+			translator:             &mockTranslator{t: t, expForceRequestBodyMutation: true, expRequestBody: &body},
+			originalRequestBody:    &body,
+			originalRequestBodyRaw: raw,
 		}
 
 		// Call the actual method to trigger restoration logic.
