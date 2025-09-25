@@ -190,8 +190,7 @@ type imageGenerationProcessorUpstreamFilter struct {
 func (i *imageGenerationProcessorUpstreamFilter) selectTranslator(out filterapi.VersionedAPISchema) error {
 	switch out.Name {
 	case filterapi.APISchemaOpenAI:
-		// i.translator = translator.NewImageGenerationOpenAIToOpenAITranslator(out.Version, i.modelNameOverride)
-		i.translator = nil // Placeholder
+		i.translator = translator.NewImageGenerationOpenAIToOpenAITranslator(out.Version, i.modelNameOverride)
 	case filterapi.APISchemaAWSBedrock:
 		// i.translator = translator.NewImageGenerationOpenAIToAWSBedrockTranslator(i.modelNameOverride)
 		i.translator = nil // Placeholder
@@ -220,13 +219,18 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessRequestHeaders(ctx conte
 
 	// We force the body mutation in the following cases:
 	// * The request is a retry request because the body mutation might have happened the previous iteration.
-	// TODO: Implement proper translator request body transformation
-	// forceBodyMutation := i.onRetry
-	// headerMutation, bodyMutation, err := i.translator.RequestBody(i.originalRequestBodyRaw, i.originalRequestBody, forceBodyMutation)
-	// if err != nil {
-	//	return nil, fmt.Errorf("failed to transform request: %w", err)
-	// }
-	headerMutation, bodyMutation := &extprocv3.HeaderMutation{}, (*extprocv3.BodyMutation)(nil)
+	var headerMutation *extprocv3.HeaderMutation
+	var bodyMutation *extprocv3.BodyMutation
+	if i.translator != nil {
+		forceBodyMutation := i.onRetry
+		headerMutation, bodyMutation, err = i.translator.RequestBody(i.originalRequestBodyRaw, i.originalRequestBody, forceBodyMutation)
+		if err != nil {
+			return nil, fmt.Errorf("failed to transform request: %w", err)
+		}
+	}
+	if headerMutation == nil {
+		headerMutation = &extprocv3.HeaderMutation{}
+	}
 
 	// Apply header mutations from the route and also restore original headers on retry.
 	if h := i.headerMutator; h != nil {
@@ -280,12 +284,13 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessResponseHeaders(ctx cont
 	if enc := i.responseHeaders["content-encoding"]; enc != "" {
 		i.responseEncoding = enc
 	}
-	// TODO: Implement proper translator response headers transformation
-	// headerMutation, err := i.translator.ResponseHeaders(i.responseHeaders)
-	// if err != nil {
-	//	return nil, fmt.Errorf("failed to transform response headers: %w", err)
-	// }
-	headerMutation := (*extprocv3.HeaderMutation)(nil)
+	var headerMutation *extprocv3.HeaderMutation
+	if i.translator != nil {
+		headerMutation, err = i.translator.ResponseHeaders(i.responseHeaders)
+		if err != nil {
+			return nil, fmt.Errorf("failed to transform response headers: %w", err)
+		}
+	}
 
 	var mode *extprocv3http.ProcessingMode
 	if i.stream && i.responseHeaders[":status"] == "200" {
@@ -317,12 +322,18 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessResponseBody(ctx context
 	if code, _ := strconv.Atoi(i.responseHeaders[":status"]); !isGoodStatusCode(code) {
 		var headerMutation *extprocv3.HeaderMutation
 		var bodyMutation *extprocv3.BodyMutation
-		// TODO: Implement proper translator response error transformation
-		// headerMutation, bodyMutation, err = i.translator.ResponseError(i.responseHeaders, bytes.NewReader(body.Body))
-		// if err != nil {
-		//	return nil, fmt.Errorf("failed to transform response error: %w", err)
-		// }
-		headerMutation, bodyMutation = &extprocv3.HeaderMutation{}, &extprocv3.BodyMutation{}
+		if i.translator != nil {
+			headerMutation, bodyMutation, err = i.translator.ResponseError(i.responseHeaders, bytes.NewReader(body.Body))
+			if err != nil {
+				return nil, fmt.Errorf("failed to transform response error: %w", err)
+			}
+		}
+		if headerMutation == nil {
+			headerMutation = &extprocv3.HeaderMutation{}
+		}
+		if bodyMutation == nil {
+			bodyMutation = &extprocv3.BodyMutation{}
+		}
 		if i.span != nil {
 			b := bodyMutation.GetBody()
 			if b == nil {
@@ -344,10 +355,16 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessResponseBody(ctx context
 		}, nil
 	}
 
-	// TODO: Implement proper translator response body transformation
-	headerMutation, bodyMutation, tokenUsage, imageMetadata, err := i.translator.ResponseBody(i.responseHeaders, bytes.NewReader(body.Body), body.EndOfStream)
-	if err != nil {
-		return nil, fmt.Errorf("failed to transform response: %w", err)
+	// Translator response body transformation (if available)
+	var headerMutation *extprocv3.HeaderMutation
+	var bodyMutation *extprocv3.BodyMutation
+	var tokenUsage translator.LLMTokenUsage
+	var imageMetadata translator.ImageGenerationMetadata
+	if i.translator != nil {
+		headerMutation, bodyMutation, tokenUsage, imageMetadata, err = i.translator.ResponseBody(i.responseHeaders, bytes.NewReader(body.Body), body.EndOfStream)
+		if err != nil {
+			return nil, fmt.Errorf("failed to transform response: %w", err)
+		}
 	}
 
 	// TODO: Implement gzip handling when bodyMutation is non-nil and response is gzipped
