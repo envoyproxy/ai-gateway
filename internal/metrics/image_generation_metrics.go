@@ -50,6 +50,11 @@ func (i *imageGeneration) StartRequest(headers map[string]string) {
 	i.baseMetrics.StartRequest(headers)
 }
 
+// SetModel sets the model for the request.
+func (i *imageGeneration) SetModel(model string) {
+	i.baseMetrics.SetModel(model, model)
+}
+
 // RecordTokenUsage implements [ImageGeneration.RecordTokenUsage].
 func (i *imageGeneration) RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32, requestHeaders map[string]string) {
 	attrs := i.buildBaseAttributes(requestHeaders)
@@ -63,10 +68,8 @@ func (i *imageGeneration) RecordTokenUsage(ctx context.Context, inputTokens, out
 		metric.WithAttributeSet(attrs),
 		metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeOutput)),
 	)
-	i.metrics.tokenUsage.Record(ctx, float64(totalTokens),
-		metric.WithAttributeSet(attrs),
-		metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeTotal)),
-	)
+	// Note: We don't record totalTokens separately as it causes double counting.
+	// The OTEL spec only defines "input" and "output" token types.
 }
 
 // RecordImageGeneration implements [ImageGeneration.RecordImageGeneration].
