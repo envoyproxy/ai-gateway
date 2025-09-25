@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/envoyproxy/ai-gateway/internal/controller"
+	"github.com/envoyproxy/ai-gateway/internal/envgen"
 	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
@@ -247,18 +248,27 @@ func pollEnvoyReadiness(ctx context.Context, l *slog.Logger, addr string, interv
 	}
 }
 
-// readConfig returns config from the given path, substituting ENV variables
-// similar to `envsubst`. If the path is empty the default config is returned.
+// readConfig reads and returns the configuration as a string from the specified path,
+// substituting environment variables similar to envsubst. If the path is empty and
+// OPENAI_API_KEY is set, it generates the configuration from OpenAI environment variables.
+// If the path is empty and no OPENAI_API_KEY is set, it returns the default configuration.
+// An error is returned if the file cannot be read or if config generation fails.
 func readConfig(path string) (string, error) {
 	if path == "" {
+		if os.Getenv("OPENAI_API_KEY") != "" {
+			config, err := envgen.GenerateOpenAIConfig()
+			if err != nil {
+				return "", fmt.Errorf("error generating OpenAI config: %w", err)
+			}
+			return config, nil
+		}
 		return aiGatewayDefaultResources, nil
 	}
-	var yamlBytes []byte
-	yamlBytes, err := envsubst.ReadFile(path)
+	configBytes, err := envsubst.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("error reading config: %w", err)
 	}
-	return string(yamlBytes), nil
+	return string(configBytes), nil
 }
 
 // recreateDir removes the directory at the given path and creates a new one.

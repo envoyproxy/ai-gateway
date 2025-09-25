@@ -16,6 +16,27 @@ Not only does it help in testing the configuration, but it is also useful in a l
 Currently, `aigw run` supports Linux and macOS.
 :::
 
+## Quick Start
+
+The simplest way to get started is to have `aigw` generate a configuration for
+you given OpenAI environment variables of your backend. Here are some examples:
+
+```bash
+# OpenAI
+OPENAI_API_KEY=sk-your-key aigw run
+# Tetrate Agent Router Service (TARS)
+OPENAI_BASE_URL=https://api.router.tetrate.ai/v1 OPENAI_API_KEY=sk-your-key aigw run
+# Ollama running locally
+OPENAI_BASE_URL=http://localhost:11434/v1 OPENAI_API_KEY=unused aigw run
+```
+
+### Supported OpenAI Environment Variables
+
+| Variable          | Required | Default                     | Description                                          |
+|-------------------|----------|-----------------------------|------------------------------------------------------|
+| `OPENAI_API_KEY`  | Yes      | -                           | API key for authentication (use "unused" for Ollama) |
+| `OPENAI_BASE_URL` | No       | `https://api.openai.com/v1` | Base URL of your OpenAI-compatible backend           |
+
 ## Default Proxy
 
 By default, `aigw run` runs the AI Gateway with a default configuration that includes a proxy that listens on port `1975`.

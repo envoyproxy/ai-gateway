@@ -3,11 +3,7 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
-# Configuration for running Envoy AI Gateway with an OpenAI compatible
-# inference platform, defaulting to Ollama.
-#
-# Override with the OPENAI_HOST and OPENAI_PORT environment variables.
-# For example, to use RamaLama you would set OPENAI_PORT=8080.
+# Configuration for Envoy AI Gateway with OpenAI compatible endpoint
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
@@ -86,7 +82,7 @@ spec:
     - name: aigw-run
       kind: Gateway
       group: gateway.networking.k8s.io
-  # Simple rule: route everything to Ollama
+  # Simple rule: route everything to OpenAI backend
   rules:
     - matches:
         - headers:
@@ -94,7 +90,7 @@ spec:
               name: x-ai-eg-model
               value: .*
       backendRefs:
-        - name: ollama
+        - name: openai
           namespace: default
       timeouts:
         request: 120s
@@ -108,19 +104,18 @@ spec:
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
 metadata:
-  name: ollama
+  name: openai
   namespace: default
 spec:
   endpoints:
-    # Use fqdn, not ip, to allow changing to host.docker.internal
     - fqdn:
-        hostname: ${OPENAI_HOST:=127.0.0.1.nip.io}  # Resolves to 127.0.0.1
-        port: ${OPENAI_PORT:=11434}  # Default to Ollama's port
+        hostname: api.openai.com
+        port: 443
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
 metadata:
-  name: ollama
+  name: openai
   namespace: default
 spec:
   timeouts:
@@ -128,10 +123,24 @@ spec:
   schema:
     name: OpenAI
   backendRef:
-    name: ollama
+    name: openai
     kind: Backend
     group: gateway.envoyproxy.io
     namespace: default
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: openai-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: openai
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: api.openai.com
 ---
 # By default, Envoy Gateway sets the buffer limit to 32kiB which is not
 # sufficient for AI workloads. This ClientTrafficPolicy sets the buffer limit
@@ -149,3 +158,32 @@ spec:
       name: aigw-run
   connection:
     bufferLimit: 50Mi
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openai-apikey
+  namespace: default
+  annotations:
+    # This will tell the CLI to replace the value of the apiKey field
+    # with the value of the environment variable OPENAI_API_KEY.
+    substitution.aigw.run/env/apiKey: OPENAI_API_KEY
+type: Opaque
+stringData:
+  # This will be replaced with the environment variable OPENAI_API_KEY.
+  apiKey: PLACEHOLDER_OPENAI_API_KEY
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: openai-apikey
+  namespace: default
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: openai
+  type: APIKey
+  apiKey:
+    secretRef:
+      name: openai-apikey

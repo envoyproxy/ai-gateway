@@ -8,6 +8,14 @@
 - **aigw** (port 1975): Envoy AI Gateway CLI (standalone mode)
 - **chat-completion**: curl command making a simple chat completion
 
+The simplest way to get started is to have `aigw` generate a configuration for
+your OpenAI-compatible backend. This happens when there is no configuration
+file and at least the `OPENAI_API_KEY` environment variable is set.
+
+Here are values we use for Ollama:
+- `OPENAI_API_KEY=unused` (Ollama does not require an API key)
+- `OPENAI_BASE_URL=http://localhost:11434/v1` (host.docker.internal in Docker)
+
 1. **Start Ollama** on your host machine:
 
    Start Ollama on all interfaces, with a large context. This allows it to be

@@ -8,58 +8,73 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestReadConfig(t *testing.T) {
-	aiGatewayLocalPath := sourceRelativePath("ai-gateway-local.yaml")
-
 	tests := []struct {
 		name           string
 		path           string
 		envVars        map[string]string
 		expectHostname string
 		expectPort     string
+		expectError    string
 	}{
 		{
-			name:           "non default config",
-			path:           aiGatewayLocalPath,
+			name: "generates config from OpenAI env vars for localhost",
+			envVars: map[string]string{
+				"OPENAI_API_KEY":  "test-key",
+				"OPENAI_BASE_URL": "http://localhost:11434/v1",
+			},
 			expectHostname: "127.0.0.1.nip.io",
 			expectPort:     "11434",
 		},
 		{
-			name: "non default config with OPENAI_HOST OPENAI_PORT",
-			path: aiGatewayLocalPath,
+			name: "generates config from OpenAI env vars for custom host",
 			envVars: map[string]string{
-				"OPENAI_HOST": "host.docker.internal",
-				"OPENAI_PORT": "8080",
+				"OPENAI_API_KEY":  "test-key",
+				"OPENAI_BASE_URL": "http://myservice:8080/v1",
 			},
-			expectHostname: "host.docker.internal",
+			expectHostname: "myservice",
 			expectPort:     "8080",
+		},
+		{
+			name: "defaults to OpenAI when only API key is set",
+			envVars: map[string]string{
+				"OPENAI_API_KEY": "test-key",
+			},
+			expectHostname: "api.openai.com",
+			expectPort:     "443",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Clear any existing env vars
+			t.Setenv("OPENAI_API_KEY", "")
+			t.Setenv("OPENAI_BASE_URL", "")
+
 			for k, v := range tt.envVars {
 				t.Setenv(k, v)
 			}
 
 			config, err := readConfig(tt.path)
-			require.NoError(t, err)
-			require.Contains(t, config, "hostname: "+tt.expectHostname)
-			require.Contains(t, config, "port: "+tt.expectPort)
+			if tt.expectError != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectError)
+			} else {
+				require.NoError(t, err)
+				require.Contains(t, config, "hostname: "+tt.expectHostname)
+				require.Contains(t, config, "port: "+tt.expectPort)
+			}
 		})
 	}
 
-	// Historical configuration used an IP for ollama. We can't use this
-	// config in docker, as it needs a hostname. However, we have another
-	// config to use in docker, ai-gateway-local.yaml. So, we leave this
-	// one alone.
-	t.Run("Default config uses 0.0.0.0 IP for Ollama", func(t *testing.T) {
+	t.Run("Default config uses 0.0.0.0 IP for Ollama when no env vars", func(t *testing.T) {
+		t.Setenv("OPENAI_API_KEY", "")
+		t.Setenv("OPENAI_BASE_URL", "")
 		config, err := readConfig("")
 		require.NoError(t, err)
 		require.Contains(t, config, "address: 0.0.0.0")
@@ -165,10 +180,4 @@ func TestMaybeResolveHome(t *testing.T) {
 			require.Equal(t, tt.expect, home)
 		})
 	}
-}
-
-func sourceRelativePath(file string) string {
-	_, filename, _, _ := runtime.Caller(0)
-	testDir := filepath.Dir(filename)
-	return filepath.Join(testDir, file)
 }
