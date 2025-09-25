@@ -122,7 +122,7 @@ spec:
     request: 3m
   schema:
     name: OpenAI
-{{- if and .Version (ne .Version "v1") }}
+{{- if .Version }}
     version: "{{.Version}}"
 {{- end }}
   backendRef:
