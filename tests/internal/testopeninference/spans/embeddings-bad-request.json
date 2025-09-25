@@ -1,6 +1,6 @@
 {
   "flags": 256,
-  "name": "CreateEmbeddingResponse",
+  "name": "CreateEmbeddings",
   "kind": "SPAN_KIND_INTERNAL",
   "attributes": [
     {
@@ -22,7 +22,7 @@
       }
     },
     {
-      "key": "llm.invocation_parameters",
+      "key": "embedding.invocation_parameters",
       "value": {
         "stringValue": "{\"model\": \"text-embedding-3-small\", \"dimensions\": -1, \"encoding_format\": \"invalid_format\"}"
       }
@@ -53,7 +53,7 @@
         {
           "key": "exception.stacktrace",
           "value": {
-            "stringValue": "Traceback (most recent call last):\n  File \"/usr/local/lib/python3.13/site-packages/openinference/instrumentation/openai/_request.py\", line 363, in __call__\n    response = await wrapped(*args, **kwargs)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.13/site-packages/openai/_base_client.py\", line 1594, in request\n    raise self._make_status_error_from_response(err.response) from None\nopenai.BadRequestError: Error code: 400 - {'error': {'code': None, 'message': \"-1 is less than the minimum of 1 - 'dimensions'\", 'param': None, 'type': 'invalid_request_error'}}\n"
+            "stringValue": "Traceback (most recent call last):\n  File \"/usr/local/lib/python3.13/site-packages/openinference/instrumentation/openai/_request.py\", line 391, in __call__\n    response = await wrapped(*args, **kwargs)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.13/site-packages/openai/_base_client.py\", line 1594, in request\n    raise self._make_status_error_from_response(err.response) from None\nopenai.BadRequestError: Error code: 400 - {'error': {'code': None, 'message': \"-1 is less than the minimum of 1 - 'dimensions'\", 'param': None, 'type': 'invalid_request_error'}}\n"
           }
         },
         {

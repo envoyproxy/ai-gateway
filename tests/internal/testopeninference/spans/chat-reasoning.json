@@ -12,7 +12,7 @@
     {
       "key":  "input.value",
       "value":  {
-        "stringValue":  "{\"messages\": [{\"content\": \"A bat and ball cost $1.10. Bat costs $1 more than ball. Ball cost?\", \"role\": \"user\"}], \"model\": \"o3-mini\"}"
+        "stringValue":  "{\"messages\": [{\"content\": \"A bat and ball cost $1.10. Bat costs $1 more than ball. Ball cost?\", \"role\": \"user\"}], \"model\": \"gpt-5-nano\"}"
       }
     },
     {
@@ -24,7 +24,7 @@
     {
       "key":  "output.value",
       "value":  {
-        "stringValue":  "{\"id\":\"chatcmpl-C4GmcU7sPLtZ16jI8fqxAtXVj1FX7\",\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"message\":{\"content\":\"Let the cost of the ball be x dollars. Then the bat costs x + 1 dollars (since it costs $1 more than the ball).\\n\\nThe total cost is given by:\\n  x + (x + 1) = 1.10\\n\\nCombine like terms:\\n  2x + 1 = 1.10\\n\\nSubtract 1 from both sides:\\n  2x = 0.10\\n\\nDivide by 2:\\n  x = 0.05\\n\\nSo, the ball costs $0.05 (5 cents) and the bat costs $1.05.\",\"refusal\":null,\"role\":\"assistant\",\"annotations\":[]}}],\"created\":1755133862,\"model\":\"o3-mini-2025-01-31\",\"object\":\"chat.completion\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_e20469f047\",\"usage\":{\"completion_tokens\":264,\"prompt_tokens\":27,\"total_tokens\":291,\"completion_tokens_details\":{\"accepted_prediction_tokens\":0,\"audio_tokens\":0,\"reasoning_tokens\":128,\"rejected_prediction_tokens\":0},\"prompt_tokens_details\":{\"audio_tokens\":0,\"cached_tokens\":0}}}"
+        "stringValue":  "{\"id\":\"chatcmpl-CJYvbsw8VZh862zGsIV5ZJtMnVFej\",\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"message\":{\"content\":\"Ball costs 5 cents.\\n\\nReason: Let ball = x dollars. Then bat = x + 1. Total: x + (x + 1) = 1.10 → 2x + 1 = 1.10 → 2x = 0.10 → x = 0.05.\",\"refusal\":null,\"role\":\"assistant\",\"annotations\":[]}}],\"created\":1758778531,\"model\":\"gpt-5-nano-2025-08-07\",\"object\":\"chat.completion\",\"service_tier\":\"default\",\"system_fingerprint\":null,\"usage\":{\"completion_tokens\":267,\"prompt_tokens\":27,\"total_tokens\":294,\"completion_tokens_details\":{\"accepted_prediction_tokens\":0,\"audio_tokens\":0,\"reasoning_tokens\":192,\"rejected_prediction_tokens\":0},\"prompt_tokens_details\":{\"audio_tokens\":0,\"cached_tokens\":0}}}"
       }
     },
     {
@@ -36,7 +36,7 @@
     {
       "key":  "llm.invocation_parameters",
       "value":  {
-        "stringValue":  "{\"model\": \"o3-mini\"}"
+        "stringValue":  "{\"model\": \"gpt-5-nano\"}"
       }
     },
     {
@@ -54,13 +54,13 @@
     {
       "key":  "llm.model_name",
       "value":  {
-        "stringValue":  "o3-mini-2025-01-31"
+        "stringValue":  "gpt-5-nano-2025-08-07"
       }
     },
     {
       "key":  "llm.token_count.total",
       "value":  {
-        "intValue":  "291"
+        "intValue":  "294"
       }
     },
     {
@@ -72,7 +72,7 @@
     {
       "key":  "llm.token_count.completion",
       "value":  {
-        "intValue":  "264"
+        "intValue":  "267"
       }
     },
     {
@@ -90,7 +90,7 @@
     {
       "key":  "llm.token_count.completion_details.reasoning",
       "value":  {
-        "intValue":  "128"
+        "intValue":  "192"
       }
     },
     {
@@ -108,7 +108,7 @@
     {
       "key":  "llm.output_messages.0.message.content",
       "value":  {
-        "stringValue":  "Let the cost of the ball be x dollars. Then the bat costs x + 1 dollars (since it costs $1 more than the ball).\n\nThe total cost is given by:\n  x + (x + 1) = 1.10\n\nCombine like terms:\n  2x + 1 = 1.10\n\nSubtract 1 from both sides:\n  2x = 0.10\n\nDivide by 2:\n  x = 0.05\n\nSo, the ball costs $0.05 (5 cents) and the bat costs $1.05."
+        "stringValue":  "Ball costs 5 cents.\n\nReason: Let ball = x dollars. Then bat = x + 1. Total: x + (x + 1) = 1.10 → 2x + 1 = 1.10 → 2x = 0.10 → x = 0.05."
       }
     },
     {

@@ -1,160 +1,160 @@
 {
-  "flags":  256,
-  "name":  "ChatCompletion",
-  "kind":  "SPAN_KIND_INTERNAL",
-  "attributes":  [
+  "flags": 256,
+  "name": "ChatCompletion",
+  "kind": "SPAN_KIND_INTERNAL",
+  "attributes": [
     {
-      "key":  "llm.system",
-      "value":  {
-        "stringValue":  "openai"
+      "key": "llm.system",
+      "value": {
+        "stringValue": "openai"
       }
     },
     {
-      "key":  "input.value",
-      "value":  {
-        "stringValue":  "{\"messages\": [{\"content\": \"You are a helpful assistant.\", \"role\": \"developer\"}, {\"content\": \"Hello!\", \"role\": \"user\"}, {\"role\": \"assistant\", \"content\": \"Hello! How can I assist you today?\"}, {\"content\": \"Answer in up to 5 words: What's the weather like?\", \"role\": \"user\"}], \"model\": \"gpt-5-nano\", \"temperature\": 1}"
+      "key": "input.value",
+      "value": {
+        "stringValue": "{\"messages\": [{\"content\": \"You are a helpful assistant.\", \"role\": \"developer\"}, {\"content\": \"Hello!\", \"role\": \"user\"}, {\"role\": \"assistant\", \"content\": \"Hello! How can I assist you today?\"}, {\"content\": \"Answer in up to 5 words: What's the weather like?\", \"role\": \"user\"}], \"model\": \"gpt-5-nano\", \"temperature\": 1}"
       }
     },
     {
-      "key":  "input.mime_type",
-      "value":  {
-        "stringValue":  "application/json"
+      "key": "input.mime_type",
+      "value": {
+        "stringValue": "application/json"
       }
     },
     {
-      "key":  "output.value",
-      "value":  {
-        "stringValue":  "{\"id\":\"chatcmpl-C4Gq6FIIOJIrXvd2A8RPuRIuAlHZr\",\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"message\":{\"content\":\"What city or region?\",\"refusal\":null,\"role\":\"assistant\",\"annotations\":[]}}],\"created\":1755134078,\"model\":\"gpt-5-nano-2025-08-07\",\"object\":\"chat.completion\",\"service_tier\":\"default\",\"system_fingerprint\":null,\"usage\":{\"completion_tokens\":526,\"prompt_tokens\":50,\"total_tokens\":576,\"completion_tokens_details\":{\"accepted_prediction_tokens\":0,\"audio_tokens\":0,\"reasoning_tokens\":512,\"rejected_prediction_tokens\":0},\"prompt_tokens_details\":{\"audio_tokens\":0,\"cached_tokens\":0}}}"
+      "key": "output.value",
+      "value": {
+        "stringValue": "{\"id\":\"chatcmpl-C4Gq6FIIOJIrXvd2A8RPuRIuAlHZr\",\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"message\":{\"content\":\"What city or region?\",\"refusal\":null,\"role\":\"assistant\",\"annotations\":[]}}],\"created\":1755134078,\"model\":\"gpt-5-nano-2025-08-07\",\"object\":\"chat.completion\",\"service_tier\":\"default\",\"system_fingerprint\":null,\"usage\":{\"completion_tokens\":526,\"prompt_tokens\":50,\"total_tokens\":576,\"completion_tokens_details\":{\"accepted_prediction_tokens\":0,\"audio_tokens\":0,\"reasoning_tokens\":512,\"rejected_prediction_tokens\":0},\"prompt_tokens_details\":{\"audio_tokens\":0,\"cached_tokens\":0}}}"
       }
     },
     {
-      "key":  "output.mime_type",
-      "value":  {
-        "stringValue":  "application/json"
+      "key": "output.mime_type",
+      "value": {
+        "stringValue": "application/json"
       }
     },
     {
-      "key":  "llm.invocation_parameters",
-      "value":  {
-        "stringValue":  "{\"model\": \"gpt-5-nano\", \"temperature\": 1}"
+      "key": "llm.invocation_parameters",
+      "value": {
+        "stringValue": "{\"model\": \"gpt-5-nano\", \"temperature\": 1}"
       }
     },
     {
-      "key":  "llm.input_messages.0.message.role",
-      "value":  {
-        "stringValue":  "developer"
+      "key": "llm.input_messages.0.message.role",
+      "value": {
+        "stringValue": "developer"
       }
     },
     {
-      "key":  "llm.input_messages.0.message.content",
-      "value":  {
-        "stringValue":  "You are a helpful assistant."
+      "key": "llm.input_messages.0.message.content",
+      "value": {
+        "stringValue": "You are a helpful assistant."
       }
     },
     {
-      "key":  "llm.input_messages.1.message.role",
-      "value":  {
-        "stringValue":  "user"
+      "key": "llm.input_messages.1.message.role",
+      "value": {
+        "stringValue": "user"
       }
     },
     {
-      "key":  "llm.input_messages.1.message.content",
-      "value":  {
-        "stringValue":  "Hello!"
+      "key": "llm.input_messages.1.message.content",
+      "value": {
+        "stringValue": "Hello!"
       }
     },
     {
-      "key":  "llm.input_messages.2.message.role",
-      "value":  {
-        "stringValue":  "assistant"
+      "key": "llm.input_messages.2.message.role",
+      "value": {
+        "stringValue": "assistant"
       }
     },
     {
-      "key":  "llm.input_messages.2.message.content",
-      "value":  {
-        "stringValue":  "Hello! How can I assist you today?"
+      "key": "llm.input_messages.2.message.content",
+      "value": {
+        "stringValue": "Hello! How can I assist you today?"
       }
     },
     {
-      "key":  "llm.input_messages.3.message.role",
-      "value":  {
-        "stringValue":  "user"
+      "key": "llm.input_messages.3.message.role",
+      "value": {
+        "stringValue": "user"
       }
     },
     {
-      "key":  "llm.input_messages.3.message.content",
-      "value":  {
-        "stringValue":  "Answer in up to 5 words: What's the weather like?"
+      "key": "llm.input_messages.3.message.content",
+      "value": {
+        "stringValue": "Answer in up to 5 words: What's the weather like?"
       }
     },
     {
-      "key":  "llm.model_name",
-      "value":  {
-        "stringValue":  "gpt-5-nano-2025-08-07"
+      "key": "llm.model_name",
+      "value": {
+        "stringValue": "gpt-5-nano-2025-08-07"
       }
     },
     {
-      "key":  "llm.token_count.total",
-      "value":  {
-        "intValue":  "576"
+      "key": "llm.token_count.total",
+      "value": {
+        "intValue": "576"
       }
     },
     {
-      "key":  "llm.token_count.prompt",
-      "value":  {
-        "intValue":  "50"
+      "key": "llm.token_count.prompt",
+      "value": {
+        "intValue": "50"
       }
     },
     {
-      "key":  "llm.token_count.completion",
-      "value":  {
-        "intValue":  "526"
+      "key": "llm.token_count.completion",
+      "value": {
+        "intValue": "526"
       }
     },
     {
-      "key":  "llm.token_count.prompt_details.cache_read",
-      "value":  {
-        "intValue":  "0"
+      "key": "llm.token_count.prompt_details.cache_read",
+      "value": {
+        "intValue": "0"
       }
     },
     {
-      "key":  "llm.token_count.prompt_details.audio",
-      "value":  {
-        "intValue":  "0"
+      "key": "llm.token_count.prompt_details.audio",
+      "value": {
+        "intValue": "0"
       }
     },
     {
-      "key":  "llm.token_count.completion_details.reasoning",
-      "value":  {
-        "intValue":  "512"
+      "key": "llm.token_count.completion_details.reasoning",
+      "value": {
+        "intValue": "512"
       }
     },
     {
-      "key":  "llm.token_count.completion_details.audio",
-      "value":  {
-        "intValue":  "0"
+      "key": "llm.token_count.completion_details.audio",
+      "value": {
+        "intValue": "0"
       }
     },
     {
-      "key":  "llm.output_messages.0.message.role",
-      "value":  {
-        "stringValue":  "assistant"
+      "key": "llm.output_messages.0.message.role",
+      "value": {
+        "stringValue": "assistant"
       }
     },
     {
-      "key":  "llm.output_messages.0.message.content",
-      "value":  {
-        "stringValue":  "What city or region?"
+      "key": "llm.output_messages.0.message.content",
+      "value": {
+        "stringValue": "What city or region?"
       }
     },
     {
-      "key":  "openinference.span.kind",
-      "value":  {
-        "stringValue":  "LLM"
+      "key": "openinference.span.kind",
+      "value": {
+        "stringValue": "LLM"
       }
     }
   ],
-  "status":  {
-    "code":  "STATUS_CODE_OK"
+  "status": {
+    "code": "STATUS_CODE_OK"
   }
 }
