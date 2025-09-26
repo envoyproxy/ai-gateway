@@ -247,7 +247,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 		},
 	},
 	CassetteChatReasoning: {
-		Model: openai.ModelO3Mini,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
 				OfUser: &openai.ChatCompletionUserMessageParam{

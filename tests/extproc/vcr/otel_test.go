@@ -112,11 +112,16 @@ func verifyRequestDurationMetrics(t *testing.T, op string, metrics *metricsv1.Sc
 				require.NotEmpty(t, histogram.DataPoints)
 				for _, dp := range histogram.DataPoints {
 					attrs := getAttributeStringMap(dp.Attributes)
-					require.Equal(t, "_OTHER", attrs["error.type"])
-					require.Equal(t, op, attrs["gen_ai.operation.name"])
-					require.Equal(t, "openai", attrs["gen_ai.provider.name"])
-					require.Equal(t, requestModel, attrs["gen_ai.request.model"])
-					// Don't validate response model for errors
+					expected := map[string]string{
+						"error.type":            "_OTHER", // we don't set specific error types yet
+						"gen_ai.operation.name": op,
+						"gen_ai.provider.name":  "openai",
+						"gen_ai.request.model":  requestModel,
+						// TODO: we can't verify the response model for errors until it is set consistently
+						// See https://github.com/envoyproxy/ai-gateway/issues/1224
+						"gen_ai.response.model": attrs["gen_ai.response.model"],
+					}
+					require.Equal(t, expected, attrs)
 				}
 				return
 			}

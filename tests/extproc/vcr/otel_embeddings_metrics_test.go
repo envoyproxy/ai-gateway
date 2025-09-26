@@ -74,9 +74,7 @@ func TestOtelOpenAIEmbeddings_metrics(t *testing.T) {
 			metrics := requireScopeMetrics(t, allMetrics)
 
 			// Get expected model names from span
-			// TODO: these attributes are inconsistent and will be fixed soon.
-			// See https://github.com/Arize-ai/openinference/pull/2210
-			requestModel := getInvocationModel(span.Attributes, "llm.invocation_parameters")
+			requestModel := getInvocationModel(span.Attributes, "embedding.invocation_parameters")
 			responseModel := getSpanAttributeString(span.Attributes, "embedding.model_name")
 
 			// Verify each metric in separate functions.
@@ -117,9 +115,7 @@ func TestOtelOpenAIEmbeddings_metrics_modelNameOverride(t *testing.T) {
 	metrics := requireScopeMetrics(t, allMetrics)
 
 	// Get expected model names from span
-	// TODO: Until trace attribute recording is moved to the upstream filter,
-	// llm.invocation_parameters is the original model, not the override.
-	requestModel := "text-embedding-3-small" // overridden model
+	requestModel := getInvocationModel(span.Attributes, "embedding.invocation_parameters")
 	responseModel := getSpanAttributeString(span.Attributes, "embedding.model_name")
 
 	verifyTokenUsageMetrics(t, "embeddings", metrics, span, requestModel, responseModel, false)

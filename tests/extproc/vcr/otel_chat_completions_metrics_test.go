@@ -79,7 +79,8 @@ func TestOtelOpenAIChatCompletions_metrics(t *testing.T) {
 			metrics := requireScopeMetrics(t, allMetrics)
 
 			// Get expected model names from span
-			requestModel := getInvocationModel(span.Attributes, "llm.invocation_parameters")
+			originalModel := getInvocationModel(span.Attributes, "llm.invocation_parameters")
+			requestModel := originalModel // in non-override cases, these are the same
 			responseModel := getSpanAttributeString(span.Attributes, "llm.model_name")
 
 			verifyTokenUsageMetrics(t, "chat", metrics, span, requestModel, responseModel, tc.isError)

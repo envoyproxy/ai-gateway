@@ -38,9 +38,8 @@ const (
 // Model names for testing.
 const (
 	// ModelGPT5Nano is the cheapest model usable with /chat/completions.
+	// Note: gpt-5-nano is also the cheapest reasoning model.
 	ModelGPT5Nano = "gpt-5-nano"
-	// ModelO3Mini is the cheapest reasoning model usable with /chat/completions.
-	ModelO3Mini = "o3-mini"
 	// ModelGPT4oMiniAudioPreview is the cheapest audio synthesis model usable with /chat/completions.
 	ModelGPT4oMiniAudioPreview = "gpt-4o-mini-audio-preview"
 	// ModelGPT4oAudioPreview is the cheapest audio transcription model usable with /chat/completions.

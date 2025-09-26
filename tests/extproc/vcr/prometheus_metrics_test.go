@@ -15,6 +15,7 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/tests/internal/testopenai"
@@ -43,7 +44,7 @@ func TestPrometheusMetrics(t *testing.T) {
 
 	// Wait for metrics to be available with exponential backoff.
 	// Parse the Prometheus metrics.
-	parser := expfmt.TextParser{}
+	parser := expfmt.NewTextParser(model.UTF8Validation)
 	var metricFamilies map[string]*dto.MetricFamily
 	require.Eventually(t, func() bool {
 		metricsReq, err := http.NewRequestWithContext(t.Context(), http.MethodGet, fmt.Sprintf("http://localhost:%d/metrics", metricsPort), nil)

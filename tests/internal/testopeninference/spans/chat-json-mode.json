@@ -1,124 +1,124 @@
 {
-  "flags":  256,
-  "name":  "ChatCompletion",
-  "kind":  "SPAN_KIND_INTERNAL",
-  "attributes":  [
+  "flags": 256,
+  "name": "ChatCompletion",
+  "kind": "SPAN_KIND_INTERNAL",
+  "attributes": [
     {
-      "key":  "llm.system",
-      "value":  {
-        "stringValue":  "openai"
+      "key": "llm.system",
+      "value": {
+        "stringValue": "openai"
       }
     },
     {
-      "key":  "input.value",
-      "value":  {
-        "stringValue":  "{\"messages\": [{\"content\": \"Generate a JSON object with three properties: name, age, and city.\", \"role\": \"user\"}], \"model\": \"gpt-5-nano\", \"response_format\": {\"type\": \"json_object\"}}"
+      "key": "input.value",
+      "value": {
+        "stringValue": "{\"messages\": [{\"content\": \"Generate a JSON object with three properties: name, age, and city.\", \"role\": \"user\"}], \"model\": \"gpt-5-nano\", \"response_format\": {\"type\": \"json_object\"}}"
       }
     },
     {
-      "key":  "input.mime_type",
-      "value":  {
-        "stringValue":  "application/json"
+      "key": "input.mime_type",
+      "value": {
+        "stringValue": "application/json"
       }
     },
     {
-      "key":  "output.value",
-      "value":  {
-        "stringValue":  "{\"id\":\"chatcmpl-C4GmF9uTIEqemNux4KSwWJMUTrrer\",\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"message\":{\"content\":\"{\\\"name\\\":\\\"Alex Smith\\\",\\\"age\\\":29,\\\"city\\\":\\\"San Francisco\\\"}\",\"refusal\":null,\"role\":\"assistant\",\"annotations\":[]}}],\"created\":1755133839,\"model\":\"gpt-5-nano-2025-08-07\",\"object\":\"chat.completion\",\"service_tier\":\"default\",\"system_fingerprint\":null,\"usage\":{\"completion_tokens\":280,\"prompt_tokens\":21,\"total_tokens\":301,\"completion_tokens_details\":{\"accepted_prediction_tokens\":0,\"audio_tokens\":0,\"reasoning_tokens\":256,\"rejected_prediction_tokens\":0},\"prompt_tokens_details\":{\"audio_tokens\":0,\"cached_tokens\":0}}}"
+      "key": "output.value",
+      "value": {
+        "stringValue": "{\"id\":\"chatcmpl-C4GmF9uTIEqemNux4KSwWJMUTrrer\",\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"message\":{\"content\":\"{\\\"name\\\":\\\"Alex Smith\\\",\\\"age\\\":29,\\\"city\\\":\\\"San Francisco\\\"}\",\"refusal\":null,\"role\":\"assistant\",\"annotations\":[]}}],\"created\":1755133839,\"model\":\"gpt-5-nano-2025-08-07\",\"object\":\"chat.completion\",\"service_tier\":\"default\",\"system_fingerprint\":null,\"usage\":{\"completion_tokens\":280,\"prompt_tokens\":21,\"total_tokens\":301,\"completion_tokens_details\":{\"accepted_prediction_tokens\":0,\"audio_tokens\":0,\"reasoning_tokens\":256,\"rejected_prediction_tokens\":0},\"prompt_tokens_details\":{\"audio_tokens\":0,\"cached_tokens\":0}}}"
       }
     },
     {
-      "key":  "output.mime_type",
-      "value":  {
-        "stringValue":  "application/json"
+      "key": "output.mime_type",
+      "value": {
+        "stringValue": "application/json"
       }
     },
     {
-      "key":  "llm.invocation_parameters",
-      "value":  {
-        "stringValue":  "{\"model\": \"gpt-5-nano\", \"response_format\": {\"type\": \"json_object\"}}"
+      "key": "llm.invocation_parameters",
+      "value": {
+        "stringValue": "{\"model\": \"gpt-5-nano\", \"response_format\": {\"type\": \"json_object\"}}"
       }
     },
     {
-      "key":  "llm.input_messages.0.message.role",
-      "value":  {
-        "stringValue":  "user"
+      "key": "llm.input_messages.0.message.role",
+      "value": {
+        "stringValue": "user"
       }
     },
     {
-      "key":  "llm.input_messages.0.message.content",
-      "value":  {
-        "stringValue":  "Generate a JSON object with three properties: name, age, and city."
+      "key": "llm.input_messages.0.message.content",
+      "value": {
+        "stringValue": "Generate a JSON object with three properties: name, age, and city."
       }
     },
     {
-      "key":  "llm.model_name",
-      "value":  {
-        "stringValue":  "gpt-5-nano-2025-08-07"
+      "key": "llm.model_name",
+      "value": {
+        "stringValue": "gpt-5-nano-2025-08-07"
       }
     },
     {
-      "key":  "llm.token_count.total",
-      "value":  {
-        "intValue":  "301"
+      "key": "llm.token_count.total",
+      "value": {
+        "intValue": "301"
       }
     },
     {
-      "key":  "llm.token_count.prompt",
-      "value":  {
-        "intValue":  "21"
+      "key": "llm.token_count.prompt",
+      "value": {
+        "intValue": "21"
       }
     },
     {
-      "key":  "llm.token_count.completion",
-      "value":  {
-        "intValue":  "280"
+      "key": "llm.token_count.completion",
+      "value": {
+        "intValue": "280"
       }
     },
     {
-      "key":  "llm.token_count.prompt_details.cache_read",
-      "value":  {
-        "intValue":  "0"
+      "key": "llm.token_count.prompt_details.cache_read",
+      "value": {
+        "intValue": "0"
       }
     },
     {
-      "key":  "llm.token_count.prompt_details.audio",
-      "value":  {
-        "intValue":  "0"
+      "key": "llm.token_count.prompt_details.audio",
+      "value": {
+        "intValue": "0"
       }
     },
     {
-      "key":  "llm.token_count.completion_details.reasoning",
-      "value":  {
-        "intValue":  "256"
+      "key": "llm.token_count.completion_details.reasoning",
+      "value": {
+        "intValue": "256"
       }
     },
     {
-      "key":  "llm.token_count.completion_details.audio",
-      "value":  {
-        "intValue":  "0"
+      "key": "llm.token_count.completion_details.audio",
+      "value": {
+        "intValue": "0"
       }
     },
     {
-      "key":  "llm.output_messages.0.message.role",
-      "value":  {
-        "stringValue":  "assistant"
+      "key": "llm.output_messages.0.message.role",
+      "value": {
+        "stringValue": "assistant"
       }
     },
     {
-      "key":  "llm.output_messages.0.message.content",
-      "value":  {
-        "stringValue":  "{\"name\":\"Alex Smith\",\"age\":29,\"city\":\"San Francisco\"}"
+      "key": "llm.output_messages.0.message.content",
+      "value": {
+        "stringValue": "{\"name\":\"Alex Smith\",\"age\":29,\"city\":\"San Francisco\"}"
       }
     },
     {
-      "key":  "openinference.span.kind",
-      "value":  {
-        "stringValue":  "LLM"
+      "key": "openinference.span.kind",
+      "value": {
+        "stringValue": "LLM"
       }
     }
   ],
-  "status":  {
-    "code":  "STATUS_CODE_OK"
+  "status": {
+    "code": "STATUS_CODE_OK"
   }
 }

@@ -21,7 +21,7 @@ func TestGetAllSpans(t *testing.T) {
 		cassettes []testopenai.Cassette
 	}{
 		{"ChatCompletion", testopenai.ChatCassettes()},
-		{"CreateEmbeddingResponse", testopenai.EmbeddingsCassettes()},
+		{"CreateEmbeddings", testopenai.EmbeddingsCassettes()},
 	}
 
 	for _, tc := range tests {

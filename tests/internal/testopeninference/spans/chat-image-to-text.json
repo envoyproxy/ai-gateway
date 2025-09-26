@@ -1,142 +1,142 @@
 {
-  "flags":  256,
-  "name":  "ChatCompletion",
-  "kind":  "SPAN_KIND_INTERNAL",
-  "attributes":  [
+  "flags": 256,
+  "name": "ChatCompletion",
+  "kind": "SPAN_KIND_INTERNAL",
+  "attributes": [
     {
-      "key":  "llm.system",
-      "value":  {
-        "stringValue":  "openai"
+      "key": "llm.system",
+      "value": {
+        "stringValue": "openai"
       }
     },
     {
-      "key":  "input.value",
-      "value":  {
-        "stringValue":  "{\"messages\": [{\"content\": [{\"text\": \"Answer in up to 5 words: What's in this image?\", \"type\": \"text\"}, {\"image_url\": {\"url\": \"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAXElEQVR42mNgoAkofv8fBVOkmQyD/sPwn1UlYAzlE6cZpgGmGZlPkgHYDCHKCcia0AwgHlCm+c+f/9gwabajG0CsK+DOxmIA8YZQ6gXkhISG6W8ALj7RtuMTgwMA0WTdqiU1ensAAAAASUVORK5CYII=\"}, \"type\": \"image_url\"}], \"role\": \"user\"}], \"model\": \"gpt-5-nano\"}"
+      "key": "input.value",
+      "value": {
+        "stringValue": "{\"messages\": [{\"content\": [{\"text\": \"Answer in up to 5 words: What's in this image?\", \"type\": \"text\"}, {\"image_url\": {\"url\": \"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAXElEQVR42mNgoAkofv8fBVOkmQyD/sPwn1UlYAzlE6cZpgGmGZlPkgHYDCHKCcia0AwgHlCm+c+f/9gwabajG0CsK+DOxmIA8YZQ6gXkhISG6W8ALj7RtuMTgwMA0WTdqiU1ensAAAAASUVORK5CYII=\"}, \"type\": \"image_url\"}], \"role\": \"user\"}], \"model\": \"gpt-5-nano\"}"
       }
     },
     {
-      "key":  "input.mime_type",
-      "value":  {
-        "stringValue":  "application/json"
+      "key": "input.mime_type",
+      "value": {
+        "stringValue": "application/json"
       }
     },
     {
-      "key":  "output.value",
-      "value":  {
-        "stringValue":  "{\"id\":\"chatcmpl-C4Gmj9b5BeLuDR5fgSeYUQobtSGV3\",\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"message\":{\"content\":\"A tiny blue cartoon character.\",\"refusal\":null,\"role\":\"assistant\",\"annotations\":[]}}],\"created\":1755133869,\"model\":\"gpt-5-nano-2025-08-07\",\"object\":\"chat.completion\",\"service_tier\":\"default\",\"system_fingerprint\":null,\"usage\":{\"completion_tokens\":719,\"prompt_tokens\":22,\"total_tokens\":741,\"completion_tokens_details\":{\"accepted_prediction_tokens\":0,\"audio_tokens\":0,\"reasoning_tokens\":704,\"rejected_prediction_tokens\":0},\"prompt_tokens_details\":{\"audio_tokens\":0,\"cached_tokens\":0}}}"
+      "key": "output.value",
+      "value": {
+        "stringValue": "{\"id\":\"chatcmpl-C4Gmj9b5BeLuDR5fgSeYUQobtSGV3\",\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"message\":{\"content\":\"A tiny blue cartoon character.\",\"refusal\":null,\"role\":\"assistant\",\"annotations\":[]}}],\"created\":1755133869,\"model\":\"gpt-5-nano-2025-08-07\",\"object\":\"chat.completion\",\"service_tier\":\"default\",\"system_fingerprint\":null,\"usage\":{\"completion_tokens\":719,\"prompt_tokens\":22,\"total_tokens\":741,\"completion_tokens_details\":{\"accepted_prediction_tokens\":0,\"audio_tokens\":0,\"reasoning_tokens\":704,\"rejected_prediction_tokens\":0},\"prompt_tokens_details\":{\"audio_tokens\":0,\"cached_tokens\":0}}}"
       }
     },
     {
-      "key":  "output.mime_type",
-      "value":  {
-        "stringValue":  "application/json"
+      "key": "output.mime_type",
+      "value": {
+        "stringValue": "application/json"
       }
     },
     {
-      "key":  "llm.invocation_parameters",
-      "value":  {
-        "stringValue":  "{\"model\": \"gpt-5-nano\"}"
+      "key": "llm.invocation_parameters",
+      "value": {
+        "stringValue": "{\"model\": \"gpt-5-nano\"}"
       }
     },
     {
-      "key":  "llm.input_messages.0.message.role",
-      "value":  {
-        "stringValue":  "user"
+      "key": "llm.input_messages.0.message.role",
+      "value": {
+        "stringValue": "user"
       }
     },
     {
-      "key":  "llm.input_messages.0.message.contents.0.message_content.type",
-      "value":  {
-        "stringValue":  "text"
+      "key": "llm.input_messages.0.message.contents.0.message_content.type",
+      "value": {
+        "stringValue": "text"
       }
     },
     {
-      "key":  "llm.input_messages.0.message.contents.0.message_content.text",
-      "value":  {
-        "stringValue":  "Answer in up to 5 words: What's in this image?"
+      "key": "llm.input_messages.0.message.contents.0.message_content.text",
+      "value": {
+        "stringValue": "Answer in up to 5 words: What's in this image?"
       }
     },
     {
-      "key":  "llm.input_messages.0.message.contents.1.message_content.type",
-      "value":  {
-        "stringValue":  "image"
+      "key": "llm.input_messages.0.message.contents.1.message_content.type",
+      "value": {
+        "stringValue": "image"
       }
     },
     {
-      "key":  "llm.input_messages.0.message.contents.1.message_content.image.image.url",
-      "value":  {
-        "stringValue":  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAXElEQVR42mNgoAkofv8fBVOkmQyD/sPwn1UlYAzlE6cZpgGmGZlPkgHYDCHKCcia0AwgHlCm+c+f/9gwabajG0CsK+DOxmIA8YZQ6gXkhISG6W8ALj7RtuMTgwMA0WTdqiU1ensAAAAASUVORK5CYII="
+      "key": "llm.input_messages.0.message.contents.1.message_content.image.image.url",
+      "value": {
+        "stringValue": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAXElEQVR42mNgoAkofv8fBVOkmQyD/sPwn1UlYAzlE6cZpgGmGZlPkgHYDCHKCcia0AwgHlCm+c+f/9gwabajG0CsK+DOxmIA8YZQ6gXkhISG6W8ALj7RtuMTgwMA0WTdqiU1ensAAAAASUVORK5CYII="
       }
     },
     {
-      "key":  "llm.model_name",
-      "value":  {
-        "stringValue":  "gpt-5-nano-2025-08-07"
+      "key": "llm.model_name",
+      "value": {
+        "stringValue": "gpt-5-nano-2025-08-07"
       }
     },
     {
-      "key":  "llm.token_count.total",
-      "value":  {
-        "intValue":  "741"
+      "key": "llm.token_count.total",
+      "value": {
+        "intValue": "741"
       }
     },
     {
-      "key":  "llm.token_count.prompt",
-      "value":  {
-        "intValue":  "22"
+      "key": "llm.token_count.prompt",
+      "value": {
+        "intValue": "22"
       }
     },
     {
-      "key":  "llm.token_count.completion",
-      "value":  {
-        "intValue":  "719"
+      "key": "llm.token_count.completion",
+      "value": {
+        "intValue": "719"
       }
     },
     {
-      "key":  "llm.token_count.prompt_details.cache_read",
-      "value":  {
-        "intValue":  "0"
+      "key": "llm.token_count.prompt_details.cache_read",
+      "value": {
+        "intValue": "0"
       }
     },
     {
-      "key":  "llm.token_count.prompt_details.audio",
-      "value":  {
-        "intValue":  "0"
+      "key": "llm.token_count.prompt_details.audio",
+      "value": {
+        "intValue": "0"
       }
     },
     {
-      "key":  "llm.token_count.completion_details.reasoning",
-      "value":  {
-        "intValue":  "704"
+      "key": "llm.token_count.completion_details.reasoning",
+      "value": {
+        "intValue": "704"
       }
     },
     {
-      "key":  "llm.token_count.completion_details.audio",
-      "value":  {
-        "intValue":  "0"
+      "key": "llm.token_count.completion_details.audio",
+      "value": {
+        "intValue": "0"
       }
     },
     {
-      "key":  "llm.output_messages.0.message.role",
-      "value":  {
-        "stringValue":  "assistant"
+      "key": "llm.output_messages.0.message.role",
+      "value": {
+        "stringValue": "assistant"
       }
     },
     {
-      "key":  "llm.output_messages.0.message.content",
-      "value":  {
-        "stringValue":  "A tiny blue cartoon character."
+      "key": "llm.output_messages.0.message.content",
+      "value": {
+        "stringValue": "A tiny blue cartoon character."
       }
     },
     {
-      "key":  "openinference.span.kind",
-      "value":  {
-        "stringValue":  "LLM"
+      "key": "openinference.span.kind",
+      "value": {
+        "stringValue": "LLM"
       }
     }
   ],
-  "status":  {
-    "code":  "STATUS_CODE_OK"
+  "status": {
+    "code": "STATUS_CODE_OK"
   }
 }
