@@ -22,7 +22,43 @@ import (
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
+
+// TestResponseModel_GCPVertexAIStreaming tests that GCP Vertex AI streaming returns the request model
+// GCP Vertex AI uses deterministic model mapping without virtualization
+func TestResponseModel_GCPVertexAIStreaming(t *testing.T) {
+	modelName := "gemini-1.5-pro-002"
+	translator := NewChatCompletionOpenAIToGCPVertexAITranslator(modelName).(*openAIToGCPVertexAITranslatorV1ChatCompletion)
+
+	// Initialize translator with streaming request
+	req := &openai.ChatCompletionRequest{
+		Model:  "gemini-1.5-pro",
+		Stream: true,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				OfUser: &openai.ChatCompletionUserMessageParam{
+					Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+					Role:    openai.ChatMessageRoleUser,
+				},
+			},
+		},
+	}
+	reqBody, _ := json.Marshal(req)
+	_, _, err := translator.RequestBody(reqBody, req, false)
+	require.NoError(t, err)
+	require.True(t, translator.stream)
+
+	// Vertex AI streaming response in JSONL format
+	streamResponse := `{"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":5,"totalTokenCount":15}}
+`
+
+	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader([]byte(streamResponse)), true, nil)
+	require.NoError(t, err)
+	require.Equal(t, modelName, responseModel) // Returns the request model since no virtualization
+	require.Equal(t, uint32(10), tokenUsage.InputTokens)
+	require.Equal(t, uint32(5), tokenUsage.OutputTokens)
+}
 
 func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T) {
 	wantBdy := []byte(`{
@@ -171,7 +207,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 
 	tests := []struct {
 		name              string
-		modelNameOverride string
+		modelNameOverride internalapi.ModelNameOverride
 		input             openai.ChatCompletionRequest
 		onRetry           bool
 		wantError         bool
@@ -588,7 +624,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseHeaders(t *testin
 func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T) {
 	tests := []struct {
 		name              string
-		modelNameOverride string
+		modelNameOverride internalapi.ModelNameOverride
 		respHeaders       map[string]string
 		body              string
 		stream            bool
@@ -718,7 +754,7 @@ data: [DONE]
 				modelNameOverride: tc.modelNameOverride,
 				stream:            tc.stream,
 			}
-			headerMut, bodyMut, tokenUsage, err := translator.ResponseBody(tc.respHeaders, reader, tc.endOfStream, nil)
+			headerMut, bodyMut, tokenUsage, _, err := translator.ResponseBody(tc.respHeaders, reader, tc.endOfStream, nil)
 			if tc.wantError {
 				assert.Error(t, err)
 				return
@@ -812,7 +848,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody(t *
 	// Mock GCP streaming response.
 	gcpChunk := `{"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"},"finishReason":"STOP"}]}`
 
-	headerMut, bodyMut, tokenUsage, err := translator.handleStreamingResponse(
+	headerMut, bodyMut, tokenUsage, _, err := translator.handleStreamingResponse(
 		bytes.NewReader([]byte(gcpChunk)),
 		false,
 		nil,
@@ -837,7 +873,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingEndOfStream(t *t
 	}
 
 	// Test end of stream marker.
-	_, bodyMut, _, err := translator.handleStreamingResponse(
+	_, bodyMut, _, _, err := translator.handleStreamingResponse(
 		bytes.NewReader([]byte("")),
 		true,
 		nil,
@@ -1228,4 +1264,40 @@ func bodyMutTransformer(_ *testing.T) cmp.Option {
 		}
 		return nil
 	})
+}
+
+// TestResponseModel_GCPVertexAI tests that GCP Vertex AI returns the request model (no response field)
+func TestResponseModel_GCPVertexAI(t *testing.T) {
+	modelName := "gemini-1.5-pro-002"
+	translator := NewChatCompletionOpenAIToGCPVertexAITranslator(modelName)
+
+	// Initialize translator with the model
+	req := &openai.ChatCompletionRequest{
+		Model: "gemini-1.5-pro",
+	}
+	reqBody, _ := json.Marshal(req)
+	_, _, err := translator.RequestBody(reqBody, req, false)
+	require.NoError(t, err)
+
+	// Vertex AI response doesn't have model field
+	vertexResponse := `{
+		"candidates": [{
+			"content": {
+				"parts": [{"text": "Hello"}],
+				"role": "model"
+			},
+			"finishReason": "STOP"
+		}],
+		"usageMetadata": {
+			"promptTokenCount": 10,
+			"candidatesTokenCount": 5,
+			"totalTokenCount": 15
+		}
+	}`
+
+	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader([]byte(vertexResponse)), true, nil)
+	require.NoError(t, err)
+	require.Equal(t, modelName, responseModel) // Returns the request model
+	require.Equal(t, uint32(10), tokenUsage.InputTokens)
+	require.Equal(t, uint32(5), tokenUsage.OutputTokens)
 }

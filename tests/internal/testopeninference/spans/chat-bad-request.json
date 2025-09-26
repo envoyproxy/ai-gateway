@@ -1,78 +1,78 @@
 {
-  "flags":  256,
-  "name":  "ChatCompletion",
-  "kind":  "SPAN_KIND_INTERNAL",
-  "attributes":  [
+  "flags": 256,
+  "name": "ChatCompletion",
+  "kind": "SPAN_KIND_INTERNAL",
+  "attributes": [
     {
-      "key":  "llm.system",
-      "value":  {
-        "stringValue":  "openai"
+      "key": "llm.system",
+      "value": {
+        "stringValue": "openai"
       }
     },
     {
-      "key":  "input.value",
-      "value":  {
-        "stringValue":  "{\"messages\": [{\"content\": null, \"role\": \"user\"}], \"model\": \"gpt-5-nano\", \"max_tokens\": 0, \"temperature\": -0.5}"
+      "key": "input.value",
+      "value": {
+        "stringValue": "{\"messages\": [{\"content\": null, \"role\": \"user\"}], \"model\": \"gpt-5-nano\", \"max_tokens\": 0, \"temperature\": -0.5}"
       }
     },
     {
-      "key":  "input.mime_type",
-      "value":  {
-        "stringValue":  "application/json"
+      "key": "input.mime_type",
+      "value": {
+        "stringValue": "application/json"
       }
     },
     {
-      "key":  "llm.invocation_parameters",
-      "value":  {
-        "stringValue":  "{\"model\": \"gpt-5-nano\", \"max_tokens\": 0, \"temperature\": -0.5}"
+      "key": "llm.invocation_parameters",
+      "value": {
+        "stringValue": "{\"model\": \"gpt-5-nano\", \"max_tokens\": 0, \"temperature\": -0.5}"
       }
     },
     {
-      "key":  "llm.input_messages.0.message.role",
-      "value":  {
-        "stringValue":  "user"
+      "key": "llm.input_messages.0.message.role",
+      "value": {
+        "stringValue": "user"
       }
     },
     {
-      "key":  "openinference.span.kind",
-      "value":  {
-        "stringValue":  "LLM"
+      "key": "openinference.span.kind",
+      "value": {
+        "stringValue": "LLM"
       }
     }
   ],
-  "events":  [
+  "events": [
     {
-      "name":  "exception",
-      "attributes":  [
+      "name": "exception",
+      "attributes": [
         {
-          "key":  "exception.type",
-          "value":  {
-            "stringValue":  "openai.BadRequestError"
+          "key": "exception.type",
+          "value": {
+            "stringValue": "openai.BadRequestError"
           }
         },
         {
-          "key":  "exception.message",
-          "value":  {
-            "stringValue":  "Error code: 400 - {'error': {'code': 'unsupported_parameter', 'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'param': 'max_tokens', 'type': 'invalid_request_error'}}"
+          "key": "exception.message",
+          "value": {
+            "stringValue": "Error code: 400 - {'error': {'code': 'unsupported_parameter', 'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'param': 'max_tokens', 'type': 'invalid_request_error'}}"
           }
         },
         {
-          "key":  "exception.stacktrace",
-          "value":  {
-            "stringValue":  "Traceback (most recent call last):\n  File \"/usr/local/lib/python3.13/site-packages/openinference/instrumentation/openai/_request.py\", line 363, in __call__\n    response = await wrapped(*args, **kwargs)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.13/site-packages/openai/_base_client.py\", line 1594, in request\n    raise self._make_status_error_from_response(err.response) from None\nopenai.BadRequestError: Error code: 400 - {'error': {'code': 'unsupported_parameter', 'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'param': 'max_tokens', 'type': 'invalid_request_error'}}\n"
+          "key": "exception.stacktrace",
+          "value": {
+            "stringValue": "Traceback (most recent call last):\n  File \"/usr/local/lib/python3.13/site-packages/openinference/instrumentation/openai/_request.py\", line 391, in __call__\n    response = await wrapped(*args, **kwargs)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.13/site-packages/openai/_base_client.py\", line 1594, in request\n    raise self._make_status_error_from_response(err.response) from None\nopenai.BadRequestError: Error code: 400 - {'error': {'code': 'unsupported_parameter', 'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'param': 'max_tokens', 'type': 'invalid_request_error'}}\n"
           }
         },
         {
-          "key":  "exception.escaped",
-          "value":  {
-            "stringValue":  "False"
+          "key": "exception.escaped",
+          "value": {
+            "stringValue": "False"
           }
         }
       ]
     }
   ],
-  "status":  {
-    "message":  "BadRequestError: Error code: 400 - {'error': {'code': 'unsupported_parameter', 'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'param': 'max_tokens', 'type': 'invalid_request_error'}}",
-    "code":  "STATUS_CODE_ERROR"
+  "status": {
+    "message": "BadRequestError: Error code: 400 - {'error': {'code': 'unsupported_parameter', 'message': \"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.\", 'param': 'max_tokens', 'type': 'invalid_request_error'}}",
+    "code": "STATUS_CODE_ERROR"
   }
 }

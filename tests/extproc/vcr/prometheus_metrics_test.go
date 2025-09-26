@@ -13,7 +13,9 @@ import (
 	"testing"
 	"time"
 
+	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/tests/internal/testopenai"
@@ -21,97 +23,139 @@ import (
 
 // TestPrometheusMetrics verifies that metrics are properly exported via Prometheus
 // when processing a chat completion request. This test uses the default configuration
-// which exposes metrics on the /metrics endpoint.
+// which exposes metrics on the /metrics endpoint. This doesn't independently test
+// embeddings as that's redundant to the otel metrics tests.
 func TestPrometheusMetrics(t *testing.T) {
-	// Start test environment with default configuration.
 	env := startTestEnvironment(t, extprocBin, extprocConfig, nil, envoyConfig)
-
 	listenerPort := env.EnvoyListenerPort()
 	metricsPort := env.ExtProcMetricsPort()
 
-	// Use the basic chat cassette for this test.
-	cassette := testopenai.CassetteChatBasic
-
 	// Send the chat request.
-	req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d/v1", listenerPort), cassette)
+	req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d/v1", listenerPort), testopenai.CassetteChatBasic)
 	require.NoError(t, err)
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
-	// Always consume the body to ensure the request completes.
+	// Always read the content.
 	_, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-
 	// Wait for metrics to be available with exponential backoff.
-	var metricsBody []byte
+	// Parse the Prometheus metrics.
+	parser := expfmt.NewTextParser(model.UTF8Validation)
+	var metricFamilies map[string]*dto.MetricFamily
 	require.Eventually(t, func() bool {
-		metricsReq, reqErr := http.NewRequestWithContext(t.Context(), http.MethodGet, fmt.Sprintf("http://localhost:%d/metrics", metricsPort), nil)
-		if reqErr != nil {
-			return false
-		}
+		metricsReq, err := http.NewRequestWithContext(t.Context(), http.MethodGet, fmt.Sprintf("http://localhost:%d/metrics", metricsPort), nil)
+		require.NoError(t, err)
 
-		metricsResp, respErr := http.DefaultClient.Do(metricsReq)
-		if respErr != nil {
-			return false
-		}
-		defer metricsResp.Body.Close()
+		metricsResp, err := http.DefaultClient.Do(metricsReq)
+		require.NoError(t, err)
+		defer func() { _ = metricsResp.Body.Close() }()
 
-		metricsBody, respErr = io.ReadAll(metricsResp.Body)
-		if respErr != nil {
-			return false
-		}
+		metricsBody, err := io.ReadAll(metricsResp.Body)
+		require.NoError(t, err)
 
-		// Check if we have the expected metrics.
-		bodyStr := string(metricsBody)
-		return strings.Contains(bodyStr, "gen_ai_server_request_duration_seconds") &&
-			strings.Contains(bodyStr, "gen_ai_client_token_usage_token")
+		metricFamilies, err = parser.TextToMetricFamilies(strings.NewReader(string(metricsBody)))
+		require.NoError(t, err)
+
+		// Just check if we have the metrics we need
+		return metricFamilies["gen_ai_server_request_duration_seconds"] != nil &&
+			metricFamilies["gen_ai_client_token_usage_token"] != nil
 	}, 3*time.Second, 100*time.Millisecond)
 
-	// Parse the Prometheus metrics.
-	parser := expfmt.TextParser{}
-	metricFamilies, err := parser.TextToMetricFamilies(strings.NewReader(string(metricsBody)))
-	require.NoError(t, err)
+	requestModel := "gpt-5-nano"
+	verifyPrometheusRequestDuration(t, metricFamilies["gen_ai_server_request_duration_seconds"], requestModel)
+	verifyPrometheusTokenUsage(t, metricFamilies["gen_ai_client_token_usage_token"], requestModel)
+}
 
-	// Verify expected GenAI metrics are present.
-	require.Contains(t, metricFamilies, "gen_ai_server_request_duration_seconds")
-	require.Contains(t, metricFamilies, "gen_ai_client_token_usage_token")
+// verifyPrometheusRequestDuration verifies the request duration metric has the expected labels and values.
+func verifyPrometheusRequestDuration(t *testing.T, metric *dto.MetricFamily, expectedRequestModel string) {
+	t.Helper()
+	require.NotNil(t, metric)
+	require.Len(t, metric.Metric, 1)
 
-	// Verify specific labels for request duration metric.
-	requestDuration := metricFamilies["gen_ai_server_request_duration_seconds"]
-	require.NotEmpty(t, requestDuration.Metric)
+	m := metric.Metric[0]
 
-	// Extract labels from the first metric (assuming consistent labels across all).
+	// Convert labels to map
 	labels := make(map[string]string)
-	for _, label := range requestDuration.Metric[0].Label {
+	for _, label := range m.Label {
 		labels[*label.Name] = *label.Value
 	}
-	require.Equal(t, "chat", labels["gen_ai_operation_name"])
-	require.Equal(t, "openai", labels["gen_ai_provider_name"])
-	require.Equal(t, "gpt-5-nano", labels["gen_ai_request_model"])
-	require.Equal(t, "envoyproxy/ai-gateway", labels["otel_scope_name"])
 
-	// Verify token usage metrics for both input and output tokens.
-	tokenUsage := metricFamilies["gen_ai_client_token_usage_token"]
-	require.NotEmpty(t, tokenUsage.Metric)
+	expectedLabels := map[string]string{
+		"gen_ai_operation_name": "chat",
+		"gen_ai_provider_name":  "openai",
+		"gen_ai_request_model":  expectedRequestModel,
+		"gen_ai_response_model": "gpt-5-nano-2025-08-07",
+		"otel_scope_name":       "envoyproxy/ai-gateway",
+		"otel_scope_schema_url": "",
+		"otel_scope_version":    "",
+	}
+	require.Equal(t, expectedLabels, labels)
 
-	// Check for input and output token metrics.
-	var hasInput, hasOutput bool
-	for _, metric := range tokenUsage.Metric {
-		for _, label := range metric.Label {
+	// Verify it's a histogram with data
+	require.NotNil(t, m.Histogram)
+	require.Equal(t, uint64(1), *m.Histogram.SampleCount)
+	require.Greater(t, *m.Histogram.SampleSum, float64(0))
+}
+
+// verifyPrometheusTokenUsage verifies both input and output token usage metrics exist with correct labels.
+func verifyPrometheusTokenUsage(t *testing.T, metric *dto.MetricFamily, expectedModel string) {
+	t.Helper()
+	require.NotNil(t, metric)
+	require.Len(t, metric.Metric, 2)
+	var inputMetric, outputMetric *dto.Metric
+	for _, m := range metric.Metric {
+		for _, label := range m.Label {
 			if *label.Name == "gen_ai_token_type" {
 				switch *label.Value {
 				case "input":
-					hasInput = true
+					inputMetric = m
 				case "output":
-					hasOutput = true
+					outputMetric = m
 				}
+				break
 			}
 		}
 	}
-	require.True(t, hasInput)
-	require.True(t, hasOutput)
+	require.NotNil(t, inputMetric, "Input metric not found")
+	require.NotNil(t, outputMetric, "Output metric not found")
+
+	type testCase struct {
+		metric      *dto.Metric
+		tokenType   string
+		expectedSum float64
+	}
+
+	cases := []testCase{
+		{inputMetric, "input", 8},
+		{outputMetric, "output", 377},
+	}
+
+	for _, tc := range cases {
+		// Convert labels to map
+		labels := make(map[string]string)
+		for _, label := range tc.metric.Label {
+			labels[*label.Name] = *label.Value
+		}
+
+		expectedLabels := map[string]string{
+			"gen_ai_operation_name": "chat",
+			"gen_ai_provider_name":  "openai",
+			"gen_ai_request_model":  expectedModel,
+			"gen_ai_response_model": "gpt-5-nano-2025-08-07",
+			"gen_ai_token_type":     tc.tokenType,
+			"otel_scope_name":       "envoyproxy/ai-gateway",
+			"otel_scope_schema_url": "",
+			"otel_scope_version":    "",
+		}
+		require.Equal(t, expectedLabels, labels)
+
+		// Verify histogram
+		require.NotNil(t, tc.metric.Histogram)
+		require.Equal(t, uint64(1), *tc.metric.Histogram.SampleCount)
+		require.Equal(t, tc.expectedSum, *tc.metric.Histogram.SampleSum)
+	}
 }

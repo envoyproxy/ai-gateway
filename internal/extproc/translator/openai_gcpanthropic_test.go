@@ -30,6 +30,57 @@ const (
 	testTool        = "test_123"
 )
 
+// TestResponseModel_GCPAnthropic tests that GCP Anthropic (non-streaming) returns the request model
+// GCP Anthropic uses deterministic model mapping without virtualization
+func TestResponseModel_GCPAnthropic(t *testing.T) {
+	modelName := "claude-sonnet-4@20250514"
+	translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", modelName)
+
+	// Initialize translator with the model
+	req := &openai.ChatCompletionRequest{
+		Model:     "claude-sonnet-4",
+		MaxTokens: ptr.To(int64(100)),
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				OfUser: &openai.ChatCompletionUserMessageParam{
+					Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+					Role:    openai.ChatMessageRoleUser,
+				},
+			},
+		},
+	}
+	reqBody, _ := json.Marshal(req)
+	_, _, err := translator.RequestBody(reqBody, req, false)
+	require.NoError(t, err)
+
+	// GCP Anthropic response doesn't have model field, uses Anthropic format
+	anthropicResponse := anthropic.Message{
+		ID:   "msg_01XYZ",
+		Type: constant.ValueOf[constant.Message](),
+		Role: constant.ValueOf[constant.Assistant](),
+		Content: []anthropic.ContentBlockUnion{
+			{
+				Type: "text",
+				Text: "Hello!",
+			},
+		},
+		StopReason: anthropic.StopReasonEndTurn,
+		Usage: anthropic.Usage{
+			InputTokens:  10,
+			OutputTokens: 5,
+		},
+	}
+
+	body, err := json.Marshal(anthropicResponse)
+	require.NoError(t, err)
+
+	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader(body), true, nil)
+	require.NoError(t, err)
+	require.Equal(t, modelName, responseModel) // Returns the request model since no virtualization
+	require.Equal(t, uint32(10), tokenUsage.InputTokens)
+	require.Equal(t, uint32(5), tokenUsage.OutputTokens)
+}
+
 func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T) {
 	// Define a common input request to use for both standard and vertex tests.
 	openAIReq := &openai.ChatCompletionRequest{
@@ -262,7 +313,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.T) {
 	t.Run("invalid json body", func(t *testing.T) {
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		_, _, _, err := translator.ResponseBody(map[string]string{statusHeaderName: "200"}, bytes.NewBufferString("invalid json"), true, nil)
+		_, _, _, _, err := translator.ResponseBody(map[string]string{statusHeaderName: "200"}, bytes.NewBufferString("invalid json"), true, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to unmarshal body")
 	})
@@ -339,7 +390,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 			require.NoError(t, err, "Test setup failed: could not marshal input struct")
 
 			translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-			hm, bm, usedToken, err := translator.ResponseBody(tt.respHeaders, bytes.NewBuffer(body), true, nil)
+			hm, bm, usedToken, _, err := translator.ResponseBody(tt.respHeaders, bytes.NewBuffer(body), true, nil)
 
 			require.NoError(t, err, "Translator returned an unexpected internal error")
 			require.NotNil(t, hm)

@@ -17,6 +17,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -42,14 +43,14 @@ type anthropicStreamParser struct {
 	activeToolCalls map[int]*streamingToolCall
 	tokenUsage      LLMTokenUsage
 	stopReason      anthropic.StopReason
-	model           string
+	requestModel    internalapi.RequestModel
 	sentFirstChunk  bool
 }
 
 // newAnthropicStreamParser creates a new parser for a streaming request.
-func newAnthropicStreamParser(modelName string) *anthropicStreamParser {
+func newAnthropicStreamParser(requestModel string) *anthropicStreamParser {
 	return &anthropicStreamParser{
-		model:           modelName,
+		requestModel:    requestModel,
 		activeToolCalls: make(map[int]*streamingToolCall),
 	}
 }
@@ -75,11 +76,11 @@ func (p *anthropicStreamParser) writeChunk(eventBlock []byte, buf *[]byte) error
 // Process reads from the Anthropic SSE stream, translates events to OpenAI chunks,
 // and returns the mutations for Envoy.
 func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
-	*extprocv3.HeaderMutation, *extprocv3.BodyMutation, LLMTokenUsage, error,
+	*extprocv3.HeaderMutation, *extprocv3.BodyMutation, LLMTokenUsage, string, error,
 ) {
 	_ = span // TODO: add support for streaming chunks in tracing.
 	if _, err := p.buffer.ReadFrom(body); err != nil {
-		return nil, nil, LLMTokenUsage{}, fmt.Errorf("failed to read from stream body: %w", err)
+		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to read from stream body: %w", err)
 	}
 
 	mut := &extprocv3.BodyMutation_Body{Body: nil}
@@ -90,7 +91,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 		}
 
 		if err := p.writeChunk(eventBlock, &mut.Body); err != nil {
-			return nil, nil, LLMTokenUsage{}, err
+			return nil, nil, LLMTokenUsage{}, "", err
 		}
 
 		p.buffer.Reset()
@@ -102,7 +103,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 		p.buffer.Reset()
 
 		if err := p.writeChunk(finalEventBlock, &mut.Body); err != nil {
-			return nil, nil, LLMTokenUsage{}, err
+			return nil, nil, LLMTokenUsage{}, "", err
 		}
 	}
 
@@ -143,7 +144,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 		if finalChunk.Usage.PromptTokens > 0 || finalChunk.Usage.CompletionTokens > 0 || len(finalChunk.Choices) > 0 {
 			chunkBytes, err := json.Marshal(finalChunk)
 			if err != nil {
-				return nil, nil, LLMTokenUsage{}, fmt.Errorf("failed to marshal final stream chunk: %w", err)
+				return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to marshal final stream chunk: %w", err)
 			}
 			// Write the final chunk to the response body.
 			mut.Body = append(mut.Body, sseDataPrefix...)
@@ -156,7 +157,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 		mut.Body = append(mut.Body, '\n', '\n')
 	}
 
-	return &extprocv3.HeaderMutation{}, &extprocv3.BodyMutation{Mutation: mut}, p.tokenUsage, nil
+	return &extprocv3.HeaderMutation{}, &extprocv3.BodyMutation{Mutation: mut}, p.tokenUsage, p.requestModel, nil
 }
 
 func (p *anthropicStreamParser) parseAndHandleEvent(eventBlock []byte) (*openai.ChatCompletionResponseChunk, error) {

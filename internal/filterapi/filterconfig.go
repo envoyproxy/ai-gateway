@@ -12,19 +12,22 @@
 package filterapi
 
 import (
+	"fmt"
 	"os"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/yaml"
+
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 // DefaultConfig is the default configuration that can be used as a
 // fallback when the configuration is not explicitly provided.
-const DefaultConfig = `
+var DefaultConfig = fmt.Sprintf(`
 schema:
   name: OpenAI
-modelNameHeaderKey: x-ai-eg-model
-`
+modelNameHeaderKey: %s
+`, internalapi.ModelNameHeaderKeyDefault)
 
 // Config is the configuration for the Envoy AI Gateway filter.
 type Config struct {
@@ -36,7 +39,7 @@ type Config struct {
 	// the "calculated" cost in the filter metadata at the end of the response body processing.
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
 	// ModelNameHeaderKey is the header key to be populated with the model name by the filter.
-	ModelNameHeaderKey string `json:"modelNameHeaderKey"`
+	ModelNameHeaderKey internalapi.ModelNameHeaderKey `json:"modelNameHeaderKey"`
 	// Backends is the list of backends that this listener can route to.
 	Backends []Backend `json:"backends,omitempty"`
 	// Models is the list of models that this route is aware of. Used to populate the "/models" endpoint in OpenAI-compatible APIs.
@@ -118,9 +121,8 @@ type RouteRuleName string
 // besides that this abstracts the concept of a backend at Envoy Gateway level to a simple name.
 type Backend struct {
 	// Name of the backend including the route name as well as the route rule index.
-	Name string `json:"name"`
-	// Name of the model in the backend. If provided this will override the name provided in the request.
-	ModelNameOverride string `json:"modelNameOverride"`
+	Name              string                        `json:"name"`
+	ModelNameOverride internalapi.ModelNameOverride `json:"modelNameOverride"`
 	// Schema specifies the API schema of the output format of requests from.
 	Schema VersionedAPISchema `json:"schema"`
 	// Auth is the authn/z configuration for the backend. Optional.

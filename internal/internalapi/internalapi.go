@@ -10,6 +10,8 @@ package internalapi
 import (
 	"fmt"
 	"strings"
+
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
 
 const (
@@ -85,3 +87,92 @@ func ParseRequestHeaderLabelMapping(s string) (map[string]string, error) {
 
 	return result, nil
 }
+
+// ModelNameHeaderKeyDefault is the default header key for the model name.
+const ModelNameHeaderKeyDefault = aigv1a1.AIModelHeaderKey
+
+// ModelNameHeaderKey is the configurable header key whose value is set by the gateway
+// based on the model extracted from the request body.
+//
+// This header is automatically populated by the gateway and cannot be set by end users
+// as it will be overwritten. The flow is:
+//  1. Router filter extracts OriginalModel from request body and sets this header
+//  2. HTTPRoute uses this header value for model-based routing
+//  3. If backend has ModelNameOverride, the header is updated with the override value
+//  4. Metrics and observability systems use the final header value
+//
+// Defaults to ModelNameHeaderKeyDefault.
+type ModelNameHeaderKey = string
+
+// ModelNameOverride represents a backend-specific model name that overrides
+// the OriginalModel in the client request to the router.
+//
+// Configuration:
+//   - Set via aigv1a1.AIGatewayRouteRuleBackendRef
+//   - Replaces the OriginalModel with a backend-specific model name
+//
+// Example:
+//   - server requests: "llama3-2-1b"
+//   - Override to: "us.meta.llama3-2-1b-instruct-v1:0" (for AWS Bedrock)
+//
+// Effects:
+//   - Updates the header specified by ModelNameHeaderKey
+//   - Used by routing, rate limiting, and observability systems
+type ModelNameOverride = string
+
+// RequestModel is the name of the model sent in the request to perform a
+// completion or to create embeddings.
+//
+// This is either the model received by the router's OpenAI Chat Completions or
+// Embeddings endpoints, or a ModelNameOverride.
+//
+// This is not necessarily the same as ResponseModel, and in some cases like
+// Azure OpenAI Service, this field isn't read at all.
+//
+// ### OpenTelemetry
+//
+// The RequestModel is a key attribute for correlating metrics with spans.
+//
+// In OpenInference (span semantics), this is the "model" field of invocation
+// parameters, explaining how the LLM was invoked. For example, an OpenAI
+// Chat Completion request to the "gpt-5-nano" model results in an JSON string
+// attribute: "llm.invocation_parameters" -> {"model": "gpt-5-nano"}
+//
+// In OpenTelemetry Generative AI Metrics, this is an attribute on metrics such
+// as "gen_ai.server.token.usage". For example, an OpenAI Chat Completion
+// request to the "gpt-5-nano" model results in a plain text string attribute:
+// "gen_ai.request.model" -> "gpt-5-nano"
+type RequestModel = string
+
+// ResponseModel is the name of the model that generated a response to a
+// completion or embeddings request.
+//
+// ### Relationship to RequestModel
+//
+// This may differ from the RequestModel unless the provider is deterministic:
+//   - Static Model Execution (AWS Bedrock)
+//   - Deterministic Snapshot Mapping (GCP providers)
+//
+// In virtualized providers, this may be different:
+//   - URI-Based Resolution (Azure OpenAI)
+//   - Automatic Routing & Resolution: (OpenAI Platform)
+//
+// See https://aigateway.envoyproxy.io/docs/capabilities/traffic/model-name-virtualization
+//
+// ### OpenTelemetry
+//
+// The ResponseModel is even more important that RequestModel for evaluation
+// use cases as it is the only field that authoritatively explains the model
+// used for a completion. It is a key attribute for correlating metrics with
+// spans.
+//
+// In OpenInference (span semantics), this is the "model_name" attribute.
+// parameters, explaining how the LLM was invoked. For example, an OpenAI
+// Chat Completion request to the "gpt-5-nano" model results in a plain text
+// attribute of the latest model: "llm.model_name" -> "gpt-5-nano-2025-08-07"
+//
+// In OpenTelemetry Generative AI Metrics, this is an attribute on metrics such
+// as "gen_ai.server.token.usage". For example, an OpenAI Chat Completion
+// request to the "gpt-5-nano" model results in a plain text attribute of the
+// latest model: "gen_ai.response.model" -> "gpt-5-nano-2025-08-07"
+type ResponseModel = string

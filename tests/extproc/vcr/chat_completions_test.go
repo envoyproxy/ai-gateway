@@ -100,9 +100,9 @@ func TestOpenAIChatCompletions(t *testing.T) {
 		},
 	}
 
-	wasBadGateway := false
+	was5xx := false
 	for _, tc := range tests {
-		if wasBadGateway {
+		if was5xx {
 			return // rather than also failing subsequent tests, which confuses root cause.
 		}
 		t.Run(tc.name.String(), func(t *testing.T) {
@@ -117,7 +117,7 @@ func TestOpenAIChatCompletions(t *testing.T) {
 			require.NoError(t, err)
 
 			if resp.StatusCode == http.StatusBadGateway {
-				wasBadGateway = true // assertions will fail later and log the body.
+				was5xx = true // assertions will fail later and log the body.
 			}
 			// Safe to use assert as no nil risk and response body explains status.
 			expectedBody := tc.expectResponseBody

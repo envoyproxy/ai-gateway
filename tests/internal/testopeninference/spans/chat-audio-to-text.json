@@ -1,130 +1,130 @@
 {
-  "flags":  256,
-  "name":  "ChatCompletion",
-  "kind":  "SPAN_KIND_INTERNAL",
-  "attributes":  [
+  "flags": 256,
+  "name": "ChatCompletion",
+  "kind": "SPAN_KIND_INTERNAL",
+  "attributes": [
     {
-      "key":  "llm.system",
-      "value":  {
-        "stringValue":  "openai"
+      "key": "llm.system",
+      "value": {
+        "stringValue": "openai"
       }
     },
     {
-      "key":  "input.value",
-      "value":  {
-        "stringValue":  "{\"messages\": [{\"content\": [{\"text\": \"Answer in up to 5 words: What do you hear in this audio?\", \"type\": \"text\"}, {\"input_audio\": {\"data\": \"UklGRlwEAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YTgEAADY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2CcnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2CcnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2CcnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2CcnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2NgnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2CcnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycnv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/v0BAQEBAv7+/v79AQEBAQL+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA=\", \"format\": \"wav\"}, \"type\": \"input_audio\"}], \"role\": \"user\"}], \"model\": \"gpt-4o-audio-preview\"}"
+      "key": "input.value",
+      "value": {
+        "stringValue": "{\"messages\": [{\"content\": [{\"text\": \"Answer in up to 5 words: What do you hear in this audio?\", \"type\": \"text\"}, {\"input_audio\": {\"data\": \"UklGRlwEAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YTgEAADY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2CcnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2CcnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2CcnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2CcnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2NgnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2CcnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycnv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/v0BAQEBAv7+/v79AQEBAQL+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA=\", \"format\": \"wav\"}, \"type\": \"input_audio\"}], \"role\": \"user\"}], \"model\": \"gpt-4o-audio-preview\"}"
       }
     },
     {
-      "key":  "input.mime_type",
-      "value":  {
-        "stringValue":  "application/json"
+      "key": "input.mime_type",
+      "value": {
+        "stringValue": "application/json"
       }
     },
     {
-      "key":  "output.value",
-      "value":  {
-        "stringValue":  "{\"id\":\"chatcmpl-C4GmsUaSG4ATqnzO0EmAo8RVj0QKm\",\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"message\":{\"content\":\"Please play the audio, and I'll describe what I hear in up to five words.\",\"refusal\":null,\"role\":\"assistant\",\"annotations\":[]}}],\"created\":1755133878,\"model\":\"gpt-4o-audio-preview-2025-06-03\",\"object\":\"chat.completion\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_0611516fca\",\"usage\":{\"completion_tokens\":17,\"prompt_tokens\":28,\"total_tokens\":45,\"completion_tokens_details\":{\"accepted_prediction_tokens\":0,\"audio_tokens\":0,\"reasoning_tokens\":0,\"rejected_prediction_tokens\":0,\"text_tokens\":17},\"prompt_tokens_details\":{\"audio_tokens\":1,\"cached_tokens\":0,\"image_tokens\":0,\"text_tokens\":27}}}"
+      "key": "output.value",
+      "value": {
+        "stringValue": "{\"id\":\"chatcmpl-C4GmsUaSG4ATqnzO0EmAo8RVj0QKm\",\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"message\":{\"content\":\"Please play the audio, and I'll describe what I hear in up to five words.\",\"refusal\":null,\"role\":\"assistant\",\"annotations\":[]}}],\"created\":1755133878,\"model\":\"gpt-4o-audio-preview-2025-06-03\",\"object\":\"chat.completion\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_0611516fca\",\"usage\":{\"completion_tokens\":17,\"prompt_tokens\":28,\"total_tokens\":45,\"completion_tokens_details\":{\"accepted_prediction_tokens\":0,\"audio_tokens\":0,\"reasoning_tokens\":0,\"rejected_prediction_tokens\":0,\"text_tokens\":17},\"prompt_tokens_details\":{\"audio_tokens\":1,\"cached_tokens\":0,\"image_tokens\":0,\"text_tokens\":27}}}"
       }
     },
     {
-      "key":  "output.mime_type",
-      "value":  {
-        "stringValue":  "application/json"
+      "key": "output.mime_type",
+      "value": {
+        "stringValue": "application/json"
       }
     },
     {
-      "key":  "llm.invocation_parameters",
-      "value":  {
-        "stringValue":  "{\"model\": \"gpt-4o-audio-preview\"}"
+      "key": "llm.invocation_parameters",
+      "value": {
+        "stringValue": "{\"model\": \"gpt-4o-audio-preview\"}"
       }
     },
     {
-      "key":  "llm.input_messages.0.message.role",
-      "value":  {
-        "stringValue":  "user"
+      "key": "llm.input_messages.0.message.role",
+      "value": {
+        "stringValue": "user"
       }
     },
     {
-      "key":  "llm.input_messages.0.message.contents.0.message_content.type",
-      "value":  {
-        "stringValue":  "text"
+      "key": "llm.input_messages.0.message.contents.0.message_content.type",
+      "value": {
+        "stringValue": "text"
       }
     },
     {
-      "key":  "llm.input_messages.0.message.contents.0.message_content.text",
-      "value":  {
-        "stringValue":  "Answer in up to 5 words: What do you hear in this audio?"
+      "key": "llm.input_messages.0.message.contents.0.message_content.text",
+      "value": {
+        "stringValue": "Answer in up to 5 words: What do you hear in this audio?"
       }
     },
     {
-      "key":  "llm.model_name",
-      "value":  {
-        "stringValue":  "gpt-4o-audio-preview-2025-06-03"
+      "key": "llm.model_name",
+      "value": {
+        "stringValue": "gpt-4o-audio-preview-2025-06-03"
       }
     },
     {
-      "key":  "llm.token_count.total",
-      "value":  {
-        "intValue":  "45"
+      "key": "llm.token_count.total",
+      "value": {
+        "intValue": "45"
       }
     },
     {
-      "key":  "llm.token_count.prompt",
-      "value":  {
-        "intValue":  "28"
+      "key": "llm.token_count.prompt",
+      "value": {
+        "intValue": "28"
       }
     },
     {
-      "key":  "llm.token_count.completion",
-      "value":  {
-        "intValue":  "17"
+      "key": "llm.token_count.completion",
+      "value": {
+        "intValue": "17"
       }
     },
     {
-      "key":  "llm.token_count.prompt_details.cache_read",
-      "value":  {
-        "intValue":  "0"
+      "key": "llm.token_count.prompt_details.cache_read",
+      "value": {
+        "intValue": "0"
       }
     },
     {
-      "key":  "llm.token_count.prompt_details.audio",
-      "value":  {
-        "intValue":  "1"
+      "key": "llm.token_count.prompt_details.audio",
+      "value": {
+        "intValue": "1"
       }
     },
     {
-      "key":  "llm.token_count.completion_details.reasoning",
-      "value":  {
-        "intValue":  "0"
+      "key": "llm.token_count.completion_details.reasoning",
+      "value": {
+        "intValue": "0"
       }
     },
     {
-      "key":  "llm.token_count.completion_details.audio",
-      "value":  {
-        "intValue":  "0"
+      "key": "llm.token_count.completion_details.audio",
+      "value": {
+        "intValue": "0"
       }
     },
     {
-      "key":  "llm.output_messages.0.message.role",
-      "value":  {
-        "stringValue":  "assistant"
+      "key": "llm.output_messages.0.message.role",
+      "value": {
+        "stringValue": "assistant"
       }
     },
     {
-      "key":  "llm.output_messages.0.message.content",
-      "value":  {
-        "stringValue":  "Please play the audio, and I'll describe what I hear in up to five words."
+      "key": "llm.output_messages.0.message.content",
+      "value": {
+        "stringValue": "Please play the audio, and I'll describe what I hear in up to five words."
       }
     },
     {
-      "key":  "openinference.span.kind",
-      "value":  {
-        "stringValue":  "LLM"
+      "key": "openinference.span.kind",
+      "value": {
+        "stringValue": "LLM"
       }
     }
   ],
-  "status":  {
-    "code":  "STATUS_CODE_OK"
+  "status": {
+    "code": "STATUS_CODE_OK"
   }
 }

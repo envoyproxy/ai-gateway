@@ -16,11 +16,12 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 // NewAnthropicToGCPAnthropicTranslator creates a translator for Anthropic to GCP Anthropic format.
 // This is essentially a passthrough translator with GCP-specific modifications.
-func NewAnthropicToGCPAnthropicTranslator(apiVersion string, modelNameOverride string) AnthropicMessagesTranslator {
+func NewAnthropicToGCPAnthropicTranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride) AnthropicMessagesTranslator {
 	return &anthropicToGCPAnthropicTranslator{
 		apiVersion:        apiVersion,
 		modelNameOverride: modelNameOverride,
@@ -29,7 +30,8 @@ func NewAnthropicToGCPAnthropicTranslator(apiVersion string, modelNameOverride s
 
 type anthropicToGCPAnthropicTranslator struct {
 	apiVersion        string
-	modelNameOverride string
+	modelNameOverride internalapi.ModelNameOverride
+	requestModel      internalapi.RequestModel
 }
 
 // RequestBody implements [AnthropicMessagesTranslator.RequestBody] for Anthropic to GCP Anthropic translation.
@@ -45,8 +47,9 @@ func (a *anthropicToGCPAnthropicTranslator) RequestBody(_ []byte, body *anthropi
 	maps.Copy(anthropicReq, *body)
 
 	// Apply model name override if configured.
+	a.requestModel = modelName
 	if a.modelNameOverride != "" {
-		modelName = a.modelNameOverride
+		a.requestModel = a.modelNameOverride
 	}
 
 	// Remove the model field since GCP doesn't want it in the body.
@@ -71,7 +74,7 @@ func (a *anthropicToGCPAnthropicTranslator) RequestBody(_ []byte, body *anthropi
 		specifier = "streamRawPredict"
 	}
 
-	pathSuffix := buildGCPModelPathSuffix(gcpModelPublisherAnthropic, modelName, specifier)
+	pathSuffix := buildGCPModelPathSuffix(gcpModelPublisherAnthropic, a.requestModel, specifier)
 
 	headerMutation, bodyMutation = buildRequestMutations(pathSuffix, mutatedBody)
 	return
@@ -88,12 +91,12 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseHeaders(_ map[string]string)
 // ResponseBody implements [AnthropicMessagesTranslator.ResponseBody] for Anthropic to GCP Anthropic.
 // This is essentially a passthrough since both use the same Anthropic response format.
 func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel string, err error,
 ) {
 	// Read the response body for both streaming and non-streaming.
 	bodyBytes, err := io.ReadAll(body)
 	if err != nil {
-		return nil, nil, LLMTokenUsage{}, fmt.Errorf("failed to read response body: %w", err)
+		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	// For streaming chunks, parse SSE format to extract token usage.
@@ -142,7 +145,7 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, bo
 
 		return nil, &extprocv3.BodyMutation{
 			Mutation: &extprocv3.BodyMutation_Body{Body: bodyBytes},
-		}, tokenUsage, nil
+		}, tokenUsage, a.requestModel, nil
 	}
 
 	// Parse the Anthropic response to extract token usage.
@@ -151,7 +154,7 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, bo
 		// If we can't parse as Anthropic format, pass through as-is.
 		return nil, &extprocv3.BodyMutation{
 			Mutation: &extprocv3.BodyMutation_Body{Body: bodyBytes},
-		}, LLMTokenUsage{}, nil
+		}, LLMTokenUsage{}, a.requestModel, nil
 	}
 
 	// Extract token usage from the response.
@@ -168,5 +171,5 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, bo
 		Mutation: &extprocv3.BodyMutation_Body{Body: bodyBytes},
 	}
 
-	return headerMutation, bodyMutation, tokenUsage, nil
+	return headerMutation, bodyMutation, tokenUsage, a.requestModel, nil
 }

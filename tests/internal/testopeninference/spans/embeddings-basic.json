@@ -1,6 +1,6 @@
 {
   "flags": 256,
-  "name": "CreateEmbeddingResponse",
+  "name": "CreateEmbeddings",
   "kind": "SPAN_KIND_INTERNAL",
   "attributes": [
     {
@@ -34,9 +34,15 @@
       }
     },
     {
-      "key": "llm.invocation_parameters",
+      "key": "embedding.invocation_parameters",
       "value": {
         "stringValue": "{\"model\": \"text-embedding-3-small\", \"encoding_format\": \"float\"}"
+      }
+    },
+    {
+      "key": "embedding.embeddings.0.embedding.text",
+      "value": {
+        "stringValue": "hello world"
       }
     },
     {
@@ -4672,12 +4678,6 @@
             }
           ]
         }
-      }
-    },
-    {
-      "key": "embedding.embeddings.0.embedding.text",
-      "value": {
-        "stringValue": "hello world"
       }
     },
     {

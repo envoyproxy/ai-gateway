@@ -28,6 +28,7 @@ import (
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 func TestGatewayController_Reconcile(t *testing.T) {
@@ -181,7 +182,7 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 							{
 								Headers: []gwapiv1.HTTPHeaderMatch{
 									{
-										Name:  aigv1a1.AIModelHeaderKey,
+										Name:  internalapi.ModelNameHeaderKeyDefault,
 										Value: "mymodel",
 									},
 								},
@@ -311,7 +312,7 @@ func TestGatewayController_reconcileFilterConfigSecret_SkipsDeletedRoutes(t *tes
 							{
 								Headers: []gwapiv1.HTTPHeaderMatch{
 									{
-										Name:  aigv1a1.AIModelHeaderKey,
+										Name:  internalapi.ModelNameHeaderKeyDefault,
 										Value: "mymodel",
 									},
 								},
@@ -337,7 +338,7 @@ func TestGatewayController_reconcileFilterConfigSecret_SkipsDeletedRoutes(t *tes
 							{
 								Headers: []gwapiv1.HTTPHeaderMatch{
 									{
-										Name:  aigv1a1.AIModelHeaderKey,
+										Name:  internalapi.ModelNameHeaderKeyDefault,
 										Value: "deletedmodel",
 									},
 								},

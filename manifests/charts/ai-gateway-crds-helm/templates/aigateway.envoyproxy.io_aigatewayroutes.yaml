@@ -253,8 +253,7 @@ spec:
               parentRefs:
                 description: |-
                   ParentRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.
-                  Cross namespace references are not supported. In other words, the Gateway resources must be in the
-                  same namespace as the AIGatewayRoute. Currently, each reference's Kind must be Gateway.
+                  Currently, each reference's Kind must be Gateway.
                 items:
                   description: |-
                     ParentReference identifies an API object (usually a Gateway) that can be considered

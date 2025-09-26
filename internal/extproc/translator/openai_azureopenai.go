@@ -13,13 +13,14 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 // NewChatCompletionOpenAIToAzureOpenAITranslator implements [Factory] for OpenAI to Azure OpenAI translations.
 // Except RequestBody method requires modification to satisfy Microsoft Azure OpenAI spec
 // https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#chat-completions, other interface methods
 // are identical to NewChatCompletionOpenAIToOpenAITranslator's interface implementations.
-func NewChatCompletionOpenAIToAzureOpenAITranslator(apiVersion string, modelNameOverride string) OpenAIChatCompletionTranslator {
+func NewChatCompletionOpenAIToAzureOpenAITranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride) OpenAIChatCompletionTranslator {
 	return &openAIToAzureOpenAITranslatorV1ChatCompletion{
 		apiVersion: apiVersion,
 		openAIToOpenAITranslatorV1ChatCompletion: openAIToOpenAITranslatorV1ChatCompletion{
@@ -28,6 +29,9 @@ func NewChatCompletionOpenAIToAzureOpenAITranslator(apiVersion string, modelName
 	}
 }
 
+// openAIToAzureOpenAITranslatorV1ChatCompletion adapts OpenAI requests for Azure OpenAI Service.
+// Azure ignores the model field in the request body, using deployment name from the URI path instead:
+// https://learn.microsoft.com/en-us/azure/ai-foundry/openai/reference#chat-completions
 type openAIToAzureOpenAITranslatorV1ChatCompletion struct {
 	apiVersion string
 	openAIToOpenAITranslatorV1ChatCompletion
@@ -41,7 +45,12 @@ func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, 
 		// If modelName is set we override the model to be used for the request.
 		modelName = o.modelNameOverride
 	}
-	// Assume deployment_id is same as model name.
+	// Ensure the response includes a model. This is set to accommodate test or
+	// misimplemented backends.
+	o.requestModel = modelName
+
+	// Azure OpenAI uses a {deployment-id} that may match the deployed model's name.
+	// We use the routed model as the deployment, stored in the path.
 	pathTemplate := "/openai/deployments/%s/chat/completions?api-version=%s"
 	headerMutation = &extprocv3.HeaderMutation{
 		SetHeaders: []*corev3.HeaderValueOption{

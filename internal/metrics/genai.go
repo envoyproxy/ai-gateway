@@ -19,6 +19,7 @@ const (
 	genaiAttributeOperationName = "gen_ai.operation.name"
 	genaiAttributeProviderName  = "gen_ai.provider.name"
 	genaiAttributeRequestModel  = "gen_ai.request.model"
+	genaiAttributeResponseModel = "gen_ai.response.model"
 	genaiAttributeTokenType     = "gen_ai.token.type" //nolint:gosec // metric name, not credential
 	genaiAttributeErrorType     = "error.type"
 

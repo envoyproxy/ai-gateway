@@ -4,9 +4,20 @@
 # the root of the repo.
 
 metadataNamespace: ai_gateway_llm_ns
-modelNameHeaderKey: x-model-name
+modelNameHeaderKey: x-ai-eg-model
 backends:
   - name: openai
     schema:
       name: OpenAI
       version: v1
+  # Test backend that forces a model name override.
+  - name: openai-chat-override
+    schema:
+      name: OpenAI
+      version: v1
+    modelNameOverride: gpt-5-nano
+  - name: openai-embeddings-override
+    schema:
+      name: OpenAI
+      version: v1
+    modelNameOverride: text-embedding-3-small
