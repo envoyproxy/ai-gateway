@@ -112,9 +112,11 @@ curl -H "Content-Type: application/json" -XPOST http://localhost:1975/v1/chat/co
     -d '{"model": "deepseek-r1:1.5b","messages": [{"role": "user", "content": "Say this is a test!"}]}'
 ```
 
-### Prometheus Metrics
+### Admin Endpoints
 
-While running, `aigw` serves prometheus metrics at `localhost:1064/metrics` by default. You can scrape this for [LLM/AI metrics](../capabilities/observability/metrics.md).
+While running, `aigw` serves admin endpoints on port `1064` by default:
+- `/metrics`: Prometheus metrics endpoint for [LLM/AI metrics](../capabilities/observability/metrics.md)
+- `/health`: Health check endpoint that verifies the external processor is healthy
 
 ## OpenTelemetry
 

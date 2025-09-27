@@ -28,6 +28,8 @@ type (
 		Translate cmdTranslate `cmd:"" help:"Translate yaml files containing AI Gateway resources to Envoy Gateway and Kubernetes resources. The translated resources are written to stdout."`
 		// Run is the sub-command parsed by the `cmdRun` struct.
 		Run cmdRun `cmd:"" help:"Run the AI Gateway locally for given configuration."`
+		// Healthcheck is the sub-command to check if the aigw server is healthy.
+		Healthcheck cmdHealthcheck `cmd:"" help:"Docker HEALTHCHECK command."`
 	}
 	// cmdTranslate corresponds to `aigw translate` command.
 	cmdTranslate struct {
@@ -36,8 +38,13 @@ type (
 	}
 	// cmdRun corresponds to `aigw run` command.
 	cmdRun struct {
-		Debug bool   `help:"Enable debug logging emitted to stderr."`
-		Path  string `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional when at least OPENAI_API_KEY is set." type:"path"`
+		Debug     bool   `help:"Enable debug logging emitted to stderr."`
+		Path      string `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional when at least OPENAI_API_KEY is set." type:"path"`
+		AdminPort int    `help:"HTTP port for the admin server (serves /metrics and /health endpoints)." default:"1064"`
+	}
+	// cmdHealthcheck corresponds to `aigw healthcheck` command.
+	cmdHealthcheck struct {
+		AdminPort int `help:"HTTP port for the admin server (serves /metrics and /health endpoints)." default:"1064"`
 	}
 )
 
@@ -53,10 +60,11 @@ type (
 	subCmdFn[T any] func(context.Context, T, io.Writer, io.Writer) error
 	translateFn     subCmdFn[cmdTranslate]
 	runFn           func(context.Context, cmdRun, runOpts, io.Writer, io.Writer) error
+	healthcheckFn   func(context.Context, int, io.Writer, io.Writer) error
 )
 
 func main() {
-	doMain(ctrl.SetupSignalHandler(), os.Stdout, os.Stderr, os.Args[1:], os.Exit, translate, run)
+	doMain(ctrl.SetupSignalHandler(), os.Stdout, os.Stderr, os.Args[1:], os.Exit, translate, run, healthcheck)
 }
 
 // doMain is the main entry point for the CLI. It parses the command line arguments and executes the appropriate command.
@@ -70,6 +78,7 @@ func main() {
 func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn func(int),
 	tf translateFn,
 	rf runFn,
+	hf healthcheckFn,
 ) {
 	var c cmd
 	parser, err := kong.New(&c,
@@ -95,6 +104,11 @@ func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn
 		err = rf(ctx, c.Run, runOpts{extProcLauncher: mainlib.Main}, stdout, stderr)
 		if err != nil {
 			log.Fatalf("Error running: %v", err)
+		}
+	case "healthcheck":
+		err = hf(ctx, c.Healthcheck.AdminPort, stdout, stderr)
+		if err != nil {
+			log.Fatalf("Health check failed: %v", err)
 		}
 	default:
 		panic("unreachable")
