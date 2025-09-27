@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -39,18 +40,11 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
-var (
-	// This is the default configuration for the AI Gateway when <path> parameter is not given.
-	//
-	//go:embed ai-gateway-default-resources.yaml
-	aiGatewayDefaultResources string
-
-	// This is the template for the Envoy Gateway configuration where PLACEHOLDER_TMPDIR will be replaced with the temporary
-	// directory where the resources are written to.
-	//
-	//go:embed envoy-gateway-config.yaml
-	envoyGatewayConfigTemplate string
-)
+// This is the template for the Envoy Gateway configuration where PLACEHOLDER_TMPDIR will be replaced with the temporary
+// directory where the resources are written to.
+//
+//go:embed envoy-gateway-config.yaml
+var envoyGatewayConfigTemplate string
 
 const (
 	substitutionEnvAnnotationPrefix  = "substitution.aigw.run/env/"
@@ -96,13 +90,6 @@ func run(ctx context.Context, c cmdRun, o runOpts, stdout, stderr io.Writer) err
 		stderr = io.Discard
 	}
 	stderrLogger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{}))
-	if c.ShowDefault {
-		_, err := stdout.Write([]byte(aiGatewayDefaultResources))
-		if err != nil {
-			panic(fmt.Sprintf("BUG: failed to write default resources: %v", err))
-		}
-		return nil
-	}
 
 	// First, we need to create the self-signed certificates used for communication between the EG and Envoy.
 	// Certificates will be placed at /tmp/envoy-gateway/certs, which is currently is not configurable:
@@ -248,21 +235,18 @@ func pollEnvoyReadiness(ctx context.Context, l *slog.Logger, addr string, interv
 	}
 }
 
-// readConfig reads and returns the configuration as a string from the specified path,
-// substituting environment variables similar to envsubst. If the path is empty and
-// OPENAI_API_KEY is set, it generates the configuration from OpenAI environment variables.
-// If the path is empty and no OPENAI_API_KEY is set, it returns the default configuration.
-// An error is returned if the file cannot be read or if config generation fails.
+// readConfig returns the configuration as a string from the given path,
+// substituting environment variables. If OPENAI_API_KEY is set, it generates
+// the config from OpenAI environment variables. Otherwise, it returns an error.
 func readConfig(path string) (string, error) {
-	if path == "" {
-		if os.Getenv("OPENAI_API_KEY") != "" {
-			config, err := envgen.GenerateOpenAIConfig()
-			if err != nil {
-				return "", fmt.Errorf("error generating OpenAI config: %w", err)
-			}
-			return config, nil
+	if os.Getenv("OPENAI_API_KEY") != "" {
+		config, err := envgen.GenerateOpenAIConfig()
+		if err != nil {
+			return "", fmt.Errorf("error generating OpenAI config: %w", err)
 		}
-		return aiGatewayDefaultResources, nil
+		return config, nil
+	} else if path == "" {
+		return "", errors.New("you must supply at least OPENAI_API_KEY or a config file path")
 	}
 	configBytes, err := envsubst.ReadFile(path)
 	if err != nil {

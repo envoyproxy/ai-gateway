@@ -36,11 +36,18 @@ type (
 	}
 	// cmdRun corresponds to `aigw run` command.
 	cmdRun struct {
-		Debug       bool   `help:"Enable debug logging emitted to stderr."`
-		Path        string `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional. When this is not given, aigw runs the default configuration. Use --show-default to check the default configuration's behavior" type:"path"`
-		ShowDefault bool   `help:"Show the default configuration, and exit."`
+		Debug bool   `help:"Enable debug logging emitted to stderr."`
+		Path  string `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional when at least OPENAI_API_KEY is set." type:"path"`
 	}
 )
+
+// Validate is called by Kong after parsing to validate the cmdRun arguments.
+func (c *cmdRun) Validate() error {
+	if c.Path == "" && os.Getenv("OPENAI_API_KEY") == "" {
+		return fmt.Errorf("you must supply at least OPENAI_API_KEY or a config file path")
+	}
+	return nil
+}
 
 type (
 	subCmdFn[T any] func(context.Context, T, io.Writer, io.Writer) error
