@@ -8,17 +8,31 @@ package envgen
 import (
 	_ "embed"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
+var ollamaLocalYAML string
+
+func init() {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("unable to get caller info")
+	}
+	b, err := os.ReadFile(filepath.Join(filepath.Dir(filename), "../../examples/basic/ollama.yaml"))
+	if err != nil {
+		panic(err)
+	}
+	ollamaLocalYAML = string(b)
+}
+
 var (
 	//go:embed testdata/openai.yaml
 	openaiDefaultYAML string
-
-	//go:embed testdata/ollama.yaml
-	ollamaLocalYAML string
 
 	//go:embed testdata/tars.yaml
 	tarsYAML string
