@@ -72,13 +72,10 @@ func TestReadConfig(t *testing.T) {
 		})
 	}
 
-	t.Run("Default config uses 0.0.0.0 IP for Ollama when no env vars", func(t *testing.T) {
-		t.Setenv("OPENAI_API_KEY", "")
-		t.Setenv("OPENAI_BASE_URL", "")
-		config, err := readConfig("")
-		require.NoError(t, err)
-		require.Contains(t, config, "address: 0.0.0.0")
-		require.Contains(t, config, "port: 11434")
+	t.Run("error when file and no OPENAI_API_KEY", func(t *testing.T) {
+		_, err := readConfig("")
+		require.Error(t, err)
+		require.EqualError(t, err, "you must supply at least OPENAI_API_KEY or a config file path")
 	})
 
 	t.Run("error when file does not exist", func(t *testing.T) {
