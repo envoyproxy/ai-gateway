@@ -80,7 +80,7 @@ func TestRun(t *testing.T) {
 	t.Setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
 	t.Setenv("OPENAI_API_KEY", "unused")
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan struct{})
 	go func() {
@@ -157,7 +157,7 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 	content, err := readConfig("")
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	_, done, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, content)
 	require.NoError(t, err)
 	time.Sleep(time.Second)
