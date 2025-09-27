@@ -44,5 +44,10 @@ inference-extension-conformance-test-report.yaml
 .claude/
 .env
 .mcp.json
+.serena/
+CLAUDE.md
 
 .goose
+
+# Go test binaries
+*.test
