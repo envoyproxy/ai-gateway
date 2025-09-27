@@ -39,8 +39,7 @@ type extProcFlags struct {
 	configPath                 string     // path to the configuration file.
 	extProcAddr                string     // gRPC address for the external processor.
 	logLevel                   slog.Level // log level for the external processor.
-	metricsPort                int        // HTTP port for the metrics server.
-	healthPort                 int        // HTTP port for the health check server.
+	adminPort                  int        // HTTP port for the admin server (metrics and health).
 	metricsRequestHeaderLabels string     // comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels.
 	// rootPrefix is the root prefix for all the processors.
 	rootPrefix string
@@ -72,8 +71,7 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		"info",
 		"log level for the external processor. One of 'debug', 'info', 'warn', or 'error'.",
 	)
-	fs.IntVar(&flags.metricsPort, "metricsPort", 1064, "port for the metrics server.")
-	fs.IntVar(&flags.healthPort, "healthPort", 1065, "port for the health check HTTP server.")
+	fs.IntVar(&flags.adminPort, "adminPort", 1064, "HTTP port for the admin server (serves /metrics and /health endpoints).")
 	fs.StringVar(&flags.metricsRequestHeaderLabels,
 		"metricsRequestHeaderLabels",
 		"",
@@ -146,12 +144,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		}
 	}
 
-	metricsLis, err := listen(ctx, "metrics", "tcp", fmt.Sprintf(":%d", flags.metricsPort))
-	if err != nil {
-		return err
-	}
-
-	healthLis, err := listen(ctx, "health checks", "tcp", fmt.Sprintf(":%d", flags.healthPort))
+	adminLis, err := listen(ctx, "admin server", "tcp", fmt.Sprintf(":%d", flags.adminPort))
 	if err != nil {
 		return err
 	}
@@ -177,8 +170,8 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	chatCompletionMetrics := metrics.NewChatCompletion(meter, metricsRequestHeaderLabels)
 	embeddingsMetrics := metrics.NewEmbeddings(meter, metricsRequestHeaderLabels)
 
-	// Start HTTP server for metrics endpoint.
-	metricsServer := startMetricsServer(metricsLis, l, promRegistry)
+	// Start HTTP server for admin endpoints (metrics and health checks).
+	adminServer := startAdminServer(adminLis, l, promRegistry, extProcLis)
 
 	tracing, err := tracing.NewTracingFromEnv(ctx, os.Stdout)
 	if err != nil {
@@ -202,18 +195,14 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	extprocv3.RegisterExternalProcessorServer(s, server)
 	grpc_health_v1.RegisterHealthServer(s, server)
 
-	healthServer := startHealthCheckServer(healthLis, l, extProcLis)
 	go func() {
 		<-ctx.Done()
 		s.GracefulStop()
 
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if err := metricsServer.Shutdown(shutdownCtx); err != nil {
-			l.Error("Failed to shutdown metrics server gracefully", "error", err)
-		}
-		if err := healthServer.Shutdown(shutdownCtx); err != nil {
-			l.Error("Failed to shutdown health check server gracefully", "error", err)
+		if err := adminServer.Shutdown(shutdownCtx); err != nil {
+			l.Error("Failed to shutdown admin server gracefully", "error", err)
 		}
 		if err := tracing.Shutdown(shutdownCtx); err != nil {
 			l.Error("Failed to shutdown tracing gracefully", "error", err)
@@ -247,9 +236,11 @@ func listenAddress(addrFlag string) (string, string) {
 	return "tcp", addrFlag
 }
 
-// startMetricsServer starts the HTTP server for Prometheus metrics.
-func startMetricsServer(lis net.Listener, logger *slog.Logger, registry *prometheus.Registry) *http.Server {
-	// Create HTTP server for metrics.
+// startAdminServer starts the HTTP admin server that serves Prometheus metrics and health checks.
+// The server exposes two endpoints:
+//   - /metrics: Prometheus metrics endpoint
+//   - /health: gRPC health check proxy for Kubernetes readiness probes
+func startAdminServer(lis net.Listener, logger *slog.Logger, registry *prometheus.Registry, grpcLis net.Listener) *http.Server {
 	mux := http.NewServeMux()
 
 	// Register the metrics handler.
@@ -258,31 +249,9 @@ func startMetricsServer(lis net.Listener, logger *slog.Logger, registry *prometh
 		promhttp.HandlerOpts{EnableOpenMetrics: true},
 	))
 
-	// Add a simple health check endpoint.
-	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("OK"))
-	})
-
-	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-
-	go func() {
-		logger.Info("starting metrics server", "address", lis.Addr())
-		if err := server.Serve(lis); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Error("Metrics server failed", "error", err)
-		}
-	}()
-
-	return server
-}
-
-// startHealthCheckServer is a proxy for the gRPC health check server.
-// This is necessary because the gRPC health check at k8s level does not
-// support unix domain sockets. To make the health check work regardless of
-// the network type, we serve a simple HTTP server that checks the gRPC health.
-func startHealthCheckServer(lis net.Listener, l *slog.Logger, grpcLis net.Listener) *http.Server {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	// Add health check endpoint that proxies to gRPC health check.
+	// This is necessary because Kubernetes readiness probes need to verify the gRPC server is actually serving.
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 
@@ -314,14 +283,17 @@ func startHealthCheckServer(lis net.Listener, l *slog.Logger, grpcLis net.Listen
 			return
 		}
 		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK\n"))
 	})
 
 	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+
 	go func() {
-		l.Info("Starting health check HTTP server", "addr", lis.Addr())
+		logger.Info("starting admin server", "address", lis.Addr())
 		if err := server.Serve(lis); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			l.Error("Health check server failed", "error", err)
+			logger.Error("Admin server failed", "error", err)
 		}
 	}()
+
 	return server
 }

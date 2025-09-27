@@ -41,8 +41,7 @@ services:
       - OTEL_METRIC_EXPORT_INTERVAL=100
     # ExtProc ports (internal to Docker network, consumed by Envoy):
     # - 1063: gRPC service
-    # - 1064: metrics
-    # - 1065: health check
+    # - 1064: admin server (/metrics and /health endpoints)
     working_dir: /app
     command: ["./extproc", "-configPath", "/etc/extproc/config.yaml"]
 

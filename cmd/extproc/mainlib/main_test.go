@@ -168,7 +168,23 @@ func TestStartMetricsServer(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, meter)
 
-	s := startMetricsServer(lis, slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})), registry)
+	// Create a mock gRPC listener for the admin server
+	grpcLis, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer grpcLis.Close()
+
+	// Start a mock gRPC health server
+	hs := health.NewServer()
+	hs.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+	grpcSrv := grpc.NewServer()
+	grpc_health_v1.RegisterHealthServer(grpcSrv, hs)
+	go func() {
+		_ = grpcSrv.Serve(grpcLis)
+	}()
+	defer grpcSrv.Stop()
+	time.Sleep(time.Millisecond * 100)
+
+	s := startAdminServer(lis, slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})), registry, grpcLis)
 	t.Cleanup(func() {
 		if s != nil {
 			_ = s.Shutdown(context.Background())
@@ -188,7 +204,6 @@ func TestStartMetricsServer(t *testing.T) {
 	ccm.RecordTokenLatency(t.Context(), 10, true, nil)
 
 	require.HTTPStatusCode(t, s.Handler.ServeHTTP, http.MethodGet, "/", nil, http.StatusNotFound)
-
 	require.HTTPSuccess(t, s.Handler.ServeHTTP, http.MethodGet, "/health", nil)
 	require.HTTPBodyContains(t, s.Handler.ServeHTTP, http.MethodGet, "/health", nil, "OK")
 
@@ -207,20 +222,19 @@ func TestStartMetricsServer(t *testing.T) {
 	}
 }
 
-func TestStartHealthCheckServer(t *testing.T) {
-	lis, err := listen(t.Context(), t.Name(), "tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	defer lis.Close() //nolint:errcheck
-
+func TestStartAdminServer_HealthCheck(t *testing.T) {
 	for _, tc := range []string{"unix", "tcp"} {
 		t.Run(tc, func(t *testing.T) {
+			adminLis, err := listen(t.Context(), t.Name(), "tcp", "127.0.0.1:0")
+			require.NoError(t, err)
+			defer adminLis.Close() //nolint:errcheck
+
 			var grpcLis net.Listener
-			var err error
 			if tc == "unix" {
 				_ = os.Remove("/tmp/ext_proc.sock")
 				grpcLis, err = net.Listen("unix", "/tmp/ext_proc.sock")
 			} else {
-				grpcLis, err = net.Listen("tcp", "localhost:1063")
+				grpcLis, err = net.Listen("tcp", "localhost:0")
 			}
 			require.NoError(t, err)
 
@@ -234,36 +248,22 @@ func TestStartHealthCheckServer(t *testing.T) {
 			defer grpcSrv.Stop()
 			time.Sleep(time.Millisecond * 100)
 
-			httpSrv := startHealthCheckServer(
-				lis,
-				slog.Default(),
-				grpcLis,
-			)
+			registry := promregistry.NewRegistry()
+			s := startAdminServer(adminLis, slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})), registry, grpcLis)
+			defer s.Shutdown(context.Background()) //nolint:errcheck
 
-			req := httptest.NewRequest("GET", "/", nil)
-			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-			defer cancel()
-			req = req.WithContext(ctx)
-
-			rr := httptest.NewRecorder()
-			httpSrv.Handler.ServeHTTP(rr, req)
-			res := rr.Result()
-			defer res.Body.Close()
-
-			body, err := io.ReadAll(res.Body)
-			require.NoError(t, err)
-			fmt.Println(string(body))
-			require.Equal(t, http.StatusOK, res.StatusCode)
+			require.HTTPSuccess(t, s.Handler.ServeHTTP, http.MethodGet, "/health", nil)
+			require.HTTPBodyContains(t, s.Handler.ServeHTTP, http.MethodGet, "/health", nil, "OK")
 		})
 	}
 }
 
-func TestStartHealthCheckServer_ErrorCases(t *testing.T) {
+func TestStartAdminServer_HealthCheckErrors(t *testing.T) {
 	// Test health check RPC error.
 	t.Run("health check RPC error", func(t *testing.T) {
-		lis, err := net.Listen("tcp", "127.0.0.1:0")
+		adminLis, err := net.Listen("tcp", "127.0.0.1:0")
 		require.NoError(t, err)
-		defer lis.Close()
+		defer adminLis.Close()
 
 		grpcLis, err := net.Listen("tcp", "127.0.0.1:0")
 		require.NoError(t, err)
@@ -278,25 +278,22 @@ func TestStartHealthCheckServer_ErrorCases(t *testing.T) {
 		}()
 		defer grpcServer.Stop()
 
-		httpSrv := startHealthCheckServer(lis, slog.Default(), grpcLis)
-		defer httpSrv.Close()
+		registry := promregistry.NewRegistry()
+		s := startAdminServer(adminLis, slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})), registry, grpcLis)
+		defer s.Shutdown(context.Background()) //nolint:errcheck
 
-		req := httptest.NewRequest("GET", "/", nil)
+		req := httptest.NewRequest("GET", "/health", nil)
 		rr := httptest.NewRecorder()
-		httpSrv.Handler.ServeHTTP(rr, req)
-		res := rr.Result()
-		defer res.Body.Close()
-
-		require.Equal(t, http.StatusInternalServerError, res.StatusCode)
-		body, _ := io.ReadAll(res.Body)
-		require.Contains(t, string(body), "health check RPC failed")
+		s.Handler.ServeHTTP(rr, req)
+		require.Equal(t, http.StatusInternalServerError, rr.Code)
+		require.Contains(t, rr.Body.String(), "health check RPC failed")
 	})
 
 	// Test unhealthy status.
 	t.Run("unhealthy status", func(t *testing.T) {
-		lis, err := net.Listen("tcp", "127.0.0.1:0")
+		adminLis, err := net.Listen("tcp", "127.0.0.1:0")
 		require.NoError(t, err)
-		defer lis.Close()
+		defer adminLis.Close()
 
 		grpcLis, err := net.Listen("tcp", "127.0.0.1:0")
 		require.NoError(t, err)
@@ -311,18 +308,15 @@ func TestStartHealthCheckServer_ErrorCases(t *testing.T) {
 		}()
 		defer grpcServer.Stop()
 
-		httpSrv := startHealthCheckServer(lis, slog.Default(), grpcLis)
-		defer httpSrv.Close()
+		registry := promregistry.NewRegistry()
+		s := startAdminServer(adminLis, slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})), registry, grpcLis)
+		defer s.Shutdown(context.Background()) //nolint:errcheck
 
-		req := httptest.NewRequest("GET", "/", nil)
+		req := httptest.NewRequest("GET", "/health", nil)
 		rr := httptest.NewRecorder()
-		httpSrv.Handler.ServeHTTP(rr, req)
-		res := rr.Result()
-		defer res.Body.Close()
-
-		require.Equal(t, http.StatusInternalServerError, res.StatusCode)
-		body, _ := io.ReadAll(res.Body)
-		require.Contains(t, string(body), "unhealthy status")
+		s.Handler.ServeHTTP(rr, req)
+		require.Equal(t, http.StatusInternalServerError, rr.Code)
+		require.Contains(t, rr.Body.String(), "unhealthy status")
 	})
 }
 
@@ -380,8 +374,7 @@ backends:
 		args := []string{
 			"-configPath", configPath,
 			"-extProcAddr", ":0",
-			"-metricsPort", "0",
-			"-healthPort", "0",
+			"-adminPort", "0",
 		}
 		errCh <- Main(ctx, args, stderrW)
 	}()

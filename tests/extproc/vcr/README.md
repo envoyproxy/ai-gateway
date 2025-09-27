@@ -47,7 +47,7 @@ issues found in automated tests.
 [docker-compose.yml](docker-compose.yaml) sets up the following:
 
 - **Envoy** (port 1062): Ingress proxy with ExtProc filter that routes OpenAI requests to Ollama
-- **ExtProc**: Adds OpenInference tracing (internal ports: gRPC :1063, metrics :1064, health :1065)
+- **ExtProc**: Adds OpenInference tracing (internal ports: gRPC :1063, admin :1064 for /metrics and /health)
 
 #### Quick Start with Docker Compose
 
