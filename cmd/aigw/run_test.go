@@ -34,43 +34,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
-// getOllamaChatModel reads CHAT_MODEL from .env.ollama relative to the source directory.
-// Returns empty string if not found or file missing.
-func getOllamaChatModel(t *testing.T) string {
-	t.Helper()
-	_, filename, _, ok := runtime.Caller(0)
-	require.True(t, ok)
-	envPath := filepath.Join(filepath.Dir(filename), "..", "..", ".env.ollama")
-	content, err := os.ReadFile(envPath)
-	if err != nil {
-		return ""
-	}
-	for _, line := range strings.Split(string(content), "\n") {
-		if strings.HasPrefix(line, "CHAT_MODEL=") {
-			return strings.TrimPrefix(line, "CHAT_MODEL=")
-		}
-	}
-	return ""
-}
-
-// checkIfOllamaReady verifies if Ollama server is ready and the model is available.
-func checkIfOllamaReady(t *testing.T, modelName string) bool {
-	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, "http://localhost:11434/api/tags", nil)
-	require.NoError(t, err)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return false
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return false
-	}
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	return strings.Contains(string(body), modelName)
-}
-
 func TestRun(t *testing.T) {
 	ollamaModel := getOllamaChatModel(t)
 	if ollamaModel == "" || !checkIfOllamaReady(t, ollamaModel) {
@@ -90,35 +53,39 @@ func TestRun(t *testing.T) {
 	}()
 	defer func() { cancel(); <-done }()
 
-	client := openai.NewClient(option.WithBaseURL("http://localhost:1975/v1/"))
-	require.Eventually(t, func() bool {
-		chatCompletion, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-			Messages: []openai.ChatCompletionMessageParamUnion{
-				openai.UserMessage("Say this is a test"),
-			},
-			Model: ollamaModel,
-		})
-		if err != nil {
-			return false
-		}
-		for _, choice := range chatCompletion.Choices {
-			if choice.Message.Content != "" {
-				return true
+	t.Run("chat completion", func(t *testing.T) {
+		client := openai.NewClient(option.WithBaseURL("http://localhost:1975/v1/"))
+		require.Eventually(t, func() bool {
+			chatCompletion, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					openai.UserMessage("Say this is a test"),
+				},
+				Model: ollamaModel,
+			})
+			if err != nil {
+				return false
 			}
-		}
-		return false
-	}, 30*time.Second, 2*time.Second)
-
-	require.Eventually(t, func() bool {
-		req, err := http.NewRequest(http.MethodGet, "http://localhost:1064/metrics", nil)
-		require.NoError(t, err)
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
+			for _, choice := range chatCompletion.Choices {
+				if choice.Message.Content != "" {
+					return true
+				}
+			}
 			return false
-		}
-		defer resp.Body.Close()
-		return resp.StatusCode == http.StatusOK
-	}, 2*time.Minute, time.Second)
+		}, 30*time.Second, 2*time.Second)
+	})
+
+	t.Run("access metrics", func(t *testing.T) {
+		require.Eventually(t, func() bool {
+			req, err := http.NewRequest(http.MethodGet, "http://localhost:1064/metrics", nil)
+			require.NoError(t, err)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				return false
+			}
+			defer resp.Body.Close()
+			return resp.StatusCode == http.StatusOK
+		}, 2*time.Minute, time.Second)
+	})
 }
 
 func TestRunExtprocStartFailure(t *testing.T) {
@@ -152,16 +119,17 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 		envoyGatewayResourcesOut: &bytes.Buffer{},
 		tmpdir:                   t.TempDir(),
 		extProcLauncher:          mainlib.Main,
-		udsPath:                  filepath.Join("/tmp", "run.sock"), // Short UDS path for UNIX compatibility.
+		// UNIX doesn't like a long UDS path, so we use a short one.
+		// https://unix.stackexchange.com/questions/367008/why-is-socket-path-length-limited-to-a-hundred-chars
+		udsPath: filepath.Join("/tmp", "run.sock"),
 	}
-	content, err := readConfig("")
-	require.NoError(t, err)
-
+	config := readFileFromProjectRoot(t, " examples/basic/ollama.yaml")
 	ctx, cancel := context.WithCancel(t.Context())
-	_, done, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, content)
+	_, done, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, config)
 	require.NoError(t, err)
 	time.Sleep(time.Second)
 	cancel()
+	// Wait for the external processor to stop.
 	require.NoError(t, <-done)
 }
 
@@ -265,20 +233,20 @@ func TestPollEnvoyReady(t *testing.T) {
 			return
 		}
 	}))
-	defer s.Close()
+	t.Cleanup(s.Close)
 	u, err := url.Parse(s.URL)
 	require.NoError(t, err)
 
 	l := slog.New(slog.DiscardHandler)
 
 	t.Run("empty address", func(t *testing.T) {
-		callCount = 0
+		t.Cleanup(func() { callCount = 0 })
 		pollEnvoyReadiness(t.Context(), l, "", 50*time.Millisecond)
 		require.Zero(t, callCount)
 	})
 
 	t.Run("ready", func(t *testing.T) {
-		callCount = 0
+		t.Cleanup(func() { callCount = 0 })
 		pollEnvoyReadiness(t.Context(), l, u.Host, 50*time.Millisecond)
 		require.Equal(t, successAt, callCount)
 	})
@@ -286,8 +254,49 @@ func TestPollEnvoyReady(t *testing.T) {
 	t.Run("abort on context done", func(t *testing.T) {
 		callCount = 0
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
-		defer cancel()
+		t.Cleanup(cancel)
+		t.Cleanup(func() { callCount = 0 })
 		pollEnvoyReadiness(ctx, l, u.Host, 50*time.Millisecond)
 		require.Less(t, callCount, successAt)
 	})
+}
+
+// getOllamaChatModel reads CHAT_MODEL from .env.ollama relative to the source directory.
+// Returns empty string if not found or file missing.
+func getOllamaChatModel(t *testing.T) string {
+	t.Helper()
+	envs := readFileFromProjectRoot(t, ".env.ollama")
+	for _, line := range strings.Split(envs, "\n") {
+		if strings.HasPrefix(line, "CHAT_MODEL=") {
+			return strings.TrimPrefix(line, "CHAT_MODEL=")
+		}
+	}
+	return ""
+}
+
+func readFileFromProjectRoot(t *testing.T, file string) string {
+	t.Helper()
+	_, filename, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	b, err := os.ReadFile(filepath.Join(filepath.Dir(filename), "..", "..", file))
+	require.NoError(t, err)
+	return string(b)
+}
+
+// checkIfOllamaReady verifies if Ollama server is ready and the model is available.
+func checkIfOllamaReady(t *testing.T, modelName string) bool {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, "http://localhost:11434/api/tags", nil)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	return strings.Contains(string(body), modelName)
 }
