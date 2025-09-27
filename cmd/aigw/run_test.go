@@ -123,7 +123,7 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 		// https://unix.stackexchange.com/questions/367008/why-is-socket-path-length-limited-to-a-hundred-chars
 		udsPath: filepath.Join("/tmp", "run.sock"),
 	}
-	config := readFileFromProjectRoot(t, "examples/basic/ollama.yaml")
+	config := readFileFromProjectRoot(t, "examples/aigw/ollama.yaml")
 	ctx, cancel := context.WithCancel(t.Context())
 	_, done, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, config)
 	require.NoError(t, err)

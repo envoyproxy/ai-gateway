@@ -23,7 +23,7 @@ func init() {
 	if !ok {
 		panic("unable to get caller info")
 	}
-	b, err := os.ReadFile(filepath.Join(filepath.Dir(filename), "../../examples/basic/ollama.yaml"))
+	b, err := os.ReadFile(filepath.Join(filepath.Dir(filename), "../../examples/aigw/ollama.yaml"))
 	if err != nil {
 		panic(err)
 	}
