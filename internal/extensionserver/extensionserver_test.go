@@ -251,7 +251,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 				FilterMetadata: map[string]*structpb.Struct{
 					internalapi.InternalEndpointMetadataNamespace: {
 						Fields: map[string]*structpb.Value{
-							"per_route_rule_inference_pool": structpb.NewStringValue("test-ns/test-pool/test-epp/9002"),
+							"per_route_rule_inference_pool": structpb.NewStringValue("test-ns/test-pool/test-epp/9002/duplex/false"),
 						},
 					},
 				},
@@ -457,7 +457,7 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 				FilterMetadata: map[string]*structpb.Struct{
 					internalapi.InternalEndpointMetadataNamespace: {
 						Fields: map[string]*structpb.Value{
-							"per_route_rule_inference_pool": structpb.NewStringValue("test-ns/test-pool/test-epp/9002"),
+							"per_route_rule_inference_pool": structpb.NewStringValue("test-ns/test-pool/test-epp/9002/duplex/false"),
 						},
 					},
 				},
@@ -841,7 +841,7 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 				internalapi.InternalEndpointMetadataNamespace: {
 					Fields: map[string]*structpb.Value{
 						"per_route_rule_inference_pool": structpb.NewStringValue(
-							fmt.Sprintf("%s/%s/test-epp/9002", pool.Namespace, pool.Name),
+							fmt.Sprintf("%s/%s/test-epp/9002/duplex/false", pool.Namespace, pool.Name),
 						),
 					},
 				},
@@ -1371,6 +1371,116 @@ func TestInferencePoolAnnotationHelpers(t *testing.T) {
 			require.False(t, override)
 		})
 	})
+
+	t.Run("getProcessingBodyModeStringFromAnnotations", func(t *testing.T) {
+		t.Run("no annotations", func(t *testing.T) {
+			pool := &gwaiev1a2.InferencePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pool",
+					Namespace: "test-ns",
+				},
+			}
+			mode := getProcessingBodyModeStringFromAnnotations(pool)
+			require.Equal(t, "duplex", mode)
+		})
+
+		t.Run("annotation set to duplex", func(t *testing.T) {
+			pool := &gwaiev1a2.InferencePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pool",
+					Namespace: "test-ns",
+					Annotations: map[string]string{
+						"aigateway.envoyproxy.io/processing-body-mode": "duplex",
+					},
+				},
+			}
+			mode := getProcessingBodyModeStringFromAnnotations(pool)
+			require.Equal(t, "duplex", mode)
+		})
+
+		t.Run("annotation set to buffered", func(t *testing.T) {
+			pool := &gwaiev1a2.InferencePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pool",
+					Namespace: "test-ns",
+					Annotations: map[string]string{
+						"aigateway.envoyproxy.io/processing-body-mode": "buffered",
+					},
+				},
+			}
+			mode := getProcessingBodyModeStringFromAnnotations(pool)
+			require.Equal(t, "buffered", mode)
+		})
+
+		t.Run("annotation set to invalid value", func(t *testing.T) {
+			pool := &gwaiev1a2.InferencePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pool",
+					Namespace: "test-ns",
+					Annotations: map[string]string{
+						"aigateway.envoyproxy.io/processing-body-mode": "invalid",
+					},
+				},
+			}
+			mode := getProcessingBodyModeStringFromAnnotations(pool)
+			require.Equal(t, "invalid", mode) // Returns the raw value
+		})
+	})
+
+	t.Run("getAllowModeOverrideStringFromAnnotations", func(t *testing.T) {
+		t.Run("no annotations", func(t *testing.T) {
+			pool := &gwaiev1a2.InferencePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pool",
+					Namespace: "test-ns",
+				},
+			}
+			override := getAllowModeOverrideStringFromAnnotations(pool)
+			require.Equal(t, "false", override)
+		})
+
+		t.Run("annotation set to true", func(t *testing.T) {
+			pool := &gwaiev1a2.InferencePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pool",
+					Namespace: "test-ns",
+					Annotations: map[string]string{
+						"aigateway.envoyproxy.io/allow-mode-override": "true",
+					},
+				},
+			}
+			override := getAllowModeOverrideStringFromAnnotations(pool)
+			require.Equal(t, "true", override)
+		})
+
+		t.Run("annotation set to false", func(t *testing.T) {
+			pool := &gwaiev1a2.InferencePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pool",
+					Namespace: "test-ns",
+					Annotations: map[string]string{
+						"aigateway.envoyproxy.io/allow-mode-override": "false",
+					},
+				},
+			}
+			override := getAllowModeOverrideStringFromAnnotations(pool)
+			require.Equal(t, "false", override)
+		})
+
+		t.Run("annotation set to invalid value", func(t *testing.T) {
+			pool := &gwaiev1a2.InferencePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pool",
+					Namespace: "test-ns",
+					Annotations: map[string]string{
+						"aigateway.envoyproxy.io/allow-mode-override": "invalid",
+					},
+				},
+			}
+			override := getAllowModeOverrideStringFromAnnotations(pool)
+			require.Equal(t, "invalid", override) // Returns the raw value
+		})
+	})
 }
 
 // TestBuildHTTPFilterForInferencePool tests the buildHTTPFilterForInferencePool function with annotations.
@@ -1396,6 +1506,8 @@ func TestBuildHTTPFilterForInferencePool(t *testing.T) {
 		require.NotNil(t, filter)
 		require.Equal(t, extprocv3.ProcessingMode_FULL_DUPLEX_STREAMED, filter.ProcessingMode.RequestBodyMode)
 		require.Equal(t, extprocv3.ProcessingMode_FULL_DUPLEX_STREAMED, filter.ProcessingMode.ResponseBodyMode)
+		require.Equal(t, extprocv3.ProcessingMode_SEND, filter.ProcessingMode.RequestTrailerMode)
+		require.Equal(t, extprocv3.ProcessingMode_SEND, filter.ProcessingMode.ResponseTrailerMode)
 		require.False(t, filter.AllowModeOverride)
 	})
 
@@ -1423,6 +1535,8 @@ func TestBuildHTTPFilterForInferencePool(t *testing.T) {
 		require.NotNil(t, filter)
 		require.Equal(t, extprocv3.ProcessingMode_BUFFERED, filter.ProcessingMode.RequestBodyMode)
 		require.Equal(t, extprocv3.ProcessingMode_BUFFERED, filter.ProcessingMode.ResponseBodyMode)
+		require.Equal(t, extprocv3.ProcessingMode_SEND, filter.ProcessingMode.RequestTrailerMode)
+		require.Equal(t, extprocv3.ProcessingMode_SEND, filter.ProcessingMode.ResponseTrailerMode)
 		require.False(t, filter.AllowModeOverride)
 	})
 
@@ -1450,6 +1564,8 @@ func TestBuildHTTPFilterForInferencePool(t *testing.T) {
 		require.NotNil(t, filter)
 		require.Equal(t, extprocv3.ProcessingMode_FULL_DUPLEX_STREAMED, filter.ProcessingMode.RequestBodyMode)
 		require.Equal(t, extprocv3.ProcessingMode_FULL_DUPLEX_STREAMED, filter.ProcessingMode.ResponseBodyMode)
+		require.Equal(t, extprocv3.ProcessingMode_SEND, filter.ProcessingMode.RequestTrailerMode)
+		require.Equal(t, extprocv3.ProcessingMode_SEND, filter.ProcessingMode.ResponseTrailerMode)
 		require.True(t, filter.AllowModeOverride)
 	})
 
@@ -1478,6 +1594,8 @@ func TestBuildHTTPFilterForInferencePool(t *testing.T) {
 		require.NotNil(t, filter)
 		require.Equal(t, extprocv3.ProcessingMode_BUFFERED, filter.ProcessingMode.RequestBodyMode)
 		require.Equal(t, extprocv3.ProcessingMode_BUFFERED, filter.ProcessingMode.ResponseBodyMode)
+		require.Equal(t, extprocv3.ProcessingMode_SEND, filter.ProcessingMode.RequestTrailerMode)
+		require.Equal(t, extprocv3.ProcessingMode_SEND, filter.ProcessingMode.ResponseTrailerMode)
 		require.True(t, filter.AllowModeOverride)
 	})
 }
@@ -1535,7 +1653,7 @@ func TestBuildClustersForInferencePoolEndpointPickers(t *testing.T) {
 			FilterMetadata: map[string]*structpb.Struct{
 				internalapi.InternalEndpointMetadataNamespace: {
 					Fields: map[string]*structpb.Value{
-						"per_route_rule_inference_pool": structpb.NewStringValue("test-ns/test-pool/test-epp/9002"),
+						"per_route_rule_inference_pool": structpb.NewStringValue("test-ns/test-pool/test-epp/9002/duplex/false"),
 					},
 				},
 			},
