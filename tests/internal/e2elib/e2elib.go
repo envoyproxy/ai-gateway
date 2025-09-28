@@ -558,15 +558,21 @@ func RequireWaitForPodReady(t *testing.T, selector string) {
 func RequireNewHTTPPortForwarder(t *testing.T, namespace string, selector string, port int) PortForwarder {
 	f, err := newServicePortForwarder(t.Context(), namespace, selector, port)
 	require.NoError(t, err)
+
 	require.Eventually(t, func() bool {
-		res, err := http.Get(f.Address())
+		ctx := t.Context()
+		req, err := http.NewRequestWithContext(ctx, "GET", f.Address(), nil)
 		if err != nil {
-			t.Logf("error: %v", err)
 			return false
 		}
-		_ = res.Body.Close()
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return false
+		}
+		res.Body.Close()
 		return true // We don't care about the response.
 	}, 3*time.Minute, 200*time.Millisecond)
+
 	return f
 }
 
