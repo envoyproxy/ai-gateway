@@ -761,6 +761,17 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 			expectedGenerationConfig: &genai.GenerationConfig{},
 		},
 		{
+			name: "stop sequences",
+			input: &openai.ChatCompletionRequest{
+				Stop: openaigo.ChatCompletionNewParamsStopUnion{
+					OfString: openaigo.Opt[string]("stop1"),
+				},
+			},
+			expectedGenerationConfig: &genai.GenerationConfig{
+				StopSequences: []string{"stop1"},
+			},
+		},
+		{
 			name: "text",
 			input: &openai.ChatCompletionRequest{
 				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{

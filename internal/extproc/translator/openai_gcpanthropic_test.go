@@ -229,6 +229,25 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.Equal(t, []string{"stop1", "stop2"}, messageParam.StopSequences)
 	})
 
+	t.Run("Test single stop", func(t *testing.T) {
+		openaiRequest := &openai.ChatCompletionRequest{
+			Model:       claudeTestModel,
+			Messages:    []openai.ChatCompletionMessageParamUnion{},
+			Temperature: ptr.To(0.1),
+			MaxTokens:   ptr.To(int64(100)),
+			TopP:        ptr.To(0.1),
+			Stop: openaigo.ChatCompletionNewParamsStopUnion{
+				OfString: openaigo.Opt[string]("stop1"),
+			},
+		}
+		messageParam, err := buildAnthropicParams(openaiRequest)
+		require.NoError(t, err)
+		require.Equal(t, int64(100), messageParam.MaxTokens)
+		require.Equal(t, "0.1", messageParam.TopP.String())
+		require.Equal(t, "0.1", messageParam.Temperature.String())
+		require.Equal(t, []string{"stop1"}, messageParam.StopSequences)
+	})
+
 	t.Run("Invalid Temperature (above bound)", func(t *testing.T) {
 		invalidTempReq := &openai.ChatCompletionRequest{
 			Model:       claudeTestModel,

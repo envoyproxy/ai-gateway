@@ -166,6 +166,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
     ],
     "generation_config": {
         "maxOutputTokens": 1024,
+        "stopSequences": ["stop"],
         "temperature": 0.7,
           "thinkingConfig": {
             "includeThoughts": true,
@@ -459,6 +460,9 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				Model:       "gemini-1.5-pro",
 				Temperature: ptr.To(0.7),
 				MaxTokens:   ptr.To(int64(1024)),
+				Stop: openaigo.ChatCompletionNewParamsStopUnion{
+					OfString: openaigo.Opt[string]("stop"),
+				},
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
 						OfUser: &openai.ChatCompletionUserMessageParam{
@@ -506,7 +510,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 					{
 						Header: &corev3.HeaderValue{
 							Key:      "Content-Length",
-							RawValue: []byte("381"),
+							RawValue: []byte("406"),
 						},
 					},
 				},
