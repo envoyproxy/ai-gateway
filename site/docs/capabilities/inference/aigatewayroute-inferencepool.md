@@ -433,6 +433,71 @@ AIGatewayRoute provides rich metrics for InferencePool usage:
 - **Token consumption**: Monitor token usage and costs
 - **Endpoint performance**: Detailed metrics per inference endpoint
 
+## InferencePool Configuration Annotations
+
+InferencePool supports configuration annotations to customize the external processor behavior:
+
+### Processing Body Mode
+
+Configure how the external processor handles request and response bodies:
+
+```yaml
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferencePool
+metadata:
+  name: my-pool
+  namespace: default
+  annotations:
+    # Configure processing body mode: "duplex" (default) or "buffered"
+    aigateway.envoyproxy.io/processing-body-mode: "buffered"
+spec:
+  # ... other configuration ...
+```
+
+**Available values:**
+
+- `"duplex"` (default): Uses `FULL_DUPLEX_STREAMED` mode for streaming processing
+- `"buffered"`: Uses `BUFFERED` mode for buffered processing
+
+### Allow Mode Override
+
+Configure whether the external processor can override the processing mode:
+
+```yaml
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferencePool
+metadata:
+  name: my-pool
+  namespace: default
+  annotations:
+    # Configure allow mode override: "false" (default) or "true"
+    aigateway.envoyproxy.io/allow-mode-override: "true"
+spec:
+  # ... other configuration ...
+```
+
+**Available values:**
+
+- `"false"` (default): External processor cannot override the processing mode
+- `"true"`: External processor can override the processing mode
+
+### Combined Configuration
+
+You can use both annotations together:
+
+```yaml
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferencePool
+metadata:
+  name: my-pool
+  namespace: default
+  annotations:
+    aigateway.envoyproxy.io/processing-body-mode: "buffered"
+    aigateway.envoyproxy.io/allow-mode-override: "true"
+spec:
+  # ... other configuration ...
+```
+
 ## Key Advantages over HTTPRoute
 
 ### Advanced OpenAI Routing
