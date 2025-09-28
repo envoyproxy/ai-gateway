@@ -19,6 +19,7 @@ import (
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	listenerv3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	httpconnectionmanagerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	httpv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
@@ -1256,6 +1257,228 @@ func TestInferencePoolHelperFunctions(t *testing.T) {
 		customPool.Spec.ExtensionRef.PortNumber = &customPort
 		port := portForInferencePool(customPool)
 		require.Equal(t, uint32(8888), port)
+	})
+}
+
+// TestInferencePoolAnnotationHelpers tests the annotation helper functions.
+func TestInferencePoolAnnotationHelpers(t *testing.T) {
+	t.Run("getProcessingBodyModeFromAnnotations", func(t *testing.T) {
+		t.Run("no annotations", func(t *testing.T) {
+			pool := &gwaiev1a2.InferencePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pool",
+					Namespace: "test-ns",
+				},
+			}
+			mode := getProcessingBodyModeFromAnnotations(pool)
+			require.Equal(t, extprocv3.ProcessingMode_FULL_DUPLEX_STREAMED, mode)
+		})
+
+		t.Run("annotation set to duplex", func(t *testing.T) {
+			pool := &gwaiev1a2.InferencePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pool",
+					Namespace: "test-ns",
+					Annotations: map[string]string{
+						"aigateway.envoyproxy.io/processing-body-mode": "duplex",
+					},
+				},
+			}
+			mode := getProcessingBodyModeFromAnnotations(pool)
+			require.Equal(t, extprocv3.ProcessingMode_FULL_DUPLEX_STREAMED, mode)
+		})
+
+		t.Run("annotation set to buffered", func(t *testing.T) {
+			pool := &gwaiev1a2.InferencePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pool",
+					Namespace: "test-ns",
+					Annotations: map[string]string{
+						"aigateway.envoyproxy.io/processing-body-mode": "buffered",
+					},
+				},
+			}
+			mode := getProcessingBodyModeFromAnnotations(pool)
+			require.Equal(t, extprocv3.ProcessingMode_BUFFERED, mode)
+		})
+
+		t.Run("annotation set to invalid value", func(t *testing.T) {
+			pool := &gwaiev1a2.InferencePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pool",
+					Namespace: "test-ns",
+					Annotations: map[string]string{
+						"aigateway.envoyproxy.io/processing-body-mode": "invalid",
+					},
+				},
+			}
+			mode := getProcessingBodyModeFromAnnotations(pool)
+			require.Equal(t, extprocv3.ProcessingMode_FULL_DUPLEX_STREAMED, mode)
+		})
+	})
+
+	t.Run("getAllowModeOverrideFromAnnotations", func(t *testing.T) {
+		t.Run("no annotations", func(t *testing.T) {
+			pool := &gwaiev1a2.InferencePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pool",
+					Namespace: "test-ns",
+				},
+			}
+			override := getAllowModeOverrideFromAnnotations(pool)
+			require.False(t, override)
+		})
+
+		t.Run("annotation set to true", func(t *testing.T) {
+			pool := &gwaiev1a2.InferencePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pool",
+					Namespace: "test-ns",
+					Annotations: map[string]string{
+						"aigateway.envoyproxy.io/allow-mode-override": "true",
+					},
+				},
+			}
+			override := getAllowModeOverrideFromAnnotations(pool)
+			require.True(t, override)
+		})
+
+		t.Run("annotation set to false", func(t *testing.T) {
+			pool := &gwaiev1a2.InferencePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pool",
+					Namespace: "test-ns",
+					Annotations: map[string]string{
+						"aigateway.envoyproxy.io/allow-mode-override": "false",
+					},
+				},
+			}
+			override := getAllowModeOverrideFromAnnotations(pool)
+			require.False(t, override)
+		})
+
+		t.Run("annotation set to invalid value", func(t *testing.T) {
+			pool := &gwaiev1a2.InferencePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pool",
+					Namespace: "test-ns",
+					Annotations: map[string]string{
+						"aigateway.envoyproxy.io/allow-mode-override": "invalid",
+					},
+				},
+			}
+			override := getAllowModeOverrideFromAnnotations(pool)
+			require.False(t, override)
+		})
+	})
+}
+
+// TestBuildHTTPFilterForInferencePool tests the buildHTTPFilterForInferencePool function with annotations.
+func TestBuildHTTPFilterForInferencePool(t *testing.T) {
+	t.Run("default configuration", func(t *testing.T) {
+		pool := &gwaiev1a2.InferencePool{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-pool",
+				Namespace: "test-ns",
+			},
+			Spec: gwaiev1a2.InferencePoolSpec{
+				EndpointPickerConfig: gwaiev1a2.EndpointPickerConfig{
+					ExtensionRef: &gwaiev1a2.Extension{
+						ExtensionReference: gwaiev1a2.ExtensionReference{
+							Name: "test-epp",
+						},
+					},
+				},
+			},
+		}
+
+		filter := buildHTTPFilterForInferencePool(pool)
+		require.NotNil(t, filter)
+		require.Equal(t, extprocv3.ProcessingMode_FULL_DUPLEX_STREAMED, filter.ProcessingMode.RequestBodyMode)
+		require.Equal(t, extprocv3.ProcessingMode_FULL_DUPLEX_STREAMED, filter.ProcessingMode.ResponseBodyMode)
+		require.False(t, filter.AllowModeOverride)
+	})
+
+	t.Run("with buffered mode annotation", func(t *testing.T) {
+		pool := &gwaiev1a2.InferencePool{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-pool",
+				Namespace: "test-ns",
+				Annotations: map[string]string{
+					"aigateway.envoyproxy.io/processing-body-mode": "buffered",
+				},
+			},
+			Spec: gwaiev1a2.InferencePoolSpec{
+				EndpointPickerConfig: gwaiev1a2.EndpointPickerConfig{
+					ExtensionRef: &gwaiev1a2.Extension{
+						ExtensionReference: gwaiev1a2.ExtensionReference{
+							Name: "test-epp",
+						},
+					},
+				},
+			},
+		}
+
+		filter := buildHTTPFilterForInferencePool(pool)
+		require.NotNil(t, filter)
+		require.Equal(t, extprocv3.ProcessingMode_BUFFERED, filter.ProcessingMode.RequestBodyMode)
+		require.Equal(t, extprocv3.ProcessingMode_BUFFERED, filter.ProcessingMode.ResponseBodyMode)
+		require.False(t, filter.AllowModeOverride)
+	})
+
+	t.Run("with allow mode override annotation", func(t *testing.T) {
+		pool := &gwaiev1a2.InferencePool{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-pool",
+				Namespace: "test-ns",
+				Annotations: map[string]string{
+					"aigateway.envoyproxy.io/allow-mode-override": "true",
+				},
+			},
+			Spec: gwaiev1a2.InferencePoolSpec{
+				EndpointPickerConfig: gwaiev1a2.EndpointPickerConfig{
+					ExtensionRef: &gwaiev1a2.Extension{
+						ExtensionReference: gwaiev1a2.ExtensionReference{
+							Name: "test-epp",
+						},
+					},
+				},
+			},
+		}
+
+		filter := buildHTTPFilterForInferencePool(pool)
+		require.NotNil(t, filter)
+		require.Equal(t, extprocv3.ProcessingMode_FULL_DUPLEX_STREAMED, filter.ProcessingMode.RequestBodyMode)
+		require.Equal(t, extprocv3.ProcessingMode_FULL_DUPLEX_STREAMED, filter.ProcessingMode.ResponseBodyMode)
+		require.True(t, filter.AllowModeOverride)
+	})
+
+	t.Run("with both annotations", func(t *testing.T) {
+		pool := &gwaiev1a2.InferencePool{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-pool",
+				Namespace: "test-ns",
+				Annotations: map[string]string{
+					"aigateway.envoyproxy.io/processing-body-mode": "buffered",
+					"aigateway.envoyproxy.io/allow-mode-override":  "true",
+				},
+			},
+			Spec: gwaiev1a2.InferencePoolSpec{
+				EndpointPickerConfig: gwaiev1a2.EndpointPickerConfig{
+					ExtensionRef: &gwaiev1a2.Extension{
+						ExtensionReference: gwaiev1a2.ExtensionReference{
+							Name: "test-epp",
+						},
+					},
+				},
+			},
+		}
+
+		filter := buildHTTPFilterForInferencePool(pool)
+		require.NotNil(t, filter)
+		require.Equal(t, extprocv3.ProcessingMode_BUFFERED, filter.ProcessingMode.RequestBodyMode)
+		require.Equal(t, extprocv3.ProcessingMode_BUFFERED, filter.ProcessingMode.ResponseBodyMode)
+		require.True(t, filter.AllowModeOverride)
 	})
 }
 
