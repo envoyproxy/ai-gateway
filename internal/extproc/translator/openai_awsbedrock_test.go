@@ -734,6 +734,40 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 			},
 		},
 		{
+			name: "test stop sequence",
+			input: openai.ChatCompletionRequest{
+				Model: "gpt-4o",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: "from-user",
+							},
+							Role: openai.ChatMessageRoleUser,
+						},
+					},
+				},
+				Stop: openaigo.ChatCompletionNewParamsStopUnion{
+					OfStringArray: []string{"stop1", "stop2"},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{
+					StopSequences: []string{"stop1", "stop2"},
+				},
+				Messages: []*awsbedrock.Message{
+					{
+						Role: openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("from-user"),
+							},
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "test parallel tool calls for anthropic claude model",
 			input: openai.ChatCompletionRequest{
 				Model: "bedrock.anthropic.claude-3-5-sonnet-20240620-v1:0",
