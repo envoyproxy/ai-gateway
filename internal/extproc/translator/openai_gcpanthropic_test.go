@@ -847,12 +847,6 @@ func TestHelperFunctions(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid anthropic role")
 	})
-
-	t.Run("process stop with nil", func(t *testing.T) {
-		val, err := processStop(nil)
-		require.NoError(t, err)
-		require.Nil(t, val)
-	})
 }
 
 func TestTranslateOpenAItoAnthropicTools(t *testing.T) {

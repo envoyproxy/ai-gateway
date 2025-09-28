@@ -19,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/google/go-cmp/cmp"
+	openaigo "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
 
@@ -712,11 +713,13 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						},
 					},
 				},
-				Stop: []*string{ptr.To("stop_only")},
+				Stop: openaigo.ChatCompletionNewParamsStopUnion{
+					OfString: openaigo.Opt[string]("stop_only"),
+				},
 			},
 			output: awsbedrock.ConverseInput{
 				InferenceConfig: &awsbedrock.InferenceConfiguration{
-					StopSequences: []*string{ptr.To("stop_only")},
+					StopSequences: []string{"stop_only"},
 				},
 				Messages: []*awsbedrock.Message{
 					{

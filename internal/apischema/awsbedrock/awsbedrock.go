@@ -46,7 +46,7 @@ type InferenceConfiguration struct {
 
 	// A list of stop sequences. A stop sequence is a sequence of characters that
 	// causes the model to stop generating the response.
-	StopSequences []*string `json:"stopSequences,omitempty"`
+	StopSequences []string `json:"stopSequences,omitempty"`
 
 	// The likelihood of the model selecting higher-probability options while generating
 	// a response. A lower value makes the model more likely to choose higher-probability

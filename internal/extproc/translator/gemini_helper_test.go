@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	openaigo "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genai"
@@ -737,7 +738,9 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				MaxTokens:        ptr.To(int64(256)),
 				PresencePenalty:  ptr.To(float32(1.1)),
 				FrequencyPenalty: ptr.To(float32(0.5)),
-				Stop:             []*string{ptr.To("stop1"), ptr.To("stop2")},
+				Stop: openaigo.ChatCompletionNewParamsStopUnion{
+					OfStringArray: []string{"stop1", "stop2"},
+				},
 			},
 			expectedGenerationConfig: &genai.GenerationConfig{
 				Temperature:      ptr.To(float32(0.7)),

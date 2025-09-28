@@ -12,6 +12,8 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/openai/openai-go/v2"
+	"github.com/openai/openai-go/v2/packages/param"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genai"
 	"k8s.io/utils/ptr"
@@ -233,7 +235,8 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			if diff := cmp.Diff(tt.expected, &actual, cmpopts.IgnoreUnexported(anthropic.ThinkingConfigEnabledParam{}, anthropic.ThinkingConfigParamUnion{})); diff != "" {
+			if diff := cmp.Diff(tt.expected, &actual, cmpopts.IgnoreUnexported(anthropic.ThinkingConfigEnabledParam{}, anthropic.ThinkingConfigParamUnion{},
+				openai.ChatCompletionNewParamsStopUnion{}, param.Opt[string]{})); diff != "" {
 				t.Errorf("ChatCompletionRequest mismatch (-expected +actual):\n%s", diff)
 			}
 		})
