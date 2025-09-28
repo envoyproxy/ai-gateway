@@ -43,9 +43,9 @@ data:
             target_label: kubernetes_pod_name
           # "metrics" is the port name for Envoy Proxy's prometheus metrics.
           # https://github.com/envoyproxy/gateway/blob/eb7266c042f4573d7e67c9ea02a19e0deff6e17f/internal/infrastructure/kubernetes/proxy/resource.go#L92
-          # "aigw-metrics" is the port name for AI Gateway filter's prometheus metrics.
+          # "aigw-admin" is the port name for AI Gateway filter's prometheus metrics.
           - source_labels: [__meta_kubernetes_pod_container_port_name]
-            regex: "metrics|aigw-metrics"
+            regex: "metrics|aigw-admin"
             action: keep
           - source_labels: [__meta_kubernetes_pod_container_port_name]
             regex: metrics
@@ -53,7 +53,7 @@ data:
             replacement: /stats/prometheus
             target_label: __metrics_path__
           - source_labels: [__meta_kubernetes_pod_container_port_name]
-            regex: aigw-metrics
+            regex: aigw-admin
             replacement: /metrics
             target_label: __metrics_path__
 ---
