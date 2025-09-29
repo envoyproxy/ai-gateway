@@ -98,7 +98,7 @@ func (e *embeddingsProcessorRouterFilter) ProcessResponseBody(ctx context.Contex
 }
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
-func (e *embeddingsProcessorRouterFilter) ProcessRequestBody(_ context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+func (e *embeddingsProcessorRouterFilter) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	originalModel, body, err := parseOpenAIEmbeddingBody(rawBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
@@ -121,7 +121,7 @@ func (e *embeddingsProcessorRouterFilter) ProcessRequestBody(_ context.Context, 
 		SetHeaders: additionalHeaders,
 	}
 	e.span = e.tracer.StartSpanAndInjectHeaders(
-		context.Background(),
+		ctx,
 		e.requestHeaders,
 		headerMutation,
 		body,
