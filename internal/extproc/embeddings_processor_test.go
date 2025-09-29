@@ -392,7 +392,7 @@ func TestEmbeddings_ProcessResponseBody_OverridesHeaderModelWithResponseModel(t 
 	headers := map[string]string{":path": "/v1/embeddings", modelKey: "header-model"}
 	body := openai.EmbeddingRequest{
 		Model: "body-model",
-		Input: openai.StringOrArray{Value: "test"},
+		Input: openai.EmbeddingRequestInput{Value: "test"},
 	}
 	raw, _ := json.Marshal(body)
 	mm := &mockEmbeddingsMetrics{}

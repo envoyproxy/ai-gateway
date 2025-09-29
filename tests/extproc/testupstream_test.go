@@ -844,7 +844,7 @@ data: {"type": "message_stop"}
 					m := regexp.MustCompile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 					body := m.ReplaceAllString(string(bodyBytes), "<UUID4-replaced>")
 					expectedResponseBody := m.ReplaceAllString(tc.expResponseBody, "<UUID4-replaced>")
-					if body != expectedResponseBody {
+					if !jsonEqual(body, expectedResponseBody) {
 						t.Logf("unexpected response (-want +got):\n%s", cmp.Diff(tc.expResponseBody, body))
 						return false
 					}
@@ -967,3 +967,17 @@ const (
   ]
 }`
 )
+
+// jsonEqual returns true if two JSON strings are semantically equal.
+// This is better than a direct string comparison because it ignores ordering
+// which is not guaranteed in Go to be consistent.
+func jsonEqual(a, b string) bool {
+	var o1, o2 interface{}
+	if err := json.Unmarshal([]byte(a), &o1); err != nil {
+		return false
+	}
+	if err := json.Unmarshal([]byte(b), &o2); err != nil {
+		return false
+	}
+	return cmp.Equal(o1, o2)
+}

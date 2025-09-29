@@ -22,44 +22,37 @@ func EmbeddingsCassettes() []Cassette {
 var embeddingsRequests = map[Cassette]*openai.EmbeddingRequest{
 	CassetteEmbeddingsBasic: {
 		Model: openai.ModelTextEmbedding3Small,
-		Input: openai.StringOrArray{
-			Value: "hello world",
-		},
+		Input: openai.EmbeddingRequestInput{Value: "How do I reset my password?"},
 		// Python SDK coerces to base64 when NumPy is installed. Make sure float works.
 		EncodingFormat: ptr.To("float"),
 	},
 	CassetteEmbeddingsBase64: {
-		Model: openai.ModelTextEmbedding3Small,
-		Input: openai.StringOrArray{
-			Value: "Convert this text to base64 encoded embeddings",
-		},
+		Model:          openai.ModelTextEmbedding3Small,
+		Input:          openai.EmbeddingRequestInput{Value: "How do I reset my password?"},
 		EncodingFormat: ptr.To("base64"),
 	},
 	CassetteEmbeddingsTokens: {
-		Model: openai.ModelTextEmbedding3Small,
-		Input: openai.StringOrArray{
-			// Between 0 and maximum value 100257 (inclusive).
-			Value: []int{1, 5678, 91011, 100257},
-		},
+		Model:          openai.ModelTextEmbedding3Small,
+		Input:          openai.EmbeddingRequestInput{Value: []int64{4438, 656, 358, 7738, 856, 3636, 30}},
 		EncodingFormat: ptr.To("base64"),
 	},
 	CassetteEmbeddingsLargeText: {
 		Model: openai.ModelTextEmbedding3Small,
-		Input: openai.StringOrArray{
+		Input: openai.EmbeddingRequestInput{
 			Value: "The quick brown fox jumps over the lazy dog. This pangram sentence contains every letter of the English alphabet at least once. It has been used since at least the late 19th century to test typewriters and computer keyboards, display examples of fonts, and other applications involving text where the use of all letters in the alphabet is desired. The phrase is commonly used for touch-typing practice, testing typewriters and computer keyboards, and displaying examples of fonts. It is also used in other applications involving all the letters in the English alphabet.",
 		},
 		EncodingFormat: ptr.To("base64"),
 	},
 	CassetteEmbeddingsUnknownModel: {
 		Model: "text-embedding-4-ultra", // Non-existent model.
-		Input: openai.StringOrArray{
+		Input: openai.EmbeddingRequestInput{
 			Value: "Test with unknown model",
 		},
 		EncodingFormat: ptr.To("base64"),
 	},
 	CassetteEmbeddingsDimensions: {
 		Model: openai.ModelTextEmbedding3Small,
-		Input: openai.StringOrArray{
+		Input: openai.EmbeddingRequestInput{
 			Value: "Generate embeddings with specific dimensions",
 		},
 		Dimensions:     ptr.To(256), // Reduced dimensionality.
@@ -67,7 +60,7 @@ var embeddingsRequests = map[Cassette]*openai.EmbeddingRequest{
 	},
 	CassetteEmbeddingsMaxTokens: {
 		Model: openai.ModelTextEmbedding3Small,
-		Input: openai.StringOrArray{
+		Input: openai.EmbeddingRequestInput{
 			// Near 8191 token limit for openai embeddings models.
 			Value: generateLongText(7500),
 		},
@@ -75,7 +68,7 @@ var embeddingsRequests = map[Cassette]*openai.EmbeddingRequest{
 	},
 	CassetteEmbeddingsMixedBatch: {
 		Model: openai.ModelTextEmbedding3Small,
-		Input: openai.StringOrArray{
+		Input: openai.EmbeddingRequestInput{
 			Value: []string{
 				"Hello 世界! 🌍",    // Mixed scripts and emoji.
 				"Здравствуй мир", // Cyrillic.
@@ -88,7 +81,7 @@ var embeddingsRequests = map[Cassette]*openai.EmbeddingRequest{
 	},
 	CassetteEmbeddingsWhitespace: {
 		Model: openai.ModelTextEmbedding3Small,
-		Input: openai.StringOrArray{
+		Input: openai.EmbeddingRequestInput{
 			Value: []string{
 				"   Leading spaces",
 				"Trailing spaces   ",
@@ -101,9 +94,9 @@ var embeddingsRequests = map[Cassette]*openai.EmbeddingRequest{
 	},
 	CassetteEmbeddingsBadRequest: {
 		Model: openai.ModelTextEmbedding3Small,
-		Input: openai.StringOrArray{
+		Input: openai.EmbeddingRequestInput{
 			// Above maximum value 100257 (inclusive).
-			Value: []int{102257},
+			Value: []int64{102257},
 		},
 		EncodingFormat: ptr.To("invalid_format"), // Invalid encoding format.
 		Dimensions:     ptr.To(-1),               // Invalid negative dimensions.

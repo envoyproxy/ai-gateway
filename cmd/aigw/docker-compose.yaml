@@ -77,6 +77,6 @@ services:
           -X POST http://aigw:1975/v1/embeddings \
           -H "Authorization: Bearer unused" \
           -H "Content-Type: application/json" \
-          -d "{\"model\":\"$$EMBEDDINGS_MODEL\",\"input\":\"What is RAG?\"}"
+          -d "{\"model\":\"$$EMBEDDINGS_MODEL\",\"input\":\"How do I reset my password?\"}"
     extra_hosts:  # localhost:host-gateway trick doesn't work with aigw
       - "host.docker.internal:host-gateway"
