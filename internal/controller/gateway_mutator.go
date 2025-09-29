@@ -90,13 +90,12 @@ func (g *gatewayMutator) Default(ctx context.Context, obj runtime.Object) error 
 }
 
 // buildExtProcArgs builds all command line arguments for the extproc container.
-func (g *gatewayMutator) buildExtProcArgs(filterConfigFullPath string, extProcMetricsPort, extProcHealthPort int) []string {
+func (g *gatewayMutator) buildExtProcArgs(filterConfigFullPath string, extProcAdminPort int) []string {
 	args := []string{
 		"-configPath", filterConfigFullPath,
 		"-logLevel", g.extProcLogLevel,
 		"-extProcAddr", "unix://" + g.udsPath,
-		"-metricsPort", fmt.Sprintf("%d", extProcMetricsPort),
-		"-healthPort", fmt.Sprintf("%d", extProcHealthPort),
+		"-adminPort", fmt.Sprintf("%d", extProcAdminPort),
 		"-rootPrefix", g.rootPrefix,
 		"-maxRecvMsgSize", fmt.Sprintf("%d", g.extProcMaxRecvMsgSize),
 	}
@@ -208,8 +207,7 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 	}
 	envVars := g.extProcExtraEnvVars
 	const (
-		extProcMetricsPort    = 1064
-		extProcHealthPort     = 1065
+		extProcAdminPort      = 1064
 		filterConfigMountPath = "/etc/filter-config"
 		filterConfigFullPath  = filterConfigMountPath + "/" + FilterConfigKeyInSecret
 	)
@@ -219,9 +217,11 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		Image:           g.extProcImage,
 		ImagePullPolicy: g.extProcImagePullPolicy,
 		Ports: []corev1.ContainerPort{
-			{Name: "aigw-metrics", ContainerPort: extProcMetricsPort},
+			{Name: "aigw-admin", ContainerPort: extProcAdminPort},
+			// TODO: This is for the backward compatibility with v0.3. Remove this after v0.4 is released.
+			{Name: "aigw-metrics", ContainerPort: extProcAdminPort},
 		},
-		Args: g.buildExtProcArgs(filterConfigFullPath, extProcMetricsPort, extProcHealthPort),
+		Args: g.buildExtProcArgs(filterConfigFullPath, extProcAdminPort),
 		Env:  envVars,
 		VolumeMounts: []corev1.VolumeMount{
 			{
@@ -253,8 +253,8 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		ReadinessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
-					Port:   intstr.FromInt32(extProcHealthPort),
-					Path:   "/",
+					Port:   intstr.FromInt32(extProcAdminPort),
+					Path:   "/health",
 					Scheme: corev1.URISchemeHTTP,
 				},
 			},

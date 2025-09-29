@@ -36,10 +36,18 @@ Here are values we use for Ollama:
    The `chat-completion` service uses `curl` to send a simple chat completion
    request to the AI Gateway CLI (aigw) which routes it to Ollama.
    ```bash
-   docker compose run --rm --no-deps chat-completion
+   docker compose run --rm chat-completion
    ```
 
-4. **Shutdown the example stack**:
+4. **Create embeddings**:
+
+   The `create-embeddings` service uses `curl` to send an embeddings request
+   to the AI Gateway CLI (aigw) which routes it to Ollama.
+   ```bash
+   docker compose run --rm create-embeddings
+   ```
+
+5. **Shutdown the example stack**:
 
    `down` stops the containers and removes the volumes used by the stack.
    ```bash
@@ -120,9 +128,10 @@ This configures the OTLP endpoint to otel-tui on port 4318.
    - `otel-tui` - Export to otel-tui Terminal UI (also starts otel-tui service)
    - `phoenix` - Export to Phoenix (also starts Phoenix service)
 
-2. **Send a test request**:
+2. **Send test requests**:
    ```bash
-   COMPOSE_PROFILES=<profile> docker compose -f docker-compose-otel.yaml run --build --rm --no-deps chat-completion
+   COMPOSE_PROFILES=<profile> docker compose -f docker-compose-otel.yaml run --build --rm chat-completion
+   COMPOSE_PROFILES=<profile> docker compose -f docker-compose-otel.yaml run --build --rm create-embeddings
    ```
 
 3. **Check telemetry output**:

@@ -15,15 +15,19 @@ export them to your choice of OpenTelemetry collector.
 Envoy AI Gateway's router joins and records distributed traces when supplied
 with an [OpenTelemetry](https://opentelemetry.io/) collector endpoint.
 
-Requests to the OpenAI Chat Completions endpoint are recorded as Spans which
-include typical timing and request details. In addition, there are GenAI
-attributes representing the LLM call including full request and response
-details, defined by the [OpenInference semantic conventions][openinference].
+Requests to the OpenAI Chat Completions and Embeddings endpoints are recorded
+as Spans which include typical timing and request details. In addition, there
+are GenAI attributes representing the LLM or Embeddings call including full
+request and response details, defined by [OpenInference semantic conventions][openinference].
 
-OpenInference attributes default to include full chat completion request and
-response data. This can be toggled with configuration, but when enabled allows
-systems like [Arize Phoenix][phoenix] to perform LLM evaluations of production
-requests captured in OpenTelemetry spans.
+OpenInference attributes default to include full request and response data for
+both chat completions and embeddings. This can be toggled with configuration,
+but when enabled allows systems like [Arize Phoenix][phoenix] to perform
+evaluations of production requests captured in OpenTelemetry spans.
+
+For chat completions, this includes traditional LLM metrics such as correctness
+and hallucination detection. For embeddings, it enables agentic RAG evaluations
+focused on retrieval and semantic analysis.
 
 ## Trying it out
 
@@ -92,7 +96,8 @@ Then open http://localhost:6006 in your browser to explore the traces.
 
 Control sensitive data in traces by adding
 [OpenInference configuration][openinference-config] to Helm values when you
-reconfigure the AI Gateway:
+reconfigure the AI Gateway. There is [similar config][openinference-embeddings]
+for embeddings:
 
 For example, if you are using a `values.yaml` file instead of command line
 arguments, you can add the following to control redaction:
@@ -105,6 +110,11 @@ extProc:
       value: "true"  # Hide input messages to the LLM
     - name: OPENINFERENCE_HIDE_OUTPUTS
       value: "true"  # Hide output messages from the LLM
+    # Reduce volume for embeddings (all default to false)
+    - name: OPENINFERENCE_HIDE_EMBEDDINGS_TEXT
+      value: "true"  # Hide embeddings input
+    - name: OPENINFERENCE_HIDE_EMBEDDINGS_VECTORS
+      value: "true"  # Hide embeddings output
 ```
 
 Note: Hiding inputs/outputs prevents human or LLM-as-a-Judge evaluation of your
@@ -135,6 +145,7 @@ helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \
 ---
 [openinference]: https://github.com/Arize-ai/openinference/tree/main/spec
 [openinference-config]: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
+[openinference-embeddings]: https://github.com/Arize-ai/openinference/blob/main/spec/embedding_spans.md
 [otel-config]: https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/
 [phoenix]: https://docs.arize.com/phoenix
 [phoenix-evals]: https://arize.com/docs/phoenix/evaluation/llm-evals

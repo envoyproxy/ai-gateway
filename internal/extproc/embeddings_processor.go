@@ -28,11 +28,12 @@ import (
 
 // EmbeddingsProcessorFactory returns a factory method to instantiate the embeddings processor.
 func EmbeddingsProcessorFactory(em metrics.EmbeddingsMetrics) ProcessorFactory {
-	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
+	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "embeddings", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &embeddingsProcessorRouterFilter{
 				config:         config,
+				tracer:         tracing.EmbeddingsTracer(),
 				requestHeaders: requestHeaders,
 				logger:         logger,
 			}, nil
@@ -67,6 +68,10 @@ type embeddingsProcessorRouterFilter struct {
 	// when the request is retried.
 	originalRequestBody    *openai.EmbeddingRequest
 	originalRequestBodyRaw []byte
+	// tracer is the tracer used for requests.
+	tracer tracing.EmbeddingsTracer
+	// span is the tracing span for this request, created in ProcessRequestBody.
+	span tracing.EmbeddingsSpan
 	// upstreamFilterCount is the number of upstream filters that have been processed.
 	// This is used to determine if the request is a retry request.
 	upstreamFilterCount int
@@ -93,7 +98,7 @@ func (e *embeddingsProcessorRouterFilter) ProcessResponseBody(ctx context.Contex
 }
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
-func (e *embeddingsProcessorRouterFilter) ProcessRequestBody(_ context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+func (e *embeddingsProcessorRouterFilter) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	originalModel, body, err := parseOpenAIEmbeddingBody(rawBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
@@ -110,13 +115,24 @@ func (e *embeddingsProcessorRouterFilter) ProcessRequestBody(_ context.Context, 
 	})
 	e.originalRequestBody = body
 	e.originalRequestBodyRaw = rawBody.Body
+
+	// Tracing may need to inject headers, so create a header mutation here.
+	headerMutation := &extprocv3.HeaderMutation{
+		SetHeaders: additionalHeaders,
+	}
+	e.span = e.tracer.StartSpanAndInjectHeaders(
+		ctx,
+		e.requestHeaders,
+		headerMutation,
+		body,
+		rawBody.Body,
+	)
+
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{
 			RequestBody: &extprocv3.BodyResponse{
 				Response: &extprocv3.CommonResponse{
-					HeaderMutation: &extprocv3.HeaderMutation{
-						SetHeaders: additionalHeaders,
-					},
+					HeaderMutation:  headerMutation,
 					ClearRouteCache: true,
 				},
 			},
@@ -146,13 +162,15 @@ type embeddingsProcessorUpstreamFilter struct {
 	costs translator.LLMTokenUsage
 	// metrics tracking.
 	metrics metrics.EmbeddingsMetrics
+	// span is the tracing span for this request, inherited from the router filter.
+	span tracing.EmbeddingsSpan
 }
 
 // selectTranslator selects the translator based on the output schema.
 func (e *embeddingsProcessorUpstreamFilter) selectTranslator(out filterapi.VersionedAPISchema) error {
 	switch out.Name {
 	case filterapi.APISchemaOpenAI:
-		e.translator = translator.NewEmbeddingOpenAIToOpenAITranslator(out.Version, e.modelNameOverride)
+		e.translator = translator.NewEmbeddingOpenAIToOpenAITranslator(out.Version, e.modelNameOverride, e.span)
 	default:
 		return fmt.Errorf("unsupported API schema: backend=%s", out)
 	}
@@ -278,6 +296,13 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 		if err != nil {
 			return nil, fmt.Errorf("failed to transform response error: %w", err)
 		}
+		if e.span != nil {
+			b := bodyMutation.GetBody()
+			if b == nil {
+				b = body.Body
+			}
+			e.span.EndSpanOnError(code, b)
+		}
 		// Mark so the deferred handler records failure.
 		recordRequestCompletionErr = true
 		return &extprocv3.ProcessingResponse{
@@ -327,6 +352,9 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 		}
 	}
 
+	if body.EndOfStream && e.span != nil {
+		e.span.EndSpan()
+	}
 	return resp, nil
 }
 
@@ -345,6 +373,10 @@ func (e *embeddingsProcessorUpstreamFilter) SetBackend(ctx context.Context, b *f
 	e.metrics.SetBackend(b)
 	e.modelNameOverride = b.ModelNameOverride
 	e.backendName = b.Name
+	e.originalRequestBody = rp.originalRequestBody
+	e.originalRequestBodyRaw = rp.originalRequestBodyRaw
+	e.onRetry = rp.upstreamFilterCount > 1
+	e.span = rp.span
 	if err = e.selectTranslator(b.Schema); err != nil {
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
@@ -356,9 +388,6 @@ func (e *embeddingsProcessorUpstreamFilter) SetBackend(ctx context.Context, b *f
 		// Update metrics with the overridden model
 		e.metrics.SetRequestModel(e.modelNameOverride)
 	}
-	e.originalRequestBody = rp.originalRequestBody
-	e.originalRequestBodyRaw = rp.originalRequestBodyRaw
-	e.onRetry = rp.upstreamFilterCount > 1
 	rp.upstreamFilter = e
 	return
 }

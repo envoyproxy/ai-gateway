@@ -160,7 +160,7 @@ test-crdcel: apigen ## Run the integration tests of CEL validation in CRD defini
 test-extproc: build.extproc ## Run the integration tests for extproc without controller or k8s at all.
 	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
 	@echo "Run ExtProc test"
-	@EXTPROC_BIN=$(OUTPUT_DIR)/extproc-$(shell go env GOOS)-$(shell go env GOARCH) go test ./tests/extproc/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
+	@EXTPROC_BIN=$(OUTPUT_DIR)/extproc-$(shell go env GOOS)-$(shell go env GOARCH) go test -timeout=20m ./tests/extproc/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
 
 # This runs the end-to-end tests for the controller with EnvTest.
 .PHONY: test-controller

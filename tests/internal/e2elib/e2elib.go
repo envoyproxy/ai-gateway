@@ -530,46 +530,49 @@ func kubectlWaitForDaemonSetReady(namespace, daemonset string) (err error) {
 
 // RequireWaitForGatewayPodReady waits for the Envoy Gateway pod with the given selector to be ready.
 func RequireWaitForGatewayPodReady(t *testing.T, selector string) {
-	// Wait for the Envoy Gateway pod containing the extproc container.
-	require.Eventually(t, func() bool {
-		cmd := Kubectl(t.Context(), "get", "pod", "-n", EnvoyGatewayNamespace,
-			"--selector="+selector, "-o", "jsonpath='{.items[0].spec.containers[*].name}'")
-		cmd.Stdout = nil // To ensure that we can capture the output by Output().
-		out, err := cmd.Output()
-		if err != nil {
-			t.Logf("error: %v", err)
-			return false
-		}
-		return strings.Contains(string(out), "ai-gateway-extproc")
-	}, 2*time.Minute, 1*time.Second)
-
+	requireWaitForGatewayPod(t, selector)
 	RequireWaitForPodReady(t, selector)
+}
+
+// requireWaitForGatewayPod waits for the Envoy Gateway pod containing the
+// extproc container.
+func requireWaitForGatewayPod(t *testing.T, selector string) {
+	waitUntilKubectl(t, 2*time.Minute, 1*time.Second, func(output string) error {
+		if !strings.Contains(output, "ai-gateway-extproc") {
+			return fmt.Errorf("container not found, output: %s", output)
+		}
+		return nil
+	}, "get", "pod", "-n", EnvoyGatewayNamespace,
+		"--selector="+selector, "-o", "jsonpath='{.items[0].spec.containers[*].name}'")
 }
 
 // RequireWaitForPodReady waits for the pod with the given selector to be ready.
 func RequireWaitForPodReady(t *testing.T, selector string) {
-	// This repeats the wait subcommand in order to be able to wait for the
-	// resources not created yet.
-	require.Eventually(t, func() bool {
-		cmd := Kubectl(t.Context(), "wait", "--timeout=2s", "-n", EnvoyGatewayNamespace,
-			"pods", "--for=condition=Ready", "-l", selector)
-		return cmd.Run() == nil
-	}, 3*time.Minute, 5*time.Second)
+	waitUntilKubectl(t, 3*time.Minute, 5*time.Second, func(_ string) error {
+		return nil // Success if the command exited 0, ignore output.
+	}, "wait", "--timeout=2s", "-n", EnvoyGatewayNamespace,
+		"pods", "--for=condition=Ready", "-l", selector)
 }
 
 // RequireNewHTTPPortForwarder creates a new port forwarder for the given namespace and selector.
 func RequireNewHTTPPortForwarder(t *testing.T, namespace string, selector string, port int) PortForwarder {
 	f, err := newServicePortForwarder(t.Context(), namespace, selector, port)
 	require.NoError(t, err)
+
 	require.Eventually(t, func() bool {
-		res, err := http.Get(f.Address())
+		ctx := t.Context()
+		req, err := http.NewRequestWithContext(ctx, "GET", f.Address(), nil)
 		if err != nil {
-			t.Logf("error: %v", err)
 			return false
 		}
-		_ = res.Body.Close()
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return false
+		}
+		res.Body.Close()
 		return true // We don't care about the response.
 	}, 3*time.Minute, 200*time.Millisecond)
+
 	return f
 }
 
@@ -619,4 +622,30 @@ func (f PortForwarder) Kill() {
 // Address returns the address of the port forwarder.
 func (f PortForwarder) Address() string {
 	return fmt.Sprintf("http://127.0.0.1:%d", f.localPort)
+}
+
+// waitUntilKubectl polls by running a kubectl command with the given args
+// until the verifyOut predicate returns nil or the timeout is reached.
+//
+// Unlike require.Eventually, this retains the output of the last mismatch.
+func waitUntilKubectl(t *testing.T, timeout time.Duration, pollInterval time.Duration, verifyOut func(output string) error, args ...string) {
+	var lastErr error
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		cmd := Kubectl(t.Context(), args...)
+		cmd.Stdout = nil // To ensure that we can capture the output by Output().
+		out, err := cmd.Output()
+		if err != nil {
+			lastErr = err
+			time.Sleep(pollInterval)
+			continue
+		}
+		err = verifyOut(string(out))
+		if err == nil {
+			return
+		}
+		lastErr = err
+		time.Sleep(pollInterval)
+	}
+	require.Fail(t, "timed out waiting", "last error: %v", lastErr)
 }

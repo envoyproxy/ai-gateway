@@ -272,11 +272,19 @@ func (s *StringOrArray) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	// Try to unmarshal as array of ints (for token embeddings).
+	// Try to unmarshal as array of ints (for single pre-tokenized sequence).
 	var ints []int64
 	err = json.Unmarshal(data, &ints)
 	if err == nil {
 		s.Value = ints
+		return nil
+	}
+
+	// Try to unmarshal as array of int arrays (for batch pre-tokenized sequences).
+	var intArrays [][]int64
+	err = json.Unmarshal(data, &intArrays)
+	if err == nil {
+		s.Value = intArrays
 		return nil
 	}
 

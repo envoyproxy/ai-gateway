@@ -112,24 +112,30 @@ curl -H "Content-Type: application/json" -XPOST http://localhost:1975/v1/chat/co
     -d '{"model": "deepseek-r1:1.5b","messages": [{"role": "user", "content": "Say this is a test!"}]}'
 ```
 
-### Prometheus Metrics
+### Admin Endpoints
 
-While running, `aigw` serves prometheus metrics at `localhost:1064/metrics` by default. You can scrape this for [LLM/AI metrics](../capabilities/observability/metrics.md).
+While running, `aigw` serves admin endpoints on port `1064` by default:
+- `/metrics`: Prometheus metrics endpoint for [LLM/AI metrics](../capabilities/observability/metrics.md)
+- `/health`: Health check endpoint that verifies the external processor is healthy
 
 ## OpenTelemetry
 
 Envoy AI Gateway's router joins and records distributed traces when supplied
 with an [OpenTelemetry](https://opentelemetry.io/) collector endpoint.
 
-Requests to the OpenAI Chat Completions endpoint are recorded as Spans which
-include typical timing and request details. In addition, there are GenAI
-attributes representing the LLM call including full request and response
-details, defined by the [OpenInference semantic conventions][openinference].
+Requests to the OpenAI Chat Completions and Embeddings endpoints are recorded
+as Spans which include typical timing and request details. In addition, there
+are GenAI attributes representing the LLM or Embeddings call including full
+request and response details, defined by [OpenInference semantic conventions][openinference].
 
-OpenInference attributes default to include full chat completion request and
-response data. This can be toggled with configuration, but when enabled allows
-systems like [Arize Phoenix][phoenix] to perform LLM evaluations of production
-requests captured in OpenTelemetry spans.
+OpenInference attributes default to include full request and response data for
+both chat completions and embeddings. This can be toggled with configuration,
+but when enabled allows systems like [Arize Phoenix][phoenix] to perform
+evaluations of production requests captured in OpenTelemetry spans.
+
+For chat completions, this includes traditional LLM metrics such as correctness
+and hallucination detection. For embeddings, it enables agentic RAG evaluations
+focused on retrieval and semantic analysis.
 
 ### OpenTelemetry configuration
 
@@ -146,9 +152,11 @@ requests captured in OpenTelemetry spans.
     - `OTEL_METRIC_EXPORT_INTERVAL`: Metrics export interval (default: 60000ms)
 
 - **[OpenInference][openinference-config]**: Control sensitive data redaction,
-  such as:
+  such as below. There is [similar config][openinference-embeddings] for embeddings:
     - `OPENINFERENCE_HIDE_INPUTS`: Hide input messages/prompts (default: `false`)
     - `OPENINFERENCE_HIDE_OUTPUTS`: Hide output messages/completions (default: `false`)
+    - `OPENINFERENCE_HIDE_EMBEDDINGS_TEXT`: Hide embeddings input (default: `false`)
+    - `OPENINFERENCE_HIDE_EMBEDDINGS_VECTORS`: Hide embeddings output (default: `false`)
 
 See [docker-compose-otel.yaml][docker-compose-otel.yaml] for a complete example
 configuration.
@@ -158,4 +166,5 @@ configuration.
 [phoenix]: https://docs.arize.com/phoenix
 [otel-env]: https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/
 [openinference-config]: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
+[openinference-embeddings]: https://github.com/Arize-ai/openinference/blob/main/spec/embedding_spans.md
 [docker-compose-otel.yaml]: https://github.com/envoyproxy/ai-gateway/blob/main/cmd/aigw/docker-compose-otel.yaml

@@ -28,7 +28,7 @@ import (
 func TestPrometheusMetrics(t *testing.T) {
 	env := startTestEnvironment(t, extprocBin, extprocConfig, nil, envoyConfig)
 	listenerPort := env.EnvoyListenerPort()
-	metricsPort := env.ExtProcMetricsPort()
+	adminPort := env.ExtProcAdminPort()
 
 	// Send the chat request.
 	req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d/v1", listenerPort), testopenai.CassetteChatBasic)
@@ -47,7 +47,7 @@ func TestPrometheusMetrics(t *testing.T) {
 	parser := expfmt.NewTextParser(model.UTF8Validation)
 	var metricFamilies map[string]*dto.MetricFamily
 	require.Eventually(t, func() bool {
-		metricsReq, err := http.NewRequestWithContext(t.Context(), http.MethodGet, fmt.Sprintf("http://localhost:%d/metrics", metricsPort), nil)
+		metricsReq, err := http.NewRequestWithContext(t.Context(), http.MethodGet, fmt.Sprintf("http://localhost:%d/metrics", adminPort), nil)
 		require.NoError(t, err)
 
 		metricsResp, err := http.DefaultClient.Do(metricsReq)
