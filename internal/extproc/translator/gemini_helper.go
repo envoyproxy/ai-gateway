@@ -442,18 +442,10 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) 
 	if openAIReq.FrequencyPenalty != nil {
 		gc.FrequencyPenalty = openAIReq.FrequencyPenalty
 	}
-	stopSeq, err := processStop(openAIReq.Stop)
-	if err != nil {
-		return nil, err
-	}
-	if len(stopSeq) > 0 {
-		var stops []string
-		for _, s := range stopSeq {
-			if s != nil {
-				stops = append(stops, *s)
-			}
-		}
-		gc.StopSequences = stops
+	if openAIReq.Stop.OfString.Valid() {
+		gc.StopSequences = []string{openAIReq.Stop.OfString.String()}
+	} else if openAIReq.Stop.OfStringArray != nil {
+		gc.StopSequences = openAIReq.Stop.OfStringArray
 	}
 	return gc, nil
 }

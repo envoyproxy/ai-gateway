@@ -46,6 +46,11 @@ const (
 	// Gateway API Inference Extension specification and examples.
 	// See: https://gateway-api-inference-extension.sigs.k8s.io/
 	defaultEndpointPickerPort = 9002
+
+	// processingBodyModeAnnotation is the annotation key for configuring processing body mode
+	processingBodyModeAnnotation = "aigateway.envoyproxy.io/processing-body-mode"
+	// allowModeOverrideAnnotation is the annotation key for configuring allow mode override
+	allowModeOverrideAnnotation = "aigateway.envoyproxy.io/allow-mode-override"
 )
 
 func (s *Server) constructInferencePoolsFrom(extensionResources []*egextension.ExtensionResource) []*gwaiev1a2.InferencePool {
@@ -95,7 +100,7 @@ func getInferencePoolByMetadata(meta *corev3.Metadata) *gwaiev1a2.InferencePool 
 	}
 
 	result := strings.Split(metadata, "/")
-	if len(result) != 4 {
+	if len(result) != 6 {
 		return nil
 	}
 	ns := result[0]
@@ -105,10 +110,16 @@ func getInferencePoolByMetadata(meta *corev3.Metadata) *gwaiev1a2.InferencePool 
 	if err != nil {
 		return nil
 	}
+	processingBodyMode := result[4]
+	allowModeOverride := result[5]
 	return &gwaiev1a2.InferencePool{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: ns,
+			Annotations: map[string]string{
+				processingBodyModeAnnotation: processingBodyMode,
+				allowModeOverrideAnnotation:  allowModeOverride,
+			},
 		},
 		Spec: gwaiev1a2.InferencePoolSpec{
 			EndpointPickerConfig: gwaiev1a2.EndpointPickerConfig{
@@ -156,6 +167,11 @@ func buildEPPMetadata(metadata *corev3.Metadata, inferencePool *gwaiev1a2.Infere
 		m.Fields = make(map[string]*structpb.Value)
 	}
 
+	// Read processing body mode from annotations, default to "duplex" (FULL_DUPLEX_STREAMED)
+	processingBodyMode := getProcessingBodyModeStringFromAnnotations(inferencePool)
+	// Read allow mode override from annotations, default to false
+	allowModeOverride := getAllowModeOverrideStringFromAnnotations(inferencePool)
+
 	// Store InferencePool reference as metadata for later retrieval.
 	// The reference includes all information needed to build EPP clusters and filters.
 	m.Fields[internalMetadataInferencePoolKey] = structpb.NewStringValue(
@@ -164,6 +180,8 @@ func buildEPPMetadata(metadata *corev3.Metadata, inferencePool *gwaiev1a2.Infere
 			inferencePool.Name,
 			string(inferencePool.Spec.ExtensionRef.Name),
 			portForInferencePool(inferencePool),
+			processingBodyMode,
+			allowModeOverride,
 		),
 	)
 }
@@ -268,6 +286,12 @@ func buildInferencePoolHTTPFilter(pool *gwaiev1a2.InferencePool) *httpconnection
 
 // buildHTTPFilterForInferencePool returns the HTTP filter for the given InferencePool.
 func buildHTTPFilterForInferencePool(pool *gwaiev1a2.InferencePool) *extprocv3.ExternalProcessor {
+	// Read processing body mode from annotations, default to "duplex" (FULL_DUPLEX_STREAMED)
+	processingBodyMode := getProcessingBodyModeFromAnnotations(pool)
+
+	// Read allow mode override from annotations, default to false
+	allowModeOverride := getAllowModeOverrideFromAnnotations(pool)
+
 	return &extprocv3.ExternalProcessor{
 		GrpcService: &corev3.GrpcService{
 			TargetSpecifier: &corev3.GrpcService_EnvoyGrpc_{
@@ -279,15 +303,86 @@ func buildHTTPFilterForInferencePool(pool *gwaiev1a2.InferencePool) *extprocv3.E
 		},
 		ProcessingMode: &extprocv3.ProcessingMode{
 			RequestHeaderMode:   extprocv3.ProcessingMode_SEND,
-			RequestBodyMode:     extprocv3.ProcessingMode_FULL_DUPLEX_STREAMED,
+			RequestBodyMode:     processingBodyMode,
 			RequestTrailerMode:  extprocv3.ProcessingMode_SEND,
-			ResponseBodyMode:    extprocv3.ProcessingMode_FULL_DUPLEX_STREAMED,
+			ResponseBodyMode:    processingBodyMode,
 			ResponseHeaderMode:  extprocv3.ProcessingMode_SEND,
 			ResponseTrailerMode: extprocv3.ProcessingMode_SEND,
 		},
-		MessageTimeout:   durationpb.New(5 * time.Second),
-		FailureModeAllow: false,
+		AllowModeOverride: allowModeOverride,
+		MessageTimeout:    durationpb.New(5 * time.Second),
+		FailureModeAllow:  false,
 	}
+}
+
+// getProcessingBodyModeFromAnnotations reads the processing body mode from InferencePool annotations.
+// Returns FULL_DUPLEX_STREAMED for "duplex" (default) or BUFFERED for "buffered".
+func getProcessingBodyModeFromAnnotations(pool *gwaiev1a2.InferencePool) extprocv3.ProcessingMode_BodySendMode {
+	annotations := pool.GetAnnotations()
+	if annotations == nil {
+		return extprocv3.ProcessingMode_FULL_DUPLEX_STREAMED // default to duplex
+	}
+
+	mode, exists := annotations[processingBodyModeAnnotation]
+	if !exists {
+		return extprocv3.ProcessingMode_FULL_DUPLEX_STREAMED // default to duplex
+	}
+
+	switch mode {
+	case "buffered":
+		return extprocv3.ProcessingMode_BUFFERED
+	case "duplex":
+		return extprocv3.ProcessingMode_FULL_DUPLEX_STREAMED
+	default:
+		// Invalid value, default to duplex
+		return extprocv3.ProcessingMode_FULL_DUPLEX_STREAMED
+	}
+}
+
+// getAllowModeOverrideFromAnnotations reads the allow mode override setting from InferencePool annotations.
+// Returns false by default, true if annotation is set to "true".
+func getAllowModeOverrideFromAnnotations(pool *gwaiev1a2.InferencePool) bool {
+	annotations := pool.GetAnnotations()
+	if annotations == nil {
+		return false // default to false
+	}
+
+	value, exists := annotations[allowModeOverrideAnnotation]
+	if !exists {
+		return false // default to false
+	}
+
+	return value == "true"
+}
+
+// getProcessingBodyModeStringFromAnnotations reads the processing body mode from InferencePool annotations.
+func getProcessingBodyModeStringFromAnnotations(pool *gwaiev1a2.InferencePool) string {
+	annotations := pool.GetAnnotations()
+	if annotations == nil {
+		return "duplex" // default to duplex
+	}
+
+	mode, exists := annotations[processingBodyModeAnnotation]
+	if !exists {
+		return "duplex" // default to duplex
+	}
+
+	return mode
+}
+
+// getAllowModeOverrideStringFromAnnotations reads the allow mode override setting from InferencePool annotations.
+func getAllowModeOverrideStringFromAnnotations(pool *gwaiev1a2.InferencePool) string {
+	annotations := pool.GetAnnotations()
+	if annotations == nil {
+		return "false" // default to false
+	}
+
+	value, exists := annotations[allowModeOverrideAnnotation]
+	if !exists {
+		return "false" // default to false
+	}
+
+	return value
 }
 
 // authorityForInferencePool formats the gRPC authority based on the given InferencePool.

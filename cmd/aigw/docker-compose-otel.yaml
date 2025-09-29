@@ -58,15 +58,14 @@ services:
     env_file:
       - .env.otel.${COMPOSE_PROFILES:-console}
     environment:
-      - OPENAI_HOST=host.docker.internal
+      - OPENAI_BASE_URL=http://host.docker.internal:11434/v1
+      - OPENAI_API_KEY=unused
     ports:
       - "1975:1975"  # OpenAI compatible endpoint at /v1
       - "1064:1064"  # Prometheus endpoint at /metrics
     extra_hosts:  # localhost:host-gateway trick doesn't work with aigw
       - "host.docker.internal:host-gateway"
-    volumes:
-      - ./ai-gateway-local.yaml:/config.yaml:ro
-    command: ["run", "/config.yaml"]
+    command: ["run"]
 
   # chat-completion is the standard OpenAI client (`openai` in pip), instrumented
   # with the following OpenTelemetry instrumentation libraries:

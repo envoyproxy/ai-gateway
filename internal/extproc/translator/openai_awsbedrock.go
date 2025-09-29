@@ -78,12 +78,10 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, ope
 
 	bedrockReq.InferenceConfig.MaxTokens = cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens)
 
-	stopSequence, err := processStop(openAIReq.Stop)
-	if err != nil {
-		return
-	}
-	if len(stopSequence) > 0 {
-		bedrockReq.InferenceConfig.StopSequences = stopSequence
+	if openAIReq.Stop.OfString.Valid() {
+		bedrockReq.InferenceConfig.StopSequences = []string{openAIReq.Stop.OfString.String()}
+	} else if openAIReq.Stop.OfStringArray != nil {
+		bedrockReq.InferenceConfig.StopSequences = openAIReq.Stop.OfStringArray
 	}
 
 	// Handle Anthropic vendor fields if present. Currently only supports thinking fields.

@@ -16,6 +16,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	openaigo "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genai"
@@ -73,7 +74,11 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
         }
     ],
     "tools": null,
-    "generation_config": {},
+    "generation_config": {
+        "maxOutputTokens": 100,
+        "stopSequences": ["stop1", "stop2"],
+        "temperature": 0.1
+    },
     "system_instruction": {
         "parts": [
             {
@@ -161,6 +166,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
     ],
     "generation_config": {
         "maxOutputTokens": 1024,
+        "stopSequences": ["stop"],
         "temperature": 0.7,
           "thinkingConfig": {
             "includeThoughts": true,
@@ -217,8 +223,13 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 		{
 			name: "basic request",
 			input: openai.ChatCompletionRequest{
-				Stream: false,
-				Model:  "gemini-pro",
+				Stream:      false,
+				Model:       "gemini-pro",
+				Temperature: ptr.To(0.1),
+				MaxTokens:   ptr.To(int64(100)),
+				Stop: openaigo.ChatCompletionNewParamsStopUnion{
+					OfStringArray: []string{"stop1", "stop2"},
+				},
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
 						OfSystem: &openai.ChatCompletionSystemMessageParam{
@@ -252,7 +263,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 					{
 						Header: &corev3.HeaderValue{
 							Key:      "Content-Length",
-							RawValue: []byte("185"),
+							RawValue: []byte("258"),
 						},
 					},
 				},
@@ -266,8 +277,13 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 		{
 			name: "basic request with streaming",
 			input: openai.ChatCompletionRequest{
-				Stream: true,
-				Model:  "gemini-pro",
+				Stream:      true,
+				Model:       "gemini-pro",
+				Temperature: ptr.To(0.1),
+				MaxTokens:   ptr.To(int64(100)),
+				Stop: openaigo.ChatCompletionNewParamsStopUnion{
+					OfStringArray: []string{"stop1", "stop2"},
+				},
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
 						OfSystem: &openai.ChatCompletionSystemMessageParam{
@@ -301,7 +317,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 					{
 						Header: &corev3.HeaderValue{
 							Key:      "Content-Length",
-							RawValue: []byte("185"),
+							RawValue: []byte("258"),
 						},
 					},
 				},
@@ -316,8 +332,13 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			name:              "model name override",
 			modelNameOverride: "gemini-flash",
 			input: openai.ChatCompletionRequest{
-				Stream: false,
-				Model:  "gemini-pro",
+				Stream:      false,
+				Model:       "gemini-pro",
+				Temperature: ptr.To(0.1),
+				MaxTokens:   ptr.To(int64(100)),
+				Stop: openaigo.ChatCompletionNewParamsStopUnion{
+					OfStringArray: []string{"stop1", "stop2"},
+				},
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
 						OfSystem: &openai.ChatCompletionSystemMessageParam{
@@ -351,7 +372,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 					{
 						Header: &corev3.HeaderValue{
 							Key:      "Content-Length",
-							RawValue: []byte("185"),
+							RawValue: []byte("258"),
 						},
 					},
 				},
@@ -439,6 +460,9 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				Model:       "gemini-1.5-pro",
 				Temperature: ptr.To(0.7),
 				MaxTokens:   ptr.To(int64(1024)),
+				Stop: openaigo.ChatCompletionNewParamsStopUnion{
+					OfString: openaigo.Opt[string]("stop"),
+				},
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
 						OfUser: &openai.ChatCompletionUserMessageParam{
@@ -486,7 +510,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 					{
 						Header: &corev3.HeaderValue{
 							Key:      "Content-Length",
-							RawValue: []byte("381"),
+							RawValue: []byte("406"),
 						},
 					},
 				},

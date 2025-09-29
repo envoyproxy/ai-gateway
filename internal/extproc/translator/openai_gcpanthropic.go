@@ -515,20 +515,10 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest) (params *anth
 	if openAIReq.TopP != nil {
 		params.TopP = anthropic.Float(*openAIReq.TopP)
 	}
-
-	// Handle stop sequences.
-	stopSequences, err := processStop(openAIReq.Stop)
-	if err != nil {
-		return nil, err
-	}
-	if len(stopSequences) > 0 {
-		var stops []string
-		for _, s := range stopSequences {
-			if s != nil {
-				stops = append(stops, *s)
-			}
-		}
-		params.StopSequences = stops
+	if openAIReq.Stop.OfString.Valid() {
+		params.StopSequences = []string{openAIReq.Stop.OfString.String()}
+	} else if openAIReq.Stop.OfStringArray != nil {
+		params.StopSequences = openAIReq.Stop.OfStringArray
 	}
 
 	// 5. Handle Vendor specific fields.

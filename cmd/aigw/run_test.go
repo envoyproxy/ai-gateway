@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -31,123 +32,47 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
-// setupDefaultAIGatewayResourcesWithAvailableCredentials sets up the default AI Gateway resources with available
-// credentials and returns the path to the resources file and the credentials context.
-func setupDefaultAIGatewayResourcesWithAvailableCredentials(t *testing.T) (string, internaltesting.CredentialsContext) {
-	credCtx := internaltesting.RequireNewCredentialsContext()
-	// Set up the credential substitution.
-	t.Setenv("OPENAI_API_KEY", credCtx.OpenAIAPIKey)
-	aiGatewayResourcesPath := filepath.Join(t.TempDir(), "ai-gateway-resources.yaml")
-	awsCredTmpFile := filepath.Join(t.TempDir(), "aws-credentials")
-	err := os.WriteFile(awsCredTmpFile, []byte(credCtx.AWSFileLiteral), 0o600)
-	require.NoError(t, err)
-	aiGatewayResources := strings.ReplaceAll(aiGatewayDefaultResources, "~/.aws/credentials", awsCredTmpFile)
-	err = os.WriteFile(aiGatewayResourcesPath, []byte(aiGatewayResources), 0o600)
-	require.NoError(t, err)
-	return aiGatewayResourcesPath, credCtx
-}
-
 func TestRun(t *testing.T) {
-	resourcePath, cc := setupDefaultAIGatewayResourcesWithAvailableCredentials(t)
+	ollamaModel := getOllamaChatModel(t)
+	if ollamaModel == "" || !checkIfOllamaReady(t, ollamaModel) {
+		t.Skipf("Ollama not ready or model %q missing. Run 'ollama pull %s' if needed.", ollamaModel, ollamaModel)
+	}
+
+	t.Setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
+	t.Setenv("OPENAI_API_KEY", "unused")
+
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan struct{})
 	go func() {
 		opts := runOpts{extProcLauncher: mainlib.Main}
-		require.NoError(t, run(ctx, cmdRun{Debug: true, Path: resourcePath}, opts, os.Stdout, os.Stderr))
+		require.NoError(t, run(ctx, cmdRun{Debug: true}, opts, os.Stdout, os.Stderr))
 		close(done)
 	}()
-	defer func() {
-		// Make sure the external processor is stopped regardless of the test result.
-		cancel()
-		<-done
-	}()
+	defer func() { cancel(); <-done }()
 
-	// This is the health checking to see the envoy admin is working as expected.
-	require.Eventually(t, func() bool {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost:9901/ready",
-			strings.NewReader(""))
-		require.NoError(t, err)
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Logf("error: %v", err)
-			return false
-		}
-		defer func() {
-			require.NoError(t, resp.Body.Close())
-		}()
-		raw, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		body := string(raw)
-		t.Logf("status=%d, response: %s", resp.StatusCode, body)
-		if resp.StatusCode != http.StatusOK && body != "live" {
-			return false
-		}
-		return true
-	}, 120*time.Second, 1*time.Second)
-
-	type testCase struct {
-		testName, modelName string
-		required            internaltesting.RequiredCredential
-	}
-	cases := []testCase{
-		{
-			testName:  "openai",
-			modelName: "gpt-4o-mini",
-			required:  internaltesting.RequiredCredentialOpenAI,
-		},
-		{
-			testName:  "aws",
-			modelName: "us.meta.llama3-2-1b-instruct-v1:0",
-			required:  internaltesting.RequiredCredentialAWS,
-		},
-		{
-			testName: "openai with fallback route",
-			// gpt-4o is not explicitly listed in the route, but it should still work by matching the fallback route.
-			modelName: "gpt-4o",
-			required:  internaltesting.RequiredCredentialOpenAI,
-		},
-	}
-
-	const ollamaModelName = "qwen3:0.6b"
-	if checkIfOllamaReady(t, ollamaModelName) {
-		cases = append(cases, testCase{
-			testName:  "ollama",
-			modelName: ollamaModelName,
-		})
-	} else {
-		t.Logf("Ollama is not ready for serving the model %s. Skipping the test case. If ollama is already running, then `ollama pull %[1]s`", ollamaModelName)
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.testName, func(t *testing.T) {
-			client := openai.NewClient(option.WithBaseURL("http://localhost:1975" + "/v1/"))
-			cc.MaybeSkip(t, tc.required)
-			require.Eventually(t, func() bool {
-				chatCompletion, err := client.Chat.Completions.New(t.Context(), openai.ChatCompletionNewParams{
-					Messages: []openai.ChatCompletionMessageParamUnion{
-						openai.UserMessage("Say this is a test"),
-					},
-					Model: tc.modelName,
-				})
-				if err != nil {
-					t.Logf("error: %v", err)
-					return false
+	t.Run("chat completion", func(t *testing.T) {
+		client := openai.NewClient(option.WithBaseURL("http://localhost:1975/v1/"))
+		require.Eventually(t, func() bool {
+			chatCompletion, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					openai.UserMessage("Say this is a test"),
+				},
+				Model: ollamaModel,
+			})
+			if err != nil {
+				return false
+			}
+			for _, choice := range chatCompletion.Choices {
+				if choice.Message.Content != "" {
+					return true
 				}
-				nonEmptyCompletion := false
-				for _, choice := range chatCompletion.Choices {
-					t.Logf("choice: %s", choice.Message.Content)
-					if choice.Message.Content != "" {
-						nonEmptyCompletion = true
-					}
-				}
-				return nonEmptyCompletion
-			}, 30*time.Second, 2*time.Second)
-		})
-	}
+			}
+			return false
+		}, 30*time.Second, 2*time.Second)
+	})
 
 	t.Run("access metrics", func(t *testing.T) {
 		require.Eventually(t, func() bool {
@@ -155,46 +80,42 @@ func TestRun(t *testing.T) {
 			require.NoError(t, err)
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
-				t.Logf("Failed to query Prometheus: %v", err)
 				return false
 			}
-			defer func() { _ = resp.Body.Close() }()
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			t.Logf("Response: status=%d, body=%s", resp.StatusCode, string(body))
+			defer resp.Body.Close()
 			return resp.StatusCode == http.StatusOK
-		}, 2*time.Minute, 1*time.Second)
+		}, 2*time.Minute, time.Second)
 	})
 }
 
 func TestRunExtprocStartFailure(t *testing.T) {
-	var (
-		resourcePath, _ = setupDefaultAIGatewayResourcesWithAvailableCredentials(t)
-		errChan         = make(chan error)
-		errExtProcMock  = errors.New("mock extproc error")
-	)
+	t.Setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
+	t.Setenv("OPENAI_API_KEY", "unused")
 
+	ctx := t.Context()
+	errChan := make(chan error)
+	mockErr := errors.New("mock extproc error")
 	go func() {
-		errChan <- run(t.Context(), cmdRun{Debug: true, Path: resourcePath}, runOpts{
-			extProcLauncher: func(context.Context, []string, io.Writer) error {
-				return errExtProcMock
-			},
+		errChan <- run(ctx, cmdRun{Debug: true}, runOpts{
+			extProcLauncher: func(context.Context, []string, io.Writer) error { return mockErr },
 		}, os.Stdout, os.Stderr)
 	}()
 
 	select {
 	case <-time.After(10 * time.Second):
-		t.Fatalf("expected extproc start process to fail and return")
+		t.Fatal("expected extproc start to fail promptly")
 	case err := <-errChan:
 		require.ErrorIs(t, err, errExtProcRun)
-		require.ErrorIs(t, err, errExtProcMock)
+		require.ErrorIs(t, err, mockErr)
 	}
 }
 
 func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
-	resourcePath, _ := setupDefaultAIGatewayResourcesWithAvailableCredentials(t)
+	t.Setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
+	t.Setenv("OPENAI_API_KEY", "unused")
+
 	runCtx := &runCmdContext{
-		stderrLogger:             slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})),
+		stderrLogger:             slog.New(slog.NewTextHandler(os.Stderr, nil)),
 		envoyGatewayResourcesOut: &bytes.Buffer{},
 		tmpdir:                   t.TempDir(),
 		extProcLauncher:          mainlib.Main,
@@ -202,47 +123,25 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 		// https://unix.stackexchange.com/questions/367008/why-is-socket-path-length-limited-to-a-hundred-chars
 		udsPath: filepath.Join("/tmp", "run.sock"),
 	}
-	content, err := os.ReadFile(resourcePath)
-	require.NoError(t, err)
+	config := readFileFromProjectRoot(t, "examples/aigw/ollama.yaml")
 	ctx, cancel := context.WithCancel(t.Context())
-	_, done, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, string(content))
+	_, done, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, config)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
+	time.Sleep(time.Second)
 	cancel()
 	// Wait for the external processor to stop.
 	require.NoError(t, <-done)
 }
 
 func Test_mustStartExtProc(t *testing.T) {
-	mockerr := errors.New("mock extproc error")
+	mockErr := errors.New("mock extproc error")
 	runCtx := &runCmdContext{
 		tmpdir:          t.TempDir(),
-		extProcLauncher: func(context.Context, []string, io.Writer) error { return mockerr },
-		stderrLogger:    slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})),
+		extProcLauncher: func(context.Context, []string, io.Writer) error { return mockErr },
+		stderrLogger:    slog.New(slog.NewTextHandler(os.Stderr, nil)),
 	}
 	done := runCtx.mustStartExtProc(t.Context(), filterapi.MustLoadDefaultConfig())
-	require.ErrorIs(t, <-done, mockerr)
-}
-
-// checkIfOllamaReady checks if the Ollama server is ready and if the specified model is available.
-func checkIfOllamaReady(t *testing.T, modelName string) bool {
-	req, err := http.NewRequest(http.MethodGet, "http://localhost:11434/api/tags", nil)
-	require.NoError(t, err)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return false
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return false
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return false
-	}
-	tags := string(body)
-	t.Logf("Ollama tags: %s", tags)
-	return strings.Contains(tags, modelName)
+	require.ErrorIs(t, <-done, mockErr)
 }
 
 func TestTryFindEnvoyAdminAddress(t *testing.T) {
@@ -259,7 +158,7 @@ func TestTryFindEnvoyAdminAddress(t *testing.T) {
 		}
 	}
 
-	proxyWithAdminAddr := func(name string, host string, port int) *egv1a1.EnvoyProxy {
+	proxyWithAdminAddr := func(name, host string, port int) *egv1a1.EnvoyProxy {
 		return &egv1a1.EnvoyProxy{
 			ObjectMeta: metav1.ObjectMeta{Name: name},
 			Spec: egv1a1.EnvoyProxySpec{
@@ -283,7 +182,7 @@ admin:
 	}{
 		{
 			name: "gateway with no envoy proxy",
-			gw:   &gwapiv1.Gateway{Spec: gwapiv1.GatewaySpec{}},
+			gw:   &gwapiv1.Gateway{},
 			want: "",
 		},
 		{
@@ -296,7 +195,7 @@ admin:
 			name: "gateway with custom proxy no bootstrap",
 			gw:   gwWithProxy("proxy"),
 			proxies: []*egv1a1.EnvoyProxy{
-				{ObjectMeta: metav1.ObjectMeta{Name: "proxy"}, Spec: egv1a1.EnvoyProxySpec{}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "proxy"}},
 			},
 			want: "",
 		},
@@ -317,14 +216,16 @@ admin:
 	}
 
 	for _, tt := range tests {
-		addr := runCtx.tryFindEnvoyAdminAddress(tt.gw, tt.proxies)
-		require.Equal(t, tt.want, addr)
+		t.Run(tt.name, func(t *testing.T) {
+			addr := runCtx.tryFindEnvoyAdminAddress(tt.gw, tt.proxies)
+			require.Equal(t, tt.want, addr)
+		})
 	}
 }
 
 func TestPollEnvoyReady(t *testing.T) {
 	successAt := 5
-	callCount := 0
+	var callCount int
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		callCount++
 		if callCount < successAt {
@@ -332,6 +233,7 @@ func TestPollEnvoyReady(t *testing.T) {
 			return
 		}
 	}))
+	t.Cleanup(s.Close)
 	u, err := url.Parse(s.URL)
 	require.NoError(t, err)
 
@@ -356,4 +258,44 @@ func TestPollEnvoyReady(t *testing.T) {
 		pollEnvoyReadiness(ctx, l, u.Host, 50*time.Millisecond)
 		require.Less(t, callCount, successAt)
 	})
+}
+
+// getOllamaChatModel reads CHAT_MODEL from .env.ollama relative to the source directory.
+// Returns empty string if not found or file missing.
+func getOllamaChatModel(t *testing.T) string {
+	t.Helper()
+	envs := readFileFromProjectRoot(t, ".env.ollama")
+	for _, line := range strings.Split(envs, "\n") {
+		if strings.HasPrefix(line, "CHAT_MODEL=") {
+			return strings.TrimPrefix(line, "CHAT_MODEL=")
+		}
+	}
+	return ""
+}
+
+func readFileFromProjectRoot(t *testing.T, file string) string {
+	t.Helper()
+	_, filename, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	b, err := os.ReadFile(filepath.Join(filepath.Dir(filename), "..", "..", file))
+	require.NoError(t, err)
+	return string(b)
+}
+
+// checkIfOllamaReady verifies if Ollama server is ready and the model is available.
+func checkIfOllamaReady(t *testing.T, modelName string) bool {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, "http://localhost:11434/api/tags", nil)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	return strings.Contains(string(body), modelName)
 }

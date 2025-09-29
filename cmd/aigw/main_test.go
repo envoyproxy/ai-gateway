@@ -21,6 +21,7 @@ func Test_doMain(t *testing.T) {
 	tests := []struct {
 		name         string
 		args         []string
+		env          map[string]string
 		tf           translateFn
 		rf           runFn
 		expOut       string
@@ -105,8 +106,15 @@ Flags:
 			expPanicCode: ptr.To(0),
 		},
 		{
-			name: "run no arg",
+			name:         "run no arg",
+			args:         []string{"run"},
+			rf:           func(context.Context, cmdRun, runOpts, io.Writer, io.Writer) error { return nil },
+			expPanicCode: ptr.To(80),
+		},
+		{
+			name: "run with OpenAI env",
 			args: []string{"run"},
+			env:  map[string]string{"OPENAI_API_KEY": "dummy-key"},
 			rf:   func(context.Context, cmdRun, runOpts, io.Writer, io.Writer) error { return nil },
 		},
 		{
@@ -118,25 +126,15 @@ Flags:
 Run the AI Gateway locally for given configuration.
 
 Arguments:
-  [<path>]    Path to the AI Gateway configuration yaml file. Optional.
-              When this is not given, aigw runs the default configuration.
-              Use --show-default to check the default configuration's behavior
+  [<path>]    Path to the AI Gateway configuration yaml file. Optional when at
+              least OPENAI_API_KEY is set.
 
 Flags:
-  -h, --help            Show context-sensitive help.
+  -h, --help     Show context-sensitive help.
 
-      --debug           Enable debug logging emitted to stderr.
-      --show-default    Show the default configuration, and exit.
+      --debug    Enable debug logging emitted to stderr.
 `,
 			expPanicCode: ptr.To(0),
-		},
-		{
-			name: "run show default",
-			args: []string{"run", "--show-default"},
-			rf: func(_ context.Context, c cmdRun, _ runOpts, _, _ io.Writer) error {
-				require.True(t, c.ShowDefault)
-				return nil
-			},
 		},
 		{
 			name: "run with path",
@@ -145,13 +143,15 @@ Flags:
 				abs, err := filepath.Abs("./path")
 				require.NoError(t, err)
 				require.Equal(t, abs, c.Path)
-				require.False(t, c.ShowDefault)
 				return nil
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
 			out := &bytes.Buffer{}
 			if tt.expPanicCode != nil {
 				require.PanicsWithValue(t, *tt.expPanicCode, func() {
