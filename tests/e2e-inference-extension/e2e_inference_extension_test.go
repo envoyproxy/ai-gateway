@@ -12,5 +12,5 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	e2elib.TestMain(m, nil, true)
+	e2elib.TestMain(m, e2elib.AIGatewayHelmOption{}, true, false)
 }
