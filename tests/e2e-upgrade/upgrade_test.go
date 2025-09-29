@@ -1,4 +1,9 @@
-package e2e_upgrade
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
+package e2eupgrade
 
 import (
 	"context"
@@ -10,8 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 	"github.com/stretchr/testify/require"
+
+	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 )
 
 const (
@@ -73,21 +79,24 @@ func TestUpgrade(t *testing.T) {
 		t.Fatalf("request loop failed: %v", <-failChan)
 	}
 	t.Logf("Request count before upgrade: %d", phase.requestCounts.Load())
-	phase.testPhase.Add(1)
+	phase.testPhase.Add(1) // Move to "during upgrade" phase.
 	require.NoError(t, e2elib.InstallOrUpgradeAIGateway(t.Context(), e2elib.AIGatewayHelmOption{}))
 	t.Log("Upgrade completed")
-	phase.testPhase.Add(1)
+	phase.testPhase.Add(1) // Move to "after upgrade" phase.
 
 	t.Log("Making sure multiple requests work with the latest version after the upgrade")
-	time.Sleep(120 * time.Second)
+	time.Sleep(4 * time.Minute)
 	t.Logf("Request count after upgrade: %d", phase.requestCounts.Load())
 	if len(failChan) > 0 {
 		t.Fatalf("request loop failed: %v", <-failChan)
 	}
 }
 
+// phase keeps track of the current test phase and the number of requests made.
 type phase struct {
-	requestCounts,
+	// requestCounts keeps track of the number of requests made.
+	requestCounts atomic.Int32
+	// testPhase indicates the current phase of the test: 0 = before upgrade, 1 = during upgrade, 2 = after upgrade.
 	testPhase atomic.Int32
 }
 

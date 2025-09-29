@@ -32,7 +32,7 @@ const (
 	EnvoyGatewayDefaultServicePort = 80
 
 	defaultKindClusterName = "envoy-ai-gateway"
-	kindLogDir             = "./e2e-kind-logs"
+	kindLogDir             = "./logs"
 	metallbVersion         = "v0.13.10"
 )
 
