@@ -66,10 +66,10 @@ func TestUpgrade(t *testing.T) {
 				}
 
 				phase.requestCounts.Add(1)
-				if err := makeRequest(t, phase.String()); err != nil {
+				phaseStr := phase.String()
+				if err := makeRequest(t, phaseStr); err != nil {
+					t.Logf("request failed: %s: %v", phaseStr, err)
 					failChan <- err
-					cancel()
-					return
 				}
 				time.Sleep(100 * time.Millisecond)
 			}
