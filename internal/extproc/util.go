@@ -10,6 +10,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
+	"log/slog"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 )
@@ -32,6 +33,82 @@ func decodeContentIfNeeded(body []byte, contentEncoding string) (contentDecoding
 		}
 		return contentDecodingResult{
 			reader:    reader,
+			isEncoded: true,
+		}, nil
+	default:
+		return contentDecodingResult{
+			reader:    bytes.NewReader(body),
+			isEncoded: false,
+		}, nil
+	}
+}
+
+// decodeContentWithBuffering decompresses response body with buffering support for streaming.
+// Accumulates chunks in the provided buffer until complete gzip data is available.
+// Returns a reader for the (potentially decompressed) body and metadata about the encoding.
+func decodeContentWithBuffering(body []byte, contentEncoding string, gzipBuffer *[]byte, endOfStream bool) (contentDecodingResult, error) {
+	switch contentEncoding {
+	case "gzip":
+
+		// Accumulate chunks in buffer
+		*gzipBuffer = append(*gzipBuffer, body...)
+
+		// Try to decompress the accumulated buffer
+		if len(*gzipBuffer) > 0 {
+			gzipReader, err := gzip.NewReader(bytes.NewReader(*gzipBuffer))
+			if err != nil {
+				// If it's not endOfStream, keep buffering
+				if !endOfStream {
+					return contentDecodingResult{
+						reader:    bytes.NewReader(nil), // Empty reader to signal buffering in progress
+						isEncoded: true,
+					}, nil
+				}
+				// If endOfStream and still can't read, pass through buffered data
+				slog.Info("gzip buffering: invalid header at end of stream, passing through buffered data",
+					"error", err,
+					"buffer_size", len(*gzipBuffer))
+				result := contentDecodingResult{
+					reader:    bytes.NewReader(*gzipBuffer),
+					isEncoded: true,
+				}
+				*gzipBuffer = nil // Clear buffer
+				return result, nil
+			}
+			defer gzipReader.Close()
+
+			decompressedBody, err := io.ReadAll(gzipReader)
+			if err != nil {
+				// If it's not endOfStream, keep buffering
+				if !endOfStream {
+					return contentDecodingResult{
+						reader:    bytes.NewReader(nil), // Empty reader to signal buffering in progress
+						isEncoded: true,
+					}, nil
+				}
+				// If endOfStream and decompression failed, pass through buffered data
+				slog.Info("gzip buffering: decompression failed at end of stream, passing through buffered data",
+					"error", err,
+					"buffer_size", len(*gzipBuffer))
+				result := contentDecodingResult{
+					reader:    bytes.NewReader(*gzipBuffer),
+					isEncoded: true,
+				}
+				*gzipBuffer = nil // Clear buffer
+				return result, nil
+			}
+
+			// Successfully decompressed!
+			*gzipBuffer = nil // Clear buffer
+			return contentDecodingResult{
+				reader:    bytes.NewReader(decompressedBody),
+				isEncoded: true,
+			}, nil
+		}
+
+		// Empty buffer, return empty
+		return contentDecodingResult{
+			reader:    bytes.NewReader(nil), // Empty reader for empty buffer
 			isEncoded: true,
 		}, nil
 	default:

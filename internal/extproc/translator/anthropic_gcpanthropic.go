@@ -90,7 +90,7 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseHeaders(_ map[string]string)
 
 // ResponseBody implements [AnthropicMessagesTranslator.ResponseBody] for Anthropic to GCP Anthropic.
 // This is essentially a passthrough since both use the same Anthropic response format.
-func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool) (
+func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, body io.Reader, isStreaming bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel string, err error,
 ) {
 	// Read the response body for both streaming and non-streaming.
@@ -99,8 +99,8 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, bo
 		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// For streaming chunks, parse SSE format to extract token usage.
-	if !endOfStream {
+	// For streaming requests, parse SSE format to extract token usage.
+	if isStreaming {
 		// Parse SSE format - split by lines and look for data: lines.
 		for line := range bytes.Lines(bodyBytes) {
 			line = bytes.TrimSpace(line)
@@ -117,14 +117,16 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, bo
 					switch eventType {
 					case "message_start":
 						// Extract input tokens from message.usage.
+						// Now handles complete response with potentially multiple events.
 						if messageData, ok := eventData["message"].(map[string]any); ok {
 							if usageData, ok := messageData["usage"].(map[string]any); ok {
 								if inputTokens, ok := usageData["input_tokens"].(float64); ok {
-									tokenUsage.InputTokens = uint32(inputTokens) //nolint:gosec
+									// Accumulate input tokens (though typically only one message_start per conversation)
+									tokenUsage.InputTokens += uint32(inputTokens) //nolint:gosec
 								}
 								// Some message_start events may include initial output tokens.
 								if outputTokens, ok := usageData["output_tokens"].(float64); ok && outputTokens > 0 {
-									tokenUsage.OutputTokens = uint32(outputTokens) //nolint:gosec
+									tokenUsage.OutputTokens += uint32(outputTokens) //nolint:gosec
 								}
 								tokenUsage.TotalTokens = tokenUsage.InputTokens + tokenUsage.OutputTokens
 							}
@@ -143,18 +145,16 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, bo
 			}
 		}
 
-		return nil, &extprocv3.BodyMutation{
-			Mutation: &extprocv3.BodyMutation_Body{Body: bodyBytes},
-		}, tokenUsage, a.requestModel, nil
+		// For streaming responses, we only extract token usage, don't modify the body
+		// Return nil bodyMutation to pass through original data (potentially gzipped)
+		return nil, nil, tokenUsage, a.requestModel, nil
 	}
 
 	// Parse the Anthropic response to extract token usage.
 	var anthropicResp anthropic.Message
 	if err = json.Unmarshal(bodyBytes, &anthropicResp); err != nil {
-		// If we can't parse as Anthropic format, pass through as-is.
-		return nil, &extprocv3.BodyMutation{
-			Mutation: &extprocv3.BodyMutation_Body{Body: bodyBytes},
-		}, LLMTokenUsage{}, a.requestModel, nil
+		// If we can't parse as Anthropic format, pass through as-is without modification.
+		return nil, nil, LLMTokenUsage{}, a.requestModel, nil
 	}
 
 	// Extract token usage from the response.
@@ -164,12 +164,6 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, bo
 		TotalTokens:  uint32(anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens), //nolint:gosec
 	}
 
-	// Pass through the response body unchanged since both input and output are Anthropic format.
-	headerMutation = &extprocv3.HeaderMutation{}
-	setContentLength(headerMutation, bodyBytes)
-	bodyMutation = &extprocv3.BodyMutation{
-		Mutation: &extprocv3.BodyMutation_Body{Body: bodyBytes},
-	}
-
-	return headerMutation, bodyMutation, tokenUsage, a.requestModel, nil
+	// Pass through the response body unchanged - don't create body mutation to preserve original encoding.
+	return nil, nil, tokenUsage, a.requestModel, nil
 }

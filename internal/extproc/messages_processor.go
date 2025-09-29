@@ -6,10 +6,12 @@
 package extproc
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -147,6 +149,7 @@ type messagesProcessorUpstreamFilter struct {
 	stream                 bool
 	metrics                metrics.ChatCompletionMetrics
 	costs                  translator.LLMTokenUsage
+	gzipBuffer             []byte
 }
 
 // selectTranslator selects the translator based on the output schema.
@@ -266,22 +269,53 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseBody(ctx context.Contex
 		}
 	}()
 
-	// Decompress the body if needed using common utility.
-	decodingResult, err := decodeContentIfNeeded(body.Body, c.responseEncoding)
-	if err != nil {
-		return nil, err
+	var headerMutation *extprocv3.HeaderMutation
+	var bodyMutation *extprocv3.BodyMutation
+	var tokenUsage translator.LLMTokenUsage
+	var responseModel internalapi.ResponseModel
+
+	if c.stream && !body.EndOfStream {
+		// For streaming intermediate chunks: buffer data and check if decompression succeeded
+		decodingResult, err := decodeContentWithBuffering(body.Body, c.responseEncoding, &c.gzipBuffer, body.EndOfStream)
+		if err != nil {
+			return nil, err
+		}
+
+		// Check if we got decompressed data (successful buffering completion)
+		data, _ := io.ReadAll(decodingResult.reader)
+		if len(data) > 0 {
+			// Decompression succeeded! Process the complete response
+			decodingResult.reader = bytes.NewReader(data)
+			headerMutation, bodyMutation, tokenUsage, responseModel, err = c.translator.ResponseBody(c.responseHeaders, decodingResult.reader, c.stream)
+			if err != nil {
+				return nil, fmt.Errorf("failed to transform response: %w", err)
+			}
+			c.metrics.SetResponseModel(responseModel)
+		} else {
+			// Still buffering incomplete data - pass through with no mutations
+			headerMutation, bodyMutation = nil, nil
+			tokenUsage = translator.LLMTokenUsage{}
+		}
+	} else {
+		// For non-streaming OR final streaming chunk: decompress and translate
+		decodingResult, err := decodeContentWithBuffering(body.Body, c.responseEncoding, &c.gzipBuffer, body.EndOfStream)
+		if err != nil {
+			return nil, err
+		}
+
+		// Process the decompressed data
+		data, _ := io.ReadAll(decodingResult.reader)
+		decodingResult.reader = bytes.NewReader(data)
+		headerMutation, bodyMutation, tokenUsage, responseModel, err = c.translator.ResponseBody(c.responseHeaders, decodingResult.reader, c.stream)
+		if err != nil {
+			return nil, fmt.Errorf("failed to transform response: %w", err)
+		}
+
+		c.metrics.SetResponseModel(responseModel)
+
+		// Remove content-encoding header if original body encoded but was mutated in the processor.
+		headerMutation = removeContentEncodingIfNeeded(headerMutation, bodyMutation, decodingResult.isEncoded)
 	}
-
-	// headerMutation, bodyMutation, tokenUsage, err := c.translator.ResponseBody(c.responseHeaders, br, body.EndOfStream).
-	headerMutation, bodyMutation, tokenUsage, responseModel, err := c.translator.ResponseBody(c.responseHeaders, decodingResult.reader, body.EndOfStream)
-	if err != nil {
-		return nil, fmt.Errorf("failed to transform response: %w", err)
-	}
-
-	c.metrics.SetResponseModel(responseModel)
-
-	// Remove content-encoding header if original body encoded but was mutated in the processor.
-	headerMutation = removeContentEncodingIfNeeded(headerMutation, bodyMutation, decodingResult.isEncoded)
 
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ResponseBody{
