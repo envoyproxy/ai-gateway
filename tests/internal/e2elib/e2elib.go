@@ -31,9 +31,8 @@ const (
 	// EnvoyGatewayDefaultServicePort is the default service port for the Envoy Gateway.
 	EnvoyGatewayDefaultServicePort = 80
 
-	defaultKindClusterName = "envoy-ai-gateway"
-	kindLogDir             = "./logs"
-	metallbVersion         = "v0.13.10"
+	kindLogDir     = "./logs"
+	metallbVersion = "v0.13.10"
 )
 
 // By default, kind logs are collected when the e2e tests fail. The TEST_KEEP_CLUSTER environment variable
@@ -68,14 +67,15 @@ type AIGatewayHelmOption struct {
 // When the inferenceExtension flag is set to true, it also installs the Inference Extension and the
 // Inference Pool resources, and the Envoy Gateway configuration which are required for the tests.
 func TestMain(m *testing.M, aigwOpts AIGatewayHelmOption, inferenceExtension, needPrometheus bool) {
+	const defaultKindClusterName = "envoy-ai-gateway"
 	err := SetupAll(context.Background(), defaultKindClusterName, aigwOpts, inferenceExtension, needPrometheus)
 	if err != nil {
-		cleanupKindCluster(true)
+		CleanupKindCluster(true, defaultKindClusterName)
 		fmt.Printf("Failed to set up the test environment: %v\n", err)
 		os.Exit(1)
 	}
 	code := m.Run()
-	cleanupKindCluster(code != 0)
+	CleanupKindCluster(code != 0, defaultKindClusterName)
 	os.Exit(code) // nolint: gocritic
 }
 
@@ -313,17 +313,22 @@ spec:
 	}
 }
 
-func cleanupKindCluster(testsFailed bool) {
+// CleanupKindCluster cleans up the kind cluster if the test succeeds and the
+// TEST_KEEP_CLUSTER environment variable is not set to "true".
+//
+// Also, if the tests failed or TEST_KEEP_CLUSTER is "true", it collects the kind logs
+// into the ./logs directory.
+func CleanupKindCluster(testsFailed bool, clusterName string) {
 	if testsFailed || keepCluster {
 		cleanupLog("Collecting logs from the kind cluster")
-		cmd := testsinternal.GoToolCmd("kind", "export", "logs", "--name", defaultKindClusterName, kindLogDir)
+		cmd := testsinternal.GoToolCmd("kind", "export", "logs", "--name", clusterName, kindLogDir)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		_ = cmd.Run()
 	}
 	if !testsFailed && !keepCluster {
 		cleanupLog("Destroying the kind cluster")
-		cmd := testsinternal.GoToolCmd("kind", "delete", "cluster", "--name", defaultKindClusterName)
+		cmd := testsinternal.GoToolCmd("kind", "delete", "cluster", "--name", clusterName)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		_ = cmd.Run()

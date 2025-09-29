@@ -30,6 +30,9 @@ func TestUpgrade(t *testing.T) {
 	require.NoError(t, e2elib.SetupAll(t.Context(), kindClusterName, e2elib.AIGatewayHelmOption{
 		ChartVersion: previousEnvoyAIGatewayVersion,
 	}, false, false))
+	defer func() {
+		e2elib.CleanupKindCluster(t.Failed(), kindClusterName) //nolint:errcheck
+	}()
 
 	const manifest = "testdata/manifest.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
