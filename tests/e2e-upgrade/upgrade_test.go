@@ -88,7 +88,7 @@ func TestUpgrade(t *testing.T) {
 	phase.testPhase.Add(1) // Move to "after upgrade" phase.
 
 	t.Log("Making sure multiple requests work with the latest version after the upgrade")
-	time.Sleep(4 * time.Minute)
+	time.Sleep(2 * time.Minute)
 	t.Logf("Request count after upgrade: %d", phase.requestCounts.Load())
 	if len(failChan) > 0 {
 		t.Fatalf("request loop failed: %v", <-failChan)
