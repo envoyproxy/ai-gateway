@@ -20,12 +20,17 @@ import (
 // Tracing gives access to tracer types needed for endpoints such as OpenAI
 // chat completions.
 type Tracing interface {
+	// ChatCompletionTracer creates spans for OpenAI chat completion requests on /chat/completions endpoint.
 	ChatCompletionTracer() ChatCompletionTracer
+	// EmbeddingsTracer creates spans for OpenAI embeddings requests on /embeddings endpoint.
 	EmbeddingsTracer() EmbeddingsTracer
+	// Shutdown shuts down the tracer, flushing any buffered spans.
 	Shutdown(context.Context) error
 }
 
 // TracingConfig is used when Tracing is not NoopTracing.
+//
+// Implementations of the Tracing interface.
 type TracingConfig struct {
 	Tracer                 trace.Tracer
 	Propagator             propagation.TextMapPropagator
@@ -132,6 +137,7 @@ type EmbeddingsTracer interface {
 	//   - headerMutation: The new Embeddings Span will have its context
 	//     written to these headers unless NoopTracing is used.
 	//   - req: The OpenAI embeddings request. Used to record request attributes.
+	//   - body: contains the original raw request body as a byte slice.
 	//
 	// Returns nil unless the span is sampled.
 	StartSpanAndInjectHeaders(ctx context.Context, headers map[string]string, headerMutation *extprocv3.HeaderMutation, req *openai.EmbeddingRequest, body []byte) EmbeddingsSpan

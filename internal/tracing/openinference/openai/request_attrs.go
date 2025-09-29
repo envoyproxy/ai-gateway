@@ -192,7 +192,7 @@ type embeddingsInvocationParameters struct {
 }
 
 // buildEmbeddingsRequestAttributes builds OpenInference attributes from the embeddings request.
-func buildEmbeddingsRequestAttributes(embRequest *openai.EmbeddingRequest, body string, config *openinference.TraceConfig) []attribute.KeyValue {
+func buildEmbeddingsRequestAttributes(embRequest *openai.EmbeddingRequest, body []byte, config *openinference.TraceConfig) []attribute.KeyValue {
 	attrs := []attribute.KeyValue{
 		attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
 		attribute.String(openinference.SpanKind, openinference.SpanKindEmbedding),
@@ -201,7 +201,7 @@ func buildEmbeddingsRequestAttributes(embRequest *openai.EmbeddingRequest, body 
 	if config.HideInputs {
 		attrs = append(attrs, attribute.String(openinference.InputValue, openinference.RedactedValue))
 	} else {
-		attrs = append(attrs, attribute.String(openinference.InputValue, body))
+		attrs = append(attrs, attribute.String(openinference.InputValue, string(body)))
 		attrs = append(attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
 	}
 

@@ -55,7 +55,7 @@ func (r *EmbeddingsRecorder) StartParams(*openai.EmbeddingRequest, []byte) (span
 
 // RecordRequest implements the same method as defined in tracing.EmbeddingsRecorder.
 func (r *EmbeddingsRecorder) RecordRequest(span trace.Span, embReq *openai.EmbeddingRequest, body []byte) {
-	span.SetAttributes(buildEmbeddingsRequestAttributes(embReq, string(body), r.traceConfig)...)
+	span.SetAttributes(buildEmbeddingsRequestAttributes(embReq, body, r.traceConfig)...)
 }
 
 // RecordResponseOnError implements the same method as defined in tracing.EmbeddingsRecorder.

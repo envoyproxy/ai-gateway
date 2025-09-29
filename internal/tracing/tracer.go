@@ -86,7 +86,7 @@ func (c *headerMutationCarrier) Keys() []string {
 	panic("unexpected as this carrier is write-only for injection")
 }
 
-// Ensure embeddingsTracer implements EmbeddingsTracer.
+// Ensure embeddingsTracer implements [tracing.EmbeddingsTracer].
 var _ tracing.EmbeddingsTracer = (*embeddingsTracer)(nil)
 
 func newEmbeddingsTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.EmbeddingsRecorder) tracing.EmbeddingsTracer {
@@ -107,7 +107,7 @@ type embeddingsTracer struct {
 	propagator propagation.TextMapPropagator
 }
 
-// StartSpanAndInjectHeaders implements EmbeddingsTracer.StartSpanAndInjectHeaders.
+// StartSpanAndInjectHeaders implements [tracing.EmbeddingsTracer.StartSpanAndInjectHeaders].
 func (t *embeddingsTracer) StartSpanAndInjectHeaders(ctx context.Context, headers map[string]string, mutableHeaders *extprocv3.HeaderMutation, req *openai.EmbeddingRequest, body []byte) tracing.EmbeddingsSpan {
 	// Extract trace context from incoming headers.
 	parentCtx := t.propagator.Extract(ctx, propagation.MapCarrier(headers))
