@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/openai/openai-go/v2"
+	"github.com/openai/openai-go/v2/packages/param"
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
 )
@@ -381,10 +383,12 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 				},
 				MaxCompletionTokens: ptr.To[int64](1024),
 				ParallelToolCalls:   ptr.To(true),
-				Stop:                []any{"\n", "stop"},
-				ServiceTier:         openai.ChatCompletionNewParamsServiceTierFlex,
-				Verbosity:           openai.ChatCompletionNewParamsVerbosityLow,
-				ReasoningEffort:     openai.ReasoningEffortLow,
+				Stop: openai.ChatCompletionNewParamsStopUnion{
+					OfStringArray: []string{"\n", "stop"},
+				},
+				ServiceTier:     openai.ChatCompletionNewParamsServiceTierFlex,
+				Verbosity:       openai.ChatCompletionNewParamsVerbosityLow,
+				ReasoningEffort: openai.ReasoningEffortLow,
 			},
 		},
 		{
@@ -404,7 +408,31 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 						},
 					},
 				},
-				Stop: "stop",
+				Stop: openai.ChatCompletionNewParamsStopUnion{
+					OfString: openai.Opt[string]("stop"),
+				},
+			},
+		},
+		{
+			name: "stop as array",
+			in: []byte(`{
+				"model": "gpu-o4",
+				"messages": [{"role": "user", "content": "hello"}],
+				"stop": ["</s>", "__end_tag__", "<|eot_id|>", "[answer_end]"]
+			}`),
+			out: &ChatCompletionRequest{
+				Model: "gpu-o4",
+				Messages: []ChatCompletionMessageParamUnion{
+					{
+						OfUser: &ChatCompletionUserMessageParam{
+							Role:    ChatMessageRoleUser,
+							Content: StringOrUserRoleContentUnion{Value: "hello"},
+						},
+					},
+				},
+				Stop: openai.ChatCompletionNewParamsStopUnion{
+					OfStringArray: []string{"</s>", "__end_tag__", "<|eot_id|>", "[answer_end]"},
+				},
 			},
 		},
 		{
@@ -438,8 +466,10 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			if !cmp.Equal(&chatCompletion, tc.out) {
-				t.Errorf("UnmarshalOpenAIRequest(), diff(got, expected) = %s\n", cmp.Diff(&chatCompletion, tc.out))
+			if !cmp.Equal(&chatCompletion, tc.out,
+				cmpopts.IgnoreUnexported(openai.ChatCompletionNewParamsStopUnion{}, param.Opt[string]{})) {
+				t.Errorf("UnmarshalOpenAIRequest(), diff(got, expected) = %s\n", cmp.Diff(&chatCompletion, tc.out,
+					cmpopts.IgnoreUnexported(openai.ChatCompletionNewParamsStopUnion{}, param.Opt[string]{})))
 			}
 		})
 	}

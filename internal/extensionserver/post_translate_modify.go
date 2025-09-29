@@ -451,6 +451,7 @@ func (s *Server) patchListenerWithInferencePoolFilters(listener *listenerv3.List
 				continue
 			}
 			if baIndex == -1 {
+				s.log.Info("adding inference pool ext proc filter", "pool", pool.Name)
 				eppExtProc := buildInferencePoolHTTPFilter(pool)
 				poolFilters = append(poolFilters, eppExtProc)
 			}

@@ -24,6 +24,7 @@ func Test_doMain(t *testing.T) {
 		env          map[string]string
 		tf           translateFn
 		rf           runFn
+		hf           healthcheckFn
 		expOut       string
 		expPanicCode *int
 	}{
@@ -47,6 +48,9 @@ Commands:
 
   run [<path>] [flags]
     Run the AI Gateway locally for given configuration.
+
+  healthcheck [flags]
+    Docker HEALTHCHECK command.
 
 Run "aigw <command> --help" for more information on a command.
 `,
@@ -130,9 +134,11 @@ Arguments:
               least OPENAI_API_KEY is set.
 
 Flags:
-  -h, --help     Show context-sensitive help.
+  -h, --help               Show context-sensitive help.
 
-      --debug    Enable debug logging emitted to stderr.
+      --debug              Enable debug logging emitted to stderr.
+      --admin-port=1064    HTTP port for the admin server (serves /metrics and
+                           /health endpoints).
 `,
 			expPanicCode: ptr.To(0),
 		},
@@ -155,10 +161,10 @@ Flags:
 			out := &bytes.Buffer{}
 			if tt.expPanicCode != nil {
 				require.PanicsWithValue(t, *tt.expPanicCode, func() {
-					doMain(t.Context(), out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.tf, tt.rf)
+					doMain(t.Context(), out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.tf, tt.rf, tt.hf)
 				})
 			} else {
-				doMain(t.Context(), out, os.Stderr, tt.args, nil, tt.tf, tt.rf)
+				doMain(t.Context(), out, os.Stderr, tt.args, nil, tt.tf, tt.rf, tt.hf)
 			}
 			require.Equal(t, tt.expOut, out.String())
 		})

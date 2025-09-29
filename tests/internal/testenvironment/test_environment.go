@@ -28,13 +28,13 @@ import (
 
 // TestEnvironment holds all the services needed for tests.
 type TestEnvironment struct {
-	upstreamPortDefault, upstreamPort                  int
-	extprocBin, extprocConfig                          string
-	extprocEnv                                         []string
-	extProcPort, extProcMetricsPort, extProcHealthPort int
-	envoyConfig                                        string
-	envoyListenerPort, envoyAdminPort                  int
-	upstreamOut, extprocOut, envoyStdout, envoyStderr  *syncBuffer
+	upstreamPortDefault, upstreamPort                 int
+	extprocBin, extprocConfig                         string
+	extprocEnv                                        []string
+	extProcPort, extProcAdminPort                     int
+	envoyConfig                                       string
+	envoyListenerPort, envoyAdminPort                 int
+	upstreamOut, extprocOut, envoyStdout, envoyStderr *syncBuffer
 }
 
 func (e *TestEnvironment) LogOutput(t TestingT) {
@@ -59,8 +59,8 @@ func (e *TestEnvironment) EnvoyListenerPort() int {
 	return e.envoyListenerPort
 }
 
-func (e *TestEnvironment) ExtProcMetricsPort() int {
-	return e.extProcMetricsPort
+func (e *TestEnvironment) ExtProcAdminPort() int {
+	return e.extProcAdminPort
 }
 
 // TestingT is an abstraction over testing.T and testing.B.
@@ -83,7 +83,7 @@ func StartTestEnvironment(t TestingT,
 	extprocBin, extprocConfig string, extprocEnv []string, envoyConfig string, okToDumpLogOnFailure, extProcInProcess bool,
 ) *TestEnvironment {
 	// Get random ports for all services.
-	ports := requireRandomPorts(t, 6)
+	ports := requireRandomPorts(t, 5)
 
 	env := &TestEnvironment{
 		upstreamPortDefault: upstreamPortDefault,
@@ -92,11 +92,10 @@ func StartTestEnvironment(t TestingT,
 		extprocConfig:       extprocConfig,
 		extprocEnv:          extprocEnv,
 		extProcPort:         ports[1],
-		extProcMetricsPort:  ports[2],
-		extProcHealthPort:   ports[3],
+		extProcAdminPort:    ports[2],
 		envoyConfig:         envoyConfig,
-		envoyListenerPort:   ports[4],
-		envoyAdminPort:      ports[5],
+		envoyListenerPort:   ports[3],
+		envoyAdminPort:      ports[4],
 		upstreamOut:         newSyncBuffer(),
 		extprocOut:          newSyncBuffer(),
 		envoyStdout:         newSyncBuffer(),
@@ -118,8 +117,7 @@ func StartTestEnvironment(t TestingT,
 		env.extprocConfig,
 		env.extprocEnv,
 		env.extProcPort,
-		env.extProcMetricsPort,
-		env.extProcHealthPort,
+		env.extProcAdminPort,
 		extProcInProcess,
 	)
 
@@ -162,7 +160,7 @@ func (e *TestEnvironment) checkAllConnections(t TestingT) error {
 		return e.checkConnection(t, e.extProcPort, "extProc")
 	})
 	errGroup.Go(func() error {
-		return e.checkConnection(t, e.extProcMetricsPort, "extProcMetrics")
+		return e.checkConnection(t, e.extProcAdminPort, "extProcAdmin")
 	})
 	errGroup.Go(func() error {
 		return e.checkConnection(t, e.envoyListenerPort, "envoyListener")
@@ -271,15 +269,14 @@ func requireEnvoy(t TestingT,
 }
 
 // requireExtProc starts the external processor with the given configuration.
-func requireExtProc(t TestingT, out io.Writer, bin, config string, env []string, port, metricsPort, healthPort int, inProcess bool) {
+func requireExtProc(t TestingT, out io.Writer, bin, config string, env []string, port, adminPort int, inProcess bool) {
 	configPath := t.TempDir() + "/extproc-config.yaml"
 	require.NoError(t, os.WriteFile(configPath, []byte(config), 0o600))
 
 	args := []string{
 		"-configPath", configPath,
 		"-extProcAddr", fmt.Sprintf(":%d", port),
-		"-metricsPort", strconv.Itoa(metricsPort),
-		"-healthPort", strconv.Itoa(healthPort),
+		"-adminPort", strconv.Itoa(adminPort),
 		"-logLevel", "info",
 	}
 	if inProcess {
