@@ -61,7 +61,15 @@ Here are values we use for Ollama:
      ```
      This calls the kiwi MCP server through aigw's MCP Gateway at `/mcp`.
 
-4. **Shutdown the example stack**:
+4. **Create embeddings**:
+
+   The `create-embeddings` service uses `curl` to send an embeddings request
+   to the AI Gateway CLI (aigw) which routes it to Ollama.
+   ```bash
+   docker compose run --rm create-embeddings
+   ```
+
+5. **Shutdown the example stack**:
 
    `down` stops the containers and removes the volumes used by the stack.
 

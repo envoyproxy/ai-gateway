@@ -39,14 +39,14 @@ func (t *tracingImpl) ChatCompletionTracer() tracing.ChatCompletionTracer {
 	return t.chatCompletionTracer
 }
 
-// ImageGenerationTracer implements the same method as documented on api.Tracing.
-func (t *tracingImpl) ImageGenerationTracer() tracing.ImageGenerationTracer {
-	return t.imageGenerationTracer
-}
-
 // EmbeddingsTracer implements the same method as documented on api.Tracing.
 func (t *tracingImpl) EmbeddingsTracer() tracing.EmbeddingsTracer {
 	return t.embeddingsTracer
+}
+
+// ImageGenerationTracer implements the same method as documented on api.Tracing.
+func (t *tracingImpl) ImageGenerationTracer() tracing.ImageGenerationTracer {
+	return t.imageGenerationTracer
 }
 
 func (t *tracingImpl) MCPTracer() tracing.MCPTracer {
