@@ -185,7 +185,7 @@ test-e2e-inference-extension: build-e2e ## Run the end-to-end tests with a local
 # This runs the end-to-end upgrade tests for the controller and extproc with a local kind cluster.
 .PHONY: test-e2e-upgrade
 test-e2e-upgrade: build-e2e
-	@echo "Run E2E tests for inference extension"
+	@echo "Run E2E upgrade tests"
 	@go test -v ./tests/e2e-upgrade/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
 
 ##@ Common
