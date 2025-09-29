@@ -103,7 +103,7 @@ static_resources:
                             headers:
                               - name: x-model-name
                                 string_match:
-                                  exact: gemini-embedding-exp-03-07
+                                  exact: gemini-embedding-001
                           route:
                             auto_host_rewrite: true
                             cluster: gemini
