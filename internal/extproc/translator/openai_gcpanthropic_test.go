@@ -18,6 +18,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	anthropicVertex "github.com/anthropics/anthropic-sdk-go/vertex"
 	"github.com/google/go-cmp/cmp"
+	openaigo "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	"k8s.io/utils/ptr"
@@ -207,6 +208,44 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.Equal(t, ":path", pathHeader[0].Header.Key)
 		expectedPath := fmt.Sprintf("publishers/anthropic/models/%s:streamRawPredict", streamReq.Model)
 		require.Equal(t, expectedPath, string(pathHeader[0].Header.RawValue))
+	})
+
+	t.Run("Test message param", func(t *testing.T) {
+		openaiRequest := &openai.ChatCompletionRequest{
+			Model:       claudeTestModel,
+			Messages:    []openai.ChatCompletionMessageParamUnion{},
+			Temperature: ptr.To(0.1),
+			MaxTokens:   ptr.To(int64(100)),
+			TopP:        ptr.To(0.1),
+			Stop: openaigo.ChatCompletionNewParamsStopUnion{
+				OfStringArray: []string{"stop1", "stop2"},
+			},
+		}
+		messageParam, err := buildAnthropicParams(openaiRequest)
+		require.NoError(t, err)
+		require.Equal(t, int64(100), messageParam.MaxTokens)
+		require.Equal(t, "0.1", messageParam.TopP.String())
+		require.Equal(t, "0.1", messageParam.Temperature.String())
+		require.Equal(t, []string{"stop1", "stop2"}, messageParam.StopSequences)
+	})
+
+	t.Run("Test single stop", func(t *testing.T) {
+		openaiRequest := &openai.ChatCompletionRequest{
+			Model:       claudeTestModel,
+			Messages:    []openai.ChatCompletionMessageParamUnion{},
+			Temperature: ptr.To(0.1),
+			MaxTokens:   ptr.To(int64(100)),
+			TopP:        ptr.To(0.1),
+			Stop: openaigo.ChatCompletionNewParamsStopUnion{
+				OfString: openaigo.Opt[string]("stop1"),
+			},
+		}
+		messageParam, err := buildAnthropicParams(openaiRequest)
+		require.NoError(t, err)
+		require.Equal(t, int64(100), messageParam.MaxTokens)
+		require.Equal(t, "0.1", messageParam.TopP.String())
+		require.Equal(t, "0.1", messageParam.Temperature.String())
+		require.Equal(t, []string{"stop1"}, messageParam.StopSequences)
 	})
 
 	t.Run("Invalid Temperature (above bound)", func(t *testing.T) {
@@ -846,12 +885,6 @@ func TestHelperFunctions(t *testing.T) {
 		_, err := anthropicRoleToOpenAIRole("unknown_role")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid anthropic role")
-	})
-
-	t.Run("process stop with nil", func(t *testing.T) {
-		val, err := processStop(nil)
-		require.NoError(t, err)
-		require.Nil(t, val)
 	})
 }
 

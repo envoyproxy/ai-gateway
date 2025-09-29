@@ -19,8 +19,8 @@ import (
 )
 
 // clusterRefInferencePool generates a unique reference for an InferencePool cluster.
-func clusterRefInferencePool(namespace, name, serviceName string, servicePort uint32) string {
-	return fmt.Sprintf("%s/%s/%s/%d", namespace, name, serviceName, servicePort)
+func clusterRefInferencePool(namespace, name, serviceName string, servicePort uint32, bodyMode string, allowModeOverride string) string {
+	return fmt.Sprintf("%s/%s/%s/%d/%s/%s", namespace, name, serviceName, servicePort, bodyMode, allowModeOverride)
 }
 
 // PostClusterModify is called by Envoy Gateway to allow extensions to modify clusters after they are generated.
