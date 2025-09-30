@@ -47,6 +47,11 @@ static_resources:
                             path: "/v1/chat/completions"
                           route:
                             cluster: openai
+                        # Default route for completions (legacy endpoint)
+                        - match:
+                            path: "/v1/completions"
+                          route:
+                            cluster: openai
                         # x-test-backend=openai-chat-override allows us to test model name override.
                         - match:
                             path: "/v1/embeddings"
@@ -77,8 +82,8 @@ static_resources:
                               disabled: true
                 http_filters:
                   # ROUTER FILTER (HTTP Connection Manager Level)
-                  # Enabled only on AIGatewayRoute paths (/v1/chat/completions, /v1/embeddings, /v1/models).
-                  # Extracts model name (embeddings/chat), or return a direct response (/models).
+                  # Enabled only on AIGatewayRoute paths (/v1/chat/completions, /v1/completions, /v1/embeddings, /v1/models).
+                  # Extracts model name (embeddings/chat/completions), or return a direct response (/models).
                   # Configured by insertRouterLevelAIGatewayExtProc() in post_translate_modify.go
                   - name: envoy.filters.http.ext_proc
                     typed_config:
