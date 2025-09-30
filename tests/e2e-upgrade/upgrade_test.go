@@ -28,11 +28,16 @@ const egSelector = "gateway.envoyproxy.io/owning-gateway-name=upgrade-test"
 
 func TestUpgrade(t *testing.T) {
 	for _, tc := range []struct {
-		name                string
-		skip                bool
-		initFunc            func(context.Context) (clusterName string)
+		name string
+		// True if the test case should be skipped. This should be removed once the control-plane
+		// upgrade test is enabled.
+		skip bool
+		// initFunc sets up the initial state of the cluster and returns the kind cluster name.
+		initFunc func(context.Context) (clusterName string)
+		// runningAfterUpgrade is the duration to wait after the upgrade before making requests.
 		runningAfterUpgrade time.Duration
-		upgradeFunc         func(context.Context)
+		// upgradeFunc performs the upgrade where we continue making requests during the upgrade.
+		upgradeFunc func(context.Context)
 	}{
 		{
 			name: "rolling out pods",
