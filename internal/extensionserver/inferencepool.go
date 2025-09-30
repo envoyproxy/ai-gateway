@@ -310,7 +310,7 @@ func buildHTTPFilterForInferencePool(pool *gwaiev1a2.InferencePool) *extprocv3.E
 			ResponseTrailerMode: extprocv3.ProcessingMode_SEND,
 		},
 		AllowModeOverride: allowModeOverride,
-		MessageTimeout:    durationpb.New(5 * time.Second),
+		MessageTimeout:    durationpb.New(300 * time.Second),
 		FailureModeAllow:  false,
 	}
 }
