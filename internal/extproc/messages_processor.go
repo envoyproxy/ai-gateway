@@ -152,6 +152,20 @@ type messagesProcessorUpstreamFilter struct {
 	gzipBuffer             []byte
 }
 
+// createResponseBodyResponse creates a ProcessingResponse for response body processing.
+func createResponseBodyResponse(headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation) *extprocv3.ProcessingResponse {
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_ResponseBody{
+			ResponseBody: &extprocv3.BodyResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation: headerMutation,
+					BodyMutation:   bodyMutation,
+				},
+			},
+		},
+	}
+}
+
 // selectTranslator selects the translator based on the output schema.
 func (c *messagesProcessorUpstreamFilter) selectTranslator(out filterapi.VersionedAPISchema) error {
 	// Messages processor only supports Anthropic-native translators.
@@ -269,64 +283,34 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseBody(ctx context.Contex
 		}
 	}()
 
-	var headerMutation *extprocv3.HeaderMutation
-	var bodyMutation *extprocv3.BodyMutation
-	var tokenUsage translator.LLMTokenUsage
-	var responseModel internalapi.ResponseModel
+	// Decompress response body with buffering support
+	decodingResult, err := decodeContentWithBuffering(body.Body, c.responseEncoding, &c.gzipBuffer, body.EndOfStream)
+	if err != nil {
+		return nil, err
+	}
 
-	if c.stream && !body.EndOfStream {
-		// For streaming intermediate chunks: buffer data and check if decompression succeeded
-		decodingResult, err := decodeContentWithBuffering(body.Body, c.responseEncoding, &c.gzipBuffer, body.EndOfStream)
-		if err != nil {
-			return nil, err
-		}
+	// Check if we got decompressed data or are still buffering
+	data, _ := io.ReadAll(decodingResult.reader)
+	if len(data) == 0 && c.stream && !body.EndOfStream {
+		// Still buffering incomplete data - return early with no mutations, skip metrics
+		return createResponseBodyResponse(nil, nil), nil
+	}
 
-		// Check if we got decompressed data (successful buffering completion)
-		data, _ := io.ReadAll(decodingResult.reader)
-		if len(data) > 0 {
-			// Decompression succeeded! Process the complete response
-			decodingResult.reader = bytes.NewReader(data)
-			headerMutation, bodyMutation, tokenUsage, responseModel, err = c.translator.ResponseBody(c.responseHeaders, decodingResult.reader, c.stream)
-			if err != nil {
-				return nil, fmt.Errorf("failed to transform response: %w", err)
-			}
-			c.metrics.SetResponseModel(responseModel)
-		} else {
-			// Still buffering incomplete data - pass through with no mutations
-			headerMutation, bodyMutation = nil, nil
-			tokenUsage = translator.LLMTokenUsage{}
-		}
-	} else {
-		// For non-streaming OR final streaming chunk: decompress and translate
-		decodingResult, err := decodeContentWithBuffering(body.Body, c.responseEncoding, &c.gzipBuffer, body.EndOfStream)
-		if err != nil {
-			return nil, err
-		}
+	// Process the decompressed data
+	decodingResult.reader = bytes.NewReader(data)
+	headerMutation, bodyMutation, tokenUsage, responseModel, err := c.translator.ResponseBody(c.responseHeaders, decodingResult.reader, c.stream)
+	if err != nil {
+		return nil, fmt.Errorf("failed to transform response: %w", err)
+	}
 
-		// Process the decompressed data
-		data, _ := io.ReadAll(decodingResult.reader)
-		decodingResult.reader = bytes.NewReader(data)
-		headerMutation, bodyMutation, tokenUsage, responseModel, err = c.translator.ResponseBody(c.responseHeaders, decodingResult.reader, c.stream)
-		if err != nil {
-			return nil, fmt.Errorf("failed to transform response: %w", err)
-		}
+	c.metrics.SetResponseModel(responseModel)
 
-		c.metrics.SetResponseModel(responseModel)
-
-		// Remove content-encoding header if original body encoded but was mutated in the processor.
+	// Remove content-encoding header if original body encoded but was mutated in the processor.
+	if !c.stream || body.EndOfStream {
 		headerMutation = removeContentEncodingIfNeeded(headerMutation, bodyMutation, decodingResult.isEncoded)
 	}
 
-	resp := &extprocv3.ProcessingResponse{
-		Response: &extprocv3.ProcessingResponse_ResponseBody{
-			ResponseBody: &extprocv3.BodyResponse{
-				Response: &extprocv3.CommonResponse{
-					HeaderMutation: headerMutation,
-					BodyMutation:   bodyMutation,
-				},
-			},
-		},
-	}
+	resp := createResponseBodyResponse(headerMutation, bodyMutation)
 
 	c.costs.InputTokens += tokenUsage.InputTokens
 	c.costs.OutputTokens += tokenUsage.OutputTokens
