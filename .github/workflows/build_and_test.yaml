@@ -245,7 +245,7 @@ jobs:
   test_e2e_upgrade:
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
-    name: E2E Test for Upgrading Envoy AI Gateway
+    name: E2E Test for Upgrades
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
