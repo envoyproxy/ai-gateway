@@ -78,7 +78,8 @@ Envoy AI Gateway supports a wide range of AI providers, making it easy to integr
         <br><sub><b>Grok</b></sub>
       </td>
       <td align="center" width="120">
-        <!-- Empty cell for symmetry -->
+        <img src="site/static/img/providers/tars.svg" width="60" height="60" alt="Tetrate Agent Router Service"/>
+        <br><sub><b>Tetrate Agent Router Service</b></sub>
       </td>
     </tr>
   </table>
