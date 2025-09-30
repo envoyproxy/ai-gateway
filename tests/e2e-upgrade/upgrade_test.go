@@ -83,14 +83,14 @@ func TestUpgrade(t *testing.T) {
 			initFunc: func(ctx context.Context) string {
 				const previousEnvoyAIGatewayVersion = "v0.3.0"
 				const kindClusterName = "envoy-ai-gateway-cp-upgrade"
-				require.NoError(t, e2elib.SetupAll(t.Context(), kindClusterName, e2elib.AIGatewayHelmOption{
+				require.NoError(t, e2elib.SetupAll(ctx, kindClusterName, e2elib.AIGatewayHelmOption{
 					ChartVersion: previousEnvoyAIGatewayVersion,
 				}, false, false))
 				return kindClusterName
 			},
 			runningAfterUpgrade: 2 * time.Minute, // Control plane pods take longer to restart and roll out new Envoy pods.
 			upgradeFunc: func(ctx context.Context) {
-				require.NoError(t, e2elib.InstallOrUpgradeAIGateway(t.Context(), e2elib.AIGatewayHelmOption{}))
+				require.NoError(t, e2elib.InstallOrUpgradeAIGateway(ctx, e2elib.AIGatewayHelmOption{}))
 			},
 		},
 	} {
@@ -157,12 +157,12 @@ func TestUpgrade(t *testing.T) {
 			}
 			t.Logf("Request count before upgrade: %d", phase.requestCounts.Load())
 			phase.testPhase.Add(1) // Move to "during upgrade" phase.
-			t.Log("Starting upgrade")
+			t.Log("Starting upgrade while making requests")
 			tc.upgradeFunc(t.Context())
 			t.Log("Upgrade completed")
 			phase.testPhase.Add(1) // Move to "after upgrade" phase.
 
-			t.Log("Making sure multiple requests work with the latest version after the upgrade")
+			t.Log("Making sure multiple requests work after the upgrade")
 			time.Sleep(tc.runningAfterUpgrade)
 			t.Logf("Request count after upgrade: %d", phase.requestCounts.Load())
 			if len(failChan) > 0 {
