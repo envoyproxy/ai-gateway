@@ -81,7 +81,8 @@ func TestMain(m *testing.M, aigwOpts AIGatewayHelmOption, inferenceExtension, ne
 
 // SetupAll sets up the kind cluster, installs the Envoy Gateway, and installs the AI Gateway.
 func SetupAll(ctx context.Context, clusterName string, aigwOpts AIGatewayHelmOption, inferenceExtension, needPrometheus bool) error {
-	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(5*time.Minute))
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithDeadline(ctx, time.Now().Add(5*time.Minute))
 	defer cancel()
 	// The following code sets up the kind cluster, installs the Envoy Gateway, and installs the AI Gateway.
 	// They must be idempotent and can be run multiple times so that we can run the tests multiple times on

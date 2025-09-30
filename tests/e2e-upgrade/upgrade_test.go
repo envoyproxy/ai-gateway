@@ -7,10 +7,13 @@ package e2eupgrade
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -34,15 +37,19 @@ func TestUpgrade(t *testing.T) {
 		e2elib.CleanupKindCluster(t.Failed(), kindClusterName)
 	}()
 
+	phase := &phase{}
+	monitorCtx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	go func() {
+		if err := monitorPods(monitorCtx, egSelector, phase); err != nil && !errors.Is(err, context.Canceled) {
+			t.Logf("pod monitor error: %v", err)
+		}
+	}()
+
 	const manifest = "testdata/manifest.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
-	t.Cleanup(func() {
-		_ = e2elib.KubectlDeleteManifest(t.Context(), manifest)
-	})
 
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
-
-	phase := &phase{}
 
 	// Ensure that first request works.
 	require.NoError(t, makeRequest(t, phase.String()))
@@ -68,7 +75,7 @@ func TestUpgrade(t *testing.T) {
 				phase.requestCounts.Add(1)
 				phaseStr := phase.String()
 				if err := makeRequest(t, phaseStr); err != nil {
-					t.Logf("request failed: %s: %v", phaseStr, err)
+					t.Log(err)
 					failChan <- err
 				}
 				time.Sleep(100 * time.Millisecond)
@@ -101,6 +108,9 @@ type phase struct {
 	requestCounts atomic.Int32
 	// testPhase indicates the current phase of the test: 0 = before upgrade, 1 = during upgrade, 2 = after upgrade.
 	testPhase atomic.Int32
+
+	currentPods   string
+	currentPodsMu sync.RWMutex
 }
 
 // String implements fmt.Stringer.
@@ -116,7 +126,10 @@ func (p *phase) String() string {
 	default:
 		panic("unknown phase")
 	}
-	return fmt.Sprintf("%s (requests made: %d)", testPhase, p.requestCounts.Load())
+	p.currentPodsMu.RLock()
+	defer p.currentPodsMu.RUnlock()
+	currentPods := p.currentPods
+	return fmt.Sprintf("%s (requests made: %d, current pods: %s)", testPhase, p.requestCounts.Load(), currentPods)
 }
 
 func makeRequest(t *testing.T, phase string) error {
@@ -139,4 +152,72 @@ func makeRequest(t *testing.T, phase string) error {
 		return fmt.Errorf("[%s] request status: %s, body: %s", phase, resp.Status, string(body))
 	}
 	return nil
+}
+
+func monitorPods(ctx context.Context, labelSelector string, p *phase) error {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	type podInfo struct {
+		name   string
+		status string
+	}
+
+	var currentPods []podInfo
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			cmd := e2elib.Kubectl(ctx, "get", "pods", "-n", e2elib.EnvoyGatewayNamespace, "-l", labelSelector, "-o",
+				"jsonpath={range .items[*]}{.metadata.name}:{.status.phase}{'\\n'}{end}")
+			cmd.Stdout = nil
+			cmd.Stderr = nil
+			outputRaw, err := cmd.CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("failed to get pods: %w: %s", err, string(outputRaw))
+			}
+			output := string(outputRaw)
+			lines := strings.Split(strings.TrimSpace(output), "\n")
+			var pods []podInfo
+			for _, line := range lines {
+				parts := strings.SplitN(line, ":", 2)
+				if len(parts) != 2 {
+					continue
+				}
+				pods = append(pods, podInfo{name: parts[0], status: parts[1]})
+			}
+			sort.Slice(pods, func(i, j int) bool {
+				return pods[i].name < pods[j].name
+			})
+
+			// Check for changes in pod status
+			changed := false
+			if len(pods) != len(currentPods) {
+				changed = true
+			} else {
+				for i, pod := range pods {
+					if pod != currentPods[i] {
+						changed = true
+						break
+					}
+				}
+			}
+			if changed {
+				currentPods = pods
+				fmt.Printf("Current pods in namespace %q with selector %q:\n", e2elib.EnvoyGatewayNamespace, labelSelector)
+				for _, pod := range currentPods {
+					fmt.Printf(" - %s: %s\n", pod.name, pod.status)
+				}
+
+				var podStrs []string
+				for _, pod := range currentPods {
+					podStrs = append(podStrs, fmt.Sprintf("%s(%s)", pod.name, pod.status))
+				}
+				p.currentPodsMu.Lock()
+				p.currentPods = strings.Join(podStrs, ", ")
+				p.currentPodsMu.Unlock()
+			}
+		}
+	}
 }

@@ -59,6 +59,8 @@ spec:
               value: some-cool-model
       backendRefs:
         - name: upgrade-test-cool-model-backend
+      timeouts:
+        request: 120s
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend

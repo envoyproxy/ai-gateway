@@ -21,7 +21,9 @@ func main() {
 	signalsChan := make(chan os.Signal, 1)
 	signal.Notify(signalsChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
+		log.Printf("waiting for termination signal...")
 		<-signalsChan
+		log.Printf("signal received, shutting down...")
 		// Give some time for graceful shutdown. Right after the sigterm is issued for this pod,
 		// Envoy's health checking endpoint starts returning 503, but there's a gap between
 		// actual stop of the traffic to Envoy and the time when Envoy receives the SIGTERM since
@@ -31,7 +33,8 @@ func main() {
 		//
 		// This is a workaround for older k8s versions that don't support sidecar feature.
 		// This can be removed after the floor of supported k8s versions is larger than 1.32.
-		time.Sleep(60 * time.Second) // Default draining timeout in EG.
+		time.Sleep(120 * time.Second) // Default draining time in EG.
+		log.Printf("shutting down the server now")
 		cancel()
 	}()
 	if err := mainlib.Main(ctx, os.Args[1:], os.Stderr); err != nil {
