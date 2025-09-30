@@ -31,7 +31,7 @@ func main() {
 		//
 		// This is a workaround for older k8s versions that don't support sidecar feature.
 		// This can be removed after the floor of supported k8s versions is larger than 1.32.
-		time.Sleep(30 * time.Second)
+		time.Sleep(60 * time.Second) // Default draining timeout in EG.
 		cancel()
 	}()
 	if err := mainlib.Main(ctx, os.Args[1:], os.Stderr); err != nil {
