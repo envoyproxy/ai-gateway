@@ -14,7 +14,7 @@ import (
 // unmarshalJSONNestedUnion is tuned to be faster with substantially reduced
 // allocations vs openai-go which has heavy use of reflection.
 func unmarshalJSONNestedUnion(typ string, data []byte) (interface{}, error) {
-	idx, err := skipLeadingWhitespace(typ, data)
+	idx, err := skipLeadingWhitespace(typ, data, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -25,12 +25,14 @@ func unmarshalJSONNestedUnion(typ string, data []byte) (interface{}, error) {
 
 	case '[':
 		// Array: skip to first element
-		val, err := advanceToFirstElement(typ, data, &idx)
-		if err != nil {
+		idx++
+		if idx, err = skipLeadingWhitespace(typ, data, idx); err != nil {
 			return nil, err
 		}
-		if val != nil {
-			return val, nil
+
+		// Empty array - default to string array
+		if data[idx] == ']' {
+			return []string{}, nil
 		}
 
 		// Determine element type
@@ -64,33 +66,14 @@ func unmarshalJSONNestedUnion(typ string, data []byte) (interface{}, error) {
 
 // skipLeadingWhitespace is unlikely to return anything except zero, but this
 // allows us to use strconv.Unquote for the fast path.
-func skipLeadingWhitespace(typ string, data []byte) (int, error) {
-	idx := 0
+func skipLeadingWhitespace(typ string, data []byte, idx int) (int, error) {
 	for idx < len(data) && (data[idx] == ' ' || data[idx] == '\t' || data[idx] == '\n' || data[idx] == '\r') {
 		idx++
 	}
 	if idx >= len(data) {
-		return 0, fmt.Errorf("empty %s data", typ)
+		return 0, fmt.Errorf("truncated %s data", typ)
 	}
 	return idx, nil
-}
-
-func advanceToFirstElement(typ string, data []byte, idxP *int) (interface{}, error) {
-	idx := *idxP
-	idx++
-	for idx < len(data) && (data[idx] == ' ' || data[idx] == '\t' || data[idx] == '\n' || data[idx] == '\r') {
-		idx++
-	}
-	if idx >= len(data) {
-		return nil, fmt.Errorf("truncated %s array", typ)
-	}
-
-	// Empty array - default to string array
-	if data[idx] == ']' {
-		return []string{}, nil
-	}
-	*idxP = idx // Update the pointer to the new position
-	return nil, nil
 }
 
 func unmarshalJSONInt64s(typ string, data []byte) ([]int64, error) {

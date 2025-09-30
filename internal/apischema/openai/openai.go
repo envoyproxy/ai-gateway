@@ -275,7 +275,7 @@ type ContentUnion struct {
 // vs openai-go which has heavy use of reflection.
 func (c *ContentUnion) UnmarshalJSON(data []byte) error {
 	// Skip leading whitespace
-	idx, err := skipLeadingWhitespace("content", data)
+	idx, err := skipLeadingWhitespace("content", data, 0)
 	if err != nil {
 		return err
 	}

@@ -582,9 +582,9 @@ func TestContentUnionUnmarshal(t *testing.T) {
 		expectedErr string
 	}{
 		{
-			name:        "empty data triggers skipLeadingWhitespace error",
+			name:        "truncated data triggers skipLeadingWhitespace error",
 			data:        []byte{},
-			expectedErr: "empty content data",
+			expectedErr: "truncated content data",
 		},
 		{
 			name:        "invalid array unmarshal",
@@ -640,9 +640,9 @@ func TestEmbeddingRequestInputUnmarshal(t *testing.T) {
 		expectedErr string
 	}{
 		{
-			name:        "empty data",
+			name:        "truncated data",
 			data:        []byte{},
-			expectedErr: "empty input data",
+			expectedErr: "truncated input data",
 		},
 		{
 			name:        "nested int array (unsupported type)",
@@ -1240,7 +1240,7 @@ func TestChatCompletionResponseChunkChoice(t *testing.T) {
 			expected: `{"index":0,"delta":{"content":"Hello","role":"assistant"}}`,
 		},
 		{
-			name: "streaming chunk with empty content",
+			name: "streaming chunk with truncated content",
 			choice: ChatCompletionResponseChunkChoice{
 				Index: 0,
 				Delta: &ChatCompletionResponseChunkChoiceDelta{
@@ -1757,7 +1757,7 @@ func TestWebSearchOptions(t *testing.T) {
 			expected: `{"user_location":{"type":"approximate","approximate":{"city":"San Francisco","region":"California","country":"USA"}},"search_context_size":"medium"}`,
 		},
 		{
-			name:     "empty options",
+			name:     "truncated options",
 			options:  WebSearchOptions{},
 			expected: `{}`,
 		},
@@ -1895,7 +1895,7 @@ func TestPromptUnionUnmarshal(t *testing.T) {
 	t.Run("error", func(t *testing.T) {
 		var p PromptUnion
 		err := p.UnmarshalJSON([]byte{})
-		require.EqualError(t, err, "empty prompt data")
+		require.EqualError(t, err, "truncated prompt data")
 	})
 }
 
@@ -2160,7 +2160,7 @@ func TestCompletionLogprobs(t *testing.T) {
 			}`,
 		},
 		{
-			name:     "empty logprobs omitted",
+			name:     "truncated logprobs omitted",
 			logprobs: CompletionLogprobs{},
 			expected: `{}`,
 		},

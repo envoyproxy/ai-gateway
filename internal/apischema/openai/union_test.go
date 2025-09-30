@@ -23,7 +23,7 @@ func TestUnmarshalJSONNestedUnion(t *testing.T) {
 			expected: "/path/to/file",
 		},
 		{
-			name:     "empty array defaults to string array",
+			name:     "truncated array defaults to string array",
 			data:     []byte(`[]`),
 			expected: []string{},
 		},
@@ -71,14 +71,14 @@ func TestUnmarshalJSONNestedUnion_Errors(t *testing.T) {
 		expectedErr string
 	}{
 		{
-			name:        "empty data",
+			name:        "truncated data",
 			data:        []byte{},
-			expectedErr: "empty prompt data",
+			expectedErr: "truncated prompt data",
 		},
 		{
 			name:        "only whitespace",
 			data:        []byte("   \t\n\r   "),
-			expectedErr: "empty prompt data",
+			expectedErr: "truncated prompt data",
 		},
 		{
 			name:        "invalid JSON string",
@@ -86,9 +86,9 @@ func TestUnmarshalJSONNestedUnion_Errors(t *testing.T) {
 			expectedErr: "cannot unmarshal prompt as string",
 		},
 		{
-			name:        "truncated array",
+			name:        "truncated data",
 			data:        []byte(`[`),
-			expectedErr: "truncated prompt array",
+			expectedErr: "truncated prompt data",
 		},
 		{
 			name:        "invalid array element",
@@ -138,7 +138,7 @@ func TestUnmarshalJSONNestedUnion_Errors(t *testing.T) {
 		{
 			name:        "array with only whitespace after bracket",
 			data:        []byte(`[   `),
-			expectedErr: "truncated prompt array",
+			expectedErr: "truncated prompt data",
 		},
 	}
 
