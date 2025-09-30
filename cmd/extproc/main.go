@@ -20,7 +20,6 @@ func main() {
 	signalsChan := make(chan os.Signal, 1)
 	signal.Notify(signalsChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
-		log.Printf("waiting for termination signal...")
 		<-signalsChan
 		log.Printf("signal received, shutting down...")
 		// Give some time for graceful shutdown. Right after the sigterm is issued for this pod,
@@ -33,7 +32,7 @@ func main() {
 		// This is a workaround for older k8s versions that don't support sidecar feature.
 		// This can be removed after the floor of supported k8s versions is larger than 1.32.
 		//
-		// 15 should be enough to propagate the readiness info to the load balancer for most cases.
+		// 15s should be enough to propagate the readiness info to the load balancer for most cases.
 		// time.Sleep(15 * time.Second)
 		log.Printf("shutting down the server now")
 		cancel()

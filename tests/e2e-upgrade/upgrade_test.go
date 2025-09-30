@@ -26,6 +26,18 @@ import (
 
 const egSelector = "gateway.envoyproxy.io/owning-gateway-name=upgrade-test"
 
+// TestUpgrade tests that the Envoy Gateway can be upgraded without dropping requests.
+//
+// There are two test cases:
+//  1. Rolling out pods: This test case forces a rolling update of the Envoy pods by adding
+//     a random annotation to the Envoy deployment. This simulates a scenario where the
+//     Envoy pods are being updated while the control plane remains the same.
+//  2. Control-plane upgrade: This test case upgrades the Envoy Gateway control plane
+//     to the latest version. This simulates a scenario where both the control plane
+//     and data plane are being updated.
+//
+// In both test cases, we continuously make requests to the Envoy Gateway and ensure
+// that no requests fail during the upgrade process.
 func TestUpgrade(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -43,14 +55,14 @@ func TestUpgrade(t *testing.T) {
 			name: "rolling out pods",
 			initFunc: func(ctx context.Context) string {
 				const kindClusterName = "envoy-ai-gateway-upgrade"
-				require.NoError(t, e2elib.SetupAll(t.Context(), kindClusterName, e2elib.AIGatewayHelmOption{},
+				require.NoError(t, e2elib.SetupAll(ctx, kindClusterName, e2elib.AIGatewayHelmOption{},
 					false, false))
 				return kindClusterName
 			},
 			runningAfterUpgrade: 30 * time.Second,
 			upgradeFunc: func(ctx context.Context) {
 				// Adding some random annotations to the Envoy deployments to force a rolling update.
-				labelGetCmd := e2elib.Kubectl(t.Context(), "get", "deployment", "-n", e2elib.EnvoyGatewayNamespace,
+				labelGetCmd := e2elib.Kubectl(ctx, "get", "deployment", "-n", e2elib.EnvoyGatewayNamespace,
 					"-l", egSelector, "-o", "jsonpath={.items[0].metadata.name}")
 				labelGetCmd.Stdout = nil
 				labelGetCmd.Stderr = nil
@@ -58,7 +70,7 @@ func TestUpgrade(t *testing.T) {
 				require.NoError(t, err, "failed to get deployment name: %s", string(outputRaw))
 				deploymentName := string(outputRaw)
 				t.Logf("Found deployment name: %s", deploymentName)
-				cmd := e2elib.Kubectl(t.Context(), "patch", "deployment", "-n", e2elib.EnvoyGatewayNamespace,
+				cmd := e2elib.Kubectl(ctx, "patch", "deployment", "-n", e2elib.EnvoyGatewayNamespace,
 					deploymentName, "--type=json", "-p",
 					`[{"op":"add","path":"/spec/template/metadata/annotations/upgrade-timestamp","value":"`+uuid.NewString()+`"}]`)
 				require.NoError(t, cmd.Run(), "failed to patch deployment")
