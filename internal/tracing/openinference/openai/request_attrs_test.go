@@ -144,7 +144,7 @@ var (
 			{
 				OfSystem: &openai.ChatCompletionSystemMessageParam{
 					Role:    openai.ChatMessageRoleSystem,
-					Content: openai.StringOrArray{Value: "You are a helpful assistant."},
+					Content: openai.ContentUnion{Value: "You are a helpful assistant."},
 				},
 			},
 			{
@@ -198,7 +198,7 @@ var (
 				OfTool: &openai.ChatCompletionToolMessageParam{
 					Role:       openai.ChatMessageRoleTool,
 					ToolCallID: "call_123",
-					Content:    openai.StringOrArray{Value: "Sunny, 72°F"},
+					Content:    openai.ContentUnion{Value: "Sunny, 72°F"},
 				},
 			},
 		},
@@ -563,7 +563,7 @@ func TestExtractMessageContent(t *testing.T) {
 			name: "system message with string content",
 			msg: openai.ChatCompletionMessageParamUnion{
 				OfSystem: &openai.ChatCompletionSystemMessageParam{
-					Content: openai.StringOrArray{
+					Content: openai.ContentUnion{
 						Value: "You are a helpful assistant.",
 					},
 					Role: openai.ChatMessageRoleSystem,
@@ -576,7 +576,7 @@ func TestExtractMessageContent(t *testing.T) {
 			name: "developer message with string content",
 			msg: openai.ChatCompletionMessageParamUnion{
 				OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
-					Content: openai.StringOrArray{
+					Content: openai.ContentUnion{
 						Value: "Internal developer note",
 					},
 					Role: openai.ChatMessageRoleDeveloper,
@@ -589,7 +589,7 @@ func TestExtractMessageContent(t *testing.T) {
 			name: "tool message with string content",
 			msg: openai.ChatCompletionMessageParamUnion{
 				OfTool: &openai.ChatCompletionToolMessageParam{
-					Content: openai.StringOrArray{
+					Content: openai.ContentUnion{
 						Value: "Tool response content",
 					},
 					Role: openai.ChatMessageRoleTool,
@@ -625,7 +625,7 @@ func TestExtractMessageContent(t *testing.T) {
 			name: "system message with nil content",
 			msg: openai.ChatCompletionMessageParamUnion{
 				OfSystem: &openai.ChatCompletionSystemMessageParam{
-					Content: openai.StringOrArray{Value: nil},
+					Content: openai.ContentUnion{Value: nil},
 					Role:    openai.ChatMessageRoleSystem,
 				},
 			},
@@ -635,8 +635,11 @@ func TestExtractMessageContent(t *testing.T) {
 			name: "system message with array content",
 			msg: openai.ChatCompletionMessageParamUnion{
 				OfSystem: &openai.ChatCompletionSystemMessageParam{
-					Content: openai.StringOrArray{Value: []string{"instruction1", "instruction2"}},
-					Role:    openai.ChatMessageRoleSystem,
+					Content: openai.ContentUnion{Value: []openai.ChatCompletionContentPartTextParam{
+						{Type: "text", Text: "instruction1"},
+						{Type: "text", Text: "instruction2"},
+					}},
+					Role: openai.ChatMessageRoleSystem,
 				},
 			},
 			expected: "[system message]",
@@ -645,7 +648,7 @@ func TestExtractMessageContent(t *testing.T) {
 			name: "developer message with nil content",
 			msg: openai.ChatCompletionMessageParamUnion{
 				OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
-					Content: openai.StringOrArray{Value: nil},
+					Content: openai.ContentUnion{Value: nil},
 					Role:    openai.ChatMessageRoleDeveloper,
 				},
 			},
@@ -655,8 +658,11 @@ func TestExtractMessageContent(t *testing.T) {
 			name: "developer message with array content",
 			msg: openai.ChatCompletionMessageParamUnion{
 				OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
-					Role:    openai.ChatMessageRoleDeveloper,
-					Content: openai.StringOrArray{Value: []string{"instruction1", "instruction2"}},
+					Role: openai.ChatMessageRoleDeveloper,
+					Content: openai.ContentUnion{Value: []openai.ChatCompletionContentPartTextParam{
+						{Type: "text", Text: "instruction1"},
+						{Type: "text", Text: "instruction2"},
+					}},
 				},
 			},
 			expected: "[developer message]",
@@ -665,7 +671,7 @@ func TestExtractMessageContent(t *testing.T) {
 			name: "tool message with nil content",
 			msg: openai.ChatCompletionMessageParamUnion{
 				OfTool: &openai.ChatCompletionToolMessageParam{
-					Content: openai.StringOrArray{Value: nil},
+					Content: openai.ContentUnion{Value: nil},
 					Role:    openai.ChatMessageRoleTool,
 				},
 			},
@@ -677,7 +683,10 @@ func TestExtractMessageContent(t *testing.T) {
 				OfTool: &openai.ChatCompletionToolMessageParam{
 					Role:       openai.ChatMessageRoleTool,
 					ToolCallID: "call_123",
-					Content:    openai.StringOrArray{Value: []string{"result1", "result2"}},
+					Content: openai.ContentUnion{Value: []openai.ChatCompletionContentPartTextParam{
+						{Type: "text", Text: "result1"},
+						{Type: "text", Text: "result2"},
+					}},
 				},
 			},
 			expected: "[tool content]",

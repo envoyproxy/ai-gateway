@@ -25,21 +25,21 @@ import (
 var (
 	basicEmbeddingReq = &openai.EmbeddingRequest{
 		Model: "text-embedding-3-small",
-		Input: openai.StringOrArray{Value: "hello world"},
+		Input: openai.EmbeddingRequestInput{Value: "How do I reset my password?"},
 	}
-	basicEmbeddingReqBody = []byte(`{"model":"text-embedding-3-small","input":"hello world"}`)
+	basicEmbeddingReqBody = []byte(`{"model":"text-embedding-3-small","input":"How do I reset my password?"}`)
 
 	multiInputEmbeddingReq = &openai.EmbeddingRequest{
 		Model: "text-embedding-3-small",
-		Input: openai.StringOrArray{Value: []string{"hello", "world", "test"}},
+		Input: openai.EmbeddingRequestInput{Value: []string{"How", "do", "I", "reset", "my", "password?"}},
 	}
-	multiInputEmbeddingReqBody = []byte(`{"model":"text-embedding-3-small","input":["hello","world","test"]}`)
+	multiInputEmbeddingReqBody = []byte(`{"model":"text-embedding-3-small","input":["How","do","I","reset","my","password?"]}`)
 
 	tokenInputEmbeddingReq = &openai.EmbeddingRequest{
 		Model: "text-embedding-3-small",
-		Input: openai.StringOrArray{Value: []int{1234, 5678}},
+		Input: openai.EmbeddingRequestInput{Value: []int{14438, 656, 358, 7738, 856, 3636, 30}},
 	}
-	tokenInputEmbeddingReqBody = []byte(`{"model":"text-embedding-3-small","input":[1234,5678]}`)
+	tokenInputEmbeddingReqBody = []byte(`{"model":"text-embedding-3-small","input":[4438,656,358,7738,856,3636,30]}`)
 
 	basicEmbeddingResp = &openai.EmbeddingResponse{
 		Model: "text-embedding-3-small",
@@ -129,7 +129,7 @@ func TestEmbeddingsRecorder_RecordRequest(t *testing.T) {
 				attribute.String(openinference.InputValue, string(basicEmbeddingReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
 				attribute.String(openinference.EmbeddingInvocationParameters, `{"model":"text-embedding-3-small"}`),
-				attribute.String(openinference.EmbeddingTextAttribute(0), "hello world"),
+				attribute.String(openinference.EmbeddingTextAttribute(0), "How do I reset my password?"),
 			},
 		},
 		{
@@ -143,9 +143,12 @@ func TestEmbeddingsRecorder_RecordRequest(t *testing.T) {
 				attribute.String(openinference.InputValue, string(multiInputEmbeddingReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
 				attribute.String(openinference.EmbeddingInvocationParameters, `{"model":"text-embedding-3-small"}`),
-				attribute.String(openinference.EmbeddingTextAttribute(0), "hello"),
-				attribute.String(openinference.EmbeddingTextAttribute(1), "world"),
-				attribute.String(openinference.EmbeddingTextAttribute(2), "test"),
+				attribute.String(openinference.EmbeddingTextAttribute(0), "How"),
+				attribute.String(openinference.EmbeddingTextAttribute(1), "do"),
+				attribute.String(openinference.EmbeddingTextAttribute(2), "I"),
+				attribute.String(openinference.EmbeddingTextAttribute(3), "reset"),
+				attribute.String(openinference.EmbeddingTextAttribute(4), "my"),
+				attribute.String(openinference.EmbeddingTextAttribute(5), "password?"),
 			},
 		},
 		{
@@ -183,7 +186,7 @@ func TestEmbeddingsRecorder_RecordRequest(t *testing.T) {
 				attribute.String(openinference.SpanKind, openinference.SpanKindEmbedding),
 				attribute.String(openinference.InputValue, string(basicEmbeddingReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-				attribute.String(openinference.EmbeddingTextAttribute(0), "hello world"),
+				attribute.String(openinference.EmbeddingTextAttribute(0), "How do I reset my password?"),
 			},
 		},
 	}
@@ -342,7 +345,7 @@ func TestEmbeddingsRecorder_RecordResponse(t *testing.T) {
 			var outputValueAttr *attribute.KeyValue
 			var expectedOutputValueAttr *attribute.KeyValue
 
-			filteredResponseAttrs := []attribute.KeyValue{}
+			var filteredResponseAttrs []attribute.KeyValue
 			for _, attr := range responseAttrs {
 				if string(attr.Key) == openinference.OutputValue {
 					outputValueAttr = &attr

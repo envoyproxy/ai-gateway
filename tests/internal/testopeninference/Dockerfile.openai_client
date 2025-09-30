@@ -25,4 +25,4 @@ CMD ["opentelemetry-instrument --service_name openai-cli --metrics_exporter none
 # For create embeddings, use the OpenAI SDK because the CLI does not support it
 FROM base AS create-embeddings
 # OpenInference only uses spans, not metrics or logs - disable them via CLI args
-CMD ["opentelemetry-instrument --service_name openai-cli --metrics_exporter none --logs_exporter none python -c 'import os; from openai import OpenAI; print(OpenAI().embeddings.create(input=\"What is RAG?\", model=os.environ[\"EMBEDDINGS_MODEL\"]))'"]
+CMD ["opentelemetry-instrument --service_name openai-cli --metrics_exporter none --logs_exporter none python -c 'import os; from openai import OpenAI; print(OpenAI().embeddings.create(input=\"How do I reset my password?\", model=os.environ[\"EMBEDDINGS_MODEL\"]))'"]

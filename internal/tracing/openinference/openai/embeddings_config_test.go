@@ -69,7 +69,7 @@ func TestEmbeddingsRecorder_WithConfig_HideInputs(t *testing.T) {
 				attribute.String(openinference.SpanKind, openinference.SpanKindEmbedding),
 				attribute.String(openinference.InputValue, string(basicEmbeddingReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-				attribute.String(openinference.EmbeddingTextAttribute(0), "hello world"),
+				attribute.String(openinference.EmbeddingTextAttribute(0), "How do I reset my password?"),
 			},
 		},
 	}

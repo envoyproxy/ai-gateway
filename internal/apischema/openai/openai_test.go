@@ -196,7 +196,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 					{
 						OfSystem: &ChatCompletionSystemMessageParam{
 							Role: ChatMessageRoleSystem,
-							Content: StringOrArray{
+							Content: ContentUnion{
 								Value: "you are a helpful assistant",
 							},
 						},
@@ -204,7 +204,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 					{
 						OfDeveloper: &ChatCompletionDeveloperMessageParam{
 							Role: ChatMessageRoleDeveloper,
-							Content: StringOrArray{
+							Content: ContentUnion{
 								Value: "you are a helpful dev assistant",
 							},
 						},
@@ -221,7 +221,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 						OfTool: &ChatCompletionToolMessageParam{
 							Role:       ChatMessageRoleTool,
 							ToolCallID: "123",
-							Content:    StringOrArray{Value: "some tool"},
+							Content:    ContentUnion{Value: "some tool"},
 						},
 					},
 					{
@@ -274,7 +274,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 					{
 						OfSystem: &ChatCompletionSystemMessageParam{
 							Role: ChatMessageRoleSystem,
-							Content: StringOrArray{
+							Content: ContentUnion{
 								Value: []ChatCompletionContentPartTextParam{
 									{
 										Text: "you are a helpful assistant",
@@ -287,7 +287,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 					{
 						OfDeveloper: &ChatCompletionDeveloperMessageParam{
 							Role: ChatMessageRoleDeveloper,
-							Content: StringOrArray{
+							Content: ContentUnion{
 								Value: []ChatCompletionContentPartTextParam{
 									{
 										Text: "you are a helpful dev assistant",
@@ -525,7 +525,7 @@ func TestChatCompletionMessageParamUnionMarshal(t *testing.T) {
 			input: ChatCompletionMessageParamUnion{
 				OfSystem: &ChatCompletionSystemMessageParam{
 					Role: ChatMessageRoleSystem,
-					Content: StringOrArray{
+					Content: ContentUnion{
 						Value: "You are a helpful assistant",
 					},
 				},
@@ -550,7 +550,7 @@ func TestChatCompletionMessageParamUnionMarshal(t *testing.T) {
 				OfTool: &ChatCompletionToolMessageParam{
 					Role:       ChatMessageRoleTool,
 					ToolCallID: "123",
-					Content:    StringOrArray{Value: "tool result"},
+					Content:    ContentUnion{Value: "tool result"},
 				},
 			},
 			expected: `{"content":"tool result","role":"tool","tool_call_id":"123"}`,
@@ -566,42 +566,107 @@ func TestChatCompletionMessageParamUnionMarshal(t *testing.T) {
 	}
 }
 
-func TestStringOrArrayMarshal(t *testing.T) {
-	testCases := []struct {
-		name     string
-		input    StringOrArray
-		expected string
+func TestContentUnionUnmarshal(t *testing.T) {
+	for _, tc := range contentUnionBenchmarkCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var p ContentUnion
+			err := p.UnmarshalJSON(tc.data)
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, p.Value)
+		})
+	}
+	// Test cases that cover ContentUnion.UnmarshalJSON lines
+	errorCases := []struct {
+		name        string
+		data        []byte
+		expectedErr string
 	}{
 		{
-			name:     "string value",
-			input:    StringOrArray{Value: "hello world"},
-			expected: `"hello world"`,
+			name:        "truncated data triggers skipLeadingWhitespace error",
+			data:        []byte{},
+			expectedErr: "truncated content data",
 		},
 		{
-			name:     "string array",
-			input:    StringOrArray{Value: []string{"hello", "world"}},
-			expected: `["hello","world"]`,
+			name:        "invalid array unmarshal",
+			data:        []byte(`["not a valid ChatCompletionContentPartTextParam"]`),
+			expectedErr: "cannot unmarshal content as []ChatCompletionContentPartTextParam",
 		},
 		{
-			name:     "int array", // for token embeddings.
-			input:    StringOrArray{Value: []int64{1, 2}},
-			expected: `[1,2]`,
+			name:        "invalid type (number)",
+			data:        []byte(`123`),
+			expectedErr: "invalid content type (must be string or array of ChatCompletionContentPartTextParam)",
 		},
 		{
-			name: "text param array",
-			input: StringOrArray{Value: []ChatCompletionContentPartTextParam{
-				{Text: "hello", Type: "text"},
-				{Text: "world", Type: "text"},
-			}},
-			expected: `[{"text":"hello","type":"text"},{"text":"world","type":"text"}]`,
+			name:        "invalid type (object)",
+			data:        []byte(`{"key": "value"}`),
+			expectedErr: "invalid content type (must be string or array of ChatCompletionContentPartTextParam)",
 		},
 	}
 
-	for _, tc := range testCases {
+	for _, tc := range errorCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := json.Marshal(tc.input)
+			var p ContentUnion
+			err := p.UnmarshalJSON(tc.data)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.expectedErr)
+		})
+	}
+}
+
+func TestContentUnionMarshal(t *testing.T) {
+	for _, tc := range contentUnionBenchmarkCases {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := json.Marshal(tc.expected)
 			require.NoError(t, err)
-			require.JSONEq(t, tc.expected, string(result))
+			require.JSONEq(t, string(tc.data), string(data))
+		})
+	}
+}
+
+func TestEmbeddingRequestInputUnmarshal(t *testing.T) {
+	for _, tc := range embeddingRequestInputBenchmarkCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var p EmbeddingRequestInput
+			err := p.UnmarshalJSON(tc.data)
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, p.Value)
+		})
+	}
+
+	// Test error cases for EmbeddingRequestInput
+	errorCases := []struct {
+		name        string
+		data        []byte
+		expectedErr string
+	}{
+		{
+			name:        "truncated data",
+			data:        []byte{},
+			expectedErr: "truncated input data",
+		},
+		{
+			name:        "nested int array (unsupported type)",
+			data:        []byte(`[[1, 2, 3], [4, 5, 6]]`),
+			expectedErr: "input has unsupported type [][]int64",
+		},
+	}
+
+	for _, tc := range errorCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var p EmbeddingRequestInput
+			err := p.UnmarshalJSON(tc.data)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.expectedErr)
+		})
+	}
+}
+
+func TestEmbeddingRequestInputMarshal(t *testing.T) {
+	for _, tc := range embeddingRequestInputBenchmarkCases {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := json.Marshal(tc.expected)
+			require.NoError(t, err)
+			require.JSONEq(t, string(tc.data), string(data))
 		})
 	}
 }
@@ -792,7 +857,7 @@ func TestMarshalUnmarshalRoundTrip(t *testing.T) {
 			{
 				OfSystem: &ChatCompletionSystemMessageParam{
 					Role:    ChatMessageRoleSystem,
-					Content: StringOrArray{Value: "You are helpful"},
+					Content: ContentUnion{Value: "You are helpful"},
 				},
 			},
 			{
@@ -1070,7 +1135,7 @@ func TestChatCompletionRequest(t *testing.T) {
 				},
 				PredictionContent: &PredictionContent{
 					Type:    PredictionContentTypeContent,
-					Content: StringOrArray{Value: "Hello world!"},
+					Content: ContentUnion{Value: "Hello world!"},
 				},
 			},
 		},
@@ -1175,7 +1240,7 @@ func TestChatCompletionResponseChunkChoice(t *testing.T) {
 			expected: `{"index":0,"delta":{"content":"Hello","role":"assistant"}}`,
 		},
 		{
-			name: "streaming chunk with empty content",
+			name: "streaming chunk with truncated content",
 			choice: ChatCompletionResponseChunkChoice{
 				Index: 0,
 				Delta: &ChatCompletionResponseChunkChoiceDelta{
@@ -1692,7 +1757,7 @@ func TestWebSearchOptions(t *testing.T) {
 			expected: `{"user_location":{"type":"approximate","approximate":{"city":"San Francisco","region":"California","country":"USA"}},"search_context_size":"medium"}`,
 		},
 		{
-			name:     "empty options",
+			name:     "truncated options",
 			options:  WebSearchOptions{},
 			expected: `{}`,
 		},
@@ -1813,6 +1878,350 @@ func TestStringOrAssistantRoleContentUnionUnmarshal(t *testing.T) {
 			if !cmp.Equal(tc.expected, result) {
 				t.Errorf("Unmarshal diff(got, expected) = %s\n", cmp.Diff(result, tc.expected))
 			}
+		})
+	}
+}
+
+func TestPromptUnionUnmarshal(t *testing.T) {
+	for _, tc := range promptUnionBenchmarkCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var p PromptUnion
+			err := p.UnmarshalJSON(tc.data)
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, p.Value)
+		})
+	}
+	// just one error to avoid replicating tests in unmarshalJSONNestedUnion
+	t.Run("error", func(t *testing.T) {
+		var p PromptUnion
+		err := p.UnmarshalJSON([]byte{})
+		require.EqualError(t, err, "truncated prompt data")
+	})
+}
+
+func TestPromptUnionMarshal(t *testing.T) {
+	for _, tc := range promptUnionBenchmarkCases {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := json.Marshal(tc.expected)
+			require.NoError(t, err)
+			require.JSONEq(t, string(tc.data), string(data))
+		})
+	}
+}
+
+func TestCompletionRequest(t *testing.T) {
+	testCases := []struct {
+		name     string
+		req      CompletionRequest
+		expected string
+	}{
+		{
+			name: "basic request",
+			req: CompletionRequest{
+				Model:       ModelGPT5Nano,
+				Prompt:      PromptUnion{Value: "test"},
+				MaxTokens:   ptr.To(10),
+				Temperature: ptr.To(0.7),
+			},
+			expected: `{
+				"model": "gpt-5-nano",
+				"prompt": "test",
+				"max_tokens": 10,
+				"temperature": 0.7
+			}`,
+		},
+		{
+			name: "zero temperature is valid and serialized",
+			req: CompletionRequest{
+				Model:       ModelGPT5Nano,
+				Prompt:      PromptUnion{Value: "test"},
+				MaxTokens:   ptr.To(10),
+				Temperature: ptr.To(0.0),
+			},
+			expected: `{
+				"model": "gpt-5-nano",
+				"prompt": "test",
+				"max_tokens": 10,
+				"temperature": 0
+			}`,
+		},
+		{
+			name: "nil temperature omitted",
+			req: CompletionRequest{
+				Model:     ModelGPT5Nano,
+				Prompt:    PromptUnion{Value: "test"},
+				MaxTokens: ptr.To(10),
+			},
+			expected: `{
+				"model": "gpt-5-nano",
+				"prompt": "test",
+				"max_tokens": 10
+			}`,
+		},
+		{
+			name: "zero frequency penalty is valid",
+			req: CompletionRequest{
+				Model:            ModelGPT5Nano,
+				Prompt:           PromptUnion{Value: "test"},
+				FrequencyPenalty: ptr.To(0.0),
+			},
+			expected: `{
+				"model": "gpt-5-nano",
+				"prompt": "test",
+				"frequency_penalty": 0
+			}`,
+		},
+		{
+			name: "with batch prompts",
+			req: CompletionRequest{
+				Model:       ModelGPT5Nano,
+				Prompt:      PromptUnion{Value: []string{"prompt1", "prompt2"}},
+				MaxTokens:   ptr.To(5),
+				Temperature: ptr.To(1.0),
+			},
+			expected: `{
+				"model": "gpt-5-nano",
+				"prompt": ["prompt1", "prompt2"],
+				"max_tokens": 5,
+				"temperature": 1.0
+			}`,
+		},
+		{
+			name: "with token array",
+			req: CompletionRequest{
+				Model:     ModelGPT5Nano,
+				Prompt:    PromptUnion{Value: []int{1212, 318}},
+				MaxTokens: ptr.To(5),
+			},
+			expected: `{
+				"model": "gpt-5-nano",
+				"prompt": [1212, 318],
+				"max_tokens": 5
+			}`,
+		},
+		{
+			name: "with stream",
+			req: CompletionRequest{
+				Model:  ModelGPT5Nano,
+				Prompt: PromptUnion{Value: "test"},
+				Stream: true,
+			},
+			expected: `{
+				"model": "gpt-5-nano",
+				"prompt": "test",
+				"stream": true
+			}`,
+		},
+		{
+			name: "with suffix",
+			req: CompletionRequest{
+				Model:  ModelGPT5Nano,
+				Prompt: PromptUnion{Value: "Once upon a time"},
+				Suffix: " and they lived happily ever after.",
+			},
+			expected: `{
+				"model": "gpt-5-nano",
+				"prompt": "Once upon a time",
+				"suffix": " and they lived happily ever after."
+			}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := json.Marshal(tc.req)
+			require.NoError(t, err)
+			require.JSONEq(t, tc.expected, string(data))
+
+			var decoded CompletionRequest
+			err = json.Unmarshal(data, &decoded)
+			require.NoError(t, err)
+			require.Equal(t, tc.req.Model, decoded.Model)
+			if tc.req.Temperature != nil {
+				require.NotNil(t, decoded.Temperature)
+				require.Equal(t, *tc.req.Temperature, *decoded.Temperature)
+			}
+		})
+	}
+}
+
+func TestCompletionResponse(t *testing.T) {
+	testCases := []struct {
+		name     string
+		resp     CompletionResponse
+		expected string
+	}{
+		{
+			name: "basic response",
+			resp: CompletionResponse{
+				ID:      "cmpl-123",
+				Object:  "text_completion",
+				Created: JSONUNIXTime(time.Unix(1589478378, 0)),
+				Model:   ModelGPT5Nano,
+				Choices: []CompletionChoice{
+					{
+						Text:         "\n\nThis is indeed a test",
+						Index:        ptr.To(0),
+						FinishReason: "length",
+					},
+				},
+				Usage: &Usage{
+					PromptTokens:     5,
+					CompletionTokens: 7,
+					TotalTokens:      12,
+				},
+			},
+			expected: `{
+				"id": "cmpl-123",
+				"object": "text_completion",
+				"created": 1589478378,
+				"model": "gpt-5-nano",
+				"choices": [{
+					"text": "\n\nThis is indeed a test",
+					"index": 0,
+					"finish_reason": "length"
+				}],
+				"usage": {
+					"prompt_tokens": 5,
+					"completion_tokens": 7,
+					"total_tokens": 12
+				}
+			}`,
+		},
+		{
+			name: "with system fingerprint",
+			resp: CompletionResponse{
+				ID:                "cmpl-456",
+				Object:            "text_completion",
+				Created:           JSONUNIXTime(time.Unix(1589478378, 0)),
+				Model:             ModelGPT5Nano,
+				SystemFingerprint: "fp_44709d6fcb",
+				Choices: []CompletionChoice{
+					{
+						Text:         "Response text",
+						FinishReason: "stop",
+					},
+				},
+			},
+			expected: `{
+				"id": "cmpl-456",
+				"object": "text_completion",
+				"created": 1589478378,
+				"model": "gpt-5-nano",
+				"system_fingerprint": "fp_44709d6fcb",
+				"choices": [{
+					"text": "Response text",
+					"finish_reason": "stop"
+				}]
+			}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := json.Marshal(tc.resp)
+			require.NoError(t, err)
+			require.JSONEq(t, tc.expected, string(data))
+
+			var decoded CompletionResponse
+			err = json.Unmarshal(data, &decoded)
+			require.NoError(t, err)
+			require.Equal(t, tc.resp.ID, decoded.ID)
+			require.Equal(t, tc.resp.Model, decoded.Model)
+		})
+	}
+}
+
+func TestCompletionLogprobs(t *testing.T) {
+	testCases := []struct {
+		name     string
+		logprobs CompletionLogprobs
+		expected string
+	}{
+		{
+			name: "with logprobs",
+			logprobs: CompletionLogprobs{
+				Tokens:        []string{"\n", "\n", "This"},
+				TokenLogprobs: []float64{-0.1, -0.2, -0.3},
+				TopLogprobs: []map[string]float64{
+					{"\n": -0.1, " ": -2.3},
+					{"\n": -0.2, " ": -2.1},
+				},
+				TextOffset: []int{0, 1, 2},
+			},
+			expected: `{
+				"tokens": ["\n", "\n", "This"],
+				"token_logprobs": [-0.1, -0.2, -0.3],
+				"top_logprobs": [
+					{"\n": -0.1, " ": -2.3},
+					{"\n": -0.2, " ": -2.1}
+				],
+				"text_offset": [0, 1, 2]
+			}`,
+		},
+		{
+			name:     "truncated logprobs omitted",
+			logprobs: CompletionLogprobs{},
+			expected: `{}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := json.Marshal(tc.logprobs)
+			require.NoError(t, err)
+			require.JSONEq(t, tc.expected, string(data))
+
+			var decoded CompletionLogprobs
+			err = json.Unmarshal(data, &decoded)
+			require.NoError(t, err)
+			require.Equal(t, tc.logprobs, decoded)
+		})
+	}
+}
+
+func TestUsage(t *testing.T) {
+	testCases := []struct {
+		name     string
+		usage    Usage
+		expected string
+	}{
+		{
+			name: "with all fields",
+			usage: Usage{
+				PromptTokens:     10,
+				CompletionTokens: 20,
+				TotalTokens:      30,
+			},
+			expected: `{
+				"prompt_tokens": 10,
+				"completion_tokens": 20,
+				"total_tokens": 30
+			}`,
+		},
+		{
+			name: "with zero values omitted",
+			usage: Usage{
+				PromptTokens: 5,
+				TotalTokens:  5,
+			},
+			expected: `{
+				"prompt_tokens": 5,
+				"total_tokens": 5
+			}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := json.Marshal(tc.usage)
+			require.NoError(t, err)
+			require.JSONEq(t, tc.expected, string(data))
+
+			var decoded Usage
+			err = json.Unmarshal(data, &decoded)
+			require.NoError(t, err)
+			require.Equal(t, tc.usage, decoded)
 		})
 	}
 }

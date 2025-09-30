@@ -168,10 +168,10 @@ func TestBuildRequestMutations(t *testing.T) {
 func TestSystemMsgToDeveloperMsg(t *testing.T) {
 	systemMsg := openai.ChatCompletionSystemMessageParam{
 		Name:    "test-system",
-		Content: openai.StringOrArray{Value: "You are a helpful assistant."},
+		Content: openai.ContentUnion{Value: "You are a helpful assistant."},
 	}
 	developerMsg := systemMsgToDeveloperMsg(systemMsg)
 	require.Equal(t, "test-system", developerMsg.Name)
 	require.Equal(t, openai.ChatMessageRoleDeveloper, developerMsg.Role)
-	require.Equal(t, openai.StringOrArray{Value: "You are a helpful assistant."}, developerMsg.Content)
+	require.Equal(t, openai.ContentUnion{Value: "You are a helpful assistant."}, developerMsg.Content)
 }

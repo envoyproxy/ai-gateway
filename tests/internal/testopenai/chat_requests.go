@@ -98,7 +98,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 			{
 				OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
 					Role: openai.ChatMessageRoleDeveloper,
-					Content: openai.StringOrArray{
+					Content: openai.ContentUnion{
 						Value: "You are a helpful assistant.",
 					},
 				},
@@ -317,7 +317,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 			{
 				OfSystem: &openai.ChatCompletionSystemMessageParam{
 					Role: openai.ChatMessageRoleSystem,
-					Content: openai.StringOrArray{
+					Content: openai.ContentUnion{
 						Value: "You are an AI assistant that generates simple, sketch-style images with minimal detail. When asked to generate an image, create it with low quality settings for cost efficiency.",
 					},
 				},
@@ -366,7 +366,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 			{
 				OfSystem: &openai.ChatCompletionSystemMessageParam{
 					Role: openai.ChatMessageRoleSystem,
-					Content: openai.StringOrArray{
+					Content: openai.ContentUnion{
 						Value: "You are a financial research planner. Given a request for financial analysis, produce a set of web searches to gather the context needed. Aim for recent headlines, earnings  calls or 10‑K snippets, analyst commentary, and industry background. Output between 5 and 15 search terms to query for.",
 					},
 				},
@@ -447,7 +447,7 @@ var (
 			{
 				OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
 					Role: openai.ChatMessageRoleDeveloper,
-					Content: openai.StringOrArray{
+					Content: openai.ContentUnion{
 						Value: "Hello, I'm a developer!",
 					},
 				},

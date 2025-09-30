@@ -70,6 +70,47 @@ const (
 	// See https://github.com/openai/openai-agents-python/tree/main/examples/financial_research_agent
 	CassetteChatOpenAIAgentsPython
 
+	// Cassettes for the OpenAI /v1/completions endpoint.
+
+	// CassetteCompletionBasic tests standard single-prompt code completion
+	// requests typical of LoRA-tuned CodeLlama or Starcoder models deployed via
+	// vLLM/llama.cpp. Uses fibonacci function as representative coding task for
+	// model evaluation.
+	// See: https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html
+	CassetteCompletionBasic
+	// CassetteCompletionToken is CassetteCompletionBasic, but with cl100k_base
+	// tokens as input instead of text strings. This simulates LoRA fine-tuning
+	// workflows requiring precise tokenization control.
+	CassetteCompletionToken
+	// CassetteCompletionStreaming is CassetteCompletionBasic, with streaming
+	// enabled to test real-time token delivery common in IDE.
+	CassetteCompletionStreaming
+	// CassetteCompletionStreamingUsage is CassetteCompletionStreaming, but
+	// with include_usage enabled to test detailed token usage reporting.
+	CassetteCompletionStreamingUsage
+	// CassetteCompletionTextBatch tests multiple code completion variants
+	// generated simultaneously, common in IDE autocomplete where users select
+	// from LoRA model suggestions. Full vs truncated prompts simulate real
+	// editing scenarios.
+	// See: https://community.openai.com/t/n-argument-vs-batch-input/59121
+	CassetteCompletionTextBatch
+	// CassetteCompletionTokenBatch is CassetteCompletionTextBatch, but with
+	// cl100k_base tokens as input instead of text strings. This simulates LoRA
+	// fine-tuning workflows requiring precise tokenization control.
+	CassetteCompletionTokenBatch
+	// CassetteCompletionSuffix tests the suffix parameter for fill-in-the-middle
+	// completion tasks. The model generates code to insert between a prompt (partial
+	// function definition) and a suffix (function call). Also tests logprobs for
+	// confidence scoring and n for multiple completion variants. Only gpt-3.5-turbo-instruct
+	// supports the suffix parameter.
+	// See: https://platform.openai.com/docs/guides/completions/inserting-text
+	CassetteCompletionSuffix
+	// CassetteCompletionBadRequest is a request with multiple validation
+	// errors.
+	CassetteCompletionBadRequest
+	// CassetteCompletionUnknownModel is a request with a non-existent model.
+	CassetteCompletionUnknownModel
+
 	// Cassettes for the OpenAI /embeddings endpoint.
 
 	// CassetteEmbeddingsBasic is the canonical OpenAI embeddings request with a single string input.
@@ -118,6 +159,16 @@ var stringValues = map[Cassette]string{
 	CassetteChatStreamingWebSearch:     "chat-streaming-web-search",
 	CassetteChatOpenAIAgentsPython:     "chat-openai-agents-python",
 
+	CassetteCompletionBasic:          "completion-basic",
+	CassetteCompletionToken:          "completion-token",
+	CassetteCompletionStreaming:      "completion-streaming",
+	CassetteCompletionStreamingUsage: "completion-streaming-usage",
+	CassetteCompletionTextBatch:      "completion-text-batch",
+	CassetteCompletionTokenBatch:     "completion-token-batch",
+	CassetteCompletionSuffix:         "completion-suffix",
+	CassetteCompletionBadRequest:     "completion-bad-request",
+	CassetteCompletionUnknownModel:   "completion-unknown-model",
+
 	CassetteEmbeddingsBasic:        "embeddings-basic",
 	CassetteEmbeddingsBase64:       "embeddings-base64",
 	CassetteEmbeddingsTokens:       "embeddings-tokens",
@@ -145,6 +196,8 @@ func (c Cassette) String() string {
 func NewRequest(ctx context.Context, baseURL string, cassette Cassette) (*http.Request, error) {
 	if r, ok := chatRequests[cassette]; ok {
 		return newRequest(ctx, cassette, baseURL+"/chat/completions", r)
+	} else if r, ok := completionRequests[cassette]; ok {
+		return newRequest(ctx, cassette, baseURL+"/completions", r)
 	} else if r, ok := embeddingsRequests[cassette]; ok {
 		return newRequest(ctx, cassette, baseURL+"/embeddings", r)
 	}

@@ -37,6 +37,12 @@ const (
 
 // Model names for testing.
 const (
+	// ModelBabbage002 is the cheapest model usable with /completions (legacy).
+	// It uses cl100k_base tokenizer.
+	ModelBabbage002 = "babbage-002"
+	// ModelGPT35TurboInstruct is a completion model that supports the suffix parameter.
+	// It uses cl100k_base tokenizer.
+	ModelGPT35TurboInstruct = "gpt-3.5-turbo-instruct"
 	// ModelGPT5Nano is the cheapest model usable with /chat/completions.
 	// Note: gpt-5-nano is also the cheapest reasoning model.
 	ModelGPT5Nano = "gpt-5-nano"
@@ -65,7 +71,7 @@ type ChatCompletionContentPartTextType string
 // ChatCompletionContentPartImageType The type of the content part.
 type ChatCompletionContentPartImageType string
 
-// ChatCompletionContentPartImageType The type of the content part.
+// ChatCompletionContentPartFileType The type of the content part.
 type ChatCompletionContentPartFileType string
 
 const (
@@ -252,54 +258,66 @@ func (s StringOrAssistantRoleContentUnion) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.Value)
 }
 
-type StringOrArray struct {
+// ContentUnion represents content fields in system, developer, and tool
+// messages.
+//
+// Note: This does not include user or assistant messages which have their own
+// unions due to supporting more types.
+//
+// According to OpenAI API spec, these accept either:
+// - string: plain text content
+// - []ChatCompletionContentPartTextParam: array of text content parts (only text type supported)
+type ContentUnion struct {
 	Value any
 }
 
-func (s *StringOrArray) UnmarshalJSON(data []byte) error {
-	var str string
-	err := json.Unmarshal(data, &str)
-	if err == nil {
-		s.Value = str
-		return nil
+// UnmarshalJSON is tuned to be faster with substantially reduced allocations
+// vs openai-go which has heavy use of reflection.
+func (c *ContentUnion) UnmarshalJSON(data []byte) error {
+	// Skip leading whitespace
+	idx, err := skipLeadingWhitespace("content", data, 0)
+	if err != nil {
+		return err
 	}
 
-	// Try to unmarshal as array of strings (for embeddings).
-	var strArr []string
-	err = json.Unmarshal(data, &strArr)
-	if err == nil {
-		s.Value = strArr
+	switch data[idx] {
+	case '"':
+		c.Value, err = unquoteOrUnmarshalJSONString("content", data)
+		return err
+	case '[':
+		var arr []ChatCompletionContentPartTextParam
+		if err := json.Unmarshal(data, &arr); err != nil {
+			return fmt.Errorf("cannot unmarshal content as []ChatCompletionContentPartTextParam: %w", err)
+		}
+		c.Value = arr
 		return nil
+	default:
+		return fmt.Errorf("invalid content type (must be string or array of ChatCompletionContentPartTextParam)")
 	}
-
-	// Try to unmarshal as array of ints (for single pre-tokenized sequence).
-	var ints []int64
-	err = json.Unmarshal(data, &ints)
-	if err == nil {
-		s.Value = ints
-		return nil
-	}
-
-	// Try to unmarshal as array of int arrays (for batch pre-tokenized sequences).
-	var intArrays [][]int64
-	err = json.Unmarshal(data, &intArrays)
-	if err == nil {
-		s.Value = intArrays
-		return nil
-	}
-
-	// Try to unmarshal as array of ChatCompletionContentPartTextParam (for chat completion).
-	var arr []ChatCompletionContentPartTextParam
-	err = json.Unmarshal(data, &arr)
-	if err == nil {
-		s.Value = arr
-		return nil
-	}
-
-	return fmt.Errorf("cannot unmarshal JSON data as string or array of string")
 }
 
-func (s StringOrArray) MarshalJSON() ([]byte, error) {
+func (c ContentUnion) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.Value)
+}
+
+// EmbeddingRequestInput is the EmbeddingRequest.Input type.
+type EmbeddingRequestInput struct {
+	Value any
+}
+
+func (s *EmbeddingRequestInput) UnmarshalJSON(data []byte) (err error) {
+	// reuse the nested union implementation vs creating a new one.
+	s.Value, err = unmarshalJSONNestedUnion("input", data)
+	if err != nil {
+		return
+	}
+	if _, ok := s.Value.([][]int64); ok {
+		return fmt.Errorf("input has unsupported type [][]int64")
+	}
+	return
+}
+
+func (s EmbeddingRequestInput) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.Value)
 }
 
@@ -416,12 +434,14 @@ type ChatCompletionUserMessageParam struct {
 	Name string `json:"name,omitempty"`
 }
 
-// ChatCompletionSystemMessageParam Developer-provided instructions that the model should follow, regardless of
+// ChatCompletionSystemMessageParam represents a system message.
+// Developer-provided instructions that the model should follow, regardless of
 // messages sent by the user. With o1 models and newer, use `developer` messages
 // for this purpose instead.
+// Docs: https://platform.openai.com/docs/api-reference/chat/create#messages
 type ChatCompletionSystemMessageParam struct {
-	// The contents of the system message.
-	Content StringOrArray `json:"content"`
+	// Content: The contents of the system message.
+	Content ContentUnion `json:"content"`
 	// The role of the messages author, in this case `system`.
 	Role string `json:"role"`
 	// An optional name for the participant. Provides the model information to
@@ -429,12 +449,14 @@ type ChatCompletionSystemMessageParam struct {
 	Name string `json:"name,omitempty"`
 }
 
-// ChatCompletionDeveloperMessageParam Developer-provided instructions that the model should follow, regardless of
-// messages sent by the user. With o1 models and newer, use `developer` messages
-// for this purpose instead.
+// ChatCompletionDeveloperMessageParam represents a developer message.
+// Developer-provided instructions that the model should follow, regardless of
+// messages sent by the user. With o1 models and newer, `developer` messages
+// replace the previous `system` messages.
+// Docs: https://platform.openai.com/docs/api-reference/chat/create#messages
 type ChatCompletionDeveloperMessageParam struct {
-	// The contents of the developer message.
-	Content StringOrArray `json:"content"`
+	// Content: The contents of the developer message.
+	Content ContentUnion `json:"content"`
 	// The role of the messages author, in this case `developer`.
 	Role string `json:"role"`
 	// An optional name for the participant. Provides the model information to
@@ -442,9 +464,11 @@ type ChatCompletionDeveloperMessageParam struct {
 	Name string `json:"name,omitempty"`
 }
 
+// ChatCompletionToolMessageParam represents a tool message.
+// Docs: https://platform.openai.com/docs/api-reference/chat/create#messages
 type ChatCompletionToolMessageParam struct {
-	// The contents of the tool message.
-	Content StringOrArray `json:"content"`
+	// Content: The contents of the tool message.
+	Content ContentUnion `json:"content"`
 	// The role of the messages author, in this case `tool`.
 	Role string `json:"role"`
 	// Tool call that this message is responding to.
@@ -731,12 +755,18 @@ const (
 	PredictionContentTypeContent PredictionContentType = "content"
 )
 
-// PredictionContent represents static predicted output content, such as the content of a text file that is being regenerated.
+// PredictionContent represents static predicted output content, such as the content
+// of a text file that is being regenerated.
+// Docs: https://platform.openai.com/docs/guides/predicted-outputs
 type PredictionContent struct {
-	// Type is the type of the predicted content you want to provide. This type is currently always content.
+	// Type: The type of the predicted content you want to provide.
+	// This type is currently always "content".
 	Type PredictionContentType `json:"type"`
-	// Content is the content that should be matched when generating a model response. If generated tokens would match this content, the entire model response can be returned much more quickly.
-	Content StringOrArray `json:"content"`
+
+	// Content: The content that should be matched when generating a model response.
+	// If generated tokens would match this content, the entire model response
+	// can be returned much more quickly.
+	Content ContentUnion `json:"content"`
 }
 
 // WebSearchContextSize represents the context size for web search.
@@ -1074,7 +1104,7 @@ type ChatCompletionResponse struct {
 
 	// Usage is described in the OpenAI API documentation:
 	// https://platform.openai.com/docs/api-reference/chat/object#chat/object-usage
-	Usage ChatCompletionResponseUsage `json:"usage,omitzero"`
+	Usage Usage `json:"usage,omitzero"`
 
 	// Obfuscation are random characters that normalize payload sizes as a
 	// mitigation to certain side-channel attacks.
@@ -1210,18 +1240,9 @@ type ChatCompletionResponseChoiceMessageAudio struct {
 	Transcript string `json:"transcript"`
 }
 
-// ChatCompletionResponseUsage is described in the OpenAI API documentation:
-// https://platform.openai.com/docs/api-reference/chat/object#chat/object-usage
-type ChatCompletionResponseUsage struct {
-	// Number of tokens in the generated completion.
-	CompletionTokens int `json:"completion_tokens,omitzero"`
-	// Number of tokens in the prompt.
-	PromptTokens int `json:"prompt_tokens,omitzero"`
-	// Total number of tokens used in the request (prompt + completion).
-	TotalTokens             int                      `json:"total_tokens,omitzero"`
-	CompletionTokensDetails *CompletionTokensDetails `json:"completion_tokens_details,omitzero"`
-	PromptTokensDetails     *PromptTokensDetails     `json:"prompt_tokens_details,omitzero"`
-}
+// ChatCompletionResponseUsage is deprecated. Use Usage instead.
+// Deprecated: Use Usage type which now includes all fields from ChatCompletionResponseUsage.
+type ChatCompletionResponseUsage = Usage
 
 // CompletionTokensDetails breakdown of tokens used in a completion.
 type CompletionTokensDetails struct {
@@ -1280,7 +1301,7 @@ type ChatCompletionResponseChunk struct {
 
 	// Usage is described in the OpenAI API documentation:
 	// https://platform.openai.com/docs/api-reference/chat/streaming#chat/streaming-usage
-	Usage *ChatCompletionResponseUsage `json:"usage,omitempty"`
+	Usage *Usage `json:"usage,omitempty"`
 
 	// Obfuscation are random characters that normalize payload sizes as a
 	// mitigation to certain side-channel attacks.
@@ -1366,7 +1387,7 @@ type EmbeddingRequest struct {
 	// The input must not exceed the max input tokens for the model (8192 tokens for text-embedding-ada-002),
 	// cannot be an empty string, and any array must be 2048 dimensions or less.
 	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-input
-	Input StringOrArray `json:"input"`
+	Input EmbeddingRequestInput `json:"input"`
 
 	// Model: ID of the model to use.
 	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-model
@@ -1567,4 +1588,206 @@ type AWSBedrockStreamReasoningContent struct {
 	Text            string `json:"text,omitzero"`
 	Signature       string `json:"signature,omitzero"`
 	RedactedContent []byte `json:"redactedContent,omitzero"`
+}
+
+// CompletionRequest represents a request to the legacy /completions endpoint.
+// See https://platform.openai.com/docs/api-reference/completions/create
+type CompletionRequest struct {
+	// ID of the model to use. You can use the List models API to see all of your
+	// available models, or see the Model overview for descriptions of them.
+	Model string `json:"model"`
+
+	// The prompt(s) to generate completions for, encoded as a string, array of
+	// strings, array of tokens, or array of token arrays.
+	// Note that <|endoftext|> is the document separator that the model sees during
+	// training, so if a prompt is not specified the model will generate as if from
+	// the beginning of a new document.
+	Prompt PromptUnion `json:"prompt"`
+
+	// Generates `best_of` completions server-side and returns the "best" (the one
+	// with the highest log probability per token). Results cannot be streamed.
+	// When used with `n`, `best_of` controls the number of candidate completions
+	// and `n` specifies how many to return – `best_of` must be greater than `n`.
+	// Minimum: 0, Maximum: 20, Default: 1
+	BestOf *int `json:"best_of,omitempty"`
+
+	// Echo back the prompt in addition to the completion.
+	// Default: false
+	Echo bool `json:"echo,omitzero"`
+
+	// Number between -2.0 and 2.0. Positive values penalize new tokens based on
+	// their existing frequency in the text so far, decreasing the model's
+	// likelihood to repeat the same line verbatim.
+	// Minimum: -2, Maximum: 2, Default: 0
+	FrequencyPenalty *float64 `json:"frequency_penalty,omitempty"`
+
+	// Modify the likelihood of specified tokens appearing in the completion.
+	// Accepts a JSON object that maps tokens (specified by their token ID in the
+	// GPT tokenizer) to an associated bias value from -100 to 100.
+	LogitBias map[string]int `json:"logit_bias,omitempty"`
+
+	// Include the log probabilities on the `logprobs` most likely output tokens,
+	// as well the chosen tokens. The maximum value for `logprobs` is 5.
+	// Minimum: 0, Maximum: 5, Default: null
+	Logprobs *int `json:"logprobs,omitempty"`
+
+	// The maximum number of tokens that can be generated in the completion.
+	// The token count of your prompt plus `max_tokens` cannot exceed the model's
+	// context length.
+	// Minimum: 0, Default: 16
+	MaxTokens *int `json:"max_tokens,omitempty"`
+
+	// How many completions to generate for each prompt.
+	// Minimum: 1, Maximum: 128, Default: 1
+	N *int `json:"n,omitempty"`
+
+	// Number between -2.0 and 2.0. Positive values penalize new tokens based on
+	// whether they appear in the text so far, increasing the model's likelihood
+	// to talk about new topics.
+	// Minimum: -2, Maximum: 2, Default: 0
+	PresencePenalty *float64 `json:"presence_penalty,omitempty"`
+
+	// If specified, our system will make a best effort to sample deterministically,
+	// such that repeated requests with the same `seed` and parameters should return
+	// the same result. Determinism is not guaranteed.
+	Seed *int64 `json:"seed,omitempty"`
+
+	// Up to 4 sequences where the API will stop generating further tokens.
+	Stop any `json:"stop,omitempty"`
+
+	// Whether to stream back partial progress. If set, tokens will be sent as
+	// data-only server-sent events as they become available, with the stream
+	// terminated by a `data: [DONE]` message.
+	// Default: false
+	Stream bool `json:"stream,omitzero"`
+
+	// Options for streaming response. Only set this when you set stream: true.
+	StreamOptions *StreamOptions `json:"stream_options,omitempty"`
+
+	// The suffix that comes after a completion of inserted text.
+	// This parameter is only supported for `gpt-3.5-turbo-instruct`.
+	// Default: null
+	Suffix string `json:"suffix,omitzero"`
+
+	// What sampling temperature to use, between 0 and 2. Higher values like 0.8
+	// will make the output more random, while lower values like 0.2 will make it
+	// more focused and deterministic.
+	// Minimum: 0, Maximum: 2, Default: 1
+	Temperature *float64 `json:"temperature,omitempty"`
+
+	// An alternative to sampling with temperature, called nucleus sampling, where
+	// the model considers the results of the tokens with top_p probability mass.
+	// So 0.1 means only the tokens comprising the top 10% probability mass are
+	// considered. We generally recommend altering this or temperature but not both.
+	// Minimum: 0, Maximum: 1, Default: 1
+	TopP *float64 `json:"top_p,omitempty"`
+
+	// A unique identifier representing your end-user, which can help OpenAI to
+	// monitor and detect abuse.
+	User string `json:"user,omitzero"`
+}
+
+// PromptUnion represents the polymorphic prompt field that can be:
+// - string: a single prompt
+// - []string: batch of prompts
+// - []int64: array of token IDs
+// - [][]int64: batch of token ID arrays
+type PromptUnion struct {
+	Value interface{}
+}
+
+func (p PromptUnion) MarshalJSON() ([]byte, error) {
+	return json.Marshal(p.Value)
+}
+
+func (p *PromptUnion) UnmarshalJSON(data []byte) (err error) {
+	p.Value, err = unmarshalJSONNestedUnion("prompt", data)
+	return
+}
+
+// CompletionResponse represents a completion response from the API.
+// Note: both the streamed and non-streamed response objects share the same shape
+// (unlike the chat endpoint).
+// See https://platform.openai.com/docs/api-reference/completions/object
+type CompletionResponse struct {
+	// A unique identifier for the completion.
+	ID string `json:"id"`
+
+	// The object type, which is always "text_completion".
+	Object string `json:"object"`
+
+	// The Unix timestamp (in seconds) of when the completion was created.
+	Created JSONUNIXTime `json:"created,omitzero"`
+
+	// The model used for completion.
+	Model string `json:"model"`
+
+	// This fingerprint represents the backend configuration that the model runs with.
+	SystemFingerprint string `json:"system_fingerprint,omitzero"`
+
+	// The list of completion choices generated by the model.
+	Choices []CompletionChoice `json:"choices"`
+
+	// Usage statistics for the completion request.
+	Usage *Usage `json:"usage,omitzero"`
+}
+
+// CompletionChoice represents a single completion choice.
+type CompletionChoice struct {
+	// The generated text completion.
+	Text string `json:"text"`
+
+	// The index of the choice in the list of choices.
+	Index *int `json:"index,omitempty"`
+
+	// Log probability information for the choice.
+	Logprobs *CompletionLogprobs `json:"logprobs,omitzero"`
+
+	// The reason the model stopped generating tokens.
+	// This will be "stop" if the model hit a natural stop point or a provided stop
+	// sequence, "length" if the maximum number of tokens specified in the request
+	// was reached, or "content_filter" if content was omitted due to a flag from
+	// our content filters.
+	FinishReason string `json:"finish_reason,omitzero"`
+}
+
+// CompletionLogprobs represents log probability information.
+type CompletionLogprobs struct {
+	// The tokens chosen by the model.
+	Tokens []string `json:"tokens,omitzero"`
+
+	// The log probability of each token.
+	TokenLogprobs []float64 `json:"token_logprobs,omitzero"`
+
+	// A list of the top log probabilities for each token position.
+	TopLogprobs []map[string]float64 `json:"top_logprobs,omitzero"`
+
+	// The character offset from the start of the returned text for each token.
+	TextOffset []int `json:"text_offset,omitzero"`
+}
+
+// Usage represents the usage information for completion requests (both chat and text).
+// Maps to OpenAI's CompletionUsage schema.
+// https://platform.openai.com/docs/api-reference/chat/object#chat/object-usage
+// https://platform.openai.com/docs/api-reference/completions/object#completions/object-usage
+//
+// For /v1/completions endpoint: Only the basic fields (prompt_tokens, completion_tokens, total_tokens) are populated.
+// For /v1/chat/completions endpoint: All fields including the detailed breakdowns may be populated.
+type Usage struct {
+	// Number of tokens in the prompt.
+	PromptTokens int `json:"prompt_tokens,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// Number of tokens in the generated completion.
+	CompletionTokens int `json:"completion_tokens,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// Total number of tokens used in the request (prompt + completion).
+	TotalTokens int `json:"total_tokens,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// CompletionTokensDetails: Breakdown of tokens used in a completion.
+	// Only populated for /v1/chat/completions endpoint, not for /v1/completions.
+	CompletionTokensDetails *CompletionTokensDetails `json:"completion_tokens_details,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// PromptTokensDetails: Breakdown of tokens used in the prompt.
+	// Only populated for /v1/chat/completions endpoint, not for /v1/completions.
+	PromptTokensDetails *PromptTokensDetails `json:"prompt_tokens_details,omitempty"` //nolint:tagliatelle //follow openai api
 }

@@ -233,7 +233,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
 						OfSystem: &openai.ChatCompletionSystemMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: "You are a helpful assistant",
 							},
 							Role: openai.ChatMessageRoleSystem,
@@ -287,7 +287,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
 						OfSystem: &openai.ChatCompletionSystemMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: "You are a helpful assistant",
 							},
 							Role: openai.ChatMessageRoleSystem,
@@ -342,7 +342,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
 						OfSystem: &openai.ChatCompletionSystemMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: "You are a helpful assistant",
 							},
 							Role: openai.ChatMessageRoleSystem,
@@ -391,7 +391,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
 						OfSystem: &openai.ChatCompletionSystemMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: "You are a helpful assistant",
 							},
 							Role: openai.ChatMessageRoleSystem,
@@ -757,7 +757,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			wantHeaderMut: nil,
 			wantBodyMut: &extprocv3.BodyMutation{
 				Mutation: &extprocv3.BodyMutation_Body{
-					Body: []byte(`data: {"choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk","usage":{"completion_tokens":3,"prompt_tokens":5,"total_tokens":8}}
+					Body: []byte(`data: {"choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}}
 
 data: [DONE]
 `),
