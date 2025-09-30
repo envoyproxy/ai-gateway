@@ -31,7 +31,7 @@ func TestUpgrade(t *testing.T) {
 		ChartVersion: previousEnvoyAIGatewayVersion,
 	}, false, false))
 	defer func() {
-		e2elib.CleanupKindCluster(t.Failed(), kindClusterName) //nolint:errcheck
+		e2elib.CleanupKindCluster(t.Failed(), kindClusterName)
 	}()
 
 	const manifest = "testdata/manifest.yaml"
@@ -52,7 +52,7 @@ func TestUpgrade(t *testing.T) {
 	failChan := make(chan error, 10)
 	defer func() {
 		for l := len(failChan); l > 0; l-- {
-			t.Logf("request loop failed: %v", <-failChan)
+			t.Logf("request error: %v", <-failChan)
 		}
 		close(failChan) // Close the channel to avoid goroutine leak at the end of the test.
 	}()
