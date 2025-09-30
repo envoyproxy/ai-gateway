@@ -18,87 +18,140 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 )
 
-const (
-	kindClusterName               = "envoy-ai-gateway-upgrade"
-	previousEnvoyAIGatewayVersion = "v0.3.0"
-	egSelector                    = "gateway.envoyproxy.io/owning-gateway-name=upgrade-test"
-)
+const egSelector = "gateway.envoyproxy.io/owning-gateway-name=upgrade-test"
 
 func TestUpgrade(t *testing.T) {
-	require.NoError(t, e2elib.SetupAll(t.Context(), kindClusterName, e2elib.AIGatewayHelmOption{
-		ChartVersion: previousEnvoyAIGatewayVersion,
-	}, false, false))
-	defer func() {
-		e2elib.CleanupKindCluster(t.Failed(), kindClusterName)
-	}()
-
-	phase := &phase{}
-	monitorCtx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	go func() {
-		if err := monitorPods(monitorCtx, egSelector, phase); err != nil && !errors.Is(err, context.Canceled) {
-			t.Logf("pod monitor error: %v", err)
-		}
-	}()
-
-	const manifest = "testdata/manifest.yaml"
-	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
-
-	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
-
-	// Ensure that first request works.
-	require.NoError(t, makeRequest(t, phase.String()))
-
-	requestLoopCtx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	failChan := make(chan error, 10)
-	defer func() {
-		for l := len(failChan); l > 0; l-- {
-			t.Logf("request error: %v", <-failChan)
-		}
-		close(failChan) // Close the channel to avoid goroutine leak at the end of the test.
-	}()
-	for i := 0; i < 10; i++ {
-		go func() {
-			for {
-				select {
-				case <-requestLoopCtx.Done():
-					return
-				default:
-				}
-
-				phase.requestCounts.Add(1)
-				phaseStr := phase.String()
-				if err := makeRequest(t, phaseStr); err != nil {
-					t.Log(err)
-					failChan <- err
-				}
-				time.Sleep(100 * time.Millisecond)
+	for _, tc := range []struct {
+		name                string
+		skip                bool
+		initFunc            func(context.Context) (clusterName string)
+		runningAfterUpgrade time.Duration
+		upgradeFunc         func(context.Context)
+	}{
+		{
+			name: "rolling out pods",
+			initFunc: func(ctx context.Context) string {
+				const kindClusterName = "envoy-ai-gateway-upgrade"
+				require.NoError(t, e2elib.SetupAll(t.Context(), kindClusterName, e2elib.AIGatewayHelmOption{},
+					false, false))
+				return kindClusterName
+			},
+			runningAfterUpgrade: 30 * time.Second,
+			upgradeFunc: func(ctx context.Context) {
+				// Adding some random annotations to the Envoy deployments to force a rolling update.
+				labelGetCmd := e2elib.Kubectl(t.Context(), "get", "deployment", "-n", e2elib.EnvoyGatewayNamespace,
+					"-l", egSelector, "-o", "jsonpath={.items[0].metadata.name}")
+				labelGetCmd.Stdout = nil
+				labelGetCmd.Stderr = nil
+				outputRaw, err := labelGetCmd.CombinedOutput()
+				require.NoError(t, err, "failed to get deployment name: %s", string(outputRaw))
+				deploymentName := string(outputRaw)
+				t.Logf("Found deployment name: %s", deploymentName)
+				cmd := e2elib.Kubectl(t.Context(), "patch", "deployment", "-n", e2elib.EnvoyGatewayNamespace,
+					deploymentName, "--type=json", "-p",
+					`[{"op":"add","path":"/spec/template/metadata/annotations/upgrade-timestamp","value":"`+uuid.NewString()+`"}]`)
+				require.NoError(t, cmd.Run(), "failed to patch deployment")
+			},
+		},
+		{
+			name: "control-plane upgrade",
+			// TODO: Enable after the zero-downtime upgrade fix is in 0.3.x.
+			skip: true,
+			initFunc: func(ctx context.Context) string {
+				const previousEnvoyAIGatewayVersion = "v0.3.0"
+				const kindClusterName = "envoy-ai-gateway-cp-upgrade"
+				require.NoError(t, e2elib.SetupAll(t.Context(), kindClusterName, e2elib.AIGatewayHelmOption{
+					ChartVersion: previousEnvoyAIGatewayVersion,
+				}, false, false))
+				return kindClusterName
+			},
+			runningAfterUpgrade: 2 * time.Minute, // Control plane pods take longer to restart and roll out new Envoy pods.
+			upgradeFunc: func(ctx context.Context) {
+				require.NoError(t, e2elib.InstallOrUpgradeAIGateway(t.Context(), e2elib.AIGatewayHelmOption{}))
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.skip {
+				t.Skip("skipping")
 			}
-		}()
-	}
+			require.NotNil(t, tc.upgradeFunc, "upgradeFunc must be set")
+			clusterName := tc.initFunc(t.Context())
+			defer func() {
+				e2elib.CleanupKindCluster(t.Failed(), clusterName)
+			}()
 
-	t.Logf("Making sure multiple requests work with the latest stable version %s", previousEnvoyAIGatewayVersion)
-	time.Sleep(30 * time.Second)
-	if len(failChan) > 0 {
-		t.Fatalf("request loop failed: %v", <-failChan)
-	}
-	t.Logf("Request count before upgrade: %d", phase.requestCounts.Load())
-	phase.testPhase.Add(1) // Move to "during upgrade" phase.
-	require.NoError(t, e2elib.InstallOrUpgradeAIGateway(t.Context(), e2elib.AIGatewayHelmOption{}))
-	t.Log("Upgrade completed")
-	phase.testPhase.Add(1) // Move to "after upgrade" phase.
+			phase := &phase{}
+			monitorCtx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			go func() {
+				if err := monitorPods(monitorCtx, egSelector, phase); err != nil && !errors.Is(err, context.Canceled) {
+					t.Logf("pod monitor error: %v", err)
+				}
+			}()
 
-	t.Log("Making sure multiple requests work with the latest version after the upgrade")
-	time.Sleep(2 * time.Minute)
-	t.Logf("Request count after upgrade: %d", phase.requestCounts.Load())
-	if len(failChan) > 0 {
-		t.Fatalf("request loop failed: %v", <-failChan)
+			const manifest = "testdata/manifest.yaml"
+			require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
+
+			e2elib.RequireWaitForGatewayPodReady(t, egSelector)
+
+			// Ensure that first request works.
+			require.NoError(t, makeRequest(t, phase.String()))
+
+			requestLoopCtx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			failChan := make(chan error, 10)
+			defer func() {
+				for l := len(failChan); l > 0; l-- {
+					t.Logf("request error: %v", <-failChan)
+				}
+				close(failChan) // Close the channel to avoid goroutine leak at the end of the test.
+			}()
+			for i := 0; i < 10; i++ {
+				go func() {
+					for {
+						select {
+						case <-requestLoopCtx.Done():
+							return
+						default:
+						}
+
+						phase.requestCounts.Add(1)
+						phaseStr := phase.String()
+						if err := makeRequest(t, phaseStr); err != nil {
+							t.Log(err)
+							failChan <- err
+						}
+						time.Sleep(100 * time.Millisecond)
+					}
+				}()
+			}
+
+			t.Logf("Making sure multiple requests work before the upgrade")
+			time.Sleep(30 * time.Second)
+			if len(failChan) > 0 {
+				t.Fatalf("request loop failed: %v", <-failChan)
+			}
+			t.Logf("Request count before upgrade: %d", phase.requestCounts.Load())
+			phase.testPhase.Add(1) // Move to "during upgrade" phase.
+			t.Log("Starting upgrade")
+			tc.upgradeFunc(t.Context())
+			t.Log("Upgrade completed")
+			phase.testPhase.Add(1) // Move to "after upgrade" phase.
+
+			t.Log("Making sure multiple requests work with the latest version after the upgrade")
+			time.Sleep(tc.runningAfterUpgrade)
+			t.Logf("Request count after upgrade: %d", phase.requestCounts.Load())
+			if len(failChan) > 0 {
+				t.Fatalf("request loop failed: %v", <-failChan)
+			}
+		})
 	}
 }
 
@@ -109,6 +162,7 @@ type phase struct {
 	// testPhase indicates the current phase of the test: 0 = before upgrade, 1 = during upgrade, 2 = after upgrade.
 	testPhase atomic.Int32
 
+	// currentPods keeps track of the current Envoy pods in the Envoy Gateway namespace.
 	currentPods   string
 	currentPodsMu sync.RWMutex
 }
@@ -132,6 +186,7 @@ func (p *phase) String() string {
 	return fmt.Sprintf("%s (requests made: %d, current pods: %s)", testPhase, p.requestCounts.Load(), currentPods)
 }
 
+// makeRequest makes a request to the Envoy Gateway and returns an error if the request fails.
 func makeRequest(t *testing.T, phase string) error {
 	fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
 	defer fwd.Kill()
@@ -154,6 +209,9 @@ func makeRequest(t *testing.T, phase string) error {
 	return nil
 }
 
+// monitorPods periodically checks the status of pods with the given label selector
+// in the Envoy Gateway namespace and prints their status if it changes. It also updates
+// the currentPods field in the given phase struct.
 func monitorPods(ctx context.Context, labelSelector string, p *phase) error {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
@@ -191,7 +249,7 @@ func monitorPods(ctx context.Context, labelSelector string, p *phase) error {
 				return pods[i].name < pods[j].name
 			})
 
-			// Check for changes in pod status
+			// Check for changes in pod status.
 			changed := false
 			if len(pods) != len(currentPods) {
 				changed = true

@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
 )
@@ -33,7 +32,9 @@ func main() {
 		//
 		// This is a workaround for older k8s versions that don't support sidecar feature.
 		// This can be removed after the floor of supported k8s versions is larger than 1.32.
-		time.Sleep(120 * time.Second) // Default draining time in EG.
+		//
+		// 15 should be enough to propagate the readiness info to the load balancer for most cases.
+		// time.Sleep(15 * time.Second)
 		log.Printf("shutting down the server now")
 		cancel()
 	}()
