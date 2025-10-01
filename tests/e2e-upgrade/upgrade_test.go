@@ -65,8 +65,8 @@ func (tp testPhase) String() string {
 // that no requests fail during the upgrade process.
 //
 // Note that this utilizes MetalLB to make the situation more realistic as well as
-// to avoid the complexity in maintaining non-recey port assignment logic, etc.
-// On Linux, this should work without any special privileges. On Mac, this might
+// to avoid the complexity in maintaining non-recey port-forward assignment logic, etc.
+// On Linux, this should work without any special setup. On Mac, this might
 // require additional setup, e.g. https://waddles.org/2024/06/04/kind-with-metallb-on-macos/
 // though it depends on the container runtime.
 func TestUpgrade(t *testing.T) {
