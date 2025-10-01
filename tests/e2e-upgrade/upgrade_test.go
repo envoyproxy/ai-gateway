@@ -56,7 +56,7 @@ func (tp testPhase) String() string {
 //     to the latest version. This simulates a scenario where both the control plane
 //     and data plane are being updated.
 //
-// In both test cases,g we continuously make requests to the Envoy Gateway and ensure
+// In both test cases, we continuously make requests to the Envoy Gateway and ensure
 // that no requests fail during the upgrade process.
 func TestUpgrade(t *testing.T) {
 	for _, tc := range []struct {
