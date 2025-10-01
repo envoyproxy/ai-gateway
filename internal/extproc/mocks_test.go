@@ -166,6 +166,7 @@ var _ extprocv3.ExternalProcessor_ProcessServer = &mockExternalProcessingStream{
 // mockChatCompletionMetrics implements [metrics.ChatCompletion] for testing.
 type mockChatCompletionMetrics struct {
 	requestStart        time.Time
+	originalModel       string
 	requestModel        string
 	responseModel       string
 	backend             string
@@ -180,6 +181,11 @@ type mockChatCompletionMetrics struct {
 
 // StartRequest implements [metrics.ChatCompletion].
 func (m *mockChatCompletionMetrics) StartRequest(_ map[string]string) { m.requestStart = time.Now() }
+
+// SetOriginalModel implements [metrics.ChatCompletion].
+func (m *mockChatCompletionMetrics) SetOriginalModel(originalModel internalapi.OriginalModel) {
+	m.originalModel = originalModel
+}
 
 // SetRequestModel implements [metrics.ChatCompletion].
 func (m *mockChatCompletionMetrics) SetRequestModel(requestModel internalapi.RequestModel) {
@@ -226,8 +232,9 @@ func (m *mockChatCompletionMetrics) RecordRequestCompletion(_ context.Context, s
 	}
 }
 
-// RequireSelectedModel asserts the model and backend set on the metrics.
-func (m *mockChatCompletionMetrics) RequireSelectedModel(t *testing.T, requestModel, responseModel string) {
+// RequireSelectedModel asserts the models set on the metrics.
+func (m *mockChatCompletionMetrics) RequireSelectedModel(t *testing.T, originalModel, requestModel, responseModel string) {
+	require.Equal(t, originalModel, m.originalModel)
 	require.Equal(t, requestModel, m.requestModel)
 	require.Equal(t, responseModel, m.responseModel)
 }
@@ -302,6 +309,7 @@ func (m *mockEmbeddingTranslator) ResponseError(map[string]string, io.Reader) (h
 // mockEmbeddingsMetrics implements [x.EmbeddingsMetrics] for testing.
 type mockEmbeddingsMetrics struct {
 	requestStart        time.Time
+	originalModel       internalapi.OriginalModel
 	requestModel        internalapi.RequestModel
 	responseModel       internalapi.ResponseModel
 	backend             string
@@ -312,6 +320,11 @@ type mockEmbeddingsMetrics struct {
 
 // StartRequest implements [x.EmbeddingsMetrics].
 func (m *mockEmbeddingsMetrics) StartRequest(_ map[string]string) { m.requestStart = time.Now() }
+
+// SetOriginalModel implements [x.EmbeddingsMetrics].
+func (m *mockEmbeddingsMetrics) SetOriginalModel(originalModel string) {
+	m.originalModel = originalModel
+}
 
 // SetRequestModel implements [x.EmbeddingsMetrics].
 func (m *mockEmbeddingsMetrics) SetRequestModel(requestModel string) {
@@ -339,8 +352,9 @@ func (m *mockEmbeddingsMetrics) RecordRequestCompletion(_ context.Context, succe
 	}
 }
 
-// RequireSelectedModel asserts the model set on the metrics.
-func (m *mockEmbeddingsMetrics) RequireSelectedModel(t *testing.T, requestModel, responseModel string) {
+// RequireSelectedModel asserts the models set on the metrics.
+func (m *mockEmbeddingsMetrics) RequireSelectedModel(t *testing.T, originalModel, requestModel, responseModel string) {
+	require.Equal(t, originalModel, m.originalModel)
 	require.Equal(t, requestModel, m.requestModel)
 	require.Equal(t, responseModel, m.responseModel)
 }

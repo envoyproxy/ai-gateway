@@ -621,6 +621,7 @@ func TestMessages_ProcessRequestHeaders_SetsRequestModel(t *testing.T) {
 	}
 	_, _ = p.ProcessRequestHeaders(t.Context(), nil)
 	// Should use the override model from the header, as that's what is sent upstream.
+	require.Equal(t, "body-model", mm.originalModel)
 	require.Equal(t, "header-model", mm.requestModel)
 	// Response model is not set until we get actual response
 	require.Empty(t, mm.responseModel)
@@ -679,7 +680,8 @@ func TestMessages_ProcessResponseBody_UsesActualResponseModelOverHeaderOverride(
 	require.NoError(t, err)
 
 	// Should use the override model from the header, as that's what is sent upstream.
-	mm.RequireSelectedModel(t, "header-model", "actual-anthropic-model")
+	// Original model is from request body, request model is from header (override)
+	mm.RequireSelectedModel(t, "body-model", "header-model", "actual-anthropic-model")
 	// For non-streaming, only usage is recorded, not latency
 	require.Equal(t, 60, mm.tokenUsageCount)
 	mm.RequireRequestSuccess(t)

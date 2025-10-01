@@ -29,6 +29,9 @@ type chatCompletion struct {
 type ChatCompletionMetrics interface {
 	// StartRequest initializes timing for a new request.
 	StartRequest(headers map[string]string)
+	// SetOriginalModel sets the original model from the incoming request body before any virtualization applies.
+	// This is usually called after parsing the request body. Example: gpt-5
+	SetOriginalModel(originalModel internalapi.OriginalModel)
 	// SetRequestModel sets the model from the request. This is usually called after parsing the request body.
 	// Example: gpt-5-nano
 	SetRequestModel(requestModel internalapi.RequestModel)
