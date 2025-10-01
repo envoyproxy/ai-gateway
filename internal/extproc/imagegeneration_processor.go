@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"strconv"
 
@@ -18,7 +19,6 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
@@ -26,6 +26,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	openaisdk "github.com/openai/openai-go/v2"
 )
 
 // ImageGenerationProcessorFactory returns a factory method to instantiate the image generation processor.
@@ -67,7 +68,7 @@ type imageGenerationProcessorRouterFilter struct {
 	// originalRequestBody is the original request body that is passed to the upstream filter.
 	// This is used to perform the transformation of the request body on the original input
 	// when the request is retried.
-	originalRequestBody    *openai.ImageGenerationRequest
+	originalRequestBody    *openaisdk.ImageGenerateParams
 	originalRequestBodyRaw []byte
 	// tracer is the tracer used for requests.
 	tracer tracing.ImageGenerationTracer
@@ -107,11 +108,8 @@ func (i *imageGenerationProcessorRouterFilter) ProcessRequestBody(ctx context.Co
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
 
-	// Handle streaming requests for consistency with chat completion
-	// Unlike chat completion which uses StreamOptions.IncludeUsage for cost tracking,
-	// image generation streaming (only supported by gpt-image-1) doesn't have
-	// the same usage tracking mechanism, but we still need to detect and flag streaming requests
-	isStreamingRequest := body.Stream != nil && *body.Stream && body.Model == openai.ModelGPTImage1
+	// OpenAI SDK doesn't expose a generic Stream flag for image generation; keep false for now.
+	isStreamingRequest := false
 
 	i.requestHeaders[i.config.modelNameHeaderKey] = model
 
@@ -171,7 +169,7 @@ type imageGenerationProcessorUpstreamFilter struct {
 	handler                backendauth.Handler
 	headerMutator          *headermutator.HeaderMutator
 	originalRequestBodyRaw []byte
-	originalRequestBody    *openai.ImageGenerationRequest
+	originalRequestBody    *openaisdk.ImageGenerateParams
 	translator             translator.ImageGenerationTranslator
 	// onRetry is true if this is a retry request at the upstream filter.
 	onRetry bool
@@ -215,18 +213,19 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessRequestHeaders(ctx conte
 
 	// Start tracking metrics for this request.
 	i.metrics.StartRequest(i.requestHeaders)
-	i.metrics.SetModel(i.requestHeaders[i.config.modelNameHeaderKey])
+	// For image generation we generally expect request and response model to match.
+	// If a backend override occurs, response model may be updated downstream via headers but we keep
+	// metrics consistent with the selected model header.
+	m := i.requestHeaders[i.config.modelNameHeaderKey]
+	i.metrics.SetRequestModel(internalapi.RequestModel(m))
+	i.metrics.SetResponseModel(internalapi.ResponseModel(m))
 
 	// We force the body mutation in the following cases:
 	// * The request is a retry request because the body mutation might have happened the previous iteration.
-	var headerMutation *extprocv3.HeaderMutation
-	var bodyMutation *extprocv3.BodyMutation
-	if i.translator != nil {
-		forceBodyMutation := i.onRetry
-		headerMutation, bodyMutation, err = i.translator.RequestBody(i.originalRequestBodyRaw, i.originalRequestBody, forceBodyMutation)
-		if err != nil {
-			return nil, fmt.Errorf("failed to transform request: %w", err)
-		}
+	forceBodyMutation := i.onRetry
+	headerMutation, bodyMutation, err := i.translator.RequestBody(i.originalRequestBodyRaw, i.originalRequestBody, forceBodyMutation)
+	if err != nil {
+		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
 	if headerMutation == nil {
 		headerMutation = &extprocv3.HeaderMutation{}
@@ -284,12 +283,19 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessResponseHeaders(ctx cont
 	if enc := i.responseHeaders["content-encoding"]; enc != "" {
 		i.responseEncoding = enc
 	}
-	var headerMutation *extprocv3.HeaderMutation
-	if i.translator != nil {
-		headerMutation, err = i.translator.ResponseHeaders(i.responseHeaders)
-		if err != nil {
-			return nil, fmt.Errorf("failed to transform response headers: %w", err)
-		}
+
+	// Debug logging for response headers
+	if i.logger.Enabled(ctx, slog.LevelDebug) {
+		i.logger.Debug("response headers received",
+			slog.String("content-type", i.responseHeaders["content-type"]),
+			slog.String("content-encoding", i.responseHeaders["content-encoding"]),
+			slog.String("status", i.responseHeaders[":status"]),
+			slog.String("response_encoding", i.responseEncoding))
+	}
+
+	headerMutation, err := i.translator.ResponseHeaders(i.responseHeaders)
+	if err != nil {
+		return nil, fmt.Errorf("failed to transform response headers: %w", err)
 	}
 
 	var mode *extprocv3http.ProcessingMode
@@ -318,21 +324,48 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessResponseBody(ctx context
 		}
 	}()
 
+	// Debug logging for raw response body
+	if i.logger.Enabled(ctx, slog.LevelDebug) {
+		bodyPreview := string(body.Body)
+		if len(bodyPreview) > 100 {
+			bodyPreview = bodyPreview[:100] + "..."
+		}
+		i.logger.Debug("raw response body received",
+			slog.Int("body_length", len(body.Body)),
+			slog.String("body_preview", bodyPreview),
+			slog.String("content_encoding", i.responseEncoding),
+			slog.Bool("end_of_stream", body.EndOfStream))
+	}
+
+	// Decompress the body if needed using common utility.
+	decodingResult, err := decodeContentIfNeeded(body.Body, i.responseEncoding)
+	if err != nil {
+		return nil, err
+	}
+
+	// Debug logging for decoded response body
+	if i.logger.Enabled(ctx, slog.LevelDebug) {
+		decodedBytes, _ := io.ReadAll(decodingResult.reader)
+		decodedPreview := string(decodedBytes)
+		if len(decodedPreview) > 100 {
+			decodedPreview = decodedPreview[:100] + "..."
+		}
+		i.logger.Debug("decoded response body",
+			slog.Int("decoded_length", len(decodedBytes)),
+			slog.String("decoded_preview", decodedPreview),
+			slog.Bool("was_encoded", decodingResult.isEncoded))
+
+		// Reset reader for translator
+		decodingResult.reader = bytes.NewReader(decodedBytes)
+	}
+
 	// Assume all responses have a valid status code header.
 	if code, _ := strconv.Atoi(i.responseHeaders[":status"]); !isGoodStatusCode(code) {
 		var headerMutation *extprocv3.HeaderMutation
 		var bodyMutation *extprocv3.BodyMutation
-		if i.translator != nil {
-			headerMutation, bodyMutation, err = i.translator.ResponseError(i.responseHeaders, bytes.NewReader(body.Body))
-			if err != nil {
-				return nil, fmt.Errorf("failed to transform response error: %w", err)
-			}
-		}
-		if headerMutation == nil {
-			headerMutation = &extprocv3.HeaderMutation{}
-		}
-		if bodyMutation == nil {
-			bodyMutation = &extprocv3.BodyMutation{}
+		headerMutation, bodyMutation, err = i.translator.ResponseError(i.responseHeaders, decodingResult.reader)
+		if err != nil {
+			return nil, fmt.Errorf("failed to transform response error: %w", err)
 		}
 		if i.span != nil {
 			b := bodyMutation.GetBody()
@@ -360,14 +393,13 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessResponseBody(ctx context
 	var bodyMutation *extprocv3.BodyMutation
 	var tokenUsage translator.LLMTokenUsage
 	var imageMetadata translator.ImageGenerationMetadata
-	if i.translator != nil {
-		headerMutation, bodyMutation, tokenUsage, imageMetadata, err = i.translator.ResponseBody(i.responseHeaders, bytes.NewReader(body.Body), body.EndOfStream)
-		if err != nil {
-			return nil, fmt.Errorf("failed to transform response: %w", err)
-		}
+	headerMutation, bodyMutation, tokenUsage, imageMetadata, err = i.translator.ResponseBody(i.responseHeaders, decodingResult.reader, body.EndOfStream)
+	if err != nil {
+		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}
 
-	// TODO: Implement gzip handling when bodyMutation is non-nil and response is gzipped
+	// Remove content-encoding header if original body encoded but was mutated in the processor.
+	headerMutation = removeContentEncodingIfNeeded(headerMutation, bodyMutation, decodingResult.isEncoded)
 
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ResponseBody{
@@ -385,14 +417,14 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessResponseBody(ctx context
 	i.costs.OutputTokens += tokenUsage.OutputTokens
 	i.costs.TotalTokens += tokenUsage.TotalTokens
 
-	// Update metrics with token usage.
-	i.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.OutputTokens, tokenUsage.TotalTokens, i.requestHeaders)
+	// Update metrics with token usage (input/output only per OTEL spec).
+	i.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.OutputTokens, i.requestHeaders)
 
 	// Record image generation metrics
 	i.metrics.RecordImageGeneration(ctx, imageMetadata.ImageCount, imageMetadata.Model, imageMetadata.Size, i.requestHeaders)
 
 	if body.EndOfStream && len(i.config.requestCosts) > 0 {
-		metadata, err := buildDynamicMetadata(i.config, &i.costs, i.requestHeaders, i.modelNameOverride, i.backendName)
+		metadata, err := buildDynamicMetadata(i.config, &i.costs, i.requestHeaders, i.backendName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
 		}
@@ -424,6 +456,16 @@ func (i *imageGenerationProcessorUpstreamFilter) SetBackend(ctx context.Context,
 	if err = i.selectTranslator(b.Schema); err != nil {
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
+
+	// Debug logging for backend selection
+	if i.logger.Enabled(ctx, slog.LevelDebug) {
+		i.logger.Debug("backend selected for image generation",
+			slog.String("backend_name", b.Name),
+			slog.String("schema_name", string(b.Schema.Name)),
+			slog.String("schema_version", b.Schema.Version),
+			slog.String("model_override", i.modelNameOverride),
+			slog.Bool("translator_set", i.translator != nil))
+	}
 	i.handler = backendHandler
 	i.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
 	// Sync header with backend model so header-derived labels/CEL use the actual model.
@@ -435,10 +477,8 @@ func (i *imageGenerationProcessorUpstreamFilter) SetBackend(ctx context.Context,
 	i.onRetry = rp.upstreamFilterCount > 1
 
 	// Set streaming flag for GPT-Image-1 requests
-	i.stream = i.originalRequestBody != nil &&
-		i.originalRequestBody.Stream != nil &&
-		*i.originalRequestBody.Stream &&
-		i.originalRequestBody.Model == openai.ModelGPTImage1
+	// Image generation streaming not supported in current SDK params; keep false.
+	i.stream = false
 
 	if isEndpointPicker {
 		if i.logger.Enabled(ctx, slog.LevelDebug) {
@@ -450,10 +490,10 @@ func (i *imageGenerationProcessorUpstreamFilter) SetBackend(ctx context.Context,
 	return
 }
 
-func parseOpenAIImageGenerationBody(body *extprocv3.HttpBody) (modelName string, rb *openai.ImageGenerationRequest, err error) {
-	var openAIReq openai.ImageGenerationRequest
+func parseOpenAIImageGenerationBody(body *extprocv3.HttpBody) (modelName string, rb *openaisdk.ImageGenerateParams, err error) {
+	var openAIReq openaisdk.ImageGenerateParams
 	if err := json.Unmarshal(body.Body, &openAIReq); err != nil {
 		return "", nil, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
-	return openAIReq.Model, &openAIReq, nil
+	return string(openAIReq.Model), &openAIReq, nil
 }
