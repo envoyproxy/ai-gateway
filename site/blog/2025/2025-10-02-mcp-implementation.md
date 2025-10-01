@@ -5,6 +5,7 @@ authors: [nacx, mathetake]
 tags: [news, features]
 ---
 
+![Hero feature image of title.](images/mcp-blog-hero.png)
 
 # Announcing Model Context Protocol Support in Envoy AI Gateway
 
