@@ -132,8 +132,7 @@ func TestUpgrade(t *testing.T) {
 			require.NotNil(t, tc.upgradeFunc, "upgradeFunc must be set")
 			clusterName := tc.initFunc(t.Context())
 			defer func() {
-				_ = clusterName
-				// e2elib.CleanupKindCluster(t.Failed(), clusterName)
+				e2elib.CleanupKindCluster(t.Failed(), clusterName)
 			}()
 
 			phase := &phase{}
