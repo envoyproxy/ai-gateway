@@ -24,6 +24,11 @@ const (
 	genaiAttributeTokenType     = "gen_ai.token.type" //nolint:gosec // metric name, not credential
 	genaiAttributeErrorType     = "error.type"
 
+	// Image generation specific attributes (currently used in main codebase)
+	genaiAttributeImageCount = "gen_ai.image.count"
+	genaiAttributeImageModel = "gen_ai.image.model"
+	genaiAttributeImageSize  = "gen_ai.image.size"
+
 	genaiOperationChat            = "chat"
 	genaiOperationEmbedding       = "embeddings"
 	genaiOperationImageGeneration = "image_generation"

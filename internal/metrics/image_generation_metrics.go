@@ -87,9 +87,9 @@ func (i *imageGeneration) RecordImageGeneration(ctx context.Context, imageCount 
 	// Add image-specific attributes
 	extendedAttrs := attribute.NewSet(
 		append(attrs.ToSlice(),
-			attribute.Key("gen_ai.image.count").Int(imageCount),
-			attribute.Key("gen_ai.image.model").String(model),
-			attribute.Key("gen_ai.image.size").String(size),
+			attribute.Key(genaiAttributeImageCount).Int(imageCount),
+			attribute.Key(genaiAttributeImageModel).String(model),
+			attribute.Key(genaiAttributeImageSize).String(size),
 		)...,
 	)
 
