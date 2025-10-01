@@ -407,12 +407,18 @@ type mockImageGenerationMetrics struct {
 }
 
 func (m *mockImageGenerationMetrics) StartRequest(map[string]string) {}
+func (m *mockImageGenerationMetrics) SetRequestModel(requestModel string) {
+	m.model = requestModel
+}
+func (m *mockImageGenerationMetrics) SetResponseModel(responseModel string) {
+	m.model = responseModel
+}
 func (m *mockImageGenerationMetrics) SetModel(requestModel, responseModel string) {
 	m.model = responseModel
 }
 func (m *mockImageGenerationMetrics) SetBackend(b *filterapi.Backend) { m.backend = b.Name }
-func (m *mockImageGenerationMetrics) RecordTokenUsage(_ context.Context, _ uint32, _ uint32, _ map[string]string) {
-	m.tokenUsageCount++
+func (m *mockImageGenerationMetrics) RecordTokenUsage(_ context.Context, input, output uint32, _ map[string]string) {
+	m.tokenUsageCount += int(input + output)
 }
 func (m *mockImageGenerationMetrics) RecordRequestCompletion(_ context.Context, success bool, _ map[string]string) {
 	if success {
