@@ -1,0 +1,358 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+admin:
+  address:
+    socket_address:
+      address: 127.0.0.1
+      port_value: 9901
+
+static_resources:
+  listeners:
+    - address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 1062
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_http
+                codec_type: auto
+                access_log:
+                  - name: stdout
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+                route_config:
+                  virtual_hosts:
+                    - name: local_route
+                      domains:
+                        - "*"
+                      routes:
+                        - match:
+                            path: "/mcp"
+                          request_headers_to_add:
+                            - header:
+                                key: x-ai-eg-mcp-route
+                                value: test-route
+                          route:
+                            cluster: mcp_proxy
+                            idleTimeout: 3600s
+                            timeout: 120s
+                        - match:
+                            path: "/mcp/yet/another/path"
+                          request_headers_to_add:
+                            - header:
+                                key: x-ai-eg-mcp-route
+                                value: yet-another-route
+                          route:
+                            cluster: mcp_proxy
+                            idleTimeout: 3600s
+                            timeout: 120s
+                        - match:
+                            path: "/awesome-path"
+                          request_headers_to_add:
+                            - header:
+                                key: x-ai-eg-mcp-route
+                                value: awesome-route
+                          route:
+                            cluster: mcp_proxy
+                            idleTimeout: 3600s
+                            timeout: 120s
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+                      suppressEnvoyHeaders: true
+
+    # Special listener only handling direct routing to mcp server without ext_proc, which
+    # allows the ext_proc in the main listener to send the request to the mcp servers to collect
+    # session IDs etc.
+    - name: mcp_backend_listener
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 9999
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_http
+                codec_type: auto
+                access_log:
+                  - name: stdout
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+                route_config:
+                  virtual_hosts:
+                    - name: local_route
+                      retry_policy:
+                        retry_on: "5xx,gateway-error,reset,rest-before-request,connect-failure,envoy-ratelimited,retriable-4xx,refused-stream,retriable-status-codes,retriable-headers"
+                        num_retries: 5
+                        per_try_timeout: "30s"
+                        retry_back_off:
+                          base_interval: "0.1s"
+                          max_interval: "1s"
+                      domains:
+                        - "*"
+                      routes:
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-ai-eg-mcp-backend
+                                string_match:
+                                  exact: dumb-mcp-backend
+                          route:
+                            cluster: dumb-mcp-backend
+                            idleTimeout: 3600s
+                            timeout: 120s
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-ai-eg-mcp-backend
+                                string_match:
+                                  exact: default-mcp-backend
+                          route:
+                            cluster: default-mcp-backend
+                            idleTimeout: 3600s
+                            timeout: 120s
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-ai-eg-mcp-backend
+                                string_match:
+                                  exact: learn-microsoft
+                          route:
+                            autoHostRewrite: true
+                            cluster: learn-microsoft
+                            idleTimeout: 3600s
+                            timeout: 120s
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-ai-eg-mcp-backend
+                                string_match:
+                                  exact: context7
+                          route:
+                            autoHostRewrite: true
+                            cluster: context7
+                            idleTimeout: 3600s
+                            timeout: 120s
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-ai-eg-mcp-backend
+                                string_match:
+                                  exact: github
+                          route:
+                            autoHostRewrite: true
+                            cluster: github
+                            idleTimeout: 3600s
+                            timeout: 120s
+                          request_headers_to_add:
+                            - header:
+                                key: Authorization
+                                value: Bearer GITHUB_ACCESS_TOKEN_PLACEHOLDER
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-ai-eg-mcp-backend
+                                string_match:
+                                  exact: aws-knowledge
+                          route:
+                            autoHostRewrite: true
+                            cluster: aws-knowledge
+                            idleTimeout: 3600s
+                            timeout: 120s
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-ai-eg-mcp-backend
+                                string_match:
+                                  exact: kiwi
+                          route:
+                            autoHostRewrite: true
+                            cluster: kiwi
+                            idleTimeout: 3600s
+                            timeout: 120s
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+  clusters:
+    - name: extproc_cluster
+      connect_timeout: 5s
+      type: STATIC
+      lb_policy: ROUND_ROBIN
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http2_protocol_options:
+              connection_keepalive:
+                interval: 30s
+                timeout: 5s
+      load_assignment:
+        cluster_name: extproc_cluster
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: 127.0.0.1
+                      port_value: 1063
+
+    - name: mcp_proxy
+      connect_timeout: 5s
+      type: STATIC
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: mcp_proxy
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: 127.0.0.1
+                      port_value: 9856  # Special port where the test MCP server is running inside the extproc process.
+
+    - name: dumb-mcp-backend
+      connect_timeout: 5s  # Increase from 0.25s to prevent timeout issues
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: dumb-mcp-backend
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: 127.0.0.1
+                      port_value: 8081
+
+    - name: default-mcp-backend
+      connect_timeout: 5s  # Increase from 0.25s to prevent timeout issues
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: default-mcp-backend
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: 127.0.0.1
+                      port_value: 8080
+
+    - name: learn-microsoft
+      connect_timeout: 30s
+      dns_lookup_family: V4_ONLY
+      type: STRICT_DNS
+      load_assignment:
+        cluster_name: learn-microsoft
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  hostname: learn.microsoft.com
+                  address:
+                    socket_address:
+                      address: learn.microsoft.com
+                      port_value: 443
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          auto_host_sni: true
+
+    - name: context7
+      connect_timeout: 30s
+      type: STRICT_DNS
+      dns_lookup_family: V4_ONLY
+      load_assignment:
+        cluster_name: context7
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  hostname: mcp.context7.com
+                  address:
+                    socket_address:
+                      address: mcp.context7.com
+                      port_value: 443
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          auto_host_sni: true
+
+    - name: github
+      connect_timeout: 30s
+      type: STRICT_DNS
+      dns_lookup_family: V4_ONLY
+      load_assignment:
+        cluster_name: github
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  hostname: api.githubcopilot.com
+                  address:
+                    socket_address:
+                      address: api.githubcopilot.com
+                      port_value: 443
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          auto_host_sni: true
+
+    - name: aws-knowledge
+      connect_timeout: 30s
+      type: STRICT_DNS
+      dns_lookup_family: V4_ONLY
+      load_assignment:
+        cluster_name: aws-knowledge
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  hostname: knowledge-mcp.global.api.aws
+                  address:
+                    socket_address:
+                      address: knowledge-mcp.global.api.aws
+                      port_value: 443
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          auto_host_sni: true
+
+    - name: kiwi
+      connect_timeout: 30s
+      type: STRICT_DNS
+      dns_lookup_family: V4_ONLY
+      load_assignment:
+        cluster_name: kiwi
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  hostname: mcp.kiwi.com
+                  address:
+                    socket_address:
+                      address: mcp.kiwi.com
+                      port_value: 443
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          auto_host_sni: true
+
+overload_manager:
+  refresh_interval: 0.25s
+  resource_monitors:
+    - name: "envoy.resource_monitors.global_downstream_max_connections"
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.resource_monitors.downstream_connections.v3.DownstreamConnectionsConfig
+        max_active_downstream_connections: 1000

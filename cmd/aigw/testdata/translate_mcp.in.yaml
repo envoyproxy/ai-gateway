@@ -1,0 +1,131 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: mcp-gateway-class
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: mcp-gateway
+  namespace: default
+spec:
+  gatewayClassName: mcp-gateway-class
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: MCPRoute
+metadata:
+  name: mcp-route
+  namespace: default
+spec:
+  parentRefs:
+    - name: mcp-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  path: /mcp
+  headers:
+    - name: x-mcp-tenant
+      value: test-tenant
+  backendRefs:
+    - name: test-mcp-server
+      kind: Backend
+      group: gateway.envoyproxy.io
+      toolSelector:
+        include: ["tool1", "tool2"]
+    - group: gateway.envoyproxy.io
+      kind: Backend
+      name: default-mcp-server
+      port: 80
+      toolSelector:
+        includeRegex: ["^foo.*$"]
+      securityPolicy:
+        apiKey:
+          secretRef:
+            name: test-token
+  securityPolicy:
+    oauth:
+      issuer: "https://auth-server.example.com"
+      jwks:
+        localJWKS:
+          type: ValueRef
+          valueRef:
+            group: ""
+            kind: ConfigMap
+            name: jwks-configmap
+      protectedResourceMetadata:
+        resource: "https://foo.bar.com/mcp"
+        scopesSupported:
+          - "echo"
+          - "sum"
+          - "countdown"
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: test-mcp-server
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: test-mcp-server.foo.com
+        port: 80
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: default-mcp-server
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: default-mcp-server.foo.com
+        port: 80
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jwks-configmap
+  namespace: default
+data:
+  jwks: |
+    {
+      "keys": [
+        {
+          "kty": "RSA",
+          "n": "u1SU1LfVLPHCozMxH2Mo4lgOEePzNm0tRgeLezV6ffAt0gunVTLw7onLRnrq0_IzW7yWR7QkrmBL7jTKEn5u-qKhbwKfBstIs-bMY2Zkp18gnTxKLxoS2tFczGkPLPgizskuemMghRniWaoLcyehkd3qqGElvW_VDL5AaWTg0nLVkjRo9z-40RQzuVaE8AkAFmxZzow3x-VJYKdjykkJ0iT9wCS0DRTXu269V264Vf_3jvredZiKRkgwlL9xNAwxXFg0x_XFw005UWVRIkdgcKWTjpBP2dPwVZ4WWC-9aGVd-Gyn1o0CLelf4rEjGoXbAAEgAqeGUxrcIlbjXfbcmw",
+          "e": "AQAB",
+          "alg": "RS256",
+          "use": "sig"
+        },
+        {
+          "alg": "RS256",
+          "e": "AQAB",
+          "key_ops": [
+            "verify"
+          ],
+          "kty": "RSA",
+          "n": "xOHb-i1WDfeAvsbXTSOtosl3hCUDHQ8fRDqX_Rt998-hZDJmAoPOu4J-wcwq5aZtSn_iWUYLcK2WmC_1n-p1eyc-Pl4CBnxF7LUjCk-WGhniaCzXC5I5RON6c5N-MdE0UfukK0PM0zD3iQonZq0fIsnOYyFdYdWvQ5XW-C2aLlq2FUKrjmhAav10jIC0KGd2dHRzauzfLMUmt_iMnpU84Xrur1zRYzBO4D90rN0ypC2HH7o_zI8Osx4o1L8BScW78545sWyVbaprhBV1I2Sa4SH3NAc25ej3RIh-f13Yu97FVfO0AIG4VfFiaMmsTqNTCiBkM20tXD2Z-cHJTKemXzFgInJoqFLAkHLzJ0lPvAkKOgAOufLHa7RA-C276OXd72IXPsL1UOLN4sjhGqTtaynVa00yuHdi3f4-aoy9F9SUJeWfPg--nZNLzuI0eyufsTFywnx1bTQ_kdYlEr0dRE5sujlMk3cZ7FmOQRvcjA9MxFzoVKMmlZc6LMCgqw-P",
+          "use": "sig",
+          "kid": "b520b3c2c4bd75a10e9cebc9576933dc"
+        }
+      ]
+    }
+---
+kind: Secret
+apiVersion: v1
+metadata:
+  name: test-token
+  namespace: default
+type: Opaque
+stringData:
+  apiKey: some-api-key

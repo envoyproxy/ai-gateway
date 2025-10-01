@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -171,6 +172,12 @@ backends:
 		}
 	}()
 
+	// UNIX doesn't like the long socket paths, so create a temp directory for the socket instead of t.TempDir.
+	socketTempDir := "/tmp/" + uuid.NewString()
+	t.Cleanup(func() { _ = os.RemoveAll(socketTempDir) })
+	require.NoError(t, os.MkdirAll(socketTempDir, 0o700))
+	socketPath := filepath.Join(socketTempDir, "mcp.sock")
+
 	// Run ExtProc in a goroutine on ephemeral ports.
 	errCh := make(chan error, 1)
 	go func() {
@@ -178,6 +185,7 @@ backends:
 			"-configPath", configPath,
 			"-extProcAddr", ":0",
 			"-adminPort", "0",
+			"-mcpAddr", "unix://" + socketPath,
 		}
 		errCh <- Main(ctx, args, stderrW)
 	}()

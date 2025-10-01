@@ -28,6 +28,7 @@ var _ tracing.Tracing = (*tracingImpl)(nil)
 type tracingImpl struct {
 	chatCompletionTracer tracing.ChatCompletionTracer
 	embeddingsTracer     tracing.EmbeddingsTracer
+	mcpTracer            tracing.MCPTracer
 	// shutdown is nil when we didn't create tp.
 	shutdown func(context.Context) error
 }
@@ -40,6 +41,10 @@ func (t *tracingImpl) ChatCompletionTracer() tracing.ChatCompletionTracer {
 // EmbeddingsTracer implements the same method as documented on api.Tracing.
 func (t *tracingImpl) EmbeddingsTracer() tracing.EmbeddingsTracer {
 	return t.embeddingsTracer
+}
+
+func (t *tracingImpl) MCPTracer() tracing.MCPTracer {
+	return t.mcpTracer
 }
 
 // Shutdown implements the same method as documented on api.Tracing.
@@ -151,7 +156,8 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer) (tracing.Tracing, 
 			propagator,
 			embeddingsRecorder,
 		),
-		shutdown: tp.Shutdown, // we have to shut down what we create.
+		mcpTracer: newMCPTracer(tracer, propagator),
+		shutdown:  tp.Shutdown, // we have to shut down what we create.
 	}, nil
 }
 
@@ -179,6 +185,7 @@ func NewTracing(config *tracing.TracingConfig) tracing.Tracing {
 			config.Propagator,
 			config.EmbeddingsRecorder,
 		),
-		shutdown: nil, // shutdown is nil when we didn't create tp.
+		mcpTracer: newMCPTracer(config.Tracer, config.Propagator),
+		shutdown:  nil, // shutdown is nil when we didn't create tp.
 	}
 }
