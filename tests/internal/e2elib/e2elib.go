@@ -94,11 +94,10 @@ func SetupAll(ctx context.Context, clusterName string, aigwOpts AIGatewayHelmOpt
 	if err := initKindCluster(ctx, clusterName); err != nil {
 		return fmt.Errorf("failed to initialize kind cluster: %w", err)
 	}
-
+	if err := initMetalLB(ctx); err != nil {
+		return fmt.Errorf("failed to initialize MetalLB: %w", err)
+	}
 	if inferenceExtension {
-		if err := initMetalLB(ctx); err != nil {
-			return fmt.Errorf("failed to initialize MetalLB: %w", err)
-		}
 		if err := installInferencePoolEnvironment(ctx); err != nil {
 			return fmt.Errorf("failed to install inference pool environment: %w", err)
 		}
@@ -551,6 +550,19 @@ func kubectlWaitForDaemonSetReady(ctx context.Context, namespace, daemonset stri
 func RequireWaitForGatewayPodReady(t *testing.T, selector string) {
 	requireWaitForGatewayPod(t, selector)
 	RequireWaitForPodReady(t, selector)
+}
+
+// RequireGatewayListenerAddressViaMetalLB gets the external IP address of the Gateway via MetalLB.
+func RequireGatewayListenerAddressViaMetalLB(t *testing.T, namespace, name string) (addr string) {
+	// k get gateway upgrade-test -o jsonpath='{.status.addresses[0].value}'
+	cmd := Kubectl(t.Context(), "get", "gateway", "-n", namespace, name,
+		"-o", "jsonpath={.status.addresses[0].value}")
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	out, err := cmd.Output()
+	require.NoError(t, err, "failed to get gateway address")
+	addr = strings.TrimSpace(string(out))
+	return
 }
 
 // requireWaitForGatewayPod waits for the Envoy Gateway pod containing the

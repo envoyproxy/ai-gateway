@@ -245,8 +245,20 @@ jobs:
   test_e2e_upgrade:
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
-    name: E2E Test for Upgrades
+    name: E2E Test for Upgrades (${{ matrix.os }})
     runs-on: ubuntu-latest
+    # TODO: remove this after all the verification. This is to confirm there's no flake.
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - A
+          - B
+          - C
+          - D
+          - E
+          - F
+          - G
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
