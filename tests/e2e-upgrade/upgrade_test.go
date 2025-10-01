@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -140,7 +141,7 @@ func TestUpgrade(t *testing.T) {
 			defer cancel()
 			go func() {
 				if err := monitorPods(monitorCtx, egSelector, phase); err != nil && !errors.Is(err, context.Canceled) {
-					t.Logf("pod monitor error: %v", err)
+					log.Println("pod monitor error:", err) // This might print after the test ends, so not failing the test or using t.Log.
 				}
 			}()
 
@@ -174,7 +175,6 @@ func TestUpgrade(t *testing.T) {
 						phase.requestCounts.Add(1)
 						phaseStr := phase.String()
 						if err := makeRequest(t, ipAddress, phaseStr); err != nil {
-							t.Logf("request error: %v", err)
 							// Non-blocking send: if channel is full, we've already captured enough failures.
 							select {
 							case failChan <- err:
