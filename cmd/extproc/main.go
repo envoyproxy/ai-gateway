@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
 )
@@ -33,7 +34,7 @@ func main() {
 		// This can be removed after the floor of supported k8s versions is larger than 1.32.
 		//
 		// 15s should be enough to propagate the readiness info to the load balancer for most cases.
-		// time.Sleep(15 * time.Second)
+		time.Sleep(15 * time.Second)
 		log.Printf("shutting down the server now")
 		cancel()
 	}()
