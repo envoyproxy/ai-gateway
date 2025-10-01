@@ -62,10 +62,10 @@ services:
     extra_hosts:  # localhost:host-gateway trick doesn't work with aigw
       - "host.docker.internal:host-gateway"
 
-  # create-embeddings is a simple curl-based test client for sending embeddings requests to aigw.
-  create-embeddings:
+  # embeddings is a simple curl-based test client for sending embeddings requests to aigw.
+  embeddings:
     image: golang:1.25
-    container_name: create-embeddings
+    container_name: embeddings
     profiles: ["test"]
     env_file:
       - ../../.env.ollama

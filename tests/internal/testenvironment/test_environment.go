@@ -24,6 +24,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 // TestEnvironment holds all the services needed for tests.
@@ -83,7 +84,7 @@ func StartTestEnvironment(t TestingT,
 	extprocBin, extprocConfig string, extprocEnv []string, envoyConfig string, okToDumpLogOnFailure, extProcInProcess bool,
 ) *TestEnvironment {
 	// Get random ports for all services.
-	ports := requireRandomPorts(t, 5)
+	ports := internaltesting.RequireRandomPorts(t, 5)
 
 	env := &TestEnvironment{
 		upstreamPortDefault: upstreamPortDefault,
@@ -187,25 +188,6 @@ func (e *TestEnvironment) checkConnection(t TestingT, port int, name string) err
 	}
 	t.Logf("Successfully connected to %s on port %d", name, port)
 	return nil
-}
-
-// requireRandomPorts returns random available ports.
-func requireRandomPorts(t require.TestingT, count int) []int {
-	ports := make([]int, count)
-
-	var listeners []net.Listener
-	for i := range count {
-		lc := net.ListenConfig{}
-		lis, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
-		require.NoError(t, err, "failed to listen on random port %d", i)
-		listeners = append(listeners, lis)
-		addr := lis.Addr().(*net.TCPAddr)
-		ports[i] = addr.Port
-	}
-	for _, lis := range listeners {
-		require.NoError(t, lis.Close())
-	}
-	return ports
 }
 
 func waitForReadyMessage(ctx context.Context, outReader io.Reader, readyMessage string) {
