@@ -396,3 +396,55 @@ type mockBackendAuthHandler struct{}
 func (m *mockBackendAuthHandler) Do(context.Context, map[string]string, *extprocv3.HeaderMutation, *extprocv3.BodyMutation) error {
 	return nil
 }
+
+// mockImageGenerationMetrics implements [metrics.ImageGenerationMetrics] for testing.
+type mockImageGenerationMetrics struct {
+	requestSuccessCount int
+	requestErrorCount   int
+	model               string
+	backend             string
+	tokenUsageCount     int
+}
+
+func (m *mockImageGenerationMetrics) StartRequest(map[string]string) {}
+func (m *mockImageGenerationMetrics) SetModel(requestModel, responseModel string) {
+	m.model = responseModel
+}
+func (m *mockImageGenerationMetrics) SetBackend(b *filterapi.Backend) { m.backend = b.Name }
+func (m *mockImageGenerationMetrics) RecordTokenUsage(_ context.Context, _ uint32, _ uint32, _ map[string]string) {
+	m.tokenUsageCount++
+}
+func (m *mockImageGenerationMetrics) RecordRequestCompletion(_ context.Context, success bool, _ map[string]string) {
+	if success {
+		m.requestSuccessCount++
+	} else {
+		m.requestErrorCount++
+	}
+}
+func (m *mockImageGenerationMetrics) RecordImageGeneration(_ context.Context, _ int, _ string, _ string, _ map[string]string) {
+}
+
+func (m *mockImageGenerationMetrics) RequireRequestFailure(t *testing.T) {
+	require.Equal(t, 0, m.requestSuccessCount)
+	require.Equal(t, 1, m.requestErrorCount)
+}
+func (m *mockImageGenerationMetrics) RequireRequestNotCompleted(t *testing.T) {
+	require.Equal(t, 0, m.requestSuccessCount)
+	require.Equal(t, 0, m.requestErrorCount)
+}
+func (m *mockImageGenerationMetrics) RequireRequestSuccess(t *testing.T) {
+	require.Equal(t, 1, m.requestSuccessCount)
+	require.Equal(t, 0, m.requestErrorCount)
+}
+func (m *mockImageGenerationMetrics) RequireSelectedModel(t *testing.T, model string) {
+	require.Equal(t, model, m.model)
+}
+func (m *mockImageGenerationMetrics) RequireSelectedBackend(t *testing.T, backend string) {
+	require.Equal(t, backend, m.backend)
+}
+func (m *mockImageGenerationMetrics) RequireTokensRecorded(t *testing.T, count int) {
+	require.Equal(t, count, m.tokenUsageCount)
+}
+
+// Ensure mock implements the interface at compile-time.
+var _ metrics.ImageGenerationMetrics = &mockImageGenerationMetrics{}
