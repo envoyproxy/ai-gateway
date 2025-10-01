@@ -242,6 +242,11 @@ func (p *phase) String() string {
 	return fmt.Sprintf("%s (requests made: %d, current pods: %s)", phase, p.requestCounts.Load(), currentPods)
 }
 
+// makeRequest makes a single request to the given IP address and returns an error if the request fails.
+//
+// The request is a simple POST request to the /v1/chat/completions endpoint with a streaming response.
+// Since the testupstream server takes 200ms interval between each chunk, this ensures that the request
+// lasts long enough to overlap with pod restarts during the upgrade.
 func makeRequest(t *testing.T, ipAddress string, phase string) error {
 	req, err := http.NewRequest("POST", fmt.Sprintf("http://%s/v1/chat/completions", ipAddress),
 		strings.NewReader(`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"some-cool-model", "stream":true}`))

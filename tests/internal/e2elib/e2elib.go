@@ -554,7 +554,6 @@ func RequireWaitForGatewayPodReady(t *testing.T, selector string) {
 
 // RequireGatewayListenerAddressViaMetalLB gets the external IP address of the Gateway via MetalLB.
 func RequireGatewayListenerAddressViaMetalLB(t *testing.T, namespace, name string) (addr string) {
-	// k get gateway upgrade-test -o jsonpath='{.status.addresses[0].value}'
 	cmd := Kubectl(t.Context(), "get", "gateway", "-n", namespace, name,
 		"-o", "jsonpath={.status.addresses[0].value}")
 	cmd.Stdout = nil
