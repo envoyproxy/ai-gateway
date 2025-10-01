@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -30,9 +31,8 @@ const (
 	// EnvoyGatewayDefaultServicePort is the default service port for the Envoy Gateway.
 	EnvoyGatewayDefaultServicePort = 80
 
-	kindClusterName = "envoy-ai-gateway"
-	kindLogDir      = "./logs"
-	metallbVersion  = "v0.13.10"
+	kindLogDir     = "./logs"
+	metallbVersion = "v0.13.10"
 )
 
 // By default, kind logs are collected when the e2e tests fail. The TEST_KEEP_CLUSTER environment variable
@@ -50,70 +50,72 @@ func cleanupLog(msg string) {
 	fmt.Printf("\u001b[32m=== CLEANUP LOG: %s\u001B[0m\n", msg)
 }
 
+// AIGatewayHelmOption contains options for installing the AI Gateway Helm chart.
+type AIGatewayHelmOption struct {
+	// ChartVersion is the version of the AI Gateway Helm chart to install. If empty, the locally built chart is used.
+	// Otherwise, it should be a valid semver version string and the chart will be pulled from the Docker Hub OCI registry.
+	//
+	// For example, giving "v0.3.0" here will result in install oci://docker.io/envoyproxy/ai-gateway-helm --version v0.3.0.
+	ChartVersion string
+	// AdditionalArgs are additional arguments to pass to the Helm install/upgrade command.
+	AdditionalArgs []string
+}
+
 // TestMain is the entry point for the e2e tests. It sets up the kind cluster, installs the Envoy Gateway,
 // and installs the AI Gateway. It can be called with additional flags for the AI Gateway Helm chart.
 //
 // When the inferenceExtension flag is set to true, it also installs the Inference Extension and the
 // Inference Pool resources, and the Envoy Gateway configuration which are required for the tests.
-func TestMain(m *testing.M, aiGatewayHelmFlags []string, inferenceExtension bool) {
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(5*time.Minute))
+func TestMain(m *testing.M, aigwOpts AIGatewayHelmOption, inferenceExtension, needPrometheus bool) {
+	const defaultKindClusterName = "envoy-ai-gateway"
+	err := SetupAll(context.Background(), defaultKindClusterName, aigwOpts, inferenceExtension, needPrometheus)
+	if err != nil {
+		CleanupKindCluster(true, defaultKindClusterName)
+		fmt.Printf("Failed to set up the test environment: %v\n", err)
+		os.Exit(1)
+	}
+	code := m.Run()
+	CleanupKindCluster(code != 0, defaultKindClusterName)
+	os.Exit(code) // nolint: gocritic
+}
 
+// SetupAll sets up the kind cluster, installs the Envoy Gateway, and installs the AI Gateway.
+func SetupAll(ctx context.Context, clusterName string, aigwOpts AIGatewayHelmOption, inferenceExtension, needPrometheus bool) error {
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithDeadline(ctx, time.Now().Add(5*time.Minute))
+	defer cancel()
 	// The following code sets up the kind cluster, installs the Envoy Gateway, and installs the AI Gateway.
 	// They must be idempotent and can be run multiple times so that we can run the tests multiple times on
 	// failures.
-
-	run := false
-	defer func() {
-		// If the setup or some tests panic, try to collect the cluster logs.
-		if r := recover(); r != nil {
-			cleanupKindCluster(true)
-		}
-		if !run {
-			panic("BUG: no tests were run. This is likely a bug during the setup")
-		}
-	}()
-
-	if err := initKindCluster(ctx); err != nil {
-		cancel()
-		panic(err)
+	if err := initKindCluster(ctx, clusterName); err != nil {
+		return fmt.Errorf("failed to initialize kind cluster: %w", err)
 	}
 
 	if inferenceExtension {
 		if err := initMetalLB(ctx); err != nil {
-			cancel()
-			panic(err)
+			return fmt.Errorf("failed to initialize MetalLB: %w", err)
 		}
 		if err := installInferencePoolEnvironment(ctx); err != nil {
-			cancel()
-			panic(err)
+			return fmt.Errorf("failed to install inference pool environment: %w", err)
 		}
 	}
 	if err := initEnvoyGateway(ctx, inferenceExtension); err != nil {
-		cancel()
-		panic(err)
+		return fmt.Errorf("failed to initialize Envoy Gateway: %w", err)
 	}
 
-	if err := initAIGateway(ctx, aiGatewayHelmFlags); err != nil {
-		cancel()
-		panic(err)
+	if err := InstallOrUpgradeAIGateway(ctx, aigwOpts); err != nil {
+		return fmt.Errorf("failed to install or upgrade AI Gateway: %w", err)
 	}
 
-	if !inferenceExtension {
+	if needPrometheus {
 		if err := initPrometheus(ctx); err != nil {
-			cancel()
-			panic(err)
+			return fmt.Errorf("failed to initialize Prometheus: %w", err)
 		}
 	}
-	code := m.Run()
-	run = true
-	cancel()
-
-	cleanupKindCluster(code != 0)
-
-	os.Exit(code) // nolint: gocritic
+	return nil
 }
 
-func initKindCluster(ctx context.Context) (err error) {
+func initKindCluster(ctx context.Context, clusterName string) (err error) {
 	initLog("Setting up the kind cluster")
 	start := time.Now()
 	defer func() {
@@ -121,15 +123,15 @@ func initKindCluster(ctx context.Context) (err error) {
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)", elapsed.Seconds()))
 	}()
 
-	initLog(fmt.Sprintf("\tCreating kind cluster named %s", kindClusterName))
-	out, err := testsinternal.RunGoToolContext(ctx, "kind", "create", "cluster", "--name", kindClusterName)
+	initLog(fmt.Sprintf("\tCreating kind cluster named %s", clusterName))
+	out, err := testsinternal.RunGoToolContext(ctx, "kind", "create", "cluster", "--name", clusterName)
 	if err != nil && !strings.Contains(err.Error(), "already exist") {
 		fmt.Printf("Error creating kind cluster: %s\n", out)
 		return
 	}
 
-	initLog(fmt.Sprintf("\tSwitching kubectl context to %s", kindClusterName))
-	cmd := testsinternal.GoToolCmdContext(ctx, "kind", "export", "kubeconfig", "--name", kindClusterName)
+	initLog(fmt.Sprintf("\tSwitching kubectl context to %s", clusterName))
+	cmd := testsinternal.GoToolCmdContext(ctx, "kind", "export", "kubeconfig", "--name", clusterName)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err = cmd.Run(); err != nil {
@@ -142,7 +144,7 @@ func initKindCluster(ctx context.Context) (err error) {
 		"docker.io/envoyproxy/ai-gateway-extproc:latest",
 		"docker.io/envoyproxy/ai-gateway-testupstream:latest",
 	} {
-		cmd := testsinternal.GoToolCmdContext(ctx, "kind", "load", "docker-image", image, "--name", kindClusterName)
+		cmd := testsinternal.GoToolCmdContext(ctx, "kind", "load", "docker-image", image, "--name", clusterName)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err = cmd.Run(); err != nil {
@@ -194,12 +196,12 @@ func initMetalLB(ctx context.Context) (err error) {
 
 	// Wait for MetalLB deployments to be ready.
 	initLog("\tWaiting for MetalLB controller deployment to be ready")
-	if err = kubectlWaitForDeploymentReady("metallb-system", "controller"); err != nil {
+	if err = kubectlWaitForDeploymentReady(ctx, "metallb-system", "controller"); err != nil {
 		return fmt.Errorf("failed to wait for MetalLB controller: %w", err)
 	}
 
 	initLog("\tWaiting for MetalLB speaker daemonset to be ready")
-	if err = kubectlWaitForDaemonSetReady("metallb-system", "speaker"); err != nil {
+	if err = kubectlWaitForDaemonSetReady(ctx, "metallb-system", "speaker"); err != nil {
 		return fmt.Errorf("failed to wait for MetalLB speaker: %w", err)
 	}
 
@@ -312,17 +314,22 @@ spec:
 	}
 }
 
-func cleanupKindCluster(testsFailed bool) {
+// CleanupKindCluster cleans up the kind cluster if the test succeeds and the
+// TEST_KEEP_CLUSTER environment variable is not set to "true".
+//
+// Also, if the tests failed or TEST_KEEP_CLUSTER is "true", it collects the kind logs
+// into the ./logs directory.
+func CleanupKindCluster(testsFailed bool, clusterName string) {
 	if testsFailed || keepCluster {
 		cleanupLog("Collecting logs from the kind cluster")
-		cmd := testsinternal.GoToolCmd("kind", "export", "logs", "--name", kindClusterName, kindLogDir)
+		cmd := testsinternal.GoToolCmd("kind", "export", "logs", "--name", clusterName, kindLogDir)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		_ = cmd.Run()
 	}
 	if !testsFailed && !keepCluster {
 		cleanupLog("Destroying the kind cluster")
-		cmd := testsinternal.GoToolCmd("kind", "delete", "cluster", "--name", kindClusterName)
+		cmd := testsinternal.GoToolCmd("kind", "delete", "cluster", "--name", clusterName)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		_ = cmd.Run()
@@ -405,14 +412,15 @@ func initEnvoyGateway(ctx context.Context, inferenceExtension bool) (err error) 
 		return
 	}
 	initLog("\tWaiting for Ratelimit deployment to be ready")
-	if err = kubectlWaitForDeploymentReady("envoy-gateway-system", "envoy-ratelimit"); err != nil {
+	if err = kubectlWaitForDeploymentReady(ctx, "envoy-gateway-system", "envoy-ratelimit"); err != nil {
 		return
 	}
 	initLog("\tWaiting for Envoy Gateway deployment to be ready")
-	return kubectlWaitForDeploymentReady("envoy-gateway-system", "envoy-gateway")
+	return kubectlWaitForDeploymentReady(ctx, "envoy-gateway-system", "envoy-gateway")
 }
 
-func initAIGateway(ctx context.Context, aiGatewayHelmFlags []string) (err error) {
+// InstallOrUpgradeAIGateway installs or upgrades the AI Gateway using Helm.
+func InstallOrUpgradeAIGateway(ctx context.Context, aigw AIGatewayHelmOption) (err error) {
 	initLog("Installing AI Gateway")
 	start := time.Now()
 	defer func() {
@@ -420,23 +428,30 @@ func initAIGateway(ctx context.Context, aiGatewayHelmFlags []string) (err error)
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
 	}()
 	initLog("\tHelm Install")
-	helmCRD := testsinternal.GoToolCmdContext(ctx, "helm", "upgrade", "-i", "ai-eg-crd",
-		"../../manifests/charts/ai-gateway-crds-helm",
-		"-n", "envoy-ai-gateway-system", "--create-namespace")
-	helmCRD.Stdout = os.Stdout
-	helmCRD.Stderr = os.Stderr
-	if err = helmCRD.Run(); err != nil {
+	cdrChartArgs := []string{"upgrade", "-i", "ai-eg-crd"}
+	if aigw.ChartVersion != "" {
+		cdrChartArgs = append(cdrChartArgs, "oci://docker.io/envoyproxy/ai-gateway-crds-helm", "--version", aigw.ChartVersion)
+	} else {
+		cdrChartArgs = append(cdrChartArgs, "../../manifests/charts/ai-gateway-crds-helm")
+	}
+	cdrChartArgs = append(cdrChartArgs, "-n", "envoy-ai-gateway-system", "--create-namespace")
+	crdChart := testsinternal.GoToolCmdContext(ctx, "helm", cdrChartArgs...)
+	crdChart.Stdout = os.Stdout
+	crdChart.Stderr = os.Stderr
+	if err = crdChart.Run(); err != nil {
 		return
 	}
 
-	args := []string{
-		"upgrade", "-i", "ai-eg",
-		"../../manifests/charts/ai-gateway-helm",
-		"-n", "envoy-ai-gateway-system", "--create-namespace",
+	mainChartArgs := []string{"upgrade", "-i", "ai-eg"}
+	if aigw.ChartVersion != "" {
+		mainChartArgs = append(mainChartArgs, "oci://docker.io/envoyproxy/ai-gateway-helm", "--version", aigw.ChartVersion)
+	} else {
+		mainChartArgs = append(mainChartArgs, "../../manifests/charts/ai-gateway-helm")
 	}
-	args = append(args, aiGatewayHelmFlags...)
+	mainChartArgs = append(mainChartArgs, "-n", "envoy-ai-gateway-system", "--create-namespace")
+	mainChartArgs = append(mainChartArgs, aigw.AdditionalArgs...)
 
-	helm := testsinternal.GoToolCmdContext(ctx, "helm", args...)
+	helm := testsinternal.GoToolCmdContext(ctx, "helm", mainChartArgs...)
 	helm.Stdout = os.Stdout
 	helm.Stderr = os.Stderr
 	if err = helm.Run(); err != nil {
@@ -447,7 +462,7 @@ func initAIGateway(ctx context.Context, aiGatewayHelmFlags []string) (err error)
 	if err = kubectlRestartDeployment(ctx, "envoy-ai-gateway-system", "ai-gateway-controller"); err != nil {
 		return
 	}
-	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
+	return kubectlWaitForDeploymentReady(ctx, "envoy-ai-gateway-system", "ai-gateway-controller")
 }
 
 func initPrometheus(ctx context.Context) (err error) {
@@ -462,7 +477,7 @@ func initPrometheus(ctx context.Context) (err error) {
 		return
 	}
 	initLog("\twaiting for deployment")
-	return kubectlWaitForDeploymentReady("monitoring", "prometheus")
+	return kubectlWaitForDeploymentReady(ctx, "monitoring", "prometheus")
 }
 
 // Kubectl runs the kubectl command with the given context and arguments.
@@ -496,14 +511,14 @@ func kubectlRestartDeployment(ctx context.Context, namespace, deployment string)
 	return cmd.Run()
 }
 
-func kubectlWaitForDeploymentReady(namespace, deployment string) (err error) {
-	cmd := Kubectl(context.Background(), "wait", "--timeout=2m", "-n", namespace,
+func kubectlWaitForDeploymentReady(ctx context.Context, namespace, deployment string) (err error) {
+	cmd := Kubectl(ctx, "wait", "--timeout=2m", "-n", namespace,
 		"deployment/"+deployment, "--for=create")
 	if err = cmd.Run(); err != nil {
 		return fmt.Errorf("error waiting for deployment %s in namespace %s: %w", deployment, namespace, err)
 	}
 
-	cmd = Kubectl(context.Background(), "wait", "--timeout=2m", "-n", namespace,
+	cmd = Kubectl(ctx, "wait", "--timeout=2m", "-n", namespace,
 		"deployment/"+deployment, "--for=condition=Available")
 	if err = cmd.Run(); err != nil {
 		return fmt.Errorf("error waiting for deployment %s in namespace %s: %w", deployment, namespace, err)
@@ -511,16 +526,16 @@ func kubectlWaitForDeploymentReady(namespace, deployment string) (err error) {
 	return
 }
 
-func kubectlWaitForDaemonSetReady(namespace, daemonset string) (err error) {
+func kubectlWaitForDaemonSetReady(ctx context.Context, namespace, daemonset string) (err error) {
 	// Wait for daemonset to be created.
-	cmd := Kubectl(context.Background(), "wait", "--timeout=2m", "-n", namespace,
+	cmd := Kubectl(ctx, "wait", "--timeout=2m", "-n", namespace,
 		"daemonset/"+daemonset, "--for=create")
 	if err = cmd.Run(); err != nil {
 		return fmt.Errorf("error waiting for daemonset %s in namespace %s: %w", daemonset, namespace, err)
 	}
 
 	// Wait for daemonset pods to be ready using jsonpath.
-	cmd = Kubectl(context.Background(), "wait", "--timeout=2m", "-n", namespace,
+	cmd = Kubectl(ctx, "wait", "--timeout=2m", "-n", namespace,
 		"daemonset/"+daemonset, "--for=jsonpath={.status.numberReady}=1")
 	if err = cmd.Run(); err != nil {
 		return fmt.Errorf("error waiting for daemonset %s pods to be ready in namespace %s: %w", daemonset, namespace, err)
@@ -601,6 +616,9 @@ func newServicePortForwarder(ctx context.Context, namespace, selector string, po
 		"-n", namespace, "svc/"+serviceName,
 		fmt.Sprintf("%d:%d", f.localPort, podPort),
 	)
+	// Suppress the useless output like "Forwarding from [::1]:51088 -> 10080".
+	cmd.Stdout = io.Discard
+	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
 		return PortForwarder{}, fmt.Errorf("failed to start port-forward: %w", err)
 	}
