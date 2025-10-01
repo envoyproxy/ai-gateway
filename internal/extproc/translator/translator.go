@@ -17,6 +17,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	openaisdk "github.com/openai/openai-go/v2"
 )
 
 const (
@@ -243,10 +244,10 @@ var sjsonOptions = &sjson.Options{
 type ImageGenerationTranslator interface {
 	// RequestBody translates the request body.
 	// 	- raw is the raw request body.
-	// 	- body is the request body parsed into the [openai.ImageGenerationRequest].
+	// 	- body is the request body parsed into the OpenAI SDK [openaisdk.ImageGenerateParams].
 	//	- forceBodyMutation is true if the translator should always mutate the body, even if no changes are made.
 	//	- This returns headerMutation and bodyMutation that can be nil to indicate no mutation.
-	RequestBody(raw []byte, body *openai.ImageGenerationRequest, forceBodyMutation bool) (
+	RequestBody(raw []byte, body *openaisdk.ImageGenerateParams, forceBodyMutation bool) (
 		headerMutation *extprocv3.HeaderMutation,
 		bodyMutation *extprocv3.BodyMutation,
 		err error,

@@ -10,14 +10,13 @@ import (
 	"fmt"
 	"io"
 	"path"
-	"strconv"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/tidwall/sjson"
 
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	openaisdk "github.com/openai/openai-go/v2"
 )
 
 // NewImageGenerationOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI image generation translation.
@@ -33,7 +32,7 @@ type openAIToOpenAIImageGenerationTranslator struct {
 }
 
 // RequestBody implements [ImageGenerationTranslator.RequestBody].
-func (o *openAIToOpenAIImageGenerationTranslator) RequestBody(original []byte, req *openai.ImageGenerationRequest, forceBodyMutation bool) (
+func (o *openAIToOpenAIImageGenerationTranslator) RequestBody(original []byte, req *openaisdk.ImageGenerateParams, forceBodyMutation bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
 	var newBody []byte
@@ -63,10 +62,8 @@ func (o *openAIToOpenAIImageGenerationTranslator) RequestBody(original []byte, r
 		bodyMutation = &extprocv3.BodyMutation{
 			Mutation: &extprocv3.BodyMutation_Body{Body: newBody},
 		}
-		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{Header: &corev3.HeaderValue{
-			Key:      "content-length",
-			RawValue: []byte(strconv.Itoa(len(newBody))),
-		}})
+		// Note: content-length header is set via dynamic metadata in the processor
+		// to avoid conflicts with Envoy's REPLACE_AND_CONTINUE processing mode
 	}
 	return
 }
@@ -79,12 +76,12 @@ func (o *openAIToOpenAIImageGenerationTranslator) ResponseError(respHeaders map[
 ) {
 	statusCode := respHeaders[statusHeaderName]
 	if v, ok := respHeaders[contentTypeHeaderName]; ok && v != jsonContentType {
-		var openaiError openai.ImageGenerationError
+		var openaiError ImageGenerationError
 		buf, err := io.ReadAll(body)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to read error body: %w", err)
 		}
-		openaiError = openai.ImageGenerationError{
+		openaiError = ImageGenerationError{
 			Error: struct {
 				Type    string  `json:"type"`
 				Message string  `json:"message"`
@@ -102,6 +99,11 @@ func (o *openAIToOpenAIImageGenerationTranslator) ResponseError(respHeaders map[
 			return nil, nil, fmt.Errorf("failed to marshal error body: %w", err)
 		}
 		headerMutation = &extprocv3.HeaderMutation{}
+		// Ensure downstream sees a JSON error payload
+		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{Header: &corev3.HeaderValue{
+			Key:      contentTypeHeaderName,
+			RawValue: []byte(jsonContentType),
+		}})
 		setContentLength(headerMutation, mut.Body)
 		return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, nil
 	}
@@ -117,22 +119,46 @@ func (o *openAIToOpenAIImageGenerationTranslator) ResponseHeaders(map[string]str
 func (o *openAIToOpenAIImageGenerationTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, imageMetadata ImageGenerationMetadata, err error,
 ) {
-	resp := &openai.ImageGenerationResponse{}
-	if err := json.NewDecoder(body).Decode(&resp); err != nil {
+	// Read the entire response body first to debug any issues
+	bodyBytes, err := io.ReadAll(body)
+	if err != nil {
+		return nil, nil, tokenUsage, imageMetadata, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Debug logging for response body content
+	bodyPreview := string(bodyBytes)
+	if len(bodyPreview) > 200 {
+		bodyPreview = bodyPreview[:200] + "..."
+	}
+	fmt.Printf("DEBUG: Image generation translator received body - Length: %d, Preview: %s\n", len(bodyBytes), bodyPreview)
+
+	// Check if body looks like JSON
+	if len(bodyBytes) > 0 && bodyBytes[0] != '{' && bodyBytes[0] != '[' {
+		previewLen := 10
+		if len(bodyBytes) < previewLen {
+			previewLen = len(bodyBytes)
+		}
+		fmt.Printf("DEBUG: Body does not start with JSON character. First %d bytes: %v\n", previewLen, bodyBytes[:previewLen])
+	}
+
+	// Decode using OpenAI SDK v2 schema to avoid drift.
+	resp := &openaisdk.ImagesResponse{}
+	if err := json.Unmarshal(bodyBytes, &resp); err != nil {
+		fmt.Printf("DEBUG: JSON unmarshal failed - Error: %v, Body preview: %s\n", err, bodyPreview)
 		return nil, nil, tokenUsage, imageMetadata, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 
 	// Populate token usage if provided (GPT-Image-1); otherwise remain zero.
-	if resp.Usage != nil {
+	if resp.JSON.Usage.Valid() {
 		tokenUsage.InputTokens = uint32(resp.Usage.InputTokens)   //nolint:gosec
 		tokenUsage.OutputTokens = uint32(resp.Usage.OutputTokens) //nolint:gosec
 		tokenUsage.TotalTokens = uint32(resp.Usage.TotalTokens)   //nolint:gosec
 	}
 
-	// Extract image generation metadata for metrics
+	// Extract image generation metadata for metrics (model may be absent in SDK response)
 	imageMetadata.ImageCount = len(resp.Data)
-	imageMetadata.Model = resp.Model
-	imageMetadata.Size = resp.Size
+	imageMetadata.Model = ""
+	imageMetadata.Size = string(resp.Size)
 
 	return
 }
