@@ -12,12 +12,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	openaisdk "github.com/openai/openai-go/v2"
 )
 
 func TestOpenAIToOpenAIImageTranslator_RequestBody_ModelOverrideAndPath(t *testing.T) {
 	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "gpt-image-1")
-	req := &openai.ImageGenerationRequest{Model: openai.ModelDalle3, Prompt: "a cat"}
+	req := &openaisdk.ImageGenerateParams{Model: openaisdk.ImageModelDallE3, Prompt: "a cat"}
 	original, _ := json.Marshal(req)
 
 	hm, bm, err := tr.RequestBody(original, req, false)
@@ -30,14 +30,14 @@ func TestOpenAIToOpenAIImageTranslator_RequestBody_ModelOverrideAndPath(t *testi
 
 	require.NotNil(t, bm)
 	mutated := bm.GetBody()
-	var got openai.ImageGenerationRequest
+	var got openaisdk.ImageGenerateParams
 	require.NoError(t, json.Unmarshal(mutated, &got))
-	require.Equal(t, "gpt-image-1", got.Model)
+	require.Equal(t, "gpt-image-1", string(got.Model))
 }
 
 func TestOpenAIToOpenAIImageTranslator_RequestBody_ForceMutation(t *testing.T) {
 	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "")
-	req := &openai.ImageGenerationRequest{Model: openai.ModelDalle2, Prompt: "a cat"}
+	req := &openaisdk.ImageGenerateParams{Model: openaisdk.ImageModelDallE2, Prompt: "a cat"}
 	original, _ := json.Marshal(req)
 
 	hm, bm, err := tr.RequestBody(original, req, true)
@@ -65,14 +65,14 @@ func TestOpenAIToOpenAIImageTranslator_ResponseError_NonJSON(t *testing.T) {
 	require.NotNil(t, bm)
 
 	// Body should be OpenAI error JSON
-	var got openai.ImageGenerationError
+	var got ImageGenerationError
 	require.NoError(t, json.Unmarshal(bm.GetBody(), &got))
 	require.Equal(t, openAIBackendError, got.Error.Type)
 }
 
 func TestOpenAIToOpenAIImageTranslator_ResponseBody_OK(t *testing.T) {
 	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "")
-	resp := &openai.ImageGenerationResponse{Model: openai.ModelDalle3}
+	resp := &openaisdk.ImagesResponse{Size: openaisdk.ImagesResponseSize1024x1024}
 	buf, _ := json.Marshal(resp)
 	hm, bm, usage, metadata, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true)
 	require.NoError(t, err)
@@ -81,9 +81,6 @@ func TestOpenAIToOpenAIImageTranslator_ResponseBody_OK(t *testing.T) {
 	require.Equal(t, uint32(0), usage.InputTokens)
 	require.Equal(t, uint32(0), usage.TotalTokens)
 	require.Equal(t, 0, metadata.ImageCount)
-	require.Equal(t, openai.ModelDalle3, metadata.Model)
-	require.Equal(t, "", metadata.Size)
+	require.Equal(t, "", metadata.Model)
+	require.Equal(t, string(openaisdk.ImagesResponseSize1024x1024), metadata.Size)
 }
-
-// Ensure the helper compiles in this package (not used directly but keeps imports clean in case of future changes).
-// (no-op local stub removed; production helper exists in package translator)
