@@ -9,6 +9,8 @@
 go.mod
 go.sum
 ./tests/e2e/logs
+./tests/e2e-inference-extension/logs
+./tests/e2e-upgrade/logs
 *_for_tests.yaml
 ./tests/extproc/testdata/server.*
 ./tests/internal/testopenai/cassettes/*.yaml

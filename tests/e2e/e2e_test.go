@@ -12,9 +12,11 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	e2elib.TestMain(m,
-		// Configure the additional prometheus metrics label for user ID.
-		[]string{"--set", "controller.metricsRequestHeaderLabels=x-user-id:" + userIDMetricsLabel},
-		false,
+	e2elib.TestMain(m, e2elib.AIGatewayHelmOption{
+		AdditionalArgs: []string{
+			// Configure the additional prometheus metrics label for user ID.
+			"--set", "controller.metricsRequestHeaderLabels=x-user-id:" + userIDMetricsLabel,
+		},
+	}, false, true,
 	)
 }
