@@ -31,23 +31,22 @@ Here are values we use for Ollama:
    docker compose up --wait -d
    ```
 
-3. **Create a simple OpenAI chat completion**:
+3. **Make requests to Envoy AI Gateway**:
 
-   The `chat-completion` service uses `curl` to send a simple chat completion
-   request to the AI Gateway CLI (aigw) which routes it to Ollama.
-   ```bash
-   docker compose run --rm chat-completion
-   ```
+   The following services use `curl` to send requests to the AI Gateway CLI
+   (aigw) which routes them to Ollama:
 
-4. **Create embeddings**:
+   - Chat completion:
+     ```bash
+     docker compose run --rm chat-completion
+     ```
 
-   The `create-embeddings` service uses `curl` to send an embeddings request
-   to the AI Gateway CLI (aigw) which routes it to Ollama.
-   ```bash
-   docker compose run --rm create-embeddings
-   ```
+   - Embeddings:
+     ```bash
+     docker compose run --rm embeddings
+     ```
 
-5. **Shutdown the example stack**:
+4. **Shutdown the example stack**:
 
    `down` stops the containers and removes the volumes used by the stack.
    ```bash

@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -149,9 +150,15 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 			require.True(t, ok, userIDMetricsLabel+" should be present in the metric")
 			t.Logf("Type: %s, Value: %v, User ID: %s", typ, result.Value, uID)
 		}
-		// We should see input and output token types (total was removed per OTEL spec).
-		require.Contains(t, actualTypes, "input")
-		require.Contains(t, actualTypes, "output")
+		// Metrics should include input and output (total is a response
+		// attribute, but not a metric).
+		//
+		// Note: We don't use require.Contains as that will crash the
+		// eventually loop when there are no metrics, yet.
+		if !slices.Contains(actualTypes, "input") || !slices.Contains(actualTypes, "output") {
+			t.Logf("waiting until there are both input and output tokens: %v", actualTypes)
+			return false
+		}
 		return true
 	}, 2*time.Minute, 1*time.Second)
 }

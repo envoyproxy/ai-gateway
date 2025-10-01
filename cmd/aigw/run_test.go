@@ -33,6 +33,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 func TestRun(t *testing.T) {
@@ -40,6 +41,10 @@ func TestRun(t *testing.T) {
 	if ollamaModel == "" || !checkIfOllamaReady(t, ollamaModel) {
 		t.Skipf("Ollama not ready or model %q missing. Run 'ollama pull %s' if needed.", ollamaModel, ollamaModel)
 	}
+
+	ports := internaltesting.RequireRandomPorts(t, 1)
+	// TODO: parameterize the main listen port 1975
+	adminPort := ports[0]
 
 	t.Setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
 	t.Setenv("OPENAI_API_KEY", "unused")
@@ -49,7 +54,7 @@ func TestRun(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		opts := runOpts{extProcLauncher: mainlib.Main}
-		require.NoError(t, run(ctx, cmdRun{Debug: true}, opts, os.Stdout, os.Stderr))
+		require.NoError(t, run(ctx, cmdRun{Debug: true, AdminPort: adminPort}, opts, os.Stdout, os.Stderr))
 		close(done)
 	}()
 	defer func() { cancel(); <-done }()
@@ -77,7 +82,7 @@ func TestRun(t *testing.T) {
 
 	t.Run("access metrics", func(t *testing.T) {
 		require.Eventually(t, func() bool {
-			req, err := http.NewRequest(http.MethodGet, "http://localhost:1064/metrics", nil)
+			req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://localhost:%d/metrics", adminPort), nil)
 			require.NoError(t, err)
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
@@ -112,6 +117,10 @@ func TestRunExtprocStartFailure(t *testing.T) {
 }
 
 func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
+	ports := internaltesting.RequireRandomPorts(t, 1)
+	// TODO: parameterize the main listen port 1975
+	adminPort := ports[0]
+
 	t.Setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
 	t.Setenv("OPENAI_API_KEY", "unused")
 
@@ -119,7 +128,7 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 		stderrLogger:             slog.New(slog.NewTextHandler(os.Stderr, nil)),
 		envoyGatewayResourcesOut: &bytes.Buffer{},
 		tmpdir:                   t.TempDir(),
-		adminPort:                1064,
+		adminPort:                adminPort,
 		extProcLauncher:          mainlib.Main,
 		// UNIX doesn't like a long UDS path, so we use a short one.
 		// https://unix.stackexchange.com/questions/367008/why-is-socket-path-length-limited-to-a-hundred-chars
@@ -139,11 +148,15 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 var gatewayNoListenersConfig string
 
 func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc_noListeners(t *testing.T) {
+	ports := internaltesting.RequireRandomPorts(t, 1)
+	// TODO: parameterize the main listen port 1975
+	adminPort := ports[0]
+
 	runCtx := &runCmdContext{
 		stderrLogger:             slog.New(slog.DiscardHandler),
 		envoyGatewayResourcesOut: &bytes.Buffer{},
 		tmpdir:                   t.TempDir(),
-		adminPort:                1064,
+		adminPort:                adminPort,
 		udsPath:                  filepath.Join("/tmp", "run-test.sock"),
 	}
 
