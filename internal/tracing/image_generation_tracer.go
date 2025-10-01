@@ -13,8 +13,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	openaisdk "github.com/openai/openai-go/v2"
 )
 
 // Ensure imageGenerationTracer implements ImageGenerationTracer.
@@ -39,7 +39,7 @@ type imageGenerationTracer struct {
 }
 
 // StartSpanAndInjectHeaders implements ImageGenerationTracer.StartSpanAndInjectHeaders.
-func (t *imageGenerationTracer) StartSpanAndInjectHeaders(ctx context.Context, headers map[string]string, mutableHeaders *extprocv3.HeaderMutation, req *openai.ImageGenerationRequest, body []byte) tracing.ImageGenerationSpan {
+func (t *imageGenerationTracer) StartSpanAndInjectHeaders(ctx context.Context, headers map[string]string, mutableHeaders *extprocv3.HeaderMutation, req *openaisdk.ImageGenerateParams, body []byte) tracing.ImageGenerationSpan {
 	// Extract trace context from incoming headers.
 	parentCtx := t.propagator.Extract(ctx, propagation.MapCarrier(headers))
 

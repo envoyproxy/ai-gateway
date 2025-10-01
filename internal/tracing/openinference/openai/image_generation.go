@@ -14,9 +14,9 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
+	openaisdk "github.com/openai/openai-go/v2"
 )
 
 // ImageGenerationRecorder implements recorders for OpenInference image generation spans.
@@ -51,17 +51,17 @@ func NewImageGenerationRecorder(config *openinference.TraceConfig) tracing.Image
 var imageGenStartOpts = []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKindInternal)}
 
 // StartParams implements the same method as defined in tracing.ImageGenerationRecorder.
-func (r *ImageGenerationRecorder) StartParams(*openai.ImageGenerationRequest, []byte) (spanName string, opts []trace.SpanStartOption) {
+func (r *ImageGenerationRecorder) StartParams(*openaisdk.ImageGenerateParams, []byte) (spanName string, opts []trace.SpanStartOption) {
 	return "ImageGeneration", imageGenStartOpts
 }
 
 // RecordRequest implements the same method as defined in tracing.ImageGenerationRecorder.
-func (r *ImageGenerationRecorder) RecordRequest(span trace.Span, req *openai.ImageGenerationRequest, body []byte) {
+func (r *ImageGenerationRecorder) RecordRequest(span trace.Span, req *openaisdk.ImageGenerateParams, body []byte) {
 	span.SetAttributes(buildImageGenerationRequestAttributes(req, string(body), r.traceConfig)...)
 }
 
 // RecordResponse implements the same method as defined in tracing.ImageGenerationRecorder.
-func (r *ImageGenerationRecorder) RecordResponse(span trace.Span, resp *openai.ImageGenerationResponse) {
+func (r *ImageGenerationRecorder) RecordResponse(span trace.Span, resp *openaisdk.ImagesResponse) {
 	// Set output attributes.
 	var attrs []attribute.KeyValue
 	attrs = buildImageGenerationResponseAttributes(resp, r.traceConfig)
@@ -84,11 +84,11 @@ func (r *ImageGenerationRecorder) RecordResponseOnError(span trace.Span, statusC
 }
 
 // buildImageGenerationRequestAttributes builds OpenInference attributes from the image generation request.
-func buildImageGenerationRequestAttributes(req *openai.ImageGenerationRequest, body string, config *openinference.TraceConfig) []attribute.KeyValue {
+func buildImageGenerationRequestAttributes(req *openaisdk.ImageGenerateParams, body string, config *openinference.TraceConfig) []attribute.KeyValue {
 	attrs := []attribute.KeyValue{
 		attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 		attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-		attribute.String(openinference.LLMModelName, req.Model),
+		attribute.String(openinference.LLMModelName, string(req.Model)),
 	}
 
 	if config.HideInputs {
@@ -101,34 +101,31 @@ func buildImageGenerationRequestAttributes(req *openai.ImageGenerationRequest, b
 	// Add image generation specific attributes
 	attrs = append(attrs, attribute.String("gen_ai.operation.name", "image_generation"))
 	attrs = append(attrs, attribute.String("gen_ai.image.prompt", req.Prompt))
-	attrs = append(attrs, attribute.String("gen_ai.image.size", req.Size))
-	attrs = append(attrs, attribute.String("gen_ai.image.quality", req.Quality))
-	attrs = append(attrs, attribute.String("gen_ai.image.style", req.Style))
-	attrs = append(attrs, attribute.String("gen_ai.image.response_format", req.ResponseFormat))
-	if req.N != nil {
-		attrs = append(attrs, attribute.Int("gen_ai.image.n", *req.N))
+	attrs = append(attrs, attribute.String("gen_ai.image.size", string(req.Size)))
+	attrs = append(attrs, attribute.String("gen_ai.image.quality", string(req.Quality)))
+	attrs = append(attrs, attribute.String("gen_ai.image.response_format", string(req.ResponseFormat)))
+	if req.N.Valid() {
+		attrs = append(attrs, attribute.Int("gen_ai.image.n", int(req.N.Value)))
 	}
 
 	return attrs
 }
 
 // buildImageGenerationResponseAttributes builds OpenInference attributes from the image generation response.
-func buildImageGenerationResponseAttributes(resp *openai.ImageGenerationResponse, config *openinference.TraceConfig) []attribute.KeyValue {
+func buildImageGenerationResponseAttributes(resp *openaisdk.ImagesResponse, config *openinference.TraceConfig) []attribute.KeyValue {
 	attrs := []attribute.KeyValue{
-		attribute.String("gen_ai.response.model", resp.Model),
 		attribute.Int("gen_ai.image.count", len(resp.Data)),
 	}
 
-	// Add image URLs if not hidden
+	// Add image URLs if not hidden (SDK uses string field for URL)
 	if !config.HideOutputs && resp.Data != nil {
 		urls := make([]string, 0, len(resp.Data))
 		for _, data := range resp.Data {
-			if data.URL != nil {
-				urls = append(urls, *data.URL)
+			if data.URL != "" {
+				urls = append(urls, data.URL)
 			}
 		}
 		if len(urls) > 0 {
-			// Join URLs with comma for attribute storage
 			urlStr := ""
 			for i, url := range urls {
 				if i > 0 {

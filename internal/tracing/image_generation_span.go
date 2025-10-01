@@ -8,8 +8,8 @@ package tracing
 import (
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	openaisdk "github.com/openai/openai-go/v2"
 )
 
 // Ensure imageGenerationSpan implements ImageGenerationSpan.
@@ -21,7 +21,7 @@ type imageGenerationSpan struct {
 }
 
 // RecordResponse invokes [tracing.ImageGenerationRecorder.RecordResponse].
-func (s *imageGenerationSpan) RecordResponse(resp *openai.ImageGenerationResponse) {
+func (s *imageGenerationSpan) RecordResponse(resp *openaisdk.ImagesResponse) {
 	s.recorder.RecordResponse(s.span, resp)
 }
 
