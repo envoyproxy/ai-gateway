@@ -6,7 +6,6 @@
 package extproc
 
 import (
-	"context"
 	"encoding/json"
 	"log/slog"
 	"testing"
@@ -15,12 +14,11 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
-	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	openaisdk "github.com/openai/openai-go/v2"
 )
 
 func TestImageGeneration_Schema(t *testing.T) {
@@ -146,7 +144,7 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessRequestHeaders(t *testin
 			logger:                 slog.Default(),
 			metrics:                mm,
 			originalRequestBodyRaw: imageGenerationBodyFromModel(t, "dall-e-3"),
-			originalRequestBody:    &openai.ImageGenerationRequest{Model: "dall-e-3", Prompt: "a cat"},
+			originalRequestBody:    &openaisdk.ImageGenerateParams{Model: openaisdk.ImageModel("dall-e-3"), Prompt: "a cat"},
 			handler:                &mockBackendAuthHandler{},
 		}
 		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
@@ -178,7 +176,7 @@ func Test_imageGenerationProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	mm.RequireSelectedBackend(t, "some-backend")
 
 	// Supported OpenAI schema.
-	rp := &imageGenerationProcessorRouterFilter{originalRequestBody: &openai.ImageGenerationRequest{}}
+	rp := &imageGenerationProcessorRouterFilter{originalRequestBody: &openaisdk.ImageGenerateParams{}}
 	p2 := &imageGenerationProcessorUpstreamFilter{
 		config:         &processorConfig{modelNameHeaderKey: "x-model-name"},
 		requestHeaders: map[string]string{"x-model-name": "dall-e-2"},
@@ -215,57 +213,7 @@ func TestImageGeneration_ParseBody(t *testing.T) {
 // imageGenerationBodyFromModel returns a minimal valid image generation request for tests.
 func imageGenerationBodyFromModel(t *testing.T, model string) []byte {
 	t.Helper()
-	b, err := json.Marshal(&openai.ImageGenerationRequest{Model: model, Prompt: "a cat"})
+	b, err := json.Marshal(&openaisdk.ImageGenerateParams{Model: openaisdk.ImageModel(model), Prompt: "a cat"})
 	require.NoError(t, err)
 	return b
 }
-
-// mockImageGenerationMetrics implements [metrics.ImageGenerationMetrics] for testing.
-type mockImageGenerationMetrics struct {
-	requestSuccessCount int
-	requestErrorCount   int
-	model               string
-	backend             string
-	tokenUsageCount     int
-}
-
-func (m *mockImageGenerationMetrics) StartRequest(map[string]string)  {}
-func (m *mockImageGenerationMetrics) SetModel(model string)           { m.model = model }
-func (m *mockImageGenerationMetrics) SetBackend(b *filterapi.Backend) { m.backend = b.Name }
-func (m *mockImageGenerationMetrics) RecordTokenUsage(_ context.Context, _ uint32, _ uint32, _ uint32, _ map[string]string) {
-	m.tokenUsageCount++
-}
-func (m *mockImageGenerationMetrics) RecordRequestCompletion(_ context.Context, success bool, _ map[string]string) {
-	if success {
-		m.requestSuccessCount++
-	} else {
-		m.requestErrorCount++
-	}
-}
-func (m *mockImageGenerationMetrics) RecordImageGeneration(_ context.Context, _ int, _ string, _ string, _ map[string]string) {
-}
-
-func (m *mockImageGenerationMetrics) RequireRequestFailure(t *testing.T) {
-	require.Equal(t, 0, m.requestSuccessCount)
-	require.Equal(t, 1, m.requestErrorCount)
-}
-func (m *mockImageGenerationMetrics) RequireRequestNotCompleted(t *testing.T) {
-	require.Equal(t, 0, m.requestSuccessCount)
-	require.Equal(t, 0, m.requestErrorCount)
-}
-func (m *mockImageGenerationMetrics) RequireRequestSuccess(t *testing.T) {
-	require.Equal(t, 1, m.requestSuccessCount)
-	require.Equal(t, 0, m.requestErrorCount)
-}
-func (m *mockImageGenerationMetrics) RequireSelectedModel(t *testing.T, model string) {
-	require.Equal(t, model, m.model)
-}
-func (m *mockImageGenerationMetrics) RequireSelectedBackend(t *testing.T, backend string) {
-	require.Equal(t, backend, m.backend)
-}
-func (m *mockImageGenerationMetrics) RequireTokensRecorded(t *testing.T, count int) {
-	require.Equal(t, count, m.tokenUsageCount)
-}
-
-// Ensure mock implements the interface at compile-time.
-var _ metrics.ImageGenerationMetrics = &mockImageGenerationMetrics{}
