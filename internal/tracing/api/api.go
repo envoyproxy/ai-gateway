@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	openaisdk "github.com/openai/openai-go/v2"
 )
 
 var _ Tracing = NoopTracing{}
@@ -184,13 +185,13 @@ type ImageGenerationTracer interface {
 	//   - req: The OpenAI image generation request. Used to record request attributes.
 	//
 	// Returns nil unless the span is sampled.
-	StartSpanAndInjectHeaders(ctx context.Context, headers map[string]string, headerMutation *extprocv3.HeaderMutation, req *openai.ImageGenerationRequest, body []byte) ImageGenerationSpan
+	StartSpanAndInjectHeaders(ctx context.Context, headers map[string]string, headerMutation *extprocv3.HeaderMutation, req *openaisdk.ImageGenerateParams, body []byte) ImageGenerationSpan
 }
 
 // ImageGenerationSpan represents an OpenAI image generation.
 type ImageGenerationSpan interface {
 	// RecordResponse records the response attributes to the span.
-	RecordResponse(resp *openai.ImageGenerationResponse)
+	RecordResponse(resp *openaisdk.ImagesResponse)
 
 	// EndSpanOnError finalizes and ends the span with an error status.
 	EndSpanOnError(statusCode int, body []byte)
@@ -210,17 +211,17 @@ type ImageGenerationRecorder interface {
 	//
 	// Note: Do not do any expensive data conversions as the span might not be
 	// sampled.
-	StartParams(req *openai.ImageGenerationRequest, body []byte) (spanName string, opts []trace.SpanStartOption)
+	StartParams(req *openaisdk.ImageGenerateParams, body []byte) (spanName string, opts []trace.SpanStartOption)
 
 	// RecordRequest records request attributes to the span.
 	//
 	// Parameters:
 	//   - req: contains the image generation request
 	//   - body: contains the complete request body.
-	RecordRequest(span trace.Span, req *openai.ImageGenerationRequest, body []byte)
+	RecordRequest(span trace.Span, req *openaisdk.ImageGenerateParams, body []byte)
 
 	// RecordResponse records response attributes to the span.
-	RecordResponse(span trace.Span, resp *openai.ImageGenerationResponse)
+	RecordResponse(span trace.Span, resp *openaisdk.ImagesResponse)
 
 	// RecordResponseOnError ends recording the span with an error status.
 	RecordResponseOnError(span trace.Span, statusCode int, body []byte)
@@ -257,7 +258,7 @@ type EmbeddingsRecorder interface {
 type NoopImageGenerationTracer struct{}
 
 // StartSpanAndInjectHeaders implements ImageGenerationTracer.StartSpanAndInjectHeaders.
-func (NoopImageGenerationTracer) StartSpanAndInjectHeaders(context.Context, map[string]string, *extprocv3.HeaderMutation, *openai.ImageGenerationRequest, []byte) ImageGenerationSpan {
+func (NoopImageGenerationTracer) StartSpanAndInjectHeaders(context.Context, map[string]string, *extprocv3.HeaderMutation, *openaisdk.ImageGenerateParams, []byte) ImageGenerationSpan {
 	return nil
 }
 

@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 // imageGeneration is the implementation for the image generation AI Gateway metrics.
@@ -24,14 +25,16 @@ type imageGeneration struct {
 type ImageGenerationMetrics interface {
 	// StartRequest initializes timing for a new request.
 	StartRequest(headers map[string]string)
-	// SetModel sets the model the request. This is usually called after parsing the request body .
-	SetModel(model string)
+	// SetRequestModel sets the request model name.
+	SetRequestModel(requestModel internalapi.RequestModel)
+	// SetResponseModel sets the response model name.
+	SetResponseModel(responseModel internalapi.ResponseModel)
 	// SetBackend sets the selected backend when the routing decision has been made. This is usually called
 	// after parsing the request body to determine the model and invoke the routing logic.
 	SetBackend(backend *filterapi.Backend)
 
-	// RecordTokenUsage records token usage metrics (for image generation, this will typically be 0).
-	RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32, requestHeaderLabelMapping map[string]string)
+	// RecordTokenUsage records token usage metrics (image gen typically 0, but supported).
+	RecordTokenUsage(ctx context.Context, inputTokens, outputTokens uint32, requestHeaderLabelMapping map[string]string)
 	// RecordRequestCompletion records latency metrics for the entire request.
 	RecordRequestCompletion(ctx context.Context, success bool, requestHeaderLabelMapping map[string]string)
 	// RecordImageGeneration records metrics specific to image generation.
@@ -50,13 +53,18 @@ func (i *imageGeneration) StartRequest(headers map[string]string) {
 	i.baseMetrics.StartRequest(headers)
 }
 
-// SetModel sets the model for the request.
-func (i *imageGeneration) SetModel(model string) {
-	i.baseMetrics.SetModel(model, model)
+// SetRequestModel sets the request model for the request.
+func (i *imageGeneration) SetRequestModel(requestModel internalapi.RequestModel) {
+	i.baseMetrics.SetRequestModel(requestModel)
+}
+
+// SetResponseModel sets the response model for the request.
+func (i *imageGeneration) SetResponseModel(responseModel internalapi.ResponseModel) {
+	i.baseMetrics.SetResponseModel(responseModel)
 }
 
 // RecordTokenUsage implements [ImageGeneration.RecordTokenUsage].
-func (i *imageGeneration) RecordTokenUsage(ctx context.Context, inputTokens, outputTokens, totalTokens uint32, requestHeaders map[string]string) {
+func (i *imageGeneration) RecordTokenUsage(ctx context.Context, inputTokens, outputTokens uint32, requestHeaders map[string]string) {
 	attrs := i.buildBaseAttributes(requestHeaders)
 
 	// For image generation, token usage is typically 0, but we still record it for consistency
