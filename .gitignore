@@ -48,3 +48,4 @@ inference-extension-conformance-test-report.yaml
 .mcp.json
 
 .goose
+tests/e2e-inference-extension/logs/
