@@ -36,6 +36,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 )
 
+// translate reads the input files, collects the AI Gateway custom resources,
 // translates them to Envoy Gateway and Kubernetes objects, and writes the translated objects to the output writer.
 func translate(ctx context.Context, paths []string, output, stderr io.Writer) error {
 	stderrLogger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{}))
