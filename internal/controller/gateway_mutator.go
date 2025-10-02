@@ -41,7 +41,8 @@ type gatewayMutator struct {
 	extProcExtraEnvVars        []corev1.EnvVar
 	extProcMaxRecvMsgSize      int
 
-	// Whether to run the extProc container as a sidecar (true) or init container (false).
+	// Whether to run the extProc container as a sidecar (true) as a normal container (false).
+	// This is essentially a workaround for old k8s versions, and we can remove this in the future.
 	extProcAsSideCar bool
 }
 

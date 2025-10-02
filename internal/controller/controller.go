@@ -181,7 +181,8 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 
 	if !options.DisableMutatingWebhook {
 		kube := kubernetes.NewForConfigOrDie(config)
-		versionInfo, err := kube.Discovery().ServerVersion()
+		var versionInfo *version.Info
+		versionInfo, err = kube.Discovery().ServerVersion()
 		if err != nil {
 			return fmt.Errorf("failed to get server version: %w", err)
 		}
@@ -390,6 +391,7 @@ func handleFinalizer[objType client.Object](
 	return true
 }
 
+// isKubernetes133OrLater returns true if the Kubernetes version is 1.33 or later.
 func isKubernetes133OrLater(versionInfo *version.Info, logger logr.Logger) bool {
 	major, minor := versionInfo.Major, versionInfo.Minor
 	majorInt, err := strconv.Atoi(major)

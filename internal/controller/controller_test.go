@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -371,4 +372,14 @@ func Test_aiGatewayRouteToAttachedGatewayIndexFunc(t *testing.T) {
 			require.ElementsMatch(t, tt.expectedIndexes, indexes)
 		})
 	}
+}
+
+func Test_isKubernetes133OrLater(t *testing.T) {
+	require.False(t, isKubernetes133OrLater(&version.Info{}, logr.Discard()))
+	require.False(t, isKubernetes133OrLater(&version.Info{Major: "invalid"}, logr.Discard()))
+	require.False(t, isKubernetes133OrLater(&version.Info{Major: "1", Minor: "invalid"}, logr.Discard()))
+	require.False(t, isKubernetes133OrLater(&version.Info{Major: "1", Minor: "1"}, logr.Discard()))
+	require.False(t, isKubernetes133OrLater(&version.Info{Major: "1", Minor: "32"}, logr.Discard()))
+	require.True(t, isKubernetes133OrLater(&version.Info{Major: "1", Minor: "33"}, logr.Discard()))
+	require.True(t, isKubernetes133OrLater(&version.Info{Major: "1", Minor: "40"}, logr.Discard()))
 }
