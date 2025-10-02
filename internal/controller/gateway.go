@@ -297,6 +297,13 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
 		}
 		return &filterapi.BackendAuth{APIKey: &filterapi.APIKeyAuth{Key: apiKey}}, nil
+	case aigv1a1.BackendSecurityPolicyTypeAzureAPIKey:
+		secretName := string(backendSecurityPolicy.Spec.AzureAPIKey.SecretRef.Name)
+		apiKey, err := c.getSecretData(ctx, namespace, secretName, apiKeyInSecret)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
+		}
+		return &filterapi.BackendAuth{AzureAPIKey: &filterapi.AzureAPIKeyAuth{Key: apiKey}}, nil
 	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
 		var secretName string
 		if awsCred := backendSecurityPolicy.Spec.AWSCredentials; awsCred.CredentialsFile != nil {

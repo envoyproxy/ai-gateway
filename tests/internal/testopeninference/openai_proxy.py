@@ -8,9 +8,10 @@
 
 import json
 import logging
+import os
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import StreamingResponse
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, AsyncAzureOpenAI
 from opentelemetry.instrumentation import auto_instrumentation
 
 # Set up logging
@@ -20,7 +21,11 @@ logger = logging.getLogger(__name__)
 # Initialize OpenTelemetry auto instrumentation
 auto_instrumentation.initialize()
 
-client = AsyncOpenAI()
+if "AZURE_OPENAI_API_KEY" in os.environ:
+    client = AsyncAzureOpenAI()
+else:
+    client = AsyncOpenAI()
+
 app = FastAPI()
 
 @app.get("/health")
@@ -37,8 +42,25 @@ async def chat_completions(request: Request) -> Response:
         is_streaming=request_data.get('stream', False)
     )
 
+@app.post("/openai/deployments/{deployment}/chat/completions")
+async def azure_chat_completions(deployment: str, request: Request) -> Response:
+    request_data = await request.json()
+    return await handle_openai_request(
+        request,
+        client.chat.completions.create,
+        request_data=request_data,
+        is_streaming=request_data.get('stream', False)
+    )
+
 @app.post("/v1/embeddings")
 async def embeddings(request: Request) -> Response:
+    return await handle_openai_request(
+        request,
+        client.embeddings.create
+    )
+
+@app.post("/openai/deployments/{deployment}/embeddings")
+async def azure_embeddings(deployment: str, request: Request) -> Response:
     return await handle_openai_request(
         request,
         client.embeddings.create

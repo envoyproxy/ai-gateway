@@ -131,7 +131,7 @@ Run the AI Gateway locally for given configuration.
 
 Arguments:
   [<path>]    Path to the AI Gateway configuration yaml file. Optional when at
-              least OPENAI_API_KEY is set.
+              least OPENAI_API_KEY or AZURE_OPENAI_API_KEY is set.
 
 Flags:
   -h, --help               Show context-sensitive help.
@@ -167,6 +167,79 @@ Flags:
 				doMain(t.Context(), out, os.Stderr, tt.args, nil, tt.tf, tt.rf, tt.hf)
 			}
 			require.Equal(t, tt.expOut, out.String())
+		})
+	}
+}
+
+func TestCmdRun_Validate(t *testing.T) {
+	tests := []struct {
+		name          string
+		cmd           cmdRun
+		envVars       map[string]string
+		expectedError string
+	}{
+		{
+			name:          "no config and no env vars",
+			cmd:           cmdRun{Path: ""},
+			envVars:       map[string]string{},
+			expectedError: "you must supply at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY or a config file path",
+		},
+		{
+			name:    "config path provided",
+			cmd:     cmdRun{Path: "/path/to/config.yaml"},
+			envVars: map[string]string{},
+		},
+		{
+			name: "OPENAI_API_KEY set",
+			cmd:  cmdRun{Path: ""},
+			envVars: map[string]string{
+				"OPENAI_API_KEY": "sk-test",
+			},
+		},
+		{
+			name: "AZURE_OPENAI_API_KEY set",
+			cmd:  cmdRun{Path: ""},
+			envVars: map[string]string{
+				"AZURE_OPENAI_API_KEY": "azure-key",
+			},
+		},
+		{
+			name: "both API keys set",
+			cmd:  cmdRun{Path: ""},
+			envVars: map[string]string{
+				"OPENAI_API_KEY":       "sk-test",
+				"AZURE_OPENAI_API_KEY": "azure-key",
+			},
+		},
+		{
+			name: "config path and OPENAI_API_KEY both set",
+			cmd:  cmdRun{Path: "/path/to/config.yaml"},
+			envVars: map[string]string{
+				"OPENAI_API_KEY": "sk-test",
+			},
+		},
+		{
+			name: "config path and AZURE_OPENAI_API_KEY both set",
+			cmd:  cmdRun{Path: "/path/to/config.yaml"},
+			envVars: map[string]string{
+				"AZURE_OPENAI_API_KEY": "azure-key",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for k, v := range tt.envVars {
+				t.Setenv(k, v)
+			}
+
+			err := tt.cmd.Validate()
+
+			if tt.expectedError != "" {
+				require.EqualError(t, err, tt.expectedError)
+			} else {
+				require.NoError(t, err)
+			}
 		})
 	}
 }

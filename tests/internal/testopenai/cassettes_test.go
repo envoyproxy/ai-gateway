@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -21,10 +22,10 @@ type cassetteTestCase[R any] struct {
 	expectedStatus int
 }
 
-func testNewRequest[R any](t *testing.T, endpoint string, tests []cassetteTestCase[R]) {
+func testNewRequest[R any](t *testing.T, tests []cassetteTestCase[R]) {
 	// Use the real cassettes directory when writing as this test is the
 	// documented way to backfill cassettes.
-	server, err := NewServer(io.Discard, 0)
+	server, err := NewServer(os.Stdout, 0)
 	require.NoError(t, err)
 	defer server.Close()
 
@@ -32,13 +33,12 @@ func testNewRequest[R any](t *testing.T, endpoint string, tests []cassetteTestCa
 
 	for _, tc := range tests {
 		t.Run(tc.cassette.String(), func(t *testing.T) {
-			// Create request using NewRequest.
-			req, err := newRequest(t.Context(), tc.cassette, baseURL+endpoint, tc.request)
+			// Create request using NewRequest which handles Azure transformation.
+			req, err := NewRequest(t.Context(), baseURL, tc.cassette)
 			require.NoError(t, err)
 
 			// Verify the request is properly formed.
 			require.Equal(t, http.MethodPost, req.Method)
-			require.Equal(t, baseURL+endpoint, req.URL.String())
 			require.Equal(t, "application/json", req.Header.Get("Content-Type"))
 			require.Equal(t, tc.cassette.String(), req.Header.Get(CassetteNameHeader))
 
@@ -51,9 +51,8 @@ func testNewRequest[R any](t *testing.T, endpoint string, tests []cassetteTestCa
 			require.NoError(t, err, "could not marshal request body for cassette %s", tc.cassette)
 			require.JSONEq(t, string(expectedRequestBody), string(body))
 
-			// Actually send the request to verify it works with the fake
-			// server. We need to recreate since we consumed the body.
-			req, err = newRequest(t.Context(), tc.cassette, baseURL+endpoint, tc.request)
+			// Actually send the request to verify it works with the fake server.
+			req, err = NewRequest(t.Context(), baseURL, tc.cassette)
 			require.NoError(t, err)
 
 			resp, err := http.DefaultClient.Do(req)

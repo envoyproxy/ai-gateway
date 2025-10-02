@@ -24,8 +24,9 @@ func ChatCassettes() []Cassette {
 // Prefer bodies in the OpenAI OpenAPI examples to making them up manually.
 // See https://github.com/openai/openai-openapi/tree/manual_spec
 var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
-	CassetteChatBasic:     cassetteChatBasic,
-	CassetteChatStreaming: withStream(cassetteChatBasic),
+	CassetteChatBasic:      cassetteChatBasic,
+	CassetteAzureChatBasic: cassetteChatBasic,
+	CassetteChatStreaming:  withStream(cassetteChatBasic),
 	CassetteChatTools: {
 		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{

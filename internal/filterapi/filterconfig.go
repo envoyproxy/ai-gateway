@@ -137,6 +137,8 @@ type BackendAuth struct {
 	APIKey *APIKeyAuth `json:"apiKey,omitempty"`
 	// AWSAuth specifies the location of the AWS credential file and region.
 	AWSAuth *AWSAuth `json:"aws,omitempty"`
+	// AzureAPIKey is the Azure OpenAI API key.
+	AzureAPIKey *AzureAPIKeyAuth `json:"azureApiKey,omitempty"`
 	// AzureAuth specifies the location of Azure access token file.
 	AzureAuth *AzureAuth `json:"azure,omitempty"`
 	// GCPAuth specifies the location of GCP credential file.
@@ -154,6 +156,12 @@ type AWSAuth struct {
 // APIKeyAuth defines the file that will be mounted to the external proc.
 type APIKeyAuth struct {
 	// Key is the API key as a literal string.
+	Key string `json:"key"`
+}
+
+// AzureAPIKeyAuth defines the Azure OpenAI API key.
+type AzureAPIKeyAuth struct {
+	// Key is the Azure API key as a literal string.
 	Key string `json:"key"`
 }
 

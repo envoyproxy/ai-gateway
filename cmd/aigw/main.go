@@ -39,7 +39,7 @@ type (
 	// cmdRun corresponds to `aigw run` command.
 	cmdRun struct {
 		Debug     bool   `help:"Enable debug logging emitted to stderr."`
-		Path      string `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional when at least OPENAI_API_KEY is set." type:"path"`
+		Path      string `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional when at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY is set." type:"path"`
 		AdminPort int    `help:"HTTP port for the admin server (serves /metrics and /health endpoints)." default:"1064"`
 	}
 	// cmdHealthcheck corresponds to `aigw healthcheck` command.
@@ -50,8 +50,8 @@ type (
 
 // Validate is called by Kong after parsing to validate the cmdRun arguments.
 func (c *cmdRun) Validate() error {
-	if c.Path == "" && os.Getenv("OPENAI_API_KEY") == "" {
-		return fmt.Errorf("you must supply at least OPENAI_API_KEY or a config file path")
+	if c.Path == "" && os.Getenv("OPENAI_API_KEY") == "" && os.Getenv("AZURE_OPENAI_API_KEY") == "" {
+		return fmt.Errorf("you must supply at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY or a config file path")
 	}
 	return nil
 }

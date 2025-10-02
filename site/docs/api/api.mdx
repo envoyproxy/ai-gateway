@@ -303,6 +303,7 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 - [AzureOIDCExchangeToken](#azureoidcexchangetoken)
 - [BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)
 - [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
+- [BackendSecurityPolicyAzureAPIKey](#backendsecuritypolicyazureapikey)
 - [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
 - [BackendSecurityPolicyGCPCredentials](#backendsecuritypolicygcpcredentials)
 - [BackendSecurityPolicyOIDC](#backendsecuritypolicyoidc)
@@ -803,6 +804,27 @@ BackendSecurityPolicyAWSCredentials contains the supported authentication mechan
 />
 
 
+#### BackendSecurityPolicyAzureAPIKey
+
+
+
+**Appears in:**
+- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+
+BackendSecurityPolicyAzureAPIKey specifies the Azure OpenAI API key.
+
+##### Fields
+
+
+
+<ApiField
+  name="secretRef"
+  type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
+  required="true"
+  description="SecretRef is the reference to the secret containing the Azure API key.<br />ai-gateway must be given the permission to read this secret.<br />The key of the secret should be `apiKey`."
+/>
+
+
 #### BackendSecurityPolicyAzureCredentials
 
 
@@ -948,6 +970,11 @@ Only one type of BackendSecurityPolicy can be defined.
   required="false"
   description="AWSCredentials is a mechanism to access a backend(s). AWS specific logic will be applied."
 /><ApiField
+  name="azureAPIKey"
+  type="[BackendSecurityPolicyAzureAPIKey](#backendsecuritypolicyazureapikey)"
+  required="false"
+  description="AzureAPIKey is a mechanism to access Azure OpenAI backend(s). The API key will be injected into the api-key header."
+/><ApiField
   name="azureCredentials"
   type="[BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)"
   required="false"
@@ -1001,6 +1028,11 @@ BackendSecurityPolicyType specifies the type of auth mechanism used to access a 
   description=""
 /><ApiField
   name="AWSCredentials"
+  type="enum"
+  required="false"
+  description=""
+/><ApiField
+  name="AzureAPIKey"
   type="enum"
   required="false"
   description=""

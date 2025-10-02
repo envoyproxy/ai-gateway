@@ -272,7 +272,7 @@ func TestRecordNewInteraction_NoAPIKey(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusInternalServerError, w.Code)
-	expected := "TestOpenAI Error: No cassette found for POST /v1/chat/completions. To record new cassettes, set OPENAI_API_KEY environment variable and provide X-Cassette-Name header.\n"
+	expected := "TestOpenAI Error: No cassette found for POST /v1/chat/completions. To record OpenAI cassettes, set OPENAI_API_KEY environment variable and provide X-Cassette-Name header.\n"
 	require.Equal(t, expected, w.Body.String())
 }
 
@@ -329,8 +329,9 @@ func TestMatchRequest_EdgeCases(t *testing.T) {
 	// Test body read error simulation is tricky with standard http.Request.
 	// Instead test other edge cases.
 	h := &cassetteHandler{
-		logger:  noopLogger,
-		apiBase: "https://api.openai.com/v1",
+		logger:     noopLogger,
+		apiBase:    "https://api.openai.com/v1",
+		serverBase: "https://api.openai.com",
 	}
 
 	tests := []struct {
@@ -392,7 +393,7 @@ func TestMatchRequest_EdgeCases(t *testing.T) {
 			require.NoError(t, err)
 			tc.req.Body = io.NopCloser(bytes.NewReader(body))
 
-			result := h.matchRequest(tc.req, tc.cassReq, body)
+			result := h.matchRequest(tc.req, tc.cassReq, body, "test")
 			require.Equal(t, tc.expected, result)
 		})
 	}
@@ -482,14 +483,6 @@ func TestServeHTTP_ComplexScenarios(t *testing.T) {
 			name:           "cassette name with path",
 			method:         "GET",
 			path:           "/v1/models",
-			cassetteName:   "named-with-path",
-			expectedStatus: http.StatusOK,
-			expectedBody:   `{"data":[]}`,
-		},
-		{
-			name:           "v1 prefix stripped correctly",
-			method:         "GET",
-			path:           "/models", // Without /v1 prefix.
 			cassetteName:   "named-with-path",
 			expectedStatus: http.StatusOK,
 			expectedBody:   `{"data":[]}`,

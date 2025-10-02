@@ -75,7 +75,7 @@ func TestReadConfig(t *testing.T) {
 	t.Run("error when file and no OPENAI_API_KEY", func(t *testing.T) {
 		_, err := readConfig("")
 		require.Error(t, err)
-		require.EqualError(t, err, "you must supply at least OPENAI_API_KEY or a config file path")
+		require.EqualError(t, err, "you must supply at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY or a config file path")
 	})
 
 	t.Run("error when file does not exist", func(t *testing.T) {

@@ -262,17 +262,17 @@ func pollEnvoyListening(ctx context.Context, l *slog.Logger, port int, interval 
 }
 
 // readConfig returns the configuration as a string from the given path,
-// substituting environment variables. If OPENAI_API_KEY is set, it generates
-// the config from OpenAI environment variables. Otherwise, it returns an error.
+// substituting environment variables. If OPENAI_API_KEY or AZURE_OPENAI_API_KEY
+// is set, it generates the config from environment variables. Otherwise, it returns an error.
 func readConfig(path string) (string, error) {
-	if os.Getenv("OPENAI_API_KEY") != "" {
+	if os.Getenv("OPENAI_API_KEY") != "" || os.Getenv("AZURE_OPENAI_API_KEY") != "" {
 		config, err := envgen.GenerateOpenAIConfig()
 		if err != nil {
 			return "", fmt.Errorf("error generating OpenAI config: %w", err)
 		}
 		return config, nil
 	} else if path == "" {
-		return "", errors.New("you must supply at least OPENAI_API_KEY or a config file path")
+		return "", errors.New("you must supply at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY or a config file path")
 	}
 	configBytes, err := envsubst.ReadFile(path)
 	if err != nil {
