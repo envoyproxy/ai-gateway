@@ -24,17 +24,10 @@ type (
 	cmd struct {
 		// Version is the sub-command to show the version.
 		Version struct{} `cmd:"" help:"Show version."`
-		// Translate is the sub-command parsed by the `cmdTranslate` struct.
-		Translate cmdTranslate `cmd:"" help:"Translate yaml files containing AI Gateway resources to Envoy Gateway and Kubernetes resources. The translated resources are written to stdout."`
 		// Run is the sub-command parsed by the `cmdRun` struct.
 		Run cmdRun `cmd:"" help:"Run the AI Gateway locally for given configuration."`
 		// Healthcheck is the sub-command to check if the aigw server is healthy.
 		Healthcheck cmdHealthcheck `cmd:"" help:"Docker HEALTHCHECK command."`
-	}
-	// cmdTranslate corresponds to `aigw translate` command.
-	cmdTranslate struct {
-		Debug bool     `help:"Enable debug logging emitted to stderr."`
-		Paths []string `arg:"" name:"path" help:"Paths to yaml files to translate." type:"path"`
 	}
 	// cmdRun corresponds to `aigw run` command.
 	cmdRun struct {
@@ -57,14 +50,12 @@ func (c *cmdRun) Validate() error {
 }
 
 type (
-	subCmdFn[T any] func(context.Context, T, io.Writer, io.Writer) error
-	translateFn     subCmdFn[cmdTranslate]
-	runFn           func(context.Context, cmdRun, runOpts, io.Writer, io.Writer) error
-	healthcheckFn   func(context.Context, int, io.Writer, io.Writer) error
+	runFn         func(context.Context, cmdRun, runOpts, io.Writer, io.Writer) error
+	healthcheckFn func(context.Context, int, io.Writer, io.Writer) error
 )
 
 func main() {
-	doMain(ctrl.SetupSignalHandler(), os.Stdout, os.Stderr, os.Args[1:], os.Exit, translate, run, healthcheck)
+	doMain(ctrl.SetupSignalHandler(), os.Stdout, os.Stderr, os.Args[1:], os.Exit, run, healthcheck)
 }
 
 // doMain is the main entry point for the CLI. It parses the command line arguments and executes the appropriate command.
@@ -76,7 +67,6 @@ func main() {
 //   - tf is the function to call to translate the AI Gateway resources to Envoy Gateway and Kubernetes resources. Mainly for testing.
 //   - rf is the function to call to run the AI Gateway locally. Mainly for testing.
 func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn func(int),
-	tf translateFn,
 	rf runFn,
 	hf healthcheckFn,
 ) {
@@ -95,11 +85,6 @@ func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn
 	switch parsed.Command() {
 	case "version":
 		_, _ = fmt.Fprintf(stdout, "Envoy AI Gateway CLI: %s\n", version.Version)
-	case "translate <path>":
-		err = tf(ctx, c.Translate, stdout, stderr)
-		if err != nil {
-			log.Fatalf("Error translating: %v", err)
-		}
 	case "run", "run <path>":
 		err = rf(ctx, c.Run, runOpts{extProcLauncher: mainlib.Main}, stdout, stderr)
 		if err != nil {

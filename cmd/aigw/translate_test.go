@@ -43,7 +43,7 @@ func Test_translate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			buf := &bytes.Buffer{}
 			// Multiple files should be supported and duplicated resources should be deduplicated.
-			err := translate(t.Context(), cmdTranslate{Paths: []string{tc.in, tc.in}, Debug: true}, buf, os.Stderr)
+			err := translate(t.Context(), []string{tc.in, tc.in}, buf, os.Stderr)
 			require.NoError(t, err)
 			outBuf, err := os.ReadFile(tc.out)
 			require.NoError(t, err)

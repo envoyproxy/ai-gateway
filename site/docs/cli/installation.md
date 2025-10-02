@@ -68,9 +68,6 @@ Commands:
   version [flags]
     Show version.
 
-  translate <path> ... [flags]
-    Translate yaml files containing AI Gateway resources to Envoy Gateway and Kubernetes resources. The translated resources are written to stdout.
-
   run [<path>] [flags]
     Run the AI Gateway locally for given configuration.
 
