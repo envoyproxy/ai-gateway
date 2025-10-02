@@ -92,7 +92,6 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			for _, sidecar := range []bool{true, false} {
 				t.Run(fmt.Sprintf("sidecar=%v", sidecar), func(t *testing.T) {
-
 					fakeClient := requireNewFakeClientWithIndexes(t)
 					fakeKube := fake2.NewClientset()
 					g := newTestGatewayMutator(fakeClient, fakeKube, tt.metricsRequestHeaderLabels, tt.extProcExtraEnvVars, sidecar)
