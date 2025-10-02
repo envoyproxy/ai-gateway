@@ -79,4 +79,3 @@ Run "aigw <command> --help" for more information on a command.
 The following sections provide more information about each of the CLI commands:
 
 - [aigw run](./run.md): Run the AI Gateway locally for a given configuration.
-- [aigw translate](./translate.md): Translate AI Gateway resources to Envoy Gateway and Kubernetes resources.
