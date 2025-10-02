@@ -245,7 +245,7 @@ jobs:
   test_e2e_upgrade:
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
-    name: E2E Test for Upgrades
+    name: E2E Test for Upgrades (k8s ${{ matrix.k8s-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
