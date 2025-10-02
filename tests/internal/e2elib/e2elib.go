@@ -127,8 +127,14 @@ func initKindCluster(ctx context.Context, clusterName string) (err error) {
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)", elapsed.Seconds()))
 	}()
 
+	args := []string{"create", "cluster", "--name", clusterName}
+	// If K8S_VERSION is set, use the specified Kubernetes version for the kind node image.
+	if k8sVersion := os.Getenv("K8S_VERSION"); k8sVersion != "" {
+		args = append(args, "--image", "kindest/node:"+k8sVersion)
+		initLog(fmt.Sprintf("\tUsing Kubernetes version %s for kind cluster", k8sVersion))
+	}
 	initLog(fmt.Sprintf("\tCreating kind cluster named %s", clusterName))
-	out, err := testsinternal.RunGoToolContext(ctx, "kind", "create", "cluster", "--name", clusterName)
+	out, err := testsinternal.RunGoToolContext(ctx, "kind", args...)
 	if err != nil && !strings.Contains(err.Error(), "already exist") {
 		fmt.Printf("Error creating kind cluster: %s\n", out)
 		return

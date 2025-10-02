@@ -8,6 +8,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -19,6 +20,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -178,7 +180,13 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	}
 
 	if !options.DisableMutatingWebhook {
-		h := admission.WithCustomDefaulter(Scheme, &corev1.Pod{}, newGatewayMutator(c, kubernetes.NewForConfigOrDie(config),
+		kube := kubernetes.NewForConfigOrDie(config)
+		versionInfo, err := kube.Discovery().ServerVersion()
+		if err != nil {
+			return fmt.Errorf("failed to get server version: %w", err)
+		}
+
+		h := admission.WithCustomDefaulter(Scheme, &corev1.Pod{}, newGatewayMutator(c, kube,
 			logger.WithName("gateway-mutator"),
 			options.ExtProcImage,
 			options.ExtProcImagePullPolicy,
@@ -188,6 +196,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.RootPrefix,
 			options.ExtProcExtraEnvVars,
 			options.ExtProcMaxRecvMsgSize,
+			isKubernetes133OrLater(versionInfo, logger),
 		))
 		mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{Handler: h})
 	}
@@ -379,4 +388,19 @@ func handleFinalizer[objType client.Object](
 		}
 	}
 	return true
+}
+
+func isKubernetes133OrLater(versionInfo *version.Info, logger logr.Logger) bool {
+	major, minor := versionInfo.Major, versionInfo.Minor
+	majorInt, err := strconv.Atoi(major)
+	if err != nil {
+		logger.Error(err, "failed to parse major version", "major", major)
+		return false
+	}
+	minorInt, err := strconv.Atoi(minor)
+	if err != nil {
+		logger.Error(err, "failed to parse minor version", "minor", minor)
+		return false
+	}
+	return majorInt >= 1 && minorInt >= 33
 }
