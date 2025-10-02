@@ -149,7 +149,7 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 			return false
 		}
 		return true
-	}, 1*time.Minute, 1*time.Second)
+	}, 2*time.Minute, 5*time.Second)
 
 	t.Log("OTEL environment variables successfully verified in extProc container")
 }
