@@ -59,6 +59,8 @@ kubectl wait pods --timeout=2m \
 You should have set `$GATEWAY_URL` as part of the basic setup before connecting to providers.
 See the [Basic Usage](../basic-usage.md) page for instructions.
 
+#### Test Chat Completions
+
 ```shell
 curl -H "Content-Type: application/json" \
   -d '{
@@ -71,6 +73,22 @@ curl -H "Content-Type: application/json" \
     ]
   }' \
   $GATEWAY_URL/v1/chat/completions
+```
+
+#### Test Completions (Legacy)
+
+TARS fully supports the legacy completions endpoint:
+
+```shell
+curl -H "Content-Type: application/json" \
+  -d '{
+    "model": "babbage-002",
+    "prompt": "def fib(n):\n    if n <= 1:\n        return n\n    else:\n        return fib(n-1) + fib(n-2)",
+    "max_tokens": 25,
+    "temperature": 0.4,
+    "top_p": 0.9
+  }' \
+  $GATEWAY_URL/v1/completions
 ```
 
 ## Troubleshooting

@@ -113,6 +113,20 @@ curl -H "Content-Type: application/json" \
     $GATEWAY_URL/v1/chat/completions
 ```
 
+#### Test Completions (Legacy)
+
+```shell
+curl -H "Content-Type: application/json" \
+    -d '{
+        "model": "some-cool-self-hosted-model",
+        "prompt": "def fib(n):\n    if n <= 1:\n        return n\n    else:\n        return fib(n-1) + fib(n-2)",
+        "max_tokens": 25,
+        "temperature": 0.4,
+        "top_p": 0.9
+    }' \
+    $GATEWAY_URL/v1/completions
+```
+
 #### Test Embeddings
 
 ```shell
@@ -143,6 +157,22 @@ You should receive a response like:
             "message": {
                 "content": "I'll be back."
             }
+        }
+    ]
+}
+```
+
+#### Completions Response
+
+For legacy completions requests, you should receive a response like:
+
+```json
+{
+    "choices": [
+        {
+            "text": " + fib(n-3) + fib(n-4)\n\ndef fib(n):\n    if n <= 1:\n        return",
+            "index": 0,
+            "finish_reason": "length"
         }
     ]
 }

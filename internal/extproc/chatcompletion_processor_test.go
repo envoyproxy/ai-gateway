@@ -467,7 +467,8 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				require.ErrorContains(t, err, "failed to transform request: test error")
 				mm.RequireRequestFailure(t)
 				require.Zero(t, mm.tokenUsageCount)
-				// Verify request model was set even though processing failed
+				// Verify models were set even though processing failed
+				require.Equal(t, "some-model", mm.originalModel)
 				require.Equal(t, "some-model", mm.requestModel)
 			})
 			t.Run("ok", func(t *testing.T) {
@@ -506,7 +507,8 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				require.Equal(t, bodyMut, commonRes.BodyMutation)
 
 				mm.RequireRequestNotCompleted(t)
-				// Verify request model was set
+				// Verify models were set
+				require.Equal(t, "some-model", mm.originalModel)
 				require.Equal(t, "some-model", mm.requestModel)
 				// Response model not set yet - only set when we get actual response
 				require.Empty(t, mm.responseModel)
@@ -791,6 +793,7 @@ func Test_ProcessRequestHeaders_SetsRequestModel(t *testing.T) {
 	}
 	_, _ = p.ProcessRequestHeaders(t.Context(), nil)
 	// Should use the override model from the header, as that's what is sent upstream.
+	require.Equal(t, "body-model", mm.originalModel)
 	require.Equal(t, "header-model", mm.requestModel)
 	// Response model is not set until we get actual response
 	require.Empty(t, mm.responseModel)
@@ -853,7 +856,8 @@ func Test_ProcessResponseBody_UsesActualResponseModel(t *testing.T) {
 
 	// Verify that response model was set from the actual API response
 	// Request was for gpt-5-nano but OpenAI returned the versioned gpt-5-nano-2025-08-07
-	mm.RequireSelectedModel(t, "gpt-5-nano", "gpt-5-nano-2025-08-07")
+	// In this test, original and request are the same (no override)
+	mm.RequireSelectedModel(t, "gpt-5-nano", "gpt-5-nano", "gpt-5-nano-2025-08-07")
 	require.Equal(t, 30, mm.tokenUsageCount)
 	mm.RequireRequestSuccess(t)
 }

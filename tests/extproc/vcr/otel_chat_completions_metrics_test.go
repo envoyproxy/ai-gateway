@@ -83,11 +83,11 @@ func TestOtelOpenAIChatCompletions_metrics(t *testing.T) {
 			requestModel := originalModel // in non-override cases, these are the same
 			responseModel := getSpanAttributeString(span.Attributes, "llm.model_name")
 
-			verifyTokenUsageMetrics(t, "chat", metrics, span, requestModel, responseModel, tc.isError)
-			verifyRequestDurationMetrics(t, "chat", metrics, span, requestModel, responseModel, tc.isError)
+			verifyTokenUsageMetricsWithOriginal(t, "chat", metrics, span, originalModel, requestModel, responseModel, tc.isError)
+			verifyRequestDurationMetricsWithOriginal(t, "chat", metrics, span, originalModel, requestModel, responseModel, tc.isError)
 			if tc.isStreaming && !tc.isError {
-				verifyTimeToFirstTokenMetrics(t, metrics, requestModel, responseModel)
-				verifyTimePerOutputTokenMetrics(t, metrics, span, requestModel, responseModel)
+				verifyTimeToFirstTokenMetrics(t, metrics, originalModel, requestModel, responseModel)
+				verifyTimePerOutputTokenMetricsWithOriginal(t, metrics, span, originalModel, requestModel, responseModel)
 			}
 		})
 	}
@@ -128,12 +128,12 @@ func TestOtelOpenAIChatCompletions_metrics_modelNameOverride(t *testing.T) {
 	requestModel := "gpt-5-nano" // overridden model
 	responseModel := getSpanAttributeString(span.Attributes, "llm.model_name")
 
-	verifyTokenUsageMetrics(t, "chat", metrics, span, requestModel, responseModel, false)
-	verifyRequestDurationMetrics(t, "chat", metrics, span, requestModel, responseModel, false)
+	verifyTokenUsageMetricsWithOriginal(t, "chat", metrics, span, originalModel, requestModel, responseModel, false)
+	verifyRequestDurationMetricsWithOriginal(t, "chat", metrics, span, originalModel, requestModel, responseModel, false)
 }
 
-// verifyTimeToFirstTokenMetrics verifies the gen_ai.server.time_to_first_token metric including its values and attributes.
-func verifyTimeToFirstTokenMetrics(t *testing.T, metrics *metricsv1.ScopeMetrics, requestModel, responseModel string) {
+// verifyTimeToFirstTokenMetrics verifies the gen_ai.server.time_to_first_token metric including original model attribute.
+func verifyTimeToFirstTokenMetrics(t *testing.T, metrics *metricsv1.ScopeMetrics, originalModel, requestModel, responseModel string) {
 	t.Helper()
 
 	ttft := getMetricHistogramSum(metrics, "gen_ai.server.time_to_first_token")
@@ -144,14 +144,15 @@ func verifyTimeToFirstTokenMetrics(t *testing.T, metrics *metricsv1.ScopeMetrics
 	expectedAttrs := map[string]string{
 		"gen_ai.operation.name": "chat",
 		"gen_ai.provider.name":  "openai",
+		"gen_ai.original.model": originalModel,
 		"gen_ai.request.model":  requestModel,
 		"gen_ai.response.model": responseModel,
 	}
 	verifyMetricAttributes(t, metrics, "gen_ai.server.time_to_first_token", expectedAttrs)
 }
 
-// verifyTimePerOutputTokenMetrics verifies the gen_ai.server.time_per_output_token metric including its values and attributes.
-func verifyTimePerOutputTokenMetrics(t *testing.T, metrics *metricsv1.ScopeMetrics, span *tracev1.Span, requestModel, responseModel string) {
+// verifyTimePerOutputTokenMetricsWithOriginal verifies the gen_ai.server.time_per_output_token metric including original model attribute.
+func verifyTimePerOutputTokenMetricsWithOriginal(t *testing.T, metrics *metricsv1.ScopeMetrics, span *tracev1.Span, originalModel, requestModel, responseModel string) {
 	t.Helper()
 
 	outputTokens := getSpanAttributeInt(span.Attributes, "llm.token_count.completion")
@@ -167,6 +168,7 @@ func verifyTimePerOutputTokenMetrics(t *testing.T, metrics *metricsv1.ScopeMetri
 	expectedAttrs := map[string]string{
 		"gen_ai.operation.name": "chat",
 		"gen_ai.provider.name":  "openai",
+		"gen_ai.original.model": originalModel,
 		"gen_ai.request.model":  requestModel,
 		"gen_ai.response.model": responseModel,
 	}

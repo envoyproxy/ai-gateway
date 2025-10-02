@@ -10,17 +10,21 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/singleflight"
 
 	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 )
@@ -570,76 +574,293 @@ func RequireWaitForPodReady(t *testing.T, selector string) {
 }
 
 // RequireNewHTTPPortForwarder creates a new port forwarder for the given namespace and selector.
-func RequireNewHTTPPortForwarder(t *testing.T, namespace string, selector string, port int) PortForwarder {
-	f, err := newServicePortForwarder(t.Context(), namespace, selector, port)
+// Returns a PortForwarder that automatically handles connection recovery during pod rolling updates.
+func RequireNewHTTPPortForwarder(t *testing.T, namespace string, selector string, servicePort int) PortForwarder {
+	f, err := newServicePortForwarder(t.Context(), newKubectlPortForward, namespace, selector, 0, servicePort)
 	require.NoError(t, err)
-
-	require.Eventually(t, func() bool {
-		ctx := t.Context()
-		req, err := http.NewRequestWithContext(ctx, "GET", f.Address(), nil)
-		if err != nil {
-			return false
-		}
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return false
-		}
-		res.Body.Close()
-		return true // We don't care about the response.
-	}, 3*time.Minute, 200*time.Millisecond)
-
 	return f
 }
 
+// PortForwarder provides HTTP access to services in a Kubernetes cluster via kubectl port-forward.
+// Thread-safe for concurrent use. Automatically recovers from connection failures during pod rolling updates.
+type PortForwarder interface {
+	// Post sends an HTTP POST request and returns the response body.
+	// Automatically retries on stale connections during serviceURL rollouts.
+	Post(ctx context.Context, path, body string) ([]byte, error)
+	// Kill terminates the port-forward process.
+	Kill()
+	// Address returns the local address (e.g., "http://127.0.0.1:12345").
+	Address() string
+}
+
 // newServicePortForwarder creates a new local port forwarder for the namespace and selector.
-func newServicePortForwarder(ctx context.Context, namespace, selector string, podPort int) (f PortForwarder, err error) {
-	l, err := net.Listen("tcp", "localhost:0")
+func newServicePortForwarder(ctx context.Context, newPortForward newPortForwardFn, namespace, selector string, localPort, servicePort int) (PortForwarder, error) {
+	var lc net.ListenConfig
+	l, err := lc.Listen(ctx, "tcp", fmt.Sprintf("localhost:%d", localPort))
 	if err != nil {
-		return PortForwarder{}, fmt.Errorf("failed to get a local available port for Pod %q: %w", selector, err)
+		return nil, fmt.Errorf("failed to get a local available port for Pod %q: %w", selector, err)
 	}
 	err = l.Close()
 	if err != nil {
-		return PortForwarder{}, err
+		return nil, err
 	}
-	f.localPort = l.Addr().(*net.TCPAddr).Port
 
-	cmd := Kubectl(ctx, "get", "svc", "-n", namespace,
-		"--selector="+selector, "-o", "jsonpath='{.items[0].metadata.name}'")
-	cmd.Stdout = nil // To ensure that we can capture the output by Output().
+	localPort = l.Addr().(*net.TCPAddr).Port
+
+	f := &portForwarder{
+		localURL: &url.URL{
+			Scheme: "http",
+			Host:   fmt.Sprintf("127.0.0.1:%d", localPort),
+		},
+		portForward: newPortForward(namespace, selector, localPort, servicePort),
+	}
+
+	if err = f.portForward.start(ctx); err != nil {
+		return nil, err
+	} else if err = f.waitReady(ctx); err != nil {
+		f.portForward.kill()
+		return nil, err
+	}
+	return f, nil
+}
+
+// portForward starts a port forwarding process.
+type portForward interface {
+	start(ctx context.Context) error
+	kill()
+}
+
+// kubectlPortForward implements portForward using kubectl.
+type kubectlPortForward struct {
+	namespace   string
+	selector    string
+	localPort   int
+	servicePort int
+	cmd         *exec.Cmd
+	cmdMu       sync.Mutex
+}
+
+type newPortForwardFn func(namespace, selector string, localPort, servicePort int) portForward
+
+func newKubectlPortForward(namespace, selector string, localPort, servicePort int) portForward {
+	return &kubectlPortForward{
+		namespace:   namespace,
+		selector:    selector,
+		localPort:   localPort,
+		servicePort: servicePort,
+	}
+}
+
+type serviceList struct {
+	Items []struct {
+		Metadata struct {
+			Name string `json:"name"`
+		} `json:"metadata"`
+	} `json:"items"`
+}
+
+func (k *kubectlPortForward) start(ctx context.Context) error {
+	cmd := Kubectl(ctx, "get", "svc", "-n", k.namespace,
+		"--selector="+k.selector, "-o", "json")
+	cmd.Stdout = nil
 	out, err := cmd.Output()
 	if err != nil {
-		return PortForwarder{}, fmt.Errorf("failed to get service name: %w", err)
+		return fmt.Errorf("failed to get service name: %w", err)
 	}
-	serviceName := string(out[1 : len(out)-1]) // Remove the quotes.
+
+	var svcs serviceList
+	if err := json.Unmarshal(out, &svcs); err != nil {
+		return fmt.Errorf("failed to parse service list: %w", err)
+	}
+	if len(svcs.Items) == 0 {
+		return fmt.Errorf("no service found for selector %q", k.selector)
+	}
+	serviceName := svcs.Items[0].Metadata.Name
 
 	cmd = Kubectl(ctx, "port-forward",
-		"-n", namespace, "svc/"+serviceName,
-		fmt.Sprintf("%d:%d", f.localPort, podPort),
+		"-n", k.namespace, "svc/"+serviceName,
+		fmt.Sprintf("%d:%d", k.localPort, k.servicePort),
 	)
-	// Suppress the useless output like "Forwarding from [::1]:51088 -> 10080".
 	cmd.Stdout = io.Discard
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
-		return PortForwarder{}, fmt.Errorf("failed to start port-forward: %w", err)
+		return fmt.Errorf("failed to start port-forward: %w", err)
 	}
-	f.cmd = cmd
-	return
+	k.cmdMu.Lock()
+	k.cmd = cmd
+	k.cmdMu.Unlock()
+	return nil
 }
 
-// PortForwarder is a local port forwarder to a pod.
-type PortForwarder struct {
-	cmd       *exec.Cmd
-	localPort int
+func (k *kubectlPortForward) kill() {
+	k.cmdMu.Lock()
+	defer k.cmdMu.Unlock()
+	if k.cmd != nil && k.cmd.Process != nil {
+		_ = k.cmd.Process.Kill()
+	}
+}
+
+// portForwarder implements PortForwarder.
+type portForwarder struct {
+	localURL      *url.URL
+	portForward   portForward
+	restartFlight singleflight.Group
+}
+
+// poll repeatedly checks a condition until it succeeds or the context is done.
+func poll(ctx context.Context, interval time.Duration, check func() error) error {
+	for {
+		if err := check(); err == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(interval):
+		}
+	}
+}
+
+// restart recreates the port-forward connection on the same local port.
+func (f *portForwarder) restart(ctx context.Context) error {
+	f.Kill()
+
+	// Wait for port to actually be released by the dying process.
+	err := poll(ctx, 50*time.Millisecond, func() error {
+		dialer := net.Dialer{Timeout: 100 * time.Millisecond}
+		conn, err := dialer.DialContext(ctx, "tcp", f.localURL.Host)
+		if err != nil {
+			// Connection refused = port is free.
+			return nil
+		}
+		_ = conn.Close()
+		return errors.New("port still in use")
+	})
+	if err != nil {
+		return err
+	}
+
+	if err = f.portForward.start(ctx); err != nil {
+		return err
+	}
+	return f.waitReady(ctx)
+}
+
+// waitReady polls until port-forward is ready to accept HTTP traffic.
+func (f *portForwarder) waitReady(ctx context.Context) error {
+	client := &http.Client{Timeout: 500 * time.Millisecond}
+	req, err := http.NewRequestWithContext(ctx, "GET", f.localURL.String()+"/", nil)
+	if err != nil {
+		return err
+	}
+
+	return poll(ctx, 100*time.Millisecond, func() error {
+		// Try actual HTTP request to verify port-forward is fully functional.
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+		_ = resp.Body.Close()
+		// Any response (even 404) means port-forward is working.
+		return nil
+	})
+}
+
+// handleStaleConnection coordinates restart across concurrent goroutines using singleflight.
+// Returns (restarted=true, err) if this goroutine performed the restart.
+// Returns (restarted=false, err=nil) if another goroutine restarted and this one waited.
+func (f *portForwarder) handleStaleConnection(ctx context.Context) (bool, error) {
+	_, err, shared := f.restartFlight.Do("restart", func() (interface{}, error) {
+		return nil, f.restart(ctx)
+	})
+	// shared=false means we performed the restart, shared=true means we waited
+	return !shared, err
+}
+
+// Post sends an HTTP POST request with automatic retry on stale connections.
+func (f *portForwarder) Post(ctx context.Context, path, body string) ([]byte, error) {
+	addr := f.localURL.String() + path
+
+	const maxRestarts = 5
+	restarts := 0
+	for {
+		if restarts > 0 {
+			time.Sleep(time.Duration(restarts*100) * time.Millisecond)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, addr, strings.NewReader(body))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+
+		var resp *http.Response
+		var respBody []byte
+		var doErr error
+		resp, doErr = http.DefaultClient.Do(req)
+		isStale := isStaleConnectionError(doErr)
+		if doErr == nil {
+			respBody, err = io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if err != nil {
+				return nil, fmt.Errorf("failed to read response body: %w", err)
+			}
+			// Empty 500 indicates broken upstream (stale forward during rollout).
+			if resp.StatusCode == http.StatusInternalServerError && len(respBody) == 0 {
+				isStale = true
+			}
+		}
+
+		if isStale {
+			restarted, restartErr := f.handleStaleConnection(ctx)
+			if restartErr != nil {
+				return nil, fmt.Errorf("failed to restart port-forward: %w", restartErr)
+			}
+			if restarted {
+				restarts++
+			}
+			if restarts >= maxRestarts {
+				if doErr != nil {
+					return nil, doErr
+				}
+				return nil, fmt.Errorf("request failed with status %s: %s", resp.Status, string(respBody))
+			}
+			continue
+		}
+
+		if doErr != nil {
+			return nil, doErr
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("request failed with status %s: %s", resp.Status, string(respBody))
+		}
+		return respBody, nil
+	}
 }
 
 // Kill stops the port forwarder.
-func (f PortForwarder) Kill() {
-	_ = f.cmd.Process.Kill()
+func (f *portForwarder) Kill() {
+	f.portForward.kill()
 }
 
 // Address returns the address of the port forwarder.
-func (f PortForwarder) Address() string {
-	return fmt.Sprintf("http://127.0.0.1:%d", f.localPort)
+func (f *portForwarder) Address() string {
+	return f.localURL.String()
+}
+
+// isStaleConnectionError checks if an error indicates a stale port-forward connection.
+func isStaleConnectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, io.EOF) {
+		return true
+	}
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "connection") ||
+		strings.Contains(errStr, "closed") ||
+		strings.Contains(errStr, "reset") ||
+		strings.Contains(errStr, "refused")
 }
 
 // waitUntilKubectl polls by running a kubectl command with the given args

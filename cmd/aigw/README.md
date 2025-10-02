@@ -40,6 +40,11 @@ Here are values we use for Ollama:
      ```bash
      docker compose run --rm chat-completion
      ```
+   -
+   - Completion (legacy):
+     ```bash
+     docker compose run --rm completion
+     ```
 
    - Embeddings:
      ```bash

@@ -6,6 +6,7 @@
 package extproc
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -192,11 +193,10 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Co
 
 	// Start tracking metrics for this request.
 	e.metrics.StartRequest(e.requestHeaders)
+	// Set the original model from the request body before any overrides
+	e.metrics.SetOriginalModel(e.originalRequestBody.Model)
 	// Set the request model for metrics from the original model or override if applied.
-	reqModel := e.requestHeaders[e.config.modelNameHeaderKey]
-	if reqModel == "" && e.originalRequestBody != nil && e.originalRequestBody.Model != "" {
-		reqModel = e.originalRequestBody.Model
-	}
+	reqModel := cmp.Or(e.requestHeaders[e.config.modelNameHeaderKey], e.originalRequestBody.Model)
 	e.metrics.SetRequestModel(reqModel)
 
 	headerMutation, bodyMutation, err := e.translator.RequestBody(e.originalRequestBodyRaw, e.originalRequestBody, e.onRetry)

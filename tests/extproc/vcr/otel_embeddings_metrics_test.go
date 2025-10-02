@@ -75,10 +75,12 @@ func TestOtelOpenAIEmbeddings_metrics(t *testing.T) {
 			// Get expected model names from span
 			requestModel := getInvocationModel(span.Attributes, "embedding.invocation_parameters")
 			responseModel := getSpanAttributeString(span.Attributes, "embedding.model_name")
+			// For non-override cases, original model equals request model
+			originalModel := requestModel
 
 			// Verify each metric in separate functions.
-			verifyTokenUsageMetrics(t, "embeddings", metrics, span, requestModel, responseModel, tc.isError)
-			verifyRequestDurationMetrics(t, "embeddings", metrics, span, requestModel, responseModel, tc.isError)
+			verifyTokenUsageMetricsWithOriginal(t, "embeddings", metrics, span, originalModel, requestModel, responseModel, tc.isError)
+			verifyRequestDurationMetricsWithOriginal(t, "embeddings", metrics, span, originalModel, requestModel, responseModel, tc.isError)
 		})
 	}
 }
@@ -117,6 +119,6 @@ func TestOtelOpenAIEmbeddings_metrics_modelNameOverride(t *testing.T) {
 	requestModel := getInvocationModel(span.Attributes, "embedding.invocation_parameters")
 	responseModel := getSpanAttributeString(span.Attributes, "embedding.model_name")
 
-	verifyTokenUsageMetrics(t, "embeddings", metrics, span, requestModel, responseModel, false)
-	verifyRequestDurationMetrics(t, "embeddings", metrics, span, requestModel, responseModel, false)
+	verifyTokenUsageMetricsWithOriginal(t, "embeddings", metrics, span, originalModel, requestModel, responseModel, false)
+	verifyRequestDurationMetricsWithOriginal(t, "embeddings", metrics, span, originalModel, requestModel, responseModel, false)
 }

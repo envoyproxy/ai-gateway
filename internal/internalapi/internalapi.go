@@ -120,6 +120,27 @@ type ModelNameHeaderKey = string
 //   - Used by routing, rate limiting, and observability systems
 type ModelNameOverride = string
 
+// OriginalModel is the model name extracted from the incoming request body
+// before any virtualization applies.
+//
+// Flow:
+//  1. Router filter extracts model from request body
+//  2. If ModelNameOverride is configured, RequestModel differs from OriginalModel
+//  3. Provider responds with ResponseModel (may differ from RequestModel)
+//
+// Example:
+//  1. OriginalModel: OpenAI Client sends: {"model": "gpt-5"}
+//  2. RequestModel: ModelNameOverride replaces with "gpt-5-nano"
+//  3. ResponseModel: OpenAI Platform sends: {"model": "gpt-5-nano-2025-08-07"}
+//
+// ### OpenTelemetry
+//
+// In OpenTelemetry Generative AI Metrics, this is an attribute on metrics such
+// as "gen_ai.server.token.usage". For example, an OpenAI Chat Completion
+// request to the "gpt-5" model results in a plain text string attribute:
+// "gen_ai.original.model" -> "gpt-5"
+type OriginalModel = string
+
 // RequestModel is the name of the model sent in the request to perform a
 // completion or to create embeddings.
 //

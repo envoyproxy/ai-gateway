@@ -9,8 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"sort"
 	"strings"
 	"sync"
@@ -25,6 +23,28 @@ import (
 )
 
 const egSelector = "gateway.envoyproxy.io/owning-gateway-name=upgrade-test"
+
+// testPhase represents the current phase of the upgrade test.
+type testPhase int32
+
+const (
+	beforeUpgrade testPhase = iota
+	duringUpgrade
+	afterUpgrade
+)
+
+func (tp testPhase) String() string {
+	switch tp {
+	case beforeUpgrade:
+		return "before upgrade"
+	case duringUpgrade:
+		return "during upgrade"
+	case afterUpgrade:
+		return "after upgrade"
+	default:
+		return "unknown phase"
+	}
+}
 
 // TestUpgrade tests that the Envoy Gateway can be upgraded without dropping requests.
 //
@@ -118,20 +138,24 @@ func TestUpgrade(t *testing.T) {
 
 			e2elib.RequireWaitForGatewayPodReady(t, egSelector)
 
-			// Ensure that first request works.
-			require.NoError(t, makeRequest(t, phase.String()))
+			// Create a single shared port forwarder to avoid port allocation races.
+			fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+			defer fwd.Kill()
 
-			requestLoopCtx, cancel := context.WithCancel(t.Context())
-			defer cancel()
-			failChan := make(chan error, 10)
-			defer func() {
-				for l := len(failChan); l > 0; l-- {
-					t.Logf("request error: %v", <-failChan)
-				}
-				close(failChan) // Close the channel to avoid goroutine leak at the end of the test.
-			}()
+			// Ensure that first request works.
+			require.NoError(t, makeRequest(t, phase.String(), fwd))
+
+			requestLoopCtx, cancelRequests := context.WithCancel(t.Context())
+			defer cancelRequests()
+
+			// Buffered channel prevents blocking when goroutines report errors.
+			failChan := make(chan error, 100)
+			var wg sync.WaitGroup
+
 			for i := 0; i < 10; i++ {
+				wg.Add(1)
 				go func() {
+					defer wg.Done()
 					for {
 						select {
 						case <-requestLoopCtx.Done():
@@ -141,9 +165,12 @@ func TestUpgrade(t *testing.T) {
 
 						phase.requestCounts.Add(1)
 						phaseStr := phase.String()
-						if err := makeRequest(t, phaseStr); err != nil {
-							t.Log(err)
-							failChan <- err
+						if err := makeRequest(t, phaseStr, fwd); err != nil {
+							// Non-blocking send: if channel is full, we've already captured enough failures.
+							select {
+							case failChan <- err:
+							default:
+							}
 						}
 						time.Sleep(100 * time.Millisecond)
 					}
@@ -156,17 +183,31 @@ func TestUpgrade(t *testing.T) {
 				t.Fatalf("request loop failed: %v", <-failChan)
 			}
 			t.Logf("Request count before upgrade: %d", phase.requestCounts.Load())
-			phase.testPhase.Add(1) // Move to "during upgrade" phase.
+			phase.currentPhase.Store(int32(duringUpgrade))
 			t.Log("Starting upgrade while making requests")
 			tc.upgradeFunc(t.Context())
 			t.Log("Upgrade completed")
-			phase.testPhase.Add(1) // Move to "after upgrade" phase.
+			phase.currentPhase.Store(int32(afterUpgrade))
 
 			t.Log("Making sure multiple requests work after the upgrade")
 			time.Sleep(tc.runningAfterUpgrade)
 			t.Logf("Request count after upgrade: %d", phase.requestCounts.Load())
-			if len(failChan) > 0 {
-				t.Fatalf("request loop failed: %v", <-failChan)
+
+			// Stop request goroutines and wait for clean shutdown before checking failures.
+			cancelRequests()
+			wg.Wait()
+			close(failChan)
+
+			// Collect and report all failures.
+			var failures []error
+			for err := range failChan {
+				failures = append(failures, err)
+			}
+			if len(failures) > 0 {
+				for _, err := range failures {
+					t.Logf("request error: %v", err)
+				}
+				t.Fatalf("request loop had %d failures, first error: %v", len(failures), failures[0])
 			}
 		})
 	}
@@ -176,8 +217,8 @@ func TestUpgrade(t *testing.T) {
 type phase struct {
 	// requestCounts keeps track of the number of requests made.
 	requestCounts atomic.Int32
-	// testPhase indicates the current phase of the test: 0 = before upgrade, 1 = during upgrade, 2 = after upgrade.
-	testPhase atomic.Int32
+	// currentPhase indicates the current phase of the test.
+	currentPhase atomic.Int32
 
 	// currentPods keeps track of the current Envoy pods in the Envoy Gateway namespace.
 	currentPods   string
@@ -186,42 +227,18 @@ type phase struct {
 
 // String implements fmt.Stringer.
 func (p *phase) String() string {
-	var testPhase string
-	switch p.testPhase.Load() {
-	case 0:
-		testPhase = "before upgrade"
-	case 1:
-		testPhase = "during upgrade"
-	case 2:
-		testPhase = "after upgrade"
-	default:
-		panic("unknown phase")
-	}
+	phase := testPhase(p.currentPhase.Load())
 	p.currentPodsMu.RLock()
 	defer p.currentPodsMu.RUnlock()
 	currentPods := p.currentPods
-	return fmt.Sprintf("%s (requests made: %d, current pods: %s)", testPhase, p.requestCounts.Load(), currentPods)
+	return fmt.Sprintf("%s (requests made: %d, current pods: %s)", phase, p.requestCounts.Load(), currentPods)
 }
 
 // makeRequest makes a request to the Envoy Gateway and returns an error if the request fails.
-func makeRequest(t *testing.T, phase string) error {
-	fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
-	defer fwd.Kill()
-	req, err := http.NewRequest(http.MethodPost, fwd.Address()+"/v1/chat/completions", strings.NewReader(
-		`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"some-cool-model"}`))
+func makeRequest(t *testing.T, phase string, fwd e2elib.PortForwarder) error {
+	_, err := fwd.Post(t.Context(), "/v1/chat/completions", `{"messages":[{"role":"user","content":"Say this is a test"}],"model":"some-cool-model"}`)
 	if err != nil {
-		return fmt.Errorf("[%s] failed to create request: %w", phase, err)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("[%s] request status: %s, body: %s", phase, resp.Status, string(body))
+		return fmt.Errorf("[%s] %w", phase, err)
 	}
 	return nil
 }

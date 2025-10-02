@@ -21,6 +21,8 @@ type baseMetrics struct {
 	metrics      *genAI
 	operation    string
 	requestStart time.Time
+	// originalModel is the model name extracted from the incoming request body before any virtualization applies.
+	originalModel string
 	// requestModel is the original model from the request body.
 	requestModel string
 	// responseModel is the model that ultimately generated the response (may differ due to backend override).
@@ -34,6 +36,7 @@ func newBaseMetrics(meter metric.Meter, operation string, requestHeaderLabelMapp
 	return baseMetrics{
 		metrics:                   newGenAI(meter),
 		operation:                 operation,
+		originalModel:             "unknown",
 		requestModel:              "unknown",
 		responseModel:             "unknown",
 		backend:                   "unknown",
@@ -44,6 +47,12 @@ func newBaseMetrics(meter metric.Meter, operation string, requestHeaderLabelMapp
 // StartRequest initializes timing for a new request.
 func (b *baseMetrics) StartRequest(_ map[string]string) {
 	b.requestStart = time.Now()
+}
+
+// SetOriginalModel sets the original model from the incoming request body before any virtualization applies.
+// This is usually called after parsing the request body. e.g. gpt-5
+func (b *baseMetrics) SetOriginalModel(originalModel internalapi.OriginalModel) {
+	b.originalModel = originalModel
 }
 
 // SetRequestModel sets the model the request. This is usually called after parsing the request body. e.g. gpt-5-nano
@@ -73,14 +82,15 @@ func (b *baseMetrics) SetBackend(backend *filterapi.Backend) {
 func (b *baseMetrics) buildBaseAttributes(headers map[string]string) attribute.Set {
 	opt := attribute.Key(genaiAttributeOperationName).String(b.operation)
 	provider := attribute.Key(genaiAttributeProviderName).String(b.backend)
+	origModel := attribute.Key(genaiAttributeOriginalModel).String(b.originalModel)
 	reqModel := attribute.Key(genaiAttributeRequestModel).String(b.requestModel)
 	respModel := attribute.Key(genaiAttributeResponseModel).String(b.responseModel)
 	if len(b.requestHeaderLabelMapping) == 0 {
-		return attribute.NewSet(opt, provider, reqModel, respModel)
+		return attribute.NewSet(opt, provider, origModel, reqModel, respModel)
 	}
 
 	// Add header values as attributes based on the header mapping if headers are provided.
-	attrs := []attribute.KeyValue{opt, provider, reqModel, respModel}
+	attrs := []attribute.KeyValue{opt, provider, origModel, reqModel, respModel}
 	for headerName, labelName := range b.requestHeaderLabelMapping {
 		if headerValue, exists := headers[headerName]; exists {
 			attrs = append(attrs, attribute.Key(labelName).String(headerValue))

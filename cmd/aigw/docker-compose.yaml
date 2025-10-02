@@ -62,6 +62,25 @@ services:
     extra_hosts:  # localhost:host-gateway trick doesn't work with aigw
       - "host.docker.internal:host-gateway"
 
+  # completion is a simple curl-based test client for sending completion requests to aigw.
+  completion:
+    image: golang:1.25
+    container_name: completion
+    profiles: ["test"]
+    env_file:
+      - ../../.env.ollama
+    command:
+      - sh
+      - -c
+      - |
+        curl -s -w %{http_code} \
+          -X POST http://aigw:1975/v1/completions \
+          -H "Authorization: Bearer unused" \
+          -H "Content-Type: application/json" \
+          -d "{\"model\":\"$$COMPLETION_MODEL\",\"prompt\":\"def fib(n):\\n    if n <= 1:\\n        return n\\n    else:\\n        return fib(n-1) + fib(n-2)\",\"max_tokens\":25,\"temperature\":0.4,\"top_p\":0.9}"
+    extra_hosts:  # localhost:host-gateway trick doesn't work with aigw
+      - "host.docker.internal:host-gateway"
+
   # embeddings is a simple curl-based test client for sending embeddings requests to aigw.
   embeddings:
     image: golang:1.25
