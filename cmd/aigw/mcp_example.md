@@ -3,7 +3,6 @@
 We have a couple of example configurations for running an MCP Proxy using `aigw run`.
 
 You need to set `GITHUB_ACCESS_TOKEN` environment variable necessary for the GitHub backend to work.
-Without it, the session initialization fails as currently, the proxy cannot partially initialize against subset of backends (TODO: Fix this).
 
 ### Using a standard MCP servers file
 
