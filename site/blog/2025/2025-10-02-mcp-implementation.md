@@ -50,7 +50,7 @@ Key design decisions included:
 * **Decoupled Iteration Velocity**: The MCP Proxy is implemented as a lightweight Go server to keep pace with the rapidly evolving MCP specification, while still relying on Envoy for networking primitives.
 
 :::info
-You can find more details about the architecture and design decisions in the [proposal design document](TODO).
+You can find more details about the architecture and design decisions in the design document of the [MCP contribution pull request](https://github.com/envoyproxy/ai-gateway/pull/1260).
 :::
 
 ## Getting Started
