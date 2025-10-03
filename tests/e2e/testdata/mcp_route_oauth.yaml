@@ -130,9 +130,6 @@ metadata:
   name: envoy-mcp-gateway-oauth
   namespace: default
 spec:
-  logging:
-    level:
-      default: debug
   provider:
     type: Kubernetes
     kubernetes:

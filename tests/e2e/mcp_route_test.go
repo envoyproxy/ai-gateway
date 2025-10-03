@@ -20,19 +20,22 @@ import (
 	"github.com/envoyproxy/ai-gateway/tests/internal/testmcp"
 )
 
-type requestHeaderInjector struct{}
+// mcpTenantRequestHeaderInjector implements [http.RoundTripper] to inject a tenant header
+// that is specified in the MCP route configuration.
+type mcpTenantRequestHeaderInjector struct{}
 
-func (h requestHeaderInjector) RoundTrip(req *http.Request) (*http.Response, error) {
+// RoundTrip implements [http.RoundTripper.RoundTrip].
+func (h mcpTenantRequestHeaderInjector) RoundTrip(req *http.Request) (*http.Response, error) {
 	req.Header.Set("x-tenant", "tenant-a")
 	return http.DefaultTransport.RoundTrip(req)
 }
 
-// Use a custom HTTP client that injects the tenant header for testing the header-based routing.
-var requestHeaderHTTPClient = &http.Client{Transport: requestHeaderInjector{}}
-
 func TestMCP(t *testing.T) {
 	const manifest = "testdata/mcp_route.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
+	t.Cleanup(func() {
+		_ = e2elib.KubectlDeleteManifest(t.Context(), manifest)
+	})
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=mcp-gateway"
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
@@ -43,7 +46,8 @@ func TestMCP(t *testing.T) {
 	client := mcp.NewClient(&mcp.Implementation{Name: "demo-http-client", Version: "0.1.0"}, nil)
 
 	t.Run("default route", func(t *testing.T) {
-		testMCPRouteTools(t.Context(), t, client, fwd.Address(), "/mcp", testMCPServerAllToolNames("mcp-backend__"), nil, true, true)
+		testMCPRouteTools(t.Context(), t, client, fwd.Address(), "/mcp", testMCPServerAllToolNames("mcp-backend__"),
+			nil, true, true)
 	})
 	t.Run("tenant route with another path suffix", func(t *testing.T) {
 		testMCPRouteTools(t.Context(), t, client, fwd.Address(), "/mcp/another", []string{
@@ -56,7 +60,8 @@ func TestMCP(t *testing.T) {
 		}, nil, true, false)
 	})
 	t.Run("tenant route with header", func(t *testing.T) {
-		testMCPRouteTools(t.Context(), t, client, fwd.Address(), "/mcp", testMCPServerAllToolNames("mcp-backend-tenant__"), requestHeaderHTTPClient, true, true)
+		testMCPRouteTools(t.Context(), t, client, fwd.Address(), "/mcp", testMCPServerAllToolNames("mcp-backend-tenant__"),
+			&http.Client{Transport: mcpTenantRequestHeaderInjector{}}, true, true)
 	})
 	t.Run("invalid route", func(t *testing.T) {
 		sess, err := client.Connect(

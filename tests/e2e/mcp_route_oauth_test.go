@@ -21,13 +21,15 @@ import (
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 )
 
-// authTransport is an http.RoundTripper that adds Authorization header to requests.
-type authTransport struct {
+// mcpAuthTransport is an http.RoundTripper that adds Authorization header to requests
+// for testing OAuth protected MCP endpoint.
+type mcpAuthTransport struct {
 	token string
 	base  http.RoundTripper
 }
 
-func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+// RoundTrip implements [http.RoundTripper.RoundTrip].
+func (t *mcpAuthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req.Header.Set("Authorization", "Bearer "+t.token)
 	return t.base.RoundTrip(req)
 }
@@ -35,6 +37,9 @@ func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 func TestMCPRouteOAuth(t *testing.T) {
 	const manifest = "testdata/mcp_route_oauth.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
+	t.Cleanup(func() {
+		_ = e2elib.KubectlDeleteManifest(t.Context(), manifest)
+	})
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=mcp-gateway-oauth"
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
@@ -54,7 +59,7 @@ func TestMCPRouteOAuth(t *testing.T) {
 		// Create HTTP client with Authorization header.
 		authHTTPClient := &http.Client{
 			Timeout: 10 * time.Second,
-			Transport: &authTransport{
+			Transport: &mcpAuthTransport{
 				token: validToken,
 				base:  http.DefaultTransport,
 			},

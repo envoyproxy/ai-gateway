@@ -162,9 +162,6 @@ metadata:
   name: mcp-envoyproxy
   namespace: default
 spec:
-  logging:
-    level:
-      default: debug
   provider:
     type: Kubernetes
     kubernetes:
