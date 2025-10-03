@@ -1549,7 +1549,7 @@ func Test_parseParamsAndMaybeStartSpan(t *testing.T) {
 	p := &mcp.GetPromptParams{}
 	m := newTestMCPProxy()
 	t.Setenv("OTEL_TRACES_EXPORTER", "console")
-	trace, err := tracing.NewTracingFromEnv(t.Context(), t.Output())
+	trace, err := tracing.NewTracingFromEnv(t.Context(), t.Output(), nil)
 	require.NoError(t, err)
 	m.tracer = trace.MCPTracer()
 	s, err := parseParamsAndMaybeStartSpan(t.Context(), m, req, p)

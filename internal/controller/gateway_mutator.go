@@ -34,14 +34,15 @@ type gatewayMutator struct {
 	kube   kubernetes.Interface
 	logger logr.Logger
 
-	extProcImage               string
-	extProcImagePullPolicy     corev1.PullPolicy
-	extProcLogLevel            string
-	udsPath                    string
-	metricsRequestHeaderLabels string
-	rootPrefix                 string
-	extProcExtraEnvVars        []corev1.EnvVar
-	extProcMaxRecvMsgSize      int
+	extProcImage                   string
+	extProcImagePullPolicy         corev1.PullPolicy
+	extProcLogLevel                string
+	udsPath                        string
+	metricsRequestHeaderAttributes string
+	spanRequestHeaderAttributes    string
+	rootPrefix                     string
+	extProcExtraEnvVars            []corev1.EnvVar
+	extProcMaxRecvMsgSize          int
 
 	// Whether to run the extProc container as a sidecar (true) as a normal container (false).
 	// This is essentially a workaround for old k8s versions, and we can remove this in the future.
@@ -50,7 +51,7 @@ type gatewayMutator struct {
 
 func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.Logger,
 	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel,
-	udsPath, metricsRequestHeaderLabels, rootPrefix, extProcExtraEnvVars string, extProcMaxRecvMsgSize int,
+	udsPath, metricsRequestHeaderAttributes, spanRequestHeaderAttributes, rootPrefix, extProcExtraEnvVars string, extProcMaxRecvMsgSize int,
 	extProcAsSideCar bool,
 ) *gatewayMutator {
 	var parsedEnvVars []corev1.EnvVar
@@ -64,17 +65,18 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 	}
 	return &gatewayMutator{
 		c: c, codec: serializer.NewCodecFactory(Scheme),
-		kube:                       kube,
-		extProcImage:               extProcImage,
-		extProcImagePullPolicy:     extProcImagePullPolicy,
-		extProcLogLevel:            extProcLogLevel,
-		logger:                     logger,
-		udsPath:                    udsPath,
-		metricsRequestHeaderLabels: metricsRequestHeaderLabels,
-		rootPrefix:                 rootPrefix,
-		extProcExtraEnvVars:        parsedEnvVars,
-		extProcMaxRecvMsgSize:      extProcMaxRecvMsgSize,
-		extProcAsSideCar:           extProcAsSideCar,
+		kube:                           kube,
+		extProcImage:                   extProcImage,
+		extProcImagePullPolicy:         extProcImagePullPolicy,
+		extProcLogLevel:                extProcLogLevel,
+		logger:                         logger,
+		udsPath:                        udsPath,
+		metricsRequestHeaderAttributes: metricsRequestHeaderAttributes,
+		spanRequestHeaderAttributes:    spanRequestHeaderAttributes,
+		rootPrefix:                     rootPrefix,
+		extProcExtraEnvVars:            parsedEnvVars,
+		extProcMaxRecvMsgSize:          extProcMaxRecvMsgSize,
+		extProcAsSideCar:               extProcAsSideCar,
 	}
 }
 
@@ -112,8 +114,13 @@ func (g *gatewayMutator) buildExtProcArgs(filterConfigFullPath string, extProcAd
 	}
 
 	// Add metrics header label mapping if configured.
-	if g.metricsRequestHeaderLabels != "" {
-		args = append(args, "-metricsRequestHeaderLabels", g.metricsRequestHeaderLabels)
+	if g.metricsRequestHeaderAttributes != "" {
+		args = append(args, "-metricsRequestHeaderAttributes", g.metricsRequestHeaderAttributes)
+	}
+
+	// Add tracing header attribute mapping if configured.
+	if g.spanRequestHeaderAttributes != "" {
+		args = append(args, "-spanRequestHeaderAttributes", g.spanRequestHeaderAttributes)
 	}
 
 	return args
