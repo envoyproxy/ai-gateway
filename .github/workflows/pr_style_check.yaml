@@ -84,6 +84,8 @@ jobs:
             backport
             cli
             refactor
+            mcp
+            aigw
           subjectPattern: ^(?![A-Z]).+$
           subjectPatternError: |
             The subject "{subject}" found in the pull request title "{title}"
