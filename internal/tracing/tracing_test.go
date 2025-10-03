@@ -17,16 +17,12 @@ import (
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/contrib/propagators/autoprop"
-	"go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/trace/noop"
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
-	openaitracing "github.com/envoyproxy/ai-gateway/internal/tracing/openinference/openai"
 )
 
 // TestNewTracingFromEnv_DefaultServiceName tests that the service name.
@@ -61,7 +57,7 @@ func TestNewTracingFromEnv_DefaultServiceName(t *testing.T) {
 			}
 
 			var stdout bytes.Buffer
-			result, err := NewTracingFromEnv(t.Context(), &stdout)
+			result, err := NewTracingFromEnv(t.Context(), &stdout, nil)
 			require.NoError(t, err)
 			t.Cleanup(func() {
 				_ = result.Shutdown(t.Context())
@@ -117,7 +113,7 @@ func TestNewTracingFromEnv_DisabledByEnv(t *testing.T) {
 				t.Setenv(k, v)
 			}
 
-			result, err := NewTracingFromEnv(t.Context(), io.Discard)
+			result, err := NewTracingFromEnv(t.Context(), io.Discard, nil)
 			require.NoError(t, err)
 			require.IsType(t, tracing.NoopTracing{}, result)
 		})
@@ -170,7 +166,7 @@ func TestNewTracingFromEnv_EndpointHierarchy(t *testing.T) {
 				t.Setenv(k, v)
 			}
 
-			result, err := NewTracingFromEnv(t.Context(), io.Discard)
+			result, err := NewTracingFromEnv(t.Context(), io.Discard, nil)
 			require.NoError(t, err)
 
 			if tt.expectActive {
@@ -235,7 +231,7 @@ func TestNewTracingFromEnv_ConsoleExporter(t *testing.T) {
 			}
 
 			var stdout bytes.Buffer
-			result, err := NewTracingFromEnv(t.Context(), &stdout)
+			result, err := NewTracingFromEnv(t.Context(), &stdout, nil)
 			require.NoError(t, err)
 			t.Cleanup(func() {
 				_ = result.Shutdown(context.Background())
@@ -508,48 +504,13 @@ func newTracingFromEnvForTest(t *testing.T, stdout io.Writer) (*testotel.OTLPCol
 	t.Cleanup(collector.Close)
 	collector.SetEnv(t.Setenv)
 
-	result, err := NewTracingFromEnv(t.Context(), stdout)
+	result, err := NewTracingFromEnv(t.Context(), stdout, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = result.Shutdown(context.Background())
 	})
 
 	return collector, result
-}
-
-func TestNewTracing(t *testing.T) {
-	t.Run("with noop tracer", func(t *testing.T) {
-		config := &tracing.TracingConfig{
-			Tracer:                 noop.Tracer{},
-			Propagator:             autoprop.NewTextMapPropagator(),
-			ChatCompletionRecorder: openaitracing.NewChatCompletionRecorderFromEnv(),
-		}
-
-		result := NewTracing(config)
-		require.IsType(t, tracing.NoopTracing{}, result)
-	})
-
-	t.Run("with real tracer", func(t *testing.T) {
-		tp := trace.NewTracerProvider()
-		t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
-
-		config := &tracing.TracingConfig{
-			Tracer:                 tp.Tracer("test"),
-			Propagator:             autoprop.NewTextMapPropagator(),
-			ChatCompletionRecorder: openaitracing.NewChatCompletionRecorderFromEnv(),
-		}
-
-		result := NewTracing(config)
-		require.IsType(t, &tracingImpl{}, result)
-
-		// Test that ChatCompletionTracer returns the expected tracer.
-		tracer := result.ChatCompletionTracer()
-		require.NotNil(t, tracer)
-
-		// Test that Shutdown returns nil when tp wasn't created internally.
-		err := result.Shutdown(t.Context())
-		require.NoError(t, err)
-	})
 }
 
 func TestNoopShutdown(t *testing.T) {
@@ -573,7 +534,7 @@ func TestNewTracingFromEnv_OTLPHeaders(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", ts.URL)
 	t.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")
 
-	result, err := NewTracingFromEnv(t.Context(), io.Discard)
+	result, err := NewTracingFromEnv(t.Context(), io.Discard, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = result.Shutdown(context.Background())

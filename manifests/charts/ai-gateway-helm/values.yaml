@@ -39,10 +39,18 @@ controller:
   nameOverride: ""
   fullnameOverride: "ai-gateway-controller"
 
-  # Comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels.
-  # Format: "header1:label1,header2:label2"
-  # Example: "x-team-id:team_id,x-user-id:user_id"
+  # DEPRECATED: metricsRequestHeaderLabels will be removed after v0.4. Use metricsRequestHeaderAttributes instead.
   metricsRequestHeaderLabels: ""
+
+  # Comma-separated key-value pairs for mapping HTTP request headers to Otel metric attributes.
+  # Format: "header1:label1,header2:label2"
+  # Example: "x-team-id:team.id,x-user-id:user.id"
+  metricsRequestHeaderAttributes: ""
+
+  # Comma-separated key-value pairs for mapping HTTP request headers to otel span attributes.
+  # Format: "header1:attribute1,header2:attribute2"
+  # Example: "x-session-id:session.id,x-user-id:user.id"
+  spanRequestHeaderAttributes: ""
 
   # -- Service Account --
   serviceAccount:

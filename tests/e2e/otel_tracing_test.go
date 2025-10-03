@@ -42,7 +42,8 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 	// Upgrade the existing "ai-eg" release with new env vars.
 	helm := testsinternal.GoToolCmdContext(ctx, "helm", "upgrade", "ai-eg", "--force",
 		helmChartPath,
-		"--set", "controller.metricsRequestHeaderLabels=x-user-id:user_id", // Keep existing setting.
+		"--set", "controller.metricsRequestHeaderAttributes=x-user-id:"+userIDAttribute, // existing setting
+		"--set", "controller.spanRequestHeaderAttributes=x-user-id:"+userIDAttribute, // existing setting
 		"--set", "extProc.extraEnvVars[0].name=OTEL_TRACES_EXPORTER",
 		"--set", "extProc.extraEnvVars[0].value=console",
 		"--set", "extProc.extraEnvVars[1].name=OTEL_SERVICE_NAME",
@@ -128,6 +129,24 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 		envVars := describeOutput.String()
 		t.Logf("Environment variables in extProc container: %s", envVars)
 
+		// Get the container args to check header attributes configuration.
+		argsCmd := exec.CommandContext(ctx, "kubectl", "get", "pod", podName,
+			"-n", e2elib.EnvoyGatewayNamespace,
+			"-o", "jsonpath={.spec.initContainers[?(@.name=='ai-gateway-extproc')].args}")
+
+		argsOutput := &bytes.Buffer{}
+		argsCmd.Stdout = argsOutput
+		argsCmd.Stderr = argsOutput
+
+		err = argsCmd.Run()
+		if err != nil {
+			t.Logf("Failed to get container args for pod %s: %v", podName, err)
+			return false // Retry if command fails.
+		}
+
+		containerArgs := argsOutput.String()
+		t.Logf("Container args in extProc container: %s", containerArgs)
+
 		defer func() {
 			// Deletes the pods to ensure they are recreated with the new configuration for the next iteration.
 			deletePodsCmd := e2elib.Kubectl(ctx, "delete", "pod", podName,
@@ -148,8 +167,19 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 			t.Log("Expected OTEL_SERVICE_NAME=ai-gateway-e2e-test in extProc container spec")
 			return false
 		}
+
+		// Verify that pre-upgrade header attribute args are present in the container args.
+		if !strings.Contains(containerArgs, "-metricsRequestHeaderAttributes") || !strings.Contains(containerArgs, "x-user-id:"+userIDAttribute) {
+			t.Log("Expected -metricsRequestHeaderAttributes x-user-id:" + userIDAttribute + " in extProc container args")
+			return false
+		}
+		if !strings.Contains(containerArgs, "-spanRequestHeaderAttributes") || !strings.Contains(containerArgs, "x-user-id:"+userIDAttribute) {
+			t.Log("Expected -spanRequestHeaderAttributes x-user-id:" + userIDAttribute + " in extProc container args")
+			return false
+		}
+
 		return true
 	}, 2*time.Minute, 5*time.Second)
 
-	t.Log("OTEL environment variables successfully verified in extProc container")
+	t.Log("OTEL environment variables and header attribute args successfully verified in extProc container")
 }

@@ -66,7 +66,7 @@ func TestConstants(t *testing.T) {
 	require.Equal(t, "x-gateway-destination-endpoint", EndpointPickerHeaderKey)
 }
 
-func TestParseRequestHeaderLabelMapping(t *testing.T) {
+func TestParseRequestHeaderAttributeMapping(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
@@ -81,67 +81,67 @@ func TestParseRequestHeaderLabelMapping(t *testing.T) {
 		},
 		{
 			name:     "single valid pair",
-			input:    "x-team-id:team_id",
-			expected: map[string]string{"x-team-id": "team_id"},
+			input:    "x-session-id:session.id",
+			expected: map[string]string{"x-session-id": "session.id"},
 			wantErr:  false,
 		},
 		{
 			name:     "multiple valid pairs",
-			input:    "x-team-id:team_id,x-user-id:user_id",
-			expected: map[string]string{"x-team-id": "team_id", "x-user-id": "user_id"},
+			input:    "x-session-id:session.id,x-user-id:user.id",
+			expected: map[string]string{"x-session-id": "session.id", "x-user-id": "user.id"},
 			wantErr:  false,
 		},
 		{
 			name:     "with whitespace",
-			input:    " x-team-id : team_id , x-user-id : user_id ",
-			expected: map[string]string{"x-team-id": "team_id", "x-user-id": "user_id"},
+			input:    " x-session-id : session.id , x-user-id : user.id ",
+			expected: map[string]string{"x-session-id": "session.id", "x-user-id": "user.id"},
 			wantErr:  false,
 		},
 		{
 			name:     "invalid format - missing colon",
-			input:    "x-team-id",
+			input:    "x-session-id",
 			expected: nil,
 			wantErr:  true,
 		},
 		{
 			name:     "invalid format - empty header",
-			input:    ":team_id",
+			input:    ":session.id",
 			expected: nil,
 			wantErr:  true,
 		},
 		{
-			name:     "invalid format - empty label",
-			input:    "x-team-id:",
+			name:     "invalid format - empty attribute",
+			input:    "x-session-id:",
 			expected: nil,
 			wantErr:  true,
 		},
 		{
 			name:     "multiple colons - takes first colon",
-			input:    "x-team-id:team_id:extra",
-			expected: map[string]string{"x-team-id": "team_id:extra"},
+			input:    "x-session-id:session.id:extra",
+			expected: map[string]string{"x-session-id": "session.id:extra"},
 			wantErr:  false,
 		},
 		{
 			name:     "trailing comma - should fail",
-			input:    "x-team-id:team_id,",
+			input:    "x-session-id:session.id,",
 			expected: nil,
 			wantErr:  true,
 		},
 		{
 			name:     "double comma - should fail",
-			input:    "x-team-id:team_id,,x-user-id:user_id",
+			input:    "x-session-id:session.id,,x-user-id:user.id",
 			expected: nil,
 			wantErr:  true,
 		},
 		{
 			name:     "comma with spaces - should fail",
-			input:    "x-team-id : team_id , , x-user-id : user_id",
+			input:    "x-session-id : session.id , , x-user-id : user.id",
 			expected: nil,
 			wantErr:  true,
 		},
 		{
 			name:     "leading comma - should fail",
-			input:    ",x-team-id:team_id",
+			input:    ",x-session-id:session.id",
 			expected: nil,
 			wantErr:  true,
 		},
@@ -149,7 +149,7 @@ func TestParseRequestHeaderLabelMapping(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := ParseRequestHeaderLabelMapping(tt.input)
+			result, err := ParseRequestHeaderAttributeMapping(tt.input)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
