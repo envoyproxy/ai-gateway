@@ -117,11 +117,11 @@ func TestBackendSecurityPolicies(t *testing.T) {
 		{name: "basic.yaml"},
 		{
 			name:   "unknown_provider.yaml",
-			expErr: "spec.type: Unsupported value: \"UnknownType\": supported values: \"APIKey\", \"AWSCredentials\", \"AzureCredentials\"",
+			expErr: "spec.type: Unsupported value: \"UnknownType\": supported values: \"APIKey\", \"AWSCredentials\", \"AzureAPIKey\", \"AzureCredentials\"",
 		},
 		{
 			name:   "missing_type.yaml",
-			expErr: "spec.type: Unsupported value: \"\": supported values: \"APIKey\", \"AWSCredentials\", \"AzureCredentials\"",
+			expErr: "spec.type: Unsupported value: \"\": supported values: \"APIKey\", \"AWSCredentials\", \"AzureAPIKey\", \"AzureCredentials\"",
 		},
 		{
 			name:   "multiple_security_policies.yaml",
