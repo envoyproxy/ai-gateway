@@ -194,6 +194,12 @@ test-e2e-upgrade: build-e2e
 	@echo "Run E2E upgrade tests"
 	@go test -v ./tests/e2e-upgrade/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
 
+# This runs the MCP end-to-end tests.
+.PHONY: test-e2e-mcp
+test-e2e-mcp: build.aigw ## Run MCP end-to-end tests.
+	@echo "Run MCP E2E tests"
+	@go test -v ./tests/e2e-mcp/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
+
 ##@ Common
 
 # This builds a binary for the given command under the internal/cmd directory.
@@ -237,6 +243,7 @@ build: ## Build all binaries under cmd/ directory.
 build-e2e: ## Build the docker images for the controller, extproc and testupstream for the e2e tests.
 	@$(MAKE) docker-build DOCKER_BUILD_ARGS="--load"
 	@$(MAKE) docker-build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib DOCKER_BUILD_ARGS="--load"
+	@$(MAKE) docker-build.testmcpserver CMD_PATH_PREFIX=tests/internal/testmcp DOCKER_BUILD_ARGS="--load"
 
 # This builds a docker image for a given command.
 #

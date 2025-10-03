@@ -19,7 +19,35 @@ const (
 	InternalEndpointMetadataNamespace = "aigateway.envoy.io"
 	// InternalMetadataBackendNameKey is the key used to store the backend name
 	InternalMetadataBackendNameKey = "per_route_rule_backend_name"
+	// MCPBackendHeader is the special header key used to specify the target backend name.
+	MCPBackendHeader = "x-ai-eg-mcp-backend"
+	// MCPRouteHeader is the special header key used to identify the mcp route.
+	MCPRouteHeader = "x-ai-eg-mcp-route"
+	// MCPBackendListenerPort is the port for the MCP backend listener.
+	MCPBackendListenerPort = 10088
+	// MCPProxyPort is the port where the MCP proxy listens.
+	MCPProxyPort = 9856
+	// MCPHTTPRoutePrefix is the prefix for the MCP HTTPRoute names.
+	MCPHTTPRoutePrefix     = "ai-eg-mcp-"
+	MCPBackendFilterPrefix = MCPHTTPRoutePrefix + "bf-"
+
+	// MCPMetadataHeaderPrefix is the prefix for special headers used to pass metadata in the filter metadata.
+	// These headers are added internally to the requests to the upstream servers so they can be populated in the filter
+	// metadata. These headers are considered just internal, and they'll be removed once they are stored in the filter
+	// metadata to avoid sending unnecessary information to the upstream servers.
+	MCPMetadataHeaderPrefix = "x-ai-eg-mcp-metadata-"
+	// MCPMetadataHeaderRequestID is the special header key used to pass the MCP request ID in the filter metadata.
+	MCPMetadataHeaderRequestID = MCPMetadataHeaderPrefix + "request-id"
+	// MCPMetadataHeaderMethod is the special header key used to pass the MCP method in the filter metadata.
+	MCPMetadataHeaderMethod = MCPMetadataHeaderPrefix + "method"
 )
+
+// MCPInternalHeadersToMetadata maps special MCP headers to metadata keys.
+var MCPInternalHeadersToMetadata = map[string]string{
+	MCPBackendHeader:           "mcp_backend",
+	MCPMetadataHeaderMethod:    "mcp_method",
+	MCPMetadataHeaderRequestID: "mcp_request_id",
+}
 
 const (
 	// EndpointPickerHeaderKey is the header key used to specify the target backend endpoint.

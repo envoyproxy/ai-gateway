@@ -9,6 +9,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -82,17 +83,30 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	var routes aigv1a1.AIGatewayRouteList
-	err := c.client.List(ctx, &routes, client.MatchingFields{
+	var aiRoutes aigv1a1.AIGatewayRouteList
+	err := c.client.List(ctx, &aiRoutes, client.MatchingFields{
 		k8sClientIndexAIGatewayRouteToAttachedGateway: fmt.Sprintf("%s.%s", req.Name, req.Namespace),
 	})
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	if len(routes.Items) == 0 {
-		// This means that the gateway is not attached to any AIGatewayRoute.
-		c.logger.Info("No AIGatewayRoute attached to the Gateway", "namespace", gw.Namespace, "name", gw.Name)
+	var mcpRoutes aigv1a1.MCPRouteList
+	err = c.client.List(ctx, &mcpRoutes, client.MatchingFields{
+		k8sClientIndexMCPRouteToAttachedGateway: fmt.Sprintf("%s.%s", req.Name, req.Namespace),
+	})
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	// Sort MCPRoutes by CreationTimestamp (earliest first) for deterministic prioritization.
+	sort.Slice(mcpRoutes.Items, func(i, j int) bool {
+		return mcpRoutes.Items[i].CreationTimestamp.Before(&mcpRoutes.Items[j].CreationTimestamp)
+	})
+
+	if len(aiRoutes.Items) == 0 && len(mcpRoutes.Items) == 0 {
+		// This means that the gateway is not attached to any AIGatewayRoute or MCPRoute.
+		c.logger.Info("No AIGatewayRoute or MCPRoute attached to the Gateway", "namespace", gw.Namespace, "name", gw.Name)
 		return ctrl.Result{}, nil
 	}
 
@@ -116,7 +130,7 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
-	if err := c.reconcileFilterConfigSecret(ctx, FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), namespace, routes.Items, uid); err != nil {
+	if err := c.reconcileFilterConfigSecret(ctx, FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), namespace, aiRoutes.Items, mcpRoutes.Items, uid); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -157,7 +171,14 @@ func headerMutationToFilterAPI(m *aigv1a1.HTTPHeaderMutation) *filterapi.HTTPHea
 }
 
 // reconcileFilterConfigSecret updates the filter config secret for the external processor.
-func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, configSecretName, configSecretNamespace string, aiGatewayRoutes []aigv1a1.AIGatewayRoute, uuid string) error {
+func (c *GatewayController) reconcileFilterConfigSecret(
+	ctx context.Context,
+	configSecretName,
+	configSecretNamespace string,
+	aiGatewayRoutes []aigv1a1.AIGatewayRoute,
+	mcpRoutes []aigv1a1.MCPRoute,
+	uuid string,
+) error {
 	// Precondition: aiGatewayRoutes is not empty as we early return if it is empty.
 	ec := &filterapi.Config{UUID: uuid}
 	ec.ModelNameHeaderKey = internalapi.ModelNameHeaderKeyDefault
@@ -257,11 +278,13 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, con
 
 	ec.MetadataNamespace = aigv1a1.AIGatewayFilterMetadataNamespace
 
+	// Configuration for MCP processor.
+	ec.MCPConfig = mcpConfig(mcpRoutes)
+
 	marshaled, err := yaml.Marshal(ec)
 	if err != nil {
 		return fmt.Errorf("failed to marshal extproc config: %w", err)
 	}
-
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
 	data := map[string]string{FilterConfigKeyInSecret: string(marshaled)}
@@ -285,6 +308,40 @@ func (c *GatewayController) reconcileFilterConfigSecret(ctx context.Context, con
 		return fmt.Errorf("failed to update secret %s: %w", secret.Name, err)
 	}
 	return nil
+}
+
+// reconcileFilterConfigSecretForMCPGateway updates the filter config secret for the external processor.
+func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
+	if len(mcpRoutes) == 0 {
+		return nil
+	}
+
+	mc := &filterapi.MCPConfig{
+		BackendListenerAddr: fmt.Sprintf("http://127.0.0.1:%d", internalapi.MCPBackendListenerPort),
+	}
+	for _, route := range mcpRoutes {
+		mcpRoute := filterapi.MCPRoute{
+			Name:     fmt.Sprintf("%s/%s", route.Namespace, route.Name),
+			Backends: []filterapi.MCPBackend{},
+		}
+		for _, b := range route.Spec.BackendRefs {
+			mcpBackend := filterapi.MCPBackend{
+				// MCPRoute doesn't support cross-namespace backend reference so just use the name.
+				Name: filterapi.MCPBackendName(b.Name),
+				Path: ptr.Deref(b.Path, "/mcp"),
+			}
+			if b.ToolSelector != nil {
+				mcpBackend.ToolSelector = &filterapi.MCPNameSelector{
+					Include:      b.ToolSelector.Include,
+					IncludeRegex: b.ToolSelector.IncludeRegex,
+				}
+			}
+			mcpRoute.Backends = append(
+				mcpRoute.Backends, mcpBackend)
+		}
+		mc.Routes = append(mc.Routes, mcpRoute)
+	}
+	return mc
 }
 
 func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backendSecurityPolicy *aigv1a1.BackendSecurityPolicy) (*filterapi.BackendAuth, error) {

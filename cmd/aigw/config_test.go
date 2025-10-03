@@ -60,7 +60,7 @@ func TestReadConfig(t *testing.T) {
 				t.Setenv(k, v)
 			}
 
-			config, err := readConfig(tt.path)
+			config, err := readConfig(tt.path, "")
 			if tt.expectError != "" {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tt.expectError)
@@ -73,16 +73,27 @@ func TestReadConfig(t *testing.T) {
 	}
 
 	t.Run("error when file and no OPENAI_API_KEY", func(t *testing.T) {
-		_, err := readConfig("")
+		_, err := readConfig("", "")
 		require.Error(t, err)
 		require.EqualError(t, err, "you must supply at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY or a config file path")
 	})
 
 	t.Run("error when file does not exist", func(t *testing.T) {
-		_, err := readConfig("/non/existent/file.yaml")
+		_, err := readConfig("/non/existent/file.yaml", "")
 		require.Error(t, err)
 		require.EqualError(t, err, "error reading config: open /non/existent/file.yaml: no such file or directory")
 	})
+}
+
+func TestReadMCPServers(t *testing.T) {
+	t.Setenv("GITHUB_MCP_TOKEN", "github-token")
+	want, err := os.ReadFile("testdata/mcp_config.out.yaml")
+	require.NoError(t, err)
+
+	cfg, err := readConfig("", "testdata/mcp_config.in.json")
+	require.NoError(t, err)
+
+	require.YAMLEq(t, string(want), cfg)
 }
 
 func TestRecreateDir(t *testing.T) {

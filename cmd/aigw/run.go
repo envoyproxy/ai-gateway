@@ -15,15 +15,20 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/a8m/envsubst"
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/envoyproxy/gateway/cmd/envoy-gateway/root"
 	egextension "github.com/envoyproxy/gateway/proto/extension"
+	"github.com/go-logr/logr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	corev1 "k8s.io/api/core/v1"
@@ -38,13 +43,22 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/envgen"
 	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
-// This is the template for the Envoy Gateway configuration where PLACEHOLDER_TMPDIR will be replaced with the temporary
-// directory where the resources are written to.
-//
-//go:embed envoy-gateway-config.yaml
-var envoyGatewayConfigTemplate string
+var (
+	// This is the template for the Envoy Gateway configuration where PLACEHOLDER_TMPDIR will be replaced with the temporary
+	// directory where the resources are written to.
+	//
+	//go:embed envoy-gateway-config.yaml
+	envoyGatewayConfigTemplate string
+
+	// This is the template for the MCP servers configuration file where the MCP server settings are defined.
+	//
+	//go:embed mcp_servers.yaml.tmpl
+	mcpServersTemplateSrc string
+	mcpServersTemplate    = template.Must(template.New("mcp-servers").Parse(mcpServersTemplateSrc))
+)
 
 const (
 	substitutionEnvAnnotationPrefix  = "substitution.aigw.run/env/"
@@ -91,6 +105,8 @@ func run(ctx context.Context, c cmdRun, o runOpts, stdout, stderr io.Writer) err
 	if !c.Debug {
 		stderr = io.Discard
 	}
+	logHandler := slog.NewTextHandler(stderr, &slog.HandlerOptions{})
+	ctrl.SetLogger(logr.FromSlogHandler(logHandler))
 	stderrLogger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{}))
 
 	// First, we need to create the self-signed certificates used for communication between the EG and Envoy.
@@ -143,7 +159,7 @@ func run(ctx context.Context, c cmdRun, o runOpts, stdout, stderr io.Writer) err
 		tmpdir:                   tmpdir,
 		isDebug:                  c.Debug,
 	}
-	aiGatewayResourcesYaml, err := readConfig(c.Path)
+	aiGatewayResourcesYaml, err := readConfig(c.Path, c.McpConfig)
 	if err != nil {
 		return err
 	}
@@ -264,7 +280,10 @@ func pollEnvoyListening(ctx context.Context, l *slog.Logger, port int, interval 
 // readConfig returns the configuration as a string from the given path,
 // substituting environment variables. If OPENAI_API_KEY or AZURE_OPENAI_API_KEY
 // is set, it generates the config from environment variables. Otherwise, it returns an error.
-func readConfig(path string) (string, error) {
+func readConfig(path, mcpServers string) (string, error) {
+	if mcpServers != "" {
+		return renderMcpServers(mcpServers)
+	}
 	if os.Getenv("OPENAI_API_KEY") != "" || os.Getenv("AZURE_OPENAI_API_KEY") != "" {
 		config, err := envgen.GenerateOpenAIConfig()
 		if err != nil {
@@ -297,7 +316,7 @@ func recreateDir(path string) error {
 // writeEnvoyResourcesAndRunExtProc reads all resources from the given string, writes them to the output file, and runs
 // external processes for EnvoyExtensionPolicy resources.
 func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Context, original string) (client.Client, <-chan error, string, int, error) {
-	aigwRoutes, aigwBackends, backendSecurityPolicies, gateways, secrets, envoyProxies, err := collectObjects(original, runCtx.envoyGatewayResourcesOut, runCtx.stderrLogger)
+	aigwRoutes, mcpRoutes, aigwBackends, backendSecurityPolicies, backendTLSPolicies, gateways, secrets, envoyProxies, err := collectObjects(original, runCtx.envoyGatewayResourcesOut, runCtx.stderrLogger)
 	if err != nil {
 		return nil, nil, "", 0, fmt.Errorf("error collecting: %w", err)
 	}
@@ -319,13 +338,14 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 		}
 	}
 
-	fakeClient, _fakeClientSet, httpRoutes, eps, httpRouteFilter, backends, _, err := translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, gateways, secrets, runCtx.stderrLogger)
+	var secretList *corev1.SecretList
+	fakeClient, _fakeClientSet, httpRoutes, eps, httpRouteFilters, backends, secretList, backendTrafficPolicies, securityPolicies, err := translateCustomResourceObjects(ctx, aigwRoutes, mcpRoutes, aigwBackends, backendSecurityPolicies, backendTLSPolicies, gateways, secrets, runCtx.stderrLogger)
 	if err != nil {
 		return nil, nil, "", 0, fmt.Errorf("error translating: %w", err)
 	}
 	runCtx.fakeClientSet = _fakeClientSet
 
-	for _, hrf := range httpRouteFilter.Items {
+	for _, hrf := range httpRouteFilters.Items {
 		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&hrf.TypeMeta, &hrf)
 	}
 	for _, hr := range httpRoutes.Items {
@@ -333,6 +353,15 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 	}
 	for _, b := range backends.Items {
 		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&b.TypeMeta, &b)
+	}
+	for _, s := range secretList.Items {
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&s.TypeMeta, &s)
+	}
+	for _, btp := range backendTrafficPolicies.Items {
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&btp.TypeMeta, &btp)
+	}
+	for _, sp := range securityPolicies.Items {
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&sp.TypeMeta, &sp)
 	}
 	gw := gateways[0]
 	if len(gw.Spec.Listeners) == 0 {
@@ -382,6 +411,7 @@ func (runCtx *runCmdContext) mustStartExtProc(
 		"--configPath", configPath,
 		"--extProcAddr", fmt.Sprintf("unix://%s", runCtx.udsPath),
 		"--adminPort", fmt.Sprintf("%d", runCtx.adminPort),
+		"--mcpAddr", ":" + strconv.Itoa(internalapi.MCPProxyPort),
 	}
 	if runCtx.isDebug {
 		args = append(args, "--logLevel", "debug")
@@ -540,4 +570,110 @@ func maybeResolveHome(p string) string {
 		return filepath.Join(home, p[2:])
 	}
 	return p
+}
+
+type (
+	// mcpServers is the structure of the MCP servers configuration file.
+	mcpServers struct {
+		McpServers map[string]struct {
+			Type    string            `json:"type"`
+			URL     string            `json:"url"`
+			Headers map[string]string `json:"headers,omitempty"`
+			Tools   []string          `json:"tools,omitempty"`
+		} `json:"mcpServers"`
+	}
+
+	// parsedMcpServer is the data structure that will be passed to the template
+	// that renders the AIGW configuration.
+	parsedMcpServer struct {
+		Name        string
+		Hostname    string
+		Port        int
+		Path        string
+		Protocol    string
+		BearerToken string
+		Tools       []string
+	}
+)
+
+// isSupportedType returns true if the given server type is supported.
+func isSupportedType(url, serverType string) bool {
+	if url == "" {
+		return false
+	}
+	// Be permissive with the type to maximize support for the different values used in agents.
+	return serverType == "" || // If the URL is set and there is no type, assume Streamable HTTP.
+		serverType == "http" ||
+		serverType == "streamable-http" ||
+		serverType == "streamable_http" ||
+		serverType == "streamableHttp"
+}
+
+// renderMcpServers reads the MCP servers configuration from the given path, parses it, and renders it to a string.
+func renderMcpServers(path string) (string, error) {
+	// Interpolate the environment variables in the MCP servers file.
+	// This would preserve the behavior of agents like Claude.
+	raw, err := envsubst.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to read MCP servers file: %w", err)
+	}
+
+	var servers mcpServers
+	if err := yaml.Unmarshal(raw, &servers); err != nil {
+		return "", fmt.Errorf("failed to unmarshal MCP servers file: %w", err)
+	}
+
+	parsedServers := make([]parsedMcpServer, 0, len(servers.McpServers))
+
+	for name, settings := range servers.McpServers {
+		// If the server is not streamable HTTP, skip it.
+		if !isSupportedType(settings.URL, settings.Type) {
+			continue
+		}
+
+		serverURL, err := url.Parse(settings.URL)
+		if err != nil {
+			return "", fmt.Errorf("failed to parse MCP server URL %s: %w", settings.URL, err)
+		}
+
+		port, _ := strconv.Atoi(serverURL.Port())
+		if serverURL.Scheme == "https" && port == 0 {
+			port = 443
+		}
+
+		parsed := parsedMcpServer{
+			Name:     name,
+			Hostname: serverURL.Hostname(),
+			Path:     serverURL.Path,
+			Port:     port,
+			Protocol: serverURL.Scheme,
+			Tools:    settings.Tools,
+		}
+		if parsed.Path == "" {
+			parsed.Path = "/"
+		}
+
+		// We do not support yet customizing headers for different MCP servers. We only support
+		// setting upstream MCP server authentication using a Bearer token.
+		for headerKey, headerValue := range settings.Headers {
+			if strings.EqualFold(headerKey, "Authorization") && strings.HasPrefix(headerValue, "Bearer ") {
+				parsed.BearerToken = strings.TrimPrefix(headerValue, "Bearer ")
+				break
+			}
+		}
+
+		parsedServers = append(parsedServers, parsed)
+	}
+
+	// sort by name for consistent ordering.
+	sort.Slice(parsedServers, func(i, j int) bool {
+		return parsedServers[i].Name < parsedServers[j].Name
+	})
+
+	var buf bytes.Buffer
+	if err := mcpServersTemplate.Execute(&buf, parsedServers); err != nil {
+		return "", fmt.Errorf("failed to render MCP servers template: %w", err)
+	}
+
+	return buf.String(), nil
 }

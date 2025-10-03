@@ -134,11 +134,14 @@ Arguments:
               least OPENAI_API_KEY or AZURE_OPENAI_API_KEY is set.
 
 Flags:
-  -h, --help               Show context-sensitive help.
+  -h, --help                 Show context-sensitive help.
 
-      --debug              Enable debug logging emitted to stderr.
-      --admin-port=1064    HTTP port for the admin server (serves /metrics and
-                           /health endpoints).
+      --debug                Enable debug logging emitted to stderr.
+      --admin-port=1064      HTTP port for the admin server (serves /metrics and
+                             /health endpoints).
+      --mcp-config=STRING    (Optional) Path to the file containing the list of
+                             MCP servers. When this is given, any other given
+                             config file is ignored.
 `,
 			expPanicCode: ptr.To(0),
 		},

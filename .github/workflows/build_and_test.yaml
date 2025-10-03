@@ -82,6 +82,7 @@ jobs:
           TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
           TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
           TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
+          TEST_GITHUB_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: make test-coverage
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest'
@@ -199,6 +200,7 @@ jobs:
           TEST_GROK_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_GROK_API_KEY }}
           TEST_SAMBANOVA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_SAMBANOVA_API_KEY }}
           TEST_DEEPINFRA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_DEEPINFRA_API_KEY }}
+          TEST_GITHUB_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: make test-extproc
 
   test_e2e:
@@ -312,6 +314,35 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - run: make test-e2e-inference-extension
 
+  test_e2e_mcp:
+    needs: changes
+    name: E2E Test for Model Context Protocol
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/go/pkg/mod
+            ~/go/bin
+          key: e2e-mcp-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Start Ollama server
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          timeout 30 sh -c 'until nc -z localhost 11434; do sleep 1; done'
+          ollama pull qwen3:0.6b
+      - name: Install Goose
+        run: |
+          curl -fsSL https://github.com/block/goose/releases/download/stable/download_cli.sh | CONFIGURE=false bash
+      - run: make test-e2e-mcp
+
   docker_push:
     # Docker builds are verified in test_e2e job, so we only need to push the images when the event is a push event.
     if: github.event_name == 'push'
@@ -350,6 +381,7 @@ jobs:
       - test_e2e
       - test_e2e_upgrade
       - test_e2e_inference_extension
+      - test_e2e_mcp
     # We need this to run always to force-fail (and not skip) if any needed
     # job has failed. Otherwise, a skipped job will not fail the workflow.
     if: always()

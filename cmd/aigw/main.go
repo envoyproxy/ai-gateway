@@ -41,6 +41,7 @@ type (
 		Debug     bool   `help:"Enable debug logging emitted to stderr."`
 		Path      string `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional when at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY is set." type:"path"`
 		AdminPort int    `help:"HTTP port for the admin server (serves /metrics and /health endpoints)." default:"1064"`
+		McpConfig string `name:"mcp-config" help:"(Optional) Path to the file containing the list of MCP servers. When this is given, any other given config file is ignored." type:"path"`
 	}
 	// cmdHealthcheck corresponds to `aigw healthcheck` command.
 	cmdHealthcheck struct {

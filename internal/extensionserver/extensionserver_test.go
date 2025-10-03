@@ -238,7 +238,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 		s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
 		cluster := &clusterv3.Cluster{Name: "httproute/test-ns/nonexistent-route/rule/0", Metadata: &corev3.Metadata{}}
 		s.maybeModifyCluster(cluster)
-		require.Contains(t, buf.String(), "Skipping user-created HTTPRoute cluster modification")
+		require.Contains(t, buf.String(), "kipping non-AIGatewayRoute HTTPRoute cluster modification")
 	})
 
 	t.Run("cluster with InferencePool metadata and existing route", func(t *testing.T) {

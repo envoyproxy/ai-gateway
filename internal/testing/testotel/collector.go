@@ -45,7 +45,14 @@ func StartOTLPCollector() *OTLPCollector {
 		}
 
 		for _, resourceSpans := range traces.ResourceSpans {
-			spanCh <- resourceSpans
+			timeout := time.After(otlpTimeout)
+			select {
+			case spanCh <- resourceSpans:
+			case <-timeout:
+				// Avoid blocking if the channel is full. Likely indicates a test issue or spans not being read like
+				// the ones emitted during test shutdown. Otherwise, testerver shutdown blocks the test indefinitely.
+				fmt.Println("Warning: Dropping spans due to timeout")
+			}
 		}
 
 		w.WriteHeader(http.StatusOK)
@@ -65,7 +72,14 @@ func StartOTLPCollector() *OTLPCollector {
 		}
 
 		for _, resourceMetrics := range metrics.ResourceMetrics {
-			metricsCh <- resourceMetrics
+			timeout := time.After(otlpTimeout)
+			select {
+			case metricsCh <- resourceMetrics:
+			case <-timeout:
+				// Avoid blocking if the channel is full. Likely indicates a test issue or metrics not being read like
+				// the ones emitted during test shutdown. Otherwise, testerver shutdown blocks the test indefinitely.
+				fmt.Println("Warning: Dropping metrics due to timeout")
+			}
 		}
 
 		w.WriteHeader(http.StatusOK)

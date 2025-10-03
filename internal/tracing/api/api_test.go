@@ -17,6 +17,7 @@ import (
 func TestNoopTracing(t *testing.T) {
 	tracing := NoopTracing{}
 	require.Equal(t, NoopChatCompletionTracer{}, tracing.ChatCompletionTracer())
+	require.Equal(t, NoopMCPTracer{}, tracing.MCPTracer())
 
 	// Calling shutdown twice should not cause an error.
 	require.NoError(t, tracing.Shutdown(t.Context()))

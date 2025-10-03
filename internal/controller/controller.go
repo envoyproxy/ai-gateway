@@ -36,6 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gwapiv1a3 "sigs.k8s.io/gateway-api/apis/v1alpha3"
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
@@ -47,6 +48,7 @@ func init() {
 	utilruntime.Must(apiextensionsv1.AddToScheme(Scheme))
 	utilruntime.Must(egv1a1.AddToScheme(Scheme))
 	utilruntime.Must(gwapiv1.Install(Scheme))
+	utilruntime.Must(gwapiv1a3.Install(Scheme))
 	utilruntime.Must(gwapiv1b1.Install(Scheme))
 	utilruntime.Must(gwaiev1a2.Install(Scheme))
 }
@@ -181,6 +183,16 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 		return fmt.Errorf("failed to create controller for Secret: %w", err)
 	}
 
+	mcpRouteC := NewMCPRouteController(c, kubernetes.NewForConfigOrDie(config), logger.WithName("ai-gateway-mcp-route"),
+		gatewayEventChan,
+	)
+	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.MCPRoute{}).
+		Owns(&gwapiv1.HTTPRoute{}).
+		Owns(&egv1a1.Backend{}).
+		Complete(mcpRouteC); err != nil {
+		return fmt.Errorf("failed to create controller for MCPRoute: %w", err)
+	}
+
 	if !options.DisableMutatingWebhook {
 		kube := kubernetes.NewForConfigOrDie(config)
 		var versionInfo *version.Info
@@ -224,6 +236,8 @@ func TypedControllerBuilderForCRD(mgr ctrl.Manager, obj client.Object) *ctrl.Bui
 }
 
 const (
+	// Indexes for AI Gateway
+	//
 	// k8sClientIndexAIGatewayRouteToAttachedGateway is the index name that maps from a Gateway to the
 	// AIGatewayRoute that attaches to it.
 	k8sClientIndexAIGatewayRouteToAttachedGateway = "GWAPIGatewayToReferencingAIGatewayRoute"
@@ -236,6 +250,12 @@ const (
 	// k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy is the index name that maps from an AIServiceBackend
 	// to the BackendSecurityPolicy whose targetRefs contains the AIServiceBackend.
 	k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy = "AIServiceBackendToTargetingBackendSecurityPolicy"
+
+	// Indexes for MCP Gateway
+	//
+	// k8sClientIndexMCPRouteToAttachedGateway is the index name that maps from a Gateway to the
+	// MCPRoute that attaches to it.
+	k8sClientIndexMCPRouteToAttachedGateway = "GWAPIGatewayToReferencingMCPRoute"
 )
 
 // ApplyIndexing applies indexing to the given indexer. This is exported for testing purposes.
@@ -260,7 +280,28 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 	if err != nil {
 		return fmt.Errorf("failed to index field for BackendSecurityPolicy targetRefs: %w", err)
 	}
+
+	// Apply indexes to MCP Gateways.
+	err = indexer(ctx, &aigv1a1.MCPRoute{},
+		k8sClientIndexMCPRouteToAttachedGateway, mcpRouteToAttachedGatewayIndexFunc)
+	if err != nil {
+		return fmt.Errorf("failed to create index from Gateway to MCPRoute: %w", err)
+	}
 	return nil
+}
+
+func mcpRouteToAttachedGatewayIndexFunc(o client.Object) []string {
+	mcpRoute := o.(*aigv1a1.MCPRoute)
+	var ret []string
+	for _, ref := range mcpRoute.Spec.ParentRefs {
+		// Use the namespace from parentRef if specified, otherwise use the route's namespace.
+		namespace := mcpRoute.Namespace
+		if ref.Namespace != nil && *ref.Namespace != "" {
+			namespace = string(*ref.Namespace)
+		}
+		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, namespace))
+	}
+	return ret
 }
 
 func aiGatewayRouteToAttachedGatewayIndexFunc(o client.Object) []string {

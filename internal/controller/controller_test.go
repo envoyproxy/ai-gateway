@@ -374,6 +374,85 @@ func Test_aiGatewayRouteToAttachedGatewayIndexFunc(t *testing.T) {
 	}
 }
 
+func Test_mcpRouteToAttachedGatewayIndexFunc(t *testing.T) {
+	tests := []struct {
+		name            string
+		route           *aigv1a1.MCPRoute
+		expectedIndexes []string
+	}{
+		{
+			name: "parentRef cross-namespace reference",
+			route: &aigv1a1.MCPRoute{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "mcp-route",
+					Namespace: "envoy-mcp-gateway-system",
+				},
+				Spec: aigv1a1.MCPRouteSpec{
+					ParentRefs: []gwapiv1a2.ParentReference{
+						{
+							Name:      "my-gateway",
+							Namespace: ptr.To[gwapiv1a2.Namespace]("envoy-gateway-system"),
+							Kind:      ptr.To(gwapiv1a2.Kind("Gateway")),
+						},
+					},
+				},
+			},
+			expectedIndexes: []string{"my-gateway.envoy-gateway-system"},
+		},
+		{
+			name: "parentRef same namespace as route",
+			route: &aigv1a1.MCPRoute{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "mcp-route",
+					Namespace: "production",
+				},
+				Spec: aigv1a1.MCPRouteSpec{
+					ParentRefs: []gwapiv1a2.ParentReference{
+						{
+							Name: "my-gateway",
+							Kind: ptr.To(gwapiv1a2.Kind("Gateway")),
+						},
+					},
+				},
+			},
+			expectedIndexes: []string{"my-gateway.production"},
+		},
+		{
+			name: "multiple parentRefs with mixed namespaces",
+			route: &aigv1a1.MCPRoute{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "mcp-route",
+					Namespace: "app-namespace",
+				},
+				Spec: aigv1a1.MCPRouteSpec{
+					ParentRefs: []gwapiv1a2.ParentReference{
+						{
+							Name:      "gateway-1",
+							Namespace: ptr.To[gwapiv1a2.Namespace]("infra-namespace"),
+							Kind:      ptr.To(gwapiv1a2.Kind("Gateway")),
+						},
+						{
+							Name: "gateway-2",
+							Kind: ptr.To(gwapiv1a2.Kind("Gateway")),
+						},
+					},
+				},
+			},
+			expectedIndexes: []string{
+				"gateway-1.infra-namespace",
+				"gateway-2.app-namespace",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			indexes := mcpRouteToAttachedGatewayIndexFunc(tt.route)
+			require.ElementsMatch(t, tt.expectedIndexes, indexes)
+		})
+	}
+}
+
 func Test_isKubernetes133OrLater(t *testing.T) {
 	require.False(t, isKubernetes133OrLater(&version.Info{}, logr.Discard()))
 	require.False(t, isKubernetes133OrLater(&version.Info{Major: "invalid"}, logr.Discard()))

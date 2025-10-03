@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gwapiv1a3 "sigs.k8s.io/gateway-api/apis/v1alpha3"
 	kyaml "sigs.k8s.io/yaml"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
@@ -48,12 +49,12 @@ func translate(ctx context.Context, cmd cmdTranslate, output, stderr io.Writer) 
 	if err != nil {
 		return err
 	}
-	aigwRoutes, aigwBackends, backendSecurityPolicies, originalGateways, originalSecrets, _, err := collectObjects(yaml, output, stderrLogger)
+	aigwRoutes, mcpRoutes, aigwBackends, backendSecurityPolicies, backendTLSConfigs, originalGateways, originalSecrets, _, err := collectObjects(yaml, output, stderrLogger)
 	if err != nil {
 		return fmt.Errorf("error translating: %w", err)
 	}
 
-	_, _, httpRoutes, extensionPolicies, httpRouteFilter, backends, secrets, err := translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, originalGateways, originalSecrets, stderrLogger)
+	_, _, httpRoutes, extensionPolicies, httpRouteFilter, backends, secrets, backendTrafficPolicies, securityPolicies, err := translateCustomResourceObjects(ctx, aigwRoutes, mcpRoutes, aigwBackends, backendSecurityPolicies, backendTLSConfigs, originalGateways, originalSecrets, stderrLogger)
 	if err != nil {
 		return fmt.Errorf("error emitting: %w", err)
 	}
@@ -80,6 +81,12 @@ func translate(ctx context.Context, cmd cmdTranslate, output, stderr io.Writer) 
 	for _, gateway := range originalGateways {
 		mustWriteObj(nil, gateway, output)
 	}
+	for _, btp := range backendTrafficPolicies.Items {
+		mustWriteObj(&btp.TypeMeta, &btp, output)
+	}
+	for _, sp := range securityPolicies.Items {
+		mustWriteObj(&sp.TypeMeta, &sp, output)
+	}
 	return nil
 }
 
@@ -104,8 +111,10 @@ func readYamlsAsString(paths []string) (string, error) {
 // If the resource is not an AI Gateway custom resource, it will be written back to the output writer.
 func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 	aigwRoutes []*aigv1a1.AIGatewayRoute,
+	mcpRoutes []*aigv1a1.MCPRoute,
 	aigwBackends []*aigv1a1.AIServiceBackend,
 	backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy,
+	backendTLSConfigs []*gwapiv1a3.BackendTLSPolicy,
 	gws []*gwapiv1.Gateway,
 	secrets []*corev1.Secret,
 	envoyProxies []*egv1a1.EnvoyProxy,
@@ -142,9 +151,12 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 			logger.Info("Skipping duplicate object", "kind", obj.GetKind(), "name", obj.GetName())
 			continue
 		}
+
 		switch obj.GetKind() {
 		case "AIGatewayRoute":
 			mustExtractAndAppend(obj, &aigwRoutes)
+		case "MCPRoute":
+			mustExtractAndAppend(obj, &mcpRoutes)
 		case "AIServiceBackend":
 			mustExtractAndAppend(obj, &aigwBackends)
 		case "BackendSecurityPolicy":
@@ -155,7 +167,12 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 			mustExtractAndAppend(obj, &gws)
 		case "EnvoyProxy":
 			mustExtractAndAppend(obj, &envoyProxies)
-			fallthrough // We need to write the file as-is as well.
+			mustWriteObj(nil, obj, out)
+		case "BackendTLSPolicy":
+			// We need to keep track of BackendTLSPolicy objects to load them in the fake client, but we don't
+			// need to reconcile them; just create them as-is.
+			mustExtractAndAppend(obj, &backendTLSConfigs)
+			mustWriteObj(nil, obj, out)
 		default:
 			// Now you can inspect or manipulate the CRD.
 			logger.Info("Writing back non-target object into the output as-is", "kind", obj.GetKind(), "name", obj.GetName())
@@ -168,8 +185,10 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 func translateCustomResourceObjects(
 	ctx context.Context,
 	aigwRoutes []*aigv1a1.AIGatewayRoute,
+	mcpRoutes []*aigv1a1.MCPRoute,
 	aigwBackends []*aigv1a1.AIServiceBackend,
 	backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy,
+	backendTLSPolicies []*gwapiv1a3.BackendTLSPolicy,
 	gws []*gwapiv1.Gateway,
 	usedDefinedSecrets []*corev1.Secret,
 	logger *slog.Logger,
@@ -178,14 +197,17 @@ func translateCustomResourceObjects(
 	fakeClientSet *fake2.Clientset,
 	httpRoutes gwapiv1.HTTPRouteList,
 	extensionPolicies egv1a1.EnvoyExtensionPolicyList,
-	httpRouteFilter egv1a1.HTTPRouteFilterList,
+	httpRouteFilters egv1a1.HTTPRouteFilterList,
 	backends egv1a1.BackendList,
 	secrets *corev1.SecretList,
+	backendTrafficPolicies egv1a1.BackendTrafficPolicyList,
+	securityPolicies egv1a1.SecurityPolicyList,
 	err error,
 ) {
 	builder := fake.NewClientBuilder().
 		WithScheme(controller.Scheme).
 		WithStatusSubresource(&aigv1a1.AIGatewayRoute{}).
+		WithStatusSubresource(&aigv1a1.MCPRoute{}).
 		WithStatusSubresource(&aigv1a1.AIServiceBackend{}).
 		WithStatusSubresource(&aigv1a1.BackendSecurityPolicy{})
 	_ = controller.ApplyIndexing(ctx, func(_ context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error {
@@ -212,6 +234,9 @@ func translateCustomResourceObjects(
 	airC := controller.NewAIGatewayRouteController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
 		make(chan event.GenericEvent), "/",
 	)
+	mcpC := controller.NewMCPRouteController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
+		make(chan event.GenericEvent),
+	)
 	gwC := controller.NewGatewayController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", true, func() string {
 			return "aigw-translate"
@@ -219,6 +244,9 @@ func translateCustomResourceObjects(
 	)
 	// Create and reconcile the custom resources to store the translated objects.
 	// Note that the order of creation is important as some objects depend on others.
+	for _, btp := range backendTLSPolicies {
+		mustCreate(ctx, fakeClient, btp, logger)
+	}
 	for _, bsp := range backendSecurityPolicies {
 		mustCreateAndReconcile(ctx, fakeClient, bsp, bspC, logger)
 	}
@@ -227,6 +255,9 @@ func translateCustomResourceObjects(
 	}
 	for _, route := range aigwRoutes {
 		mustCreateAndReconcile(ctx, fakeClient, route, airC, logger)
+	}
+	for _, mcpRoute := range mcpRoutes {
+		mustCreateAndReconcile(ctx, fakeClient, mcpRoute, mcpC, logger)
 	}
 	for _, gw := range gws {
 		mustCreateAndReconcile(ctx, fakeClient, gw, gwC, logger)
@@ -248,7 +279,7 @@ func translateCustomResourceObjects(
 		err = fmt.Errorf("error listing Backends: %w", err)
 		return
 	}
-	err = fakeClient.List(ctx, &httpRouteFilter)
+	err = fakeClient.List(ctx, &httpRouteFilters)
 	if err != nil {
 		err = fmt.Errorf("error listing HTTPRouteFilters: %w", err)
 		return
@@ -256,6 +287,16 @@ func translateCustomResourceObjects(
 	secrets, err = fakeClientSet.CoreV1().Secrets("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		err = fmt.Errorf("error listing Secrets: %w", err)
+		return
+	}
+	err = fakeClient.List(ctx, &backendTrafficPolicies)
+	if err != nil {
+		err = fmt.Errorf("error listing BackendTrafficPolicies: %w", err)
+		return
+	}
+	err = fakeClient.List(ctx, &securityPolicies)
+	if err != nil {
+		err = fmt.Errorf("error listing SecurityPolicies: %w", err)
 		return
 	}
 	// We only want to return the secrets that are not user-defined, but created by the controller.
@@ -278,13 +319,8 @@ func mustExtractAndAppend[T any](obj *unstructured.Unstructured, slice *[]T) {
 	*slice = append(*slice, item)
 }
 
-// mustCreateAndReconcile creates the object in the fake client and reconciles it.
-func mustCreateAndReconcile(
-	ctx context.Context,
-	fakeClient client.Client, obj client.Object,
-	c reconcile.TypedReconciler[reconcile.Request],
-	logger *slog.Logger,
-) {
+// mustCreateAndReconcile creates the object in the fake client.
+func mustCreate(ctx context.Context, fakeClient client.Client, obj client.Object, logger *slog.Logger) {
 	logger.Info("Fake creating", "kind", obj.GetObjectKind().GroupVersionKind().Kind, "name", obj.GetName())
 	err := fakeClient.Create(ctx, obj)
 	if err != nil {
@@ -294,8 +330,18 @@ func mustCreateAndReconcile(
 		}
 		panic(err)
 	}
+}
+
+// mustCreateAndReconcile creates the object in the fake client and reconciles it.
+func mustCreateAndReconcile(
+	ctx context.Context,
+	fakeClient client.Client, obj client.Object,
+	c reconcile.TypedReconciler[reconcile.Request],
+	logger *slog.Logger,
+) {
+	mustCreate(ctx, fakeClient, obj, logger)
 	logger.Info("Fake reconciling", "kind", obj.GetObjectKind().GroupVersionKind().Kind, "name", obj.GetName())
-	_, err = c.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: obj.GetNamespace(), Name: obj.GetName()}})
+	_, err := c.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: obj.GetNamespace(), Name: obj.GetName()}})
 	if err != nil {
 		panic(err)
 	}

@@ -18,6 +18,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 )
 
 func TestNewProcessorMetrics(t *testing.T) {
@@ -80,11 +81,11 @@ func TestRecordTokenUsage(t *testing.T) {
 	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 	pm.RecordTokenUsage(t.Context(), 10, 5, nil)
 
-	count, sum := getHistogramValues(t, mr, genaiMetricClientTokenUsage, inputAttrs)
+	count, sum := testotel.GetHistogramValues(t, mr, genaiMetricClientTokenUsage, inputAttrs)
 	assert.Equal(t, uint64(1), count)
 	assert.Equal(t, 10.0, sum)
 
-	count, sum = getHistogramValues(t, mr, genaiMetricClientTokenUsage, outputAttrs)
+	count, sum = testotel.GetHistogramValues(t, mr, genaiMetricClientTokenUsage, outputAttrs)
 	assert.Equal(t, uint64(1), count)
 	assert.Equal(t, 5.0, sum)
 }
@@ -118,7 +119,7 @@ func testRecordTokenLatency(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 	pm.RecordTokenLatency(t.Context(), 1, false, nil)
 	assert.True(t, pm.firstTokenSent)
-	count, sum := getHistogramValues(t, mr, genaiMetricServerTimeToFirstToken, attrs)
+	count, sum := testotel.GetHistogramValues(t, mr, genaiMetricServerTimeToFirstToken, attrs)
 	assert.Equal(t, uint64(1), count)
 	assert.Equal(t, 10*time.Millisecond.Seconds(), sum)
 
@@ -165,13 +166,13 @@ func testRecordRequestCompletion(t *testing.T) {
 
 	time.Sleep(10 * time.Millisecond)
 	pm.RecordRequestCompletion(t.Context(), true, nil)
-	count, sum := getHistogramValues(t, mr, genaiMetricServerRequestDuration, attrsSuccess)
+	count, sum := testotel.GetHistogramValues(t, mr, genaiMetricServerRequestDuration, attrsSuccess)
 	assert.Equal(t, uint64(1), count)
 	assert.Equal(t, 10*time.Millisecond.Seconds(), sum)
 
 	pm.RecordRequestCompletion(t.Context(), false, nil)
 	pm.RecordRequestCompletion(t.Context(), false, nil)
-	count, sum = getHistogramValues(t, mr, genaiMetricServerRequestDuration, attrsFailure)
+	count, sum = testotel.GetHistogramValues(t, mr, genaiMetricServerRequestDuration, attrsFailure)
 	assert.Equal(t, uint64(2), count)
 	assert.Equal(t, 2*10*time.Millisecond.Seconds(), sum)
 }
@@ -226,7 +227,7 @@ func TestHeaderLabelMapping(t *testing.T) {
 		attribute.Key("org_id").String("org456"),
 	)
 
-	count, _ := getHistogramValues(t, mr, genaiMetricClientTokenUsage, attrs)
+	count, _ := testotel.GetHistogramValues(t, mr, genaiMetricClientTokenUsage, attrs)
 	assert.Equal(t, uint64(1), count)
 }
 

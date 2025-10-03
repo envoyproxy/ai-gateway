@@ -1,0 +1,118 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: MCPRoute
+metadata:
+  name: mcp-route
+  namespace: default
+spec:
+  parentRefs:
+    - name: aigw-run
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  path: "/mcp"
+  backendRefs:
+  {{- range . }}
+    - name: {{ .Name }}
+      kind: Backend
+      group: gateway.envoyproxy.io
+      path: "{{ .Path }}"
+      {{- if .Tools }}
+      toolSelector:
+        include:
+          {{- range .Tools }}
+          - {{ . }}
+          {{- end }}
+      {{- end }}
+    {{- if .BearerToken }}
+      securityPolicy:
+        apiKey:
+          secretRef:
+            name: {{ .Name }}-token
+    {{- end}}
+  {{- end }}
+---
+{{- range . }}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: {{ .Name }}
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: {{ .Hostname }}
+        port: {{ .Port }}
+---
+{{ if eq .Protocol "https" }}
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: {{ .Name }}-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: {{ .Name }}
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: {{ .Hostname }}
+---
+{{- end }}
+{{- if .BearerToken }}
+kind: Secret
+apiVersion: v1
+metadata:
+  name: {{ .Name }}-token
+  namespace: default
+type: Opaque
+stringData:
+  apiKey: {{ .BearerToken }}
+---
+{{- end }}
+{{- end }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: aigw-run
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: aigw-run
+  namespace: default
+spec:
+  gatewayClassName: aigw-run
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 1975
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: envoy-ai-gateway
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: envoy-ai-gateway
+  namespace: default
+spec:
+  logging:
+    level:
+      default: error
+  bootstrap:
+    type: Merge
+    value: |-
+      admin:
+        address:
+          socket_address:
+            address: 127.0.0.1
+            port_value: 9901
