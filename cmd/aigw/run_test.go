@@ -8,6 +8,7 @@ package main
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"io"
@@ -32,6 +33,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 func TestRun(t *testing.T) {
@@ -39,6 +41,10 @@ func TestRun(t *testing.T) {
 	if ollamaModel == "" || !checkIfOllamaReady(t, ollamaModel) {
 		t.Skipf("Ollama not ready or model %q missing. Run 'ollama pull %s' if needed.", ollamaModel, ollamaModel)
 	}
+
+	ports := internaltesting.RequireRandomPorts(t, 1)
+	// TODO: parameterize the main listen port 1975
+	adminPort := ports[0]
 
 	t.Setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
 	t.Setenv("OPENAI_API_KEY", "unused")
@@ -48,7 +54,7 @@ func TestRun(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		opts := runOpts{extProcLauncher: mainlib.Main}
-		require.NoError(t, run(ctx, cmdRun{Debug: true}, opts, os.Stdout, os.Stderr))
+		require.NoError(t, run(ctx, cmdRun{Debug: true, AdminPort: adminPort}, opts, os.Stdout, os.Stderr))
 		close(done)
 	}()
 	defer func() { cancel(); <-done }()
@@ -76,7 +82,7 @@ func TestRun(t *testing.T) {
 
 	t.Run("access metrics", func(t *testing.T) {
 		require.Eventually(t, func() bool {
-			req, err := http.NewRequest(http.MethodGet, "http://localhost:1064/metrics", nil)
+			req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://localhost:%d/metrics", adminPort), nil)
 			require.NoError(t, err)
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
@@ -111,6 +117,10 @@ func TestRunExtprocStartFailure(t *testing.T) {
 }
 
 func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
+	ports := internaltesting.RequireRandomPorts(t, 1)
+	// TODO: parameterize the main listen port 1975
+	adminPort := ports[0]
+
 	t.Setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
 	t.Setenv("OPENAI_API_KEY", "unused")
 
@@ -118,6 +128,7 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 		stderrLogger:             slog.New(slog.NewTextHandler(os.Stderr, nil)),
 		envoyGatewayResourcesOut: &bytes.Buffer{},
 		tmpdir:                   t.TempDir(),
+		adminPort:                adminPort,
 		extProcLauncher:          mainlib.Main,
 		// UNIX doesn't like a long UDS path, so we use a short one.
 		// https://unix.stackexchange.com/questions/367008/why-is-socket-path-length-limited-to-a-hundred-chars
@@ -125,7 +136,7 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 	}
 	config := readFileFromProjectRoot(t, "examples/aigw/ollama.yaml")
 	ctx, cancel := context.WithCancel(t.Context())
-	_, done, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, config)
+	_, done, _, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, config)
 	require.NoError(t, err)
 	time.Sleep(time.Second)
 	cancel()
@@ -133,10 +144,31 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 	require.NoError(t, <-done)
 }
 
+//go:embed testdata/gateway_no_listeners.yaml
+var gatewayNoListenersConfig string
+
+func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc_noListeners(t *testing.T) {
+	ports := internaltesting.RequireRandomPorts(t, 1)
+	// TODO: parameterize the main listen port 1975
+	adminPort := ports[0]
+
+	runCtx := &runCmdContext{
+		stderrLogger:             slog.New(slog.DiscardHandler),
+		envoyGatewayResourcesOut: &bytes.Buffer{},
+		tmpdir:                   t.TempDir(),
+		adminPort:                adminPort,
+		udsPath:                  filepath.Join("/tmp", "run-test.sock"),
+	}
+
+	_, _, _, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(t.Context(), gatewayNoListenersConfig)
+	require.EqualError(t, err, "gateway aigw-run has no listeners configured")
+}
+
 func Test_mustStartExtProc(t *testing.T) {
 	mockErr := errors.New("mock extproc error")
 	runCtx := &runCmdContext{
 		tmpdir:          t.TempDir(),
+		adminPort:       1064,
 		extProcLauncher: func(context.Context, []string, io.Writer) error { return mockErr },
 		stderrLogger:    slog.New(slog.NewTextHandler(os.Stderr, nil)),
 	}
@@ -223,6 +255,47 @@ admin:
 	}
 }
 
+func TestTryFindEnvoyListenerPort(t *testing.T) {
+	gwWithListener := func(port gwapiv1.PortNumber) *gwapiv1.Gateway {
+		return &gwapiv1.Gateway{
+			Spec: gwapiv1.GatewaySpec{
+				Listeners: []gwapiv1.Listener{
+					{Port: port},
+				},
+			},
+		}
+	}
+
+	tests := []struct {
+		name string
+		gw   *gwapiv1.Gateway
+		want int
+	}{
+		{
+			name: "gateway with no listeners",
+			gw:   &gwapiv1.Gateway{},
+			want: 0,
+		},
+		{
+			name: "gateway with listener on port 1975",
+			gw:   gwWithListener(1975),
+			want: 1975,
+		},
+	}
+
+	runCtx := &runCmdContext{
+		tmpdir:       t.TempDir(),
+		stderrLogger: slog.New(slog.DiscardHandler),
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			port := runCtx.tryFindEnvoyListenerPort(tt.gw)
+			require.Equal(t, tt.want, port)
+		})
+	}
+}
+
 func TestPollEnvoyReady(t *testing.T) {
 	successAt := 5
 	var callCount int
@@ -239,15 +312,9 @@ func TestPollEnvoyReady(t *testing.T) {
 
 	l := slog.New(slog.DiscardHandler)
 
-	t.Run("empty address", func(t *testing.T) {
-		t.Cleanup(func() { callCount = 0 })
-		pollEnvoyReadiness(t.Context(), l, "", 50*time.Millisecond)
-		require.Zero(t, callCount)
-	})
-
 	t.Run("ready", func(t *testing.T) {
 		t.Cleanup(func() { callCount = 0 })
-		pollEnvoyReadiness(t.Context(), l, u.Host, 50*time.Millisecond)
+		pollEnvoyAdminReady(t.Context(), l, u.Host, 50*time.Millisecond)
 		require.Equal(t, successAt, callCount)
 	})
 
@@ -255,7 +322,7 @@ func TestPollEnvoyReady(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		t.Cleanup(cancel)
 		t.Cleanup(func() { callCount = 0 })
-		pollEnvoyReadiness(ctx, l, u.Host, 50*time.Millisecond)
+		pollEnvoyAdminReady(ctx, l, u.Host, 50*time.Millisecond)
 		require.Less(t, callCount, successAt)
 	})
 }

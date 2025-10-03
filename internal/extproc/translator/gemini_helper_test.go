@@ -34,13 +34,13 @@ func TestOpenAIMessagesToGeminiContents(t *testing.T) {
 				{
 					OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
 						Role:    openai.ChatMessageRoleDeveloper,
-						Content: openai.StringOrArray{Value: "This is a developer message"},
+						Content: openai.ContentUnion{Value: "This is a developer message"},
 					},
 				},
 				{
 					OfSystem: &openai.ChatCompletionSystemMessageParam{
 						Role:    openai.ChatMessageRoleSystem,
-						Content: openai.StringOrArray{Value: "This is a system message"},
+						Content: openai.ContentUnion{Value: "This is a system message"},
 					},
 				},
 				{
@@ -69,7 +69,7 @@ func TestOpenAIMessagesToGeminiContents(t *testing.T) {
 				{
 					OfTool: &openai.ChatCompletionToolMessageParam{
 						ToolCallID: "tool_call_1",
-						Content:    openai.StringOrArray{Value: "This is a message from the example_tool"},
+						Content:    openai.ContentUnion{Value: "This is a message from the example_tool"},
 					},
 				},
 			},
@@ -349,7 +349,7 @@ func TestDeveloperMsgToGeminiParts(t *testing.T) {
 		{
 			name: "string content",
 			msg: openai.ChatCompletionDeveloperMessageParam{
-				Content: openai.StringOrArray{
+				Content: openai.ContentUnion{
 					Value: "This is a system message",
 				},
 				Role: openai.ChatMessageRoleSystem,
@@ -361,7 +361,7 @@ func TestDeveloperMsgToGeminiParts(t *testing.T) {
 		{
 			name: "content as string array",
 			msg: openai.ChatCompletionDeveloperMessageParam{
-				Content: openai.StringOrArray{
+				Content: openai.ContentUnion{
 					Value: []openai.ChatCompletionContentPartTextParam{
 						{Text: "This is a system message"},
 						{Text: "It can be multiline"},
@@ -377,7 +377,7 @@ func TestDeveloperMsgToGeminiParts(t *testing.T) {
 		{
 			name: "invalid content type",
 			msg: openai.ChatCompletionDeveloperMessageParam{
-				Content: openai.StringOrArray{
+				Content: openai.ContentUnion{
 					Value: 10, // Invalid type.
 				},
 				Role: openai.ChatMessageRoleSystem,
@@ -417,7 +417,7 @@ func TestToolMsgToGeminiParts(t *testing.T) {
 		{
 			name: "Tool message with invalid content",
 			msg: openai.ChatCompletionToolMessageParam{
-				Content: openai.StringOrArray{
+				Content: openai.ContentUnion{
 					Value: 10, // Invalid type.
 				},
 				Role:       openai.ChatMessageRoleTool,
@@ -429,7 +429,7 @@ func TestToolMsgToGeminiParts(t *testing.T) {
 		{
 			name: "Tool message with string content",
 			msg: openai.ChatCompletionToolMessageParam{
-				Content: openai.StringOrArray{
+				Content: openai.ContentUnion{
 					Value: "This is a tool message",
 				},
 				Role:       openai.ChatMessageRoleTool,
@@ -446,7 +446,7 @@ func TestToolMsgToGeminiParts(t *testing.T) {
 		{
 			name: "Tool message with string array content",
 			msg: openai.ChatCompletionToolMessageParam{
-				Content: openai.StringOrArray{
+				Content: openai.ContentUnion{
 					Value: []openai.ChatCompletionContentPartTextParam{
 						{
 							Type: string(openai.ChatCompletionContentPartTextTypeText),

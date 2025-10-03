@@ -17,7 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
 	openaigo "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
@@ -44,6 +43,10 @@ func failIf5xx(t *testing.T, resp *http.Response, was5xx *bool) {
 // This does not require any environment variables to be set as it relies on the test upstream.
 func TestWithTestUpstream(t *testing.T) {
 	now := time.Unix(int64(time.Now().Second()), 0).UTC()
+
+	// Substitute any dynamically generated UUIDs in the response body with a placeholder
+	// example generated UUID 703482f8-2e5b-4dcc-a872-d74bd66c386.
+	m := regexp.MustCompile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
 	config := &filterapi.Config{
 		MetadataNamespace: "ai_gateway_llm_ns",
@@ -178,15 +181,16 @@ func TestWithTestUpstream(t *testing.T) {
 			expStatus:       http.StatusOK,
 		},
 		{
-			name:           "aws-bedrock - /v1/chat/completions - tool call results",
-			backend:        "aws-bedrock",
-			path:           "/v1/chat/completions",
-			expPath:        "/model/gpt-4-0613/converse",
-			method:         http.MethodPost,
-			requestBody:    toolCallResultsRequestBody,
-			expRequestBody: `{"inferenceConfig":{"maxTokens":1024},"messages":[{"content":[{"text":"List the files in the /tmp directory"}],"role":"user"},{"content":[{"toolUse":{"name":"list_files","input":{"path":"/tmp"},"toolUseId":"call_abc123"}}],"role":"assistant"},{"content":[{"toolResult":{"content":[{"text":"[\"foo.txt\", \"bar.log\", \"data.csv\"]"}],"status":null,"toolUseId":"call_abc123"}}],"role":"user"}]}`,
-			responseBody:   `{"output":{"message":{"content":[{"text":"response"},{"text":"from"},{"text":"assistant"}],"role":"assistant"}},"stopReason":null,"usage":{"inputTokens":10,"outputTokens":20,"totalTokens":30}}`,
-			expStatus:      http.StatusOK,
+			name:            "aws-bedrock - /v1/chat/completions - tool call results",
+			backend:         "aws-bedrock",
+			path:            "/v1/chat/completions",
+			expPath:         "/model/gpt-4-0613/converse",
+			method:          http.MethodPost,
+			requestBody:     toolCallResultsRequestBody,
+			expRequestBody:  `{"inferenceConfig":{"maxTokens":1024},"messages":[{"content":[{"text":"List the files in the /tmp directory"}],"role":"user"},{"content":[{"toolUse":{"name":"list_files","input":{"path":"/tmp"},"toolUseId":"call_abc123"}}],"role":"assistant"},{"content":[{"toolResult":{"content":[{"text":"[\"foo.txt\", \"bar.log\", \"data.csv\"]"}],"status":null,"toolUseId":"call_abc123"}}],"role":"user"}]}`,
+			responseBody:    `{"output":{"message":{"content":[{"text":"response"},{"text":"from"},{"text":"assistant"}],"role":"assistant"}},"stopReason":null,"usage":{"inputTokens":10,"outputTokens":20,"totalTokens":30}}`,
+			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"response","role":"assistant"}}],"object":"chat.completion","usage":{"completion_tokens":20,"prompt_tokens":10,"total_tokens":30}}`,
+			expStatus:       http.StatusOK,
 		},
 		{
 			name:            "gcp-anthropic - /v1/chat/completions - tool call results",
@@ -298,7 +302,7 @@ data: {"choices":[{"index":0,"delta":{"content":" seems like you're testing my a
 
 data: {"choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls"}],"object":"chat.completion.chunk"}
 
-data: {"object":"chat.completion.chunk","usage":{"completion_tokens":36,"prompt_tokens":41,"total_tokens":77}}
+data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":41,"completion_tokens":36,"total_tokens":77}}
 
 data: [DONE]
 `,
@@ -480,7 +484,7 @@ data: {"choices":[{"index":0,"delta":{"content":" you","role":"assistant"}}],"ob
 
 data: {"choices":[{"index":0,"delta":{"content":" today","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":"?","role":"assistant"},"finish_reason":"stop"}],"object":"chat.completion.chunk","usage":{"completion_tokens":7,"prompt_tokens":10,"total_tokens":17}}
+data: {"choices":[{"index":0,"delta":{"content":"?","role":"assistant"},"finish_reason":"stop"}],"object":"chat.completion.chunk","usage":{"prompt_tokens":10,"completion_tokens":7,"total_tokens":17}}
 
 data: [DONE]
 `,
@@ -525,7 +529,7 @@ data: {"choices":[{"index":0,"delta":{"content":" due to Rayleigh scattering."}}
 
 data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"object":"chat.completion.chunk"}
 
-data: {"object":"chat.completion.chunk","usage":{"completion_tokens":12,"prompt_tokens":15,"total_tokens":27}}
+data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":15,"completion_tokens":12,"total_tokens":27}}
 
 data: [DONE]
 
@@ -590,7 +594,7 @@ data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":null,"functi
 
 data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"object":"chat.completion.chunk"}
 
-data: {"object":"chat.completion.chunk","usage":{"completion_tokens":20,"prompt_tokens":50,"total_tokens":70}}
+data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":50,"completion_tokens":20,"total_tokens":70}}
 
 data: [DONE]
 
@@ -781,83 +785,80 @@ data: {"type": "message_stop"}
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			listenerAddress := fmt.Sprintf("http://localhost:%d", listenerPort)
+			req, err := http.NewRequestWithContext(t.Context(), tc.method, listenerAddress+tc.path, strings.NewReader(tc.requestBody))
+			require.NoError(t, err)
+			req.Header.Set("x-test-backend", tc.backend)
+			req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
+			req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expPath)))
+			req.Header.Set(testupstreamlib.ResponseStatusKey, tc.responseStatus)
+
+			var expHeaders []string
+			for k, v := range tc.expHeaders {
+				expHeaders = append(expHeaders, fmt.Sprintf("%s:%s", k, v))
+			}
+			if len(expHeaders) > 0 {
+				req.Header.Set(
+					testupstreamlib.ExpectedHeadersKey,
+					base64.StdEncoding.EncodeToString(
+						[]byte(strings.Join(expHeaders, ","))),
+				)
+			}
+
+			if tc.expRawQuery != "" {
+				req.Header.Set(testupstreamlib.ExpectedRawQueryHeaderKey, tc.expRawQuery)
+			}
+			if tc.expHost != "" {
+				req.Header.Set(testupstreamlib.ExpectedHostKey, tc.expHost)
+			}
+			if tc.responseType != "" {
+				req.Header.Set(testupstreamlib.ResponseTypeKey, tc.responseType)
+			}
+			if tc.responseHeaders != "" {
+				req.Header.Set(testupstreamlib.ResponseHeadersKey, base64.StdEncoding.EncodeToString([]byte(tc.responseHeaders)))
+			}
+			if tc.expRequestBody != "" {
+				req.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expRequestBody)))
+			}
+
+			var lastErr error
+			var lastStatusCode int
+			var lastBody []byte
+
 			require.Eventually(t, func() bool {
-				listenerAddress := fmt.Sprintf("http://localhost:%d", listenerPort)
-				req, err := http.NewRequestWithContext(t.Context(), tc.method, listenerAddress+tc.path, strings.NewReader(tc.requestBody))
-				require.NoError(t, err)
-				req.Header.Set("x-test-backend", tc.backend)
-				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
-				req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expPath)))
-				req.Header.Set(testupstreamlib.ResponseStatusKey, tc.responseStatus)
-
-				var expHeaders []string
-				for k, v := range tc.expHeaders {
-					expHeaders = append(expHeaders, fmt.Sprintf("%s:%s", k, v))
-				}
-				if len(expHeaders) > 0 {
-					req.Header.Set(
-						testupstreamlib.ExpectedHeadersKey,
-						base64.StdEncoding.EncodeToString(
-							[]byte(strings.Join(expHeaders, ","))),
-					)
-				}
-
-				if tc.expRawQuery != "" {
-					req.Header.Set(testupstreamlib.ExpectedRawQueryHeaderKey, tc.expRawQuery)
-				}
-				if tc.expHost != "" {
-					req.Header.Set(testupstreamlib.ExpectedHostKey, tc.expHost)
-				}
-				if tc.responseType != "" {
-					req.Header.Set(testupstreamlib.ResponseTypeKey, tc.responseType)
-				}
-				if tc.responseHeaders != "" {
-					req.Header.Set(testupstreamlib.ResponseHeadersKey, base64.StdEncoding.EncodeToString([]byte(tc.responseHeaders)))
-				}
-				if tc.expRequestBody != "" {
-					req.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expRequestBody)))
-				}
-
-				resp, err := http.DefaultClient.Do(req)
-				if err != nil {
-					t.Logf("error: %v", err)
+				var resp *http.Response
+				resp, lastErr = http.DefaultClient.Do(req)
+				if lastErr != nil {
 					return false
 				}
 				defer func() { _ = resp.Body.Close() }()
 
 				failIf5xx(t, resp, &was5xx)
 
-				if resp.StatusCode != tc.expStatus {
-					t.Logf("unexpected status code: %d", resp.StatusCode)
+				lastBody, lastErr = io.ReadAll(resp.Body)
+				if lastErr != nil {
 					return false
 				}
 
-				if tc.expResponseBody != "" {
-					bodyBytes, err := io.ReadAll(resp.Body)
-					if err != nil {
-						t.Logf("error reading response body: %v", err)
-						return false
-					}
+				lastStatusCode = resp.StatusCode
+				return resp.StatusCode == tc.expStatus
+			}, eventuallyTimeout, eventuallyInterval,
+				"Test failed - Last error: %v, Last status code: %d (expected: %d), Last body: %s",
+				lastErr, lastStatusCode, tc.expStatus, lastBody)
 
-					// Substitute any dynamically generated UUIDs in the response body with a placeholder
-					// example generated UUID 703482f8-2e5b-4dcc-a872-d74bd66c386.
-					m := regexp.MustCompile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
-					body := m.ReplaceAllString(string(bodyBytes), "<UUID4-replaced>")
-					expectedResponseBody := m.ReplaceAllString(tc.expResponseBody, "<UUID4-replaced>")
-					if body != expectedResponseBody {
-						t.Logf("unexpected response (-want +got):\n%s", cmp.Diff(tc.expResponseBody, body))
-						return false
-					}
-				} else if tc.expResponseBodyFunc != nil {
-					body, err := io.ReadAll(resp.Body)
-					if err != nil {
-						t.Logf("error reading response body: %v", err)
-						return false
-					}
-					tc.expResponseBodyFunc(t, body)
-				}
-				return true
-			}, eventuallyTimeout, eventuallyInterval)
+			// Now perform assertions on the body outside the Eventually loop
+			switch {
+			case tc.expResponseBodyFunc != nil:
+				tc.expResponseBodyFunc(t, lastBody)
+			case tc.responseType != "" || tc.expStatus == http.StatusNotFound:
+				// Use plain-text comparison for streaming or 404 responses
+				require.Equal(t, tc.expResponseBody, string(lastBody), "Response body mismatch")
+			default:
+				// Use JSON comparison for regular responses
+				bodyStr := m.ReplaceAllString(string(lastBody), "<UUID4-replaced>")
+				expectedResponseBody := m.ReplaceAllString(tc.expResponseBody, "<UUID4-replaced>")
+				require.JSONEq(t, expectedResponseBody, bodyStr, "Response body mismatch")
+			}
 		})
 	}
 

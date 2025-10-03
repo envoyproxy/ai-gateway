@@ -85,3 +85,47 @@ func (c *headerMutationCarrier) Set(key, value string) {
 func (c *headerMutationCarrier) Keys() []string {
 	panic("unexpected as this carrier is write-only for injection")
 }
+
+// Ensure embeddingsTracer implements [tracing.EmbeddingsTracer].
+var _ tracing.EmbeddingsTracer = (*embeddingsTracer)(nil)
+
+func newEmbeddingsTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.EmbeddingsRecorder) tracing.EmbeddingsTracer {
+	// Check if the tracer is a no-op by checking its type.
+	if _, ok := tracer.(noop.Tracer); ok {
+		return tracing.NoopEmbeddingsTracer{}
+	}
+	return &embeddingsTracer{
+		tracer:     tracer,
+		propagator: propagator,
+		recorder:   recorder,
+	}
+}
+
+type embeddingsTracer struct {
+	tracer     trace.Tracer
+	recorder   tracing.EmbeddingsRecorder
+	propagator propagation.TextMapPropagator
+}
+
+// StartSpanAndInjectHeaders implements [tracing.EmbeddingsTracer.StartSpanAndInjectHeaders].
+func (t *embeddingsTracer) StartSpanAndInjectHeaders(ctx context.Context, headers map[string]string, mutableHeaders *extprocv3.HeaderMutation, req *openai.EmbeddingRequest, body []byte) tracing.EmbeddingsSpan {
+	// Extract trace context from incoming headers.
+	parentCtx := t.propagator.Extract(ctx, propagation.MapCarrier(headers))
+
+	// Start the span with options appropriate for the semantic convention.
+	spanName, opts := t.recorder.StartParams(req, body)
+	newCtx, span := t.tracer.Start(parentCtx, spanName, opts...)
+
+	// Always inject trace context into the header mutation if provided.
+	// This ensures trace propagation works even for unsampled spans.
+	t.propagator.Inject(newCtx, &headerMutationCarrier{m: mutableHeaders})
+
+	// Only record request attributes if span is recording (sampled).
+	// This avoids expensive body processing for unsampled spans.
+	if span.IsRecording() {
+		t.recorder.RecordRequest(span, req, body)
+		return &embeddingsSpan{span: span, recorder: t.recorder}
+	}
+
+	return nil
+}

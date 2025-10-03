@@ -18,6 +18,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 )
 
 func TestNewProcessorMetrics(t *testing.T) {
@@ -63,6 +64,8 @@ func TestRecordTokenUsage(t *testing.T) {
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
 			// gen_ai.provider.name - https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#common-attributes
 			attribute.Key(genaiAttributeProviderName).String(genaiProviderOpenAI),
+			// gen_ai.original.model - the original model from the request
+			attribute.Key(genaiAttributeOriginalModel).String("test-model"),
 			// gen_ai.request.model - https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#common-attributes
 			attribute.Key(genaiAttributeRequestModel).String("test-model"),
 			attribute.Key(genaiAttributeResponseModel).String("test-model"),
@@ -72,16 +75,17 @@ func TestRecordTokenUsage(t *testing.T) {
 		outputAttrs = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeOutput))...)
 	)
 
+	pm.SetOriginalModel("test-model")
 	pm.SetRequestModel("test-model")
 	pm.SetResponseModel("test-model")
 	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 	pm.RecordTokenUsage(t.Context(), 10, 5, nil)
 
-	count, sum := getHistogramValues(t, mr, genaiMetricClientTokenUsage, inputAttrs)
+	count, sum := testotel.GetHistogramValues(t, mr, genaiMetricClientTokenUsage, inputAttrs)
 	assert.Equal(t, uint64(1), count)
 	assert.Equal(t, 10.0, sum)
 
-	count, sum = getHistogramValues(t, mr, genaiMetricClientTokenUsage, outputAttrs)
+	count, sum = testotel.GetHistogramValues(t, mr, genaiMetricClientTokenUsage, outputAttrs)
 	assert.Equal(t, uint64(1), count)
 	assert.Equal(t, 5.0, sum)
 }
@@ -100,12 +104,14 @@ func testRecordTokenLatency(t *testing.T) {
 		attrs = attribute.NewSet(
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
 			attribute.Key(genaiAttributeProviderName).String(genaiProviderAWSBedrock),
+			attribute.Key(genaiAttributeOriginalModel).String("test-model"),
 			attribute.Key(genaiAttributeRequestModel).String("test-model"),
 			attribute.Key(genaiAttributeResponseModel).String("test-model"),
 		)
 	)
 
 	pm.StartRequest(nil)
+	pm.SetOriginalModel("test-model")
 	pm.SetRequestModel("test-model")
 	pm.SetResponseModel("test-model")
 	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}})
@@ -113,7 +119,7 @@ func testRecordTokenLatency(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 	pm.RecordTokenLatency(t.Context(), 1, false, nil)
 	assert.True(t, pm.firstTokenSent)
-	count, sum := getHistogramValues(t, mr, genaiMetricServerTimeToFirstToken, attrs)
+	count, sum := testotel.GetHistogramValues(t, mr, genaiMetricServerTimeToFirstToken, attrs)
 	assert.Equal(t, uint64(1), count)
 	assert.Equal(t, 10*time.Millisecond.Seconds(), sum)
 
@@ -144,6 +150,7 @@ func testRecordRequestCompletion(t *testing.T) {
 		attrs = []attribute.KeyValue{
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
 			attribute.Key(genaiAttributeProviderName).String("custom"),
+			attribute.Key(genaiAttributeOriginalModel).String("test-model"),
 			attribute.Key(genaiAttributeRequestModel).String("test-model"),
 			attribute.Key(genaiAttributeResponseModel).String("test-model"),
 		}
@@ -152,19 +159,20 @@ func testRecordRequestCompletion(t *testing.T) {
 	)
 
 	pm.StartRequest(nil)
+	pm.SetOriginalModel("test-model")
 	pm.SetRequestModel("test-model")
 	pm.SetResponseModel("test-model")
 	pm.SetBackend(&filterapi.Backend{Name: "custom"})
 
 	time.Sleep(10 * time.Millisecond)
 	pm.RecordRequestCompletion(t.Context(), true, nil)
-	count, sum := getHistogramValues(t, mr, genaiMetricServerRequestDuration, attrsSuccess)
+	count, sum := testotel.GetHistogramValues(t, mr, genaiMetricServerRequestDuration, attrsSuccess)
 	assert.Equal(t, uint64(1), count)
 	assert.Equal(t, 10*time.Millisecond.Seconds(), sum)
 
 	pm.RecordRequestCompletion(t.Context(), false, nil)
 	pm.RecordRequestCompletion(t.Context(), false, nil)
-	count, sum = getHistogramValues(t, mr, genaiMetricServerRequestDuration, attrsFailure)
+	count, sum = testotel.GetHistogramValues(t, mr, genaiMetricServerRequestDuration, attrsFailure)
 	assert.Equal(t, uint64(2), count)
 	assert.Equal(t, 2*10*time.Millisecond.Seconds(), sum)
 }
@@ -198,6 +206,7 @@ func TestHeaderLabelMapping(t *testing.T) {
 		"x-other":   "ignored", // This should be ignored as it's not in the mapping.
 	}
 
+	pm.SetOriginalModel("test-model")
 	pm.SetRequestModel("test-model")
 	pm.SetResponseModel("test-model")
 	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
@@ -210,6 +219,7 @@ func TestHeaderLabelMapping(t *testing.T) {
 	attrs := attribute.NewSet(
 		attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
 		attribute.Key(genaiAttributeProviderName).String(genaiProviderOpenAI),
+		attribute.Key(genaiAttributeOriginalModel).String("test-model"),
 		attribute.Key(genaiAttributeRequestModel).String("test-model"),
 		attribute.Key(genaiAttributeResponseModel).String("test-model"),
 		attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput),
@@ -217,7 +227,7 @@ func TestHeaderLabelMapping(t *testing.T) {
 		attribute.Key("org_id").String("org456"),
 	)
 
-	count, _ := getHistogramValues(t, mr, genaiMetricClientTokenUsage, attrs)
+	count, _ := testotel.GetHistogramValues(t, mr, genaiMetricClientTokenUsage, attrs)
 	assert.Equal(t, uint64(1), count)
 }
 
@@ -238,6 +248,8 @@ func TestModelNameHeaderKey(t *testing.T) {
 	pm.StartRequest(headers)
 	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}})
 
+	// Simulate the original model from request body before override
+	pm.SetOriginalModel("llama3-2-1b")
 	// This simulates the processor setting the model from the header
 	pm.SetRequestModel("backend-specific-model")
 	// Response model is what the backend actually used
@@ -245,10 +257,11 @@ func TestModelNameHeaderKey(t *testing.T) {
 
 	pm.RecordTokenUsage(t.Context(), 10, 5, headers)
 
-	// Verify metrics use the overridden request model
+	// Verify metrics use the overridden request model and original model
 	inputAttrs := attribute.NewSet(
 		attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
 		attribute.Key(genaiAttributeProviderName).String(genaiProviderAWSBedrock),
+		attribute.Key(genaiAttributeOriginalModel).String("llama3-2-1b"),
 		attribute.Key(genaiAttributeRequestModel).String("backend-specific-model"),
 		attribute.Key(genaiAttributeResponseModel).String("us.meta.llama3-2-1b-instruct-v1:0"),
 		attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput),
@@ -264,6 +277,7 @@ func TestLabels_SetModel_RequestAndResponseDiffer(t *testing.T) {
 	pm := NewChatCompletion(meter, nil).(*chatCompletion)
 
 	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
+	pm.SetOriginalModel("orig-model")
 	pm.SetRequestModel("req-model")
 	pm.SetResponseModel("res-model")
 	pm.RecordTokenUsage(t.Context(), 1, 2, nil)
@@ -271,6 +285,7 @@ func TestLabels_SetModel_RequestAndResponseDiffer(t *testing.T) {
 	inputAttrs := attribute.NewSet(
 		attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
 		attribute.Key(genaiAttributeProviderName).String(genaiProviderOpenAI),
+		attribute.Key(genaiAttributeOriginalModel).String("orig-model"),
 		attribute.Key(genaiAttributeRequestModel).String("req-model"),
 		attribute.Key(genaiAttributeResponseModel).String("res-model"),
 		attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput),
@@ -282,6 +297,7 @@ func TestLabels_SetModel_RequestAndResponseDiffer(t *testing.T) {
 	outputAttrs := attribute.NewSet(
 		attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
 		attribute.Key(genaiAttributeProviderName).String(genaiProviderOpenAI),
+		attribute.Key(genaiAttributeOriginalModel).String("orig-model"),
 		attribute.Key(genaiAttributeRequestModel).String("req-model"),
 		attribute.Key(genaiAttributeResponseModel).String("res-model"),
 		attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeOutput),
@@ -327,11 +343,13 @@ func TestRecordTokenLatency_MaxAcrossStream_EndHasNoUsage(t *testing.T) {
 		attrs := attribute.NewSet(
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
 			attribute.Key(genaiAttributeProviderName).String(genaiProviderAWSBedrock),
+			attribute.Key(genaiAttributeOriginalModel).String("test-model"),
 			attribute.Key(genaiAttributeRequestModel).String("test-model"),
 			attribute.Key(genaiAttributeResponseModel).String("test-model"),
 		)
 
 		pm.StartRequest(nil)
+		pm.SetOriginalModel("test-model")
 		pm.SetRequestModel("test-model")
 		pm.SetResponseModel("test-model")
 		pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}})
@@ -366,11 +384,13 @@ func TestRecordTokenLatency_OnlyFinalUsage(t *testing.T) {
 		attrs := attribute.NewSet(
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
 			attribute.Key(genaiAttributeProviderName).String(genaiProviderAWSBedrock),
+			attribute.Key(genaiAttributeOriginalModel).String("test-model"),
 			attribute.Key(genaiAttributeRequestModel).String("test-model"),
 			attribute.Key(genaiAttributeResponseModel).String("test-model"),
 		)
 
 		pm.StartRequest(nil)
+		pm.SetOriginalModel("test-model")
 		pm.SetRequestModel("test-model")
 		pm.SetResponseModel("test-model")
 		pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}})
@@ -403,11 +423,13 @@ func TestRecordTokenLatency_ZeroTokensFirst(t *testing.T) {
 		attrs := attribute.NewSet(
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
 			attribute.Key(genaiAttributeProviderName).String(genaiProviderOpenAI),
+			attribute.Key(genaiAttributeOriginalModel).String("test-model"),
 			attribute.Key(genaiAttributeRequestModel).String("test-model"),
 			attribute.Key(genaiAttributeResponseModel).String("test-model"),
 		)
 
 		pm.StartRequest(nil)
+		pm.SetOriginalModel("test-model")
 		pm.SetRequestModel("test-model")
 		pm.SetResponseModel("test-model")
 		pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
@@ -446,11 +468,13 @@ func TestRecordTokenLatency_SingleToken(t *testing.T) {
 		attrs := attribute.NewSet(
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
 			attribute.Key(genaiAttributeProviderName).String(genaiProviderOpenAI),
+			attribute.Key(genaiAttributeOriginalModel).String("test-model"),
 			attribute.Key(genaiAttributeRequestModel).String("test-model"),
 			attribute.Key(genaiAttributeResponseModel).String("test-model"),
 		)
 
 		pm.StartRequest(nil)
+		pm.SetOriginalModel("test-model")
 		pm.SetRequestModel("test-model")
 		pm.SetResponseModel("test-model")
 		pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
@@ -488,11 +512,13 @@ func TestRecordTokenLatency_MultipleChunksFormula(t *testing.T) {
 		attrs := attribute.NewSet(
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
 			attribute.Key(genaiAttributeProviderName).String(genaiProviderOpenAI),
+			attribute.Key(genaiAttributeOriginalModel).String("test-model"),
 			attribute.Key(genaiAttributeRequestModel).String("test-model"),
 			attribute.Key(genaiAttributeResponseModel).String("test-model"),
 		)
 
 		pm.StartRequest(nil)
+		pm.SetOriginalModel("test-model")
 		pm.SetRequestModel("test-model")
 		pm.SetResponseModel("test-model")
 		pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})

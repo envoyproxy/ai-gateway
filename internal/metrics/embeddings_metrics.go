@@ -24,6 +24,9 @@ type embeddings struct {
 type EmbeddingsMetrics interface {
 	// StartRequest initializes timing for a new request.
 	StartRequest(headers map[string]string)
+	// SetOriginalModel sets the original model from the incoming request body before any virtualization applies.
+	// This is usually called after parsing the request body. Example: text-embedding-3-small
+	SetOriginalModel(originalModel internalapi.OriginalModel)
 	// SetRequestModel sets the model from the request. This is usually called after parsing the request body.
 	// Example: text-embedding-3-small
 	SetRequestModel(requestModel internalapi.RequestModel)

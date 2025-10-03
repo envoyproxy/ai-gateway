@@ -1,0 +1,132 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: upgrade-test
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: upgrade-test
+  namespace: default
+spec:
+  gatewayClassName: upgrade-test
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: upgrade-test
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: upgrade-test
+  namespace: default
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        container:
+          # Clear the default memory/cpu requirements for local tests.
+          resources: {}
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: upgrade-test
+  namespace: default
+spec:
+  parentRefs:
+    - name: upgrade-test
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: some-cool-model
+      backendRefs:
+        - name: upgrade-test-cool-model-backend
+      timeouts:
+        request: 120s
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: upgrade-test-cool-model-backend
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: testupstream
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: testupstream
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: testupstream.default.svc.cluster.local
+        port: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: testupstream
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: testupstream
+  template:
+    metadata:
+      labels:
+        app: testupstream
+    spec:
+      containers:
+        - name: testupstream
+          image: docker.io/envoyproxy/ai-gateway-testupstream:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: TESTUPSTREAM_ID
+              value: whatever
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 1
+            periodSeconds: 1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: testupstream
+  namespace: default
+spec:
+  selector:
+    app: testupstream
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: ClusterIP

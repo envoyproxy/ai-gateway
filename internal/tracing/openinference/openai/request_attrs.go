@@ -181,3 +181,62 @@ func extractMessageContent(msg openai.ChatCompletionMessageParamUnion) string {
 func isBase64URL(url string) bool {
 	return strings.HasPrefix(url, "data:image/") && strings.Contains(url, "base64")
 }
+
+// embeddingsInvocationParameters is the representation of LLMInvocationParameters
+// for embeddings, which includes all parameters except input.
+type embeddingsInvocationParameters struct {
+	Model          string  `json:"model"`
+	EncodingFormat *string `json:"encoding_format,omitempty"`
+	Dimensions     *int    `json:"dimensions,omitempty"`
+	User           *string `json:"user,omitempty"`
+}
+
+// buildEmbeddingsRequestAttributes builds OpenInference attributes from the embeddings request.
+func buildEmbeddingsRequestAttributes(embRequest *openai.EmbeddingRequest, body []byte, config *openinference.TraceConfig) []attribute.KeyValue {
+	attrs := []attribute.KeyValue{
+		attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+		attribute.String(openinference.SpanKind, openinference.SpanKindEmbedding),
+	}
+
+	if config.HideInputs {
+		attrs = append(attrs, attribute.String(openinference.InputValue, openinference.RedactedValue))
+	} else {
+		attrs = append(attrs, attribute.String(openinference.InputValue, string(body)))
+		attrs = append(attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
+	}
+
+	if !config.HideLLMInvocationParameters {
+		params := embeddingsInvocationParameters{
+			Model:          embRequest.Model,
+			EncodingFormat: embRequest.EncodingFormat,
+			Dimensions:     embRequest.Dimensions,
+			User:           embRequest.User,
+		}
+		if invocationParamsJSON, err := json.Marshal(params); err == nil {
+			attrs = append(attrs, attribute.String(openinference.EmbeddingInvocationParameters, string(invocationParamsJSON)))
+		}
+	}
+
+	// Record embedding text attributes for string inputs only.
+	// We don't decode numeric tokens to text because:
+	// 1. OpenAI-compatible backends may use different tokenizers (Ollama, LocalAI, etc.)
+	// 2. The same token IDs mean different things in different tokenizers
+	// 3. It would require model-specific tokenizer libraries (tiktoken, sentencepiece, etc.)
+	// 4. Azure deployments don't affect this (they only host OpenAI models with cl100k_base)
+	// Following OpenInference spec guidance to only record human-readable text.
+	if !config.HideInputs && !config.HideEmbeddingsText {
+		switch input := embRequest.Input.Value.(type) {
+		case string:
+			attrs = append(attrs, attribute.String(openinference.EmbeddingTextAttribute(0), input))
+		case []string:
+			for i, text := range input {
+				attrs = append(attrs, attribute.String(openinference.EmbeddingTextAttribute(i), text))
+			}
+		// Token inputs are not recorded to reduce span size.
+		case []int64:
+		case [][]int64:
+		}
+	}
+
+	return attrs
+}

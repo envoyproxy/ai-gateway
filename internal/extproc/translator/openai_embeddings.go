@@ -18,11 +18,12 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 // NewEmbeddingOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI translation for embeddings.
-func NewEmbeddingOpenAIToOpenAITranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride) OpenAIEmbeddingTranslator {
-	return &openAIToOpenAITranslatorV1Embedding{modelNameOverride: modelNameOverride, path: path.Join("/", apiVersion, "embeddings")}
+func NewEmbeddingOpenAIToOpenAITranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride, span tracing.EmbeddingsSpan) OpenAIEmbeddingTranslator {
+	return &openAIToOpenAITranslatorV1Embedding{modelNameOverride: modelNameOverride, path: path.Join("/", apiVersion, "embeddings"), span: span}
 }
 
 // openAIToOpenAITranslatorV1Embedding is a passthrough translator for OpenAI Embeddings API.
@@ -32,6 +33,8 @@ type openAIToOpenAITranslatorV1Embedding struct {
 	modelNameOverride internalapi.ModelNameOverride
 	// The path of the embeddings endpoint to be used for the request. It is prefixed with the OpenAI path prefix.
 	path string
+	// span is the tracing span for this request, inherited from the router filter.
+	span tracing.EmbeddingsSpan
 }
 
 // RequestBody implements [OpenAIEmbeddingTranslator.RequestBody].
@@ -83,12 +86,18 @@ func (o *openAIToOpenAITranslatorV1Embedding) ResponseHeaders(map[string]string)
 // so we return the actual model from the response body which may differ from the requested model
 // (e.g., request "text-embedding-3-small" → response with specific version).
 func (o *openAIToOpenAITranslatorV1Embedding) ResponseBody(_ map[string]string, body io.Reader, _ bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel string, err error,
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
 	var resp openai.EmbeddingResponse
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
 		return nil, nil, tokenUsage, "", fmt.Errorf("failed to unmarshal body: %w", err)
 	}
+
+	// Record the response in the span if successful.
+	if o.span != nil {
+		o.span.RecordResponse(&resp)
+	}
+
 	tokenUsage = LLMTokenUsage{
 		InputTokens: uint32(resp.Usage.PromptTokens), //nolint:gosec
 		TotalTokens: uint32(resp.Usage.TotalTokens),  //nolint:gosec

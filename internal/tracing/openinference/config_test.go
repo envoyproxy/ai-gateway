@@ -22,7 +22,8 @@ func TestNewTraceConfig_Defaults(t *testing.T) {
 	require.Equal(t, defaultHideInputImages, config.HideInputImages)
 	require.Equal(t, defaultHideInputText, config.HideInputText)
 	require.Equal(t, defaultHideOutputText, config.HideOutputText)
-	require.Equal(t, defaultHideEmbeddingVectors, config.HideEmbeddingVectors)
+	require.Equal(t, defaultHideEmbeddingsVectors, config.HideEmbeddingsVectors)
+	require.Equal(t, defaultHideEmbeddingsText, config.HideEmbeddingsText)
 	require.Equal(t, defaultBase64ImageMaxLength, config.Base64ImageMaxLength)
 	require.Equal(t, defaultHidePrompts, config.HidePrompts)
 }
@@ -44,7 +45,8 @@ func TestNewTraceConfigFromEnv(t *testing.T) {
 				EnvHideInputImages:             "true",
 				EnvHideInputText:               "true",
 				EnvHideOutputText:              "true",
-				EnvHideEmbeddingVectors:        "true",
+				EnvHideEmbeddingsVectors:       "true",
+				EnvHideEmbeddingsText:          "true",
 				EnvHidePrompts:                 "true",
 				EnvBase64ImageMaxLength:        "10000",
 			},
@@ -57,7 +59,8 @@ func TestNewTraceConfigFromEnv(t *testing.T) {
 				require.True(t, config.HideInputImages)
 				require.True(t, config.HideInputText)
 				require.True(t, config.HideOutputText)
-				require.True(t, config.HideEmbeddingVectors)
+				require.True(t, config.HideEmbeddingsVectors)
+				require.True(t, config.HideEmbeddingsText)
 				require.True(t, config.HidePrompts)
 				require.Equal(t, 10000, config.Base64ImageMaxLength)
 			},
@@ -73,7 +76,8 @@ func TestNewTraceConfigFromEnv(t *testing.T) {
 				EnvHideInputImages:             "false",
 				EnvHideInputText:               "false",
 				EnvHideOutputText:              "false",
-				EnvHideEmbeddingVectors:        "false",
+				EnvHideEmbeddingsVectors:       "false",
+				EnvHideEmbeddingsText:          "false",
 				EnvHidePrompts:                 "false",
 				EnvBase64ImageMaxLength:        "50000",
 			},
@@ -86,7 +90,8 @@ func TestNewTraceConfigFromEnv(t *testing.T) {
 				require.False(t, config.HideInputImages)
 				require.False(t, config.HideInputText)
 				require.False(t, config.HideOutputText)
-				require.False(t, config.HideEmbeddingVectors)
+				require.False(t, config.HideEmbeddingsVectors)
+				require.False(t, config.HideEmbeddingsText)
 				require.False(t, config.HidePrompts)
 				require.Equal(t, 50000, config.Base64ImageMaxLength)
 			},

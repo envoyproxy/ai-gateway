@@ -58,7 +58,9 @@ func Test_embeddingsProcessorUpstreamFilter_SelectTranslator(t *testing.T) {
 
 func Test_embeddingsProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 	t.Run("body parser error", func(t *testing.T) {
-		p := &embeddingsProcessorRouterFilter{}
+		p := &embeddingsProcessorRouterFilter{
+			tracer: tracing.NoopEmbeddingsTracer{},
+		}
 		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: []byte("nonjson")})
 		require.ErrorContains(t, err, "invalid character 'o' in literal null")
 	})
@@ -70,6 +72,7 @@ func Test_embeddingsProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 			config:         &processorConfig{modelNameHeaderKey: modelKey},
 			requestHeaders: headers,
 			logger:         slog.Default(),
+			tracer:         tracing.NoopEmbeddingsTracer{},
 		}
 		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: embeddingBodyFromModel(t, "some-model")})
 		require.NoError(t, err)
@@ -320,7 +323,8 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) 
 		require.ErrorContains(t, err, "failed to transform request: test error")
 		mm.RequireRequestFailure(t)
 		mm.RequireTokenUsage(t, 0)
-		// Verify request model was set even though processing failed
+		// Verify models were set even though processing failed
+		require.Equal(t, "some-model", mm.originalModel)
 		require.Equal(t, "some-model", mm.requestModel)
 		require.Empty(t, mm.responseModel)
 	})
@@ -355,7 +359,8 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) 
 		require.Equal(t, bodyMut, commonRes.BodyMutation)
 
 		mm.RequireRequestNotCompleted(t)
-		// Verify request model was set
+		// Verify models were set
+		require.Equal(t, "some-model", mm.originalModel)
 		require.Equal(t, "some-model", mm.requestModel)
 		// Response model not set yet - only set when we get actual response
 		require.Empty(t, mm.responseModel)
@@ -379,6 +384,7 @@ func TestEmbeddings_ProcessRequestHeaders_SetsRequestModel(t *testing.T) {
 	}
 	_, _ = p.ProcessRequestHeaders(t.Context(), nil)
 	// Should use the override model from the header, as that's what is sent upstream.
+	require.Equal(t, "body-model", mm.originalModel)
 	require.Equal(t, "header-model", mm.requestModel)
 	// Response model is not set until we get actual response
 	require.Empty(t, mm.responseModel)
@@ -389,7 +395,7 @@ func TestEmbeddings_ProcessResponseBody_OverridesHeaderModelWithResponseModel(t 
 	headers := map[string]string{":path": "/v1/embeddings", modelKey: "header-model"}
 	body := openai.EmbeddingRequest{
 		Model: "body-model",
-		Input: openai.StringOrArray{Value: "test"},
+		Input: openai.EmbeddingRequestInput{Value: "test"},
 	}
 	raw, _ := json.Marshal(body)
 	mm := &mockEmbeddingsMetrics{}
@@ -436,7 +442,8 @@ func TestEmbeddings_ProcessResponseBody_OverridesHeaderModelWithResponseModel(t 
 	require.NoError(t, err)
 
 	// Should use the override model from the header, as that's what is sent upstream.
-	mm.RequireSelectedModel(t, "header-model", "actual-embedding-model")
+	// Original model is from request body, request model is from header (override)
+	mm.RequireSelectedModel(t, "body-model", "header-model", "actual-embedding-model")
 	mm.RequireTokenUsage(t, 15)
 	mm.RequireRequestSuccess(t)
 }

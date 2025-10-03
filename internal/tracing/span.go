@@ -44,3 +44,27 @@ func (s *chatCompletionSpan) EndSpanOnError(statusCode int, body []byte) {
 	s.recorder.RecordResponseOnError(s.span, statusCode, body)
 	s.span.End()
 }
+
+// Ensure embeddingsSpan implements EmbeddingsSpan.
+var _ tracing.EmbeddingsSpan = (*embeddingsSpan)(nil)
+
+type embeddingsSpan struct {
+	span     trace.Span
+	recorder tracing.EmbeddingsRecorder
+}
+
+// RecordResponse invokes [tracing.EmbeddingsRecorder.RecordResponse].
+func (s *embeddingsSpan) RecordResponse(resp *openai.EmbeddingResponse) {
+	s.recorder.RecordResponse(s.span, resp)
+}
+
+// EndSpan finalizes and ends the span.
+func (s *embeddingsSpan) EndSpan() {
+	s.span.End()
+}
+
+// EndSpanOnError invokes [tracing.EmbeddingsRecorder.RecordResponseOnError].
+func (s *embeddingsSpan) EndSpanOnError(statusCode int, body []byte) {
+	s.recorder.RecordResponseOnError(s.span, statusCode, body)
+	s.span.End()
+}

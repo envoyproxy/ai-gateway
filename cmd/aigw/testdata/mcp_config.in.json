@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "fetch": {
+      "command": "uvx",
+      "args": ["mcp-server-fetch"]
+    },
+    "kiwi": {
+      "type": "streamable-http",
+      "url": "https://mcp.kiwi.com"
+    },
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/x/issues/readonly",
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_MCP_TOKEN}"
+      },
+      "tools": ["list_issues", "get_issue"]
+    },
+    "local": {
+      "url": "https://localhost:8443/mcp",
+      "headers": {
+        "Authorization": "Bearer ${UNSET:-local-token}"
+      }
+    }
+  }
+}

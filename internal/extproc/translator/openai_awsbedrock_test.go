@@ -41,7 +41,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
 						OfSystem: &openai.ChatCompletionSystemMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: "from-system",
 							},
 							Role: openai.ChatMessageRoleSystem,
@@ -49,7 +49,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 					},
 					{
 						OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: "from-developer",
 							},
 							Role: openai.ChatMessageRoleDeveloper,
@@ -81,7 +81,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 					},
 					{
 						OfTool: &openai.ChatCompletionToolMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: "Weather in Queens, NY is 70F and clear skies.",
 							},
 							ToolCallID: "call_6g7a",
@@ -215,7 +215,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
 						OfSystem: &openai.ChatCompletionSystemMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: []openai.ChatCompletionContentPartTextParam{
 									{Text: "from-system"},
 								},
@@ -225,7 +225,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 					},
 					{
 						OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: []openai.ChatCompletionContentPartTextParam{
 									{Text: "from-developer"},
 								},
@@ -311,7 +311,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
 						OfSystem: &openai.ChatCompletionSystemMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: []openai.ChatCompletionContentPartTextParam{
 									{Text: "from-system"},
 								},
@@ -805,7 +805,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 					},
 					{
 						OfTool: &openai.ChatCompletionToolMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: "The weather in Dallas TX is 98 degrees fahrenheit with mostly cloudy skies and a change of rain in the evening.",
 							},
 							Role:       openai.ChatMessageRoleTool,
@@ -814,7 +814,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 					},
 					{
 						OfTool: &openai.ChatCompletionToolMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: "The weather in Orlando FL is 78 degrees fahrenheit with clear skies.",
 							},
 							Role:       openai.ChatMessageRoleTool,
@@ -1049,7 +1049,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						OfTool: &openai.ChatCompletionToolMessageParam{
 							Role:       openai.ChatMessageRoleTool,
 							ToolCallID: "tool_call_123",
-							Content:    openai.StringOrArray{Value: "{\"temperature\": 88}"},
+							Content:    openai.ContentUnion{Value: "{\"temperature\": 88}"},
 						},
 					},
 				},
@@ -1348,7 +1348,7 @@ data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"id":nul
 
 data: {"choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls"}],"object":"chat.completion.chunk"}
 
-data: {"object":"chat.completion.chunk","usage":{"completion_tokens":75,"prompt_tokens":386,"total_tokens":461}}
+data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":386,"completion_tokens":75,"total_tokens":461}}
 
 data: [DONE]
 `, result)

@@ -276,7 +276,7 @@ func openAIToAnthropicContent(content any) ([]anthropic.ContentBlockParamUnion, 
 		}, nil
 	case []openai.ChatCompletionContentPartUserUnionParam:
 		return convertContentPartsToAnthropic(v)
-	case openai.StringOrArray:
+	case openai.ContentUnion:
 		switch val := v.Value.(type) {
 		case string:
 			if val == "" {
@@ -285,10 +285,17 @@ func openAIToAnthropicContent(content any) ([]anthropic.ContentBlockParamUnion, 
 			return []anthropic.ContentBlockParamUnion{
 				anthropic.NewTextBlock(val),
 			}, nil
-		case []openai.ChatCompletionContentPartUserUnionParam:
-			return openAIToAnthropicContent(val)
+		case []openai.ChatCompletionContentPartTextParam:
+			// Convert text params to string and create text block
+			var sb strings.Builder
+			for _, part := range val {
+				sb.WriteString(part.Text)
+			}
+			return []anthropic.ContentBlockParamUnion{
+				anthropic.NewTextBlock(sb.String()),
+			}, nil
 		default:
-			return nil, fmt.Errorf("unsupported StringOrArray value type: %T", val)
+			return nil, fmt.Errorf("unsupported ContentUnion value type: %T", val)
 		}
 	}
 	return nil, fmt.Errorf("unsupported OpenAI content type: %T", content)
@@ -300,32 +307,16 @@ func extractSystemPromptFromDeveloperMsg(msg openai.ChatCompletionDeveloperMessa
 		return ""
 	case string:
 		return v
-	case []openai.ChatCompletionContentPartUserUnionParam:
+	case []openai.ChatCompletionContentPartTextParam:
 		// Concatenate all text parts for completeness.
 		var sb strings.Builder
 		for _, part := range v {
-			if part.OfText != nil {
-				sb.WriteString(part.OfText.Text)
-			}
+			sb.WriteString(part.Text)
 		}
 		return sb.String()
-	case openai.StringOrArray:
-		switch val := v.Value.(type) {
-		case string:
-			return val
-		case []openai.ChatCompletionContentPartUserUnionParam:
-			var sb strings.Builder
-			for _, part := range val {
-				if part.OfText != nil {
-					sb.WriteString(part.OfText.Text)
-				}
-			}
-			return sb.String()
-		}
 	default:
 		return ""
 	}
-	return ""
 }
 
 func anthropicRoleToOpenAIRole(role anthropic.MessageParamRole) (string, error) {

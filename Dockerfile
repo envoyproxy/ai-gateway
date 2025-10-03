@@ -35,4 +35,10 @@ COPY --from=envoy-downloader /tmp/envoy-gateway /tmp/envoy-gateway
 COPY ./out/${COMMAND_NAME}-${TARGETOS}-${TARGETARCH} /app
 
 USER nonroot:nonroot
+
+# The healthcheck subcommand performs an HTTP GET to localhost:1064/healthlthy for "aigw run".
+# NOTE: This is only for aigw in practice since this is ignored by Kubernetes.
+HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
+    CMD ["/app", "healthcheck"]
+
 ENTRYPOINT ["/app"]

@@ -29,5 +29,5 @@ func TestNewRequestEmbeddings(t *testing.T) {
 			tests[i].expectedStatus = http.StatusOK
 		}
 	}
-	testNewRequest(t, "/embeddings", tests)
+	testNewRequest(t, tests)
 }

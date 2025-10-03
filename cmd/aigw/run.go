@@ -15,15 +15,20 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/a8m/envsubst"
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/envoyproxy/gateway/cmd/envoy-gateway/root"
 	egextension "github.com/envoyproxy/gateway/proto/extension"
+	"github.com/go-logr/logr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	corev1 "k8s.io/api/core/v1"
@@ -38,13 +43,22 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/envgen"
 	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
-// This is the template for the Envoy Gateway configuration where PLACEHOLDER_TMPDIR will be replaced with the temporary
-// directory where the resources are written to.
-//
-//go:embed envoy-gateway-config.yaml
-var envoyGatewayConfigTemplate string
+var (
+	// This is the template for the Envoy Gateway configuration where PLACEHOLDER_TMPDIR will be replaced with the temporary
+	// directory where the resources are written to.
+	//
+	//go:embed envoy-gateway-config.yaml
+	envoyGatewayConfigTemplate string
+
+	// This is the template for the MCP servers configuration file where the MCP server settings are defined.
+	//
+	//go:embed mcp_servers.yaml.tmpl
+	mcpServersTemplateSrc string
+	mcpServersTemplate    = template.Must(template.New("mcp-servers").Parse(mcpServersTemplateSrc))
+)
 
 const (
 	substitutionEnvAnnotationPrefix  = "substitution.aigw.run/env/"
@@ -67,6 +81,8 @@ type runCmdContext struct {
 	tmpdir string
 	// udsPath is the path to the UDS socket used by the AI Gateway extproc.
 	udsPath string
+	// adminPort is the HTTP port for the admin server.
+	adminPort int
 	// extProcLauncher is the function used to launch the external processor.
 	extProcLauncher func(ctx context.Context, args []string, w io.Writer) error
 	// fakeClientSet is the fake client set for the k8s resources. The objects are written to this client set and updated
@@ -89,6 +105,8 @@ func run(ctx context.Context, c cmdRun, o runOpts, stdout, stderr io.Writer) err
 	if !c.Debug {
 		stderr = io.Discard
 	}
+	logHandler := slog.NewTextHandler(stderr, &slog.HandlerOptions{})
+	ctrl.SetLogger(logr.FromSlogHandler(logHandler))
 	stderrLogger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{}))
 
 	// First, we need to create the self-signed certificates used for communication between the EG and Envoy.
@@ -136,15 +154,16 @@ func run(ctx context.Context, c cmdRun, o runOpts, stdout, stderr io.Writer) err
 		envoyGatewayResourcesOut: resourcesBuf,
 		stderrLogger:             stderrLogger,
 		udsPath:                  udsPath,
+		adminPort:                c.AdminPort,
 		extProcLauncher:          o.extProcLauncher,
 		tmpdir:                   tmpdir,
 		isDebug:                  c.Debug,
 	}
-	aiGatewayResourcesYaml, err := readConfig(c.Path)
+	aiGatewayResourcesYaml, err := readConfig(c.Path, c.McpConfig)
 	if err != nil {
 		return err
 	}
-	fakeClient, extProxDone, envoyAdminAddr, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, aiGatewayResourcesYaml)
+	fakeClient, extProxDone, envoyAdminAddr, envoyPort, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, aiGatewayResourcesYaml)
 	if err != nil {
 		return fmt.Errorf("failed to write envoy resources and run extproc: %w", err)
 	}
@@ -196,7 +215,11 @@ func run(ctx context.Context, c cmdRun, o runOpts, stdout, stderr io.Writer) err
 		server.SetErr(io.Discard)
 	}
 	server.SetArgs([]string{"server", "--config-path", egConfigPath})
-	go pollEnvoyReadiness(ctx, stderrLogger, envoyAdminAddr, 2*time.Second) // Start the goroutine to inform about the readiness of Envoy.
+	if envoyAdminAddr != "" {
+		go pollEnvoyAdminReady(ctx, stderrLogger, envoyAdminAddr, 2*time.Second)
+	} else if envoyPort > 0 {
+		go pollEnvoyListening(ctx, stderrLogger, envoyPort, 2*time.Second)
+	}
 	if err := server.ExecuteContext(serverCtx); err != nil {
 		return fmt.Errorf("failed to execute server: %w", err)
 	}
@@ -204,12 +227,8 @@ func run(ctx context.Context, c cmdRun, o runOpts, stdout, stderr io.Writer) err
 	return extProcErr
 }
 
-// pollEnvoyReadiness polls the Envoy readiness endpoint on the given address until it is ready or the context is done.
-func pollEnvoyReadiness(ctx context.Context, l *slog.Logger, addr string, interval time.Duration) {
-	if addr == "" {
-		return
-	}
-
+// pollEnvoyAdminReady polls Envoy's HTTP /ready endpoint until it returns 200 or the context is done.
+func pollEnvoyAdminReady(ctx context.Context, l *slog.Logger, envoyAdminAddr string, interval time.Duration) {
 	t := time.NewTicker(interval)
 	defer t.Stop()
 
@@ -219,7 +238,7 @@ func pollEnvoyReadiness(ctx context.Context, l *slog.Logger, addr string, interv
 			return
 		case <-t.C:
 			status := "UNAVAILABLE"
-			resp, _ := http.Get(fmt.Sprintf("http://%s/ready", addr))
+			resp, _ := http.Get(fmt.Sprintf("http://%s/ready", envoyAdminAddr))
 			if resp != nil && resp.Body != nil {
 				if st, err := io.ReadAll(resp.Body); err == nil {
 					status = strings.TrimSpace(string(st))
@@ -235,18 +254,44 @@ func pollEnvoyReadiness(ctx context.Context, l *slog.Logger, addr string, interv
 	}
 }
 
+// pollEnvoyListening checks if Envoy is listening on the given port by attempting TCP connections.
+// This is used when no admin server is configured, as an alternative to pollEnvoyAdminReady.
+// It polls until the port accepts connections or the context is done.
+func pollEnvoyListening(ctx context.Context, l *slog.Logger, port int, interval time.Duration) {
+	t := time.NewTicker(interval)
+	defer t.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), time.Second)
+			if err == nil {
+				_ = conn.Close()
+				l.Info("Envoy is listening!", "port", port)
+				return
+			}
+			l.Info("Waiting for Envoy to start listening...", "port", port)
+		}
+	}
+}
+
 // readConfig returns the configuration as a string from the given path,
-// substituting environment variables. If OPENAI_API_KEY is set, it generates
-// the config from OpenAI environment variables. Otherwise, it returns an error.
-func readConfig(path string) (string, error) {
-	if os.Getenv("OPENAI_API_KEY") != "" {
+// substituting environment variables. If OPENAI_API_KEY or AZURE_OPENAI_API_KEY
+// is set, it generates the config from environment variables. Otherwise, it returns an error.
+func readConfig(path, mcpServers string) (string, error) {
+	if mcpServers != "" {
+		return renderMcpServers(mcpServers)
+	}
+	if os.Getenv("OPENAI_API_KEY") != "" || os.Getenv("AZURE_OPENAI_API_KEY") != "" {
 		config, err := envgen.GenerateOpenAIConfig()
 		if err != nil {
 			return "", fmt.Errorf("error generating OpenAI config: %w", err)
 		}
 		return config, nil
 	} else if path == "" {
-		return "", errors.New("you must supply at least OPENAI_API_KEY or a config file path")
+		return "", errors.New("you must supply at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY or a config file path")
 	}
 	configBytes, err := envsubst.ReadFile(path)
 	if err != nil {
@@ -270,36 +315,37 @@ func recreateDir(path string) error {
 
 // writeEnvoyResourcesAndRunExtProc reads all resources from the given string, writes them to the output file, and runs
 // external processes for EnvoyExtensionPolicy resources.
-func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Context, original string) (client.Client, <-chan error, string, error) {
-	aigwRoutes, aigwBackends, backendSecurityPolicies, gateways, secrets, envoyProxies, err := collectObjects(original, runCtx.envoyGatewayResourcesOut, runCtx.stderrLogger)
+func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Context, original string) (client.Client, <-chan error, string, int, error) {
+	aigwRoutes, mcpRoutes, aigwBackends, backendSecurityPolicies, backendTLSPolicies, gateways, secrets, envoyProxies, err := collectObjects(original, runCtx.envoyGatewayResourcesOut, runCtx.stderrLogger)
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("error collecting: %w", err)
+		return nil, nil, "", 0, fmt.Errorf("error collecting: %w", err)
 	}
 	if len(gateways) > 1 {
-		return nil, nil, "", fmt.Errorf("multiple gateways are not supported: %s", gateways[0].Name)
+		return nil, nil, "", 0, fmt.Errorf("multiple gateways are not supported: %s", gateways[0].Name)
 	}
 	for _, bsp := range backendSecurityPolicies {
 		spec := bsp.Spec
 		if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {
 			// TODO: We can make it work by generalizing the rotation logic.
-			return nil, nil, "", fmt.Errorf("OIDC exchange token is not supported: %s", bsp.Name)
+			return nil, nil, "", 0, fmt.Errorf("OIDC exchange token is not supported: %s", bsp.Name)
 		}
 	}
 
 	// Do the substitution for the secrets.
 	for _, s := range secrets {
 		if err = runCtx.rewriteSecretWithAnnotatedLocation(s); err != nil {
-			return nil, nil, "", fmt.Errorf("failed to rewrite secret %s: %w", s.Name, err)
+			return nil, nil, "", 0, fmt.Errorf("failed to rewrite secret %s: %w", s.Name, err)
 		}
 	}
 
-	fakeClient, _fakeClientSet, httpRoutes, eps, httpRouteFilter, backends, _, err := translateCustomResourceObjects(ctx, aigwRoutes, aigwBackends, backendSecurityPolicies, gateways, secrets, runCtx.stderrLogger)
+	var secretList *corev1.SecretList
+	fakeClient, _fakeClientSet, httpRoutes, eps, httpRouteFilters, backends, secretList, backendTrafficPolicies, securityPolicies, err := translateCustomResourceObjects(ctx, aigwRoutes, mcpRoutes, aigwBackends, backendSecurityPolicies, backendTLSPolicies, gateways, secrets, runCtx.stderrLogger)
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("error translating: %w", err)
+		return nil, nil, "", 0, fmt.Errorf("error translating: %w", err)
 	}
 	runCtx.fakeClientSet = _fakeClientSet
 
-	for _, hrf := range httpRouteFilter.Items {
+	for _, hrf := range httpRouteFilters.Items {
 		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&hrf.TypeMeta, &hrf)
 	}
 	for _, hr := range httpRoutes.Items {
@@ -308,7 +354,19 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 	for _, b := range backends.Items {
 		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&b.TypeMeta, &b)
 	}
+	for _, s := range secretList.Items {
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&s.TypeMeta, &s)
+	}
+	for _, btp := range backendTrafficPolicies.Items {
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&btp.TypeMeta, &btp)
+	}
+	for _, sp := range securityPolicies.Items {
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&sp.TypeMeta, &sp)
+	}
 	gw := gateways[0]
+	if len(gw.Spec.Listeners) == 0 {
+		return nil, nil, "", 0, fmt.Errorf("gateway %s has no listeners configured", gw.Name)
+	}
 	runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&gw.TypeMeta, gw)
 	for _, ep := range eps.Items {
 		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&ep.TypeMeta, &ep)
@@ -318,20 +376,20 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 		Secrets("").Get(ctx,
 		controller.FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), metav1.GetOptions{})
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("failed to get filter config secret: %w", err)
+		return nil, nil, "", 0, fmt.Errorf("failed to get filter config secret: %w", err)
 	}
 
 	rawConfig, ok := filterConfigSecret.StringData[controller.FilterConfigKeyInSecret]
 	if !ok {
-		return nil, nil, "", fmt.Errorf("failed to get filter config from secret: %w", err)
+		return nil, nil, "", 0, fmt.Errorf("failed to get filter config from secret: %w", err)
 	}
 	var fc filterapi.Config
 	if err = yaml.Unmarshal([]byte(rawConfig), &fc); err != nil {
-		return nil, nil, "", fmt.Errorf("failed to unmarshal filter config: %w", err)
+		return nil, nil, "", 0, fmt.Errorf("failed to unmarshal filter config: %w", err)
 	}
 	runCtx.stderrLogger.Info("Running external process", "config", fc)
 	done := runCtx.mustStartExtProc(ctx, &fc)
-	return fakeClient, done, runCtx.tryFindEnvoyAdminAddress(gw, envoyProxies), nil
+	return fakeClient, done, runCtx.tryFindEnvoyAdminAddress(gw, envoyProxies), runCtx.tryFindEnvoyListenerPort(gw), nil
 }
 
 // mustStartExtProc starts the external process with the given working directory, port, and filter configuration.
@@ -352,6 +410,8 @@ func (runCtx *runCmdContext) mustStartExtProc(
 	args := []string{
 		"--configPath", configPath,
 		"--extProcAddr", fmt.Sprintf("unix://%s", runCtx.udsPath),
+		"--adminPort", fmt.Sprintf("%d", runCtx.adminPort),
+		"--mcpAddr", ":" + strconv.Itoa(internalapi.MCPProxyPort),
 	}
 	if runCtx.isDebug {
 		args = append(args, "--logLevel", "debug")
@@ -437,6 +497,15 @@ func (runCtx *runCmdContext) rewriteSecretWithAnnotatedLocation(s *corev1.Secret
 	return nil
 }
 
+// tryFindEnvoyListenerPort tries to find the port where Envoy is listening for Gateway traffic.
+// This returns the first listener's port from the Gateway spec, or 0 if no listeners are configured.
+func (runCtx *runCmdContext) tryFindEnvoyListenerPort(gw *gwapiv1.Gateway) int {
+	if len(gw.Spec.Listeners) == 0 {
+		return 0
+	}
+	return int(gw.Spec.Listeners[0].Port)
+}
+
 // tryFindEnvoyAdminAddress tries to find the address where the Envoy Admin interface is listening to.
 // By default, Envoy Gateway assigns a random port to the Envoy Admin interface, and we may not be able to find it. This method
 // attempts to find an EnvoyProxy instance attached to the standalone Gateway, and reads the bootstrap config to check if there
@@ -494,4 +563,110 @@ func maybeResolveHome(p string) string {
 		return filepath.Join(home, p[2:])
 	}
 	return p
+}
+
+type (
+	// mcpServers is the structure of the MCP servers configuration file.
+	mcpServers struct {
+		McpServers map[string]struct {
+			Type    string            `json:"type"`
+			URL     string            `json:"url"`
+			Headers map[string]string `json:"headers,omitempty"`
+			Tools   []string          `json:"tools,omitempty"`
+		} `json:"mcpServers"`
+	}
+
+	// parsedMcpServer is the data structure that will be passed to the template
+	// that renders the AIGW configuration.
+	parsedMcpServer struct {
+		Name        string
+		Hostname    string
+		Port        int
+		Path        string
+		Protocol    string
+		BearerToken string
+		Tools       []string
+	}
+)
+
+// isSupportedType returns true if the given server type is supported.
+func isSupportedType(url, serverType string) bool {
+	if url == "" {
+		return false
+	}
+	// Be permissive with the type to maximize support for the different values used in agents.
+	return serverType == "" || // If the URL is set and there is no type, assume Streamable HTTP.
+		serverType == "http" ||
+		serverType == "streamable-http" ||
+		serverType == "streamable_http" ||
+		serverType == "streamableHttp"
+}
+
+// renderMcpServers reads the MCP servers configuration from the given path, parses it, and renders it to a string.
+func renderMcpServers(path string) (string, error) {
+	// Interpolate the environment variables in the MCP servers file.
+	// This would preserve the behavior of agents like Claude.
+	raw, err := envsubst.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to read MCP servers file: %w", err)
+	}
+
+	var servers mcpServers
+	if err := yaml.Unmarshal(raw, &servers); err != nil {
+		return "", fmt.Errorf("failed to unmarshal MCP servers file: %w", err)
+	}
+
+	parsedServers := make([]parsedMcpServer, 0, len(servers.McpServers))
+
+	for name, settings := range servers.McpServers {
+		// If the server is not streamable HTTP, skip it.
+		if !isSupportedType(settings.URL, settings.Type) {
+			continue
+		}
+
+		serverURL, err := url.Parse(settings.URL)
+		if err != nil {
+			return "", fmt.Errorf("failed to parse MCP server URL %s: %w", settings.URL, err)
+		}
+
+		port, _ := strconv.Atoi(serverURL.Port())
+		if serverURL.Scheme == "https" && port == 0 {
+			port = 443
+		}
+
+		parsed := parsedMcpServer{
+			Name:     name,
+			Hostname: serverURL.Hostname(),
+			Path:     serverURL.Path,
+			Port:     port,
+			Protocol: serverURL.Scheme,
+			Tools:    settings.Tools,
+		}
+		if parsed.Path == "" {
+			parsed.Path = "/"
+		}
+
+		// We do not support yet customizing headers for different MCP servers. We only support
+		// setting upstream MCP server authentication using a Bearer token.
+		for headerKey, headerValue := range settings.Headers {
+			if strings.EqualFold(headerKey, "Authorization") && strings.HasPrefix(headerValue, "Bearer ") {
+				parsed.BearerToken = strings.TrimPrefix(headerValue, "Bearer ")
+				break
+			}
+		}
+
+		parsedServers = append(parsedServers, parsed)
+	}
+
+	// sort by name for consistent ordering.
+	sort.Slice(parsedServers, func(i, j int) bool {
+		return parsedServers[i].Name < parsedServers[j].Name
+	})
+
+	var buf bytes.Buffer
+	if err := mcpServersTemplate.Execute(&buf, parsedServers); err != nil {
+		return "", fmt.Errorf("failed to render MCP servers template: %w", err)
+	}
+
+	return buf.String(), nil
 }

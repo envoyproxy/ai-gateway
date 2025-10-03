@@ -49,7 +49,7 @@ func TestOpenAIToOpenAITranslatorV1EmbeddingRequestBody(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			translator := NewEmbeddingOpenAIToOpenAITranslator("v1", tc.modelNameOverride)
+			translator := NewEmbeddingOpenAIToOpenAITranslator("v1", tc.modelNameOverride, nil)
 			originalBody := `{"model":"text-embedding-ada-002","input":"test input"}`
 			var req openai.EmbeddingRequest
 			require.NoError(t, json.Unmarshal([]byte(originalBody), &req))
@@ -81,7 +81,7 @@ func TestOpenAIToOpenAITranslatorV1EmbeddingRequestBody(t *testing.T) {
 }
 
 func TestOpenAIToOpenAITranslatorV1EmbeddingResponseHeaders(t *testing.T) {
-	translator := NewEmbeddingOpenAIToOpenAITranslator("v1", "")
+	translator := NewEmbeddingOpenAIToOpenAITranslator("v1", "", nil)
 	headerMutation, err := translator.ResponseHeaders(map[string]string{})
 	require.NoError(t, err)
 	require.Nil(t, headerMutation)
@@ -132,7 +132,7 @@ func TestOpenAIToOpenAITranslatorV1EmbeddingResponseBody(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			translator := NewEmbeddingOpenAIToOpenAITranslator("v1", "")
+			translator := NewEmbeddingOpenAIToOpenAITranslator("v1", "", nil)
 			respHeaders := map[string]string{
 				"content-type": "application/json",
 			}
@@ -164,7 +164,7 @@ func TestOpenAIToOpenAITranslatorV1EmbeddingResponseBody(t *testing.T) {
 }
 
 func TestOpenAIToOpenAITranslatorV1EmbeddingResponseError(t *testing.T) {
-	translator := NewEmbeddingOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Embedding)
+	translator := NewEmbeddingOpenAIToOpenAITranslator("v1", "", nil).(*openAIToOpenAITranslatorV1Embedding)
 
 	t.Run("non_json_error", func(t *testing.T) {
 		respHeaders := map[string]string{

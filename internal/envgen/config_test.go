@@ -42,6 +42,21 @@ var (
 
 	//go:embed testdata/llamastack.yaml
 	llamastackYAML string
+
+	//go:embed testdata/azure-openai.yaml
+	azureOpenAIYAML string
+
+	//go:embed testdata/openai-with-org.yaml
+	openaiWithOrgYAML string
+
+	//go:embed testdata/openai-with-project.yaml
+	openaiWithProjectYAML string
+
+	//go:embed testdata/openai-with-org-and-project.yaml
+	openaiWithOrgAndProjectYAML string
+
+	//go:embed testdata/azure-openai-with-org-and-project.yaml
+	azureOpenAIWithOrgAndProjectYAML string
 )
 
 func TestGenerateOpenAIConfig(t *testing.T) {
@@ -58,6 +73,26 @@ func TestGenerateOpenAIConfig(t *testing.T) {
 				// OPENAI_BASE_URL not set, defaults to https://api.openai.com/v1
 			},
 			expected: openaiDefaultYAML,
+		},
+		{
+			name: "Azure OpenAI",
+			envVars: map[string]string{
+				"AZURE_OPENAI_API_KEY":  "azure-key-123",
+				"AZURE_OPENAI_ENDPOINT": "https://my-resource.openai.azure.com",
+				"OPENAI_API_VERSION":    "2024-02-15-preview",
+			},
+			expected: azureOpenAIYAML,
+		},
+		{
+			name: "Azure OpenAI prioritized over standard OpenAI",
+			envVars: map[string]string{
+				"AZURE_OPENAI_API_KEY":  "azure-key-123",
+				"AZURE_OPENAI_ENDPOINT": "https://my-resource.openai.azure.com",
+				"OPENAI_API_VERSION":    "2024-02-15-preview",
+				"OPENAI_API_KEY":        "sk-test123",
+				"OPENAI_BASE_URL":       "https://api.openai.com/v1",
+			},
+			expected: azureOpenAIYAML,
 		},
 		{
 			name: "Ollama (localhost with port)",
@@ -92,11 +127,61 @@ func TestGenerateOpenAIConfig(t *testing.T) {
 			expected: llamastackYAML,
 		},
 		{
-			name: "missing required API key",
+			name: "OpenAI with organization ID",
 			envVars: map[string]string{
-				"OPENAI_BASE_URL": "http://localhost:11434/v1",
+				"OPENAI_API_KEY": "sk-test123",
+				"OPENAI_ORG_ID":  "org-test123",
 			},
-			expectedError: fmt.Errorf("OPENAI_API_KEY environment variable is required"),
+			expected: openaiWithOrgYAML,
+		},
+		{
+			name: "OpenAI with project ID",
+			envVars: map[string]string{
+				"OPENAI_API_KEY":    "sk-test123",
+				"OPENAI_PROJECT_ID": "proj_test456",
+			},
+			expected: openaiWithProjectYAML,
+		},
+		{
+			name: "OpenAI with both org and project ID",
+			envVars: map[string]string{
+				"OPENAI_API_KEY":    "sk-test123",
+				"OPENAI_ORG_ID":     "org-test123",
+				"OPENAI_PROJECT_ID": "proj_test456",
+			},
+			expected: openaiWithOrgAndProjectYAML,
+		},
+		{
+			name: "Azure OpenAI with org and project ID",
+			envVars: map[string]string{
+				"AZURE_OPENAI_API_KEY":  "azure-key-123",
+				"AZURE_OPENAI_ENDPOINT": "https://my-resource.openai.azure.com",
+				"OPENAI_API_VERSION":    "2024-02-15-preview",
+				"OPENAI_ORG_ID":         "org-test123",
+				"OPENAI_PROJECT_ID":     "proj_test456",
+			},
+			expected: azureOpenAIWithOrgAndProjectYAML,
+		},
+		{
+			name:          "missing required API key",
+			envVars:       map[string]string{},
+			expectedError: fmt.Errorf("either OPENAI_API_KEY or AZURE_OPENAI_API_KEY environment variable is required"),
+		},
+		{
+			name: "Azure missing AZURE_OPENAI_ENDPOINT",
+			envVars: map[string]string{
+				"AZURE_OPENAI_API_KEY": "azure-key-123",
+				"OPENAI_API_VERSION":   "2024-02-15-preview",
+			},
+			expectedError: fmt.Errorf("AZURE_OPENAI_ENDPOINT environment variable is required when AZURE_OPENAI_API_KEY is set"),
+		},
+		{
+			name: "Azure missing OPENAI_API_VERSION",
+			envVars: map[string]string{
+				"AZURE_OPENAI_API_KEY":  "azure-key-123",
+				"AZURE_OPENAI_ENDPOINT": "https://my-resource.openai.azure.com",
+			},
+			expectedError: fmt.Errorf("OPENAI_API_VERSION environment variable is required when AZURE_OPENAI_API_KEY is set"),
 		},
 		{
 			name: "invalid URL format",
@@ -122,6 +207,33 @@ func TestGenerateOpenAIConfig(t *testing.T) {
 			},
 			expectedError: fmt.Errorf("invalid OPENAI_BASE_URL: unsupported scheme \"ftp\""),
 		},
+		{
+			name: "Azure invalid AZURE_OPENAI_ENDPOINT format",
+			envVars: map[string]string{
+				"AZURE_OPENAI_API_KEY":  "azure-key-123",
+				"AZURE_OPENAI_ENDPOINT": ":::invalid",
+				"OPENAI_API_VERSION":    "2024-02-15-preview",
+			},
+			expectedError: fmt.Errorf("invalid OPENAI_BASE_URL: parse \":::invalid\": missing protocol scheme"),
+		},
+		{
+			name: "Azure AZURE_OPENAI_ENDPOINT with no scheme",
+			envVars: map[string]string{
+				"AZURE_OPENAI_API_KEY":  "azure-key-123",
+				"AZURE_OPENAI_ENDPOINT": "my-resource.openai.azure.com",
+				"OPENAI_API_VERSION":    "2024-02-15-preview",
+			},
+			expectedError: fmt.Errorf("invalid OPENAI_BASE_URL: missing hostname"),
+		},
+		{
+			name: "Azure AZURE_OPENAI_ENDPOINT with unsupported scheme",
+			envVars: map[string]string{
+				"AZURE_OPENAI_API_KEY":  "azure-key-123",
+				"AZURE_OPENAI_ENDPOINT": "ftp://my-resource.openai.azure.com",
+				"OPENAI_API_VERSION":    "2024-02-15-preview",
+			},
+			expectedError: fmt.Errorf("invalid OPENAI_BASE_URL: unsupported scheme \"ftp\""),
+		},
 	}
 
 	for _, tt := range tests {
@@ -131,6 +243,9 @@ func TestGenerateOpenAIConfig(t *testing.T) {
 			t.Setenv("OPENAI_BASE_URL", "")
 			t.Setenv("OPENAI_ORG_ID", "")
 			t.Setenv("OPENAI_PROJECT_ID", "")
+			t.Setenv("AZURE_OPENAI_API_KEY", "")
+			t.Setenv("AZURE_OPENAI_ENDPOINT", "")
+			t.Setenv("OPENAI_API_VERSION", "")
 
 			// Set test environment variables
 			for k, v := range tt.envVars {

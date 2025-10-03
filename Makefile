@@ -156,13 +156,19 @@ test-crdcel: apigen ## Run the integration tests of CEL validation in CRD defini
 #
 # This requires the extproc binary to be built as well as Envoy binary to be available in the PATH.
 # The EXTPROC_BIN environment variable is exported to tell tests to use the pre-built binary.
+#
+# Since this is an integration test, we don't use -race, as it takes a very long
+# time to complete. For concurrency issues, use normal unit tests and race them.
 .PHONY: test-extproc # This requires the extproc binary to be built.
 test-extproc: build.extproc ## Run the integration tests for extproc without controller or k8s at all.
 	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
 	@echo "Run ExtProc test"
-	@EXTPROC_BIN=$(OUTPUT_DIR)/extproc-$(shell go env GOOS)-$(shell go env GOARCH) go test ./tests/extproc/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
+	@EXTPROC_BIN=$(OUTPUT_DIR)/extproc-$(shell go env GOOS)-$(shell go env GOARCH) go test ./tests/extproc/... $(GO_TEST_E2E_ARGS)
 
 # This runs the end-to-end tests for the controller with EnvTest.
+#
+# Since this is an integration test, we don't use -race, as it takes a very long
+# time to complete. For concurrency issues, use normal unit tests and race them.
 .PHONY: test-controller
 test-controller: apigen ## Run the integration tests for the controller with envtest.
 	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
@@ -181,6 +187,18 @@ test-e2e: build-e2e ## Run the end-to-end tests with a local kind cluster.
 test-e2e-inference-extension: build-e2e ## Run the end-to-end tests with a local kind cluster for Gateway API Inference Extension.
 	@echo "Run E2E tests for inference extension"
 	@go test -v ./tests/e2e-inference-extension/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
+
+# This runs the end-to-end upgrade tests for the controller and extproc with a local kind cluster.
+.PHONY: test-e2e-upgrade
+test-e2e-upgrade: build-e2e
+	@echo "Run E2E upgrade tests"
+	@go test -v ./tests/e2e-upgrade/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
+
+# This runs the MCP end-to-end tests.
+.PHONY: test-e2e-mcp
+test-e2e-mcp: build.aigw ## Run MCP end-to-end tests.
+	@echo "Run MCP E2E tests"
+	@go test -v ./tests/e2e-mcp/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
 
 ##@ Common
 
@@ -225,6 +243,7 @@ build: ## Build all binaries under cmd/ directory.
 build-e2e: ## Build the docker images for the controller, extproc and testupstream for the e2e tests.
 	@$(MAKE) docker-build DOCKER_BUILD_ARGS="--load"
 	@$(MAKE) docker-build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib DOCKER_BUILD_ARGS="--load"
+	@$(MAKE) docker-build.testmcpserver CMD_PATH_PREFIX=tests/internal/testmcp DOCKER_BUILD_ARGS="--load"
 
 # This builds a docker image for a given command.
 #

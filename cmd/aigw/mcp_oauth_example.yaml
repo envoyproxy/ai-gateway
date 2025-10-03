@@ -1,0 +1,233 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# test token: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.NHVaYe26MbtOYhSKkoKYdFVomg4i8ZJd8_-RU8VNbftc4TSMb4bXP3l3YlNWACwyXPGffz5aXHc6lty1Y2t4SWRqGteragsVdZufDn5BlnJl9pdR_kdVFUsra2rWKEofkZeIC4yWytE58sMIihvo9H1ScmmVwBcQP6XETqYd0aSHp1gOa9RdUPDvoXQ5oqygTqVtxaDr6wUFKrKItgBMzWIdNZ6y7O9E0DhEPTbE9rfBo6KTFsHAZnMg4k68CDp2woYIaXbmYTWcvbzIuHO7_37GT79XdIwkm95QJ7hYC9RiwrV7mesbY4PAahERJawntho0my942XheVLmGwLMBkQ
+
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: MCPRoute
+metadata:
+  name: mcp-route
+  namespace: default
+spec:
+  parentRefs:
+    - name: aigw-run
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  backendRefs:
+    - name: learn-microsoft
+      kind: Backend
+      group: gateway.envoyproxy.io
+      path: "/api/mcp"
+      toolSelector:
+        includeRegex:
+          - .*microsoft_docs?.*
+    - name: context7
+      kind: Backend
+      group: gateway.envoyproxy.io
+      path: "/mcp"
+    - name: aws-knowledge
+      kind: Backend
+      group: gateway.envoyproxy.io
+      path: "/"
+    - name: kiwi
+      kind: Backend
+      group: gateway.envoyproxy.io
+      path: "/"
+  securityPolicy:
+    oauth:
+      issuer: "https://auth-server.example.com"
+      jwks:
+        localJWKS:
+          type: ValueRef
+          valueRef:
+            group: ""
+            kind: ConfigMap
+            name: jwks-configmap
+      protectedResourceMetadata:
+        resource: "https://foo.bar.com/mcp"
+        scopesSupported:
+          - "echo"
+          - "sum"
+          - "countdown"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jwks-configmap
+  namespace: default
+data:
+  jwks: |
+    {
+      "keys": [
+        {
+          "kty": "RSA",
+          "n": "u1SU1LfVLPHCozMxH2Mo4lgOEePzNm0tRgeLezV6ffAt0gunVTLw7onLRnrq0_IzW7yWR7QkrmBL7jTKEn5u-qKhbwKfBstIs-bMY2Zkp18gnTxKLxoS2tFczGkPLPgizskuemMghRniWaoLcyehkd3qqGElvW_VDL5AaWTg0nLVkjRo9z-40RQzuVaE8AkAFmxZzow3x-VJYKdjykkJ0iT9wCS0DRTXu269V264Vf_3jvredZiKRkgwlL9xNAwxXFg0x_XFw005UWVRIkdgcKWTjpBP2dPwVZ4WWC-9aGVd-Gyn1o0CLelf4rEjGoXbAAEgAqeGUxrcIlbjXfbcmw",
+          "e": "AQAB",
+          "alg": "RS256",
+          "use": "sig"
+        },
+        {
+          "alg": "RS256",
+          "e": "AQAB",
+          "key_ops": [
+            "verify"
+          ],
+          "kty": "RSA",
+          "n": "xOHb-i1WDfeAvsbXTSOtosl3hCUDHQ8fRDqX_Rt998-hZDJmAoPOu4J-wcwq5aZtSn_iWUYLcK2WmC_1n-p1eyc-Pl4CBnxF7LUjCk-WGhniaCzXC5I5RON6c5N-MdE0UfukK0PM0zD3iQonZq0fIsnOYyFdYdWvQ5XW-C2aLlq2FUKrjmhAav10jIC0KGd2dHRzauzfLMUmt_iMnpU84Xrur1zRYzBO4D90rN0ypC2HH7o_zI8Osx4o1L8BScW78545sWyVbaprhBV1I2Sa4SH3NAc25ej3RIh-f13Yu97FVfO0AIG4VfFiaMmsTqNTCiBkM20tXD2Z-cHJTKemXzFgInJoqFLAkHLzJ0lPvAkKOgAOufLHa7RA-C276OXd72IXPsL1UOLN4sjhGqTtaynVa00yuHdi3f4-aoy9F9SUJeWfPg--nZNLzuI0eyufsTFywnx1bTQ_kdYlEr0dRE5sujlMk3cZ7FmOQRvcjA9MxFzoVKMmlZc6LMCgqw-P",
+          "use": "sig",
+          "kid": "b520b3c2c4bd75a10e9cebc9576933dc"
+        }
+      ]
+    }
+---
+###################################################################################
+############################### Backend Definitions ###############################
+###################################################################################
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: kiwi
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: mcp.kiwi.com
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: kiwi-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: kiwi
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: mcp.kiwi.com
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: context7
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: mcp.context7.com
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: context7-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: context7
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: mcp.context7.com
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: learn-microsoft
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: learn.microsoft.com
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: learn-microsoft-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: learn-microsoft
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: learn.microsoft.com
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: aws-knowledge
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: knowledge-mcp.global.api.aws
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: aws-knowledge-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: aws-knowledge
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: knowledge-mcp.global.api.aws
+---
+###################################################################################
+############################### Gateway Definitions ###############################
+###################################################################################
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: aigw-run
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: aigw-run
+  namespace: default
+spec:
+  gatewayClassName: aigw-run
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 1975
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: envoy-ai-gateway
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: envoy-ai-gateway
+  namespace: default
+spec:
+  logging:
+    level:
+      default: error
+  bootstrap:
+    type: Merge
+    value: |-
+      admin:
+        address:
+          socket_address:
+            address: 127.0.0.1
+            port_value: 9901

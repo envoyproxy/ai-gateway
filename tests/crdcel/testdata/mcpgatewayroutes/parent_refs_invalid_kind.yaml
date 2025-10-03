@@ -1,0 +1,20 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# This should fail validation: only Gateway parentRefs are supported
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: MCPRoute
+metadata:
+  name: invalid-parent-kind
+  namespace: default
+spec:
+  parentRefs:
+    - name: some-gateway
+      kind: Service
+      group: gateway.networking.k8s.io
+  backendRefs:
+    - name: mcp-service
+      kind: Service
+      port: 80

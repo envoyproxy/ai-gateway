@@ -18,6 +18,7 @@ type BackendSecurityPolicyType string
 const (
 	BackendSecurityPolicyTypeAPIKey           BackendSecurityPolicyType = "APIKey"
 	BackendSecurityPolicyTypeAWSCredentials   BackendSecurityPolicyType = "AWSCredentials"
+	BackendSecurityPolicyTypeAzureAPIKey      BackendSecurityPolicyType = "AzureAPIKey"
 	BackendSecurityPolicyTypeAzureCredentials BackendSecurityPolicyType = "AzureCredentials"
 	BackendSecurityPolicyTypeGCPCredentials   BackendSecurityPolicyType = "GCPCredentials"
 )
@@ -42,10 +43,11 @@ type BackendSecurityPolicy struct {
 //
 // Only one type of BackendSecurityPolicy can be defined.
 // +kubebuilder:validation:MaxProperties=3
-// +kubebuilder:validation:XValidation:rule="self.type == 'APIKey' ? (has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureCredentials) && !has(self.gcpCredentials)) : true",message="When type is APIKey, only apiKey field should be set"
-// +kubebuilder:validation:XValidation:rule="self.type == 'AWSCredentials' ? (has(self.awsCredentials) && !has(self.apiKey) && !has(self.azureCredentials) && !has(self.gcpCredentials)) : true",message="When type is AWSCredentials, only awsCredentials field should be set"
-// +kubebuilder:validation:XValidation:rule="self.type == 'AzureCredentials' ? (has(self.azureCredentials) && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.gcpCredentials)) : true",message="When type is AzureCredentials, only azureCredentials field should be set"
-// +kubebuilder:validation:XValidation:rule="self.type == 'GCPCredentials' ? (has(self.gcpCredentials) && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureCredentials)) : true",message="When type is GCPCredentials, only gcpCredentials field should be set"
+// +kubebuilder:validation:XValidation:rule="self.type == 'APIKey' ? (has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey) && !has(self.azureCredentials) && !has(self.gcpCredentials)) : true",message="When type is APIKey, only apiKey field should be set"
+// +kubebuilder:validation:XValidation:rule="self.type == 'AWSCredentials' ? (has(self.awsCredentials) && !has(self.apiKey) && !has(self.azureAPIKey) && !has(self.azureCredentials) && !has(self.gcpCredentials)) : true",message="When type is AWSCredentials, only awsCredentials field should be set"
+// +kubebuilder:validation:XValidation:rule="self.type == 'AzureAPIKey' ? (has(self.azureAPIKey) && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureCredentials) && !has(self.gcpCredentials)) : true",message="When type is AzureAPIKey, only azureAPIKey field should be set"
+// +kubebuilder:validation:XValidation:rule="self.type == 'AzureCredentials' ? (has(self.azureCredentials) && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey) && !has(self.gcpCredentials)) : true",message="When type is AzureCredentials, only azureCredentials field should be set"
+// +kubebuilder:validation:XValidation:rule="self.type == 'GCPCredentials' ? (has(self.gcpCredentials) && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey) && !has(self.azureCredentials)) : true",message="When type is GCPCredentials, only gcpCredentials field should be set"
 type BackendSecurityPolicySpec struct {
 	// TargetRefs are the names of the AIServiceBackend resources this BackendSecurityPolicy is being attached to.
 	// Attaching multiple BackendSecurityPolicies to the same AIServiceBackend is invalid and will result in an error
@@ -58,7 +60,7 @@ type BackendSecurityPolicySpec struct {
 
 	// Type specifies the type of the backend security policy.
 	//
-	// +kubebuilder:validation:Enum=APIKey;AWSCredentials;AzureCredentials;GCPCredentials
+	// +kubebuilder:validation:Enum=APIKey;AWSCredentials;AzureAPIKey;AzureCredentials;GCPCredentials
 	Type BackendSecurityPolicyType `json:"type"`
 
 	// APIKey is a mechanism to access a backend(s). The API key will be injected into the Authorization header.
@@ -70,6 +72,11 @@ type BackendSecurityPolicySpec struct {
 	//
 	// +optional
 	AWSCredentials *BackendSecurityPolicyAWSCredentials `json:"awsCredentials,omitempty"`
+
+	// AzureAPIKey is a mechanism to access Azure OpenAI backend(s). The API key will be injected into the api-key header.
+	//
+	// +optional
+	AzureAPIKey *BackendSecurityPolicyAzureAPIKey `json:"azureAPIKey,omitempty"`
 
 	// AzureCredentials is a mechanism to access a backend(s). Azure OpenAI specific logic will be applied.
 	//
@@ -93,6 +100,14 @@ type BackendSecurityPolicyList struct {
 // BackendSecurityPolicyAPIKey specifies the API key.
 type BackendSecurityPolicyAPIKey struct {
 	// SecretRef is the reference to the secret containing the API key.
+	// ai-gateway must be given the permission to read this secret.
+	// The key of the secret should be "apiKey".
+	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
+}
+
+// BackendSecurityPolicyAzureAPIKey specifies the Azure OpenAI API key.
+type BackendSecurityPolicyAzureAPIKey struct {
+	// SecretRef is the reference to the secret containing the Azure API key.
 	// ai-gateway must be given the permission to read this secret.
 	// The key of the secret should be "apiKey".
 	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`

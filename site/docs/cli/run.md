@@ -19,11 +19,18 @@ Currently, `aigw run` supports Linux and macOS.
 ## Quick Start
 
 The simplest way to get started is to have `aigw` generate a configuration for
-you given OpenAI environment variables of your backend. Here are some examples:
+you using environment variables. `aigw` supports auto-configuration using the same
+environment variables as the OpenAI SDK, making it easy to integrate with existing
+tooling. Here are some examples:
 
 ```bash
 # OpenAI
 OPENAI_API_KEY=sk-your-key aigw run
+# Azure OpenAI
+AZURE_OPENAI_ENDPOINT=https://example.openai.azure.com \
+  AZURE_OPENAI_API_KEY=your-key \
+  OPENAI_API_VERSION=2024-12-01-preview \
+  aigw run
 # Tetrate Agent Router Service (TARS)
 OPENAI_BASE_URL=https://api.router.tetrate.ai/v1 OPENAI_API_KEY=sk-your-key aigw run
 # Ollama running locally
@@ -40,13 +47,35 @@ curl -H "Content-Type: application/json" -XPOST http://localhost:1975/v1/chat/co
     -d '{"model": "qwen2.5:0.5b","messages": [{"role": "user", "content": "Say this is a test!"}]}'
 ```
 
-### Supported OpenAI Environment Variables
+### Supported Environment Variables
 
-| Variable          | Required | Default                     | Description                                          |
+The following environment variables are compatible with the OpenAI SDK:
+
+**OpenAI / OpenAI-compatible backends:**
+
+When `OPENAI_API_KEY` is set, the following environment variables are read:
+
+| Variable          | Required | Example                     | Description                                          |
 |-------------------|----------|-----------------------------|------------------------------------------------------|
-| `OPENAI_API_KEY`  | Yes      | -                           | API key for authentication (use "unused" for Ollama) |
+| `OPENAI_API_KEY`  | Yes      | `sk-proj-...`               | API key for authentication (use "unused" for Ollama) |
 | `OPENAI_BASE_URL` | No       | `https://api.openai.com/v1` | Base URL of your OpenAI-compatible backend           |
 
+**Azure OpenAI:**
+
+When `AZURE_OPENAI_API_KEY` is set, the following environment variables are read:
+
+| Variable                  | Required | Example                                   | Description                                                    |
+|---------------------------|----------|-------------------------------------------|----------------------------------------------------------------|
+| `AZURE_OPENAI_ENDPOINT`   | Yes      | `https://example.openai.azure.com`        | Your Azure endpoint, including the resource                    |
+| `AZURE_OPENAI_API_KEY`    | Yes      | `abc123...`                               | API key for authentication                                     |
+| `OPENAI_API_VERSION`      | Yes      | `2024-12-01-preview`                      | Azure OpenAI API version                                       |
+
+**Optional headers (both OpenAI and Azure OpenAI):**
+
+| Variable             | Example      | Description                                                                                           |
+|----------------------|--------------|-------------------------------------------------------------------------------------------------------|
+| `OPENAI_ORG_ID`      | `org-...`    | Organization ID - adds `OpenAI-Organization` request header for billing and access control            |
+| `OPENAI_PROJECT_ID`  | `proj_...`   | Project ID - adds `OpenAI-Project` request header for project-level billing and access control        |
 
 ## Custom Configuration
 
@@ -112,24 +141,30 @@ curl -H "Content-Type: application/json" -XPOST http://localhost:1975/v1/chat/co
     -d '{"model": "deepseek-r1:1.5b","messages": [{"role": "user", "content": "Say this is a test!"}]}'
 ```
 
-### Prometheus Metrics
+### Admin Endpoints
 
-While running, `aigw` serves prometheus metrics at `localhost:1064/metrics` by default. You can scrape this for [LLM/AI metrics](../capabilities/observability/metrics.md).
+While running, `aigw` serves admin endpoints on port `1064` by default:
+- `/metrics`: Prometheus metrics endpoint for [LLM/AI metrics](../capabilities/observability/metrics.md)
+- `/health`: Health check endpoint that verifies the external processor is healthy
 
 ## OpenTelemetry
 
 Envoy AI Gateway's router joins and records distributed traces when supplied
 with an [OpenTelemetry](https://opentelemetry.io/) collector endpoint.
 
-Requests to the OpenAI Chat Completions endpoint are recorded as Spans which
-include typical timing and request details. In addition, there are GenAI
-attributes representing the LLM call including full request and response
-details, defined by the [OpenInference semantic conventions][openinference].
+Requests to the OpenAI Chat Completions and Embeddings endpoints are recorded
+as Spans which include typical timing and request details. In addition, there
+are GenAI attributes representing the LLM or Embeddings call including full
+request and response details, defined by [OpenInference semantic conventions][openinference].
 
-OpenInference attributes default to include full chat completion request and
-response data. This can be toggled with configuration, but when enabled allows
-systems like [Arize Phoenix][phoenix] to perform LLM evaluations of production
-requests captured in OpenTelemetry spans.
+OpenInference attributes default to include full request and response data for
+both chat completions and embeddings. This can be toggled with configuration,
+but when enabled allows systems like [Arize Phoenix][phoenix] to perform
+evaluations of production requests captured in OpenTelemetry spans.
+
+For chat completions, this includes traditional LLM metrics such as correctness
+and hallucination detection. For embeddings, it enables agentic RAG evaluations
+focused on retrieval and semantic analysis.
 
 ### OpenTelemetry configuration
 
@@ -146,9 +181,11 @@ requests captured in OpenTelemetry spans.
     - `OTEL_METRIC_EXPORT_INTERVAL`: Metrics export interval (default: 60000ms)
 
 - **[OpenInference][openinference-config]**: Control sensitive data redaction,
-  such as:
+  such as below. There is [similar config][openinference-embeddings] for embeddings:
     - `OPENINFERENCE_HIDE_INPUTS`: Hide input messages/prompts (default: `false`)
     - `OPENINFERENCE_HIDE_OUTPUTS`: Hide output messages/completions (default: `false`)
+    - `OPENINFERENCE_HIDE_EMBEDDINGS_TEXT`: Hide embeddings input (default: `false`)
+    - `OPENINFERENCE_HIDE_EMBEDDINGS_VECTORS`: Hide embeddings output (default: `false`)
 
 See [docker-compose-otel.yaml][docker-compose-otel.yaml] for a complete example
 configuration.
@@ -158,4 +195,5 @@ configuration.
 [phoenix]: https://docs.arize.com/phoenix
 [otel-env]: https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/
 [openinference-config]: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
+[openinference-embeddings]: https://github.com/Arize-ai/openinference/blob/main/spec/embedding_spans.md
 [docker-compose-otel.yaml]: https://github.com/envoyproxy/ai-gateway/blob/main/cmd/aigw/docker-compose-otel.yaml
