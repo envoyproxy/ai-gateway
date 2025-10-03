@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -29,6 +30,9 @@ type otelChatMetricsTestCase struct {
 func buildOtelChatMetricsTestCases() []otelChatMetricsTestCase {
 	var cases []otelChatMetricsTestCase
 	for _, cassette := range testopenai.ChatCassettes() {
+		if strings.HasPrefix(cassette.String(), "azure-") {
+			continue // Skip Azure as they are tested separately.
+		}
 		tc := otelChatMetricsTestCase{cassette: cassette}
 		switch cassette {
 		case testopenai.CassetteChatBadRequest, testopenai.CassetteChatUnknownModel, testopenai.CassetteChatNoMessages:
@@ -54,7 +58,7 @@ func TestOtelOpenAIChatCompletions_metrics(t *testing.T) {
 
 		t.Run(tc.cassette.String(), func(t *testing.T) {
 			// Send request.
-			req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d/v1", listenerPort), tc.cassette)
+			req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d", listenerPort), tc.cassette)
 			require.NoError(t, err)
 
 			resp, err := http.DefaultClient.Do(req)
@@ -97,7 +101,7 @@ func TestOtelOpenAIChatCompletions_metrics_modelNameOverride(t *testing.T) {
 	env := setupOtelTestEnvironment(t)
 	listenerPort := env.EnvoyListenerPort()
 
-	req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d/v1", listenerPort), testopenai.CassetteChatBasic)
+	req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d", listenerPort), testopenai.CassetteChatBasic)
 	require.NoError(t, err)
 	// Set the x-test-backend which envoy.yaml routes to the openai-chat-override
 	// backend in extproc.yaml. This backend overrides the model to gpt-5-nano.

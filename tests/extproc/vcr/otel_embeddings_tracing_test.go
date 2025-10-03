@@ -34,7 +34,7 @@ func TestOtelOpenAIEmbeddings(t *testing.T) {
 
 		t.Run(cassette.String(), func(t *testing.T) {
 			// Send request.
-			req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d/v1", listenerPort), cassette)
+			req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d", listenerPort), cassette)
 			require.NoError(t, err)
 
 			resp, err := http.DefaultClient.Do(req)
@@ -62,7 +62,7 @@ func TestOtelOpenAIEmbeddings_propagation(t *testing.T) {
 	env := setupOtelTestEnvironment(t)
 	listenerPort := env.EnvoyListenerPort()
 
-	req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d/v1", listenerPort), testopenai.CassetteEmbeddingsBasic)
+	req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d", listenerPort), testopenai.CassetteEmbeddingsBasic)
 	require.NoError(t, err)
 	traceID := "12345678901234567890123456789012"
 	req.Header.Add("traceparent", "00-"+traceID+"-1234567890123456-01")

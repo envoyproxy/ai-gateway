@@ -50,7 +50,7 @@ func TestOtelOpenAIEmbeddings_metrics(t *testing.T) {
 
 		t.Run(tc.cassette.String(), func(t *testing.T) {
 			// Send request.
-			req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d/v1", listenerPort), tc.cassette)
+			req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d", listenerPort), tc.cassette)
 			require.NoError(t, err)
 
 			resp, err := http.DefaultClient.Do(req)
@@ -89,7 +89,7 @@ func TestOtelOpenAIEmbeddings_metrics_modelNameOverride(t *testing.T) {
 	env := setupOtelTestEnvironment(t)
 	listenerPort := env.EnvoyListenerPort()
 
-	req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d/v1", listenerPort), testopenai.CassetteEmbeddingsBasic)
+	req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d", listenerPort), testopenai.CassetteEmbeddingsBasic)
 	require.NoError(t, err)
 	// Set the x-test-backend which envoy.yaml routes to the openai-embeddings-override
 	// backend in extproc.yaml. This backend overrides the model to text-embedding-3-small.
