@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 // Cassette is an HTTP interaction recording.
@@ -133,6 +134,13 @@ const (
 	CassetteEmbeddingsWhitespace
 	// CassetteEmbeddingsBadRequest tests request with multiple validation errors.
 	CassetteEmbeddingsBadRequest
+
+	// Cassettes for Azure OpenAI Service.
+
+	// CassetteAzureChatBasic is the same as CassetteChatBasic, except using
+	// Azure OpenAI Service authentication and endpoint format.
+	CassetteAzureChatBasic
+
 	_cassetteNameEnd // Sentinel value for iteration.
 )
 
@@ -158,6 +166,8 @@ var stringValues = map[Cassette]string{
 	CassetteChatWebSearch:              "chat-web-search",
 	CassetteChatStreamingWebSearch:     "chat-streaming-web-search",
 	CassetteChatOpenAIAgentsPython:     "chat-openai-agents-python",
+
+	CassetteAzureChatBasic: "azure-chat-basic",
 
 	CassetteCompletionBasic:          "completion-basic",
 	CassetteCompletionToken:          "completion-token",
@@ -195,13 +205,25 @@ func (c Cassette) String() string {
 // CassetteNameHeader according to the pre-recorded cassette.
 func NewRequest(ctx context.Context, baseURL string, cassette Cassette) (*http.Request, error) {
 	if r, ok := chatRequests[cassette]; ok {
-		return newRequest(ctx, cassette, baseURL+"/chat/completions", r)
+		path := buildPath(cassette, "/chat/completions", baseURL, r)
+		return newRequest(ctx, cassette, path, r)
 	} else if r, ok := completionRequests[cassette]; ok {
-		return newRequest(ctx, cassette, baseURL+"/completions", r)
+		path := buildPath(cassette, "/completions", baseURL, r)
+		return newRequest(ctx, cassette, path, r)
 	} else if r, ok := embeddingsRequests[cassette]; ok {
-		return newRequest(ctx, cassette, baseURL+"/embeddings", r)
+		path := buildPath(cassette, "/embeddings", baseURL, r)
+		return newRequest(ctx, cassette, path, r)
 	}
 	return nil, fmt.Errorf("unknown cassette: %s", cassette)
+}
+
+// buildPath builds the full URL path based on cassette type (Azure vs OpenAI).
+func buildPath(cassette Cassette, endpoint, baseURL string, requestBody any) string {
+	if strings.HasPrefix(cassette.String(), "azure-") {
+		model := extractModel(requestBody)
+		return baseURL + buildAzurePath(endpoint, model)
+	}
+	return baseURL + "/v1" + endpoint
 }
 
 // ResponseBody is used in tests to avoid duplicating body content when the

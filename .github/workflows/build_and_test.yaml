@@ -247,8 +247,18 @@ jobs:
   test_e2e_upgrade:
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
-    name: E2E Test for Upgrades
+    name: E2E Test for Upgrades (k8s ${{ matrix.k8s-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Note: this is to simply ensure that the controller working as expected with or without
+        # extproc being inserted as a k8s sidecar (init container with the restartPolicy=always).
+        # On newer k8s versions (v1.33+), that is always enabled by default, so we only need to test
+        # on older versions. After v1.32 reaches EOL, we can remove the older k8s versions from here.
+        k8s-version:
+          - v1.33.4
+          - v1.32.8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -268,6 +278,7 @@ jobs:
         env:
           # We only need to test the upgrade from the latest stable version of EG.
           EG_VERSION: v1.5.0
+          K8S_VERSION: ${{ matrix.k8s-version }}
 
   test_e2e_inference_extension:
     needs: changes

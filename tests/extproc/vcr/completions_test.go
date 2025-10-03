@@ -59,7 +59,7 @@ func TestOpenAICompletions(t *testing.T) {
 			return // rather than also failing subsequent tests, which confuses root cause.
 		}
 		t.Run(tc.cassette.String(), func(t *testing.T) {
-			req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d/v1", listenerPort), tc.cassette)
+			req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d", listenerPort), tc.cassette)
 			require.NoError(t, err)
 
 			resp, err := http.DefaultClient.Do(req)

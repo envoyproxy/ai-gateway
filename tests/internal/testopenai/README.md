@@ -52,7 +52,7 @@ func TestMyFeature(t *testing.T) {
 The test server can record new interactions when:
 
 - No matching cassette is found
-- `OPENAI_API_KEY` is set in the environment
+- `OPENAI_API_KEY` or `AZURE_OPENAI_API_KEY` is set in the environment
 - A cassette name is provided via `X-Cassette-Name` header
 
 To record a new cassette, follow these steps:
@@ -103,11 +103,22 @@ To record a new cassette, follow these steps:
    }
    ```
 
-3. **Run `TestNewRequest`** with your OpenAI API key set:
+3. **Run `TestNewRequest`** with your API credentials set:
 
+   For OpenAI:
    ```bash
-   cd internal/testopenai
+   cd tests/internal/testopenai
    OPENAI_API_KEY=sk-.. go test -run TestNewRequest -v
+   ```
+
+   For Azure OpenAI:
+   ```bash
+   cd tests/internal/testopenai
+   AZURE_OPENAI_API_KEY=your-key \
+   AZURE_OPENAI_ENDPOINT=https://your-resource.cognitiveservices.azure.com \
+   AZURE_OPENAI_DEPLOYMENT=your-deployment-name \
+   OPENAI_API_VERSION=2024-02-15-preview \
+   go test -run TestNewRequest -v
    ```
 
 4. Use it in tests like [chat_completions_test.go](../../extproc/vcr/chat_completions_test.go)

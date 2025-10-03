@@ -243,7 +243,7 @@ func TestRecordSpan_Errors(t *testing.T) {
 	}{
 		{
 			name: "proxy fail",
-			startProxy: func(_ context.Context, _ *log.Logger, _, _ string) (string, func(), error) {
+			startProxy: func(_ context.Context, _ *log.Logger, _ testopenai.Cassette, _, _ string) (string, func(), error) {
 				return "", nil, fmt.Errorf("proxy fail")
 			},
 			expectError: "proxy fail",
@@ -346,7 +346,7 @@ func mustMarshal(t *testing.T, msg proto.Message) []byte {
 	return data
 }
 
-func mockProxy(_ context.Context, logger *log.Logger, _, otlp string) (string, func(), error) {
+func mockProxy(_ context.Context, logger *log.Logger, _ testopenai.Cassette, _, otlp string) (string, func(), error) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger.Printf("Mock: %s %s", r.Method, r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
@@ -357,7 +357,7 @@ func mockProxy(_ context.Context, logger *log.Logger, _, otlp string) (string, f
 	return srv.URL + "/v1", srv.Close, nil
 }
 
-func mockStreamingProxy(_ context.Context, logger *log.Logger, _, otlp string) (string, func(), error) {
+func mockStreamingProxy(_ context.Context, logger *log.Logger, _ testopenai.Cassette, _, otlp string) (string, func(), error) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger.Printf("Mock: %s %s", r.Method, r.URL.Path)
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -371,7 +371,7 @@ func mockStreamingProxy(_ context.Context, logger *log.Logger, _, otlp string) (
 	return srv.URL + "/v1", srv.Close, nil
 }
 
-func mockNoSpansProxy(_ context.Context, logger *log.Logger, _, _ string) (string, func(), error) {
+func mockNoSpansProxy(_ context.Context, logger *log.Logger, _ testopenai.Cassette, _, _ string) (string, func(), error) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger.Printf("Mock: %s %s", r.Method, r.URL.Path)
 		w.WriteHeader(http.StatusOK)
@@ -380,11 +380,11 @@ func mockNoSpansProxy(_ context.Context, logger *log.Logger, _, _ string) (strin
 	return srv.URL + "/v1", srv.Close, nil
 }
 
-func mockErrorProxy(_ context.Context, _ *log.Logger, _, _ string) (string, func(), error) {
+func mockErrorProxy(_ context.Context, _ *log.Logger, _ testopenai.Cassette, _, _ string) (string, func(), error) {
 	return "", nil, fmt.Errorf("mock proxy error")
 }
 
-func mockConflictProxy(_ context.Context, logger *log.Logger, _, _ string) (string, func(), error) {
+func mockConflictProxy(_ context.Context, logger *log.Logger, _ testopenai.Cassette, _, _ string) (string, func(), error) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger.Printf("Mock: %s %s", r.Method, r.URL.Path)
 		w.WriteHeader(http.StatusConflict)
@@ -393,7 +393,7 @@ func mockConflictProxy(_ context.Context, logger *log.Logger, _, _ string) (stri
 	return srv.URL + "/v1", srv.Close, nil
 }
 
-func mockInternalErrorProxy(_ context.Context, logger *log.Logger, _, _ string) (string, func(), error) {
+func mockInternalErrorProxy(_ context.Context, logger *log.Logger, _ testopenai.Cassette, _, _ string) (string, func(), error) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger.Printf("Mock: %s %s", r.Method, r.URL.Path)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -402,7 +402,7 @@ func mockInternalErrorProxy(_ context.Context, logger *log.Logger, _, _ string) 
 	return srv.URL + "/v1", srv.Close, nil
 }
 
-func mockInternalErrorEmptyProxy(_ context.Context, logger *log.Logger, _, _ string) (string, func(), error) {
+func mockInternalErrorEmptyProxy(_ context.Context, logger *log.Logger, _ testopenai.Cassette, _, _ string) (string, func(), error) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger.Printf("Mock: %s %s", r.Method, r.URL.Path)
 		w.WriteHeader(http.StatusInternalServerError)

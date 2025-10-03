@@ -113,7 +113,7 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 		// Get the pod description to check env vars.
 		describeCmd := exec.CommandContext(ctx, "kubectl", "get", "pod", podName,
 			"-n", e2elib.EnvoyGatewayNamespace,
-			"-o", "jsonpath={.spec.containers[?(@.name=='ai-gateway-extproc')].env}")
+			"-o", "jsonpath={.spec.initContainers[?(@.name=='ai-gateway-extproc')].env}")
 
 		describeOutput := &bytes.Buffer{}
 		describeCmd.Stdout = describeOutput
@@ -149,7 +149,7 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 			return false
 		}
 		return true
-	}, 1*time.Minute, 1*time.Second)
+	}, 2*time.Minute, 5*time.Second)
 
 	t.Log("OTEL environment variables successfully verified in extProc container")
 }

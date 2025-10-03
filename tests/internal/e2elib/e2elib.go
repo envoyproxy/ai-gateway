@@ -94,11 +94,10 @@ func SetupAll(ctx context.Context, clusterName string, aigwOpts AIGatewayHelmOpt
 	if err := initKindCluster(ctx, clusterName); err != nil {
 		return fmt.Errorf("failed to initialize kind cluster: %w", err)
 	}
-
+	if err := initMetalLB(ctx); err != nil {
+		return fmt.Errorf("failed to initialize MetalLB: %w", err)
+	}
 	if inferenceExtension {
-		if err := initMetalLB(ctx); err != nil {
-			return fmt.Errorf("failed to initialize MetalLB: %w", err)
-		}
 		if err := installInferencePoolEnvironment(ctx); err != nil {
 			return fmt.Errorf("failed to install inference pool environment: %w", err)
 		}
@@ -127,8 +126,14 @@ func initKindCluster(ctx context.Context, clusterName string) (err error) {
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)", elapsed.Seconds()))
 	}()
 
+	args := []string{"create", "cluster", "--name", clusterName}
+	// If K8S_VERSION is set, use the specified Kubernetes version for the kind node image.
+	if k8sVersion := os.Getenv("K8S_VERSION"); k8sVersion != "" {
+		args = append(args, "--image", "kindest/node:"+k8sVersion)
+		initLog(fmt.Sprintf("\tUsing Kubernetes version %s for kind cluster", k8sVersion))
+	}
 	initLog(fmt.Sprintf("\tCreating kind cluster named %s", clusterName))
-	out, err := testsinternal.RunGoToolContext(ctx, "kind", "create", "cluster", "--name", clusterName)
+	out, err := testsinternal.RunGoToolContext(ctx, "kind", args...)
 	if err != nil && !strings.Contains(err.Error(), "already exist") {
 		fmt.Printf("Error creating kind cluster: %s\n", out)
 		return
@@ -554,6 +559,18 @@ func RequireWaitForGatewayPodReady(t *testing.T, selector string) {
 	RequireWaitForPodReady(t, selector)
 }
 
+// RequireGatewayListenerAddressViaMetalLB gets the external IP address of the Gateway via MetalLB.
+func RequireGatewayListenerAddressViaMetalLB(t *testing.T, namespace, name string) (addr string) {
+	cmd := Kubectl(t.Context(), "get", "gateway", "-n", namespace, name,
+		"-o", "jsonpath={.status.addresses[0].value}")
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	out, err := cmd.Output()
+	require.NoError(t, err, "failed to get gateway address")
+	addr = strings.TrimSpace(string(out))
+	return
+}
+
 // requireWaitForGatewayPod waits for the Envoy Gateway pod containing the
 // extproc container.
 func requireWaitForGatewayPod(t *testing.T, selector string) {
@@ -563,7 +580,7 @@ func requireWaitForGatewayPod(t *testing.T, selector string) {
 		}
 		return nil
 	}, "get", "pod", "-n", EnvoyGatewayNamespace,
-		"--selector="+selector, "-o", "jsonpath='{.items[0].spec.containers[*].name}'")
+		"--selector="+selector, "-o", "jsonpath='{.items[0].spec.initContainers[*].name} {.items[0].spec.containers[*].name}'")
 }
 
 // RequireWaitForPodReady waits for the pod with the given selector to be ready.

@@ -42,11 +42,16 @@ type gatewayMutator struct {
 	rootPrefix                 string
 	extProcExtraEnvVars        []corev1.EnvVar
 	extProcMaxRecvMsgSize      int
+
+	// Whether to run the extProc container as a sidecar (true) as a normal container (false).
+	// This is essentially a workaround for old k8s versions, and we can remove this in the future.
+	extProcAsSideCar bool
 }
 
 func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.Logger,
 	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel,
 	udsPath, metricsRequestHeaderLabels, rootPrefix, extProcExtraEnvVars string, extProcMaxRecvMsgSize int,
+	extProcAsSideCar bool,
 ) *gatewayMutator {
 	var parsedEnvVars []corev1.EnvVar
 	if extProcExtraEnvVars != "" {
@@ -69,6 +74,7 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 		rootPrefix:                 rootPrefix,
 		extProcExtraEnvVars:        parsedEnvVars,
 		extProcMaxRecvMsgSize:      extProcMaxRecvMsgSize,
+		extProcAsSideCar:           extProcAsSideCar,
 	}
 }
 
@@ -226,7 +232,7 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		filterConfigFullPath  = filterConfigMountPath + "/" + FilterConfigKeyInSecret
 	)
 	udsMountPath := filepath.Dir(g.udsPath)
-	podspec.Containers = append(podspec.Containers, corev1.Container{
+	container := corev1.Container{
 		Name:            extProcContainerName,
 		Image:           g.extProcImage,
 		ImagePullPolicy: g.extProcImagePullPolicy,
@@ -279,7 +285,15 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 			FailureThreshold:    1,
 		},
 		Resources: resources,
-	})
+	}
+
+	if g.extProcAsSideCar {
+		// When running as a sidecar, we want to ensure the extProc container is shutdown last after Envoy is shutdown.
+		container.RestartPolicy = ptr.To(corev1.ContainerRestartPolicyAlways)
+		podspec.InitContainers = append(podspec.InitContainers, container)
+	} else {
+		podspec.Containers = append(podspec.Containers, container)
+	}
 
 	// Lastly, we need to mount the Envoy container with the extproc socket.
 	for i := range podspec.Containers {

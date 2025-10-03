@@ -31,7 +31,7 @@ func TestPrometheusMetrics(t *testing.T) {
 	adminPort := env.ExtProcAdminPort()
 
 	// Send the chat request.
-	req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d/v1", listenerPort), testopenai.CassetteChatBasic)
+	req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d", listenerPort), testopenai.CassetteChatBasic)
 	require.NoError(t, err)
 
 	resp, err := http.DefaultClient.Do(req)

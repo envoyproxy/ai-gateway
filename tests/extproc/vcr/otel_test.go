@@ -59,6 +59,11 @@ func failIf5xx(t *testing.T, resp *http.Response, was5xx *bool) {
 
 // verifyTokenUsageMetricsWithOriginal verifies token usage metrics including original model attribute
 func verifyTokenUsageMetricsWithOriginal(t *testing.T, op string, metrics *metricsv1.ScopeMetrics, span *tracev1.Span, originalModel, requestModel, responseModel string, isError bool) {
+	verifyTokenUsageMetricsWithProvider(t, op, "openai", metrics, span, originalModel, requestModel, responseModel, isError)
+}
+
+// verifyTokenUsageMetricsWithProvider verifies token usage metrics including original model attribute and provider name
+func verifyTokenUsageMetricsWithProvider(t *testing.T, op string, provider string, metrics *metricsv1.ScopeMetrics, span *tracev1.Span, originalModel, requestModel, responseModel string, isError bool) {
 	t.Helper()
 	if isError {
 		return // Token usage metrics are not verified for error cases.
@@ -80,7 +85,7 @@ func verifyTokenUsageMetricsWithOriginal(t *testing.T, op string, metrics *metri
 				if tokenType == "input" || tokenType == "output" {
 					expected := map[string]string{
 						"gen_ai.operation.name": op,
-						"gen_ai.provider.name":  "openai",
+						"gen_ai.provider.name":  provider,
 						"gen_ai.original.model": originalModel,
 						"gen_ai.request.model":  requestModel,
 						"gen_ai.response.model": responseModel,
@@ -96,6 +101,11 @@ func verifyTokenUsageMetricsWithOriginal(t *testing.T, op string, metrics *metri
 
 // verifyRequestDurationMetricsWithOriginal verifies request duration metrics including original model attribute
 func verifyRequestDurationMetricsWithOriginal(t *testing.T, op string, metrics *metricsv1.ScopeMetrics, span *tracev1.Span, originalModel, requestModel, responseModel string, isError bool) {
+	verifyRequestDurationMetricsWithProvider(t, op, "openai", metrics, span, originalModel, requestModel, responseModel, isError)
+}
+
+// verifyRequestDurationMetricsWithProvider verifies request duration metrics including original model attribute and provider name
+func verifyRequestDurationMetricsWithProvider(t *testing.T, op string, provider string, metrics *metricsv1.ScopeMetrics, span *tracev1.Span, originalModel, requestModel, responseModel string, isError bool) {
 	t.Helper()
 
 	spanDurationSec := float64(span.EndTimeUnixNano-span.StartTimeUnixNano) / 1e9
@@ -116,7 +126,7 @@ func verifyRequestDurationMetricsWithOriginal(t *testing.T, op string, metrics *
 					expected := map[string]string{
 						"error.type":            "_OTHER", // we don't set specific error types yet
 						"gen_ai.operation.name": op,
-						"gen_ai.provider.name":  "openai",
+						"gen_ai.provider.name":  provider,
 						"gen_ai.request.model":  requestModel,
 						"gen_ai.original.model": originalModel,
 						"gen_ai.response.model": attrs["gen_ai.response.model"],
@@ -132,7 +142,7 @@ func verifyRequestDurationMetricsWithOriginal(t *testing.T, op string, metrics *
 
 	expectedAttrs := map[string]string{
 		"gen_ai.operation.name": op,
-		"gen_ai.provider.name":  "openai",
+		"gen_ai.provider.name":  provider,
 		"gen_ai.original.model": originalModel,
 		"gen_ai.request.model":  requestModel,
 		"gen_ai.response.model": responseModel,

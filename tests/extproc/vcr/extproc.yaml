@@ -21,3 +21,14 @@ backends:
       name: OpenAI
       version: v1
     modelNameOverride: text-embedding-3-small
+  # Azure OpenAI backend
+  - name: azure-openai
+    schema:
+      name: AzureOpenAI
+      version: 2024-12-01-preview
+  # Test backend that forces a model name override for Azure.
+  - name: azure-openai-chat-override
+    schema:
+      name: AzureOpenAI
+      version: 2024-12-01-preview
+    modelNameOverride: gpt-5-nano

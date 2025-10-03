@@ -29,6 +29,8 @@ func NewHandler(ctx context.Context, config *filterapi.BackendAuth) (Handler, er
 		return newAWSHandler(ctx, config.AWSAuth)
 	case config.APIKey != nil:
 		return newAPIKeyHandler(config.APIKey)
+	case config.AzureAPIKey != nil:
+		return newAzureAPIKeyHandler(config.AzureAPIKey)
 	case config.AzureAuth != nil:
 		return newAzureHandler(config.AzureAuth)
 	case config.GCPAuth != nil:

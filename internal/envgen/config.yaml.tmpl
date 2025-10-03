@@ -121,7 +121,7 @@ spec:
   timeouts:
     request: 3m
   schema:
-    name: OpenAI
+    name: {{.SchemaName}}
 {{- if .Version }}
     version: "{{.Version}}"
 {{- end }}
@@ -130,6 +130,18 @@ spec:
     kind: Backend
     group: gateway.envoyproxy.io
     namespace: default
+{{- if or .OrganizationID .ProjectID }}
+  headerMutation:
+    set:
+{{- if .OrganizationID }}
+      - name: "OpenAI-Organization"
+        value: "{{.OrganizationID}}"
+{{- end }}
+{{- if .ProjectID }}
+      - name: "OpenAI-Project"
+        value: "{{.ProjectID}}"
+{{- end }}
+{{- end }}
 {{- if .NeedsTLS }}
 ---
 apiVersion: gateway.networking.k8s.io/v1alpha3
@@ -170,13 +182,24 @@ metadata:
   name: openai-apikey
   namespace: default
   annotations:
+{{- if eq .SchemaName "AzureOpenAI" }}
+    # This will tell the CLI to replace the value of the apiKey field
+    # with the value of the environment variable OPENAI_API_KEY or AZURE_OPENAI_API_KEY.
+    substitution.aigw.run/env/apiKey: AZURE_OPENAI_API_KEY
+{{- else }}
     # This will tell the CLI to replace the value of the apiKey field
     # with the value of the environment variable OPENAI_API_KEY.
     substitution.aigw.run/env/apiKey: OPENAI_API_KEY
+{{- end }}
 type: Opaque
 stringData:
+{{- if eq .SchemaName "AzureOpenAI" }}
+  # This will be replaced with the environment variable.
+  apiKey: PLACEHOLDER_AZURE_OPENAI_API_KEY
+{{- else }}
   # This will be replaced with the environment variable OPENAI_API_KEY.
   apiKey: PLACEHOLDER_OPENAI_API_KEY
+{{- end }}
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
@@ -188,7 +211,14 @@ spec:
     - group: aigateway.envoyproxy.io
       kind: AIServiceBackend
       name: openai
+{{- if eq .SchemaName "AzureOpenAI" }}
+  type: AzureAPIKey
+  azureAPIKey:
+    secretRef:
+      name: openai-apikey
+{{- else }}
   type: APIKey
   apiKey:
     secretRef:
       name: openai-apikey
+{{- end }}

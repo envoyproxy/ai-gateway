@@ -70,3 +70,12 @@ codefromthecrypt:
   socials:
     github: codefromthecrypt
     linkedin: https://www.linkedin.com/in/adrianfcole/
+nacx:
+  name: Ignasi Barrera
+  title: Founding Engineer - Tetrate
+  url: https://nacx.dev
+  image_url: https://github.com/nacx.png
+  page: true
+  socials:
+    github: nacx
+    linkedin: https://www.linkedin.com/in/ignasibarrera/

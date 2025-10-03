@@ -7,8 +7,12 @@ package e2eupgrade
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
+	"log"
+	"net/http"
 	"sort"
 	"strings"
 	"sync"
@@ -20,6 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
+	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
 const egSelector = "gateway.envoyproxy.io/owning-gateway-name=upgrade-test"
@@ -58,6 +63,12 @@ func (tp testPhase) String() string {
 //
 // In both test cases, we continuously make requests to the Envoy Gateway and ensure
 // that no requests fail during the upgrade process.
+//
+// Note that this utilizes MetalLB to make the situation more realistic as well as
+// to avoid the complexity in maintaining non-recey port-forward assignment logic, etc.
+// On Linux, this should work without any special setup. On Mac, this might
+// require additional setup, e.g. https://waddles.org/2024/06/04/kind-with-metallb-on-macos/
+// though it depends on the container runtime.
 func TestUpgrade(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -129,7 +140,7 @@ func TestUpgrade(t *testing.T) {
 			defer cancel()
 			go func() {
 				if err := monitorPods(monitorCtx, egSelector, phase); err != nil && !errors.Is(err, context.Canceled) {
-					t.Logf("pod monitor error: %v", err)
+					log.Println("pod monitor error:", err) // This might print after the test ends, so not failing the test or using t.Log.
 				}
 			}()
 
@@ -137,23 +148,20 @@ func TestUpgrade(t *testing.T) {
 			require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
 
 			e2elib.RequireWaitForGatewayPodReady(t, egSelector)
-
-			// Create a single shared port forwarder to avoid port allocation races.
-			fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
-			defer fwd.Kill()
+			ipAddress := e2elib.RequireGatewayListenerAddressViaMetalLB(t, "default", "upgrade-test")
 
 			// Ensure that first request works.
-			require.NoError(t, makeRequest(t, phase.String(), fwd))
+			require.NoError(t, makeRequest(t, ipAddress, phase.String()))
 
 			requestLoopCtx, cancelRequests := context.WithCancel(t.Context())
 			defer cancelRequests()
 
 			// Buffered channel prevents blocking when goroutines report errors.
 			failChan := make(chan error, 100)
+			defer close(failChan)
 			var wg sync.WaitGroup
-
-			for i := 0; i < 10; i++ {
-				wg.Add(1)
+			wg.Add(100)
+			for range 100 {
 				go func() {
 					defer wg.Done()
 					for {
@@ -165,14 +173,14 @@ func TestUpgrade(t *testing.T) {
 
 						phase.requestCounts.Add(1)
 						phaseStr := phase.String()
-						if err := makeRequest(t, phaseStr, fwd); err != nil {
+						if err := makeRequest(t, ipAddress, phaseStr); err != nil {
 							// Non-blocking send: if channel is full, we've already captured enough failures.
 							select {
 							case failChan <- err:
 							default:
+								return
 							}
 						}
-						time.Sleep(100 * time.Millisecond)
 					}
 				}()
 			}
@@ -196,12 +204,11 @@ func TestUpgrade(t *testing.T) {
 			// Stop request goroutines and wait for clean shutdown before checking failures.
 			cancelRequests()
 			wg.Wait()
-			close(failChan)
 
 			// Collect and report all failures.
 			var failures []error
-			for err := range failChan {
-				failures = append(failures, err)
+			for i := len(failChan); i > 0; i-- {
+				failures = append(failures, <-failChan)
 			}
 			if len(failures) > 0 {
 				for _, err := range failures {
@@ -234,11 +241,67 @@ func (p *phase) String() string {
 	return fmt.Sprintf("%s (requests made: %d, current pods: %s)", phase, p.requestCounts.Load(), currentPods)
 }
 
-// makeRequest makes a request to the Envoy Gateway and returns an error if the request fails.
-func makeRequest(t *testing.T, phase string, fwd e2elib.PortForwarder) error {
-	_, err := fwd.Post(t.Context(), "/v1/chat/completions", `{"messages":[{"role":"user","content":"Say this is a test"}],"model":"some-cool-model"}`)
+// makeRequest makes a single request to the given IP address and returns an error if the request fails.
+//
+// The request is a simple POST request to the /v1/chat/completions endpoint with a streaming response.
+// Since the testupstream server takes 200ms interval between each chunk, this ensures that the request
+// lasts long enough to overlap with pod restarts during the upgrade.
+func makeRequest(t *testing.T, ipAddress string, phase string) error {
+	req, err := http.NewRequest("POST", fmt.Sprintf("http://%s/v1/chat/completions", ipAddress),
+		strings.NewReader(`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"some-cool-model", "stream":true}`))
+	require.NoError(t, err, "failed to create request")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(testupstreamlib.ResponseTypeKey, "sse")
+	req.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
+		base64.StdEncoding.EncodeToString([]byte(`
+		{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":"."},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" This"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" a"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":" test"},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[{"index":0,"delta":{"content":"."},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-B8ZKlXBoEXZVTtv3YBmewxuCpNW7b","object":"chat.completion.chunk","created":1741382147,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_06737a9306","choices":[],"usage":{"prompt_tokens":25,"completion_tokens":61,"total_tokens":86,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+		`)),
+	)
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("[%s] %w", phase, err)
+		return fmt.Errorf("[%s] request failed: %w", phase, err)
+	}
+	defer resp.Body.Close()
+	// Wait until we read the entire streaming response body.
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("[%s] failed to read response body: %w", phase, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("[%s] unexpected status code %d: body=%s", phase, resp.StatusCode, string(body))
 	}
 	return nil
 }

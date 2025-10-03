@@ -156,13 +156,19 @@ test-crdcel: apigen ## Run the integration tests of CEL validation in CRD defini
 #
 # This requires the extproc binary to be built as well as Envoy binary to be available in the PATH.
 # The EXTPROC_BIN environment variable is exported to tell tests to use the pre-built binary.
+#
+# Since this is an integration test, we don't use -race, as it takes a very long
+# time to complete. For concurrency issues, use normal unit tests and race them.
 .PHONY: test-extproc # This requires the extproc binary to be built.
 test-extproc: build.extproc ## Run the integration tests for extproc without controller or k8s at all.
 	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
 	@echo "Run ExtProc test"
-	@EXTPROC_BIN=$(OUTPUT_DIR)/extproc-$(shell go env GOOS)-$(shell go env GOARCH) go test -timeout=20m ./tests/extproc/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
+	@EXTPROC_BIN=$(OUTPUT_DIR)/extproc-$(shell go env GOOS)-$(shell go env GOARCH) go test ./tests/extproc/... $(GO_TEST_E2E_ARGS)
 
 # This runs the end-to-end tests for the controller with EnvTest.
+#
+# Since this is an integration test, we don't use -race, as it takes a very long
+# time to complete. For concurrency issues, use normal unit tests and race them.
 .PHONY: test-controller
 test-controller: apigen ## Run the integration tests for the controller with envtest.
 	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \

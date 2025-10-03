@@ -19,11 +19,18 @@ Currently, `aigw run` supports Linux and macOS.
 ## Quick Start
 
 The simplest way to get started is to have `aigw` generate a configuration for
-you given OpenAI environment variables of your backend. Here are some examples:
+you using environment variables. `aigw` supports auto-configuration using the same
+environment variables as the OpenAI SDK, making it easy to integrate with existing
+tooling. Here are some examples:
 
 ```bash
 # OpenAI
 OPENAI_API_KEY=sk-your-key aigw run
+# Azure OpenAI
+AZURE_OPENAI_ENDPOINT=https://example.openai.azure.com \
+  AZURE_OPENAI_API_KEY=your-key \
+  OPENAI_API_VERSION=2024-12-01-preview \
+  aigw run
 # Tetrate Agent Router Service (TARS)
 OPENAI_BASE_URL=https://api.router.tetrate.ai/v1 OPENAI_API_KEY=sk-your-key aigw run
 # Ollama running locally
@@ -40,13 +47,35 @@ curl -H "Content-Type: application/json" -XPOST http://localhost:1975/v1/chat/co
     -d '{"model": "qwen2.5:0.5b","messages": [{"role": "user", "content": "Say this is a test!"}]}'
 ```
 
-### Supported OpenAI Environment Variables
+### Supported Environment Variables
 
-| Variable          | Required | Default                     | Description                                          |
+The following environment variables are compatible with the OpenAI SDK:
+
+**OpenAI / OpenAI-compatible backends:**
+
+When `OPENAI_API_KEY` is set, the following environment variables are read:
+
+| Variable          | Required | Example                     | Description                                          |
 |-------------------|----------|-----------------------------|------------------------------------------------------|
-| `OPENAI_API_KEY`  | Yes      | -                           | API key for authentication (use "unused" for Ollama) |
+| `OPENAI_API_KEY`  | Yes      | `sk-proj-...`               | API key for authentication (use "unused" for Ollama) |
 | `OPENAI_BASE_URL` | No       | `https://api.openai.com/v1` | Base URL of your OpenAI-compatible backend           |
 
+**Azure OpenAI:**
+
+When `AZURE_OPENAI_API_KEY` is set, the following environment variables are read:
+
+| Variable                  | Required | Example                                   | Description                                                    |
+|---------------------------|----------|-------------------------------------------|----------------------------------------------------------------|
+| `AZURE_OPENAI_ENDPOINT`   | Yes      | `https://example.openai.azure.com`        | Your Azure endpoint, including the resource                    |
+| `AZURE_OPENAI_API_KEY`    | Yes      | `abc123...`                               | API key for authentication                                     |
+| `OPENAI_API_VERSION`      | Yes      | `2024-12-01-preview`                      | Azure OpenAI API version                                       |
+
+**Optional headers (both OpenAI and Azure OpenAI):**
+
+| Variable             | Example      | Description                                                                                           |
+|----------------------|--------------|-------------------------------------------------------------------------------------------------------|
+| `OPENAI_ORG_ID`      | `org-...`    | Organization ID - adds `OpenAI-Organization` request header for billing and access control            |
+| `OPENAI_PROJECT_ID`  | `proj_...`   | Project ID - adds `OpenAI-Project` request header for project-level billing and access control        |
 
 ## Custom Configuration
 
