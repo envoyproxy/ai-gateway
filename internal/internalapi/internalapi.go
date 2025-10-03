@@ -76,15 +76,17 @@ const (
 	AIGatewayGeneratedHTTPRouteAnnotation = "ai-gateway-generated"
 )
 
-// ParseRequestHeaderLabelMapping parses comma-separated key-value pairs for header-to-label mapping.
-// The input format is "header1:label1,header2:label2" where header names are HTTP request
-// headers and label names are Prometheus metric labels.
-// Example: "x-team-id:team_id,x-user-id:user_id".
+// ParseRequestHeaderAttributeMapping parses comma-separated key-value pairs for header-to-attribute mapping.
+// The input format is "header1:attribute1,header2:attribute2" where header names are HTTP request
+// headers and attribute names are Otel span or metric attributes.
+// Example: "x-session-id:session.id,x-user-id:user.id".
 //
 // Note: This serves a different purpose than OTEL's OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST,
-// which captures headers as span attributes for tracing. This function creates Prometheus metric labels
-// from headers with custom naming (e.g., x-team-id → team_id) for proper Prometheus conventions.
-func ParseRequestHeaderLabelMapping(s string) (map[string]string, error) {
+// which captures headers as span attributes for tracing.
+//
+// Note: We do not need to convert to Prometheus format (e.g., x-session-id → session.id) here,
+// as that's done implicitly in the Prometheus exporter.
+func ParseRequestHeaderAttributeMapping(s string) (map[string]string, error) {
 	if s == "" {
 		return nil, nil
 	}
@@ -95,22 +97,22 @@ func ParseRequestHeaderLabelMapping(s string) (map[string]string, error) {
 	for i, pair := range pairs {
 		pair = strings.TrimSpace(pair)
 		if pair == "" {
-			return nil, fmt.Errorf("empty header-label pair at position %d", i+1)
+			return nil, fmt.Errorf("empty header-attribute pair at position %d", i+1)
 		}
 
 		parts := strings.SplitN(pair, ":", 2)
 		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid header-label pair at position %d: %q (expected format: header:label)", i+1, pair)
+			return nil, fmt.Errorf("invalid header-attribute pair at position %d: %q (expected format: header:attribute)", i+1, pair)
 		}
 
 		header := strings.TrimSpace(parts[0])
-		label := strings.TrimSpace(parts[1])
+		attribute := strings.TrimSpace(parts[1])
 
-		if header == "" || label == "" {
-			return nil, fmt.Errorf("empty header or label at position %d: %q", i+1, pair)
+		if header == "" || attribute == "" {
+			return nil, fmt.Errorf("empty header or attribute at position %d: %q", i+1, pair)
 		}
 
-		result[header] = label
+		result[header] = attribute
 	}
 
 	return result, nil

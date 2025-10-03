@@ -369,7 +369,7 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_FieldPassthrough(t *testi
 			},
 		},
 		"tool_choice": map[string]any{"type": "auto"},
-		"metadata":    map[string]any{"user_id": "test123"},
+		"metadata":    map[string]any{"user.id": "test123"},
 	}
 
 	_, bodyMutation, err := translator.RequestBody(nil, parsedReq, false)

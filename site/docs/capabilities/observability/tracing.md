@@ -120,6 +120,50 @@ extProc:
 Note: Hiding inputs/outputs prevents human or LLM-as-a-Judge evaluation of your
 LLM requests, such as done with the [Phoenix Evals library][phoenix-evals].
 
+## Session Tracking
+
+Sessions help track and organize related traces across multi-turn conversations
+with your AI app. Maintaining context between interactions is key for
+observability.
+
+With sessions, you can:
+- Track a conversation's full history in one thread.
+- View inputs/outputs for a given agent.
+- Monitor token usage and latency per conversation.
+
+By tagging spans with a consistent session ID, you get a connected view of
+performance across a user's journey.
+
+The challenge is that requests to the gateway may not send traces, making
+grouping difficult. Many GenAI frameworks allow you to set custom HTTP headers
+when sending traffic to an LLM. Propagating sessions this way is simpler than
+instrumenting applications with tracing code and can still achieve grouping.
+
+There's no standard name for session ID headers, but there is a common attribute
+in OpenTelemetry, [session.id][otel-session], which has special handling in some
+OpenTelemetry platforms such as [Phoenix][phoenix-session].
+
+To bridge this gap, Envoy AI Gateway has two configurations to map HTTP request
+headers to OpenTelemetry attributes, one for spans and one for metrics.
+- `controller.spanRequestHeaderAttributes`
+- `controller.metricsRequestHeaderAttributes`
+
+Both of these use the same value format: a comma-separated list of
+`<http-header>:<otel-attribute>` pairs. For example, if your session ID header
+is `x-session-id`, you can map it to the standard OpenTelemetry attribute
+`session.id` like this: `x-session-id:session.id`.
+
+Some metrics systems will be able to do fine-grained aggregation, but not all.
+Here's an example of setting the session ID header for spans, but not metrics:
+```shell
+helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \
+  --version v0.0.0-latest \
+  --namespace envoy-ai-gateway-system \
+  --reuse-values \
+  --set "controller.metricsRequestHeaderAttributes=x-user-id:user.id" \
+  --set "controller.spanRequestHeaderAttributes=x-session-id:session.id,x-user-id:user.id"
+```
+
 ## Cleanup
 
 To remove Phoenix and disable tracing:
@@ -149,3 +193,5 @@ helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \
 [otel-config]: https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/
 [phoenix]: https://docs.arize.com/phoenix
 [phoenix-evals]: https://arize.com/docs/phoenix/evaluation/llm-evals
+[otel-session]: https://opentelemetry.io/docs/specs/semconv/registry/attributes/session/
+[phoenix-session]: https://arize.com/docs/phoenix/tracing/llm-traces/sessions

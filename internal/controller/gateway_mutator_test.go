@@ -26,7 +26,7 @@ import (
 func TestGatewayMutator_Default(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	fakeKube := fake2.NewClientset()
-	g := newTestGatewayMutator(fakeClient, fakeKube, "", "", false)
+	g := newTestGatewayMutator(fakeClient, fakeKube, "", "", "", false)
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-pod", Namespace: "test-namespace"},
 		Spec: corev1.PodSpec{
@@ -44,10 +44,11 @@ func TestGatewayMutator_Default(t *testing.T) {
 
 func TestGatewayMutator_mutatePod(t *testing.T) {
 	tests := []struct {
-		name                       string
-		metricsRequestHeaderLabels string
-		extProcExtraEnvVars        string
-		extprocTest                func(t *testing.T, container corev1.Container)
+		name                           string
+		metricsRequestHeaderAttributes string
+		spanRequestHeaderAttributes    string
+		extProcExtraEnvVars            string
+		extprocTest                    func(t *testing.T, container corev1.Container)
 	}{
 		{
 			name: "basic extproc container",
@@ -66,24 +67,48 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 			},
 		},
 		{
-			name:                       "with metrics request header labels",
-			metricsRequestHeaderLabels: "x-team-id:team_id,x-user-id:user_id",
+			name:                           "with metrics request header labels",
+			metricsRequestHeaderAttributes: "x-team-id:team.id,x-user-id:user.id",
 			extprocTest: func(t *testing.T, container corev1.Container) {
 				require.Empty(t, container.Env)
-				require.Contains(t, container.Args, "-metricsRequestHeaderLabels")
-				require.Contains(t, container.Args, "x-team-id:team_id,x-user-id:user_id")
+				require.Contains(t, container.Args, "-metricsRequestHeaderAttributes")
+				require.Contains(t, container.Args, "x-team-id:team.id,x-user-id:user.id")
 			},
 		},
 		{
-			name:                       "with both metrics and env vars",
-			metricsRequestHeaderLabels: "x-request-id:request_id",
-			extProcExtraEnvVars:        "OTEL_SERVICE_NAME=custom-service",
+			name:                           "with both metrics and env vars",
+			metricsRequestHeaderAttributes: "x-team-id:team.id",
+			extProcExtraEnvVars:            "OTEL_SERVICE_NAME=custom-service",
 			extprocTest: func(t *testing.T, container corev1.Container) {
 				require.Equal(t, []corev1.EnvVar{
 					{Name: "OTEL_SERVICE_NAME", Value: "custom-service"},
 				}, container.Env)
-				require.Contains(t, container.Args, "-metricsRequestHeaderLabels")
-				require.Contains(t, container.Args, "x-request-id:request_id")
+				require.Contains(t, container.Args, "-metricsRequestHeaderAttributes")
+				require.Contains(t, container.Args, "x-team-id:team.id")
+			},
+		},
+		{
+			name:                        "with tracing request header attributes",
+			spanRequestHeaderAttributes: "x-session-id:session.id,x-user-id:user.id",
+			extprocTest: func(t *testing.T, container corev1.Container) {
+				require.Empty(t, container.Env)
+				require.Contains(t, container.Args, "-spanRequestHeaderAttributes")
+				require.Contains(t, container.Args, "x-session-id:session.id,x-user-id:user.id")
+			},
+		},
+		{
+			name:                           "with metrics, tracing, and env vars",
+			metricsRequestHeaderAttributes: "x-user-id:user.id",
+			spanRequestHeaderAttributes:    "x-session-id:session.id",
+			extProcExtraEnvVars:            "OTEL_SERVICE_NAME=test-service",
+			extprocTest: func(t *testing.T, container corev1.Container) {
+				require.Equal(t, []corev1.EnvVar{
+					{Name: "OTEL_SERVICE_NAME", Value: "test-service"},
+				}, container.Env)
+				require.Contains(t, container.Args, "-metricsRequestHeaderAttributes")
+				require.Contains(t, container.Args, "x-user-id:user.id")
+				require.Contains(t, container.Args, "-spanRequestHeaderAttributes")
+				require.Contains(t, container.Args, "x-session-id:session.id")
 			},
 		},
 	}
@@ -94,7 +119,7 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 				t.Run(fmt.Sprintf("sidecar=%v", sidecar), func(t *testing.T) {
 					fakeClient := requireNewFakeClientWithIndexes(t)
 					fakeKube := fake2.NewClientset()
-					g := newTestGatewayMutator(fakeClient, fakeKube, tt.metricsRequestHeaderLabels, tt.extProcExtraEnvVars, sidecar)
+					g := newTestGatewayMutator(fakeClient, fakeKube, tt.metricsRequestHeaderAttributes, tt.spanRequestHeaderAttributes, tt.extProcExtraEnvVars, sidecar)
 
 					const gwName, gwNamespace = "test-gateway", "test-namespace"
 					err := fakeClient.Create(t.Context(), &aigv1a1.AIGatewayRoute{
@@ -158,11 +183,11 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 	}
 }
 
-func newTestGatewayMutator(fakeClient client.Client, fakeKube *fake2.Clientset, metricsRequestHeaderLabels, extProcExtraEnvVars string, sidecar bool) *gatewayMutator {
+func newTestGatewayMutator(fakeClient client.Client, fakeKube *fake2.Clientset, metricsRequestHeaderAttributes, spanRequestHeaderAttributes, extProcExtraEnvVars string, sidecar bool) *gatewayMutator {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	return newGatewayMutator(
 		fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
-		"info", "/tmp/extproc.sock", metricsRequestHeaderLabels, "/v1", extProcExtraEnvVars, 512*1024*1024,
+		"info", "/tmp/extproc.sock", metricsRequestHeaderAttributes, spanRequestHeaderAttributes, "/v1", extProcExtraEnvVars, 512*1024*1024,
 		sidecar,
 	)
 }

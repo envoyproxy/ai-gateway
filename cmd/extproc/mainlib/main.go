@@ -35,14 +35,16 @@ import (
 
 // extProcFlags is the struct that holds the flags passed to the external processor.
 type extProcFlags struct {
-	configPath                 string        // path to the configuration file.
-	extProcAddr                string        // gRPC address for the external processor.
-	logLevel                   slog.Level    // log level for the external processor.
-	adminPort                  int           // HTTP port for the admin server (metrics and health).
-	metricsRequestHeaderLabels string        // comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels.
-	mcpAddr                    string        // address for the MCP proxy server which can be either tcp or unix domain socket.
-	mcpSessionEncryptionSeed   string        // Seed for deriving the key for encrypting MCP sessions.
-	mcpWriteTimeout            time.Duration // the maximum duration before timing out writes of the MCP response.
+	configPath                     string        // path to the configuration file.
+	extProcAddr                    string        // gRPC address for the external processor.
+	logLevel                       slog.Level    // log level for the external processor.
+	adminPort                      int           // HTTP port for the admin server (metrics and health).
+	metricsRequestHeaderAttributes string        // comma-separated key-value pairs for mapping HTTP request headers to otel metric attributes.
+	metricsRequestHeaderLabels     string        // DEPRECATED: use metricsRequestHeaderAttributes instead.
+	spanRequestHeaderAttributes    string        // comma-separated key-value pairs for mapping HTTP request headers to otel span attributes.
+	mcpAddr                        string        // address for the MCP proxy server which can be either tcp or unix domain socket.
+	mcpSessionEncryptionSeed       string        // Seed for deriving the key for encrypting MCP sessions.
+	mcpWriteTimeout                time.Duration // the maximum duration before timing out writes of the MCP response.
 	// rootPrefix is the root prefix for all the processors.
 	rootPrefix string
 	// maxRecvMsgSize is the maximum message size in bytes that the gRPC server can receive.
@@ -74,10 +76,20 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		"log level for the external processor. One of 'debug', 'info', 'warn', or 'error'.",
 	)
 	fs.IntVar(&flags.adminPort, "adminPort", 1064, "HTTP port for the admin server (serves /metrics and /health endpoints).")
+	fs.StringVar(&flags.metricsRequestHeaderAttributes,
+		"metricsRequestHeaderAttributes",
+		"",
+		"Comma-separated key-value pairs for mapping HTTP request headers to otel metric attributes. Format: x-team-id:team.id,x-user-id:user.id.",
+	)
 	fs.StringVar(&flags.metricsRequestHeaderLabels,
 		"metricsRequestHeaderLabels",
 		"",
-		"Comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels. Format: x-team-id:team_id,x-user-id:user_id.",
+		"DEPRECATED: Use -metricsRequestHeaderAttributes instead. This flag will be removed in a future release.",
+	)
+	fs.StringVar(&flags.spanRequestHeaderAttributes,
+		"spanRequestHeaderAttributes",
+		"",
+		"Comma-separated key-value pairs for mapping HTTP request headers to otel span attributes. Format: x-session-id:session.id,x-user-id:user.id.",
 	)
 	fs.StringVar(&flags.rootPrefix,
 		"rootPrefix",
@@ -102,11 +114,21 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		return extProcFlags{}, fmt.Errorf("failed to parse extProcFlags: %w", err)
 	}
 
+	// Handle deprecated flag: fall back to metricsRequestHeaderLabels if metricsRequestHeaderAttributes is not set.
+	if flags.metricsRequestHeaderAttributes == "" && flags.metricsRequestHeaderLabels != "" {
+		flags.metricsRequestHeaderAttributes = flags.metricsRequestHeaderLabels
+	}
+
 	if flags.configPath == "" {
 		errs = append(errs, fmt.Errorf("configPath must be provided"))
 	}
 	if err := flags.logLevel.UnmarshalText([]byte(*logLevelPtr)); err != nil {
 		errs = append(errs, fmt.Errorf("failed to unmarshal log level: %w", err))
+	}
+	if flags.spanRequestHeaderAttributes != "" {
+		if _, err := internalapi.ParseRequestHeaderAttributeMapping(flags.spanRequestHeaderAttributes); err != nil {
+			errs = append(errs, fmt.Errorf("failed to parse tracing header mapping: %w", err))
+		}
 	}
 
 	return flags, errors.Join(errs...)
@@ -134,6 +156,11 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	}
 
 	l := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: flags.logLevel}))
+
+	// Warn if deprecated flag is being used.
+	if flags.metricsRequestHeaderLabels != "" {
+		l.Warn("The -metricsRequestHeaderLabels flag is deprecated and will be removed in a future release. Please use -metricsRequestHeaderAttributes instead.")
+	}
 
 	l.Info("starting external processor",
 		slog.String("version", version.Version),
@@ -177,12 +204,19 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	}
 
 	// Parse header mapping for metrics.
-	metricsRequestHeaderLabels, err := internalapi.ParseRequestHeaderLabelMapping(flags.metricsRequestHeaderLabels)
+	metricsRequestHeaderAttributes, err := internalapi.ParseRequestHeaderAttributeMapping(flags.metricsRequestHeaderAttributes)
 	if err != nil {
 		return fmt.Errorf("failed to parse metrics header mapping: %w", err)
 	}
 
-	// Create Prometheus registry and reader.
+	// Parse header mapping for tracing spans.
+	spanRequestHeaderAttributes, err := internalapi.ParseRequestHeaderAttributeMapping(flags.spanRequestHeaderAttributes)
+	if err != nil {
+		return fmt.Errorf("failed to parse tracing header mapping: %w", err)
+	}
+
+	// Create Prometheus registry and reader which automatically converts
+	// attribute to Prometheus-compatible format (e.g. dots to underscores).
 	promRegistry := prometheus.NewRegistry()
 	promReader, err := otelprom.New(otelprom.WithRegisterer(promRegistry))
 	if err != nil {
@@ -194,11 +228,11 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to create metrics: %w", err)
 	}
-	chatCompletionMetrics := metrics.NewChatCompletion(meter, metricsRequestHeaderLabels)
-	embeddingsMetrics := metrics.NewEmbeddings(meter, metricsRequestHeaderLabels)
+	chatCompletionMetrics := metrics.NewChatCompletion(meter, metricsRequestHeaderAttributes)
+	embeddingsMetrics := metrics.NewEmbeddings(meter, metricsRequestHeaderAttributes)
 	mcpMetrics := metrics.NewMCP(meter)
 
-	tracing, err := tracing.NewTracingFromEnv(ctx, os.Stdout)
+	tracing, err := tracing.NewTracingFromEnv(ctx, os.Stdout, spanRequestHeaderAttributes)
 	if err != nil {
 		return err
 	}

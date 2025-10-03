@@ -17,7 +17,6 @@ import (
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/trace/noop"
 
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference/openai"
@@ -55,9 +54,15 @@ func (t *tracingImpl) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-// NewTracingFromEnv configures OpenTelemetry tracing based on environment.
-// variables. Returns a tracing graph that is noop when disabled.
-func NewTracingFromEnv(ctx context.Context, stdout io.Writer) (tracing.Tracing, error) {
+// NewTracingFromEnv configures OpenTelemetry tracing based on environment
+// variables and optional header attribute mapping.
+//
+// Parameters:
+//   - headerAttributeMapping: maps HTTP headers to otel span attributes (e.g. map["x-session-id"]="session.id").
+//     If nil, no header mapping is applied.
+//
+// Returns a tracing graph that is noop when disabled.
+func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMapping map[string]string) (tracing.Tracing, error) {
 	// Return no-op tracing if disabled.
 	if os.Getenv("OTEL_SDK_DISABLED") == "true" {
 		return tracing.NoopTracing{}, nil
@@ -140,6 +145,9 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer) (tracing.Tracing, 
 	// Configure propagation via the OTEL_PROPAGATORS ENV variable.
 	propagator := autoprop.NewTextMapPropagator()
 
+	// Use provided header attribute mapping.
+	headerAttrs := headerAttributeMapping
+
 	// Default to OpenInference trace span semantic conventions.
 	chatRecorder := openai.NewChatCompletionRecorderFromEnv()
 	embeddingsRecorder := openai.NewEmbeddingsRecorderFromEnv()
@@ -150,11 +158,13 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer) (tracing.Tracing, 
 			tracer,
 			propagator,
 			chatRecorder,
+			headerAttrs,
 		),
 		embeddingsTracer: newEmbeddingsTracer(
 			tracer,
 			propagator,
 			embeddingsRecorder,
+			headerAttrs,
 		),
 		mcpTracer: newMCPTracer(tracer, propagator),
 		shutdown:  tp.Shutdown, // we have to shut down what we create.
@@ -167,25 +177,3 @@ type Shutdown interface {
 type noopShutdown struct{}
 
 func (noopShutdown) Shutdown(context.Context) error { return nil }
-
-// NewTracing configures OpenTelemetry tracing based on the configuration.
-// Returns a tracing graph that is noop when the tracer provider is no-op.
-func NewTracing(config *tracing.TracingConfig) tracing.Tracing {
-	if _, ok := config.Tracer.(noop.Tracer); ok {
-		return tracing.NoopTracing{}
-	}
-	return &tracingImpl{
-		chatCompletionTracer: newChatCompletionTracer(
-			config.Tracer,
-			config.Propagator,
-			config.ChatCompletionRecorder,
-		),
-		embeddingsTracer: newEmbeddingsTracer(
-			config.Tracer,
-			config.Propagator,
-			config.EmbeddingsRecorder,
-		),
-		mcpTracer: newMCPTracer(config.Tracer, config.Propagator),
-		shutdown:  nil, // shutdown is nil when we didn't create tp.
-	}
-}

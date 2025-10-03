@@ -187,8 +187,11 @@ focused on retrieval and semantic analysis.
     - `OPENINFERENCE_HIDE_EMBEDDINGS_TEXT`: Hide embeddings input (default: `false`)
     - `OPENINFERENCE_HIDE_EMBEDDINGS_VECTORS`: Hide embeddings output (default: `false`)
 
-See [docker-compose-otel.yaml][docker-compose-otel.yaml] for a complete example
-configuration.
+- **Header Mapping**: Map HTTP request headers to span attributes and metric labels. See [Session Tracking][session-tracking] for more details.
+    - `OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES`: Example: `x-team-id:team.id,x-user-id:user.id`
+    - `OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES`: Example: `x-session-id:session.id,x-user-id:user.id`
+
+See [docker-compose-otel.yaml][docker-compose-otel.yaml] for a complete example configuration.
 
 ---
 [openinference]: https://github.com/Arize-ai/openinference/tree/main/spec
@@ -197,3 +200,4 @@ configuration.
 [openinference-config]: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
 [openinference-embeddings]: https://github.com/Arize-ai/openinference/blob/main/spec/embedding_spans.md
 [docker-compose-otel.yaml]: https://github.com/envoyproxy/ai-gateway/blob/main/cmd/aigw/docker-compose-otel.yaml
+[session-tracking]: ../capabilities/observability/tracing.md#session-tracking

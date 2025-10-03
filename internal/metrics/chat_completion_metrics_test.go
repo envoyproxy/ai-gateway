@@ -192,7 +192,7 @@ func TestHeaderLabelMapping(t *testing.T) {
 
 		// Test header label mapping.
 		headerMapping = map[string]string{
-			"x-user-id": "user_id",
+			"x-user-id": "user.id",
 			"x-org-id":  "org_id",
 		}
 
@@ -223,7 +223,7 @@ func TestHeaderLabelMapping(t *testing.T) {
 		attribute.Key(genaiAttributeRequestModel).String("test-model"),
 		attribute.Key(genaiAttributeResponseModel).String("test-model"),
 		attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput),
-		attribute.Key("user_id").String("user123"),
+		attribute.Key("user.id").String("user123"),
 		attribute.Key("org_id").String("org456"),
 	)
 

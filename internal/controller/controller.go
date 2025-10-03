@@ -73,8 +73,10 @@ type Options struct {
 	UDSPath string
 	// DisableMutatingWebhook disables the mutating webhook for the Gateway for testing purposes.
 	DisableMutatingWebhook bool
-	// MetricsRequestHeaderLabels is the comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels.
-	MetricsRequestHeaderLabels string
+	// MetricsRequestHeaderAttributes is the comma-separated key-value pairs for mapping HTTP request headers to Otel metric attributes.
+	MetricsRequestHeaderAttributes string
+	// TracingRequestHeaderAttributes is the comma-separated key-value pairs for mapping HTTP request headers to otel span attributes.
+	TracingRequestHeaderAttributes string
 	// RootPrefix is the root prefix for all the routes handled by the AI Gateway.
 	RootPrefix string
 	// ExtProcExtraEnvVars is the semicolon-separated key=value pairs for extra environment variables in extProc container.
@@ -205,7 +207,8 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.ExtProcImagePullPolicy,
 			options.ExtProcLogLevel,
 			options.UDSPath,
-			options.MetricsRequestHeaderLabels,
+			options.MetricsRequestHeaderAttributes,
+			options.TracingRequestHeaderAttributes,
 			options.RootPrefix,
 			options.ExtProcExtraEnvVars,
 			options.ExtProcMaxRecvMsgSize,

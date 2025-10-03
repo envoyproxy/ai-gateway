@@ -176,6 +176,41 @@ func Test_mustStartExtProc(t *testing.T) {
 	require.ErrorIs(t, <-done, mockErr)
 }
 
+func Test_mustStartExtProc_withHeaderAttributes(t *testing.T) {
+	t.Setenv("OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES", "x-team-id:team.id,x-user-id:user.id")
+	t.Setenv("OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES", "x-session-id:session.id,x-user-id:user.id")
+
+	var capturedArgs []string
+	runCtx := &runCmdContext{
+		tmpdir:    t.TempDir(),
+		adminPort: 1064,
+		extProcLauncher: func(_ context.Context, args []string, _ io.Writer) error {
+			capturedArgs = args
+			return errors.New("mock error") // Return error to stop execution
+		},
+		stderrLogger: slog.New(slog.DiscardHandler),
+	}
+
+	done := runCtx.mustStartExtProc(t.Context(), filterapi.MustLoadDefaultConfig())
+	<-done // Wait for completion
+
+	// Verify both metrics and tracing flags are set
+	require.Contains(t, capturedArgs, "-metricsRequestHeaderAttributes")
+	require.Contains(t, capturedArgs, "-spanRequestHeaderAttributes")
+
+	// Find the index and verify the values
+	for i, arg := range capturedArgs {
+		if arg == "-metricsRequestHeaderAttributes" {
+			require.Less(t, i+1, len(capturedArgs), "metricsRequestHeaderAttributes should have a value")
+			require.Equal(t, "x-team-id:team.id,x-user-id:user.id", capturedArgs[i+1])
+		}
+		if arg == "-spanRequestHeaderAttributes" {
+			require.Less(t, i+1, len(capturedArgs), "spanRequestHeaderAttributes should have a value")
+			require.Equal(t, "x-session-id:session.id,x-user-id:user.id", capturedArgs[i+1])
+		}
+	}
+}
+
 func TestTryFindEnvoyAdminAddress(t *testing.T) {
 	gwWithProxy := func(name string) *gwapiv1.Gateway {
 		return &gwapiv1.Gateway{

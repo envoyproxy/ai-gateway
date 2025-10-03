@@ -419,6 +419,13 @@ func (runCtx *runCmdContext) mustStartExtProc(
 		args = append(args, "--logLevel", "warn")
 	}
 
+	if metricsAttrs := os.Getenv("OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES"); metricsAttrs != "" {
+		args = append(args, "-metricsRequestHeaderAttributes", metricsAttrs)
+	}
+	if spanAttrs := os.Getenv("OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES"); spanAttrs != "" {
+		args = append(args, "-spanRequestHeaderAttributes", spanAttrs)
+	}
+
 	done := make(chan error)
 	go func() {
 		if err := runCtx.extProcLauncher(ctx, args, os.Stderr); err != nil {

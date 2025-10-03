@@ -86,7 +86,41 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				name: "with header mapping",
 				args: []string{
 					"-configPath", "/path/to/config.yaml",
-					"-metricsRequestHeaderLabels", "x-team-id:team_id,x-user-id:user_id",
+					"-metricsRequestHeaderAttributes", "x-team-id:team.id,x-user-id:user.id",
+				},
+				configPath: "/path/to/config.yaml",
+				rootPrefix: "/",
+				addr:       ":1063",
+				logLevel:   slog.LevelInfo,
+			},
+			{
+				name: "with tracing header attributes",
+				args: []string{
+					"-configPath", "/path/to/config.yaml",
+					"-spanRequestHeaderAttributes", "x-session-id:session.id,x-user-id:user.id",
+				},
+				configPath: "/path/to/config.yaml",
+				rootPrefix: "/",
+				addr:       ":1063",
+				logLevel:   slog.LevelInfo,
+			},
+			{
+				name: "with both metrics and tracing headers",
+				args: []string{
+					"-configPath", "/path/to/config.yaml",
+					"-metricsRequestHeaderAttributes", "x-user-id:user.id",
+					"-spanRequestHeaderAttributes", "x-session-id:session.id",
+				},
+				configPath: "/path/to/config.yaml",
+				rootPrefix: "/",
+				addr:       ":1063",
+				logLevel:   slog.LevelInfo,
+			},
+			{
+				name: "with deprecated metricsRequestHeaderLabels flag",
+				args: []string{
+					"-configPath", "/path/to/config.yaml",
+					"-metricsRequestHeaderLabels", "x-team-id:team.id",
 				},
 				configPath: "/path/to/config.yaml",
 				rootPrefix: "/",
@@ -106,9 +140,34 @@ func Test_parseAndValidateFlags(t *testing.T) {
 	})
 
 	t.Run("invalid extProcFlags", func(t *testing.T) {
-		_, err := parseAndValidateFlags([]string{"-logLevel", "invalid"})
-		require.EqualError(t, err, `configPath must be provided
-failed to unmarshal log level: slog: level string "invalid": unknown name`)
+		tests := []struct {
+			name          string
+			args          []string
+			expectedError string
+		}{
+			{
+				name:          "invalid log level",
+				args:          []string{"-logLevel", "invalid"},
+				expectedError: "configPath must be provided\nfailed to unmarshal log level: slog: level string \"invalid\": unknown name",
+			},
+			{
+				name:          "invalid tracing header attributes - missing colon",
+				args:          []string{"-configPath", "/path/to/config.yaml", "-spanRequestHeaderAttributes", "x-session-id"},
+				expectedError: "failed to parse tracing header mapping: invalid header-attribute pair at position 1: \"x-session-id\" (expected format: header:attribute)",
+			},
+			{
+				name:          "invalid tracing header attributes - empty header",
+				args:          []string{"-configPath", "/path/to/config.yaml", "-spanRequestHeaderAttributes", ":session.id"},
+				expectedError: "failed to parse tracing header mapping: empty header or attribute at position 1: \":session.id\"",
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				_, err := parseAndValidateFlags(tt.args)
+				require.EqualError(t, err, tt.expectedError)
+			})
+		}
 	})
 }
 

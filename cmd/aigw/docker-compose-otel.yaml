@@ -60,6 +60,10 @@ services:
     environment:
       - OPENAI_BASE_URL=http://host.docker.internal:11434/v1
       - OPENAI_API_KEY=unused
+      # Map HTTP request headers to otel span and metric attributes for session tracking
+      # Format: header:attribute,header:attribute
+      - OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES=x-session-id:session.id,x-user-id:user.id
+      - OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES=x-user-id:user.id
     ports:
       - "1975:1975"  # OpenAI compatible endpoint at /v1
       - "1064:1064"  # Admin server: /metrics (Prometheus) and /health endpoints
