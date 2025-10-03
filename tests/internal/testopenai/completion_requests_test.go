@@ -29,5 +29,5 @@ func TestNewRequestCompletion(t *testing.T) {
 			tests[i].expectedStatus = http.StatusOK
 		}
 	}
-	testNewRequest(t, "/completions", tests)
+	testNewRequest(t, tests)
 }

@@ -13,6 +13,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"path"
 	"strings"
@@ -26,6 +27,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/extproc"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/mcpproxy"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/tracing"
 	"github.com/envoyproxy/ai-gateway/internal/version"
@@ -33,11 +35,14 @@ import (
 
 // extProcFlags is the struct that holds the flags passed to the external processor.
 type extProcFlags struct {
-	configPath                 string     // path to the configuration file.
-	extProcAddr                string     // gRPC address for the external processor.
-	logLevel                   slog.Level // log level for the external processor.
-	adminPort                  int        // HTTP port for the admin server (metrics and health).
-	metricsRequestHeaderLabels string     // comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels.
+	configPath                 string        // path to the configuration file.
+	extProcAddr                string        // gRPC address for the external processor.
+	logLevel                   slog.Level    // log level for the external processor.
+	adminPort                  int           // HTTP port for the admin server (metrics and health).
+	metricsRequestHeaderLabels string        // comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels.
+	mcpAddr                    string        // address for the MCP proxy server which can be either tcp or unix domain socket.
+	mcpSessionEncryptionSeed   string        // Seed for deriving the key for encrypting MCP sessions.
+	mcpWriteTimeout            time.Duration // the maximum duration before timing out writes of the MCP response.
 	// rootPrefix is the root prefix for all the processors.
 	rootPrefix string
 	// maxRecvMsgSize is the maximum message size in bytes that the gRPC server can receive.
@@ -84,6 +89,14 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		4*1024*1024,
 		"Maximum message size in bytes that the gRPC server can receive. Default is 4MB.",
 	)
+	fs.StringVar(&flags.mcpAddr, "mcpAddr", "", "the address (TCP or UDS) for the MCP proxy server, such as :1063 or unix:///tmp/ext_proc.sock. Optional.")
+	fs.StringVar(&flags.mcpSessionEncryptionSeed,
+		"mcpSessionEncryptionSeed",
+		"mcp",
+		"seed used to derive the MCP session encryption key. This should be set to a secure value in production.",
+	)
+	fs.DurationVar(&flags.mcpWriteTimeout, "mcpWriteTimeout", 120*time.Second,
+		"The maximum duration before timing out writes of the MCP response")
 
 	if err := fs.Parse(args); err != nil {
 		return extProcFlags{}, fmt.Errorf("failed to parse extProcFlags: %w", err)
@@ -146,6 +159,23 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		return err
 	}
 
+	var mcpLis net.Listener
+	if flags.mcpAddr != "" {
+		mcpNetwork, mcpAddress := listenAddress(flags.mcpAddr)
+		mcpLis, err = listen(ctx, "mcp proxy", mcpNetwork, mcpAddress)
+		if err != nil {
+			return err
+		}
+		if mcpNetwork == "unix" {
+			// Change the permission of the UDS to 0775 so that the envoy process (the same group) can access it.
+			err = os.Chmod(mcpAddress, 0o775)
+			if err != nil {
+				return fmt.Errorf("failed to change UDS permission: %w", err)
+			}
+		}
+		l.Info("MCP proxy is enabled", "address", flags.mcpAddr)
+	}
+
 	// Parse header mapping for metrics.
 	metricsRequestHeaderLabels, err := internalapi.ParseRequestHeaderLabelMapping(flags.metricsRequestHeaderLabels)
 	if err != nil {
@@ -166,6 +196,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	}
 	chatCompletionMetrics := metrics.NewChatCompletion(meter, metricsRequestHeaderLabels)
 	embeddingsMetrics := metrics.NewEmbeddings(meter, metricsRequestHeaderLabels)
+	mcpMetrics := metrics.NewMCP(meter)
 
 	tracing, err := tracing.NewTracingFromEnv(ctx, os.Stdout)
 	if err != nil {
@@ -187,6 +218,37 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	}
 
 	// Create and register gRPC server with ExternalProcessorServer (the service Envoy calls).
+	if err = extproc.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {
+		return fmt.Errorf("failed to start config watcher: %w", err)
+	}
+
+	var mcpServer *http.Server
+	if mcpLis != nil {
+		mcpSessionCrypto := mcpproxy.DefaultSessionCrypto(flags.mcpSessionEncryptionSeed)
+		var mcpProxyMux *http.ServeMux
+		var mcpProxy *mcpproxy.MCPProxy
+		mcpProxy, mcpProxyMux, err = mcpproxy.NewMCPProxy(l.With("component", "mcp-proxy"), mcpMetrics,
+			tracing.MCPTracer(), mcpSessionCrypto)
+		if err != nil {
+			return fmt.Errorf("failed to create MCP proxy: %w", err)
+		}
+		if err = extproc.StartConfigWatcher(ctx, flags.configPath, mcpProxy, l, time.Second*5); err != nil {
+			return fmt.Errorf("failed to start config watcher: %w", err)
+		}
+
+		mcpServer = &http.Server{
+			Handler:           mcpProxyMux,
+			ReadHeaderTimeout: 120 * time.Second,
+			WriteTimeout:      flags.mcpWriteTimeout,
+		}
+		go func() {
+			l.Info("Starting mcp proxy", "addr", mcpLis.Addr())
+			if err2 := mcpServer.Serve(mcpLis); err2 != nil && !errors.Is(err2, http.ErrServerClosed) {
+				l.Error("mcp proxy failed", "error", err2)
+			}
+		}()
+	}
+
 	s := grpc.NewServer(grpc.MaxRecvMsgSize(flags.maxRecvMsgSize))
 	extprocv3.RegisterExternalProcessorServer(s, server)
 	grpc_health_v1.RegisterHealthServer(s, server)
@@ -220,6 +282,11 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		}
 		if err := metricsShutdown(shutdownCtx); err != nil {
 			l.Error("Failed to shutdown metrics gracefully", "error", err)
+		}
+		if mcpServer != nil {
+			if err := mcpServer.Shutdown(shutdownCtx); err != nil {
+				l.Error("Failed to shutdown mcp proxy server gracefully", "error", err)
+			}
 		}
 	}()
 

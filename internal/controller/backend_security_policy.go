@@ -86,7 +86,7 @@ func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *ai
 	if handleFinalizer(ctx, c.client, c.logger, bsp, c.syncBackendSecurityPolicy) { // Propagate the bsp deletion all the way to relevant Gateways.
 		return res, nil
 	}
-	if bsp.Spec.Type != aigv1a1.BackendSecurityPolicyTypeAPIKey {
+	if bsp.Spec.Type != aigv1a1.BackendSecurityPolicyTypeAPIKey && bsp.Spec.Type != aigv1a1.BackendSecurityPolicyTypeAzureAPIKey {
 		res, err = c.rotateCredential(ctx, bsp)
 		if err != nil {
 			return res, err
@@ -387,6 +387,8 @@ func getBSPGeneratedSecretName(bsp *aigv1a1.BackendSecurityPolicy) string {
 		}
 	case aigv1a1.BackendSecurityPolicyTypeAPIKey:
 		return "" // APIKey does not require rotation.
+	case aigv1a1.BackendSecurityPolicyTypeAzureAPIKey:
+		return "" // AzureAPIKey does not require rotation.
 	default:
 		panic("BUG: unsupported backend security policy type: " + string(bsp.Spec.Type))
 	}

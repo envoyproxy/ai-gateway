@@ -23,33 +23,67 @@ type ConfigData struct {
 	Hostname         string // Hostname for the backend (may be modified for localhost)
 	OriginalHostname string // Original hostname for TLS validation
 	Port             string // Port number as string
-	Version          string // API version path prefix (empty for "v1" to keep output clean)
+	Version          string // API version (OpenAI path prefix or Azure query param version)
 	NeedsTLS         bool   // Whether to generate BackendTLSPolicy (port 443)
+	SchemaName       string // Schema name: "AzureOpenAI" or "OpenAI"
+	OrganizationID   string // Organization ID for OpenAI-Organization header (optional)
+	ProjectID        string // Project ID for OpenAI-Project header (optional)
 }
 
 // GenerateOpenAIConfig generates the AI Gateway configuration for a single
 // OpenAI-compatible backend, using standard OpenAI SDK environment variables.
 //
-// This errs if OPENAI_API_KEY is not set.
+// This errs if neither OPENAI_API_KEY nor AZURE_OPENAI_API_KEY is set.
+// Prioritizes AZURE_OPENAI_API_KEY over OPENAI_API_KEY when both are set.
+//
+// For Azure OpenAI, requires AZURE_OPENAI_ENDPOINT and OPENAI_API_VERSION.
 //
 // See https://github.com/openai/openai-python/blob/main/src/openai/_client.py
 func GenerateOpenAIConfig() (string, error) {
-	// Check for required API key
-	if os.Getenv("OPENAI_API_KEY") == "" {
-		return "", fmt.Errorf("OPENAI_API_KEY environment variable is required")
+	var data *ConfigData
+	var err error
+
+	// Prioritize Azure OpenAI over standard OpenAI
+	azureAPIKey := os.Getenv("AZURE_OPENAI_API_KEY")
+	openaiAPIKey := os.Getenv("OPENAI_API_KEY")
+
+	switch {
+	case azureAPIKey != "":
+		// Azure OpenAI mode
+		azureEndpoint := os.Getenv("AZURE_OPENAI_ENDPOINT")
+		if azureEndpoint == "" {
+			return "", fmt.Errorf("AZURE_OPENAI_ENDPOINT environment variable is required when AZURE_OPENAI_API_KEY is set")
+		}
+		apiVersion := os.Getenv("OPENAI_API_VERSION")
+		if apiVersion == "" {
+			return "", fmt.Errorf("OPENAI_API_VERSION environment variable is required when AZURE_OPENAI_API_KEY is set")
+		}
+
+		data, err = parseURL(azureEndpoint)
+		if err != nil {
+			return "", err
+		}
+		data.SchemaName = "AzureOpenAI"
+		data.Version = apiVersion
+	case openaiAPIKey != "":
+		// Standard OpenAI mode
+		baseURL := os.Getenv("OPENAI_BASE_URL")
+		if baseURL == "" {
+			baseURL = "https://api.openai.com/v1"
+		}
+
+		data, err = parseURL(baseURL)
+		if err != nil {
+			return "", err
+		}
+		data.SchemaName = "OpenAI"
+	default:
+		return "", fmt.Errorf("either OPENAI_API_KEY or AZURE_OPENAI_API_KEY environment variable is required")
 	}
 
-	// Get base URL with default
-	baseURL := os.Getenv("OPENAI_BASE_URL")
-	if baseURL == "" {
-		baseURL = "https://api.openai.com/v1"
-	}
-
-	// Parse URL to extract components
-	data, err := parseURL(baseURL)
-	if err != nil {
-		return "", err
-	}
+	// Read optional organization and project IDs (apply to both OpenAI and Azure)
+	data.OrganizationID = os.Getenv("OPENAI_ORG_ID")
+	data.ProjectID = os.Getenv("OPENAI_PROJECT_ID")
 
 	// Parse and execute template
 	tmpl, err := template.New("config").Parse(configTemplate)

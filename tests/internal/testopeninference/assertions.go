@@ -198,16 +198,21 @@ func processValue(v any) any {
 		return result
 	case reflect.Slice:
 		result := make([]any, 0, val.Len())
+		allZero := true
 		for i := 0; i < val.Len(); i++ {
 			elem := val.Index(i)
 			processed := processValue(elem.Interface())
 			result = append(result, processed)
+			if !isZero(processed) {
+				allZero = false
+			}
+		}
+		if allZero {
+			return nil
 		}
 		return result
 	default:
-		if isZero(v) {
-			return nil
-		}
+		// Return leaf values as-is; isZero checks will handle filtering at parent level
 		return v
 	}
 }
@@ -227,6 +232,28 @@ func isZero(v any) bool {
 	case reflect.String:
 		return val.Len() == 0
 	case reflect.Array:
+		return true
+	case reflect.Map:
+		// Maps where all values are zero are considered zero
+		if val.Len() == 0 {
+			return true
+		}
+		for _, key := range val.MapKeys() {
+			if !isZero(val.MapIndex(key).Interface()) {
+				return false
+			}
+		}
+		return true
+	case reflect.Slice:
+		// Slices containing only nil/zero values are considered zero
+		if val.Len() == 0 {
+			return true
+		}
+		for i := 0; i < val.Len(); i++ {
+			if !isZero(val.Index(i).Interface()) {
+				return false
+			}
+		}
 		return true
 	default:
 		return false

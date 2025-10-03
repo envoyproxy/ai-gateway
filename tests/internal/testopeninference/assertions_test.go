@@ -349,6 +349,56 @@ func TestNormalizeJSON(t *testing.T) {
 			input:    "not valid json",
 			expected: "not valid json",
 		},
+		{
+			name:     "removes arrays with only null values",
+			input:    `{"model":"gpt-4","object":"chat.completion","prompt_filter_results":[null],"usage":{"total_tokens":10}}`,
+			expected: `{"model":"gpt-4","object":"chat.completion","usage":{"total_tokens":10}}`,
+		},
+		{
+			name:     "removes arrays with objects containing only zero values",
+			input:    `{"model":"gpt-4","prompt_filter_results":[{"prompt_index":0,"content_filter_results":{}}],"usage":{"total_tokens":10}}`,
+			expected: `{"model":"gpt-4","usage":{"total_tokens":10}}`,
+		},
+		{
+			name:     "preserves arrays with non-zero values",
+			input:    `{"model":"gpt-4","prompt_filter_results":[{"prompt_index":0,"content_filter_results":{"hate":{"filtered":true}}}],"usage":{"total_tokens":10}}`,
+			expected: `{"model":"gpt-4","prompt_filter_results":[{"content_filter_results":{"hate":{"filtered":true}}}],"usage":{"total_tokens":10}}`,
+		},
+		{
+			name:     "removes nested maps with all zero values",
+			input:    `{"model":"gpt-4","metadata":{"foo":"","bar":0,"baz":false},"usage":{"total_tokens":10}}`,
+			expected: `{"model":"gpt-4","usage":{"total_tokens":10}}`,
+		},
+		{
+			name:     "preserves nested maps with non-zero values",
+			input:    `{"model":"gpt-4","metadata":{"foo":"value","bar":0},"usage":{"total_tokens":10}}`,
+			expected: `{"metadata":{"foo":"value"},"model":"gpt-4","usage":{"total_tokens":10}}`,
+		},
+		{
+			name:     "removes empty arrays",
+			input:    `{"model":"gpt-4","empty_list":[],"usage":{"total_tokens":10}}`,
+			expected: `{"model":"gpt-4","usage":{"total_tokens":10}}`,
+		},
+		{
+			name:     "preserves arrays with mixed zero and non-zero values",
+			input:    `{"model":"gpt-4","items":[0,"value",false],"usage":{"total_tokens":10}}`,
+			expected: `{"items":[0,"value",false],"model":"gpt-4","usage":{"total_tokens":10}}`,
+		},
+		{
+			name:     "handles deeply nested zero structures",
+			input:    `{"model":"gpt-4","deep":{"level1":{"level2":{"level3":{"empty":""}}}},"usage":{"total_tokens":10}}`,
+			expected: `{"model":"gpt-4","usage":{"total_tokens":10}}`,
+		},
+		{
+			name:     "preserves non-zero boolean true",
+			input:    `{"model":"gpt-4","stream":true,"usage":{"total_tokens":10}}`,
+			expected: `{"model":"gpt-4","stream":true,"usage":{"total_tokens":10}}`,
+		},
+		{
+			name:     "removes boolean false",
+			input:    `{"model":"gpt-4","stream":false,"usage":{"total_tokens":10}}`,
+			expected: `{"model":"gpt-4","usage":{"total_tokens":10}}`,
+		},
 	}
 
 	for _, tt := range tests {

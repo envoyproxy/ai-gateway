@@ -1,0 +1,45 @@
+{
+  "mcpServers": {
+    "kiwi": {
+      "type": "http",
+      "url": "https://mcp.kiwi.com"
+    },
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp"
+    },
+    "aws-knowledge": {
+      "type": "http",
+      "url": "https://knowledge-mcp.global.api.aws",
+      "tools": ["aws___read_documentation", "aws___search_documentation"]
+    },
+    "learn-microsoft": {
+      "type": "http",
+      "url": "https://learn.microsoft.com/api/mcp",
+      "tools": ["microsoft_docs_search", "microsoft_docs_fetch"]
+    },
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/readonly",
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_ACCESS_TOKEN}"
+      },
+      "tools": [
+        "get_issue",
+        "get_issue_comments",
+        "get_pull_request",
+        "get_pull_request_diff",
+        "get_pull_request_files",
+        "get_pull_request_review_comments",
+        "get_pull_request_reviews",
+        "get_pull_request_status",
+        "list_issue_types",
+        "list_issues",
+        "list_pull_requests",
+        "list_sub_issues",
+        "search_issues",
+        "search_pull_requests"
+      ]
+    }
+  }
+}

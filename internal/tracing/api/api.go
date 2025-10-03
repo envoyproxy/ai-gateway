@@ -17,6 +17,8 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
+var _ Tracing = NoopTracing{}
+
 // Tracing gives access to tracer types needed for endpoints such as OpenAI
 // chat completions.
 type Tracing interface {
@@ -24,6 +26,8 @@ type Tracing interface {
 	ChatCompletionTracer() ChatCompletionTracer
 	// EmbeddingsTracer creates spans for OpenAI embeddings requests on /embeddings endpoint.
 	EmbeddingsTracer() EmbeddingsTracer
+	// MCPTracer creates spans for MCP requests.
+	MCPTracer() MCPTracer
 	// Shutdown shuts down the tracer, flushing any buffered spans.
 	Shutdown(context.Context) error
 }
@@ -40,6 +44,10 @@ type TracingConfig struct {
 
 // NoopTracing is a Tracing that doesn't do anything.
 type NoopTracing struct{}
+
+func (t NoopTracing) MCPTracer() MCPTracer {
+	return NoopMCPTracer{}
+}
 
 // ChatCompletionTracer implements Tracing.ChatCompletionTracer.
 func (NoopTracing) ChatCompletionTracer() ChatCompletionTracer {

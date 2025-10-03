@@ -85,12 +85,3 @@ func newGenAI(meter metric.Meter) *genAI {
 		),
 	}
 }
-
-// mustRegisterHistogram registers a histogram with the meter and panics if it fails.
-func mustRegisterHistogram(meter metric.Meter, name string, options ...metric.Float64HistogramOption) metric.Float64Histogram {
-	h, err := meter.Float64Histogram(name, options...)
-	if err != nil {
-		panic(err)
-	}
-	return h
-}

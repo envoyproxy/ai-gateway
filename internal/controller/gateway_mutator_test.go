@@ -6,6 +6,7 @@
 package controller
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -25,7 +26,7 @@ import (
 func TestGatewayMutator_Default(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	fakeKube := fake2.NewClientset()
-	g := newTestGatewayMutator(fakeClient, fakeKube, "", "")
+	g := newTestGatewayMutator(fakeClient, fakeKube, "", "", false)
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-pod", Namespace: "test-namespace"},
 		Spec: corev1.PodSpec{
@@ -89,66 +90,80 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fakeClient := requireNewFakeClientWithIndexes(t)
-			fakeKube := fake2.NewClientset()
-			g := newTestGatewayMutator(fakeClient, fakeKube, tt.metricsRequestHeaderLabels, tt.extProcExtraEnvVars)
+			for _, sidecar := range []bool{true, false} {
+				t.Run(fmt.Sprintf("sidecar=%v", sidecar), func(t *testing.T) {
+					fakeClient := requireNewFakeClientWithIndexes(t)
+					fakeKube := fake2.NewClientset()
+					g := newTestGatewayMutator(fakeClient, fakeKube, tt.metricsRequestHeaderLabels, tt.extProcExtraEnvVars, sidecar)
 
-			const gwName, gwNamespace = "test-gateway", "test-namespace"
-			err := fakeClient.Create(t.Context(), &aigv1a1.AIGatewayRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: gwName, Namespace: gwNamespace},
-				Spec: aigv1a1.AIGatewayRouteSpec{
-					ParentRefs: []gwapiv1a2.ParentReference{
-						{
-							Name:  gwName,
-							Kind:  ptr.To(gwapiv1a2.Kind("Gateway")),
-							Group: ptr.To(gwapiv1a2.Group("gateway.networking.k8s.io")),
+					const gwName, gwNamespace = "test-gateway", "test-namespace"
+					err := fakeClient.Create(t.Context(), &aigv1a1.AIGatewayRoute{
+						ObjectMeta: metav1.ObjectMeta{Name: gwName, Namespace: gwNamespace},
+						Spec: aigv1a1.AIGatewayRouteSpec{
+							ParentRefs: []gwapiv1a2.ParentReference{
+								{
+									Name:  gwName,
+									Kind:  ptr.To(gwapiv1a2.Kind("Gateway")),
+									Group: ptr.To(gwapiv1a2.Group("gateway.networking.k8s.io")),
+								},
+							},
+							Rules: []aigv1a1.AIGatewayRouteRule{
+								{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
+							},
+							FilterConfig: &aigv1a1.AIGatewayFilterConfig{},
 						},
-					},
-					Rules: []aigv1a1.AIGatewayRouteRule{
-						{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
-					},
-					FilterConfig: &aigv1a1.AIGatewayFilterConfig{},
-				},
-			})
-			require.NoError(t, err)
+					})
+					require.NoError(t, err)
 
-			pod := &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-pod", Namespace: "test-namespace"},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{{Name: "envoy"}},
-				},
+					pod := &corev1.Pod{
+						ObjectMeta: metav1.ObjectMeta{Name: "test-pod", Namespace: "test-namespace"},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{{Name: "envoy"}},
+						},
+					}
+
+					// At this point, the config secret does not exist, so the pod should not be mutated.
+					err = g.mutatePod(t.Context(), pod, gwName, gwNamespace)
+					require.NoError(t, err)
+					require.Len(t, pod.Spec.Containers, 1)
+
+					// Create the config secret and mutate the pod again.
+					_, err = g.kube.CoreV1().Secrets("test-namespace").Create(t.Context(),
+						&corev1.Secret{
+							ObjectMeta: metav1.ObjectMeta{Name: FilterConfigSecretPerGatewayName(
+								gwName, gwNamespace,
+							), Namespace: "test-namespace"},
+						}, metav1.CreateOptions{})
+					require.NoError(t, err)
+					err = g.mutatePod(t.Context(), pod, gwName, gwNamespace)
+					require.NoError(t, err)
+
+					var extProcContainer corev1.Container
+					if sidecar {
+						require.Len(t, pod.Spec.Containers, 1)
+						require.Len(t, pod.Spec.InitContainers, 1)
+						extProcContainer = pod.Spec.InitContainers[0]
+						require.NotNil(t, extProcContainer.RestartPolicy)
+						require.Equal(t, corev1.ContainerRestartPolicyAlways, *extProcContainer.RestartPolicy)
+					} else {
+						require.Len(t, pod.Spec.Containers, 2)
+						extProcContainer = pod.Spec.Containers[1]
+					}
+
+					require.Equal(t, "ai-gateway-extproc", extProcContainer.Name)
+					tt.extprocTest(t, extProcContainer)
+				})
 			}
-
-			// At this point, the config secret does not exist, so the pod should not be mutated.
-			err = g.mutatePod(t.Context(), pod, gwName, gwNamespace)
-			require.NoError(t, err)
-			require.Len(t, pod.Spec.Containers, 1)
-
-			// Create the config secret and mutate the pod again.
-			_, err = g.kube.CoreV1().Secrets("test-namespace").Create(t.Context(),
-				&corev1.Secret{
-					ObjectMeta: metav1.ObjectMeta{Name: FilterConfigSecretPerGatewayName(
-						gwName, gwNamespace,
-					), Namespace: "test-namespace"},
-				}, metav1.CreateOptions{})
-			require.NoError(t, err)
-			err = g.mutatePod(t.Context(), pod, gwName, gwNamespace)
-			require.NoError(t, err)
-			require.Len(t, pod.Spec.Containers, 2)
-
-			// The second container is extproc - pass it to the test function.
-			extprocContainer := pod.Spec.Containers[1]
-			require.Equal(t, "ai-gateway-extproc", extprocContainer.Name)
-			tt.extprocTest(t, extprocContainer)
 		})
 	}
 }
 
-func newTestGatewayMutator(fakeClient client.Client, fakeKube *fake2.Clientset, metricsRequestHeaderLabels, extProcExtraEnvVars string) *gatewayMutator {
+func newTestGatewayMutator(fakeClient client.Client, fakeKube *fake2.Clientset, metricsRequestHeaderLabels, extProcExtraEnvVars string, sidecar bool) *gatewayMutator {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	return newGatewayMutator(
 		fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
 		"info", "/tmp/extproc.sock", metricsRequestHeaderLabels, "/v1", extProcExtraEnvVars, 512*1024*1024,
+		sidecar,
 	)
 }
 

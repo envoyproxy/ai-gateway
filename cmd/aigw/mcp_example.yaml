@@ -1,0 +1,259 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: MCPRoute
+metadata:
+  name: mcp-route
+  namespace: default
+spec:
+  parentRefs:
+    - name: aigw-run
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  path: "/mcp"
+  backendRefs:
+    - name: github
+      kind: Backend
+      group: gateway.envoyproxy.io
+      path: "/mcp/readonly"
+      toolSelector:
+        includeRegex:
+          - .*_pull_requests?.*
+          - .*_issues?.*
+      securityPolicy:
+        apiKey:
+          secretRef:
+            name: github-access-token
+    - name: learn-microsoft
+      kind: Backend
+      group: gateway.envoyproxy.io
+      path: "/api/mcp"
+      toolSelector:
+        includeRegex:
+          - .*microsoft_docs?.*
+    - name: context7
+      kind: Backend
+      group: gateway.envoyproxy.io
+      path: "/mcp"
+    - name: aws-knowledge
+      kind: Backend
+      group: gateway.envoyproxy.io
+      path: "/"
+      toolSelector:
+        include:
+          - aws___read_documentation
+          - aws___search_documentation
+    - name: kiwi
+      kind: Backend
+      group: gateway.envoyproxy.io
+      path: "/"
+---
+kind: Secret
+apiVersion: v1
+metadata:
+  name: github-access-token
+  namespace: default
+  annotations:
+    # This will tell the CLI to replace the value of the apiKey field
+    # with the value of the environment variable GITHUB_ACCESS_TOKEN.
+    substitution.aigw.run/env/apiKey: GITHUB_ACCESS_TOKEN
+type: Opaque
+stringData:
+  apiKey: GITHUB_ACCESS_TOKEN
+---
+###################################################################################
+############################### Backend Definitions ###############################
+###################################################################################
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: github
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: api.githubcopilot.com
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: github-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: github
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: api.githubcopilot.com
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: kiwi
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: mcp.kiwi.com
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: kiwi-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: kiwi
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: mcp.kiwi.com
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: context7
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: mcp.context7.com
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: context7-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: context7
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: mcp.context7.com
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: learn-microsoft
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: learn.microsoft.com
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: learn-microsoft-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: learn-microsoft
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: learn.microsoft.com
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: aws-knowledge
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: knowledge-mcp.global.api.aws
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: aws-knowledge-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: aws-knowledge
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: knowledge-mcp.global.api.aws
+---
+###################################################################################
+############################### Gateway Definitions ###############################
+###################################################################################
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: aigw-run
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: aigw-run
+  namespace: default
+spec:
+  gatewayClassName: aigw-run
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 1975
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: envoy-ai-gateway
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: envoy-ai-gateway
+  namespace: default
+spec:
+  logging:
+    level:
+      default: error
+  bootstrap:
+    type: Merge
+    value: |-
+      admin:
+        address:
+          socket_address:
+            address: 127.0.0.1
+            port_value: 9901
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: MCPRoute
+metadata:
+  name: mcp-route-custom-path
+  namespace: default
+spec:
+  parentRefs:
+    - name: aigw-run
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  path: "/mcp/custom/path"
+  backendRefs:
+    - name: aws-knowledge
+      kind: Backend
+      group: gateway.envoyproxy.io
+      path: "/"
+      toolSelector:
+        include:
+          - aws___read_documentation

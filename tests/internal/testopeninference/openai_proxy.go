@@ -10,23 +10,37 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/envoyproxy/ai-gateway/tests/internal/testopenai"
 )
 
 // startOpenAIProxy starts the OpenInference proxy container using Docker.
-func startOpenAIProxy(ctx context.Context, logger *log.Logger, openaiBaseURL, otlpEndpoint string) (url string, closer func(), err error) {
+func startOpenAIProxy(ctx context.Context, logger *log.Logger, cassette testopenai.Cassette, openaiBaseURL, otlpEndpoint string) (url string, closer func(), err error) {
 	env := map[string]string{
-		"OPENAI_BASE_URL":             openaiBaseURL,
-		"OPENAI_API_KEY":              "unused",
 		"OTEL_SERVICE_NAME":           "openai-proxy-test",
 		"OTEL_EXPORTER_OTLP_ENDPOINT": otlpEndpoint,
 		"OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
 		"OTEL_BSP_SCHEDULE_DELAY":     "100", // Reduce delay for faster tests.
 		"PYTHONUNBUFFERED":            "1",   // Enable Python logging for debugging.
+	}
+
+	// For Azure cassettes, set Azure env vars instead of OpenAI ones.
+	// The Python proxy will detect these and create an AzureOpenAI client.
+	if strings.HasPrefix(cassette.String(), "azure-") {
+		// Set fake Azure credentials - the cassette will provide the response
+		env["AZURE_OPENAI_ENDPOINT"] = openaiBaseURL
+		env["AZURE_OPENAI_API_KEY"] = "unused"
+		env["OPENAI_API_VERSION"] = "2024-12-01-preview"
+	} else {
+		// Standard OpenAI - add /v1 to base URL
+		env["OPENAI_BASE_URL"] = openaiBaseURL + "/v1"
+		env["OPENAI_API_KEY"] = "unused"
 	}
 
 	req := testcontainers.ContainerRequest{
@@ -65,6 +79,11 @@ func startOpenAIProxy(ctx context.Context, logger *log.Logger, openaiBaseURL, ot
 		return "", nil, fmt.Errorf("failed to get mapped port: %w", err)
 	}
 
-	url = fmt.Sprintf("http://localhost:%s/v1", port.Port())
+	// For OpenAI, proxy expects /v1 prefix. For Azure, no prefix.
+	if strings.HasPrefix(cassette.String(), "azure-") {
+		url = fmt.Sprintf("http://localhost:%s", port.Port())
+	} else {
+		url = fmt.Sprintf("http://localhost:%s/v1", port.Port())
+	}
 	return url, closer, nil
 }

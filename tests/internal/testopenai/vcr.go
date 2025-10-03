@@ -49,11 +49,18 @@ var (
 	// requestHeadersToRedact are sensitive or ephemeral headers to remove from requests and matching.
 	requestHeadersToRedact = []string{
 		"Authorization",
+		"Api-Key",             // Azure OpenAI API key header
+		"Openai-Organization", // OpenAI organization ID
+		"Openai-Project",      // OpenAI project ID
+		"Cookie",              // Session cookies
 		"b3", "traceparent", "tracestate", "x-b3-traceid", "x-b3-spanid", "x-b3-sampled", "x-b3-parentspanid", "x-b3-flags",
 	}
 	// responseHeadersToRedact are sensitive or ephemeral headers to remove from responses before saving to cassettes.
-	responseHeadersToRedact = []string{"Openai-Organization", "Set-Cookie"}
-	recorderOptions         = []recorder.Option{
+	responseHeadersToRedact = []string{
+		"Openai-Organization",
+		"Set-Cookie",
+	}
+	recorderOptions = []recorder.Option{
 		// Allow replaying existing cassettes and recording new episodes when no match is found.
 		recorder.WithMode(recorder.ModeReplayWithNewEpisodes),
 		// Custom matcher to compare incoming requests with recorded cassettes.
@@ -106,9 +113,24 @@ func requestMatcher(httpReq *http.Request, cassReq cassette.Request) bool {
 // interactions after recording. It removes sensitive data, decompresses
 // responses, and pretty-prints JSON for readability.
 func afterCaptureHook(i *cassette.Interaction) error {
-	// Clear sensitive request headers like Authorization.
-	for _, header := range requestHeadersToRedact {
-		delete(i.Request.Headers, header)
+	// Scrub Azure endpoint URLs to remove private resource identifiers.
+	if isAzureURL(i.Request.URL) {
+		model := extractModelFromBody(i.Request.Body)
+		if model == "" {
+			return fmt.Errorf("cannot scrub Azure URL: model field missing or empty in request body")
+		}
+		i.Request.URL = scrubAzureURL(i.Request.URL, model)
+		i.Request.Host = "resource-name" + azureHostnameSuffix
+	}
+
+	// Clear sensitive request headers like Authorization and api-key.
+	// Use case-insensitive deletion since HTTP headers are case-insensitive.
+	for _, headerToRedact := range requestHeadersToRedact {
+		for k := range i.Request.Headers {
+			if strings.EqualFold(k, headerToRedact) {
+				delete(i.Request.Headers, k)
+			}
+		}
 	}
 
 	// Pretty-print JSON request so the cassettes are readable.
@@ -125,9 +147,13 @@ func afterCaptureHook(i *cassette.Interaction) error {
 		i.Request.Headers["Content-Length"] = []string{fmt.Sprintf("%d", len(i.Request.Body))}
 	}
 
-	// Clear sensitive response headers.
-	for _, header := range responseHeadersToRedact {
-		delete(i.Response.Headers, header)
+	// Clear sensitive response headers (case-insensitive).
+	for _, headerToRedact := range responseHeadersToRedact {
+		for k := range i.Response.Headers {
+			if strings.EqualFold(k, headerToRedact) {
+				delete(i.Response.Headers, k)
+			}
+		}
 	}
 
 	// Decompress gzipped responses rather than check in binary data.
@@ -169,7 +195,15 @@ func afterCaptureHook(i *cassette.Interaction) error {
 func filterHeaders(headers http.Header, headersToIgnore []string) http.Header {
 	filtered := make(http.Header)
 	for k, vs := range headers {
-		if slices.Contains(headersToIgnore, k) {
+		// Case-insensitive header matching
+		shouldIgnore := false
+		for _, ignore := range headersToIgnore {
+			if strings.EqualFold(k, ignore) {
+				shouldIgnore = true
+				break
+			}
+		}
+		if shouldIgnore {
 			continue
 		}
 		filtered[k] = vs

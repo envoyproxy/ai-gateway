@@ -126,8 +126,14 @@ func initKindCluster(ctx context.Context, clusterName string) (err error) {
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)", elapsed.Seconds()))
 	}()
 
+	args := []string{"create", "cluster", "--name", clusterName}
+	// If K8S_VERSION is set, use the specified Kubernetes version for the kind node image.
+	if k8sVersion := os.Getenv("K8S_VERSION"); k8sVersion != "" {
+		args = append(args, "--image", "kindest/node:"+k8sVersion)
+		initLog(fmt.Sprintf("\tUsing Kubernetes version %s for kind cluster", k8sVersion))
+	}
 	initLog(fmt.Sprintf("\tCreating kind cluster named %s", clusterName))
-	out, err := testsinternal.RunGoToolContext(ctx, "kind", "create", "cluster", "--name", clusterName)
+	out, err := testsinternal.RunGoToolContext(ctx, "kind", args...)
 	if err != nil && !strings.Contains(err.Error(), "already exist") {
 		fmt.Printf("Error creating kind cluster: %s\n", out)
 		return
@@ -146,6 +152,7 @@ func initKindCluster(ctx context.Context, clusterName string) (err error) {
 		"docker.io/envoyproxy/ai-gateway-controller:latest",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest",
 		"docker.io/envoyproxy/ai-gateway-testupstream:latest",
+		"docker.io/envoyproxy/ai-gateway-testmcpserver:latest",
 	} {
 		cmd := testsinternal.GoToolCmdContext(ctx, "kind", "load", "docker-image", image, "--name", clusterName)
 		cmd.Stdout = os.Stdout
@@ -573,7 +580,7 @@ func requireWaitForGatewayPod(t *testing.T, selector string) {
 		}
 		return nil
 	}, "get", "pod", "-n", EnvoyGatewayNamespace,
-		"--selector="+selector, "-o", "jsonpath='{.items[0].spec.containers[*].name}'")
+		"--selector="+selector, "-o", "jsonpath='{.items[0].spec.initContainers[*].name} {.items[0].spec.containers[*].name}'")
 }
 
 // RequireWaitForPodReady waits for the pod with the given selector to be ready.

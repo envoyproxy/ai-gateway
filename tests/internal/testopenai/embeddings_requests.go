@@ -18,14 +18,16 @@ func EmbeddingsCassettes() []Cassette {
 	return cassettes(embeddingsRequests)
 }
 
+var cassetteEmbeddingsBasic = &openai.EmbeddingRequest{
+	Model: openai.ModelTextEmbedding3Small,
+	Input: openai.EmbeddingRequestInput{Value: "How do I reset my password?"},
+	// Python SDK coerces to base64 when NumPy is installed. Make sure float works.
+	EncodingFormat: ptr.To("float"),
+}
+
 // embeddingsRequests contains the actual request body for each embeddings cassette.
 var embeddingsRequests = map[Cassette]*openai.EmbeddingRequest{
-	CassetteEmbeddingsBasic: {
-		Model: openai.ModelTextEmbedding3Small,
-		Input: openai.EmbeddingRequestInput{Value: "How do I reset my password?"},
-		// Python SDK coerces to base64 when NumPy is installed. Make sure float works.
-		EncodingFormat: ptr.To("float"),
-	},
+	CassetteEmbeddingsBasic: cassetteEmbeddingsBasic,
 	CassetteEmbeddingsBase64: {
 		Model:          openai.ModelTextEmbedding3Small,
 		Input:          openai.EmbeddingRequestInput{Value: "How do I reset my password?"},

@@ -13,6 +13,7 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 )
 
 func TestEmbeddings_RecordTokenUsage(t *testing.T) {
@@ -69,7 +70,7 @@ func TestEmbeddings_RecordTokenUsage_MultipleRecords(t *testing.T) {
 	em.RecordTokenUsage(t.Context(), 20, nil)
 
 	// Check input tokens: 5 + 15 + 20 = 40.
-	count, sum := getHistogramValues(t, mr, genaiMetricClientTokenUsage, inputAttrs)
+	count, sum := testotel.GetHistogramValues(t, mr, genaiMetricClientTokenUsage, inputAttrs)
 	assert.Equal(t, uint64(3), count)
 	assert.Equal(t, 40.0, sum)
 }
@@ -114,7 +115,7 @@ func TestEmbeddings_HeaderLabelMapping(t *testing.T) {
 		attribute.Key("api_key").String("key123"),
 	)
 
-	count, _ := getHistogramValues(t, mr, genaiMetricClientTokenUsage, attrs)
+	count, _ := testotel.GetHistogramValues(t, mr, genaiMetricClientTokenUsage, attrs)
 	assert.Equal(t, uint64(1), count)
 }
 

@@ -29,5 +29,5 @@ func TestNewRequestChat(t *testing.T) {
 			tests[i].expectedStatus = http.StatusOK
 		}
 	}
-	testNewRequest(t, "/chat/completions", tests)
+	testNewRequest(t, tests)
 }

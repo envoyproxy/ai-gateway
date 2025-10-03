@@ -1,0 +1,139 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: mcp-gateway-class-oauth
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: mcp-gateway-oauth
+  namespace: default
+spec:
+  gatewayClassName: mcp-gateway-class-oauth
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: envoy-mcp-gateway-oauth
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: MCPRoute
+metadata:
+  name: mcp-route-oauth
+  namespace: default
+spec:
+  parentRefs:
+    - name: mcp-gateway-oauth
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  backendRefs:
+    - name: testmcpserver-oauth
+      port: 1063
+  securityPolicy:
+    oauth:
+      issuer: "https://auth-server.example.com"
+      jwks:
+        localJWKS:
+          type: ValueRef
+          valueRef:
+            group: ""
+            kind: ConfigMap
+            name: jwks-configmap
+      protectedResourceMetadata:
+        resource: "https://foo.bar.com/mcp"
+        resourceName: "example-resource"
+        scopesSupported:
+          - "echo"
+          - "sum"
+          - "countdown"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jwks-configmap
+  namespace: default
+data:
+  jwks: |
+    {
+      "keys": [
+        {
+          "kty": "RSA",
+          "n": "u1SU1LfVLPHCozMxH2Mo4lgOEePzNm0tRgeLezV6ffAt0gunVTLw7onLRnrq0_IzW7yWR7QkrmBL7jTKEn5u-qKhbwKfBstIs-bMY2Zkp18gnTxKLxoS2tFczGkPLPgizskuemMghRniWaoLcyehkd3qqGElvW_VDL5AaWTg0nLVkjRo9z-40RQzuVaE8AkAFmxZzow3x-VJYKdjykkJ0iT9wCS0DRTXu269V264Vf_3jvredZiKRkgwlL9xNAwxXFg0x_XFw005UWVRIkdgcKWTjpBP2dPwVZ4WWC-9aGVd-Gyn1o0CLelf4rEjGoXbAAEgAqeGUxrcIlbjXfbcmw",
+          "e": "AQAB",
+          "alg": "RS256",
+          "use": "sig"
+        },
+        {
+          "alg": "RS256",
+          "e": "AQAB",
+          "key_ops": [
+            "verify"
+          ],
+          "kty": "RSA",
+          "n": "xOHb-i1WDfeAvsbXTSOtosl3hCUDHQ8fRDqX_Rt998-hZDJmAoPOu4J-wcwq5aZtSn_iWUYLcK2WmC_1n-p1eyc-Pl4CBnxF7LUjCk-WGhniaCzXC5I5RON6c5N-MdE0UfukK0PM0zD3iQonZq0fIsnOYyFdYdWvQ5XW-C2aLlq2FUKrjmhAav10jIC0KGd2dHRzauzfLMUmt_iMnpU84Xrur1zRYzBO4D90rN0ypC2HH7o_zI8Osx4o1L8BScW78545sWyVbaprhBV1I2Sa4SH3NAc25ej3RIh-f13Yu97FVfO0AIG4VfFiaMmsTqNTCiBkM20tXD2Z-cHJTKemXzFgInJoqFLAkHLzJ0lPvAkKOgAOufLHa7RA-C276OXd72IXPsL1UOLN4sjhGqTtaynVa00yuHdi3f4-aoy9F9SUJeWfPg--nZNLzuI0eyufsTFywnx1bTQ_kdYlEr0dRE5sujlMk3cZ7FmOQRvcjA9MxFzoVKMmlZc6LMCgqw-P",
+          "use": "sig",
+          "kid": "b520b3c2c4bd75a10e9cebc9576933dc"
+        }
+      ]
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: testmcpserver-oauth
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: testmcpserver-oauth
+  template:
+    metadata:
+      labels:
+        app: testmcpserver-oauth
+    spec:
+      containers:
+        - name: testmcpserver-oauth
+          image: docker.io/envoyproxy/ai-gateway-testmcpserver:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 1063
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: testmcpserver-oauth
+  namespace: default
+spec:
+  selector:
+    app: testmcpserver-oauth
+  ports:
+    - protocol: TCP
+      port: 1063
+      targetPort: 1063
+  type: ClusterIP
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: envoy-mcp-gateway-oauth
+  namespace: default
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        container:
+          # Clear the default memory/cpu requirements for local tests.
+          resources: {}
