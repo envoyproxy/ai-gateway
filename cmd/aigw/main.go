@@ -65,7 +65,6 @@ func main() {
 //   - stderr is the writer to use for standard error. Mainly for testing.
 //   - `args` are the command line arguments without the program name.
 //   - exitFn is the function to call to exit the program during the parsing of the command line arguments. Mainly for testing.
-//   - tf is the function to call to translate the AI Gateway resources to Envoy Gateway and Kubernetes resources. Mainly for testing.
 //   - rf is the function to call to run the AI Gateway locally. Mainly for testing.
 func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn func(int),
 	rf runFn,
