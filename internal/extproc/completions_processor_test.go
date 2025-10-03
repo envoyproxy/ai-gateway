@@ -93,9 +93,8 @@ func Test_completionsProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
-		const modelKey = "x-ai-gateway-model-key"
 		p := &completionsProcessorRouterFilter{
-			config:         &processorConfig{modelNameHeaderKey: modelKey},
+			config:         &processorConfig{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
 		}
@@ -108,7 +107,7 @@ func Test_completionsProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 		require.NotNil(t, re.RequestBody)
 		setHeaders := re.RequestBody.GetResponse().GetHeaderMutation().SetHeaders
 		require.Len(t, setHeaders, 2)
-		require.Equal(t, modelKey, setHeaders[0].Header.Key)
+		require.Equal(t, internalapi.ModelNameHeaderKeyDefault, setHeaders[0].Header.Key)
 		require.Equal(t, "some-model", string(setHeaders[0].Header.RawValue))
 		require.Equal(t, "x-ai-eg-original-path", setHeaders[1].Header.Key)
 		require.Equal(t, "/foo", string(setHeaders[1].Header.RawValue))
@@ -264,7 +263,7 @@ func Test_completionsProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			routeFilter := &completionsProcessorRouterFilter{
-				config:                 &processorConfig{modelNameHeaderKey: "x-model"},
+				config:                 &processorConfig{},
 				requestHeaders:         make(map[string]string),
 				originalRequestBody:    &openai.CompletionRequest{Model: "test-model"},
 				originalRequestBodyRaw: []byte(`{"model":"test-model"}`),
@@ -287,7 +286,7 @@ func Test_completionsProcessorUpstreamFilter_SetBackend(t *testing.T) {
 				require.NotNil(t, upstreamFilter.headerMutator)
 			}
 			if tt.expectedModelOverride != "" {
-				require.Equal(t, tt.expectedModelOverride, upstreamFilter.requestHeaders["x-model"])
+				require.Equal(t, tt.expectedModelOverride, upstreamFilter.requestHeaders[internalapi.ModelNameHeaderKeyDefault])
 			}
 			require.Equal(t, upstreamFilter, routeFilter.upstreamFilter)
 			require.Equal(t, tt.expectedUpstreamFilterCount, routeFilter.upstreamFilterCount)

@@ -324,8 +324,6 @@ stringData:
             includeRegex:
             - ^foo.*$
         name: default/mcp-route
-    metadataNamespace: io.envoy.ai_gateway
-    modelNameHeaderKey: x-ai-eg-model
     uuid: aigw-translate
 ---
 apiVersion: v1

@@ -181,7 +181,6 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 ) error {
 	// Precondition: aiGatewayRoutes is not empty as we early return if it is empty.
 	ec := &filterapi.Config{UUID: uuid}
-	ec.ModelNameHeaderKey = internalapi.ModelNameHeaderKeyDefault
 	var err error
 	llmCosts := map[string]struct{}{}
 	for i := range aiGatewayRoutes {
@@ -275,8 +274,6 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 			}
 		}
 	}
-
-	ec.MetadataNamespace = aigv1a1.AIGatewayFilterMetadataNamespace
 
 	// Configuration for MCP processor.
 	ec.MCPConfig = mcpConfig(mcpRoutes)
