@@ -12,7 +12,6 @@
 package filterapi
 
 import (
-	"fmt"
 	"os"
 	"time"
 
@@ -23,11 +22,7 @@ import (
 
 // DefaultConfig is the default configuration that can be used as a
 // fallback when the configuration is not explicitly provided.
-var DefaultConfig = fmt.Sprintf(`
-schema:
-  name: OpenAI
-modelNameHeaderKey: %s
-`, internalapi.ModelNameHeaderKeyDefault)
+var DefaultConfig = ``
 
 // Config is the configuration for the Envoy AI Gateway filter.
 type Config struct {
