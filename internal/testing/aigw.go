@@ -7,7 +7,9 @@ package internaltesting
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -26,6 +28,16 @@ func BuildAigwOnDemand() (string, error) {
 
 // StartAIGWCLI starts the aigw CLI as a subprocess with the given config file.
 func StartAIGWCLI(t *testing.T, aigwBin string, arg ...string) {
+	// aigw has many fixed ports, one of which is the admin port when yaml
+	// configuration includes it.
+	adminPort := 9901
+	dialer := net.Dialer{Timeout: 100 * time.Millisecond}
+	conn, err := dialer.DialContext(t.Context(), "tcp", net.JoinHostPort("127.0.0.1", fmt.Sprintf("%d", adminPort)))
+	if err == nil {
+		_ = conn.Close()
+		require.FailNow(t, "adminPort already in use", "adminPort %d is already in use, cannot start test", adminPort)
+	}
+
 	t.Logf("Starting aigw with args: %v", arg)
 	cmd := exec.CommandContext(t.Context(), aigwBin, arg...)
 	cmd.Stdout = os.Stdout
@@ -45,7 +57,7 @@ func StartAIGWCLI(t *testing.T, aigwBin string, arg ...string) {
 	require.Eventually(t, func() bool {
 		reqCtx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 		defer cancel()
-		req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, "http://localhost:9901/ready", nil)
+		req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, fmt.Sprintf("http://localhost:%d/ready", adminPort), nil)
 		if err != nil {
 			t.Logf("Health check request failed: %v", err)
 			return false
