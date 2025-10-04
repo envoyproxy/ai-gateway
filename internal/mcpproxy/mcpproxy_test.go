@@ -354,29 +354,29 @@ func TestInvokeJSONRPCRequest_NoSessionID(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 }
 
-func Test_nameSelector_Allows(t *testing.T) {
+func Test_toolSelector_Allows(t *testing.T) {
 	reBa := regexp.MustCompile("^ba.*")
 	tests := []struct {
 		name     string
-		selector nameSelector
+		selector toolSelector
 		tools    []string
 		want     []bool
 	}{
 		{
 			name:     "no rules allows all",
-			selector: nameSelector{},
+			selector: toolSelector{},
 			tools:    []string{"foo", "bar"},
 			want:     []bool{true, true},
 		},
 		{
 			name:     "include specific tool",
-			selector: nameSelector{include: map[string]struct{}{"foo": {}}},
+			selector: toolSelector{include: map[string]struct{}{"foo": {}}},
 			tools:    []string{"foo", "bar"},
 			want:     []bool{true, false},
 		},
 		{
 			name:     "include regexp",
-			selector: nameSelector{includeRegexps: []*regexp.Regexp{reBa}},
+			selector: toolSelector{includeRegexps: []*regexp.Regexp{reBa}},
 			tools:    []string{"bar", "foo"},
 			want:     []bool{true, false},
 		},

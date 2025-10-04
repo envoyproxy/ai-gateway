@@ -109,7 +109,7 @@ metadata:
 spec:
   endpoints:
     - fqdn:
-        hostname: api.router.tetrate.ai
+        hostname: api.openai.com
         port: 443
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
@@ -127,6 +127,12 @@ spec:
     kind: Backend
     group: gateway.envoyproxy.io
     namespace: default
+  headerMutation:
+    set:
+      - name: "OpenAI-Organization"
+        value: "org-test123"
+      - name: "OpenAI-Project"
+        value: "proj_test456"
 ---
 apiVersion: gateway.networking.k8s.io/v1alpha3
 kind: BackendTLSPolicy
@@ -140,7 +146,7 @@ spec:
       name: openai
   validation:
     wellKnownCACertificates: "System"
-    hostname: api.router.tetrate.ai
+    hostname: api.openai.com
 ---
 # By default, Envoy Gateway sets the buffer limit to 32kiB which is not
 # sufficient for AI workloads. This ClientTrafficPolicy sets the buffer limit
@@ -164,14 +170,9 @@ kind: Secret
 metadata:
   name: openai-apikey
   namespace: default
-  annotations:
-    # This will tell the CLI to replace the value of the apiKey field
-    # with the value of the environment variable OPENAI_API_KEY.
-    substitution.aigw.run/env/apiKey: OPENAI_API_KEY
 type: Opaque
 stringData:
-  # This will be replaced with the environment variable OPENAI_API_KEY.
-  apiKey: PLACEHOLDER_OPENAI_API_KEY
+  apiKey: ${OPENAI_API_KEY}
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy

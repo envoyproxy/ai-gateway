@@ -109,8 +109,8 @@ metadata:
 spec:
   endpoints:
     - fqdn:
-        hostname: 127.0.0.1.nip.io
-        port: 11434
+        hostname: my-resource.openai.azure.com
+        port: 443
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
@@ -121,12 +121,33 @@ spec:
   timeouts:
     request: 3m
   schema:
-    name: OpenAI
+    name: AzureOpenAI
+    version: "2024-02-15-preview"
   backendRef:
     name: openai
     kind: Backend
     group: gateway.envoyproxy.io
     namespace: default
+  headerMutation:
+    set:
+      - name: "OpenAI-Organization"
+        value: "org-test123"
+      - name: "OpenAI-Project"
+        value: "proj_test456"
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: openai-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: openai
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: my-resource.openai.azure.com
 ---
 # By default, Envoy Gateway sets the buffer limit to 32kiB which is not
 # sufficient for AI workloads. This ClientTrafficPolicy sets the buffer limit
@@ -152,7 +173,7 @@ metadata:
   namespace: default
 type: Opaque
 stringData:
-  apiKey: ${OPENAI_API_KEY}
+  apiKey: ${AZURE_OPENAI_API_KEY}
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
@@ -164,7 +185,7 @@ spec:
     - group: aigateway.envoyproxy.io
       kind: AIServiceBackend
       name: openai
-  type: APIKey
-  apiKey:
+  type: AzureAPIKey
+  azureAPIKey:
     secretRef:
       name: openai-apikey

@@ -86,7 +86,7 @@ func requireNewMCPEnv(t *testing.T, forceJSONResponse bool, writeTimeout time.Du
 					{
 						Name: "default-mcp-backend", Path: "/mcp",
 						// This shouldn't affect any other routes.
-						ToolSelector: &filterapi.MCPNameSelector{Include: []string{"non-existent"}},
+						ToolSelector: &filterapi.MCPToolSelector{Include: []string{"non-existent"}},
 					},
 					{Name: "dumb-mcp-backend", Path: "/mcp"},
 				},

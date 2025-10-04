@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -16,6 +17,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
+	"github.com/envoyproxy/ai-gateway/internal/autoconfig"
 	"github.com/envoyproxy/ai-gateway/internal/version"
 )
 
@@ -31,10 +33,12 @@ type (
 	}
 	// cmdRun corresponds to `aigw run` command.
 	cmdRun struct {
-		Debug     bool   `help:"Enable debug logging emitted to stderr."`
-		Path      string `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional when at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY is set." type:"path"`
-		AdminPort int    `help:"HTTP port for the admin server (serves /metrics and /health endpoints)." default:"1064"`
-		McpConfig string `name:"mcp-config" help:"(Optional) Path to the file containing the list of MCP servers. When this is given, any other given config file is ignored." type:"path"`
+		Debug     bool                   `help:"Enable debug logging emitted to stderr."`
+		Path      string                 `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional when at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY is set." type:"path"`
+		AdminPort int                    `help:"HTTP port for the admin server (serves /metrics and /health endpoints)." default:"1064"`
+		McpConfig string                 `name:"mcp-config" help:"Path to MCP servers configuration file." type:"path"`
+		McpJSON   string                 `name:"mcp-json" help:"JSON string of MCP servers configuration."`
+		mcpConfig *autoconfig.MCPServers `kong:"-"` // Internal field: normalized MCP JSON data
 	}
 	// cmdHealthcheck corresponds to `aigw healthcheck` command.
 	cmdHealthcheck struct {
@@ -44,8 +48,30 @@ type (
 
 // Validate is called by Kong after parsing to validate the cmdRun arguments.
 func (c *cmdRun) Validate() error {
-	if c.Path == "" && os.Getenv("OPENAI_API_KEY") == "" && os.Getenv("AZURE_OPENAI_API_KEY") == "" {
+	if c.McpConfig != "" && c.McpJSON != "" {
+		return fmt.Errorf("mcp-config and mcp-json are mutually exclusive")
+	}
+	if c.Path == "" && os.Getenv("OPENAI_API_KEY") == "" && os.Getenv("AZURE_OPENAI_API_KEY") == "" && c.McpConfig == "" && c.McpJSON == "" {
 		return fmt.Errorf("you must supply at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY or a config file path")
+	}
+
+	var mcpJSON string
+	if c.McpConfig != "" {
+		raw, err := os.ReadFile(c.McpConfig)
+		if err != nil {
+			return fmt.Errorf("failed to read MCP config file: %w", err)
+		}
+		mcpJSON = string(raw)
+	} else {
+		mcpJSON = c.McpJSON
+	}
+
+	if mcpJSON != "" {
+		var mcpConfig autoconfig.MCPServers
+		if err := json.Unmarshal([]byte(mcpJSON), &mcpConfig); err != nil {
+			return fmt.Errorf("failed to unmarshal MCP config: %w", err)
+		}
+		c.mcpConfig = &mcpConfig
 	}
 	return nil
 }

@@ -109,8 +109,8 @@ metadata:
 spec:
   endpoints:
     - fqdn:
-        hostname: 127.0.0.1.nip.io
-        port: 11434
+        hostname: api.router.tetrate.ai
+        port: 443
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
@@ -127,6 +127,20 @@ spec:
     kind: Backend
     group: gateway.envoyproxy.io
     namespace: default
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: openai-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: openai
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: api.router.tetrate.ai
 ---
 # By default, Envoy Gateway sets the buffer limit to 32kiB which is not
 # sufficient for AI workloads. This ClientTrafficPolicy sets the buffer limit

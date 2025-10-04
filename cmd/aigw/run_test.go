@@ -24,6 +24,7 @@ import (
 	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
@@ -32,6 +33,7 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
+	"github.com/envoyproxy/ai-gateway/internal/autoconfig"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
@@ -91,6 +93,58 @@ func TestRun(t *testing.T) {
 			defer resp.Body.Close()
 			return resp.StatusCode == http.StatusOK
 		}, 2*time.Minute, time.Second)
+	})
+}
+
+// TestRunMCP runs the AIGW with MCP configured and verifies calling a tool.
+// It uses the same MCP config as docker-compose.yaml to ensure consistency.
+func TestRunMCP(t *testing.T) {
+	ports := internaltesting.RequireRandomPorts(t, 1)
+	// TODO: parameterize the main listen port 1975
+	adminPort := ports[0]
+
+	mcpServers := &autoconfig.MCPServers{
+		McpServers: map[string]autoconfig.MCPServer{
+			"kiwi": {
+				Type: "http",
+				URL:  "https://mcp.kiwi.com",
+			},
+		},
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		opts := runOpts{extProcLauncher: mainlib.Main}
+		require.NoError(t, run(ctx, cmdRun{Debug: true, AdminPort: adminPort, mcpConfig: mcpServers}, opts, os.Stdout, os.Stderr))
+		close(done)
+	}()
+	defer func() { cancel(); <-done }()
+
+	url := fmt.Sprintf("http://localhost:%d/mcp", 1975)
+	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.1.0"}, &mcp.ClientOptions{})
+	callTool := &mcp.CallToolParams{
+		Name: "kiwi__search-flight",
+		Arguments: map[string]any{
+			"flyFrom":       "NYC",
+			"flyTo":         "LAX",
+			"departureDate": "15/12/2025",
+		},
+	}
+	t.Run("call tool", func(t *testing.T) {
+		require.Eventually(t, func() bool {
+			session, err := mcpClient.Connect(t.Context(), &mcp.StreamableClientTransport{Endpoint: url}, nil)
+			if err != nil {
+				return false
+			}
+			defer session.Close()
+			resp, err := session.CallTool(t.Context(), callTool)
+			if err != nil {
+				return false
+			}
+			return !resp.IsError
+		}, 1*time.Minute, 2*time.Second)
 	})
 }
 

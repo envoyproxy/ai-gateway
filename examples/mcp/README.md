@@ -1,4 +1,4 @@
-## MCP Proxy in `aigw run`
+## MCP Proxy Examples for `aigw run`
 
 We have a couple of example configurations for running an MCP Proxy using `aigw run`.
 
@@ -6,12 +6,16 @@ You need to set `GITHUB_ACCESS_TOKEN` environment variable necessary for the Git
 
 ### Using a standard MCP servers file
 
-The `mcp_example.json` file is a standard MCP Servers configuration file that uses the same format as
-popular agents like Claude. To run the MCP proxy with this configuration, use the following command (may take a while to start):
+The easiest way to use MCP servers config is to inline or supply a path to a JSON file containing
+an array of MCP server definitions.
 
+For example, to start Envoy AI Gateway to proxy OpenAI and Kiwi MCP servers, use the following command:
 ```
-$ go run ./cmd/aigw run --mcp-config ./cmd/aigw/mcp_example.json --debug
+OPENAI_API_KEY=sk-xxxx aigw run --mcp-json '{"mcpServers":{"kiwi":{"type":"http","url":"https://mcp.kiwi.com"}}}'
 ```
+
+A docker example is in the [aigw README](../../cmd/aigw/README.md) including OpenTelemetry configuration.
+You can also read the [docs](https://aigateway.envoyproxy.io/docs/cli/aigwrun) for more.
 
 ### Using an Envoy AI Gateway specific config file
 
@@ -21,7 +25,7 @@ format is more verbose, allows for more fine-grained configuration and allows ad
 To run the MCP Proxy with this configuration, use the following command (may take a while to start):
 
 ```
-$ go run ./cmd/aigw run ./cmd/aigw/mcp_example.yaml --debug
+$ go run ./cmd/aigw run ./examples/mcp/mcp_example.yaml --debug
 ```
 
 Then, you can use the MCP Inspector to interact with the MCP Proxy:
@@ -139,7 +143,7 @@ In production, configure a proper Trusted Hosts policy that matches your environ
 Run the MCP Gateway with configuration that uses Keycloak for OAuth2:
 
 ```
-$ go run ./cmd/aigw run ./cmd/aigw/mcp_oauth_keycloak.yaml --debug
+$ go run ./cmd/aigw run ./examples/mcp/mcp_oauth_keycloak.yaml --debug
 ```
 
 Then, add the MCP gateway to Claude:
