@@ -98,9 +98,8 @@ Flags:
       --debug                Enable debug logging emitted to stderr.
       --admin-port=1064      HTTP port for the admin server (serves /metrics and
                              /health endpoints).
-      --mcp-config=STRING    (Optional) Path to the file containing the list of
-                             MCP servers. When this is given, any other given
-                             config file is ignored.
+      --mcp-config=STRING    Path to MCP servers configuration file.
+      --mcp-json=STRING      JSON string of MCP servers configuration.
 `,
 			expPanicCode: ptr.To(0),
 		},

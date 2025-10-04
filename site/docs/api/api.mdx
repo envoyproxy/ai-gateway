@@ -405,12 +405,12 @@ MCPRouteList contains a list of MCPRoute.
 - [LLMRequestCostType](#llmrequestcosttype)
 - [MCPBackendAPIKey](#mcpbackendapikey)
 - [MCPBackendSecurityPolicy](#mcpbackendsecuritypolicy)
-- [MCPNameFilter](#mcpnamefilter)
 - [MCPRouteBackendRef](#mcproutebackendref)
 - [MCPRouteOAuth](#mcprouteoauth)
 - [MCPRouteSecurityPolicy](#mcproutesecuritypolicy)
 - [MCPRouteSpec](#mcproutespec)
 - [MCPRouteStatus](#mcproutestatus)
+- [MCPToolFilter](#mcptoolfilter)
 - [ProtectedResourceMetadata](#protectedresourcemetadata)
 - [VersionedAPISchema](#versionedapischema)
 
@@ -1420,33 +1420,6 @@ MCPBackendSecurityPolicy defines the security policy for a sp
 />
 
 
-#### MCPNameFilter
-
-
-
-**Appears in:**
-- [MCPRouteBackendRef](#mcproutebackendref)
-
-MCPNameFilter filters string identifiers using include lists or regular expressions.
-Exactly one of include or includeRegex may be specified.
-
-##### Fields
-
-
-
-<ApiField
-  name="include"
-  type="string array"
-  required="true"
-  description="Include is a list of strings to include. If specified, only the strings in this list are included."
-/><ApiField
-  name="includeRegex"
-  type="string array"
-  required="true"
-  description="IncludeRegex is a list of RE2-compatible regular expressions that, when matched, include the string."
-/>
-
-
 #### MCPRouteBackendRef
 
 
@@ -1494,9 +1467,9 @@ MCPRouteBackendRef wraps a EG's BackendObjectReference to reference an MCP serve
   description="Path is the HTTP endpoint path of the baackend MCP server.<br />If not specified, the default is `/mcp`."
 /><ApiField
   name="toolSelector"
-  type="[MCPNameFilter](#mcpnamefilter)"
+  type="[MCPToolFilter](#mcptoolfilter)"
   required="true"
-  description="ToolSelector filters the tools exposed by this MCP server.<br />Supports exact matches via include lists and RE2-compatible regular expressions via includeRegex.<br />If not specified, all tools from the MCP server are exposed."
+  description="ToolSelector filters the tools exposed by this MCP server.<br />Supports exact matches and RE2-compatible regular expressions for both include and exclude patterns.<br />If not specified, all tools from the MCP server are exposed."
 /><ApiField
   name="securityPolicy"
   type="[MCPBackendSecurityPolicy](#mcpbackendsecuritypolicy)"
@@ -1623,6 +1596,32 @@ MCPRouteStatus contains the conditions by the reconciliation result.
   type="[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#condition-v1-meta) array"
   required="true"
   description="Conditions is the list of conditions by the reconciliation result.<br />Currently, at most one condition is set.<br />Known .status.conditions.type are: `Accepted`, `NotAccepted`."
+/>
+
+
+#### MCPToolFilter
+
+
+
+**Appears in:**
+- [MCPRouteBackendRef](#mcproutebackendref)
+
+MCPToolFilter filters tools using include patterns with exact matches or regular expressions.
+
+##### Fields
+
+
+
+<ApiField
+  name="include"
+  type="string array"
+  required="true"
+  description="Include is a list of tool names to include. Only the specified tools will be available."
+/><ApiField
+  name="includeRegex"
+  type="string array"
+  required="true"
+  description="IncludeRegex is a list of RE2-compatible regular expressions that, when matched, include the tool.<br />Only tools matching these patterns will be available."
 />
 
 

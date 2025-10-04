@@ -26,7 +26,7 @@ func NewControllerEventChan[T client.Object]() *NewControllerEventChanImpl[T] {
 }
 
 // RequireItemsEventually returns a copy of the items.
-func (s *NewControllerEventChanImpl[T]) RequireItemsEventually(t *testing.T, exp int) []T {
+func (s *NewControllerEventChanImpl[T]) RequireItemsEventually(t testing.TB, exp int) []T {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	var ret []T

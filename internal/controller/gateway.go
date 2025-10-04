@@ -331,7 +331,7 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 				Path: ptr.Deref(b.Path, "/mcp"),
 			}
 			if b.ToolSelector != nil {
-				mcpBackend.ToolSelector = &filterapi.MCPNameSelector{
+				mcpBackend.ToolSelector = &filterapi.MCPToolSelector{
 					Include:      b.ToolSelector.Include,
 					IncludeRegex: b.ToolSelector.IncludeRegex,
 				}

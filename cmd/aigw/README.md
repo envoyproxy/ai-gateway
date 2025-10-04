@@ -51,6 +51,12 @@ Here are values we use for Ollama:
      docker compose run --rm embeddings
      ```
 
+   - MCP (Model Context Protocol) tool call:
+     ```bash
+     docker compose run --rm mcp
+     ```
+     This calls the kiwi MCP server through aigw's MCP Gateway at `/mcp`.
+
 4. **Shutdown the example stack**:
 
    `down` stops the containers and removes the volumes used by the stack.
@@ -63,8 +69,8 @@ Here are values we use for Ollama:
 [docker-compose-otel.yaml](docker-compose-otel.yaml) includes OpenTelemetry
 metrics and tracing.
 
-All profiles below use at least these two Docker services:
-- **aigw** (port 1975): Envoy AI Gateway CLI (standalone mode) with OTEL tracing
+All profiles below use at least these Docker services:
+- **aigw** (port 1975): Envoy AI Gateway CLI with OpenAI endpoints at `/v1/*` and MCP endpoint at `/mcp`
 - **chat-completion**: OpenAI Python client instrumented with OpenTelemetry
 
 ### Prerequisites
@@ -136,6 +142,7 @@ This configures the OTLP endpoint to otel-tui on port 4318.
    ```bash
    COMPOSE_PROFILES=<profile> docker compose -f docker-compose-otel.yaml run --build --rm chat-completion
    COMPOSE_PROFILES=<profile> docker compose -f docker-compose-otel.yaml run --build --rm create-embeddings
+   COMPOSE_PROFILES=<profile> docker compose -f docker-compose-otel.yaml run --build --rm mcp
    ```
 
 3. **Check telemetry output**:

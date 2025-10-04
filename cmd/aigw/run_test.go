@@ -19,11 +19,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
+	"strconv"
 	"testing"
 	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
@@ -32,14 +33,25 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
+	"github.com/envoyproxy/ai-gateway/internal/aigw"
+	"github.com/envoyproxy/ai-gateway/internal/autoconfig"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
+// Do NOT commit runDebug = true to the branch until Envoy Gateway removes
+// hard-coding of func-e calls which ends up always using os.Stdout/Stderr
+// Only set this to true when you are debugging. Once envoy-gateway supports
+// redirection, commit this as true since debug logs only show on failure.
+const runDebug = false
+
 func TestRun(t *testing.T) {
-	ollamaModel := getOllamaChatModel(t)
-	if ollamaModel == "" || !checkIfOllamaReady(t, ollamaModel) {
-		t.Skipf("Ollama not ready or model %q missing. Run 'ollama pull %s' if needed.", ollamaModel, ollamaModel)
+	ollamaModel, err := internaltesting.GetOllamaModel(internaltesting.ChatModel)
+	if err == nil {
+		err = internaltesting.CheckIfOllamaReady(ollamaModel)
+	}
+	if err != nil {
+		t.Skip(err)
 	}
 
 	ports := internaltesting.RequireRandomPorts(t, 1)
@@ -49,48 +61,125 @@ func TestRun(t *testing.T) {
 	t.Setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
 	t.Setenv("OPENAI_API_KEY", "unused")
 
+	buffers := internaltesting.DumpLogsOnFail(t, "aigw Stdout", "aigw Stderr")
 	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	done := make(chan struct{})
+	defer cleanupRun(t, cancel)
+
 	go func() {
 		opts := runOpts{extProcLauncher: mainlib.Main}
-		require.NoError(t, run(ctx, cmdRun{Debug: true, AdminPort: adminPort}, opts, os.Stdout, os.Stderr))
-		close(done)
+		require.NoError(t, run(ctx, cmdRun{Debug: runDebug, AdminPort: adminPort}, opts, buffers[0], buffers[1]))
 	}()
-	defer func() { cancel(); <-done }()
+
+	client := openai.NewClient(option.WithBaseURL("http://localhost:1975/v1/"))
+	chatReq := openai.ChatCompletionNewParams{
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage("Say this is a test"),
+		},
+		Model: ollamaModel,
+	}
 
 	t.Run("chat completion", func(t *testing.T) {
-		client := openai.NewClient(option.WithBaseURL("http://localhost:1975/v1/"))
-		require.Eventually(t, func() bool {
-			chatCompletion, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-				Messages: []openai.ChatCompletionMessageParamUnion{
-					openai.UserMessage("Say this is a test"),
-				},
-				Model: ollamaModel,
-			})
+		internaltesting.RequireEventuallyNoError(t, func() error {
+			chatCompletion, err := client.Chat.Completions.New(ctx, chatReq)
 			if err != nil {
-				return false
+				return fmt.Errorf("chat completion failed: %w", err)
 			}
 			for _, choice := range chatCompletion.Choices {
 				if choice.Message.Content != "" {
-					return true
+					return nil
 				}
 			}
-			return false
-		}, 30*time.Second, 2*time.Second)
+			return fmt.Errorf("no content in response")
+		}, 30*time.Second, 2*time.Second,
+			"chat completion never succeeded")
 	})
 
 	t.Run("access metrics", func(t *testing.T) {
-		require.Eventually(t, func() bool {
-			req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://localhost:%d/metrics", adminPort), nil)
+		internaltesting.RequireEventuallyNoError(t, func() error {
+			req, err := http.NewRequest(http.MethodGet,
+				fmt.Sprintf("http://localhost:%d/metrics", adminPort), nil)
 			require.NoError(t, err)
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
-				return false
+				return err
 			}
 			defer resp.Body.Close()
-			return resp.StatusCode == http.StatusOK
-		}, 2*time.Minute, time.Second)
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("status %d", resp.StatusCode)
+			}
+			return nil
+		}, 2*time.Minute, time.Second,
+			"metrics endpoint never became available")
+	})
+}
+
+func cleanupRun(t testing.TB, cancel context.CancelFunc) {
+	cancel()
+	if err := internaltesting.AwaitPortClosed(1975, 10*time.Second); err != nil {
+		t.Logf("Failed to close port 1975: %v", err)
+	}
+	// Delete the hard-coded path to certs defined in Envoy AI Gateway
+	if err := os.RemoveAll("/tmp/envoy-gateway/certs"); err != nil {
+		t.Logf("Failed to delete envoy gateway certs: %v", err)
+	}
+}
+
+// TestRunMCP runs the AIGW with MCP configured and verifies calling a tool.
+// It uses the same MCP config as docker-compose.yaml to ensure consistency.
+func TestRunMCP(t *testing.T) {
+	ports := internaltesting.RequireRandomPorts(t, 1)
+	// TODO: parameterize the main listen port 1975
+	adminPort := ports[0]
+
+	mcpServers := &autoconfig.MCPServers{
+		McpServers: map[string]autoconfig.MCPServer{
+			"kiwi": {
+				Type: "http",
+				URL:  "https://mcp.kiwi.com",
+			},
+		},
+	}
+
+	buffers := internaltesting.DumpLogsOnFail(t, "aigw Stdout", "aigw Stderr")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cleanupRun(t, cancel)
+
+	go func() {
+		opts := runOpts{extProcLauncher: mainlib.Main}
+		require.NoError(t, run(ctx, cmdRun{Debug: runDebug, AdminPort: adminPort, mcpConfig: mcpServers}, opts, buffers[0], buffers[1]))
+	}()
+
+	url := fmt.Sprintf("http://localhost:%d/mcp", 1975)
+	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.1.0"},
+		&mcp.ClientOptions{})
+	callTool := &mcp.CallToolParams{
+		Name: "kiwi__search-flight",
+		Arguments: map[string]any{
+			"flyFrom":       "NYC",
+			"flyTo":         "LAX",
+			"departureDate": "15/12/2025",
+		},
+	}
+
+	t.Run("call tool", func(t *testing.T) {
+		internaltesting.RequireEventuallyNoError(t, func() error {
+			session, err := mcpClient.Connect(t.Context(),
+				&mcp.StreamableClientTransport{Endpoint: url}, nil)
+			if err != nil {
+				return fmt.Errorf("connect failed: %w", err)
+			}
+			defer session.Close()
+
+			resp, err := session.CallTool(t.Context(), callTool)
+			if err != nil {
+				return fmt.Errorf("call tool failed: %w", err)
+			}
+			if resp.IsError {
+				return fmt.Errorf("tool returned error response")
+			}
+			return nil
+		}, 1*time.Minute, 2*time.Second,
+			"MCP tool call never succeeded")
 	})
 }
 
@@ -102,9 +191,9 @@ func TestRunExtprocStartFailure(t *testing.T) {
 	errChan := make(chan error)
 	mockErr := errors.New("mock extproc error")
 	go func() {
-		errChan <- run(ctx, cmdRun{Debug: true}, runOpts{
+		errChan <- run(ctx, cmdRun{}, runOpts{
 			extProcLauncher: func(context.Context, []string, io.Writer) error { return mockErr },
-		}, os.Stdout, os.Stderr)
+		}, os.Stdout, io.Discard)
 	}()
 
 	select {
@@ -125,14 +214,15 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "unused")
 
 	runCtx := &runCmdContext{
-		stderrLogger:             slog.New(slog.NewTextHandler(os.Stderr, nil)),
 		envoyGatewayResourcesOut: &bytes.Buffer{},
+		stderrLogger:             slog.New(slog.DiscardHandler),
+		stderr:                   io.Discard,
 		tmpdir:                   t.TempDir(),
-		adminPort:                adminPort,
-		extProcLauncher:          mainlib.Main,
 		// UNIX doesn't like a long UDS path, so we use a short one.
 		// https://unix.stackexchange.com/questions/367008/why-is-socket-path-length-limited-to-a-hundred-chars
-		udsPath: filepath.Join("/tmp", "run.sock"),
+		udsPath:         filepath.Join("/tmp", "run.sock"),
+		adminPort:       adminPort,
+		extProcLauncher: mainlib.Main,
 	}
 	config := readFileFromProjectRoot(t, "examples/aigw/ollama.yaml")
 	ctx, cancel := context.WithCancel(t.Context())
@@ -153,11 +243,12 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc_noListeners(t *testing.T
 	adminPort := ports[0]
 
 	runCtx := &runCmdContext{
-		stderrLogger:             slog.New(slog.DiscardHandler),
 		envoyGatewayResourcesOut: &bytes.Buffer{},
+		stderrLogger:             slog.New(slog.DiscardHandler),
+		stderr:                   io.Discard,
 		tmpdir:                   t.TempDir(),
-		adminPort:                adminPort,
 		udsPath:                  filepath.Join("/tmp", "run-test.sock"),
+		adminPort:                adminPort,
 	}
 
 	_, _, _, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(t.Context(), gatewayNoListenersConfig)
@@ -167,10 +258,11 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc_noListeners(t *testing.T
 func Test_mustStartExtProc(t *testing.T) {
 	mockErr := errors.New("mock extproc error")
 	runCtx := &runCmdContext{
+		stderrLogger:    slog.New(slog.DiscardHandler),
+		stderr:          io.Discard,
 		tmpdir:          t.TempDir(),
 		adminPort:       1064,
 		extProcLauncher: func(context.Context, []string, io.Writer) error { return mockErr },
-		stderrLogger:    slog.New(slog.NewTextHandler(os.Stderr, nil)),
 	}
 	done := runCtx.mustStartExtProc(t.Context(), filterapi.MustLoadDefaultConfig())
 	require.ErrorIs(t, <-done, mockErr)
@@ -182,13 +274,14 @@ func Test_mustStartExtProc_withHeaderAttributes(t *testing.T) {
 
 	var capturedArgs []string
 	runCtx := &runCmdContext{
-		tmpdir:    t.TempDir(),
-		adminPort: 1064,
+		stderrLogger: slog.New(slog.DiscardHandler),
+		stderr:       io.Discard,
+		tmpdir:       t.TempDir(),
+		adminPort:    1064,
 		extProcLauncher: func(_ context.Context, args []string, _ io.Writer) error {
 			capturedArgs = args
 			return errors.New("mock error") // Return error to stop execution
 		},
-		stderrLogger: slog.New(slog.DiscardHandler),
 	}
 
 	done := runCtx.mustStartExtProc(t.Context(), filterapi.MustLoadDefaultConfig())
@@ -211,7 +304,7 @@ func Test_mustStartExtProc_withHeaderAttributes(t *testing.T) {
 	}
 }
 
-func TestTryFindEnvoyAdminAddress(t *testing.T) {
+func TestTryFindEnvoyAdminPort(t *testing.T) {
 	gwWithProxy := func(name string) *gwapiv1.Gateway {
 		return &gwapiv1.Gateway{
 			Spec: gwapiv1.GatewaySpec{
@@ -242,21 +335,21 @@ admin:
 	}
 
 	tests := []struct {
-		name    string
-		gw      *gwapiv1.Gateway
-		proxies []*egv1a1.EnvoyProxy
-		want    string
+		name     string
+		gw       *gwapiv1.Gateway
+		proxies  []*egv1a1.EnvoyProxy
+		expected int
 	}{
 		{
-			name: "gateway with no envoy proxy",
-			gw:   &gwapiv1.Gateway{},
-			want: "",
+			name:     "gateway with no envoy proxy",
+			gw:       &gwapiv1.Gateway{},
+			expected: 0,
 		},
 		{
-			name:    "gateway with non matching envoy proxy",
-			gw:      gwWithProxy("non-matching-proxy"),
-			proxies: []*egv1a1.EnvoyProxy{proxyWithAdminAddr("proxy", "localhost", 8080)},
-			want:    "",
+			name:     "gateway with non matching envoy proxy",
+			gw:       gwWithProxy("non-matching-proxy"),
+			proxies:  []*egv1a1.EnvoyProxy{proxyWithAdminAddr("proxy", "localhost", 8080)},
+			expected: 0,
 		},
 		{
 			name: "gateway with custom proxy no bootstrap",
@@ -264,7 +357,7 @@ admin:
 			proxies: []*egv1a1.EnvoyProxy{
 				{ObjectMeta: metav1.ObjectMeta{Name: "proxy"}},
 			},
-			want: "",
+			expected: 0,
 		},
 		{
 			name: "gateway with custom bootstrap",
@@ -273,19 +366,19 @@ admin:
 				proxyWithAdminAddr("no-match", "localhost", 8081),
 				proxyWithAdminAddr("proxy", "127.0.0.1", 9901),
 			},
-			want: "127.0.0.1:9901",
+			expected: 9901,
 		},
 	}
 
 	runCtx := &runCmdContext{
-		tmpdir:       t.TempDir(),
 		stderrLogger: slog.New(slog.DiscardHandler),
+		tmpdir:       t.TempDir(),
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			addr := runCtx.tryFindEnvoyAdminAddress(tt.gw, tt.proxies)
-			require.Equal(t, tt.want, addr)
+			port := runCtx.tryFindEnvoyAdminPort(tt.gw, tt.proxies)
+			require.Equal(t, tt.expected, port)
 		})
 	}
 }
@@ -319,8 +412,8 @@ func TestTryFindEnvoyListenerPort(t *testing.T) {
 	}
 
 	runCtx := &runCmdContext{
-		tmpdir:       t.TempDir(),
 		stderrLogger: slog.New(slog.DiscardHandler),
+		tmpdir:       t.TempDir(),
 	}
 
 	for _, tt := range tests {
@@ -334,22 +427,30 @@ func TestTryFindEnvoyListenerPort(t *testing.T) {
 func TestPollEnvoyReady(t *testing.T) {
 	successAt := 5
 	var callCount int
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
 		if callCount < successAt {
 			http.Error(w, "not ready", http.StatusServiceUnavailable)
 			return
+		}
+		if r.URL.Path == "/ready" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("live"))
 		}
 	}))
 	t.Cleanup(s.Close)
 	u, err := url.Parse(s.URL)
 	require.NoError(t, err)
 
+	adminPort, err := strconv.Atoi(u.Port())
+	require.NoError(t, err)
+
 	l := slog.New(slog.DiscardHandler)
 
 	t.Run("ready", func(t *testing.T) {
 		t.Cleanup(func() { callCount = 0 })
-		pollEnvoyAdminReady(t.Context(), l, u.Host, 50*time.Millisecond)
+		envoyAdmin := aigw.NewEnvoyAdminClientFromPort(adminPort)
+		pollEnvoyReady(t.Context(), l, envoyAdmin, 50*time.Millisecond)
 		require.Equal(t, successAt, callCount)
 	})
 
@@ -357,22 +458,10 @@ func TestPollEnvoyReady(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		t.Cleanup(cancel)
 		t.Cleanup(func() { callCount = 0 })
-		pollEnvoyAdminReady(ctx, l, u.Host, 50*time.Millisecond)
+		envoyAdmin := aigw.NewEnvoyAdminClientFromPort(adminPort)
+		pollEnvoyReady(ctx, l, envoyAdmin, 50*time.Millisecond)
 		require.Less(t, callCount, successAt)
 	})
-}
-
-// getOllamaChatModel reads CHAT_MODEL from .env.ollama relative to the source directory.
-// Returns empty string if not found or file missing.
-func getOllamaChatModel(t *testing.T) string {
-	t.Helper()
-	envs := readFileFromProjectRoot(t, ".env.ollama")
-	for _, line := range strings.Split(envs, "\n") {
-		if strings.HasPrefix(line, "CHAT_MODEL=") {
-			return strings.TrimPrefix(line, "CHAT_MODEL=")
-		}
-	}
-	return ""
 }
 
 func readFileFromProjectRoot(t *testing.T, file string) string {
@@ -382,22 +471,4 @@ func readFileFromProjectRoot(t *testing.T, file string) string {
 	b, err := os.ReadFile(filepath.Join(filepath.Dir(filename), "..", "..", file))
 	require.NoError(t, err)
 	return string(b)
-}
-
-// checkIfOllamaReady verifies if Ollama server is ready and the model is available.
-func checkIfOllamaReady(t *testing.T, modelName string) bool {
-	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, "http://localhost:11434/api/tags", nil)
-	require.NoError(t, err)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return false
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return false
-	}
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	return strings.Contains(string(body), modelName)
 }

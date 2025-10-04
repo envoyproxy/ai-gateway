@@ -195,10 +195,10 @@ test-e2e-upgrade: build-e2e
 	@go test -v ./tests/e2e-upgrade/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
 
 # This runs the MCP end-to-end tests.
-.PHONY: test-e2e-mcp
-test-e2e-mcp: build.aigw ## Run MCP end-to-end tests.
+.PHONY: test-e2e-aigw
+test-e2e-aigw: build.aigw ## Run MCP end-to-end tests.
 	@echo "Run MCP E2E tests"
-	@go test -v ./tests/e2e-mcp/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
+	@go test -v ./tests/e2e-aigw/... -timeout 30m $(GO_TEST_E2E_ARGS)
 
 ##@ Common
 

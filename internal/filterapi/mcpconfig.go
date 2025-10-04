@@ -39,19 +39,20 @@ type MCPBackend struct {
 	Path string `json:"path"`
 
 	// ToolSelector filters the tools exposed by this backend. If not set, all tools are exposed.
-	ToolSelector *MCPNameSelector `json:"toolSelector,omitempty"`
+	ToolSelector *MCPToolSelector `json:"toolSelector,omitempty"`
 }
 
 // MCPBackendName is the name of the MCP backend.
 type MCPBackendName = string
 
-// MCPNameSelector is a filter that selects MCP resources by their names.
-// Only one of Include or IncludeRegex can be specified.
-type MCPNameSelector struct {
-	// Include is a list of strings to include. If specified, only the strings in this list are included.
+// MCPToolSelector filters tools using include patterns with exact matches or regular expressions.
+type MCPToolSelector struct {
+	// Include is a list of tool names to include. Only the specified tools will be available.
 	Include []string `json:"include,omitempty"`
 
-	// IncludeRegex is a list of RE2-compatible regular expressions that, when matched, include the string.
+	// IncludeRegex is a list of RE2-compatible regular expressions that, when matched, include the tool.
+	// Only tools matching these patterns will be available.
+	// TODO: regex is almost completely absent in the MCP ecosystem, consider removing this for simplicity.
 	IncludeRegex []string `json:"includeRegex,omitempty"`
 }
 
