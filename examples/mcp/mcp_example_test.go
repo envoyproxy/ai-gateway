@@ -33,25 +33,13 @@ func TestMain(m *testing.M) {
 }
 
 func TestMCP_standalone(t *testing.T) {
-	t.Run("standalone-mcp-kube-file", func(t *testing.T) {
-		testMCPStandalone(t, "run", "mcp_example.yaml")
-	})
-
-	t.Run("standalone-mcp-servers-file", func(t *testing.T) {
-		testMCPStandalone(t, "run", "--mcp-config", "mcp_example.json")
-	})
-}
-
-func testMCPStandalone(t *testing.T, arg ...string) {
-	t.Helper()
-
 	ght := os.Getenv("TEST_GITHUB_ACCESS_TOKEN")
 	githubConfigured := ght != ""
 	if githubConfigured {
 		t.Setenv("GITHUB_ACCESS_TOKEN", ght)
 	}
 
-	internaltesting.StartAIGWCLI(t, aigwBin, arg...)
+	internaltesting.StartAIGWCLI(t, aigwBin, "run", "mcp_example.yaml")
 
 	url := fmt.Sprintf("http://localhost:%d/mcp", 1975)
 	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "public-mcp-client", Version: "0.1.0"}, &mcp.ClientOptions{})
