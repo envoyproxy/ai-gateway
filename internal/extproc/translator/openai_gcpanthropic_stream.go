@@ -112,10 +112,13 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 		finalChunk := openai.ChatCompletionResponseChunk{
 			Object:  "chat.completion.chunk",
 			Choices: []openai.ChatCompletionResponseChunkChoice{},
-			Usage: &openai.ChatCompletionResponseUsage{
+			Usage: &openai.Usage{
 				PromptTokens:     int(p.tokenUsage.InputTokens),
 				CompletionTokens: int(p.tokenUsage.OutputTokens),
 				TotalTokens:      int(p.tokenUsage.TotalTokens),
+				PromptTokensDetails: &openai.PromptTokensDetails{
+					CachedTokens: int(p.tokenUsage.CachedTokens),
+				},
 			},
 		}
 
@@ -251,6 +254,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			return nil, fmt.Errorf("unmarshal message_delta: %w", err)
 		}
 		p.tokenUsage.OutputTokens += uint32(event.Usage.OutputTokens) //nolint:gosec
+		p.tokenUsage.CachedTokens += uint32(event.Usage.CacheReadInputTokens)
 		if event.Delta.StopReason != "" {
 			p.stopReason = event.Delta.StopReason
 		}

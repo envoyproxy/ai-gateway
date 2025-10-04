@@ -171,9 +171,10 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(
 		// Extract token usage if present in this chunk (typically in the last chunk).
 		if chunk.UsageMetadata != nil {
 			tokenUsage = LLMTokenUsage{
-				InputTokens:  uint32(chunk.UsageMetadata.PromptTokenCount),     //nolint:gosec
-				OutputTokens: uint32(chunk.UsageMetadata.CandidatesTokenCount), //nolint:gosec
-				TotalTokens:  uint32(chunk.UsageMetadata.TotalTokenCount),      //nolint:gosec
+				InputTokens:  uint32(chunk.UsageMetadata.PromptTokenCount),        //nolint:gosec
+				OutputTokens: uint32(chunk.UsageMetadata.CandidatesTokenCount),    //nolint:gosec
+				TotalTokens:  uint32(chunk.UsageMetadata.TotalTokenCount),         //nolint:gosec
+				CachedTokens: uint32(chunk.UsageMetadata.CachedContentTokenCount), //nolint:gosec
 			}
 		}
 
@@ -244,7 +245,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) convertGCPChunkToOpenAI(
 	}
 
 	// Convert usage to pointer if available.
-	var usage *openai.ChatCompletionResponseUsage
+	var usage *openai.Usage
 	if chunk.UsageMetadata != nil {
 		usage = ptr.To(geminiUsageToOpenAIUsage(chunk.UsageMetadata))
 	}

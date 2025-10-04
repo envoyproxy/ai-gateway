@@ -929,7 +929,7 @@ func TestChatCompletionResponse(t *testing.T) {
 						},
 					},
 				},
-				Usage: ChatCompletionResponseUsage{
+				Usage: Usage{
 					CompletionTokens: 1,
 					PromptTokens:     5,
 					TotalTokens:      6,
@@ -984,7 +984,7 @@ func TestChatCompletionResponse(t *testing.T) {
 						},
 					},
 				},
-				Usage: ChatCompletionResponseUsage{
+				Usage: Usage{
 					CompletionTokens: 192,
 					PromptTokens:     14,
 					TotalTokens:      206,
@@ -1622,12 +1622,12 @@ func TestPromptTokensDetails(t *testing.T) {
 func TestChatCompletionResponseUsage(t *testing.T) {
 	testCases := []struct {
 		name     string
-		usage    ChatCompletionResponseUsage
+		usage    Usage
 		expected string
 	}{
 		{
 			name: "with zero values omitted",
-			usage: ChatCompletionResponseUsage{
+			usage: Usage{
 				CompletionTokens: 9,
 				PromptTokens:     19,
 				TotalTokens:      28,
@@ -1646,7 +1646,7 @@ func TestChatCompletionResponseUsage(t *testing.T) {
 		},
 		{
 			name: "with non-zero values",
-			usage: ChatCompletionResponseUsage{
+			usage: Usage{
 				CompletionTokens: 11,
 				PromptTokens:     37,
 				TotalTokens:      48,
@@ -1677,7 +1677,7 @@ func TestChatCompletionResponseUsage(t *testing.T) {
 		},
 		{
 			name: "with text tokens",
-			usage: ChatCompletionResponseUsage{
+			usage: Usage{
 				CompletionTokens: 11,
 				PromptTokens:     37,
 				TotalTokens:      48,
@@ -1720,7 +1720,7 @@ func TestChatCompletionResponseUsage(t *testing.T) {
 			require.JSONEq(t, tc.expected, string(jsonData))
 
 			// Unmarshal and verify
-			var decoded ChatCompletionResponseUsage
+			var decoded Usage
 			err = json.Unmarshal(jsonData, &decoded)
 			require.NoError(t, err)
 			require.Equal(t, tc.usage, decoded)
