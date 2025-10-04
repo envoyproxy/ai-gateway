@@ -3,8 +3,6 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
-metadataNamespace: ai_gateway_llm_ns
-modelNameHeaderKey: x-ai-eg-model
 backends:
   - name: openai
     schema:

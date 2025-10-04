@@ -128,12 +128,12 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(ctx context.Con
 		// setting this option to false means that clients are trying to escape that rule.
 	}
 
-	c.requestHeaders[c.config.modelNameHeaderKey] = originalModel
+	c.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = originalModel
 
 	var additionalHeaders []*corev3.HeaderValueOption
 	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
 		// Set the original model to the request header with the key `x-ai-eg-model`.
-		Header: &corev3.HeaderValue{Key: c.config.modelNameHeaderKey, RawValue: []byte(originalModel)},
+		Header: &corev3.HeaderValue{Key: internalapi.ModelNameHeaderKeyDefault, RawValue: []byte(originalModel)},
 	}, &corev3.HeaderValueOption{
 		Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(c.requestHeaders[":path"])},
 	})
@@ -231,7 +231,7 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 	// Set the original model from the request body before any overrides
 	c.metrics.SetOriginalModel(c.originalRequestBody.Model)
 	// Set the request model for metrics from the original model or override if applied.
-	reqModel := cmp.Or(c.requestHeaders[c.config.modelNameHeaderKey], c.originalRequestBody.Model)
+	reqModel := cmp.Or(c.requestHeaders[internalapi.ModelNameHeaderKeyDefault], c.originalRequestBody.Model)
 	c.metrics.SetRequestModel(reqModel)
 
 	// We force the body mutation in the following cases:
@@ -268,7 +268,7 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 
 	var dm *structpb.Struct
 	if bm := bodyMutation.GetBody(); bm != nil {
-		dm = buildContentLengthDynamicMetadataOnRequest(c.config, len(bm))
+		dm = buildContentLengthDynamicMetadataOnRequest(len(bm))
 	}
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
@@ -455,7 +455,7 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	c.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
 	// Header-derived labels/CEL must be able to see the overridden request model.
 	if c.modelNameOverride != "" {
-		c.requestHeaders[c.config.modelNameHeaderKey] = c.modelNameOverride
+		c.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = c.modelNameOverride
 	}
 	c.originalRequestBody = rp.originalRequestBody
 	c.originalRequestBodyRaw = rp.originalRequestBodyRaw
@@ -475,11 +475,10 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 func (c *chatCompletionProcessorUpstreamFilter) mergeWithTokenLatencyMetadata(metadata *structpb.Struct) {
 	timeToFirstTokenMs := c.metrics.GetTimeToFirstTokenMs()
 	interTokenLatencyMs := c.metrics.GetInterTokenLatencyMs()
-	ns := c.config.metadataNamespace
-	innerVal := metadata.Fields[ns].GetStructValue()
+	innerVal := metadata.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
 	if innerVal == nil {
 		innerVal = &structpb.Struct{Fields: map[string]*structpb.Value{}}
-		metadata.Fields[ns] = structpb.NewStructValue(innerVal)
+		metadata.Fields[internalapi.AIGatewayFilterMetadataNamespace] = structpb.NewStructValue(innerVal)
 	}
 	innerVal.Fields["token_latency_ttft"] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: timeToFirstTokenMs}}
 	innerVal.Fields["token_latency_itl"] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: interTokenLatencyMs}}
@@ -501,10 +500,10 @@ func parseOpenAIChatCompletionBody(body *extprocv3.HttpBody) (modelName string, 
 // This is needed since the content length header is unconditionally cleared by Envoy as we use REPLACE_AND_CONTINUE
 // processing mode in the request headers phase at upstream filter. This is sort of a workaround, and it is necessary
 // for now.
-func buildContentLengthDynamicMetadataOnRequest(config *processorConfig, contentLength int) *structpb.Struct {
+func buildContentLengthDynamicMetadataOnRequest(contentLength int) *structpb.Struct {
 	metadata := &structpb.Struct{
 		Fields: map[string]*structpb.Value{
-			config.metadataNamespace: {
+			internalapi.AIGatewayFilterMetadataNamespace: {
 				Kind: &structpb.Value_StructValue{
 					StructValue: &structpb.Struct{
 						Fields: map[string]*structpb.Value{
@@ -539,7 +538,7 @@ func buildDynamicMetadata(config *processorConfig, costs *translator.LLMTokenUsa
 		case filterapi.LLMRequestCostTypeCEL:
 			costU64, err := llmcostcel.EvaluateProgram(
 				rc.celProg,
-				requestHeaders[config.modelNameHeaderKey],
+				requestHeaders[internalapi.ModelNameHeaderKeyDefault],
 				backendName,
 				costs.InputTokens,
 				costs.OutputTokens,
@@ -557,7 +556,7 @@ func buildDynamicMetadata(config *processorConfig, costs *translator.LLMTokenUsa
 
 	// Add the actual request model that was used (after any backend overrides were applied).
 	// At this point, the header contains the final model that was sent to the upstream.
-	actualModel := requestHeaders[config.modelNameHeaderKey]
+	actualModel := requestHeaders[internalapi.ModelNameHeaderKeyDefault]
 	metadata["model_name_override"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: actualModel}}
 
 	if backendName != "" {
@@ -570,7 +569,7 @@ func buildDynamicMetadata(config *processorConfig, costs *translator.LLMTokenUsa
 
 	return &structpb.Struct{
 		Fields: map[string]*structpb.Value{
-			config.metadataNamespace: {
+			internalapi.AIGatewayFilterMetadataNamespace: {
 				Kind: &structpb.Value_StructValue{
 					StructValue: &structpb.Struct{Fields: metadata},
 				},

@@ -25,11 +25,9 @@ import (
 // BenchmarkChatCompletions benchmarks the chat/completions endpoint for various backends.
 func BenchmarkChatCompletions(b *testing.B) {
 	config := &filterapi.Config{
-		MetadataNamespace: "ai_gateway_llm_ns",
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 		},
-		ModelNameHeaderKey: "x-model-name",
 		Backends: []filterapi.Backend{
 			testUpstreamOpenAIBackend,
 			testUpstreamAAWSBackend,
@@ -191,11 +189,9 @@ func BenchmarkChatCompletions(b *testing.B) {
 // BenchmarkEmbeddings benchmarks the embeddings endpoint.
 func BenchmarkEmbeddings(b *testing.B) {
 	config := &filterapi.Config{
-		MetadataNamespace: "ai_gateway_llm_ns",
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 		},
-		ModelNameHeaderKey: "x-model-name",
 		Backends: []filterapi.Backend{
 			testUpstreamOpenAIBackend,
 		},
@@ -275,11 +271,9 @@ func BenchmarkChatCompletionsStreaming(b *testing.B) {
 	now := time.Unix(int64(time.Now().Second()), 0).UTC()
 
 	config := &filterapi.Config{
-		MetadataNamespace: "ai_gateway_llm_ns",
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 		},
-		ModelNameHeaderKey: "x-model-name",
 		Backends: []filterapi.Backend{
 			testUpstreamOpenAIBackend,
 			testUpstreamAAWSBackend,

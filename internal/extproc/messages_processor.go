@@ -77,13 +77,13 @@ func (c *messagesProcessorRouterFilter) ProcessRequestBody(_ context.Context, ra
 		return nil, fmt.Errorf("/v1/messages endpoint requires Anthropic format: %w", err)
 	}
 
-	c.requestHeaders[c.config.modelNameHeaderKey] = originalModel
+	c.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = originalModel
 	c.originalRequestBody = body
 
 	var additionalHeaders []*corev3.HeaderValueOption
 	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
 		// Set the model name to the request header with the key `x-ai-eg-model`.
-		Header: &corev3.HeaderValue{Key: c.config.modelNameHeaderKey, RawValue: []byte(originalModel)},
+		Header: &corev3.HeaderValue{Key: internalapi.ModelNameHeaderKeyDefault, RawValue: []byte(originalModel)},
 	}, &corev3.HeaderValueOption{
 		Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(c.requestHeaders[":path"])},
 	})
@@ -176,7 +176,7 @@ func (c *messagesProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Cont
 	// Set the original model from the request body before any overrides
 	c.metrics.SetOriginalModel(c.originalRequestBody.GetModel())
 	// Set the request model for metrics from the original model or override if applied.
-	reqModel := cmp.Or(c.requestHeaders[c.config.modelNameHeaderKey], c.originalRequestBody.GetModel())
+	reqModel := cmp.Or(c.requestHeaders[internalapi.ModelNameHeaderKeyDefault], c.originalRequestBody.GetModel())
 	c.metrics.SetRequestModel(reqModel)
 
 	// Force body mutation for retry requests as the body mutation might have happened in previous iteration.
@@ -209,7 +209,7 @@ func (c *messagesProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Cont
 
 	var dm *structpb.Struct
 	if bm := bodyMutation.GetBody(); bm != nil {
-		dm = buildContentLengthDynamicMetadataOnRequest(c.config, len(bm))
+		dm = buildContentLengthDynamicMetadataOnRequest(len(bm))
 	}
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
@@ -345,7 +345,7 @@ func (c *messagesProcessorUpstreamFilter) SetBackend(ctx context.Context, b *fil
 	c.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
 	// Header-derived labels/CEL must be able to see the overridden request model.
 	if c.modelNameOverride != "" {
-		c.requestHeaders[c.config.modelNameHeaderKey] = c.modelNameOverride
+		c.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = c.modelNameOverride
 		// Update metrics with the overridden model
 		c.metrics.SetRequestModel(c.modelNameOverride)
 	}
@@ -367,11 +367,10 @@ func (c *messagesProcessorUpstreamFilter) SetBackend(ctx context.Context, b *fil
 func (c *messagesProcessorUpstreamFilter) mergeWithTokenLatencyMetadata(metadata *structpb.Struct) {
 	timeToFirstTokenMs := c.metrics.GetTimeToFirstTokenMs()
 	interTokenLatencyMs := c.metrics.GetInterTokenLatencyMs()
-	ns := c.config.metadataNamespace
-	innerVal := metadata.Fields[ns].GetStructValue()
+	innerVal := metadata.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
 	if innerVal == nil {
 		innerVal = &structpb.Struct{Fields: map[string]*structpb.Value{}}
-		metadata.Fields[ns] = structpb.NewStructValue(innerVal)
+		metadata.Fields[internalapi.AIGatewayFilterMetadataNamespace] = structpb.NewStructValue(innerVal)
 	}
 	innerVal.Fields["token_latency_ttft"] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: timeToFirstTokenMs}}
 	innerVal.Fields["token_latency_itl"] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: interTokenLatencyMs}}

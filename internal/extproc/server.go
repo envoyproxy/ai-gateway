@@ -89,12 +89,10 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 	}
 
 	newConfig := &processorConfig{
-		uuid:               config.UUID,
-		modelNameHeaderKey: config.ModelNameHeaderKey,
-		backends:           backends,
-		metadataNamespace:  config.MetadataNamespace,
-		requestCosts:       costs,
-		declaredModels:     config.Models,
+		uuid:           config.UUID,
+		backends:       backends,
+		requestCosts:   costs,
+		declaredModels: config.Models,
 	}
 	s.config = newConfig // This is racey, but we don't care.
 	return nil

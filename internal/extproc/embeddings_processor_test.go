@@ -67,9 +67,8 @@ func Test_embeddingsProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
-		const modelKey = "x-ai-gateway-model-key"
 		p := &embeddingsProcessorRouterFilter{
-			config:         &processorConfig{modelNameHeaderKey: modelKey},
+			config:         &processorConfig{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
 			tracer:         tracing.NoopEmbeddingsTracer{},
@@ -83,7 +82,7 @@ func Test_embeddingsProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 		require.NotNil(t, re.RequestBody)
 		setHeaders := re.RequestBody.GetResponse().GetHeaderMutation().SetHeaders
 		require.Len(t, setHeaders, 2)
-		require.Equal(t, modelKey, setHeaders[0].Header.Key)
+		require.Equal(t, internalapi.ModelNameHeaderKeyDefault, setHeaders[0].Header.Key)
 		require.Equal(t, "some-model", string(setHeaders[0].Header.RawValue))
 		require.Equal(t, "x-ai-eg-original-path", setHeaders[1].Header.Key)
 		require.Equal(t, "/foo", string(setHeaders[1].Header.RawValue))
@@ -161,8 +160,6 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 			logger:     slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 			metrics:    mm,
 			config: &processorConfig{
-				metadataNamespace:  "ai_gateway_llm_ns",
-				modelNameHeaderKey: "x-aigw-model",
 				requestCosts: []processorConfigRequestCost{
 					{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeInputToken, MetadataKey: "input_token_usage"}},
 					{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeTotalToken, MetadataKey: "total_token_usage"}},
@@ -176,7 +173,7 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 					},
 				},
 			},
-			requestHeaders:    map[string]string{"x-aigw-model": "some_model"},
+			requestHeaders:    map[string]string{internalapi.ModelNameHeaderKeyDefault: "some_model"},
 			backendName:       "some_backend",
 			modelNameOverride: "some_model",
 			responseHeaders:   map[string]string{":status": "200"},
@@ -191,20 +188,19 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 
 		md := res.DynamicMetadata
 		require.NotNil(t, md)
-		require.Equal(t, float64(123), md.Fields["ai_gateway_llm_ns"].
+		require.Equal(t, float64(123), md.Fields["io.envoy.ai_gateway"].
 			GetStructValue().Fields["input_token_usage"].GetNumberValue())
-		require.Equal(t, float64(123), md.Fields["ai_gateway_llm_ns"].
+		require.Equal(t, float64(123), md.Fields["io.envoy.ai_gateway"].
 			GetStructValue().Fields["total_token_usage"].GetNumberValue())
-		require.Equal(t, float64(54321), md.Fields["ai_gateway_llm_ns"].
+		require.Equal(t, float64(54321), md.Fields["io.envoy.ai_gateway"].
 			GetStructValue().Fields["cel_int"].GetNumberValue())
-		require.Equal(t, float64(9999), md.Fields["ai_gateway_llm_ns"].
+		require.Equal(t, float64(9999), md.Fields["io.envoy.ai_gateway"].
 			GetStructValue().Fields["cel_uint"].GetNumberValue())
-		require.Equal(t, "some_backend", md.Fields["ai_gateway_llm_ns"].
+		require.Equal(t, "some_backend", md.Fields["io.envoy.ai_gateway"].
 			GetStructValue().Fields["backend_name"].GetStringValue())
-		require.Equal(t, "some_model", md.Fields["ai_gateway_llm_ns"].
+		require.Equal(t, "some_model", md.Fields["io.envoy.ai_gateway"].
 			GetStructValue().Fields["model_name_override"].GetStringValue())
 	})
-
 	t.Run("error/streaming", func(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("some-body"), EndOfStream: true}
 		mm := &mockEmbeddingsMetrics{}
@@ -277,10 +273,10 @@ func Test_embeddingsProcessorUpstreamFilter_SetBackend(t *testing.T) {
 }
 
 func Test_embeddingsProcessorUpstreamFilter_SetBackend_Success(t *testing.T) {
-	headers := map[string]string{":path": "/foo", "x-model-name": "some-model"}
+	headers := map[string]string{":path": "/foo", "x-ai-eg-model": "some-model"}
 	mm := &mockEmbeddingsMetrics{}
 	p := &embeddingsProcessorUpstreamFilter{
-		config:         &processorConfig{modelNameHeaderKey: "x-model-name"},
+		config:         &processorConfig{},
 		requestHeaders: headers,
 		logger:         slog.Default(),
 		metrics:        mm,
@@ -295,23 +291,20 @@ func Test_embeddingsProcessorUpstreamFilter_SetBackend_Success(t *testing.T) {
 	}, nil, rp)
 	require.NoError(t, err)
 	mm.RequireSelectedBackend(t, "openai")
-	require.Equal(t, "override-model", p.requestHeaders["x-model-name"])
+	require.Equal(t, "override-model", p.requestHeaders["x-ai-eg-model"])
 	require.NotNil(t, p.translator)
 }
 
 func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
-	const modelKey = "x-ai-gateway-model-key"
 	t.Run("translator error", func(t *testing.T) {
-		headers := map[string]string{":path": "/foo", modelKey: "some-model"}
+		headers := map[string]string{":path": "/foo", internalapi.ModelNameHeaderKeyDefault: "some-model"}
 		someBody := embeddingBodyFromModel(t, "some-model")
 		var body openai.EmbeddingRequest
 		require.NoError(t, json.Unmarshal(someBody, &body))
 		tr := &mockEmbeddingTranslator{t: t, retErr: errors.New("test error"), expRequestBody: &body}
 		mm := &mockEmbeddingsMetrics{}
 		p := &embeddingsProcessorUpstreamFilter{
-			config: &processorConfig{
-				modelNameHeaderKey: modelKey,
-			},
+			config:                 &processorConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                mm,
@@ -330,7 +323,7 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) 
 	})
 	t.Run("ok", func(t *testing.T) {
 		someBody := embeddingBodyFromModel(t, "some-model")
-		headers := map[string]string{":path": "/foo", modelKey: "some-model"}
+		headers := map[string]string{":path": "/foo", internalapi.ModelNameHeaderKeyDefault: "some-model"}
 		headerMut := &extprocv3.HeaderMutation{
 			SetHeaders: []*corev3.HeaderValueOption{{Header: &corev3.HeaderValue{Key: "foo", RawValue: []byte("bar")}}},
 		}
@@ -341,7 +334,7 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) 
 		mt := &mockEmbeddingTranslator{t: t, expRequestBody: &expBody, retHeaderMutation: headerMut, retBodyMutation: bodyMut}
 		mm := &mockEmbeddingsMetrics{}
 		p := &embeddingsProcessorUpstreamFilter{
-			config:                 &processorConfig{modelNameHeaderKey: modelKey},
+			config:                 &processorConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                mm,
@@ -368,13 +361,12 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) 
 }
 
 func TestEmbeddings_ProcessRequestHeaders_SetsRequestModel(t *testing.T) {
-	const modelKey = internalapi.ModelNameHeaderKeyDefault
-	headers := map[string]string{":path": "/v1/embeddings", modelKey: "header-model"}
+	headers := map[string]string{":path": "/v1/embeddings", internalapi.ModelNameHeaderKeyDefault: "header-model"}
 	body := openai.EmbeddingRequest{Model: "body-model"}
 	raw, _ := json.Marshal(body)
 	mm := &mockEmbeddingsMetrics{}
 	p := &embeddingsProcessorUpstreamFilter{
-		config:                 &processorConfig{modelNameHeaderKey: modelKey},
+		config:                 &processorConfig{},
 		requestHeaders:         headers,
 		logger:                 slog.Default(),
 		metrics:                mm,
@@ -412,7 +404,7 @@ func TestEmbeddings_ProcessResponseBody_OverridesHeaderModelWithResponseModel(t 
 	}
 
 	p := &embeddingsProcessorUpstreamFilter{
-		config:                 &processorConfig{modelNameHeaderKey: modelKey},
+		config:                 &processorConfig{},
 		requestHeaders:         headers,
 		logger:                 slog.Default(),
 		metrics:                mm,
@@ -480,7 +472,7 @@ func TestEmbeddingsProcessorRouterFilter_ProcessResponseHeaders_ProcessResponseB
 				translator: &mockEmbeddingTranslator{t: t, expHeaders: map[string]string{}},
 				logger:     slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 				metrics:    &mockEmbeddingsMetrics{},
-				config:     &processorConfig{metadataNamespace: ""},
+				config:     &processorConfig{},
 			},
 		}
 		resp, err := p.ProcessResponseHeaders(t.Context(), &corev3.HeaderMap{Headers: []*corev3.HeaderValue{}})
@@ -523,7 +515,7 @@ func TestEmbeddingsProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutat
 		mt := &mockEmbeddingTranslator{t: t, expRequestBody: &body}
 		mm := &mockEmbeddingsMetrics{}
 		p := &embeddingsProcessorUpstreamFilter{
-			config:                 &processorConfig{modelNameHeaderKey: testModelKey},
+			config:                 &processorConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                mm,
@@ -581,7 +573,7 @@ func TestEmbeddingsProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutat
 		mt := &mockEmbeddingTranslator{t: t, expRequestBody: &body}
 		mm := &mockEmbeddingsMetrics{}
 		p := &embeddingsProcessorUpstreamFilter{
-			config:                 &processorConfig{modelNameHeaderKey: testModelKey},
+			config:                 &processorConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                mm,
@@ -649,7 +641,7 @@ func TestEmbeddingsProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutat
 		mt := &mockEmbeddingTranslator{t: t, expRequestBody: &body}
 		mm := &mockEmbeddingsMetrics{}
 		p := &embeddingsProcessorUpstreamFilter{
-			config:                 &processorConfig{modelNameHeaderKey: testModelKey},
+			config:                 &processorConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                mm,

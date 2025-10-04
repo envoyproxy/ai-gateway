@@ -6,7 +6,6 @@
 package filterapi_test
 
 import (
-	"fmt"
 	"log/slog"
 	"os"
 	"path"
@@ -16,7 +15,6 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/extproc"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
-	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -26,9 +24,7 @@ func TestDefaultConfig(t *testing.T) {
 	require.NotNil(t, server)
 
 	cfg := filterapi.MustLoadDefaultConfig()
-	require.Equal(t, &filterapi.Config{
-		ModelNameHeaderKey: internalapi.ModelNameHeaderKeyDefault,
-	}, cfg)
+	require.Equal(t, &filterapi.Config{}, cfg)
 
 	err = server.LoadConfig(t.Context(), cfg)
 	require.NoError(t, err)
@@ -36,22 +32,18 @@ func TestDefaultConfig(t *testing.T) {
 
 func TestUnmarshalConfigYaml(t *testing.T) {
 	configPath := path.Join(t.TempDir(), "config.yaml")
-	config := fmt.Sprintf(`
+	config := `
 schema:
   name: OpenAI
-modelNameHeaderKey: %s
-metadataNamespace: ai_gateway_llm_ns
 llmRequestCosts:
 - metadataKey: token_usage_key
   type: OutputToken
-`, internalapi.ModelNameHeaderKeyDefault)
+`
 	require.NoError(t, os.WriteFile(configPath, []byte(config), 0o600))
 	cfg, err := filterapi.UnmarshalConfigYaml(configPath)
 	require.NoError(t, err)
 
 	expectedCfg := &filterapi.Config{
-		ModelNameHeaderKey: internalapi.ModelNameHeaderKeyDefault,
-		MetadataNamespace:  "ai_gateway_llm_ns",
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{
 				MetadataKey: "token_usage_key",

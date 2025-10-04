@@ -49,12 +49,10 @@ func TestServer_LoadConfig(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		config := &filterapi.Config{
-			MetadataNamespace: "ns",
 			LLMRequestCosts: []filterapi.LLMRequestCost{
 				{MetadataKey: "key", Type: filterapi.LLMRequestCostTypeOutputToken},
 				{MetadataKey: "cel_key", Type: filterapi.LLMRequestCostTypeCEL, CEL: "1 + 1"},
 			},
-			ModelNameHeaderKey: "x-model-name",
 			Backends: []filterapi.Backend{
 				{Name: "kserve", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
 				{Name: "awsbedrock", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}},
@@ -78,8 +76,6 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NotNil(t, s.config)
-		require.Equal(t, "ns", s.config.metadataNamespace)
-		require.Equal(t, "x-model-name", s.config.modelNameHeaderKey)
 
 		require.Len(t, s.config.requestCosts, 2)
 		require.Equal(t, filterapi.LLMRequestCostTypeOutputToken, s.config.requestCosts[0].Type)

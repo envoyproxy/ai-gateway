@@ -121,7 +121,7 @@ static_resources:
                       metadataOptions:
                         receivingNamespaces:
                           untyped:
-                            - ai_gateway_llm_ns
+                            - io.envoy.ai_gateway
                       allow_mode_override: true
                   - name: envoy.filters.http.router
                     typed_config:
@@ -159,7 +159,7 @@ static_resources:
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
-                      - ai_gateway_llm_ns
+                      - io.envoy.ai_gateway
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -210,7 +210,7 @@ static_resources:
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
-                      - ai_gateway_llm_ns
+                      - io.envoy.ai_gateway
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -261,7 +261,7 @@ static_resources:
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
-                      - ai_gateway_llm_ns
+                      - io.envoy.ai_gateway
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -312,7 +312,7 @@ static_resources:
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
-                      - ai_gateway_llm_ns
+                      - io.envoy.ai_gateway
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -363,7 +363,7 @@ static_resources:
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
-                      - ai_gateway_llm_ns
+                      - io.envoy.ai_gateway
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec

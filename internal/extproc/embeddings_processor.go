@@ -105,12 +105,12 @@ func (e *embeddingsProcessorRouterFilter) ProcessRequestBody(ctx context.Context
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
 
-	e.requestHeaders[e.config.modelNameHeaderKey] = originalModel
+	e.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = originalModel
 
 	var additionalHeaders []*corev3.HeaderValueOption
 	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
 		// Set the model name to the request header with the key `x-ai-eg-model`.
-		Header: &corev3.HeaderValue{Key: e.config.modelNameHeaderKey, RawValue: []byte(originalModel)},
+		Header: &corev3.HeaderValue{Key: internalapi.ModelNameHeaderKeyDefault, RawValue: []byte(originalModel)},
 	}, &corev3.HeaderValueOption{
 		Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(e.requestHeaders[":path"])},
 	})
@@ -196,7 +196,7 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Co
 	// Set the original model from the request body before any overrides
 	e.metrics.SetOriginalModel(e.originalRequestBody.Model)
 	// Set the request model for metrics from the original model or override if applied.
-	reqModel := cmp.Or(e.requestHeaders[e.config.modelNameHeaderKey], e.originalRequestBody.Model)
+	reqModel := cmp.Or(e.requestHeaders[internalapi.ModelNameHeaderKeyDefault], e.originalRequestBody.Model)
 	e.metrics.SetRequestModel(reqModel)
 
 	headerMutation, bodyMutation, err := e.translator.RequestBody(e.originalRequestBodyRaw, e.originalRequestBody, e.onRetry)
@@ -226,7 +226,7 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Co
 
 	var dm *structpb.Struct
 	if bm := bodyMutation.GetBody(); bm != nil {
-		dm = buildContentLengthDynamicMetadataOnRequest(e.config, len(bm))
+		dm = buildContentLengthDynamicMetadataOnRequest(len(bm))
 	}
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
@@ -384,7 +384,7 @@ func (e *embeddingsProcessorUpstreamFilter) SetBackend(ctx context.Context, b *f
 	e.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
 	// Header-derived labels/CEL must be able to see the overridden request model.
 	if e.modelNameOverride != "" {
-		e.requestHeaders[e.config.modelNameHeaderKey] = e.modelNameOverride
+		e.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = e.modelNameOverride
 		// Update metrics with the overridden model
 		e.metrics.SetRequestModel(e.modelNameOverride)
 	}
