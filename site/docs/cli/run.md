@@ -141,6 +141,110 @@ curl -H "Content-Type: application/json" -XPOST http://localhost:1975/v1/chat/co
     -d '{"model": "deepseek-r1:1.5b","messages": [{"role": "user", "content": "Say this is a test!"}]}'
 ```
 
+## MCP Configuration
+
+`aigw run` supports running as an [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) Gateway, allowing AI agents to connect to multiple MCP servers through a unified endpoint. The gateway aggregates tools from multiple backends, applies security policies, and provides observability for MCP traffic.
+
+### Using MCP Servers Configuration File
+
+Use the `--mcp-config` flag to load MCP server configuration from a JSON file. The format follows the canonical [MCP servers configuration](https://modelcontextprotocol.io/docs/getting-started/intro#configuring-mcp-servers) used by clients like Claude Desktop, Cursor, and VS Code:
+
+```json
+{
+  "mcpServers": {
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp"
+    },
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/readonly",
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_ACCESS_TOKEN}"
+      },
+      "includeTools": ["get_issue", "list_issues"]
+    }
+  }
+}
+```
+
+Start the MCP Gateway:
+
+```shell
+aigw run --mcp-config mcp-servers.json
+```
+
+The gateway will be available at `http://localhost:1975/mcp`. Configure your MCP client to connect to this URL.
+
+### Using Inline JSON Configuration
+
+For quick testing or when the configuration is provided programmatically, use the `--mcp-json` flag:
+
+```shell
+aigw run --mcp-json '{"mcpServers":{"context7":{"type":"http","url":"https://mcp.context7.com/mcp"}}}'
+```
+
+### MCP Servers Configuration Format
+
+Each server configuration in the `mcpServers` object supports the following properties:
+
+**`type`** (string, required)
+
+The transport protocol for the MCP server. Supported values: `"http"`, `"streamable-http"`, `"streamable_http"`, or `"streamableHttp"`.
+
+**`url`** (string, required)
+
+The full endpoint URL for the MCP server, including protocol, hostname, and path.
+
+**`headers`** (object, optional)
+
+HTTP headers to send with requests to the MCP server. Authorization headers with Bearer tokens are automatically extracted and injected as API keys.
+
+Example:
+```json
+"headers": {
+  "Authorization": "Bearer ${GITHUB_TOKEN}",
+  "X-Custom-Header": "value"
+}
+```
+
+Header values support environment variable substitution using `${VAR}` syntax. For example, `${GITHUB_TOKEN}` will be replaced at runtime with the value of the `GITHUB_TOKEN` environment variable.
+
+**`includeTools`** (array of strings, optional)
+
+List of specific tool names to expose from this server. If not specified, all tools from the server are exposed.
+
+This follows the same convention as [Gemini CLI's tool filtering](https://google-gemini.github.io/gemini-cli/docs/tools/mcp-server.html#optional).
+
+Example:
+```json
+"includeTools": ["get_issue", "list_issues", "search_issues"]
+```
+
+### Testing the MCP Gateway
+
+Use the [MCP Inspector](https://github.com/modelcontextprotocol/inspector) to test your gateway:
+
+```shell
+# List available tools
+npx @modelcontextprotocol/inspector@0.16.8 --cli http://localhost:1975/mcp --method tools/list
+
+# Call a tool
+npx @modelcontextprotocol/inspector@0.16.8 \
+  --cli http://localhost:1975/mcp \
+  --method tools/call \
+  --tool-name context7__resolve-library-id \
+  --tool-arg libraryName="react"
+```
+
+:::note
+Tool names are automatically prefixed with the server name (e.g., `github__get_issue`, `context7__resolve-library-id`) to route calls to the correct backend.
+:::
+
+### Advanced MCP Configuration
+
+For production deployments with advanced features like OAuth authentication, fine-grained access control, and Kubernetes integration, use the [`MCPRoute` API](/docs/capabilities/mcp/). The same configuration can be used in both `aigw run` standalone mode and Kubernetes environments.
+
 ### Admin Endpoints
 
 While running, `aigw` serves admin endpoints on port `1064` by default:

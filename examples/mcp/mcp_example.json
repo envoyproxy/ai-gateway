@@ -11,12 +11,12 @@
     "aws-knowledge": {
       "type": "http",
       "url": "https://knowledge-mcp.global.api.aws",
-      "tools": ["aws___read_documentation", "aws___search_documentation"]
+      "includeTools": ["aws___read_documentation", "aws___search_documentation"]
     },
     "learn-microsoft": {
       "type": "http",
       "url": "https://learn.microsoft.com/api/mcp",
-      "tools": ["microsoft_docs_search", "microsoft_docs_fetch"]
+      "includeTools": ["microsoft_docs_search", "microsoft_docs_fetch"]
     },
     "github": {
       "type": "http",
@@ -24,7 +24,7 @@
       "headers": {
         "Authorization": "Bearer ${GITHUB_ACCESS_TOKEN}"
       },
-      "tools": [
+      "includeTools": [
         "get_issue",
         "get_issue_comments",
         "get_pull_request",

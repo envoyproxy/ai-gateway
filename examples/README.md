@@ -6,6 +6,15 @@ This directory contains various examples demonstrating different features and us
 ### [Basic Setup](./basic/)
 A comprehensive example showing how to set up Envoy AI Gateway with multiple providers including OpenAI, AWS Bedrock, and Azure OpenAI.
 
+## Model Context Protocol (MCP)
+
+### [MCP Gateway](./mcp/)
+Examples demonstrating how to configure the MCP Gateway to connect AI agents to external tools and data sources. Includes:
+- Server multiplexing with multiple MCP backends (GitHub, Context7, AWS Knowledge, etc.)
+- Tool filtering to control exposed capabilities
+- OAuth authentication with Keycloak
+- Combining LLM routes and MCP routes on the same Gateway
+
 ## Advanced Features
 
 ### [Provider Fallback](./provider_fallback/)

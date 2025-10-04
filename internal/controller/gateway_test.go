@@ -935,7 +935,7 @@ func TestGatewayController_reconcileFilterMCPConfigSecret(t *testing.T) {
 					BackendObjectReference: gwapiv1.BackendObjectReference{
 						Name: gwapiv1.ObjectName("backendA"),
 					},
-					ToolSelector: &aigv1a1.MCPNameFilter{
+					ToolSelector: &aigv1a1.MCPToolFilter{
 						Include: []string{"toolA"},
 					},
 				}},
@@ -948,7 +948,7 @@ func TestGatewayController_reconcileFilterMCPConfigSecret(t *testing.T) {
 					BackendObjectReference: gwapiv1.BackendObjectReference{
 						Name: gwapiv1.ObjectName("backendB"),
 					},
-					ToolSelector: &aigv1a1.MCPNameFilter{
+					ToolSelector: &aigv1a1.MCPToolFilter{
 						Include: []string{"toolB"},
 					},
 				}},

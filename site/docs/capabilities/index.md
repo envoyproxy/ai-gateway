@@ -39,6 +39,12 @@ Robust security features for AI gateway deployments:
 
 - **[Upstream Authentication](./security/upstream-auth.mdx)**: Secure authentication to upstream AI services
 
+## Model Context Protocol (MCP)
+
+Connect AI agents to external tools and data sources:
+
+- **[MCP Gateway](./mcp/)**: Server multiplexing, tool routing, OAuth authentication, and observability for MCP workloads
+
 ## Observability
 
 Monitoring and observability tools for AI workloads:

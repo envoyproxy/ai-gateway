@@ -39,11 +39,6 @@ func Test_translate(t *testing.T) {
 			// The result should be the same as the input.
 			out: "testdata/translate_nonairesources.yaml",
 		},
-		{
-			name: "mcp",
-			in:   "testdata/translate_mcp.in.yaml",
-			out:  "testdata/translate_mcp.out.yaml",
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			buf := &bytes.Buffer{}

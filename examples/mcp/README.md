@@ -1,4 +1,4 @@
-## MCP Proxy in `aigw run`
+## MCP Proxy Examples for `aigw run`
 
 We have a couple of example configurations for running an MCP Proxy using `aigw run`.
 
@@ -10,7 +10,7 @@ The `mcp_example.json` file is a standard MCP Servers configuration file that us
 popular agents like Claude. To run the MCP proxy with this configuration, use the following command (may take a while to start):
 
 ```
-$ go run ./cmd/aigw run --mcp-config ./cmd/aigw/mcp_example.json --debug
+$ go run ./cmd/aigw run --mcp-config ./examples/mcp/mcp_example.json --debug
 ```
 
 ### Using an Envoy AI Gateway specific config file
@@ -21,7 +21,7 @@ format is more verbose, allows for more fine-grained configuration and allows ad
 To run the MCP Proxy with this configuration, use the following command (may take a while to start):
 
 ```
-$ go run ./cmd/aigw run ./cmd/aigw/mcp_example.yaml --debug
+$ go run ./cmd/aigw run ./examples/mcp/mcp_example.yaml --debug
 ```
 
 Then, you can use the MCP Inspector to interact with the MCP Proxy:
@@ -139,7 +139,7 @@ In production, configure a proper Trusted Hosts policy that matches your environ
 Run the MCP Gateway with configuration that uses Keycloak for OAuth2:
 
 ```
-$ go run ./cmd/aigw run ./cmd/aigw/mcp_oauth_keycloak.yaml --debug
+$ go run ./cmd/aigw run ./examples/mcp/mcp_oauth_keycloak.yaml --debug
 ```
 
 Then, add the MCP gateway to Claude:

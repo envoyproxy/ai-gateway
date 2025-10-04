@@ -299,7 +299,7 @@ func requireExtProc(t TestingT, out io.Writer, bin, config string, env []string,
 			for _, e := range env {
 				parts := strings.Split(e, "=")
 				if len(parts) != 2 {
-					t.Logf("Skippint invalid environ: %s", e)
+					t.Logf("Skipping invalid environ: %s", e)
 					continue
 				}
 				t.Setenv(parts[0], parts[1])
