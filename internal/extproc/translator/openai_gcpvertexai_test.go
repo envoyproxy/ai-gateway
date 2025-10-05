@@ -712,11 +712,11 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
     "usage": {
         "completion_tokens": 15,
         "completion_tokens_details": {
-            reasoning_tokens: 10
+            "reasoning_tokens": 10
         },
         "prompt_tokens": 10,
         "prompt_tokens_details": {
-            cached_tokens: 10
+            "cached_tokens": 10
         },
         "total_tokens": 25
     }
