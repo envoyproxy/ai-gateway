@@ -1688,7 +1688,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 				TotalTokens:  uint32(tt.output.Usage.TotalTokens),      //nolint:gosec
 			}
 			if tt.input.Usage != nil && tt.input.Usage.CacheReadInputTokens != nil {
-				expectedUsage.CachedTokens = uint32(tt.output.Usage.PromptTokensDetails.CachedTokens)
+				expectedUsage.CachedTokens = uint32(tt.output.Usage.PromptTokensDetails.CachedTokens) //nolint:gosec
 			}
 			require.Equal(t, expectedUsage, usedToken)
 		})

@@ -405,9 +405,11 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 			respHeaders: map[string]string{statusHeaderName: "200"},
 			expectedOpenAIResponse: openai.ChatCompletionResponse{
 				Object: "chat.completion",
-				Usage: openai.Usage{PromptTokens: 25, CompletionTokens: 15, TotalTokens: 40,
+				Usage: openai.Usage{
+					PromptTokens: 25, CompletionTokens: 15, TotalTokens: 40,
 					PromptTokensDetails: &openai.PromptTokensDetails{
-						CachedTokens: 10},
+						CachedTokens: 10,
+					},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
