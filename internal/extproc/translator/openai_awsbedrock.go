@@ -142,7 +142,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIToolsToBedrockToolC
 	bedrockReq.ToolConfig.Tools = tools
 
 	if openAIReq.ToolChoice != nil {
-		if toolChoice, ok := openAIReq.ToolChoice.(string); ok {
+		if toolChoice, ok := openAIReq.ToolChoice.Value.(string); ok {
 			switch toolChoice {
 			case "auto":
 				bedrockReq.ToolConfig.ToolChoice = &awsbedrock.ToolChoice{
@@ -166,7 +166,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIToolsToBedrockToolC
 					}
 				}
 			}
-		} else if toolChoice, ok := openAIReq.ToolChoice.(openai.ToolChoice); ok {
+		} else if toolChoice, ok := openAIReq.ToolChoice.Value.(openai.ToolChoice); ok {
 			tool := string(toolChoice.Type)
 			bedrockReq.ToolConfig.ToolChoice = &awsbedrock.ToolChoice{
 				Tool: &awsbedrock.SpecificToolChoice{

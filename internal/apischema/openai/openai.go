@@ -943,7 +943,7 @@ type ChatCompletionRequest struct {
 	// Specifying a particular tool via `{"type": "function", "function": {"name": "my_function"}}` forces the model to call that tool.
 	// `none` is the default when no tools are present. `auto` is the default if tools are present.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-tool_choice
-	ToolChoice ChatCompletionToolChoice `json:"tool_choice,omitempty"` //nolint:tagliatelle //follow openai api
+	ToolChoice *ChatCompletionToolChoiceUnion `json:"tool_choice,omitempty"` //nolint:tagliatelle //follow openai api
 
 	// ParallelToolCalls enables multiple tools to be returned by the model.
 	// Docs: https://platform.openai.com/docs/guides/function-calling/parallel-function-calling
@@ -1019,9 +1019,39 @@ const (
 	ToolChoiceTypeFunction ToolChoiceType = "function"
 )
 
-// ChatCompletionToolChoice represents the tool choice for chat completions.
+// ChatCompletionToolChoiceUnion represents the tool choice for chat completions.
 // It can be either a string (none, auto, required) or a ChatCompletionNamedToolChoice object.
-type ChatCompletionToolChoice any
+type ChatCompletionToolChoiceUnion struct {
+	Value any
+}
+
+func (r ChatCompletionToolChoiceUnion) UnmarshalJSON(data []byte) error {
+	var str string
+	err := json.Unmarshal(data, &str)
+	if err == nil {
+		r.Value = str
+		return nil
+	}
+
+	var content *ToolChoice
+	err = json.Unmarshal(data, &content)
+	if err == nil {
+		r.Value = content
+		return nil
+	}
+	return errors.New("cannot unmarshal JSON data as string or toolChoice")
+}
+
+func (r ChatCompletionToolChoiceUnion) MarshalJSON() ([]byte, error) {
+	if stringContent, ok := r.Value.(string); ok {
+		return json.Marshal(stringContent)
+	}
+	if toolChoiceContent, ok := r.Value.(*ToolChoice); ok {
+		return json.Marshal(toolChoiceContent)
+	}
+
+	return nil, errors.New("no content to marshal")
+}
 
 // ChatCompletionNamedToolChoice specifies a tool the model should use. Use to force the model to call a specific function.
 type ChatCompletionNamedToolChoice struct {
