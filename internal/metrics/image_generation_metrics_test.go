@@ -28,6 +28,7 @@ func TestImageGeneration_RecordTokenUsage(t *testing.T) {
 		attrsBase = []attribute.KeyValue{
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationImageGeneration),
 			attribute.Key(genaiAttributeProviderName).String(genaiProviderOpenAI),
+			attribute.Key(genaiAttributeOriginalModel).String("test-model"),
 			attribute.Key(genaiAttributeRequestModel).String("test-model"),
 			attribute.Key(genaiAttributeResponseModel).String("test-model"),
 		}
@@ -36,7 +37,9 @@ func TestImageGeneration_RecordTokenUsage(t *testing.T) {
 	)
 
 	// Set labels and record usage.
-	im.SetModel("test-model", "test-model")
+	im.SetOriginalModel("test-model")
+	im.SetRequestModel("test-model")
+	im.SetResponseModel("test-model")
 	im.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 	im.RecordTokenUsage(t.Context(), 3, 7, nil)
 
@@ -60,6 +63,7 @@ func TestImageGeneration_RecordImageGeneration(t *testing.T) {
 		attrs := attribute.NewSet(
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationImageGeneration),
 			attribute.Key(genaiAttributeProviderName).String(genaiProviderOpenAI),
+			attribute.Key(genaiAttributeOriginalModel).String("img-model"),
 			attribute.Key(genaiAttributeRequestModel).String("img-model"),
 			attribute.Key(genaiAttributeResponseModel).String("img-model"),
 			attribute.Key("gen_ai.image.count").Int(2),
@@ -68,7 +72,9 @@ func TestImageGeneration_RecordImageGeneration(t *testing.T) {
 		)
 
 		im.StartRequest(nil)
-		im.SetModel("img-model", "img-model")
+		im.SetOriginalModel("img-model")
+		im.SetRequestModel("img-model")
+		im.SetResponseModel("img-model")
 		im.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 
 		time.Sleep(10 * time.Millisecond)
@@ -94,13 +100,16 @@ func TestImageGeneration_HeaderLabelMapping(t *testing.T) {
 		"x-org-id":  "org456",
 	}
 
-	im.SetModel("test-model", "test-model")
+	im.SetOriginalModel("test-model")
+	im.SetRequestModel("test-model")
+	im.SetResponseModel("test-model")
 	im.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 	im.RecordTokenUsage(t.Context(), 5, 0, requestHeaders)
 
 	attrs := attribute.NewSet(
 		attribute.Key(genaiAttributeOperationName).String(genaiOperationImageGeneration),
 		attribute.Key(genaiAttributeProviderName).String(genaiProviderOpenAI),
+		attribute.Key(genaiAttributeOriginalModel).String("test-model"),
 		attribute.Key(genaiAttributeRequestModel).String("test-model"),
 		attribute.Key(genaiAttributeResponseModel).String("test-model"),
 		attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput),
