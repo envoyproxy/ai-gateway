@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"testing"
 
+	openaisdk "github.com/openai/openai-go/v2"
+	openaiparam "github.com/openai/openai-go/v2/packages/param"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -18,8 +20,6 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
-	openaisdk "github.com/openai/openai-go/v2"
-	openaiparam "github.com/openai/openai-go/v2/packages/param"
 )
 
 var (

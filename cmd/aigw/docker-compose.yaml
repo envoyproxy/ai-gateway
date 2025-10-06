@@ -135,3 +135,23 @@ services:
       - flyTo=LAX
       - --tool-arg
       - departureDate=15/12/2025
+
+  # image-generation is a simple curl-based test client for sending image
+  # generation requests to aigw.
+  image-generation:
+    image: golang:1.25
+    container_name: image-generation
+    profiles: ["test"]
+    env_file:
+      - ../../.env.ollama
+    command:
+      - sh
+      - -c
+      - |
+        curl -s -w %{http_code} \
+          -X POST http://aigw:1975/v1/images/generations \
+          -H "Authorization: Bearer unused" \
+          -H "Content-Type: application/json" \
+          -d "{\"model\":\"$$CHAT_MODEL\",\"prompt\":\"A watercolor painting of a red fox in a birch forest\",\"size\":\"256x256\"}"
+    extra_hosts:  # localhost:host-gateway trick doesn't work with aigw
+      - "host.docker.internal:host-gateway"

@@ -9,40 +9,26 @@ import (
 	"encoding/json"
 	"testing"
 
+	openaisdk "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
 	oteltrace "go.opentelemetry.io/otel/trace"
 
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
-	openaisdk "github.com/openai/openai-go/v2"
 )
 
 // Test data for image generation span tests
-var (
-	basicImageResp = &openaisdk.ImagesResponse{
-		Data: []openaisdk.Image{
-			{URL: "https://example.com/img1.png"},
-			{URL: "https://example.com/img2.png"},
-		},
-		Size: openaisdk.ImagesResponseSize1024x1024,
-		Usage: openaisdk.ImagesResponseUsage{
-			InputTokens:  8,
-			OutputTokens: 1056,
-			TotalTokens:  1064,
-		},
-	}
-)
 
 // Mock recorder for testing image generation span
 type testImageGenerationRecorder struct{}
 
-func (r testImageGenerationRecorder) StartParams(req *openaisdk.ImageGenerateParams, body []byte) (string, []oteltrace.SpanStartOption) {
+func (r testImageGenerationRecorder) StartParams(_ *openaisdk.ImageGenerateParams, _ []byte) (string, []oteltrace.SpanStartOption) {
 	return "ImageGeneration", nil
 }
 
-func (r testImageGenerationRecorder) RecordRequest(span oteltrace.Span, req *openaisdk.ImageGenerateParams, body []byte) {
+func (r testImageGenerationRecorder) RecordRequest(span oteltrace.Span, req *openaisdk.ImageGenerateParams, _ []byte) {
 	span.SetAttributes(
-		attribute.String("model", string(req.Model)),
+		attribute.String("model", req.Model),
 		attribute.String("prompt", req.Prompt),
 		attribute.String("size", string(req.Size)),
 	)

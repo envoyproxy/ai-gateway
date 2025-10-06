@@ -10,9 +10,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	openaisdk "github.com/openai/openai-go/v2"
+	"github.com/stretchr/testify/require"
 )
 
 func TestOpenAIToOpenAIImageTranslator_RequestBody_ModelOverrideAndPath(t *testing.T) {
@@ -32,7 +31,7 @@ func TestOpenAIToOpenAIImageTranslator_RequestBody_ModelOverrideAndPath(t *testi
 	mutated := bm.GetBody()
 	var got openaisdk.ImageGenerateParams
 	require.NoError(t, json.Unmarshal(mutated, &got))
-	require.Equal(t, "gpt-image-1", string(got.Model))
+	require.Equal(t, "gpt-image-1", got.Model)
 }
 
 func TestOpenAIToOpenAIImageTranslator_RequestBody_ForceMutation(t *testing.T) {
@@ -81,6 +80,6 @@ func TestOpenAIToOpenAIImageTranslator_ResponseBody_OK(t *testing.T) {
 	require.Equal(t, uint32(0), usage.InputTokens)
 	require.Equal(t, uint32(0), usage.TotalTokens)
 	require.Equal(t, 0, metadata.ImageCount)
-	require.Equal(t, "", metadata.Model)
+	require.Empty(t, metadata.Model)
 	require.Equal(t, string(openaisdk.ImagesResponseSize1024x1024), metadata.Size)
 }

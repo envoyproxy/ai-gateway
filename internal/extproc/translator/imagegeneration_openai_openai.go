@@ -14,11 +14,11 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	openaisdk "github.com/openai/openai-go/v2"
 	"github.com/tidwall/sjson"
 
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
-	openaisdk "github.com/openai/openai-go/v2"
 )
 
 // NewImageGenerationOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI image generation translation.
@@ -36,7 +36,7 @@ type openAIToOpenAIImageGenerationTranslator struct {
 }
 
 // RequestBody implements [ImageGenerationTranslator.RequestBody].
-func (o *openAIToOpenAIImageGenerationTranslator) RequestBody(original []byte, req *openaisdk.ImageGenerateParams, forceBodyMutation bool) (
+func (o *openAIToOpenAIImageGenerationTranslator) RequestBody(original []byte, _ *openaisdk.ImageGenerateParams, forceBodyMutation bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
 	var newBody []byte
@@ -172,7 +172,9 @@ func (o *openAIToOpenAIImageGenerationTranslator) ResponseBody(_ map[string]stri
 // extractUsageFromBufferEvent extracts token usage from buffered streaming events.
 // This is currently not applicable for image generation as it doesn't use streaming.
 // TODO: Implement if streaming support is added for image generation in the future.
-func (o *openAIToOpenAIImageGenerationTranslator) extractUsageFromBufferEvent(span tracing.ImageGenerationSpan) LLMTokenUsage {
-	// Image generation doesn't use streaming, so no token usage to extract
+// NOTE: image generation currently does not use streaming; keep for future parity with other translators.
+//
+//lint:ignore U1000 kept for parity and future use
+func (o *openAIToOpenAIImageGenerationTranslator) extractUsageFromBufferEvent(_ tracing.ImageGenerationSpan) LLMTokenUsage {
 	return LLMTokenUsage{}
 }

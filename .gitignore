@@ -49,3 +49,5 @@ inference-extension-conformance-test-report.yaml
 
 .goose
 tests/e2e-inference-extension/logs/
+
+/aigw

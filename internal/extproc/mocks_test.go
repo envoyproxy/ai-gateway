@@ -410,19 +410,23 @@ func (m *mockImageGenerationMetrics) StartRequest(map[string]string) {}
 func (m *mockImageGenerationMetrics) SetOriginalModel(originalModel string) {
 	m.model = originalModel
 }
+
 func (m *mockImageGenerationMetrics) SetRequestModel(requestModel string) {
 	m.model = requestModel
 }
+
 func (m *mockImageGenerationMetrics) SetResponseModel(responseModel string) {
 	m.model = responseModel
 }
-func (m *mockImageGenerationMetrics) SetModel(requestModel, responseModel string) {
+
+func (m *mockImageGenerationMetrics) SetModel(_ string, responseModel string) {
 	m.model = responseModel
 }
 func (m *mockImageGenerationMetrics) SetBackend(b *filterapi.Backend) { m.backend = b.Name }
 func (m *mockImageGenerationMetrics) RecordTokenUsage(_ context.Context, input, output uint32, _ map[string]string) {
 	m.tokenUsageCount += int(input + output)
 }
+
 func (m *mockImageGenerationMetrics) RecordRequestCompletion(_ context.Context, success bool, _ map[string]string) {
 	if success {
 		m.requestSuccessCount++
@@ -430,6 +434,7 @@ func (m *mockImageGenerationMetrics) RecordRequestCompletion(_ context.Context, 
 		m.requestErrorCount++
 	}
 }
+
 func (m *mockImageGenerationMetrics) RecordImageGeneration(_ context.Context, _ int, _ string, _ string, _ map[string]string) {
 }
 
@@ -437,20 +442,25 @@ func (m *mockImageGenerationMetrics) RequireRequestFailure(t *testing.T) {
 	require.Equal(t, 0, m.requestSuccessCount)
 	require.Equal(t, 1, m.requestErrorCount)
 }
+
 func (m *mockImageGenerationMetrics) RequireRequestNotCompleted(t *testing.T) {
 	require.Equal(t, 0, m.requestSuccessCount)
 	require.Equal(t, 0, m.requestErrorCount)
 }
+
 func (m *mockImageGenerationMetrics) RequireRequestSuccess(t *testing.T) {
 	require.Equal(t, 1, m.requestSuccessCount)
 	require.Equal(t, 0, m.requestErrorCount)
 }
+
 func (m *mockImageGenerationMetrics) RequireSelectedModel(t *testing.T, model string) {
 	require.Equal(t, model, m.model)
 }
+
 func (m *mockImageGenerationMetrics) RequireSelectedBackend(t *testing.T, backend string) {
 	require.Equal(t, backend, m.backend)
 }
+
 func (m *mockImageGenerationMetrics) RequireTokensRecorded(t *testing.T, count int) {
 	require.Equal(t, count, m.tokenUsageCount)
 }

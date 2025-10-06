@@ -61,6 +61,21 @@ Here are values we use for Ollama:
      ```
      This calls the kiwi MCP server through aigw's MCP Gateway at `/mcp`.
 
+   - Image generation:
+     - Using service:
+       ```bash
+       docker compose run --rm image-generation
+       ```
+     - Using curl (save to file):
+       ```bash
+       curl -s \
+         -X POST http://localhost:1975/v1/images/generations \
+         -H "Authorization: Bearer unused" \
+         -H "Content-Type: application/json" \
+         -d '{"model":"gpt-image-1","prompt":"A watercolor painting of a red fox in a birch forest","size":"512x512"}' \
+         | jq -r '.data[0].b64_json' | base64 -d > image.png
+       ```
+
 4. **Create embeddings**:
 
    The `create-embeddings` service uses `curl` to send an embeddings request
@@ -163,6 +178,8 @@ This configures the OTLP endpoint to otel-tui on port 4318.
    COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm chat-completion
    COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm create-embeddings
    COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm mcp
+   # Image generation
+   COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm image-generation
    ```
 
 3. **Check telemetry output**:
