@@ -77,7 +77,6 @@ type MCPRouteSpec struct {
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:MaxItems=32
 	// +kubebuilder:validation:XValidation:rule="self.all(i, self.exists_one(j, j.name == i.name))", message="all backendRefs names must be unique"
 	BackendRefs []MCPRouteBackendRef `json:"backendRefs"`
 
