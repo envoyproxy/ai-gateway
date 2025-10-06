@@ -138,6 +138,23 @@ func TestMCPRouteController_Reconcile(t *testing.T) {
 		require.Equal(t, route.Spec.ParentRefs, httpRoute.Spec.ParentRefs)
 	}
 
+	// Let's update the route to remove one backend and change path.
+	current.Spec.BackendRefs = current.Spec.BackendRefs[:1]
+	current.Spec.Path = ptr.To("/custom/")
+	err = fakeClient.Update(t.Context(), &current)
+	require.NoError(t, err)
+
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "myroute"}})
+	require.NoError(t, err)
+
+	// Verify main HTTPRoute updated.
+	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: internalapi.MCPMainHTTPRoutePrefix + "myroute", Namespace: "default"}, &mainHTTPRoute)
+	require.NoError(t, err)
+	require.Len(t, mainHTTPRoute.Spec.Rules, 1)
+	require.Equal(t, "/custom/", *mainHTTPRoute.Spec.Rules[0].Matches[0].Path.Value)
+	require.Len(t, mainHTTPRoute.Spec.Rules[0].BackendRefs, 1)
+	require.Equal(t, gwapiv1.ObjectName("default-myroute-mcp-proxy"), mainHTTPRoute.Spec.Rules[0].BackendRefs[0].Name)
+
 	// Delete flow shouldn't error.
 	err = fakeClient.Delete(t.Context(), &aigv1a1.MCPRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}})
 	require.NoError(t, err)

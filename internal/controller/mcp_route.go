@@ -148,8 +148,8 @@ func mcpPerBackendRefHTTPRouteName(mcpRouteName string, backendName gwapiv1.Obje
 	return fmt.Sprintf("%s%s-%s", internalapi.MCPPerBackendRefHTTPRoutePrefix, mcpRouteName, backendName)
 }
 
-func (c *MCPRouteController) createOrUpdateHTTPRoute(ctx context.Context, httpRoute *gwapiv1.HTTPRoute, create bool) error {
-	if create {
+func (c *MCPRouteController) createOrUpdateHTTPRoute(ctx context.Context, httpRoute *gwapiv1.HTTPRoute, update bool) error {
+	if update {
 		c.logger.Info("Updating HTTPRoute", "namespace", httpRoute.Namespace, "name", httpRoute.Name)
 		if err := c.client.Update(ctx, httpRoute); err != nil {
 			return fmt.Errorf("failed to update HTTPRoute: %w", err)
