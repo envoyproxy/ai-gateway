@@ -69,7 +69,7 @@ metadata:
   namespace: default
 spec:
   targetRefs:
-    - group: 'gateway.envoyproxy.io'
+    - group: "gateway.envoyproxy.io"
       kind: Backend
       name: envoy-ai-gateway-basic-openai
   validation:
@@ -83,4 +83,4 @@ metadata:
   namespace: default
 type: Opaque
 stringData:
-  apiKey: OPENAI_API_KEY  # Replace with your OpenAI API key.
+  apiKey: OPENAI_API_KEY # Replace with your OpenAI API key.

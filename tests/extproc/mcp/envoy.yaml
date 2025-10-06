@@ -219,10 +219,10 @@ static_resources:
                   address:
                     socket_address:
                       address: 127.0.0.1
-                      port_value: 9856  # Special port where the test MCP server is running inside the extproc process.
+                      port_value: 9856 # Special port where the test MCP server is running inside the extproc process.
 
     - name: dumb-mcp-backend
-      connect_timeout: 5s  # Increase from 0.25s to prevent timeout issues
+      connect_timeout: 5s # Increase from 0.25s to prevent timeout issues
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
       load_assignment:
@@ -236,7 +236,7 @@ static_resources:
                       port_value: 8081
 
     - name: default-mcp-backend
-      connect_timeout: 5s  # Increase from 0.25s to prevent timeout issues
+      connect_timeout: 5s # Increase from 0.25s to prevent timeout issues
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
       load_assignment:

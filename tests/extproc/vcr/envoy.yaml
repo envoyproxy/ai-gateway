@@ -30,7 +30,7 @@ static_resources:
                   name: local_route
                   virtual_hosts:
                     - name: backend
-                      domains: [ "*" ]
+                      domains: ["*"]
                       routes:
                         # These paths must match those registered in cmd/extproc/mainlib/main.go
                         # x-test-backend=openai-chat-override allows us to test model name override.
@@ -96,7 +96,7 @@ static_resources:
                           direct_response:
                             status: 404
                             body:
-                              inline_string: 'not forwarding paths except in cmd/extproc/mainlib/main.go'
+                              inline_string: "not forwarding paths except in cmd/extproc/mainlib/main.go"
                           typed_per_filter_config:
                             envoy.filters.http.ext_proc:
                               "@type": type.googleapis.com/envoy.config.route.v3.FilterConfig
@@ -109,15 +109,15 @@ static_resources:
                   - name: envoy.filters.http.ext_proc
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
-                      message_timeout: 5s  # Increase timeout from default 200ms to 5s
+                      message_timeout: 5s # Increase timeout from default 200ms to 5s
                       grpc_service:
                         envoy_grpc:
                           cluster_name: ext_proc
                       processing_mode:
-                        request_header_mode: SEND       # Examine headers before routing
-                        response_header_mode: SEND      # Examine response headers from upstream
-                        request_body_mode: BUFFERED     # Process complete OpenAI request body
-                        response_body_mode: BUFFERED    # Process complete response body. This will be overridden to STREAMED when streaming.
+                        request_header_mode: SEND # Examine headers before routing
+                        response_header_mode: SEND # Examine response headers from upstream
+                        request_body_mode: BUFFERED # Process complete OpenAI request body
+                        response_body_mode: BUFFERED # Process complete response body. This will be overridden to STREAMED when streaming.
                       metadataOptions:
                         receivingNamespaces:
                           untyped:
@@ -128,7 +128,7 @@ static_resources:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
   clusters:
     - name: openai
-      connect_timeout: 5s  # Increase from 0.25s to prevent timeout issues
+      connect_timeout: 5s # Increase from 0.25s to prevent timeout issues
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
       typed_extension_protocol_options:
@@ -145,14 +145,14 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
-                message_timeout: 5s  # Increase timeout from default 200ms to 5s
+                message_timeout: 5s # Increase timeout from default 200ms to 5s
                 request_attributes:
                   - xds.upstream_host_metadata
                 processing_mode:
-                  request_header_mode: "SEND"    # Transform request format and inject auth headers
-                  request_body_mode: "NONE"      # Body already processed by router filter
-                  response_header_mode: "SKIP"   # Router filter handles all response processing
-                  response_body_mode: "NONE"     # Router filter handles all response processing
+                  request_header_mode: "SEND" # Transform request format and inject auth headers
+                  request_body_mode: "NONE" # Body already processed by router filter
+                  response_header_mode: "SKIP" # Router filter handles all response processing
+                  response_body_mode: "NONE" # Router filter handles all response processing
                 grpc_service:
                   envoy_grpc:
                     cluster_name: ext_proc
@@ -179,7 +179,7 @@ static_resources:
                       per_route_rule_backend_name: "openai"
     # Cluster for model override scenario - exactly the same as openai but with different backend name
     - name: openai-chat-override
-      connect_timeout: 5s  # Increase from 0.25s to prevent timeout issues
+      connect_timeout: 5s # Increase from 0.25s to prevent timeout issues
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
       typed_extension_protocol_options:
@@ -196,14 +196,14 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
-                message_timeout: 5s  # Increase timeout from default 200ms to 5s
+                message_timeout: 5s # Increase timeout from default 200ms to 5s
                 request_attributes:
                   - xds.upstream_host_metadata
                 processing_mode:
-                  request_header_mode: "SEND"    # Transform request format and inject auth headers
-                  request_body_mode: "NONE"      # Body already processed by router filter
-                  response_header_mode: "SKIP"   # Router filter handles all response processing
-                  response_body_mode: "NONE"     # Router filter handles all response processing
+                  request_header_mode: "SEND" # Transform request format and inject auth headers
+                  request_body_mode: "NONE" # Body already processed by router filter
+                  response_header_mode: "SKIP" # Router filter handles all response processing
+                  response_body_mode: "NONE" # Router filter handles all response processing
                 grpc_service:
                   envoy_grpc:
                     cluster_name: ext_proc
@@ -230,7 +230,7 @@ static_resources:
                       per_route_rule_backend_name: "openai-chat-override"
     # Cluster for model override scenario - exactly the same as openai but with different backend name
     - name: openai-embeddings-override
-      connect_timeout: 5s  # Increase from 0.25s to prevent timeout issues
+      connect_timeout: 5s # Increase from 0.25s to prevent timeout issues
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
       typed_extension_protocol_options:
@@ -247,14 +247,14 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
-                message_timeout: 5s  # Increase timeout from default 200ms to 5s
+                message_timeout: 5s # Increase timeout from default 200ms to 5s
                 request_attributes:
                   - xds.upstream_host_metadata
                 processing_mode:
-                  request_header_mode: "SEND"    # Transform request format and inject auth headers
-                  request_body_mode: "NONE"      # Body already processed by router filter
-                  response_header_mode: "SKIP"   # Router filter handles all response processing
-                  response_body_mode: "NONE"     # Router filter handles all response processing
+                  request_header_mode: "SEND" # Transform request format and inject auth headers
+                  request_body_mode: "NONE" # Body already processed by router filter
+                  response_header_mode: "SKIP" # Router filter handles all response processing
+                  response_body_mode: "NONE" # Router filter handles all response processing
                 grpc_service:
                   envoy_grpc:
                     cluster_name: ext_proc
@@ -281,7 +281,7 @@ static_resources:
                       per_route_rule_backend_name: "openai-embeddings-override"
     # Cluster for Azure OpenAI
     - name: azure-openai
-      connect_timeout: 5s  # Increase from 0.25s to prevent timeout issues
+      connect_timeout: 5s # Increase from 0.25s to prevent timeout issues
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
       typed_extension_protocol_options:
@@ -298,14 +298,14 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
-                message_timeout: 5s  # Increase timeout from default 200ms to 5s
+                message_timeout: 5s # Increase timeout from default 200ms to 5s
                 request_attributes:
                   - xds.upstream_host_metadata
                 processing_mode:
-                  request_header_mode: "SEND"    # Transform request format and inject auth headers
-                  request_body_mode: "NONE"      # Body already processed by router filter
-                  response_header_mode: "SKIP"   # Router filter handles all response processing
-                  response_body_mode: "NONE"     # Router filter handles all response processing
+                  request_header_mode: "SEND" # Transform request format and inject auth headers
+                  request_body_mode: "NONE" # Body already processed by router filter
+                  response_header_mode: "SKIP" # Router filter handles all response processing
+                  response_body_mode: "NONE" # Router filter handles all response processing
                 grpc_service:
                   envoy_grpc:
                     cluster_name: ext_proc
@@ -332,7 +332,7 @@ static_resources:
                       per_route_rule_backend_name: "azure-openai"
     # Cluster for Azure model override scenario - exactly the same as azure-openai but with different backend name
     - name: azure-openai-chat-override
-      connect_timeout: 5s  # Increase from 0.25s to prevent timeout issues
+      connect_timeout: 5s # Increase from 0.25s to prevent timeout issues
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
       typed_extension_protocol_options:
@@ -349,14 +349,14 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
-                message_timeout: 5s  # Increase timeout from default 200ms to 5s
+                message_timeout: 5s # Increase timeout from default 200ms to 5s
                 request_attributes:
                   - xds.upstream_host_metadata
                 processing_mode:
-                  request_header_mode: "SEND"    # Transform request format and inject auth headers
-                  request_body_mode: "NONE"      # Body already processed by router filter
-                  response_header_mode: "SKIP"   # Router filter handles all response processing
-                  response_body_mode: "NONE"     # Router filter handles all response processing
+                  request_header_mode: "SEND" # Transform request format and inject auth headers
+                  request_body_mode: "NONE" # Body already processed by router filter
+                  response_header_mode: "SKIP" # Router filter handles all response processing
+                  response_body_mode: "NONE" # Router filter handles all response processing
                 grpc_service:
                   envoy_grpc:
                     cluster_name: ext_proc
@@ -382,7 +382,7 @@ static_resources:
                     aigateway.envoy.io:
                       per_route_rule_backend_name: "azure-openai-chat-override"
     - name: ext_proc
-      connect_timeout: 5s  # Increase from 0.25s to prevent timeout issues
+      connect_timeout: 5s # Increase from 0.25s to prevent timeout issues
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
       load_assignment:
@@ -399,4 +399,3 @@ static_resources:
           "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
           explicit_http_config:
             http2_protocol_options: {}
-

@@ -48,8 +48,8 @@ spec:
       name: envoy-ai-gateway-basic-azure
   type: AzureCredentials
   azureCredentials:
-    clientID: AZURE_CLIENT_ID   # Replace with your Azure Client ID.
-    tenantID: AZURE_TENANT_ID   # Replace with your Azure Tenant ID.
+    clientID: AZURE_CLIENT_ID # Replace with your Azure Client ID.
+    tenantID: AZURE_TENANT_ID # Replace with your Azure Tenant ID.
     clientSecretRef:
       name: envoy-ai-gateway-basic-azure-client-secret
       namespace: default
@@ -62,7 +62,7 @@ metadata:
 spec:
   endpoints:
     - fqdn:
-        hostname: dummy-azure-resource.openai.azure.com  # Replace "dummy-azure-resource" with your Azure OpenAI resource e.g. <azure_resource_name>.openai.azure.com
+        hostname: dummy-azure-resource.openai.azure.com # Replace "dummy-azure-resource" with your Azure OpenAI resource e.g. <azure_resource_name>.openai.azure.com
         port: 443
 ---
 apiVersion: gateway.networking.k8s.io/v1alpha3
@@ -72,12 +72,12 @@ metadata:
   namespace: default
 spec:
   targetRefs:
-    - group: 'gateway.envoyproxy.io'
+    - group: "gateway.envoyproxy.io"
       kind: Backend
       name: envoy-ai-gateway-basic-azure
   validation:
     wellKnownCACertificates: "System"
-    hostname: dummy-azure-resource.openai.azure.com  # Replace "dummy-azure-resource" with your Azure OpenAI resource e.g. <azure_resource_name>.openai.azure.com
+    hostname: dummy-azure-resource.openai.azure.com # Replace "dummy-azure-resource" with your Azure OpenAI resource e.g. <azure_resource_name>.openai.azure.com
 ---
 apiVersion: v1
 kind: Secret
@@ -86,4 +86,4 @@ metadata:
   namespace: default
 type: Opaque
 stringData:
-  client-secret: AZURE_CLIENT_SECRET  # Replace with your Azure client secret for authentication.
+  client-secret: AZURE_CLIENT_SECRET # Replace with your Azure client secret for authentication.

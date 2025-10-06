@@ -4,7 +4,7 @@
 # the root of the repo.
 
 volumes:
-  extproc-target:  # Stores the binary between extproc-build and extproc
+  extproc-target: # Stores the binary between extproc-build and extproc
 
 services:
   extproc-build:
@@ -14,7 +14,12 @@ services:
     volumes:
       - ../../..:/workspace
       - extproc-target:/workspace/out
-    command: ["bash", "-c", "go build -buildvcs=false -o /workspace/out/extproc ./cmd/extproc"]
+    command:
+      [
+        "bash",
+        "-c",
+        "go build -buildvcs=false -o /workspace/out/extproc ./cmd/extproc",
+      ]
 
   phoenix:
     image: arizephoenix/phoenix:latest
@@ -49,12 +54,12 @@ services:
     image: alpine/ollama
     container_name: ollama-pull
     environment:
-      OLLAMA_HOST: localhost:11434  # intentionally not 127.0.0.1
+      OLLAMA_HOST: localhost:11434 # intentionally not 127.0.0.1
     env_file:
       - ../../../.env.ollama
     entrypoint: sh
     command: -c 'env | grep _MODEL | cut -d= -f2 | xargs -I{} ollama pull {}'
-    extra_hosts:  # send localhost traffic to the docker host, e.g. your laptop
+    extra_hosts: # send localhost traffic to the docker host, e.g. your laptop
       - "localhost:host-gateway"
 
   envoy:
@@ -70,9 +75,9 @@ services:
     volumes:
       - ./envoy.yaml:/etc/envoy/envoy.yaml:ro
     ports:
-      - "1062:1062"  # HTTP ingress
+      - "1062:1062" # HTTP ingress
     extra_hosts:
-      - "host.docker.internal:host-gateway"  # Needed to access Ollama running on the host
+      - "host.docker.internal:host-gateway" # Needed to access Ollama running on the host
     command: ["envoy", "-c", "/etc/envoy/envoy.yaml", "--log-level", "debug"]
 
   openai-client:

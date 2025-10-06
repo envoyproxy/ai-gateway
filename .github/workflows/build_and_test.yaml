@@ -2,18 +2,18 @@ name: Build and Test
 on:
   pull_request:
     branches:
-      - 'main'
+      - "main"
       # Release branches are like "release/v0.1", "release/v0.2", etc. where we backport the changes to non EOL versions.
       # The branch will be created from the main branch after the initial release tag is cut. For example, when we cut v0.8.0 release,
       # we will create a branch "release/v0.8" from the main branch. For rc release, we simply iterate on main branch.
       #
       # See RELEASES.md for more details.
-      - 'release/**'
+      - "release/**"
 
   push:
     branches:
-      - 'main'
-      - 'release/**'
+      - "main"
+      - "release/**"
 
 concurrency:
   # https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#example-using-concurrency-to-cancel-any-in-progress-job-or-run
@@ -38,8 +38,8 @@ jobs:
               - '!**/*.md'
               - '!site/**'
               - '!netlify.toml'
-          predicate-quantifier: every  # Make the filters be AND-ed
-          token: ""  # don't use github api
+          predicate-quantifier: every # Make the filters be AND-ed
+          token: "" # don't use github api
     outputs:
       code: ${{ steps.changes.outputs.code }}
 
@@ -79,14 +79,14 @@ jobs:
           timeout 30 sh -c 'until nc -z localhost 11434; do sleep 1; done'
           grep _MODEL .env.ollama | cut -d= -f2 | xargs -I{} ollama pull {}
         env:
-          OLLAMA_CONTEXT_LENGTH: 131072  # Larger context for goose
+          OLLAMA_CONTEXT_LENGTH: 131072 # Larger context for goose
           OLLAMA_HOST: 0.0.0.0
       # Download Envoy via func-e using implicit default version `aigw` would
       # otherwise need to download during test runs.
       - name: Download Envoy via func-e
         run: go tool -modfile=tools/go.mod func-e run --version
         env:
-          FUNC_E_HOME: /tmp/envoy-gateway  # hard-coded directory in EG
+          FUNC_E_HOME: /tmp/envoy-gateway # hard-coded directory in EG
       - env:
           TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
           TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
@@ -97,7 +97,7 @@ jobs:
         run: cat ollama.log || true
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest'
-        uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24  # v5.4.3
+        uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24 # v5.4.3
         with:
           fail_ci_if_error: true
           files: ./out/go-test-coverage.out
@@ -169,9 +169,9 @@ jobs:
         # Once it's supported, the following "binary installation" steps below can be just removed and
         # we can simply exec.Cmd with "go tool -modfile=tools/go.mod func-e run" with the envoy version configured via ENVOY_VERSION env var.
         include:
-          - version: 1.35.0  # NOTE: when updating this, also update the comment in the CONTRIBUTING.md file.
+          - version: 1.35.0 # NOTE: when updating this, also update the comment in the CONTRIBUTING.md file.
             os: ubuntu-latest
-          - version: 1.35.0  # NOTE: when updating this, also update the comment in the CONTRIBUTING.md file.
+          - version: 1.35.0 # NOTE: when updating this, also update the comment in the CONTRIBUTING.md file.
             os: macos-latest
           - version: latest
             os: ubuntu-latest
@@ -351,14 +351,14 @@ jobs:
           timeout 30 sh -c 'until nc -z localhost 11434; do sleep 1; done'
           grep _MODEL .env.ollama | cut -d= -f2 | xargs -I{} ollama pull {}
         env:
-          OLLAMA_CONTEXT_LENGTH: 131072  # Larger context for goose
+          OLLAMA_CONTEXT_LENGTH: 131072 # Larger context for goose
           OLLAMA_HOST: 0.0.0.0
       # Download Envoy via func-e using implicit default version `aigw` would
       # otherwise need to download during test runs.
       - name: Download Envoy via func-e
         run: go tool -modfile=tools/go.mod func-e run --version
         env:
-          FUNC_E_HOME: /tmp/envoy-gateway  # hard-coded directory in EG
+          FUNC_E_HOME: /tmp/envoy-gateway # hard-coded directory in EG
       - name: Install Goose
         run: |
           curl -fsSL https://github.com/block/goose/releases/download/stable/download_cli.sh | CONFIGURE=false bash
@@ -370,7 +370,15 @@ jobs:
     # Docker builds are verified in test_e2e job, so we only need to push the images when the event is a push event.
     if: github.event_name == 'push'
     name: Push Docker Images
-    needs: [unittest, test_crdcel, test_controller, test_extproc, test_e2e, test_e2e_inference_extension]
+    needs:
+      [
+        unittest,
+        test_crdcel,
+        test_controller,
+        test_extproc,
+        test_e2e,
+        test_e2e_inference_extension,
+      ]
     uses: ./.github/workflows/docker_build_job.yaml
     secrets: inherit
 

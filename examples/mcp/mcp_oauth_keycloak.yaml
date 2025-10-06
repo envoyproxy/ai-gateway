@@ -22,21 +22,22 @@ spec:
           uri: http://localhost:8080/realms/master/protocol/openid-connect/certs
       protectedResourceMetadata:
         resource: "http://127.0.0.1:1975/mcp"
-        scopesSupported: [
-          "openid",
-          "service_account",
-          "offline_access",
-          "acr",
-          "organization",
-          "profile",
-          "basic",
-          "roles",
-          "phone",
-          "address",
-          "microprofile-jwt",
-          "web-origins",
-          "email"
-        ]
+        scopesSupported:
+          [
+            "openid",
+            "service_account",
+            "offline_access",
+            "acr",
+            "organization",
+            "profile",
+            "basic",
+            "roles",
+            "phone",
+            "address",
+            "microprofile-jwt",
+            "web-origins",
+            "email",
+          ]
   backendRefs:
     - name: learn-microsoft
       kind: Backend
@@ -69,7 +70,7 @@ metadata:
   namespace: default
 spec:
   targetRefs:
-    - group: 'gateway.envoyproxy.io'
+    - group: "gateway.envoyproxy.io"
       kind: Backend
       name: kiwi
   validation:
@@ -94,7 +95,7 @@ metadata:
   namespace: default
 spec:
   targetRefs:
-    - group: 'gateway.envoyproxy.io'
+    - group: "gateway.envoyproxy.io"
       kind: Backend
       name: context7
   validation:
@@ -119,7 +120,7 @@ metadata:
   namespace: default
 spec:
   targetRefs:
-    - group: 'gateway.envoyproxy.io'
+    - group: "gateway.envoyproxy.io"
       kind: Backend
       name: learn-microsoft
   validation:
@@ -144,7 +145,7 @@ metadata:
   namespace: default
 spec:
   targetRefs:
-    - group: 'gateway.envoyproxy.io'
+    - group: "gateway.envoyproxy.io"
       kind: Backend
       name: aws-knowledge
   validation:
