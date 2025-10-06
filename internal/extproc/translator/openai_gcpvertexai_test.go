@@ -722,6 +722,96 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			},
 		},
 		{
+			name: "response with safety ratings",
+			respHeaders: map[string]string{
+				"content-type": "application/json",
+			},
+			body: `{
+				"candidates": [
+					{
+						"content": {
+							"parts": [
+								{
+									"text": "This is a safe response from the AI assistant."
+								}
+							]
+						},
+						"finishReason": "STOP",
+						"safetyRatings": [
+							{
+								"category": "HARM_CATEGORY_HARASSMENT",
+								"probability": "LOW"
+							},
+							{
+								"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+								"probability": "NEGLIGIBLE"
+							},
+							{
+								"category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+								"probability": "MEDIUM"
+							}
+						]
+					}
+				],
+				"promptFeedback": {
+					"safetyRatings": []
+				},
+				"usageMetadata": {
+					"promptTokenCount": 8,
+					"candidatesTokenCount": 12,
+					"totalTokenCount": 20
+				}
+			}`,
+			endOfStream: true,
+			wantError:   false,
+			wantHeaderMut: &extprocv3.HeaderMutation{
+				SetHeaders: []*corev3.HeaderValueOption{{
+					Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("457")},
+				}},
+			},
+			wantBodyMut: &extprocv3.BodyMutation{
+				Mutation: &extprocv3.BodyMutation_Body{
+					Body: []byte(`{
+    "choices": [
+        {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+                "content": "This is a safe response from the AI assistant.",
+                "role": "assistant",
+                "safety_ratings": [
+                    {
+                        "category": "HARM_CATEGORY_HARASSMENT",
+                        "probability": "LOW"
+                    },
+                    {
+                        "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                        "probability": "NEGLIGIBLE"
+                    },
+                    {
+                        "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                        "probability": "MEDIUM"
+                    }
+                ]
+            }
+        }
+    ],
+    "object": "chat.completion",
+    "usage": {
+        "completion_tokens": 12,
+        "prompt_tokens": 8,
+        "total_tokens": 20
+    }
+}`),
+				},
+			},
+			wantTokenUsage: LLMTokenUsage{
+				InputTokens:  8,
+				OutputTokens: 12,
+				TotalTokens:  20,
+			},
+		},
+		{
 			name: "empty response",
 			respHeaders: map[string]string{
 				"content-type": "application/json",
