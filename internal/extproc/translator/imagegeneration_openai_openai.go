@@ -10,25 +10,29 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"strconv"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/tidwall/sjson"
 
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	openaisdk "github.com/openai/openai-go/v2"
 )
 
 // NewImageGenerationOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI image generation translation.
-func NewImageGenerationOpenAIToOpenAITranslator(apiVersion string, modelNameOverride string) ImageGenerationTranslator {
-	return &openAIToOpenAIImageGenerationTranslator{modelNameOverride: modelNameOverride, path: path.Join("/", apiVersion, "images/generations")}
+func NewImageGenerationOpenAIToOpenAITranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride, span tracing.ImageGenerationSpan) ImageGenerationTranslator {
+	return &openAIToOpenAIImageGenerationTranslator{modelNameOverride: modelNameOverride, path: path.Join("/", apiVersion, "images/generations"), span: span}
 }
 
 // openAIToOpenAIImageGenerationTranslator implements [ImageGenerationTranslator] for /v1/images/generations.
 type openAIToOpenAIImageGenerationTranslator struct {
-	modelNameOverride string
+	modelNameOverride internalapi.ModelNameOverride
 	// The path of the images generations endpoint to be used for the request. It is prefixed with the OpenAI path prefix.
 	path string
+	// span is the tracing span for this request, inherited from the router filter.
+	span tracing.ImageGenerationSpan
 }
 
 // RequestBody implements [ImageGenerationTranslator.RequestBody].
@@ -62,8 +66,10 @@ func (o *openAIToOpenAIImageGenerationTranslator) RequestBody(original []byte, r
 		bodyMutation = &extprocv3.BodyMutation{
 			Mutation: &extprocv3.BodyMutation_Body{Body: newBody},
 		}
-		// Note: content-length header is set via dynamic metadata in the processor
-		// to avoid conflicts with Envoy's REPLACE_AND_CONTINUE processing mode
+		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{Header: &corev3.HeaderValue{
+			Key:      "content-length",
+			RawValue: []byte(strconv.Itoa(len(newBody))),
+		}})
 	}
 	return
 }

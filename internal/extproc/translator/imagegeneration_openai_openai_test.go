@@ -16,7 +16,7 @@ import (
 )
 
 func TestOpenAIToOpenAIImageTranslator_RequestBody_ModelOverrideAndPath(t *testing.T) {
-	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "gpt-image-1")
+	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "gpt-image-1", nil)
 	req := &openaisdk.ImageGenerateParams{Model: openaisdk.ImageModelDallE3, Prompt: "a cat"}
 	original, _ := json.Marshal(req)
 
@@ -36,7 +36,7 @@ func TestOpenAIToOpenAIImageTranslator_RequestBody_ModelOverrideAndPath(t *testi
 }
 
 func TestOpenAIToOpenAIImageTranslator_RequestBody_ForceMutation(t *testing.T) {
-	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "")
+	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "", nil)
 	req := &openaisdk.ImageGenerateParams{Model: openaisdk.ImageModelDallE2, Prompt: "a cat"}
 	original, _ := json.Marshal(req)
 
@@ -57,7 +57,7 @@ func TestOpenAIToOpenAIImageTranslator_RequestBody_ForceMutation(t *testing.T) {
 }
 
 func TestOpenAIToOpenAIImageTranslator_ResponseError_NonJSON(t *testing.T) {
-	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "")
+	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "", nil)
 	headers := map[string]string{contentTypeHeaderName: "text/plain", statusHeaderName: "503"}
 	hm, bm, err := tr.ResponseError(headers, bytes.NewReader([]byte("backend error")))
 	require.NoError(t, err)
@@ -71,7 +71,7 @@ func TestOpenAIToOpenAIImageTranslator_ResponseError_NonJSON(t *testing.T) {
 }
 
 func TestOpenAIToOpenAIImageTranslator_ResponseBody_OK(t *testing.T) {
-	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "")
+	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "", nil)
 	resp := &openaisdk.ImagesResponse{Size: openaisdk.ImagesResponseSize1024x1024}
 	buf, _ := json.Marshal(resp)
 	hm, bm, usage, metadata, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true)
