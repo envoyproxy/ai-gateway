@@ -13,6 +13,8 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	openaisdk "github.com/openai/openai-go/v2"
+	openaiparam "github.com/openai/openai-go/v2/packages/param"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/contrib/propagators/autoprop"
 	"go.opentelemetry.io/otel/attribute"
@@ -22,8 +24,6 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
-	openaisdk "github.com/openai/openai-go/v2"
-	openaiparam "github.com/openai/openai-go/v2/packages/param"
 )
 
 var (
@@ -73,7 +73,7 @@ func TestImageGenerationTracer_StartSpanAndInjectHeaders(t *testing.T) {
 			existingHeaders:  map[string]string{},
 			expectedSpanName: "ImageGeneration",
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String("model", string(imageGenReq.Model)),
+				attribute.String("model", imageGenReq.Model),
 				attribute.String("prompt", imageGenReq.Prompt),
 				attribute.String("size", string(imageGenReq.Size)),
 				attribute.String("quality", string(imageGenReq.Quality)),
@@ -93,7 +93,7 @@ func TestImageGenerationTracer_StartSpanAndInjectHeaders(t *testing.T) {
 			},
 			expectedSpanName: "ImageGeneration",
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String("model", string(imageGenReq.Model)),
+				attribute.String("model", imageGenReq.Model),
 				attribute.String("prompt", imageGenReq.Prompt),
 				attribute.String("size", string(imageGenReq.Size)),
 				attribute.String("quality", string(imageGenReq.Quality)),
@@ -119,7 +119,7 @@ func TestImageGenerationTracer_StartSpanAndInjectHeaders(t *testing.T) {
 			existingHeaders:  map[string]string{},
 			expectedSpanName: "ImageGeneration",
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String("model", string(openaisdk.ImageModelGPTImage1)),
+				attribute.String("model", openaisdk.ImageModelGPTImage1),
 				attribute.String("prompt", "a cat and a dog"),
 				attribute.String("size", string(openaisdk.ImageGenerateParamsSize512x512)),
 				attribute.String("quality", string(openaisdk.ImageGenerateParamsQualityStandard)),
@@ -284,7 +284,7 @@ func TestImageGenerationTracer_ErrorHandling(t *testing.T) {
 
 	// Check that error attributes are recorded
 	expectedAttrs := []attribute.KeyValue{
-		attribute.String("model", string(imageGenReq.Model)),
+		attribute.String("model", imageGenReq.Model),
 		attribute.String("prompt", imageGenReq.Prompt),
 		attribute.String("size", string(imageGenReq.Size)),
 		attribute.String("quality", string(imageGenReq.Quality)),
@@ -340,7 +340,7 @@ func TestImageGenerationTracer_MultipleImagesResponse(t *testing.T) {
 
 	// Check that image count is recorded correctly
 	expectedAttrs := []attribute.KeyValue{
-		attribute.String("model", string(imageGenReq.Model)),
+		attribute.String("model", imageGenReq.Model),
 		attribute.String("prompt", imageGenReq.Prompt),
 		attribute.String("size", string(imageGenReq.Size)),
 		attribute.String("quality", string(imageGenReq.Quality)),
@@ -368,7 +368,7 @@ var _ tracing.ImageGenerationRecorder = testImageGenTracerRecorder{}
 
 type testImageGenTracerRecorder struct{}
 
-func (r testImageGenTracerRecorder) StartParams(req *openaisdk.ImageGenerateParams, body []byte) (spanName string, opts []oteltrace.SpanStartOption) {
+func (r testImageGenTracerRecorder) StartParams(_ *openaisdk.ImageGenerateParams, _ []byte) (spanName string, opts []oteltrace.SpanStartOption) {
 	return "ImageGeneration", imageGenStartOpts
 }
 
@@ -378,7 +378,7 @@ func (r testImageGenTracerRecorder) RecordRequest(span oteltrace.Span, req *open
 		n = req.N.Value
 	}
 	span.SetAttributes(
-		attribute.String("model", string(req.Model)),
+		attribute.String("model", req.Model),
 		attribute.String("prompt", req.Prompt),
 		attribute.String("size", string(req.Size)),
 		attribute.String("quality", string(req.Quality)),

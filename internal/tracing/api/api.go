@@ -11,11 +11,11 @@ import (
 	"context"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	openaisdk "github.com/openai/openai-go/v2"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	openaisdk "github.com/openai/openai-go/v2"
 )
 
 var _ Tracing = NoopTracing{}

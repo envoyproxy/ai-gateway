@@ -10,13 +10,13 @@ package openai
 import (
 	"encoding/json"
 
+	openaisdk "github.com/openai/openai-go/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
-	openaisdk "github.com/openai/openai-go/v2"
 )
 
 // ImageGenerationRecorder implements recorders for OpenInference image generation spans.
@@ -88,7 +88,7 @@ func buildImageGenerationRequestAttributes(req *openaisdk.ImageGenerateParams, b
 	attrs := []attribute.KeyValue{
 		attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 		attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-		attribute.String(openinference.LLMModelName, string(req.Model)),
+		attribute.String(openinference.LLMModelName, req.Model),
 	}
 
 	if config.HideInputs {

@@ -15,13 +15,13 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	openaisdk "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
-	openaisdk "github.com/openai/openai-go/v2"
 )
 
 func TestImageGeneration_Schema(t *testing.T) {
@@ -95,7 +95,7 @@ func (m *mockImageGenerationSpan) EndSpanOnError(status int, body []byte) {
 	m.errBody = string(body)
 }
 
-func (m *mockImageGenerationSpan) RecordResponse(resp *openaisdk.ImagesResponse) {
+func (m *mockImageGenerationSpan) RecordResponse(_ *openaisdk.ImagesResponse) {
 	// Mock implementation
 }
 
@@ -390,7 +390,7 @@ type mockImageGenerationTranslator struct {
 	retImageMetadata            translator.ImageGenerationMetadata
 }
 
-func (m *mockImageGenerationTranslator) RequestBody(original []byte, req *openaisdk.ImageGenerateParams, forceBodyMutation bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
+func (m *mockImageGenerationTranslator) RequestBody(_ []byte, req *openaisdk.ImageGenerateParams, forceBodyMutation bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
 	if m.expRequestBody != nil {
 		require.Equal(m.t, m.expRequestBody, req)
 	}
@@ -410,6 +410,7 @@ func (m *mockImageGenerationTranslator) ResponseHeaders(headers map[string]strin
 }
 
 func (m *mockImageGenerationTranslator) ResponseBody(headers map[string]string, body io.Reader, endOfStream bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, translator.LLMTokenUsage, translator.ImageGenerationMetadata, error) {
+	_ = headers
 	if m.expResponseBody != nil {
 		bodyBytes, _ := io.ReadAll(body)
 		require.Equal(m.t, m.expResponseBody.Body, bodyBytes)
@@ -419,13 +420,15 @@ func (m *mockImageGenerationTranslator) ResponseBody(headers map[string]string, 
 }
 
 func (m *mockImageGenerationTranslator) ResponseError(headers map[string]string, body io.Reader) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
+	_ = headers
+	_ = body
 	return m.retHeaderMutation, m.retBodyMutation, m.retErr
 }
 
 // imageGenerationBodyFromModel returns a minimal valid image generation request for tests.
 func imageGenerationBodyFromModel(t *testing.T, model string) []byte {
 	t.Helper()
-	b, err := json.Marshal(&openaisdk.ImageGenerateParams{Model: openaisdk.ImageModel(model), Prompt: "a cat"})
+	b, err := json.Marshal(&openaisdk.ImageGenerateParams{Model: model, Prompt: "a cat"})
 	require.NoError(t, err)
 	return b
 }

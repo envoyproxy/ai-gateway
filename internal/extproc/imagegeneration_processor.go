@@ -18,6 +18,7 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	openaisdk "github.com/openai/openai-go/v2"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
@@ -27,7 +28,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
-	openaisdk "github.com/openai/openai-go/v2"
 )
 
 // ImageGenerationProcessorFactory returns a factory method to instantiate the image generation processor.
@@ -215,11 +215,11 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessRequestHeaders(ctx conte
 	// Start tracking metrics for this request.
 	i.metrics.StartRequest(i.requestHeaders)
 	// Set the original model from the request body before any overrides
-	i.metrics.SetOriginalModel(internalapi.OriginalModel(i.originalRequestBody.Model))
+	i.metrics.SetOriginalModel(i.originalRequestBody.Model)
 	// Set the request model for metrics from the original model or override if applied.
-	reqModel := cmp.Or(i.requestHeaders[i.config.modelNameHeaderKey], string(i.originalRequestBody.Model))
-	i.metrics.SetRequestModel(internalapi.RequestModel(reqModel))
-	i.metrics.SetResponseModel(internalapi.ResponseModel(reqModel))
+	reqModel := cmp.Or(i.requestHeaders[i.config.modelNameHeaderKey], i.originalRequestBody.Model)
+	i.metrics.SetRequestModel(reqModel)
+	i.metrics.SetResponseModel(reqModel)
 
 	// We force the body mutation in the following cases:
 	// * The request is a retry request because the body mutation might have happened the previous iteration.
@@ -471,9 +471,9 @@ func (i *imageGenerationProcessorUpstreamFilter) SetBackend(ctx context.Context,
 	i.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
 	// Sync header with backend model so header-derived labels/CEL use the actual model.
 	if i.modelNameOverride != "" {
-		i.requestHeaders[i.config.modelNameHeaderKey] = string(i.modelNameOverride)
+		i.requestHeaders[i.config.modelNameHeaderKey] = i.modelNameOverride
 		// Update metrics with the overridden model
-		i.metrics.SetRequestModel(internalapi.RequestModel(i.modelNameOverride))
+		i.metrics.SetRequestModel(i.modelNameOverride)
 	}
 	i.originalRequestBody = rp.originalRequestBody
 	i.originalRequestBodyRaw = rp.originalRequestBodyRaw
@@ -498,5 +498,5 @@ func parseOpenAIImageGenerationBody(body *extprocv3.HttpBody) (modelName string,
 	if err := json.Unmarshal(body.Body, &openAIReq); err != nil {
 		return "", nil, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
-	return string(openAIReq.Model), &openAIReq, nil
+	return openAIReq.Model, &openAIReq, nil
 }

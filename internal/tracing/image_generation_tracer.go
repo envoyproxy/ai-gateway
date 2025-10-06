@@ -9,12 +9,12 @@ import (
 	"context"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	openaisdk "github.com/openai/openai-go/v2"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
-	openaisdk "github.com/openai/openai-go/v2"
 )
 
 // Ensure imageGenerationTracer implements ImageGenerationTracer.
