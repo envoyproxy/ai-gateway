@@ -906,29 +906,3 @@ func waitUntilKubectl(t *testing.T, timeout time.Duration, pollInterval time.Dur
 	}
 	require.Fail(t, "timed out waiting", "last error: %v", lastErr)
 }
-
-// waitUntilKubectl polls by running a kubectl command with the given args
-// until the verifyOut predicate returns nil or the timeout is reached.
-//
-// Unlike require.Eventually, this retains the output of the last mismatch.
-func waitUntilKubectl(t *testing.T, timeout time.Duration, pollInterval time.Duration, verifyOut func(output string) error, args ...string) {
-	var lastErr error
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		cmd := Kubectl(t.Context(), args...)
-		cmd.Stdout = nil // To ensure that we can capture the output by Output().
-		out, err := cmd.Output()
-		if err != nil {
-			lastErr = err
-			time.Sleep(pollInterval)
-			continue
-		}
-		err = verifyOut(string(out))
-		if err == nil {
-			return
-		}
-		lastErr = err
-		time.Sleep(pollInterval)
-	}
-	require.Fail(t, "timed out waiting", "last error: %v", lastErr)
-}
