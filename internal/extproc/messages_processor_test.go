@@ -33,9 +33,7 @@ func TestMessagesProcessorFactory(t *testing.T) {
 	require.NotNil(t, factory, "MessagesProcessorFactory should return a non-nil factory")
 
 	// Test creating a router filter.
-	config := &processorConfig{
-		modelNameHeaderKey: "x-model",
-	}
+	config := &processorConfig{}
 	headers := map[string]string{
 		":path":         "/anthropic/v1/messages",
 		"authorization": "Bearer token",
@@ -194,9 +192,7 @@ func TestMessagesProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			processor := &messagesProcessorRouterFilter{
-				config: &processorConfig{
-					modelNameHeaderKey: "x-model-name",
-				},
+				config:         &processorConfig{},
 				requestHeaders: make(map[string]string),
 				logger:         slog.Default(),
 			}
@@ -214,7 +210,7 @@ func TestMessagesProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, response)
-				require.Equal(t, tt.expectModel, processor.requestHeaders["x-model-name"])
+				require.Equal(t, tt.expectModel, processor.requestHeaders["x-ai-eg-model"])
 				require.NotNil(t, processor.originalRequestBody)
 				require.NotEmpty(t, processor.originalRequestBodyRaw)
 			}
@@ -371,7 +367,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithMocks(t *test
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			headers := map[string]string{":path": "/anthropic/v1/messages", "x-model-name": "claude-3-sonnet"}
+			headers := map[string]string{":path": "/anthropic/v1/messages", "x-ai-eg-model": "claude-3-sonnet"}
 
 			// Create request body.
 			requestBody := &anthropicschema.MessagesRequest{
@@ -396,9 +392,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithMocks(t *test
 
 			// Create processor.
 			processor := &messagesProcessorUpstreamFilter{
-				config: &processorConfig{
-					modelNameHeaderKey: "x-model-name",
-				},
+				config:                 &processorConfig{},
 				requestHeaders:         headers,
 				logger:                 slog.Default(),
 				metrics:                chatMetrics,
@@ -527,9 +521,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_CompletionOnlyAtEnd
 func TestMessagesProcessorUpstreamFilter_MergeWithTokenLatencyMetadata(t *testing.T) {
 	chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
 	processor := &messagesProcessorUpstreamFilter{
-		config: &processorConfig{
-			metadataNamespace: "ai_gateway_llm_ns",
-		},
+		config:  &processorConfig{},
 		logger:  slog.Default(),
 		metrics: chatMetrics,
 		costs:   translator.LLMTokenUsage{InputTokens: 100, OutputTokens: 50},
@@ -538,7 +530,7 @@ func TestMessagesProcessorUpstreamFilter_MergeWithTokenLatencyMetadata(t *testin
 	// Test with valid metadata structure.
 	metadata := &structpb.Struct{
 		Fields: map[string]*structpb.Value{
-			"ai_gateway_llm_ns": {
+			internalapi.AIGatewayFilterMetadataNamespace: {
 				Kind: &structpb.Value_StructValue{
 					StructValue: &structpb.Struct{
 						Fields: map[string]*structpb.Value{},
@@ -581,11 +573,10 @@ func TestMessagesProcessorUpstreamFilter_SetBackend(t *testing.T) {
 }
 
 func Test_messagesProcessorUpstreamFilter_SetBackend_Success(t *testing.T) {
-	const modelKey = "x-model-name"
-	headers := map[string]string{":path": "/anthropic/v1/messages", modelKey: "claude"}
+	headers := map[string]string{":path": "/anthropic/v1/messages", internalapi.ModelNameHeaderKeyDefault: "claude"}
 	chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
 	p := &messagesProcessorUpstreamFilter{
-		config:         &processorConfig{modelNameHeaderKey: modelKey},
+		config:         &processorConfig{},
 		requestHeaders: headers,
 		logger:         slog.Default(),
 		metrics:        chatMetrics,
@@ -599,19 +590,18 @@ func Test_messagesProcessorUpstreamFilter_SetBackend_Success(t *testing.T) {
 		ModelNameOverride: "claude-vertex",
 	}, nil, rp)
 	require.NoError(t, err)
-	require.Equal(t, "claude-vertex", p.requestHeaders[modelKey])
+	require.Equal(t, "claude-vertex", p.requestHeaders[internalapi.ModelNameHeaderKeyDefault])
 	require.True(t, p.stream)
 	require.NotNil(t, p.translator)
 }
 
 func TestMessages_ProcessRequestHeaders_SetsRequestModel(t *testing.T) {
-	const modelKey = internalapi.ModelNameHeaderKeyDefault
-	headers := map[string]string{":path": "/anthropic/v1/messages", modelKey: "header-model"}
+	headers := map[string]string{":path": "/anthropic/v1/messages", internalapi.ModelNameHeaderKeyDefault: "header-model"}
 	requestBody := &anthropicschema.MessagesRequest{"model": "body-model", "messages": []any{"hello"}}
 	requestBodyRaw := []byte(`{"model":"body-model","messages":["hello"]}`)
 	mm := &mockChatCompletionMetrics{}
 	p := &messagesProcessorUpstreamFilter{
-		config:                 &processorConfig{modelNameHeaderKey: modelKey},
+		config:                 &processorConfig{},
 		requestHeaders:         headers,
 		logger:                 slog.Default(),
 		metrics:                mm,
@@ -632,8 +622,7 @@ func TestMessages_ProcessRequestHeaders_SetsRequestModel(t *testing.T) {
 // This is important because the backend may return a more specific model version than what was
 // requested (e.g., "claude-3-opus-20240229" instead of "claude-3-opus").
 func TestMessages_ProcessResponseBody_UsesActualResponseModelOverHeaderOverride(t *testing.T) {
-	const modelKey = internalapi.ModelNameHeaderKeyDefault
-	headers := map[string]string{":path": "/v1/messages", modelKey: "header-model"}
+	headers := map[string]string{":path": "/v1/messages", internalapi.ModelNameHeaderKeyDefault: "header-model"}
 	requestBody := &anthropicschema.MessagesRequest{"model": "body-model"}
 	requestBodyRaw := []byte(`{"model": "body-model"}`)
 	mm := &mockChatCompletionMetrics{}
@@ -650,7 +639,7 @@ func TestMessages_ProcessResponseBody_UsesActualResponseModelOverHeaderOverride(
 	}
 
 	p := &messagesProcessorUpstreamFilter{
-		config:                 &processorConfig{modelNameHeaderKey: modelKey},
+		config:                 &processorConfig{},
 		requestHeaders:         headers,
 		logger:                 slog.Default(),
 		metrics:                mm,
@@ -691,7 +680,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 	t.Run("header mutations applied correctly", func(t *testing.T) {
 		headers := map[string]string{
 			":path":         "/anthropic/v1/messages",
-			"x-model-name":  "claude-3-sonnet",
+			"x-ai-eg-model": "claude-3-sonnet",
 			"authorization": "bearer token123",
 			"x-api-key":     "secret-key",
 			"x-custom":      "custom-value",
@@ -726,9 +715,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 
 		// Create processor.
 		processor := &messagesProcessorUpstreamFilter{
-			config: &processorConfig{
-				modelNameHeaderKey: "x-model-name",
-			},
+			config:                 &processorConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                chatMetrics,
@@ -770,8 +757,8 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 
 	t.Run("header mutations restored on retry", func(t *testing.T) {
 		headers := map[string]string{
-			":path":        "/anthropic/v1/messages",
-			"x-model-name": "claude-3-sonnet",
+			":path":         "/anthropic/v1/messages",
+			"x-ai-eg-model": "claude-3-sonnet",
 			// "x-custom" is not present in current headers, so it can be restored.
 			"x-new-header": "new-value", // Already set from previous mutation.
 		}
@@ -805,9 +792,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 
 		// Create processor.
 		processor := &messagesProcessorUpstreamFilter{
-			config: &processorConfig{
-				modelNameHeaderKey: "x-model-name",
-			},
+			config:                 &processorConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                chatMetrics,
@@ -821,7 +806,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 		// Use the same headers map as the original headers (this simulates the router filter's requestHeaders).
 		originalHeaders := map[string]string{
 			":path":         "/anthropic/v1/messages",
-			"x-model-name":  "claude-3-sonnet",
+			"x-ai-eg-model": "claude-3-sonnet",
 			"authorization": "bearer original-token", // This will be removed, so won't be restored.
 			"x-api-key":     "original-secret",       // This will be removed, so won't be restored.
 			"x-custom":      "original-custom",       // This won't be removed, so can be restored.
@@ -867,7 +852,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 	t.Run("no header mutations when mutator is nil", func(t *testing.T) {
 		headers := map[string]string{
 			":path":         "/anthropic/v1/messages",
-			"x-model-name":  "claude-3-sonnet",
+			"x-ai-eg-model": "claude-3-sonnet",
 			"authorization": "bearer token123",
 		}
 
@@ -894,9 +879,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 
 		// Create processor.
 		processor := &messagesProcessorUpstreamFilter{
-			config: &processorConfig{
-				modelNameHeaderKey: "x-model-name",
-			},
+			config:                 &processorConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                chatMetrics,
