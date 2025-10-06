@@ -74,16 +74,27 @@ jobs:
       - name: Start Ollama server
         if: matrix.os == 'ubuntu-latest'
         run: |
-          curl -fsSL https://ollama.com/install.sh | sh
+          curl -fsSL https://ollama.com/install.sh | sh && sudo systemctl stop ollama
+          nohup ollama serve > ollama.log 2>&1 &
           timeout 30 sh -c 'until nc -z localhost 11434; do sleep 1; done'
-          ollama pull qwen3:0.6b
-
+          grep _MODEL .env.ollama | cut -d= -f2 | xargs -I{} ollama pull {}
+        env:
+          OLLAMA_CONTEXT_LENGTH: 131072  # Larger context for goose
+          OLLAMA_HOST: 0.0.0.0
+      # Download Envoy via func-e using implicit default version `aigw` would
+      # otherwise need to download during test runs.
+      - name: Download Envoy via func-e
+        run: go tool -modfile=tools/go.mod func-e run --version
+        env:
+          FUNC_E_HOME: /tmp/envoy-gateway  # hard-coded directory in EG
       - env:
           TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
           TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
           TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
           TEST_GITHUB_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: make test-coverage
+      - if: failure()
+        run: cat ollama.log || true
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest'
         uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24  # v5.4.3
@@ -314,9 +325,9 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - run: make test-e2e-inference-extension
 
-  test_e2e_mcp:
+  test_e2e_aigw:
     needs: changes
-    name: E2E Test for Model Context Protocol
+    name: E2E Test for aigw CLI
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -331,17 +342,29 @@ jobs:
             ~/.cache/golangci-lint
             ~/go/pkg/mod
             ~/go/bin
-          key: e2e-mcp-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+          key: e2e-aigw-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
       - uses: docker/setup-buildx-action@v3
       - name: Start Ollama server
         run: |
-          curl -fsSL https://ollama.com/install.sh | sh
+          curl -fsSL https://ollama.com/install.sh | sh && sudo systemctl stop ollama
+          nohup ollama serve > ollama.log 2>&1 &
           timeout 30 sh -c 'until nc -z localhost 11434; do sleep 1; done'
-          ollama pull qwen3:0.6b
+          grep _MODEL .env.ollama | cut -d= -f2 | xargs -I{} ollama pull {}
+        env:
+          OLLAMA_CONTEXT_LENGTH: 131072  # Larger context for goose
+          OLLAMA_HOST: 0.0.0.0
+      # Download Envoy via func-e using implicit default version `aigw` would
+      # otherwise need to download during test runs.
+      - name: Download Envoy via func-e
+        run: go tool -modfile=tools/go.mod func-e run --version
+        env:
+          FUNC_E_HOME: /tmp/envoy-gateway  # hard-coded directory in EG
       - name: Install Goose
         run: |
           curl -fsSL https://github.com/block/goose/releases/download/stable/download_cli.sh | CONFIGURE=false bash
-      - run: make test-e2e-mcp
+      - run: make test-e2e-aigw
+      - if: failure()
+        run: cat ollama.log || true
 
   docker_push:
     # Docker builds are verified in test_e2e job, so we only need to push the images when the event is a push event.
@@ -381,7 +404,7 @@ jobs:
       - test_e2e
       - test_e2e_upgrade
       - test_e2e_inference_extension
-      - test_e2e_mcp
+      - test_e2e_aigw
     # We need this to run always to force-fail (and not skip) if any needed
     # job has failed. Otherwise, a skipped job will not fail the workflow.
     if: always()

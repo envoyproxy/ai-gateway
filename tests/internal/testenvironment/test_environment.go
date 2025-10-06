@@ -7,7 +7,6 @@ package testenvironment
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -17,7 +16,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
+	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -34,22 +33,17 @@ type TestEnvironment struct {
 	extProcPort, extProcAdminPort, extProcMCPPort     int
 	envoyConfig                                       string
 	envoyListenerPort, envoyAdminPort                 int
-	upstreamOut, extprocOut, envoyStdout, envoyStderr *syncBuffer
+	upstreamOut, extprocOut, envoyStdout, envoyStderr internaltesting.OutBuffer
 	mcpWriteTimeout                                   time.Duration
 	miscPortDefaults, miscPorts                       map[string]int
 }
 
-func (e *TestEnvironment) LogOutput(t TestingT) {
+func (e *TestEnvironment) LogOutput(t testing.TB) {
 	t.Logf("=== Envoy Stdout ===\n%s", e.envoyStdout.String())
 	t.Logf("=== Envoy Stderr ===\n%s", e.envoyStderr.String())
 	t.Logf("=== ExtProc Output (stdout + stderr) ===\n%s", e.extprocOut.String())
 	t.Logf("=== Upstream Output ===\n%s", e.upstreamOut.String())
 	// TODO: dump extproc and envoy metrics.
-}
-
-// EnvoyStdoutReset sets Envoy's stdout log to zero length.
-func (e *TestEnvironment) EnvoyStdoutReset() {
-	e.envoyStdout.Reset()
 }
 
 // EnvoyStdout returns the content of Envoy's stdout (e.g. the access log).
@@ -65,24 +59,13 @@ func (e *TestEnvironment) ExtProcAdminPort() int {
 	return e.extProcAdminPort
 }
 
-// TestingT is an abstraction over testing.T and testing.B.
-type TestingT interface {
-	require.TestingT
-	Logf(format string, args ...interface{})
-	TempDir() string
-	Context() context.Context
-	Cleanup(func())
-	Setenv(key, value string)
-	Failed() bool
-}
-
 // StartTestEnvironment starts all required services and returns ports and a closer.
 //
 // If extProcInProcess is true, then this starts the extproc in-process by directly calling
 // mainlib.Main instead of the built binary. This allows the benchmark test suite to directly do the profiling
 // without the extroc.
-func StartTestEnvironment(t TestingT,
-	requireNewUpstream func(t TestingT, out io.Writer, miscPorts map[string]int), miscPortDefauls map[string]int,
+func StartTestEnvironment(t testing.TB,
+	requireNewUpstream func(t testing.TB, out io.Writer, miscPorts map[string]int), miscPortDefauls map[string]int,
 	extprocBin, extprocConfig string, extprocEnv []string, envoyConfig string, okToDumpLogOnFailure, extProcInProcess bool,
 	mcpWriteTimeout time.Duration,
 ) *TestEnvironment {
@@ -95,6 +78,18 @@ func StartTestEnvironment(t TestingT,
 		miscPorts[key] = ports[defaultPortCount+index]
 		index++
 	}
+
+	// Create log buffers that dump only on failure.
+	labels := []string{
+		"Upstream Output", "ExtProc Output (stdout + stderr)", "Envoy Stdout", "Envoy Stderr",
+	}
+	var buffers []internaltesting.OutBuffer
+	if okToDumpLogOnFailure {
+		buffers = internaltesting.DumpLogsOnFail(t, labels...)
+	} else {
+		buffers = internaltesting.CaptureOutput(labels...)
+	}
+
 	env := &TestEnvironment{
 		extprocBin:        extprocBin,
 		extprocConfig:     extprocConfig,
@@ -105,10 +100,10 @@ func StartTestEnvironment(t TestingT,
 		envoyConfig:       envoyConfig,
 		envoyListenerPort: ports[3],
 		envoyAdminPort:    ports[4],
-		upstreamOut:       newSyncBuffer(),
-		extprocOut:        newSyncBuffer(),
-		envoyStdout:       newSyncBuffer(),
-		envoyStderr:       newSyncBuffer(),
+		upstreamOut:       buffers[0],
+		extprocOut:        buffers[1],
+		envoyStdout:       buffers[2],
+		envoyStderr:       buffers[3],
 		mcpWriteTimeout:   mcpWriteTimeout,
 		miscPorts:         miscPorts,
 		miscPortDefaults:  miscPortDefauls,
@@ -156,12 +151,7 @@ func StartTestEnvironment(t TestingT,
 		env.miscPortDefaults,
 	)
 
-	// Log outputs on test failure.
-	t.Cleanup(func() {
-		if t.Failed() && okToDumpLogOnFailure {
-			env.LogOutput(t)
-		}
-	})
+	// Note: Log dumping on failure is handled by DumpLogsOnFail if okToDumpLogOnFailure is true.
 
 	// Sanity-check all connections to ensure everything is up.
 	require.Eventually(t, func() bool {
@@ -177,7 +167,7 @@ func StartTestEnvironment(t TestingT,
 	return env
 }
 
-func (e *TestEnvironment) checkAllConnections(t TestingT) error {
+func (e *TestEnvironment) checkAllConnections(t testing.TB) error {
 	errGroup := &errgroup.Group{}
 	errGroup.Go(func() error {
 		return e.checkConnection(t, e.extProcPort, "extProc")
@@ -199,7 +189,7 @@ func (e *TestEnvironment) checkAllConnections(t TestingT) error {
 	return errGroup.Wait()
 }
 
-func (e *TestEnvironment) checkConnection(t TestingT, port int, name string) error {
+func (e *TestEnvironment) checkConnection(t testing.TB, port int, name string) error {
 	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
 		t.Logf("Failed to connect to %s on port %d: %v", name, port, err)
@@ -240,7 +230,7 @@ func waitForReadyMessage(ctx context.Context, outReader io.Reader, readyMessage 
 }
 
 // requireEnvoy starts Envoy with the given configuration and ports.
-func requireEnvoy(t TestingT,
+func requireEnvoy(t testing.TB,
 	stdout, stderr io.Writer,
 	config string,
 	listenerPort, adminPort, extProcPort, extProcMCPPort int,
@@ -281,7 +271,7 @@ func requireEnvoy(t TestingT,
 }
 
 // requireExtProc starts the external processor with the given configuration.
-func requireExtProc(t TestingT, out io.Writer, bin, config string, env []string, port, adminPort, mcpPort int, mcpWriteTimeout time.Duration, inProcess bool) {
+func requireExtProc(t testing.TB, out io.Writer, bin, config string, env []string, port, adminPort, mcpPort int, mcpWriteTimeout time.Duration, inProcess bool) {
 	configPath := t.TempDir() + "/extproc-config.yaml"
 	require.NoError(t, os.WriteFile(configPath, []byte(config), 0o600))
 
@@ -299,12 +289,12 @@ func requireExtProc(t TestingT, out io.Writer, bin, config string, env []string,
 			for _, e := range env {
 				parts := strings.Split(e, "=")
 				if len(parts) != 2 {
-					t.Logf("Skippint invalid environ: %s", e)
+					t.Logf("Skipping invalid environ: %s", e)
 					continue
 				}
 				t.Setenv(parts[0], parts[1])
 			}
-			err := mainlib.Main(t.Context(), args, os.Stdout)
+			err := mainlib.Main(t.Context(), args, out)
 			if err != nil {
 				panic(err)
 			}
@@ -319,7 +309,7 @@ func requireExtProc(t TestingT, out io.Writer, bin, config string, env []string,
 
 // StartAndAwaitReady takes a prepared exec.Cmd, assigns stdout and stderr to out, and starts it.
 // This blocks on the readyMessage.
-func StartAndAwaitReady(t TestingT, cmd *exec.Cmd, stdout, stderr io.Writer, readyMessage string) {
+func StartAndAwaitReady(t testing.TB, cmd *exec.Cmd, stdout, stderr io.Writer, readyMessage string) {
 	// Create a pipe to capture stderr for startup detection.
 	stderrReader, stderrWriter, err := os.Pipe()
 	require.NoError(t, err)
@@ -343,35 +333,4 @@ func replaceTokens(content string, replacements map[string]string) string {
 		result = strings.ReplaceAll(result, token, value)
 	}
 	return result
-}
-
-// syncBuffer is a bytes.Buffer that is safe for concurrent read/write access.
-type syncBuffer struct {
-	mu sync.RWMutex
-	b  *bytes.Buffer
-}
-
-// Write implements io.Writer for syncBuffer.
-func (s *syncBuffer) Write(p []byte) (n int, err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.b.Write(p)
-}
-
-// String implements fmt.Stringer for syncBuffer.
-func (s *syncBuffer) String() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.b.String()
-}
-
-func (s *syncBuffer) Reset() {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	s.b.Truncate(0)
-}
-
-// newSyncBuffer creates a new thread-safe buffer.
-func newSyncBuffer() *syncBuffer {
-	return &syncBuffer{b: bytes.NewBuffer(nil)}
 }

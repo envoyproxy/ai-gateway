@@ -45,11 +45,16 @@ func (s *Server) maybeGenerateResourcesForMCPGateway(req *egextension.PostTransl
 	// Order matters: do this before moving rules to the backend listener.
 	s.maybeUpdateMCPRoutes(req.Routes)
 
-	// Extract MCP backend filters from existing listeners and create the backend listener with those filters.
-	mcpBackendHTTPFilters := s.extractMCPBackendFiltersFromMCPProxyListener(req.Listeners)
+	// Create routes for the backend listener first to determine if MCP processing is needed
+	mcpBackendRoutes := s.createRoutesForBackendListener(req.Routes)
 
-	req.Listeners = append(req.Listeners, s.createBackendListener(mcpBackendHTTPFilters))
-	req.Routes = append(req.Routes, s.createRoutesForBackendListener(req.Routes))
+	// Only create the backend listener if there are routes for it
+	if mcpBackendRoutes != nil {
+		// Extract MCP backend filters from existing listeners and create the backend listener with those filters.
+		mcpBackendHTTPFilters := s.extractMCPBackendFiltersFromMCPProxyListener(req.Listeners)
+		req.Listeners = append(req.Listeners, s.createBackendListener(mcpBackendHTTPFilters))
+		req.Routes = append(req.Routes, mcpBackendRoutes)
+	}
 
 	// Modify routes with mcp-gateway-generated annotation to use mcpproxy-cluster.
 	s.modifyMCPGatewayGeneratedCluster(req.Clusters)
@@ -181,16 +186,15 @@ func (s *Server) maybeUpdateMCPRoutes(routes []*routev3.RouteConfiguration) {
 }
 
 // createRoutesForBackendListener creates routes for the backend listener.
+// Returns nil if no MCP routes are found.
 func (s *Server) createRoutesForBackendListener(routes []*routev3.RouteConfiguration) *routev3.RouteConfiguration {
-	s.log.Info("creating routes for the backend MCP listener")
 	var backendListenerRoutes []*routev3.Route
 	for _, routeConfig := range routes {
 		for _, vh := range routeConfig.VirtualHosts {
-			s.log.Info("examining virtual host for backend MCP listener routes", "virtualHost", vh.Name)
 			var originalRoutes []*routev3.Route
 			for _, route := range vh.Routes {
 				if strings.Contains(route.Name, internalapi.MCPHTTPRoutePrefix) {
-					s.log.Info("found mcp-gateway-generated route, moving to backend MCP listener", "route", route.Name)
+					s.log.Info("found MCP route, processing for backend listener", "route", route.Name)
 					// Copy the route and modify it to use the backend header and mcpproxy-cluster.
 					marshaled, err := proto.Marshal(route)
 					if err != nil {
@@ -205,13 +209,10 @@ func (s *Server) createRoutesForBackendListener(routes []*routev3.RouteConfigura
 					if routeAction := route.GetRoute(); routeAction != nil {
 						if cs, ok := routeAction.ClusterSpecifier.(*routev3.RouteAction_Cluster); ok && !strings.Contains(cs.Cluster, "rule/0") {
 							// TODO: skip the well-know route.
-							s.log.Info("stripping out non-rule-0 route for backend MCP listener", "route", route.Name)
 							backendListenerRoutes = append(backendListenerRoutes, copiedRoute)
 							continue
 						}
 					}
-				} else {
-					s.log.Info("keeping original route on original listener", "route", route)
 				}
 				originalRoutes = append(originalRoutes, route)
 			}
@@ -222,7 +223,7 @@ func (s *Server) createRoutesForBackendListener(routes []*routev3.RouteConfigura
 		return nil
 	}
 
-	s.log.Info("created routes for the backend MCP listener", "numRoutes", len(backendListenerRoutes))
+	s.log.Info("created routes for MCP backend listener", "numRoutes", len(backendListenerRoutes))
 	mcpRouteConfig := &routev3.RouteConfiguration{
 		Name: fmt.Sprintf("%s-route-config", mcpBackendListenerName),
 		VirtualHosts: []*routev3.VirtualHost{
@@ -325,7 +326,9 @@ func (s *Server) extractMCPBackendFiltersFromMCPProxyListener(listeners []*liste
 		}
 	}
 
-	s.log.Info("Extracted MCP HTTP filters", "count", len(mcpHTTPFilters))
+	if len(mcpHTTPFilters) > 0 {
+		s.log.Info("Extracted MCP HTTP filters", "count", len(mcpHTTPFilters))
+	}
 	return mcpHTTPFilters
 }
 
@@ -522,13 +525,12 @@ func (s *Server) modifyMCPOAuthCustomResponseRoute(routes []*routev3.RouteConfig
 				}
 
 				if route.GetDirectResponse() == nil || route.GetMatch() == nil {
-					s.log.Info("Skipping route without direct response or match", "routeName", route.Name)
 					continue
 				}
 
 				path := route.GetMatch().GetPath()
-				s.log.V(6).Info("Modifying route to add CORS headers", "routeName", route.Name, "path", path)
 				if isWellKnownOAuthPath(path) {
+					s.log.V(6).Info("Adding CORS headers to MCP OAuth route", "routeName", route.Name, "path", path)
 					// add CORS headers.
 					// CORS filter won't work with direct response, so we add the headers directly to the route.
 					// TODO: remove this step once Envoy Gateway supports this natively in the BackendTrafficPolicy ResponseOverride.

@@ -101,10 +101,10 @@ type MCPRouteBackendRef struct {
 	Path *string `json:"path,omitempty"`
 
 	// ToolSelector filters the tools exposed by this MCP server.
-	// Supports exact matches via include lists and RE2-compatible regular expressions via includeRegex.
+	// Supports exact matches and RE2-compatible regular expressions for both include and exclude patterns.
 	// If not specified, all tools from the MCP server are exposed.
 	// +kubebuilder:validation:Optional
-	ToolSelector *MCPNameFilter `json:"toolSelector,omitempty"`
+	ToolSelector *MCPToolFilter `json:"toolSelector,omitempty"`
 
 	// TODO: we can add resource and prompt selectors in the future.
 
@@ -116,18 +116,18 @@ type MCPRouteBackendRef struct {
 	// TODO: add fancy per-MCP server config. For example, Rate Limit, etc.
 }
 
-// MCPNameFilter filters string identifiers using include lists or regular expressions.
-// Exactly one of include or includeRegex may be specified.
+// MCPToolFilter filters tools using include patterns with exact matches or regular expressions.
 //
-// +kubebuilder:validation:XValidation:rule="has(self.include) != has(self.includeRegex)", message="one of include, includeRegex must be specified"
-type MCPNameFilter struct {
-	// Include is a list of strings to include. If specified, only the strings in this list are included.
+// +kubebuilder:validation:XValidation:rule="(has(self.include) && !has(self.includeRegex)) || (!has(self.include) && has(self.includeRegex))", message="exactly one of include or includeRegex must be specified"
+type MCPToolFilter struct {
+	// Include is a list of tool names to include. Only the specified tools will be available.
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxItems=32
 	Include []string `json:"include,omitempty"`
 
-	// IncludeRegex is a list of RE2-compatible regular expressions that, when matched, include the string.
+	// IncludeRegex is a list of RE2-compatible regular expressions that, when matched, include the tool.
+	// Only tools matching these patterns will be available.
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxItems=32
