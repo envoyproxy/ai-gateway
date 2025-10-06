@@ -86,7 +86,7 @@ metadata:
   namespace: default
 spec:
   targetRefs:
-    - group: 'gateway.envoyproxy.io'
+    - group: "gateway.envoyproxy.io"
       kind: Backend
       name: github
   validation:
@@ -111,7 +111,7 @@ metadata:
   namespace: default
 spec:
   targetRefs:
-    - group: 'gateway.envoyproxy.io'
+    - group: "gateway.envoyproxy.io"
       kind: Backend
       name: kiwi
   validation:
@@ -136,7 +136,7 @@ metadata:
   namespace: default
 spec:
   targetRefs:
-    - group: 'gateway.envoyproxy.io'
+    - group: "gateway.envoyproxy.io"
       kind: Backend
       name: context7
   validation:
@@ -161,7 +161,7 @@ metadata:
   namespace: default
 spec:
   targetRefs:
-    - group: 'gateway.envoyproxy.io'
+    - group: "gateway.envoyproxy.io"
       kind: Backend
       name: learn-microsoft
   validation:
@@ -186,7 +186,7 @@ metadata:
   namespace: default
 spec:
   targetRefs:
-    - group: 'gateway.envoyproxy.io'
+    - group: "gateway.envoyproxy.io"
       kind: Backend
       name: aws-knowledge
   validation:

@@ -38,7 +38,7 @@ spec:
             - type: Exact
               name: x-ai-eg-model
               value: meta-llama/Llama-3.1-8B-Instruct
-            - type: Exact  # This demonstrates how to configure complex header matching rule such as API key auth for a particular model.
+            - type: Exact # This demonstrates how to configure complex header matching rule such as API key auth for a particular model.
               name: Authorization
               value: sk-abcdefghijklmnopqrstuvwxyz
         - headers:

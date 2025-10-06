@@ -261,7 +261,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -320,7 +320,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -378,7 +378,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -436,7 +436,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -477,7 +477,7 @@ static_resources:
       load_assignment:
         cluster_name: testupstream-azure
         endpoints:
-          - priority: 0  # Primary.
+          - priority: 0 # Primary.
             lb_endpoints:
               - endpoint:
                   address:
@@ -488,7 +488,7 @@ static_resources:
                   filter_metadata:
                     aigateway.envoy.io:
                       per_route_rule_backend_name: "always-failing-backend"
-          - priority: 1  # Secondary.
+          - priority: 1 # Secondary.
             lb_endpoints:
               - endpoint:
                   address:
@@ -505,7 +505,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -547,18 +547,18 @@ static_resources:
       load_assignment:
         cluster_name: aws_bedrock
         endpoints:
-          - priority: 0  # Primary.
+          - priority: 0 # Primary.
             lb_endpoints:
               - endpoint:
                   address:
                     socket_address:
                       address: 127.0.0.1
-                      port_value: 1067  # Speaks TLS.
+                      port_value: 1067 # Speaks TLS.
                 metadata:
                   filter_metadata:
                     aigateway.envoy.io:
                       per_route_rule_backend_name: "always-failing-backend"
-          - priority: 1  # Secondary.
+          - priority: 1 # Secondary.
             lb_endpoints:
               - endpoint:
                   hostname: bedrock-runtime.us-east-1.amazonaws.com
@@ -582,7 +582,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -641,7 +641,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -699,7 +699,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -740,18 +740,18 @@ static_resources:
       load_assignment:
         cluster_name: openai
         endpoints:
-          - priority: 0  # Primary.
+          - priority: 0 # Primary.
             lb_endpoints:
               - endpoint:
                   address:
                     socket_address:
                       address: 127.0.0.1
-                      port_value: 1067  # Speaks TLS.
+                      port_value: 1067 # Speaks TLS.
                 metadata:
                   filter_metadata:
                     aigateway.envoy.io:
                       per_route_rule_backend_name: "always-failing-backend"
-          - priority: 1  # Secondary.
+          - priority: 1 # Secondary.
             lb_endpoints:
               - endpoint:
                   hostname: api.openai.com
@@ -774,7 +774,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -815,24 +815,24 @@ static_resources:
       load_assignment:
         cluster_name: azure_openai
         endpoints:
-          - priority: 0  # Primary.
+          - priority: 0 # Primary.
             lb_endpoints:
               - endpoint:
                   address:
                     socket_address:
                       address: 127.0.0.1
-                      port_value: 1067  # Speaks TLS.
+                      port_value: 1067 # Speaks TLS.
                 metadata:
                   filter_metadata:
                     aigateway.envoy.io:
                       per_route_rule_backend_name: "always-failing-backend"
-          - priority: 1  # Secondary.
+          - priority: 1 # Secondary.
             lb_endpoints:
               - endpoint:
-                  hostname: <azure_resource_name>.openai.azure.com   # Replace with your azure resource name
+                  hostname: <azure_resource_name>.openai.azure.com # Replace with your azure resource name
                   address:
                     socket_address:
-                      address: <azure_resource_name>.openai.azure.com   # Replace with your azure resource name
+                      address: <azure_resource_name>.openai.azure.com # Replace with your azure resource name
                       port_value: 443
                 metadata:
                   filter_metadata:
@@ -857,7 +857,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -921,7 +921,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -985,7 +985,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -1049,7 +1049,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -1113,7 +1113,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:

@@ -33,16 +33,16 @@ prompt: |
   IMPORTANT: Print the full JSON response so it can be validated in the test output.
 
 extensions:
-- name: mcp_gateway
-  type: streamable_http
-  uri: http://127.0.0.1:1975/mcp
+  - name: mcp_gateway
+    type: streamable_http
+    uri: http://127.0.0.1:1975/mcp
 
 parameters:
-- key: flight_date
-  input_type: string
-  requirement: required
-  description: flight date in MM/DD/YYYY format
-  default: "01/10/2025"
+  - key: flight_date
+    input_type: string
+    requirement: required
+    description: flight date in MM/DD/YYYY format
+    default: "01/10/2025"
 
 settings:
   goose_provider: ollama

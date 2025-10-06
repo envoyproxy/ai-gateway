@@ -11,13 +11,13 @@ metadata:
   namespace: default
 spec:
   parentRefs:
-  - name: gateway
+    - name: gateway
   rules:
-  - matches:
-    - path:
-        type: PathPrefix
-        value: /v1/chat/completions
-    backendRefs:
-    - group: inference.networking.x-k8s.io
-      kind: InferencePool
-      name: my-inference-pool
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /v1/chat/completions
+      backendRefs:
+        - group: inference.networking.x-k8s.io
+          kind: InferencePool
+          name: my-inference-pool

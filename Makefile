@@ -47,7 +47,7 @@ help:
 # This runs all necessary steps to prepare for a commit.
 .PHONY: precommit
 precommit: ## Run all necessary steps to prepare for a commit.
-precommit: tidy codespell apigen apidoc format lint editorconfig yamllint helm-test
+precommit: tidy codespell apigen apidoc format lint editorconfig helm-test
 
 .PHONY: lint
 lint: ## This runs the linter, formatter, and tidy on the codebase.
@@ -60,11 +60,6 @@ CODESPELL_IGNORE_WORDS := ".codespell.ignorewords"
 codespell: $(CODESPELL) ## Spell check the codebase.
 	@echo "spell => ./..."
 	@$(CODESPELL) --skip $(CODESPELL_SKIP) --ignore-words $(CODESPELL_IGNORE_WORDS)
-
-.PHONY: yamllint
-yamllint: $(YAMLLINT) ## Lint yaml files.
-	@echo "yamllint => ./..."
-	@$(YAMLLINT) --config-file=.yamllint $$(git ls-files :*.yml :*.yaml | xargs -L1 dirname | sort -u)
 
 # Some IDEs like Goland place `.go` files in the `.idea` directory when using code templates. Using a
 # git command to find the files ensures that only relevant files are formatted and that git-ignored
@@ -80,6 +75,8 @@ format: ## Format the codebase.
 	@$(GO_TOOL) gci write -s standard -s default -s "prefix(github.com/envoyproxy/ai-gateway)" $(GO_FILES)
 	@echo "licenses => **"
 	@$(GO_TOOL) license-eye header fix
+	@echo "prettier => **.{yaml,yml}"
+	@$(GO_TOOL) prettier --write '**/*.{yaml,yml}'
 
 # This runs go mod tidy on every module.
 .PHONY: tidy

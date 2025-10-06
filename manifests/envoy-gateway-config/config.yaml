@@ -66,3 +66,4 @@ data:
         redis:
           url: redis.redis-system.svc.cluster.local:6379
 ---
+

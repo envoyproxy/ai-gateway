@@ -33,7 +33,7 @@ services:
   phoenix:
     image: arizephoenix/phoenix:latest
     container_name: phoenix
-    profiles: ["phoenix"]  # Only start when explicitly requested
+    profiles: ["phoenix"] # Only start when explicitly requested
     ports:
       - "6006:6006"
     environment:
@@ -44,12 +44,12 @@ services:
     image: alpine/ollama
     container_name: ollama-pull
     environment:
-      OLLAMA_HOST: localhost:11434  # intentionally not 127.0.0.1
+      OLLAMA_HOST: localhost:11434 # intentionally not 127.0.0.1
     env_file:
       - ../../.env.ollama
     entrypoint: sh
     command: -c 'env | grep _MODEL | cut -d= -f2 | xargs -I{} ollama pull {}'
-    extra_hosts:  # send localhost traffic to the docker host, e.g. your laptop
+    extra_hosts: # send localhost traffic to the docker host, e.g. your laptop
       - "localhost:host-gateway"
 
   # aigw is the Envoy AI Gateway CLI a.k.a standalone mode.
@@ -81,9 +81,9 @@ services:
       - source: mcp-config
         target: /etc/aigw/mcp-servers.json
     ports:
-      - "1975:1975"  # OpenAI compatible endpoint at /v1, MCP server at /mcp
-      - "1064:1064"  # Admin server: /metrics (Prometheus) and /health endpoints
-    extra_hosts:  # localhost:host-gateway trick doesn't work with aigw
+      - "1975:1975" # OpenAI compatible endpoint at /v1, MCP server at /mcp
+      - "1064:1064" # Admin server: /metrics (Prometheus) and /health endpoints
+    extra_hosts: # localhost:host-gateway trick doesn't work with aigw
       - "host.docker.internal:host-gateway"
     command: ["run", "--mcp-config", "/etc/aigw/mcp-servers.json"]
 

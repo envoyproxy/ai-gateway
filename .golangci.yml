@@ -96,7 +96,7 @@ linters:
         path: api
       - linters:
           - staticcheck
-        text: 'SA1019:'
+        text: "SA1019:"
       - linters:
           - bodyclose
         path: test/e2e
