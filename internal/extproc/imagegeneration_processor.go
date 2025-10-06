@@ -7,6 +7,7 @@ package extproc
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -164,7 +165,7 @@ type imageGenerationProcessorUpstreamFilter struct {
 	requestHeaders         map[string]string
 	responseHeaders        map[string]string
 	responseEncoding       string
-	modelNameOverride      string
+	modelNameOverride      internalapi.ModelNameOverride
 	backendName            string
 	handler                backendauth.Handler
 	headerMutator          *headermutator.HeaderMutator
@@ -188,7 +189,7 @@ type imageGenerationProcessorUpstreamFilter struct {
 func (i *imageGenerationProcessorUpstreamFilter) selectTranslator(out filterapi.VersionedAPISchema) error {
 	switch out.Name {
 	case filterapi.APISchemaOpenAI:
-		i.translator = translator.NewImageGenerationOpenAIToOpenAITranslator(out.Version, i.modelNameOverride)
+		i.translator = translator.NewImageGenerationOpenAIToOpenAITranslator(out.Version, i.modelNameOverride, i.span)
 	case filterapi.APISchemaAWSBedrock:
 		// i.translator = translator.NewImageGenerationOpenAIToAWSBedrockTranslator(i.modelNameOverride)
 		i.translator = nil // Placeholder
@@ -213,12 +214,12 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessRequestHeaders(ctx conte
 
 	// Start tracking metrics for this request.
 	i.metrics.StartRequest(i.requestHeaders)
-	// For image generation we generally expect request and response model to match.
-	// If a backend override occurs, response model may be updated downstream via headers but we keep
-	// metrics consistent with the selected model header.
-	m := i.requestHeaders[i.config.modelNameHeaderKey]
-	i.metrics.SetRequestModel(internalapi.RequestModel(m))
-	i.metrics.SetResponseModel(internalapi.ResponseModel(m))
+	// Set the original model from the request body before any overrides
+	i.metrics.SetOriginalModel(internalapi.OriginalModel(i.originalRequestBody.Model))
+	// Set the request model for metrics from the original model or override if applied.
+	reqModel := cmp.Or(i.requestHeaders[i.config.modelNameHeaderKey], string(i.originalRequestBody.Model))
+	i.metrics.SetRequestModel(internalapi.RequestModel(reqModel))
+	i.metrics.SetResponseModel(internalapi.ResponseModel(reqModel))
 
 	// We force the body mutation in the following cases:
 	// * The request is a retry request because the body mutation might have happened the previous iteration.
@@ -470,7 +471,9 @@ func (i *imageGenerationProcessorUpstreamFilter) SetBackend(ctx context.Context,
 	i.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
 	// Sync header with backend model so header-derived labels/CEL use the actual model.
 	if i.modelNameOverride != "" {
-		i.requestHeaders[i.config.modelNameHeaderKey] = i.modelNameOverride
+		i.requestHeaders[i.config.modelNameHeaderKey] = string(i.modelNameOverride)
+		// Update metrics with the overridden model
+		i.metrics.SetRequestModel(internalapi.RequestModel(i.modelNameOverride))
 	}
 	i.originalRequestBody = rp.originalRequestBody
 	i.originalRequestBodyRaw = rp.originalRequestBodyRaw
