@@ -15,6 +15,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -179,8 +180,23 @@ func (s *session) streamNotifications(ctx context.Context, w http.ResponseWriter
 	//
 	// TODO: no idea exactly why this is necessary. Goose shouldn't block on the first event.
 
-	heartbeatTicker := time.NewTicker(1 * time.Second)
-	defer heartbeatTicker.Stop()
+	var (
+		heartbeats        <-chan time.Time
+		heartbeatTicker   *time.Ticker
+		heartbeatInterval = s.getHeartbeatInterval()
+	)
+	if heartbeatInterval > 0 {
+		heartbeatTicker = time.NewTicker(heartbeatInterval)
+		defer heartbeatTicker.Stop()
+		heartbeats = heartbeatTicker.C
+	} else {
+		heartbeats = make(chan time.Time) // never ticks
+	}
+
+	// Eagerly send an initial heartbeat event to unblock Goose
+	heartBeatEvent := &sseEvent{event: "message", messages: []jsonrpc.Message{newHeartBeatPingMessage()}}
+	heartBeatEvent.writeAndMaybeFlush(w)
+
 	for {
 		select {
 		case event, ok := <-backendMsgs:
@@ -208,7 +224,12 @@ func (s *session) streamNotifications(ctx context.Context, w http.ResponseWriter
 				s.proxy.recordResponse(ctx, _msg)
 			}
 			event.writeAndMaybeFlush(w)
-		case <-heartbeatTicker.C:
+			// Reset the heartbeat ticker so that the next heartbeat will be sent after the full interval.
+			// This avoids sending heartbeats too frequently when there are events.
+			if heartbeatTicker != nil {
+				heartbeatTicker.Reset(heartbeatInterval)
+			}
+		case <-heartbeats:
 			heartBeatEvent := &sseEvent{event: "message", messages: []jsonrpc.Message{newHeartBeatPingMessage()}}
 			heartBeatEvent.writeAndMaybeFlush(w)
 		case <-ctx.Done():
@@ -216,6 +237,27 @@ func (s *session) streamNotifications(ctx context.Context, w http.ResponseWriter
 			return ctx.Err()
 		}
 	}
+}
+
+// defaultHeartbeatInterval is the default heartbeat interval if the MCP_HEARTBEAT_INTERVAL environment variable is not set or invalid.
+// This is set as a variable and not a constant to let the tests modify it.
+var defaultHeartbeatInterval = 1 * time.Minute
+
+// getHeartbeatInterval returns the heartbeat interval configured via the MCP_HEARTBEAT_INTERVAL environment variable.
+// If the environment variable is not set or invalid, it returns the default value of 1 minute.
+// This value is intentionally hidden under an environment variable as it is unclear if it is generally useful.
+func (s *session) getHeartbeatInterval() time.Duration {
+	heartbeatIntervalStr := os.Getenv("MCP_PROXY_HEARTBEAT_INTERVAL")
+	if heartbeatIntervalStr == "" {
+		return defaultHeartbeatInterval
+	}
+	heartbeatInterval, err := time.ParseDuration(heartbeatIntervalStr)
+	if err != nil {
+		s.proxy.l.Error("failed to parse HEARTBEAT_INTERVAL environment variable",
+			slog.String("error", err.Error()))
+		return defaultHeartbeatInterval
+	}
+	return heartbeatInterval
 }
 
 // sendToAllBackends sends an HTTP request to all backends in this session and returns a channel that streams
