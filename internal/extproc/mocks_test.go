@@ -407,6 +407,9 @@ type mockImageGenerationMetrics struct {
 }
 
 func (m *mockImageGenerationMetrics) StartRequest(map[string]string) {}
+func (m *mockImageGenerationMetrics) SetOriginalModel(originalModel string) {
+	m.model = originalModel
+}
 func (m *mockImageGenerationMetrics) SetRequestModel(requestModel string) {
 	m.model = requestModel
 }
