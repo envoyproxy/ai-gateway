@@ -37,6 +37,7 @@ import (
 var (
 	errSessionNotFound = errors.New("session not found")
 	errBackendNotFound = errors.New("backend not found")
+	errInvalidToolName = errors.New("invalid tool name")
 )
 
 func (m *MCPProxy) serveGET(w http.ResponseWriter, r *http.Request) {
@@ -341,7 +342,7 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 
 func errorType(err error) metrics.MCPErrorType {
 	switch {
-	case errors.Is(err, errBackendNotFound) || errors.Is(err, errSessionNotFound):
+	case errors.Is(err, errBackendNotFound) || errors.Is(err, errSessionNotFound) || errors.Is(err, errInvalidToolName):
 		return metrics.MCPErrorInvalidParam
 	case err != nil:
 		return metrics.MCPErrorInternal
@@ -506,6 +507,20 @@ func (m *MCPProxy) handleToolCallRequest(ctx context.Context, s *session, w http
 		onErrorResponse(w, http.StatusNotFound, fmt.Sprintf("unknown backend %s", backendName))
 		return fmt.Errorf("%w: unknown backend %s", errBackendNotFound, backendName)
 	}
+
+	// Validate that the tool is whitelisted for this route
+	route := m.routes[s.route]
+	if route == nil {
+		// This should never happen as the route must have been validated when the session is created.
+		onErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("route not found: %s", s.route))
+		return fmt.Errorf("route not found: %s", s.route)
+	}
+	selector := route.toolSelectors[backendName]
+	if selector != nil && !selector.allows(toolName) {
+		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid tool name: %s", toolName))
+		return fmt.Errorf("%w: %s", errInvalidToolName, toolName)
+	}
+
 	cse := s.getCompositeSessionEntry(backendName)
 	if cse == nil {
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("no MCP session found for backend %s", backendName))
