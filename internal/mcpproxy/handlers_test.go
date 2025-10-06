@@ -47,6 +47,9 @@ func newTestMCPProxyWithTracer(t tracingapi.MCPTracer) *MCPProxy {
 			backendListenerAddr: "http://test-backend",
 			routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
 				"test-route": {
+					toolSelectors: map[filterapi.MCPBackendName]*toolSelector{
+						"backend1": {include: map[string]struct{}{"test-tool": {}}},
+					},
 					backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
 						"backend1": {Name: "backend1", Path: "/mcp"},
 						"backend2": {Name: "backend2", Path: "/"},
@@ -276,14 +279,14 @@ func TestServePOST_JSONRPCRequest(t *testing.T) {
 		},
 		{
 			method:           "tools/list",
-			upstreamResponse: `{"jsonrpc":"2.0","id":"1","result":{"tools":[{"name":"my-tool"}]}}`,
+			upstreamResponse: `{"jsonrpc":"2.0","id":"1","result":{"tools":[{"name":"my-tool"},{"name":"test-tool"}]}}`,
 			params:           &mcp.ListToolsParams{},
 			expStatusCode:    200,
 			validate: func(t *testing.T, raw json.RawMessage) {
 				var result mcp.ListToolsResult
 				require.NoError(t, json.Unmarshal(raw, &result))
 				require.Len(t, result.Tools, 1)
-				require.Equal(t, "backend1__my-tool", result.Tools[0].Name)
+				require.Equal(t, "backend1__test-tool", result.Tools[0].Name)
 			},
 		},
 		{
@@ -508,10 +511,11 @@ func TestServePOST_ToolsCallRequest(t *testing.T) {
 		wantBackend string
 		wantStatus  int
 	}{
-		{route: "test-route", name: "backend1", tool: "backend1__test-tool", wantBackend: "backend1", wantStatus: http.StatusOK},
-		{route: "test-route", name: "backend2", tool: "backend2__test-tool", wantBackend: "backend2", wantStatus: http.StatusOK},
-		{route: "test-route-another", name: "backend3", tool: "backend3__test-tool", wantBackend: "backend3", wantStatus: http.StatusOK},
+		{name: "backend1", route: "test-route", tool: "backend1__test-tool", wantBackend: "backend1", wantStatus: http.StatusOK},
+		{name: "backend2", route: "test-route", tool: "backend2__test-tool", wantBackend: "backend2", wantStatus: http.StatusOK},
+		{name: "backend3", route: "test-route-another", tool: "backend3__test-tool", wantBackend: "backend3", wantStatus: http.StatusOK},
 		{name: "test-route-another", tool: "unknown__test-tool", wantBackend: "unknown", wantStatus: http.StatusNotFound},
+		{name: "backend1-not-whitelisted", route: "test-route", tool: "backend1__custom-tool", wantBackend: "backend1", wantStatus: http.StatusBadRequest},
 	}
 
 	for _, tt := range tests {
