@@ -47,7 +47,7 @@ func newTestMCPProxyWithTracer(t tracingapi.MCPTracer) *MCPProxy {
 			backendListenerAddr: "http://test-backend",
 			routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
 				"test-route": {
-					toolSelectors: map[filterapi.MCPBackendName]*nameSelector{
+					toolSelectors: map[filterapi.MCPBackendName]*toolSelector{
 						"backend1": {include: map[string]struct{}{"test-tool": {}}},
 					},
 					backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
