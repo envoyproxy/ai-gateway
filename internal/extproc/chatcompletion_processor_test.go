@@ -100,9 +100,8 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
-		const modelKey = "x-ai-gateway-model-key"
 		p := &chatCompletionProcessorRouterFilter{
-			config:         &processorConfig{modelNameHeaderKey: modelKey},
+			config:         &processorConfig{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
 			tracer:         tracing.NoopChatCompletionTracer{},
@@ -116,7 +115,7 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 		require.NotNil(t, re.RequestBody)
 		setHeaders := re.RequestBody.GetResponse().GetHeaderMutation().SetHeaders
 		require.Len(t, setHeaders, 2)
-		require.Equal(t, modelKey, setHeaders[0].Header.Key)
+		require.Equal(t, internalapi.ModelNameHeaderKeyDefault, setHeaders[0].Header.Key)
 		require.Equal(t, "some-model", string(setHeaders[0].Header.RawValue))
 		require.Equal(t, "x-ai-eg-original-path", setHeaders[1].Header.Key)
 		require.Equal(t, "/foo", string(setHeaders[1].Header.RawValue))
@@ -124,12 +123,11 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 
 	t.Run("span creation", func(t *testing.T) {
 		headers := map[string]string{":path": "/v1/chat/completions"}
-		const modelKey = "x-ai-gateway-model-key"
 		span := &testotel.MockSpan{}
 		mockTracerInstance := &mockTracer{returnedSpan: span}
 
 		p := &chatCompletionProcessorRouterFilter{
-			config:         &processorConfig{modelNameHeaderKey: modelKey},
+			config:         &processorConfig{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
 			tracer:         mockTracerInstance,
@@ -158,10 +156,8 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 	t.Run("ok_stream_without_include_usage", func(t *testing.T) {
 		for _, opt := range []*openai.StreamOptions{nil, {IncludeUsage: false}} {
 			headers := map[string]string{":path": "/foo"}
-			const modelKey = "x-ai-gateway-model-key"
 			p := &chatCompletionProcessorRouterFilter{
 				config: &processorConfig{
-					modelNameHeaderKey: modelKey,
 					// Ensure that the stream_options.include_usage be forced to true.
 					requestCosts: []processorConfigRequestCost{{}},
 				},
@@ -276,8 +272,6 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 			metrics:    mm,
 			stream:     true,
 			config: &processorConfig{
-				metadataNamespace:  "ai_gateway_llm_ns",
-				modelNameHeaderKey: "x-aigw-model",
 				requestCosts: []processorConfigRequestCost{
 					{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"}},
 					{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeInputToken, MetadataKey: "input_token_usage"}},
@@ -291,7 +285,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 					},
 				},
 			},
-			requestHeaders:    map[string]string{"x-aigw-model": "ai_gateway_llm"},
+			requestHeaders:    map[string]string{internalapi.ModelNameHeaderKeyDefault: "ai_gateway_llm"},
 			responseHeaders:   map[string]string{":status": "200"},
 			backendName:       "some_backend",
 			modelNameOverride: "ai_gateway_llm",
@@ -306,16 +300,16 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 
 		md := res.DynamicMetadata
 		require.NotNil(t, md)
-		require.Equal(t, float64(123), md.Fields["ai_gateway_llm_ns"].
+		require.Equal(t, float64(123), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
 			GetStructValue().Fields["output_token_usage"].GetNumberValue())
-		require.Equal(t, float64(1), md.Fields["ai_gateway_llm_ns"].
+		require.Equal(t, float64(1), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
 			GetStructValue().Fields["input_token_usage"].GetNumberValue())
-		require.Equal(t, float64(54321), md.Fields["ai_gateway_llm_ns"].
+		require.Equal(t, float64(54321), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
 			GetStructValue().Fields["cel_int"].GetNumberValue())
-		require.Equal(t, float64(9999), md.Fields["ai_gateway_llm_ns"].
+		require.Equal(t, float64(9999), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
 			GetStructValue().Fields["cel_uint"].GetNumberValue())
-		require.Equal(t, "ai_gateway_llm", md.Fields["ai_gateway_llm_ns"].GetStructValue().Fields["model_name_override"].GetStringValue())
-		require.Equal(t, "some_backend", md.Fields["ai_gateway_llm_ns"].GetStructValue().Fields["backend_name"].GetStringValue())
+		require.Equal(t, "ai_gateway_llm", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["model_name_override"].GetStringValue())
+		require.Equal(t, "some_backend", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["backend_name"].GetStringValue())
 	})
 
 	// Verify we record failure for non-2xx responses and do it exactly once (defer suppressed).
@@ -407,13 +401,10 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend(t *testing.T) {
 }
 
 func Test_chatCompletionProcessorUpstreamFilter_SetBackend_Success(t *testing.T) {
-	const modelKey = internalapi.ModelNameHeaderKeyDefault
-	headers := map[string]string{":path": "/foo", modelKey: "some-model"}
+	headers := map[string]string{":path": "/foo", internalapi.ModelNameHeaderKeyDefault: "some-model"}
 	mm := &mockChatCompletionMetrics{}
 	p := &chatCompletionProcessorUpstreamFilter{
-		config: &processorConfig{
-			modelNameHeaderKey: modelKey,
-		},
+		config:         &processorConfig{},
 		requestHeaders: headers,
 		logger:         slog.Default(),
 		metrics:        mm,
@@ -428,13 +419,12 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend_Success(t *testing.T)
 	}, nil, rp)
 	require.NoError(t, err)
 	mm.RequireSelectedBackend(t, "openai")
-	require.Equal(t, "ai_gateway_llm", p.requestHeaders[modelKey])
+	require.Equal(t, "ai_gateway_llm", p.requestHeaders[internalapi.ModelNameHeaderKeyDefault])
 	require.True(t, p.stream)
 	require.NotNil(t, p.translator)
 }
 
 func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
-	const modelKey = "x-ai-gateway-model-key"
 	for _, tc := range []struct {
 		name                       string
 		stream, forcedIncludeUsage bool
@@ -445,16 +435,14 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Run("translator error", func(t *testing.T) {
-				headers := map[string]string{":path": "/foo", modelKey: "some-model"}
+				headers := map[string]string{":path": "/foo", internalapi.ModelNameHeaderKeyDefault: "some-model"}
 				someBody := bodyFromModel(t, "some-model", tc.stream, nil)
 				var body openai.ChatCompletionRequest
 				require.NoError(t, json.Unmarshal(someBody, &body))
 				tr := mockTranslator{t: t, retErr: errors.New("test error"), expRequestBody: &body}
 				mm := &mockChatCompletionMetrics{}
 				p := &chatCompletionProcessorUpstreamFilter{
-					config: &processorConfig{
-						modelNameHeaderKey: modelKey,
-					},
+					config:                 &processorConfig{},
 					requestHeaders:         headers,
 					logger:                 slog.Default(),
 					metrics:                mm,
@@ -473,7 +461,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 			})
 			t.Run("ok", func(t *testing.T) {
 				someBody := bodyFromModel(t, "some-model", tc.stream, nil)
-				headers := map[string]string{":path": "/foo", modelKey: "some-model"}
+				headers := map[string]string{":path": "/foo", internalapi.ModelNameHeaderKeyDefault: "some-model"}
 				headerMut := &extprocv3.HeaderMutation{
 					SetHeaders: []*corev3.HeaderValueOption{{Header: &corev3.HeaderValue{Key: "foo", RawValue: []byte("bar")}}},
 				}
@@ -484,10 +472,13 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				if tc.stream && tc.forcedIncludeUsage {
 					expBody.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
 				}
-				mt := mockTranslator{t: t, expRequestBody: &expBody, retHeaderMutation: headerMut, retBodyMutation: bodyMut, expForceRequestBodyMutation: tc.forcedIncludeUsage}
+				mt := mockTranslator{
+					t: t, expRequestBody: &expBody, retHeaderMutation: headerMut,
+					retBodyMutation: bodyMut, expForceRequestBodyMutation: tc.forcedIncludeUsage,
+				}
 				mm := &mockChatCompletionMetrics{}
 				p := &chatCompletionProcessorUpstreamFilter{
-					config:                         &processorConfig{modelNameHeaderKey: modelKey},
+					config:                         &processorConfig{},
 					requestHeaders:                 headers,
 					logger:                         slog.Default(),
 					metrics:                        mm,
@@ -541,18 +532,17 @@ func Test_chatCompletionProcessorUpstreamFilter_MergeWithTokenLatencyMetadata(t 
 	t.Run("empty metadata", func(t *testing.T) {
 		mm := &mockChatCompletionMetrics{}
 		mt := &mockTranslator{}
-		ns := "ai_gateway_llm_ns"
 		p := &chatCompletionProcessorUpstreamFilter{
 			translator: mt,
 			logger:     slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 			metrics:    mm,
 			stream:     true,
-			config:     &processorConfig{metadataNamespace: ns},
+			config:     &processorConfig{},
 		}
 		metadata := &structpb.Struct{Fields: map[string]*structpb.Value{}}
 		p.mergeWithTokenLatencyMetadata(metadata)
 
-		val, ok := metadata.Fields[ns]
+		val, ok := metadata.Fields[internalapi.AIGatewayFilterMetadataNamespace]
 		require.True(t, ok)
 
 		inner := val.GetStructValue()
@@ -563,13 +553,12 @@ func Test_chatCompletionProcessorUpstreamFilter_MergeWithTokenLatencyMetadata(t 
 	t.Run("existing metadata", func(t *testing.T) {
 		mm := &mockChatCompletionMetrics{}
 		mt := &mockTranslator{}
-		ns := "ai_gateway_llm_ns"
 		p := &chatCompletionProcessorUpstreamFilter{
 			translator: mt,
 			logger:     slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 			metrics:    mm,
 			stream:     true,
-			config:     &processorConfig{metadataNamespace: ns},
+			config:     &processorConfig{},
 		}
 		existingInner := &structpb.Struct{Fields: map[string]*structpb.Value{
 			"tokenCost":        {Kind: &structpb.Value_NumberValue{NumberValue: float64(200)}},
@@ -577,11 +566,11 @@ func Test_chatCompletionProcessorUpstreamFilter_MergeWithTokenLatencyMetadata(t 
 			"outputTokenUsage": {Kind: &structpb.Value_NumberValue{NumberValue: float64(400)}},
 		}}
 		metadata := &structpb.Struct{Fields: map[string]*structpb.Value{
-			ns: structpb.NewStructValue(existingInner),
+			internalapi.AIGatewayFilterMetadataNamespace: structpb.NewStructValue(existingInner),
 		}}
 		p.mergeWithTokenLatencyMetadata(metadata)
 
-		val, ok := metadata.Fields[ns]
+		val, ok := metadata.Fields[internalapi.AIGatewayFilterMetadataNamespace]
 		require.True(t, ok)
 		inner := val.GetStructValue()
 		require.NotNil(t, inner)
@@ -612,7 +601,7 @@ func TestChatCompletionsProcessorRouterFilter_ProcessResponseHeaders_ProcessResp
 				translator: &mockTranslator{t: t, expHeaders: map[string]string{}},
 				logger:     slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 				metrics:    &mockChatCompletionMetrics{},
-				config:     &processorConfig{metadataNamespace: ""},
+				config:     &processorConfig{},
 			},
 		}
 		resp, err := p.ProcessResponseHeaders(t.Context(), &corev3.HeaderMap{Headers: []*corev3.HeaderValue{}})
@@ -653,7 +642,7 @@ func TestChatCompletionProcessorRouterFilter_ProcessResponseBody_SpanHandling(t 
 				translator:      mt,
 				logger:          slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 				metrics:         &mockChatCompletionMetrics{},
-				config:          &processorConfig{metadataNamespace: ""},
+				config:          &processorConfig{},
 				span:            span,
 			},
 		}
@@ -674,7 +663,7 @@ func TestChatCompletionProcessorRouterFilter_ProcessResponseBody_SpanHandling(t 
 				translator:      &mockTranslator{t: t},
 				logger:          slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 				metrics:         &mockChatCompletionMetrics{},
-				config:          &processorConfig{metadataNamespace: ""},
+				config:          &processorConfig{},
 				span:            span,
 			},
 		}
@@ -707,7 +696,7 @@ func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestor
 			onRetry:                true,
 			metrics:                &mockChatCompletionMetrics{},
 			logger:                 slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
-			config:                 &processorConfig{metadataNamespace: ""},
+			config:                 &processorConfig{},
 			translator:             &mockTranslator{t: t, expForceRequestBodyMutation: true, expRequestBody: &body},
 			originalRequestBody:    &body,
 			originalRequestBodyRaw: raw,
@@ -732,7 +721,7 @@ func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestor
 			onRetry:                true, // not a retry, so should restore.
 			metrics:                &mockChatCompletionMetrics{},
 			logger:                 slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
-			config:                 &processorConfig{metadataNamespace: ""},
+			config:                 &processorConfig{},
 			translator:             &mockTranslator{t: t, expForceRequestBodyMutation: true, expRequestBody: &body},
 			originalRequestBody:    &body,
 			originalRequestBodyRaw: raw,
@@ -759,7 +748,7 @@ func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestor
 			headerMutator:          headermutator.NewHeaderMutator(nil, originalHeaders),
 			metrics:                &mockChatCompletionMetrics{},
 			logger:                 slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
-			config:                 &processorConfig{metadataNamespace: ""},
+			config:                 &processorConfig{},
 			translator:             &mockTranslator{t: t, expForceRequestBodyMutation: true, expRequestBody: &body},
 			originalRequestBody:    &body,
 			originalRequestBodyRaw: raw,
@@ -777,13 +766,12 @@ func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestor
 }
 
 func Test_ProcessRequestHeaders_SetsRequestModel(t *testing.T) {
-	const modelKey = internalapi.ModelNameHeaderKeyDefault
-	headers := map[string]string{":path": "/v1/chat/completions", modelKey: "header-model"}
+	headers := map[string]string{":path": "/v1/chat/completions", internalapi.ModelNameHeaderKeyDefault: "header-model"}
 	body := openai.ChatCompletionRequest{Model: "body-model"}
 	raw, _ := json.Marshal(body)
 	mm := &mockChatCompletionMetrics{}
 	p := &chatCompletionProcessorUpstreamFilter{
-		config:                 &processorConfig{modelNameHeaderKey: modelKey},
+		config:                 &processorConfig{},
 		requestHeaders:         headers,
 		logger:                 slog.Default(),
 		metrics:                mm,

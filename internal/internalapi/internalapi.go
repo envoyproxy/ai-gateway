@@ -227,3 +227,10 @@ type RequestModel = string
 // request to the "gpt-5-nano" model results in a plain text attribute of the
 // latest model: "gen_ai.response.model" -> "gpt-5-nano-2025-08-07"
 type ResponseModel = string
+
+// AIGatewayFilterMetadataNamespace is the namespace used for the filter metadata related to AI Gateway.
+//
+// For example, token usage, input/output tokens, and request costs are stored in this namespace.
+// Aliased from aigv1a1.AIGatewayFilterMetadataNamespace to avoid making ExtProc directly depend
+// on the control plane API which is not a concern of ExtProc.
+const AIGatewayFilterMetadataNamespace = aigv1a1.AIGatewayFilterMetadataNamespace
