@@ -294,7 +294,7 @@ func requireExtProc(t testing.TB, out io.Writer, bin, config string, env []strin
 				}
 				t.Setenv(parts[0], parts[1])
 			}
-			err := mainlib.Main(t.Context(), args, os.Stdout)
+			err := mainlib.Main(t.Context(), args, out)
 			if err != nil {
 				panic(err)
 			}
