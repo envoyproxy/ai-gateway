@@ -25,6 +25,9 @@ type imageGeneration struct {
 type ImageGenerationMetrics interface {
 	// StartRequest initializes timing for a new request.
 	StartRequest(headers map[string]string)
+	// SetOriginalModel sets the original model from the incoming request body before any virtualization applies.
+	// This is usually called after parsing the request body. Example: dall-e-3
+	SetOriginalModel(originalModel internalapi.OriginalModel)
 	// SetRequestModel sets the request model name.
 	SetRequestModel(requestModel internalapi.RequestModel)
 	// SetResponseModel sets the response model name.
@@ -51,6 +54,11 @@ func NewImageGeneration(meter metric.Meter, requestHeaderLabelMapping map[string
 // StartRequest initializes timing for a new request.
 func (i *imageGeneration) StartRequest(headers map[string]string) {
 	i.baseMetrics.StartRequest(headers)
+}
+
+// SetOriginalModel sets the original model from the incoming request body before any virtualization applies.
+func (i *imageGeneration) SetOriginalModel(originalModel internalapi.OriginalModel) {
+	i.baseMetrics.SetOriginalModel(originalModel)
 }
 
 // SetRequestModel sets the request model for the request.
