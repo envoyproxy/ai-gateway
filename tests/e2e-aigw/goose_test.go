@@ -92,13 +92,16 @@ func validateFlightSearchGooseResponse(t *testing.T, result string) (retry bool)
 	}
 
 	// kiwiFlightSearchResult represents the expected structure of flight search results.
+	//
+	// Note: use any type for fields since we only care about presence and count here.
+	// This will help reduce flaky test failures due to unexpected types like Number vs String for Price.
 	type kiwiFlightSearchResult struct {
-		Airline       string `json:"airline"`
-		FlightNumber  string `json:"flight_number"`
-		DepartureTime string `json:"departure_time"`
-		ArrivalTime   string `json:"arrival_time"`
-		Duration      string `json:"duration"`
-		Price         string `json:"price"`
+		Airline       any `json:"airline"`
+		FlightNumber  any `json:"flight_number"`
+		DepartureTime any `json:"departure_time"`
+		ArrivalTime   any `json:"arrival_time"`
+		Duration      any `json:"duration"`
+		Price         any `json:"price"`
 	}
 
 	var flights []kiwiFlightSearchResult
