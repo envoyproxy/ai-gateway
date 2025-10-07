@@ -234,6 +234,7 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 			}
 			err = m.handleSetLoggingLevel(ctx, s, w, msg, p, span)
 		case "ping":
+			// Ping is intentionally not traced as it's a lightweight health check.
 			err = m.handlePing(ctx, w, msg)
 		case "prompts/list":
 			p := &mcp.ListPromptsParams{}
