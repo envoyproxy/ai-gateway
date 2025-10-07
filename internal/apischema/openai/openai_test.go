@@ -2228,7 +2228,7 @@ func TestUsage(t *testing.T) {
 
 func TestChatCompletionNamedToolChoice_MarshalUnmarshal(t *testing.T) {
 	original := ChatCompletionNamedToolChoice{
-		Type: ToolChoiceTypeFunction,
+		Type: ToolTypeFunction,
 		Function: ChatCompletionNamedToolChoiceFunction{
 			Name: "my_func",
 		},
@@ -2257,7 +2257,7 @@ func TestChatCompletionToolChoiceUnion_MarshalUnmarshal(t *testing.T) {
 
 	// Test with ChatCompletionNamedToolChoice value
 	unionObj := ChatCompletionToolChoiceUnion{Value: ChatCompletionNamedToolChoice{
-		Type:     ToolChoiceTypeFunction,
+		Type:     ToolTypeFunction,
 		Function: ChatCompletionNamedToolChoiceFunction{Name: "my_func"},
 	}}
 	dataObj, err := json.Marshal(unionObj)

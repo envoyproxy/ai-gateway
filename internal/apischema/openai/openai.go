@@ -994,17 +994,6 @@ type Tool struct {
 	Function *FunctionDefinition `json:"function,omitempty"`
 }
 
-// ToolChoice represents the choice of tool.
-type ToolChoice struct {
-	Type     ToolType     `json:"type"`
-	Function ToolFunction `json:"function,omitempty"`
-}
-
-// ToolFunction represents the function to call.
-type ToolFunction struct {
-	Name string `json:"name"`
-}
-
 // ToolChoiceType represents the type of tool choice.
 type ToolChoiceType string
 
@@ -1051,7 +1040,7 @@ func (c *ChatCompletionToolChoiceUnion) UnmarshalJSON(data []byte) error {
 // ChatCompletionNamedToolChoice specifies a tool the model should use. Use to force the model to call a specific function.
 type ChatCompletionNamedToolChoice struct {
 	// Type is the type of the tool. Currently, only `function` is supported.
-	Type ToolChoiceType `json:"type"`
+	Type ToolType `json:"type"`
 	// Function specifies the function to call.
 	Function ChatCompletionNamedToolChoiceFunction `json:"function"`
 }

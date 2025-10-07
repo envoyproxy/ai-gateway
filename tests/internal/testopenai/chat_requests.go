@@ -353,7 +353,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 		},
 		ToolChoice: &openai.ChatCompletionToolChoiceUnion{
 			Value: openai.ChatCompletionNamedToolChoice{
-				Type: openai.ToolChoiceTypeFunction,
+				Type: openai.ToolTypeFunction,
 				Function: openai.ChatCompletionNamedToolChoiceFunction{
 					Name: "generate_image",
 				},

@@ -921,7 +921,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 		{
 			name: "specific tool choice by name",
 			openAIReq: &openai.ChatCompletionRequest{
-				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: openai.ToolChoice{Type: "function", Function: openai.ToolFunction{Name: "my_func"}}},
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: openai.ChatCompletionNamedToolChoice{Type: "function", Function: openai.ChatCompletionNamedToolChoiceFunction{Name: "my_func"}}},
 				Tools:      openaiTestTool,
 			},
 			expectedTools: anthropicTestTool,

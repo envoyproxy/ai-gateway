@@ -556,7 +556,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						},
 					},
 				},
-				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: &openai.ChatCompletionToolChoiceUnion{Value: "required"}},
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "required"},
 			},
 			output: awsbedrock.ConverseInput{
 				InferenceConfig: &awsbedrock.InferenceConfiguration{},
@@ -663,9 +663,9 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 					},
 				},
 				ToolChoice: &openai.ChatCompletionToolChoiceUnion{
-					Value: openai.ToolChoice{
+					Value: openai.ChatCompletionNamedToolChoice{
 						Type: openai.ToolType("function"),
-						Function: openai.ToolFunction{
+						Function: openai.ChatCompletionNamedToolChoiceFunction{
 							Name: "my_function",
 						},
 					},
@@ -695,7 +695,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 					},
 					ToolChoice: &awsbedrock.ToolChoice{
 						Tool: &awsbedrock.SpecificToolChoice{
-							Name: ptr.To("function"),
+							Name: ptr.To("my_function"),
 						},
 					},
 				},
