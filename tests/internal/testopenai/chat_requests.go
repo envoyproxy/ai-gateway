@@ -62,7 +62,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 				},
 			},
 		},
-		ToolChoice: &openai.ChatCompletionToolChoice{Value: "auto"},
+		ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
 	},
 	CassetteChatMultimodal: {
 		Model: openai.ModelGPT5Nano,
@@ -188,7 +188,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 				},
 			},
 		},
-		ToolChoice:        &openai.ChatCompletionToolChoice{Value: "auto"},
+		ToolChoice:        &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
 		ParallelToolCalls: ptr.To(true),
 	},
 	CassetteChatBadRequest: {
@@ -351,7 +351,7 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 				},
 			},
 		},
-		ToolChoice: &openai.ChatCompletionToolChoice{
+		ToolChoice: &openai.ChatCompletionToolChoiceUnion{
 			Value: openai.ChatCompletionNamedToolChoice{
 				Type: openai.ToolChoiceTypeFunction,
 				Function: openai.ChatCompletionNamedToolChoiceFunction{
