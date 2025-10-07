@@ -26,15 +26,17 @@ span, err := testopeninference.GetChatSpan(t.Context(), os.Stdout, testopenai.Ca
 ## Recording New Spans
 
 You can record new spans for the following scenarios:
-* A new [testopenai cassette](../testopenai/requests.go) exists, and you want
+
+- A new [testopenai cassette](../testopenai/requests.go) exists, and you want
   to backfill the span for it [spans](spans).
-* You have made changes to [openai_proxy.py](openai_proxy.py), or its
+- You have made changes to [openai_proxy.py](openai_proxy.py), or its
   [requirements.txt](requirements.txt) and deleted all JSON in the
   [spans](spans) directory for re-recording.
-* You are unsure about a specific span in the [spans](spans) directory, so you
+- You are unsure about a specific span in the [spans](spans) directory, so you
   deleted it to re-record it.
 
 In any of these cases, you can backfill any missing spans like this:
+
 ```bash
 RECORD_SPANS=true go test -v -run TestGetAllSpans
 ```
@@ -47,9 +49,9 @@ instrumentation.
 
 This package bridges two open source communities:
 
-* Envoy AI Gateway, who are experts in GenAI routing and policy, and typically
+- Envoy AI Gateway, who are experts in GenAI routing and policy, and typically
   program in Go and C++.
-* OpenInference, who are experts in GenAI observability and typically program
+- OpenInference, who are experts in GenAI observability and typically program
   in Python and JavaScript.
 
 As this project grows from dozens to hundreds of request shapes, it is

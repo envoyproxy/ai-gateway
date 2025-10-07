@@ -24,7 +24,6 @@ The EAIG MVP features targeted application developers with an egress focus, whil
 
 To make EAIG a comprehensive solution for all AI traffic management, this proposal is to extend EAIG to support GAIE.
 
-
 ## Expanding Project Scope
 
 By evolving EAIG's focus beyond routing traffic to external AI providers (egress) to include internal Kubernetes LLM deployments (ingress) through GAIE implementation we position EAIG as a comprehensive traffic management solution for all AI traffic.
@@ -53,12 +52,11 @@ This integration ensures a single, unified configuration API layer for both ingr
 
 ## Implementation Notes
 
-* `BackendRef` pointing to an `InferencePool` will leverage the endpoint picker mechanism described in [GAIE PR #445](https://github.com/kubernetes-sigs/gateway-api-inference-extension/pull/445), using dynamic metadata-based load balancing policies.
+- `BackendRef` pointing to an `InferencePool` will leverage the endpoint picker mechanism described in [GAIE PR #445](https://github.com/kubernetes-sigs/gateway-api-inference-extension/pull/445), using dynamic metadata-based load balancing policies.
 
-* The existing abstraction where extproc resides will remain unchanged, keeping it independent of Kubernetes/control plane specifics while ensuring the `filterapi` layer supports GAIE load balancing policies.
+- The existing abstraction where extproc resides will remain unchanged, keeping it independent of Kubernetes/control plane specifics while ensuring the `filterapi` layer supports GAIE load balancing policies.
 
-* As a future optimization, we can conditionally disable translation and buffering when an `AIGatewayRoute` references only one `InferencePool`-based `AIServiceBackend` without translation requirements, aligning with GAIE's reference implementation.
-
+- As a future optimization, we can conditionally disable translation and buffering when an `AIGatewayRoute` references only one `InferencePool`-based `AIServiceBackend` without translation requirements, aligning with GAIE's reference implementation.
 
 ## Options considered
 

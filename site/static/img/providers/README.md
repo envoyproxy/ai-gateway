@@ -3,6 +3,7 @@
 This directory contains logo images for all supported LLM providers.
 
 ## File Naming Convention
+
 Lowercase and dash.
 For example `azure-openai.svg` or just `openai.svg`
 
@@ -12,7 +13,6 @@ For example `azure-openai.svg` or just `openai.svg`
 - **Size**: Optimal at 100x100px or similar square dimensions
 - **Background**: Transparent background preferred
 - **Quality**: Clean, scalable logos that look good at any size
-
 
 ## Adding New Logos to the Page
 

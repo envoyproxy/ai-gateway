@@ -1,12 +1,13 @@
 # Envoy AI Gateway
+
 Envoy AI Gateway is an open source project for using [Envoy Gateway](https://github.com/envoyproxy/gateway) to handle request traffic from application clients to Generative AI services.
 
 ## Usage
 
 When using Envoy AI Gateway, we refer to a two-tier gateway pattern. **The Tier One Gateway** functions as a centralized entry point, and the **Tier Two Gateway** handles ingress traffic to a self-hosted model serving cluster.
 
-+ The **Tier One Gateway** handles authentication, top-level routing, and global rate limiting
-+ The **Tier Two Gateway** provides fine-grained control over self-hosted model access, with endpoint picker support for LLM inference optimization.
+- The **Tier One Gateway** handles authentication, top-level routing, and global rate limiting
+- The **Tier Two Gateway** provides fine-grained control over self-hosted model access, with endpoint picker support for LLM inference optimization.
 
 ![](site/blog/images/aigw-ref.drawio.png)
 
@@ -85,17 +86,16 @@ Envoy AI Gateway supports a wide range of AI providers, making it easy to integr
   </table>
 </div>
 
-
 ## Documentation
 
-* [Blog](https://aigateway.envoyproxy.io/blog) introducing Envoy AI Gateway.
-* [Documentation](https://aigateway.envoyproxy.io/docs) for Envoy AI Gateway.
-* [Quickstart](https://aigateway.envoyproxy.io/docs/getting-started/) to use Envoy AI Gateway in a few simple steps.
-* [Concepts](https://aigateway.envoyproxy.io/docs/concepts/) to understand the architecture and resources of Envoy AI Gateway.
+- [Blog](https://aigateway.envoyproxy.io/blog) introducing Envoy AI Gateway.
+- [Documentation](https://aigateway.envoyproxy.io/docs) for Envoy AI Gateway.
+- [Quickstart](https://aigateway.envoyproxy.io/docs/getting-started/) to use Envoy AI Gateway in a few simple steps.
+- [Concepts](https://aigateway.envoyproxy.io/docs/concepts/) to understand the architecture and resources of Envoy AI Gateway.
 
 ## Contact
 
-* Slack: Join the [Envoy Slack workspace][] if you're not already a member. Otherwise, use the
+- Slack: Join the [Envoy Slack workspace][] if you're not already a member. Otherwise, use the
   [Envoy AI Gateway channel][] to start collaborating with the community.
 
 ## Get Involved
@@ -112,7 +112,6 @@ which includes information on how to build and test the project.
 ## Background
 
 The proposal of using Envoy Gateway as a [Cloud Native LLM Gateway][Cloud Native LLM Gateway] inspired the initiation of this project.
-
 
 [meeting]: https://docs.google.com/document/d/10e1sfsF-3G3Du5nBHGmLjXw5GVMqqCvFDqp_O65B0_w/edit?tab=t.0
 [Envoy Slack workspace]: https://communityinviter.com/apps/envoyproxy/envoy
