@@ -4,7 +4,6 @@ title: Installation
 sidebar_position: 1
 ---
 
-
 To install the `aigw` CLI, run the following command (This may take a while):
 
 ```shell
@@ -16,9 +15,11 @@ go install github.com/envoyproxy/ai-gateway/cmd/aigw@main
 Make sure that the `$(go env GOPATH)/bin` directory is in your `PATH` environment variable.
 
 For example, you can add the following line to your shell profile (e.g., `~/.bashrc`, `~/.zshrc`, etc.):
+
 ```sh
 export PATH=$PATH:$(go env GOPATH)/bin
 ```
+
 :::
 
 Now, you can check if the installation was successful by running the following command:
@@ -56,4 +57,3 @@ The following sections provide more information about each of the CLI commands:
 
 - [aigw run](./run.md): Run the AI Gateway locally for a given configuration.
 - [aigw translate](./translate.md): Translate AI Gateway resources to Envoy Gateway and Kubernetes resources.
-

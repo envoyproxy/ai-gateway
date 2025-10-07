@@ -21,19 +21,23 @@ Make sure you have the following tools installed:
 Run these commands to verify your tools are properly installed:
 
 Verify kubectl installation:
+
 ```shell
 kubectl version --client
 ```
 
 Verify helm installation:
+
 ```shell
 helm version
 ```
 
 Verify curl installation:
+
 ```shell
 curl --version
 ```
+
 :::
 
 ## Kubernetes Cluster
@@ -50,11 +54,13 @@ You need a running Kubernetes cluster with your kubeconfig properly configured. 
 If you already have a Kubernetes cluster, ensure your kubeconfig is properly configured to access it.
 
 Verify your cluster meets the version requirements by running:
+
 ```shell
 kubectl version --output=json
 ```
 
 The server version in the output should show version 1.29 or higher:
+
 ```json
 {
   "serverVersion": {
@@ -94,6 +100,7 @@ The output should show that the Kubernetes control plane is running.
 :::tip
 
 Docker Desktop's Kubernetes is a great choice for local development as it:
+
 - Comes pre-installed with Docker Desktop
 - Runs locally on your machine
 - Integrates well with Docker Desktop's UI
@@ -107,11 +114,13 @@ Docker Desktop's Kubernetes is a great choice for local development as it:
 If you don't have a Kubernetes cluster, you can quickly create a local one using [kind](https://kind.sigs.k8s.io/).
 
 First, install kind if you haven't already (on macOS with Homebrew):
+
 ```shell
 brew install kind
 ```
 
 Then create a cluster:
+
 ```shell
 kind create cluster
 ```
@@ -124,6 +133,7 @@ kind create cluster
 :::warning Important
 
 Ensure you're using a clean Envoy Gateway deployment. If you have an existing Envoy Gateway installation with custom configurations, it may conflict with AI Gateway's requirements. We recommend:
+
 - Using a fresh Kubernetes cluster, or
 - Uninstalling any existing Envoy Gateway deployments before proceeding:
   ```shell
@@ -143,9 +153,9 @@ Envoy AI Gateway is built on top of Envoy Gateway. Install it using Helm and wai
 
 ```shell
 helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \
-    --version v1.3.1 \
-    --namespace envoy-gateway-system \
-    --create-namespace
+  --version v1.3.1 \
+  --namespace envoy-gateway-system \
+  --create-namespace
 
 kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
 ```

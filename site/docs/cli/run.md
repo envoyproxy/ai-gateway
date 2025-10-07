@@ -44,7 +44,7 @@ For example, use `qwen2.5:0.5b` model to route to Ollama, assuming Ollama is run
 
 ```shell
 curl -H "Content-Type: application/json" -XPOST http://localhost:1975/v1/chat/completions \
-    -d '{"model": "qwen2.5:0.5b","messages": [{"role": "user", "content": "Say this is a test!"}]}'
+  -d '{"model": "qwen2.5:0.5b","messages": [{"role": "user", "content": "Say this is a test!"}]}'
 ```
 
 ### Supported Environment Variables
@@ -56,7 +56,7 @@ The following environment variables are compatible with the OpenAI SDK:
 When `OPENAI_API_KEY` is set, the following environment variables are read:
 
 | Variable          | Required | Example                     | Description                                          |
-|-------------------|----------|-----------------------------|------------------------------------------------------|
+| ----------------- | -------- | --------------------------- | ---------------------------------------------------- |
 | `OPENAI_API_KEY`  | Yes      | `sk-proj-...`               | API key for authentication (use "unused" for Ollama) |
 | `OPENAI_BASE_URL` | No       | `https://api.openai.com/v1` | Base URL of your OpenAI-compatible backend           |
 
@@ -64,18 +64,18 @@ When `OPENAI_API_KEY` is set, the following environment variables are read:
 
 When `AZURE_OPENAI_API_KEY` is set, the following environment variables are read:
 
-| Variable                  | Required | Example                                   | Description                                                    |
-|---------------------------|----------|-------------------------------------------|----------------------------------------------------------------|
-| `AZURE_OPENAI_ENDPOINT`   | Yes      | `https://example.openai.azure.com`        | Your Azure endpoint, including the resource                    |
-| `AZURE_OPENAI_API_KEY`    | Yes      | `abc123...`                               | API key for authentication                                     |
-| `OPENAI_API_VERSION`      | Yes      | `2024-12-01-preview`                      | Azure OpenAI API version                                       |
+| Variable                | Required | Example                            | Description                                 |
+| ----------------------- | -------- | ---------------------------------- | ------------------------------------------- |
+| `AZURE_OPENAI_ENDPOINT` | Yes      | `https://example.openai.azure.com` | Your Azure endpoint, including the resource |
+| `AZURE_OPENAI_API_KEY`  | Yes      | `abc123...`                        | API key for authentication                  |
+| `OPENAI_API_VERSION`    | Yes      | `2024-12-01-preview`               | Azure OpenAI API version                    |
 
 **Optional headers (both OpenAI and Azure OpenAI):**
 
-| Variable             | Example      | Description                                                                                           |
-|----------------------|--------------|-------------------------------------------------------------------------------------------------------|
-| `OPENAI_ORG_ID`      | `org-...`    | Organization ID - adds `OpenAI-Organization` request header for billing and access control            |
-| `OPENAI_PROJECT_ID`  | `proj_...`   | Project ID - adds `OpenAI-Project` request header for project-level billing and access control        |
+| Variable            | Example    | Description                                                                                    |
+| ------------------- | ---------- | ---------------------------------------------------------------------------------------------- |
+| `OPENAI_ORG_ID`     | `org-...`  | Organization ID - adds `OpenAI-Organization` request header for billing and access control     |
+| `OPENAI_PROJECT_ID` | `proj_...` | Project ID - adds `OpenAI-Project` request header for project-level billing and access control |
 
 ## Custom Configuration
 
@@ -138,7 +138,7 @@ Now, the AI Gateway is running locally with the custom configuration serving at 
 
 ```shell
 curl -H "Content-Type: application/json" -XPOST http://localhost:1975/v1/chat/completions \
-    -d '{"model": "deepseek-r1:1.5b","messages": [{"role": "user", "content": "Say this is a test!"}]}'
+  -d '{"model": "deepseek-r1:1.5b","messages": [{"role": "user", "content": "Say this is a test!"}]}'
 ```
 
 ## MCP Configuration
@@ -201,6 +201,7 @@ The full endpoint URL for the MCP server, including protocol, hostname, and path
 HTTP headers to send with requests to the MCP server. Authorization headers with Bearer tokens are automatically extracted and injected as API keys.
 
 Example:
+
 ```json
 "headers": {
   "Authorization": "Bearer ${GITHUB_TOKEN}",
@@ -217,6 +218,7 @@ List of specific tool names to expose from this server. If not specified, all to
 This follows the same convention as [Gemini CLI's tool filtering](https://google-gemini.github.io/gemini-cli/docs/tools/mcp-server.html#optional).
 
 Example:
+
 ```json
 "includeTools": ["get_issue", "list_issues", "search_issues"]
 ```
@@ -248,6 +250,7 @@ For production deployments with advanced features like OAuth authentication, fin
 ### Admin Endpoints
 
 While running, `aigw` serves admin endpoints on port `1064` by default:
+
 - `/metrics`: Prometheus metrics endpoint for [LLM/AI metrics](../capabilities/observability/metrics.md)
 - `/health`: Health check endpoint that verifies the external processor is healthy
 
@@ -276,28 +279,29 @@ focused on retrieval and semantic analysis.
 
 - **[OTEL SDK][otel-env]**: OTLP exporter configuration that controls span
   and metrics export such as:
-    - `OTEL_EXPORTER_OTLP_ENDPOINT`: Collector endpoint (e.g., `http://phoenix:6006`)
-    - `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`: Override traces endpoint separately
-    - `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`: Override metrics endpoint separately
-    - `OTEL_TRACES_EXPORTER`: Traces exporter type (e.g., `console`, `otlp`, `none`)
-    - `OTEL_METRICS_EXPORTER`: Metrics exporter type (e.g., `console`, `otlp`, `none`)
-    - `OTEL_BSP_SCHEDULE_DELAY`: Batch span processor delay (default: 5000ms)
-    - `OTEL_METRIC_EXPORT_INTERVAL`: Metrics export interval (default: 60000ms)
+  - `OTEL_EXPORTER_OTLP_ENDPOINT`: Collector endpoint (e.g., `http://phoenix:6006`)
+  - `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`: Override traces endpoint separately
+  - `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`: Override metrics endpoint separately
+  - `OTEL_TRACES_EXPORTER`: Traces exporter type (e.g., `console`, `otlp`, `none`)
+  - `OTEL_METRICS_EXPORTER`: Metrics exporter type (e.g., `console`, `otlp`, `none`)
+  - `OTEL_BSP_SCHEDULE_DELAY`: Batch span processor delay (default: 5000ms)
+  - `OTEL_METRIC_EXPORT_INTERVAL`: Metrics export interval (default: 60000ms)
 
 - **[OpenInference][openinference-config]**: Control sensitive data redaction,
   such as below. There is [similar config][openinference-embeddings] for embeddings:
-    - `OPENINFERENCE_HIDE_INPUTS`: Hide input messages/prompts (default: `false`)
-    - `OPENINFERENCE_HIDE_OUTPUTS`: Hide output messages/completions (default: `false`)
-    - `OPENINFERENCE_HIDE_EMBEDDINGS_TEXT`: Hide embeddings input (default: `false`)
-    - `OPENINFERENCE_HIDE_EMBEDDINGS_VECTORS`: Hide embeddings output (default: `false`)
+  - `OPENINFERENCE_HIDE_INPUTS`: Hide input messages/prompts (default: `false`)
+  - `OPENINFERENCE_HIDE_OUTPUTS`: Hide output messages/completions (default: `false`)
+  - `OPENINFERENCE_HIDE_EMBEDDINGS_TEXT`: Hide embeddings input (default: `false`)
+  - `OPENINFERENCE_HIDE_EMBEDDINGS_VECTORS`: Hide embeddings output (default: `false`)
 
 - **Header Mapping**: Map HTTP request headers to span attributes and metric labels. See [Session Tracking][session-tracking] for more details.
-    - `OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES`: Example: `x-team-id:team.id,x-user-id:user.id`
-    - `OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES`: Example: `x-session-id:session.id,x-user-id:user.id`
+  - `OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES`: Example: `x-team-id:team.id,x-user-id:user.id`
+  - `OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES`: Example: `x-session-id:session.id,x-user-id:user.id`
 
 See [docker-compose-otel.yaml][docker-compose-otel.yaml] for a complete example configuration.
 
 ---
+
 [openinference]: https://github.com/Arize-ai/openinference/tree/main/spec
 [phoenix]: https://docs.arize.com/phoenix
 [otel-env]: https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/

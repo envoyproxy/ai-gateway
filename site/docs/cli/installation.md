@@ -43,9 +43,11 @@ go install ./cmd/aigw
 Make sure that the `$(go env GOPATH)/bin` directory is in your `PATH` environment variable.
 
 For example, you can add the following line to your shell profile (e.g., `~/.bashrc`, `~/.zshrc`, etc.):
+
 ```sh
 export PATH=$PATH:$(go env GOPATH)/bin
 ```
+
 :::
 
 Now, you can check if the installation was successful by running the following command:

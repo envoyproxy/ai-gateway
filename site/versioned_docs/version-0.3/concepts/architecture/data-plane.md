@@ -13,12 +13,15 @@ The data plane handles the actual request traffic, with the External Processor (
 The data plane consists of several key components:
 
 ### 1. Envoy Proxy
+
 The core proxy that handles all incoming traffic and integrates with:
+
 - External Processor for AI-specific processing
 - Rate Limit Service for token-based rate limiting
 - Various AI providers as backends
 
 ### 2. AI Gateway External Processor
+
 A specialized extension service of Envoy Proxy that handles AI-specific processing needs. It performs three main functions:
 
 1. **Request Processing**
@@ -38,7 +41,9 @@ A specialized extension service of Envoy Proxy that handles AI-specific processi
    - Manages provider-specific requirements
 
 ### 3. Rate Limit Service
+
 Handles token-based rate limiting by:
+
 - Tracking token usage across requests
 - Enforcing rate limits based on token consumption
 - Managing rate limit budgets
@@ -78,6 +83,7 @@ sequenceDiagram
 The data plane processes requests through several key steps:
 
 ### 1. Request Path
+
 1. **Routing**: Calculates the destination AI provider based on:
    - Request path
    - Headers
@@ -98,6 +104,7 @@ The data plane processes requests through several key steps:
    - Enforces rate limits based on configured budgets
 
 ### 2. Response Path
+
 1. **Response Transformation**:
    - Transforms provider response for client compatibility
    - Normalizes response format
@@ -112,5 +119,6 @@ The data plane processes requests through several key steps:
 ## Next Steps
 
 To learn more:
+
 - Explore the [System Architecture](./system-architecture.md)
 - Check out our [Getting Started](../../getting-started/index.md) guide for hands-on experience

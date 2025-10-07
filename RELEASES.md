@@ -20,10 +20,11 @@ This document focuses on compatibility concerns of those using Envoy AI Gateway.
 It is important to note that the support policy is subject to change at any time. The support policy is as follows:
 
 First of all, there are four areas of compatibility that we are concerned with:
-* [Using envoyproxy/ai-gateway as a Go package](#public-go-package).
-* [Deploying the Envoy AI Gateway controller through the Kubernetes Custom Resource Definition (CRD)](#Custom-Resource-Definitions).
-* [Upgrading the Envoy AI Gateway controller](#Upgrading-the-Envoy-AI-Gateway-controller).
-* [Envoy Gateway vs Envoy AI Gateway compatibility](#Envoy-Gateway-vs-Envoy-AI-Gateway-compatibility).
+
+- [Using envoyproxy/ai-gateway as a Go package](#public-go-package).
+- [Deploying the Envoy AI Gateway controller through the Kubernetes Custom Resource Definition (CRD)](#Custom-Resource-Definitions).
+- [Upgrading the Envoy AI Gateway controller](#Upgrading-the-Envoy-AI-Gateway-controller).
+- [Envoy Gateway vs Envoy AI Gateway compatibility](#Envoy-Gateway-vs-Envoy-AI-Gateway-compatibility).
 
 ### Public Go package
 
@@ -31,7 +32,7 @@ Since we do not envision this repository ends up as a transitive dependency, i.e
 
 ### Custom Resource Definitions
 
-The Custom Resource Definitions (CRDs) are defined in api/${version}/*.go files. The CRDs are versioned as v1alpha1, v1alpha2, etc.
+The Custom Resource Definitions (CRDs) are defined in api/${version}/\*.go files. The CRDs are versioned as v1alpha1, v1alpha2, etc.
 
 **For alpha versions**, we simply employ the same deprecation policy as the Go package. In other words, the APIs will be marked as deprecated in the version N and will be removed in the version N+2 but without any guarantee of migration path.
 
@@ -62,32 +63,34 @@ This section is for maintainers of the project. Let's say we are going to releas
 Each non-patch release should start with Release Candidate (RC) phase as follows:
 
 1. First, notify the community that we are going to cut the release candidate and therefore the main branch is frozen.
-  The main branch should only accept the bug fixes, the security fixes, and documentation changes.
-  The release candidate should always be cut from the main branch.
+   The main branch should only accept the bug fixes, the security fixes, and documentation changes.
+   The release candidate should always be cut from the main branch.
 
 2. Cut the request candidate tag from the main branch. The tag should be v0.50.0-rc1. Assuming the remote `origin` is the main envoyproxy/ai-gateway repository,
-  the command to cut the tag is:
-    ```
-    git fetch origin # make sure you have the latest main branch locally.
-    git tag v0.50.0-rc1 origin/main
-    git push origin v0.50.0-rc1
-    ```
+   the command to cut the tag is:
+
+   ```
+   git fetch origin # make sure you have the latest main branch locally.
+   git tag v0.50.0-rc1 origin/main
+   git push origin v0.50.0-rc1
+   ```
+
    Pushing a tag will trigger the pipeline to build the release candidate image and the helm chart tagged with the release candidate tag.
    The release candidate image will be available in the Docker Hub.
 
 3. The release candidate should be tested by the maintainers and the community. If there is any issue, the issue should be fixed in the main branch
-  and the new rc tag should be created. For example, if there is an issue in the release candidate v0.50.0-rc1, replace `v0.50.0-rc1` with `v0.50.0-rc2`
-  in the above command and repeat the process.
+   and the new rc tag should be created. For example, if there is an issue in the release candidate v0.50.0-rc1, replace `v0.50.0-rc1` with `v0.50.0-rc2`
+   in the above command and repeat the process.
 
 ### Release Phase
 
 1. Once the release candidate is stable, we will cut the release from the main branch, assuming that's exactly the same as the last release candidate.
-  The command to cut the release is exactly the same as the release candidate:
-    ```
-    git fetch origin # make sure you have the latest main branch locally.
-    git tag v0.50.0 origin/main
-    git push origin v0.50.0
-    ```
+   The command to cut the release is exactly the same as the release candidate:
+   ```
+   git fetch origin # make sure you have the latest main branch locally.
+   git tag v0.50.0 origin/main
+   git push origin v0.50.0
+   ```
    Pushing a tag will trigger the pipeline to build the release image and the helm chart tagged with the release tag.
    The release image will be available in the Docker Hub.
 2. The draft release note will be created in the GitHub repository after the pipeline is completed.
@@ -102,15 +105,15 @@ Each non-patch release should start with Release Candidate (RC) phase as follows
 2. Once the PR is merged, the maintainers will decide when to cut the patch release. There's no need to wait for multiple backports to cut the patch release, etc.
    Do not cut the tag until all CI passes on the release/v0.50 branch.
 3. The patch release should be cut from the `release/v0.50` branch. The command to cut the patch release is exactly the same as normal release:
-    ```
-    git fetch origin # make sure you have the latest release/v0.50 branch locally.
-    git tag v0.50.1 origin/release/v0.50
-    git push origin v0.50.1
-    ```
+   ```
+   git fetch origin # make sure you have the latest release/v0.50 branch locally.
+   git tag v0.50.1 origin/release/v0.50
+   git push origin v0.50.1
+   ```
    Pushing a tag will trigger the pipeline to build the patch release image and the helm chart tagged with the patch release tag.
    The patch release image will be available in the Docker Hub.
 4. The draft release note will be created in the GitHub repository after the pipeline is completed.
    Edit the release note nicely by hand to reflect the changes in the release.
 5. Update the documentation on the main branch to reflect the new version. This has the following items:
-   * Change `v0.50.0` to `v0.50.1` in site/versioned_docs/version-0.50 directory.
-   * Update the site/src/pages/release-notes.md to add the new release note.
+   - Change `v0.50.0` to `v0.50.1` in site/versioned_docs/version-0.50 directory.
+   - Update the site/src/pages/release-notes.md to add the new release note.

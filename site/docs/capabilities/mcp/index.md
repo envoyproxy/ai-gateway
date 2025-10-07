@@ -22,7 +22,7 @@ The MCP Gateway acts as a transparent proxy between MCP clients (AI agents like 
 ## Key Features
 
 | Feature                                | Description                                                                                                                                                                                                                                                         |
-|----------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Streamable HTTP Transport**          | Full support for MCP's streamable HTTP transport, aligning with the [June 2025 MCP spec](https://modelcontextprotocol.io/specification/2025-06-18).<br/>Efficient handling of stateful sessions and multi-part JSON-RPC messaging over persistent HTTP connections. |
 | **OAuth Authorization**                | Native enforcement of [OAuth authentication flows](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization) for AI agents and services bridging via MCP.                                                                                       |
 | **Server Multiplexing & Tool Routing** | Route tool calls to the right MCP backends, aggregating and filtering available tools based on gateway policy.<br/>Dynamically merge streaming notifications from multiple MCP servers into a unified interface.                                                    |
@@ -88,7 +88,7 @@ spec:
     - name: aigw-run
       kind: Gateway
       group: gateway.networking.k8s.io
-  path: "/mcp"  # Clients connect to http://gateway-address/mcp
+  path: "/mcp" # Clients connect to http://gateway-address/mcp
   backendRefs:
     - name: github
       kind: Backend
@@ -151,7 +151,7 @@ spec:
       path: "/mcp/x/issues/readonly"
       toolSelector:
         includeRegex:
-          - .*_issues?.*  # Matches get_issue, list_issues, etc.
+          - .*_issues?.* # Matches get_issue, list_issues, etc.
       securityPolicy:
         apiKey:
           secretRef:
@@ -212,6 +212,7 @@ spec:
 ```
 
 Clients will see all tools with prefixed names:
+
 - `github__get_issue`
 - `github__list_issues`
 - `context7__resolve-library-id`
