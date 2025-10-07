@@ -37,15 +37,11 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 )
 
-// translate implements subCmd[cmdTranslate]. This function reads the input files, collects the AI Gateway custom resources,
+// translate reads the input files, collects the AI Gateway custom resources,
 // translates them to Envoy Gateway and Kubernetes objects, and writes the translated objects to the output writer.
-func translate(ctx context.Context, cmd cmdTranslate, output, stderr io.Writer) error {
+func translate(ctx context.Context, paths []string, output, stderr io.Writer) error {
 	stderrLogger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{}))
-	if !cmd.Debug {
-		stderrLogger = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
-	}
-
-	yaml, err := readYamlsAsString(cmd.Paths)
+	yaml, err := readYamlsAsString(paths)
 	if err != nil {
 		return err
 	}

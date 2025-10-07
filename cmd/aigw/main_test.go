@@ -22,7 +22,6 @@ func Test_doMain(t *testing.T) {
 		name         string
 		args         []string
 		env          map[string]string
-		tf           translateFn
 		rf           runFn
 		hf           healthcheckFn
 		expOut       string
@@ -41,10 +40,6 @@ Flags:
 Commands:
   version
     Show version.
-
-  translate <path> ... [flags]
-    Translate yaml files containing AI Gateway resources to Envoy Gateway and
-    Kubernetes resources. The translated resources are written to stdout.
 
   run [<path>] [flags]
     Run the AI Gateway locally for given configuration.
@@ -72,42 +67,6 @@ Show version.
 Flags:
   -h, --help    Show context-sensitive help.
 `,
-		},
-		{
-			name: "translate",
-			args: []string{"translate", "path1", "path2", "--debug"},
-			tf: func(_ context.Context, c cmdTranslate, _, _ io.Writer) error {
-				cwd, err := os.Getwd()
-				require.NoError(t, err)
-				require.Equal(t, []string{cwd + "/path1", cwd + "/path2"}, c.Paths)
-				return nil
-			},
-		},
-		{
-			name: "translate no arg",
-			args: []string{"translate"},
-			tf:   func(_ context.Context, _ cmdTranslate, _, _ io.Writer) error { return nil },
-			// Looks like the kong library follows the "semantic exit code" as in
-			// https://github.com/square/exit?tab=readme-ov-file#about
-			expPanicCode: ptr.To(80),
-		},
-		{
-			name: "translate with help",
-			args: []string{"translate", "--help"},
-			expOut: `Usage: aigw translate <path> ... [flags]
-
-Translate yaml files containing AI Gateway resources to Envoy Gateway and
-Kubernetes resources. The translated resources are written to stdout.
-
-Arguments:
-  <path> ...    Paths to yaml files to translate.
-
-Flags:
-  -h, --help     Show context-sensitive help.
-
-      --debug    Enable debug logging emitted to stderr.
-`,
-			expPanicCode: ptr.To(0),
 		},
 		{
 			name:         "run no arg",
@@ -139,9 +98,8 @@ Flags:
       --debug                Enable debug logging emitted to stderr.
       --admin-port=1064      HTTP port for the admin server (serves /metrics and
                              /health endpoints).
-      --mcp-config=STRING    (Optional) Path to the file containing the list of
-                             MCP servers. When this is given, any other given
-                             config file is ignored.
+      --mcp-config=STRING    Path to MCP servers configuration file.
+      --mcp-json=STRING      JSON string of MCP servers configuration.
 `,
 			expPanicCode: ptr.To(0),
 		},
@@ -164,10 +122,10 @@ Flags:
 			out := &bytes.Buffer{}
 			if tt.expPanicCode != nil {
 				require.PanicsWithValue(t, *tt.expPanicCode, func() {
-					doMain(t.Context(), out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.tf, tt.rf, tt.hf)
+					doMain(t.Context(), out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.rf, tt.hf)
 				})
 			} else {
-				doMain(t.Context(), out, os.Stderr, tt.args, nil, tt.tf, tt.rf, tt.hf)
+				doMain(t.Context(), out, os.Stderr, tt.args, nil, tt.rf, tt.hf)
 			}
 			require.Equal(t, tt.expOut, out.String())
 		})

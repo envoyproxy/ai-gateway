@@ -13,6 +13,7 @@ your OpenAI-compatible backend. This happens when there is no configuration
 file and at least the `OPENAI_API_KEY` environment variable is set.
 
 Here are values we use for Ollama:
+
 - `OPENAI_API_KEY=unused` (Ollama does not require an API key)
 - `OPENAI_BASE_URL=http://localhost:11434/v1` (host.docker.internal in Docker)
 
@@ -20,6 +21,7 @@ Here are values we use for Ollama:
 
    Start Ollama on all interfaces, with a large context. This allows it to be
    addressable by Docker and handle large tasks, such as from [Goose][goose].
+
    ```bash
    OLLAMA_CONTEXT_LENGTH=131072 OLLAMA_HOST=0.0.0.0 ollama serve
    ```
@@ -27,6 +29,7 @@ Here are values we use for Ollama:
 2. **Run the example minimal stack**:
 
    `up` builds `aigw` from source and starts the stack, awaiting health checks.
+
    ```bash
    docker compose up --wait -d
    ```
@@ -35,25 +38,33 @@ Here are values we use for Ollama:
 
    The following services use `curl` to send requests to the AI Gateway CLI
    (aigw) which routes them to Ollama:
-
    - Chat completion:
      ```bash
      docker compose run --rm chat-completion
      ```
    -
    - Completion (legacy):
+
      ```bash
      docker compose run --rm completion
      ```
 
    - Embeddings:
+
      ```bash
      docker compose run --rm embeddings
      ```
 
+   - MCP (Model Context Protocol) tool call:
+     ```bash
+     docker compose run --rm mcp
+     ```
+     This calls the kiwi MCP server through aigw's MCP Gateway at `/mcp`.
+
 4. **Shutdown the example stack**:
 
    `down` stops the containers and removes the volumes used by the stack.
+
    ```bash
    docker compose down --remove-orphans
    ```
@@ -63,8 +74,9 @@ Here are values we use for Ollama:
 [docker-compose-otel.yaml](docker-compose-otel.yaml) includes OpenTelemetry
 metrics and tracing.
 
-All profiles below use at least these two Docker services:
-- **aigw** (port 1975): Envoy AI Gateway CLI (standalone mode) with OTEL tracing
+All profiles below use at least these Docker services:
+
+- **aigw** (port 1975): Envoy AI Gateway CLI with OpenAI endpoints at `/v1/*` and MCP endpoint at `/mcp`
 - **chat-completion**: OpenAI Python client instrumented with OpenTelemetry
 
 ### Prerequisites
@@ -73,6 +85,7 @@ All profiles below use at least these two Docker services:
 
    Start Ollama on all interfaces, with a large context. This allows it to be
    addressable by Docker and handle large tasks, such as from [Goose][goose].
+
    ```bash
    OLLAMA_CONTEXT_LENGTH=131072 OLLAMA_HOST=0.0.0.0 ollama serve
    ```
@@ -91,6 +104,7 @@ or when you set `COMPOSE_PROFILES=console`.
 
 This outputs traces and metrics to stdout/stderr. Useful for debugging without
 requiring any external services.
+
 </details>
 
 <details>
@@ -103,6 +117,7 @@ The `.env.otel.phoenix` file is already provided and will be used automatically
 when you set `COMPOSE_PROFILES=phoenix`. This also starts the Phoenix service.
 
 This configures:
+
 - OTLP endpoint to Phoenix on port 6006
 - Metrics disabled (Phoenix only supports traces)
 - Reduced batch delay for demo purposes
@@ -118,13 +133,15 @@ The `.env.otel.otel-tui` file is already provided and will be used automatically
 when you set `COMPOSE_PROFILES=otel-tui`. This also starts the otel-tui service.
 
 This configures the OTLP endpoint to otel-tui on port 4318.
+
 </details>
 
 ### Run the Stack
 
 1. **Start the services**:
+
    ```bash
-   COMPOSE_PROFILES=<profile> docker compose -f docker-compose-otel.yaml up --build --wait -d
+   COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml up --build --wait -d
    ```
 
    Where `<profile>` is:
@@ -133,9 +150,11 @@ This configures the OTLP endpoint to otel-tui on port 4318.
    - `phoenix` - Export to Phoenix (also starts Phoenix service)
 
 2. **Send test requests**:
+
    ```bash
-   COMPOSE_PROFILES=<profile> docker compose -f docker-compose-otel.yaml run --build --rm chat-completion
-   COMPOSE_PROFILES=<profile> docker compose -f docker-compose-otel.yaml run --build --rm create-embeddings
+   COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm chat-completion
+   COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm create-embeddings
+   COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm mcp
    ```
 
 3. **Check telemetry output**:
@@ -147,6 +166,7 @@ This configures the OTLP endpoint to otel-tui on port 4318.
    # View traces and metrics in aigw logs
    docker compose -f docker-compose-otel.yaml logs aigw | grep -E "(SpanContext|gen_ai)"
    ```
+
    </details>
 
    <details>
@@ -161,10 +181,11 @@ This configures the OTLP endpoint to otel-tui on port 4318.
    ```bash
    # Verify Phoenix is receiving traces
    docker compose -f docker-compose-otel.yaml logs phoenix | grep "POST /v1/traces"
-
+   
    # Open Phoenix UI
    open http://localhost:6006
    ```
+
    </details>
 
    <details>
@@ -173,12 +194,14 @@ This configures the OTLP endpoint to otel-tui on port 4318.
    ```bash
    # Show TUI in your current terminal session
    docker compose -f docker-compose-otel.yaml attach otel-tui
-
+   
    # Detach by pressing Ctrl+p -> Ctrl+q
    ```
+
    </details>
 
    **Access logs with GenAI fields** (always available):
+
    ```bash
    docker compose -f docker-compose-otel.yaml logs aigw | grep "genai_model_name"
    ```
@@ -192,10 +215,10 @@ docker compose -f docker-compose-otel.yaml down --remove-orphans
 ```
 
 ---
+
 [ollama]: https://ollama.com/
 [goose]: https://block.github.io/goose/
 [openinference]: https://github.com/Arize-ai/openinference/tree/main/spec
 [phoenix]: https://docs.arize.com/phoenix
 [otel-python]: https://opentelemetry.io/docs/zero-code/python/
 [otel-tui]: https://github.com/ymtdzzz/otel-tui
-

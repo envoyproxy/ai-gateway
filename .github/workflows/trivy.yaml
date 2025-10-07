@@ -5,7 +5,7 @@ on:
     branches:
       - "main"
   schedule:
-    - cron: '0 20 * * *'
+    - cron: "0 20 * * *"
 
 permissions:
   contents: read
@@ -13,7 +13,7 @@ permissions:
 jobs:
   image-scan:
     permissions:
-      contents: read  # Required for actions/checkout to fetch code
+      contents: read # Required for actions/checkout to fetch code
     name: Scan ${{ matrix.target.command_name }} Image
     runs-on: ubuntu-22.04
     strategy:
@@ -34,8 +34,8 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: docker.io/envoyproxy/ai-gateway-${{ matrix.target.command_name }}:${{ github.sha }}
-          format: 'table'
-          severity: 'CRITICAL,HIGH,MEDIUM,LOW'
-          vuln-type: 'os,library'
-          exit-code: '1'  # Fail workflow on detected vulnerabilities
-          ignore-unfixed: true  # Ignore unfixed vulnerabilities
+          format: "table"
+          severity: "CRITICAL,HIGH,MEDIUM,LOW"
+          vuln-type: "os,library"
+          exit-code: "1" # Fail workflow on detected vulnerabilities
+          ignore-unfixed: true # Ignore unfixed vulnerabilities

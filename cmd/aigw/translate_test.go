@@ -39,16 +39,11 @@ func Test_translate(t *testing.T) {
 			// The result should be the same as the input.
 			out: "testdata/translate_nonairesources.yaml",
 		},
-		{
-			name: "mcp",
-			in:   "testdata/translate_mcp.in.yaml",
-			out:  "testdata/translate_mcp.out.yaml",
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			buf := &bytes.Buffer{}
 			// Multiple files should be supported and duplicated resources should be deduplicated.
-			err := translate(t.Context(), cmdTranslate{Paths: []string{tc.in, tc.in}, Debug: true}, buf, os.Stderr)
+			err := translate(t.Context(), []string{tc.in, tc.in}, buf, os.Stderr)
 			require.NoError(t, err)
 			outBuf, err := os.ReadFile(tc.out)
 			require.NoError(t, err)

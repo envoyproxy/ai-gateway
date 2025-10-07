@@ -9,7 +9,7 @@ tags: [news, features]
 
 # Announcing Model Context Protocol Support in Envoy AI Gateway
 
-We’re excited to announce that the next release of Envoy AI Gateway will introduce  first-class support for [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), cementing Envoy AI Gateway (EAIGW)  as the universal gateway for modern production AI workloads.
+We’re excited to announce that the next release of Envoy AI Gateway will introduce first-class support for [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), cementing Envoy AI Gateway (EAIGW) as the universal gateway for modern production AI workloads.
 
 Envoy AI Gateway started in close collaboration with [Bloomberg](https://www.bloomberg.com/) and [Tetrate](https://tetrate.io/) to meet production-scale AI workload demands, combining real-world expertise and innovation from some of the industry’s largest adopters. Built upon the battle-tested [Envoy Proxy](https://www.envoyproxy.io/) data plane as the AI extension of Envoy Gateway, it is trusted for critical workloads by thousands of enterprises worldwide. EAIGW already provides unified LLM access, cost and quota enforcement, credential management, intelligent routing, resiliency, and robust observability for mission-critical AI traffic.
 
@@ -21,16 +21,16 @@ With the addition of MCP, we have brought these features to the communication be
 
 MCP is rapidly becoming the industry’s open standard for enabling AI agents to securely and flexibly connect to external tools and data sources. As the AI ecosystem shifts from monolithic models to agentic architectures, **building robust, policy-driven, and observable pathways between AI and the rest of the enterprise stack has never been more critical**. Integrating MCP directly into Envoy AI Gateway means:
 
-* **Seamless interoperability** between AI agents, tools, and context providers, whether they’re third-party cloud LLMs or internal enterprise services.
-* **Consistent security and governance**: The gateway can now apply fine-grained authentication, authorization, and observability over tool invocations and data access flowing through MCP.
-* **Accelerated developmen**t: With MCP supported natively, teams can adopt the latest agent-based AI flows **on their existing Envoy infrastructure without custom or glue code.**
+- **Seamless interoperability** between AI agents, tools, and context providers, whether they’re third-party cloud LLMs or internal enterprise services.
+- **Consistent security and governance**: The gateway can now apply fine-grained authentication, authorization, and observability over tool invocations and data access flowing through MCP.
+- **Accelerated developmen**t: With MCP supported natively, teams can adopt the latest agent-based AI flows **on their existing Envoy infrastructure without custom or glue code.**
 
 ## Key Features in the First Implementation
 
 The initial implementation aims for a reliable implementation of the latest version of the spec, covering the full spectrum of features, not only focusing on tool calling:
 
 | **Feature**                                              | **Description**                                                                                                                                                                                                                                                                                                                                                                                                                    |
-|----------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Streamable HTTP Transport**                            | Full support for MCP’s streamable HTTP transport, aligning with the [June 2025 MCP spec](https://modelcontextprotocol.io/specification/2025-06-18).<br/>Efficient handling of stateful sessions and multi-part JSON-RPC messaging over persistent HTTP connections.                                                                                                                                                                |
 | **OAuth Authorization**                                  | Native enforcement of [OAuth authentication flows](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization) for AI agents and services bridging via MCP, ensuring secure tool usage at scale.<br/>Backwards compatibility with the [previous version of the authorization spec](https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization) to maximize compatibility with existing agents. |
 | **MCP Server multiplexing, Tool Routing, and Filtering** | Route tool calls and notifications to the right MCP backends, aggregating and filtering available tools based on gateway policy.<br/>Dynamically aggregate, merge, and filter messages and streaming notifications from multiple MCP servers, so agents receive a unified, policy-governed interface to all available services.                                                                                                    |
@@ -45,9 +45,9 @@ Adding MCP support meant more than just passing bytes through the stack. Our app
 
 Key design decisions included:
 
-* **Minimal Architectural Complexity**: The implementation does not add any additional component/complexity to the existing Envoy AI Gateway’s architecture
-* **Fully leverages Envoy's networking stack**: The MCP proxy harnesses Envoy’s proven networking stack for connection management, load balancing, circuit breaking, rate-limiting, observability, etc.
-* **Decoupled Iteration Velocity**: The MCP Proxy is implemented as a lightweight Go server to keep pace with the rapidly evolving MCP specification, while still relying on Envoy for networking primitives.
+- **Minimal Architectural Complexity**: The implementation does not add any additional component/complexity to the existing Envoy AI Gateway’s architecture
+- **Fully leverages Envoy's networking stack**: The MCP proxy harnesses Envoy’s proven networking stack for connection management, load balancing, circuit breaking, rate-limiting, observability, etc.
+- **Decoupled Iteration Velocity**: The MCP Proxy is implemented as a lightweight Go server to keep pace with the rapidly evolving MCP specification, while still relying on Envoy for networking primitives.
 
 :::info
 You can find more details about the architecture and design decisions in the design document of the [MCP contribution pull request](https://github.com/envoyproxy/ai-gateway/pull/1260).
@@ -119,10 +119,10 @@ You can also use the new `MCPRoute` API, which will allow a more fine-grained co
 
 The following example defines a complete `MCPRoute` that shows how simple it is to configure:
 
-* MCP Server multiplexing.
-* MCP Authentication using OAuth.
-* Tool filtering.
-* MCP Server upstream authentication.
+- MCP Server multiplexing.
+- MCP Authentication using OAuth.
+- Tool filtering.
+- MCP Server upstream authentication.
 
 ```yaml
 apiVersion: aigateway.envoyproxy.io/v1alpha1
@@ -143,7 +143,7 @@ spec:
     - name: github
       kind: Backend
       group: gateway.envoyproxy.io
-      path: "/mcp/readonly"  # Use the radonly endpoint
+      path: "/mcp/readonly" # Use the radonly endpoint
       # Only expose certain tools
       toolSelector:
         includeRegex:

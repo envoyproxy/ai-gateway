@@ -28,8 +28,8 @@ static_resources:
                       "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
                       log_format:
                         json_format:
-                          used_token: "%DYNAMIC_METADATA(ai_gateway_llm_ns:used_token)%"
-                          some_cel: "%DYNAMIC_METADATA(ai_gateway_llm_ns:some_cel)%"
+                          used_token: "%DYNAMIC_METADATA(io.envoy.ai_gateway:used_token)%"
+                          some_cel: "%DYNAMIC_METADATA(io.envoy.ai_gateway:some_cel)%"
                 route_config:
                   virtual_hosts:
                     - name: local_route
@@ -47,7 +47,7 @@ static_resources:
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-model-name
+                              - name: x-ai-eg-model
                                 string_match:
                                   exact: us.meta.llama3-2-1b-instruct-v1:0
                           route:
@@ -56,7 +56,7 @@ static_resources:
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-model-name
+                              - name: x-ai-eg-model
                                 string_match:
                                   exact: us.anthropic.claude-3-5-sonnet-20240620-v1:0
                           route:
@@ -65,7 +65,7 @@ static_resources:
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-model-name
+                              - name: x-ai-eg-model
                                 string_match:
                                   exact: gpt-4o-mini
                           route:
@@ -74,7 +74,7 @@ static_resources:
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-model-name
+                              - name: x-ai-eg-model
                                 string_match:
                                   exact: text-embedding-3-small
                           route:
@@ -83,7 +83,7 @@ static_resources:
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-model-name
+                              - name: x-ai-eg-model
                                 string_match:
                                   exact: o1
                           route:
@@ -92,7 +92,7 @@ static_resources:
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-model-name
+                              - name: x-ai-eg-model
                                 string_match:
                                   exact: gemini-2.0-flash-lite
                           route:
@@ -101,7 +101,7 @@ static_resources:
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-model-name
+                              - name: x-ai-eg-model
                                 string_match:
                                   exact: gemini-embedding-001
                           route:
@@ -110,7 +110,7 @@ static_resources:
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-model-name
+                              - name: x-ai-eg-model
                                 string_match:
                                   exact: llama-3.1-8b-instant
                           route:
@@ -119,7 +119,7 @@ static_resources:
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-model-name
+                              - name: x-ai-eg-model
                                 string_match:
                                   exact: grok-3
                           route:
@@ -128,7 +128,7 @@ static_resources:
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-model-name
+                              - name: x-ai-eg-model
                                 string_match:
                                   exact: Meta-Llama-3.1-8B-Instruct
                           route:
@@ -137,7 +137,7 @@ static_resources:
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-model-name
+                              - name: x-ai-eg-model
                                 string_match:
                                   exact: E5-Mistral-7B-Instruct
                           route:
@@ -146,7 +146,7 @@ static_resources:
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-model-name
+                              - name: x-ai-eg-model
                                 string_match:
                                   exact: meta-llama/Meta-Llama-3-8B-Instruct
                           route:
@@ -155,7 +155,7 @@ static_resources:
                         - match:
                             prefix: "/"
                             headers:
-                              - name: x-model-name
+                              - name: x-ai-eg-model
                                 string_match:
                                   exact: BAAI/bge-base-en-v1.5
                           route:
@@ -226,7 +226,7 @@ static_resources:
                       metadataOptions:
                         receivingNamespaces:
                           untyped:
-                            - ai_gateway_llm_ns
+                            - io.envoy.ai_gateway
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -261,7 +261,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -286,7 +286,7 @@ static_resources:
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
-                      - ai_gateway_llm_ns
+                      - io.envoy.ai_gateway
             - name: envoy.filters.http.header_mutation
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
@@ -296,7 +296,7 @@ static_resources:
                         append_action: ADD_IF_ABSENT
                         header:
                           key: content-length
-                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
+                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -320,7 +320,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -344,7 +344,7 @@ static_resources:
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
-                      - ai_gateway_llm_ns
+                      - io.envoy.ai_gateway
             - name: envoy.filters.http.header_mutation
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
@@ -354,7 +354,7 @@ static_resources:
                         append_action: ADD_IF_ABSENT
                         header:
                           key: content-length
-                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
+                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -378,7 +378,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -402,7 +402,7 @@ static_resources:
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
-                      - ai_gateway_llm_ns
+                      - io.envoy.ai_gateway
             - name: envoy.filters.http.header_mutation
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
@@ -412,7 +412,7 @@ static_resources:
                         append_action: ADD_IF_ABSENT
                         header:
                           key: content-length
-                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
+                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -436,7 +436,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -460,7 +460,7 @@ static_resources:
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
-                      - ai_gateway_llm_ns
+                      - io.envoy.ai_gateway
             - name: envoy.filters.http.header_mutation
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
@@ -470,14 +470,14 @@ static_resources:
                         append_action: ADD_IF_ABSENT
                         header:
                           key: content-length
-                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
+                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
       load_assignment:
         cluster_name: testupstream-azure
         endpoints:
-          - priority: 0  # Primary.
+          - priority: 0 # Primary.
             lb_endpoints:
               - endpoint:
                   address:
@@ -488,7 +488,7 @@ static_resources:
                   filter_metadata:
                     aigateway.envoy.io:
                       per_route_rule_backend_name: "always-failing-backend"
-          - priority: 1  # Secondary.
+          - priority: 1 # Secondary.
             lb_endpoints:
               - endpoint:
                   address:
@@ -505,7 +505,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -530,7 +530,7 @@ static_resources:
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
-                      - ai_gateway_llm_ns
+                      - io.envoy.ai_gateway
             - name: envoy.filters.http.header_mutation
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
@@ -540,25 +540,25 @@ static_resources:
                         append_action: ADD_IF_ABSENT
                         header:
                           key: content-length
-                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
+                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
       load_assignment:
         cluster_name: aws_bedrock
         endpoints:
-          - priority: 0  # Primary.
+          - priority: 0 # Primary.
             lb_endpoints:
               - endpoint:
                   address:
                     socket_address:
                       address: 127.0.0.1
-                      port_value: 1067  # Speaks TLS.
+                      port_value: 1067 # Speaks TLS.
                 metadata:
                   filter_metadata:
                     aigateway.envoy.io:
                       per_route_rule_backend_name: "always-failing-backend"
-          - priority: 1  # Secondary.
+          - priority: 1 # Secondary.
             lb_endpoints:
               - endpoint:
                   hostname: bedrock-runtime.us-east-1.amazonaws.com
@@ -582,7 +582,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -606,7 +606,7 @@ static_resources:
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
-                      - ai_gateway_llm_ns
+                      - io.envoy.ai_gateway
             - name: envoy.filters.http.header_mutation
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
@@ -616,7 +616,7 @@ static_resources:
                         append_action: ADD_IF_ABSENT
                         header:
                           key: content-length
-                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
+                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -641,7 +641,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -665,7 +665,7 @@ static_resources:
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
-                      - ai_gateway_llm_ns
+                      - io.envoy.ai_gateway
             - name: envoy.filters.http.header_mutation
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
@@ -675,7 +675,7 @@ static_resources:
                         append_action: ADD_IF_ABSENT
                         header:
                           key: content-length
-                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
+                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -699,7 +699,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -723,7 +723,7 @@ static_resources:
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
-                      - ai_gateway_llm_ns
+                      - io.envoy.ai_gateway
             - name: envoy.filters.http.header_mutation
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
@@ -733,25 +733,25 @@ static_resources:
                         append_action: ADD_IF_ABSENT
                         header:
                           key: content-length
-                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
+                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
       load_assignment:
         cluster_name: openai
         endpoints:
-          - priority: 0  # Primary.
+          - priority: 0 # Primary.
             lb_endpoints:
               - endpoint:
                   address:
                     socket_address:
                       address: 127.0.0.1
-                      port_value: 1067  # Speaks TLS.
+                      port_value: 1067 # Speaks TLS.
                 metadata:
                   filter_metadata:
                     aigateway.envoy.io:
                       per_route_rule_backend_name: "always-failing-backend"
-          - priority: 1  # Secondary.
+          - priority: 1 # Secondary.
             lb_endpoints:
               - endpoint:
                   hostname: api.openai.com
@@ -774,7 +774,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -798,7 +798,7 @@ static_resources:
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
-                      - ai_gateway_llm_ns
+                      - io.envoy.ai_gateway
             - name: envoy.filters.http.header_mutation
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
@@ -808,31 +808,31 @@ static_resources:
                         append_action: ADD_IF_ABSENT
                         header:
                           key: content-length
-                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
+                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
       load_assignment:
         cluster_name: azure_openai
         endpoints:
-          - priority: 0  # Primary.
+          - priority: 0 # Primary.
             lb_endpoints:
               - endpoint:
                   address:
                     socket_address:
                       address: 127.0.0.1
-                      port_value: 1067  # Speaks TLS.
+                      port_value: 1067 # Speaks TLS.
                 metadata:
                   filter_metadata:
                     aigateway.envoy.io:
                       per_route_rule_backend_name: "always-failing-backend"
-          - priority: 1  # Secondary.
+          - priority: 1 # Secondary.
             lb_endpoints:
               - endpoint:
-                  hostname: <azure_resource_name>.openai.azure.com   # Replace with your azure resource name
+                  hostname: <azure_resource_name>.openai.azure.com # Replace with your azure resource name
                   address:
                     socket_address:
-                      address: <azure_resource_name>.openai.azure.com   # Replace with your azure resource name
+                      address: <azure_resource_name>.openai.azure.com # Replace with your azure resource name
                       port_value: 443
                 metadata:
                   filter_metadata:
@@ -857,7 +857,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -881,7 +881,7 @@ static_resources:
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
-                      - ai_gateway_llm_ns
+                      - io.envoy.ai_gateway
             - name: envoy.filters.http.header_mutation
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
@@ -891,7 +891,7 @@ static_resources:
                         append_action: ADD_IF_ABSENT
                         header:
                           key: content-length
-                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
+                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -921,7 +921,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -945,7 +945,7 @@ static_resources:
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
-                      - ai_gateway_llm_ns
+                      - io.envoy.ai_gateway
             - name: envoy.filters.http.header_mutation
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
@@ -955,7 +955,7 @@ static_resources:
                         append_action: ADD_IF_ABSENT
                         header:
                           key: content-length
-                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
+                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -985,7 +985,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -1009,7 +1009,7 @@ static_resources:
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
-                      - ai_gateway_llm_ns
+                      - io.envoy.ai_gateway
             - name: envoy.filters.http.header_mutation
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
@@ -1019,7 +1019,7 @@ static_resources:
                         append_action: ADD_IF_ABSENT
                         header:
                           key: content-length
-                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
+                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -1049,7 +1049,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -1073,7 +1073,7 @@ static_resources:
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
-                      - ai_gateway_llm_ns
+                      - io.envoy.ai_gateway
             - name: envoy.filters.http.header_mutation
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
@@ -1083,7 +1083,7 @@ static_resources:
                         append_action: ADD_IF_ABSENT
                         header:
                           key: content-length
-                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
+                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -1113,7 +1113,7 @@ static_resources:
       outlier_detection:
         consecutive_5xx: 1
         interval: 1s
-        base_ejection_time: 2s  # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
         max_ejection_percent: 100
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -1137,7 +1137,7 @@ static_resources:
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
-                      - ai_gateway_llm_ns
+                      - io.envoy.ai_gateway
             - name: envoy.filters.http.header_mutation
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
@@ -1147,7 +1147,7 @@ static_resources:
                         append_action: ADD_IF_ABSENT
                         header:
                           key: content-length
-                          value: "%DYNAMIC_METADATA(ai_gateway_llm_ns:content_length)%"
+                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec

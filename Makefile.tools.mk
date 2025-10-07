@@ -10,7 +10,6 @@ $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
 CODESPELL = $(LOCALBIN)/.venv/codespell@v2.3.0/bin/codespell
-YAMLLINT = $(LOCALBIN)/.venv/yamllint@1.35.1/bin/yamllint
 
 .bin/.venv/%:
 	mkdir -p $(@D)
@@ -18,5 +17,3 @@ YAMLLINT = $(LOCALBIN)/.venv/yamllint@1.35.1/bin/yamllint
 	$@/bin/pip3 install $$(echo $* | sed 's/@/==/')
 
 $(CODESPELL): .bin/.venv/codespell@v2.3.0
-
-$(YAMLLINT): .bin/.venv/yamllint@1.35.1

@@ -48,6 +48,7 @@ helm install phoenix oci://registry-1.docker.io/arizephoenix/phoenix-helm \
 ### Configure AI Gateway with OpenTelemetry
 
 Upgrade your AI Gateway installation with [OpenTelemetry configuration][otel-config]:
+
 ```shell
 helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \
   --version v0.0.0-latest \
@@ -61,6 +62,7 @@ helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \
 ```
 
 Wait for the gateway pod to be ready:
+
 ```shell
 kubectl wait --for=condition=Ready -n envoy-gateway-system \
   pods -l gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic
@@ -86,6 +88,7 @@ kubectl logs -n envoy-ai-gateway-system deployment/phoenix | grep "POST /v1/trac
 ### Access Phoenix UI
 
 Port-forward to access the Phoenix dashboard:
+
 ```shell
 kubectl port-forward -n envoy-ai-gateway-system svc/phoenix 6006:6006
 ```
@@ -101,20 +104,21 @@ for embeddings:
 
 For example, if you are using a `values.yaml` file instead of command line
 arguments, you can add the following to control redaction:
+
 ```yaml
 extProc:
   extraEnvVars:
     # Base OTEL configuration...
     # Hide sensitive data (all default to false)
     - name: OPENINFERENCE_HIDE_INPUTS
-      value: "true"  # Hide input messages to the LLM
+      value: "true" # Hide input messages to the LLM
     - name: OPENINFERENCE_HIDE_OUTPUTS
-      value: "true"  # Hide output messages from the LLM
+      value: "true" # Hide output messages from the LLM
     # Reduce volume for embeddings (all default to false)
     - name: OPENINFERENCE_HIDE_EMBEDDINGS_TEXT
-      value: "true"  # Hide embeddings input
+      value: "true" # Hide embeddings input
     - name: OPENINFERENCE_HIDE_EMBEDDINGS_VECTORS
-      value: "true"  # Hide embeddings output
+      value: "true" # Hide embeddings output
 ```
 
 Note: Hiding inputs/outputs prevents human or LLM-as-a-Judge evaluation of your
@@ -127,6 +131,7 @@ with your AI app. Maintaining context between interactions is key for
 observability.
 
 With sessions, you can:
+
 - Track a conversation's full history in one thread.
 - View inputs/outputs for a given agent.
 - Monitor token usage and latency per conversation.
@@ -145,6 +150,7 @@ OpenTelemetry platforms such as [Phoenix][phoenix-session].
 
 To bridge this gap, Envoy AI Gateway has two configurations to map HTTP request
 headers to OpenTelemetry attributes, one for spans and one for metrics.
+
 - `controller.spanRequestHeaderAttributes`
 - `controller.metricsRequestHeaderAttributes`
 
@@ -155,6 +161,7 @@ is `x-session-id`, you can map it to the standard OpenTelemetry attribute
 
 Some metrics systems will be able to do fine-grained aggregation, but not all.
 Here's an example of setting the session ID header for spans, but not metrics:
+
 ```shell
 helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \
   --version v0.0.0-latest \
@@ -187,6 +194,7 @@ helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \
 - [Arize Phoenix Documentation][phoenix] - LLM observability platform
 
 ---
+
 [openinference]: https://github.com/Arize-ai/openinference/tree/main/spec
 [openinference-config]: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
 [openinference-embeddings]: https://github.com/Arize-ai/openinference/blob/main/spec/embedding_spans.md

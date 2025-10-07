@@ -1,14 +1,15 @@
 ---
 name: Other
 about: Questions, design proposals, tech debt, etc.
-title: ''
+title: ""
 labels: triage
-assignees: ''
-
+assignees: ""
 ---
 
-*Description*:
->Describe the issue.
+_Description_:
+
+> Describe the issue.
 
 [optional *Relevant Links*:]
->Any extra documentation required to understand the issue.
+
+> Any extra documentation required to understand the issue.

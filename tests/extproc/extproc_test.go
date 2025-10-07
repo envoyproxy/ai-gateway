@@ -134,7 +134,7 @@ func TestMain(m *testing.M) {
 	os.Exit(res)
 }
 
-func startTestEnvironment(t testenvironment.TestingT, extprocConfig string, okToDumpLogOnFailure, extProcInProcess bool) *testenvironment.TestEnvironment {
+func startTestEnvironment(t testing.TB, extprocConfig string, okToDumpLogOnFailure, extProcInProcess bool) *testenvironment.TestEnvironment {
 	return testenvironment.StartTestEnvironment(t,
 		requireUpstream, map[string]int{"upstream": 8080},
 		extprocBin, extprocConfig, nil, envoyConfig, okToDumpLogOnFailure, extProcInProcess, 120*time.Second,
@@ -142,7 +142,7 @@ func startTestEnvironment(t testenvironment.TestingT, extprocConfig string, okTo
 }
 
 // requireUpstream starts the external processor with the given configuration.
-func requireUpstream(t testenvironment.TestingT, out io.Writer, ports map[string]int) {
+func requireUpstream(t testing.TB, out io.Writer, ports map[string]int) {
 	cmd := exec.CommandContext(t.Context(), testupstreamBin)
 	cmd.Env = append(os.Environ(),
 		"TESTUPSTREAM_ID=extproc_test",

@@ -4,14 +4,13 @@ go 1.25
 
 tool (
 	github.com/apache/skywalking-eyes/cmd/license-eye
-	github.com/daixiang0/gci
 	github.com/editorconfig-checker/editorconfig-checker/v3/cmd/editorconfig-checker
 	github.com/elastic/crd-ref-docs
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 	github.com/tetratelabs/func-e/cmd/func-e
 	github.com/vladopajic/go-test-coverage/v2
+	github.com/wasilibs/go-prettier/v3/cmd/prettier
 	helm.sh/helm/v3/cmd/helm
-	mvdan.cc/gofumpt
 	sigs.k8s.io/controller-runtime/tools/setup-envtest
 	sigs.k8s.io/controller-tools/cmd/controller-gen
 	sigs.k8s.io/kind
@@ -65,6 +64,7 @@ require (
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/blizzy78/varnamelen v0.8.0 // indirect
 	github.com/bmatcuk/doublestar/v2 v2.0.4 // indirect
+	github.com/bmatcuk/doublestar/v4 v4.9.1 // indirect
 	github.com/bombsimon/wsl/v4 v4.7.0 // indirect
 	github.com/bombsimon/wsl/v5 v5.1.0 // indirect
 	github.com/breml/bidichk v0.3.3 // indirect
@@ -97,7 +97,7 @@ require (
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/docker/docker-credential-helpers v0.9.3 // indirect
 	github.com/editorconfig-checker/editorconfig-checker/v3 v3.1.1 // indirect
-	github.com/editorconfig/editorconfig-core-go/v2 v2.6.2 // indirect
+	github.com/editorconfig/editorconfig-core-go/v2 v2.6.3 // indirect
 	github.com/elastic/crd-ref-docs v0.1.0 // indirect
 	github.com/emicklei/go-restful/v3 v3.12.2 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
@@ -283,11 +283,12 @@ require (
 	github.com/ssgreg/nlreturn/v2 v2.2.1 // indirect
 	github.com/stbenjam/no-sprintf-host-port v0.2.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	github.com/stretchr/testify v1.11.0 // indirect
+	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/tdakkota/asciicheck v0.4.1 // indirect
 	github.com/tetafro/godot v1.5.1 // indirect
 	github.com/tetratelabs/func-e v1.2.0 // indirect
+	github.com/tetratelabs/wazero v1.9.1-0.20250924151156-996b80304486 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/timakin/bodyclose v0.0.0-20241222091800-1db5c5ca4d67 // indirect
 	github.com/timonwong/loggercheck v0.11.0 // indirect
@@ -300,6 +301,7 @@ require (
 	github.com/uudashr/gocognit v1.2.0 // indirect
 	github.com/uudashr/iface v1.4.1 // indirect
 	github.com/vladopajic/go-test-coverage/v2 v2.11.4 // indirect
+	github.com/wasilibs/go-prettier/v3 v3.6.3-0.20251007080212-c3bc9a2b9071 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/xen0n/gosmopolitan v1.3.0 // indirect

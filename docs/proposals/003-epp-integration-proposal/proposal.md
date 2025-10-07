@@ -1,23 +1,23 @@
 # Support Integration with Endpoint Picker (GIE)
 
-+ author: [Xunzhuo](https://github.com/xunzhuo)
+- author: [Xunzhuo](https://github.com/xunzhuo)
 
 ## Table of Contents
 
 <!-- toc -->
 
--   [Summary](#summary)
--   [Goals](#goals)
--   [Background](#background)
-    -   [How EPP works?](#how-epp-works)
-    -   [How Envoy works with GIE](#how-envoy-works-with-gie)
--   [Design](#design)
-    -   [Resource Relation](#resource-relation)
-    -   [Configuration Generation](#configuration-generation)
-    -   [Work with Envoy Gateway](#work-with-envoy-gateway)
--   [Final Workflow](#final-workflow)
--   [Implementation Considerations and Limitations](#implementation-considerations-and-limitations)
--   [Non-GIE EPP Integration](#non-gie-epp-integration)
+- [Summary](#summary)
+- [Goals](#goals)
+- [Background](#background)
+  - [How EPP works?](#how-epp-works)
+  - [How Envoy works with GIE](#how-envoy-works-with-gie)
+- [Design](#design)
+  - [Resource Relation](#resource-relation)
+  - [Configuration Generation](#configuration-generation)
+  - [Work with Envoy Gateway](#work-with-envoy-gateway)
+- [Final Workflow](#final-workflow)
+- [Implementation Considerations and Limitations](#implementation-considerations-and-limitations)
+- [Non-GIE EPP Integration](#non-gie-epp-integration)
 
 <!-- /toc -->
 
@@ -30,10 +30,11 @@ This is a core functionality in EAGW`s vision, make the routing more intelligent
 ![](http://liuxunzhuo.oss-cn-chengdu.aliyuncs.com/2025-06-25-090714.png)
 
 ## Goals
-+ Integrate with EPP to expand the Envoy AI Gateway abilities
-+ Integrate with the existing CRD and features well
-+ Support InferencePool in AIGatewayRoute
-+ Support InferencePool in HTTPRoute
+
+- Integrate with EPP to expand the Envoy AI Gateway abilities
+- Integrate with the existing CRD and features well
+- Support InferencePool in AIGatewayRoute
+- Support InferencePool in HTTPRoute
 
 ## Background
 
@@ -204,8 +205,8 @@ This requires to expand the `AIGatewayRouteRuleBackendRef` with `BackendObjectRe
 
 ##### Example
 
-+ When it matches gpt-4o-mini goes to AIServiceBackend `envoy-ai-gateway-basic-openai`
-+ When it matches vllm-llama3-8b-instruct goes to InferencePool `vllm-llama3-8b-instruct`
+- When it matches gpt-4o-mini goes to AIServiceBackend `envoy-ai-gateway-basic-openai`
+- When it matches vllm-llama3-8b-instruct goes to InferencePool `vllm-llama3-8b-instruct`
 
 ```
 apiVersion: inference.networking.x-k8s.io/v1alpha2
@@ -264,8 +265,8 @@ This approach is preferred because InferencePool resources do not require Backen
 
 ##### Example
 
-+ When it matches gpt-4o-mini goes to AIServiceBackend `envoy-ai-gateway-basic-openai`
-+ When it matches vllm-llama3-8b-instruct goes to AIServiceBackend `vllm-llama3-8b-instruct`
+- When it matches gpt-4o-mini goes to AIServiceBackend `envoy-ai-gateway-basic-openai`
+- When it matches vllm-llama3-8b-instruct goes to AIServiceBackend `vllm-llama3-8b-instruct`
 
 ```yaml
 apiVersion: inference.networking.x-k8s.io/v1alpha2
@@ -330,20 +331,20 @@ based on the background, we need to generate such configurations:
 
 ##### ext-proc config
 
-+ generate ext-proc cluster based on the InferencePool extensionRef
-+ generate ext-proc http filter based on the InferencePool extensionRef
+- generate ext-proc cluster based on the InferencePool extensionRef
+- generate ext-proc http filter based on the InferencePool extensionRef
 
 ##### route level config
 
-+ patch the ext-proc filter into the route configuration based on which route the InferencePool is linked with
-+ add the cluster with loadbalancing policy or ORIGINAL_DST to understand the header and route  `x-gateway-destination-endpoint`
+- patch the ext-proc filter into the route configuration based on which route the InferencePool is linked with
+- add the cluster with loadbalancing policy or ORIGINAL_DST to understand the header and route `x-gateway-destination-endpoint`
 
 #### Resource Generation
 
 This section is about how to manage the GIE kubernetes resource, in short, there are two approaches, static or dynamic.
 
-+ static: end-user manage the GIE deployment, service etc resource.
-+ dynamic: end-user do not care about the life cycle of GIE resources, Envoy AI Gateway take care of that.
+- static: end-user manage the GIE deployment, service etc resource.
+- dynamic: end-user do not care about the life cycle of GIE resources, Envoy AI Gateway take care of that.
 
 #### Conclusion
 
@@ -355,9 +356,9 @@ This approach aligns with industry practices where external inference framework 
 
 There are some work-in-process PRs in upstream:
 
-+ https://github.com/envoyproxy/gateway/pull/6271
-+ https://github.com/envoyproxy/gateway/pull/6342
-+ https://github.com/envoyproxy/gateway/pull/6524
+- https://github.com/envoyproxy/gateway/pull/6271
+- https://github.com/envoyproxy/gateway/pull/6342
+- https://github.com/envoyproxy/gateway/pull/6524
 
 ##### Backend + EEP
 
@@ -423,40 +424,40 @@ spec:
 When EAGW found this situation, it will generate HTTPRoute + Backend + EPP:
 
 ```yaml
-  apiVersion: gateway.networking.k8s.io/v1
-  kind: HTTPRoute
-  metadata:
-    name: envoy-ai-gateway-basic
-  spec:
-    parentRefs:
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: envoy-ai-gateway-basic
+spec:
+  parentRefs:
     - group: gateway.networking.k8s.io
       kind: Gateway
       name: envoy-ai-gateway-basic
       namespace: default
-    rules:
+  rules:
     - backendRefs:
-      - group: gateway.envoyproxy.io
-        kind: Backend
-        name: vllm-llama3-8b-instruct
-        weight: 1
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: vllm-llama3-8b-instruct
+          weight: 1
       filters:
-      - extensionRef:
-          group: gateway.envoyproxy.io
-          kind: HTTPRouteFilter
-          name: ai-eg-host-rewrite
-        type: ExtensionRef
+        - extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: ai-eg-host-rewrite
+          type: ExtensionRef
       matches:
-      - headers:
-        - name: x-ai-eg-selected-route
-          type: Exact
-          value: envoy-ai-gateway-basic-rule-0
-        path:
-          type: PathPrefix
-          value: /
+        - headers:
+            - name: x-ai-eg-selected-route
+              type: Exact
+              value: envoy-ai-gateway-basic-rule-0
+          path:
+            type: PathPrefix
+            value: /
     - matches:
-      - path:
-          type: PathPrefix
-          value: /
+        - path:
+            type: PathPrefix
+            value: /
       name: unreachable
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
@@ -467,7 +468,7 @@ spec:
   type: HostOverride
   hostOverrideSettings:
     overrideHostSources:
-    - header: x-gateway-destination-endpoint
+      - header: x-gateway-destination-endpoint
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyExtensionPolicy
@@ -518,12 +519,12 @@ PostClusterModify Hook logics:
 3. Send it back to Envoy Gateway
 
 ```yaml
-        type: ORIGINAL_DST
-        original_dst_lb_config:
-          use_http_header: true
-          http_header_name: x-gateway-destination-endpoint
-        connect_timeout: 6s
-        lb_policy: CLUSTER_PROVIDED
+type: ORIGINAL_DST
+original_dst_lb_config:
+  use_http_header: true
+  http_header_name: x-gateway-destination-endpoint
+connect_timeout: 6s
+lb_policy: CLUSTER_PROVIDED
 ```
 
 PostRouteModify Hook logics:
@@ -532,10 +533,10 @@ PostRouteModify Hook logics:
 2. Send it back to Envoy Gateway
 
 ```yaml
-        metadata:
-          filter_metadata:
-            aigateway.envoy.io:
-              per_route_rule_inference_pool: default/vllm-llama3-8b-instruct/vllm-llama3-8b-instruct-epp/9002
+metadata:
+  filter_metadata:
+    aigateway.envoy.io:
+      per_route_rule_inference_pool: default/vllm-llama3-8b-instruct/vllm-llama3-8b-instruct-epp/9002
 ```
 
 PostTranslateModify Hook logics:
@@ -552,10 +553,10 @@ After all Hooks logics, Envoy Gateway xDS Server pushes the config to EnvoyProxy
 
 We will adopt the **EnvoyExtensionServer approach** for integrating with Envoy Gateway. This decision is based on several factors:
 
-+ **API Stability**: The extension server approach provides better stability compared to direct API modifications
-+ **Flexibility**: Offers more control over custom backendRef handling through the extension server mechanism
-+ **Conformance**: Enables passing Gateway API conformance tests without requiring modifications ([#648](https://github.com/envoyproxy/ai-gateway/issues/648))
-+ **Maintainability**: Reduces coupling with upstream Envoy Gateway API changes
+- **API Stability**: The extension server approach provides better stability compared to direct API modifications
+- **Flexibility**: Offers more control over custom backendRef handling through the extension server mechanism
+- **Conformance**: Enables passing Gateway API conformance tests without requiring modifications ([#648](https://github.com/envoyproxy/ai-gateway/issues/648))
+- **Maintainability**: Reduces coupling with upstream Envoy Gateway API changes
 
 We can natively support HTTPRoute + InferencePool as well as the AIGatewayRoute + InferencePool.
 
@@ -760,9 +761,9 @@ Current implementation is able to support InferencePool using AIGatewayRoute as 
 
 But there are some advantages for AIGatewayRoute + InferencePool:
 
-+ Native OpenAI Support: we can use native Open AI Spec to call different inference pool in a same listener, because we support to parse the mode from the body, and refresh the cache with route level ai-gw extproc. But using HTTPRoute directly cannot do that, it has to add more routeMatch to do it in a same listener like headerMatch, or separate it into different listeners.
-+ Token Ratelimit: we can support token ratelimit, for the self hosted models, we can extract the token usage from the response and reduce the rate limit budget.
-+ Advanced Observability: we can expose more metrics in our ai-gw ext-proc.
+- Native OpenAI Support: we can use native Open AI Spec to call different inference pool in a same listener, because we support to parse the mode from the body, and refresh the cache with route level ai-gw extproc. But using HTTPRoute directly cannot do that, it has to add more routeMatch to do it in a same listener like headerMatch, or separate it into different listeners.
+- Token Ratelimit: we can support token ratelimit, for the self hosted models, we can extract the token usage from the response and reduce the rate limit budget.
+- Advanced Observability: we can expose more metrics in our ai-gw ext-proc.
 
 ### Load Balancing Policy
 
@@ -772,9 +773,9 @@ The initial implementation will use **Original Destination** cluster configurati
 
 Envoy Gateway's native fallback mechanism operates within a single cluster using multiple backends as separate `localityLBEndpoints`. However, InferencePool integration presents architectural constraints:
 
-+ InferencePool cannot coexist with standard AIServiceBackends in a single route rule
-+ The cluster configuration requires Original Destination or Host Override setup, which conflicts with standard multi-backend configurations
-+ Cross-provider fallback scenarios are not supported in the initial implementation
+- InferencePool cannot coexist with standard AIServiceBackends in a single route rule
+- The cluster configuration requires Original Destination or Host Override setup, which conflicts with standard multi-backend configurations
+- Cross-provider fallback scenarios are not supported in the initial implementation
 
 This limitation will be documented, and potential solutions using aggregate clusters may be explored in future releases.
 
@@ -787,9 +788,11 @@ Token-based rate limiting for InferencePool is supported through proper upstream
 The following limitations must be clearly documented for users:
 
 #### Cross-Provider Fallback Restriction
+
 Cross-provider fallback functionality is not supported when using InferencePool due to Envoy cluster configuration constraints at both Envoy Gateway and extension server levels. This limitation may be addressed in future releases if Envoy Gateway supports aggregate cluster configurations or alternative extension server-level solutions.
 
 #### Single Backend Constraint
+
 Users cannot define multiple InferencePool resources or combine InferencePool with standard AIServiceBackends within a single route rule. This restriction will be enforced through Kubernetes CEL validation.
 
 **Technical Rationale**: Multi-backend route rules assume an Envoy cluster contains multiple backends as `LocalityLbEndpoints`, where each backend's metadata distinguishes the corresponding AIServiceBackend for external processing logic. InferencePool's Original Destination cluster configuration is incompatible with this multi-backend model, and Envoy Gateway's fallback/priority mechanisms operate at the cluster level.
@@ -806,12 +809,12 @@ EPP selection is configured through `InferencePool.spec.extensionRef` as defined
 
 Custom EPP implementations must satisfy the following technical requirements:
 
-+ **External Processing Server**: Must implement the Envoy external processing (ext-proc) gRPC protocol
-+ **Endpoint Selection**: Must add the `x-gateway-destination-endpoint` header to request headers for endpoint routing
-+ **InferencePool API Awareness**: Must understand InferencePool resource specifications to:
-  + Enable Envoy AI Gateway to establish ext-proc server connections
-  + Determine which routes require ext-proc filter attachment
-  + Configure Original Destination clusters with `x-gateway-destination-endpoint` header matching
+- **External Processing Server**: Must implement the Envoy external processing (ext-proc) gRPC protocol
+- **Endpoint Selection**: Must add the `x-gateway-destination-endpoint` header to request headers for endpoint routing
+- **InferencePool API Awareness**: Must understand InferencePool resource specifications to:
+  - Enable Envoy AI Gateway to establish ext-proc server connections
+  - Determine which routes require ext-proc filter attachment
+  - Configure Original Destination clusters with `x-gateway-destination-endpoint` header matching
 
 ### Integration Workflow
 
@@ -821,7 +824,7 @@ The integration process for custom EPP implementations follows these steps:
 2. **Resource Configuration**: Create InferencePool resource referencing the custom EPP service
 3. **Route Binding**: Link the InferencePool to AIGatewayRoute backend configuration
 4. **Request Processing**: Incoming requests are processed through the following flow:
-   + EnvoyProxy receives client request
-   + Request is forwarded to custom EPP ext-proc server
-   + EPP analyzes request and adds `x-gateway-destination-endpoint` header
-   + EnvoyProxy routes request to the selected endpoint based on the header value
+   - EnvoyProxy receives client request
+   - Request is forwarded to custom EPP ext-proc server
+   - EPP analyzes request and adds `x-gateway-destination-endpoint` header
+   - EnvoyProxy routes request to the selected endpoint based on the header value

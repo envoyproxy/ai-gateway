@@ -36,7 +36,7 @@ func startTestEnvironment(t *testing.T, extprocBin, extprocConfig string, extpro
 	)
 }
 
-func requireUpstream(t testenvironment.TestingT, out io.Writer, ports map[string]int) {
+func requireUpstream(t testing.TB, out io.Writer, ports map[string]int) {
 	openAIServer, err := testopenai.NewServer(out, ports["upstream"])
 	require.NoError(t, err, "failed to create test OpenAI server")
 	t.Cleanup(openAIServer.Close)

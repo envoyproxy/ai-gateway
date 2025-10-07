@@ -31,7 +31,7 @@ func TestPublicMCPServers(t *testing.T) {
 					{
 						Name: "learn-microsoft",
 						Path: "/api/mcp",
-						ToolSelector: &filterapi.MCPNameSelector{
+						ToolSelector: &filterapi.MCPToolSelector{
 							IncludeRegex: []string{".*microsoft_docs?.*"},
 						},
 					},
@@ -39,7 +39,7 @@ func TestPublicMCPServers(t *testing.T) {
 					{
 						Name: "aws-knowledge",
 						Path: "/",
-						ToolSelector: &filterapi.MCPNameSelector{
+						ToolSelector: &filterapi.MCPToolSelector{
 							Include: []string{"aws___read_documentation", "aws___search_documentation"},
 						},
 					},
@@ -56,7 +56,7 @@ func TestPublicMCPServers(t *testing.T) {
 			filterapi.MCPBackend{
 				Name: "github",
 				Path: "/mcp/readonly",
-				ToolSelector: &filterapi.MCPNameSelector{
+				ToolSelector: &filterapi.MCPToolSelector{
 					IncludeRegex: []string{".*_pull_requests?.*", ".*_issues?.*"},
 				},
 			},
@@ -68,7 +68,7 @@ func TestPublicMCPServers(t *testing.T) {
 	require.NoError(t, err)
 
 	env := testenvironment.StartTestEnvironment(t,
-		func(_ testenvironment.TestingT, _ io.Writer, _ map[string]int) {}, map[string]int{"backend_listener": 9999},
+		func(_ testing.TB, _ io.Writer, _ map[string]int) {}, map[string]int{"backend_listener": 9999},
 		"", string(config), nil, envoyConfig, true, true, 120*time.Second,
 	)
 

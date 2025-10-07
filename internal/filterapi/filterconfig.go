@@ -12,7 +12,6 @@
 package filterapi
 
 import (
-	"fmt"
 	"os"
 	"time"
 
@@ -23,22 +22,22 @@ import (
 
 // DefaultConfig is the default configuration that can be used as a
 // fallback when the configuration is not explicitly provided.
-var DefaultConfig = fmt.Sprintf(`
-schema:
-  name: OpenAI
-modelNameHeaderKey: %s
-`, internalapi.ModelNameHeaderKeyDefault)
+var DefaultConfig = ``
 
 // Config is the configuration for the Envoy AI Gateway filter.
 type Config struct {
 	// UUID is the unique identifier of the filter configuration assigned by the AI Gateway when the configuration is updated.
 	UUID string `json:"uuid,omitempty"`
 	// MetadataNamespace is the namespace of the dynamic metadata to be used by the filter.
+	// Deprecated.
+	// TODO: Drop this after v0.4.0.
 	MetadataNamespace string `json:"metadataNamespace"`
 	// LLMRequestCost configures the cost of each LLM-related request. Optional. If this is provided, the filter will populate
 	// the "calculated" cost in the filter metadata at the end of the response body processing.
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
 	// ModelNameHeaderKey is the header key to be populated with the model name by the filter.
+	// Deprecated.
+	// TODO: Drop this after v0.4.0.
 	ModelNameHeaderKey internalapi.ModelNameHeaderKey `json:"modelNameHeaderKey"`
 	// Backends is the list of backends that this listener can route to.
 	Backends []Backend `json:"backends,omitempty"`

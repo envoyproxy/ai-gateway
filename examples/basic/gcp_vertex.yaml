@@ -46,8 +46,8 @@ spec:
       name: envoy-ai-gateway-basic-gcp-anthropic
   type: GCPCredentials
   gcpCredentials:
-    projectName: GCP_PROJECT_NAME  # Replace with your GCP project name
-    region: GCP_REGION  # Replace with your GCP region
+    projectName: GCP_PROJECT_NAME # Replace with your GCP project name
+    region: GCP_REGION # Replace with your GCP region
     credentialsFile:
       secretRef:
         name: envoy-ai-gateway-basic-gcp-service-account-key-file
@@ -81,7 +81,7 @@ metadata:
   namespace: default
 spec:
   targetRefs:
-    - group: 'gateway.envoyproxy.io'
+    - group: "gateway.envoyproxy.io"
       kind: Backend
       name: envoy-ai-gateway-basic-gcp
   validation:
@@ -95,7 +95,7 @@ metadata:
   namespace: default
 spec:
   targetRefs:
-    - group: 'gateway.envoyproxy.io'
+    - group: "gateway.envoyproxy.io"
       kind: Backend
       name: envoy-ai-gateway-basic-gcp-us-east5
   validation:
@@ -108,7 +108,7 @@ metadata:
   name: envoy-ai-gateway-basic-gcp-service-account-key-file
   namespace: default
 stringData:
-  service_account.json: "{}"  # Replace with your service account json key file
+  service_account.json: "{}" # Replace with your service account json key file
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute

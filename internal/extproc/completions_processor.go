@@ -115,12 +115,12 @@ func (c *completionsProcessorRouterFilter) ProcessRequestBody(_ context.Context,
 		c.forcedStreamOptionIncludeUsage = true
 	}
 
-	c.requestHeaders[c.config.modelNameHeaderKey] = originalModel
+	c.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = originalModel
 
 	var additionalHeaders []*corev3.HeaderValueOption
 	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
 		// Set the model name to the request header with the key `x-ai-eg-model`.
-		Header: &corev3.HeaderValue{Key: c.config.modelNameHeaderKey, RawValue: []byte(originalModel)},
+		Header: &corev3.HeaderValue{Key: internalapi.ModelNameHeaderKeyDefault, RawValue: []byte(originalModel)},
 	}, &corev3.HeaderValueOption{
 		Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(c.requestHeaders[":path"])},
 	})
@@ -215,7 +215,7 @@ func (c *completionsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.C
 
 	var dm *structpb.Struct
 	if bm := bodyMutation.GetBody(); bm != nil {
-		dm = buildContentLengthDynamicMetadataOnRequest(c.config, len(bm))
+		dm = buildContentLengthDynamicMetadataOnRequest(len(bm))
 	}
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
@@ -345,7 +345,7 @@ func (c *completionsProcessorUpstreamFilter) SetBackend(_ context.Context, b *fi
 	c.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
 	// Header-derived labels/CEL must be able to see the overridden request model.
 	if c.modelNameOverride != "" {
-		c.requestHeaders[c.config.modelNameHeaderKey] = c.modelNameOverride
+		c.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = c.modelNameOverride
 	}
 	rp.upstreamFilter = c
 	return

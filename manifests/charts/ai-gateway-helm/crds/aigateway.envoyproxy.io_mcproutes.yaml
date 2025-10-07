@@ -198,27 +198,29 @@ spec:
                     toolSelector:
                       description: |-
                         ToolSelector filters the tools exposed by this MCP server.
-                        Supports exact matches via include lists and RE2-compatible regular expressions via includeRegex.
+                        Supports exact matches and RE2-compatible regular expressions for both include and exclude patterns.
                         If not specified, all tools from the MCP server are exposed.
                       properties:
                         include:
-                          description: Include is a list of strings to include. If
-                            specified, only the strings in this list are included.
+                          description: Include is a list of tool names to include.
+                            Only the specified tools will be available.
                           items:
                             type: string
                           maxItems: 32
                           type: array
                         includeRegex:
-                          description: IncludeRegex is a list of RE2-compatible regular
-                            expressions that, when matched, include the string.
+                          description: |-
+                            IncludeRegex is a list of RE2-compatible regular expressions that, when matched, include the tool.
+                            Only tools matching these patterns will be available.
                           items:
                             type: string
                           maxItems: 32
                           type: array
                       type: object
                       x-kubernetes-validations:
-                      - message: one of include, includeRegex must be specified
-                        rule: has(self.include) != has(self.includeRegex)
+                      - message: exactly one of include or includeRegex must be specified
+                        rule: (has(self.include) && !has(self.includeRegex)) || (!has(self.include)
+                          && has(self.includeRegex))
                   required:
                   - name
                   type: object

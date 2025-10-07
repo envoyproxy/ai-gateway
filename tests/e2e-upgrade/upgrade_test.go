@@ -72,9 +72,6 @@ func (tp testPhase) String() string {
 func TestUpgrade(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		// True if the test case should be skipped. This should be removed once the control-plane
-		// upgrade test is enabled.
-		skip bool
 		// initFunc sets up the initial state of the cluster and returns the kind cluster name.
 		initFunc func(context.Context) (clusterName string)
 		// runningAfterUpgrade is the duration to wait after the upgrade before making requests.
@@ -109,10 +106,12 @@ func TestUpgrade(t *testing.T) {
 		},
 		{
 			name: "control-plane upgrade",
-			// TODO: Enable after the zero-downtime upgrade fix is in 0.3.x.
-			skip: true,
 			initFunc: func(ctx context.Context) string {
-				const previousEnvoyAIGatewayVersion = "v0.3.0"
+				// This is the commit hash of the oldest helm chart that we have a proper graceful shutdown logic.
+				// https://github.com/envoyproxy/ai-gateway/commit/bb2a476eeb7fe14495a64ced1396c65a07ea2cd3
+				//
+				// TODO: after the release of v0.4.x, pin to the v0.4.x chart instead.
+				const previousEnvoyAIGatewayVersion = "v0.0.0-bb2a476eeb7fe14495a64ced1396c65a07ea2cd3"
 				const kindClusterName = "envoy-ai-gateway-cp-upgrade"
 				require.NoError(t, e2elib.SetupAll(ctx, kindClusterName, e2elib.AIGatewayHelmOption{
 					ChartVersion: previousEnvoyAIGatewayVersion,
@@ -126,9 +125,6 @@ func TestUpgrade(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if tc.skip {
-				t.Skip("skipping")
-			}
 			require.NotNil(t, tc.upgradeFunc, "upgradeFunc must be set")
 			clusterName := tc.initFunc(t.Context())
 			defer func() {

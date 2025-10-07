@@ -5,9 +5,10 @@ We welcome contributions from the community. Please read the following guideline
 ## Local development of Envoy AI Gateway project
 
 First of all, there are only three minimal prerequisites to contribute to the project:
-* The latest Go toolchain
-* `make`
-* `docker`
+
+- The latest Go toolchain
+- `make`
+- `docker`
 
 which we assume you already have installed on your machine. Also, on macOS, you would need to install
 `brew install ca-certificates` to run some integration tests.
@@ -40,13 +41,13 @@ All test targets are prefixed with `test-*` and can be run via `make test-<targe
 Some test commands might require additional dependencies to be installed on your machine.
 For example,
 
-* The latest `kubectl` binary for running `make test-e2e`.
-  * See: https://kubernetes.io/docs/tasks/tools/
-* The latest `envoy` binary for running `make test-extproc`. The current required version is v1.35 or later.
-  * On Linux, you can download the latest Envoy binary as described in https://www.envoyproxy.io/docs/envoy/latest/start/install.
+- The latest `kubectl` binary for running `make test-e2e`.
+  - See: https://kubernetes.io/docs/tasks/tools/
+- The latest `envoy` binary for running `make test-extproc`. The current required version is v1.35 or later.
+  - On Linux, you can download the latest Envoy binary as described in https://www.envoyproxy.io/docs/envoy/latest/start/install.
     Alternatively, you can use `func-e` on Linux as well like on macOS below.
-  * On macOS, since `brew envoy` tends to behind the latest version, it is recommended use `func-e` to run the latest Envoy. See https://func-e.io/.
-  * `alias envoy='func-e run'` is a convenient way to run the latest Envoy binary via `func-e` on both macOS and Linux.
+  - On macOS, since `brew envoy` tends to behind the latest version, it is recommended use `func-e` to run the latest Envoy. See https://func-e.io/.
+  - `alias envoy='func-e run'` is a convenient way to run the latest Envoy binary via `func-e` on both macOS and Linux.
     For example, `func-e use 1.34` can be used to switch to a specific version of Envoy to be run with `func-e run`.
 
 Other than that, everything will be automatically managed and installed via `make` targets,
@@ -94,14 +95,14 @@ make sure that these automated checks pass after you open a PR by following the 
 
 ### Code Reviews
 
-* During the review, address the comments and commit the changes
-**without squashing the commits, force pushing, or rebasing the branch**.
-This facilitates incremental reviews since the reviewer does not go through all the code again to find out
-what has changed since the last review. When a change goes out of sych with master, please use `git merge`
-to avoid force pushing.
-  * The only exception to this rule is when you mistakenly pushed a non-signoff commit.
+- During the review, address the comments and commit the changes
+  **without squashing the commits, force pushing, or rebasing the branch**.
+  This facilitates incremental reviews since the reviewer does not go through all the code again to find out
+  what has changed since the last review. When a change goes out of sych with master, please use `git merge`
+  to avoid force pushing.
+  - The only exception to this rule is when you mistakenly pushed a non-signoff commit.
     In this case, you can amend the commit with the signoff line and force push.
-* Commits are squashed prior to merging a pull request, using the title and PR description
-as commit message by default. Maintainers may request contributors to
-edit the pull request title and description to ensure that it remains descriptive as a
-commit message. Alternatively, maintainers may change the commit message directly at the time of merge.
+- Commits are squashed prior to merging a pull request, using the title and PR description
+  as commit message by default. Maintainers may request contributors to
+  edit the pull request title and description to ensure that it remains descriptive as a
+  commit message. Alternatively, maintainers may change the commit message directly at the time of merge.

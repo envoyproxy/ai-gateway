@@ -21,19 +21,21 @@ Currently, `aigw run` supports Linux and macOS.
 By default, `aigw run` runs the AI Gateway with a default configuration that includes a proxy that listens on port `1975`.
 
 It also includes a few default backend services:
-* [OpenAI](https://platform.openai.com/docs/api-reference): The API key is expected to be provided via the `OPENAI_API_KEY` environment variable.
-* [AWS Bedrock](https://aws.amazon.com/bedrock/)(us-east-1): The AWS credentials are expected to be provided via the conventional `~/.aws/credentials` file.
-* [Ollama](https://ollama.com/): The Ollama service is expected to be running on `localhost:11434` which is the default as per [the official documentation](https://github.com/Ollama/Ollama/blob/main/docs/faq.md#how-can-i-expose-Ollama-on-my-network).
+
+- [OpenAI](https://platform.openai.com/docs/api-reference): The API key is expected to be provided via the `OPENAI_API_KEY` environment variable.
+- [AWS Bedrock](https://aws.amazon.com/bedrock/)(us-east-1): The AWS credentials are expected to be provided via the conventional `~/.aws/credentials` file.
+- [Ollama](https://ollama.com/): The Ollama service is expected to be running on `localhost:11434` which is the default as per [the official documentation](https://github.com/Ollama/Ollama/blob/main/docs/faq.md#how-can-i-expose-Ollama-on-my-network).
 
 The routing configuration is as follows:
-* The special header `aigw-backend-selector` can be used to select the backend regardless of the "model" field in the request body.
-  * `aigw-backend-selector: openai` header will route to OpenAI,
-  * `aigw-backend-selector: aws` will route to AWS Bedrock, and
-  * `aigw-backend-selector: ollama` will route to Ollama.
-* If `aigw-backend-selector` is not present, the "model" field in the request body will be used to select the backend.
-  * If the "model" field is `gpt-4o-mini`, it will be routed to OpenAI,
-  * If the "model" field is `us.meta.llama3-2-1b-instruct-v1:0`, it will be routed to AWS Bedrock, and
-  * If the "model" field is `mistral:latest`, it will be routed to Ollama.
+
+- The special header `aigw-backend-selector` can be used to select the backend regardless of the "model" field in the request body.
+  - `aigw-backend-selector: openai` header will route to OpenAI,
+  - `aigw-backend-selector: aws` will route to AWS Bedrock, and
+  - `aigw-backend-selector: ollama` will route to Ollama.
+- If `aigw-backend-selector` is not present, the "model" field in the request body will be used to select the backend.
+  - If the "model" field is `gpt-4o-mini`, it will be routed to OpenAI,
+  - If the "model" field is `us.meta.llama3-2-1b-instruct-v1:0`, it will be routed to AWS Bedrock, and
+  - If the "model" field is `mistral:latest`, it will be routed to Ollama.
 
 You can view the full configuration by running `aigw run --show-default` to see exactly what the default configuration looks like.
 
@@ -44,6 +46,7 @@ We welcome contributions to enhance the default configuration, for example, by a
 ### Try it out
 
 To run the AI Gateway with the default configuration, run the following command:
+
 ```shell
 aigw run
 ```
@@ -55,7 +58,7 @@ For example, use `mistral:latest` model to route to Ollama, assuming Ollama is r
 
 ```shell
 curl -H "Content-Type: application/json" -XPOST http://localhost:1975/v1/chat/completions \
-    -d '{"model": "mistral:latest","messages": [{"role": "user", "content": "Say this is a test!"}]}'
+  -d '{"model": "mistral:latest","messages": [{"role": "user", "content": "Say this is a test!"}]}'
 ```
 
 Changing the `model` field value to `gpt-4o-mini` or `us.meta.llama3-2-1b-instruct-v1:0` will route to OpenAI or AWS Bedrock respectively.
@@ -108,12 +111,12 @@ Now, the AI Gateway is running locally with the custom configuration serving at 
 
 ```shell
 curl -H "Content-Type: application/json" -XPOST http://localhost:1975/v1/chat/completions \
-    -d '{"model": "deepseek-r1:1.5b","messages": [{"role": "user", "content": "Say this is a test!"}]}'
+  -d '{"model": "deepseek-r1:1.5b","messages": [{"role": "user", "content": "Say this is a test!"}]}'
 ```
 
 ### Note
 
-* The ExtProc will serve the prometheus metrics at `localhost:1064/metrics` by default where you can scrape the [LLM/AI metrics](../capabilities/observability/metrics.md).
+- The ExtProc will serve the prometheus metrics at `localhost:1064/metrics` by default where you can scrape the [LLM/AI metrics](../capabilities/observability/metrics.md).
 
 ## OpenTelemetry
 
@@ -136,18 +139,19 @@ requests captured in OpenTelemetry spans.
 
 - **[OTEL SDK][otel-env]**: OTLP exporter configuration that controls span
   export such as:
-    - `OTEL_EXPORTER_OTLP_ENDPOINT`: Collector endpoint (e.g., `http://phoenix:6006`)
-    - `OTEL_BSP_SCHEDULE_DELAY`: Batch span processor delay (default: 5000ms)
+  - `OTEL_EXPORTER_OTLP_ENDPOINT`: Collector endpoint (e.g., `http://phoenix:6006`)
+  - `OTEL_BSP_SCHEDULE_DELAY`: Batch span processor delay (default: 5000ms)
 
 - **[OpenInference][openinference-config]**: Control sensitive data redaction,
   such as:
-    - `OPENINFERENCE_HIDE_INPUTS`: Hide input messages/prompts (default: `false`)
-    - `OPENINFERENCE_HIDE_OUTPUTS`: Hide output messages/completions (default: `false`)
+  - `OPENINFERENCE_HIDE_INPUTS`: Hide input messages/prompts (default: `false`)
+  - `OPENINFERENCE_HIDE_OUTPUTS`: Hide output messages/completions (default: `false`)
 
 See [docker-compose-otel.yaml][docker-compose-otel.yaml] for a complete example
 configuration.
 
 ---
+
 [openinference]: https://github.com/Arize-ai/openinference/tree/main/spec
 [phoenix]: https://docs.arize.com/phoenix
 [otel-env]: https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/

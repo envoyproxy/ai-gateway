@@ -86,7 +86,7 @@ func requireNewMCPEnv(t *testing.T, forceJSONResponse bool, writeTimeout time.Du
 					{
 						Name: "default-mcp-backend", Path: "/mcp",
 						// This shouldn't affect any other routes.
-						ToolSelector: &filterapi.MCPNameSelector{Include: []string{"non-existent"}},
+						ToolSelector: &filterapi.MCPToolSelector{Include: []string{"non-existent"}},
 					},
 					{Name: "dumb-mcp-backend", Path: "/mcp"},
 				},
@@ -103,7 +103,7 @@ func requireNewMCPEnv(t *testing.T, forceJSONResponse bool, writeTimeout time.Du
 	require.NoError(t, err)
 
 	env := testenvironment.StartTestEnvironment(t,
-		func(_ testenvironment.TestingT, _ io.Writer, ports map[string]int) {
+		func(_ testing.TB, _ io.Writer, ports map[string]int) {
 			srv1 := testmcp.NewServer(&testmcp.Options{
 				Port:              ports["ts1"],
 				ForceJSONResponse: forceJSONResponse,
