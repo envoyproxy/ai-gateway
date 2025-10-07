@@ -29,6 +29,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 		require.Equal(t, "/certs", f.tlsCertDir)
 		require.Equal(t, "tls.crt", f.tlsCertName)
 		require.Equal(t, "tls.key", f.tlsKeyName)
+		require.Equal(t, 4*1024*1024, f.maxRecvMsgSize)
 		require.NoError(t, err)
 	})
 	t.Run("all flags", func(t *testing.T) {
@@ -49,6 +50,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 					tc.dash + "port=:8080",
 					tc.dash + "extProcExtraEnvVars=OTEL_SERVICE_NAME=test;OTEL_TRACES_EXPORTER=console",
 					tc.dash + "spanRequestHeaderAttributes=x-session-id:session.id",
+					tc.dash + "maxRecvMsgSize=33554432",
 				}
 				f, err := parseAndValidateFlags(args)
 				require.Equal(t, "debug", f.extProcLogLevel)
@@ -59,6 +61,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				require.Equal(t, ":8080", f.extensionServerPort)
 				require.Equal(t, "OTEL_SERVICE_NAME=test;OTEL_TRACES_EXPORTER=console", f.extProcExtraEnvVars)
 				require.Equal(t, "x-session-id:session.id", f.spanRequestHeaderAttributes)
+				require.Equal(t, 32*1024*1024, f.maxRecvMsgSize)
 				require.NoError(t, err)
 			})
 		}
