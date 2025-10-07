@@ -237,13 +237,13 @@ Once you have everything running you can start the agent by passing a prompt fil
 into the terminal.
 
 ```shell
-$ uv run --exact -q --env-file <environment file>> agent.py /path/to/prompt.txt
+$ uv run --exact -q --env-file .env agent.py /path/to/prompt.txt
 ```
 
 or
 
 ```shell
-$ uv run --exact -q --env-file <environment file>> agent.py <<EOF
+$ uv run --exact -q --env-file .env agent.py << EOF
 > your prompt here
 EOF
 ```

@@ -114,16 +114,16 @@ func TestServer_modifyMCPGatewayGeneratedCluster(t *testing.T) {
 			name: "modifies MCP cluster",
 			clusters: []*clusterv3.Cluster{
 				{Name: "normal-cluster"},
-				{Name: internalapi.MCPHTTPRoutePrefix + "foo-bar/rule/0"},
+				{Name: internalapi.MCPMainHTTPRoutePrefix + "foo-bar/rule/0"},
 			},
 			expectedClusters: []*clusterv3.Cluster{
 				{Name: "normal-cluster"},
 				{
-					Name:                 internalapi.MCPHTTPRoutePrefix + "foo-bar/rule/0",
+					Name:                 internalapi.MCPMainHTTPRoutePrefix + "foo-bar/rule/0",
 					ClusterDiscoveryType: &clusterv3.Cluster_Type{Type: clusterv3.Cluster_STATIC},
 					ConnectTimeout:       &durationpb.Duration{Seconds: 10},
 					LoadAssignment: &endpointv3.ClusterLoadAssignment{
-						ClusterName: internalapi.MCPHTTPRoutePrefix + "foo-bar/rule/0",
+						ClusterName: internalapi.MCPMainHTTPRoutePrefix + "foo-bar/rule/0",
 						Endpoints: []*endpointv3.LocalityLbEndpoints{
 							{
 								LbEndpoints: []*endpointv3.LbEndpoint{
@@ -172,7 +172,7 @@ func TestServer_isMCPBackendHTTPFilter(t *testing.T) {
 	}{
 		{
 			name:     "MCP backend filter",
-			filter:   &httpconnectionmanagerv3.HttpFilter{Name: internalapi.MCPBackendFilterPrefix + "test"},
+			filter:   &httpconnectionmanagerv3.HttpFilter{Name: internalapi.MCPPerBackendHTTPRouteFilterPrefix + "test"},
 			expected: true,
 		},
 		{
@@ -199,7 +199,7 @@ func TestServer_isMCPOAuthCustomResponseFilter(t *testing.T) {
 	}{
 		{
 			name:     "MCP OAuth custom response filter",
-			filter:   &httpconnectionmanagerv3.HttpFilter{Name: "envoy.filters.http.custom_response/" + internalapi.MCPHTTPRoutePrefix + "test-oauth-protected-resource-metadata"},
+			filter:   &httpconnectionmanagerv3.HttpFilter{Name: "envoy.filters.http.custom_response/" + internalapi.MCPGeneratedResourceCommonPrefix + "test-oauth-protected-resource-metadata"},
 			expected: true,
 		},
 		{
@@ -235,13 +235,13 @@ func TestServer_maybeUpdateMCPRoutes(t *testing.T) {
 							Name: "vh",
 							Routes: []*routev3.Route{
 								{
-									Name: internalapi.MCPHTTPRoutePrefix + "foo/rule/0",
+									Name: internalapi.MCPMainHTTPRoutePrefix + "foo/rule/0",
 									TypedPerFilterConfig: map[string]*anypb.Any{
 										jwtAuthnFilterName: emptyConfig,
 									},
 								},
 								{
-									Name: internalapi.MCPHTTPRoutePrefix + "foo/rule/1",
+									Name: internalapi.MCPMainHTTPRoutePrefix + "foo/rule/1",
 									TypedPerFilterConfig: map[string]*anypb.Any{
 										jwtAuthnFilterName: emptyConfig,
 										"other-filter":     emptyConfig,
@@ -259,13 +259,13 @@ func TestServer_maybeUpdateMCPRoutes(t *testing.T) {
 							Name: "vh",
 							Routes: []*routev3.Route{
 								{
-									Name: internalapi.MCPHTTPRoutePrefix + "foo/rule/0",
+									Name: internalapi.MCPMainHTTPRoutePrefix + "foo/rule/0",
 									TypedPerFilterConfig: map[string]*anypb.Any{
 										jwtAuthnFilterName: emptyConfig,
 									},
 								},
 								{
-									Name: internalapi.MCPHTTPRoutePrefix + "foo/rule/1",
+									Name: internalapi.MCPMainHTTPRoutePrefix + "foo/rule/1",
 									TypedPerFilterConfig: map[string]*anypb.Any{
 										"other-filter": emptyConfig,
 									},
@@ -312,7 +312,7 @@ func TestServer_extractMCPBackendFiltersFromMCPProxyListener(t *testing.T) {
 										TypedConfig: mustToAny(&httpconnectionmanagerv3.HttpConnectionManager{
 											StatPrefix: "http",
 											HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
-												{Name: internalapi.MCPBackendFilterPrefix + "test-filter"},
+												{Name: internalapi.MCPPerBackendHTTPRouteFilterPrefix + "test-filter"},
 												{Name: "envoy.filters.http.router"},
 											},
 										}),
@@ -324,7 +324,7 @@ func TestServer_extractMCPBackendFiltersFromMCPProxyListener(t *testing.T) {
 				},
 			},
 			expectedFilters: []*httpconnectionmanagerv3.HttpFilter{
-				{Name: internalapi.MCPBackendFilterPrefix + "test-filter"},
+				{Name: internalapi.MCPPerBackendHTTPRouteFilterPrefix + "test-filter"},
 			},
 		},
 	}
@@ -359,7 +359,7 @@ func TestServer_modifyMCPOAuthCustomResponseFilters(t *testing.T) {
 											StatPrefix: "http",
 											HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
 												{
-													Name: "envoy.filters.http.custom_response/" + internalapi.MCPHTTPRoutePrefix + "test-oauth-protected-resource-metadata",
+													Name: "envoy.filters.http.custom_response/" + internalapi.MCPGeneratedResourceCommonPrefix + "test-oauth-protected-resource-metadata",
 													ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
 														TypedConfig: mustToAny(&custom_responsev3.CustomResponse{
 															CustomResponseMatcher: &matcherv3.Matcher{
@@ -410,7 +410,7 @@ func TestServer_modifyMCPOAuthCustomResponseFilters(t *testing.T) {
 											StatPrefix: "http",
 											HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
 												{
-													Name: "envoy.filters.http.custom_response/" + internalapi.MCPHTTPRoutePrefix + "test-oauth-protected-resource-metadata",
+													Name: "envoy.filters.http.custom_response/" + internalapi.MCPGeneratedResourceCommonPrefix + "test-oauth-protected-resource-metadata",
 													ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
 														TypedConfig: mustToAny(&custom_responsev3.CustomResponse{
 															CustomResponseMatcher: &matcherv3.Matcher{
