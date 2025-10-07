@@ -62,6 +62,9 @@ spec:
             - --enableLeaderElection=true
             {{- end }}
             - --rootPrefix={{ .Values.endpointConfig.rootPrefix }}
+            {{- if ne .Values.controller.maxRecvMsgSize nil }}
+            - --maxRecvMsgSize={{ .Values.controller.maxRecvMsgSize }}
+            {{- end }}
           livenessProbe:
             grpc:
               port: 1063
