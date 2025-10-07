@@ -155,26 +155,24 @@ func TestSession_StreamNotifications(t *testing.T) {
 		name              string
 		eventInterval     time.Duration
 		deadline          time.Duration
-		heartbeatInterval string
+		heartbeatInterval time.Duration
 		wantHeartbeats    bool
 	}{
 		// the default heartbeat interval is 1 second, but the events will come faster, so
 		// we don't expect any heartbeats.
-		{"fast events", 10 * time.Millisecond, 5 * time.Second, "", false},
+		{"fast events", 10 * time.Millisecond, 5 * time.Second, 10 * time.Second, false},
 		// configure a heartbeat interval faster than the event interval, so we expect heartbeats.
-		{"slow events", 20 * time.Millisecond, 5 * time.Second, "10ms", true},
+		{"slow events", 20 * time.Millisecond, 5 * time.Second, 10 * time.Millisecond, true},
 		// disable heartbeats. Even though events come in slowly, we don't expect heartbeats.
-		{"no heartbeats", 50 * time.Millisecond, 25 * time.Second, "0", false},
+		{"no heartbeats", 50 * time.Millisecond, 25 * time.Second, 0, false},
 	}
-
-	// Override the default heartbeat interval for testing.
-	originalHeartbeatInterval := defaultHeartbeatInterval
-	defaultHeartbeatInterval = 1 * time.Second
-	t.Cleanup(func() { defaultHeartbeatInterval = originalHeartbeatInterval })
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("MCP_PROXY_HEARTBEAT_INTERVAL", tc.heartbeatInterval)
+			// Override the default heartbeat interval for testing.
+			originalHeartbeatInterval := heartbeatInterval
+			heartbeatInterval = tc.heartbeatInterval
+			t.Cleanup(func() { heartbeatInterval = originalHeartbeatInterval })
 
 			// Single backend streaming two events with valid messages.
 			id1, _ := jsonrpc.MakeID("1")
@@ -268,13 +266,15 @@ func TestSendRequestPerBackend_EOF(t *testing.T) {
 }
 
 func TestGetHeartbeatInterval(t *testing.T) {
+	defaultInterval := 1 * time.Minute
+
 	tests := []struct {
 		name string
 		env  string
 		want time.Duration
 	}{
-		{"unset", "", defaultHeartbeatInterval},
-		{"invalid", "invalid", defaultHeartbeatInterval},
+		{"unset", "", defaultInterval},
+		{"invalid", "invalid", defaultInterval},
 		{"zero", "0s", 0},
 		{"value", "5m", 5 * time.Minute},
 	}
@@ -284,8 +284,7 @@ func TestGetHeartbeatInterval(t *testing.T) {
 			if tt.env != "" {
 				t.Setenv("MCP_PROXY_HEARTBEAT_INTERVAL", tt.env)
 			}
-			s := &session{proxy: &MCPProxy{l: slog.Default()}}
-			require.Equal(t, tt.want, s.getHeartbeatInterval())
+			require.Equal(t, tt.want, getHeartbeatInterval(defaultInterval))
 		})
 	}
 }

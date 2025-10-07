@@ -181,9 +181,8 @@ func (s *session) streamNotifications(ctx context.Context, w http.ResponseWriter
 	// TODO: no idea exactly why this is necessary. Goose shouldn't block on the first event.
 
 	var (
-		heartbeats        <-chan time.Time
-		heartbeatTicker   *time.Ticker
-		heartbeatInterval = s.getHeartbeatInterval()
+		heartbeats      <-chan time.Time
+		heartbeatTicker *time.Ticker
 	)
 	if heartbeatInterval > 0 {
 		heartbeatTicker = time.NewTicker(heartbeatInterval)
@@ -239,25 +238,18 @@ func (s *session) streamNotifications(ctx context.Context, w http.ResponseWriter
 	}
 }
 
-// defaultHeartbeatInterval is the default heartbeat interval if the MCP_HEARTBEAT_INTERVAL environment variable is not set or invalid.
-// This is set as a variable and not a constant to let the tests modify it.
-var defaultHeartbeatInterval = 1 * time.Minute
+// heartbeatInterval is computed at startup to avoid the locks in os.Getenv() to be called on the request path.
+var heartbeatInterval = getHeartbeatInterval(1 * time.Minute)
 
 // getHeartbeatInterval returns the heartbeat interval configured via the MCP_HEARTBEAT_INTERVAL environment variable.
 // If the environment variable is not set or invalid, it returns the default value of 1 minute.
 // This value is intentionally hidden under an environment variable as it is unclear if it is generally useful.
-func (s *session) getHeartbeatInterval() time.Duration {
-	heartbeatIntervalStr := os.Getenv("MCP_PROXY_HEARTBEAT_INTERVAL")
-	if heartbeatIntervalStr == "" {
-		return defaultHeartbeatInterval
-	}
-	heartbeatInterval, err := time.ParseDuration(heartbeatIntervalStr)
+func getHeartbeatInterval(def time.Duration) time.Duration {
+	hbi, err := time.ParseDuration(os.Getenv("MCP_PROXY_HEARTBEAT_INTERVAL"))
 	if err != nil {
-		s.proxy.l.Error("failed to parse HEARTBEAT_INTERVAL environment variable",
-			slog.String("error", err.Error()))
-		return defaultHeartbeatInterval
+		return def
 	}
-	return heartbeatInterval
+	return hbi
 }
 
 // sendToAllBackends sends an HTTP request to all backends in this session and returns a channel that streams
