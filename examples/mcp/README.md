@@ -222,7 +222,7 @@ From here, you can start using the tools inside Claude.
   | LAX → SFO | 13/09 16:41 → 18:13 (1h 32m) | Economy | $134  | https://on.kiwi.com/NBMEYO |
 ```
 
-## Tracing Example with a Python agent
+## Tracing example with a Python agent
 
 The [agent.py](agent.py) file contains a basic Python agent example that evaluates the given prompt on the configured
 OpenAI compatible provider.
