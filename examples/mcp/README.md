@@ -221,3 +221,26 @@ From here, you can start using the tools inside Claude.
   | LAX → SFO | 13/09 16:41 → 18:13 (1h 32m) | Economy | $129  | https://on.kiwi.com/F8u8Sc |
   | LAX → SFO | 13/09 16:41 → 18:13 (1h 32m) | Economy | $134  | https://on.kiwi.com/NBMEYO |
 ```
+
+## Tracing example with a Python agent
+
+The [agent.py](agent.py) file contains a basic Python agent example that evaluates the given prompt on the configured
+OpenAI compatible provider.
+
+Refer to the [cmd/aigw](../../cmd/aigw) directory README and Docker files for details and examples on
+how to start the different example OpenTelemetry compatible services.
+
+Once you have everything running you can start the agent by passing a prompt file or directly typing it
+into the terminal.
+
+```shell
+$ uv run --exact -q --env-file <environment file>> agent.py /path/to/prompt.txt
+```
+
+or
+
+```shell
+$ uv run --exact -q --env-file <environment file>> agent.py <<EOF
+> your prompt here
+EOF
+```
