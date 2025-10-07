@@ -184,7 +184,7 @@ Once authenticated, Claude will confirm:
 
 ```
 > /mcp mcp-gateway
-  ⎿ Authentication successful. Connected to mcp-gateway.
+  ⎿  Authentication successful. Connected to mcp-gateway.
 ```
 
 Now you can explore the available tools:
@@ -209,7 +209,7 @@ From here, you can start using the tools inside Claude.
 ⏺ I'll help you find the cheapest flight tickets from LA to San Francisco. Let me search for flights for today's date.
 
 ⏺ mcp-gateway - search-flight (MCP)(flyFrom: "Los Angeles", flyTo: "San Francisco", departureDate: "13/09/2025", sort: "price", curr: "USD")
-  ⎿ [
+  ⎿  [
        {
          "flyFrom": "LAX",
      … +284 lines (ctrl+r to expand)
