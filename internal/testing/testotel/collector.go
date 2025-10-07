@@ -133,7 +133,6 @@ func (o *OTLPCollector) TakeSpan() *tracev1.Span {
 	}
 }
 
-
 // DrainMetrics returns metrics or nil if none were recorded.
 func (o *OTLPCollector) DrainMetrics() *metricsv1.ResourceMetrics {
 	select {
