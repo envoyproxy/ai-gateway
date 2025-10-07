@@ -943,7 +943,7 @@ type ChatCompletionRequest struct {
 	// Specifying a particular tool via `{"type": "function", "function": {"name": "my_function"}}` forces the model to call that tool.
 	// `none` is the default when no tools are present. `auto` is the default if tools are present.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-tool_choice
-	ToolChoice *ChatCompletionToolChoice `json:"tool_choice,omitempty"` //nolint:tagliatelle //follow openai api
+	ToolChoice *ChatCompletionToolChoiceUnion `json:"tool_choice,omitempty"` //nolint:tagliatelle //follow openai api
 
 	// ParallelToolCalls enables multiple tools to be returned by the model.
 	// Docs: https://platform.openai.com/docs/guides/function-calling/parallel-function-calling
@@ -1019,17 +1019,17 @@ const (
 	ToolChoiceTypeFunction ToolChoiceType = "function"
 )
 
-// ChatCompletionToolChoice represents the tool choice for chat completions.
+// ChatCompletionToolChoiceUnion represents the tool choice for chat completions.
 // It can be either a string (none, auto, required) or a ChatCompletionNamedToolChoice object.
-type ChatCompletionToolChoice struct {
+type ChatCompletionToolChoiceUnion struct {
 	Value any
 }
 
-func (c ChatCompletionToolChoice) MarshalJSON() ([]byte, error) {
+func (c ChatCompletionToolChoiceUnion) MarshalJSON() ([]byte, error) {
 	return json.Marshal(c.Value)
 }
 
-func (c *ChatCompletionToolChoice) UnmarshalJSON(data []byte) error {
+func (c *ChatCompletionToolChoiceUnion) UnmarshalJSON(data []byte) error {
 	// Try to unmarshal as string.
 	var str string
 	if err := json.Unmarshal(data, &str); err == nil {
