@@ -1034,7 +1034,6 @@ func (c *ChatCompletionToolChoiceUnion) UnmarshalJSON(data []byte) error {
 	}
 
 	return errors.New("tool choice must be either string or ChatCompletionNamedToolChoice")
-
 }
 
 // ChatCompletionNamedToolChoice specifies a tool the model should use. Use to force the model to call a specific function.
