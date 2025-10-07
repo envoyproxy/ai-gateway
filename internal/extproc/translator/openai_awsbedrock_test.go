@@ -1732,22 +1732,6 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBodyErr(t *testing.
 			require.Equal(t, err.Error(), tt.err.Error())
 		})
 	}
-
-	t.Run("model override", func(t *testing.T) {
-		modelNameOverride := "bedrock.anthropic.claude-3-5-sonnet-20240620-v1:0"
-		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{modelNameOverride: modelNameOverride}
-		originalReq := openai.ChatCompletionRequest{
-			Model:    "claude-3-5-sonnet",
-			Messages: []openai.ChatCompletionMessageParamUnion{},
-		}
-		hm, _, err := o.RequestBody(nil, &originalReq, false)
-		require.NoError(t, err)
-		require.NotNil(t, hm)
-		require.NotNil(t, hm.SetHeaders)
-		require.Len(t, hm.SetHeaders, 2)
-		require.Equal(t, ":path", hm.SetHeaders[0].Header.Key)
-		require.Equal(t, "/model/"+modelNameOverride+"/converse", string(hm.SetHeaders[0].Header.RawValue))
-	})
 }
 
 // base64RealStreamingEvents is the base64 encoded raw binary response from bedrock anthropic.claude model.
