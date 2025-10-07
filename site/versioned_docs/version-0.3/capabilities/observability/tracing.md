@@ -44,6 +44,7 @@ helm install phoenix oci://registry-1.docker.io/arizephoenix/phoenix-helm \
 ### Configure AI Gateway with OpenTelemetry
 
 Upgrade your AI Gateway installation with [OpenTelemetry configuration][otel-config]:
+
 ```shell
 helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \
   --version v0.3.0 \
@@ -54,6 +55,7 @@ helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \
 ```
 
 Wait for the gateway pod to be ready:
+
 ```shell
 kubectl wait --for=condition=Ready -n envoy-gateway-system \
   pods -l gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic
@@ -79,6 +81,7 @@ kubectl logs -n envoy-ai-gateway-system deployment/phoenix | grep "POST /v1/trac
 ### Access Phoenix UI
 
 Port-forward to access the Phoenix dashboard:
+
 ```shell
 kubectl port-forward -n envoy-ai-gateway-system svc/phoenix 6006:6006
 ```
@@ -93,15 +96,16 @@ reconfigure the AI Gateway:
 
 For example, if you are using a `values.yaml` file instead of command line
 arguments, you can add the following to control redaction:
+
 ```yaml
 extProc:
   extraEnvVars:
     # Base OTEL configuration...
     # Hide sensitive data (all default to false)
     - name: OPENINFERENCE_HIDE_INPUTS
-      value: "true"  # Hide input messages to the LLM
+      value: "true" # Hide input messages to the LLM
     - name: OPENINFERENCE_HIDE_OUTPUTS
-      value: "true"  # Hide output messages from the LLM
+      value: "true" # Hide output messages from the LLM
 ```
 
 Note: Hiding inputs/outputs prevents human or LLM-as-a-Judge evaluation of your
@@ -130,6 +134,7 @@ helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \
 - [Arize Phoenix Documentation][phoenix] - LLM observability platform
 
 ---
+
 [openinference]: https://github.com/Arize-ai/openinference/tree/main/spec
 [openinference-config]: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
 [otel-config]: https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/

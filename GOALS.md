@@ -1,4 +1,3 @@
-
 # Envoy AI Gateway GOALS.md
 
 ## Envoy AI Gateway Goals
@@ -21,12 +20,12 @@ Envoy AI Gateway will simplify the process of setting up an AI Gateway to manage
 
 Envoy AI Gateway enables Platform Engineers to provide a Gateway solution that enables application developers to focus on leveraging GenAI for feature development.
 
-* **Preset Envoy Gateway Configurations:** Default configurations that simplify setup of routing to GenAI Services, making it accessible to application developers.
-* **Leveraging  Envoy:** The project aims to leverage the functionality of the Envoy Gateway control plane and the Envoy Proxy data plane.
+- **Preset Envoy Gateway Configurations:** Default configurations that simplify setup of routing to GenAI Services, making it accessible to application developers.
+- **Leveraging Envoy:** The project aims to leverage the functionality of the Envoy Gateway control plane and the Envoy Proxy data plane.
 
 ## Non-Objectives
 
-* **Disruption of Existing Envoy Patterns:** This project is an additive layer designed to expand use cases for Envoy Proxy and Envoy Gateway without changing existing deployment or control patterns.
+- **Disruption of Existing Envoy Patterns:** This project is an additive layer designed to expand use cases for Envoy Proxy and Envoy Gateway without changing existing deployment or control patterns.
 
 ## Personas
 

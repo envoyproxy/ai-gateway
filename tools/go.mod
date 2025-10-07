@@ -301,7 +301,7 @@ require (
 	github.com/uudashr/gocognit v1.2.0 // indirect
 	github.com/uudashr/iface v1.4.1 // indirect
 	github.com/vladopajic/go-test-coverage/v2 v2.11.4 // indirect
-	github.com/wasilibs/go-prettier/v3 v3.6.3-0.20251006043905-ed4906fcfa7b // indirect
+	github.com/wasilibs/go-prettier/v3 v3.6.3-0.20251007080212-c3bc9a2b9071 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/xen0n/gosmopolitan v1.3.0 // indirect

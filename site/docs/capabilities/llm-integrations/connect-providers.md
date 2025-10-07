@@ -40,8 +40,8 @@ metadata:
 spec:
   # API schema the backend expects
   schema:
-    name: OpenAI           # Provider API format
-    version: "v1"          # API version (optional for OpenAI, defaults to "v1")
+    name: OpenAI # Provider API format
+    version: "v1" # API version (optional for OpenAI, defaults to "v1")
 
   # Reference to the Envoy Gateway Backend resource
   backendRef:
@@ -55,7 +55,7 @@ spec:
 Different providers require different schema configurations:
 
 | Provider                   | Schema Configuration                                      |
-|----------------------------|-----------------------------------------------------------|
+| -------------------------- | --------------------------------------------------------- |
 | OpenAI                     | `{"name":"OpenAI","version":"v1"}`                        |
 | AWS Bedrock                | `{"name":"AWSBedrock"}`                                   |
 | Azure OpenAI               | `{"name":"AzureOpenAI","version":"2025-01-01-preview"}`   |
@@ -79,6 +79,7 @@ The `BackendSecurityPolicy` resource configures authentication credentials neede
 #### Authentication Types
 
 ##### API Key Authentication
+
 Commonly used across many providers
 
 ```yaml
@@ -99,6 +100,7 @@ The secret must contain the API key with the key name `"apiKey"`.
 :::
 
 ##### AWS Credentials
+
 Used when connecting to AWS Bedrock
 
 ```yaml
@@ -114,7 +116,7 @@ spec:
       secretRef:
         name: aws-secret
         namespace: default
-      profile: default  # Optional, defaults to "default"
+      profile: default # Optional, defaults to "default"
 ```
 
 :::note
@@ -122,6 +124,7 @@ The secret must contain the AWS credentials file with the key name `"credentials
 :::
 
 ##### Azure Credentials
+
 Used for connecting to Azure OpenAI
 
 ```yaml
@@ -144,12 +147,14 @@ The secret must contain the Azure client secret with the key name `"client-secre
 :::
 
 ##### GCP Credentials
+
 Used for connecting to GCP Vertex AI and Anthropic on GCP
 
 1. Service Account Key Files:
-A service account key file is a JSON file containing a private key that authenticates as a service account.
-You create a service account in GCP, generate a key file, download it, and then store it in the k8s secret referenced by BackendSecurityPolicy.
-Envoy AI Gateway uses this key file to generate an access token and authenticate with GCP Vertex AI.
+   A service account key file is a JSON file containing a private key that authenticates as a service account.
+   You create a service account in GCP, generate a key file, download it, and then store it in the k8s secret referenced by BackendSecurityPolicy.
+   Envoy AI Gateway uses this key file to generate an access token and authenticate with GCP Vertex AI.
+
 ```yaml
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
@@ -159,16 +164,16 @@ metadata:
 spec:
   type: GCPCredentials
   gcpCredentials:
-    projectName: GCP_PROJECT_NAME  # Replace with your GCP project name
-    region: GCP_REGION  # Replace with your GCP region
+    projectName: GCP_PROJECT_NAME # Replace with your GCP project name
+    region: GCP_REGION # Replace with your GCP region
     credentialsFile:
       secretRef:
         name: envoy-ai-gateway-basic-gcp-service-account-key-file
 ```
 
 2. Workload Identity Federation:
-Workload Identity Federation is a modern, keyless authentication method that allows workloads running outside of GCP to impersonate a service account using their own native identity.
-It leverages a trust relationship between GCP and an external identity provider such as OIDC.
+   Workload Identity Federation is a modern, keyless authentication method that allows workloads running outside of GCP to impersonate a service account using their own native identity.
+   It leverages a trust relationship between GCP and an external identity provider such as OIDC.
 
 ```yaml
 apiVersion: aigateway.envoyproxy.io/v1alpha1
@@ -245,7 +250,6 @@ spec:
       backendRefs:
         - name: bedrock-backend
 ```
-
 
 ## Resource Relationships and Data Flow
 
@@ -357,7 +361,7 @@ spec:
               value: gpt-4o-mini
       backendRefs:
         - name: openai-backend
-        - name: groq-backend  # Fallback provider
+        - name: groq-backend # Fallback provider
 ```
 
 ### Model-Specific Routing
@@ -397,8 +401,6 @@ spec:
       backendRefs:
         - name: openai-embeddings-backend
 ```
-
-
 
 Configure model ownership and creation information for the `/models` endpoint:
 
@@ -470,21 +472,25 @@ All resources provide status conditions to monitor their health:
 ### Common Issues and Solutions
 
 **Authentication Failures (401/403)**
+
 - Verify API keys and credentials are correct
 - Check secret references and key names
 - Ensure credentials have necessary permissions
 
 **Schema Mismatch Errors**
+
 - Confirm the backend schema matches the provider's API
 - Check version specifications for provider-specific paths
 - Review API documentation for schema requirements
 
 **Routing Issues**
+
 - Verify header matching rules in AIGatewayRoute
 - Check that model names match expected values
 - Ensure backend references point to existing AIServiceBackends
 
 **Backend Reference Errors**
+
 - Ensure backendRef points to Envoy Gateway Backend resources
 - Verify the Backend resource exists and is properly configured
 - Check that the group field is set to `gateway.envoyproxy.io`

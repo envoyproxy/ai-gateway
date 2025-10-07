@@ -11,6 +11,7 @@ This guide will help you configure Envoy AI Gateway to work with GCP VertexAI's 
 ## Prerequisites
 
 Before you begin, you'll need:
+
 - GCP credentials with access to GCP VertexAI
 - Basic setup completed from the [Basic Usage](../basic-usage.md) guide
 - Basic configuration removed as described in the [Advanced Configuration](./index.md) overview
@@ -18,6 +19,7 @@ Before you begin, you'll need:
 ## GCP Credentials Setup
 
 Ensure you have:
+
 1. Your GCP project id and name.
 2. In your GCP project, enable VertexAI API access.
 3. Create a GCP service account and generate the JSON key file.
@@ -37,6 +39,7 @@ curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/ba
 ### 2. Configure GCP Credentials
 
 Edit the `gcp_vertex.yaml` file to replace these placeholder values:
+
 - `GCP_PROJECT_NAME`: Your GCP project name
 - `GCP_REGION`: GCP region
 - Update the generated service account key JSON string in the secret
@@ -66,6 +69,7 @@ You should have set `$GATEWAY_URL` as part of the basic setup before connecting 
 See the [Basic Usage](../basic-usage.md) page for instructions.
 
 To access a Gemini model with chat completion endpoint:
+
 ```shell
 curl -H "Content-Type: application/json" \
   -d '{
@@ -81,6 +85,7 @@ curl -H "Content-Type: application/json" \
 ```
 
 To access an Anthropic model with chat completion endpoint:
+
 ```shell
 curl -H "Content-Type: application/json" \
   -d '{
@@ -97,24 +102,26 @@ curl -H "Content-Type: application/json" \
 ```
 
 Expected output:
+
 ```json
 {
-  "choices":[
+  "choices": [
     {
-      "finish_reason":"stop",
-      "index":0,
-      "message":{
-        "content":"The capital of France is Paris. Paris is not only the capital city but also the largest city in France, known for its cultural significance, historic landmarks like the Eiffel Tower and the Louvre Museum, and its influence in fashion, art, and cuisine.",
-        "role":"assistant"
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "The capital of France is Paris. Paris is not only the capital city but also the largest city in France, known for its cultural significance, historic landmarks like the Eiffel Tower and the Louvre Museum, and its influence in fashion, art, and cuisine.",
+        "role": "assistant"
       }
     }
   ],
-  "object":"chat.completion",
-  "usage":{"completion_tokens":58,"prompt_tokens":13,"total_tokens":71}
+  "object": "chat.completion",
+  "usage": { "completion_tokens": 58, "prompt_tokens": 13, "total_tokens": 71 }
 }
 ```
 
 You can also access an Anthropic model with native Anthropic messages endpoint:
+
 ```shell
 curl -H "Content-Type: application/json" \
   -d '{
@@ -144,9 +151,9 @@ If you encounter issues:
    kubectl logs -n envoy-ai-gateway-system deployment/ai-gateway-controller
    ```
 4. Common errors:
-    - 401/403: Invalid credentials or insufficient permissions
-    - 404: Model not found or not available in a region
-    - 429: Rate limit exceeded
+   - 401/403: Invalid credentials or insufficient permissions
+   - 404: Model not found or not available in a region
+   - 429: Rate limit exceeded
 
 ## Configuring More Models
 

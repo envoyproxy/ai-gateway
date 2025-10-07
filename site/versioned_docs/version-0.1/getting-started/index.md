@@ -68,5 +68,6 @@ For detailed instructions and explanations, start with the [Prerequisites](./pre
 ## Need Help?
 
 If you run into any issues:
+
 - Join our [Community Slack](https://envoyproxy.slack.com/archives/C07Q4N24VAA)
 - File an issue on [GitHub](https://github.com/envoyproxy/ai-gateway/issues)

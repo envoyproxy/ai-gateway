@@ -74,6 +74,8 @@ format: ## Format the codebase.
 	@$(GO_TOOL) license-eye header fix
 	@echo "prettier => **.{yaml,yml}"
 	@$(GO_TOOL) prettier --write '**/*.{yaml,yml}'
+	@echo "prettier => **.md"
+	@$(GO_TOOL) prettier --write '**/*.md'
 
 # This runs go mod tidy on every module.
 .PHONY: tidy
