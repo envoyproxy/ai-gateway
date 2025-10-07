@@ -69,7 +69,7 @@ var (
 				Content: openai.StringOrUserRoleContentUnion{Value: "What is the weather like in Boston today?"},
 			},
 		}},
-		ToolChoice: "auto",
+		ToolChoice: &openai.ChatCompletionToolChoice{Value: "auto"},
 		Tools: []openai.Tool{{
 			Type: "function",
 			Function: &openai.FunctionDefinition{
