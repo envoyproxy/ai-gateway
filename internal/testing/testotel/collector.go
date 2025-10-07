@@ -133,17 +133,6 @@ func (o *OTLPCollector) TakeSpan() *tracev1.Span {
 	}
 }
 
-// DrainSpans drains all pending spans from the channel.
-func (o *OTLPCollector) DrainSpans() {
-	for {
-		select {
-		case <-o.spanCh:
-			// Discard the span
-		case <-time.After(otlpTimeout):
-			return // No more spans available
-		}
-	}
-}
 
 // DrainMetrics returns metrics or nil if none were recorded.
 func (o *OTLPCollector) DrainMetrics() *metricsv1.ResourceMetrics {
