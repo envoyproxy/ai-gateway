@@ -4,7 +4,6 @@ go 1.25
 
 tool (
 	github.com/apache/skywalking-eyes/cmd/license-eye
-	github.com/daixiang0/gci
 	github.com/editorconfig-checker/editorconfig-checker/v3/cmd/editorconfig-checker
 	github.com/elastic/crd-ref-docs
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
@@ -12,7 +11,6 @@ tool (
 	github.com/vladopajic/go-test-coverage/v2
 	github.com/wasilibs/go-prettier/v3/cmd/prettier
 	helm.sh/helm/v3/cmd/helm
-	mvdan.cc/gofumpt
 	sigs.k8s.io/controller-runtime/tools/setup-envtest
 	sigs.k8s.io/controller-tools/cmd/controller-gen
 	sigs.k8s.io/kind
