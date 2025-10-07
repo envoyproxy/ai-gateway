@@ -17,7 +17,6 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
-	v1 "go.opentelemetry.io/proto/otlp/trace/v1"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
@@ -241,16 +240,18 @@ func (m *mcpEnv) newSession(t *testing.T) *mcpSession {
 	ret.session, err = m.client.Connect(t.Context(), &mcp.StreamableClientTransport{Endpoint: m.baseURL}, nil)
 	require.NoError(t, err)
 	span := m.collector.TakeSpan()
-	require.Equal(t, "mcp.request", span.Name)
-	require.Equal(t, v1.Span_SPAN_KIND_CLIENT, span.Kind)
-
 	t.Log("created new MCP session with ID ", ret.session.ID(), ", first span: ", span.String())
-	require.NotNil(t, span)
+	requireMCPSpan(t, span, "Initialize", map[string]string{
+		"mcp.method.name":    "initialize",
+		"mcp.client.name":    "demo-http-client",
+		"mcp.client.title":   "",
+		"mcp.client.version": "0.1.0",
+	})
 
 	// **NOTE*** Do not add any direct access to the in-memory server session. Otherwise, the tests will result in
 	// not being able to run in end-to-end tests. The test code must solely operate through the client side sessions.
 	t.Cleanup(func() {
-		require.NoError(t, ret.session.Close())
+		_ = ret.session.Close()
 		m.mux.Lock()
 		defer m.mux.Unlock()
 		delete(m.sessions, ret.session.ID())
