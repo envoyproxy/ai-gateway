@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
@@ -22,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
 	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
+	"google.golang.org/protobuf/testing/protocmp"
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/envoyproxy/ai-gateway/tests/internal/testmcp"
@@ -153,7 +155,7 @@ func testToolCall(t *testing.T, m *mcpEnv) {
 	require.Len(t, res.Content, 1)
 	require.IsType(t, &mcp.TextContent{}, res.Content[0])
 	require.Equal(t, helloText, res.Content[0].(*mcp.TextContent).Text)
-	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend__"+testmcp.ToolEcho.Tool.Name)
+	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolEcho.Tool.Name, false, "")
 
 	res, err = s.session.CallTool(t.Context(), &mcp.CallToolParams{
 		Name:      "default-mcp-backend__" + testmcp.ToolSum.Tool.Name,
@@ -164,7 +166,7 @@ func testToolCall(t *testing.T, m *mcpEnv) {
 	require.Len(t, res.Content, 1)
 	require.IsType(t, &mcp.TextContent{}, res.Content[0])
 	require.Equal(t, "42", res.Content[0].(*mcp.TextContent).Text)
-	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend__"+testmcp.ToolSum.Tool.Name)
+	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolSum.Tool.Name, false, "")
 }
 
 func testToolCallDumbEcho(t *testing.T, m *mcpEnv) {
@@ -180,7 +182,7 @@ func testToolCallDumbEcho(t *testing.T, m *mcpEnv) {
 	require.Len(t, res.Content, 1)
 	require.IsType(t, &mcp.TextContent{}, res.Content[0])
 	require.Equal(t, "dumb echo: "+helloText, res.Content[0].(*mcp.TextContent).Text)
-	requireToolSpan(t, m.collector.TakeSpan(), "dumb-mcp-backend__"+testmcp.ToolDumbEcho.Tool.Name)
+	requireToolSpan(t, m.collector.TakeSpan(), "dumb-mcp-backend", testmcp.ToolDumbEcho.Tool.Name, false, "")
 }
 
 func testToolCallError(t *testing.T, m *mcpEnv) {
@@ -198,7 +200,7 @@ func testToolCallError(t *testing.T, m *mcpEnv) {
 		require.Len(t, res.Content, 1)
 		require.IsType(t, &mcp.TextContent{}, res.Content[0])
 		require.Equal(t, errTool, res.Content[0].(*mcp.TextContent).Text)
-		requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend__"+testmcp.ToolError.Tool.Name)
+		requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolError.Tool.Name, false, "")
 	})
 
 	// Protocol errors or tool invocation errors (such as validation errors) are
@@ -211,7 +213,7 @@ func testToolCallError(t *testing.T, m *mcpEnv) {
 		require.Error(t, err)
 		require.Nil(t, res)
 		require.Contains(t, err.Error(), "minLength")
-		requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend__"+testmcp.ToolError.Tool.Name)
+		requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolError.Tool.Name, false, "")
 	})
 }
 
@@ -249,7 +251,7 @@ func testToolCountDown(t *testing.T, m *mcpEnv) {
 		callErrorCh <- err
 		doneBool.Store(true)
 	}()
-	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend__"+testmcp.ToolCountDown.Tool.Name)
+	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolCountDown.Tool.Name, false, "")
 
 	// we cannot assume the order of notifications, so we use a set to track them.
 	counts := sets.New[int]()
@@ -374,7 +376,7 @@ func testPromptChangeNotifications(t *testing.T, m *mcpEnv) {
 	})
 	require.NoError(t, err)
 	require.False(t, res.IsError)
-	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend__"+testmcp.ToolAddPromptName)
+	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolAddPromptName, false, "")
 
 	// Wait for the notification.
 	var req *mcp.PromptListChangedRequest
@@ -477,7 +479,7 @@ func testResourceSubscribe(t *testing.T, m *mcpEnv) {
 	})
 	require.NoError(t, err)
 	require.False(t, res.IsError)
-	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend__"+testmcp.ToolResourceUpdateNotificationName)
+	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolResourceUpdateNotificationName, false, "")
 	// Wait for the subscribe notification.
 	requireEventuallyNotificationCountMessages(t, s, m, "subscribe: 1")
 
@@ -509,7 +511,7 @@ func testResourceSubscribe(t *testing.T, m *mcpEnv) {
 	})
 	require.NoError(t, err)
 	require.False(t, res.IsError)
-	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend__"+testmcp.ToolResourceUpdateNotificationName)
+	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolResourceUpdateNotificationName, false, "")
 
 	// Wait for the notification.
 	select {
@@ -535,7 +537,7 @@ func testResourceListChangeNotifications(t *testing.T, m *mcpEnv) {
 	})
 	require.NoError(t, err)
 	require.False(t, res.IsError)
-	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend__"+testmcp.ToolAddOrDeleteDummyResourceName)
+	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolAddOrDeleteDummyResourceName, false, "")
 
 	// Clean up, otherwise it will affect ListResources in other tests.
 	t.Cleanup(func() {
@@ -580,7 +582,7 @@ func testListRootsAndChangeRoots(t *testing.T, m *mcpEnv) {
 	require.Len(t, res.Content, 1)
 	require.IsType(t, &mcp.TextContent{}, res.Content[0])
 	require.Contains(t, res.Content[0].(*mcp.TextContent).Text, fmt.Sprintf("root %q found", mcpDefaultRootName))
-	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend__"+testmcp.ToolContainsRootTool.Tool.Name)
+	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolContainsRootTool.Tool.Name, false, "")
 
 	m.mux.Lock()
 	defer m.mux.Unlock()
@@ -603,7 +605,7 @@ func testListRootsAndChangeRoots(t *testing.T, m *mcpEnv) {
 	require.Len(t, res.Content, 1)
 	require.IsType(t, &mcp.TextContent{}, res.Content[0])
 	require.Contains(t, res.Content[0].(*mcp.TextContent).Text, fmt.Sprintf("root %q not found", mcpDefaultRootName))
-	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend__"+testmcp.ToolContainsRootTool.Tool.Name)
+	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolContainsRootTool.Tool.Name, false, "")
 
 	requireEventuallyNotificationCountMessages(t, s, m, "roots_list_changed: 1")
 
@@ -627,7 +629,7 @@ func testSamplingCreateMessage(t *testing.T, m *mcpEnv) {
 	})
 	require.NoError(t, err)
 	require.False(t, res.IsError)
-	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend__"+testmcp.ToolCreateMessage.Tool.Name)
+	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolCreateMessage.Tool.Name, false, "")
 
 	// Wait for the request from the server.
 	var req *mcp.CreateMessageRequest
@@ -662,7 +664,7 @@ func testElicit(t *testing.T, m *mcpEnv) {
 	})
 	require.NoError(t, err)
 	require.False(t, res.IsError)
-	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend__"+testmcp.ToolElicitEmail.Tool.Name)
+	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolElicitEmail.Tool.Name, false, "")
 
 	// Wait for the request from the server.
 	var req *mcp.ElicitRequest
@@ -697,7 +699,8 @@ func testNotificationCancelled(t *testing.T, m *mcpEnv) {
 		// Wait for the goroutine to complete so its span doesn't leak to the next test.
 		<-doneCh
 		// Consume the CallTool span from the cancelled operation.
-		requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend__"+testmcp.ToolDelay.Tool.Name)
+		// This span will have an exception event due to cancellation.
+		requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolDelay.Tool.Name, false, "context canceled")
 		// we cannot do the test in TearDownSuite,
 		// we need to wait a while for notifications/cancelled,
 		// metric won't be updated if the test exits too early.
@@ -876,13 +879,59 @@ func requireMCPSpan(t *testing.T, span *tracev1.Span, expectedName string, addit
 	require.Equalf(t, combined, attrsFromSpan, "span attributes mismatch, full span: %s", span.String())
 }
 
-// requireToolSpan verifies a CallTool span with the expected tool name.
-func requireToolSpan(t *testing.T, span *tracev1.Span, toolName string) {
+// requireToolSpan verifies a CallTool span contains the expected attributes and events.
+//
+//   - backendName: the MCP backend name (e.g. "default-mcp-backend")
+//   - toolName: the unprefixed tool name (e.g. "echo"). The function will verify the
+//     span contains the full prefixed name: backendName + "__" + toolName
+//   - isNew: whether this is a new backend session (mcp.session.new attribute)
+//   - exceptionMessage: expected exception message substring, or empty string
+func requireToolSpan(t *testing.T, span *tracev1.Span, backendName string, toolName string, isNew bool, exceptionMessage string) {
 	t.Helper()
+
 	requireMCPSpan(t, span, "CallTool", map[string]string{
 		"mcp.method.name": "tools/call",
-		"mcp.tool.name":   toolName,
+		"mcp.tool.name":   backendName + "__" + toolName,
 	})
+	// Verify the "route to backend" event and optionally exception event
+	expectedEvents := []*tracev1.Span_Event{
+		{
+			Name: "route to backend",
+			Attributes: []*commonv1.KeyValue{
+				{Key: "mcp.backend.name", Value: &commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: backendName}}},
+				{Key: "mcp.session.new", Value: &commonv1.AnyValue{Value: &commonv1.AnyValue_BoolValue{BoolValue: isNew}}},
+			},
+		},
+	}
+	if exceptionMessage != "" {
+		expectedEvents = append(expectedEvents, &tracev1.Span_Event{
+			Name: "exception",
+			Attributes: []*commonv1.KeyValue{
+				{Key: "exception.type", Value: &commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: "internal_error"}}},
+				{Key: "exception.message", Value: &commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: exceptionMessage}}},
+			},
+		})
+	}
+
+	// Normalize span attributes for comparison
+	for _, event := range span.Events {
+		event.TimeUnixNano = 0
+		var filteredAttrs []*commonv1.KeyValue
+		for _, attr := range event.Attributes {
+			if attr.Key == "mcp.session.id" {
+				continue // the call site won't know the backend session ID
+			}
+			if attr.Key == "exception.message" && exceptionMessage != "" {
+				// exception messages are substring match due to IPs, etc.
+				actualMsg := attr.Value.GetStringValue()
+				require.Contains(t, actualMsg, exceptionMessage)
+				attr.Value = &commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: exceptionMessage}}
+			}
+			filteredAttrs = append(filteredAttrs, attr)
+		}
+		event.Attributes = filteredAttrs
+	}
+	require.Empty(t, cmp.Diff(expectedEvents, span.Events, protocmp.Transform()))
 }
 
 // requireNotificationProgressSpan verifies a notifications/progress span with the expected attributes.
