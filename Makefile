@@ -69,10 +69,7 @@ GO_FILES=$(shell git ls-files --cached --others --exclude-standard | grep '\.go$
 .PHONY: format
 format: ## Format the codebase.
 	@echo "format => *.go"
-	@gofmt -s -w $(GO_FILES)
-	@$(GO_TOOL) gofumpt -l -w $(GO_FILES)
-	@echo "gci => *.go"
-	@$(GO_TOOL) gci write -s standard -s default -s "prefix(github.com/envoyproxy/ai-gateway)" $(GO_FILES)
+	@$(GO_TOOL) golangci-lint fmt $(GO_FILES)
 	@echo "licenses => **"
 	@$(GO_TOOL) license-eye header fix
 	@echo "prettier => **.{yaml,yml}"
