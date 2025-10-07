@@ -328,6 +328,7 @@ jobs:
   test_e2e_aigw:
     needs: changes
     name: E2E Test for aigw CLI
+    if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -370,15 +371,7 @@ jobs:
     # Docker builds are verified in test_e2e job, so we only need to push the images when the event is a push event.
     if: github.event_name == 'push'
     name: Push Docker Images
-    needs:
-      [
-        unittest,
-        test_crdcel,
-        test_controller,
-        test_extproc,
-        test_e2e,
-        test_e2e_inference_extension,
-      ]
+    needs: [ci-required]
     uses: ./.github/workflows/docker_build_job.yaml
     secrets: inherit
 
