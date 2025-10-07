@@ -336,8 +336,8 @@ func (s *Server) extractMCPBackendFiltersFromMCPProxyListener(listeners []*liste
 // isMCPBackendHTTPFilter checks if an HTTP filter is used for MCP backend processing.
 func (s *Server) isMCPBackendHTTPFilter(filter *httpconnectionmanagerv3.HttpFilter) bool {
 	// Check if the filter name contains the MCP prefix
-	// MCP HTTPRouteFilters are typically named with the MCPBackendFilterPrefix.
-	if strings.Contains(filter.Name, internalapi.MCPBackendFilterPrefix) {
+	// MCP HTTPRouteFilters are typically named with the MCPPerBackendHTTPRouteFilterPrefix.
+	if strings.Contains(filter.Name, internalapi.MCPPerBackendHTTPRouteFilterPrefix) {
 		return true
 	}
 

@@ -296,7 +296,7 @@ func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 	require.NotNil(t, httpRule.Filters[0].ExtensionRef)
 	require.Equal(t, gwapiv1.Group("gateway.envoyproxy.io"), httpRule.Filters[0].ExtensionRef.Group)
 	require.Equal(t, gwapiv1.Kind("HTTPRouteFilter"), httpRule.Filters[0].ExtensionRef.Kind)
-	require.Contains(t, string(httpRule.Filters[0].ExtensionRef.Name), internalapi.MCPBackendFilterPrefix)
+	require.Contains(t, string(httpRule.Filters[0].ExtensionRef.Name), internalapi.MCPPerBackendHTTPRouteFilterPrefix)
 
 	var httpFilter egv1a1.HTTPRouteFilter
 	err = c.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: string(httpRule.Filters[0].ExtensionRef.Name)}, &httpFilter)

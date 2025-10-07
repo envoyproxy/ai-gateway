@@ -172,7 +172,7 @@ func TestServer_isMCPBackendHTTPFilter(t *testing.T) {
 	}{
 		{
 			name:     "MCP backend filter",
-			filter:   &httpconnectionmanagerv3.HttpFilter{Name: internalapi.MCPBackendFilterPrefix + "test"},
+			filter:   &httpconnectionmanagerv3.HttpFilter{Name: internalapi.MCPPerBackendHTTPRouteFilterPrefix + "test"},
 			expected: true,
 		},
 		{
@@ -312,7 +312,7 @@ func TestServer_extractMCPBackendFiltersFromMCPProxyListener(t *testing.T) {
 										TypedConfig: mustToAny(&httpconnectionmanagerv3.HttpConnectionManager{
 											StatPrefix: "http",
 											HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
-												{Name: internalapi.MCPBackendFilterPrefix + "test-filter"},
+												{Name: internalapi.MCPPerBackendHTTPRouteFilterPrefix + "test-filter"},
 												{Name: "envoy.filters.http.router"},
 											},
 										}),
@@ -324,7 +324,7 @@ func TestServer_extractMCPBackendFiltersFromMCPProxyListener(t *testing.T) {
 				},
 			},
 			expectedFilters: []*httpconnectionmanagerv3.HttpFilter{
-				{Name: internalapi.MCPBackendFilterPrefix + "test-filter"},
+				{Name: internalapi.MCPPerBackendHTTPRouteFilterPrefix + "test-filter"},
 			},
 		},
 	}

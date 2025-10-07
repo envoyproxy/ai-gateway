@@ -517,7 +517,7 @@ func mcpProxyBackendName(mcpRoute *aigv1a1.MCPRoute) string {
 }
 
 func mcpBackendRefFilterName(mcpRoute *aigv1a1.MCPRoute, backendName gwapiv1.ObjectName) string {
-	return fmt.Sprintf("%s%s-%s", internalapi.MCPBackendFilterPrefix, mcpRoute.Name, backendName)
+	return fmt.Sprintf("%s%s-%s", internalapi.MCPPerBackendHTTPRouteFilterPrefix, mcpRoute.Name, backendName)
 }
 
 // mcpBackendRefToHTTPRouteRule creates an HTTPRouteRule for the given MCPRouteBackendRef.
