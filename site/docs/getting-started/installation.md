@@ -24,7 +24,7 @@ kubectl wait --timeout=2m -n envoy-ai-gateway-system deployment/ai-gateway-contr
 
 > If you are experiencing network issues with `docker.io` , you can install the helm chart from the code repo [ai-gateway-helm](https://github.com/envoyproxy/ai-gateway/tree/main/manifests/charts/ai-gateway-helm) instead.
 
-### Installing CRDs serperately
+### Installing CRDs separately
 
 If you want to manage the CRDs separately, install the CRD Helm chart (`ai-gateway-crds-helm`) which will install just the CRDs:
 
