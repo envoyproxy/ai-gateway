@@ -141,7 +141,7 @@ This configures the OTLP endpoint to otel-tui on port 4318.
 1. **Start the services**:
 
    ```bash
-   COMPOSE_PROFILES={profile} docker compose -f docker-compose-otel.yaml up --build --wait -d
+   COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml up --build --wait -d
    ```
 
    Where `<profile>` is:
@@ -152,9 +152,9 @@ This configures the OTLP endpoint to otel-tui on port 4318.
 2. **Send test requests**:
 
    ```bash
-   COMPOSE_PROFILES={profile} docker compose -f docker-compose-otel.yaml run --build --rm chat-completion
-   COMPOSE_PROFILES={profile} docker compose -f docker-compose-otel.yaml run --build --rm create-embeddings
-   COMPOSE_PROFILES={profile} docker compose -f docker-compose-otel.yaml run --build --rm mcp
+   COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm chat-completion
+   COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm create-embeddings
+   COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm mcp
    ```
 
 3. **Check telemetry output**:
