@@ -168,7 +168,7 @@ func (s *Server) maybeUpdateMCPRoutes(routes []*routev3.RouteConfiguration) {
 	for _, routeConfig := range routes {
 		for _, vh := range routeConfig.VirtualHosts {
 			for _, route := range vh.Routes {
-				if strings.Contains(route.Name, internalapi.MCPHTTPRoutePrefix) {
+				if strings.Contains(route.Name, internalapi.MCPMainHTTPRoutePrefix) {
 					// Skip the frontend mcp proxy route(rule/0).
 					if strings.Contains(route.Name, "rule/0") {
 						continue
@@ -186,6 +186,8 @@ func (s *Server) maybeUpdateMCPRoutes(routes []*routev3.RouteConfiguration) {
 }
 
 // createRoutesForBackendListener creates routes for the backend listener.
+// The HCM of the backend listener will have all the per-backendRef HTTP routes.
+//
 // Returns nil if no MCP routes are found.
 func (s *Server) createRoutesForBackendListener(routes []*routev3.RouteConfiguration) *routev3.RouteConfiguration {
 	var backendListenerRoutes []*routev3.Route
@@ -193,7 +195,7 @@ func (s *Server) createRoutesForBackendListener(routes []*routev3.RouteConfigura
 		for _, vh := range routeConfig.VirtualHosts {
 			var originalRoutes []*routev3.Route
 			for _, route := range vh.Routes {
-				if strings.Contains(route.Name, internalapi.MCPHTTPRoutePrefix) {
+				if strings.Contains(route.Name, internalapi.MCPPerBackendRefHTTPRoutePrefix) {
 					s.log.Info("found MCP route, processing for backend listener", "route", route.Name)
 					// Copy the route and modify it to use the backend header and mcpproxy-cluster.
 					marshaled, err := proto.Marshal(route)
@@ -207,8 +209,7 @@ func (s *Server) createRoutesForBackendListener(routes []*routev3.RouteConfigura
 						continue
 					}
 					if routeAction := route.GetRoute(); routeAction != nil {
-						if cs, ok := routeAction.ClusterSpecifier.(*routev3.RouteAction_Cluster); ok && !strings.Contains(cs.Cluster, "rule/0") {
-							// TODO: skip the well-know route.
+						if _, ok := routeAction.ClusterSpecifier.(*routev3.RouteAction_Cluster); ok {
 							backendListenerRoutes = append(backendListenerRoutes, copiedRoute)
 							continue
 						}
@@ -241,7 +242,7 @@ func (s *Server) createRoutesForBackendListener(routes []*routev3.RouteConfigura
 // swaps it to the localhost.
 func (s *Server) modifyMCPGatewayGeneratedCluster(clusters []*clusterv3.Cluster) {
 	for _, c := range clusters {
-		if strings.Contains(c.Name, internalapi.MCPHTTPRoutePrefix) && strings.HasSuffix(c.Name, "/rule/0") {
+		if strings.Contains(c.Name, internalapi.MCPMainHTTPRoutePrefix) && strings.HasSuffix(c.Name, "/rule/0") {
 			name := c.Name
 			*c = clusterv3.Cluster{
 				Name:                 name,
@@ -335,8 +336,8 @@ func (s *Server) extractMCPBackendFiltersFromMCPProxyListener(listeners []*liste
 // isMCPBackendHTTPFilter checks if an HTTP filter is used for MCP backend processing.
 func (s *Server) isMCPBackendHTTPFilter(filter *httpconnectionmanagerv3.HttpFilter) bool {
 	// Check if the filter name contains the MCP prefix
-	// MCP HTTPRouteFilters are typically named with the MCPBackendFilterPrefix.
-	if strings.Contains(filter.Name, internalapi.MCPBackendFilterPrefix) {
+	// MCP HTTPRouteFilters are typically named with the MCPPerBackendHTTPRouteFilterPrefix.
+	if strings.Contains(filter.Name, internalapi.MCPPerBackendHTTPRouteFilterPrefix) {
 		return true
 	}
 
@@ -347,7 +348,7 @@ func (s *Server) isMCPBackendHTTPFilter(filter *httpconnectionmanagerv3.HttpFilt
 // that handles MCP OAuth resources (contains both MCPHTTPRoutePrefix and oauthProtectedResourceMetadataSuffix).
 func (s *Server) isMCPOAuthCustomResponseFilter(filter *httpconnectionmanagerv3.HttpFilter) bool {
 	return strings.HasPrefix(filter.Name, "envoy.filters.http.custom_response/") &&
-		strings.Contains(filter.Name, internalapi.MCPHTTPRoutePrefix) &&
+		strings.Contains(filter.Name, internalapi.MCPGeneratedResourceCommonPrefix) &&
 		strings.HasSuffix(filter.Name, "-oauth-protected-resource-metadata")
 }
 

@@ -27,9 +27,14 @@ const (
 	MCPBackendListenerPort = 10088
 	// MCPProxyPort is the port where the MCP proxy listens.
 	MCPProxyPort = 9856
-	// MCPHTTPRoutePrefix is the prefix for the MCP HTTPRoute names.
-	MCPHTTPRoutePrefix     = "ai-eg-mcp-"
-	MCPBackendFilterPrefix = MCPHTTPRoutePrefix + "bf-"
+	// MCPGeneratedResourceCommonPrefix is the common prefix for all MCP-related generated resources.
+	MCPGeneratedResourceCommonPrefix = "ai-eg-mcp-"
+	// MCPMainHTTPRoutePrefix is the prefix for the main HTTPRoute resources generated for MCP.
+	MCPMainHTTPRoutePrefix = MCPGeneratedResourceCommonPrefix + "main-"
+	// MCPPerBackendRefHTTPRoutePrefix is the prefix for the per-backend-ref HTTPRoute resources generated for MCP.
+	MCPPerBackendRefHTTPRoutePrefix = MCPGeneratedResourceCommonPrefix + "br-"
+	// MCPPerBackendHTTPRouteFilterPrefix is the prefix for the HTTP route filter names for per-backend resources.
+	MCPPerBackendHTTPRouteFilterPrefix = MCPGeneratedResourceCommonPrefix + "brf-"
 
 	// MCPMetadataHeaderPrefix is the prefix for special headers used to pass metadata in the filter metadata.
 	// These headers are added internally to the requests to the upstream servers so they can be populated in the filter

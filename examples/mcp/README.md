@@ -184,7 +184,7 @@ Once authenticated, Claude will confirm:
 
 ```
 > /mcp mcp-gateway
-  ⎿  Authentication successful. Connected to mcp-gateway.
+  ⎿  Authentication successful. Connected to mcp-gateway.
 ```
 
 Now you can explore the available tools:
@@ -209,7 +209,7 @@ From here, you can start using the tools inside Claude.
 ⏺ I'll help you find the cheapest flight tickets from LA to San Francisco. Let me search for flights for today's date.
 
 ⏺ mcp-gateway - search-flight (MCP)(flyFrom: "Los Angeles", flyTo: "San Francisco", departureDate: "13/09/2025", sort: "price", curr: "USD")
-  ⎿  [
+  ⎿  [
        {
          "flyFrom": "LAX",
      … +284 lines (ctrl+r to expand)
@@ -237,13 +237,13 @@ Once you have everything running you can start the agent by passing a prompt fil
 into the terminal.
 
 ```shell
-$ uv run --exact -q --env-file file /path/to/prompt.txt < environment >> agent.py
+$ uv run --exact -q --env-file .env agent.py /path/to/prompt.txt
 ```
 
 or
 
 ```shell
-$ uv run --exact -q --env-file file < environment >> agent.py << EOF
+$ uv run --exact -q --env-file .env agent.py << EOF
 > your prompt here
 EOF
 ```
