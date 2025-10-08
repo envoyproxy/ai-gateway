@@ -393,7 +393,7 @@ func TestMatchRequest_EdgeCases(t *testing.T) {
 			require.NoError(t, err)
 			tc.req.Body = io.NopCloser(bytes.NewReader(body))
 
-			result := h.matchRequest(tc.req, tc.cassReq, body, "test")
+			result := h.matchRequest(tc.req, &tc.cassReq, body, "test")
 			require.Equal(t, tc.expected, result)
 		})
 	}

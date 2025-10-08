@@ -197,7 +197,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if string(expectedBody) != string(requestBody) {
+		if !bytes.Equal(expectedBody, requestBody) {
 			logAndSendError(w, http.StatusBadRequest, "unexpected request body: got %s, expected %s", string(requestBody), string(expectedBody))
 			return
 		}

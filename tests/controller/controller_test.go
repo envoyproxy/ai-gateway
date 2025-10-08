@@ -66,7 +66,7 @@ func TestStartControllers(t *testing.T) {
 
 	ctx := t.Context()
 	go func() {
-		err := controller.StartControllers(ctx, mgr, cfg, defaultLogger(), opts)
+		err := controller.StartControllers(ctx, mgr, cfg, defaultLogger(), &opts)
 		require.NoError(t, err)
 	}()
 

@@ -322,7 +322,8 @@ func TestAssistantMsgToGeminiParts(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			parts, toolCalls, err := assistantMsgToGeminiParts(tc.msg)
+			msg := tc.msg
+			parts, toolCalls, err := assistantMsgToGeminiParts(&msg)
 
 			if tc.expectedErrorMsg != "" || err != nil {
 				require.Error(t, err)

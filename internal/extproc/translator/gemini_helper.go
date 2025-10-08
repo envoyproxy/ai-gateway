@@ -88,7 +88,7 @@ func openAIMessagesToGeminiContents(messages []openai.ChatCompletionMessageParam
 				gcpParts = nil
 			}
 			msg := msgUnion.OfAssistant
-			assistantParts, toolCalls, err := assistantMsgToGeminiParts(*msg)
+			assistantParts, toolCalls, err := assistantMsgToGeminiParts(msg)
 			if err != nil {
 				return nil, nil, fmt.Errorf("error converting assistant message: %w", err)
 			}
@@ -207,12 +207,16 @@ func toolMsgToGeminiParts(msg openai.ChatCompletionToolMessageParam, knownToolCa
 }
 
 // assistantMsgToGeminiParts converts OpenAI assistant message to Gemini Parts and known tool calls.
-func assistantMsgToGeminiParts(msg openai.ChatCompletionAssistantMessageParam) ([]*genai.Part, map[string]string, error) {
+func assistantMsgToGeminiParts(msg *openai.ChatCompletionAssistantMessageParam) ([]*genai.Part, map[string]string, error) {
+	if msg == nil {
+		return nil, nil, fmt.Errorf("assistant message cannot be nil")
+	}
 	var parts []*genai.Part
 
 	// Handle tool calls in the assistant message.
 	knownToolCalls := make(map[string]string)
-	for _, toolCall := range msg.ToolCalls {
+	for i := range msg.ToolCalls {
+		toolCall := msg.ToolCalls[i]
 		knownToolCalls[*toolCall.ID] = toolCall.Function.Name
 		var parsedArgs map[string]any
 		if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &parsedArgs); err != nil {

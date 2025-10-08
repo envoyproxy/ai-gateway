@@ -418,7 +418,7 @@ func TestRequestMatcher(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := requestMatcher(tc.httpReq, tc.cassReq)
+			result := requestMatcher(tc.httpReq, &tc.cassReq)
 			require.Equal(t, tc.expected, result)
 		})
 	}

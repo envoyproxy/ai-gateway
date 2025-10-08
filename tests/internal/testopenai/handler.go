@@ -64,7 +64,7 @@ func (h *cassetteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		c := h.cassettes[cassetteName]
 		if c != nil {
 			for _, interaction := range c.Interactions {
-				if h.matchRequest(r, interaction.Request, body, cassetteName) {
+				if h.matchRequest(r, &interaction.Request, body, cassetteName) {
 					writeResponse(w, interaction)
 					h.logger.Println("response sent")
 					return
@@ -110,7 +110,7 @@ func (h *cassetteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// No specific cassette requested - try to find a match in all cassettes.
 	for cassetteName, c := range h.cassettes {
 		for _, interaction := range c.Interactions {
-			if h.matchRequest(r, interaction.Request, body, cassetteName) {
+			if h.matchRequest(r, &interaction.Request, body, cassetteName) {
 				// Found a match! Return the recorded response.
 				writeResponse(w, interaction)
 				return
@@ -329,14 +329,17 @@ func splitSSEEvents(body string) []string {
 }
 
 // matchRequest checks if an HTTP request matches a cassette request.
-func (h *cassetteHandler) matchRequest(r *http.Request, i cassette.Request, body []byte, cassetteName string) bool {
+func (h *cassetteHandler) matchRequest(r *http.Request, req *cassette.Request, body []byte, cassetteName string) bool {
+	if req == nil {
+		return false
+	}
 	// Match method.
-	if r.Method != i.Method {
+	if r.Method != req.Method {
 		return false
 	}
 
 	// Normalize cassette URL for matching against request.
-	cassetteURL, err := h.normalizeCassetteURL(i.URL, body, cassetteName)
+	cassetteURL, err := h.normalizeCassetteURL(req.URL, body, cassetteName)
 	if err != nil {
 		h.logger.Printf("Failed to normalize cassette URL: %v", err)
 		return false
@@ -364,12 +367,12 @@ func (h *cassetteHandler) matchRequest(r *http.Request, i cassette.Request, body
 	}
 
 	// For JSON requests, do semantic comparison.
-	if isJSON(r.Header.Get("Content-Type")) || isJSON(getHeaderValue(i.Headers, "Content-Type")) {
-		return matchJSONBodies(string(body), i.Body)
+	if isJSON(r.Header.Get("Content-Type")) || isJSON(getHeaderValue(req.Headers, "Content-Type")) {
+		return matchJSONBodies(string(body), req.Body)
 	}
 
 	// For non-JSON, exact match.
-	return string(body) == i.Body
+	return string(body) == req.Body
 }
 
 // normalizeCassetteURL transforms a cassette URL to match the format of incoming requests.

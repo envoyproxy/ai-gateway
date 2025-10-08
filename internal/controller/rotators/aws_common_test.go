@@ -15,7 +15,8 @@ import (
 )
 
 func TestNewSTSClient(t *testing.T) {
-	stsClient := NewSTSClient(aws.Config{Region: "us-west-2"})
+	cfg := aws.Config{Region: "us-west-2"}
+	stsClient := NewSTSClient(&cfg)
 	require.NotNil(t, stsClient)
 }
 

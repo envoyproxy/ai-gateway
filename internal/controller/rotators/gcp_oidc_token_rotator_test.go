@@ -98,7 +98,7 @@ func TestGCPOIDCTokenRotator_Rotate(t *testing.T) {
 		{
 			name:            "failed to get sts token",
 			kubeInitObjects: []runtime.Object{oldSecret},
-			stsTokenFunc: func(_ context.Context, _ string, _ aigv1a1.GCPWorkloadIdentityFederationConfig, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
+			stsTokenFunc: func(_ context.Context, _ string, _ *aigv1a1.GCPWorkloadIdentityFederationConfig, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
 				return nil, fmt.Errorf("fake network failure")
 			},
 			expectErrorMsg: "failed to exchange JWT for STS token (project: test-project-id, pool: test-pool-name): fake network failure",
@@ -200,7 +200,7 @@ func TestGCPOIDCTokenRotator_Rotate(t *testing.T) {
 				}
 			}
 			if tt.stsTokenFunc == nil {
-				tt.stsTokenFunc = func(_ context.Context, _ string, _ aigv1a1.GCPWorkloadIdentityFederationConfig, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
+				tt.stsTokenFunc = func(_ context.Context, _ string, _ *aigv1a1.GCPWorkloadIdentityFederationConfig, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
 					return &tokenprovider.TokenExpiry{Token: dummySTSToken, ExpiresAt: twoHourAfterNow}, nil
 				}
 			}
@@ -221,7 +221,7 @@ func TestGCPOIDCTokenRotator_Rotate(t *testing.T) {
 			rotator := &gcpOIDCTokenRotator{
 				client:                         fakeClient,
 				logger:                         logr.Logger{},
-				gcpCredentials:                 gcpCredentials,
+				gcpCredentials:                 &gcpCredentials,
 				backendSecurityPolicyName:      "test-policy",
 				backendSecurityPolicyNamespace: "default",
 				preRotationWindow:              5 * time.Minute,
@@ -350,7 +350,7 @@ func TestGCPOIDCTokenRotator_GetPreRotationTime(t *testing.T) {
 				preRotationWindow:              5 * time.Minute,
 				backendSecurityPolicyName:      "test-policy",
 				backendSecurityPolicyNamespace: "default",
-				gcpCredentials:                 aigv1a1.BackendSecurityPolicyGCPCredentials{},
+				gcpCredentials:                 &aigv1a1.BackendSecurityPolicyGCPCredentials{},
 			}
 
 			got, err := testRotator.GetPreRotationTime(context.Background())
@@ -402,7 +402,7 @@ func TestExchangeJWTForSTSToken(t *testing.T) {
 	tests := []struct {
 		name            string
 		jwtToken        string
-		wifConfig       aigv1a1.GCPWorkloadIdentityFederationConfig
+		wifConfig       *aigv1a1.GCPWorkloadIdentityFederationConfig
 		mockServer      func() *httptest.Server
 		expectedError   bool
 		expectedToken   string
@@ -411,7 +411,7 @@ func TestExchangeJWTForSTSToken(t *testing.T) {
 		{
 			name:     "successful token exchange",
 			jwtToken: "test-jwt-token",
-			wifConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+			wifConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
 				ProjectID:                    "test-project",
 				WorkloadIdentityPoolName:     "test-pool",
 				WorkloadIdentityProviderName: "test-provider",
@@ -444,7 +444,7 @@ func TestExchangeJWTForSTSToken(t *testing.T) {
 		{
 			name:     "token exchange error",
 			jwtToken: "invalid-jwt-token",
-			wifConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+			wifConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
 				ProjectID:                    "test-project",
 				WorkloadIdentityPoolName:     "test-pool",
 				WorkloadIdentityProviderName: "test-provider",
@@ -518,7 +518,7 @@ func TestExchangeJWTForSTSToken_WithoutAuthOption(t *testing.T) {
 	defer server.Close()
 
 	jwtToken := "test-jwt-token" // #nosec G101
-	wifConfig := aigv1a1.GCPWorkloadIdentityFederationConfig{
+	wifConfig := &aigv1a1.GCPWorkloadIdentityFederationConfig{
 		ProjectID:                    "test-project",
 		WorkloadIdentityPoolName:     "test-pool",
 		WorkloadIdentityProviderName: "test-provider",
@@ -736,7 +736,7 @@ func TestNewGCPOIDCTokenRotator(t *testing.T) {
 			var err error
 
 			mockTokenProvider := tokenprovider.NewMockTokenProvider("mock-jwt-token", time.Now().Add(time.Hour), nil)
-			rotator, err = NewGCPOIDCTokenRotator(fakeClient, logger, tt.bsp, preRotationWindow, mockTokenProvider)
+			rotator, err = NewGCPOIDCTokenRotator(fakeClient, logger, &tt.bsp, preRotationWindow, mockTokenProvider)
 
 			if tt.expectedError != "" {
 				require.Error(t, err)
@@ -761,7 +761,8 @@ func TestNewGCPOIDCTokenRotator(t *testing.T) {
 
 				// Verify that the GCP credentials were properly copied.
 				if tt.bsp.Spec.GCPCredentials != nil {
-					require.Equal(t, *tt.bsp.Spec.GCPCredentials, gcpRotator.gcpCredentials)
+					require.NotNil(t, gcpRotator.gcpCredentials)
+					require.Equal(t, *tt.bsp.Spec.GCPCredentials, *gcpRotator.gcpCredentials)
 				}
 			}
 		})

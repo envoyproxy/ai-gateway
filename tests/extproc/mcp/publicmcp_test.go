@@ -97,20 +97,23 @@ func TestPublicMCPServers(t *testing.T) {
 		}
 
 		if githubConfigured {
-			exps = append(exps, "github__get_issue")
-			exps = append(exps, "github__get_issue_comments")
-			exps = append(exps, "github__get_pull_request")
-			exps = append(exps, "github__get_pull_request_diff")
-			exps = append(exps, "github__get_pull_request_files")
-			exps = append(exps, "github__get_pull_request_review_comments")
-			exps = append(exps, "github__get_pull_request_reviews")
-			exps = append(exps, "github__get_pull_request_status")
-			exps = append(exps, "github__list_issue_types")
-			exps = append(exps, "github__list_issues")
-			exps = append(exps, "github__list_pull_requests")
-			exps = append(exps, "github__list_sub_issues")
-			exps = append(exps, "github__search_issues")
-			exps = append(exps, "github__search_pull_requests")
+			exps = append(
+				exps,
+				"github__get_issue",
+				"github__get_issue_comments",
+				"github__get_pull_request",
+				"github__get_pull_request_diff",
+				"github__get_pull_request_files",
+				"github__get_pull_request_review_comments",
+				"github__get_pull_request_reviews",
+				"github__get_pull_request_status",
+				"github__list_issue_types",
+				"github__list_issues",
+				"github__list_pull_requests",
+				"github__list_sub_issues",
+				"github__search_issues",
+				"github__search_pull_requests",
+			)
 		}
 
 		// Do not use ElementsMatch so we can ensure there are no unexpected tools.

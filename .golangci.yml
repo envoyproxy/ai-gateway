@@ -14,6 +14,12 @@ linters:
     - testifylint
     - unconvert
   settings:
+    gocritic:
+      # Specify the enabled-tags won't override the default enabled checks.
+      # > Enable multiple checks by tags in addition to default checks.
+      # https://golangci-lint.run/docs/linters/configuration/
+      enabled-tags:
+        - performance
     depguard:
       rules:
         Main:

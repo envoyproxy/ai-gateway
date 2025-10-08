@@ -44,7 +44,7 @@ type AWSOIDCRotator struct {
 	backendSecurityPolicyNamespace string
 	// preRotationWindow specifies how long before expiry to rotate.
 	preRotationWindow time.Duration
-	oidc              egv1a1.OIDC
+	oidc              *egv1a1.OIDC
 	// roleArn is the role ARN used to obtain credentials.
 	roleArn string
 	// region is the AWS region for the credentials.
@@ -62,7 +62,7 @@ func NewAWSOIDCRotator(
 	backendSecurityPolicyNamespace string,
 	backendSecurityPolicyName string,
 	preRotationWindow time.Duration,
-	oidc egv1a1.OIDC,
+	oidc *egv1a1.OIDC,
 	roleArn string,
 	region string,
 ) (*AWSOIDCRotator, error) {
@@ -81,7 +81,7 @@ func NewAWSOIDCRotator(
 		}
 	}
 	if stsClient == nil {
-		stsClient = NewSTSClient(cfg)
+		stsClient = NewSTSClient(&cfg)
 	}
 	return &AWSOIDCRotator{
 		client:                         client,
@@ -145,14 +145,18 @@ func (r *AWSOIDCRotator) Rotate(ctx context.Context) (time.Time, error) {
 
 	r.logger.Info("rotating aws credentials secret", "namespace", bspNamespace, "name", bspName)
 	// TODO  move provider as part of constructor to make mock test possible when implement Azure OIDC.
-	oidcProvider, err := tokenprovider.NewOidcTokenProvider(ctx, r.client, &r.oidc)
+	oidcProvider, err := tokenprovider.NewOidcTokenProvider(ctx, r.client, r.oidc)
 	if err != nil {
 		r.logger.Error(err, "failed to construct oidc provider")
 		return time.Time{}, err
 	}
 	accessToken, err := oidcProvider.GetToken(ctx)
 	if err != nil {
-		r.logger.Error(err, "failed to get token from oidc provider", "oidcIssuer", r.oidc.Provider.Issuer)
+		oidcIssuer := ""
+		if r.oidc != nil {
+			oidcIssuer = r.oidc.Provider.Issuer
+		}
+		r.logger.Error(err, "failed to get token from oidc provider", "oidcIssuer", oidcIssuer)
 		return time.Time{}, err
 	}
 	awsIdentity, err := r.assumeRoleWithToken(ctx, accessToken.Token)

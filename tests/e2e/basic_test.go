@@ -96,7 +96,8 @@ func (tc examplesBasicTestCase) run(t *testing.T, egSelector string) {
 				return false
 			}
 			var choiceNonEmpty bool
-			for _, choice := range chatCompletion.Choices {
+			for i := range chatCompletion.Choices {
+				choice := &chatCompletion.Choices[i]
 				t.Logf("choice: %s", choice.Message.Content)
 				if choice.Message.Content != "" {
 					choiceNonEmpty = true

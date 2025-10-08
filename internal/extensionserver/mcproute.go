@@ -111,18 +111,20 @@ func (s *Server) createBackendListener(mcpHTTPFilters []*httpconnectionmanagerv3
 			},
 		)
 	}
-	httpConManager.HttpFilters = append(httpConManager.HttpFilters, &httpconnectionmanagerv3.HttpFilter{
-		Name: "envoy.filters.http.header_to_metadata",
-		ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
-			TypedConfig: mustToAny(headersToMetadata),
+	httpConManager.HttpFilters = append(
+		httpConManager.HttpFilters,
+		&httpconnectionmanagerv3.HttpFilter{
+			Name: "envoy.filters.http.header_to_metadata",
+			ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
+				TypedConfig: mustToAny(headersToMetadata),
+			},
 		},
-	})
-
-	// Add Router filter as the terminal HTTP filter.
-	httpConManager.HttpFilters = append(httpConManager.HttpFilters, &httpconnectionmanagerv3.HttpFilter{
-		Name:       wellknown.Router,
-		ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: mustToAny(&routerv3.Router{})},
-	})
+		// Add Router filter as the terminal HTTP filter.
+		&httpconnectionmanagerv3.HttpFilter{
+			Name:       wellknown.Router,
+			ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: mustToAny(&routerv3.Router{})},
+		},
+	)
 
 	return &listenerv3.Listener{
 		Name: mcpBackendListenerName,
@@ -548,24 +550,27 @@ func (s *Server) modifyMCPOAuthCustomResponseRoute(routes []*routev3.RouteConfig
 					// add CORS headers.
 					// CORS filter won't work with direct response, so we add the headers directly to the route.
 					// TODO: remove this step once Envoy Gateway supports this natively in the BackendTrafficPolicy ResponseOverride.
-					route.ResponseHeadersToAdd = append(route.ResponseHeadersToAdd, &corev3.HeaderValueOption{
-						Header: &corev3.HeaderValue{
-							Key:   "Access-Control-Allow-Origin",
-							Value: "*",
+					route.ResponseHeadersToAdd = append(
+						route.ResponseHeadersToAdd,
+						&corev3.HeaderValueOption{
+							Header: &corev3.HeaderValue{
+								Key:   "Access-Control-Allow-Origin",
+								Value: "*",
+							},
 						},
-					})
-					route.ResponseHeadersToAdd = append(route.ResponseHeadersToAdd, &corev3.HeaderValueOption{
-						Header: &corev3.HeaderValue{
-							Key:   "Access-Control-Allow-Methods",
-							Value: "GET",
+						&corev3.HeaderValueOption{
+							Header: &corev3.HeaderValue{
+								Key:   "Access-Control-Allow-Methods",
+								Value: "GET",
+							},
 						},
-					})
-					route.ResponseHeadersToAdd = append(route.ResponseHeadersToAdd, &corev3.HeaderValueOption{
-						Header: &corev3.HeaderValue{
-							Key:   "Access-Control-Allow-Headers",
-							Value: "mcp-protocol-version",
+						&corev3.HeaderValueOption{
+							Header: &corev3.HeaderValue{
+								Key:   "Access-Control-Allow-Headers",
+								Value: "mcp-protocol-version",
+							},
 						},
-					})
+					)
 				}
 			}
 		}

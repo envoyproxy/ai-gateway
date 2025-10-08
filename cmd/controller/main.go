@@ -294,7 +294,7 @@ func main() {
 	}()
 
 	// Start the controller.
-	if err := controller.StartControllers(ctx, mgr, k8sConfig, ctrl.Log.WithName("controller"), controller.Options{
+	if err := controller.StartControllers(ctx, mgr, k8sConfig, ctrl.Log.WithName("controller"), &controller.Options{
 		ExtProcImage:                   flags.extProcImage,
 		ExtProcImagePullPolicy:         flags.extProcImagePullPolicy,
 		ExtProcLogLevel:                flags.extProcLogLevel,

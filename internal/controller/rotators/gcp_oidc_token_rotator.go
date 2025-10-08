@@ -60,7 +60,7 @@ type serviceAccountTokenGenerator func(
 type stsTokenGenerator func(
 	ctx context.Context,
 	jwtToken string,
-	wifConfig aigv1a1.GCPWorkloadIdentityFederationConfig,
+	wifConfig *aigv1a1.GCPWorkloadIdentityFederationConfig,
 	opts ...option.ClientOption,
 ) (*tokenprovider.TokenExpiry, error)
 
@@ -74,7 +74,7 @@ type gcpOIDCTokenRotator struct {
 	client client.Client // Kubernetes client for interacting with the cluster.
 	logger logr.Logger   // Logger for recording rotator activities.
 	// GCP Credentials configuration from BackendSecurityPolicy.
-	gcpCredentials aigv1a1.BackendSecurityPolicyGCPCredentials
+	gcpCredentials *aigv1a1.BackendSecurityPolicyGCPCredentials
 	// backendSecurityPolicyName provides name of backend security policy.
 	backendSecurityPolicyName string
 	// backendSecurityPolicyNamespace provides namespace of backend security policy.
@@ -107,11 +107,15 @@ func init() {
 func NewGCPOIDCTokenRotator(
 	client client.Client,
 	logger logr.Logger,
-	bsp aigv1a1.BackendSecurityPolicy,
+	bsp *aigv1a1.BackendSecurityPolicy,
 	preRotationWindow time.Duration,
 	tokenProvider tokenprovider.TokenProvider,
 ) (Rotator, error) {
 	logger = logger.WithName("gcp-token-rotator")
+
+	if bsp == nil {
+		return nil, fmt.Errorf("backend security policy cannot be nil")
+	}
 
 	if bsp.Spec.GCPCredentials == nil {
 		return nil, fmt.Errorf("GCP credentials are not configured in BackendSecurityPolicy %s/%s", bsp.Namespace, bsp.Name)
@@ -120,7 +124,7 @@ func NewGCPOIDCTokenRotator(
 	return &gcpOIDCTokenRotator{
 		client:                         client,
 		logger:                         logger,
-		gcpCredentials:                 *bsp.Spec.GCPCredentials,
+		gcpCredentials:                 bsp.Spec.GCPCredentials,
 		backendSecurityPolicyName:      bsp.Name,
 		backendSecurityPolicyNamespace: bsp.Namespace,
 		preRotationWindow:              preRotationWindow,
@@ -175,19 +179,27 @@ func (r *gcpOIDCTokenRotator) Rotate(ctx context.Context) (time.Time, error) {
 
 	r.logger.Info("start rotating gcp access token", "namespace", r.backendSecurityPolicyNamespace, "name", r.backendSecurityPolicyName)
 
+	creds := r.gcpCredentials
+	if creds == nil {
+		return time.Time{}, fmt.Errorf("gcp credentials not configured for backend security policy %s/%s", r.backendSecurityPolicyNamespace, r.backendSecurityPolicyName)
+	}
+	wifConfig := creds.WorkloadIdentityFederationConfig
+	if wifConfig == nil {
+		return time.Time{}, fmt.Errorf("workload identity federation config is required for backend security policy %s/%s", r.backendSecurityPolicyNamespace, r.backendSecurityPolicyName)
+	}
+
 	// 1. Get OIDCProvider Token.
 	// This is the initial token from the configured OIDC provider (e.g., Kubernetes service account token).
 	oidcTokenExpiry, err := r.oidcProvider.GetToken(ctx)
 	if err != nil {
-		r.logger.Error(err, "failed to get token from oidc provider", "oidcIssuer", r.gcpCredentials.WorkloadIdentityFederationConfig.WorkloadIdentityProviderName)
+		r.logger.Error(err, "failed to get token from oidc provider", "oidcIssuer", wifConfig.WorkloadIdentityProviderName)
 		return time.Time{}, fmt.Errorf("failed to obtain OIDC token: %w", err)
 	}
 
 	// 2. Exchange the JWT for an STS token.
 	// The OIDC JWT token is exchanged for a Google Cloud STS token.
-	stsToken, err := r.stsTokenFunc(ctx, oidcTokenExpiry.Token, *r.gcpCredentials.WorkloadIdentityFederationConfig)
+	stsToken, err := r.stsTokenFunc(ctx, oidcTokenExpiry.Token, wifConfig)
 	if err != nil {
-		wifConfig := r.gcpCredentials.WorkloadIdentityFederationConfig
 		r.logger.Error(err, "failed to exchange JWT for STS token",
 			"projectID", wifConfig.ProjectID,
 			"workloadIdentityPool", wifConfig.WorkloadIdentityPoolName,
@@ -199,15 +211,15 @@ func (r *gcpOIDCTokenRotator) Rotate(ctx context.Context) (time.Time, error) {
 	// 3. Exchange the STS token for a GCP service account access token.
 	// The STS token is used to impersonate a GCP service account.
 	var gcpAccessToken *tokenprovider.TokenExpiry
-	if r.gcpCredentials.WorkloadIdentityFederationConfig.ServiceAccountImpersonation != nil {
-		gcpAccessToken, err = r.saTokenFunc(ctx, stsToken.Token, *r.gcpCredentials.WorkloadIdentityFederationConfig.ServiceAccountImpersonation, r.gcpCredentials.ProjectName)
+	if wifConfig.ServiceAccountImpersonation != nil {
+		gcpAccessToken, err = r.saTokenFunc(ctx, stsToken.Token, *wifConfig.ServiceAccountImpersonation, creds.ProjectName)
 		if err != nil {
 			saEmail := fmt.Sprintf("%s@%s.iam.gserviceaccount.com",
-				r.gcpCredentials.WorkloadIdentityFederationConfig.ServiceAccountImpersonation.ServiceAccountName,
-				r.gcpCredentials.ProjectName)
+				wifConfig.ServiceAccountImpersonation.ServiceAccountName,
+				creds.ProjectName)
 			r.logger.Error(err, "failed to impersonate GCP service account",
 				"serviceAccount", saEmail,
-				"serviceAccountProject", r.gcpCredentials.ProjectName)
+				"serviceAccountProject", creds.ProjectName)
 			return time.Time{}, fmt.Errorf("failed to impersonate service account %s: %w", saEmail, err)
 		}
 	} else {
@@ -229,8 +241,8 @@ func (r *gcpOIDCTokenRotator) Rotate(ctx context.Context) (time.Time, error) {
 			}
 			populateInSecret(secret, filterapi.GCPAuth{
 				AccessToken: gcpAccessToken.Token,
-				Region:      r.gcpCredentials.Region,
-				ProjectName: r.gcpCredentials.ProjectName,
+				Region:      creds.Region,
+				ProjectName: creds.ProjectName,
 			}, gcpAccessToken.ExpiresAt)
 			err = r.client.Create(ctx, secret)
 			if err != nil {
@@ -246,8 +258,8 @@ func (r *gcpOIDCTokenRotator) Rotate(ctx context.Context) (time.Time, error) {
 
 	populateInSecret(secret, filterapi.GCPAuth{
 		AccessToken: gcpAccessToken.Token,
-		Region:      r.gcpCredentials.Region,
-		ProjectName: r.gcpCredentials.ProjectName,
+		Region:      creds.Region,
+		ProjectName: creds.ProjectName,
 	}, gcpAccessToken.ExpiresAt)
 	err = r.client.Update(ctx, secret)
 	if err != nil {
@@ -261,7 +273,22 @@ var _ stsTokenGenerator = exchangeJWTForSTSToken
 
 // exchangeJWTForSTSToken implements [stsTokenGenerator]
 // exchangeJWTForSTSToken exchanges a JWT token for a GCP STS (Security Token Service) token.
-func exchangeJWTForSTSToken(ctx context.Context, jwtToken string, wifConfig aigv1a1.GCPWorkloadIdentityFederationConfig, opts ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
+func exchangeJWTForSTSToken(ctx context.Context, jwtToken string, wifConfig *aigv1a1.GCPWorkloadIdentityFederationConfig, opts ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
+	if jwtToken == "" {
+		return nil, fmt.Errorf("jwt token was not supplied")
+	}
+	if wifConfig == nil {
+		return nil, fmt.Errorf("workload identity federation config is required")
+	}
+	if wifConfig.ProjectID == "" {
+		return nil, fmt.Errorf("GCP project ID is required")
+	}
+	if wifConfig.WorkloadIdentityPoolName == "" {
+		return nil, fmt.Errorf("GCP workload identity pool name is required")
+	}
+	if wifConfig.WorkloadIdentityProviderName == "" {
+		return nil, fmt.Errorf("GCP workload identity provider name is required")
+	}
 	// This step does not pass the token via the auth header.
 	// The empty string implies that the auth header will be skipped.
 	roundTripper, err := newBearerAuthRoundTripper("")

@@ -326,7 +326,7 @@ type mockAnthropicTranslator struct {
 }
 
 // RequestBody implements [translator.AnthropicMessagesTranslator].
-func (m mockAnthropicTranslator) RequestBody(_ []byte, body *anthropicschema.MessagesRequest, forceRequestBodyMutation bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
+func (m *mockAnthropicTranslator) RequestBody(_ []byte, body *anthropicschema.MessagesRequest, forceRequestBodyMutation bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
 	if m.expRequestBody != nil {
 		require.Equal(m.t, m.expRequestBody, body)
 	}
@@ -335,12 +335,12 @@ func (m mockAnthropicTranslator) RequestBody(_ []byte, body *anthropicschema.Mes
 }
 
 // ResponseHeaders implements [translator.AnthropicMessagesTranslator].
-func (m mockAnthropicTranslator) ResponseHeaders(_ map[string]string) (*extprocv3.HeaderMutation, error) {
+func (m *mockAnthropicTranslator) ResponseHeaders(_ map[string]string) (*extprocv3.HeaderMutation, error) {
 	return m.retHeaderMutation, m.retErr
 }
 
 // ResponseBody implements [translator.AnthropicMessagesTranslator].
-func (m mockAnthropicTranslator) ResponseBody(_ map[string]string, _ io.Reader, _ bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, translator.LLMTokenUsage, string, error) {
+func (m *mockAnthropicTranslator) ResponseBody(_ map[string]string, _ io.Reader, _ bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, translator.LLMTokenUsage, string, error) {
 	return m.retHeaderMutation, m.retBodyMutation, m.retTokenUsage, m.retResponseModel, m.retErr
 }
 
@@ -396,7 +396,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithMocks(t *test
 				requestHeaders:         headers,
 				logger:                 slog.Default(),
 				metrics:                chatMetrics,
-				translator:             mockTranslator,
+				translator:             &mockTranslator,
 				originalRequestBody:    requestBody,
 				originalRequestBodyRaw: requestBodyRaw,
 				onRetry:                tt.forcedIncludeUsage,
@@ -429,7 +429,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseHeaders_WithMocks(t *tes
 		requestHeaders: make(map[string]string),
 		logger:         slog.Default(),
 		metrics:        chatMetrics,
-		translator:     mockTranslator,
+		translator:     &mockTranslator,
 	}
 
 	ctx := context.Background()
@@ -454,7 +454,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_WithMocks(t *testin
 		requestHeaders: make(map[string]string),
 		logger:         slog.Default(),
 		metrics:        chatMetrics,
-		translator:     mockTranslator,
+		translator:     &mockTranslator,
 	}
 
 	ctx := context.Background()
@@ -477,7 +477,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_ErrorRecordsFailure
 		requestHeaders: make(map[string]string),
 		logger:         slog.Default(),
 		metrics:        mm,
-		translator:     mockTranslator,
+		translator:     &mockTranslator,
 	}
 
 	ctx := context.Background()
@@ -502,7 +502,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_CompletionOnlyAtEnd
 		requestHeaders: make(map[string]string),
 		logger:         slog.Default(),
 		metrics:        mm,
-		translator:     mockTranslator,
+		translator:     &mockTranslator,
 		stream:         true,
 	}
 
@@ -605,7 +605,7 @@ func TestMessages_ProcessRequestHeaders_SetsRequestModel(t *testing.T) {
 		requestHeaders:         headers,
 		logger:                 slog.Default(),
 		metrics:                mm,
-		translator:             mockAnthropicTranslator{t: t, expRequestBody: requestBody},
+		translator:             &mockAnthropicTranslator{t: t, expRequestBody: requestBody},
 		originalRequestBodyRaw: requestBodyRaw,
 		originalRequestBody:    requestBody,
 	}
@@ -719,7 +719,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                chatMetrics,
-			translator:             mockTranslator,
+			translator:             &mockTranslator,
 			originalRequestBody:    requestBody,
 			originalRequestBodyRaw: requestBodyRaw,
 			handler:                &mockBackendAuthHandler{},
@@ -796,7 +796,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                chatMetrics,
-			translator:             mockTranslator,
+			translator:             &mockTranslator,
 			originalRequestBody:    requestBody,
 			originalRequestBodyRaw: requestBodyRaw,
 			handler:                &mockBackendAuthHandler{},
@@ -883,7 +883,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                chatMetrics,
-			translator:             mockTranslator,
+			translator:             &mockTranslator,
 			originalRequestBody:    requestBody,
 			originalRequestBodyRaw: requestBodyRaw,
 			handler:                &mockBackendAuthHandler{},

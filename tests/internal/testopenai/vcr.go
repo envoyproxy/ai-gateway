@@ -64,7 +64,9 @@ var (
 		// Allow replaying existing cassettes and recording new episodes when no match is found.
 		recorder.WithMode(recorder.ModeReplayWithNewEpisodes),
 		// Custom matcher to compare incoming requests with recorded cassettes.
-		recorder.WithMatcher(requestMatcher),
+		recorder.WithMatcher(func(httpReq *http.Request, cassReq cassette.Request) bool {
+			return requestMatcher(httpReq, &cassReq)
+		}),
 		// Hook to sanitize and format cassette data after recording.
 		recorder.WithHook(afterCaptureHook, recorder.AfterCaptureHook),
 	}
@@ -72,7 +74,10 @@ var (
 
 // requestMatcher creates a custom matcher function that compares HTTP requests with cassette recordings.
 // It performs semantic comparison for JSON bodies and ignores specified headers like tracing headers.
-func requestMatcher(httpReq *http.Request, cassReq cassette.Request) bool {
+func requestMatcher(httpReq *http.Request, cassReq *cassette.Request) bool {
+	if cassReq == nil {
+		return false
+	}
 	// Basic method and URL matching.
 	if httpReq.Method != cassReq.Method {
 		return false

@@ -284,31 +284,38 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 	}
 	runCtx.fakeClientSet = _fakeClientSet
 
-	for _, hrf := range httpRouteFilters.Items {
-		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&hrf.TypeMeta, &hrf)
+	for i := range httpRouteFilters.Items {
+		hrf := &httpRouteFilters.Items[i]
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&hrf.TypeMeta, hrf)
 	}
-	for _, hr := range httpRoutes.Items {
-		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&hr.TypeMeta, &hr)
+	for i := range httpRoutes.Items {
+		hr := &httpRoutes.Items[i]
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&hr.TypeMeta, hr)
 	}
-	for _, b := range backends.Items {
-		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&b.TypeMeta, &b)
+	for i := range backends.Items {
+		backend := &backends.Items[i]
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&backend.TypeMeta, backend)
 	}
-	for _, s := range secretList.Items {
-		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&s.TypeMeta, &s)
+	for i := range secretList.Items {
+		secret := &secretList.Items[i]
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&secret.TypeMeta, secret)
 	}
-	for _, btp := range backendTrafficPolicies.Items {
-		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&btp.TypeMeta, &btp)
+	for i := range backendTrafficPolicies.Items {
+		btp := &backendTrafficPolicies.Items[i]
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&btp.TypeMeta, btp)
 	}
-	for _, sp := range securityPolicies.Items {
-		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&sp.TypeMeta, &sp)
+	for i := range securityPolicies.Items {
+		sp := &securityPolicies.Items[i]
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&sp.TypeMeta, sp)
 	}
 	gw := gateways[0]
 	if len(gw.Spec.Listeners) == 0 {
 		return nil, nil, 0, 0, fmt.Errorf("gateway %s has no listeners configured", gw.Name)
 	}
 	runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&gw.TypeMeta, gw)
-	for _, ep := range eps.Items {
-		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&ep.TypeMeta, &ep)
+	for i := range eps.Items {
+		ep := &eps.Items[i]
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&ep.TypeMeta, ep)
 	}
 
 	filterConfigSecret, err := runCtx.fakeClientSet.CoreV1().
