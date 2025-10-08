@@ -7,6 +7,7 @@ tool (
 	github.com/editorconfig-checker/editorconfig-checker/v3/cmd/editorconfig-checker
 	github.com/elastic/crd-ref-docs
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+	github.com/golangci/misspell/cmd/misspell
 	github.com/tetratelabs/func-e/cmd/func-e
 	github.com/vladopajic/go-test-coverage/v2
 	github.com/wasilibs/go-prettier/v3/cmd/prettier
@@ -15,6 +16,8 @@ tool (
 	sigs.k8s.io/controller-tools/cmd/controller-gen
 	sigs.k8s.io/kind
 )
+
+require github.com/monochromegane/go-gitignore v0.0.0-20200626010858-205db1a8cc00
 
 require (
 	4d63.com/gocheckcompilerdirectives v1.3.0 // indirect
@@ -226,7 +229,6 @@ require (
 	github.com/moby/term v0.5.2 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
-	github.com/monochromegane/go-gitignore v0.0.0-20200626010858-205db1a8cc00 // indirect
 	github.com/moricho/tparallel v0.3.2 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect

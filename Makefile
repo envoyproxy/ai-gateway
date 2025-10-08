@@ -8,8 +8,7 @@
 # in the command line every time.
 -include .makerc
 
-# The Go-based tools are defined in Makefile.tools.mk.
-include Makefile.tools.mk
+GO_TOOL := go tool -modfile=tools/go.mod
 
 # The list of commands that can be built.
 COMMANDS := controller extproc
@@ -47,19 +46,17 @@ help:
 # This runs all necessary steps to prepare for a commit.
 .PHONY: precommit
 precommit: ## Run all necessary steps to prepare for a commit.
-precommit: tidy codespell apigen apidoc format lint editorconfig helm-test
+precommit: tidy spellcheck apigen apidoc format lint editorconfig helm-test
 
 .PHONY: lint
 lint: ## This runs the linter, formatter, and tidy on the codebase.
 	@echo "lint => ./..."
 	@$(GO_TOOL) golangci-lint run --build-tags==test_crdcel,test_controller,test_extproc,test_e2e ./...
 
-.PHONY: codespell
-CODESPELL_SKIP := $(shell cat .codespell.skip | tr \\n ',')
-CODESPELL_IGNORE_WORDS := ".codespell.ignorewords"
-codespell: $(CODESPELL) ## Spell check the codebase.
-	@echo "spell => ./..."
-	@$(CODESPELL) --skip $(CODESPELL_SKIP) --ignore-words $(CODESPELL_IGNORE_WORDS)
+.PHONY: spellcheck
+spellcheck:  ## Spell check the codebase.
+	@echo "misspell => ./..."
+	@$(GO_TOOL) misspell -error $$(git ls-files --cached --others --exclude-standard | (cd tools && go run ./ignorepaths ../.misspellignore))
 
 # Some IDEs like Goland place `.go` files in the `.idea` directory when using code templates. Using a
 # git command to find the files ensures that only relevant files are formatted and that git-ignored
