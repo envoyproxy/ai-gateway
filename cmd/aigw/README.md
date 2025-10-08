@@ -56,9 +56,11 @@ Here are values we use for Ollama:
      ```
 
    - MCP (Model Context Protocol) tool call:
+
      ```bash
      docker compose run --rm mcp
      ```
+
      This calls the kiwi MCP server through aigw's MCP Gateway at `/mcp`.
 
    - Image generation:
@@ -72,7 +74,7 @@ Here are values we use for Ollama:
          -X POST http://localhost:1975/v1/images/generations \
          -H "Authorization: Bearer unused" \
          -H "Content-Type: application/json" \
-         -d '{"model":"gpt-image-1","prompt":"A watercolor painting of a red fox in a birch forest","size":"512x512"}' \
+         -d '{"model":"dall-e-2","prompt":"A watercolor painting of a red fox in a birch forest","size":"512x512"}' \
          | jq -r '.data[0].b64_json' | base64 -d > image.png
        ```
 
@@ -80,6 +82,7 @@ Here are values we use for Ollama:
 
    The `create-embeddings` service uses `curl` to send an embeddings request
    to the AI Gateway CLI (aigw) which routes it to Ollama.
+
    ```bash
    docker compose run --rm create-embeddings
    ```
