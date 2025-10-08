@@ -121,7 +121,7 @@ The data plane processes requests through several key steps:
 - Why the External Processor is separated into two phases (Router-level and Upstream-level):
   - In Envoy, retry/fallback happens after the router filter at the upstream level. For example, when the upstream server returns 5xx, Envoy does not invoke the router level filter again.
     Instead, it invokes only the upstream level filters. In our case, retry/fallback will make the requests to totally different AI providers. For example, on the first try, it goes to OpenAI, and on the second try, it goes to AWS Bedrock.
-    In this case, we need to do different request transformations and upstream authorizations. So, these logic needs to be in the upstream level filter.
+    In this case, we need to do different request transformations and upstream authorizations. So, this logic needs to be in the upstream level filter.
 - Why the External Processor?
   - The External Processor is the most powerful battle-tested and production-ready extension point in Envoy. It allows us to implement complex logic without modifying Envoy's core codebase.
   - [Dynamic Modules](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/advanced/dynamic_modules) could be a future alternative as it offers better performance as well as less complexity in the overall architecture. The work is tracked in [envoyproxy/ai-gateway#90](https://github.com/envoyproxy/ai-gateway/issues/90).

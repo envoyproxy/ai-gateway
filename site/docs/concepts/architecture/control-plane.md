@@ -90,7 +90,7 @@ The AI Gateway Controller manages AI-specific components and configurations:
 #### ExtProc Management
 
 - Creates and updates ExtProc Secrets with processing rules as well as credentials
-- Inserts the AI Gateway ExtProc as a sidecar container in the Envoy Proxy Pod via the [Kubernetes Admission Webhooks](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/). The container mounts the ExtProc config secret and communicates with the Envoy Proxy to process AI traffic.
+- Inserts the AI Gateway ExtProc as a [sidecar container](https://kubernetes.io/docs/concepts/workloads/pods/sidecar-containers/) in the Envoy Proxy Pod via the [Kubernetes Admission Webhooks](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/). The container mounts the ExtProc config secret and communicates with the Envoy Proxy to process AI traffic.
 
 #### Resource Management
 
@@ -122,8 +122,8 @@ The AI Gateway Controller manages AI-specific components and configurations:
 - Inserting the ExtProc as a sidecar container brings the following benefits:
   - Performance: Running the ExtProc as a sidecar within the same Pod as Envoy Proxy reduces network latency and overhead, leading to faster processing of AI traffic. Notably, the communication between Envoy Proxy and the ExtProc happens over a local Unix Domain Socket (UDS), not over the network.
   - Simplified Deployment: Managing the ExtProc as part of the Envoy Proxy Pod simplifies deployment and scaling, as both components can be managed together.
-  - Session Affinity: Running as a sidecar natural ensures the session affinity between Envoy Proxy and the ExtProc which is crucial for implementing provider fallbacks. As we explain in [Data Plane and Traffic Flow], we have two phases in the request processing:
-    Router-level and Upstream-level processing to handle provider fallbacks. Since Envoy does not support session affinity for External Processor access as of writing, without the session affinity, the Upstream-level ext proc might end up talking to a different ext proc instance which does not have the context of the router level processing, mainly the original request body and headers.
+  - Session Affinity: Running as a sidecar naturally ensures the session affinity between Envoy Proxy and the ExtProc which is crucial for implementing provider fallbacks. As we explain in [Data Plane and Traffic Flow], we have two phases in the request processing:
+    Router-level and Upstream-level processing to handle provider fallbacks. Since Envoy does not support session affinity for External Processor access as of this writing, without the session affinity, the Upstream-level ExtProc might end up talking to a different ExtProc instance which does not have the context of the router level processing (mainly the original request body and headers).
 
 ## Next Steps
 
