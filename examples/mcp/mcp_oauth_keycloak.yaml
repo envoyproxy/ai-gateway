@@ -39,10 +39,6 @@ spec:
             "email",
           ]
   backendRefs:
-    - name: learn-microsoft
-      kind: Backend
-      group: gateway.envoyproxy.io
-      path: "/api/mcp"
     - name: kiwi
       kind: Backend
       group: gateway.envoyproxy.io
@@ -101,31 +97,6 @@ spec:
   validation:
     wellKnownCACertificates: "System"
     hostname: mcp.context7.com
----
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: Backend
-metadata:
-  name: learn-microsoft
-  namespace: default
-spec:
-  endpoints:
-    - fqdn:
-        hostname: learn.microsoft.com
-        port: 443
----
-apiVersion: gateway.networking.k8s.io/v1alpha3
-kind: BackendTLSPolicy
-metadata:
-  name: learn-microsoft-tls
-  namespace: default
-spec:
-  targetRefs:
-    - group: "gateway.envoyproxy.io"
-      kind: Backend
-      name: learn-microsoft
-  validation:
-    wellKnownCACertificates: "System"
-    hostname: learn.microsoft.com
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend

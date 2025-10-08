@@ -39,8 +39,6 @@ Then, you can use the MCP Inspector to interact with the MCP Proxy:
 $ npx @modelcontextprotocol/inspector --cli http://localhost:1975/mcp --transport http --method 'tools/list' | jq '.tools[] | .name'
 "context7__resolve-library-id"
 "context7__get-library-docs"
-"learn-microsoft__microsoft_docs_search"
-"learn-microsoft__microsoft_docs_fetch"
 "aws-knowledge__aws___search_documentation"
 "github__get_pull_request"
 "kiwi__search-flight"

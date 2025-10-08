@@ -38,8 +38,6 @@ var (
 		"context7__resolve-library-id",
 		"kiwi__feedback-to-devs",
 		"kiwi__search-flight",
-		"learn-microsoft__microsoft_docs_fetch",
-		"learn-microsoft__microsoft_docs_search",
 	}
 	allGithubTools = []string{
 		"github__get_issue",
@@ -70,8 +68,6 @@ var (
 		"context7__resolve-library-id",
 		"kiwi__feedback-to-devs",
 		"kiwi__search-flight",
-		"learn-microsoft__microsoft_docs_fetch",
-		"learn-microsoft__microsoft_docs_search",
 	}
 	filteredAllTools = []string{
 		"aws-knowledge__aws___read_documentation",
@@ -94,8 +90,6 @@ var (
 		"github__search_pull_requests",
 		"kiwi__feedback-to-devs",
 		"kiwi__search-flight",
-		"learn-microsoft__microsoft_docs_fetch",
-		"learn-microsoft__microsoft_docs_search",
 	}
 )
 

@@ -28,13 +28,6 @@ func TestPublicMCPServers(t *testing.T) {
 			{
 				Name: "test-route",
 				Backends: []filterapi.MCPBackend{
-					{
-						Name: "learn-microsoft",
-						Path: "/api/mcp",
-						ToolSelector: &filterapi.MCPToolSelector{
-							IncludeRegex: []string{".*microsoft_docs?.*"},
-						},
-					},
 					{Name: "context7", Path: "/mcp"},
 					{
 						Name: "aws-knowledge",
@@ -95,8 +88,6 @@ func TestPublicMCPServers(t *testing.T) {
 		}
 
 		exps := []string{
-			"learn-microsoft__microsoft_docs_search",
-			"learn-microsoft__microsoft_docs_fetch",
 			"context7__resolve-library-id",
 			"context7__get-library-docs",
 			"kiwi__search-flight",
@@ -134,19 +125,6 @@ func TestPublicMCPServers(t *testing.T) {
 			params   map[string]any
 		}
 		tests := []callToolTest{
-			{
-				toolName: "learn-microsoft__microsoft_docs_search",
-				params: map[string]any{
-					"query":    "microsoft 365",
-					"question": "What does microsoft 365 include?",
-				},
-			},
-			{
-				toolName: "learn-microsoft__microsoft_docs_fetch",
-				params: map[string]any{
-					"url": "https://learn.microsoft.com/en-us/copilot/manage",
-				},
-			},
 			{
 				toolName: "context7__resolve-library-id",
 				params: map[string]any{
