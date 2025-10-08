@@ -7,6 +7,7 @@ package testopenai
 
 import (
 	"encoding/json"
+
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
