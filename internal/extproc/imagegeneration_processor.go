@@ -112,12 +112,12 @@ func (i *imageGenerationProcessorRouterFilter) ProcessRequestBody(ctx context.Co
 	// OpenAI SDK doesn't expose a generic Stream flag for image generation; keep false for now.
 	isStreamingRequest := false
 
-	i.requestHeaders[i.config.modelNameHeaderKey] = model
+	i.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = model
 
 	var additionalHeaders []*corev3.HeaderValueOption
 	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
 		// Set the model name to the request header with the key `x-ai-eg-model`.
-		Header: &corev3.HeaderValue{Key: i.config.modelNameHeaderKey, RawValue: []byte(model)},
+		Header: &corev3.HeaderValue{Key: internalapi.ModelNameHeaderKeyDefault, RawValue: []byte(model)},
 	}, &corev3.HeaderValueOption{
 		Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(i.requestHeaders[":path"])},
 	})
@@ -217,7 +217,7 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessRequestHeaders(ctx conte
 	// Set the original model from the request body before any overrides
 	i.metrics.SetOriginalModel(i.originalRequestBody.Model)
 	// Set the request model for metrics from the original model or override if applied.
-	reqModel := cmp.Or(i.requestHeaders[i.config.modelNameHeaderKey], i.originalRequestBody.Model)
+	reqModel := cmp.Or(i.requestHeaders[internalapi.ModelNameHeaderKeyDefault], i.originalRequestBody.Model)
 	i.metrics.SetRequestModel(reqModel)
 	i.metrics.SetResponseModel(reqModel)
 
@@ -252,7 +252,7 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessRequestHeaders(ctx conte
 
 	var dm *structpb.Struct
 	if bm := bodyMutation.GetBody(); bm != nil {
-		dm = buildContentLengthDynamicMetadataOnRequest(i.config, len(bm))
+		dm = buildContentLengthDynamicMetadataOnRequest(len(bm))
 	}
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
@@ -471,7 +471,7 @@ func (i *imageGenerationProcessorUpstreamFilter) SetBackend(ctx context.Context,
 	i.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
 	// Sync header with backend model so header-derived labels/CEL use the actual model.
 	if i.modelNameOverride != "" {
-		i.requestHeaders[i.config.modelNameHeaderKey] = i.modelNameOverride
+		i.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = i.modelNameOverride
 		// Update metrics with the overridden model
 		i.metrics.SetRequestModel(i.modelNameOverride)
 	}
