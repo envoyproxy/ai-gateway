@@ -72,10 +72,10 @@ func translate(ctx context.Context, paths []string, output, stderr io.Writer) er
 		mustWriteObj(&secret.TypeMeta, &secret, output)
 	}
 	for _, secret := range originalSecrets {
-		mustWriteObj(nil, secret, output)
+		mustWriteObj(&secret.TypeMeta, secret, output)
 	}
 	for _, gateway := range originalGateways {
-		mustWriteObj(nil, gateway, output)
+		mustWriteObj(&gateway.TypeMeta, gateway, output)
 	}
 	for _, btp := range backendTrafficPolicies.Items {
 		mustWriteObj(&btp.TypeMeta, &btp, output)
