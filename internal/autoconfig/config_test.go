@@ -63,6 +63,9 @@ var (
 
 	//go:embed testdata/kiwi.yaml
 	kiwiYAML string
+
+	//go:embed testdata/openai-github.yaml
+	openaiGithubYAML string
 )
 
 func TestWriteConfig(t *testing.T) {
@@ -320,6 +323,41 @@ func TestWriteConfig(t *testing.T) {
 				},
 			},
 			expected: kiwiYAML,
+		},
+		{
+			name: "OpenAI with GitHub MCP server",
+			input: ConfigData{
+				Backends: []Backend{
+					{
+						Name:             "openai",
+						Hostname:         "api.openai.com",
+						OriginalHostname: "api.openai.com",
+						Port:             443,
+						NeedsTLS:         true,
+					},
+					{
+						Name:             "github",
+						Hostname:         "api.githubcopilot.com",
+						OriginalHostname: "api.githubcopilot.com",
+						Port:             443,
+						NeedsTLS:         true,
+					},
+				},
+				OpenAI: &OpenAIConfig{
+					BackendName: "openai",
+					SchemaName:  "OpenAI",
+					Version:     "",
+				},
+				MCPBackendRefs: []MCPBackendRef{
+					{
+						BackendName:  "github",
+						Path:         "/mcp/x/issues/readonly",
+						APIKey:       "${GITHUB_MCP_TOKEN}",
+						IncludeTools: []string{"get_issue", "list_issues"},
+					},
+				},
+			},
+			expected: openaiGithubYAML,
 		},
 	}
 

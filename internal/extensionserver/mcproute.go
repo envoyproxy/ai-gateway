@@ -17,7 +17,6 @@ import (
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	listenerv3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
-	filelogv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
 	custom_responsev3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/custom_response/v3"
 	htomv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/header_to_metadata/v3"
 	routerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
@@ -51,8 +50,8 @@ func (s *Server) maybeGenerateResourcesForMCPGateway(req *egextension.PostTransl
 	// Only create the backend listener if there are routes for it
 	if mcpBackendRoutes != nil {
 		// Extract MCP backend filters from existing listeners and create the backend listener with those filters.
-		mcpBackendHTTPFilters := s.extractMCPBackendFiltersFromMCPProxyListener(req.Listeners)
-		req.Listeners = append(req.Listeners, s.createBackendListener(mcpBackendHTTPFilters))
+		mcpBackendHTTPFilters, accessLogConfig := s.extractMCPBackendFiltersFromMCPProxyListener(req.Listeners)
+		req.Listeners = append(req.Listeners, s.createBackendListener(mcpBackendHTTPFilters, accessLogConfig))
 		req.Routes = append(req.Routes, mcpBackendRoutes)
 	}
 
@@ -70,9 +69,10 @@ func (s *Server) maybeGenerateResourcesForMCPGateway(req *egextension.PostTransl
 }
 
 // createBackendListener creates the backend listener for MCP Gateway.
-func (s *Server) createBackendListener(mcpHTTPFilters []*httpconnectionmanagerv3.HttpFilter) *listenerv3.Listener {
+func (s *Server) createBackendListener(mcpHTTPFilters []*httpconnectionmanagerv3.HttpFilter, accessLogConfig []*accesslogv3.AccessLog) *listenerv3.Listener {
 	httpConManager := &httpconnectionmanagerv3.HttpConnectionManager{
 		StatPrefix: fmt.Sprintf("%s-http", mcpBackendListenerName),
+		AccessLog:  accessLogConfig,
 		RouteSpecifier: &httpconnectionmanagerv3.HttpConnectionManager_Rds{
 			Rds: &httpconnectionmanagerv3.Rds{
 				RouteConfigName: fmt.Sprintf("%s-route-config", mcpBackendListenerName),
@@ -83,17 +83,6 @@ func (s *Server) createBackendListener(mcpHTTPFilters []*httpconnectionmanagerv3
 					ResourceApiVersion: corev3.ApiVersion_V3,
 				},
 			},
-		},
-	}
-
-	// Add HTTP access log to the backend listener HCM (log to stdout via file logger to /dev/stdout).
-	// This helps debugging MCP traffic flowing through the backend listener.
-	// TODO(nacx): Make the AccessLogFormat configurable so that we emit access logs for upstream MCP server calls.
-	fal := &filelogv3.FileAccessLog{Path: "/dev/stdout"}
-	httpConManager.AccessLog = []*accesslogv3.AccessLog{
-		{
-			Name:       "envoy.access_loggers.file",
-			ConfigType: &accesslogv3.AccessLog_TypedConfig{TypedConfig: mustToAny(fal)},
 		},
 	}
 
@@ -281,8 +270,27 @@ func (s *Server) modifyMCPGatewayGeneratedCluster(clusters []*clusterv3.Cluster)
 // extractMCPBackendFiltersFromMCPProxyListener scans through MCP proxy listeners to find HTTP filters
 // that correspond to MCP backend processing (those with MCPBackendFilterPrefix in their names)
 // and extracts them from the proxy listeners so they can be moved to the backend listener.
-func (s *Server) extractMCPBackendFiltersFromMCPProxyListener(listeners []*listenerv3.Listener) []*httpconnectionmanagerv3.HttpFilter {
-	var mcpHTTPFilters []*httpconnectionmanagerv3.HttpFilter
+//
+// This method also returns the access log configuration to use in the MCP backend listener. We want to use the same
+// access log configuration that has been configured in the Gateway.
+// The challenge is that the MCP backend listener will have a single HCM, and here we have N listeners, each with its own
+// HCM, so we need to decide how to properly configure the access logs in the backend listener based on multiple input
+// access log configurations.
+//
+// The Envoy Gateway extension server works, it will call the main `PostTranslateModify` individually for each gateway. This means
+// that this method will receive ONLY listeners for the same gateway.
+// Since the access logs are configured in the EnvoyProxy resource, and the Gateway object targets the EnvoyProxy resource via the
+// "infrastructure" setting, it is guaranteed that all listeners here will have the same access log configuration, so it is safe to
+// just pick the first one.
+//
+// When using the envoy Gateway `mergeGateways` feature, this method will receive all the listeners attached to the GatewayClass instead.
+// This is still safe because in the end all Gateway objects will be attached to the same "infrastructure", so it is still safe to assume
+// that all received listeners will have the same access log configuration
+func (s *Server) extractMCPBackendFiltersFromMCPProxyListener(listeners []*listenerv3.Listener) ([]*httpconnectionmanagerv3.HttpFilter, []*accesslogv3.AccessLog) {
+	var (
+		mcpHTTPFilters  []*httpconnectionmanagerv3.HttpFilter
+		accessLogConfig []*accesslogv3.AccessLog
+	)
 
 	for _, listener := range listeners {
 		// Skip the backend MCP listener if it already exists.
@@ -303,6 +311,11 @@ func (s *Server) extractMCPBackendFiltersFromMCPProxyListener(listeners []*liste
 			if err != nil {
 				continue // Skip chains without HCM.
 			}
+
+			// All listeners will have the same access log configuration, as they all belong to the same gateway
+			// and share the infrastructure. We can just return any not-empty access log config and use that
+			// to configure the MCP backend listener with the same settings.
+			accessLogConfig = httpConManager.AccessLog
 
 			// Look for MCP HTTP filters in this HCM and extract them.
 			var remainingFilters []*httpconnectionmanagerv3.HttpFilter
@@ -330,7 +343,7 @@ func (s *Server) extractMCPBackendFiltersFromMCPProxyListener(listeners []*liste
 	if len(mcpHTTPFilters) > 0 {
 		s.log.Info("Extracted MCP HTTP filters", "count", len(mcpHTTPFilters))
 	}
-	return mcpHTTPFilters
+	return mcpHTTPFilters, accessLogConfig
 }
 
 // isMCPBackendHTTPFilter checks if an HTTP filter is used for MCP backend processing.

@@ -3,7 +3,7 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
-# Configuration for Envoy AI Gateway with OpenAI compatible endpoint
+# Configuration for Envoy AI Gateway with MCP servers
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
@@ -55,6 +55,11 @@ spec:
               genai_backend_name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:backend_name)%"
               genai_tokens_input: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_input_token)%"
               genai_tokens_output: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_output_token)%"
+              # MCP specific fields
+              mcp_request_id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_request_id)%"
+              mcp_session_id: "%REQ(MCP-SESSION-ID)%"
+              mcp_method: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_method)%"
+              mcp_backend: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)%"
               # A few default fields
               start_time: "%START_TIME%"
               method: "%REQ(:METHOD)%"
@@ -102,6 +107,31 @@ spec:
     - metadataKey: llm_output_token
       type: OutputToken
 ---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: MCPRoute
+metadata:
+  name: mcp-route
+  namespace: default
+spec:
+  parentRefs:
+    - name: aigw-run
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  path: "/mcp"
+  backendRefs:
+    - name: github
+      kind: Backend
+      group: gateway.envoyproxy.io
+      path: "/mcp/x/issues/readonly"
+      toolSelector:
+        include:
+          - get_issue
+          - list_issues
+      securityPolicy:
+        apiKey:
+          secretRef:
+            name: github-token
+---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
 metadata:
@@ -111,6 +141,17 @@ spec:
   endpoints:
     - fqdn:
         hostname: api.openai.com
+        port: 443
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: github
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: api.githubcopilot.com
         port: 443
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
@@ -142,6 +183,20 @@ spec:
   validation:
     wellKnownCACertificates: "System"
     hostname: api.openai.com
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: github-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: 'gateway.envoyproxy.io'
+      kind: Backend
+      name: github
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: api.githubcopilot.com
 ---
 # By default, Envoy Gateway sets the buffer limit to 32kiB which is not
 # sufficient for AI workloads. This ClientTrafficPolicy sets the buffer limit
@@ -183,56 +238,6 @@ spec:
   apiKey:
     secretRef:
       name: openai-apikey
----
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: MCPRoute
-metadata:
-  name: mcp-route
-  namespace: default
-spec:
-  parentRefs:
-    - name: aigw-run
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  path: "/mcp"
-  backendRefs:
-    - name: github
-      kind: Backend
-      group: gateway.envoyproxy.io
-      path: "/mcp/x/issues/readonly"
-      toolSelector:
-        include:
-          - get_issue
-          - list_issues
-      securityPolicy:
-        apiKey:
-          secretRef:
-            name: github-token
----
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: Backend
-metadata:
-  name: github
-  namespace: default
-spec:
-  endpoints:
-    - fqdn:
-        hostname: api.githubcopilot.com
-        port: 443
----
-apiVersion: gateway.networking.k8s.io/v1alpha3
-kind: BackendTLSPolicy
-metadata:
-  name: github-tls
-  namespace: default
-spec:
-  targetRefs:
-    - group: 'gateway.envoyproxy.io'
-      kind: Backend
-      name: github
-  validation:
-    wellKnownCACertificates: "System"
-    hostname: api.githubcopilot.com
 ---
 kind: Secret
 apiVersion: v1

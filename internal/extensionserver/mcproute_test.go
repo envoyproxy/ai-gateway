@@ -10,6 +10,7 @@ import (
 
 	xdscorev3 "github.com/cncf/xds/go/xds/core/v3"
 	matcherv3 "github.com/cncf/xds/go/xds/type/matcher/v3"
+	accesslogv3 "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
@@ -33,6 +34,7 @@ func TestServer_createBackendListener(t *testing.T) {
 	tests := []struct {
 		name             string
 		mcpHTTPFilters   []*httpconnectionmanagerv3.HttpFilter
+		accessLogConfig  []*accesslogv3.AccessLog
 		expectedListener *listenerv3.Listener
 	}{
 		{
@@ -53,17 +55,46 @@ func TestServer_createBackendListener(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:           "no filters with access logs",
+			mcpHTTPFilters: nil,
+			accessLogConfig: []*accesslogv3.AccessLog{
+				{Name: "accesslog1"},
+				{Name: "accesslog2"},
+			},
+			expectedListener: &listenerv3.Listener{
+				Name: mcpBackendListenerName,
+				Address: &corev3.Address{
+					Address: &corev3.Address_SocketAddress{
+						SocketAddress: &corev3.SocketAddress{
+							Protocol: corev3.SocketAddress_TCP,
+							Address:  "127.0.0.1",
+							PortSpecifier: &corev3.SocketAddress_PortValue{
+								PortValue: internalapi.MCPBackendListenerPort,
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &Server{log: testr.New(t)}
-			listener := s.createBackendListener(tt.mcpHTTPFilters)
+			listener := s.createBackendListener(tt.mcpHTTPFilters, tt.accessLogConfig)
 
 			require.Equal(t, tt.expectedListener.Name, listener.Name)
 			require.Equal(t, tt.expectedListener.Address.GetSocketAddress().Address, listener.Address.GetSocketAddress().Address)
 			require.Equal(t, tt.expectedListener.Address.GetSocketAddress().GetPortValue(), listener.Address.GetSocketAddress().GetPortValue())
 			require.Equal(t, tt.expectedListener.Address.GetSocketAddress().Protocol, listener.Address.GetSocketAddress().Protocol)
+
+			hcm, _, err := findHCM(listener.FilterChains[0])
+			require.NoError(t, err)
+			require.Len(t, hcm.AccessLog, len(tt.accessLogConfig))
+			for i := range tt.accessLogConfig {
+				require.Equal(t, tt.accessLogConfig[i].Name, hcm.AccessLog[i].Name)
+			}
 		})
 	}
 }
@@ -289,17 +320,19 @@ func TestServer_maybeUpdateMCPRoutes(t *testing.T) {
 
 func TestServer_extractMCPBackendFiltersFromMCPProxyListener(t *testing.T) {
 	tests := []struct {
-		name            string
-		listeners       []*listenerv3.Listener
-		expectedFilters []*httpconnectionmanagerv3.HttpFilter
+		name               string
+		listeners          []*listenerv3.Listener
+		expectedFilters    []*httpconnectionmanagerv3.HttpFilter
+		expectedAccessLogs []*accesslogv3.AccessLog
 	}{
 		{
-			name:            "no listeners",
-			listeners:       []*listenerv3.Listener{},
-			expectedFilters: nil,
+			name:               "no listeners",
+			listeners:          []*listenerv3.Listener{},
+			expectedFilters:    nil,
+			expectedAccessLogs: nil,
 		},
 		{
-			name: "listener with MCP backend filter",
+			name: "listener with MCP backend filter without access logs",
 			listeners: []*listenerv3.Listener{
 				{
 					Name: "test-listener",
@@ -327,13 +360,99 @@ func TestServer_extractMCPBackendFiltersFromMCPProxyListener(t *testing.T) {
 				{Name: internalapi.MCPPerBackendHTTPRouteFilterPrefix + "test-filter"},
 			},
 		},
+		{
+			name: "listener with MCP backend filter with access logs",
+			listeners: []*listenerv3.Listener{
+				{
+					Name: "test-listener1",
+					FilterChains: []*listenerv3.FilterChain{
+						{
+							Filters: []*listenerv3.Filter{
+								{
+									Name: wellknown.HTTPConnectionManager,
+									ConfigType: &listenerv3.Filter_TypedConfig{
+										TypedConfig: mustToAny(&httpconnectionmanagerv3.HttpConnectionManager{
+											StatPrefix: "http",
+											HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
+												{Name: internalapi.MCPPerBackendHTTPRouteFilterPrefix + "test-filter"},
+												{Name: "envoy.filters.http.router"},
+											},
+										}),
+									},
+								},
+							},
+						},
+					},
+				},
+				{
+					Name: "test-listener2",
+					FilterChains: []*listenerv3.FilterChain{
+						{
+							Filters: []*listenerv3.Filter{
+								{
+									Name: wellknown.HTTPConnectionManager,
+									ConfigType: &listenerv3.Filter_TypedConfig{
+										TypedConfig: mustToAny(&httpconnectionmanagerv3.HttpConnectionManager{
+											StatPrefix: "http",
+											HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
+												{Name: internalapi.MCPPerBackendHTTPRouteFilterPrefix + "test-filter2"},
+												{Name: "envoy.filters.http.router"},
+											},
+											AccessLog: []*accesslogv3.AccessLog{
+												{Name: "listener2-accesslog1"},
+												{Name: "listener2-accesslog2"},
+											},
+										}),
+									},
+								},
+							},
+						},
+					},
+				},
+				{
+					Name: "test-listener3",
+					FilterChains: []*listenerv3.FilterChain{
+						{
+							Filters: []*listenerv3.Filter{
+								{
+									Name: wellknown.HTTPConnectionManager,
+									ConfigType: &listenerv3.Filter_TypedConfig{
+										TypedConfig: mustToAny(&httpconnectionmanagerv3.HttpConnectionManager{
+											StatPrefix: "http",
+											HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
+												{Name: internalapi.MCPPerBackendHTTPRouteFilterPrefix + "test-filter3"},
+												{Name: "envoy.filters.http.router"},
+											},
+											AccessLog: []*accesslogv3.AccessLog{
+												{Name: "listener3-accesslog1"},
+												{Name: "listener3-accesslog2"},
+											},
+										}),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedFilters: []*httpconnectionmanagerv3.HttpFilter{
+				{Name: internalapi.MCPPerBackendHTTPRouteFilterPrefix + "test-filter"},
+				{Name: internalapi.MCPPerBackendHTTPRouteFilterPrefix + "test-filter2"},
+				{Name: internalapi.MCPPerBackendHTTPRouteFilterPrefix + "test-filter3"},
+			},
+			expectedAccessLogs: []*accesslogv3.AccessLog{
+				{Name: "listener3-accesslog1"},
+				{Name: "listener3-accesslog2"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &Server{log: testr.New(t)}
-			filters := s.extractMCPBackendFiltersFromMCPProxyListener(tt.listeners)
+			filters, accessLogConfigs := s.extractMCPBackendFiltersFromMCPProxyListener(tt.listeners)
 			require.Empty(t, cmp.Diff(tt.expectedFilters, filters, protocmp.Transform()))
+			require.Empty(t, cmp.Diff(tt.expectedAccessLogs, accessLogConfigs, protocmp.Transform()))
 		})
 	}
 }
