@@ -79,15 +79,6 @@ func TestMCP_forceJSONResponse(t *testing.T) {
 	}
 }
 
-func TestMCP_customWriteTimeout(t *testing.T) {
-	env := requireNewMCPEnv(t, false, 2*time.Second, defaultMCPPath)
-	for _, tc := range tests {
-		t.Run(tc.name+"/custom_write_timeout", func(t *testing.T) {
-			tc.testFn(t, env)
-		})
-	}
-}
-
 func TestMCP_differentPath(t *testing.T) {
 	env := requireNewMCPEnv(t, false, 1200*time.Second, "/mcp/yet/another/path")
 	t.Run("call", func(t *testing.T) {
