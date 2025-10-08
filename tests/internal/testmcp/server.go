@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"time"
@@ -112,6 +113,9 @@ func NewServer(opts *Options) *http.Server {
 		// Allow long-lived connections.
 		WriteTimeout: opts.WriteTimeout,
 		Handler:      handler,
+		ConnState: func(conn net.Conn, state http.ConnState) {
+			log.Printf("MCP SERVER connection [%s] %s -> %s\n", state, conn.RemoteAddr(), conn.LocalAddr())
+		},
 	}
 	go func() {
 		log.Printf("starting MCP Streamable-HTTP server on :%d at /mcp", opts.Port)
