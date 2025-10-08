@@ -335,7 +335,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 						JSONSchema: ChatCompletionResponseFormatJSONSchemaJSONSchema{
 							Name:   "math_response",
 							Strict: true,
-							Schema: json.RawMessage(`{ "additionalProperties": false, "type": "object", "properties": { "step": { "type": "string" } }, "required": [ "steps" ] }`),
+							Schema: json.RawMessage(`{ "type": "object", "properties": { "step": {"type": "string"} }, "required": [ "steps"], "additionalProperties": false }`),
 						},
 					},
 				},
@@ -744,16 +744,7 @@ func TestChatCompletionResponseFormatUnionMarshal(t *testing.T) {
 					JSONSchema: ChatCompletionResponseFormatJSONSchemaJSONSchema{
 						Name:   "math_response",
 						Strict: true,
-						Schema: json.RawMessage(`{
-							"additionalProperties": false,
-							"type":                 "object",
-							"properties": {
-								"step": {
-									"type": "string",
-								},
-							},
-							"required": ["steps"],
-						}`),
+						Schema: json.RawMessage(`{ "type": "object", "properties": { "step": {"type": "string"} }, "required": [ "steps"], "additionalProperties": false }`),
 					},
 				},
 			},
