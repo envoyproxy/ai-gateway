@@ -20,6 +20,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
@@ -110,7 +111,7 @@ func Test_imageGenerationProcessorRouterFilter_ProcessRequestBody(t *testing.T) 
 		headers := map[string]string{":path": "/v1/images/generations"}
 		const modelKey = "x-ai-gateway-model-key"
 		p := &imageGenerationProcessorRouterFilter{
-			config:         &processorConfig{modelNameHeaderKey: modelKey},
+			config:         &processorConfig{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
 			tracer:         tracing.NoopTracing{}.ImageGenerationTracer(),
@@ -133,12 +134,11 @@ func Test_imageGenerationProcessorRouterFilter_ProcessRequestBody(t *testing.T) 
 
 	t.Run("span creation", func(t *testing.T) {
 		headers := map[string]string{":path": "/v1/images/generations"}
-		const modelKey = "x-ai-gateway-model-key"
 		span := &mockImageGenerationSpan{}
 		mockTracerInstance := &mockImageGenerationTracer{returnedSpan: span}
 
 		p := &imageGenerationProcessorRouterFilter{
-			config:         &processorConfig{modelNameHeaderKey: modelKey},
+			config:         &processorConfig{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
 			tracer:         mockTracerInstance,
@@ -233,8 +233,6 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseBody(t *testing.
 			logger:     slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 			metrics:    mm,
 			config: &processorConfig{
-				metadataNamespace:  "ai_gateway_llm_ns",
-				modelNameHeaderKey: "x-aigw-model",
 				requestCosts: []processorConfigRequestCost{
 					{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"}},
 					{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeInputToken, MetadataKey: "input_token_usage"}},
@@ -299,12 +297,12 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseBody(t *testing.
 
 func Test_imageGenerationProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
 	t.Run("ok with auth handler and header mutator", func(t *testing.T) {
-		headers := map[string]string{":path": "/v1/images/generations", "x-model": "dall-e-3"}
+		headers := map[string]string{":path": "/v1/images/generations", internalapi.ModelNameHeaderKeyDefault: "dall-e-3"}
 		mm := &mockImageGenerationMetrics{}
 		body := &openaisdk.ImageGenerateParams{Model: openaisdk.ImageModel("dall-e-3"), Prompt: "a cat"}
 		mt := &mockImageGenerationTranslator{t: t, expRequestBody: body}
 		p := &imageGenerationProcessorUpstreamFilter{
-			config:                 &processorConfig{modelNameHeaderKey: "x-model"},
+			config:                 &processorConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                mm,
@@ -344,8 +342,8 @@ func Test_imageGenerationProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	// Supported OpenAI schema.
 	rp := &imageGenerationProcessorRouterFilter{originalRequestBody: &openaisdk.ImageGenerateParams{}}
 	p2 := &imageGenerationProcessorUpstreamFilter{
-		config:         &processorConfig{modelNameHeaderKey: "x-model-name"},
-		requestHeaders: map[string]string{"x-model-name": "dall-e-2"},
+		config:         &processorConfig{},
+		requestHeaders: map[string]string{internalapi.ModelNameHeaderKeyDefault: "dall-e-2"},
 		logger:         slog.Default(),
 		metrics:        &mockImageGenerationMetrics{},
 	}
@@ -355,7 +353,7 @@ func Test_imageGenerationProcessorUpstreamFilter_SetBackend(t *testing.T) {
 		ModelNameOverride: "gpt-image-1",
 	}, nil, rp)
 	require.NoError(t, err)
-	require.Equal(t, "gpt-image-1", p2.requestHeaders["x-model-name"])
+	require.Equal(t, "gpt-image-1", p2.requestHeaders[internalapi.ModelNameHeaderKeyDefault])
 }
 
 func TestImageGeneration_ParseBody(t *testing.T) {
