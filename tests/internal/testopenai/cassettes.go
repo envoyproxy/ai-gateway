@@ -26,6 +26,7 @@ const (
 
 	// CassetteChatBasic is the canonical OpenAI chat completion request.
 	CassetteChatBasic Cassette = iota
+
 	// CassetteChatJSONMode is a chat completion request with JSON response format.
 	CassetteChatJSONMode
 	// CassetteChatMultimodal is a multimodal chat request with text and image inputs.
@@ -67,10 +68,10 @@ const (
 	CassetteChatWebSearch
 	// CassetteChatStreamingWebSearch is CassetteChatWebSearch except with streaming enabled.
 	CassetteChatStreamingWebSearch
+
 	// CassetteChatOpenAIAgentsPython is a real request from OpenAI Agents Python library for financial research.
 	// See https://github.com/openai/openai-agents-python/tree/main/examples/financial_research_agent
 	CassetteChatOpenAIAgentsPython
-
 	// Cassettes for the OpenAI /v1/completions endpoint.
 
 	// CassetteCompletionBasic tests standard single-prompt code completion
