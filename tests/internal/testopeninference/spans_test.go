@@ -22,6 +22,7 @@ func TestGetAllSpans(t *testing.T) {
 	}{
 		{"ChatCompletion", testopenai.ChatCassettes()},
 		{"CreateEmbeddings", testopenai.EmbeddingsCassettes()},
+		{"ImageGeneration", testopenai.ImageCassettes()},
 	}
 
 	for _, tc := range tests {
