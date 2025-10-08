@@ -5,3 +5,9 @@ charset = utf-8
 end_of_line = lf
 insert_final_newline = true
 trim_trailing_whitespace = true
+
+# Automatically formatted by prettier, which sometimes has trailing whitespace
+# in codeblocks. We don't need to check here since it's the formatting is checked
+# instead.
+[*.md]
+trim_trailing_whitespace = false

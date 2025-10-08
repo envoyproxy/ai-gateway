@@ -91,44 +91,69 @@ func TestMCPRouteController_Reconcile(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, current.Finalizers, aiGatewayControllerFinalizer, "Finalizer should be added")
 
-	// Verify generated HTTPRoute.
-	var httpRoute gwapiv1.HTTPRoute
-	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: internalapi.MCPHTTPRoutePrefix + "myroute", Namespace: "default"}, &httpRoute)
+	// Verify generated HTTPRoutes.
+	var mainHTTPRoute gwapiv1.HTTPRoute
+	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: internalapi.MCPMainHTTPRoutePrefix + "myroute", Namespace: "default"}, &mainHTTPRoute)
 	require.NoError(t, err)
-	require.Len(t, httpRoute.Spec.Rules, 3) // 1 for proxy and two rules.
+	require.Len(t, mainHTTPRoute.Spec.Rules, 1)
 
 	// Verify the mcp-proxy rule.
-	require.Equal(t, "/mcp", *httpRoute.Spec.Rules[0].Matches[0].Path.Value)
-	require.Equal(t, route.Spec.Headers, httpRoute.Spec.Rules[0].Matches[0].Headers)
-	require.Len(t, httpRoute.Spec.Rules[0].BackendRefs, 1)
-	require.Equal(t, gwapiv1.ObjectName("default-myroute-mcp-proxy"), httpRoute.Spec.Rules[0].BackendRefs[0].Name)
+	require.Equal(t, "/mcp", *mainHTTPRoute.Spec.Rules[0].Matches[0].Path.Value)
+	require.Equal(t, route.Spec.Headers, mainHTTPRoute.Spec.Rules[0].Matches[0].Headers)
+	require.Len(t, mainHTTPRoute.Spec.Rules[0].BackendRefs, 1)
+	require.Equal(t, gwapiv1.ObjectName("default-myroute-mcp-proxy"), mainHTTPRoute.Spec.Rules[0].BackendRefs[0].Name)
 	// Since HTTPRouteRule name is experimental in Gateway API, and some vendors (e.g. GKE Gateway) do not
 	// support it yet, we currently do not set the sectionName to avoid compatibility issues.
 	// The jwt filter will be removed from backend routes in the extension server.
 	// TODO: set the rule name and target the SecurityPolicy with jwt authn to the mcp-proxy rule only when the
 	// HTTPRouteRule name is in stable channel.
-	require.Nil(t, httpRoute.Spec.Rules[0].Name)
-
-	// Verify the two backend rules.
-	for _i, expName := range []gwapiv1.ObjectName{"svc-a", "svc-b"} {
-		i := _i + 1 // skip proxy rule at index 0.
-		require.Equal(t, "/", *httpRoute.Spec.Rules[i].Matches[0].Path.Value)
-		require.Len(t, httpRoute.Spec.Rules[i].BackendRefs, 1)
-		require.Equal(t, expName, httpRoute.Spec.Rules[i].BackendRefs[0].Name)
-		headers := httpRoute.Spec.Rules[i].Matches[0].Headers
-		require.Len(t, headers, 2)
-		require.Equal(t, internalapi.MCPBackendHeader, string(headers[0].Name))
-		require.Equal(t, string(expName), headers[0].Value)
-		require.Equal(t, internalapi.MCPRouteHeader, string(headers[1].Name))
-		require.Equal(t, "default/myroute", headers[1].Value)
-	}
+	require.Nil(t, mainHTTPRoute.Spec.Rules[0].Name)
 
 	// Labels/annotations propagated.
-	require.Equal(t, "v1", httpRoute.Labels["l1"])
-	require.Equal(t, "v1", httpRoute.Annotations["a1"])
-
+	require.Equal(t, "v1", mainHTTPRoute.Labels["l1"])
+	require.Equal(t, "v1", mainHTTPRoute.Annotations["a1"])
 	// ParentRefs copied to HTTPRoute.
-	require.Equal(t, route.Spec.ParentRefs, httpRoute.Spec.ParentRefs)
+	require.Equal(t, route.Spec.ParentRefs, mainHTTPRoute.Spec.ParentRefs)
+
+	// Verify the two per-backend HTTPRoute created.
+	for _, refName := range []gwapiv1.ObjectName{"svc-a", "svc-b"} {
+		var httpRoute gwapiv1.HTTPRoute
+		err = fakeClient.Get(t.Context(), client.ObjectKey{Name: mcpPerBackendRefHTTPRouteName(route.Name, refName), Namespace: "default"}, &httpRoute)
+		require.NoError(t, err)
+		require.Len(t, httpRoute.Spec.Rules, 1)
+		rule := httpRoute.Spec.Rules[0]
+		require.Equal(t, "/", *rule.Matches[0].Path.Value)
+		require.Len(t, rule.BackendRefs, 1)
+		require.Equal(t, refName, rule.BackendRefs[0].Name)
+		headers := rule.Matches[0].Headers
+		require.Len(t, headers, 2)
+		require.Equal(t, internalapi.MCPBackendHeader, string(headers[0].Name))
+		require.Equal(t, string(refName), headers[0].Value)
+		require.Equal(t, internalapi.MCPRouteHeader, string(headers[1].Name))
+		require.Equal(t, "default/myroute", headers[1].Value)
+		// Labels/annotations propagated.
+		require.Equal(t, "v1", httpRoute.Labels["l1"])
+		require.Equal(t, "v1", httpRoute.Annotations["a1"])
+		// ParentRefs copied to HTTPRoute.
+		require.Equal(t, route.Spec.ParentRefs, httpRoute.Spec.ParentRefs)
+	}
+
+	// Let's update the route to remove one backend and change path.
+	current.Spec.BackendRefs = current.Spec.BackendRefs[:1]
+	current.Spec.Path = ptr.To("/custom/")
+	err = fakeClient.Update(t.Context(), &current)
+	require.NoError(t, err)
+
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "myroute"}})
+	require.NoError(t, err)
+
+	// Verify main HTTPRoute updated.
+	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: internalapi.MCPMainHTTPRoutePrefix + "myroute", Namespace: "default"}, &mainHTTPRoute)
+	require.NoError(t, err)
+	require.Len(t, mainHTTPRoute.Spec.Rules, 1)
+	require.Equal(t, "/custom/", *mainHTTPRoute.Spec.Rules[0].Matches[0].Path.Value)
+	require.Len(t, mainHTTPRoute.Spec.Rules[0].BackendRefs, 1)
+	require.Equal(t, gwapiv1.ObjectName("default-myroute-mcp-proxy"), mainHTTPRoute.Spec.Rules[0].BackendRefs[0].Name)
 
 	// Delete flow shouldn't error.
 	err = fakeClient.Delete(t.Context(), &aigv1a1.MCPRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}})
@@ -154,33 +179,16 @@ func Test_newHTTPRoute_MCP_PathAndBackendsAndMetadata(t *testing.T) {
 			Path:       ptr.To("/custom/"),
 			Headers:    []gwapiv1.HTTPHeaderMatch{{Name: "x-match", Value: "yes"}},
 			ParentRefs: []gwapiv1.ParentReference{{Name: gwapiv1.ObjectName("gw")}},
-			BackendRefs: []aigv1a1.MCPRouteBackendRef{
-				{
-					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "svc-1", Namespace: ptr.To(gwapiv1.Namespace("ns"))},
-				},
-			},
 		},
 	}
 
-	err := ctrlr.newHTTPRoute(t.Context(), httpRoute, mcpRoute)
+	err := ctrlr.newMainHTTPRoute(httpRoute, mcpRoute)
 	require.NoError(t, err)
 
-	require.Len(t, httpRoute.Spec.Rules, 2)
+	require.Len(t, httpRoute.Spec.Rules, 1)
 	require.Equal(t, "/custom/", *httpRoute.Spec.Rules[0].Matches[0].Path.Value)
 	require.Len(t, httpRoute.Spec.Rules[0].BackendRefs, 1)
 	require.Equal(t, gwapiv1.ObjectName("ns-mcp-route-mcp-proxy"), httpRoute.Spec.Rules[0].BackendRefs[0].Name)
-	for _i, expName := range []gwapiv1.ObjectName{"svc-1"} {
-		i := _i + 1 // skip proxy rule at index 0.
-		require.Equal(t, "/", *httpRoute.Spec.Rules[i].Matches[0].Path.Value)
-		require.Len(t, httpRoute.Spec.Rules[i].BackendRefs, 1)
-		require.Equal(t, expName, httpRoute.Spec.Rules[i].BackendRefs[0].Name)
-		headers := httpRoute.Spec.Rules[i].Matches[0].Headers
-		require.Len(t, httpRoute.Spec.Rules[i].Matches[0].Headers, 2)
-		require.Equal(t, internalapi.MCPBackendHeader, string(headers[0].Name))
-		require.Equal(t, "svc-1", headers[0].Value)
-		require.Equal(t, internalapi.MCPRouteHeader, string(headers[1].Name))
-		require.Equal(t, "ns/mcp-route", headers[1].Value)
-	}
 
 	// Metadata propagated.
 	require.Equal(t, "v1", httpRoute.Labels["k1"])
@@ -202,19 +210,15 @@ func Test_newHTTPRoute_MCPOauth(t *testing.T) {
 			SecurityPolicy: &aigv1a1.MCPRouteSecurityPolicy{OAuth: &aigv1a1.MCPRouteOAuth{}},
 			Path:           ptr.To("/mcp/"),
 			ParentRefs:     []gwapiv1.ParentReference{{Name: gwapiv1.ObjectName("gw")}},
-			BackendRefs: []aigv1a1.MCPRouteBackendRef{
-				{
-					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "svc-1", Namespace: ptr.To(gwapiv1.Namespace("ns"))},
-				},
-			},
+			BackendRefs:    []aigv1a1.MCPRouteBackendRef{{}},
 		},
 	}
 
-	err := ctrlr.newHTTPRoute(t.Context(), httpRoute, mcpRoute)
+	err := ctrlr.newMainHTTPRoute(httpRoute, mcpRoute)
 	require.NoError(t, err)
 
-	require.Len(t, httpRoute.Spec.Rules, 6) // 2 default routes + 4 for oauth which begins from index 1.
-	oauthRules := httpRoute.Spec.Rules[1:5]
+	require.Len(t, httpRoute.Spec.Rules, 5) // 4 default routes for oauth which begins from index 1.
+	oauthRules := httpRoute.Spec.Rules[1:]
 	require.Equal(t, "oauth-protected-resource-metadata-root", string(ptr.Deref(oauthRules[0].Name, "")))
 	require.Equal(t, "oauth-protected-resource-metadata-suffix", string(ptr.Deref(oauthRules[1].Name, "")))
 	require.Equal(t, "oauth-authorization-server-metadata-root", string(ptr.Deref(oauthRules[2].Name, "")))
@@ -292,7 +296,7 @@ func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 	require.NotNil(t, httpRule.Filters[0].ExtensionRef)
 	require.Equal(t, gwapiv1.Group("gateway.envoyproxy.io"), httpRule.Filters[0].ExtensionRef.Group)
 	require.Equal(t, gwapiv1.Kind("HTTPRouteFilter"), httpRule.Filters[0].ExtensionRef.Kind)
-	require.Contains(t, string(httpRule.Filters[0].ExtensionRef.Name), internalapi.MCPBackendFilterPrefix)
+	require.Contains(t, string(httpRule.Filters[0].ExtensionRef.Name), internalapi.MCPPerBackendHTTPRouteFilterPrefix)
 
 	var httpFilter egv1a1.HTTPRouteFilter
 	err = c.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: string(httpRule.Filters[0].ExtensionRef.Name)}, &httpFilter)

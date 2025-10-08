@@ -10,6 +10,7 @@ The easiest way to use MCP servers config is to inline or supply a path to a JSO
 an array of MCP server definitions.
 
 For example, to start Envoy AI Gateway to proxy OpenAI and Kiwi MCP servers, use the following command:
+
 ```
 OPENAI_API_KEY=sk-xxxx aigw run --mcp-json '{"mcpServers":{"kiwi":{"type":"http","url":"https://mcp.kiwi.com"}}}'
 ```
@@ -33,6 +34,7 @@ Then, you can use the MCP Inspector to interact with the MCP Proxy:
 ## MCP Inspector Examples
 
 ### List Tools
+
 ```
 $ npx @modelcontextprotocol/inspector --cli http://localhost:1975/mcp --transport http --method 'tools/list' | jq '.tools[] | .name'
 "context7__resolve-library-id"
@@ -49,6 +51,7 @@ $ npx @modelcontextprotocol/inspector --cli http://localhost:1975/mcp/custom/pat
 ```
 
 ### Search AWS Documentation
+
 ```
 $ npx @modelcontextprotocol/inspector --cli http://localhost:1975/mcp --transport http --method tools/call --tool-name aws-knowledge__aws___search_documentation --tool-arg search_phrase="DynamoDB global index" --tool-arg limit=5
 {
@@ -234,13 +237,13 @@ Once you have everything running you can start the agent by passing a prompt fil
 into the terminal.
 
 ```shell
-$ uv run --exact -q --env-file <environment file>> agent.py /path/to/prompt.txt
+$ uv run --exact -q --env-file .env agent.py /path/to/prompt.txt
 ```
 
 or
 
 ```shell
-$ uv run --exact -q --env-file <environment file>> agent.py <<EOF
+$ uv run --exact -q --env-file .env agent.py << EOF
 > your prompt here
 EOF
 ```

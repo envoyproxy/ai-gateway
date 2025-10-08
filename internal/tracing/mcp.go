@@ -86,7 +86,9 @@ func (m mcpTracer) StartSpanAndInjectMeta(ctx context.Context, req *jsonrpc.Requ
 	parentCtx := m.propagator.Extract(ctx, mc)
 
 	// Start the span with options appropriate for the semantic convention.
-	newCtx, span := m.tracer.Start(parentCtx, "mcp.request", trace.WithSpanKind(trace.SpanKindClient))
+	// Convert method name to span name following mcp-go SDK patterns
+	spanName := getSpanName(req.Method)
+	newCtx, span := m.tracer.Start(parentCtx, spanName, trace.WithSpanKind(trace.SpanKindClient))
 
 	// Always inject trace context into the header mutation if provided.
 	// This ensures trace propagation works even for unsampled spans.
@@ -173,4 +175,38 @@ func (c metaMapCarrier) Keys() []string {
 	}
 
 	return keys
+}
+
+// getSpanName converts MCP method names to span names following mcp-go SDK patterns.
+func getSpanName(method string) string {
+	switch method {
+	case "initialize":
+		return "Initialize"
+	case "tools/list":
+		return "ListTools"
+	case "tools/call":
+		return "CallTool"
+	case "prompts/list":
+		return "ListPrompts"
+	case "prompts/get":
+		return "GetPrompt"
+	case "resources/list":
+		return "ListResources"
+	case "resources/read":
+		return "ReadResource"
+	case "resources/subscribe":
+		return "Subscribe"
+	case "resources/unsubscribe":
+		return "Unsubscribe"
+	case "resources/templates/list":
+		return "ListResourceTemplates"
+	case "logging/setLevel":
+		return "SetLoggingLevel"
+	case "completion/complete":
+		return "Complete"
+	case "ping":
+		return "Ping"
+	default:
+		return method
+	}
 }

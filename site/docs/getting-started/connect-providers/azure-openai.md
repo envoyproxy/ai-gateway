@@ -4,7 +4,6 @@ title: Connect Azure OpenAI
 sidebar_position: 3
 ---
 
-
 # Connect Azure OpenAI
 
 This guide will help you configure Envoy AI Gateway to work with Azure OpenAI's foundation models.
@@ -20,11 +19,13 @@ API Key authentication is not supported yet.
 ## Prerequisites
 
 Before you begin, you'll need:
+
 - Azure credentials with access to OpenAI service.
 - Basic setup completed from the [Basic Usage](../basic-usage.md) guide
 - Basic configuration removed as described in the [Advanced Configuration](./index.md) overview
 
 ## Azure Credential Setup
+
 1. An Azure account with OpenAI service access enabled
 2. Your Azure tenant ID, client ID, and client secret key
 3. Enabled model access to "GPT-4o"
@@ -40,6 +41,7 @@ curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/ba
 ### 2. Configure Azure Credentials
 
 Edit the `azure_openai.yaml` file to replace these placeholder values:
+
 - `AZURE_TENANT_ID`: Your Azure tenant ID
 - `AZURE_CLIENT_ID`: Your Azure client ID
 - `AZURE_CLIENT_SECRET`: Your Azure client secret
@@ -48,7 +50,6 @@ Edit the `azure_openai.yaml` file to replace these placeholder values:
 Keep your Azure credentials secure and never commit them to version control.
 The credentials will be stored in Kubernetes secrets.
 :::
-
 
 ### 3. Apply Configuration
 
@@ -88,13 +89,16 @@ If you encounter issues:
 
 1. Verify your Azure credentials are correct and active
 2. Check pod status
-  ```shell
-  kubectl get pods -n envoy-gateway-system
-  ```
+
+```shell
+kubectl get pods -n envoy-gateway-system
+```
+
 3. View controller logs:
-  ```shell
-  kubectl logs -n envoy-ai-gateway-system deployment/ai-gateway-controller
-  ```
+
+```shell
+kubectl logs -n envoy-ai-gateway-system deployment/ai-gateway-controller
+```
 
 4. Common errors:
    - 401/403: Invalid credentials or insufficient permissions

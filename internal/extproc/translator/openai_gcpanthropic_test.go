@@ -897,7 +897,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 		{
 			name: "auto tool choice",
 			openAIReq: &openai.ChatCompletionRequest{
-				ToolChoice: "auto",
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
 				Tools:      openaiTestTool,
 			},
 			expectedTools: anthropicTestTool,
@@ -910,7 +910,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 		{
 			name: "any tool choice",
 			openAIReq: &openai.ChatCompletionRequest{
-				ToolChoice: "any",
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "any"},
 				Tools:      openaiTestTool,
 			},
 			expectedTools: anthropicTestTool,
@@ -921,7 +921,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 		{
 			name: "specific tool choice by name",
 			openAIReq: &openai.ChatCompletionRequest{
-				ToolChoice: openai.ToolChoice{Type: "function", Function: openai.ToolFunction{Name: "my_func"}},
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: openai.ChatCompletionNamedToolChoice{Type: "function", Function: openai.ChatCompletionNamedToolChoiceFunction{Name: "my_func"}}},
 				Tools:      openaiTestTool,
 			},
 			expectedTools: anthropicTestTool,
@@ -1026,7 +1026,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 		{
 			name: "disable parallel tool calls",
 			openAIReq: &openai.ChatCompletionRequest{
-				ToolChoice:        "auto",
+				ToolChoice:        &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
 				Tools:             openaiTestTool,
 				ParallelToolCalls: ptr.To(false),
 			},
@@ -1041,7 +1041,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 			name: "explicitly enable parallel tool calls",
 			openAIReq: &openai.ChatCompletionRequest{
 				Tools:             openaiTestTool,
-				ToolChoice:        "auto",
+				ToolChoice:        &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
 				ParallelToolCalls: ptr.To(true),
 			},
 			expectedTools: anthropicTestTool,
@@ -1053,7 +1053,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 			name: "default disable parallel tool calls to false (nil)",
 			openAIReq: &openai.ChatCompletionRequest{
 				Tools:      openaiTestTool,
-				ToolChoice: "auto",
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
 			},
 			expectedTools: anthropicTestTool,
 			expectedToolChoice: anthropic.ToolChoiceUnionParam{
@@ -1064,7 +1064,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 			name: "none tool choice",
 			openAIReq: &openai.ChatCompletionRequest{
 				Tools:      openaiTestTool,
-				ToolChoice: "none",
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "none"},
 			},
 			expectedTools: anthropicTestTool,
 			expectedToolChoice: anthropic.ToolChoiceUnionParam{
@@ -1075,7 +1075,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 			name: "function tool choice",
 			openAIReq: &openai.ChatCompletionRequest{
 				Tools:      openaiTestTool,
-				ToolChoice: "function",
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "function"},
 			},
 			expectedTools: anthropicTestTool,
 			expectedToolChoice: anthropic.ToolChoiceUnionParam{
@@ -1086,7 +1086,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 			name: "invalid tool choice string",
 			openAIReq: &openai.ChatCompletionRequest{
 				Tools:      openaiTestTool,
-				ToolChoice: "invalid_choice",
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "invalid_choice"},
 			},
 			expectErr: true,
 		},
@@ -1197,7 +1197,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 			name: "unsupported tool_choice type",
 			openAIReq: &openai.ChatCompletionRequest{
 				Tools:      openaiTestTool,
-				ToolChoice: 123, // Use an integer to trigger the default case.
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: 123}, // Use an integer to trigger the default case.
 			},
 			expectErr: true,
 		},

@@ -26,9 +26,9 @@ header:
     - "**/.gitignore"
     - "**/.helmignore"
     - .trivyignore
-    - ".codespell.*"
     - .editorconfig
     - .golangci.yml
+    - .misspellignore
     - .prettierignore
     - .testcoverage.yml
     - LICENSE

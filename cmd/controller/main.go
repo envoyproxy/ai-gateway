@@ -49,6 +49,8 @@ type flags struct {
 	extProcExtraEnvVars            string
 	// extProcMaxRecvMsgSize is the maximum message size in bytes that the gRPC server can receive.
 	extProcMaxRecvMsgSize int
+	// maxRecvMsgSize is the maximum message size in bytes that the gRPC extension server can receive.
+	maxRecvMsgSize int
 }
 
 // parsePullPolicy parses string into a k8s PullPolicy.
@@ -146,6 +148,11 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		512*1024*1024,
 		"Maximum message size in bytes that the gRPC server can receive for extProc. Default is 512MB.",
 	)
+	maxRecvMsgSize := fs.Int(
+		"maxRecvMsgSize",
+		4*1024*1024,
+		"Maximum message size in bytes that the gRPC extension server can receive. Default is 4MB.",
+	)
 
 	if err := fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
@@ -215,6 +222,7 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		rootPrefix:                     *rootPrefix,
 		extProcExtraEnvVars:            *extProcExtraEnvVars,
 		extProcMaxRecvMsgSize:          *extProcMaxRecvMsgSize,
+		maxRecvMsgSize:                 *maxRecvMsgSize,
 	}, nil
 }
 
@@ -271,7 +279,7 @@ func main() {
 
 	// Start the extension server running alongside the controller.
 	const extProcUDSPath = "/etc/ai-gateway-extproc-uds/run.sock"
-	s := grpc.NewServer()
+	s := grpc.NewServer(grpc.MaxRecvMsgSize(flags.maxRecvMsgSize))
 	extSrv := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false)
 	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)

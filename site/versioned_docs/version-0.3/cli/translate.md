@@ -10,9 +10,10 @@ sidebar_position: 3
 
 This command translates the AI Gateway resources defined in a YAML file to Envoy Gateway and Kubernetes resources.
 This can be useful when:
-* You want to understand how the AI Gateway resources are translated to Envoy Gateway and Kubernetes resources.
-* Deploying the AI Gateway resources to a Kubernetes cluster without running the Envoy AI Gateway.
-  * Note that not all functionality can be functional without the Envoy AI Gateway control plane. For example, OIDC credential rotation is not working without the control plane.
+
+- You want to understand how the AI Gateway resources are translated to Envoy Gateway and Kubernetes resources.
+- Deploying the AI Gateway resources to a Kubernetes cluster without running the Envoy AI Gateway.
+  - Note that not all functionality can be functional without the Envoy AI Gateway control plane. For example, OIDC credential rotation is not working without the control plane.
 
 You can check the help message via `aigw translate --help`:
 

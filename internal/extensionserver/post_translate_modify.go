@@ -629,8 +629,9 @@ func (s *Server) isRouteGeneratedByAIGateway(route *routev3.Route) bool {
 			if !ok || kind.GetStringValue() != "HTTPRoute" {
 				continue
 			}
+			// Skips all the MCP-related resources.
 			if name, ok := resource.GetStructValue().Fields["name"]; ok {
-				if strings.HasPrefix(name.GetStringValue(), internalapi.MCPHTTPRoutePrefix) {
+				if strings.HasPrefix(name.GetStringValue(), internalapi.MCPGeneratedResourceCommonPrefix) {
 					return false
 				}
 			}

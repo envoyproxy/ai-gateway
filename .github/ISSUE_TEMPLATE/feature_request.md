@@ -1,15 +1,16 @@
 ---
 name: Feature request
 about: Suggest an idea for this project
-title: ''
+title: ""
 labels: enhancement,triage
-assignees: ''
-
+assignees: ""
 ---
 
-*Description*:
->Describe the desired behavior, what scenario it enables and how it
-would be used.
+_Description_:
+
+> Describe the desired behavior, what scenario it enables and how it
+> would be used.
 
 [optional *Relevant Links*:]
->Any extra documentation required to understand the issue.
+
+> Any extra documentation required to understand the issue.

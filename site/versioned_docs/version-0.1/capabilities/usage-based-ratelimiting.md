@@ -12,6 +12,7 @@ This guide focuses on AI Gateway's specific capabilities for token-based rate li
 ## Overview
 
 AI Gateway leverages Envoy Gateway's Global Rate Limit API to provide token-based rate limiting for LLM requests. Key features include:
+
 - Token usage tracking based on model and user identifiers
 - Configuration for tracking input, output, and total token metadata from LLM responses
 - Model-specific rate limiting using AI Gateway headers (`x-ai-eg-model`) which is inserted by the AI Gateway filter with the model name extracted from the request body.
@@ -53,11 +54,11 @@ AI Gateway automatically tracks token usage for each request. Configure which to
 spec:
   llmRequestCosts:
     - metadataKey: llm_input_token
-      type: InputToken    # Counts tokens in the request
+      type: InputToken # Counts tokens in the request
     - metadataKey: llm_output_token
-      type: OutputToken   # Counts tokens in the response
+      type: OutputToken # Counts tokens in the response
     - metadataKey: llm_total_token
-      type: TotalToken   # Tracks combined usage
+      type: TotalToken # Tracks combined usage
 ```
 
 For advanced token calculations specific to your use case:
@@ -67,7 +68,7 @@ spec:
   llmRequestCosts:
     - metadataKey: custom_cost
       type: CEL
-      cel: "input_tokens * 0.5 + output_tokens * 1.5"  # Example: Weight output tokens more heavily
+      cel: "input_tokens * 0.5 + output_tokens * 1.5" # Example: Weight output tokens more heavily
 ```
 
 ### 2. Configure Rate Limits
@@ -77,6 +78,7 @@ AI Gateway uses Envoy Gateway's Global Rate Limit API to configure rate limits. 
 #### Example: Cost-Based Model Rate Limiting
 
 The following example demonstrates a common use case where different models have different token limits based on their costs. This is useful when:
+
 - You want to limit expensive models (like GPT-4) more strictly than cheaper ones
 - You need to implement different quotas for different tiers of service
 - You want to prevent cost overruns while still allowing flexibility with cheaper models
@@ -106,17 +108,17 @@ spec:
                   type: Exact
                   value: gpt-4
           limit:
-            requests: 1000    # 1000 total tokens per hour
+            requests: 1000 # 1000 total tokens per hour
             unit: Hour
           cost:
             request:
               from: Number
-              number: 0      # Set to 0 so only token usage counts
+              number: 0 # Set to 0 so only token usage counts
             response:
               from: Metadata
               metadata:
                 namespace: io.envoy.ai_gateway
-                key: llm_total_token    # Uses total tokens from the responses
+                key: llm_total_token # Uses total tokens from the responses
         # Rate limit rule for GPT-3.5: 5000 total tokens per hour per user
         # Higher limit since the model is more cost-effective
         - clientSelectors:
@@ -127,36 +129,39 @@ spec:
                   type: Exact
                   value: gpt-3.5-turbo
           limit:
-            requests: 5000    # 5000 total tokens per hour (higher limit for less expensive model)
+            requests: 5000 # 5000 total tokens per hour (higher limit for less expensive model)
             unit: Hour
           cost:
             request:
               from: Number
-              number: 0      # Set to 0 so only token usage counts
+              number: 0 # Set to 0 so only token usage counts
             response:
               from: Metadata
               metadata:
                 namespace: io.envoy.ai_gateway
-                key: llm_total_token    # Uses total tokens from the response
+                key: llm_total_token # Uses total tokens from the response
 ```
 
 :::warning
 When configuring rate limits:
+
 1. Always set the request cost number to 0 to ensure only token usage counts towards the limit
 2. Set appropriate limits for different models based on their costs and capabilities
 3. Ensure both user and model identifiers are used in rate limiting rules
-:::
+   :::
 
 ## Making Requests
 
 For proper cost control and rate limiting, requests must include:
+
 - `x-user-id`: Identifies the user making the request
 
 Example request:
+
 ```shell
 curl -H "Content-Type: application/json" \
-    -H "x-user-id: user123" \
-    -d '{
+  -H "x-user-id: user123" \
+  -d '{
         "model": "gpt-4",
         "messages": [
             {
@@ -165,5 +170,5 @@ curl -H "Content-Type: application/json" \
             }
         ]
     }' \
-    $GATEWAY_URL/v1/chat/completions
+  $GATEWAY_URL/v1/chat/completions
 ```

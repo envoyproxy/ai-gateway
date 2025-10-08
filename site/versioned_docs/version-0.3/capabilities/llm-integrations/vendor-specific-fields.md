@@ -10,6 +10,7 @@ The AI Gateway supports vendor-specific fields that allow you to specify backend
 ## Overview
 
 Vendor-specific fields enable you to:
+
 - Use advanced backend-specific features not available in the OpenAI API
 
 The vendor-specific fields are specified as inline fields in your OpenAI request and are applied after the standard OpenAI-to-backend translation.
@@ -19,14 +20,16 @@ The vendor-specific fields are specified as inline fields in your OpenAI request
 The following backends support vendor-specific fields:
 
 ### GCP Vertex AI (Gemini)
+
 - **API Schema Name**: `GCPVertexAI`
 - **Supported Fields**:
   - `generationConfig.thinkingConfig`: Configure thinking process for reasoning models. [Gemini Docs](https://cloud.google.com/vertex-ai/docs/reference/rest/v1/GenerationConfig#ThinkingConfig)
 
 ### GCP Anthropic
+
 - **API Schema Name**: `GCPAnthropic`
 - **Supported Fields**:
-    - `thinking`: Configuration for enabling Claude's extended thinking. [Anthropic Docs](https://docs.anthropic.com/en/api/messages#body-thinking)
+  - `thinking`: Configuration for enabling Claude's extended thinking. [Anthropic Docs](https://docs.anthropic.com/en/api/messages#body-thinking)
 
 ## Usage
 
@@ -57,7 +60,9 @@ Add vendor-specific fields directly as inline fields in your OpenAI request:
 ```
 
 ### Field Conflicts
+
 Vendor fields override translated fields when conflicts occur.
 
 ### Unsupported Fields/Backends
+
 Fields and Backends other than specified in [Supported Backends](#supported-backends) will be ignored.

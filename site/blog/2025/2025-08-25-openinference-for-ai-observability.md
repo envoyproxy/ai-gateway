@@ -4,9 +4,10 @@ title: Enhancing AI Gateway Observability - OpenTelemetry Tracing Arrives in Env
 authors: [missberg, codefromthecrypt]
 tags: [features]
 ---
+
 ![Hero feature image of title.](images/openinference-feature.png)
 
-Aggregated metrics like latency, error rates, and throughput on their own won't reveal the source of *why* a system's output was wrong, slow, or expensive.
+Aggregated metrics like latency, error rates, and throughput on their own won't reveal the source of _why_ a system's output was wrong, slow, or expensive.
 
 The **v0.3 release** of Envoy AI Gateway brings comprehensive **OpenTelemetry tracing support** with **OpenInference semantic conventions**, extending the existing metrics foundation to provide complete visibility into LLM application behavior.
 
@@ -19,6 +20,7 @@ This enables you to improve the quality and safety of your AI-integrated applica
 Traditional observability looks at request speed, request volume, and error rates. These work well for simple stateless HTTP services. But they are not enough for AI applications.
 
 **AI applications present unique challenges:**
+
 - LLM requests have complicated costs based on token usage
 - Responses can vary and may stream out tokens slowly
 - Semantic failures occur when the AI fails to understand or produce the correct answer
@@ -51,6 +53,7 @@ Here's an example of a simple trace that includes both application and gateway s
 Tracing data isn't only for in-the-moment troubleshooting; this data is your key to optimizing your AI system.
 
 **OpenInference traces provide the structured data foundation necessary for comprehensive LLM evaluation:**
+
 - Capture the whole interaction context, including prompts, model parameters, and outputs
 - Leverage evaluation frameworks to identify patterns over time
 - Find optimization opportunities for performance, accuracy, and/or cost
@@ -64,6 +67,7 @@ Since your traces are in OpenInference format, your easiest option is to leverag
 ### Privacy Controls
 
 When capturing tracing data, you want to ensure you keep private data private. The gateway includes **configurable privacy controls** for sensitive environments:
+
 - Selectively redact content from spans
 - Limit data captured in multimodal interactions
 - Apply custom filtering based on organizational requirements
@@ -85,6 +89,7 @@ As it integrates with your current tools, you and your team can begin using this
 As you move from local development, through dev, test, staging, and to production, you can capture and trace traffic in the same way.
 
 **The tracing capability works consistently across deployment modes:**
+
 - **Local development:** Standalone CLI tool
 - **Production:** Kubernetes Gateway
 - **All environments:** Full tracing support for OpenAI-compatible requests, including streaming responses and multimodal inputs
