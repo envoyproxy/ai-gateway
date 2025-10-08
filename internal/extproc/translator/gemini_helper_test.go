@@ -6,6 +6,7 @@
 package translator
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -800,9 +801,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
 						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
 						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
-							Schema: map[string]any{
-								"type": "string",
-							},
+							Schema: json.RawMessage(`{"type": "string"}`),
 						},
 					},
 				},
@@ -819,7 +818,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
 						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
 						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
-							Schema: `{"type":"string"}`,
+							Schema: json.RawMessage(`{"type":"string"}`),
 						},
 					},
 				},
@@ -836,12 +835,12 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
 						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
 						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
-							Schema: `{"type":`, // invalid JSON.
+							Schema: json.RawMessage(`{"type":`), // invalid JSON.
 						},
 					},
 				},
 			},
-			expectedErrMsg: "invalid JSON schema string",
+			expectedErrMsg: "invalid JSON schema",
 		},
 	}
 
