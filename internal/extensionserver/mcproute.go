@@ -17,7 +17,6 @@ import (
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	listenerv3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
-	filelogv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
 	custom_responsev3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/custom_response/v3"
 	htomv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/header_to_metadata/v3"
 	routerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
@@ -73,6 +72,7 @@ func (s *Server) maybeGenerateResourcesForMCPGateway(req *egextension.PostTransl
 func (s *Server) createBackendListener(mcpHTTPFilters []*httpconnectionmanagerv3.HttpFilter, accessLogConfig []*accesslogv3.AccessLog) *listenerv3.Listener {
 	httpConManager := &httpconnectionmanagerv3.HttpConnectionManager{
 		StatPrefix: fmt.Sprintf("%s-http", mcpBackendListenerName),
+		AccessLog:  accessLogConfig,
 		RouteSpecifier: &httpconnectionmanagerv3.HttpConnectionManager_Rds{
 			Rds: &httpconnectionmanagerv3.Rds{
 				RouteConfigName: fmt.Sprintf("%s-route-config", mcpBackendListenerName),
@@ -84,20 +84,6 @@ func (s *Server) createBackendListener(mcpHTTPFilters []*httpconnectionmanagerv3
 				},
 			},
 		},
-	}
-
-	httpConManager.AccessLog = accessLogConfig
-	if len(httpConManager.AccessLog) == 0 {
-		// Fallback access log configuration if none is found.
-		// This should not happen in practice, because Envoy Gateway configures a default access log format if users
-		// do not explicitly configure one.
-		fal := &filelogv3.FileAccessLog{Path: "/dev/stdout"}
-		httpConManager.AccessLog = []*accesslogv3.AccessLog{
-			{
-				Name:       "envoy.access_loggers.file",
-				ConfigType: &accesslogv3.AccessLog_TypedConfig{TypedConfig: mustToAny(fal)},
-			},
-		}
 	}
 
 	// Add MCP HTTP filters (like credential injection filters) to the backend listener.
@@ -327,11 +313,9 @@ func (s *Server) extractMCPBackendFiltersFromMCPProxyListener(listeners []*liste
 			}
 
 			// All listeners will have the same access log configuration, as they all belong to the same gateway
-			// and share the infrastructure. we can just return the first not-empty access log config and use that
+			// and share the infrastructure. We can just return any not-empty access log config and use that
 			// to configure the MCP backend listener with the same settings.
-			if len(accessLogConfig) == 0 {
-				accessLogConfig = httpConManager.AccessLog
-			}
+			accessLogConfig = httpConManager.AccessLog
 
 			// Look for MCP HTTP filters in this HCM and extract them.
 			var remainingFilters []*httpconnectionmanagerv3.HttpFilter

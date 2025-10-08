@@ -58,6 +58,10 @@ func TestServer_createBackendListener(t *testing.T) {
 		{
 			name:           "no filters with access logs",
 			mcpHTTPFilters: nil,
+			accessLogConfig: []*accesslogv3.AccessLog{
+				{Name: "accesslog1"},
+				{Name: "accesslog2"},
+			},
 			expectedListener: &listenerv3.Listener{
 				Name: mcpBackendListenerName,
 				Address: &corev3.Address{
@@ -87,15 +91,9 @@ func TestServer_createBackendListener(t *testing.T) {
 
 			hcm, _, err := findHCM(listener.FilterChains[0])
 			require.NoError(t, err)
-			require.NotEmpty(t, hcm.AccessLog)
-			if tt.accessLogConfig != nil {
-				require.Len(t, hcm.AccessLog, len(tt.accessLogConfig))
-				for i := range tt.accessLogConfig {
-					require.Equal(t, tt.accessLogConfig[i].Name, hcm.AccessLog[i].Name)
-				}
-			} else {
-				require.Len(t, hcm.AccessLog, 1)
-				require.Equal(t, "envoy.access_loggers.file", hcm.AccessLog[0].Name)
+			require.Len(t, hcm.AccessLog, len(tt.accessLogConfig))
+			for i := range tt.accessLogConfig {
+				require.Equal(t, tt.accessLogConfig[i].Name, hcm.AccessLog[i].Name)
 			}
 		})
 	}
@@ -443,8 +441,8 @@ func TestServer_extractMCPBackendFiltersFromMCPProxyListener(t *testing.T) {
 				{Name: internalapi.MCPPerBackendHTTPRouteFilterPrefix + "test-filter3"},
 			},
 			expectedAccessLogs: []*accesslogv3.AccessLog{
-				{Name: "listener2-accesslog1"},
-				{Name: "listener2-accesslog2"},
+				{Name: "listener3-accesslog1"},
+				{Name: "listener3-accesslog2"},
 			},
 		},
 	}
