@@ -1,0 +1,60 @@
+---
+version: 2
+interactions:
+- id: 0
+  request:
+    proto: HTTP/1.1
+    proto_major: 1
+    proto_minor: 1
+    content_length: 105
+    host: api.openai.com
+    body: "{\n  \"model\": \"dall-e-2\",\n  \"prompt\": \"A simple black-and-white line drawing of a cat playing with yarn\"\n}"
+    headers:
+      Accept-Encoding:
+      - gzip
+      Content-Length:
+      - "105"
+      Content-Type:
+      - application/json
+      User-Agent:
+      - Go-http-client/1.1
+    url: https://api.openai.com/v1/images/generations
+    method: POST
+  response:
+    proto: HTTP/2.0
+    proto_major: 2
+    proto_minor: 0
+    content_length: 544
+    body: "{\n  \"created\": 1759925706,\n  \"data\": [\n    {\n      \"url\": \"https://oaidalleapiprodscus.blob.core.windows.net/private/org-lKxIBdltrjcFbzboW0t1hthB/user-EdKNxj0PjYS29CfjUcR77ybc/img-MigVWgAi6l5W3B31L6imFob3.png?st=2025-10-08T11%3A15%3A05Z&se=2025-10-08T13%3A15%3A05Z&sp=r&sv=2024-08-04&sr=b&rscd=inline&rsct=image/png&skoid=52f8f7b3-ca8d-4b21-9807-8b9df114d84c&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2025-10-08T12%3A15%3A05Z&ske=2025-10-09T12%3A15%3A05Z&sks=b&skv=2024-08-04&sig=ex3I6RoFVH9hfNst8oloGtfBVA3o2aXvTI4cFtLVzlE%3D\"\n    }\n  ]\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 98b58f7bde648af7-BOM
+      Content-Length:
+      - "544"
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 08 Oct 2025 12:15:06 GMT
+      Openai-Processing-Ms:
+      - "13265"
+      Openai-Project:
+      - proj_Ro6stNUOKIiLVqRr1zdjaFoh
+      Openai-Version:
+      - "2020-10-01"
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Envoy-Upstream-Service-Time:
+      - "13269"
+      X-Request-Id:
+      - req_c643aaa7f52258b2192d4c133d117e43
+    status: 200 OK
+    code: 200
+    duration: 13.632879292s
