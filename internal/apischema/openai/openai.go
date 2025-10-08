@@ -1220,6 +1220,13 @@ type ChatCompletionResponseChoiceMessage struct {
 	// ReasoningContent is used to hold any non-standard fields from the backend which supports reasoning,
 	// like "reasoningContent" from AWS Bedrock.
 	ReasoningContent *ReasoningContentUnion `json:"reasoning_content,omitempty"`
+
+	// GCPVertexAI specific fields.
+
+	// SafetyRatings contains safety ratings copied from the GCP Vertex AI response as-is.
+	// List of ratings for the safety of a response candidate. There is at most one rating per category.
+	// https://cloud.google.com/vertex-ai/generative-ai/docs/reference/rest/v1/GenerateContentResponse#SafetyRating
+	SafetyRatings []*genai.SafetyRating `json:"safety_ratings,omitempty"`
 }
 
 // URLCitation contains citation information for web search results.

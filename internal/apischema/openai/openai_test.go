@@ -15,6 +15,7 @@ import (
 	"github.com/openai/openai-go/v2"
 	"github.com/openai/openai-go/v2/packages/param"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genai"
 	"k8s.io/utils/ptr"
 )
 
@@ -989,6 +990,69 @@ func TestChatCompletionResponse(t *testing.T) {
 					"prompt_tokens": 14,
 					"completion_tokens": 192,
 					"total_tokens": 206
+				}
+			}`,
+		},
+		{
+			name: "response with safety settings",
+			response: ChatCompletionResponse{
+				ID:      "chatcmpl-safety-test",
+				Created: JSONUNIXTime(time.Unix(1755135425, 0)),
+				Model:   "gpt-4.1-nano",
+				Object:  "chat.completion",
+				Choices: []ChatCompletionResponseChoice{
+					{
+						Index:        0,
+						FinishReason: ChatCompletionChoicesFinishReasonStop,
+						Message: ChatCompletionResponseChoiceMessage{
+							Role:    "assistant",
+							Content: ptr.To("This is a safe response"),
+							SafetyRatings: []*genai.SafetyRating{
+								{
+									Category:    genai.HarmCategoryHarassment,
+									Probability: genai.HarmProbabilityLow,
+								},
+								{
+									Category:    genai.HarmCategorySexuallyExplicit,
+									Probability: genai.HarmProbabilityNegligible,
+								},
+							},
+						},
+					},
+				},
+				Usage: ChatCompletionResponseUsage{
+					CompletionTokens: 5,
+					PromptTokens:     3,
+					TotalTokens:      8,
+				},
+			},
+			expected: `{
+				"id": "chatcmpl-safety-test",
+				"object": "chat.completion",
+				"created": 1755135425,
+				"model": "gpt-4.1-nano",
+				"choices": [{
+					"index": 0,
+					"message": {
+						"role": "assistant",
+						"content": "This is a safe response",
+						"safety_ratings": [
+							{
+								"category": "HARM_CATEGORY_HARASSMENT",
+								"probability": "LOW"
+							},
+							{
+								"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+								"probability": "NEGLIGIBLE"
+							}
+						]
+					},
+					"finish_reason": "stop"
+				}],
+				"usage": {
+					"prompt_tokens": 3,
+					"completion_tokens": 5,
+					"total_tokens": 8
 				}
 			}`,
 		},

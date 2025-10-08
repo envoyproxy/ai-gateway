@@ -486,6 +486,14 @@ func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate) ([]openai.Ch
 			choice.Message = message
 		}
 
+		if candidate.SafetyRatings != nil {
+			if choice.Message.Role == "" {
+				choice.Message.Role = openai.ChatMessageRoleAssistant
+			}
+
+			choice.Message.SafetyRatings = candidate.SafetyRatings
+		}
+
 		// Handle logprobs if available.
 		if candidate.LogprobsResult != nil {
 			choice.Logprobs = geminiLogprobsToOpenAILogprobs(*candidate.LogprobsResult)
