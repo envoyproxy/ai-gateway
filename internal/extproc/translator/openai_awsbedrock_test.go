@@ -505,7 +505,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						},
 					},
 				},
-				ToolChoice: "auto",
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
 			},
 			output: awsbedrock.ConverseInput{
 				InferenceConfig: &awsbedrock.InferenceConfiguration{},
@@ -556,7 +556,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						},
 					},
 				},
-				ToolChoice: "required",
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "required"},
 			},
 			output: awsbedrock.ConverseInput{
 				InferenceConfig: &awsbedrock.InferenceConfiguration{},
@@ -607,7 +607,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						},
 					},
 				},
-				ToolChoice: "some-tools",
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "some-tools"},
 			},
 			output: awsbedrock.ConverseInput{
 				InferenceConfig: &awsbedrock.InferenceConfiguration{},
@@ -662,10 +662,12 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						},
 					},
 				},
-				ToolChoice: openai.ToolChoice{
-					Type: openai.ToolType("function"),
-					Function: openai.ToolFunction{
-						Name: "my_function",
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{
+					Value: openai.ChatCompletionNamedToolChoice{
+						Type: openai.ToolType("function"),
+						Function: openai.ChatCompletionNamedToolChoiceFunction{
+							Name: "my_function",
+						},
 					},
 				},
 			},
@@ -693,7 +695,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 					},
 					ToolChoice: &awsbedrock.ToolChoice{
 						Tool: &awsbedrock.SpecificToolChoice{
-							Name: ptr.To("function"),
+							Name: ptr.To("my_function"),
 						},
 					},
 				},
@@ -1684,6 +1686,50 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 					OutputTokens: uint32(tt.output.Usage.CompletionTokens), //nolint:gosec
 					TotalTokens:  uint32(tt.output.Usage.TotalTokens),      //nolint:gosec
 				}, usedToken)
+		})
+	}
+}
+
+func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBodyErr(t *testing.T) {
+	tests := []struct {
+		name  string
+		input openai.ChatCompletionRequest
+		err   error
+	}{
+		{
+			name: "test unexpected  tool choice type",
+			input: openai.ChatCompletionRequest{
+				Model: "gpt-4o",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: "from-user",
+							},
+							Role: openai.ChatMessageRoleUser,
+						},
+					},
+				},
+				Tools: []openai.Tool{
+					{
+						Type: "function",
+						Function: &openai.FunctionDefinition{
+							Name:        "get_current_weather",
+							Description: "Get the current weather in a given location",
+						},
+					},
+				},
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: 123},
+			},
+			err: fmt.Errorf("unexpected type: int"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
+			originalReq := tt.input
+			_, _, err := o.RequestBody(nil, &originalReq, false)
+			require.Equal(t, err.Error(), tt.err.Error())
 		})
 	}
 }

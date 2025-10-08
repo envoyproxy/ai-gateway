@@ -2198,3 +2198,51 @@ func TestUsage(t *testing.T) {
 		})
 	}
 }
+
+func TestChatCompletionNamedToolChoice_MarshalUnmarshal(t *testing.T) {
+	original := ChatCompletionNamedToolChoice{
+		Type: ToolTypeFunction,
+		Function: ChatCompletionNamedToolChoiceFunction{
+			Name: "my_func",
+		},
+	}
+	data, err := json.Marshal(original)
+	require.NoError(t, err)
+
+	var unmarshaled ChatCompletionNamedToolChoice
+	err = json.Unmarshal(data, &unmarshaled)
+	require.NoError(t, err)
+
+	require.Equal(t, original, unmarshaled)
+	require.Equal(t, "my_func", unmarshaled.Function.Name)
+}
+
+func TestChatCompletionToolChoiceUnion_MarshalUnmarshal(t *testing.T) {
+	// Test with string value
+	unionStr := ChatCompletionToolChoiceUnion{Value: "auto"}
+	dataStr, err := json.Marshal(unionStr)
+	require.NoError(t, err)
+
+	var unmarshaledStr ChatCompletionToolChoiceUnion
+	err = json.Unmarshal(dataStr, &unmarshaledStr)
+	require.NoError(t, err)
+	require.Equal(t, "auto", unmarshaledStr.Value)
+
+	// Test with ChatCompletionNamedToolChoice value
+	unionObj := ChatCompletionToolChoiceUnion{Value: ChatCompletionNamedToolChoice{
+		Type:     ToolTypeFunction,
+		Function: ChatCompletionNamedToolChoiceFunction{Name: "my_func"},
+	}}
+	dataObj, err := json.Marshal(unionObj)
+	require.NoError(t, err)
+
+	var unmarshaledObj ChatCompletionToolChoiceUnion
+	err = json.Unmarshal(dataObj, &unmarshaledObj)
+	require.NoError(t, err)
+
+	// Type assertion for struct value
+	namedChoice, ok := unmarshaledObj.Value.(ChatCompletionNamedToolChoice)
+	require.True(t, ok)
+	require.Equal(t, unionObj.Value, namedChoice)
+	require.Equal(t, "my_func", namedChoice.Function.Name)
+}

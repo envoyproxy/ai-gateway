@@ -352,11 +352,11 @@ func openAIToolsToGeminiTools(openaiTools []openai.Tool) ([]genai.Tool, error) {
 //	   ]
 //	 }
 //	}
-func openAIToolChoiceToGeminiToolConfig(toolChoice any) (*genai.ToolConfig, error) {
+func openAIToolChoiceToGeminiToolConfig(toolChoice *openai.ChatCompletionToolChoiceUnion) (*genai.ToolConfig, error) {
 	if toolChoice == nil {
 		return nil, nil
 	}
-	switch tc := toolChoice.(type) {
+	switch tc := toolChoice.Value.(type) {
 	case string:
 		switch tc {
 		case "auto":
@@ -368,7 +368,7 @@ func openAIToolChoiceToGeminiToolConfig(toolChoice any) (*genai.ToolConfig, erro
 		default:
 			return nil, fmt.Errorf("unsupported tool choice: '%s'", tc)
 		}
-	case openai.ToolChoice:
+	case openai.ChatCompletionNamedToolChoice:
 		return &genai.ToolConfig{
 			FunctionCallingConfig: &genai.FunctionCallingConfig{
 				Mode:                 genai.FunctionCallingConfigModeAny,

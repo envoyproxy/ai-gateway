@@ -994,30 +994,32 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 func TestOpenAIToolChoiceToGeminiToolConfig(t *testing.T) {
 	tests := []struct {
 		name      string
-		input     any
+		input     *openai.ChatCompletionToolChoiceUnion
 		expected  *genai.ToolConfig
 		expectErr string
 	}{
 		{
 			name:     "string auto",
-			input:    "auto",
+			input:    &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
 			expected: &genai.ToolConfig{FunctionCallingConfig: &genai.FunctionCallingConfig{Mode: genai.FunctionCallingConfigModeAuto}},
 		},
 		{
 			name:     "string none",
-			input:    "none",
+			input:    &openai.ChatCompletionToolChoiceUnion{Value: "none"},
 			expected: &genai.ToolConfig{FunctionCallingConfig: &genai.FunctionCallingConfig{Mode: genai.FunctionCallingConfigModeNone}},
 		},
 		{
 			name:     "string required",
-			input:    "required",
+			input:    &openai.ChatCompletionToolChoiceUnion{Value: "required"},
 			expected: &genai.ToolConfig{FunctionCallingConfig: &genai.FunctionCallingConfig{Mode: genai.FunctionCallingConfigModeAny}},
 		},
 		{
 			name: "ToolChoice struct",
-			input: openai.ToolChoice{
-				Type:     openai.ToolTypeFunction,
-				Function: openai.ToolFunction{Name: "myfunc"},
+			input: &openai.ChatCompletionToolChoiceUnion{
+				Value: openai.ChatCompletionNamedToolChoice{
+					Type:     openai.ToolTypeFunction,
+					Function: openai.ChatCompletionNamedToolChoiceFunction{Name: "myfunc"},
+				},
 			},
 			expected: &genai.ToolConfig{
 				FunctionCallingConfig: &genai.FunctionCallingConfig{
@@ -1029,12 +1031,12 @@ func TestOpenAIToolChoiceToGeminiToolConfig(t *testing.T) {
 		},
 		{
 			name:      "unsupported type",
-			input:     123,
+			input:     &openai.ChatCompletionToolChoiceUnion{Value: 123},
 			expectErr: "unsupported tool choice type",
 		},
 		{
 			name:      "unsupported string value",
-			input:     "invalid",
+			input:     &openai.ChatCompletionToolChoiceUnion{Value: "invalid"},
 			expectErr: "unsupported tool choice: 'invalid'",
 		},
 	}
