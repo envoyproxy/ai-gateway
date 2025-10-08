@@ -625,10 +625,6 @@ func (s *Server) isRouteGeneratedByAIGateway(route *routev3.Route) bool {
 	if s.isStandAloneMode {
 		// In stand-alone mode, we don't have annotations to check, so instead use the name prefix.
 		for _, resource := range resources.GetListValue().Values {
-			kind, ok := resource.GetStructValue().Fields["kind"]
-			if !ok || kind.GetStringValue() != "HTTPRoute" {
-				continue
-			}
 			// Skips all the MCP-related resources.
 			if name, ok := resource.GetStructValue().Fields["name"]; ok {
 				if strings.HasPrefix(name.GetStringValue(), internalapi.MCPGeneratedResourceCommonPrefix) {
