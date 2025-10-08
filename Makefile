@@ -8,8 +8,7 @@
 # in the command line every time.
 -include .makerc
 
-# The Go-based tools are defined in Makefile.tools.mk.
-include Makefile.tools.mk
+GO_TOOL := go tool -modfile=tools/go.mod
 
 # The list of commands that can be built.
 COMMANDS := controller extproc
