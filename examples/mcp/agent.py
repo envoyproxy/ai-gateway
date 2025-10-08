@@ -21,6 +21,7 @@
 #     "openai-agents",
 #     "httpx",
 #     "mcp",
+#     "elastic-opentelemetry",
 #     "openinference-instrumentation-openai-agents",
 #     "opentelemetry-instrumentation-httpx",
 #     "openinference-instrumentation-mcp",
@@ -42,32 +43,28 @@ from agents import (
     OpenAIProvider,
     RunConfig,
     Runner,
-    Tool,
 )
-from agents.mcp import MCPServerStreamableHttp, MCPUtil
+from agents.mcp import MCPServer, MCPServerStreamableHttp, MCPUtil
 
-
-async def run_agent(prompt: str, model_name: str, tools: list[Tool]):
-    model = OpenAIProvider(use_responses=False).get_model(model_name)
-    agent = Agent(name="Assistant", model=model, tools=tools)
-    result = await Runner.run(
-        starting_agent=agent,
-        input=prompt,
-        run_config=RunConfig(workflow_name="envoy-ai-gateway"),
-    )
-    print(result.final_output)
+# Uncomment the following lines to enable agent verbose logging
+# from agents import enable_verbose_stdout_logging
+# enable_verbose_stdout_logging()
 
 
 async def main(prompt: str, model_name: str, mcp_url: str):
-    if not mcp_url:
-        await run_agent(prompt, model_name, [])
-        return
-
-    async with MCPServerStreamableHttp({"url": mcp_url,"timeout": 300.0},cache_tools_list=True) as server:
-        tools = await server.list_tools()
-        util = MCPUtil()
-        tools = [util.to_function_tool(tool, server, False) for tool in tools]
-        await run_agent(prompt, model_name, tools)
+    async with MCPServerStreamableHttp(
+        name="Envoy AI Gateway MCP",
+        params={"url": mcp_url, "timeout": 300},
+        cache_tools_list=True,
+    ) as server:
+        model = OpenAIProvider(use_responses=False).get_model(model_name)
+        agent = Agent(name="Assistant", model=model, mcp_servers=[server])
+        result = await Runner.run(
+            starting_agent=agent,
+            input=prompt,
+            run_config=RunConfig(workflow_name="Envoy AI Gateway Example"),
+        )
+        print(result.final_output)
 
 
 if __name__ == "__main__":
