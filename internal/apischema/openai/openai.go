@@ -1213,7 +1213,6 @@ type ChatCompletionResponseChoiceMessage struct {
 	// SafetyRatings contains safety ratings copied from the GCP Vertex AI response as-is.
 	// List of ratings for the safety of a response candidate. There is at most one rating per category.
 	// https://cloud.google.com/vertex-ai/generative-ai/docs/reference/rest/v1/GenerateContentResponse#SafetyRating
-
 	SafetyRatings []*genai.SafetyRating `json:"safety_ratings,omitempty"`
 }
 
