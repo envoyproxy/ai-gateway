@@ -618,7 +618,7 @@ type ChatCompletionResponseFormatJSONSchemaJSONSchema struct {
 	Description string `json:"description,omitempty"`
 	// The schema for the response format, described as a JSON Schema object. Learn how
 	// to build JSON schemas [here](https://json-schema.org/).
-	Schema any `json:"schema"`
+	Schema json.RawMessage `json:"schema"`
 	// Whether to enable strict schema adherence when generating the output. If set to
 	// true, the model will always follow the exact schema defined in the `schema`
 	// field. Only a subset of JSON Schema is supported when `strict` is `true`. To

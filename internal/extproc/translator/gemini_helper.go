@@ -415,14 +415,8 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) 
 			gc.ResponseMIMEType = mimeTypeApplicationJSON
 		case openAIReq.ResponseFormat.OfJSONSchema != nil:
 			var schemaMap map[string]any
-
-			switch sch := openAIReq.ResponseFormat.OfJSONSchema.JSONSchema.Schema.(type) {
-			case string:
-				if err := json.Unmarshal([]byte(sch), &schemaMap); err != nil {
-					return nil, fmt.Errorf("invalid JSON schema string: %w", err)
-				}
-			case map[string]any:
-				schemaMap = sch
+			if err := json.Unmarshal([]byte(openAIReq.ResponseFormat.OfJSONSchema.JSONSchema.Schema), &schemaMap); err != nil {
+				return nil, fmt.Errorf("invalid JSON schema: %w", err)
 			}
 
 			gc.ResponseMIMEType = mimeTypeApplicationJSON

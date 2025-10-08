@@ -121,16 +121,7 @@ func TestOpenAIChatCompletionResponseFormatUnionUnmarshal(t *testing.T) {
 					JSONSchema: ChatCompletionResponseFormatJSONSchemaJSONSchema{
 						Name:   "math_response",
 						Strict: true,
-						Schema: map[string]any{
-							"additionalProperties": false,
-							"type":                 "object",
-							"properties": map[string]any{
-								"step": map[string]any{
-									"type": "string",
-								},
-							},
-							"required": []any{"steps"},
-						},
+						Schema: json.RawMessage(`{ "type": "object", "properties": { "step": {"type": "string"} }, "required": [ "steps"], "additionalProperties": false }`),
 					},
 				},
 			},
@@ -344,16 +335,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 						JSONSchema: ChatCompletionResponseFormatJSONSchemaJSONSchema{
 							Name:   "math_response",
 							Strict: true,
-							Schema: map[string]any{
-								"additionalProperties": false,
-								"type":                 "object",
-								"properties": map[string]any{
-									"step": map[string]any{
-										"type": "string",
-									},
-								},
-								"required": []any{"steps"},
-							},
+							Schema: json.RawMessage(`{ "type": "object", "properties": { "step": {"type": "string"} }, "required": [ "steps"], "additionalProperties": false }`),
 						},
 					},
 				},
@@ -762,16 +744,7 @@ func TestChatCompletionResponseFormatUnionMarshal(t *testing.T) {
 					JSONSchema: ChatCompletionResponseFormatJSONSchemaJSONSchema{
 						Name:   "math_response",
 						Strict: true,
-						Schema: map[string]any{
-							"additionalProperties": false,
-							"type":                 "object",
-							"properties": map[string]any{
-								"step": map[string]any{
-									"type": "string",
-								},
-							},
-							"required": []any{"steps"},
-						},
+						Schema: json.RawMessage(`{ "type": "object", "properties": { "step": {"type": "string"} }, "required": [ "steps"], "additionalProperties": false }`),
 					},
 				},
 			},

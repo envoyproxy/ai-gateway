@@ -6,6 +6,8 @@
 package testopenai
 
 import (
+	"encoding/json"
+
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -387,39 +389,44 @@ var chatRequests = map[Cassette]*openai.ChatCompletionRequest{
 				JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
 					Name:   "final_output",
 					Strict: true,
-					Schema: map[string]interface{}{
-						"$defs": map[string]interface{}{
-							"FinancialSearchItem": map[string]interface{}{
-								"properties": map[string]interface{}{
-									"reason": map[string]interface{}{
-										"title": "Reason",
-										"type":  "string",
-									},
-									"query": map[string]interface{}{
-										"title": "Query",
-										"type":  "string",
-									},
-								},
-								"required":             []string{"reason", "query"},
-								"title":                "FinancialSearchItem",
-								"type":                 "object",
-								"additionalProperties": false,
-							},
-						},
-						"properties": map[string]interface{}{
-							"searches": map[string]interface{}{
-								"items": map[string]interface{}{
-									"$ref": "#/$defs/FinancialSearchItem",
-								},
-								"title": "Searches",
-								"type":  "array",
-							},
-						},
-						"required":             []string{"searches"},
-						"title":                "FinancialSearchPlan",
-						"type":                 "object",
-						"additionalProperties": false,
-					},
+					Schema: json.RawMessage(`{
+  "$defs": {
+    "FinancialSearchItem": {
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "title": "Query",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "query"
+      ],
+      "title": "FinancialSearchItem",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "searches": {
+      "items": {
+        "$ref": "#/$defs/FinancialSearchItem"
+      },
+      "title": "Searches",
+      "type": "array"
+    }
+  },
+  "required": [
+    "searches"
+  ],
+  "title": "FinancialSearchPlan",
+  "type": "object"
+}`),
 				},
 			},
 		},
