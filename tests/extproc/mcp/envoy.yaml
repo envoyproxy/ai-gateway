@@ -125,17 +125,6 @@ static_resources:
                             headers:
                               - name: x-ai-eg-mcp-backend
                                 string_match:
-                                  exact: learn-microsoft
-                          route:
-                            autoHostRewrite: true
-                            cluster: learn-microsoft
-                            idleTimeout: 3600s
-                            timeout: 120s
-                        - match:
-                            prefix: "/"
-                            headers:
-                              - name: x-ai-eg-mcp-backend
-                                string_match:
                                   exact: context7
                           route:
                             autoHostRewrite: true
@@ -248,26 +237,6 @@ static_resources:
                     socket_address:
                       address: 127.0.0.1
                       port_value: 8080
-
-    - name: learn-microsoft
-      connect_timeout: 30s
-      dns_lookup_family: V4_ONLY
-      type: STRICT_DNS
-      load_assignment:
-        cluster_name: learn-microsoft
-        endpoints:
-          - lb_endpoints:
-              - endpoint:
-                  hostname: learn.microsoft.com
-                  address:
-                    socket_address:
-                      address: learn.microsoft.com
-                      port_value: 443
-      transport_socket:
-        name: envoy.transport_sockets.tls
-        typed_config:
-          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
-          auto_host_sni: true
 
     - name: context7
       connect_timeout: 30s
