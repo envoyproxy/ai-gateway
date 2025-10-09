@@ -74,17 +74,17 @@ Here are values we use for Ollama:
          -X POST http://localhost:1975/v1/images/generations \
          -H "Authorization: Bearer unused" \
          -H "Content-Type: application/json" \
-         -d '{"model":"dall-e-2","prompt":"A watercolor painting of a red fox in a birch forest","size":"512x512"}' \
+        -d '{"model":"gpt-image-1-mini","prompt":"A watercolor painting of a red fox in a birch forest","size":"1024x1024","quality":"low"}' \
          | jq -r '.data[0].b64_json' | base64 -d > image.png
        ```
 
 4. **Create embeddings**:
 
-   The `create-embeddings` service uses `curl` to send an embeddings request
+   The `embeddings` service uses `curl` to send an embeddings request
    to the AI Gateway CLI (aigw) which routes it to Ollama.
 
    ```bash
-   docker compose run --rm create-embeddings
+   docker compose run --rm embeddings
    ```
 
 5. **Shutdown the example stack**:
@@ -179,7 +179,7 @@ This configures the OTLP endpoint to otel-tui on port 4318.
 
    ```bash
    COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm chat-completion
-   COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm create-embeddings
+   COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm embeddings
    COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm mcp
    # Image generation
    COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm image-generation

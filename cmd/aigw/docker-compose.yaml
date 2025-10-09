@@ -152,6 +152,6 @@ services:
           -X POST http://aigw:1975/v1/images/generations \
           -H "Authorization: Bearer unused" \
           -H "Content-Type: application/json" \
-          -d "{\"model\":\"$$IMAGE_GENERATION_MODEL\",\"prompt\":\"A watercolor painting of a red fox in a birch forest\",\"size\":\"256x256\"}"
+          -d "{\"model\":\"$$IMAGE_GENERATION_MODEL\",\"prompt\":\"A watercolor painting of a red fox in a birch forest\",\"size\":\"1024x1024\",\"quality\":\"low\"}"
     extra_hosts:  # localhost:host-gateway trick doesn't work with aigw
       - "host.docker.internal:host-gateway"
