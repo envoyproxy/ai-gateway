@@ -6,11 +6,8 @@
 package aigw
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"log/slog"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -101,7 +98,7 @@ func TestPollEnvoyAdminAddressPathFromArgs(t *testing.T) {
 		adminFile := filepath.Join(t.TempDir(), "admin-address.txt")
 		require.NoError(t, os.WriteFile(adminFile, []byte("127.0.0.1:9901"), 0o600))
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 
 		cmdStr := fmt.Sprintf("sleep 30 && echo -- --admin-address-path %s", adminFile)
@@ -184,7 +181,7 @@ func TestEnvoyAdminAPIClient_IsReady(t *testing.T) {
 		port, err := strconv.Atoi(u.Port())
 		require.NoError(t, err)
 
-		client := &envoyAdminAPIClient{adminPort: port}
+		client := &envoyAdminAPIClient{port: port}
 		err = client.IsReady(t.Context())
 		require.NoError(t, err)
 	})
@@ -201,7 +198,7 @@ func TestEnvoyAdminAPIClient_IsReady(t *testing.T) {
 		port, err := strconv.Atoi(u.Port())
 		require.NoError(t, err)
 
-		client := &envoyAdminAPIClient{adminPort: port}
+		client := &envoyAdminAPIClient{port: port}
 		err = client.IsReady(t.Context())
 		require.Error(t, err)
 	})
@@ -218,7 +215,7 @@ func TestEnvoyAdminAPIClient_IsReady(t *testing.T) {
 		port, err := strconv.Atoi(u.Port())
 		require.NoError(t, err)
 
-		client := &envoyAdminAPIClient{adminPort: port}
+		client := &envoyAdminAPIClient{port: port}
 		err = client.IsReady(t.Context())
 		require.Error(t, err)
 	})
@@ -236,7 +233,7 @@ func TestEnvoyAdminAPIClient_IsReady(t *testing.T) {
 		port, err := strconv.Atoi(u.Port())
 		require.NoError(t, err)
 
-		client := &envoyAdminAPIClient{adminPort: port}
+		client := &envoyAdminAPIClient{port: port}
 
 		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
 		defer cancel()
@@ -246,64 +243,16 @@ func TestEnvoyAdminAPIClient_IsReady(t *testing.T) {
 	})
 }
 
-func TestEnvoyListenerPortClient_IsReady(t *testing.T) {
-	t.Run("returns nil when port is open", func(t *testing.T) {
-		listener, err := net.Listen("tcp", "127.0.0.1:0")
-		require.NoError(t, err)
-		defer listener.Close()
-
-		port := listener.Addr().(*net.TCPAddr).Port
-		client := &envoyListenerPortClient{port: port}
-
-		err = client.IsReady(t.Context())
-		require.NoError(t, err)
-	})
-
-	t.Run("returns error when port is closed", func(t *testing.T) {
-		client := &envoyListenerPortClient{port: 54321}
-
-		err := client.IsReady(t.Context())
-		require.Error(t, err)
-	})
-
-	t.Run("respects context cancellation", func(t *testing.T) {
-		client := &envoyListenerPortClient{port: 54321}
-
-		ctx, cancel := context.WithCancel(t.Context())
-		cancel()
-
-		err := client.IsReady(ctx)
-		require.Error(t, err)
-	})
-}
-
 func TestNewEnvoyAdminClient(t *testing.T) {
-	t.Run("returns envoyAdminAPIClient when envoyAdminPort > 0", func(t *testing.T) {
-		var buf bytes.Buffer
-		logger := slog.New(slog.NewTextHandler(&buf, nil))
+	t.Run("envoyAdminPort > 0", func(t *testing.T) {
+		client, err := NewEnvoyAdminClient(t.Context(), os.Getpid(), 9901)
+		require.NoError(t, err)
 
-		client := NewEnvoyAdminClient(t.Context(), logger, os.Getpid(), 9901, 1975)
-
-		adminClient, ok := client.(*envoyAdminAPIClient)
-		require.True(t, ok)
-		require.Equal(t, 9901, adminClient.adminPort)
-
-		logOutput := buf.String()
-		require.Contains(t, logOutput, "Using configured Envoy admin")
-		require.Contains(t, logOutput, "9901")
+		require.Equal(t, 9901, client.Port())
 	})
 
-	t.Run("returns envoyListenerPortClient when discovery fails", func(t *testing.T) {
-		var buf bytes.Buffer
-		logger := slog.New(slog.NewTextHandler(&buf, nil))
-
-		client := NewEnvoyAdminClient(t.Context(), logger, 1, 0, 1975)
-
-		listenerClient, ok := client.(*envoyListenerPortClient)
-		require.True(t, ok)
-		require.Equal(t, 1975, listenerClient.port)
-
-		logOutput := buf.String()
-		require.Contains(t, logOutput, "Falling back to Envoy listener")
+	t.Run("returns error when discovery fails", func(t *testing.T) {
+		_, err := NewEnvoyAdminClient(t.Context(), 1, 0)
+		require.Error(t, err)
 	})
 }

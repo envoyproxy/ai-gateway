@@ -121,7 +121,9 @@ func startAIGWCLI(t *testing.T, aigwBin string, arg ...string) {
 
 	// Wait for health check using RequireEventuallyNoError.
 	t.Log("Waiting for aigw to start (Envoy admin endpoint)...")
-	envoyAdmin := aigw.NewEnvoyAdminClientFromPort(envoyAdminPort)
+	envoyAdmin, err := aigw.NewEnvoyAdminClient(t.Context(), 1, envoyAdminPort)
+	require.NoError(t, err)
+
 	internaltesting.RequireEventuallyNoError(t, func() error {
 		return envoyAdmin.IsReady(t.Context())
 	}, 180*time.Second, 2*time.Second,

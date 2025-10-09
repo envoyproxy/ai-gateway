@@ -226,7 +226,7 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 	}
 	config := readFileFromProjectRoot(t, "examples/aigw/ollama.yaml")
 	ctx, cancel := context.WithCancel(t.Context())
-	_, done, _, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, config)
+	_, done, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, config)
 	require.NoError(t, err)
 	time.Sleep(time.Second)
 	cancel()
@@ -251,7 +251,7 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc_noListeners(t *testing.T
 		adminPort:                adminPort,
 	}
 
-	_, _, _, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(t.Context(), gatewayNoListenersConfig)
+	_, _, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(t.Context(), gatewayNoListenersConfig)
 	require.EqualError(t, err, "gateway aigw-run has no listeners configured")
 }
 
@@ -449,7 +449,8 @@ func TestPollEnvoyReady(t *testing.T) {
 
 	t.Run("ready", func(t *testing.T) {
 		t.Cleanup(func() { callCount = 0 })
-		envoyAdmin := aigw.NewEnvoyAdminClientFromPort(adminPort)
+		envoyAdmin, err := aigw.NewEnvoyAdminClient(t.Context(), os.Getpid(), adminPort)
+		require.NoError(t, err)
 		pollEnvoyReady(t.Context(), l, envoyAdmin, 50*time.Millisecond)
 		require.Equal(t, successAt, callCount)
 	})
@@ -458,7 +459,8 @@ func TestPollEnvoyReady(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		t.Cleanup(cancel)
 		t.Cleanup(func() { callCount = 0 })
-		envoyAdmin := aigw.NewEnvoyAdminClientFromPort(adminPort)
+		envoyAdmin, err := aigw.NewEnvoyAdminClient(ctx, os.Getpid(), adminPort)
+		require.NoError(t, err)
 		pollEnvoyReady(ctx, l, envoyAdmin, 50*time.Millisecond)
 		require.Less(t, callCount, successAt)
 	})
