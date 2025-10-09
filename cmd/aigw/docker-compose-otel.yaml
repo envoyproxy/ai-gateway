@@ -105,16 +105,16 @@ services:
       - OPENAI_BASE_URL=http://aigw:1975/v1
       - OPENAI_API_KEY=unused
 
-  # create-embeddings is the standard OpenAI client (`openai` in pip), instrumented
+  # embeddings is the standard OpenAI client (`openai` in pip), instrumented
   # with the following OpenTelemetry instrumentation libraries:
   # - openinference-instrumentation-openai (embeddings spans)
   # - opentelemetry-instrumentation-httpx (HTTP client spans and trace headers)
-  create-embeddings:
+  embeddings:
     build:
       context: ../../tests/internal/testopeninference
       dockerfile: Dockerfile.openai_client
       target: create-embeddings
-    container_name: create-embeddings
+    container_name: embeddings
     profiles: ["test"]
     env_file:
       - ../../.env.ollama
@@ -144,3 +144,21 @@ services:
       - flyTo=LAX
       - --tool-arg
       - departureDate=15/12/2025
+
+  # image-generation is a simple curl-based test client for sending image
+  # generation requests to aigw.
+  image-generation:
+    image: golang:1.25
+    container_name: image-generation
+    profiles: ["test"]
+    env_file:
+      - ../../.env.ollama
+    command:
+      - sh
+      - -c
+      - |
+        curl -s -w %{http_code} \
+          -X POST http://aigw:1975/v1/images/generations \
+          -H "Authorization: Bearer unused" \
+          -H "Content-Type: application/json" \
+          -d "{\"model\":\"$$IMAGE_GENERATION_MODEL\",\"prompt\":\"A watercolor painting of a red fox in a birch forest\",\"size\":\"1024x1024\",\"quality\":\"low\"}"
