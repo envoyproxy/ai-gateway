@@ -9,6 +9,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"time"
 
 	"github.com/envoyproxy/ai-gateway/internal/aigw"
 )
@@ -16,6 +17,10 @@ import (
 // healthcheck performs looks up the Envoy subprocess, gets its admin port,
 // and returns no error when ready.
 func healthcheck(ctx context.Context, _, stderr io.Writer) error {
+	// Give up to 1 second for the health check
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+
 	logger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{}))
 	// In docker, pid 1 is the aigw process
 	return doHealthcheck(ctx, 1, logger)

@@ -39,10 +39,6 @@ func NewEnvoyAdminClient(ctx context.Context, aigwPid int, envoyAdminPort int) (
 		return &envoyAdminAPIClient{port: envoyAdminPort}, nil
 	}
 
-	// Poll for the run dir and admin port with a shared timeout
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-
 	// Discover the Envoy subprocess and extract the admin address path
 	envoyAdminAddressPath, err := pollEnvoyAdminAddressPathFromArgs(ctx, int32(aigwPid)) // #nosec G115 -- PID fits in int32
 	if err != nil {
