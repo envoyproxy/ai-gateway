@@ -24,7 +24,7 @@ func TestMCPGooseRecipe(t *testing.T) {
 		{
 			recipeFileName: "kiwi_recipe.yaml",
 			parameters: map[string]string{
-				"flight_date": time.Now().AddDate(0, 0, 6).Format("02/01/2006"),
+				"flight_date": time.Now().AddDate(0, 0, 7).Format("02/01/2006"),
 			},
 			validate: validateFlightSearchGooseResponse,
 		},
