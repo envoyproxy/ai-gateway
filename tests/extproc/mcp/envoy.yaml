@@ -151,17 +151,6 @@ static_resources:
                             headers:
                               - name: x-ai-eg-mcp-backend
                                 string_match:
-                                  exact: aws-knowledge
-                          route:
-                            autoHostRewrite: true
-                            cluster: aws-knowledge
-                            idleTimeout: 3600s
-                            timeout: 120s
-                        - match:
-                            prefix: "/"
-                            headers:
-                              - name: x-ai-eg-mcp-backend
-                                string_match:
                                   exact: kiwi
                           route:
                             autoHostRewrite: true
@@ -271,26 +260,6 @@ static_resources:
                   address:
                     socket_address:
                       address: api.githubcopilot.com
-                      port_value: 443
-      transport_socket:
-        name: envoy.transport_sockets.tls
-        typed_config:
-          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
-          auto_host_sni: true
-
-    - name: aws-knowledge
-      connect_timeout: 30s
-      type: STRICT_DNS
-      dns_lookup_family: V4_ONLY
-      load_assignment:
-        cluster_name: aws-knowledge
-        endpoints:
-          - lb_endpoints:
-              - endpoint:
-                  hostname: knowledge-mcp.global.api.aws
-                  address:
-                    socket_address:
-                      address: knowledge-mcp.global.api.aws
                       port_value: 443
       transport_socket:
         name: envoy.transport_sockets.tls

@@ -201,14 +201,6 @@ spec:
       kind: Backend
       group: gateway.envoyproxy.io
       path: "/mcp"
-    - name: aws-knowledge
-      kind: Backend
-      group: gateway.envoyproxy.io
-      path: "/"
-      toolSelector:
-        include:
-          - aws___read_documentation
-          - aws___search_documentation
 ```
 
 Clients will see all tools with prefixed names:
@@ -217,8 +209,6 @@ Clients will see all tools with prefixed names:
 - `github__list_issues`
 - `context7__resolve-library-id`
 - `context7__get-library-docs`
-- `aws-knowledge__aws___read_documentation`
-- `aws-knowledge__aws___search_documentation`
 
 ### OAuth Authentication
 

@@ -39,28 +39,8 @@ Then, you can use the MCP Inspector to interact with the MCP Proxy:
 $ npx @modelcontextprotocol/inspector --cli http://localhost:1975/mcp --transport http --method 'tools/list' | jq '.tools[] | .name'
 "context7__resolve-library-id"
 "context7__get-library-docs"
-"aws-knowledge__aws___search_documentation"
 "github__get_pull_request"
 "kiwi__search-flight"
-
-# Different MCP path is configured by a different MCPRoute in the same Gateway.
-$ npx @modelcontextprotocol/inspector --cli http://localhost:1975/mcp/custom/path --transport http --method 'tools/list' | jq '.tools[] | .name'
-"aws-knowledge__aws___read_documentation
-```
-
-### Search AWS Documentation
-
-```
-$ npx @modelcontextprotocol/inspector --cli http://localhost:1975/mcp --transport http --method tools/call --tool-name aws-knowledge__aws___search_documentation --tool-arg search_phrase="DynamoDB global index" --tool-arg limit=5
-{
-  "content": [
-    {
-      "type": "text",
-      "text": "{\"content\":{\"result\":[{\"rank_order\":1,\"url\":\"https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GCICli.html\",\"title\":\"Working with Global Secondary Indexes in DynamoDB using AWS CLI - Amazon DynamoDB\",\"context\":\"Create a table with one or more global secondary indexes in DynamoDB using the AWS CLI.\"},{\"rank_order\":2,\"url\":\"https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GSI.html\",\"title\":\"Using Global Secondary Indexes in DynamoDB - Amazon DynamoDB\",\"context\":\"Use global secondary indexes to perform alternate queries from the base DynamoDB table to model your application's various access patterns.\"},{\"rank_order\":3,\"url\":\"https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.CoreComponents.html\",\"title\":\"Core components of Amazon DynamoDB - Amazon DynamoDB\",\"context\":\"Learn about the building blocks of DynamoDB your app will need. You'll discover the basics of tables, items, attributes, and how they work together to make a database for any scale you may need.\"},{\"rank_order\":4,\"url\":\"https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Introduction.html\",\"title\":\"What is Amazon DynamoDB? - Amazon DynamoDB\",\"context\":\"Use DynamoDB, a fully managed NoSQL database service to store and retrieve any amount of data, and serve any level of request traffic.\"},{\"rank_order\":5,\"url\":\"https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GlobalTables.html\",\"title\":\"Global tables - multi-active, multi-Region replication - Amazon DynamoDB\",\"context\":\"DynamoDB global tables provide multi-Region, multi-active database replication for fast, localized performance and high availability in global applications.\"}]}}"
-    }
-  ],
-  "isError": false
-}
 ```
 
 ### Accessing GitHub Pull Request Info
