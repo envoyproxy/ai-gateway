@@ -536,6 +536,8 @@ func buildDynamicMetadata(config *processorConfig, costs *translator.LLMTokenUsa
 		switch rc.Type {
 		case filterapi.LLMRequestCostTypeInputToken:
 			cost = costs.InputTokens
+		case filterapi.LLMRequestCostTypeCachedInputToken:
+			cost = costs.CachedInputTokens
 		case filterapi.LLMRequestCostTypeOutputToken:
 			cost = costs.OutputTokens
 		case filterapi.LLMRequestCostTypeTotalToken:
@@ -546,6 +548,7 @@ func buildDynamicMetadata(config *processorConfig, costs *translator.LLMTokenUsa
 				requestHeaders[internalapi.ModelNameHeaderKeyDefault],
 				backendName,
 				costs.InputTokens,
+				costs.CachedInputTokens,
 				costs.OutputTokens,
 				costs.TotalTokens,
 			)
