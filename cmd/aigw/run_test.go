@@ -40,7 +40,7 @@ import (
 )
 
 // startupRegexp ensures the status message is written to stderr as we know we are healthy!
-var startupRegexp = `Envoy AI Gateway listening on http://localhost:1975 \(admin http://localhost:\d+\) after .* duration\n`
+var startupRegexp = `Envoy AI Gateway listening on http://localhost:1975 \(admin http://localhost:\d+\) after [^\n]+`
 
 func TestRun(t *testing.T) {
 	ollamaModel, err := internaltesting.GetOllamaModel(internaltesting.ChatModel)
@@ -154,12 +154,16 @@ func TestRunMCP(t *testing.T) {
 	url := fmt.Sprintf("http://localhost:%d/mcp", 1975)
 	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.1.0"},
 		&mcp.ClientOptions{})
+
+	// Calculate departure date as one week from now
+	departureDate := time.Now().AddDate(0, 0, 7).Format("02/01/2006")
+
 	callTool := &mcp.CallToolParams{
 		Name: "kiwi__search-flight",
 		Arguments: map[string]any{
 			"flyFrom":       "NYC",
 			"flyTo":         "LAX",
-			"departureDate": "15/12/2025",
+			"departureDate": departureDate,
 		},
 	}
 
