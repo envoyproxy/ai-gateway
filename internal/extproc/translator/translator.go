@@ -219,5 +219,5 @@ type LLMTokenUsage struct {
 // This is also used outside the package to share the same options for consistency.
 var SJSONOptions = &sjson.Options{
 	Optimistic:     true,
-	ReplaceInPlace: true,
+	ReplaceInPlace: false,
 }
