@@ -359,11 +359,12 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		// Final chunk should mark success and record usage once.
 		final := &extprocv3.HttpBody{Body: []byte("chunk-final"), EndOfStream: true}
 		mt.expResponseBody = final
-		mt.retUsedToken = translator.LLMTokenUsage{InputTokens: 5, OutputTokens: 138, TotalTokens: 143}
+		mt.retUsedToken = translator.LLMTokenUsage{InputTokens: 5, CachedInputTokens: 3, OutputTokens: 138, TotalTokens: 143}
 		_, err = p.ProcessResponseBody(t.Context(), final)
 		require.NoError(t, err)
 		mm.RequireRequestSuccess(t)
 		require.Equal(t, 143, mm.tokenUsageCount)       // 5 input + 138 output
+		require.Equal(t, 3, mm.cachedInputCount)        // cached input tokens
 		require.Equal(t, 138, mm.streamingOutputTokens) // accumulated output tokens from stream
 	})
 }
