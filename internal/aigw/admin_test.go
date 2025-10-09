@@ -58,16 +58,6 @@ func TestExtractAdminAddressPath(t *testing.T) {
 			expectedError: "--admin-address-path not found in command line",
 		},
 		{
-			name:          "path is a directory not a file",
-			cmdline:       []string{"envoy", "--admin-address-path", tmpDir},
-			expectedError: fmt.Sprintf("envoy admin address path %q is not a file", tmpDir),
-		},
-		{
-			name:          "path does not exist",
-			cmdline:       []string{"envoy", "--admin-address-path", "/nonexistent/path"},
-			expectedError: "envoy admin address path \"/nonexistent/path\" is not a file",
-		},
-		{
 			name:     "sh -c wrapped command",
 			cmdline:  []string{"sh", "-c", "sleep 30 && echo -- --admin-address-path " + validFile},
 			expected: validFile,
@@ -96,7 +86,37 @@ func TestExtractAdminAddressPath(t *testing.T) {
 func TestPollEnvoyAdminAddressPathFromArgs(t *testing.T) {
 	t.Run("success - finds admin address path from child process", func(t *testing.T) {
 		adminFile := filepath.Join(t.TempDir(), "admin-address.txt")
-		require.NoError(t, os.WriteFile(adminFile, []byte("127.0.0.1:9901"), 0o600))
+
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		cmdStr := fmt.Sprintf("sleep 30 && echo -- --admin-address-path %s", adminFile)
+		cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
+		require.NoError(t, cmd.Start())
+		defer func() {
+			_ = cmd.Process.Kill()
+			_, _ = cmd.Process.Wait()
+		}()
+
+		// write the file later
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			_ = os.WriteFile(adminFile, []byte("127.0.0.1:9901"), 0o600)
+		}()
+
+		pid := os.Getpid()
+		actual, err := pollEnvoyAdminAddressPathFromArgs(t.Context(), int32(pid)) // #nosec G115 -- PID fits in int32
+		require.NoError(t, err)
+		require.Equal(t, adminFile, actual)
+	})
+
+	t.Run("failure - no child processes", func(t *testing.T) {
+		_, err := pollEnvoyAdminAddressPathFromArgs(t.Context(), 1)
+		require.Error(t, err)
+	})
+
+	t.Run("failure - not a file", func(t *testing.T) {
+		adminFile := t.TempDir()
 
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
@@ -112,14 +132,8 @@ func TestPollEnvoyAdminAddressPathFromArgs(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 
 		pid := os.Getpid()
-		actual, err := pollEnvoyAdminAddressPathFromArgs(t.Context(), int32(pid)) // #nosec G115 -- PID fits in int32
-		require.NoError(t, err)
-		require.Equal(t, adminFile, actual)
-	})
-
-	t.Run("failure - no child processes", func(t *testing.T) {
-		_, err := pollEnvoyAdminAddressPathFromArgs(t.Context(), 1)
-		require.Error(t, err)
+		_, err := pollEnvoyAdminAddressPathFromArgs(t.Context(), int32(pid)) // #nosec G115 -- PID fits in int32
+		require.EqualError(t, err, fmt.Sprintf("envoy admin address path %q is not a file", adminFile))
 	})
 }
 

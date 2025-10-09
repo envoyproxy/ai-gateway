@@ -94,7 +94,7 @@ func (c *envoyAdminAPIClient) IsReady(ctx context.Context) error {
 }
 
 // extractAdminAddressPath parses the adminAddressPathFlag flag from command
-// line arguments. It validates that the path is actually a file.
+// line arguments.
 func extractAdminAddressPath(cmdline []string) (string, error) {
 	// Join cmdline into a single string and split by spaces to handle sh -c
 	// cases (these cases are only used in tests).
@@ -103,14 +103,7 @@ func extractAdminAddressPath(cmdline []string) (string, error) {
 
 	for i, arg := range parts {
 		if arg == adminAddressPathFlag && i+1 < len(parts) {
-			path := parts[i+1]
-
-			// Verify it's a file
-			if info, err := os.Stat(path); err != nil || info.IsDir() {
-				return "", fmt.Errorf("envoy admin address path %q is not a file", path)
-			}
-
-			return path, nil
+			return parts[i+1], nil
 		}
 	}
 	return "", fmt.Errorf("%s not found in command line", adminAddressPathFlag)
@@ -163,7 +156,30 @@ LOOP:
 	}
 
 	// Extract admin address path
-	return extractAdminAddressPath(envoyCmdline)
+	path, err := extractAdminAddressPath(envoyCmdline)
+	if err != nil {
+		return "", err
+	}
+
+	// Loop until the file is valid
+	for {
+		select {
+		case <-ctx.Done():
+			if lastErr == nil {
+				return "", fmt.Errorf("timeout waiting for admin address file %s", path)
+			}
+			return "", fmt.Errorf("timeout waiting for admin address file %s: %w", path, lastErr)
+		case <-ticker.C:
+			// Verify it's a file
+			if info, err := os.Stat(path); err != nil {
+				lastErr = err
+				continue // try later
+			} else if info.IsDir() {
+				return "", fmt.Errorf("envoy admin address path %q is not a file", path)
+			}
+			return path, nil
+		}
+	}
 }
 
 // pollPortFromEnvoyAddressPath polls for the admin-address.txt.
