@@ -144,7 +144,7 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 		if _, ok := exists[key]; !ok {
 			exists[key] = struct{}{}
 		} else {
-			logger.Info("Skipping duplicate object", "kind", obj.GetKind(), "name", obj.GetName())
+			logger.Debug("Skipping duplicate object", "kind", obj.GetKind(), "name", obj.GetName())
 			continue
 		}
 
@@ -171,7 +171,7 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 			mustWriteObj(nil, obj, out)
 		default:
 			// Now you can inspect or manipulate the CRD.
-			logger.Info("Writing back non-target object into the output as-is", "kind", obj.GetKind(), "name", obj.GetName())
+			logger.Debug("Writing back non-target object into the output as-is", "kind", obj.GetKind(), "name", obj.GetName())
 			mustWriteObj(nil, obj, out)
 		}
 	}
@@ -200,6 +200,7 @@ func translateCustomResourceObjects(
 	securityPolicies egv1a1.SecurityPolicyList,
 	err error,
 ) {
+	internalLogger := logr.FromSlogHandler(logger.Handler())
 	builder := fake.NewClientBuilder().
 		WithScheme(controller.Scheme).
 		WithStatusSubresource(&aigv1a1.AIGatewayRoute{}).
@@ -223,17 +224,17 @@ func translateCustomResourceObjects(
 		userDefinedSecretKeys[fmt.Sprintf("%s/%s", s.Namespace, s.Name)] = struct{}{}
 	}
 
-	bspC := controller.NewBackendSecurityPolicyController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
+	bspC := controller.NewBackendSecurityPolicyController(fakeClient, fakeClientSet, internalLogger,
 		make(chan event.GenericEvent))
-	aisbC := controller.NewAIServiceBackendController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
+	aisbC := controller.NewAIServiceBackendController(fakeClient, fakeClientSet, internalLogger,
 		make(chan event.GenericEvent))
-	airC := controller.NewAIGatewayRouteController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
+	airC := controller.NewAIGatewayRouteController(fakeClient, fakeClientSet, internalLogger,
 		make(chan event.GenericEvent), "/",
 	)
-	mcpC := controller.NewMCPRouteController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
+	mcpC := controller.NewMCPRouteController(fakeClient, fakeClientSet, internalLogger,
 		make(chan event.GenericEvent),
 	)
-	gwC := controller.NewGatewayController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
+	gwC := controller.NewGatewayController(fakeClient, fakeClientSet, internalLogger,
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", true, func() string {
 			return "aigw-translate"
 		},
@@ -317,11 +318,11 @@ func mustExtractAndAppend[T any](obj *unstructured.Unstructured, slice *[]T) {
 
 // mustCreateAndReconcile creates the object in the fake client.
 func mustCreate(ctx context.Context, fakeClient client.Client, obj client.Object, logger *slog.Logger) {
-	logger.Info("Fake creating", "kind", obj.GetObjectKind().GroupVersionKind().Kind, "name", obj.GetName())
+	logger.Debug("Fake creating", "kind", obj.GetObjectKind().GroupVersionKind().Kind, "name", obj.GetName())
 	err := fakeClient.Create(ctx, obj)
 	if err != nil {
 		if apierrors.IsAlreadyExists(err) {
-			logger.Info("Skipping already existing object", "kind", obj.GetObjectKind().GroupVersionKind().Kind, "name", obj.GetName())
+			logger.Debug("Skipping already existing object", "kind", obj.GetObjectKind().GroupVersionKind().Kind, "name", obj.GetName())
 			return
 		}
 		panic(err)
@@ -336,7 +337,7 @@ func mustCreateAndReconcile(
 	logger *slog.Logger,
 ) {
 	mustCreate(ctx, fakeClient, obj, logger)
-	logger.Info("Fake reconciling", "kind", obj.GetObjectKind().GroupVersionKind().Kind, "name", obj.GetName())
+	logger.Debug("Fake reconciling", "kind", obj.GetObjectKind().GroupVersionKind().Kind, "name", obj.GetName())
 	_, err := c.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: obj.GetNamespace(), Name: obj.GetName()}})
 	if err != nil {
 		panic(err)
