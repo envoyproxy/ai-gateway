@@ -352,6 +352,16 @@ func backendSecurityPolicyIndexFunc(o client.Object) []string {
 		if gcpCreds.CredentialsFile != nil {
 			key = getSecretNameAndNamespace(gcpCreds.CredentialsFile.SecretRef, backendSecurityPolicy.Namespace)
 		}
+	case aigv1a1.BackendSecurityPolicyTypeAzureAPIKey:
+		apiKey := backendSecurityPolicy.Spec.AzureAPIKey
+		key = getSecretNameAndNamespace(apiKey.SecretRef, backendSecurityPolicy.Namespace)
+	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+		azureCreds := backendSecurityPolicy.Spec.AzureCredentials
+		if azureCreds.ClientSecretRef != nil {
+			key = getSecretNameAndNamespace(azureCreds.ClientSecretRef, backendSecurityPolicy.Namespace)
+		} else if azureCreds.OIDCExchangeToken != nil {
+			key = backendSecurityPolicyKey(backendSecurityPolicy.Namespace, backendSecurityPolicy.Name)
+		}
 	}
 	return []string{key}
 }
