@@ -218,7 +218,7 @@ type LLMTokenUsage struct {
 // sjsonOptions are the options used for sjson operations in the translator.
 var sjsonOptions = &sjson.Options{
 	Optimistic: true,
-	// Note: DO NOT set ReplaceInPlace to true since at the translation layer, it must be
-	// ensured that the original body is not modified, i.e. the operation must be idempotent.
+	// Note: DO NOT set ReplaceInPlace to true since at the translation layer, which might be called multiple times per retry,
+	// it must be ensured that the original body is not modified, i.e. the operation must be idempotent.
 	ReplaceInPlace: false,
 }

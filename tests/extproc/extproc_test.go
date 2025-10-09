@@ -136,22 +136,20 @@ func TestMain(m *testing.M) {
 
 func startTestEnvironment(t testing.TB, extprocConfig string, okToDumpLogOnFailure, extProcInProcess bool) *testenvironment.TestEnvironment {
 	return testenvironment.StartTestEnvironment(t,
-		requireUpstream, map[string]int{"upstream": 8080, "upstream2": 8081},
+		requireUpstream, map[string]int{"upstream": 8080},
 		extprocBin, extprocConfig, nil, envoyConfig, okToDumpLogOnFailure, extProcInProcess, 120*time.Second,
 	)
 }
 
 // requireUpstream starts the external processor with the given configuration.
 func requireUpstream(t testing.TB, out io.Writer, ports map[string]int) {
-	for key, port := range ports {
-		cmd := exec.CommandContext(t.Context(), testupstreamBin)
-		cmd.Env = append(os.Environ(),
-			"TESTUPSTREAM_ID=extproc_test"+key,
-			fmt.Sprintf("LISTENER_PORT=%d", port))
+	cmd := exec.CommandContext(t.Context(), testupstreamBin)
+	cmd.Env = append(os.Environ(),
+		"TESTUPSTREAM_ID=extproc_test",
+		fmt.Sprintf("LISTENER_PORT=%d", ports["upstream"]))
 
-		// wait for the ready message or exit.
-		testenvironment.StartAndAwaitReady(t, cmd, out, out, "Test upstream is ready")
-	}
+	// wait for the ready message or exit.
+	testenvironment.StartAndAwaitReady(t, cmd, out, out, "Test upstream is ready")
 }
 
 func listen(ctx context.Context, name string) (net.Listener, int) {
