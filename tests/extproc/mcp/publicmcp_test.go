@@ -29,13 +29,6 @@ func TestPublicMCPServers(t *testing.T) {
 				Name: "test-route",
 				Backends: []filterapi.MCPBackend{
 					{Name: "context7", Path: "/mcp"},
-					{
-						Name: "aws-knowledge",
-						Path: "/",
-						ToolSelector: &filterapi.MCPToolSelector{
-							Include: []string{"aws___read_documentation", "aws___search_documentation"},
-						},
-					},
 					{Name: "kiwi", Path: "/"},
 				},
 			},
@@ -92,8 +85,6 @@ func TestPublicMCPServers(t *testing.T) {
 			"context7__get-library-docs",
 			"kiwi__search-flight",
 			"kiwi__feedback-to-devs",
-			"aws-knowledge__aws___read_documentation",
-			"aws-knowledge__aws___search_documentation",
 		}
 
 		if githubConfigured {
@@ -135,13 +126,6 @@ func TestPublicMCPServers(t *testing.T) {
 				toolName: "context7__get-library-docs",
 				params: map[string]any{
 					"context7CompatibleLibraryID": "/mongodb/docs",
-				},
-			},
-			{
-				toolName: "aws-knowledge__aws___search_documentation",
-				params: map[string]any{
-					"limit":         1,
-					"search_phrase": "DynamoDB",
 				},
 			},
 			{
