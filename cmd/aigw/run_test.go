@@ -39,12 +39,6 @@ import (
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
-// Do NOT commit runDebug = true to the branch until Envoy Gateway removes
-// hard-coding of func-e calls which ends up always using os.Stdout/Stderr
-// Only set this to true when you are debugging. Once envoy-gateway supports
-// redirection, commit this as true since debug logs only show on failure.
-const runDebug = false
-
 func TestRun(t *testing.T) {
 	ollamaModel, err := internaltesting.GetOllamaModel(internaltesting.ChatModel)
 	if err == nil {
@@ -67,7 +61,7 @@ func TestRun(t *testing.T) {
 
 	go func() {
 		opts := runOpts{extProcLauncher: mainlib.Main}
-		require.NoError(t, run(ctx, cmdRun{Debug: runDebug, AdminPort: adminPort}, opts, buffers[0], buffers[1]))
+		require.NoError(t, run(ctx, cmdRun{Debug: true, AdminPort: adminPort}, opts, buffers[0], buffers[1]))
 	}()
 
 	client := openai.NewClient(option.WithBaseURL("http://localhost:1975/v1/"))
@@ -146,7 +140,7 @@ func TestRunMCP(t *testing.T) {
 
 	go func() {
 		opts := runOpts{extProcLauncher: mainlib.Main}
-		require.NoError(t, run(ctx, cmdRun{Debug: runDebug, AdminPort: adminPort, mcpConfig: mcpServers}, opts, buffers[0], buffers[1]))
+		require.NoError(t, run(ctx, cmdRun{Debug: true, AdminPort: adminPort, mcpConfig: mcpServers}, opts, buffers[0], buffers[1]))
 	}()
 
 	url := fmt.Sprintf("http://localhost:%d/mcp", 1975)

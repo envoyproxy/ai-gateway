@@ -141,8 +141,8 @@ github.com/ebitengine/purego v0.9.0 h1:mh0zpKBIXDceC63hpvPuGLiJ8ZAa3DfrFTudmfi8A
 github.com/ebitengine/purego v0.9.0/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
 github.com/emicklei/go-restful/v3 v3.13.0 h1:C4Bl2xDndpU6nJ4bc1jXd+uTmYPVUwkD6bFY/oTyCes=
 github.com/emicklei/go-restful/v3 v3.13.0/go.mod h1:6n3XBCmQQb25CM2LCACGz8ukIrRry+4bhvbpWn3mrbc=
-github.com/envoyproxy/gateway v0.5.0-rc.1.0.20251008155728-197fd10aeb03 h1:6Yg//b4+j6oN4VLfhUXBkSpZTP6otmrtPGwmU2f0Y7w=
-github.com/envoyproxy/gateway v0.5.0-rc.1.0.20251008155728-197fd10aeb03/go.mod h1:oxohnP6irhQSCcIc5CAer+xBhwT8VjIvzVM3g0IxvNA=
+github.com/envoyproxy/gateway v0.5.0-rc.1.0.20251009024134-4337e573e370 h1:2IZ99F8C2DHa6gC5x4g4Wu3zGo2itY0H9KzxA4NozVo=
+github.com/envoyproxy/gateway v0.5.0-rc.1.0.20251009024134-4337e573e370/go.mod h1:wUZX3mrY32Z6bIV5ma/iQxd6kOQeM6fF1zvzzmwpQrY=
 github.com/envoyproxy/go-control-plane v0.13.5-0.20250929230642-07d3df27ff4f h1:36vvJBe/wXWfD7qrTb1WnbPVPMxNFDfEygztH8wgebw=
 github.com/envoyproxy/go-control-plane v0.13.5-0.20250929230642-07d3df27ff4f/go.mod h1:PTY7yDlLxB4bW7rEOO7e79uTDr9yXzpuI1QGIDfxEzc=
 github.com/envoyproxy/go-control-plane/contrib v1.32.5-0.20250430092421-68a532e11403 h1:5wPocL1bGYhA4TtKZwcdVI5fsXo1JatkbcxPBcFQswc=
