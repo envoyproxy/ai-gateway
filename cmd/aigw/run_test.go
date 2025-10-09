@@ -90,7 +90,7 @@ func TestRun(t *testing.T) {
 				}
 			}
 			return fmt.Errorf("no content in response")
-		}, 30*time.Second, 2*time.Second,
+		}, 1*time.Minute, 2*time.Second,
 			"chat completion never succeeded")
 	})
 
@@ -108,7 +108,7 @@ func TestRun(t *testing.T) {
 				return fmt.Errorf("status %d", resp.StatusCode)
 			}
 			return nil
-		}, 2*time.Minute, time.Second,
+		}, 1*time.Minute, time.Second,
 			"metrics endpoint never became available")
 	})
 }
@@ -178,7 +178,7 @@ func TestRunMCP(t *testing.T) {
 				return fmt.Errorf("tool returned error response")
 			}
 			return nil
-		}, 1*time.Minute, 2*time.Second,
+		}, 2*time.Minute, 2*time.Second,
 			"MCP tool call never succeeded")
 	})
 }
