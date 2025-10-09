@@ -240,6 +240,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Do the best-effort model detection for logging and verification.
 	model := gjson.GetBytes(requestBody, "model")
 	if model.Exists() {
 		logger.Println("detected model in the request:", model)
