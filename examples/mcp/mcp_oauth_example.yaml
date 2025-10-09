@@ -21,10 +21,6 @@ spec:
       kind: Backend
       group: gateway.envoyproxy.io
       path: "/mcp"
-    - name: aws-knowledge
-      kind: Backend
-      group: gateway.envoyproxy.io
-      path: "/"
     - name: kiwi
       kind: Backend
       group: gateway.envoyproxy.io
@@ -129,31 +125,6 @@ spec:
   validation:
     wellKnownCACertificates: "System"
     hostname: mcp.context7.com
----
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: Backend
-metadata:
-  name: aws-knowledge
-  namespace: default
-spec:
-  endpoints:
-    - fqdn:
-        hostname: knowledge-mcp.global.api.aws
-        port: 443
----
-apiVersion: gateway.networking.k8s.io/v1alpha3
-kind: BackendTLSPolicy
-metadata:
-  name: aws-knowledge-tls
-  namespace: default
-spec:
-  targetRefs:
-    - group: "gateway.envoyproxy.io"
-      kind: Backend
-      name: aws-knowledge
-  validation:
-    wellKnownCACertificates: "System"
-    hostname: knowledge-mcp.global.api.aws
 ---
 ###################################################################################
 ############################### Gateway Definitions ###############################
