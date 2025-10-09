@@ -134,6 +134,9 @@ LOOP:
 	for {
 		select {
 		case <-ctx.Done():
+			if lastErr == nil {
+				return "", errors.New("timeout waiting for Envoy process")
+			}
 			return "", fmt.Errorf("timeout waiting for Envoy process: %w", lastErr)
 		case <-ticker.C:
 			children, childErr := currentProc.ChildrenWithContext(ctx)
@@ -175,6 +178,9 @@ LOOP:
 	for {
 		select {
 		case <-ctx.Done():
+			if lastErr == nil {
+				return 0, fmt.Errorf("timeout waiting for Envoy admin address file %s", envoyAdminAddressPath)
+			}
 			return 0, fmt.Errorf("timeout waiting for Envoy admin address file %s: %w", envoyAdminAddressPath, lastErr)
 		case <-ticker.C:
 			data, err := os.ReadFile(envoyAdminAddressPath)

@@ -29,8 +29,10 @@ func Test_healthcheck(t *testing.T) {
 	t.Run("returns error when no envoy subprocess", func(t *testing.T) {
 		var buf bytes.Buffer
 		logger := slog.New(slog.NewTextHandler(&buf, nil))
-		err := doHealthcheck(t.Context(), pid, logger)
-		require.EqualError(t, err, "failed to get aigw process: process does not exist")
+		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+		defer cancel()
+		err := doHealthcheck(ctx, pid, logger)
+		require.EqualError(t, err, "timeout waiting for Envoy process: no Envoy process found")
 		// Contains not Equal because there's a timestamp
 		require.Contains(t, buf.String(), "Failed to find Envoy admin server")
 	})
