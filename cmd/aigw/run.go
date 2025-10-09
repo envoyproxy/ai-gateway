@@ -152,7 +152,7 @@ func run(ctx context.Context, c cmdRun, o runOpts, stdout, stderr io.Writer) err
 	if err != nil {
 		return err
 	}
-	fakeClient, extProxDone, envoyAdminPort, envoyPort, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, aiGatewayResourcesYaml)
+	fakeClient, extProxDone, envoyAdminPort, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, aiGatewayResourcesYaml)
 	if err != nil {
 		return fmt.Errorf("failed to write envoy resources and run extproc: %w", err)
 	}
@@ -208,7 +208,13 @@ func run(ctx context.Context, c cmdRun, o runOpts, stdout, stderr io.Writer) err
 	// Start a monitoring goroutine to poll Envoy's readiness. This starts
 	// before the server to ensure we don't miss the readiness window.
 	go func() {
-		envoyAdmin := aigw.NewEnvoyAdminClient(ctx, stderrLogger, os.Getpid(), envoyAdminPort, envoyPort)
+		envoyAdmin, err := aigw.NewEnvoyAdminClient(ctx, os.Getpid(), envoyAdminPort)
+		if err != nil {
+			stderrLogger.Error("Failed to find Envoy admin server", "error", err)
+			serverCancel() // Likely a crashed envoy process
+			return
+		}
+		stderrLogger.Info("Found Envoy admin server", "adminPort", envoyAdmin.Port())
 		pollEnvoyReady(ctx, stderrLogger, envoyAdmin, 2*time.Second)
 	}()
 
@@ -254,33 +260,33 @@ func recreateDir(path string) error {
 
 // writeEnvoyResourcesAndRunExtProc reads all resources from the given string, writes them to the output file, and runs
 // external processes for EnvoyExtensionPolicy resources.
-func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Context, original string) (client.Client, <-chan error, int, int, error) {
+func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Context, original string) (client.Client, <-chan error, int, error) {
 	aigwRoutes, mcpRoutes, aigwBackends, backendSecurityPolicies, backendTLSPolicies, gateways, secrets, envoyProxies, err := collectObjects(original, runCtx.envoyGatewayResourcesOut, runCtx.stderrLogger)
 	if err != nil {
-		return nil, nil, 0, 0, fmt.Errorf("error collecting: %w", err)
+		return nil, nil, 0, fmt.Errorf("error collecting: %w", err)
 	}
 	if len(gateways) > 1 {
-		return nil, nil, 0, 0, fmt.Errorf("multiple gateways are not supported: %s", gateways[0].Name)
+		return nil, nil, 0, fmt.Errorf("multiple gateways are not supported: %s", gateways[0].Name)
 	}
 	for _, bsp := range backendSecurityPolicies {
 		spec := bsp.Spec
 		if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {
 			// TODO: We can make it work by generalizing the rotation logic.
-			return nil, nil, 0, 0, fmt.Errorf("OIDC exchange token is not supported: %s", bsp.Name)
+			return nil, nil, 0, fmt.Errorf("OIDC exchange token is not supported: %s", bsp.Name)
 		}
 	}
 
 	// Do the substitution for the secrets.
 	for _, s := range secrets {
 		if err = runCtx.rewriteSecretWithAnnotatedLocation(s); err != nil {
-			return nil, nil, 0, 0, fmt.Errorf("failed to rewrite secret %s: %w", s.Name, err)
+			return nil, nil, 0, fmt.Errorf("failed to rewrite secret %s: %w", s.Name, err)
 		}
 	}
 
 	var secretList *corev1.SecretList
 	fakeClient, _fakeClientSet, httpRoutes, eps, httpRouteFilters, backends, secretList, backendTrafficPolicies, securityPolicies, err := translateCustomResourceObjects(ctx, aigwRoutes, mcpRoutes, aigwBackends, backendSecurityPolicies, backendTLSPolicies, gateways, secrets, runCtx.stderrLogger)
 	if err != nil {
-		return nil, nil, 0, 0, fmt.Errorf("error translating: %w", err)
+		return nil, nil, 0, fmt.Errorf("error translating: %w", err)
 	}
 	runCtx.fakeClientSet = _fakeClientSet
 
@@ -304,7 +310,7 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 	}
 	gw := gateways[0]
 	if len(gw.Spec.Listeners) == 0 {
-		return nil, nil, 0, 0, fmt.Errorf("gateway %s has no listeners configured", gw.Name)
+		return nil, nil, 0, fmt.Errorf("gateway %s has no listeners configured", gw.Name)
 	}
 	runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&gw.TypeMeta, gw)
 	for _, ep := range eps.Items {
@@ -315,20 +321,20 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 		Secrets("").Get(ctx,
 		controller.FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), metav1.GetOptions{})
 	if err != nil {
-		return nil, nil, 0, 0, fmt.Errorf("failed to get filter config secret: %w", err)
+		return nil, nil, 0, fmt.Errorf("failed to get filter config secret: %w", err)
 	}
 
 	rawConfig, ok := filterConfigSecret.StringData[controller.FilterConfigKeyInSecret]
 	if !ok {
-		return nil, nil, 0, 0, fmt.Errorf("failed to get filter config from secret: %w", err)
+		return nil, nil, 0, fmt.Errorf("failed to get filter config from secret: %w", err)
 	}
 	var fc filterapi.Config
 	if err = yaml.Unmarshal([]byte(rawConfig), &fc); err != nil {
-		return nil, nil, 0, 0, fmt.Errorf("failed to unmarshal filter config: %w", err)
+		return nil, nil, 0, fmt.Errorf("failed to unmarshal filter config: %w", err)
 	}
 	runCtx.stderrLogger.Info("Running external process", "config", fc)
 	done := runCtx.mustStartExtProc(ctx, &fc)
-	return fakeClient, done, runCtx.tryFindEnvoyAdminPort(gw, envoyProxies), runCtx.tryFindEnvoyListenerPort(gw), nil
+	return fakeClient, done, runCtx.tryFindEnvoyAdminPort(gw, envoyProxies), nil
 }
 
 // mustStartExtProc starts the external process with the given working directory, port, and filter configuration.

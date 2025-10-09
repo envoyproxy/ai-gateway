@@ -10,8 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -26,58 +24,50 @@ const adminAddressPathFlag = `--admin-address-path`
 
 // EnvoyAdminClient provides methods to check if Envoy is ready.
 type EnvoyAdminClient interface {
+	Port() int
 	// IsReady returns true if Envoy is ready to accept requests.
 	// This method has a 1-second timeout for the readiness check.
 	IsReady(ctx context.Context) error
 }
 
-func NewEnvoyAdminClientFromPort(envoyAdminPort int) EnvoyAdminClient {
-	return &envoyAdminAPIClient{adminPort: envoyAdminPort}
-}
-
 // NewEnvoyAdminClient creates an EnvoyAdminClient based on the provided parameters.
 // If envoyAdminPort > 0, it creates an admin API client using 127.0.0.1:{envoyAdminPort}.
-// If envoyAdminPort == 0, it attempts to discover the admin adminPort from the Envoy subprocess.
-// On discovery failure, it logs a warning and returns a fallback client that checks the listener adminPort.
-// The envoyParentPid parameter specifies which process to check for Envoy child processes.
-func NewEnvoyAdminClient(ctx context.Context, logger *slog.Logger, envoyParentPid int, envoyAdminPort int, envoyListenerPort int) EnvoyAdminClient {
+// If envoyAdminPort == 0, it attempts to discover the admin port from the Envoy subprocess.
+// The aigwPid parameter specifies which process to check for Envoy child processes.
+func NewEnvoyAdminClient(ctx context.Context, aigwPid int, envoyAdminPort int) (EnvoyAdminClient, error) {
 	if envoyAdminPort > 0 {
-		logger.Info("Using configured Envoy admin adminPort", "adminPort", envoyAdminPort)
-		return &envoyAdminAPIClient{adminPort: envoyAdminPort}
+		return &envoyAdminAPIClient{port: envoyAdminPort}, nil
 	}
 
-	// Poll for the run dir and admin adminPort with a shared timeout
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-
-	// Discover the envoy subprocess and extract the admin address path
-	envoyAdminAddressPath, err := pollEnvoyAdminAddressPathFromArgs(ctx, int32(envoyParentPid)) // #nosec G115 -- PID fits in int32
+	// Discover the Envoy subprocess and extract the admin address path
+	envoyAdminAddressPath, err := pollEnvoyAdminAddressPathFromArgs(ctx, int32(aigwPid)) // #nosec G115 -- PID fits in int32
 	if err != nil {
-		logger.Warn("Falling back to Envoy listener adminPort check", "err", err)
-		return &envoyListenerPortClient{port: envoyListenerPort}
+		return nil, err
 	}
 
-	// Attempt to discover the admin adminPort from the admin address path
+	// Attempt to discover the admin port from the admin address path
 	envoyAdminPort, err = pollPortFromEnvoyAddressPath(ctx, envoyAdminAddressPath)
 	if err != nil {
-		logger.Warn("Falling back to Envoy listener adminPort check", "err", err)
-		return &envoyListenerPortClient{port: envoyListenerPort}
+		return nil, err
 	}
 
-	logger.Info("Discovered Envoy admin adminPort", "envoyAdminPort", envoyAdminPort)
-	return &envoyAdminAPIClient{adminPort: envoyAdminPort}
+	return &envoyAdminAPIClient{port: envoyAdminPort}, nil
 }
 
 // envoyAdminAPIClient checks Envoy readiness via the admin API /ready endpoint.
 type envoyAdminAPIClient struct {
-	adminPort int
+	port int
+}
+
+func (c *envoyAdminAPIClient) Port() int {
+	return c.port
 }
 
 func (c *envoyAdminAPIClient) IsReady(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/ready", c.adminPort), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/ready", c.port), nil)
 	if err != nil {
 		return err
 	}
@@ -103,26 +93,8 @@ func (c *envoyAdminAPIClient) IsReady(ctx context.Context) error {
 	return nil
 }
 
-// envoyListenerPortClient checks Envoy readiness by attempting to connect to the listener port.
-type envoyListenerPortClient struct {
-	port int
-}
-
-func (c *envoyListenerPortClient) IsReady(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
-	defer cancel()
-
-	dialer := net.Dialer{}
-	conn, err := dialer.DialContext(ctx, "tcp", fmt.Sprintf("127.0.0.1:%d", c.port))
-	if err != nil {
-		return err
-	}
-	_ = conn.Close()
-	return nil
-}
-
 // extractAdminAddressPath parses the adminAddressPathFlag flag from command
-// line arguments. It validates that the path is actually a file.
+// line arguments.
 func extractAdminAddressPath(cmdline []string) (string, error) {
 	// Join cmdline into a single string and split by spaces to handle sh -c
 	// cases (these cases are only used in tests).
@@ -131,14 +103,7 @@ func extractAdminAddressPath(cmdline []string) (string, error) {
 
 	for i, arg := range parts {
 		if arg == adminAddressPathFlag && i+1 < len(parts) {
-			path := parts[i+1]
-
-			// Verify it's a file
-			if info, err := os.Stat(path); err != nil || info.IsDir() {
-				return "", fmt.Errorf("envoy admin address path %q is not a file", path)
-			}
-
-			return path, nil
+			return parts[i+1], nil
 		}
 	}
 	return "", fmt.Errorf("%s not found in command line", adminAddressPathFlag)
@@ -150,7 +115,7 @@ func extractAdminAddressPath(cmdline []string) (string, error) {
 func pollEnvoyAdminAddressPathFromArgs(ctx context.Context, currentPID int32) (string, error) {
 	currentProc, err := process.NewProcessWithContext(ctx, currentPID)
 	if err != nil {
-		return "", fmt.Errorf("failed to get parent process: %w", err)
+		return "", fmt.Errorf("failed to get aigw process: %w", err)
 	}
 
 	ticker := time.NewTicker(50 * time.Millisecond)
@@ -162,7 +127,10 @@ LOOP:
 	for {
 		select {
 		case <-ctx.Done():
-			return "", fmt.Errorf("timeout waiting for child processes: %w", lastErr)
+			if lastErr == nil {
+				return "", errors.New("timeout waiting for Envoy process")
+			}
+			return "", fmt.Errorf("timeout waiting for Envoy process: %w", lastErr)
 		case <-ticker.C:
 			children, childErr := currentProc.ChildrenWithContext(ctx)
 			if childErr != nil {
@@ -171,7 +139,7 @@ LOOP:
 			}
 
 			if len(children) == 0 {
-				lastErr = errors.New("no child process found")
+				lastErr = errors.New("no Envoy process found")
 				continue
 			}
 
@@ -184,11 +152,34 @@ LOOP:
 	// Get command line args
 	envoyCmdline, err := envoyProc.CmdlineSlice()
 	if err != nil {
-		return "", fmt.Errorf("failed to get command line of envoy: %w", err)
+		return "", fmt.Errorf("failed to get command line of Envoy: %w", err)
 	}
 
 	// Extract admin address path
-	return extractAdminAddressPath(envoyCmdline)
+	path, err := extractAdminAddressPath(envoyCmdline)
+	if err != nil {
+		return "", err
+	}
+
+	// Loop until the file is valid
+	for {
+		select {
+		case <-ctx.Done():
+			if lastErr == nil {
+				return "", fmt.Errorf("timeout waiting for admin address file %s", path)
+			}
+			return "", fmt.Errorf("timeout waiting for admin address file %s: %w", path, lastErr)
+		case <-ticker.C:
+			// Verify it's a file
+			if info, err := os.Stat(path); err != nil {
+				lastErr = err
+				continue // try later
+			} else if info.IsDir() {
+				return "", fmt.Errorf("envoy admin address path %q is not a file", path)
+			}
+			return path, nil
+		}
+	}
 }
 
 // pollPortFromEnvoyAddressPath polls for the admin-address.txt.
@@ -203,7 +194,10 @@ LOOP:
 	for {
 		select {
 		case <-ctx.Done():
-			return 0, fmt.Errorf("timeout waiting for %s: %w", envoyAdminAddressPath, lastErr)
+			if lastErr == nil {
+				return 0, fmt.Errorf("timeout waiting for Envoy admin address file %s", envoyAdminAddressPath)
+			}
+			return 0, fmt.Errorf("timeout waiting for Envoy admin address file %s: %w", envoyAdminAddressPath, lastErr)
 		case <-ticker.C:
 			data, err := os.ReadFile(envoyAdminAddressPath)
 			if err != nil {
@@ -213,7 +207,7 @@ LOOP:
 
 			adminAddr = strings.TrimSpace(string(data))
 			if adminAddr == "" {
-				lastErr = fmt.Errorf("%s was empty", envoyAdminAddressPath)
+				lastErr = fmt.Errorf("envoy admin address file %s was empty", envoyAdminAddressPath)
 				continue
 			}
 			break LOOP
@@ -223,12 +217,12 @@ LOOP:
 	// Parse as URL to extract port
 	u, err := url.Parse("http://" + adminAddr)
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse admin address %q from %s: %w", adminAddr, envoyAdminAddressPath, err)
+		return 0, fmt.Errorf("failed to parse Envoy's admin address %q from %s: %w", adminAddr, envoyAdminAddressPath, err)
 	}
 
 	port, err := strconv.Atoi(u.Port())
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse port from %q: %w", adminAddr, err)
+		return 0, fmt.Errorf("failed to parse Envoy's admin port from %q: %w", adminAddr, err)
 	}
 
 	return port, nil

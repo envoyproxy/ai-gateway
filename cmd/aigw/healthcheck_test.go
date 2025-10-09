@@ -7,75 +7,69 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
 func Test_healthcheck(t *testing.T) {
-	tests := []struct {
-		name        string
-		closeServer bool
-		statusCode  int
-		respBody    string
-		expOut      string
-		expErr      string
-	}{
-		{
-			name:       "success",
-			statusCode: http.StatusOK,
-			respBody:   "OK",
-			expOut:     "OK",
-		},
-		{
-			name:       "unhealthy status",
-			statusCode: http.StatusServiceUnavailable,
-			respBody:   "not ready",
-			expErr:     "unhealthy: status 503, body: not ready",
-		},
-		{
-			name:       "internal error",
-			statusCode: http.StatusInternalServerError,
-			respBody:   "server error",
-			expErr:     "unhealthy: status 500, body: server error",
-		},
-		{
-			name:        "connection failure",
-			closeServer: true,
-			expErr:      "failed to connect to admin server",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				w.WriteHeader(tt.statusCode)
-				_, _ = w.Write([]byte(tt.respBody))
-			}))
-			t.Cleanup(s.Close)
+	pid := os.Getpid()
 
-			u, err := url.Parse(s.URL)
-			require.NoError(t, err)
-			port, err := strconv.Atoi(u.Port())
-			require.NoError(t, err)
+	t.Run("returns error when no envoy subprocess", func(t *testing.T) {
+		var buf bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&buf, nil))
+		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+		defer cancel()
+		err := doHealthcheck(ctx, pid, logger)
+		require.EqualError(t, err, "timeout waiting for Envoy process: no Envoy process found")
+		// Contains not Equal because there's a timestamp
+		require.Contains(t, buf.String(), "Failed to find Envoy admin server")
+	})
 
-			if tt.closeServer {
-				s.Close()
-			}
+	t.Run("returns nil when ready", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, "/ready", r.URL.Path)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("live"))
+		}))
+		defer server.Close()
 
-			stdout := &bytes.Buffer{}
-			err = healthcheck(t.Context(), port, stdout, nil)
+		u, err := url.Parse(server.URL)
+		require.NoError(t, err)
+		port, err := strconv.Atoi(u.Port())
+		require.NoError(t, err)
 
-			if tt.expErr != "" {
-				require.Equal(t, tt.expErr, err.Error())
-				require.Empty(t, stdout.String())
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tt.expOut, stdout.String())
-			}
-		})
-	}
+		adminFile := filepath.Join(t.TempDir(), "admin-address.txt")
+		require.NoError(t, os.WriteFile(adminFile, []byte(fmt.Sprintf("127.0.0.1:%d", port)), 0o600))
+
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		cmdStr := fmt.Sprintf("sleep 30 && echo -- --admin-address-path %s", adminFile)
+		cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
+		require.NoError(t, cmd.Start())
+		defer func() {
+			_ = cmd.Process.Kill()
+			_, _ = cmd.Process.Wait()
+		}()
+
+		time.Sleep(100 * time.Millisecond)
+
+		var buf bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&buf, nil))
+		err = doHealthcheck(t.Context(), pid, logger)
+		require.NoError(t, err)
+		require.Empty(t, buf)
+	})
 }

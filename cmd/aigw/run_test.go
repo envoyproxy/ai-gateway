@@ -39,12 +39,6 @@ import (
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
-// Do NOT commit runDebug = true to the branch until Envoy Gateway removes
-// hard-coding of func-e calls which ends up always using os.Stdout/Stderr
-// Only set this to true when you are debugging. Once envoy-gateway supports
-// redirection, commit this as true since debug logs only show on failure.
-const runDebug = false
-
 func TestRun(t *testing.T) {
 	ollamaModel, err := internaltesting.GetOllamaModel(internaltesting.ChatModel)
 	if err == nil {
@@ -67,7 +61,7 @@ func TestRun(t *testing.T) {
 
 	go func() {
 		opts := runOpts{extProcLauncher: mainlib.Main}
-		require.NoError(t, run(ctx, cmdRun{Debug: runDebug, AdminPort: adminPort}, opts, buffers[0], buffers[1]))
+		require.NoError(t, run(ctx, cmdRun{Debug: true, AdminPort: adminPort}, opts, buffers[0], buffers[1]))
 	}()
 
 	client := openai.NewClient(option.WithBaseURL("http://localhost:1975/v1/"))
@@ -90,7 +84,7 @@ func TestRun(t *testing.T) {
 				}
 			}
 			return fmt.Errorf("no content in response")
-		}, 30*time.Second, 2*time.Second,
+		}, 1*time.Minute, 2*time.Second,
 			"chat completion never succeeded")
 	})
 
@@ -108,7 +102,7 @@ func TestRun(t *testing.T) {
 				return fmt.Errorf("status %d", resp.StatusCode)
 			}
 			return nil
-		}, 2*time.Minute, time.Second,
+		}, 1*time.Minute, time.Second,
 			"metrics endpoint never became available")
 	})
 }
@@ -146,7 +140,7 @@ func TestRunMCP(t *testing.T) {
 
 	go func() {
 		opts := runOpts{extProcLauncher: mainlib.Main}
-		require.NoError(t, run(ctx, cmdRun{Debug: runDebug, AdminPort: adminPort, mcpConfig: mcpServers}, opts, buffers[0], buffers[1]))
+		require.NoError(t, run(ctx, cmdRun{Debug: true, AdminPort: adminPort, mcpConfig: mcpServers}, opts, buffers[0], buffers[1]))
 	}()
 
 	url := fmt.Sprintf("http://localhost:%d/mcp", 1975)
@@ -178,7 +172,7 @@ func TestRunMCP(t *testing.T) {
 				return fmt.Errorf("tool returned error response")
 			}
 			return nil
-		}, 1*time.Minute, 2*time.Second,
+		}, 2*time.Minute, 2*time.Second,
 			"MCP tool call never succeeded")
 	})
 }
@@ -226,7 +220,7 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 	}
 	config := readFileFromProjectRoot(t, "examples/aigw/ollama.yaml")
 	ctx, cancel := context.WithCancel(t.Context())
-	_, done, _, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, config)
+	_, done, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, config)
 	require.NoError(t, err)
 	time.Sleep(time.Second)
 	cancel()
@@ -251,7 +245,7 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc_noListeners(t *testing.T
 		adminPort:                adminPort,
 	}
 
-	_, _, _, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(t.Context(), gatewayNoListenersConfig)
+	_, _, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(t.Context(), gatewayNoListenersConfig)
 	require.EqualError(t, err, "gateway aigw-run has no listeners configured")
 }
 
@@ -449,7 +443,8 @@ func TestPollEnvoyReady(t *testing.T) {
 
 	t.Run("ready", func(t *testing.T) {
 		t.Cleanup(func() { callCount = 0 })
-		envoyAdmin := aigw.NewEnvoyAdminClientFromPort(adminPort)
+		envoyAdmin, err := aigw.NewEnvoyAdminClient(t.Context(), os.Getpid(), adminPort)
+		require.NoError(t, err)
 		pollEnvoyReady(t.Context(), l, envoyAdmin, 50*time.Millisecond)
 		require.Equal(t, successAt, callCount)
 	})
@@ -458,7 +453,8 @@ func TestPollEnvoyReady(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		t.Cleanup(cancel)
 		t.Cleanup(func() { callCount = 0 })
-		envoyAdmin := aigw.NewEnvoyAdminClientFromPort(adminPort)
+		envoyAdmin, err := aigw.NewEnvoyAdminClient(ctx, os.Getpid(), adminPort)
+		require.NoError(t, err)
 		pollEnvoyReady(ctx, l, envoyAdmin, 50*time.Millisecond)
 		require.Less(t, callCount, successAt)
 	})

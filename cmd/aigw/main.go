@@ -41,9 +41,7 @@ type (
 		mcpConfig *autoconfig.MCPServers `kong:"-"` // Internal field: normalized MCP JSON data
 	}
 	// cmdHealthcheck corresponds to `aigw healthcheck` command.
-	cmdHealthcheck struct {
-		AdminPort int `help:"HTTP port for the admin server (serves /metrics and /health endpoints)." default:"1064"`
-	}
+	cmdHealthcheck struct{}
 )
 
 // Validate is called by Kong after parsing to validate the cmdRun arguments.
@@ -78,7 +76,7 @@ func (c *cmdRun) Validate() error {
 
 type (
 	runFn         func(context.Context, cmdRun, runOpts, io.Writer, io.Writer) error
-	healthcheckFn func(context.Context, int, io.Writer, io.Writer) error
+	healthcheckFn func(context.Context, io.Writer, io.Writer) error
 )
 
 func main() {
@@ -117,7 +115,7 @@ func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn
 			log.Fatalf("Error running: %v", err)
 		}
 	case "healthcheck":
-		err = hf(ctx, c.Healthcheck.AdminPort, stdout, stderr)
+		err = hf(ctx, stdout, stderr)
 		if err != nil {
 			log.Fatalf("Health check failed: %v", err)
 		}
