@@ -21,6 +21,7 @@ extProc:
     # Overrides the image tag whose default is the chart appVersion.
     tag: ""
   imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
   # One of "info", "debug", "trace", "warn", "error", "fatal", "panic".
   logLevel: info
 

@@ -26,7 +26,7 @@ import (
 func TestGatewayMutator_Default(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	fakeKube := fake2.NewClientset()
-	g := newTestGatewayMutator(fakeClient, fakeKube, "", "", "", false)
+	g := newTestGatewayMutator(fakeClient, fakeKube, "", "", "", "", false)
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-pod", Namespace: "test-namespace"},
 		Spec: corev1.PodSpec{
@@ -48,12 +48,17 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 		metricsRequestHeaderAttributes string
 		spanRequestHeaderAttributes    string
 		extProcExtraEnvVars            string
+		extProcImagePullSecrets        string
 		extprocTest                    func(t *testing.T, container corev1.Container)
+		podTest                        func(t *testing.T, pod corev1.Pod)
 	}{
 		{
 			name: "basic extproc container",
 			extprocTest: func(t *testing.T, container corev1.Container) {
 				require.Empty(t, container.Env)
+			},
+			podTest: func(t *testing.T, pod corev1.Pod) {
+				require.Empty(t, pod.Spec.ImagePullSecrets)
 			},
 		},
 		{
@@ -65,6 +70,9 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 					{Name: "OTEL_TRACES_EXPORTER", Value: "otlp"},
 				}, container.Env)
 			},
+			podTest: func(t *testing.T, pod corev1.Pod) {
+				require.Empty(t, pod.Spec.ImagePullSecrets)
+			},
 		},
 		{
 			name:                           "with metrics request header labels",
@@ -73,6 +81,9 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 				require.Empty(t, container.Env)
 				require.Contains(t, container.Args, "-metricsRequestHeaderAttributes")
 				require.Contains(t, container.Args, "x-team-id:team.id,x-user-id:user.id")
+			},
+			podTest: func(t *testing.T, pod corev1.Pod) {
+				require.Empty(t, pod.Spec.ImagePullSecrets)
 			},
 		},
 		{
@@ -86,6 +97,9 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 				require.Contains(t, container.Args, "-metricsRequestHeaderAttributes")
 				require.Contains(t, container.Args, "x-team-id:team.id")
 			},
+			podTest: func(t *testing.T, pod corev1.Pod) {
+				require.Empty(t, pod.Spec.ImagePullSecrets)
+			},
 		},
 		{
 			name:                        "with tracing request header attributes",
@@ -94,6 +108,9 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 				require.Empty(t, container.Env)
 				require.Contains(t, container.Args, "-spanRequestHeaderAttributes")
 				require.Contains(t, container.Args, "x-session-id:session.id,x-user-id:user.id")
+			},
+			podTest: func(t *testing.T, pod corev1.Pod) {
+				require.Empty(t, pod.Spec.ImagePullSecrets)
 			},
 		},
 		{
@@ -110,6 +127,39 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 				require.Contains(t, container.Args, "-spanRequestHeaderAttributes")
 				require.Contains(t, container.Args, "x-session-id:session.id")
 			},
+			podTest: func(t *testing.T, pod corev1.Pod) {
+				require.Empty(t, pod.Spec.ImagePullSecrets)
+			},
+		},
+		{
+			name:                    "with image pull secrets",
+			extProcImagePullSecrets: "my-registry-secret;backup-secret",
+			extprocTest: func(t *testing.T, container corev1.Container) {
+				require.Empty(t, container.Env)
+			},
+			podTest: func(t *testing.T, pod corev1.Pod) {
+				expectedSecrets := []corev1.LocalObjectReference{
+					{Name: "my-registry-secret"},
+					{Name: "backup-secret"},
+				}
+				require.Equal(t, expectedSecrets, pod.Spec.ImagePullSecrets)
+			},
+		},
+		{
+			name:                    "with image pull secrets and env vars",
+			extProcExtraEnvVars:     "OTEL_SERVICE_NAME=test-service",
+			extProcImagePullSecrets: "my-registry-secret",
+			extprocTest: func(t *testing.T, container corev1.Container) {
+				require.Equal(t, []corev1.EnvVar{
+					{Name: "OTEL_SERVICE_NAME", Value: "test-service"},
+				}, container.Env)
+			},
+			podTest: func(t *testing.T, pod corev1.Pod) {
+				expectedSecrets := []corev1.LocalObjectReference{
+					{Name: "my-registry-secret"},
+				}
+				require.Equal(t, expectedSecrets, pod.Spec.ImagePullSecrets)
+			},
 		},
 	}
 
@@ -119,7 +169,7 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 				t.Run(fmt.Sprintf("sidecar=%v", sidecar), func(t *testing.T) {
 					fakeClient := requireNewFakeClientWithIndexes(t)
 					fakeKube := fake2.NewClientset()
-					g := newTestGatewayMutator(fakeClient, fakeKube, tt.metricsRequestHeaderAttributes, tt.spanRequestHeaderAttributes, tt.extProcExtraEnvVars, sidecar)
+					g := newTestGatewayMutator(fakeClient, fakeKube, tt.metricsRequestHeaderAttributes, tt.spanRequestHeaderAttributes, tt.extProcExtraEnvVars, tt.extProcImagePullSecrets, sidecar)
 
 					const gwName, gwNamespace = "test-gateway", "test-namespace"
 					err := fakeClient.Create(t.Context(), &aigv1a1.AIGatewayRoute{
@@ -177,17 +227,18 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 
 					require.Equal(t, "ai-gateway-extproc", extProcContainer.Name)
 					tt.extprocTest(t, extProcContainer)
+					tt.podTest(t, *pod)
 				})
 			}
 		})
 	}
 }
 
-func newTestGatewayMutator(fakeClient client.Client, fakeKube *fake2.Clientset, metricsRequestHeaderAttributes, spanRequestHeaderAttributes, extProcExtraEnvVars string, sidecar bool) *gatewayMutator {
+func newTestGatewayMutator(fakeClient client.Client, fakeKube *fake2.Clientset, metricsRequestHeaderAttributes, spanRequestHeaderAttributes, extProcExtraEnvVars, extProcImagePullSecrets string, sidecar bool) *gatewayMutator {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	return newGatewayMutator(
 		fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
-		"info", "/tmp/extproc.sock", metricsRequestHeaderAttributes, spanRequestHeaderAttributes, "/v1", extProcExtraEnvVars, 512*1024*1024,
+		"info", "/tmp/extproc.sock", metricsRequestHeaderAttributes, spanRequestHeaderAttributes, "/v1", extProcExtraEnvVars, extProcImagePullSecrets, 512*1024*1024,
 		sidecar,
 	)
 }
@@ -281,6 +332,77 @@ func TestParseExtraEnvVars(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ParseExtraEnvVars(tt.input)
+			if tt.wantError != "" {
+				require.Error(t, err)
+				require.Equal(t, tt.wantError, err.Error())
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.want, got)
+			}
+		})
+	}
+}
+
+func TestParseImagePullSecrets(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		want      []corev1.LocalObjectReference
+		wantError string
+	}{
+		{
+			name:  "empty string",
+			input: "",
+			want:  nil,
+		},
+		{
+			name:  "single secret",
+			input: "my-registry-secret",
+			want:  []corev1.LocalObjectReference{{Name: "my-registry-secret"}},
+		},
+		{
+			name:  "multiple secrets",
+			input: "my-registry-secret;backup-secret;third-secret",
+			want: []corev1.LocalObjectReference{
+				{Name: "my-registry-secret"},
+				{Name: "backup-secret"},
+				{Name: "third-secret"},
+			},
+		},
+		{
+			name:  "secrets with spaces",
+			input: " my-registry-secret ; backup-secret ",
+			want: []corev1.LocalObjectReference{
+				{Name: "my-registry-secret"},
+				{Name: "backup-secret"},
+			},
+		},
+		{
+			name:  "trailing semicolon",
+			input: "my-registry-secret;backup-secret;",
+			want: []corev1.LocalObjectReference{
+				{Name: "my-registry-secret"},
+				{Name: "backup-secret"},
+			},
+		},
+		{
+			name:  "only semicolons",
+			input: ";;;",
+			want:  nil,
+		},
+		{
+			name:  "empty secret names",
+			input: "my-secret;;backup-secret",
+			want: []corev1.LocalObjectReference{
+				{Name: "my-secret"},
+				{Name: "backup-secret"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseImagePullSecrets(tt.input)
 			if tt.wantError != "" {
 				require.Error(t, err)
 				require.Equal(t, tt.wantError, err.Error())
