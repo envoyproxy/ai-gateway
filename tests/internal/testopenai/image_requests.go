@@ -16,12 +16,16 @@ type imageGenerationRequest struct {
 	Model  string `json:"model"`
 	Prompt string `json:"prompt"`
 	// Optional fields like size/quality/response_format can be added later if needed.
+	Size    string `json:"size,omitempty"`
+	Quality string `json:"quality,omitempty"`
 }
 
 // imageRequests contains the actual request body for each image generation cassette.
 var imageRequests = map[Cassette]*imageGenerationRequest{
 	CassetteImageGenerationBasic: {
-		Model:  "dall-e-2",
-		Prompt: "A simple black-and-white line drawing of a cat playing with yarn",
+		Model:   "gpt-image-1-mini",
+		Prompt:  "A simple black-and-white line drawing of a cat playing with yarn",
+		Size:    "1024x1024",
+		Quality: "low",
 	},
 }

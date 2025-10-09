@@ -343,7 +343,7 @@ func Test_imageGenerationProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	rp := &imageGenerationProcessorRouterFilter{originalRequestBody: &openaisdk.ImageGenerateParams{}}
 	p2 := &imageGenerationProcessorUpstreamFilter{
 		config:         &processorConfig{},
-		requestHeaders: map[string]string{internalapi.ModelNameHeaderKeyDefault: "dall-e-2"},
+		requestHeaders: map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-image-1-mini"},
 		logger:         slog.Default(),
 		metrics:        &mockImageGenerationMetrics{},
 	}
@@ -358,12 +358,12 @@ func Test_imageGenerationProcessorUpstreamFilter_SetBackend(t *testing.T) {
 
 func TestImageGeneration_ParseBody(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
-		jsonBody := `{"model":"dall-e-2","prompt":"a cat"}`
+		jsonBody := `{"model":"gpt-image-1-mini","prompt":"a cat","size":"1024x1024","quality":"low"}`
 		modelName, rb, err := parseOpenAIImageGenerationBody(&extprocv3.HttpBody{Body: []byte(jsonBody)})
 		require.NoError(t, err)
-		require.Equal(t, "dall-e-2", modelName)
+		require.Equal(t, "gpt-image-1-mini", modelName)
 		require.NotNil(t, rb)
-		require.Equal(t, "dall-e-2", rb.Model)
+		require.Equal(t, "gpt-image-1-mini", rb.Model)
 		require.Equal(t, "a cat", rb.Prompt)
 	})
 	t.Run("error", func(t *testing.T) {

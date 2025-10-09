@@ -58,10 +58,9 @@ const (
 	// ModelTextEmbedding3Small is the cheapest model usable with /embeddings.
 	ModelTextEmbedding3Small = "text-embedding-3-small"
 
-	// ModelDALLE2 is the DALL-E 2 model usable with /v1/images/generations.
-	ModelDALLE2 = "dall-e-2"
-	// ModelDALLE3 is the DALL-E 3 model usable with /v1/images/generations.
-	ModelDALLE3 = "dall-e-3"
+	// ModelGPTImage1Mini is the smallest/cheapest Images model usable with
+	// /v1/images/generations. Use with size "1024x1024" and quality "low".
+	ModelGPTImage1Mini = "gpt-image-1-mini"
 )
 
 // ChatCompletionContentPartRefusalType The type of the content part.
