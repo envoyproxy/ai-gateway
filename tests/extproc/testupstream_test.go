@@ -60,6 +60,16 @@ func TestWithTestUpstream(t *testing.T) {
 			testUpstreamAzureBackend,
 			testUpstreamGCPVertexAIBackend,
 			testUpstreamGCPAnthropicAIBackend,
+			// TODO: this shouldn't be needed. The previous per-backend headers shouldn't affect the subsequent retries.
+			{Name: "testupstream-openai-always-200", Schema: openAISchema, HeaderMutation: &filterapi.HTTPHeaderMutation{
+				Set: []filterapi.HTTPHeader{{Name: testupstreamlib.ResponseStatusKey, Value: "200"}},
+			}},
+			{
+				Name: "testupstream-openai-5xx", Schema: openAISchema, HeaderMutation: &filterapi.HTTPHeaderMutation{
+					Set: []filterapi.HTTPHeader{{Name: testupstreamlib.ResponseStatusKey, Value: "500"}},
+				},
+				ModelNameOverride: "bad-model",
+			},
 		},
 		Models: []filterapi.Model{
 			{Name: "some-model1", OwnedBy: "Envoy AI Gateway", CreatedAt: now},
@@ -111,15 +121,17 @@ func TestWithTestUpstream(t *testing.T) {
 		expPath string
 		// expHost is the expected host to be sent to the test upstream.
 		expHost string
-		// expHeaders are the expected headers to be sent to the test upstream.
+		// expRequestHeaders are the expected request headers to be sent to the test upstream.
 		// The value is a base64 encoded string of comma separated key-value pairs.
 		// E.g. "key1:value1,key2:value2".
-		expHeaders map[string]string
+		expRequestHeaders map[string]string
 		// expRequestBody is the expected body to be sent to the test upstream.
 		// This can be used to test the request body translation.
 		expRequestBody string
 		// expStatus is the expected status code from the gateway.
 		expStatus int
+		// expResponseHeaders are the expected headers from the gateway.
+		expResponseHeaders map[string]string
 		// expResponseBody is the expected body from the gateway to the client.
 		expResponseBody string
 		// expResponseBodyFunc is a function to check the response body. This can be used instead of the expResponseBody field.
@@ -214,49 +226,49 @@ func TestWithTestUpstream(t *testing.T) {
 			expResponseBody: `{"model":"gpt-4o-2024-08-01","choices":[{"message":{"content":"This is a test."}}]}`,
 		},
 		{
-			name:            "gcp-vertexai - /v1/chat/completions",
-			backend:         "gcp-vertexai",
-			path:            "/v1/chat/completions",
-			method:          http.MethodPost,
-			requestBody:     `{"model":"gemini-1.5-pro","messages":[{"role":"system","content":"You are a helpful assistant."}]}`,
-			expRequestBody:  `{"contents":null,"tools":null,"generation_config":{},"system_instruction":{"parts":[{"text":"You are a helpful assistant."}]}}`,
-			expHost:         "gcp-region-aiplatform.googleapis.com",
-			expPath:         "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/gemini-1.5-pro:generateContent",
-			expHeaders:      map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
-			responseStatus:  strconv.Itoa(http.StatusOK),
-			responseBody:    `{"candidates":[{"content":{"parts":[{"text":"This is a test response from Gemini."}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":15,"candidatesTokenCount":10,"totalTokenCount":25}}`,
-			expStatus:       http.StatusOK,
-			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"This is a test response from Gemini.","role":"assistant"}}],"object":"chat.completion","usage":{"completion_tokens":10,"prompt_tokens":15,"total_tokens":25}}`,
+			name:              "gcp-vertexai - /v1/chat/completions",
+			backend:           "gcp-vertexai",
+			path:              "/v1/chat/completions",
+			method:            http.MethodPost,
+			requestBody:       `{"model":"gemini-1.5-pro","messages":[{"role":"system","content":"You are a helpful assistant."}]}`,
+			expRequestBody:    `{"contents":null,"tools":null,"generation_config":{},"system_instruction":{"parts":[{"text":"You are a helpful assistant."}]}}`,
+			expHost:           "gcp-region-aiplatform.googleapis.com",
+			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/gemini-1.5-pro:generateContent",
+			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus:    strconv.Itoa(http.StatusOK),
+			responseBody:      `{"candidates":[{"content":{"parts":[{"text":"This is a test response from Gemini."}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":15,"candidatesTokenCount":10,"totalTokenCount":25}}`,
+			expStatus:         http.StatusOK,
+			expResponseBody:   `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"This is a test response from Gemini.","role":"assistant"}}],"object":"chat.completion","usage":{"completion_tokens":10,"prompt_tokens":15,"total_tokens":25}}`,
 		},
 		{
-			name:            "gcp-vertexai - /v1/chat/completions - tool use",
-			backend:         "gcp-vertexai",
-			path:            "/v1/chat/completions",
-			method:          http.MethodPost,
-			requestBody:     `{"model":"gemini-1.5-pro","messages":[{"role":"user","content":"tell me the delivery date for order 123"}],"tools":[{"type":"function","function":{"name":"get_delivery_date","description":"Get the delivery date for a customer's order. Call this whenever you need to know the delivery date, for example when a customer asks 'Where is my package'","parameters":{"type":"object","properties":{"order_id":{"type":"string","description":"The customer's order ID."}},"required":["order_id"]}}}]}`,
-			expRequestBody:  `{"contents":[{"parts":[{"text":"tell me the delivery date for order 123"}],"role":"user"}],"tools":[{"functionDeclarations":[{"description":"Get the delivery date for a customer's order. Call this whenever you need to know the delivery date, for example when a customer asks 'Where is my package'","name":"get_delivery_date","parametersJsonSchema":{"properties":{"order_id":{"description":"The customer's order ID.","type":"string"}},"required":["order_id"],"type":"object"}}]}],"generation_config":{}}`,
-			expHost:         "gcp-region-aiplatform.googleapis.com",
-			expPath:         "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/gemini-1.5-pro:generateContent",
-			expHeaders:      map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
-			responseStatus:  strconv.Itoa(http.StatusOK),
-			responseBody:    `{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"get_delivery_date","args":{"order_id":"123"}}}]},"finishReason":"STOP","avgLogprobs":0.000001220789272338152}],"usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":11,"totalTokenCount":61,"trafficType":"ON_DEMAND","promptTokensDetails":[{"modality":"TEXT","tokenCount":50}],"candidatesTokensDetails":[{"modality":"TEXT","tokenCount":11}]},"modelVersion":"gemini-2.0-flash-001","createTime":"2025-07-11T22:15:44.956335Z","responseId":"EI5xaK-vOtqJm22IPmuCR14AI"}`,
-			expStatus:       http.StatusOK,
-			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"role":"assistant","tool_calls":[{"id":"703482f8-2e5b-4dcc-a872-d74bd66c3866","function":{"arguments":"{\"order_id\":\"123\"}","name":"get_delivery_date"},"type":"function"}]}}],"object":"chat.completion","usage":{"completion_tokens":11,"prompt_tokens":50,"total_tokens":61}}`,
+			name:              "gcp-vertexai - /v1/chat/completions - tool use",
+			backend:           "gcp-vertexai",
+			path:              "/v1/chat/completions",
+			method:            http.MethodPost,
+			requestBody:       `{"model":"gemini-1.5-pro","messages":[{"role":"user","content":"tell me the delivery date for order 123"}],"tools":[{"type":"function","function":{"name":"get_delivery_date","description":"Get the delivery date for a customer's order. Call this whenever you need to know the delivery date, for example when a customer asks 'Where is my package'","parameters":{"type":"object","properties":{"order_id":{"type":"string","description":"The customer's order ID."}},"required":["order_id"]}}}]}`,
+			expRequestBody:    `{"contents":[{"parts":[{"text":"tell me the delivery date for order 123"}],"role":"user"}],"tools":[{"functionDeclarations":[{"description":"Get the delivery date for a customer's order. Call this whenever you need to know the delivery date, for example when a customer asks 'Where is my package'","name":"get_delivery_date","parametersJsonSchema":{"properties":{"order_id":{"description":"The customer's order ID.","type":"string"}},"required":["order_id"],"type":"object"}}]}],"generation_config":{}}`,
+			expHost:           "gcp-region-aiplatform.googleapis.com",
+			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/gemini-1.5-pro:generateContent",
+			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus:    strconv.Itoa(http.StatusOK),
+			responseBody:      `{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"get_delivery_date","args":{"order_id":"123"}}}]},"finishReason":"STOP","avgLogprobs":0.000001220789272338152}],"usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":11,"totalTokenCount":61,"trafficType":"ON_DEMAND","promptTokensDetails":[{"modality":"TEXT","tokenCount":50}],"candidatesTokensDetails":[{"modality":"TEXT","tokenCount":11}]},"modelVersion":"gemini-2.0-flash-001","createTime":"2025-07-11T22:15:44.956335Z","responseId":"EI5xaK-vOtqJm22IPmuCR14AI"}`,
+			expStatus:         http.StatusOK,
+			expResponseBody:   `{"choices":[{"finish_reason":"stop","index":0,"message":{"role":"assistant","tool_calls":[{"id":"703482f8-2e5b-4dcc-a872-d74bd66c3866","function":{"arguments":"{\"order_id\":\"123\"}","name":"get_delivery_date"},"type":"function"}]}}],"object":"chat.completion","usage":{"completion_tokens":11,"prompt_tokens":50,"total_tokens":61}}`,
 		},
 		{
-			name:            "gcp-anthropicai - /v1/chat/completions",
-			backend:         "gcp-anthropicai",
-			path:            "/v1/chat/completions",
-			method:          http.MethodPost,
-			requestBody:     `{"model":"claude-3-sonnet","max_completion_tokens":1024, "messages":[{"role":"system","content":"You are an Anthropic assistant."},{"role":"user","content":"Hello!"}]}`,
-			expRequestBody:  `{"max_tokens":1024,"messages":[{"content":[{"text":"Hello!","type":"text"}],"role":"user"}],"system":[{"text":"You are an Anthropic assistant.","type":"text"}],"anthropic_version":"vertex-2023-10-16"}`,
-			expHost:         "gcp-region-aiplatform.googleapis.com",
-			expPath:         "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:rawPredict",
-			expHeaders:      map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
-			responseStatus:  strconv.Itoa(http.StatusOK),
-			responseBody:    `{"id":"msg_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from Anthropic!"}],"usage":{"input_tokens":10,"output_tokens":25}}`,
-			expStatus:       http.StatusOK,
-			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello from Anthropic!","role":"assistant"}}],"object":"chat.completion","usage":{"completion_tokens":25,"prompt_tokens":10,"total_tokens":35}}`,
+			name:              "gcp-anthropicai - /v1/chat/completions",
+			backend:           "gcp-anthropicai",
+			path:              "/v1/chat/completions",
+			method:            http.MethodPost,
+			requestBody:       `{"model":"claude-3-sonnet","max_completion_tokens":1024, "messages":[{"role":"system","content":"You are an Anthropic assistant."},{"role":"user","content":"Hello!"}]}`,
+			expRequestBody:    `{"max_tokens":1024,"messages":[{"content":[{"text":"Hello!","type":"text"}],"role":"user"}],"system":[{"text":"You are an Anthropic assistant.","type":"text"}],"anthropic_version":"vertex-2023-10-16"}`,
+			expHost:           "gcp-region-aiplatform.googleapis.com",
+			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:rawPredict",
+			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus:    strconv.Itoa(http.StatusOK),
+			responseBody:      `{"id":"msg_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from Anthropic!"}],"usage":{"input_tokens":10,"output_tokens":25}}`,
+			expStatus:         http.StatusOK,
+			expResponseBody:   `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello from Anthropic!","role":"assistant"}}],"object":"chat.completion","usage":{"completion_tokens":25,"prompt_tokens":10,"total_tokens":35}}`,
 		},
 		{
 			name:            "modelname-override - /v1/chat/completions",
@@ -269,6 +281,19 @@ func TestWithTestUpstream(t *testing.T) {
 			responseBody:    `{"choices":[{"message":{"content":"This is a test."}}]}`,
 			expStatus:       http.StatusOK,
 			expResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
+		},
+		{
+			name:            "modelname-override-and-fallback - /v1/chat/completions",
+			backend:         "modelname-override-and-fallback",
+			path:            "/v1/chat/completions?need=model",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"requested-model-is-very-long-yes","messages":[{"role":"system","content":"You are a chatbot."}]}`,
+			expStatus:       http.StatusOK,
+			responseBody:    `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			expResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			expResponseHeaders: map[string]string{
+				"X-Model": "requested-model-is-very-long-yes",
+			},
 		},
 		{
 			name:           "aws - /v1/chat/completions - streaming",
@@ -450,18 +475,18 @@ data: [DONE]
 `,
 		},
 		{
-			name:           "gcp-vertexai - /v1/chat/completions - streaming",
-			backend:        "gcp-vertexai",
-			path:           "/v1/chat/completions",
-			responseType:   "sse",
-			method:         http.MethodPost,
-			requestBody:    `{"model":"gemini-1.5-pro","messages":[{"role":"system","content":"You are a helpful assistant."}], "stream": true}`,
-			expRequestBody: `{"contents":null,"tools":null,"generation_config":{},"system_instruction":{"parts":[{"text":"You are a helpful assistant."}]}}`,
-			expHost:        "gcp-region-aiplatform.googleapis.com",
-			expPath:        "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/gemini-1.5-pro:streamGenerateContent",
-			expRawQuery:    "alt=sse",
-			expHeaders:     map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
-			responseStatus: strconv.Itoa(http.StatusOK),
+			name:              "gcp-vertexai - /v1/chat/completions - streaming",
+			backend:           "gcp-vertexai",
+			path:              "/v1/chat/completions",
+			responseType:      "sse",
+			method:            http.MethodPost,
+			requestBody:       `{"model":"gemini-1.5-pro","messages":[{"role":"system","content":"You are a helpful assistant."}], "stream": true}`,
+			expRequestBody:    `{"contents":null,"tools":null,"generation_config":{},"system_instruction":{"parts":[{"text":"You are a helpful assistant."}]}}`,
+			expHost:           "gcp-region-aiplatform.googleapis.com",
+			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/gemini-1.5-pro:streamGenerateContent",
+			expRawQuery:       "alt=sse",
+			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus:    strconv.Itoa(http.StatusOK),
 			responseBody: `{"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"}}]}
 {"candidates":[{"content":{"parts":[{"text":"! How"}],"role":"model"}}]}
 {"candidates":[{"content":{"parts":[{"text":" can I"}],"role":"model"}}]}
@@ -488,17 +513,17 @@ data: [DONE]
 `,
 		},
 		{
-			name:           "gcp-anthropicai - /v1/chat/completions - streaming",
-			backend:        "gcp-anthropicai",
-			path:           "/v1/chat/completions",
-			method:         http.MethodPost,
-			responseType:   "sse",
-			requestBody:    `{"model":"claude-3-sonnet","max_completion_tokens":1024, "messages":[{"role":"user","content":"Why is the sky blue?"}], "stream": true}`,
-			expRequestBody: `{"max_tokens":1024,"messages":[{"content":[{"text":"Why is the sky blue?","type":"text"}],"role":"user"}],"anthropic_version":"vertex-2023-10-16"}`,
-			expHost:        "gcp-region-aiplatform.googleapis.com",
-			expPath:        "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:streamRawPredict",
-			expHeaders:     map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
-			responseStatus: strconv.Itoa(http.StatusOK),
+			name:              "gcp-anthropicai - /v1/chat/completions - streaming",
+			backend:           "gcp-anthropicai",
+			path:              "/v1/chat/completions",
+			method:            http.MethodPost,
+			responseType:      "sse",
+			requestBody:       `{"model":"claude-3-sonnet","max_completion_tokens":1024, "messages":[{"role":"user","content":"Why is the sky blue?"}], "stream": true}`,
+			expRequestBody:    `{"max_tokens":1024,"messages":[{"content":[{"text":"Why is the sky blue?","type":"text"}],"role":"user"}],"anthropic_version":"vertex-2023-10-16"}`,
+			expHost:           "gcp-region-aiplatform.googleapis.com",
+			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:streamRawPredict",
+			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus:    strconv.Itoa(http.StatusOK),
 			responseBody: `event: message_start
 data: {"type": "message_start", "message": {"id": "msg_123", "usage": {"input_tokens": 15}}}
 
@@ -559,10 +584,10 @@ data: [DONE]
 			}
 		}]
 	}`,
-			expHost:        "gcp-region-aiplatform.googleapis.com",
-			expPath:        "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:streamRawPredict",
-			expHeaders:     map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
-			responseStatus: strconv.Itoa(http.StatusOK),
+			expHost:           "gcp-region-aiplatform.googleapis.com",
+			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:streamRawPredict",
+			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus:    strconv.Itoa(http.StatusOK),
 			responseBody: `event: message_start
 data: {"type": "message_start", "message": {"id": "msg_123", "usage": {"input_tokens": 50}}}
 
@@ -715,32 +740,32 @@ data: [DONE]
 			expResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
 		},
 		{
-			name:            "gcp-anthropicai - /anthropic/v1/messages",
-			backend:         "gcp-anthropicai",
-			path:            "/anthropic/v1/messages",
-			method:          http.MethodPost,
-			requestBody:     `{"model":"claude-3-sonnet","max_tokens":100,"messages":[{"role":"user","content":[{"type":"text","text":"Hello, just a simple test message."}]}],"stream":false}`,
-			expRequestBody:  `{"anthropic_version":"vertex-2023-10-16","max_tokens":100,"messages":[{"content":[{"text":"Hello, just a simple test message.","type":"text"}],"role":"user"}],"stream":false}`,
-			expHost:         "gcp-region-aiplatform.googleapis.com",
-			expPath:         "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:rawPredict",
-			expHeaders:      map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
-			responseStatus:  strconv.Itoa(http.StatusOK),
-			responseBody:    `{"id":"msg_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from native Anthropic API!"}],"usage":{"input_tokens":8,"output_tokens":15}}`,
-			expStatus:       http.StatusOK,
-			expResponseBody: `{"id":"msg_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from native Anthropic API!"}],"usage":{"input_tokens":8,"output_tokens":15}}`,
+			name:              "gcp-anthropicai - /anthropic/v1/messages",
+			backend:           "gcp-anthropicai",
+			path:              "/anthropic/v1/messages",
+			method:            http.MethodPost,
+			requestBody:       `{"model":"claude-3-sonnet","max_tokens":100,"messages":[{"role":"user","content":[{"type":"text","text":"Hello, just a simple test message."}]}],"stream":false}`,
+			expRequestBody:    `{"anthropic_version":"vertex-2023-10-16","max_tokens":100,"messages":[{"content":[{"text":"Hello, just a simple test message.","type":"text"}],"role":"user"}],"stream":false}`,
+			expHost:           "gcp-region-aiplatform.googleapis.com",
+			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:rawPredict",
+			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus:    strconv.Itoa(http.StatusOK),
+			responseBody:      `{"id":"msg_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from native Anthropic API!"}],"usage":{"input_tokens":8,"output_tokens":15}}`,
+			expStatus:         http.StatusOK,
+			expResponseBody:   `{"id":"msg_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from native Anthropic API!"}],"usage":{"input_tokens":8,"output_tokens":15}}`,
 		},
 		{
-			name:           "gcp-anthropicai - /anthropic/v1/messages - streaming",
-			backend:        "gcp-anthropicai",
-			path:           "/anthropic/v1/messages",
-			method:         http.MethodPost,
-			responseType:   "sse",
-			requestBody:    `{"model":"claude-3-sonnet","max_tokens":100,"messages":[{"role":"user","content":[{"type":"text","text":"Tell me a short joke"}]}],"stream":true}`,
-			expRequestBody: `{"anthropic_version":"vertex-2023-10-16","max_tokens":100,"messages":[{"content":[{"text":"Tell me a short joke","type":"text"}],"role":"user"}],"stream":true}`,
-			expHost:        "gcp-region-aiplatform.googleapis.com",
-			expPath:        "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:streamRawPredict",
-			expHeaders:     map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
-			responseStatus: strconv.Itoa(http.StatusOK),
+			name:              "gcp-anthropicai - /anthropic/v1/messages - streaming",
+			backend:           "gcp-anthropicai",
+			path:              "/anthropic/v1/messages",
+			method:            http.MethodPost,
+			responseType:      "sse",
+			requestBody:       `{"model":"claude-3-sonnet","max_tokens":100,"messages":[{"role":"user","content":[{"type":"text","text":"Tell me a short joke"}]}],"stream":true}`,
+			expRequestBody:    `{"anthropic_version":"vertex-2023-10-16","max_tokens":100,"messages":[{"content":[{"text":"Tell me a short joke","type":"text"}],"role":"user"}],"stream":true}`,
+			expHost:           "gcp-region-aiplatform.googleapis.com",
+			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:streamRawPredict",
+			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus:    strconv.Itoa(http.StatusOK),
 			responseBody: `event: message_start
 data: {"type": "message_start", "message": {"id": "msg_789", "usage": {"input_tokens": 8}}}
 
@@ -791,15 +816,15 @@ data: {"type": "message_stop"}
 			req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expPath)))
 			req.Header.Set(testupstreamlib.ResponseStatusKey, tc.responseStatus)
 
-			var expHeaders []string
-			for k, v := range tc.expHeaders {
-				expHeaders = append(expHeaders, fmt.Sprintf("%s:%s", k, v))
+			var expRequestHeaders []string
+			for k, v := range tc.expRequestHeaders {
+				expRequestHeaders = append(expRequestHeaders, fmt.Sprintf("%s:%s", k, v))
 			}
-			if len(expHeaders) > 0 {
+			if len(expRequestHeaders) > 0 {
 				req.Header.Set(
 					testupstreamlib.ExpectedHeadersKey,
 					base64.StdEncoding.EncodeToString(
-						[]byte(strings.Join(expHeaders, ","))),
+						[]byte(strings.Join(expRequestHeaders, ","))),
 				)
 			}
 
@@ -822,7 +847,7 @@ data: {"type": "message_stop"}
 			var lastErr error
 			var lastStatusCode int
 			var lastBody []byte
-
+			var lastHeaders http.Header
 			require.Eventually(t, func() bool {
 				var resp *http.Response
 				resp, lastErr = http.DefaultClient.Do(req)
@@ -839,6 +864,7 @@ data: {"type": "message_stop"}
 				}
 
 				lastStatusCode = resp.StatusCode
+				lastHeaders = resp.Header
 				return resp.StatusCode == tc.expStatus
 			}, eventuallyTimeout, eventuallyInterval,
 				"Test failed - Last error: %v, Last status code: %d (expected: %d), Last body: %s",
@@ -856,6 +882,10 @@ data: {"type": "message_stop"}
 				bodyStr := m.ReplaceAllString(string(lastBody), "<UUID4-replaced>")
 				expectedResponseBody := m.ReplaceAllString(tc.expResponseBody, "<UUID4-replaced>")
 				require.JSONEq(t, expectedResponseBody, bodyStr, "Response body mismatch")
+			}
+
+			for k, v := range tc.expResponseHeaders {
+				require.Equal(t, v, lastHeaders.Get(k), "Header %s mismatch", k)
 			}
 		})
 	}

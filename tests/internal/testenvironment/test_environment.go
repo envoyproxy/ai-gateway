@@ -127,7 +127,8 @@ func StartTestEnvironment(t testing.TB,
 
 	// Start ExtProc.
 	requireExtProc(t,
-		env.extprocOut,
+		// env.extprocOut,
+		os.Stdout,
 		env.extprocBin,
 		env.extprocConfig,
 		env.extprocEnv,
@@ -281,7 +282,7 @@ func requireExtProc(t testing.TB, out io.Writer, bin, config string, env []strin
 		"-adminPort", strconv.Itoa(adminPort),
 		"-mcpAddr", ":" + strconv.Itoa(mcpPort),
 		"-mcpWriteTimeout", mcpWriteTimeout.String(),
-		"-logLevel", "info",
+		"-logLevel", "debug",
 	}
 	t.Logf("Starting ExtProc with args: %v", args)
 	if inProcess {
