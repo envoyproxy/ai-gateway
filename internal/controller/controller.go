@@ -81,6 +81,8 @@ type Options struct {
 	RootPrefix string
 	// ExtProcExtraEnvVars is the semicolon-separated key=value pairs for extra environment variables in extProc container.
 	ExtProcExtraEnvVars string
+	// ExtProcImagePullSecrets is the semicolon-separated list of image pull secret names for extProc container.
+	ExtProcImagePullSecrets string
 	// ExtProcMaxRecvMsgSize is the maximum message size in bytes that the gRPC server can receive for extProc.
 	ExtProcMaxRecvMsgSize int
 }
@@ -211,6 +213,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.TracingRequestHeaderAttributes,
 			options.RootPrefix,
 			options.ExtProcExtraEnvVars,
+			options.ExtProcImagePullSecrets,
 			options.ExtProcMaxRecvMsgSize,
 			isKubernetes133OrLater(versionInfo, logger),
 		))
