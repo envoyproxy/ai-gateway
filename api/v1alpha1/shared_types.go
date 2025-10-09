@@ -80,7 +80,7 @@ type LLMRequestCost struct {
 	// and it uses "output token" as the cost. The other types are "InputToken", "TotalToken",
 	// and "CEL".
 	//
-	// +kubebuilder:validation:Enum=OutputToken;InputToken;TotalToken;CEL
+	// +kubebuilder:validation:Enum=OutputToken;InputToken;CachedInputToken;TotalToken;CEL
 	Type LLMRequestCostType `json:"type"`
 	// CEL is the CEL expression to calculate the cost of the request.
 	// The CEL expression must return a signed or unsigned integer. If the
@@ -111,6 +111,8 @@ type LLMRequestCostType string
 const (
 	// LLMRequestCostTypeInputToken is the cost type of the input token.
 	LLMRequestCostTypeInputToken LLMRequestCostType = "InputToken"
+	// LLMRequestCostTypeCachedInputToken is the cost type of the cached input token.
+	LLMRequestCostTypeCachedInputToken LLMRequestCostType = "CachedInputToken"
 	// LLMRequestCostTypeOutputToken is the cost type of the output token.
 	LLMRequestCostTypeOutputToken LLMRequestCostType = "OutputToken"
 	// LLMRequestCostTypeTotalToken is the cost type of the total token.
