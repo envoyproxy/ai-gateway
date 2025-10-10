@@ -624,13 +624,9 @@ func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
 				Namespace: namespace,
 			},
 			Spec: gwaiev1.InferencePoolSpec{
-				TargetPortNumber: 8080,
-				EndpointPickerConfig: gwaiev1.EndpointPickerConfig{
-					ExtensionRef: &gwaiev1.Extension{
-						ExtensionReference: gwaiev1.ExtensionReference{
-							Name: "test-epp",
-						},
-					},
+				TargetPorts: []gwaiev1.Port{{Number: 8080}},
+				EndpointPickerRef: gwaiev1.EndpointPickerRef{
+					Name: "test-epp",
 				},
 			},
 		}
@@ -822,13 +818,9 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 				Namespace: namespace,
 			},
 			Spec: gwaiev1.InferencePoolSpec{
-				TargetPortNumber: 8080,
-				EndpointPickerConfig: gwaiev1.EndpointPickerConfig{
-					ExtensionRef: &gwaiev1.Extension{
-						ExtensionReference: gwaiev1.ExtensionReference{
-							Name: "test-epp",
-						},
-					},
+				TargetPorts: []gwaiev1.Port{{Number: 8080}},
+				EndpointPickerRef: gwaiev1.EndpointPickerRef{
+					Name: "test-epp",
 				},
 			},
 		}
@@ -1215,13 +1207,9 @@ func TestInferencePoolHelperFunctions(t *testing.T) {
 			Namespace: "test-ns",
 		},
 		Spec: gwaiev1.InferencePoolSpec{
-			TargetPortNumber: 8080,
-			EndpointPickerConfig: gwaiev1.EndpointPickerConfig{
-				ExtensionRef: &gwaiev1.Extension{
-					ExtensionReference: gwaiev1.ExtensionReference{
-						Name: "test-epp",
-					},
-				},
+			TargetPorts: []gwaiev1.Port{{Number: 8080}},
+			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+				Name: "test-epp",
 			},
 		},
 	}
@@ -1254,7 +1242,7 @@ func TestInferencePoolHelperFunctions(t *testing.T) {
 	t.Run("portForInferencePool custom", func(t *testing.T) {
 		customPool := pool.DeepCopy()
 		customPort := gwaiev1.PortNumber(8888)
-		customPool.Spec.ExtensionRef.PortNumber = &customPort
+		customPool.Spec.EndpointPickerRef.Port = &gwaiev1.Port{Number: customPort}
 		port := portForInferencePool(customPool)
 		require.Equal(t, uint32(8888), port)
 	})
@@ -1264,7 +1252,7 @@ func TestInferencePoolHelperFunctions(t *testing.T) {
 func TestInferencePoolAnnotationHelpers(t *testing.T) {
 	t.Run("getProcessingBodyModeFromAnnotations", func(t *testing.T) {
 		t.Run("no annotations", func(t *testing.T) {
-			pool := &gwaiev1a2.InferencePool{
+			pool := &gwaiev1.InferencePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pool",
 					Namespace: "test-ns",
@@ -1275,7 +1263,7 @@ func TestInferencePoolAnnotationHelpers(t *testing.T) {
 		})
 
 		t.Run("annotation set to duplex", func(t *testing.T) {
-			pool := &gwaiev1a2.InferencePool{
+			pool := &gwaiev1.InferencePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pool",
 					Namespace: "test-ns",
@@ -1289,7 +1277,7 @@ func TestInferencePoolAnnotationHelpers(t *testing.T) {
 		})
 
 		t.Run("annotation set to buffered", func(t *testing.T) {
-			pool := &gwaiev1a2.InferencePool{
+			pool := &gwaiev1.InferencePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pool",
 					Namespace: "test-ns",
@@ -1303,7 +1291,7 @@ func TestInferencePoolAnnotationHelpers(t *testing.T) {
 		})
 
 		t.Run("annotation set to invalid value", func(t *testing.T) {
-			pool := &gwaiev1a2.InferencePool{
+			pool := &gwaiev1.InferencePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pool",
 					Namespace: "test-ns",
@@ -1319,7 +1307,7 @@ func TestInferencePoolAnnotationHelpers(t *testing.T) {
 
 	t.Run("getAllowModeOverrideFromAnnotations", func(t *testing.T) {
 		t.Run("no annotations", func(t *testing.T) {
-			pool := &gwaiev1a2.InferencePool{
+			pool := &gwaiev1.InferencePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pool",
 					Namespace: "test-ns",
@@ -1330,7 +1318,7 @@ func TestInferencePoolAnnotationHelpers(t *testing.T) {
 		})
 
 		t.Run("annotation set to true", func(t *testing.T) {
-			pool := &gwaiev1a2.InferencePool{
+			pool := &gwaiev1.InferencePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pool",
 					Namespace: "test-ns",
@@ -1344,7 +1332,7 @@ func TestInferencePoolAnnotationHelpers(t *testing.T) {
 		})
 
 		t.Run("annotation set to false", func(t *testing.T) {
-			pool := &gwaiev1a2.InferencePool{
+			pool := &gwaiev1.InferencePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pool",
 					Namespace: "test-ns",
@@ -1358,7 +1346,7 @@ func TestInferencePoolAnnotationHelpers(t *testing.T) {
 		})
 
 		t.Run("annotation set to invalid value", func(t *testing.T) {
-			pool := &gwaiev1a2.InferencePool{
+			pool := &gwaiev1.InferencePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pool",
 					Namespace: "test-ns",
@@ -1374,7 +1362,7 @@ func TestInferencePoolAnnotationHelpers(t *testing.T) {
 
 	t.Run("getProcessingBodyModeStringFromAnnotations", func(t *testing.T) {
 		t.Run("no annotations", func(t *testing.T) {
-			pool := &gwaiev1a2.InferencePool{
+			pool := &gwaiev1.InferencePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pool",
 					Namespace: "test-ns",
@@ -1385,7 +1373,7 @@ func TestInferencePoolAnnotationHelpers(t *testing.T) {
 		})
 
 		t.Run("annotation set to duplex", func(t *testing.T) {
-			pool := &gwaiev1a2.InferencePool{
+			pool := &gwaiev1.InferencePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pool",
 					Namespace: "test-ns",
@@ -1399,7 +1387,7 @@ func TestInferencePoolAnnotationHelpers(t *testing.T) {
 		})
 
 		t.Run("annotation set to buffered", func(t *testing.T) {
-			pool := &gwaiev1a2.InferencePool{
+			pool := &gwaiev1.InferencePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pool",
 					Namespace: "test-ns",
@@ -1413,7 +1401,7 @@ func TestInferencePoolAnnotationHelpers(t *testing.T) {
 		})
 
 		t.Run("annotation set to invalid value", func(t *testing.T) {
-			pool := &gwaiev1a2.InferencePool{
+			pool := &gwaiev1.InferencePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pool",
 					Namespace: "test-ns",
@@ -1429,7 +1417,7 @@ func TestInferencePoolAnnotationHelpers(t *testing.T) {
 
 	t.Run("getAllowModeOverrideStringFromAnnotations", func(t *testing.T) {
 		t.Run("no annotations", func(t *testing.T) {
-			pool := &gwaiev1a2.InferencePool{
+			pool := &gwaiev1.InferencePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pool",
 					Namespace: "test-ns",
@@ -1440,7 +1428,7 @@ func TestInferencePoolAnnotationHelpers(t *testing.T) {
 		})
 
 		t.Run("annotation set to true", func(t *testing.T) {
-			pool := &gwaiev1a2.InferencePool{
+			pool := &gwaiev1.InferencePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pool",
 					Namespace: "test-ns",
@@ -1454,7 +1442,7 @@ func TestInferencePoolAnnotationHelpers(t *testing.T) {
 		})
 
 		t.Run("annotation set to false", func(t *testing.T) {
-			pool := &gwaiev1a2.InferencePool{
+			pool := &gwaiev1.InferencePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pool",
 					Namespace: "test-ns",
@@ -1468,7 +1456,7 @@ func TestInferencePoolAnnotationHelpers(t *testing.T) {
 		})
 
 		t.Run("annotation set to invalid value", func(t *testing.T) {
-			pool := &gwaiev1a2.InferencePool{
+			pool := &gwaiev1.InferencePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pool",
 					Namespace: "test-ns",
@@ -1486,19 +1474,13 @@ func TestInferencePoolAnnotationHelpers(t *testing.T) {
 // TestBuildHTTPFilterForInferencePool tests the buildHTTPFilterForInferencePool function with annotations.
 func TestBuildHTTPFilterForInferencePool(t *testing.T) {
 	t.Run("default configuration", func(t *testing.T) {
-		pool := &gwaiev1a2.InferencePool{
+		pool := &gwaiev1.InferencePool{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-pool",
 				Namespace: "test-ns",
 			},
-			Spec: gwaiev1a2.InferencePoolSpec{
-				EndpointPickerConfig: gwaiev1a2.EndpointPickerConfig{
-					ExtensionRef: &gwaiev1a2.Extension{
-						ExtensionReference: gwaiev1a2.ExtensionReference{
-							Name: "test-epp",
-						},
-					},
-				},
+			Spec: gwaiev1.InferencePoolSpec{
+				EndpointPickerRef: gwaiev1.EndpointPickerRef{Name: "test-epp"},
 			},
 		}
 
@@ -1512,7 +1494,7 @@ func TestBuildHTTPFilterForInferencePool(t *testing.T) {
 	})
 
 	t.Run("with buffered mode annotation", func(t *testing.T) {
-		pool := &gwaiev1a2.InferencePool{
+		pool := &gwaiev1.InferencePool{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-pool",
 				Namespace: "test-ns",
@@ -1520,14 +1502,8 @@ func TestBuildHTTPFilterForInferencePool(t *testing.T) {
 					"aigateway.envoyproxy.io/processing-body-mode": "buffered",
 				},
 			},
-			Spec: gwaiev1a2.InferencePoolSpec{
-				EndpointPickerConfig: gwaiev1a2.EndpointPickerConfig{
-					ExtensionRef: &gwaiev1a2.Extension{
-						ExtensionReference: gwaiev1a2.ExtensionReference{
-							Name: "test-epp",
-						},
-					},
-				},
+			Spec: gwaiev1.InferencePoolSpec{
+				EndpointPickerRef: gwaiev1.EndpointPickerRef{Name: "test-epp"},
 			},
 		}
 
@@ -1541,7 +1517,7 @@ func TestBuildHTTPFilterForInferencePool(t *testing.T) {
 	})
 
 	t.Run("with allow mode override annotation", func(t *testing.T) {
-		pool := &gwaiev1a2.InferencePool{
+		pool := &gwaiev1.InferencePool{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-pool",
 				Namespace: "test-ns",
@@ -1549,14 +1525,8 @@ func TestBuildHTTPFilterForInferencePool(t *testing.T) {
 					"aigateway.envoyproxy.io/allow-mode-override": "true",
 				},
 			},
-			Spec: gwaiev1a2.InferencePoolSpec{
-				EndpointPickerConfig: gwaiev1a2.EndpointPickerConfig{
-					ExtensionRef: &gwaiev1a2.Extension{
-						ExtensionReference: gwaiev1a2.ExtensionReference{
-							Name: "test-epp",
-						},
-					},
-				},
+			Spec: gwaiev1.InferencePoolSpec{
+				EndpointPickerRef: gwaiev1.EndpointPickerRef{Name: "test-epp"},
 			},
 		}
 
@@ -1570,7 +1540,7 @@ func TestBuildHTTPFilterForInferencePool(t *testing.T) {
 	})
 
 	t.Run("with both annotations", func(t *testing.T) {
-		pool := &gwaiev1a2.InferencePool{
+		pool := &gwaiev1.InferencePool{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-pool",
 				Namespace: "test-ns",
@@ -1579,14 +1549,8 @@ func TestBuildHTTPFilterForInferencePool(t *testing.T) {
 					"aigateway.envoyproxy.io/allow-mode-override":  "true",
 				},
 			},
-			Spec: gwaiev1a2.InferencePoolSpec{
-				EndpointPickerConfig: gwaiev1a2.EndpointPickerConfig{
-					ExtensionRef: &gwaiev1a2.Extension{
-						ExtensionReference: gwaiev1a2.ExtensionReference{
-							Name: "test-epp",
-						},
-					},
-				},
+			Spec: gwaiev1.InferencePoolSpec{
+				EndpointPickerRef: gwaiev1.EndpointPickerRef{Name: "test-epp"},
 			},
 		}
 
@@ -1608,14 +1572,8 @@ func TestBuildExtProcClusterForInferencePoolEndpointPicker(t *testing.T) {
 			Namespace: "test-ns",
 		},
 		Spec: gwaiev1.InferencePoolSpec{
-			TargetPortNumber: 8080,
-			EndpointPickerConfig: gwaiev1.EndpointPickerConfig{
-				ExtensionRef: &gwaiev1.Extension{
-					ExtensionReference: gwaiev1.ExtensionReference{
-						Name: "test-epp",
-					},
-				},
-			},
+			TargetPorts:       []gwaiev1.Port{{Number: 8080}},
+			EndpointPickerRef: gwaiev1.EndpointPickerRef{Name: "test-epp"},
 		},
 	}
 
@@ -1632,14 +1590,6 @@ func TestBuildExtProcClusterForInferencePoolEndpointPicker(t *testing.T) {
 	t.Run("nil pool panics", func(t *testing.T) {
 		require.Panics(t, func() {
 			buildExtProcClusterForInferencePoolEndpointPicker(nil)
-		})
-	})
-
-	t.Run("nil ExtensionRef panics", func(t *testing.T) {
-		invalidPool := pool.DeepCopy()
-		invalidPool.Spec.ExtensionRef = nil
-		require.Panics(t, func() {
-			buildExtProcClusterForInferencePoolEndpointPicker(invalidPool)
 		})
 	})
 }

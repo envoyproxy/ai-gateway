@@ -207,10 +207,10 @@ func requireInferencePoolStatusValid(t *testing.T, namespace, inferencePoolName,
 		}
 
 		// Find the parent status for the expected Gateway.
-		var foundParent *gwaiev1.PoolStatus
+		var foundParent *gwaiev1.ParentStatus
 		for i := range status.Parents {
 			parent := &status.Parents[i]
-			if string(parent.GatewayRef.Name) == expectedGatewayName {
+			if string(parent.ParentRef.Name) == expectedGatewayName {
 				foundParent = parent
 				break
 			}
@@ -222,23 +222,23 @@ func requireInferencePoolStatusValid(t *testing.T, namespace, inferencePoolName,
 		}
 
 		// Validate the GatewayRef fields.
-		if foundParent.GatewayRef.Group == nil || string(*foundParent.GatewayRef.Group) != "gateway.networking.k8s.io" {
-			t.Logf("InferencePool %s parent GatewayRef has incorrect group: %v", inferencePoolName, foundParent.GatewayRef.Group)
+		if foundParent.ParentRef.Group == nil || string(*foundParent.ParentRef.Group) != "gateway.networking.k8s.io" {
+			t.Logf("InferencePool %s parent GatewayRef has incorrect group: %v", inferencePoolName, foundParent.ParentRef.Group)
 			return false
 		}
 
-		if foundParent.GatewayRef.Kind == nil || string(*foundParent.GatewayRef.Kind) != "Gateway" {
-			t.Logf("InferencePool %s parent GatewayRef has incorrect kind: %v", inferencePoolName, foundParent.GatewayRef.Kind)
+		if string(foundParent.ParentRef.Kind) != "Gateway" {
+			t.Logf("InferencePool %s parent GatewayRef has incorrect kind: %v", inferencePoolName, foundParent.ParentRef.Kind)
 			return false
 		}
 
-		if string(foundParent.GatewayRef.Name) != expectedGatewayName {
-			t.Logf("InferencePool %s parent GatewayRef has incorrect name: %s (expected %s)", inferencePoolName, foundParent.GatewayRef.Name, expectedGatewayName)
+		if string(foundParent.ParentRef.Name) != expectedGatewayName {
+			t.Logf("InferencePool %s parent GatewayRef has incorrect name: %s (expected %s)", inferencePoolName, foundParent.ParentRef.Name, expectedGatewayName)
 			return false
 		}
 
-		if foundParent.GatewayRef.Namespace == nil || string(*foundParent.GatewayRef.Namespace) != namespace {
-			t.Logf("InferencePool %s parent GatewayRef has incorrect namespace: %v (expected %s)", inferencePoolName, foundParent.GatewayRef.Namespace, namespace)
+		if string(foundParent.ParentRef.Namespace) != namespace {
+			t.Logf("InferencePool %s parent GatewayRef has incorrect namespace: %v (expected %s)", inferencePoolName, foundParent.ParentRef.Namespace, namespace)
 			return false
 		}
 

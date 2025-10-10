@@ -48,16 +48,12 @@ func TestInferencePoolController_ExtensionReferenceValidation(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: gwaiev1.InferencePoolSpec{
-			Selector: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
+			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
 				"app": "test-app",
-			},
-			TargetPortNumber: 8080,
-			EndpointPickerConfig: gwaiev1.EndpointPickerConfig{
-				ExtensionRef: &gwaiev1.Extension{
-					ExtensionReference: gwaiev1.ExtensionReference{
-						Name: "non-existent-service",
-					},
-				},
+			}},
+			TargetPorts: []gwaiev1.Port{{Number: 8080}},
+			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+				Name: "non-existent-service",
 			},
 		},
 	}
@@ -113,16 +109,12 @@ func TestInferencePoolController_ExtensionReferenceValidationSuccess(t *testing.
 			Namespace: "default",
 		},
 		Spec: gwaiev1.InferencePoolSpec{
-			Selector: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
+			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
 				"app": "test-app",
-			},
-			TargetPortNumber: 8080,
-			EndpointPickerConfig: gwaiev1.EndpointPickerConfig{
-				ExtensionRef: &gwaiev1.Extension{
-					ExtensionReference: gwaiev1.ExtensionReference{
-						Name: "existing-service",
-					},
-				},
+			}},
+			TargetPorts: []gwaiev1.Port{{Number: 8080}},
+			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+				Name: "existing-service",
 			},
 		},
 	}
@@ -216,16 +208,12 @@ func TestInferencePoolController_Reconcile(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: gwaiev1.InferencePoolSpec{
-			Selector: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
+			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
 				"app": "test-app",
-			},
-			TargetPortNumber: 8080,
-			EndpointPickerConfig: gwaiev1.EndpointPickerConfig{
-				ExtensionRef: &gwaiev1.Extension{
-					ExtensionReference: gwaiev1.ExtensionReference{
-						Name: "test-epp",
-					},
-				},
+			}},
+			TargetPorts: []gwaiev1.Port{{Number: 8080}},
+			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+				Name: "test-epp",
 			},
 		},
 	}
@@ -252,10 +240,10 @@ func TestInferencePoolController_Reconcile(t *testing.T) {
 	require.Len(t, updatedInferencePool.Status.Parents, 1)
 	parent := updatedInferencePool.Status.Parents[0]
 
-	require.Equal(t, "gateway.networking.k8s.io", string(*parent.GatewayRef.Group))
-	require.Equal(t, "Gateway", string(*parent.GatewayRef.Kind))
-	require.Equal(t, "test-gateway", string(parent.GatewayRef.Name))
-	require.Equal(t, "default", string(*parent.GatewayRef.Namespace))
+	require.Equal(t, "gateway.networking.k8s.io", string(*parent.ParentRef.Group))
+	require.Equal(t, "Gateway", string(parent.ParentRef.Kind))
+	require.Equal(t, "test-gateway", string(parent.ParentRef.Name))
+	require.Equal(t, "default", string(parent.ParentRef.Namespace))
 
 	// Verify that the conditions are set correctly.
 	require.Len(t, parent.Conditions, 2, "Should have both Accepted and ResolvedRefs conditions")
@@ -309,16 +297,12 @@ func TestInferencePoolController_NoReferencingGateways(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: gwaiev1.InferencePoolSpec{
-			Selector: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
+			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
 				"app": "test-app",
-			},
-			TargetPortNumber: 8080,
-			EndpointPickerConfig: gwaiev1.EndpointPickerConfig{
-				ExtensionRef: &gwaiev1.Extension{
-					ExtensionReference: gwaiev1.ExtensionReference{
-						Name: "test-epp",
-					},
-				},
+			}},
+			TargetPorts: []gwaiev1.Port{{Number: 8080}},
+			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+				Name: "test-epp",
 			},
 		},
 	}
@@ -563,10 +547,10 @@ func TestInferencePoolController_gatewayEventHandler(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: gwaiev1.InferencePoolSpec{
-			Selector: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
+			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
 				"app": "test-app",
-			},
-			TargetPortNumber: 8080,
+			}},
+			TargetPorts: []gwaiev1.Port{{Number: 8080}},
 		},
 	}
 	require.NoError(t, fakeClient.Create(context.Background(), inferencePool))
@@ -707,10 +691,10 @@ func TestInferencePoolController_EdgeCases(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: gwaiev1.InferencePoolSpec{
-			Selector: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
+			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
 				"app": "test-app",
-			},
-			TargetPortNumber: 8080,
+			}},
+			TargetPorts: []gwaiev1.Port{{Number: 8080}},
 			// No ExtensionRef.
 		},
 	}
@@ -732,16 +716,12 @@ func TestInferencePoolController_EdgeCases(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: gwaiev1.InferencePoolSpec{
-			Selector: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
+			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
 				"app": "test-app",
-			},
-			TargetPortNumber: 8080,
-			EndpointPickerConfig: gwaiev1.EndpointPickerConfig{
-				ExtensionRef: &gwaiev1.Extension{
-					ExtensionReference: gwaiev1.ExtensionReference{
-						Name: "", // Empty name.
-					},
-				},
+			}},
+			TargetPorts: []gwaiev1.Port{{Number: 8080}},
+			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+				Name: "", // Empty name.
 			},
 		},
 	}
@@ -825,16 +805,12 @@ func TestInferencePoolController_CrossNamespaceReferences(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: gwaiev1.InferencePoolSpec{
-			Selector: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
+			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
 				"app": "test-app",
-			},
-			TargetPortNumber: 8080,
-			EndpointPickerConfig: gwaiev1.EndpointPickerConfig{
-				ExtensionRef: &gwaiev1.Extension{
-					ExtensionReference: gwaiev1.ExtensionReference{
-						Name: "test-epp",
-					},
-				},
+			}},
+			TargetPorts: []gwaiev1.Port{{Number: 8080}},
+			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+				Name: "test-epp",
 			},
 		},
 	}
@@ -861,10 +837,10 @@ func TestInferencePoolController_CrossNamespaceReferences(t *testing.T) {
 	require.Len(t, updatedInferencePool.Status.Parents, 1)
 	parent := updatedInferencePool.Status.Parents[0]
 
-	require.Equal(t, "gateway.networking.k8s.io", string(*parent.GatewayRef.Group))
-	require.Equal(t, "Gateway", string(*parent.GatewayRef.Kind))
-	require.Equal(t, "test-gateway", string(parent.GatewayRef.Name))
-	require.Equal(t, "gateway-namespace", string(*parent.GatewayRef.Namespace))
+	require.Equal(t, "gateway.networking.k8s.io", string(*parent.ParentRef.Group))
+	require.Equal(t, "Gateway", string(parent.ParentRef.Kind))
+	require.Equal(t, "test-gateway", string(parent.ParentRef.Name))
+	require.Equal(t, "gateway-namespace", string(parent.ParentRef.Namespace))
 }
 
 func TestInferencePoolController_UpdateInferencePoolStatus(t *testing.T) {
@@ -918,10 +894,10 @@ func TestInferencePoolController_UpdateInferencePoolStatus(t *testing.T) {
 			Generation: 5, // Set a specific generation for testing.
 		},
 		Spec: gwaiev1.InferencePoolSpec{
-			Selector: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
+			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
 				"app": "test-app",
-			},
-			TargetPortNumber: 8080,
+			}},
+			TargetPorts: []gwaiev1.Port{{Number: 8080}},
 		},
 	}
 	require.NoError(t, fakeClient.Create(context.Background(), inferencePool))
@@ -940,7 +916,7 @@ func TestInferencePoolController_UpdateInferencePoolStatus(t *testing.T) {
 	require.Len(t, updatedInferencePool.Status.Parents, 1)
 	parent := updatedInferencePool.Status.Parents[0]
 
-	require.Equal(t, "test-gateway", string(parent.GatewayRef.Name))
+	require.Equal(t, "test-gateway", string(parent.ParentRef.Name))
 	require.Len(t, parent.Conditions, 2, "Should have both Accepted and ResolvedRefs conditions")
 
 	// Find the conditions.
@@ -976,10 +952,10 @@ func TestInferencePoolController_GetReferencedGateways_ErrorHandling(t *testing.
 			Namespace: "default",
 		},
 		Spec: gwaiev1.InferencePoolSpec{
-			Selector: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
+			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
 				"app": "test-app",
-			},
-			TargetPortNumber: 8080,
+			}},
+			TargetPorts: []gwaiev1.Port{{Number: 8080}},
 		},
 	}
 
@@ -1089,10 +1065,10 @@ func TestInferencePoolController_ValidateExtensionReference_EdgeCases(t *testing
 			Namespace: "default",
 		},
 		Spec: gwaiev1.InferencePoolSpec{
-			Selector: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
+			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
 				"app": "test-app",
-			},
-			TargetPortNumber: 8080,
+			}},
+			TargetPorts: []gwaiev1.Port{{Number: 8080}},
 			// No EndpointPickerConfig.
 		},
 	}
@@ -1107,12 +1083,12 @@ func TestInferencePoolController_ValidateExtensionReference_EdgeCases(t *testing
 			Namespace: "default",
 		},
 		Spec: gwaiev1.InferencePoolSpec{
-			Selector: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
+			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
 				"app": "test-app",
-			},
-			TargetPortNumber:     8080,
-			EndpointPickerConfig: gwaiev1.EndpointPickerConfig{
-				// ExtensionRef is nil.
+			}},
+			TargetPorts: []gwaiev1.Port{{Number: 8080}},
+			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+				Name: "test-epp",
 			},
 		},
 	}
@@ -1142,16 +1118,12 @@ func TestInferencePoolController_ValidateExtensionReference_EdgeCases(t *testing
 			Namespace: "default", // InferencePool in default namespace.
 		},
 		Spec: gwaiev1.InferencePoolSpec{
-			Selector: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
+			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
 				"app": "test-app",
-			},
-			TargetPortNumber: 8080,
-			EndpointPickerConfig: gwaiev1.EndpointPickerConfig{
-				ExtensionRef: &gwaiev1.Extension{
-					ExtensionReference: gwaiev1.ExtensionReference{
-						Name: "service-other-ns", // Service in other-namespace.
-					},
-				},
+			}},
+			TargetPorts: []gwaiev1.Port{{Number: 8080}},
+			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+				Name: "service-other-ns", // Refers to service in other-namespace.
 			},
 		},
 	}
@@ -1172,16 +1144,12 @@ func TestInferencePoolController_Reconcile_ErrorHandling(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: gwaiev1.InferencePoolSpec{
-			Selector: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
+			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
 				"app": "test-app",
-			},
-			TargetPortNumber: 8080,
-			EndpointPickerConfig: gwaiev1.EndpointPickerConfig{
-				ExtensionRef: &gwaiev1.Extension{
-					ExtensionReference: gwaiev1.ExtensionReference{
-						Name: "", // Empty name.
-					},
-				},
+			}},
+			TargetPorts: []gwaiev1.Port{{Number: 8080}},
+			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+				Name: "", // Empty name.
 			},
 		},
 	}
@@ -1205,16 +1173,12 @@ func TestInferencePoolController_Reconcile_ErrorHandling(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: gwaiev1.InferencePoolSpec{
-			Selector: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
+			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
 				"app": "test-app",
-			},
-			TargetPortNumber: 8080,
-			EndpointPickerConfig: gwaiev1.EndpointPickerConfig{
-				ExtensionRef: &gwaiev1.Extension{
-					ExtensionReference: gwaiev1.ExtensionReference{
-						Name: "non-existent-service",
-					},
-				},
+			}},
+			TargetPorts: []gwaiev1.Port{{Number: 8080}},
+			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+				Name: "non-existent-service",
 			},
 		},
 	}
@@ -1243,10 +1207,10 @@ func TestInferencePoolController_SyncInferencePool_EdgeCases(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: gwaiev1.InferencePoolSpec{
-			Selector: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
+			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
 				"app": "test-app",
-			},
-			TargetPortNumber: 8080,
+			}},
+			TargetPorts: []gwaiev1.Port{{Number: 8080}},
 		},
 	}
 	require.NoError(t, fakeClient.Create(context.Background(), inferencePoolNoGateways))
@@ -1266,13 +1230,8 @@ func TestInferencePoolController_SyncInferencePool_EdgeCases(t *testing.T) {
 		},
 	}
 	require.NoError(t, fakeClient.Create(context.Background(), service))
-
-	inferencePoolNoGateways.Spec.EndpointPickerConfig = gwaiev1.EndpointPickerConfig{
-		ExtensionRef: &gwaiev1.Extension{
-			ExtensionReference: gwaiev1.ExtensionReference{
-				Name: "test-epp-no-gateways",
-			},
-		},
+	inferencePoolNoGateways.Spec.EndpointPickerRef = gwaiev1.EndpointPickerRef{
+		Name: "test-epp-no-gateways",
 	}
 	require.NoError(t, fakeClient.Update(context.Background(), inferencePoolNoGateways))
 
@@ -1307,10 +1266,10 @@ func TestInferencePoolController_GetReferencedGateways_ComplexScenarios(t *testi
 			Namespace: "default",
 		},
 		Spec: gwaiev1.InferencePoolSpec{
-			Selector: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
+			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
 				"app": "test-app",
-			},
-			TargetPortNumber: 8080,
+			}},
+			TargetPorts: []gwaiev1.Port{{Number: 8080}},
 		},
 	}
 
@@ -1528,10 +1487,10 @@ func TestInferencePoolController_UpdateInferencePoolStatus_MultipleGateways(t *t
 			Generation: 10, // Set a specific generation for testing.
 		},
 		Spec: gwaiev1.InferencePoolSpec{
-			Selector: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
+			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
 				"app": "test-app",
-			},
-			TargetPortNumber: 8080,
+			}},
+			TargetPorts: []gwaiev1.Port{{Number: 8080}},
 		},
 	}
 	require.NoError(t, fakeClient.Create(context.Background(), inferencePool))
@@ -1706,10 +1665,10 @@ func TestInferencePoolController_UpdateInferencePoolStatus_ExtensionRefError(t *
 			Generation: 15, // Set a specific generation for testing.
 		},
 		Spec: gwaiev1.InferencePoolSpec{
-			Selector: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
+			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
 				"app": "test-app",
-			},
-			TargetPortNumber: 8080,
+			}},
+			TargetPorts: []gwaiev1.Port{{Number: 8080}},
 		},
 	}
 	require.NoError(t, fakeClient.Create(context.Background(), inferencePool))
@@ -1729,7 +1688,7 @@ func TestInferencePoolController_UpdateInferencePoolStatus_ExtensionRefError(t *
 	require.Len(t, updatedInferencePool.Status.Parents, 1)
 	parent := updatedInferencePool.Status.Parents[0]
 
-	require.Equal(t, "test-gateway-ext-error", string(parent.GatewayRef.Name))
+	require.Equal(t, "test-gateway-ext-error", string(parent.ParentRef.Name))
 	require.Len(t, parent.Conditions, 2, "Should have both Accepted and ResolvedRefs conditions")
 
 	// Find the conditions.
