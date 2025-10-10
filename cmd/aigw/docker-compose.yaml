@@ -22,7 +22,7 @@ services:
     image: alpine/ollama
     container_name: ollama-pull
     environment:
-     OLLAMA_HOST: localhost:11434 # intentionally not 127.0.0.1
+      OLLAMA_HOST: localhost:11434 # intentionally not 127.0.0.1
     env_file:
       - ../../.env.ollama
     entrypoint: sh
@@ -153,5 +153,5 @@ services:
           -H "Authorization: Bearer unused" \
           -H "Content-Type: application/json" \
           -d "{\"model\":\"$$IMAGE_GENERATION_MODEL\",\"prompt\":\"A watercolor painting of a red fox in a birch forest\",\"size\":\"1024x1024\",\"quality\":\"low\"}"
-    extra_hosts:  # localhost:host-gateway trick doesn't work with aigw
+    extra_hosts: # localhost:host-gateway trick doesn't work with aigw
       - "host.docker.internal:host-gateway"
