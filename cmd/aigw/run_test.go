@@ -28,6 +28,7 @@ import (
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
+	"github.com/tetratelabs/func-e/api"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -473,6 +474,40 @@ func TestPollEnvoyReady(t *testing.T) {
 		require.ErrorIs(t, pollEnvoyReady(ctx, l, envoyAdmin, 50*time.Millisecond), context.DeadlineExceeded)
 		require.Less(t, callCount, successAt)
 	})
+}
+
+func Test_newEnvoyMiddleware(t *testing.T) {
+	tests := []struct {
+		name         string
+		inputOptions []api.RunOption
+	}{
+		{
+			name: "no input options",
+		},
+		{
+			name:         "options appended",
+			inputOptions: []api.RunOption{api.EnvoyVersion("1.2.3")},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+
+			middleware := newEnvoyRunMiddleware(&stdout, &stderr)
+			require.NotNil(t, middleware)
+
+			err := middleware(func(ctx context.Context, args []string, options ...api.RunOption) error {
+				require.Equal(t, t.Context(), ctx)
+				require.Equal(t, []string{"test"}, args)
+
+				// 2 = EnvoyOut, EnvoyErr
+				require.Len(t, options, 2+len(tt.inputOptions))
+				return nil
+			})(t.Context(), []string{"test"}, tt.inputOptions...)
+			require.NoError(t, err)
+		})
+	}
 }
 
 func readFileFromProjectRoot(t *testing.T, file string) string {
