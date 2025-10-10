@@ -115,19 +115,19 @@ spec:
           image: registry.k8s.io/gateway-api-inference-extension/epp:v1.0.1
           imagePullPolicy: IfNotPresent
           args:
-            - -poolName
+            - --pool-name
             - "mistral"
-            - "-poolNamespace"
+            - "--pool-namespace"
             - "default"
-            - -v
+            - --v
             - "4"
             - --zap-encoder
             - "json"
-            - -grpcPort
+            - --grpc-port
             - "9002"
-            - -grpcHealthPort
+            - --grpc-health-port
             - "9003"
-            - "-configFile"
+            - "--config-file"
             - "/config/default-plugins.yaml"
           ports:
             - containerPort: 9002
