@@ -470,7 +470,7 @@ func TestPollEnvoyReady(t *testing.T) {
 		t.Cleanup(func() { callCount = 0 })
 		envoyAdmin, err := aigw.NewEnvoyAdminClient(ctx, os.Getpid(), adminPort)
 		require.NoError(t, err)
-		require.NoError(t, pollEnvoyReady(ctx, l, envoyAdmin, 50*time.Millisecond))
+		require.ErrorIs(t, pollEnvoyReady(ctx, l, envoyAdmin, 50*time.Millisecond), context.DeadlineExceeded)
 		require.Less(t, callCount, successAt)
 	})
 }
