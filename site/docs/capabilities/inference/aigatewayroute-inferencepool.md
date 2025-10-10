@@ -240,15 +240,15 @@ metadata:
   name: pod-read
   namespace: default
 rules:
-- apiGroups: [ "inference.networking.x-k8s.io" ]
-  resources: [ "inferenceobjectives", "inferencepools" ]
-  verbs: [ "get", "watch", "list" ]
-- apiGroups: [ "inference.networking.k8s.io" ]
-  resources: [ "inferencepools" ]
-  verbs: [ "get", "watch", "list" ]
-- apiGroups: [ "" ]
-  resources: [ "pods" ]
-  verbs: [ "get", "watch", "list" ]
+  - apiGroups: ["inference.networking.x-k8s.io"]
+    resources: ["inferenceobjectives", "inferencepools"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["inference.networking.k8s.io"]
+    resources: ["inferencepools"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "watch", "list"]
 ---
 kind: RoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -256,9 +256,9 @@ metadata:
   name: pod-read-binding
   namespace: default
 subjects:
-- kind: ServiceAccount
-  name: mistral-epp
-  namespace: default
+  - kind: ServiceAccount
+    name: mistral-epp
+    namespace: default
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -269,27 +269,27 @@ apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: auth-reviewer
 rules:
-- apiGroups:
-  - authentication.k8s.io
-  resources:
-  - tokenreviews
-  verbs:
-  - create
-- apiGroups:
-  - authorization.k8s.io
-  resources:
-  - subjectaccessreviews
-  verbs:
-  - create
+  - apiGroups:
+      - authentication.k8s.io
+    resources:
+      - tokenreviews
+    verbs:
+      - create
+  - apiGroups:
+      - authorization.k8s.io
+    resources:
+      - subjectaccessreviews
+    verbs:
+      - create
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: auth-reviewer-binding
 subjects:
-- kind: ServiceAccount
-  name: mistral-epp
-  namespace: default
+  - kind: ServiceAccount
+    name: mistral-epp
+    namespace: default
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
