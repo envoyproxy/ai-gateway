@@ -193,13 +193,14 @@ curl $GATEWAY_URL/v1/models
 The following table summarizes which providers support which endpoints:
 
 | Provider                                                                                              | Chat Completions | Completions | Embeddings | Notes                                              |
-| ----------------------------------------------------------------------------------------------------- | :--------------: | :---------: | :--------: | -------------------------------------------------- |
-| [OpenAI](https://platform.openai.com/docs/api-reference)                                              |        ✅        |     ✅      |     ✅     |                                                    |
-| [AWS Bedrock](https://docs.aws.amazon.com/bedrock/latest/APIReference/)                               |        ✅        |     🚧      |     🚧     | Via API translation                                |
-| [Azure OpenAI](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference)                  |        ✅        |     🚧      |     🚧     | Via API translation                                |
-| [Google Gemini](https://ai.google.dev/gemini-api/docs/openai)                                         |        ✅        |     ⚠️      |     ✅     | Via OpenAI-compatible API                          |
-| [Groq](https://console.groq.com/docs/openai)                                                          |        ✅        |     ❌      |     ❌     | Via OpenAI-compatible API                          |
-| [Grok](https://docs.x.ai/docs/api-reference)                                                          |        ✅        |     ⚠️      |     ❌     | Via OpenAI-compatible API                          |
+|-------------------------------------------------------------------------------------------------------|:----------------:|:-----------:|:----------:|----------------------------------------------------|
+| [OpenAI](https://platform.openai.com/docs/api-reference)                                              |        ✅         |      ✅      |     ✅      |                                                    |
+| [AWS Bedrock](https://docs.aws.amazon.com/bedrock/latest/APIReference/)                               |        ✅         |     🚧      |     🚧     | Via API translation                                |
+| [Azure OpenAI](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference)                  |        ✅         |     🚧      |     ✅     | Via API translation or via [OpenAI-compatible API](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/latest) using this AIServiceBackend spec version: openai/v1 and schema: OpenAI
+|
+| [Google Gemini](https://ai.google.dev/gemini-api/docs/openai)                                         |        ✅         |     ⚠️      |     ✅      | Via OpenAI-compatible API                          |
+| [Groq](https://console.groq.com/docs/openai)                                                          |        ✅         |      ❌      |     ❌      | Via OpenAI-compatible API                          |
+| [Grok](https://docs.x.ai/docs/api-reference)                                                          |        ✅         |     ⚠️      |     ❌      | Via OpenAI-compatible API                          |
 | [Together AI](https://docs.together.ai/docs/openai-api-compatibility)                                 |        ⚠️        |     ⚠️      |     ⚠️     | Via OpenAI-compatible API                          |
 | [Cohere](https://docs.cohere.com/v2/docs/compatibility-api)                                           |        ⚠️        |     ⚠️      |     ⚠️     | Via OpenAI-compatible API                          |
 | [Mistral](https://docs.mistral.ai/api/)                                                               |        ⚠️        |     ⚠️      |     ⚠️     | Via OpenAI-compatible API                          |
