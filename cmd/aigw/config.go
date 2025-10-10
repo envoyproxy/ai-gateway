@@ -31,6 +31,7 @@ func readConfig(path string, mcpServers *autoconfig.MCPServers, debug bool) (str
 
 	var data autoconfig.ConfigData
 	data.Debug = debug
+	data.EnvoyVersion = os.Getenv("ENVOY_VERSION")
 
 	// Add MCP servers if provided
 	if mcpServers != nil {
