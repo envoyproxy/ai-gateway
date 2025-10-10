@@ -41,9 +41,7 @@ func TestGatewayAPIInferenceExtension(t *testing.T) {
 	options.TimeoutConfig = defaultTimeoutConfig
 	options.GatewayClassName = "inference-pool"
 	// enable EPPUnAvaliableFailOpen after https://github.com/kubernetes-sigs/gateway-api-inference-extension/pull/1265 merged.
-	options.SkipTests = []string{
-		"EppUnAvailableFailOpen",
-	}
+	options.SkipTests = []string{}
 
 	gie.RunConformanceWithOptions(t, options)
 }

@@ -214,55 +214,18 @@ metadata:
   namespace: default
 data:
   default-plugins.yaml: |
-    apiVersion: inference.networking.k8s.io/v1alpha1
+    apiVersion: inference.networking.x-k8s.io/v1alpha1
     kind: EndpointPickerConfig
     plugins:
-    - type: low-queue-filter
-      parameters:
-        threshold: 128
-    - type: lora-affinity-filter
-      parameters:
-        threshold: 0.999
-    - type: least-queue-filter
-    - type: least-kv-cache-filter
-    - type: decision-tree-filter
-      name: low-latency-filter
-      parameters:
-        current:
-          pluginRef: low-queue-filter
-        nextOnSuccess:
-          decisionTree:
-            current:
-              pluginRef: lora-affinity-filter
-            nextOnSuccessOrFailure:
-              decisionTree:
-                current:
-                  pluginRef: least-queue-filter
-                nextOnSuccessOrFailure:
-                  decisionTree:
-                    current:
-                      pluginRef: least-kv-cache-filter
-        nextOnFailure:
-          decisionTree:
-            current:
-              pluginRef: least-queue-filter
-            nextOnSuccessOrFailure:
-              decisionTree:
-                current:
-                  pluginRef: lora-affinity-filter
-                nextOnSuccessOrFailure:
-                  decisionTree:
-                    current:
-                      pluginRef: least-kv-cache-filter
-    - type: random-picker
-      parameters:
-        maxNumOfEndpoints: 1
-    - type: single-profile-handler
+    - type: queue-scorer
+    - type: kv-cache-utilization-scorer
+    - type: prefix-cache-scorer
     schedulingProfiles:
     - name: default
       plugins:
-      - pluginRef: low-latency-filter
-      - pluginRef: random-picker
+      - pluginRef: queue-scorer
+      - pluginRef: kv-cache-utilization-scorer
+      - pluginRef: prefix-cache-scorer
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
