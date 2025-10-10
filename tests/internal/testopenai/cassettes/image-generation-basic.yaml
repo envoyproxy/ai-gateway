@@ -6,14 +6,14 @@ interactions:
     proto: HTTP/1.1
     proto_major: 1
     proto_minor: 1
-    content_length: 105
+    content_length: 139
     host: api.openai.com
-    body: "{\n  \"model\": \"dall-e-2\",\n  \"prompt\": \"A simple black-and-white line drawing of a cat playing with yarn\"\n}"
+    body: "{\n  \"model\": \"gpt-image-1-mini\",\n  \"prompt\": \"A simple black-and-white line drawing of a cat playing with yarn\",\n  \"size\": \"1024x1024\",\n  \"quality\": \"low\"\n}"
     headers:
       Accept-Encoding:
       - gzip
       Content-Length:
-      - "105"
+      - "139"
       Content-Type:
       - application/json
       User-Agent:
@@ -25,22 +25,22 @@ interactions:
     proto_major: 2
     proto_minor: 0
     content_length: 544
-    body: "{\n  \"created\": 1759925706,\n  \"data\": [\n    {\n      \"url\": \"https://oaidalleapiprodscus.blob.core.windows.net/private/org-lKxIBdltrjcFbzboW0t1hthB/user-EdKNxj0PjYS29CfjUcR77ybc/img-MigVWgAi6l5W3B31L6imFob3.png?st=2025-10-08T11%3A15%3A05Z&se=2025-10-08T13%3A15%3A05Z&sp=r&sv=2024-08-04&sr=b&rscd=inline&rsct=image/png&skoid=52f8f7b3-ca8d-4b21-9807-8b9df114d84c&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2025-10-08T12%3A15%3A05Z&ske=2025-10-09T12%3A15%3A05Z&sks=b&skv=2024-08-04&sig=ex3I6RoFVH9hfNst8oloGtfBVA3o2aXvTI4cFtLVzlE%3D\"\n    }\n  ]\n}"
+    body: "{\n  \"created\": 1760092079,\n  \"data\": [\n    {\n      \"url\": \"https://oaidalleapiprodscus.blob.core.windows.net/private/org-lKxIBdltrjcFbzboW0t1hthB/user-EdKNxj0PjYS29CfjUcR77ybc/img-3Ah2ERYmeJLYrRlxnuWPFpXG.png?st=2025-10-10T09%3A27%3A58Z&se=2025-10-10T11%3A27%3A58Z&sp=r&sv=2024-08-04&sr=b&rscd=inline&rsct=image/png&skoid=475fd488-6c59-44a5-9aa9-31c4db451bea&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2025-10-10T10%3A27%3A58Z&ske=2025-10-11T10%3A27%3A58Z&sks=b&skv=2024-08-04&sig=IlzMauzcIHqE5/JLQsiMglI0mqbGlrpQC/mvJz4TYuc%3D\"\n    }\n  ]\n}"
     headers:
       Alt-Svc:
       - h3=":443"; ma=86400
       Cf-Cache-Status:
       - DYNAMIC
       Cf-Ray:
-      - 98b58f7bde648af7-BOM
+      - 98c56d4f2dd889f6-BOM
       Content-Length:
       - "544"
       Content-Type:
       - application/json
       Date:
-      - Wed, 08 Oct 2025 12:15:06 GMT
+      - Fri, 10 Oct 2025 10:27:59 GMT
       Openai-Processing-Ms:
-      - "13265"
+      - "13023"
       Openai-Project:
       - proj_Ro6stNUOKIiLVqRr1zdjaFoh
       Openai-Version:
@@ -52,9 +52,9 @@ interactions:
       X-Content-Type-Options:
       - nosniff
       X-Envoy-Upstream-Service-Time:
-      - "13269"
+      - "13027"
       X-Request-Id:
-      - req_c643aaa7f52258b2192d4c133d117e43
+      - req_54999507941c487a8f1997287aaa8cf6
     status: 200 OK
     code: 200
-    duration: 13.632879292s
+    duration: 14.290895958s

@@ -74,7 +74,7 @@ Here are values we use for Ollama:
          -X POST http://localhost:1975/v1/images/generations \
          -H "Authorization: Bearer unused" \
          -H "Content-Type: application/json" \
-        -d '{"model":"gpt-image-1-mini","prompt":"A watercolor painting of a red fox in a birch forest","size":"1024x1024","quality":"low"}' \
+         -d '{"model":"gpt-image-1-mini","prompt":"A watercolor painting of a red fox in a birch forest","size":"1024x1024","quality":"low"}' \
          | jq -r '.data[0].b64_json' | base64 -d > image.png
        ```
 
