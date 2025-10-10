@@ -144,6 +144,12 @@ spec:
       appProtocol: http2
   type: ClusterIP
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mistral-epp
+  namespace: default
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -227,45 +233,66 @@ data:
       - pluginRef: kv-cache-utilization-scorer
       - pluginRef: prefix-cache-scorer
 ---
-kind: ClusterRole
+kind: Role
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: pod-read
+  namespace: default
 rules:
-  - apiGroups: ["inference.networking.k8s.io"]
-    resources: ["inferencepools"]
-    verbs: ["get", "watch", "list"]
-  - apiGroups: ["inference.networking.k8s.io"]
-    resources: ["inferencemodels"]
-    verbs: ["get", "watch", "list"]
-  - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["get", "watch", "list"]
-  - apiGroups:
-      - authentication.k8s.io
-    resources:
-      - tokenreviews
-    verbs:
-      - create
-  - apiGroups:
-      - authorization.k8s.io
-    resources:
-      - subjectaccessreviews
-    verbs:
-      - create
+- apiGroups: [ "inference.networking.x-k8s.io" ]
+  resources: [ "inferenceobjectives", "inferencepools" ]
+  verbs: [ "get", "watch", "list" ]
+- apiGroups: [ "inference.networking.k8s.io" ]
+  resources: [ "inferencepools" ]
+  verbs: [ "get", "watch", "list" ]
+- apiGroups: [ "" ]
+  resources: [ "pods" ]
+  verbs: [ "get", "watch", "list" ]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: pod-read-binding
+  namespace: default
+subjects:
+- kind: ServiceAccount
+  name: mistral-epp
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pod-read
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: auth-reviewer
+rules:
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: pod-read-binding
+  name: auth-reviewer-binding
 subjects:
-  - kind: ServiceAccount
-    name: default
-    namespace: default
+- kind: ServiceAccount
+  name: mistral-epp
+  namespace: default
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: pod-read
+  name: auth-reviewer
 EOF
 ```
 
