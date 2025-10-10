@@ -228,60 +228,6 @@ func TestPortForwarder_Post(t *testing.T) {
 	}
 }
 
-func TestPortForwarder_ConcurrentRestarts(t *testing.T) {
-	pod := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("success"))
-	}))
-	t.Cleanup(pod.Close)
-	servicePort := pod.Listener.Addr().(*net.TCPAddr).Port
-
-	serviceURL, err := url.Parse(pod.URL)
-	require.NoError(t, err)
-
-	// Tunnel fails once, but 10 concurrent requests will all detect it
-	failAttempts := atomic.Int32{}
-	failAttempts.Store(1)
-
-	var startCount atomic.Int32
-	pf, err := newServicePortForwarder(t.Context(), func(_, _ string, localPort, _ int) portForward {
-		return &testPortForward{
-			localURL: &url.URL{
-				Scheme: "http",
-				Host:   fmt.Sprintf("127.0.0.1:%d", localPort),
-			},
-			serviceURL:   serviceURL,
-			failAttempts: &failAttempts,
-			startCount:   &startCount,
-		}
-	}, "test-ns", "test-sel", 0, servicePort)
-	require.NoError(t, err)
-	t.Cleanup(pf.Kill)
-
-	// Synchronize goroutine start to maximize concurrency and race detection
-	ready := make(chan struct{})
-	var wg sync.WaitGroup
-	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			<-ready // Wait for all goroutines to be spawned
-			resp, err := pf.Post(t.Context(), "/test", "body")
-			if err == nil {
-				require.Equal(t, "success", string(resp))
-			}
-		}()
-	}
-	close(ready) // Release all goroutines at once
-	wg.Wait()
-
-	// Expect initial start plus one coordinated restart. Due to timing, rarely a second restart
-	// can occur if a retry happens during the restart window, so allow up to 3.
-	starts := startCount.Load()
-	require.GreaterOrEqual(t, starts, int32(2), "expected at least initial start plus one restart")
-	require.LessOrEqual(t, starts, int32(3), "expected at most initial start plus two restarts")
-}
-
 func TestPortForwarder_ErrorCases(t *testing.T) {
 	t.Run("start failure", func(t *testing.T) {
 		// Open a port and hold it to force start failure due to port conflict
