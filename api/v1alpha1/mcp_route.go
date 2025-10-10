@@ -55,6 +55,7 @@ type MCPRouteSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:=/mcp
 	// +kubebuilder:validation:MaxLength=1024
+	// +optional
 	Path *string `json:"path,omitempty"`
 
 	// Headers are HTTP headers that must match for this route to be selected.
@@ -84,6 +85,7 @@ type MCPRouteSpec struct {
 	// SecurityPolicy defines the security policy for this MCPRoute.
 	//
 	// +kubebuilder:validation:Optional
+	// +optional
 	SecurityPolicy *MCPRouteSecurityPolicy `json:"securityPolicy,omitempty"`
 }
 
@@ -98,12 +100,14 @@ type MCPRouteBackendRef struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:=/mcp
 	// +kubebuilder:validation:MaxLength=1024
+	// +optional
 	Path *string `json:"path,omitempty"`
 
 	// ToolSelector filters the tools exposed by this MCP server.
 	// Supports exact matches and RE2-compatible regular expressions for both include and exclude patterns.
 	// If not specified, all tools from the MCP server are exposed.
 	// +kubebuilder:validation:Optional
+	// +optional
 	ToolSelector *MCPToolFilter `json:"toolSelector,omitempty"`
 
 	// TODO: we can add resource and prompt selectors in the future.
@@ -111,6 +115,7 @@ type MCPRouteBackendRef struct {
 	// SecurityPolicy is the security policy to apply to this MCP server.
 	//
 	// +kubebuilder:validation:Optional
+	// +optional
 	SecurityPolicy *MCPBackendSecurityPolicy `json:"securityPolicy,omitempty"`
 
 	// TODO: add fancy per-MCP server config. For example, Rate Limit, etc.
@@ -124,6 +129,7 @@ type MCPToolFilter struct {
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxItems=32
+	// +optional
 	Include []string `json:"include,omitempty"`
 
 	// IncludeRegex is a list of RE2-compatible regular expressions that, when matched, include the tool.
@@ -131,6 +137,7 @@ type MCPToolFilter struct {
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxItems=32
+	// +optional
 	IncludeRegex []string `json:"includeRegex,omitempty"`
 }
 
@@ -147,6 +154,7 @@ type MCPBackendSecurityPolicy struct {
 type MCPBackendAPIKey struct {
 	// secretRef is the Kubernetes secret which contains the API keys.
 	// The key of the secret should be "apiKey".
+	// +optional
 	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef,omitempty"`
 
 	// Inline contains the API key as an inline string.
@@ -157,6 +165,7 @@ type MCPBackendAPIKey struct {
 
 // MCPRouteSecurityPolicy defines the security policy for a MCPRoute.
 type MCPRouteSecurityPolicy struct {
+	// +optional
 	OAuth *MCPRouteOAuth `json:"oauth,omitempty"`
 }
 
@@ -225,12 +234,14 @@ type ProtectedResourceMetadata struct {
 	// ResourceName is a human-readable name for the protected resource.
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxLength=256
+	// +optional
 	ResourceName *string `json:"resourceName,omitempty"`
 
 	// ScopesSupported is a list of OAuth 2.0 scopes that the resource server supports.
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxItems=32
+	// +optional
 	ScopesSupported []string `json:"scopesSupported,omitempty"`
 
 	// ResourceSigningAlgValuesSupported is a list of JWS signing algorithms supported by the resource server.
@@ -239,17 +250,20 @@ type ProtectedResourceMetadata struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=16
+	// +optional
 	ResourceSigningAlgValuesSupported []string `json:"resourceSigningAlgValuesSupported,omitempty"`
 
 	// ResourceDocumentation is a URL that provides human-readable documentation for the resource.
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Format=uri
+	// +optional
 	ResourceDocumentation *string `json:"resourceDocumentation,omitempty"`
 
 	// ResourcePolicyURI is a URL that points to the resource server's policy document.
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Format=uri
+	// +optional
 	ResourcePolicyURI *string `json:"resourcePolicyUri,omitempty"`
 }

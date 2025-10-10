@@ -1389,7 +1389,7 @@ MCPBackendAPIKey defines the configuration for the API Key Authentication to a b
 <ApiField
   name="secretRef"
   type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
-  required="true"
+  required="false"
   description="secretRef is the Kubernetes secret which contains the API keys.<br />The key of the secret should be `apiKey`."
 /><ApiField
   name="inline"
@@ -1462,18 +1462,18 @@ MCPRouteBackendRef wraps a EG's BackendObjectReference to reference an MCP serve
 /><ApiField
   name="path"
   type="string"
-  required="true"
+  required="false"
   defaultValue="/mcp"
   description="Path is the HTTP endpoint path of the baackend MCP server.<br />If not specified, the default is `/mcp`."
 /><ApiField
   name="toolSelector"
   type="[MCPToolFilter](#mcptoolfilter)"
-  required="true"
+  required="false"
   description="ToolSelector filters the tools exposed by this MCP server.<br />Supports exact matches and RE2-compatible regular expressions for both include and exclude patterns.<br />If not specified, all tools from the MCP server are exposed."
 /><ApiField
   name="securityPolicy"
   type="[MCPBackendSecurityPolicy](#mcpbackendsecuritypolicy)"
-  required="true"
+  required="false"
   description="SecurityPolicy is the security policy to apply to this MCP server."
 />
 
@@ -1531,7 +1531,7 @@ MCPRouteSecurityPolicy defines the security policy for a MCPRoute.
 <ApiField
   name="oauth"
   type="[MCPRouteOAuth](#mcprouteoauth)"
-  required="true"
+  required="false"
   description=""
 />
 
@@ -1557,7 +1557,7 @@ MCPRouteSpec details the MCPRoute configuration.
 /><ApiField
   name="path"
   type="string"
-  required="true"
+  required="false"
   defaultValue="/mcp"
   description="Path is the HTTP endpoint path that serves MCP requests over the Streamable HTTP transport.<br />If not specified, the default is `/mcp`."
 /><ApiField
@@ -1573,7 +1573,7 @@ MCPRouteSpec details the MCPRoute configuration.
 /><ApiField
   name="securityPolicy"
   type="[MCPRouteSecurityPolicy](#mcproutesecuritypolicy)"
-  required="true"
+  required="false"
   description="SecurityPolicy defines the security policy for this MCPRoute."
 />
 
@@ -1615,12 +1615,12 @@ MCPToolFilter filters tools using include patterns with exact matches or regular
 <ApiField
   name="include"
   type="string array"
-  required="true"
+  required="false"
   description="Include is a list of tool names to include. Only the specified tools will be available."
 /><ApiField
   name="includeRegex"
   type="string array"
-  required="true"
+  required="false"
   description="IncludeRegex is a list of RE2-compatible regular expressions that, when matched, include the tool.<br />Only tools matching these patterns will be available."
 />
 
@@ -1650,27 +1650,27 @@ References:
 /><ApiField
   name="resourceName"
   type="string"
-  required="true"
+  required="false"
   description="ResourceName is a human-readable name for the protected resource."
 /><ApiField
   name="scopesSupported"
   type="string array"
-  required="true"
+  required="false"
   description="ScopesSupported is a list of OAuth 2.0 scopes that the resource server supports."
 /><ApiField
   name="resourceSigningAlgValuesSupported"
   type="string array"
-  required="true"
+  required="false"
   description="ResourceSigningAlgValuesSupported is a list of JWS signing algorithms supported by the resource server.<br />These algorithms are used in the `alg` field of the JOSE header in signed tokens."
 /><ApiField
   name="resourceDocumentation"
   type="string"
-  required="true"
+  required="false"
   description="ResourceDocumentation is a URL that provides human-readable documentation for the resource."
 /><ApiField
   name="resourcePolicyUri"
   type="string"
-  required="true"
+  required="false"
   description="ResourcePolicyURI is a URL that points to the resource server's policy document."
 />
 
