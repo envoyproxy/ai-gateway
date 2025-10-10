@@ -77,8 +77,9 @@ func TestStartControllers(t *testing.T) {
 				Spec: aigv1a1.AIServiceBackendSpec{
 					APISchema: defaultSchema,
 					BackendRef: gwapiv1.BackendObjectReference{
-						Name: gwapiv1.ObjectName(backend),
-						Port: ptr.To[gwapiv1.PortNumber](8080),
+						Name:  gwapiv1.ObjectName(backend),
+						Kind:  ptr.To(gwapiv1.Kind("Backend")),
+						Group: ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
 					},
 				},
 			})
@@ -274,8 +275,9 @@ func TestAIGatewayRouteController(t *testing.T) {
 			Spec: aigv1a1.AIServiceBackendSpec{
 				APISchema: defaultSchema,
 				BackendRef: gwapiv1.BackendObjectReference{
-					Name: gwapiv1.ObjectName(b),
-					Port: ptr.To[gwapiv1.PortNumber](8080),
+					Name:  gwapiv1.ObjectName(b),
+					Kind:  ptr.To(gwapiv1.Kind("Backend")),
+					Group: ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
 				},
 			},
 		})
@@ -404,8 +406,9 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 			Spec: aigv1a1.AIServiceBackendSpec{
 				APISchema: defaultSchema,
 				BackendRef: gwapiv1.BackendObjectReference{
-					Name: gwapiv1.ObjectName("mybackend"),
-					Port: ptr.To[gwapiv1.PortNumber](8080),
+					Name:  gwapiv1.ObjectName("mybackend"),
+					Kind:  ptr.To(gwapiv1.Kind("Backend")),
+					Group: ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
 				},
 			},
 		},
@@ -414,8 +417,9 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 			Spec: aigv1a1.AIServiceBackendSpec{
 				APISchema: defaultSchema,
 				BackendRef: gwapiv1.BackendObjectReference{
-					Name: gwapiv1.ObjectName("mybackend"),
-					Port: ptr.To[gwapiv1.PortNumber](8080),
+					Name:  gwapiv1.ObjectName("mybackend"),
+					Kind:  ptr.To(gwapiv1.Kind("Backend")),
+					Group: ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
 				},
 			},
 		},
@@ -610,8 +614,9 @@ func TestAIServiceBackendController(t *testing.T) {
 			Spec: aigv1a1.AIServiceBackendSpec{
 				APISchema: defaultSchema,
 				BackendRef: gwapiv1.BackendObjectReference{
-					Name: gwapiv1.ObjectName("mybackend"),
-					Port: ptr.To[gwapiv1.PortNumber](8080),
+					Name:  gwapiv1.ObjectName("mybackend"),
+					Kind:  ptr.To(gwapiv1.Kind("Backend")),
+					Group: ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
 				},
 			},
 		}
@@ -633,7 +638,7 @@ func TestAIServiceBackendController(t *testing.T) {
 			var origin aigv1a1.AIServiceBackend
 			err = c.Get(t.Context(), client.ObjectKey{Name: aiServiceBackendName, Namespace: aiServiceBackendNamespace}, &origin)
 			require.NoError(t, err)
-			origin.Spec.BackendRef.Port = ptr.To[gwapiv1.PortNumber](9090)
+			origin.Spec.BackendRef.Name = "mybackend-updated"
 			return c.Update(t.Context(), &origin)
 		})
 		require.NoError(t, err)

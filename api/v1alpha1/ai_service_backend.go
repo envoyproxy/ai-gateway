@@ -54,11 +54,12 @@ type AIServiceBackendSpec struct {
 	// BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.
 	//
 	// A backend must be a Backend resource of Envoy Gateway. Note that k8s Service will be supported
-	// as a backend in the future.
+	// as a backend in the future. See https://github.com/envoyproxy/ai-gateway/issues/902 for more details.
 	//
 	// This is required to be set.
 	//
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:XValidation:rule="has(self.kind) && self.kind == 'Backend' && has(self.group) && self.group == 'gateway.envoyproxy.io'",message="BackendRef must be a Backend resource of Envoy Gateway. See https://github.com/envoyproxy/ai-gateway/issues/902 for more details."
 	BackendRef gwapiv1.BackendObjectReference `json:"backendRef"`
 
 	// HeaderMutation defines the mutation of HTTP headers that will be applied to the request

@@ -678,7 +678,7 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   name="backendRef"
   type="[BackendObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.BackendObjectReference)"
   required="true"
-  description="BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.<br />A backend must be a Backend resource of Envoy Gateway. Note that k8s Service will be supported<br />as a backend in the future.<br />This is required to be set."
+  description="BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.<br />A backend must be a Backend resource of Envoy Gateway. Note that k8s Service will be supported<br />as a backend in the future. See https://github.com/envoyproxy/ai-gateway/issues/902 for more details.<br />This is required to be set."
 /><ApiField
   name="headerMutation"
   type="[HTTPHeaderMutation](#httpheadermutation)"
