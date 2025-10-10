@@ -39,11 +39,8 @@ import (
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
-// Do NOT commit runDebug = true to the branch until Envoy Gateway removes
-// hard-coding of func-e calls which ends up always using os.Stdout/Stderr
-// Only set this to true when you are debugging. Once envoy-gateway supports
-// redirection, commit this as true since debug logs only show on failure.
-const runDebug = false
+// startupRegexp ensures the status message is written to stderr as we know we are healthy!
+var startupRegexp = `Envoy AI Gateway listening on http://localhost:1975 \(admin http://localhost:\d+\) after [^\n]+`
 
 func TestRun(t *testing.T) {
 	ollamaModel, err := internaltesting.GetOllamaModel(internaltesting.ChatModel)
@@ -62,12 +59,13 @@ func TestRun(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "unused")
 
 	buffers := internaltesting.DumpLogsOnFail(t, "aigw Stdout", "aigw Stderr")
+	stdout, stderr := buffers[0], buffers[1]
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cleanupRun(t, cancel)
 
 	go func() {
 		opts := runOpts{extProcLauncher: mainlib.Main}
-		require.NoError(t, run(ctx, cmdRun{Debug: runDebug, AdminPort: adminPort}, opts, buffers[0], buffers[1]))
+		require.NoError(t, run(ctx, cmdRun{Debug: true, AdminPort: adminPort}, opts, stdout, stderr))
 	}()
 
 	client := openai.NewClient(option.WithBaseURL("http://localhost:1975/v1/"))
@@ -90,9 +88,12 @@ func TestRun(t *testing.T) {
 				}
 			}
 			return fmt.Errorf("no content in response")
-		}, 30*time.Second, 2*time.Second,
+		}, 1*time.Minute, 2*time.Second,
 			"chat completion never succeeded")
 	})
+
+	// By now, we're listening
+	require.Regexp(t, startupRegexp, stderr.String())
 
 	t.Run("access metrics", func(t *testing.T) {
 		internaltesting.RequireEventuallyNoError(t, func() error {
@@ -108,7 +109,7 @@ func TestRun(t *testing.T) {
 				return fmt.Errorf("status %d", resp.StatusCode)
 			}
 			return nil
-		}, 2*time.Minute, time.Second,
+		}, 1*time.Minute, time.Second,
 			"metrics endpoint never became available")
 	})
 }
@@ -141,23 +142,28 @@ func TestRunMCP(t *testing.T) {
 	}
 
 	buffers := internaltesting.DumpLogsOnFail(t, "aigw Stdout", "aigw Stderr")
+	stdout, stderr := buffers[0], buffers[1]
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cleanupRun(t, cancel)
 
 	go func() {
 		opts := runOpts{extProcLauncher: mainlib.Main}
-		require.NoError(t, run(ctx, cmdRun{Debug: runDebug, AdminPort: adminPort, mcpConfig: mcpServers}, opts, buffers[0], buffers[1]))
+		require.NoError(t, run(ctx, cmdRun{Debug: true, AdminPort: adminPort, mcpConfig: mcpServers}, opts, stdout, stderr))
 	}()
 
 	url := fmt.Sprintf("http://localhost:%d/mcp", 1975)
 	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.1.0"},
 		&mcp.ClientOptions{})
+
+	// Calculate departure date as one week from now
+	departureDate := time.Now().AddDate(0, 0, 7).Format("02/01/2006")
+
 	callTool := &mcp.CallToolParams{
 		Name: "kiwi__search-flight",
 		Arguments: map[string]any{
 			"flyFrom":       "NYC",
 			"flyTo":         "LAX",
-			"departureDate": "15/12/2025",
+			"departureDate": departureDate,
 		},
 	}
 
@@ -178,9 +184,12 @@ func TestRunMCP(t *testing.T) {
 				return fmt.Errorf("tool returned error response")
 			}
 			return nil
-		}, 1*time.Minute, 2*time.Second,
+		}, 2*time.Minute, 2*time.Second,
 			"MCP tool call never succeeded")
 	})
+
+	// By now, we're listening
+	require.Regexp(t, startupRegexp, stderr.String())
 }
 
 func TestRunExtprocStartFailure(t *testing.T) {
@@ -449,7 +458,8 @@ func TestPollEnvoyReady(t *testing.T) {
 
 	t.Run("ready", func(t *testing.T) {
 		t.Cleanup(func() { callCount = 0 })
-		envoyAdmin := aigw.NewEnvoyAdminClientFromPort(adminPort)
+		envoyAdmin, err := aigw.NewEnvoyAdminClient(t.Context(), os.Getpid(), adminPort)
+		require.NoError(t, err)
 		pollEnvoyReady(t.Context(), l, envoyAdmin, 50*time.Millisecond)
 		require.Equal(t, successAt, callCount)
 	})
@@ -458,7 +468,8 @@ func TestPollEnvoyReady(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		t.Cleanup(cancel)
 		t.Cleanup(func() { callCount = 0 })
-		envoyAdmin := aigw.NewEnvoyAdminClientFromPort(adminPort)
+		envoyAdmin, err := aigw.NewEnvoyAdminClient(ctx, os.Getpid(), adminPort)
+		require.NoError(t, err)
 		pollEnvoyReady(ctx, l, envoyAdmin, 50*time.Millisecond)
 		require.Less(t, callCount, successAt)
 	})

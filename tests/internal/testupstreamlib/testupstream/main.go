@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
+	"github.com/tidwall/gjson"
 	"golang.org/x/exp/rand"
 
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -237,6 +238,14 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			logAndSendError(w, http.StatusBadRequest, "failed to parse the response status: %v", err)
 			return
 		}
+	}
+
+	// Do the best-effort model detection for logging and verification.
+	model := gjson.GetBytes(requestBody, "model")
+	if model.Exists() {
+		logger.Println("detected model in the request:", model)
+		// Set the model in the response header for verification.
+		w.Header().Set("X-Model", model.String())
 	}
 
 	switch r.Header.Get(testupstreamlib.ResponseTypeKey) {

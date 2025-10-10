@@ -77,10 +77,10 @@ func translate(ctx context.Context, paths []string, output, stderr io.Writer) er
 		mustWriteObj(&secret.TypeMeta, secret, output)
 	}
 	for _, secret := range originalSecrets {
-		mustWriteObj(nil, secret, output)
+		mustWriteObj(&secret.TypeMeta, secret, output)
 	}
 	for _, gateway := range originalGateways {
-		mustWriteObj(nil, gateway, output)
+		mustWriteObj(&gateway.TypeMeta, gateway, output)
 	}
 	for i := range backendTrafficPolicies.Items {
 		btp := &backendTrafficPolicies.Items[i]
@@ -243,7 +243,7 @@ func translateCustomResourceObjects(
 	gwC := controller.NewGatewayController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", true, func() string {
 			return "aigw-translate"
-		},
+		}, false,
 	)
 	// Create and reconcile the custom resources to store the translated objects.
 	// Note that the order of creation is important as some objects depend on others.

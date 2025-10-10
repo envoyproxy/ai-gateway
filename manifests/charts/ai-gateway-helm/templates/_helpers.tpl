@@ -78,3 +78,14 @@ Convert extraEnvVars array to semicolon-separated string for extProc
 {{- end -}}
 {{- join ";" $envVars -}}
 {{- end }}
+
+{{/*
+Convert imagePullSecrets array to semicolon-separated string for extProc
+*/}}
+{{- define "ai-gateway-helm.extProc.imagePullSecretsString" -}}
+{{- $secrets := list -}}
+{{- range .Values.extProc.imagePullSecrets -}}
+  {{- $secrets = append $secrets .name -}}
+{{- end -}}
+{{- join ";" $secrets -}}
+{{- end }}

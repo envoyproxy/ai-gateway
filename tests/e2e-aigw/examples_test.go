@@ -29,11 +29,6 @@ var (
 	// Adjust these as services update, as they can be added, removed or renamed
 
 	allNonGithubTools = []string{
-		"aws-knowledge__aws___get_regional_availability",
-		"aws-knowledge__aws___list_regions",
-		"aws-knowledge__aws___read_documentation",
-		"aws-knowledge__aws___recommend",
-		"aws-knowledge__aws___search_documentation",
 		"context7__get-library-docs",
 		"context7__resolve-library-id",
 		"kiwi__feedback-to-devs",
@@ -62,16 +57,12 @@ var (
 
 	// Filtered tools based on mcp_example.yaml selectors
 	filteredNonGithubTools = []string{
-		"aws-knowledge__aws___read_documentation",
-		"aws-knowledge__aws___search_documentation",
 		"context7__get-library-docs",
 		"context7__resolve-library-id",
 		"kiwi__feedback-to-devs",
 		"kiwi__search-flight",
 	}
 	filteredAllTools = []string{
-		"aws-knowledge__aws___read_documentation",
-		"aws-knowledge__aws___search_documentation",
 		"context7__get-library-docs",
 		"context7__resolve-library-id",
 		"github__get_issue",
@@ -144,13 +135,6 @@ func TestMCP_standalone(t *testing.T) {
 				toolName: "context7__get-library-docs",
 				params: map[string]any{
 					"context7CompatibleLibraryID": "/mongodb/docs",
-				},
-			},
-			{
-				toolName: "aws-knowledge__aws___search_documentation",
-				params: map[string]any{
-					"limit":         1,
-					"search_phrase": "DynamoDB",
 				},
 			},
 			{

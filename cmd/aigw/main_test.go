@@ -44,7 +44,7 @@ Commands:
   run [<path>] [flags]
     Run the AI Gateway locally for given configuration.
 
-  healthcheck [flags]
+  healthcheck
     Docker HEALTHCHECK command.
 
 Run "aigw <command> --help" for more information on a command.

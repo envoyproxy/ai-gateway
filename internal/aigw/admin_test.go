@@ -6,11 +6,8 @@
 package aigw
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"log/slog"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -61,16 +58,6 @@ func TestExtractAdminAddressPath(t *testing.T) {
 			expectedError: "--admin-address-path not found in command line",
 		},
 		{
-			name:          "path is a directory not a file",
-			cmdline:       []string{"envoy", "--admin-address-path", tmpDir},
-			expectedError: fmt.Sprintf("envoy admin address path %q is not a file", tmpDir),
-		},
-		{
-			name:          "path does not exist",
-			cmdline:       []string{"envoy", "--admin-address-path", "/nonexistent/path"},
-			expectedError: "envoy admin address path \"/nonexistent/path\" is not a file",
-		},
-		{
 			name:     "sh -c wrapped command",
 			cmdline:  []string{"sh", "-c", "sleep 30 && echo -- --admin-address-path " + validFile},
 			expected: validFile,
@@ -99,9 +86,39 @@ func TestExtractAdminAddressPath(t *testing.T) {
 func TestPollEnvoyAdminAddressPathFromArgs(t *testing.T) {
 	t.Run("success - finds admin address path from child process", func(t *testing.T) {
 		adminFile := filepath.Join(t.TempDir(), "admin-address.txt")
-		require.NoError(t, os.WriteFile(adminFile, []byte("127.0.0.1:9901"), 0o600))
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		cmdStr := fmt.Sprintf("sleep 30 && echo -- --admin-address-path %s", adminFile)
+		cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
+		require.NoError(t, cmd.Start())
+		defer func() {
+			_ = cmd.Process.Kill()
+			_, _ = cmd.Process.Wait()
+		}()
+
+		// write the file later
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			_ = os.WriteFile(adminFile, []byte("127.0.0.1:9901"), 0o600)
+		}()
+
+		pid := os.Getpid()
+		actual, err := pollEnvoyAdminAddressPathFromArgs(t.Context(), int32(pid)) // #nosec G115 -- PID fits in int32
+		require.NoError(t, err)
+		require.Equal(t, adminFile, actual)
+	})
+
+	t.Run("failure - no child processes", func(t *testing.T) {
+		_, err := pollEnvoyAdminAddressPathFromArgs(t.Context(), 1)
+		require.Error(t, err)
+	})
+
+	t.Run("failure - not a file", func(t *testing.T) {
+		adminFile := t.TempDir()
+
+		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 
 		cmdStr := fmt.Sprintf("sleep 30 && echo -- --admin-address-path %s", adminFile)
@@ -115,14 +132,8 @@ func TestPollEnvoyAdminAddressPathFromArgs(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 
 		pid := os.Getpid()
-		actual, err := pollEnvoyAdminAddressPathFromArgs(t.Context(), int32(pid)) // #nosec G115 -- PID fits in int32
-		require.NoError(t, err)
-		require.Equal(t, adminFile, actual)
-	})
-
-	t.Run("failure - no child processes", func(t *testing.T) {
-		_, err := pollEnvoyAdminAddressPathFromArgs(t.Context(), 1)
-		require.Error(t, err)
+		_, err := pollEnvoyAdminAddressPathFromArgs(t.Context(), int32(pid)) // #nosec G115 -- PID fits in int32
+		require.EqualError(t, err, fmt.Sprintf("envoy admin address path %q is not a file", adminFile))
 	})
 }
 
@@ -184,7 +195,7 @@ func TestEnvoyAdminAPIClient_IsReady(t *testing.T) {
 		port, err := strconv.Atoi(u.Port())
 		require.NoError(t, err)
 
-		client := &envoyAdminAPIClient{adminPort: port}
+		client := &envoyAdminAPIClient{port: port}
 		err = client.IsReady(t.Context())
 		require.NoError(t, err)
 	})
@@ -201,7 +212,7 @@ func TestEnvoyAdminAPIClient_IsReady(t *testing.T) {
 		port, err := strconv.Atoi(u.Port())
 		require.NoError(t, err)
 
-		client := &envoyAdminAPIClient{adminPort: port}
+		client := &envoyAdminAPIClient{port: port}
 		err = client.IsReady(t.Context())
 		require.Error(t, err)
 	})
@@ -218,7 +229,7 @@ func TestEnvoyAdminAPIClient_IsReady(t *testing.T) {
 		port, err := strconv.Atoi(u.Port())
 		require.NoError(t, err)
 
-		client := &envoyAdminAPIClient{adminPort: port}
+		client := &envoyAdminAPIClient{port: port}
 		err = client.IsReady(t.Context())
 		require.Error(t, err)
 	})
@@ -236,7 +247,7 @@ func TestEnvoyAdminAPIClient_IsReady(t *testing.T) {
 		port, err := strconv.Atoi(u.Port())
 		require.NoError(t, err)
 
-		client := &envoyAdminAPIClient{adminPort: port}
+		client := &envoyAdminAPIClient{port: port}
 
 		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
 		defer cancel()
@@ -246,64 +257,16 @@ func TestEnvoyAdminAPIClient_IsReady(t *testing.T) {
 	})
 }
 
-func TestEnvoyListenerPortClient_IsReady(t *testing.T) {
-	t.Run("returns nil when port is open", func(t *testing.T) {
-		listener, err := net.Listen("tcp", "127.0.0.1:0")
-		require.NoError(t, err)
-		defer listener.Close()
-
-		port := listener.Addr().(*net.TCPAddr).Port
-		client := &envoyListenerPortClient{port: port}
-
-		err = client.IsReady(t.Context())
-		require.NoError(t, err)
-	})
-
-	t.Run("returns error when port is closed", func(t *testing.T) {
-		client := &envoyListenerPortClient{port: 54321}
-
-		err := client.IsReady(t.Context())
-		require.Error(t, err)
-	})
-
-	t.Run("respects context cancellation", func(t *testing.T) {
-		client := &envoyListenerPortClient{port: 54321}
-
-		ctx, cancel := context.WithCancel(t.Context())
-		cancel()
-
-		err := client.IsReady(ctx)
-		require.Error(t, err)
-	})
-}
-
 func TestNewEnvoyAdminClient(t *testing.T) {
-	t.Run("returns envoyAdminAPIClient when envoyAdminPort > 0", func(t *testing.T) {
-		var buf bytes.Buffer
-		logger := slog.New(slog.NewTextHandler(&buf, nil))
+	t.Run("envoyAdminPort > 0", func(t *testing.T) {
+		client, err := NewEnvoyAdminClient(t.Context(), os.Getpid(), 9901)
+		require.NoError(t, err)
 
-		client := NewEnvoyAdminClient(t.Context(), logger, os.Getpid(), 9901, 1975)
-
-		adminClient, ok := client.(*envoyAdminAPIClient)
-		require.True(t, ok)
-		require.Equal(t, 9901, adminClient.adminPort)
-
-		logOutput := buf.String()
-		require.Contains(t, logOutput, "Using configured Envoy admin")
-		require.Contains(t, logOutput, "9901")
+		require.Equal(t, 9901, client.Port())
 	})
 
-	t.Run("returns envoyListenerPortClient when discovery fails", func(t *testing.T) {
-		var buf bytes.Buffer
-		logger := slog.New(slog.NewTextHandler(&buf, nil))
-
-		client := NewEnvoyAdminClient(t.Context(), logger, 1, 0, 1975)
-
-		listenerClient, ok := client.(*envoyListenerPortClient)
-		require.True(t, ok)
-		require.Equal(t, 1975, listenerClient.port)
-
-		logOutput := buf.String()
-		require.Contains(t, logOutput, "Falling back to Envoy listener")
+	t.Run("returns error when discovery fails", func(t *testing.T) {
+		_, err := NewEnvoyAdminClient(t.Context(), 1, 0)
+		require.Error(t, err)
 	})
 }

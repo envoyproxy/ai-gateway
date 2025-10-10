@@ -918,8 +918,7 @@ spec:
                                                 items:
                                                   description: HTTPStatus defines
                                                     the http status code.
-                                                  exclusiveMaximum: true
-                                                  maximum: 600
+                                                  maximum: 599
                                                   minimum: 100
                                                   type: integer
                                                 type: array
@@ -1452,8 +1451,7 @@ spec:
                                             items:
                                               description: HTTPStatus defines the
                                                 http status code.
-                                              exclusiveMaximum: true
-                                              maximum: 600
+                                              maximum: 599
                                               minimum: 100
                                               type: integer
                                             type: array
@@ -1546,6 +1544,13 @@ spec:
                                         type: object
                                     type: object
                                 type: object
+                              cacheDuration:
+                                default: 300s
+                                description: |-
+                                  Duration is a string value representing a duration in time. The format is as specified
+                                  in GEP-2257, a strict subset of the syntax parsed by Golang time.ParseDuration.
+                                pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                type: string
                               uri:
                                 description: |-
                                   URI is the HTTPS URI to fetch the JWKS. Envoy's system trust bundle is used to validate the server certificate.

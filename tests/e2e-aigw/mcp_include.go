@@ -58,8 +58,7 @@ func includeSelectedTools(yamlPath string, allTools []string) []string {
 
 	// Build map of backend name -> list of selectors.
 	// We collect ALL selectors because multiple MCPRoute documents can reference
-	// the same backend with different filters (e.g., one route might include
-	// only "aws___read_documentation" while another includes "aws___search_documentation").
+	// the same backend with different filters.
 	backends := make(map[string][]*toolSelector)
 
 	for {
@@ -87,7 +86,7 @@ func includeSelectedTools(yamlPath string, allTools []string) []string {
 	for _, fullTool := range allTools {
 		// Extract backend and tool name from "backend__toolname" format.
 		// We iterate through known backends to handle backends with dashes or underscores
-		// in their names (e.g., "aws-knowledge").
+		// in their names.
 		var backend, tool string
 		for backendName := range backends {
 			prefix := backendName + "__"

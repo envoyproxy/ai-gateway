@@ -81,6 +81,8 @@ type Options struct {
 	RootPrefix string
 	// ExtProcExtraEnvVars is the semicolon-separated key=value pairs for extra environment variables in extProc container.
 	ExtProcExtraEnvVars string
+	// ExtProcImagePullSecrets is the semicolon-separated list of image pull secret names for extProc container.
+	ExtProcImagePullSecrets string
 	// ExtProcMaxRecvMsgSize is the maximum message size in bytes that the gRPC server can receive for extProc.
 	ExtProcMaxRecvMsgSize int
 }
@@ -98,10 +100,16 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	if err = ApplyIndexing(ctx, indexer.IndexField); err != nil {
 		return fmt.Errorf("failed to apply indexing: %w", err)
 	}
+	var versionInfo *version.Info
+	kube := kubernetes.NewForConfigOrDie(config)
+	versionInfo, err = kube.Discovery().ServerVersion()
+	if err != nil {
+		return fmt.Errorf("failed to get server version: %w", err)
+	}
 
 	gatewayEventChan := make(chan event.GenericEvent, 100)
 	gatewayC := NewGatewayController(c, kubernetes.NewForConfigOrDie(config),
-		logger.WithName("gateway"), options.ExtProcImage, false, uuid.NewString)
+		logger.WithName("gateway"), options.ExtProcImage, false, uuid.NewString, isKubernetes133OrLater(versionInfo, logger))
 	if err = TypedControllerBuilderForCRD(mgr, &gwapiv1.Gateway{}).
 		WatchesRawSource(source.Channel(
 			gatewayEventChan,
@@ -197,13 +205,6 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	}
 
 	if !options.DisableMutatingWebhook {
-		kube := kubernetes.NewForConfigOrDie(config)
-		var versionInfo *version.Info
-		versionInfo, err = kube.Discovery().ServerVersion()
-		if err != nil {
-			return fmt.Errorf("failed to get server version: %w", err)
-		}
-
 		h := admission.WithCustomDefaulter(Scheme, &corev1.Pod{}, newGatewayMutator(c, kube,
 			logger.WithName("gateway-mutator"),
 			options.ExtProcImage,
@@ -214,6 +215,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.TracingRequestHeaderAttributes,
 			options.RootPrefix,
 			options.ExtProcExtraEnvVars,
+			options.ExtProcImagePullSecrets,
 			options.ExtProcMaxRecvMsgSize,
 			isKubernetes133OrLater(versionInfo, logger),
 		))
@@ -351,6 +353,16 @@ func backendSecurityPolicyIndexFunc(o client.Object) []string {
 		gcpCreds := backendSecurityPolicy.Spec.GCPCredentials
 		if gcpCreds.CredentialsFile != nil {
 			key = getSecretNameAndNamespace(gcpCreds.CredentialsFile.SecretRef, backendSecurityPolicy.Namespace)
+		}
+	case aigv1a1.BackendSecurityPolicyTypeAzureAPIKey:
+		apiKey := backendSecurityPolicy.Spec.AzureAPIKey
+		key = getSecretNameAndNamespace(apiKey.SecretRef, backendSecurityPolicy.Namespace)
+	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+		azureCreds := backendSecurityPolicy.Spec.AzureCredentials
+		if azureCreds.ClientSecretRef != nil {
+			key = getSecretNameAndNamespace(azureCreds.ClientSecretRef, backendSecurityPolicy.Namespace)
+		} else if azureCreds.OIDCExchangeToken != nil {
+			key = backendSecurityPolicyKey(backendSecurityPolicy.Namespace, backendSecurityPolicy.Name)
 		}
 	}
 	return []string{key}
