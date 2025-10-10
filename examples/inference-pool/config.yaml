@@ -44,7 +44,7 @@ data:
       backendResources:
         - group: inference.networking.k8s.io
           kind: InferencePool
-          version: v1alpha2
+          version: v1
       hooks:
         xdsTranslator:
           translation:
