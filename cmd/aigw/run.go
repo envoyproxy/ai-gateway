@@ -220,12 +220,13 @@ func run(ctx context.Context, c cmdRun, o runOpts, stdout, stderr io.Writer) err
 		}
 		debugLogger.Info("Found Envoy admin server", "adminPort", envoyAdmin.Port())
 		if err = pollEnvoyReady(ctx, debugLogger, envoyAdmin, 2*time.Second); err != nil {
-			c.AdminPort = envoyAdminPort // write back for testing
-			// Print a status message without any timestamp formatting
-			startDuration := time.Since(start).Round(100 * time.Millisecond)
-			_, _ = fmt.Fprintf(stderr, "Envoy AI Gateway listening on http://localhost:%d (admin http://localhost:%d) after %v\n",
-				listenerPort, envoyAdmin.Port(), startDuration)
+			return
 		}
+		c.AdminPort = envoyAdminPort // write back for testing
+		// Print a status message without any timestamp formatting
+		startDuration := time.Since(start).Round(100 * time.Millisecond)
+		_, _ = fmt.Fprintf(stderr, "Envoy AI Gateway listening on http://localhost:%d (admin http://localhost:%d) after %v\n",
+			listenerPort, envoyAdmin.Port(), startDuration)
 	}()
 
 	// Start the gateway server. This will block until the server is stopped.
