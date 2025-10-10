@@ -258,6 +258,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if event.Delta.StopReason != "" {
 			p.stopReason = event.Delta.StopReason
 		}
+		p.tokenUsage.CachedTokens += uint32(event.Usage.CacheReadInputTokens) //nolint:gosec
 		return nil, nil
 
 	case string(constant.ValueOf[constant.ContentBlockDelta]()):

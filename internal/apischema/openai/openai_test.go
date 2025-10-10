@@ -1020,7 +1020,7 @@ func TestChatCompletionResponse(t *testing.T) {
 						},
 					},
 				},
-				Usage: ChatCompletionResponseUsage{
+				Usage: Usage{
 					CompletionTokens: 5,
 					PromptTokens:     3,
 					TotalTokens:      8,
