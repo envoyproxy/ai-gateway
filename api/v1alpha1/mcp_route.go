@@ -107,6 +107,7 @@ type MCPRouteBackendRef struct {
 	// Supports exact matches and RE2-compatible regular expressions for both include and exclude patterns.
 	// If not specified, all tools from the MCP server are exposed.
 	// +kubebuilder:validation:Optional
+	// +optional
 	ToolSelector *MCPToolFilter `json:"toolSelector,omitempty"`
 
 	// TODO: we can add resource and prompt selectors in the future.
