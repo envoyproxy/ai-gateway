@@ -37,12 +37,7 @@ var (
 	allGithubTools = []string{
 		"github__get_issue",
 		"github__get_issue_comments",
-		"github__get_pull_request",
-		"github__get_pull_request_diff",
-		"github__get_pull_request_files",
-		"github__get_pull_request_review_comments",
-		"github__get_pull_request_reviews",
-		"github__get_pull_request_status",
+		"github__pull_request_read",
 		"github__list_issue_types",
 		"github__list_issues",
 		"github__list_pull_requests",
@@ -67,12 +62,7 @@ var (
 		"context7__resolve-library-id",
 		"github__get_issue",
 		"github__get_issue_comments",
-		"github__get_pull_request",
-		"github__get_pull_request_diff",
-		"github__get_pull_request_files",
-		"github__get_pull_request_review_comments",
-		"github__get_pull_request_reviews",
-		"github__get_pull_request_status",
+		"github__pull_request_read",
 		"github__list_issue_types",
 		"github__list_issues",
 		"github__list_pull_requests",
@@ -160,10 +150,11 @@ func TestMCP_standalone(t *testing.T) {
 		}
 		if githubConfigured {
 			tests = append(tests, callToolTest{
-				toolName: "github__get_pull_request",
+				toolName: "github__pull_request_read",
 				params: map[string]any{
 					"owner":      "envoyproxy",
 					"repo":       "ai-gateway",
+					"method":     "get",
 					"pullNumber": 1,
 				},
 			})

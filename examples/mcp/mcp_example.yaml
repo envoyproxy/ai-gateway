@@ -22,8 +22,8 @@ spec:
       path: "/mcp/readonly"
       toolSelector:
         includeRegex:
-          - .*_pull_requests?.*
-          - .*_issues?.*
+          - .*pull_requests?.*
+          - .*issues?.*
       securityPolicy:
         apiKey:
           secretRef:
@@ -213,4 +213,3 @@ spec:
               requested_server_name: "%REQUESTED_SERVER_NAME%"
               route_name: "%ROUTE_NAME%"
 ---
-
