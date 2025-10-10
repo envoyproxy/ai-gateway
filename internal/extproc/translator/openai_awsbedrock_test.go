@@ -1442,9 +1442,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			name: "basic_testing",
 			input: awsbedrock.ConverseResponse{
 				Usage: &awsbedrock.TokenUsage{
-					InputTokens:  10,
-					OutputTokens: 20,
-					TotalTokens:  30,
+					InputTokens:          10,
+					OutputTokens:         20,
+					TotalTokens:          30,
+					CacheReadInputTokens: ptr.To(5),
 				},
 				Output: &awsbedrock.ConverseOutput{
 					Message: awsbedrock.Message{
@@ -1459,10 +1460,13 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			},
 			output: openai.ChatCompletionResponse{
 				Object: "chat.completion",
-				Usage: openai.ChatCompletionResponseUsage{
+				Usage: openai.Usage{
 					TotalTokens:      30,
 					PromptTokens:     10,
 					CompletionTokens: 20,
+					PromptTokensDetails: &openai.PromptTokensDetails{
+						CachedTokens: 5,
+					},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
@@ -1496,7 +1500,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			},
 			output: openai.ChatCompletionResponse{
 				Object: "chat.completion",
-				Usage: openai.ChatCompletionResponseUsage{
+				Usage: openai.Usage{
 					TotalTokens:      30,
 					PromptTokens:     10,
 					CompletionTokens: 20,
@@ -1584,7 +1588,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			},
 			output: openai.ChatCompletionResponse{
 				Object: "chat.completion",
-				Usage: openai.ChatCompletionResponseUsage{
+				Usage: openai.Usage{
 					TotalTokens:      30,
 					PromptTokens:     10,
 					CompletionTokens: 20,
@@ -1680,12 +1684,15 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			expectedBody, err := json.Marshal(tt.output)
 			require.NoError(t, err)
 			require.JSONEq(t, string(expectedBody), string(newBody))
-			require.Equal(t,
-				LLMTokenUsage{
-					InputTokens:  uint32(tt.output.Usage.PromptTokens),     //nolint:gosec
-					OutputTokens: uint32(tt.output.Usage.CompletionTokens), //nolint:gosec
-					TotalTokens:  uint32(tt.output.Usage.TotalTokens),      //nolint:gosec
-				}, usedToken)
+			expectedUsage := LLMTokenUsage{
+				InputTokens:  uint32(tt.output.Usage.PromptTokens),     //nolint:gosec
+				OutputTokens: uint32(tt.output.Usage.CompletionTokens), //nolint:gosec
+				TotalTokens:  uint32(tt.output.Usage.TotalTokens),      //nolint:gosec
+			}
+			if tt.input.Usage != nil && tt.input.Usage.CacheReadInputTokens != nil {
+				expectedUsage.CachedTokens = uint32(tt.output.Usage.PromptTokensDetails.CachedTokens) //nolint:gosec
+			}
+			require.Equal(t, expectedUsage, usedToken)
 		})
 	}
 }
@@ -1827,17 +1834,21 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 			name: "usage",
 			in: awsbedrock.ConverseStreamEvent{
 				Usage: &awsbedrock.TokenUsage{
-					InputTokens:  10,
-					OutputTokens: 20,
-					TotalTokens:  30,
+					InputTokens:          10,
+					OutputTokens:         20,
+					TotalTokens:          30,
+					CacheReadInputTokens: ptr.To(5),
 				},
 			},
 			out: &openai.ChatCompletionResponseChunk{
 				Object: "chat.completion.chunk",
-				Usage: &openai.ChatCompletionResponseUsage{
+				Usage: &openai.Usage{
 					TotalTokens:      30,
 					PromptTokens:     10,
 					CompletionTokens: 20,
+					PromptTokensDetails: &openai.PromptTokensDetails{
+						CachedTokens: 5,
+					},
 				},
 			},
 		},

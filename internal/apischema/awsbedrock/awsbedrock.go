@@ -396,9 +396,11 @@ type ConverseOutput struct {
 // TokenUsage is defined in the AWS Bedrock API:
 // https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_TokenUsage.html
 type TokenUsage struct {
-	InputTokens  int `json:"inputTokens"`
-	OutputTokens int `json:"outputTokens"`
-	TotalTokens  int `json:"totalTokens"`
+	InputTokens           int  `json:"inputTokens"`
+	OutputTokens          int  `json:"outputTokens"`
+	TotalTokens           int  `json:"totalTokens"`
+	CacheReadInputTokens  *int `json:"cacheReadInputTokens,omitempty"`
+	CacheWriteInputTokens *int `json:"cacheWriteInputTokens,omitempty"`
 }
 
 // ConverseStreamEvent is the union of all possible event types in the AWS Bedrock API:

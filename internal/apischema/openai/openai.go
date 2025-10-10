@@ -1260,10 +1260,6 @@ type ChatCompletionResponseChoiceMessageAudio struct {
 	Transcript string `json:"transcript"`
 }
 
-// ChatCompletionResponseUsage is deprecated. Use Usage instead.
-// Deprecated: Use Usage type which now includes all fields from ChatCompletionResponseUsage.
-type ChatCompletionResponseUsage = Usage
-
 // CompletionTokensDetails breakdown of tokens used in a completion.
 type CompletionTokensDetails struct {
 	// Text input tokens present in the prompt.

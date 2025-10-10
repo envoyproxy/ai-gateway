@@ -570,15 +570,21 @@ func extractToolCallsFromGeminiParts(parts []*genai.Part) ([]openai.ChatCompleti
 }
 
 // geminiUsageToOpenAIUsage converts Gemini usage metadata to OpenAI usage.
-func geminiUsageToOpenAIUsage(metadata *genai.GenerateContentResponseUsageMetadata) openai.ChatCompletionResponseUsage {
+func geminiUsageToOpenAIUsage(metadata *genai.GenerateContentResponseUsageMetadata) openai.Usage {
 	if metadata == nil {
-		return openai.ChatCompletionResponseUsage{}
+		return openai.Usage{}
 	}
 
-	return openai.ChatCompletionResponseUsage{
+	return openai.Usage{
 		CompletionTokens: int(metadata.CandidatesTokenCount),
 		PromptTokens:     int(metadata.PromptTokenCount),
 		TotalTokens:      int(metadata.TotalTokenCount),
+		PromptTokensDetails: &openai.PromptTokensDetails{
+			CachedTokens: int(metadata.CachedContentTokenCount),
+		},
+		CompletionTokensDetails: &openai.CompletionTokensDetails{
+			ReasoningTokens: int(metadata.ThoughtsTokenCount),
+		},
 	}
 }
 

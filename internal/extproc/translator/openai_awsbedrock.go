@@ -603,6 +603,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 					OutputTokens: uint32(usage.OutputTokens), //nolint:gosec
 					TotalTokens:  uint32(usage.TotalTokens),  //nolint:gosec
 				}
+				if usage.CacheReadInputTokens != nil {
+					tokenUsage.CachedTokens = uint32(*usage.CacheReadInputTokens) //nolint:gosec
+				}
 			}
 			oaiEvent, ok := o.convertEvent(event)
 			if !ok {
@@ -642,10 +645,16 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 			OutputTokens: uint32(bedrockResp.Usage.OutputTokens), //nolint:gosec
 			TotalTokens:  uint32(bedrockResp.Usage.TotalTokens),  //nolint:gosec
 		}
-		openAIResp.Usage = openai.ChatCompletionResponseUsage{
+		openAIResp.Usage = openai.Usage{
 			TotalTokens:      bedrockResp.Usage.TotalTokens,
 			PromptTokens:     bedrockResp.Usage.InputTokens,
 			CompletionTokens: bedrockResp.Usage.OutputTokens,
+		}
+		if bedrockResp.Usage.CacheReadInputTokens != nil {
+			tokenUsage.CachedTokens = uint32(*bedrockResp.Usage.CacheReadInputTokens) //nolint:gosec
+			openAIResp.Usage.PromptTokensDetails = &openai.PromptTokensDetails{
+				CachedTokens: *bedrockResp.Usage.CacheReadInputTokens,
+			}
 		}
 	}
 
@@ -726,10 +735,15 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 
 	switch {
 	case event.Usage != nil:
-		chunk.Usage = &openai.ChatCompletionResponseUsage{
+		chunk.Usage = &openai.Usage{
 			TotalTokens:      event.Usage.TotalTokens,
 			PromptTokens:     event.Usage.InputTokens,
 			CompletionTokens: event.Usage.OutputTokens,
+		}
+		if event.Usage.CacheReadInputTokens != nil {
+			chunk.Usage.PromptTokensDetails = &openai.PromptTokensDetails{
+				CachedTokens: *event.Usage.CacheReadInputTokens,
+			}
 		}
 	case event.Role != nil:
 		chunk.Choices = append(chunk.Choices, openai.ChatCompletionResponseChunkChoice{

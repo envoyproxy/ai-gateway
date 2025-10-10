@@ -369,12 +369,19 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 				Role:       constant.Assistant(anthropic.MessageParamRoleAssistant),
 				Content:    []anthropic.ContentBlockUnion{{Type: "text", Text: "Hello there!"}},
 				StopReason: anthropic.StopReasonEndTurn,
-				Usage:      anthropic.Usage{InputTokens: 10, OutputTokens: 20},
+				Usage:      anthropic.Usage{InputTokens: 10, OutputTokens: 20, CacheReadInputTokens: 5},
 			},
 			respHeaders: map[string]string{statusHeaderName: "200"},
 			expectedOpenAIResponse: openai.ChatCompletionResponse{
 				Object: "chat.completion",
-				Usage:  openai.ChatCompletionResponseUsage{PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30},
+				Usage: openai.Usage{
+					PromptTokens:     10,
+					CompletionTokens: 20,
+					TotalTokens:      30,
+					PromptTokensDetails: &openai.PromptTokensDetails{
+						CachedTokens: 5,
+					},
+				},
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
 						Index:        0,
@@ -393,12 +400,17 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 					{Type: "tool_use", ID: "toolu_01", Name: "get_weather", Input: json.RawMessage(`{"location": "Tokyo", "unit": "celsius"}`)},
 				},
 				StopReason: anthropic.StopReasonToolUse,
-				Usage:      anthropic.Usage{InputTokens: 25, OutputTokens: 15},
+				Usage:      anthropic.Usage{InputTokens: 25, OutputTokens: 15, CacheReadInputTokens: 10},
 			},
 			respHeaders: map[string]string{statusHeaderName: "200"},
 			expectedOpenAIResponse: openai.ChatCompletionResponse{
 				Object: "chat.completion",
-				Usage:  openai.ChatCompletionResponseUsage{PromptTokens: 25, CompletionTokens: 15, TotalTokens: 40},
+				Usage: openai.Usage{
+					PromptTokens: 25, CompletionTokens: 15, TotalTokens: 40,
+					PromptTokensDetails: &openai.PromptTokensDetails{
+						CachedTokens: 10,
+					},
+				},
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
 						Index:        0,
@@ -446,9 +458,10 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 			require.NoError(t, err)
 
 			expectedTokenUsage := LLMTokenUsage{
-				InputTokens:  uint32(tt.expectedOpenAIResponse.Usage.PromptTokens),     //nolint:gosec
-				OutputTokens: uint32(tt.expectedOpenAIResponse.Usage.CompletionTokens), //nolint:gosec
-				TotalTokens:  uint32(tt.expectedOpenAIResponse.Usage.TotalTokens),      //nolint:gosec
+				InputTokens:  uint32(tt.expectedOpenAIResponse.Usage.PromptTokens),                     //nolint:gosec
+				OutputTokens: uint32(tt.expectedOpenAIResponse.Usage.CompletionTokens),                 //nolint:gosec
+				TotalTokens:  uint32(tt.expectedOpenAIResponse.Usage.TotalTokens),                      //nolint:gosec
+				CachedTokens: uint32(tt.expectedOpenAIResponse.Usage.PromptTokensDetails.CachedTokens), //nolint:gosec
 			}
 			require.Equal(t, expectedTokenUsage, usedToken)
 
