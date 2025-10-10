@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	oteltrace "go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
+	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
@@ -29,20 +30,36 @@ var (
 	startOpts = []oteltrace.SpanStartOption{oteltrace.WithSpanKind(oteltrace.SpanKindServer)}
 
 	req = &openai.ChatCompletionRequest{
-		Model: openai.ModelGPT41Nano,
+		Model: openai.ModelGPT5Nano,
 		Messages: []openai.ChatCompletionMessageParamUnion{{
-			Type: openai.ChatMessageRoleUser,
-			Value: openai.ChatCompletionUserMessageParam{
+			OfUser: &openai.ChatCompletionUserMessageParam{
 				Content: openai.StringOrUserRoleContentUnion{Value: "Hello!"},
 				Role:    openai.ChatMessageRoleUser,
 			},
 		}},
 	}
-
-	respBody = `{"id":"chatcmpl-abc123","object":"chat.completion","created":1722950000,"model":"gpt-4.1-nano","choices":[{"index":0,"message":{"role":"assistant","content":"hello world"},"finish_reason":"stop"}]`
 )
 
 func TestTracer_StartSpanAndInjectHeaders(t *testing.T) {
+	respBody := &openai.ChatCompletionResponse{
+		ID:     "chatcmpl-abc123",
+		Object: "chat.completion",
+		Model:  "gpt-4.1-nano",
+		Choices: []openai.ChatCompletionResponseChoice{
+			{
+				Index: 0,
+				Message: openai.ChatCompletionResponseChoiceMessage{
+					Role:    "assistant",
+					Content: ptr.To("hello world"),
+				},
+				FinishReason: "stop",
+			},
+		},
+	}
+	respBodyBytes, err := json.Marshal(respBody)
+	require.NoError(t, err)
+	bodyLen := len(respBodyBytes)
+
 	reqStream := *req
 	reqStream.Stream = true
 
@@ -58,24 +75,24 @@ func TestTracer_StartSpanAndInjectHeaders(t *testing.T) {
 			name:             "non-streaming request",
 			req:              req,
 			existingHeaders:  map[string]string{},
-			expectedSpanName: "non-stream len: 72",
+			expectedSpanName: "non-stream len: 70",
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String("req", "stream: false"),
-				attribute.Int("reqBodyLen", 72),
+				attribute.Int("reqBodyLen", 70),
 				attribute.Int("statusCode", 200),
-				attribute.Int("respBodyLen", 196),
+				attribute.Int("respBodyLen", bodyLen),
 			},
 		},
 		{
 			name:             "streaming request",
 			req:              &reqStream,
 			existingHeaders:  map[string]string{},
-			expectedSpanName: "stream len: 86",
+			expectedSpanName: "stream len: 84",
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String("req", "stream: true"),
-				attribute.Int("reqBodyLen", 86),
+				attribute.Int("reqBodyLen", 84),
 				attribute.Int("statusCode", 200),
-				attribute.Int("respBodyLen", 196),
+				attribute.Int("respBodyLen", bodyLen),
 			},
 		},
 		{
@@ -84,12 +101,12 @@ func TestTracer_StartSpanAndInjectHeaders(t *testing.T) {
 			existingHeaders: map[string]string{
 				"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
 			},
-			expectedSpanName: "non-stream len: 72",
+			expectedSpanName: "non-stream len: 70",
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String("req", "stream: false"),
-				attribute.Int("reqBodyLen", 72),
+				attribute.Int("reqBodyLen", 70),
 				attribute.Int("statusCode", 200),
-				attribute.Int("respBodyLen", 196),
+				attribute.Int("respBodyLen", bodyLen),
 			},
 			expectedTraceID: "4bf92f3577b34da6a3ce929d0e0e4736",
 		},
@@ -100,7 +117,7 @@ func TestTracer_StartSpanAndInjectHeaders(t *testing.T) {
 			exporter := tracetest.NewInMemoryExporter()
 			tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
 
-			tracer := newChatCompletionTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testChatCompletionRecorder{})
+			tracer := newChatCompletionTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testChatCompletionRecorder{}, nil)
 
 			headerMutation := &extprocv3.HeaderMutation{}
 			reqBody, err := json.Marshal(tt.req)
@@ -115,7 +132,8 @@ func TestTracer_StartSpanAndInjectHeaders(t *testing.T) {
 			require.IsType(t, &chatCompletionSpan{}, span)
 
 			// End the span to export it.
-			span.EndSpan(200, []byte(respBody))
+			span.RecordResponse(respBody)
+			span.EndSpan()
 
 			spans := exporter.GetSpans()
 			require.Len(t, spans, 1)
@@ -150,7 +168,7 @@ func TestNewChatCompletionTracer_Noop(t *testing.T) {
 	// Use noop tracer.
 	noopTracer := noop.Tracer{}
 
-	tracer := newChatCompletionTracer(noopTracer, autoprop.NewTextMapPropagator(), testChatCompletionRecorder{})
+	tracer := newChatCompletionTracer(noopTracer, autoprop.NewTextMapPropagator(), testChatCompletionRecorder{}, nil)
 
 	// Verify it returns NoopTracer.
 	require.IsType(t, tracing.NoopChatCompletionTracer{}, tracer)
@@ -158,12 +176,12 @@ func TestNewChatCompletionTracer_Noop(t *testing.T) {
 	// Test that noop tracer doesn't create spans.
 	headers := map[string]string{}
 	headerMutation := &extprocv3.HeaderMutation{}
-	req := &openai.ChatCompletionRequest{Model: "test"}
+	testReq := &openai.ChatCompletionRequest{Model: "test"}
 
 	span := tracer.StartSpanAndInjectHeaders(t.Context(),
 		headers,
 		headerMutation,
-		req,
+		testReq,
 		[]byte("{}"),
 	)
 
@@ -180,17 +198,17 @@ func TestTracer_UnsampledSpan(t *testing.T) {
 	)
 	t.Cleanup(func() { _ = tracerProvider.Shutdown(context.Background()) })
 
-	tracer := newChatCompletionTracer(tracerProvider.Tracer("test"), autoprop.NewTextMapPropagator(), testChatCompletionRecorder{})
+	tracer := newChatCompletionTracer(tracerProvider.Tracer("test"), autoprop.NewTextMapPropagator(), testChatCompletionRecorder{}, nil)
 
 	// Start a span that won't be sampled.
 	headers := map[string]string{}
 	headerMutation := &extprocv3.HeaderMutation{}
-	req := &openai.ChatCompletionRequest{Model: "test"}
+	testReq := &openai.ChatCompletionRequest{Model: "test"}
 
 	span := tracer.StartSpanAndInjectHeaders(t.Context(),
 		headers,
 		headerMutation,
-		req,
+		testReq,
 		[]byte("{}"),
 	)
 
@@ -199,6 +217,108 @@ func TestTracer_UnsampledSpan(t *testing.T) {
 
 	// Headers should still be injected for trace propagation.
 	require.NotEmpty(t, headerMutation.SetHeaders)
+}
+
+func TestTracer_HeaderAttributeMapping(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
+
+	// Configure header-to-attribute mapping
+	headerMapping := map[string]string{
+		"x-session-id": "session.id",
+		"x-user-id":    "user.id",
+	}
+
+	tracer := newChatCompletionTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testChatCompletionRecorder{}, headerMapping)
+
+	// Create request with headers
+	headers := map[string]string{
+		"x-session-id": "abc123",
+		"x-user-id":    "user456",
+		"x-other":      "ignored", // Not in mapping
+	}
+	headerMutation := &extprocv3.HeaderMutation{}
+	reqBody, err := json.Marshal(req)
+	require.NoError(t, err)
+
+	span := tracer.StartSpanAndInjectHeaders(t.Context(),
+		headers,
+		headerMutation,
+		req,
+		reqBody,
+	)
+	require.IsType(t, &chatCompletionSpan{}, span)
+
+	// End the span to export it
+	span.EndSpan()
+
+	spans := exporter.GetSpans()
+	require.Len(t, spans, 1)
+	actualSpan := spans[0]
+
+	// Verify header attributes were added
+	var foundSessionID, foundUserID bool
+	for _, attr := range actualSpan.Attributes {
+		switch attr.Key {
+		case "session.id":
+			require.Equal(t, "abc123", attr.Value.AsString())
+			foundSessionID = true
+		case "user.id":
+			require.Equal(t, "user456", attr.Value.AsString())
+			foundUserID = true
+		}
+	}
+	require.True(t, foundSessionID, "session.id attribute not found")
+	require.True(t, foundUserID, "user.id attribute not found")
+}
+
+func TestEmbeddingsTracer_HeaderAttributeMapping(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
+
+	// Configure header-to-attribute mapping
+	headerMapping := map[string]string{
+		"x-session-id": "session.id",
+	}
+
+	tracer := newEmbeddingsTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testEmbeddingsRecorder{}, headerMapping)
+
+	// Create request with headers
+	headers := map[string]string{
+		"x-session-id": "test-session-123",
+	}
+	headerMutation := &extprocv3.HeaderMutation{}
+	embReq := &openai.EmbeddingRequest{
+		Input: openai.EmbeddingRequestInput{Value: "test input"},
+		Model: "text-embedding-ada-002",
+	}
+	reqBody, err := json.Marshal(embReq)
+	require.NoError(t, err)
+
+	span := tracer.StartSpanAndInjectHeaders(t.Context(),
+		headers,
+		headerMutation,
+		embReq,
+		reqBody,
+	)
+	require.IsType(t, &embeddingsSpan{}, span)
+
+	// End the span to export it
+	span.EndSpan()
+
+	spans := exporter.GetSpans()
+	require.Len(t, spans, 1)
+	actualSpan := spans[0]
+
+	// Verify header attribute was added
+	var foundSessionID bool
+	for _, attr := range actualSpan.Attributes {
+		if attr.Key == "session.id" {
+			require.Equal(t, "test-session-123", attr.Value.AsString())
+			foundSessionID = true
+		}
+	}
+	require.True(t, foundSessionID, "session.id attribute not found")
 }
 
 func TestHeaderMutationCarrier(t *testing.T) {
@@ -242,6 +362,15 @@ var _ tracing.ChatCompletionRecorder = testChatCompletionRecorder{}
 
 type testChatCompletionRecorder struct{}
 
+func (r testChatCompletionRecorder) RecordResponseChunks(span oteltrace.Span, chunks []*openai.ChatCompletionResponseChunk) {
+	span.SetAttributes(attribute.Int("eventCount", len(chunks)))
+}
+
+func (r testChatCompletionRecorder) RecordResponseOnError(span oteltrace.Span, statusCode int, body []byte) {
+	span.SetAttributes(attribute.Int("statusCode", statusCode))
+	span.SetAttributes(attribute.String("errorBody", string(body)))
+}
+
 func (testChatCompletionRecorder) StartParams(req *openai.ChatCompletionRequest, body []byte) (spanName string, opts []oteltrace.SpanStartOption) {
 	if req.Stream {
 		return fmt.Sprintf("stream len: %d", len(body)), startOpts
@@ -254,11 +383,38 @@ func (testChatCompletionRecorder) RecordRequest(span oteltrace.Span, req *openai
 	span.SetAttributes(attribute.Int("reqBodyLen", len(body)))
 }
 
-func (testChatCompletionRecorder) RecordChunk(span oteltrace.Span, chunkIdx int) {
-	span.AddEvent(fmt.Sprintf("chunk.%d", chunkIdx))
+func (testChatCompletionRecorder) RecordResponse(span oteltrace.Span, resp *openai.ChatCompletionResponse) {
+	span.SetAttributes(attribute.Int("statusCode", 200))
+	body, err := json.Marshal(resp)
+	if err != nil {
+		panic(err)
+	}
+	span.SetAttributes(attribute.Int("respBodyLen", len(body)))
 }
 
-func (testChatCompletionRecorder) RecordResponse(span oteltrace.Span, statusCode int, body []byte) {
+var _ tracing.EmbeddingsRecorder = testEmbeddingsRecorder{}
+
+type testEmbeddingsRecorder struct{}
+
+func (testEmbeddingsRecorder) RecordResponseOnError(span oteltrace.Span, statusCode int, body []byte) {
 	span.SetAttributes(attribute.Int("statusCode", statusCode))
+	span.SetAttributes(attribute.String("errorBody", string(body)))
+}
+
+func (testEmbeddingsRecorder) StartParams(_ *openai.EmbeddingRequest, _ []byte) (spanName string, opts []oteltrace.SpanStartOption) {
+	return "Embeddings", startOpts
+}
+
+func (testEmbeddingsRecorder) RecordRequest(span oteltrace.Span, req *openai.EmbeddingRequest, body []byte) {
+	span.SetAttributes(attribute.String("model", req.Model))
+	span.SetAttributes(attribute.Int("reqBodyLen", len(body)))
+}
+
+func (testEmbeddingsRecorder) RecordResponse(span oteltrace.Span, resp *openai.EmbeddingResponse) {
+	span.SetAttributes(attribute.Int("statusCode", 200))
+	body, err := json.Marshal(resp)
+	if err != nil {
+		panic(err)
+	}
 	span.SetAttributes(attribute.Int("respBodyLen", len(body)))
 }

@@ -11,7 +11,7 @@ import (
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
-	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
 // Handler is the interface that deals with the backend auth for a specific backend.
@@ -29,6 +29,8 @@ func NewHandler(ctx context.Context, config *filterapi.BackendAuth) (Handler, er
 		return newAWSHandler(ctx, config.AWSAuth)
 	case config.APIKey != nil:
 		return newAPIKeyHandler(config.APIKey)
+	case config.AzureAPIKey != nil:
+		return newAzureAPIKeyHandler(config.AzureAPIKey)
 	case config.AzureAuth != nil:
 		return newAzureHandler(config.AzureAuth)
 	case config.GCPAuth != nil:

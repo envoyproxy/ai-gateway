@@ -18,16 +18,20 @@ import (
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 
+	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
 // TestWithTestUpstream tests the end-to-end functionality of the AI Gateway with the testupstream server.
 func TestWithTestUpstream(t *testing.T) {
 	const manifest = "testdata/testupstream.yaml"
-	require.NoError(t, kubectlApplyManifest(t.Context(), manifest))
+	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
+	t.Cleanup(func() {
+		_ = e2elib.KubectlDeleteManifest(t.Context(), manifest)
+	})
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=translation-testupstream"
-	requireWaitForGatewayPodReady(t, egSelector)
+	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
 
 	t.Run("/chat/completions", func(t *testing.T) {
 		for _, tc := range []struct {
@@ -49,6 +53,10 @@ func TestWithTestUpstream(t *testing.T) {
 			expStatus int
 			// expResponseBody is the expected response body for the test case. This is optional and can be empty.
 			expResponseBody string
+			// nonexpectedHeaders are the headers that should NOT be present in the request to the testupstream server.
+			nonexpectedHeaders []string
+			// reqHeaders are the headers to be included in the request to the AI Gateway.
+			reqHeaders map[string]string
 		}{
 			{
 				name:              "openai",
@@ -74,13 +82,24 @@ func TestWithTestUpstream(t *testing.T) {
 				expStatus:       404,
 				expResponseBody: `No matching route found. It is likely that the model specified your request is not configured in the Gateway.`,
 			},
+			{
+				name:               "openai-header-mutation",
+				modelName:          "some-cool-model",
+				expTestUpstreamID:  "primary",
+				expPath:            "/v1/chat/completions",
+				expHost:            "testupstream.default.svc.cluster.local",
+				fakeResponseBody:   `{"choices":[{"message":{"content":"This is a test."}}]}`,
+				nonexpectedHeaders: []string{"x-remove-header"},
+				reqHeaders:         map[string]string{"x-remove-header": "remove-me"},
+				expStatus:          200,
+			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				require.Eventually(t, func() bool {
-					fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
-					defer fwd.kill()
+					fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+					defer fwd.Kill()
 
-					req, err := http.NewRequest(http.MethodPost, fwd.address()+"/v1/chat/completions", strings.NewReader(fmt.Sprintf(
+					req, err := http.NewRequest(http.MethodPost, fwd.Address()+"/v1/chat/completions", strings.NewReader(fmt.Sprintf(
 						`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"%s"}`,
 						tc.modelName)))
 					require.NoError(t, err)
@@ -88,10 +107,17 @@ func TestWithTestUpstream(t *testing.T) {
 					req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expPath)))
 					req.Header.Set(testupstreamlib.ExpectedHostKey, tc.expHost)
 					req.Header.Set(testupstreamlib.ExpectedTestUpstreamIDKey, tc.expTestUpstreamID)
+					for k, v := range tc.reqHeaders {
+						req.Header.Set(k, v)
+					}
 					if tc.modelName == "some-cool-model" {
 						// TODO: remove after 0.3.0 release since this is for backward compatibility testing.
 						req.Header.Set(testupstreamlib.ExpectedHeadersKey,
 							base64.StdEncoding.EncodeToString([]byte("Authorization:Bearer dummy-token")))
+					}
+
+					if len(tc.nonexpectedHeaders) > 0 {
+						req.Header.Set(testupstreamlib.NonExpectedRequestHeadersKey, base64.StdEncoding.EncodeToString([]byte(strings.Join(tc.nonexpectedHeaders, ","))))
 					}
 
 					resp, err := http.DefaultClient.Do(req)
@@ -119,28 +145,16 @@ func TestWithTestUpstream(t *testing.T) {
 		}
 	})
 
-	// To make the non-llm-route work reliable, the controller must delete the old EnvoyExtensionProxy from v0.2.x.
-	// That happens during the reconciliation loop of AIGatewayRoute, so let's trigger it by updating the AIGatewayRoute.
-	// Sometimes this won't be necessary depending on the kubectl apply timing, but this ensures no flaky tests.
-	//
-	// TODO: delete this after 0.3.0 release since this is for backward compatibility testing.
-	kubectl(t.Context(),
-		"patch", "aigatewayroute", "translation-testupstream",
-		"-n", "default",
-		"--type=json",
-		"-p", `[{"op": "replace", "path": "/spec/rules/0/matches/0/headers/0/value", "value": "some-cool-model-2"}]`,
-	)
-
 	t.Run("non-llm-route", func(t *testing.T) {
 		// We should be able to make requests to /non-llm routes as well.
 		//
 		// If this route is intercepted by the AI Gateway ExtProc, which is unexpected, it would result in 404
 		// since "/non-llm-route" is not a valid route at least for the OpenAI API.
 		require.Eventually(t, func() bool {
-			fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
-			defer fwd.kill()
+			fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+			defer fwd.Kill()
 
-			req, err := http.NewRequest(http.MethodGet, fwd.address()+"/non-llm-route", strings.NewReader("somebody"))
+			req, err := http.NewRequest(http.MethodGet, fwd.Address()+"/non-llm-route", strings.NewReader("somebody"))
 			require.NoError(t, err)
 
 			resp, err := http.DefaultClient.Do(req)
@@ -171,12 +185,12 @@ func TestWithTestUpstream(t *testing.T) {
 	//
 	// We have almost identical test in the tests/extproc.
 	t.Run("stream non blocking", func(t *testing.T) {
-		fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
-		defer fwd.kill()
+		fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+		defer fwd.Kill()
 		// This receives a stream of 20 event messages. The testuptream server sleeps 200 ms between each message.
 		// Therefore, if envoy fails to process the response in a streaming manner, the test will fail taking more than 4 seconds.
 		client := openaigo.NewClient(
-			option.WithBaseURL(fwd.address()+"/v1/"),
+			option.WithBaseURL(fwd.Address()+"/v1/"),
 			option.WithHeader(testupstreamlib.ResponseTypeKey, "sse"),
 			option.WithHeader(testupstreamlib.ResponseBodyHeaderKey,
 				base64.StdEncoding.EncodeToString([]byte(

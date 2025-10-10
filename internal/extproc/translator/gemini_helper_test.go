@@ -6,10 +6,13 @@
 package translator
 
 import (
+	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	openaigo "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genai"
@@ -30,29 +33,25 @@ func TestOpenAIMessagesToGeminiContents(t *testing.T) {
 			name: "happy-path",
 			messages: []openai.ChatCompletionMessageParamUnion{
 				{
-					Type: openai.ChatMessageRoleDeveloper,
-					Value: openai.ChatCompletionDeveloperMessageParam{
+					OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
 						Role:    openai.ChatMessageRoleDeveloper,
-						Content: openai.StringOrArray{Value: "This is a developer message"},
+						Content: openai.ContentUnion{Value: "This is a developer message"},
 					},
 				},
 				{
-					Type: openai.ChatMessageRoleSystem,
-					Value: openai.ChatCompletionSystemMessageParam{
+					OfSystem: &openai.ChatCompletionSystemMessageParam{
 						Role:    openai.ChatMessageRoleSystem,
-						Content: openai.StringOrArray{Value: "This is a system message"},
+						Content: openai.ContentUnion{Value: "This is a system message"},
 					},
 				},
 				{
-					Type: openai.ChatMessageRoleUser,
-					Value: openai.ChatCompletionUserMessageParam{
+					OfUser: &openai.ChatCompletionUserMessageParam{
 						Role:    openai.ChatMessageRoleUser,
 						Content: openai.StringOrUserRoleContentUnion{Value: "This is a user message"},
 					},
 				},
 				{
-					Type: openai.ChatMessageRoleAssistant,
-					Value: openai.ChatCompletionAssistantMessageParam{
+					OfAssistant: &openai.ChatCompletionAssistantMessageParam{
 						Role:    openai.ChatMessageRoleAssistant,
 						Audio:   openai.ChatCompletionAssistantMessageParamAudio{},
 						Content: openai.StringOrAssistantRoleContentUnion{Value: "This is a assistant message"},
@@ -69,10 +68,9 @@ func TestOpenAIMessagesToGeminiContents(t *testing.T) {
 					},
 				},
 				{
-					Type: openai.ChatMessageRoleTool,
-					Value: openai.ChatCompletionToolMessageParam{
+					OfTool: &openai.ChatCompletionToolMessageParam{
 						ToolCallID: "tool_call_1",
-						Content:    openai.StringOrArray{Value: "This is a message from the example_tool"},
+						Content:    openai.ContentUnion{Value: "This is a message from the example_tool"},
 					},
 				},
 			},
@@ -352,7 +350,7 @@ func TestDeveloperMsgToGeminiParts(t *testing.T) {
 		{
 			name: "string content",
 			msg: openai.ChatCompletionDeveloperMessageParam{
-				Content: openai.StringOrArray{
+				Content: openai.ContentUnion{
 					Value: "This is a system message",
 				},
 				Role: openai.ChatMessageRoleSystem,
@@ -364,7 +362,7 @@ func TestDeveloperMsgToGeminiParts(t *testing.T) {
 		{
 			name: "content as string array",
 			msg: openai.ChatCompletionDeveloperMessageParam{
-				Content: openai.StringOrArray{
+				Content: openai.ContentUnion{
 					Value: []openai.ChatCompletionContentPartTextParam{
 						{Text: "This is a system message"},
 						{Text: "It can be multiline"},
@@ -380,7 +378,7 @@ func TestDeveloperMsgToGeminiParts(t *testing.T) {
 		{
 			name: "invalid content type",
 			msg: openai.ChatCompletionDeveloperMessageParam{
-				Content: openai.StringOrArray{
+				Content: openai.ContentUnion{
 					Value: 10, // Invalid type.
 				},
 				Role: openai.ChatMessageRoleSystem,
@@ -420,7 +418,7 @@ func TestToolMsgToGeminiParts(t *testing.T) {
 		{
 			name: "Tool message with invalid content",
 			msg: openai.ChatCompletionToolMessageParam{
-				Content: openai.StringOrArray{
+				Content: openai.ContentUnion{
 					Value: 10, // Invalid type.
 				},
 				Role:       openai.ChatMessageRoleTool,
@@ -432,7 +430,7 @@ func TestToolMsgToGeminiParts(t *testing.T) {
 		{
 			name: "Tool message with string content",
 			msg: openai.ChatCompletionToolMessageParam{
-				Content: openai.StringOrArray{
+				Content: openai.ContentUnion{
 					Value: "This is a tool message",
 				},
 				Role:       openai.ChatMessageRoleTool,
@@ -442,14 +440,14 @@ func TestToolMsgToGeminiParts(t *testing.T) {
 			expectedPart: &genai.Part{
 				FunctionResponse: &genai.FunctionResponse{
 					Name:     "get_weather",
-					Response: map[string]interface{}{"output": "This is a tool message"},
+					Response: map[string]any{"output": "This is a tool message"},
 				},
 			},
 		},
 		{
 			name: "Tool message with string array content",
 			msg: openai.ChatCompletionToolMessageParam{
-				Content: openai.StringOrArray{
+				Content: openai.ContentUnion{
 					Value: []openai.ChatCompletionContentPartTextParam{
 						{
 							Type: string(openai.ChatCompletionContentPartTextTypeText),
@@ -468,7 +466,7 @@ func TestToolMsgToGeminiParts(t *testing.T) {
 			expectedPart: &genai.Part{
 				FunctionResponse: &genai.FunctionResponse{
 					Name:     "get_weather",
-					Response: map[string]interface{}{"output": "This is a tool message. And this is another part"},
+					Response: map[string]any{"output": "This is a tool message. And this is another part"},
 				},
 			},
 		},
@@ -527,13 +525,13 @@ func TestUserMsgToGeminiParts(t *testing.T) {
 				Content: openai.StringOrUserRoleContentUnion{
 					Value: []openai.ChatCompletionContentPartUserUnionParam{
 						{
-							TextContent: &openai.ChatCompletionContentPartTextParam{
+							OfText: &openai.ChatCompletionContentPartTextParam{
 								Type: string(openai.ChatCompletionContentPartTextTypeText),
 								Text: "First message",
 							},
 						},
 						{
-							TextContent: &openai.ChatCompletionContentPartTextParam{
+							OfText: &openai.ChatCompletionContentPartTextParam{
 								Type: string(openai.ChatCompletionContentPartTextTypeText),
 								Text: "Second message",
 							},
@@ -553,7 +551,7 @@ func TestUserMsgToGeminiParts(t *testing.T) {
 				Content: openai.StringOrUserRoleContentUnion{
 					Value: []openai.ChatCompletionContentPartUserUnionParam{
 						{
-							ImageContent: &openai.ChatCompletionContentPartImageParam{
+							OfImageURL: &openai.ChatCompletionContentPartImageParam{
 								Type: openai.ChatCompletionContentPartImageTypeImageURL,
 								ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
 									URL: "https://example.com/image.jpg",
@@ -574,7 +572,7 @@ func TestUserMsgToGeminiParts(t *testing.T) {
 				Content: openai.StringOrUserRoleContentUnion{
 					Value: []openai.ChatCompletionContentPartUserUnionParam{
 						{
-							ImageContent: &openai.ChatCompletionContentPartImageParam{
+							OfImageURL: &openai.ChatCompletionContentPartImageParam{
 								Type: openai.ChatCompletionContentPartImageTypeImageURL,
 								ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
 									URL: "",
@@ -593,7 +591,7 @@ func TestUserMsgToGeminiParts(t *testing.T) {
 				Content: openai.StringOrUserRoleContentUnion{
 					Value: []openai.ChatCompletionContentPartUserUnionParam{
 						{
-							ImageContent: &openai.ChatCompletionContentPartImageParam{
+							OfImageURL: &openai.ChatCompletionContentPartImageParam{
 								Type: openai.ChatCompletionContentPartImageTypeImageURL,
 								ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
 									URL: ":%invalid-url%:",
@@ -612,13 +610,13 @@ func TestUserMsgToGeminiParts(t *testing.T) {
 				Content: openai.StringOrUserRoleContentUnion{
 					Value: []openai.ChatCompletionContentPartUserUnionParam{
 						{
-							TextContent: &openai.ChatCompletionContentPartTextParam{
+							OfText: &openai.ChatCompletionContentPartTextParam{
 								Type: string(openai.ChatCompletionContentPartTextTypeText),
 								Text: "Check this image:",
 							},
 						},
 						{
-							ImageContent: &openai.ChatCompletionContentPartImageParam{
+							OfImageURL: &openai.ChatCompletionContentPartImageParam{
 								Type: openai.ChatCompletionContentPartImageTypeImageURL,
 								ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
 									URL: "https://example.com/image.jpg",
@@ -640,7 +638,7 @@ func TestUserMsgToGeminiParts(t *testing.T) {
 				Content: openai.StringOrUserRoleContentUnion{
 					Value: []openai.ChatCompletionContentPartUserUnionParam{
 						{
-							ImageContent: &openai.ChatCompletionContentPartImageParam{
+							OfImageURL: &openai.ChatCompletionContentPartImageParam{
 								Type: openai.ChatCompletionContentPartImageTypeImageURL,
 								ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
 									URL: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD3+iiigD//2Q==",
@@ -666,7 +664,7 @@ func TestUserMsgToGeminiParts(t *testing.T) {
 				Content: openai.StringOrUserRoleContentUnion{
 					Value: []openai.ChatCompletionContentPartUserUnionParam{
 						{
-							ImageContent: &openai.ChatCompletionContentPartImageParam{
+							OfImageURL: &openai.ChatCompletionContentPartImageParam{
 								Type: openai.ChatCompletionContentPartImageTypeImageURL,
 								ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
 									URL: "data:invalid-format",
@@ -685,7 +683,7 @@ func TestUserMsgToGeminiParts(t *testing.T) {
 				Content: openai.StringOrUserRoleContentUnion{
 					Value: []openai.ChatCompletionContentPartUserUnionParam{
 						{
-							InputAudioContent: &openai.ChatCompletionContentPartInputAudioParam{
+							OfInputAudio: &openai.ChatCompletionContentPartInputAudioParam{
 								Type: "audio",
 							},
 						},
@@ -741,7 +739,9 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				MaxTokens:        ptr.To(int64(256)),
 				PresencePenalty:  ptr.To(float32(1.1)),
 				FrequencyPenalty: ptr.To(float32(0.5)),
-				Stop:             []*string{ptr.To("stop1"), ptr.To("stop2")},
+				Stop: openaigo.ChatCompletionNewParamsStopUnion{
+					OfStringArray: []string{"stop1", "stop2"},
+				},
 			},
 			expectedGenerationConfig: &genai.GenerationConfig{
 				Temperature:      ptr.To(float32(0.7)),
@@ -762,10 +762,23 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 			expectedGenerationConfig: &genai.GenerationConfig{},
 		},
 		{
+			name: "stop sequences",
+			input: &openai.ChatCompletionRequest{
+				Stop: openaigo.ChatCompletionNewParamsStopUnion{
+					OfString: openaigo.Opt[string]("stop1"),
+				},
+			},
+			expectedGenerationConfig: &genai.GenerationConfig{
+				StopSequences: []string{"stop1"},
+			},
+		},
+		{
 			name: "text",
 			input: &openai.ChatCompletionRequest{
-				ResponseFormat: &openai.ChatCompletionResponseFormat{
-					Type: openai.ChatCompletionResponseFormatTypeText,
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfText: &openai.ChatCompletionResponseFormatTextParam{
+						Type: openai.ChatCompletionResponseFormatTypeText,
+					},
 				},
 			},
 			expectedGenerationConfig: &genai.GenerationConfig{ResponseMIMEType: "text/plain"},
@@ -773,8 +786,10 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 		{
 			name: "json object",
 			input: &openai.ChatCompletionRequest{
-				ResponseFormat: &openai.ChatCompletionResponseFormat{
-					Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfJSONObject: &openai.ChatCompletionResponseFormatJSONObjectParam{
+						Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+					},
 				},
 			},
 			expectedGenerationConfig: &genai.GenerationConfig{ResponseMIMEType: "application/json"},
@@ -782,11 +797,11 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 		{
 			name: "json schema (map)",
 			input: &openai.ChatCompletionRequest{
-				ResponseFormat: &openai.ChatCompletionResponseFormat{
-					Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
-					JSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
-						Schema: map[string]interface{}{
-							"type": "string",
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
+							Schema: json.RawMessage(`{"type": "string"}`),
 						},
 					},
 				},
@@ -799,10 +814,12 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 		{
 			name: "json schema (string)",
 			input: &openai.ChatCompletionRequest{
-				ResponseFormat: &openai.ChatCompletionResponseFormat{
-					Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
-					JSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
-						Schema: `{"type":"string"}`,
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
+							Schema: json.RawMessage(`{"type":"string"}`),
+						},
 					},
 				},
 			},
@@ -814,14 +831,16 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 		{
 			name: "json schema (invalid string)",
 			input: &openai.ChatCompletionRequest{
-				ResponseFormat: &openai.ChatCompletionResponseFormat{
-					Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
-					JSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
-						Schema: `{"type":`, // invalid JSON.
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
+							Schema: json.RawMessage(`{"type":`), // invalid JSON.
+						},
 					},
 				},
 			},
-			expectedErrMsg: "invalid JSON schema string",
+			expectedErrMsg: "invalid JSON schema",
 		},
 	}
 
@@ -975,30 +994,32 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 func TestOpenAIToolChoiceToGeminiToolConfig(t *testing.T) {
 	tests := []struct {
 		name      string
-		input     interface{}
+		input     *openai.ChatCompletionToolChoiceUnion
 		expected  *genai.ToolConfig
 		expectErr string
 	}{
 		{
 			name:     "string auto",
-			input:    "auto",
+			input:    &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
 			expected: &genai.ToolConfig{FunctionCallingConfig: &genai.FunctionCallingConfig{Mode: genai.FunctionCallingConfigModeAuto}},
 		},
 		{
 			name:     "string none",
-			input:    "none",
+			input:    &openai.ChatCompletionToolChoiceUnion{Value: "none"},
 			expected: &genai.ToolConfig{FunctionCallingConfig: &genai.FunctionCallingConfig{Mode: genai.FunctionCallingConfigModeNone}},
 		},
 		{
 			name:     "string required",
-			input:    "required",
+			input:    &openai.ChatCompletionToolChoiceUnion{Value: "required"},
 			expected: &genai.ToolConfig{FunctionCallingConfig: &genai.FunctionCallingConfig{Mode: genai.FunctionCallingConfigModeAny}},
 		},
 		{
 			name: "ToolChoice struct",
-			input: openai.ToolChoice{
-				Type:     openai.ToolTypeFunction,
-				Function: openai.ToolFunction{Name: "myfunc"},
+			input: &openai.ChatCompletionToolChoiceUnion{
+				Value: openai.ChatCompletionNamedToolChoice{
+					Type:     openai.ToolTypeFunction,
+					Function: openai.ChatCompletionNamedToolChoiceFunction{Name: "myfunc"},
+				},
 			},
 			expected: &genai.ToolConfig{
 				FunctionCallingConfig: &genai.FunctionCallingConfig{
@@ -1010,12 +1031,12 @@ func TestOpenAIToolChoiceToGeminiToolConfig(t *testing.T) {
 		},
 		{
 			name:      "unsupported type",
-			input:     123,
+			input:     &openai.ChatCompletionToolChoiceUnion{Value: 123},
 			expectErr: "unsupported tool choice type",
 		},
 		{
 			name:      "unsupported string value",
-			input:     "invalid",
+			input:     &openai.ChatCompletionToolChoiceUnion{Value: "invalid"},
 			expectErr: "unsupported tool choice: 'invalid'",
 		},
 	}
@@ -1031,6 +1052,309 @@ func TestOpenAIToolChoiceToGeminiToolConfig(t *testing.T) {
 					t.Errorf("ToolConfig mismatch (-want +got):\n%s", diff)
 				}
 			}
+		})
+	}
+}
+
+func TestGeminiLogprobsToOpenAILogprobs(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    genai.LogprobsResult
+		expected openai.ChatCompletionChoicesLogprobs
+	}{
+		{
+			name:     "empty logprobs result",
+			input:    genai.LogprobsResult{},
+			expected: openai.ChatCompletionChoicesLogprobs{},
+		},
+		{
+			name: "single chosen candidate without top candidates",
+			input: genai.LogprobsResult{
+				ChosenCandidates: []*genai.LogprobsResultCandidate{
+					{
+						Token:          "hello",
+						LogProbability: -0.5,
+					},
+				},
+			},
+			expected: openai.ChatCompletionChoicesLogprobs{
+				Content: []openai.ChatCompletionTokenLogprob{
+					{
+						Token:       "hello",
+						Logprob:     -0.5,
+						TopLogprobs: nil,
+					},
+				},
+			},
+		},
+		{
+			name: "multiple chosen candidates with top candidates",
+			input: genai.LogprobsResult{
+				ChosenCandidates: []*genai.LogprobsResultCandidate{
+					{
+						Token:          "hello",
+						LogProbability: -0.5,
+					},
+					{
+						Token:          "world",
+						LogProbability: -0.3,
+					},
+				},
+				TopCandidates: []*genai.LogprobsResultTopCandidates{
+					{
+						Candidates: []*genai.LogprobsResultCandidate{
+							{Token: "hello", LogProbability: -0.5},
+							{Token: "hi", LogProbability: -1.2},
+							{Token: "hey", LogProbability: -1.5},
+						},
+					},
+					{
+						Candidates: []*genai.LogprobsResultCandidate{
+							{Token: "world", LogProbability: -0.3},
+							{Token: "earth", LogProbability: -1.1},
+						},
+					},
+				},
+			},
+			expected: openai.ChatCompletionChoicesLogprobs{
+				Content: []openai.ChatCompletionTokenLogprob{
+					{
+						Token:   "hello",
+						Logprob: -0.5,
+						TopLogprobs: []openai.ChatCompletionTokenLogprobTopLogprob{
+							{Token: "hello", Logprob: -0.5},
+							{Token: "hi", Logprob: -1.2},
+							{Token: "hey", Logprob: -1.5},
+						},
+					},
+					{
+						Token:   "world",
+						Logprob: -0.3,
+						TopLogprobs: []openai.ChatCompletionTokenLogprobTopLogprob{
+							{Token: "world", Logprob: -0.3},
+							{Token: "earth", Logprob: -1.1},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "chosen candidates with nil top candidates entry",
+			input: genai.LogprobsResult{
+				ChosenCandidates: []*genai.LogprobsResultCandidate{
+					{
+						Token:          "test",
+						LogProbability: -0.8,
+					},
+				},
+				TopCandidates: []*genai.LogprobsResultTopCandidates{
+					nil,
+				},
+			},
+			expected: openai.ChatCompletionChoicesLogprobs{
+				Content: []openai.ChatCompletionTokenLogprob{
+					{
+						Token:       "test",
+						Logprob:     -0.8,
+						TopLogprobs: nil,
+					},
+				},
+			},
+		},
+		{
+			name: "chosen candidates with empty top candidates",
+			input: genai.LogprobsResult{
+				ChosenCandidates: []*genai.LogprobsResultCandidate{
+					{
+						Token:          "empty",
+						LogProbability: -0.2,
+					},
+				},
+				TopCandidates: []*genai.LogprobsResultTopCandidates{
+					{
+						Candidates: []*genai.LogprobsResultCandidate{},
+					},
+				},
+			},
+			expected: openai.ChatCompletionChoicesLogprobs{
+				Content: []openai.ChatCompletionTokenLogprob{
+					{
+						Token:       "empty",
+						Logprob:     -0.2,
+						TopLogprobs: nil,
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := geminiLogprobsToOpenAILogprobs(tt.input)
+			// Use cmp.Equal with EquateApprox for float comparison due to float32->float64 conversion.
+			if !cmp.Equal(tt.expected, result, cmpopts.EquateApprox(0, 0.0001)) {
+				t.Errorf("geminiLogprobsToOpenAILogprobs() diff:\n%s", cmp.Diff(tt.expected, result, cmpopts.EquateApprox(0, 0.0001)))
+			}
+		})
+	}
+}
+
+func TestExtractToolCallsFromGeminiParts(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []*genai.Part
+		expected []openai.ChatCompletionMessageToolCallParam
+		wantErr  bool
+	}{
+		{
+			name:     "nil parts",
+			input:    nil,
+			expected: nil,
+		},
+		{
+			name:     "empty parts",
+			input:    []*genai.Part{},
+			expected: nil,
+		},
+		{
+			name: "parts without function calls",
+			input: []*genai.Part{
+				{Text: "some text"},
+				nil,
+				{Text: "more text"},
+			},
+			expected: nil,
+		},
+		{
+			name: "single function call",
+			input: []*genai.Part{
+				{
+					FunctionCall: &genai.FunctionCall{
+						Name: "get_weather",
+						Args: map[string]any{
+							"location": "San Francisco",
+							"unit":     "celsius",
+						},
+					},
+				},
+			},
+			expected: []openai.ChatCompletionMessageToolCallParam{
+				{
+					ID:   ptr.To("0"),
+					Type: openai.ChatCompletionMessageToolCallTypeFunction,
+					Function: openai.ChatCompletionMessageToolCallFunctionParam{
+						Name:      "get_weather",
+						Arguments: `{"location":"San Francisco","unit":"celsius"}`,
+					},
+				},
+			},
+		},
+		{
+			name: "multiple function calls",
+			input: []*genai.Part{
+				{
+					FunctionCall: &genai.FunctionCall{
+						Name: "function1",
+						Args: map[string]any{"param1": "value1"},
+					},
+				},
+				{Text: "some text between"},
+				{
+					FunctionCall: &genai.FunctionCall{
+						Name: "function2",
+						Args: map[string]any{"param2": float64(42)},
+					},
+				},
+			},
+			expected: []openai.ChatCompletionMessageToolCallParam{
+				{
+					ID:   ptr.To("0"),
+					Type: openai.ChatCompletionMessageToolCallTypeFunction,
+					Function: openai.ChatCompletionMessageToolCallFunctionParam{
+						Name:      "function1",
+						Arguments: `{"param1":"value1"}`,
+					},
+				},
+				{
+					ID:   ptr.To("1"),
+					Type: openai.ChatCompletionMessageToolCallTypeFunction,
+					Function: openai.ChatCompletionMessageToolCallFunctionParam{
+						Name:      "function2",
+						Arguments: `{"param2":42}`,
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			calls, err := extractToolCallsFromGeminiParts(tt.input)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+
+			// Normalize IDs since they're generated.
+			for i := range calls {
+				calls[i].ID = ptr.To(fmt.Sprintf("%d", i))
+			}
+
+			require.Equal(t, tt.expected, calls)
+		})
+	}
+}
+
+func TestGeminiFinishReasonToOpenAI(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    genai.FinishReason
+		expected openai.ChatCompletionChoicesFinishReason
+	}{
+		{
+			name:     "stop reason",
+			input:    genai.FinishReasonStop,
+			expected: openai.ChatCompletionChoicesFinishReasonStop,
+		},
+		{
+			name:     "max tokens reason",
+			input:    genai.FinishReasonMaxTokens,
+			expected: openai.ChatCompletionChoicesFinishReasonLength,
+		},
+		{
+			name:     "empty reason for streaming",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "safety reason",
+			input:    genai.FinishReasonSafety,
+			expected: openai.ChatCompletionChoicesFinishReasonContentFilter,
+		},
+		{
+			name:     "recitation reason",
+			input:    genai.FinishReasonRecitation,
+			expected: openai.ChatCompletionChoicesFinishReasonContentFilter,
+		},
+		{
+			name:     "other reason",
+			input:    genai.FinishReasonOther,
+			expected: openai.ChatCompletionChoicesFinishReasonContentFilter,
+		},
+		{
+			name:     "unknown reason",
+			input:    genai.FinishReason("unknown_reason"),
+			expected: openai.ChatCompletionChoicesFinishReasonContentFilter,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := geminiFinishReasonToOpenAI(tt.input)
+			require.Equal(t, tt.expected, result)
 		})
 	}
 }

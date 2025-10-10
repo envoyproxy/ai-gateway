@@ -2,26 +2,18 @@ name: Build and Test
 on:
   pull_request:
     branches:
-      - 'main'
+      - "main"
       # Release branches are like "release/v0.1", "release/v0.2", etc. where we backport the changes to non EOL versions.
       # The branch will be created from the main branch after the initial release tag is cut. For example, when we cut v0.8.0 release,
       # we will create a branch "release/v0.8" from the main branch. For rc release, we simply iterate on main branch.
       #
       # See RELEASES.md for more details.
-      - 'release/**'
-    paths-ignore:
-      - '**/*.md'
-      - 'site/**'
-      - 'netlify.toml'
+      - "release/**"
 
   push:
     branches:
-      - 'main'
-      - 'release/**'
-    paths-ignore:
-      - '**/*.md'
-      - 'site/**'
-      - 'netlify.toml'
+      - "main"
+      - "release/**"
 
 concurrency:
   # https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#example-using-concurrency-to-cancel-any-in-progress-job-or-run
@@ -34,7 +26,26 @@ permissions:
   id-token: write
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            code:
+              - '!**/*.md'
+              - '!site/**'
+              - '!netlify.toml'
+          predicate-quantifier: every # Make the filters be AND-ed
+          token: "" # don't use github api
+    outputs:
+      code: ${{ steps.changes.outputs.code }}
+
   unittest:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     name: Unit Test
     strategy:
       fail-fast: false
@@ -63,17 +74,30 @@ jobs:
       - name: Start Ollama server
         if: matrix.os == 'ubuntu-latest'
         run: |
-          curl -fsSL https://ollama.com/install.sh | sh
-          sleep 10 # Wait for ollama to start. TODO: this is really hacky, so find a better way to wait for ollama to start. This can be a source of flakiness.
-          ollama pull qwen3:0.6b
-
+          curl -fsSL https://ollama.com/install.sh | sh && sudo systemctl stop ollama
+          nohup ollama serve > ollama.log 2>&1 &
+          timeout 30 sh -c 'until nc -z localhost 11434; do sleep 1; done'
+          grep _MODEL .env.ollama | cut -d= -f2 | xargs -I{} ollama pull {}
+        env:
+          OLLAMA_CONTEXT_LENGTH: 131072 # Larger context for goose
+          OLLAMA_HOST: 0.0.0.0
+      # Download Envoy via func-e using implicit default version `aigw` would
+      # otherwise need to download during test runs.
+      - name: Download Envoy via func-e
+        run: go tool -modfile=tools/go.mod func-e run --version
+        env:
+          FUNC_E_HOME: /tmp/envoy-gateway # hard-coded directory in EG
       - env:
           TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
           TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
           TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
+          TEST_GITHUB_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: make test-coverage
+      - if: failure()
+        run: cat ollama.log || true
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24  # v5.4.3
+        if: matrix.os == 'ubuntu-latest'
+        uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24 # v5.4.3
         with:
           fail_ci_if_error: true
           files: ./out/go-test-coverage.out
@@ -83,6 +107,8 @@ jobs:
           use_oidc: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
 
   test_crdcel:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     name: CRD CEL Validation Test
     runs-on: ${{ matrix.os }}
     strategy:
@@ -107,6 +133,8 @@ jobs:
       - run: make test-crdcel
 
   test_controller:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     name: Controller Test
     runs-on: ${{ matrix.os }}
     strategy:
@@ -131,17 +159,19 @@ jobs:
       - run: make test-controller
 
   test_extproc:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     name: External Processor Test (Envoy v${{ matrix.version }} on ${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         # Note: we cannot run the latest Envoy version on macOS due to https://github.com/tetratelabs/archive-envoy/issues/12.
         # Once it's supported, the following "binary installation" steps below can be just removed and
-        # we can simply exec.Cmd with "go tool func-e run" with the envoy version configured via ENVOY_VERSION env var.
+        # we can simply exec.Cmd with "go tool -modfile=tools/go.mod func-e run" with the envoy version configured via ENVOY_VERSION env var.
         include:
-          - version: 1.35.0  # NOTE: when updating this, also update the comment in the CONTRIBUTING.md file.
+          - version: 1.35.0 # NOTE: when updating this, also update the comment in the CONTRIBUTING.md file.
             os: ubuntu-latest
-          - version: 1.35.0  # NOTE: when updating this, also update the comment in the CONTRIBUTING.md file.
+          - version: 1.35.0 # NOTE: when updating this, also update the comment in the CONTRIBUTING.md file.
             os: macos-latest
           - version: latest
             os: ubuntu-latest
@@ -162,7 +192,7 @@ jobs:
       - name: Install stable Envoy via func-e
         if: matrix.version != 'latest'
         run: |
-          go tool func-e use ${{ matrix.version }}
+          go tool -modfile=tools/go.mod func-e use ${{ matrix.version }}
           echo $HOME/.func-e/versions/${{ matrix.version }}/bin >> $GITHUB_PATH
       - name: Install latest Envoy
         if: matrix.version == 'latest'
@@ -181,9 +211,12 @@ jobs:
           TEST_GROK_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_GROK_API_KEY }}
           TEST_SAMBANOVA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_SAMBANOVA_API_KEY }}
           TEST_DEEPINFRA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_DEEPINFRA_API_KEY }}
+          TEST_GITHUB_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: make test-extproc
 
   test_e2e:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     # Not all the cases in E2E require secrets, so we run for all the events.
     name: E2E Test (Envoy Gateway ${{ matrix.name }})
     # TODO: make it possible to run this job on macOS as well, which is a bit tricky due to the nested
@@ -222,11 +255,123 @@ jobs:
           TEST_GEMINI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_GEMINI_API_KEY }}
         run: make test-e2e
 
+  test_e2e_upgrade:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    name: E2E Test for Upgrades (k8s ${{ matrix.k8s-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Note: this is to simply ensure that the controller working as expected with or without
+        # extproc being inserted as a k8s sidecar (init container with the restartPolicy=always).
+        # On newer k8s versions (v1.33+), that is always enabled by default, so we only need to test
+        # on older versions. After v1.32 reaches EOL, we can remove the older k8s versions from here.
+        k8s-version:
+          - v1.33.4
+          - v1.32.8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/go/pkg/mod
+            ~/go/bin
+          key: e2e-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+      - uses: docker/setup-buildx-action@v3
+      - run: make test-e2e-upgrade
+        env:
+          # We only need to test the upgrade from the latest stable version of EG.
+          EG_VERSION: v1.5.0
+          K8S_VERSION: ${{ matrix.k8s-version }}
+
+  test_e2e_inference_extension:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    name: E2E Test for Inference Extensions (Envoy Gateway ${{ matrix.name }})
+    # TODO: make it possible to run this job on macOS as well, which is a bit tricky due to the nested
+    # virtualization is not supported on macOS runners.
+    # E.g. Use https://github.com/douglascamata/setup-docker-macos-action  per the comment in
+    # https://github.com/actions/runner-images/issues/17#issuecomment-1971073406
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: latest
+            envoy_gateway_version: v0.0.0-latest
+          - name: v1.5.0
+            envoy_gateway_version: v1.5.0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/go/pkg/mod
+            ~/go/bin
+          key: e2e-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+      - uses: docker/setup-buildx-action@v3
+      - run: make test-e2e-inference-extension
+
+  test_e2e_aigw:
+    needs: changes
+    name: E2E Test for aigw CLI
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/go/pkg/mod
+            ~/go/bin
+          key: e2e-aigw-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Start Ollama server
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh && sudo systemctl stop ollama
+          nohup ollama serve > ollama.log 2>&1 &
+          timeout 30 sh -c 'until nc -z localhost 11434; do sleep 1; done'
+          grep _MODEL .env.ollama | cut -d= -f2 | xargs -I{} ollama pull {}
+        env:
+          OLLAMA_CONTEXT_LENGTH: 131072 # Larger context for goose
+          OLLAMA_HOST: 0.0.0.0
+      # Download Envoy via func-e using implicit default version `aigw` would
+      # otherwise need to download during test runs.
+      - name: Download Envoy via func-e
+        run: go tool -modfile=tools/go.mod func-e run --version
+        env:
+          FUNC_E_HOME: /tmp/envoy-gateway # hard-coded directory in EG
+      - name: Install Goose
+        run: |
+          curl -fsSL https://github.com/block/goose/releases/download/stable/download_cli.sh | CONFIGURE=false bash
+      - run: make test-e2e-aigw
+      - if: failure()
+        run: cat ollama.log || true
+
   docker_push:
     # Docker builds are verified in test_e2e job, so we only need to push the images when the event is a push event.
     if: github.event_name == 'push'
     name: Push Docker Images
-    needs: [unittest, test_crdcel, test_controller, test_extproc, test_e2e]
+    needs: [ci-required]
     uses: ./.github/workflows/docker_build_job.yaml
     secrets: inherit
 
@@ -248,3 +393,29 @@ jobs:
           make helm-push HELM_CHART_VERSION=0.0.0-latest
           make helm-push HELM_CHART_VERSION=v0.0.0-${{ github.sha }} TAG=${{ github.sha }}
           make helm-push HELM_CHART_VERSION=0.0.0-${{ github.sha }} TAG=${{ github.sha }}
+
+  # Aggregate all the required jobs and make it easier to customize CI required jobs
+  ci-required:
+    runs-on: ubuntu-latest
+    needs:
+      - unittest
+      - test_crdcel
+      - test_controller
+      - test_extproc
+      - test_e2e
+      - test_e2e_upgrade
+      - test_e2e_inference_extension
+      - test_e2e_aigw
+    # We need this to run always to force-fail (and not skip) if any needed
+    # job has failed. Otherwise, a skipped job will not fail the workflow.
+    if: always()
+    steps:
+      - run: |
+          echo "CI required checks completed"
+          if [ "${{
+              contains(needs.*.result, 'failure') ||
+              contains(needs.*.result, 'cancelled')
+            }}" == "true" ]; then
+            echo "Some required jobs have failed or were cancelled or skipped."
+            exit 1
+          fi

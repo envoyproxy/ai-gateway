@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testenvironment"
 )
 
@@ -38,7 +38,7 @@ var (
 	awsBedrockSchema     = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}
 	azureOpenAISchema    = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2025-01-01-preview"}
 	gcpVertexAISchema    = filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPVertexAI}
-	gcpAnthropicAISchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPAnthropic}
+	gcpAnthropicAISchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPAnthropic, Version: "vertex-2023-10-16"}
 	geminiSchema         = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1beta/openai"}
 	groqSchema           = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "openai/v1"}
 	grokSchema           = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}
@@ -134,19 +134,19 @@ func TestMain(m *testing.M) {
 	os.Exit(res)
 }
 
-func startTestEnvironment(t *testing.T, extprocConfig string, okToDumpLogOnFailure bool) *testenvironment.TestEnvironment {
+func startTestEnvironment(t testing.TB, extprocConfig string, okToDumpLogOnFailure, extProcInProcess bool) *testenvironment.TestEnvironment {
 	return testenvironment.StartTestEnvironment(t,
-		requireUpstream, 8080,
-		extprocBin, extprocConfig, nil, envoyConfig, okToDumpLogOnFailure,
+		requireUpstream, map[string]int{"upstream": 8080},
+		extprocBin, extprocConfig, nil, envoyConfig, okToDumpLogOnFailure, extProcInProcess, 120*time.Second,
 	)
 }
 
 // requireUpstream starts the external processor with the given configuration.
-func requireUpstream(t *testing.T, out io.Writer, port int) {
+func requireUpstream(t testing.TB, out io.Writer, ports map[string]int) {
 	cmd := exec.CommandContext(t.Context(), testupstreamBin)
 	cmd.Env = append(os.Environ(),
 		"TESTUPSTREAM_ID=extproc_test",
-		fmt.Sprintf("LISTENER_PORT=%d", port))
+		fmt.Sprintf("LISTENER_PORT=%d", ports["upstream"]))
 
 	// wait for the ready message or exit.
 	testenvironment.StartAndAwaitReady(t, cmd, out, out, "Test upstream is ready")

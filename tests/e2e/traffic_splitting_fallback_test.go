@@ -14,18 +14,23 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
 // TestTrafficSplittingFallback tests the end-to-end functionality of traffic splitting and fallback.
 func TestTrafficSplittingFallback(t *testing.T) {
 	const manifest = "testdata/traffic_splitting_fallback.yaml"
-	require.NoError(t, kubectlApplyManifest(t.Context(), manifest))
+	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
+	t.Cleanup(func() {
+		_ = e2elib.KubectlDeleteManifest(t.Context(), manifest)
+	})
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=traffic-splitting-fallback"
 
 	// Wait for the gateway to be ready.
-	requireWaitForGatewayPodReady(t, egSelector)
+	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
 
 	t.Run("traffic-distribution", func(t *testing.T) {
 		// Test that traffic splitting configuration is working by making multiple requests
@@ -34,14 +39,14 @@ func TestTrafficSplittingFallback(t *testing.T) {
 		backendAResponses := 0
 		backendBResponses := 0
 
-		for i := 0; i < requestCount; i++ {
-			fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
-			defer fwd.kill()
+		for range requestCount {
+			fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+			defer fwd.Kill()
 
-			req, err := http.NewRequest(http.MethodPost, fwd.address()+"/v1/chat/completions", strings.NewReader(
+			req, err := http.NewRequest(http.MethodPost, fwd.Address()+"/v1/chat/completions", strings.NewReader(
 				`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"model-a"}`))
 			require.NoError(t, err)
-			req.Header.Set("x-ai-eg-model", "model-a")
+			req.Header.Set(internalapi.ModelNameHeaderKeyDefault, "model-a")
 
 			// Use a generic response that will be overridden by the testupstream server.
 			req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(`{"choices":[{"message":{"content":"test"}}]}`)))
@@ -84,18 +89,18 @@ func TestTrafficSplittingFallback(t *testing.T) {
 		// Test that when backend-a and backend-b return 5xx errors,
 		// traffic falls back to backend-c with model-c override.
 		require.Eventually(t, func() bool {
-			fwd := requireNewHTTPPortForwarder(t, egNamespace, egSelector, egDefaultServicePort)
-			defer fwd.kill()
+			fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+			defer fwd.Kill()
 
 			// Make multiple requests and count responses from each backend.
 			backendCounts := make(map[string]int)
 			numRequests := 20
 
-			for i := 0; i < numRequests; i++ {
-				req, err := http.NewRequest(http.MethodPost, fwd.address()+"/v1/chat/completions", strings.NewReader(
+			for range numRequests {
+				req, err := http.NewRequest(http.MethodPost, fwd.Address()+"/v1/chat/completions", strings.NewReader(
 					`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"model-a"}`))
 				require.NoError(t, err)
-				req.Header.Set("x-ai-eg-model", "model-a")
+				req.Header.Set(internalapi.ModelNameHeaderKeyDefault, "model-a")
 				// Set all backends to return 500 errors.
 				req.Header.Set(testupstreamlib.ResponseStatusKey, "500")
 				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(`{"choices":[{"message":{"content":"Fallback response from backend C"}}]}`)))

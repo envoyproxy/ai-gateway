@@ -15,13 +15,14 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
 // mockReceiver is a mock implementation of Receiver.
@@ -75,6 +76,13 @@ func newTestLoggerWithBuffer() (*slog.Logger, *syncBuffer) {
 }
 
 func TestStartConfigWatcher(t *testing.T) {
+	// Virtualize time so sleeps take no time!
+	synctest.Test(t, testStartConfigWatcher)
+}
+
+func testStartConfigWatcher(t *testing.T) {
+	t.Helper()
+
 	tmpdir := t.TempDir()
 	path := tmpdir + "/config.yaml"
 	rcv := &mockReceiver{}
@@ -101,7 +109,7 @@ func TestStartConfigWatcher(t *testing.T) {
 	cfg := `
 schema:
   name: OpenAI
-modelNameHeaderKey: x-model-name
+modelNameHeaderKey: x-ai-eg-model
 backends:
 - name: kserve
   weight: 1
@@ -132,7 +140,7 @@ backends:
 	cfg = `
 schema:
   name: OpenAI
-modelNameHeaderKey: x-model-name
+modelNameHeaderKey: x-ai-eg-model
 backends:
 - name: openai
   schema:

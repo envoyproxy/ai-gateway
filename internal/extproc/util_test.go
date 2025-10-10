@@ -6,8 +6,12 @@
 package extproc
 
 import (
+	"bytes"
+	"compress/gzip"
+	"io"
 	"testing"
 
+	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,5 +21,125 @@ func TestIsGoodStatusCode(t *testing.T) {
 	}
 	for _, s := range []int{100, 300, 400, 500} {
 		require.False(t, isGoodStatusCode(s))
+	}
+}
+
+func TestDecodeContentIfNeeded(t *testing.T) {
+	tests := []struct {
+		name         string
+		body         []byte
+		encoding     string
+		wantEncoded  bool
+		wantEncoding string
+		wantErr      bool
+	}{
+		{
+			name:         "plain body",
+			body:         []byte("hello world"),
+			encoding:     "",
+			wantEncoded:  false,
+			wantEncoding: "",
+			wantErr:      false,
+		},
+		{
+			name:         "unsupported encoding",
+			body:         []byte("hello world"),
+			encoding:     "deflate",
+			wantEncoded:  false,
+			wantEncoding: "",
+			wantErr:      false,
+		},
+		{
+			name: "valid gzip",
+			body: func() []byte {
+				var b bytes.Buffer
+				w := gzip.NewWriter(&b)
+				_, err := w.Write([]byte("abc"))
+				if err != nil {
+					panic(err)
+				}
+				w.Close()
+				return b.Bytes()
+			}(),
+			encoding:     "gzip",
+			wantEncoded:  true,
+			wantEncoding: "gzip",
+			wantErr:      false,
+		},
+		{
+			name:         "invalid gzip",
+			body:         []byte("not a gzip"),
+			encoding:     "gzip",
+			wantEncoded:  false,
+			wantEncoding: "",
+			wantErr:      true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res, err := decodeContentIfNeeded(tt.body, tt.encoding)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.wantEncoded, res.isEncoded)
+			if !tt.wantEncoded {
+				out, _ := io.ReadAll(res.reader)
+				require.Equal(t, tt.body, out)
+			} else if tt.encoding == "gzip" && !tt.wantErr {
+				out, _ := io.ReadAll(res.reader)
+				require.Equal(t, []byte("abc"), out)
+			}
+		})
+	}
+}
+
+func TestRemoveContentEncodingIfNeeded(t *testing.T) {
+	tests := []struct {
+		name        string
+		hm          *extprocv3.HeaderMutation
+		bm          *extprocv3.BodyMutation
+		isEncoded   bool
+		wantRemoved bool
+	}{
+		{
+			name:        "no body mutation, not encoded",
+			hm:          nil,
+			bm:          nil,
+			isEncoded:   false,
+			wantRemoved: false,
+		},
+		{
+			name:        "body mutation, not encoded",
+			hm:          nil,
+			bm:          &extprocv3.BodyMutation{},
+			isEncoded:   false,
+			wantRemoved: false,
+		},
+		{
+			name:        "body mutation, encoded",
+			hm:          nil,
+			bm:          &extprocv3.BodyMutation{},
+			isEncoded:   true,
+			wantRemoved: true,
+		},
+		{
+			name:        "existing header mutation, body mutation, encoded",
+			hm:          &extprocv3.HeaderMutation{RemoveHeaders: []string{"foo"}},
+			bm:          &extprocv3.BodyMutation{},
+			isEncoded:   true,
+			wantRemoved: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res := removeContentEncodingIfNeeded(tt.hm, tt.bm, tt.isEncoded)
+			if tt.wantRemoved {
+				require.Contains(t, res.RemoveHeaders, "content-encoding")
+			} else if res != nil {
+				require.NotContains(t, res.RemoveHeaders, "content-encoding")
+			}
+		})
 	}
 }

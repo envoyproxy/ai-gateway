@@ -52,7 +52,7 @@ func TestMyFeature(t *testing.T) {
 The test server can record new interactions when:
 
 - No matching cassette is found
-- `OPENAI_API_KEY` is set in the environment
+- `OPENAI_API_KEY` or `AZURE_OPENAI_API_KEY` is set in the environment
 - A cassette name is provided via `X-Cassette-Name` header
 
 To record a new cassette, follow these steps:
@@ -103,24 +103,27 @@ To record a new cassette, follow these steps:
    }
    ```
 
-3. **Add your new cassette to the test matrix** in [requests_test.go](requests_test.go):
+3. **Run `TestNewRequest`** with your API credentials set:
 
-   ```go
-   // ... existing tests
-   {
-       cassetteName:   CassetteChatFeatureX,
-       expectedStatus: http.StatusOK,
-   },
-   ```
-
-4. **Run `TestNewRequest`** with your OpenAI API key set:
+   For OpenAI:
 
    ```bash
-   cd internal/testopenai
+   cd tests/internal/testopenai
    OPENAI_API_KEY=sk-.. go test -run TestNewRequest -v
    ```
 
-5. Use it in tests like [chat_completions_test.go](../../extproc/vcr/chat_completions_test.go)
+   For Azure OpenAI:
+
+   ```bash
+   cd tests/internal/testopenai
+   AZURE_OPENAI_API_KEY=your-key \
+     AZURE_OPENAI_ENDPOINT=https://your-resource.cognitiveservices.azure.com \
+     AZURE_OPENAI_DEPLOYMENT=your-deployment-name \
+     OPENAI_API_VERSION=2024-02-15-preview \
+     go test -run TestNewRequest -v
+   ```
+
+4. Use it in tests like [chat_completions_test.go](../../extproc/vcr/chat_completions_test.go)
 
 ## Flowchart of Request Handling
 
@@ -173,9 +176,11 @@ employs VCR for LLM frameworks as well.
 
 Here are key parts of the OpenTelemetry Botocore Bedrock instrumentation that
 deals with request signing and recording:
+
 - [test_botocore_bedrock.py#](https://github.com/open-telemetry/opentelemetry-python-contrib/blob/77f3171bd4d0ca8eb5501c8c493364f7b6c8859a/instrumentation/opentelemetry-instrumentation-botocore/tests/test_botocore_bedrock.py#L403)
 - [conftest.py](https://github.com/open-telemetry/opentelemetry-python-contrib/blob/77f3171bd4d0ca8eb5501c8c493364f7b6c8859a/instrumentation/opentelemetry-instrumentation-botocore/tests/conftest.py#L77)
 
 Here are key parts of OpenInference Anthropic instrumentation, which handles
 their endpoint.
+
 - [test_instrumentor.py](https://github.com/Arize-ai/openinference/blob/main/python/instrumentation/openinference-instrumentation-anthropic/tests/openinference/anthropic/test_instrumentor.py)

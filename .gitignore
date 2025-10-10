@@ -11,7 +11,9 @@ out/
 # This is the placeholder for the access log file during extproc tests.
 ACCESS_LOG_PATH
 
-tests/e2e/logs
+tests/e2e/logs/
+tests/e2e-inference-extension/logs/
+tests/e2e-upgrade/logs/
 
 # Files and directories to ignore in the site directory
 # dependencies
@@ -39,3 +41,10 @@ site/temp
 
 # auto generated conformance report
 inference-extension-conformance-test-report.yaml
+
+# Claude Code settings and generated files
+.claude/
+.env
+.mcp.json
+
+.goose

@@ -24,7 +24,7 @@ import (
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
@@ -49,12 +49,10 @@ func TestServer_LoadConfig(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		config := &filterapi.Config{
-			MetadataNamespace: "ns",
 			LLMRequestCosts: []filterapi.LLMRequestCost{
 				{MetadataKey: "key", Type: filterapi.LLMRequestCostTypeOutputToken},
 				{MetadataKey: "cel_key", Type: filterapi.LLMRequestCostTypeCEL, CEL: "1 + 1"},
 			},
-			ModelNameHeaderKey: "x-model-name",
 			Backends: []filterapi.Backend{
 				{Name: "kserve", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
 				{Name: "awsbedrock", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}},
@@ -78,8 +76,6 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NotNil(t, s.config)
-		require.Equal(t, "ns", s.config.metadataNamespace)
-		require.Equal(t, "x-model-name", s.config.modelNameHeaderKey)
 
 		require.Len(t, s.config.requestCosts, 2)
 		require.Equal(t, filterapi.LLMRequestCostTypeOutputToken, s.config.requestCosts[0].Type)
@@ -319,7 +315,7 @@ func TestServer_setBackend(t *testing.T) {
 				str, err := prototext.Marshal(tc.md)
 				require.NoError(t, err)
 				s, _ := requireNewServerWithMockProcessor(t)
-				s.config.backends = map[string]*processorConfigBackend{"openai": {b: &filterapi.Backend{Name: "openai"}}}
+				s.config.backends = map[string]*processorConfigBackend{"openai": {b: &filterapi.Backend{Name: "openai", HeaderMutation: &filterapi.HTTPHeaderMutation{Set: []filterapi.HTTPHeader{{Name: "x-foo", Value: "foo"}}}}}}
 				mockProc := &mockProcessor{}
 
 				// Use the correct metadata field key based on isEndpointPicker.
@@ -485,4 +481,132 @@ func Test_headersToMap(t *testing.T) {
 	}
 	m := headersToMap(hm)
 	require.Equal(t, map[string]string{"foo": "bar", "dog": "cat"}, m)
+}
+
+func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
+	s, err := NewServer(slog.Default(), tracing.NoopTracing{})
+	require.NoError(t, err)
+	require.NotNil(t, s)
+
+	s.config = &processorConfig{}
+
+	// Register processors for different base paths.
+	mockProc := &mockProcessor{}
+	s.Register("/v1/messages", func(*processorConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+		return mockProc, nil
+	})
+	s.Register("/anthropic/v1/messages", func(*processorConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+		return mockProc, nil
+	})
+
+	tests := []struct {
+		name           string
+		requestHeaders map[string]string
+		isUpstream     bool
+		expectSuccess  bool
+		expectedError  string
+	}{
+		{
+			name: "path_without_query_params",
+			requestHeaders: map[string]string{
+				":path": "/v1/messages",
+			},
+			isUpstream:    false,
+			expectSuccess: true,
+		},
+		{
+			name: "path_with_beta_query_param",
+			requestHeaders: map[string]string{
+				":path": "/v1/messages?beta=true",
+			},
+			isUpstream:    false,
+			expectSuccess: true,
+		},
+		{
+			name: "path_with_multiple_query_params",
+			requestHeaders: map[string]string{
+				":path": "/v1/messages?beta=true&stream=false&version=2",
+			},
+			isUpstream:    false,
+			expectSuccess: true,
+		},
+		{
+			name: "anthropic_path_with_beta_param",
+			requestHeaders: map[string]string{
+				":path": "/anthropic/v1/messages?beta=true",
+			},
+			isUpstream:    false,
+			expectSuccess: true,
+		},
+		{
+			name: "unknown_path_without_query_params",
+			requestHeaders: map[string]string{
+				":path": "/unknown/path",
+			},
+			isUpstream:    false,
+			expectSuccess: false,
+			expectedError: "no processor registered for the given path: /unknown/path",
+		},
+		{
+			name: "unknown_path_with_query_params",
+			requestHeaders: map[string]string{
+				":path": "/unknown/path?param=value",
+			},
+			isUpstream:    false,
+			expectSuccess: false,
+			expectedError: "no processor registered for the given path: /unknown/path",
+		},
+		{
+			name: "upstream_filter_with_original_path_header",
+			requestHeaders: map[string]string{
+				originalPathHeader: "/v1/messages?beta=true&other=param",
+			},
+			isUpstream:    true,
+			expectSuccess: true,
+		},
+		{
+			name: "empty_path",
+			requestHeaders: map[string]string{
+				":path": "",
+			},
+			isUpstream:    false,
+			expectSuccess: false,
+			expectedError: "no processor registered for the given path: ",
+		},
+		{
+			name: "path_with_only_query_params",
+			requestHeaders: map[string]string{
+				":path": "?beta=true",
+			},
+			isUpstream:    false,
+			expectSuccess: false,
+			expectedError: "no processor registered for the given path: ",
+		},
+		{
+			name: "path_with_fragment_and_query",
+			requestHeaders: map[string]string{
+				":path": "/v1/messages?beta=true#fragment",
+			},
+			isUpstream:    false,
+			expectSuccess: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			processor, err := s.processorForPath(tt.requestHeaders, tt.isUpstream)
+
+			if tt.expectSuccess {
+				require.NoError(t, err)
+				require.NotNil(t, processor)
+				require.Equal(t, mockProc, processor)
+			} else {
+				require.Error(t, err)
+				require.Nil(t, processor)
+				if tt.expectedError != "" {
+					require.Contains(t, err.Error(), tt.expectedError)
+				}
+			}
+		})
+	}
 }

@@ -21,6 +21,25 @@ spec:
     - name: http
       protocol: HTTP
       port: 80
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: translation-testupstream
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: translation-testupstream
+  namespace: default
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        container:
+          # Clear the default memory/cpu requirements for local tests.
+          resources: {}
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute
@@ -28,9 +47,7 @@ metadata:
   name: translation-testupstream
   namespace: default
 spec:
-  schema:
-    name: OpenAI
-  targetRefs:
+  parentRefs:
     - name: translation-testupstream
       kind: Gateway
       group: gateway.networking.k8s.io
@@ -69,11 +86,9 @@ spec:
     name: testupstream
     kind: Backend
     group: gateway.envoyproxy.io
-  # This is mainly to ensure backward compatibility in tests.
-  backendSecurityPolicyRef:
-    name: translation-testupstream-cool-model-backend-api-key
-    kind: BackendSecurityPolicy
-    group: aigateway.envoyproxy.io
+  headerMutation:
+    remove:
+      - x-remove-header
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
@@ -95,6 +110,10 @@ metadata:
   namespace: default
 spec:
   type: APIKey
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: translation-testupstream-cool-model-backend
   apiKey:
     secretRef:
       name: translation-testupstream-cool-model-backend-api-key
@@ -241,48 +260,3 @@ spec:
         - path:
             type: PathPrefix
             value: /non-llm-route
----
-# This is only for the backward compatibility test. Delete this after v0.3 release.
-# This resource will be automatically cleaned up by the controller, which makes
-# the test case pass.
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: EnvoyExtensionPolicy
-metadata:
-  name: ai-eg-eep-translation-testupstream
-  namespace: default
-spec:
-  extProc:
-    - backendRefs:
-        - group: gateway.envoyproxy.io
-          kind: Backend
-          name: envoy-ai-gateway-extproc-backend
-          namespace: default
-      backendSettings:
-        connection:
-          bufferLimit: 50Mi
-      metadata:
-        writableNamespaces:
-          - io.envoy.ai_gateway
-      processingMode:
-        allowModeOverride: true
-        request:
-          body: Buffered
-        response:
-          body: Buffered
-  targetRefs:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      name: translation-testupstream
----
-# This is only for the backward compatibility test. Delete this after v0.3 release.
-# This resource will be automatically cleaned up by the controller, which makes
-# the test case pass.
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: Backend
-metadata:
-  name: envoy-ai-gateway-extproc-backend
-  namespace: default
-spec:
-  endpoints:
-    - unix:
-        path: /etc/ai-gateway-extproc-uds/run.sock

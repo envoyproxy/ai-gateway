@@ -61,3 +61,21 @@ xunzhuo:
   socials:
     github: Xunzhuo
     linkedin: https://www.linkedin.com/in/bitliu/
+codefromthecrypt:
+  name: Adrian Cole
+  title: Principal Engineer - Tetrate
+  url: https://github.com/codefromthecrypt
+  image_url: https://github.com/codefromthecrypt.png
+  page: true
+  socials:
+    github: codefromthecrypt
+    linkedin: https://www.linkedin.com/in/adrianfcole/
+nacx:
+  name: Ignasi Barrera
+  title: Founding Engineer - Tetrate
+  url: https://nacx.dev
+  image_url: https://github.com/nacx.png
+  page: true
+  socials:
+    github: nacx
+    linkedin: https://www.linkedin.com/in/ignasibarrera/

@@ -1,0 +1,26 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# This should fail validation: JWKS requires either remoteJWKS or localJWKS
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: MCPRoute
+metadata:
+  name: jwks-missing
+  namespace: default
+spec:
+  parentRefs:
+    - name: some-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  backendRefs:
+    - name: mcp-service
+      kind: Service
+      port: 80
+  securityPolicy:
+    oauth:
+      issuer: https://auth.example.com/
+      jwks: {}
+      protectedResourceMetadata:
+        resource: https://api.example.com/mcp

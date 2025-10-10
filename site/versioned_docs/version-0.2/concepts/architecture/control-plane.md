@@ -84,24 +84,29 @@ This architecture ensures a clear separation of concerns, where the AI Gateway c
 ## Components
 
 ### 1. Envoy AI Gateway Controller
+
 The AI Gateway Controller manages AI-specific components and configurations:
 
 #### ExtProc Management
+
 - Creates and updates ExtProc Secrets with processing rules as well as credentials
 - Inserts the AI Gateway ExtProc as a sidecar container in the Envoy Proxy Pod via the [Kubernetes Admission Webhooks](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/). The container mounts the ExtProc config secret and communicates with the Envoy Proxy to process AI traffic.
 
 #### Resource Management
+
 - Watches AI Gateway Custom Resources (CRs)
 - Creates and manages `HTTPRoute` and `EnvoyExtensionPolicy` resources
 - Manages backend security policies and authentication, including the credentials rotation
 
 #### Integration with Envoy Gateway
+
 - Works alongside Envoy Gateway Controller (not directly configuring Envoy)
 - Creates resources, such as `HTTPRoute`, that Envoy Gateway translates into Envoy configuration with AI-specific processing rules
 - Serves the [Envoy Gateway Extension Server](https://gateway.envoyproxy.io/docs/tasks/extensibility/extension-server/) to fine-tune the Envoy configuration (xDS)
 - Enables token-based rate limiting through metadata
 
 ### 2. Envoy Gateway Controller
+
 - Manages the core Envoy configuration through xDS
 - Handles service discovery and load balancing
 - Manages TLS certificates
@@ -110,4 +115,5 @@ The AI Gateway Controller manages AI-specific components and configurations:
 ## Next Steps
 
 To learn more:
+
 - Understand the [Data Plane and Traffic Flow](./data-plane.md)

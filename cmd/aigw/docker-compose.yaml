@@ -3,65 +3,68 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
-
-volumes:
-  aigw-target:  # Stores the binary between aigw-build and aigw
-  envoy-cache:  # Stores downloaded Envoy versions
+configs:
+  # MCP servers configuration for aigw
+  mcp-config:
+    content: |
+      {
+        "mcpServers": {
+          "kiwi": {
+            "type": "http",
+            "url": "https://mcp.kiwi.com"
+          }
+        }
+      }
 
 services:
-  # aigw-build builds the Envoy AI Gateway CLI binary, so you can use main code.
-  aigw-build:
-    image: golang:1.24.6
-    container_name: aigw-build
-    working_dir: /workspace
-    volumes:
-      - ../..:/workspace
-      - aigw-target:/workspace/out
-    command: ["bash", "-c", "go build -buildvcs=false -o /workspace/out/aigw ./cmd/aigw"]
-
   # ollama-pull pulls the models defined in .env.ollama, to avoid 404s.
   ollama-pull:
     image: alpine/ollama
     container_name: ollama-pull
     environment:
-      OLLAMA_HOST: localhost:11434  # intentionally not 127.0.0.1
+      OLLAMA_HOST: localhost:11434 # intentionally not 127.0.0.1
     env_file:
       - ../../.env.ollama
     entrypoint: sh
     command: -c 'env | grep _MODEL | cut -d= -f2 | xargs -I{} ollama pull {}'
-    extra_hosts:  # send localhost traffic to the docker host, e.g. your laptop
+    extra_hosts: # send localhost traffic to the docker host, e.g. your laptop
       - "localhost:host-gateway"
 
   # aigw is the Envoy AI Gateway CLI a.k.a standalone mode.
   aigw:
-    image: debian:trixie-slim
+    image: envoyproxy/ai-gateway-cli:latest
+    # Note: Run `make build.aigw GOOS_LIST=linux` from the project root prior
+    # to `docker compose up --build --wait -d` here.
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        VARIANT: base-nossl
+        COMMAND_NAME: aigw
     container_name: aigw
     depends_on:
-      aigw-build:
-        condition: service_completed_successfully
       ollama-pull:
         condition: service_completed_successfully
+    environment:
+      - OPENAI_BASE_URL=http://host.docker.internal:11434/v1
+      - OPENAI_API_KEY=unused
+    configs:
+      - source: mcp-config
+        target: /etc/aigw/mcp-servers.json
     ports:
-      - "1975:1975"
-    extra_hosts:  # localhost:host-gateway trick doesn't work with aigw
+      - "1975:1975" # OpenAI compatible endpoint at /v1, MCP server at /mcp
+      - "1064:1064" # Admin server: /metrics (Prometheus) and /health endpoints
+    extra_hosts: # localhost:host-gateway trick doesn't work with aigw
       - "host.docker.internal:host-gateway"
-    volumes:
-      - aigw-target:/app
-      - ./testdata/ai-gateway-ollama-docker.yaml:/app/config.yaml:ro
-      - envoy-cache:/tmp/envoy-gateway
-    working_dir: /app
-    command: ["sh", "-c", "apt-get update && apt-get install -y ca-certificates && ./aigw run --debug /app/config.yaml"]
+    command: ["run", "--mcp-config", "/etc/aigw/mcp-servers.json"]
 
-  # openai-client is a simple curl-based test client for sending requests to aigw.
-  openai-client:
-    image: golang:1.24.5
-    container_name: openai-client
+  # chat-completion is a simple curl-based test client for sending requests to aigw.
+  chat-completion:
+    image: golang:1.25
+    container_name: chat-completion
     profiles: ["test"]
     env_file:
       - ../../.env.ollama
-    depends_on:
-      aigw:
-        condition: service_started
     command:
       - sh
       - -c
@@ -71,3 +74,64 @@ services:
           -H "Authorization: Bearer unused" \
           -H "Content-Type: application/json" \
           -d "{\"model\":\"$$CHAT_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Answer in up to 3 words: Which ocean contains Bouvet Island?\"}]}"
+    extra_hosts: # localhost:host-gateway trick doesn't work with aigw
+      - "host.docker.internal:host-gateway"
+
+  # completion is a simple curl-based test client for sending completion requests to aigw.
+  completion:
+    image: golang:1.25
+    container_name: completion
+    profiles: ["test"]
+    env_file:
+      - ../../.env.ollama
+    command:
+      - sh
+      - -c
+      - |
+        curl -s -w %{http_code} \
+          -X POST http://aigw:1975/v1/completions \
+          -H "Authorization: Bearer unused" \
+          -H "Content-Type: application/json" \
+          -d "{\"model\":\"$$COMPLETION_MODEL\",\"prompt\":\"def fib(n):\\n    if n <= 1:\\n        return n\\n    else:\\n        return fib(n-1) + fib(n-2)\",\"max_tokens\":25,\"temperature\":0.4,\"top_p\":0.9}"
+    extra_hosts: # localhost:host-gateway trick doesn't work with aigw
+      - "host.docker.internal:host-gateway"
+
+  # embeddings is a simple curl-based test client for sending embeddings requests to aigw.
+  embeddings:
+    image: golang:1.25
+    container_name: embeddings
+    profiles: ["test"]
+    env_file:
+      - ../../.env.ollama
+    command:
+      - sh
+      - -c
+      - |
+        curl -s -w %{http_code} \
+          -X POST http://aigw:1975/v1/embeddings \
+          -H "Authorization: Bearer unused" \
+          -H "Content-Type: application/json" \
+          -d "{\"model\":\"$$EMBEDDINGS_MODEL\",\"input\":\"How do I reset my password?\"}"
+    extra_hosts: # localhost:host-gateway trick doesn't work with aigw
+      - "host.docker.internal:host-gateway"
+
+  # mcp is a test client for calling MCP tools through aigw.
+  mcp:
+    image: ghcr.io/modelcontextprotocol/inspector:latest
+    container_name: mcp
+    profiles: ["test"]
+    entrypoint: node
+    command:
+      - cli/build/cli.js
+      - --cli
+      - http://aigw:1975/mcp
+      - --method
+      - tools/call
+      - --tool-name
+      - kiwi__search-flight
+      - --tool-arg
+      - flyFrom=NYC
+      - --tool-arg
+      - flyTo=LAX
+      - --tool-arg
+      - departureDate=15/12/2025

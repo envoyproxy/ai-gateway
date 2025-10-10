@@ -52,53 +52,52 @@ func buildRequestAttributes(chatRequest *openai.ChatCompletionRequest, body stri
 	// Note: compound match here is from Python OpenInference OpenAI config.py.
 	if !config.HideInputs && !config.HideInputMessages {
 		for i, msg := range chatRequest.Messages {
-			role := msg.Type
+			role := msg.ExtractMessgaeRole()
 			attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(i, openinference.MessageRole), role))
 
-			switch v := msg.Value.(type) {
-			case openai.ChatCompletionUserMessageParam:
-				if v.Content.Value != nil {
-					switch content := v.Content.Value.(type) {
-					case string:
-						if content != "" {
-							if config.HideInputText {
-								content = openinference.RedactedValue
-							}
-							attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(i, openinference.MessageContent), content))
+			if msg.OfUser != nil {
+				switch content := msg.OfUser.Content.Value.(type) {
+				case string:
+					if content != "" {
+						if config.HideInputText {
+							content = openinference.RedactedValue
 						}
-					case []openai.ChatCompletionContentPartUserUnionParam:
-						for j, part := range content {
-							switch {
-							case part.TextContent != nil:
-								text := part.TextContent.Text
-								if config.HideInputText {
-									text = openinference.RedactedValue
+						attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(i, openinference.MessageContent), content))
+					}
+				case []openai.ChatCompletionContentPartUserUnionParam:
+					for j, part := range content {
+						switch {
+						case part.OfText != nil:
+							text := part.OfText.Text
+							if config.HideInputText {
+								text = openinference.RedactedValue
+							}
+							attrs = append(attrs,
+								attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), text),
+								attribute.String(openinference.InputMessageContentAttribute(i, j, "type"), "text"),
+							)
+						case part.OfImageURL != nil && part.OfImageURL.ImageURL.URL != "":
+							if !config.HideInputImages {
+								urlKey := openinference.InputMessageContentAttribute(i, j, "image.image.url")
+								typeKey := openinference.InputMessageContentAttribute(i, j, "type")
+								url := part.OfImageURL.ImageURL.URL
+								if isBase64URL(url) && len(url) > config.Base64ImageMaxLength {
+									url = openinference.RedactedValue
 								}
 								attrs = append(attrs,
-									attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), text),
-									attribute.String(openinference.InputMessageContentAttribute(i, j, "type"), "text"),
+									attribute.String(urlKey, url),
+									attribute.String(typeKey, "image"),
 								)
-							case part.ImageContent != nil && part.ImageContent.ImageURL.URL != "":
-								if !config.HideInputImages {
-									urlKey := openinference.InputMessageContentAttribute(i, j, "image.image.url")
-									typeKey := openinference.InputMessageContentAttribute(i, j, "type")
-									url := part.ImageContent.ImageURL.URL
-									if isBase64URL(url) && len(url) > config.Base64ImageMaxLength {
-										url = openinference.RedactedValue
-									}
-									attrs = append(attrs,
-										attribute.String(urlKey, url),
-										attribute.String(typeKey, "image"),
-									)
-								}
-							case part.InputAudioContent != nil:
-								// Skip recording audio content attributes to match Python OpenInference behavior.
-								// Audio data is already included in input.value as part of the full request.
 							}
+						case part.OfInputAudio != nil:
+							// Skip recording audio content attributes to match Python OpenInference behavior.
+							// Audio data is already included in input.value as part of the full request.
+						case part.OfFile != nil:
+							// TODO: skip file content for now.
 						}
 					}
 				}
-			default:
+			} else {
 				// For other message types, use the simple extraction.
 				content := extractMessageContent(msg)
 				if content != "" {
@@ -125,44 +124,50 @@ func buildRequestAttributes(chatRequest *openai.ChatCompletionRequest, body stri
 
 // extractMessageContent extracts content from OpenAI message union types.
 func extractMessageContent(msg openai.ChatCompletionMessageParamUnion) string {
-	switch v := msg.Value.(type) {
-	case openai.ChatCompletionUserMessageParam:
-		if v.Content.Value == nil {
+	switch {
+	case msg.OfUser != nil:
+		content := msg.OfUser.Content
+		if content.Value == nil {
 			return ""
 		}
-		if content, ok := v.Content.Value.(string); ok {
+		if content, ok := content.Value.(string); ok {
 			return content
 		}
 		return "[complex content]"
-	case openai.ChatCompletionAssistantMessageParam:
-		if v.Content.Value == nil {
+	case msg.OfAssistant != nil:
+		content := msg.OfAssistant.Content
+
+		if content.Value == nil {
 			return ""
 		}
-		if content, ok := v.Content.Value.(string); ok {
+		if content, ok := content.Value.(string); ok {
 			return content
 		}
 		return "[assistant message]"
-	case openai.ChatCompletionSystemMessageParam:
-		if v.Content.Value == nil {
+	case msg.OfSystem != nil:
+		content := msg.OfSystem.Content
+		if content.Value == nil {
 			return ""
 		}
-		if content, ok := v.Content.Value.(string); ok {
+		if content, ok := content.Value.(string); ok {
 			return content
 		}
 		return "[system message]"
-	case openai.ChatCompletionDeveloperMessageParam:
-		if v.Content.Value == nil {
+	case msg.OfDeveloper != nil:
+		content := msg.OfDeveloper.Content
+		if content.Value == nil {
 			return ""
 		}
-		if content, ok := v.Content.Value.(string); ok {
+		if content, ok := content.Value.(string); ok {
 			return content
 		}
 		return "[developer message]"
-	case openai.ChatCompletionToolMessageParam:
-		if v.Content.Value == nil {
+	case msg.OfTool != nil:
+		content := msg.OfTool.Content
+		if content.Value == nil {
 			return ""
 		}
-		if content, ok := v.Content.Value.(string); ok {
+		if content, ok := content.Value.(string); ok {
 			return content
 		}
 		return "[tool content]"
@@ -175,4 +180,63 @@ func extractMessageContent(msg openai.ChatCompletionMessageParamUnion) string {
 // See: https://github.com/Arize-ai/openinference/blob/main/python/openinference-instrumentation/src/openinference/instrumentation/config.py#L339
 func isBase64URL(url string) bool {
 	return strings.HasPrefix(url, "data:image/") && strings.Contains(url, "base64")
+}
+
+// embeddingsInvocationParameters is the representation of LLMInvocationParameters
+// for embeddings, which includes all parameters except input.
+type embeddingsInvocationParameters struct {
+	Model          string  `json:"model"`
+	EncodingFormat *string `json:"encoding_format,omitempty"`
+	Dimensions     *int    `json:"dimensions,omitempty"`
+	User           *string `json:"user,omitempty"`
+}
+
+// buildEmbeddingsRequestAttributes builds OpenInference attributes from the embeddings request.
+func buildEmbeddingsRequestAttributes(embRequest *openai.EmbeddingRequest, body []byte, config *openinference.TraceConfig) []attribute.KeyValue {
+	attrs := []attribute.KeyValue{
+		attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+		attribute.String(openinference.SpanKind, openinference.SpanKindEmbedding),
+	}
+
+	if config.HideInputs {
+		attrs = append(attrs, attribute.String(openinference.InputValue, openinference.RedactedValue))
+	} else {
+		attrs = append(attrs, attribute.String(openinference.InputValue, string(body)))
+		attrs = append(attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
+	}
+
+	if !config.HideLLMInvocationParameters {
+		params := embeddingsInvocationParameters{
+			Model:          embRequest.Model,
+			EncodingFormat: embRequest.EncodingFormat,
+			Dimensions:     embRequest.Dimensions,
+			User:           embRequest.User,
+		}
+		if invocationParamsJSON, err := json.Marshal(params); err == nil {
+			attrs = append(attrs, attribute.String(openinference.EmbeddingInvocationParameters, string(invocationParamsJSON)))
+		}
+	}
+
+	// Record embedding text attributes for string inputs only.
+	// We don't decode numeric tokens to text because:
+	// 1. OpenAI-compatible backends may use different tokenizers (Ollama, LocalAI, etc.)
+	// 2. The same token IDs mean different things in different tokenizers
+	// 3. It would require model-specific tokenizer libraries (tiktoken, sentencepiece, etc.)
+	// 4. Azure deployments don't affect this (they only host OpenAI models with cl100k_base)
+	// Following OpenInference spec guidance to only record human-readable text.
+	if !config.HideInputs && !config.HideEmbeddingsText {
+		switch input := embRequest.Input.Value.(type) {
+		case string:
+			attrs = append(attrs, attribute.String(openinference.EmbeddingTextAttribute(0), input))
+		case []string:
+			for i, text := range input {
+				attrs = append(attrs, attribute.String(openinference.EmbeddingTextAttribute(i), text))
+			}
+		// Token inputs are not recorded to reduce span size.
+		case []int64:
+		case [][]int64:
+		}
+	}
+
+	return attrs
 }

@@ -25,8 +25,6 @@ metadata:
   name: provider-fallback
   namespace: default
 spec:
-  schema:
-    name: OpenAI
   targetRefs:
     - name: provider-fallback
       kind: Gateway
@@ -38,9 +36,9 @@ spec:
               name: x-ai-eg-model
               value: us.meta.llama3-2-1b-instruct-v1:0
       backendRefs:
-        - name: provider-fallback-always-failing-upstream  # Primary backend (expected to fail)
+        - name: provider-fallback-always-failing-upstream # Primary backend (expected to fail)
           priority: 0
-        - name: provider-fallback-aws                      # Fallback backend
+        - name: provider-fallback-aws # Fallback backend
           priority: 1
 ```
 

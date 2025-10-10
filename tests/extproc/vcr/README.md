@@ -47,7 +47,7 @@ issues found in automated tests.
 [docker-compose.yml](docker-compose.yaml) sets up the following:
 
 - **Envoy** (port 1062): Ingress proxy with ExtProc filter that routes OpenAI requests to Ollama
-- **ExtProc**: Adds OpenInference tracing (internal ports: gRPC :1063, metrics :1064, health :1065)
+- **ExtProc**: Adds OpenInference tracing (internal ports: gRPC :1063, admin :1064 for /metrics and /health)
 
 #### Quick Start with Docker Compose
 
@@ -64,10 +64,10 @@ For manual testing with real Ollama, you can use Docker Compose:
    ```bash
    # Start the stack (from this directory)
    docker compose up --force-recreate --wait -d
-
+   
    # Send a test request
    docker compose run --rm openai-client
-
+   
    # Stop everything
    docker compose down -v
    ```
@@ -88,27 +88,30 @@ spans formatted with [OpenInference semantics][openinference].
 For manual testing with OpenTelemetry tracing and Phoenix:
 
 1. **Start Ollama** on your host machine:
+
    ```bash
    OLLAMA_HOST=0.0.0.0 ollama serve
    ```
 
 2. **Run the stack with OpenTelemetry and Phoenix**:
+
    ```bash
    # Start the stack with Phoenix (from this directory)
    docker compose -f docker-compose-otel.yaml up --force-recreate --wait -d
-
+   
    # Send a test request
    docker compose -f docker-compose-otel.yaml run --build --rm openai-client
-
+   
    # Verify traces are being sent
    docker compose -f docker-compose-otel.yaml logs phoenix | grep "POST /v1/traces"
-
+   
    # View traces in Phoenix UI
    open http://localhost:6006
-
+   
    # Stop everything
    docker compose -f docker-compose-otel.yaml down -v
    ```
 
 ---
+
 [openinference]: https://github.com/Arize-ai/openinference/tree/main/spec

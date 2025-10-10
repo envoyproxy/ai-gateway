@@ -6,10 +6,35 @@
 package openai
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
+
+// parseSSEToChunks converts raw SSE data to a slice of ChatCompletionResponseChunk objects.
+func parseSSEToChunks(t *testing.T, sseData string) []*openai.ChatCompletionResponseChunk {
+	var chunks []*openai.ChatCompletionResponseChunk
+
+	lines := strings.Split(sseData, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "data: ") || line == "data: [DONE]" {
+			continue
+		}
+
+		jsonData := strings.TrimPrefix(line, "data: ")
+		var chunk openai.ChatCompletionResponseChunk
+		err := json.Unmarshal([]byte(jsonData), &chunk)
+		require.NoError(t, err)
+		chunks = append(chunks, &chunk)
+	}
+
+	return chunks
+}
 
 func TestConvertSSEToJSON(t *testing.T) {
 	tests := []struct {
@@ -56,13 +81,62 @@ data: [DONE]
 `,
 			expected: `{"id":"test","choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello \\u0048\\u0065\\u006c\\u006c\\u006f"}}],"created":123,"model":"test","object":"chat.completion.chunk"}`,
 		},
+		{
+			name: "response with annotations",
+			input: `data: {"id":"test","object":"chat.completion.chunk","created":123,"model":"test","choices":[{"delta":{"role":"assistant","content":"Check out"}}]}
+
+data: {"id":"test","object":"chat.completion.chunk","created":123,"model":"test","choices":[{"delta":{"content":" httpbin.org"}}]}
+
+data: {"id":"test","object":"chat.completion.chunk","created":123,"model":"test","choices":[{"delta":{"annotations":[{"type":"url_citation","url_citation":{"end_index":21,"start_index":10,"title":"httpbin.org","url":"https://httpbin.org"}}]},"finish_reason":"stop"}]}
+
+data: [DONE]
+`,
+			expected: `{"id":"test","choices":[{"finish_reason":"stop","index":0,"message":{"content":"Check out httpbin.org","role":"assistant","annotations":[{"type":"url_citation","url_citation":{"end_index":21,"start_index":10,"url":"https://httpbin.org","title":"httpbin.org"}}]}}],"created":123,"model":"test","object":"chat.completion.chunk"}`,
+		},
+		{
+			name: "response with obfuscation field preserves last value",
+			input: `data: {"id":"test","object":"chat.completion.chunk","created":123,"model":"test","choices":[{"delta":{"role":"assistant","content":"Hello"}}],"obfuscation":"abc123"}
+
+data: {"id":"test","object":"chat.completion.chunk","created":123,"model":"test","choices":[{"delta":{"content":" world"}}],"obfuscation":"def456"}
+
+data: {"id":"test","object":"chat.completion.chunk","created":123,"model":"test","choices":[{"delta":{},"finish_reason":"stop"}],"obfuscation":"XQdNwPP14L3TH0"}
+
+data: [DONE]
+`,
+			expected: `{"id":"test","choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello world","role":"assistant"}}],"created":123,"model":"test","object":"chat.completion.chunk","obfuscation":"XQdNwPP14L3TH0"}`,
+		},
+		{
+			name: "response with finish_reason length",
+			input: `data: {"id":"test","object":"chat.completion.chunk","created":123,"model":"test","choices":[{"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"test","object":"chat.completion.chunk","created":123,"model":"test","choices":[{"delta":{},"finish_reason":"length"}]}
+
+data: {"id":"test","object":"chat.completion.chunk","created":123,"model":"test","choices":[],"usage":{"prompt_tokens":5,"completion_tokens":100,"total_tokens":105}}
+
+data: [DONE]
+`,
+			expected: `{"id":"test","choices":[{"finish_reason":"length","index":0,"message":{"content":"","role":"assistant"}}],"created":123,"model":"test","object":"chat.completion.chunk","usage":{"completion_tokens":100,"prompt_tokens":5,"total_tokens":105}}`,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := convertSSEToJSON([]byte(tt.input))
-			require.NoError(t, err)
-			require.Equal(t, tt.expected, string(result))
+			result := convertSSEToJSON(parseSSEToChunks(t, tt.input))
+
+			if tt.expected != "" {
+				resultJSON, err := json.Marshal(result)
+				require.NoError(t, err)
+
+				var expectedObj, resultObj interface{}
+				err = json.Unmarshal([]byte(tt.expected), &expectedObj)
+				require.NoError(t, err)
+				err = json.Unmarshal(resultJSON, &resultObj)
+				require.NoError(t, err)
+
+				require.Equal(t, expectedObj, resultObj)
+			} else {
+				require.NotNil(t, result)
+			}
 		})
 	}
 }

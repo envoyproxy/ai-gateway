@@ -38,14 +38,29 @@ var (
 		return filepath.Join(filepath.Dir(file), "cassettes")
 	}()
 
+	allVCRCassettes = func() map[string]*cassette.Cassette {
+		c, err := loadVCRCassettes(embeddedCassettes)
+		if err != nil {
+			panic(err)
+		}
+		return c
+	}()
+
 	// requestHeadersToRedact are sensitive or ephemeral headers to remove from requests and matching.
 	requestHeadersToRedact = []string{
 		"Authorization",
+		"Api-Key",             // Azure OpenAI API key header
+		"Openai-Organization", // OpenAI organization ID
+		"Openai-Project",      // OpenAI project ID
+		"Cookie",              // Session cookies
 		"b3", "traceparent", "tracestate", "x-b3-traceid", "x-b3-spanid", "x-b3-sampled", "x-b3-parentspanid", "x-b3-flags",
 	}
 	// responseHeadersToRedact are sensitive or ephemeral headers to remove from responses before saving to cassettes.
-	responseHeadersToRedact = []string{"Openai-Organization", "Set-Cookie"}
-	recorderOptions         = []recorder.Option{
+	responseHeadersToRedact = []string{
+		"Openai-Organization",
+		"Set-Cookie",
+	}
+	recorderOptions = []recorder.Option{
 		// Allow replaying existing cassettes and recording new episodes when no match is found.
 		recorder.WithMode(recorder.ModeReplayWithNewEpisodes),
 		// Custom matcher to compare incoming requests with recorded cassettes.
@@ -98,9 +113,24 @@ func requestMatcher(httpReq *http.Request, cassReq cassette.Request) bool {
 // interactions after recording. It removes sensitive data, decompresses
 // responses, and pretty-prints JSON for readability.
 func afterCaptureHook(i *cassette.Interaction) error {
-	// Clear sensitive request headers like Authorization.
-	for _, header := range requestHeadersToRedact {
-		delete(i.Request.Headers, header)
+	// Scrub Azure endpoint URLs to remove private resource identifiers.
+	if isAzureURL(i.Request.URL) {
+		model := extractModelFromBody(i.Request.Body)
+		if model == "" {
+			return fmt.Errorf("cannot scrub Azure URL: model field missing or empty in request body")
+		}
+		i.Request.URL = scrubAzureURL(i.Request.URL, model)
+		i.Request.Host = "resource-name" + azureHostnameSuffix
+	}
+
+	// Clear sensitive request headers like Authorization and api-key.
+	// Use case-insensitive deletion since HTTP headers are case-insensitive.
+	for _, headerToRedact := range requestHeadersToRedact {
+		for k := range i.Request.Headers {
+			if strings.EqualFold(k, headerToRedact) {
+				delete(i.Request.Headers, k)
+			}
+		}
 	}
 
 	// Pretty-print JSON request so the cassettes are readable.
@@ -112,10 +142,18 @@ func afterCaptureHook(i *cassette.Interaction) error {
 		i.Request.Body = pretty
 	}
 	i.Request.ContentLength = int64(len(i.Request.Body))
+	// Update Content-Length header to match the actual body size.
+	if i.Request.Headers != nil {
+		i.Request.Headers["Content-Length"] = []string{fmt.Sprintf("%d", len(i.Request.Body))}
+	}
 
-	// Clear sensitive response headers.
-	for _, header := range responseHeadersToRedact {
-		delete(i.Response.Headers, header)
+	// Clear sensitive response headers (case-insensitive).
+	for _, headerToRedact := range responseHeadersToRedact {
+		for k := range i.Response.Headers {
+			if strings.EqualFold(k, headerToRedact) {
+				delete(i.Response.Headers, k)
+			}
+		}
 	}
 
 	// Decompress gzipped responses rather than check in binary data.
@@ -145,6 +183,10 @@ func afterCaptureHook(i *cassette.Interaction) error {
 		i.Response.Body = pretty
 	}
 	i.Response.ContentLength = int64(len(i.Response.Body))
+	// Update Content-Length header to match the actual body size.
+	if i.Response.Headers != nil {
+		i.Response.Headers["Content-Length"] = []string{fmt.Sprintf("%d", len(i.Response.Body))}
+	}
 	return nil
 }
 
@@ -153,7 +195,15 @@ func afterCaptureHook(i *cassette.Interaction) error {
 func filterHeaders(headers http.Header, headersToIgnore []string) http.Header {
 	filtered := make(http.Header)
 	for k, vs := range headers {
-		if slices.Contains(headersToIgnore, k) {
+		// Case-insensitive header matching
+		shouldIgnore := false
+		for _, ignore := range headersToIgnore {
+			if strings.EqualFold(k, ignore) {
+				shouldIgnore = true
+				break
+			}
+		}
+		if shouldIgnore {
 			continue
 		}
 		filtered[k] = vs
@@ -179,10 +229,10 @@ func matchJSONBodies(liveBody, cassetteBody string) bool {
 	return reflect.DeepEqual(liveData, cassetteData)
 }
 
-// loadCassettes walks the cassettes directory and loads all YAML files.
+// loadVCRCassettes walks the cassettes directory and loads all YAML files.
 // It returns a slice of cassettes ready for playback by the fake server.
-func loadCassettes(cassettesFS fs.FS) []*cassette.Cassette {
-	var cassettes []*cassette.Cassette
+func loadVCRCassettes(cassettesFS fs.FS) (map[string]*cassette.Cassette, error) {
+	cassettes := map[string]*cassette.Cassette{}
 	err := fs.WalkDir(cassettesFS, "cassettes", func(path string, _ fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -203,13 +253,15 @@ func loadCassettes(cassettesFS fs.FS) []*cassette.Cassette {
 		}
 		// Store the path as the cassette name for identification.
 		c.Name = path
-		cassettes = append(cassettes, &c)
+		name := strings.TrimPrefix(path, "cassettes/")
+		name = strings.TrimSuffix(name, ".yaml")
+		cassettes[name] = &c
 		return nil
 	})
 	if err != nil {
-		panic(fmt.Sprintf("failed to load cassettes: %v", err))
+		return nil, fmt.Errorf("failed to load cassettes: %w", err)
 	}
-	return cassettes
+	return cassettes, nil
 }
 
 // prettyPrintJSON formats JSON for readability in cassette files.

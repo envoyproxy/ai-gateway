@@ -8,6 +8,7 @@ package translator
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -15,13 +16,50 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	openaigo "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genai"
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
+
+// TestResponseModel_GCPVertexAIStreaming tests that GCP Vertex AI streaming returns the request model
+// GCP Vertex AI uses deterministic model mapping without virtualization
+func TestResponseModel_GCPVertexAIStreaming(t *testing.T) {
+	modelName := "gemini-1.5-pro-002"
+	translator := NewChatCompletionOpenAIToGCPVertexAITranslator(modelName).(*openAIToGCPVertexAITranslatorV1ChatCompletion)
+
+	// Initialize translator with streaming request
+	req := &openai.ChatCompletionRequest{
+		Model:  "gemini-1.5-pro",
+		Stream: true,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				OfUser: &openai.ChatCompletionUserMessageParam{
+					Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+					Role:    openai.ChatMessageRoleUser,
+				},
+			},
+		},
+	}
+	reqBody, _ := json.Marshal(req)
+	_, _, err := translator.RequestBody(reqBody, req, false)
+	require.NoError(t, err)
+	require.True(t, translator.stream)
+
+	// Vertex AI streaming response in JSONL format
+	streamResponse := `{"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":5,"totalTokenCount":15}}
+`
+
+	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader([]byte(streamResponse)), true, nil)
+	require.NoError(t, err)
+	require.Equal(t, modelName, responseModel) // Returns the request model since no virtualization
+	require.Equal(t, uint32(10), tokenUsage.InputTokens)
+	require.Equal(t, uint32(5), tokenUsage.OutputTokens)
+}
 
 func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T) {
 	wantBdy := []byte(`{
@@ -36,7 +74,11 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
         }
     ],
     "tools": null,
-    "generation_config": {},
+    "generation_config": {
+        "maxOutputTokens": 100,
+        "stopSequences": ["stop1", "stop2"],
+        "temperature": 0.1
+    },
     "system_instruction": {
         "parts": [
             {
@@ -124,6 +166,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
     ],
     "generation_config": {
         "maxOutputTokens": 1024,
+        "stopSequences": ["stop"],
         "temperature": 0.7,
           "thinkingConfig": {
             "includeThoughts": true,
@@ -131,9 +174,46 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
         }
     }
 }`)
+
+	wantBdyWithSafetySettingFields := []byte(`{
+    "contents": [
+        {
+            "parts": [
+                {
+                    "text": "Test with standard fields"
+                }
+            ],
+            "role": "user"
+        }
+    ],
+    "tools": [
+        {
+            "functionDeclarations": [
+                {
+                    "name": "test_function",
+                    "description": "A test function",
+                    "parametersJsonSchema": {
+                        "type": "object",
+                        "properties": {
+                            "param1": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+    ],
+    "generation_config": {
+        "maxOutputTokens": 1024,
+        "temperature": 0.7
+    },
+    "safetySettings": [{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"}]
+}`)
+
 	tests := []struct {
 		name              string
-		modelNameOverride string
+		modelNameOverride internalapi.ModelNameOverride
 		input             openai.ChatCompletionRequest
 		onRetry           bool
 		wantError         bool
@@ -143,24 +223,29 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 		{
 			name: "basic request",
 			input: openai.ChatCompletionRequest{
-				Stream: false,
-				Model:  "gemini-pro",
+				Stream:      false,
+				Model:       "gemini-pro",
+				Temperature: ptr.To(0.1),
+				MaxTokens:   ptr.To(int64(100)),
+				Stop: openaigo.ChatCompletionNewParamsStopUnion{
+					OfStringArray: []string{"stop1", "stop2"},
+				},
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Value: openai.ChatCompletionSystemMessageParam{
-							Content: openai.StringOrArray{
+						OfSystem: &openai.ChatCompletionSystemMessageParam{
+							Content: openai.ContentUnion{
 								Value: "You are a helpful assistant",
 							},
+							Role: openai.ChatMessageRoleSystem,
 						},
-						Type: openai.ChatMessageRoleSystem,
 					},
 					{
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "Tell me about AI Gateways",
 							},
+							Role: openai.ChatMessageRoleUser,
 						},
-						Type: openai.ChatMessageRoleUser,
 					},
 				},
 			},
@@ -178,7 +263,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 					{
 						Header: &corev3.HeaderValue{
 							Key:      "Content-Length",
-							RawValue: []byte("185"),
+							RawValue: []byte("258"),
 						},
 					},
 				},
@@ -192,24 +277,29 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 		{
 			name: "basic request with streaming",
 			input: openai.ChatCompletionRequest{
-				Stream: true,
-				Model:  "gemini-pro",
+				Stream:      true,
+				Model:       "gemini-pro",
+				Temperature: ptr.To(0.1),
+				MaxTokens:   ptr.To(int64(100)),
+				Stop: openaigo.ChatCompletionNewParamsStopUnion{
+					OfStringArray: []string{"stop1", "stop2"},
+				},
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Value: openai.ChatCompletionSystemMessageParam{
-							Content: openai.StringOrArray{
+						OfSystem: &openai.ChatCompletionSystemMessageParam{
+							Content: openai.ContentUnion{
 								Value: "You are a helpful assistant",
 							},
+							Role: openai.ChatMessageRoleSystem,
 						},
-						Type: openai.ChatMessageRoleSystem,
 					},
 					{
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "Tell me about AI Gateways",
 							},
+							Role: openai.ChatMessageRoleUser,
 						},
-						Type: openai.ChatMessageRoleUser,
 					},
 				},
 			},
@@ -227,7 +317,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 					{
 						Header: &corev3.HeaderValue{
 							Key:      "Content-Length",
-							RawValue: []byte("185"),
+							RawValue: []byte("258"),
 						},
 					},
 				},
@@ -242,24 +332,29 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			name:              "model name override",
 			modelNameOverride: "gemini-flash",
 			input: openai.ChatCompletionRequest{
-				Stream: false,
-				Model:  "gemini-pro",
+				Stream:      false,
+				Model:       "gemini-pro",
+				Temperature: ptr.To(0.1),
+				MaxTokens:   ptr.To(int64(100)),
+				Stop: openaigo.ChatCompletionNewParamsStopUnion{
+					OfStringArray: []string{"stop1", "stop2"},
+				},
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Value: openai.ChatCompletionSystemMessageParam{
-							Content: openai.StringOrArray{
+						OfSystem: &openai.ChatCompletionSystemMessageParam{
+							Content: openai.ContentUnion{
 								Value: "You are a helpful assistant",
 							},
+							Role: openai.ChatMessageRoleSystem,
 						},
-						Type: openai.ChatMessageRoleSystem,
 					},
 					{
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "Tell me about AI Gateways",
 							},
+							Role: openai.ChatMessageRoleUser,
 						},
-						Type: openai.ChatMessageRoleUser,
 					},
 				},
 			},
@@ -277,7 +372,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 					{
 						Header: &corev3.HeaderValue{
 							Key:      "Content-Length",
-							RawValue: []byte("185"),
+							RawValue: []byte("258"),
 						},
 					},
 				},
@@ -295,20 +390,20 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				Model:  "gemini-pro",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Value: openai.ChatCompletionSystemMessageParam{
-							Content: openai.StringOrArray{
+						OfSystem: &openai.ChatCompletionSystemMessageParam{
+							Content: openai.ContentUnion{
 								Value: "You are a helpful assistant",
 							},
+							Role: openai.ChatMessageRoleSystem,
 						},
-						Type: openai.ChatMessageRoleSystem,
 					},
 					{
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Content: openai.StringOrUserRoleContentUnion{
 								Value: "What's the weather in San Francisco?",
 							},
+							Role: openai.ChatMessageRoleUser,
 						},
-						Type: openai.ChatMessageRoleUser,
 					},
 				},
 				Tools: []openai.Tool{
@@ -317,14 +412,14 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 						Function: &openai.FunctionDefinition{
 							Name:        "get_weather",
 							Description: "Get the current weather in a given location",
-							Parameters: map[string]interface{}{
+							Parameters: map[string]any{
 								"type": "object",
-								"properties": map[string]interface{}{
-									"location": map[string]interface{}{
+								"properties": map[string]any{
+									"location": map[string]any{
 										"type":        "string",
 										"description": "The city and state, e.g. San Francisco, CA",
 									},
-									"unit": map[string]interface{}{
+									"unit": map[string]any{
 										"type": "string",
 										"enum": []string{"celsius", "fahrenheit"},
 									},
@@ -360,15 +455,17 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			},
 		},
 		{
-			name: "Request with gcp vendor specific fields",
+			name: "Request with gcp thinking fields",
 			input: openai.ChatCompletionRequest{
 				Model:       "gemini-1.5-pro",
 				Temperature: ptr.To(0.7),
 				MaxTokens:   ptr.To(int64(1024)),
+				Stop: openaigo.ChatCompletionNewParamsStopUnion{
+					OfString: openaigo.Opt[string]("stop"),
+				},
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
-						Type: openai.ChatMessageRoleUser,
-						Value: openai.ChatCompletionUserMessageParam{
+						OfUser: &openai.ChatCompletionUserMessageParam{
 							Role:    openai.ChatMessageRoleUser,
 							Content: openai.StringOrUserRoleContentUnion{Value: "Test with standard fields"},
 						},
@@ -380,10 +477,10 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 						Function: &openai.FunctionDefinition{
 							Name:        "test_function",
 							Description: "A test function",
-							Parameters: map[string]interface{}{
+							Parameters: map[string]any{
 								"type": "object",
-								"properties": map[string]interface{}{
-									"param1": map[string]interface{}{
+								"properties": map[string]any{
+									"param1": map[string]any{
 										"type": "string",
 									},
 								},
@@ -413,7 +510,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 					{
 						Header: &corev3.HeaderValue{
 							Key:      "Content-Length",
-							RawValue: []byte("381"),
+							RawValue: []byte("406"),
 						},
 					},
 				},
@@ -421,6 +518,70 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			wantBody: &extprocv3.BodyMutation{
 				Mutation: &extprocv3.BodyMutation_Body{
 					Body: wantBdyWithVendorFields,
+				},
+			},
+		},
+		{
+			name: "Request with gcp safety setting fields",
+			input: openai.ChatCompletionRequest{
+				Model:       "gemini-1.5-pro",
+				Temperature: ptr.To(0.7),
+				MaxTokens:   ptr.To(int64(1024)),
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Role:    openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{Value: "Test with standard fields"},
+						},
+					},
+				},
+				Tools: []openai.Tool{
+					{
+						Type: openai.ToolTypeFunction,
+						Function: &openai.FunctionDefinition{
+							Name:        "test_function",
+							Description: "A test function",
+							Parameters: map[string]interface{}{
+								"type": "object",
+								"properties": map[string]interface{}{
+									"param1": map[string]interface{}{
+										"type": "string",
+									},
+								},
+							},
+						},
+					},
+				},
+				GCPVertexAIVendorFields: &openai.GCPVertexAIVendorFields{
+					SafetySettings: []*genai.SafetySetting{
+						{
+							Category:  "HARM_CATEGORY_HARASSMENT",
+							Threshold: "BLOCK_ONLY_HIGH",
+						},
+					},
+				},
+			},
+			onRetry:   false,
+			wantError: false,
+			wantHeaderMut: &extprocv3.HeaderMutation{
+				SetHeaders: []*corev3.HeaderValueOption{
+					{
+						Header: &corev3.HeaderValue{
+							Key:      ":path",
+							RawValue: []byte("publishers/google/models/gemini-1.5-pro:generateContent"),
+						},
+					},
+					{
+						Header: &corev3.HeaderValue{
+							Key:      "Content-Length",
+							RawValue: []byte("406"),
+						},
+					},
+				},
+			},
+			wantBody: &extprocv3.BodyMutation{
+				Mutation: &extprocv3.BodyMutation_Body{
+					Body: wantBdyWithSafetySettingFields,
 				},
 			},
 		},
@@ -487,7 +648,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseHeaders(t *testin
 func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T) {
 	tests := []struct {
 		name              string
-		modelNameOverride string
+		modelNameOverride internalapi.ModelNameOverride
 		respHeaders       map[string]string
 		body              string
 		stream            bool
@@ -561,6 +722,96 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			},
 		},
 		{
+			name: "response with safety ratings",
+			respHeaders: map[string]string{
+				"content-type": "application/json",
+			},
+			body: `{
+				"candidates": [
+					{
+						"content": {
+							"parts": [
+								{
+									"text": "This is a safe response from the AI assistant."
+								}
+							]
+						},
+						"finishReason": "STOP",
+						"safetyRatings": [
+							{
+								"category": "HARM_CATEGORY_HARASSMENT",
+								"probability": "LOW"
+							},
+							{
+								"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+								"probability": "NEGLIGIBLE"
+							},
+							{
+								"category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+								"probability": "MEDIUM"
+							}
+						]
+					}
+				],
+				"promptFeedback": {
+					"safetyRatings": []
+				},
+				"usageMetadata": {
+					"promptTokenCount": 8,
+					"candidatesTokenCount": 12,
+					"totalTokenCount": 20
+				}
+			}`,
+			endOfStream: true,
+			wantError:   false,
+			wantHeaderMut: &extprocv3.HeaderMutation{
+				SetHeaders: []*corev3.HeaderValueOption{{
+					Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("457")},
+				}},
+			},
+			wantBodyMut: &extprocv3.BodyMutation{
+				Mutation: &extprocv3.BodyMutation_Body{
+					Body: []byte(`{
+    "choices": [
+        {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+                "content": "This is a safe response from the AI assistant.",
+                "role": "assistant",
+                "safety_ratings": [
+                    {
+                        "category": "HARM_CATEGORY_HARASSMENT",
+                        "probability": "LOW"
+                    },
+                    {
+                        "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                        "probability": "NEGLIGIBLE"
+                    },
+                    {
+                        "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                        "probability": "MEDIUM"
+                    }
+                ]
+            }
+        }
+    ],
+    "object": "chat.completion",
+    "usage": {
+        "completion_tokens": 12,
+        "prompt_tokens": 8,
+        "total_tokens": 20
+    }
+}`),
+				},
+			},
+			wantTokenUsage: LLMTokenUsage{
+				InputTokens:  8,
+				OutputTokens: 12,
+				TotalTokens:  20,
+			},
+		},
+		{
 			name: "empty response",
 			respHeaders: map[string]string{
 				"content-type": "application/json",
@@ -596,7 +847,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			wantHeaderMut: nil,
 			wantBodyMut: &extprocv3.BodyMutation{
 				Mutation: &extprocv3.BodyMutation_Body{
-					Body: []byte(`data: {"choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk","usage":{"completion_tokens":3,"prompt_tokens":5,"total_tokens":8}}
+					Body: []byte(`data: {"choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}}
 
 data: [DONE]
 `),
@@ -617,7 +868,7 @@ data: [DONE]
 				modelNameOverride: tc.modelNameOverride,
 				stream:            tc.stream,
 			}
-			headerMut, bodyMut, tokenUsage, err := translator.ResponseBody(tc.respHeaders, reader, tc.endOfStream)
+			headerMut, bodyMut, tokenUsage, _, err := translator.ResponseBody(tc.respHeaders, reader, tc.endOfStream, nil)
 			if tc.wantError {
 				assert.Error(t, err)
 				return
@@ -711,9 +962,10 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody(t *
 	// Mock GCP streaming response.
 	gcpChunk := `{"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"},"finishReason":"STOP"}]}`
 
-	headerMut, bodyMut, tokenUsage, err := translator.handleStreamingResponse(
+	headerMut, bodyMut, tokenUsage, _, err := translator.handleStreamingResponse(
 		bytes.NewReader([]byte(gcpChunk)),
 		false,
+		nil,
 	)
 
 	require.Nil(t, headerMut)
@@ -735,9 +987,10 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingEndOfStream(t *t
 	}
 
 	// Test end of stream marker.
-	_, bodyMut, _, err := translator.handleStreamingResponse(
+	_, bodyMut, _, _, err := translator.handleStreamingResponse(
 		bytes.NewReader([]byte("")),
 		true,
+		nil,
 	)
 
 	require.NoError(t, err)
@@ -968,17 +1221,156 @@ data: {"candidates":[{"content":{"parts":[{"text":"world"}]}}]}
 	}
 }
 
+func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseError(t *testing.T) {
+	tests := []struct {
+		name           string
+		headers        map[string]string
+		body           string
+		expectedErrMsg string
+		wantError      openai.Error
+		description    string
+	}{
+		{
+			name: "JSON error response with complete GCP error structure",
+			headers: map[string]string{
+				statusHeaderName: "400",
+			},
+			body: `{
+  "error": {
+    "code": 400,
+    "message": "Invalid JSON payload received. Unknown name \"fake\": Cannot find field.",
+    "status": "INVALID_ARGUMENT",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.rpc.BadRequest",
+        "fieldViolations": [
+          {
+            "description": "Invalid JSON payload received. Unknown name \"fake\": Cannot find field."
+          }
+        ]
+      }
+    ]
+  }
+}`,
+			wantError: openai.Error{
+				Type: "error",
+				Error: openai.ErrorType{
+					Type: "INVALID_ARGUMENT",
+					Message: `Error: Invalid JSON payload received. Unknown name "fake": Cannot find field.
+Details: [
+      {
+        "@type": "type.googleapis.com/google.rpc.BadRequest",
+        "fieldViolations": [
+          {
+            "description": "Invalid JSON payload received. Unknown name \"fake\": Cannot find field."
+          }
+        ]
+      }
+    ]`,
+					Code: ptr.To("400"),
+				},
+			},
+		},
+		{
+			name: "Plain text error response",
+			headers: map[string]string{
+				statusHeaderName: "503",
+			},
+			body: "Service temporarily unavailable",
+			wantError: openai.Error{
+				Type: "error",
+				Error: openai.ErrorType{
+					Type:    gcpVertexAIBackendError,
+					Message: "Service temporarily unavailable",
+					Code:    ptr.To("503"),
+				},
+			},
+		},
+		{
+			name: "Invalid JSON in error response",
+			headers: map[string]string{
+				statusHeaderName: "400",
+			},
+			body: `{"error": invalid json}`,
+			wantError: openai.Error{
+				Type: "error",
+				Error: openai.ErrorType{
+					Type:    gcpVertexAIBackendError,
+					Message: `{"error": invalid json}`,
+					Code:    ptr.To("400"),
+				},
+			},
+		},
+		{
+			name: "Empty body handling",
+			headers: map[string]string{
+				statusHeaderName: "500",
+			},
+			body:        "", // Empty body to simulate no content.
+			description: "Should handle empty body gracefully.",
+			wantError: openai.Error{
+				Type: "error",
+				Error: openai.ErrorType{
+					Type:    gcpVertexAIBackendError,
+					Message: "",
+					Code:    ptr.To("500"),
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{}
+
+			body := strings.NewReader(tt.body)
+
+			headerMutation, bodyMutation, err := translator.ResponseError(tt.headers, body)
+
+			if tt.expectedErrMsg != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedErrMsg)
+				return
+			}
+
+			require.NoError(t, err)
+			if tt.description != "" {
+				require.NoError(t, err, tt.description)
+			}
+			require.NotNil(t, bodyMutation)
+			require.NotNil(t, headerMutation)
+
+			// Verify that the body mutation contains a valid OpenAI error response.
+			var openaiError openai.Error
+			bodyBytes := bodyMutation.GetBody()
+			err = json.Unmarshal(bodyBytes, &openaiError)
+			require.NoError(t, err)
+
+			if diff := cmp.Diff(tt.wantError, openaiError); diff != "" {
+				t.Errorf("OpenAI error mismatch (-want +got):\n%s", diff)
+			}
+
+			// Verify header mutation contains content-length header.
+			foundContentLength := slices.ContainsFunc(
+				headerMutation.SetHeaders,
+				func(header *corev3.HeaderValueOption) bool { return header.Header.Key == httpHeaderKeyContentLength },
+			)
+			assert.True(t, foundContentLength, "content-length header should be set")
+		})
+	}
+}
+
 func bodyMutTransformer(_ *testing.T) cmp.Option {
-	return cmp.Transformer("BodyMutationsToBodyBytes", func(bm *extprocv3.BodyMutation) map[string]interface{} {
+	return cmp.Transformer("BodyMutationsToBodyBytes", func(bm *extprocv3.BodyMutation) map[string]any {
 		if bm == nil {
 			return nil
 		}
 
-		var bdy map[string]interface{}
+		var bdy map[string]any
 		if body, ok := bm.Mutation.(*extprocv3.BodyMutation_Body); ok {
 			if err := json.Unmarshal(body.Body, &bdy); err != nil {
 				// The response body may not be valid JSON for streaming requests.
-				return map[string]interface{}{
+				return map[string]any{
 					"BodyMutation": string(body.Body),
 				}
 			}
@@ -986,4 +1378,40 @@ func bodyMutTransformer(_ *testing.T) cmp.Option {
 		}
 		return nil
 	})
+}
+
+// TestResponseModel_GCPVertexAI tests that GCP Vertex AI returns the request model (no response field)
+func TestResponseModel_GCPVertexAI(t *testing.T) {
+	modelName := "gemini-1.5-pro-002"
+	translator := NewChatCompletionOpenAIToGCPVertexAITranslator(modelName)
+
+	// Initialize translator with the model
+	req := &openai.ChatCompletionRequest{
+		Model: "gemini-1.5-pro",
+	}
+	reqBody, _ := json.Marshal(req)
+	_, _, err := translator.RequestBody(reqBody, req, false)
+	require.NoError(t, err)
+
+	// Vertex AI response doesn't have model field
+	vertexResponse := `{
+		"candidates": [{
+			"content": {
+				"parts": [{"text": "Hello"}],
+				"role": "model"
+			},
+			"finishReason": "STOP"
+		}],
+		"usageMetadata": {
+			"promptTokenCount": 10,
+			"candidatesTokenCount": 5,
+			"totalTokenCount": 15
+		}
+	}`
+
+	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader([]byte(vertexResponse)), true, nil)
+	require.NoError(t, err)
+	require.Equal(t, modelName, responseModel) // Returns the request model
+	require.Equal(t, uint32(10), tokenUsage.InputTokens)
+	require.Equal(t, uint32(5), tokenUsage.OutputTokens)
 }

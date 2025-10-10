@@ -23,6 +23,8 @@ import (
 	"github.com/tidwall/sjson"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 // currently a requirement for GCP Vertex / Anthropic API https://docs.anthropic.com/en/api/claude-on-vertex-ai
@@ -34,17 +36,21 @@ const (
 
 // NewChatCompletionOpenAIToGCPAnthropicTranslator implements [Factory] for OpenAI to GCP Anthropic translation.
 // This translator converts OpenAI ChatCompletion API requests to GCP Anthropic API format.
-func NewChatCompletionOpenAIToGCPAnthropicTranslator(apiVersion string, modelNameOverride string) OpenAIChatCompletionTranslator {
+func NewChatCompletionOpenAIToGCPAnthropicTranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride) OpenAIChatCompletionTranslator {
 	return &openAIToGCPAnthropicTranslatorV1ChatCompletion{
 		apiVersion:        apiVersion,
 		modelNameOverride: modelNameOverride,
 	}
 }
 
+// openAIToGCPAnthropicTranslatorV1ChatCompletion translates OpenAI Chat Completions API to GCP Anthropic Claude API.
+// This uses the Claude rawPredict and streamRawPredict APIs on Vertex AI:
+// https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude
 type openAIToGCPAnthropicTranslatorV1ChatCompletion struct {
 	apiVersion        string
-	modelNameOverride string
+	modelNameOverride internalapi.ModelNameOverride
 	streamParser      *anthropicStreamParser
+	requestModel      internalapi.RequestModel
 }
 
 func anthropicToOpenAIFinishReason(stopReason anthropic.StopReason) (openai.ChatCompletionChoicesFinishReason, error) {
@@ -89,14 +95,14 @@ func isAnthropicSupportedImageMediaType(mediaType string) bool {
 }
 
 // translateAnthropicToolChoice converts the OpenAI tool_choice parameter to the Anthropic format.
-func translateAnthropicToolChoice(openAIToolChoice any, disableParallelToolUse anthropicParam.Opt[bool]) (anthropic.ToolChoiceUnionParam, error) {
+func translateAnthropicToolChoice(openAIToolChoice *openai.ChatCompletionToolChoiceUnion, disableParallelToolUse anthropicParam.Opt[bool]) (anthropic.ToolChoiceUnionParam, error) {
 	var toolChoice anthropic.ToolChoiceUnionParam
 
 	if openAIToolChoice == nil {
 		return toolChoice, nil
 	}
 
-	switch choice := openAIToolChoice.(type) {
+	switch choice := openAIToolChoice.Value.(type) {
 	case string:
 		switch choice {
 		case string(openAIconstant.ValueOf[openAIconstant.Auto]()):
@@ -113,9 +119,9 @@ func translateAnthropicToolChoice(openAIToolChoice any, disableParallelToolUse a
 			toolChoice = anthropic.ToolChoiceUnionParam{OfTool: &anthropic.ToolChoiceToolParam{Name: choice}}
 			toolChoice.OfTool.DisableParallelToolUse = disableParallelToolUse
 		default:
-			return toolChoice, fmt.Errorf("unsupported tool_choice value: %s", choice)
+			return anthropic.ToolChoiceUnionParam{}, fmt.Errorf("unsupported tool_choice value: %s", choice)
 		}
-	case openai.ToolChoice:
+	case openai.ChatCompletionNamedToolChoice:
 		if choice.Type == openai.ToolTypeFunction && choice.Function.Name != "" {
 			toolChoice = anthropic.ToolChoiceUnionParam{
 				OfTool: &anthropic.ToolChoiceToolParam{
@@ -126,14 +132,14 @@ func translateAnthropicToolChoice(openAIToolChoice any, disableParallelToolUse a
 			}
 		}
 	default:
-		return toolChoice, fmt.Errorf("unsupported tool_choice type: %T", openAIToolChoice)
+		return anthropic.ToolChoiceUnionParam{}, fmt.Errorf("unsupported tool_choice type: %T", openAIToolChoice)
 	}
 	return toolChoice, nil
 }
 
 // translateOpenAItoAnthropicTools translates OpenAI tool and tool_choice parameters
 // into the Anthropic format and returns translated tool & tool choice.
-func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice any, parallelToolCalls *bool) (tools []anthropic.ToolUnionParam, toolChoice anthropic.ToolChoiceUnionParam, err error) {
+func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice *openai.ChatCompletionToolChoiceUnion, parallelToolCalls *bool) (tools []anthropic.ToolUnionParam, toolChoice anthropic.ToolChoiceUnionParam, err error) {
 	if len(openAITools) > 0 {
 		anthropicTools := make([]anthropic.ToolUnionParam, 0, len(openAITools))
 		for _, openAITool := range openAITools {
@@ -149,7 +155,7 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 			// The parameters for the function are expected to be a JSON Schema object.
 			// We can pass them through as-is.
 			if openAITool.Function.Parameters != nil {
-				paramsMap, ok := openAITool.Function.Parameters.(map[string]interface{})
+				paramsMap, ok := openAITool.Function.Parameters.(map[string]any)
 				if !ok {
 					err = fmt.Errorf("failed to cast tool parameters to map[string]interface{}")
 					return
@@ -162,13 +168,13 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 					inputSchema.Type = constant.Object(typeVal)
 				}
 
-				var propsVal map[string]interface{}
-				if propsVal, ok = paramsMap["properties"].(map[string]interface{}); ok {
+				var propsVal map[string]any
+				if propsVal, ok = paramsMap["properties"].(map[string]any); ok {
 					inputSchema.Properties = propsVal
 				}
 
-				var requiredVal []interface{}
-				if requiredVal, ok = paramsMap["required"].([]interface{}); ok {
+				var requiredVal []any
+				if requiredVal, ok = paramsMap["required"].([]any); ok {
 					requiredSlice := make([]string, len(requiredVal))
 					for i, v := range requiredVal {
 						if s, ok := v.(string); ok {
@@ -237,25 +243,27 @@ func convertContentPartsToAnthropic(parts []openai.ChatCompletionContentPartUser
 	resultContent := make([]anthropic.ContentBlockParamUnion, 0, len(parts))
 	for _, contentPart := range parts {
 		switch {
-		case contentPart.TextContent != nil:
-			resultContent = append(resultContent, anthropic.NewTextBlock(contentPart.TextContent.Text))
+		case contentPart.OfText != nil:
+			resultContent = append(resultContent, anthropic.NewTextBlock(contentPart.OfText.Text))
 
-		case contentPart.ImageContent != nil:
-			block, err := convertImageContentToAnthropic(contentPart.ImageContent.ImageURL.URL)
+		case contentPart.OfImageURL != nil:
+			block, err := convertImageContentToAnthropic(contentPart.OfImageURL.ImageURL.URL)
 			if err != nil {
 				return nil, err
 			}
 			resultContent = append(resultContent, block)
 
-		case contentPart.InputAudioContent != nil:
+		case contentPart.OfInputAudio != nil:
 			return nil, fmt.Errorf("input audio content not supported yet")
+		case contentPart.OfFile != nil:
+			return nil, fmt.Errorf("file content not supported yet")
 		}
 	}
 	return resultContent, nil
 }
 
 // Helper: Convert OpenAI message content to Anthropic content.
-func openAIToAnthropicContent(content interface{}) ([]anthropic.ContentBlockParamUnion, error) {
+func openAIToAnthropicContent(content any) ([]anthropic.ContentBlockParamUnion, error) {
 	switch v := content.(type) {
 	case nil:
 		return nil, nil
@@ -268,7 +276,7 @@ func openAIToAnthropicContent(content interface{}) ([]anthropic.ContentBlockPara
 		}, nil
 	case []openai.ChatCompletionContentPartUserUnionParam:
 		return convertContentPartsToAnthropic(v)
-	case openai.StringOrArray:
+	case openai.ContentUnion:
 		switch val := v.Value.(type) {
 		case string:
 			if val == "" {
@@ -277,10 +285,17 @@ func openAIToAnthropicContent(content interface{}) ([]anthropic.ContentBlockPara
 			return []anthropic.ContentBlockParamUnion{
 				anthropic.NewTextBlock(val),
 			}, nil
-		case []openai.ChatCompletionContentPartUserUnionParam:
-			return openAIToAnthropicContent(val)
+		case []openai.ChatCompletionContentPartTextParam:
+			// Convert text params to string and create text block
+			var sb strings.Builder
+			for _, part := range val {
+				sb.WriteString(part.Text)
+			}
+			return []anthropic.ContentBlockParamUnion{
+				anthropic.NewTextBlock(sb.String()),
+			}, nil
 		default:
-			return nil, fmt.Errorf("unsupported StringOrArray value type: %T", val)
+			return nil, fmt.Errorf("unsupported ContentUnion value type: %T", val)
 		}
 	}
 	return nil, fmt.Errorf("unsupported OpenAI content type: %T", content)
@@ -292,32 +307,16 @@ func extractSystemPromptFromDeveloperMsg(msg openai.ChatCompletionDeveloperMessa
 		return ""
 	case string:
 		return v
-	case []openai.ChatCompletionContentPartUserUnionParam:
+	case []openai.ChatCompletionContentPartTextParam:
 		// Concatenate all text parts for completeness.
 		var sb strings.Builder
 		for _, part := range v {
-			if part.TextContent != nil {
-				sb.WriteString(part.TextContent.Text)
-			}
+			sb.WriteString(part.Text)
 		}
 		return sb.String()
-	case openai.StringOrArray:
-		switch val := v.Value.(type) {
-		case string:
-			return val
-		case []openai.ChatCompletionContentPartUserUnionParam:
-			var sb strings.Builder
-			for _, part := range val {
-				if part.TextContent != nil {
-					sb.WriteString(part.TextContent.Text)
-				}
-			}
-			return sb.String()
-		}
 	default:
 		return ""
 	}
-	return ""
 }
 
 func anthropicRoleToOpenAIRole(role anthropic.MessageParamRole) (string, error) {
@@ -356,7 +355,7 @@ func openAIMessageToAnthropicMessageRoleAssistant(openAiMessage *openai.ChatComp
 	// Handle tool_calls (if any).
 	for i := range openAiMessage.ToolCalls {
 		toolCall := &openAiMessage.ToolCalls[i]
-		var input map[string]interface{}
+		var input map[string]any
 		if err = json.Unmarshal([]byte(toolCall.Function.Arguments), &input); err != nil {
 			err = fmt.Errorf("failed to unmarshal tool call arguments: %w", err)
 			return
@@ -380,20 +379,16 @@ func openAIMessageToAnthropicMessageRoleAssistant(openAiMessage *openai.ChatComp
 func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUnion) (anthropicMessages []anthropic.MessageParam, systemBlocks []anthropic.TextBlockParam, err error) {
 	for i := 0; i < len(openAIMsgs); {
 		msg := &openAIMsgs[i]
-		switch msg.Type {
-		case openai.ChatMessageRoleSystem:
-			if param, ok := msg.Value.(openai.ChatCompletionSystemMessageParam); ok {
-				devParam := systemMsgToDeveloperMsg(param)
-				systemBlocks = append(systemBlocks, anthropic.TextBlockParam{Text: extractSystemPromptFromDeveloperMsg(devParam)})
-			}
+		switch {
+		case msg.OfSystem != nil:
+			devParam := systemMsgToDeveloperMsg(*msg.OfSystem)
+			systemBlocks = append(systemBlocks, anthropic.TextBlockParam{Text: extractSystemPromptFromDeveloperMsg(devParam)})
 			i++
-		case openai.ChatMessageRoleDeveloper:
-			if param, ok := msg.Value.(openai.ChatCompletionDeveloperMessageParam); ok {
-				systemBlocks = append(systemBlocks, anthropic.TextBlockParam{Text: extractSystemPromptFromDeveloperMsg(param)})
-			}
+		case msg.OfDeveloper != nil:
+			systemBlocks = append(systemBlocks, anthropic.TextBlockParam{Text: extractSystemPromptFromDeveloperMsg(*msg.OfDeveloper)})
 			i++
-		case openai.ChatMessageRoleUser:
-			message := msg.Value.(openai.ChatCompletionUserMessageParam)
+		case msg.OfUser != nil:
+			message := *msg.OfUser
 			var content []anthropic.ContentBlockParamUnion
 			content, err = openAIToAnthropicContent(message.Content.Value)
 			if err != nil {
@@ -405,22 +400,22 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 			}
 			anthropicMessages = append(anthropicMessages, anthropicMsg)
 			i++
-		case openai.ChatMessageRoleAssistant:
-			assistantMessage := msg.Value.(openai.ChatCompletionAssistantMessageParam)
+		case msg.OfAssistant != nil:
+			assistantMessage := msg.OfAssistant
 			var messages anthropic.MessageParam
-			messages, err = openAIMessageToAnthropicMessageRoleAssistant(&assistantMessage)
+			messages, err = openAIMessageToAnthropicMessageRoleAssistant(assistantMessage)
 			if err != nil {
 				return
 			}
 			anthropicMessages = append(anthropicMessages, messages)
 			i++
-		case openai.ChatMessageRoleTool:
+		case msg.OfTool != nil:
 			// Aggregate all consecutive tool messages into a single user message
 			// to support parallel tool use.
 			var toolResultBlocks []anthropic.ContentBlockParamUnion
-			for i < len(openAIMsgs) && openAIMsgs[i].Type == openai.ChatMessageRoleTool {
+			for i < len(openAIMsgs) && openAIMsgs[i].ExtractMessgaeRole() == openai.ChatMessageRoleTool {
 				currentMsg := &openAIMsgs[i]
-				toolMsg := currentMsg.Value.(openai.ChatCompletionToolMessageParam)
+				toolMsg := currentMsg.OfTool
 				var contentBlocks []anthropic.ContentBlockParamUnion
 				contentBlocks, err = openAIToAnthropicContent(toolMsg.Content)
 				if err != nil {
@@ -439,7 +434,7 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 
 				isError := false
 				if contentStr, ok := toolMsg.Content.Value.(string); ok {
-					var contentMap map[string]interface{}
+					var contentMap map[string]any
 					if json.Unmarshal([]byte(contentStr), &contentMap) == nil {
 						if _, ok = contentMap["error"]; ok {
 							isError = true
@@ -463,7 +458,7 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 			}
 			anthropicMessages = append(anthropicMessages, anthropicMsg)
 		default:
-			err = fmt.Errorf("unsupported OpenAI role type: %s", msg.Type)
+			err = fmt.Errorf("unsupported OpenAI role type: %s", msg.ExtractMessgaeRole())
 			return
 		}
 	}
@@ -504,27 +499,17 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest) (params *anth
 
 	if openAIReq.Temperature != nil {
 		if err = validateTemperatureForAnthropic(openAIReq.Temperature); err != nil {
-			return &anthropic.MessageNewParams{}, err
+			return nil, err
 		}
 		params.Temperature = anthropic.Float(*openAIReq.Temperature)
 	}
 	if openAIReq.TopP != nil {
 		params.TopP = anthropic.Float(*openAIReq.TopP)
 	}
-
-	// Handle stop sequences.
-	stopSequences, err := processStop(openAIReq.Stop)
-	if err != nil {
-		return &anthropic.MessageNewParams{}, err
-	}
-	if len(stopSequences) > 0 {
-		var stops []string
-		for _, s := range stopSequences {
-			if s != nil {
-				stops = append(stops, *s)
-			}
-		}
-		params.StopSequences = stops
+	if openAIReq.Stop.OfString.Valid() {
+		params.StopSequences = []string{openAIReq.Stop.OfString.String()}
+	} else if openAIReq.Stop.OfStringArray != nil {
+		params.StopSequences = openAIReq.Stop.OfStringArray
 	}
 
 	// 5. Handle Vendor specific fields.
@@ -553,20 +538,20 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 		return
 	}
 
-	modelName := openAIReq.Model
+	o.requestModel = openAIReq.Model
 	if o.modelNameOverride != "" {
 		// Use modelName override if set.
-		modelName = o.modelNameOverride
+		o.requestModel = o.modelNameOverride
 	}
 
 	// GCP VERTEX PATH.
 	specifier := "rawPredict"
 	if openAIReq.Stream {
 		specifier = "streamRawPredict"
-		o.streamParser = newAnthropicStreamParser(modelName)
+		o.streamParser = newAnthropicStreamParser(o.requestModel)
 	}
 
-	pathSuffix := buildGCPModelPathSuffix(gcpModelPublisherAnthropic, modelName, specifier)
+	pathSuffix := buildGCPModelPathSuffix(gcpModelPublisherAnthropic, o.requestModel, specifier)
 	// b. Set the "anthropic_version" key in the JSON body
 	// Using same logic as anthropic go SDK: https://github.com/anthropics/anthropic-sdk-go/blob/e252e284244755b2b2f6eef292b09d6d1e6cd989/bedrock/bedrock.go#L167
 	anthropicVersion := anthropicVertex.DefaultVersion
@@ -634,7 +619,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseError(respHeade
 }
 
 // anthropicToolUseToOpenAICalls converts Anthropic tool_use content blocks to OpenAI tool calls.
-func anthropicToolUseToOpenAICalls(block anthropic.ContentBlockUnion) ([]openai.ChatCompletionMessageToolCallParam, error) {
+func anthropicToolUseToOpenAICalls(block *anthropic.ContentBlockUnion) ([]openai.ChatCompletionMessageToolCallParam, error) {
 	var toolCalls []openai.ChatCompletionMessageToolCallParam
 	if block.Type != string(constant.ValueOf[constant.ToolUse]()) {
 		return toolCalls, nil
@@ -671,21 +656,24 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseHeaders(_ map[s
 }
 
 // ResponseBody implements [OpenAIChatCompletionTranslator.ResponseBody] for GCP Anthropic.
-func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, err error,
+// GCP Anthropic uses deterministic model mapping without virtualization, where the requested model
+// is exactly what gets executed. The response does not contain a model field, so we return
+// the request model that was originally sent.
+func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel string, err error,
 ) {
 	// If a stream parser was initialized, this is a streaming request.
 	if o.streamParser != nil {
-		return o.streamParser.Process(body, endOfStream)
+		return o.streamParser.Process(body, endOfStream, span)
 	}
 
 	mut := &extprocv3.BodyMutation_Body{}
 	var anthropicResp anthropic.Message
 	if err = json.NewDecoder(body).Decode(&anthropicResp); err != nil {
-		return nil, nil, tokenUsage, fmt.Errorf("failed to unmarshal body: %w", err)
+		return nil, nil, tokenUsage, "", fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 
-	openAIResp := openai.ChatCompletionResponse{
+	openAIResp := &openai.ChatCompletionResponse{
 		Object:  string(openAIconstant.ValueOf[openAIconstant.ChatCompletion]()),
 		Choices: make([]openai.ChatCompletionResponseChoice, 0),
 	}
@@ -702,12 +690,12 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 
 	finishReason, err := anthropicToOpenAIFinishReason(anthropicResp.StopReason)
 	if err != nil {
-		return nil, nil, LLMTokenUsage{}, err
+		return nil, nil, LLMTokenUsage{}, "", err
 	}
 
 	role, err := anthropicRoleToOpenAIRole(anthropic.MessageParamRole(anthropicResp.Role))
 	if err != nil {
-		return nil, nil, LLMTokenUsage{}, err
+		return nil, nil, LLMTokenUsage{}, "", err
 	}
 
 	choice := openai.ChatCompletionResponseChoice{
@@ -716,11 +704,12 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 		FinishReason: finishReason,
 	}
 
-	for _, output := range anthropicResp.Content {
+	for i := range anthropicResp.Content { // NOTE: Content structure is massive, do not range over values.
+		output := &anthropicResp.Content[i]
 		if output.Type == string(constant.ValueOf[constant.ToolUse]()) && output.ID != "" {
 			toolCalls, toolErr := anthropicToolUseToOpenAICalls(output)
 			if toolErr != nil {
-				return nil, nil, tokenUsage, fmt.Errorf("failed to convert anthropic tool use to openai tool call: %w", toolErr)
+				return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to convert anthropic tool use to openai tool call: %w", toolErr)
 			}
 			choice.Message.ToolCalls = append(choice.Message.ToolCalls, toolCalls...)
 		} else if output.Type == string(constant.ValueOf[constant.Text]()) && output.Text != "" {
@@ -733,11 +722,13 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 
 	mut.Body, err = json.Marshal(openAIResp)
 	if err != nil {
-		return nil, nil, tokenUsage, fmt.Errorf("failed to marshal body: %w", err)
+		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to marshal body: %w", err)
 	}
 
 	headerMutation = &extprocv3.HeaderMutation{}
 	setContentLength(headerMutation, mut.Body)
-
-	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, tokenUsage, nil
+	if span != nil {
+		span.RecordResponse(openAIResp)
+	}
+	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, tokenUsage, o.requestModel, nil
 }

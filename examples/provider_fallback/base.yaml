@@ -21,6 +21,11 @@ spec:
     - name: http
       protocol: HTTP
       port: 80
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: provider-fallback
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute
@@ -28,8 +33,6 @@ metadata:
   name: provider-fallback
   namespace: default
 spec:
-  schema:
-    name: OpenAI
   parentRefs:
     - name: provider-fallback
       kind: Gateway
@@ -41,7 +44,7 @@ spec:
               name: x-ai-eg-model
               value: us.meta.llama3-2-1b-instruct-v1:0
       backendRefs:
-        - name: provider-fallback-always-failing-upstream  # This is the primary backend and trying to speak TLS, which always fails.
+        - name: provider-fallback-always-failing-upstream # This is the primary backend and trying to speak TLS, which always fails.
           priority: 0
         - name: provider-fallback-aws
           priority: 1
@@ -94,7 +97,7 @@ metadata:
   namespace: default
 spec:
   targetRefs:
-    - group: 'gateway.envoyproxy.io'
+    - group: "gateway.envoyproxy.io"
       kind: Backend
       name: provider-fallback-aws
   validation:
@@ -145,7 +148,7 @@ metadata:
   namespace: default
 spec:
   targetRefs:
-    - group: 'gateway.envoyproxy.io'
+    - group: "gateway.envoyproxy.io"
       kind: Backend
       name: provider-fallback-always-failing-upstream
   validation:
@@ -188,3 +191,18 @@ spec:
       port: 443
       targetPort: 8080
   type: ClusterIP
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: provider-fallback
+  namespace: default
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        container:
+          # Note: this is to clear the large default memory/cpu requirements for local tests.
+          # In production, you should set these to values that make sense for your environment.
+          resources: {}

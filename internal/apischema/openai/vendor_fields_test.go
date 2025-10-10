@@ -12,6 +12,8 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/openai/openai-go/v2"
+	"github.com/openai/openai-go/v2/packages/param"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genai"
 	"k8s.io/utils/ptr"
@@ -39,14 +41,17 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						"includeThoughts": true,
 						"thinkingBudget": 1000
 					}
-				}
+				},
+                "safetySettings": [{
+                    "category": "HARM_CATEGORY_HARASSMENT",
+                    "threshold": "BLOCK_ONLY_HIGH"
+                }]
 			}`),
 			expected: &ChatCompletionRequest{
 				Model: "gemini-1.5-pro",
 				Messages: []ChatCompletionMessageParamUnion{
 					{
-						Type: ChatMessageRoleUser,
-						Value: ChatCompletionUserMessageParam{
+						OfUser: &ChatCompletionUserMessageParam{
 							Role:    ChatMessageRoleUser,
 							Content: StringOrUserRoleContentUnion{Value: "Hello, world!"},
 						},
@@ -57,6 +62,12 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						ThinkingConfig: &genai.GenerationConfigThinkingConfig{
 							IncludeThoughts: true,
 							ThinkingBudget:  ptr.To(int32(1000)),
+						},
+					},
+					SafetySettings: []*genai.SafetySetting{
+						{
+							Category:  genai.HarmCategoryHarassment,
+							Threshold: genai.HarmBlockThresholdBlockOnlyHigh,
 						},
 					},
 				},
@@ -87,8 +98,7 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 				Model: "claude-3",
 				Messages: []ChatCompletionMessageParamUnion{
 					{
-						Type: ChatMessageRoleUser,
-						Value: ChatCompletionUserMessageParam{
+						OfUser: &ChatCompletionUserMessageParam{
 							Role:    ChatMessageRoleUser,
 							Content: StringOrUserRoleContentUnion{Value: "Multiple vendors test"},
 						},
@@ -127,8 +137,7 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 				Model: "gpt-4",
 				Messages: []ChatCompletionMessageParamUnion{
 					{
-						Type: ChatMessageRoleUser,
-						Value: ChatCompletionUserMessageParam{
+						OfUser: &ChatCompletionUserMessageParam{
 							Role:    ChatMessageRoleUser,
 							Content: StringOrUserRoleContentUnion{Value: "Standard request"},
 						},
@@ -151,8 +160,7 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 				Model: "gemini-pro",
 				Messages: []ChatCompletionMessageParamUnion{
 					{
-						Type: ChatMessageRoleUser,
-						Value: ChatCompletionUserMessageParam{
+						OfUser: &ChatCompletionUserMessageParam{
 							Role:    ChatMessageRoleUser,
 							Content: StringOrUserRoleContentUnion{Value: "Empty vendor fields"},
 						},
@@ -175,8 +183,7 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 				Model: "gpt-3.5",
 				Messages: []ChatCompletionMessageParamUnion{
 					{
-						Type: ChatMessageRoleUser,
-						Value: ChatCompletionUserMessageParam{
+						OfUser: &ChatCompletionUserMessageParam{
 							Role:    ChatMessageRoleUser,
 							Content: StringOrUserRoleContentUnion{Value: "Null vendor fields"},
 						},
@@ -228,7 +235,8 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			if diff := cmp.Diff(tt.expected, &actual, cmpopts.IgnoreUnexported(anthropic.ThinkingConfigEnabledParam{}, anthropic.ThinkingConfigParamUnion{})); diff != "" {
+			if diff := cmp.Diff(tt.expected, &actual, cmpopts.IgnoreUnexported(anthropic.ThinkingConfigEnabledParam{}, anthropic.ThinkingConfigParamUnion{},
+				openai.ChatCompletionNewParamsStopUnion{}, param.Opt[string]{})); diff != "" {
 				t.Errorf("ChatCompletionRequest mismatch (-expected +actual):\n%s", diff)
 			}
 		})

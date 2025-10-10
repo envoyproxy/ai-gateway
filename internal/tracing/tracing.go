@@ -8,12 +8,15 @@ package tracing
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 
+	"go.opentelemetry.io/contrib/exporters/autoexport"
 	"go.opentelemetry.io/contrib/propagators/autoprop"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
+	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/trace/noop"
 
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference/openai"
@@ -23,6 +26,8 @@ var _ tracing.Tracing = (*tracingImpl)(nil)
 
 type tracingImpl struct {
 	chatCompletionTracer tracing.ChatCompletionTracer
+	embeddingsTracer     tracing.EmbeddingsTracer
+	mcpTracer            tracing.MCPTracer
 	// shutdown is nil when we didn't create tp.
 	shutdown func(context.Context) error
 }
@@ -30,6 +35,15 @@ type tracingImpl struct {
 // ChatCompletionTracer implements the same method as documented on api.Tracing.
 func (t *tracingImpl) ChatCompletionTracer() tracing.ChatCompletionTracer {
 	return t.chatCompletionTracer
+}
+
+// EmbeddingsTracer implements the same method as documented on api.Tracing.
+func (t *tracingImpl) EmbeddingsTracer() tracing.EmbeddingsTracer {
+	return t.embeddingsTracer
+}
+
+func (t *tracingImpl) MCPTracer() tracing.MCPTracer {
+	return t.mcpTracer
 }
 
 // Shutdown implements the same method as documented on api.Tracing.
@@ -41,37 +55,119 @@ func (t *tracingImpl) Shutdown(ctx context.Context) error {
 }
 
 // NewTracingFromEnv configures OpenTelemetry tracing based on environment
-// variables. Returns a tracing graph that is noop when disabled.
-func NewTracingFromEnv(ctx context.Context) (tracing.Tracing, error) {
-	// Check if tracing is explicitly disabled via environment variable.
-	if os.Getenv("OTEL_SDK_DISABLED") == "true" || os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") == "" {
+// variables and optional header attribute mapping.
+//
+// Parameters:
+//   - headerAttributeMapping: maps HTTP headers to otel span attributes (e.g. map["x-session-id"]="session.id").
+//     If nil, no header mapping is applied.
+//
+// Returns a tracing graph that is noop when disabled.
+func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMapping map[string]string) (tracing.Tracing, error) {
+	// Return no-op tracing if disabled.
+	if os.Getenv("OTEL_SDK_DISABLED") == "true" {
 		return tracing.NoopTracing{}, nil
 	}
 
-	// Create OTLP trace exporter using environment variables.
-	exporter, err := otlptracehttp.New(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create OTLP exporter: %w", err)
+	// Check for traces-specific exporter first.
+	exporter := os.Getenv("OTEL_TRACES_EXPORTER")
+	if exporter == "none" {
+		return tracing.NoopTracing{}, nil
 	}
 
-	// The SDK automatically configures the batch processor from environment
-	// variables like OTEL_BSP_SCHEDULE_DELAY, OTEL_BSP_MAX_QUEUE_SIZE, etc.
-	tp := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exporter))
+	// If no traces-specific exporter is set, check if OTLP endpoints are configured.
+	// According to OTEL spec, we should use OTLP if any endpoint is configured.
+	// The autoexport library will handle the endpoint precedence correctly:
+	// 1. OTEL_EXPORTER_OTLP_TRACES_ENDPOINT (traces-specific)
+	// 2. OTEL_EXPORTER_OTLP_ENDPOINT (generic base endpoint).
+	if exporter == "" {
+		hasOTLPEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "" ||
+			os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") != ""
 
-	// Use autoprop to honor the OTEL_PROPAGATORS environment variable.
-	// Defaults to "tracecontext,baggage" and can include b3, b3multi, etc.
+		if !hasOTLPEndpoint {
+			// No tracing configured.
+			return tracing.NoopTracing{}, nil
+		}
+		// Fall through to use autoexport which will handle OTLP configuration.
+	}
+
+	// Create resource with service name, defaulting to "ai-gateway" if not set.
+	// First create default resource, then one from env, then our fallback.
+	// The merge order ensures env vars override our default.
+	defaultRes := resource.Default()
+	envRes, err := resource.New(ctx,
+		resource.WithFromEnv(),      // Read OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES.
+		resource.WithTelemetrySDK(), // Add telemetry SDK info.
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create resource from env: %w", err)
+	}
+
+	// Only set our default if service.name wasn't set via env
+	// We hardcode "service.name" to avoid pinning semconv version.
+	fallbackRes := resource.NewSchemaless(
+		attribute.String("service.name", "ai-gateway"),
+	)
+
+	// Merge in order: default -> fallback -> env (env takes precedence).
+	res, err := resource.Merge(defaultRes, fallbackRes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to merge default resources: %w", err)
+	}
+	res, err = resource.Merge(res, envRes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to merge env resource: %w", err)
+	}
+
+	// Create the tracer provider, special casing console for sync and tests.
+	var tp *sdktrace.TracerProvider
+	if exporter == "console" {
+		stdoutExporter, err := stdouttrace.New(stdouttrace.WithWriter(stdout))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create console exporter: %w", err)
+		}
+		tp = sdktrace.NewTracerProvider(
+			sdktrace.WithSyncer(stdoutExporter),
+			sdktrace.WithResource(res),
+		)
+
+	} else { // Configure exporter via ENV variables like OTEL_TRACES_EXPORTER.
+		autoExporter, err := autoexport.NewSpanExporter(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create exporter: %w", err)
+		}
+		// Configure batcher via ENV variables like OTEL_BSP_SCHEDULE_DELAY.
+		tp = sdktrace.NewTracerProvider(
+			sdktrace.WithBatcher(autoExporter),
+			sdktrace.WithResource(res),
+		)
+	}
+
+	// Configure propagation via the OTEL_PROPAGATORS ENV variable.
 	propagator := autoprop.NewTextMapPropagator()
 
-	// Default to OpenInference trace span semantic conventions.
-	recorder := openai.NewChatCompletionRecorderFromEnv()
+	// Use provided header attribute mapping.
+	headerAttrs := headerAttributeMapping
 
+	// Default to OpenInference trace span semantic conventions.
+	chatRecorder := openai.NewChatCompletionRecorderFromEnv()
+	embeddingsRecorder := openai.NewEmbeddingsRecorderFromEnv()
+
+	tracer := tp.Tracer("envoyproxy/ai-gateway")
 	return &tracingImpl{
 		chatCompletionTracer: newChatCompletionTracer(
-			tp.Tracer("envoyproxy/ai-gateway"),
+			tracer,
 			propagator,
-			recorder,
+			chatRecorder,
+			headerAttrs,
 		),
-		shutdown: tp.Shutdown, // we have to shut down what we create.
+		embeddingsTracer: newEmbeddingsTracer(
+			tracer,
+			propagator,
+			embeddingsRecorder,
+			headerAttrs,
+		),
+		mcpTracer: newMCPTracer(tracer, propagator),
+		shutdown:  tp.Shutdown, // we have to shut down what we create.
 	}, nil
 }
 
@@ -81,19 +177,3 @@ type Shutdown interface {
 type noopShutdown struct{}
 
 func (noopShutdown) Shutdown(context.Context) error { return nil }
-
-// NewTracing configures OpenTelemetry tracing based on the configuration.
-// Returns a tracing graph that is noop when the tracer provider is no-op.
-func NewTracing(config *tracing.TracingConfig) tracing.Tracing {
-	if _, ok := config.Tracer.(noop.Tracer); ok {
-		return tracing.NoopTracing{}
-	}
-	return &tracingImpl{
-		chatCompletionTracer: newChatCompletionTracer(
-			config.Tracer,
-			config.Propagator,
-			config.ChatCompletionRecorder,
-		),
-		shutdown: nil, // shutdown is nil when we didn't create tp.
-	}
-}

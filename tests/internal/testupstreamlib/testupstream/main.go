@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
+	"github.com/tidwall/gjson"
 	"golang.org/x/exp/rand"
 
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -68,14 +69,23 @@ func doMain(l net.Listener) {
 	}
 }
 
+// logAndSendError logs the error and sends a proper error response with details
+func logAndSendError(w http.ResponseWriter, code int, format string, a ...any) {
+	msg := fmt.Sprintf(format, a...)
+	logger.Printf("ERROR [%d]: %s", code, msg)
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-TestUpstream-Error", "true")
+	w.WriteHeader(code)
+	fmt.Fprintf(w, format+"\n", a...) //nolint:errcheck
+}
+
 func handler(w http.ResponseWriter, r *http.Request) {
 	for k, v := range r.Header {
 		logger.Printf("header %q: %s\n", k, v)
 	}
 	if v := r.Header.Get(testupstreamlib.ExpectedHostKey); v != "" {
 		if r.Host != v {
-			logger.Printf("unexpected host: got %q, expected %q\n", r.Host, v)
-			http.Error(w, "unexpected host: got "+r.Host+", expected "+v, http.StatusBadRequest)
+			logAndSendError(w, http.StatusBadRequest, "unexpected host: got %q, expected %q", r.Host, v)
 			return
 		}
 		logger.Println("host matched:", v)
@@ -85,25 +95,22 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	if v := r.Header.Get(testupstreamlib.ExpectedHeadersKey); v != "" {
 		expectedHeaders, err := base64.StdEncoding.DecodeString(v)
 		if err != nil {
-			logger.Println("failed to decode the expected headers")
-			http.Error(w, "failed to decode the expected headers", http.StatusBadRequest)
+			logAndSendError(w, http.StatusBadRequest, "failed to decode the expected headers: %v", err)
 			return
 		}
 		logger.Println("expected headers", string(expectedHeaders))
 
 		// Comma separated key-value pairs.
-		for _, kv := range bytes.Split(expectedHeaders, []byte(",")) {
+		for kv := range bytes.SplitSeq(expectedHeaders, []byte(",")) {
 			parts := bytes.SplitN(kv, []byte(":"), 2)
 			if len(parts) != 2 {
-				logger.Println("invalid header key-value pair", string(kv))
-				http.Error(w, "invalid header key-value pair "+string(kv), http.StatusBadRequest)
+				logAndSendError(w, http.StatusBadRequest, "invalid header key-value pair: %s", string(kv))
 				return
 			}
 			key := string(parts[0])
 			value := string(parts[1])
 			if r.Header.Get(key) != value {
-				logger.Printf("unexpected header %q: got %q, expected %q\n", key, r.Header.Get(key), value)
-				http.Error(w, "unexpected header "+key+": got "+r.Header.Get(key)+", expected "+value, http.StatusBadRequest)
+				logAndSendError(w, http.StatusBadRequest, "unexpected header %q: got %q, expected %q", key, r.Header.Get(key), value)
 				return
 			}
 			logger.Printf("header %q matched %s\n", key, value)
@@ -115,18 +122,16 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	if v := r.Header.Get(testupstreamlib.NonExpectedRequestHeadersKey); v != "" {
 		nonExpectedHeaders, err := base64.StdEncoding.DecodeString(v)
 		if err != nil {
-			logger.Println("failed to decode the non-expected headers")
-			http.Error(w, "failed to decode the non-expected headers", http.StatusBadRequest)
+			logAndSendError(w, http.StatusBadRequest, "failed to decode the non-expected headers: %v", err)
 			return
 		}
 		logger.Println("non-expected headers", string(nonExpectedHeaders))
 
 		// Comma separated key-value pairs.
-		for _, kv := range bytes.Split(nonExpectedHeaders, []byte(",")) {
+		for kv := range bytes.SplitSeq(nonExpectedHeaders, []byte(",")) {
 			key := string(kv)
 			if r.Header.Get(key) != "" {
-				logger.Printf("unexpected header %q presence with value %q\n", key, r.Header.Get(key))
-				http.Error(w, "unexpected header "+key+" presence with value "+r.Header.Get(key), http.StatusBadRequest)
+				logAndSendError(w, http.StatusBadRequest, "unexpected header %q presence with value %q", key, r.Header.Get(key))
 				return
 			}
 			logger.Printf("header %q absent\n", key)
@@ -138,8 +143,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	if v := r.Header.Get(testupstreamlib.ExpectedTestUpstreamIDKey); v != "" {
 		if os.Getenv("TESTUPSTREAM_ID") != v {
 			msg := fmt.Sprintf("unexpected testupstream-id: received by '%s' but expected '%s'\n", os.Getenv("TESTUPSTREAM_ID"), v)
-			logger.Println(msg)
-			http.Error(w, msg, http.StatusBadRequest)
+			logAndSendError(w, http.StatusBadRequest, "%s", msg)
 			return
 		}
 		logger.Println("testupstream-id matched:", v)
@@ -150,32 +154,29 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	if expectedPath := r.Header.Get(testupstreamlib.ExpectedPathHeaderKey); expectedPath != "" {
 		expectedPath, err := base64.StdEncoding.DecodeString(expectedPath)
 		if err != nil {
-			logger.Println("failed to decode the expected path")
-			http.Error(w, "failed to decode the expected path", http.StatusBadRequest)
+			logAndSendError(w, http.StatusBadRequest, "failed to decode the expected path: %v", err)
 			return
 		}
 
 		if r.URL.Path != string(expectedPath) {
-			logger.Printf("unexpected path: got %q, expected %q\n", r.URL.Path, string(expectedPath))
-			http.Error(w, "unexpected path: got "+r.URL.Path+", expected "+string(expectedPath), http.StatusBadRequest)
+			logAndSendError(w, http.StatusBadRequest, "unexpected path: got %s, expected %s", r.URL.Path, string(expectedPath))
 			return
 		}
 	}
 
 	if expectedRawQuery := r.Header.Get(testupstreamlib.ExpectedRawQueryHeaderKey); expectedRawQuery != "" {
 		if r.URL.RawQuery != expectedRawQuery {
-			logger.Printf("unexpected raw query: got %q, expected %q\n", r.URL.RawQuery, expectedRawQuery)
-			http.Error(w, "unexpected raw query: got "+r.URL.RawQuery+", expected "+expectedRawQuery, http.StatusBadRequest)
+			logAndSendError(w, http.StatusBadRequest, "unexpected raw query: got %s, expected %s", r.URL.RawQuery, expectedRawQuery)
 			return
 		}
 	}
 
 	requestBody, err := io.ReadAll(r.Body)
 	if err != nil {
-		logger.Println("failed to read the request body")
-		http.Error(w, "failed to read the request body", http.StatusInternalServerError)
+		logAndSendError(w, http.StatusInternalServerError, "failed to read the request body: %v", err)
 		return
 	}
+	logger.Printf("Request body (%d bytes): %s", len(requestBody), string(requestBody))
 
 	// At least for the endpoints we want to support, all requests should have a Content-Length header
 	// and should not use chunked transfer encoding.
@@ -184,8 +185,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		// and it will clear the Content-Length header. It should be fine to assume that these locally hosted endpoints
 		// are capable of reading the chunked transfer encoding unlike the GCP Anthropic.
 		if r.Header.Get(internalapi.EndpointPickerHeaderKey) == "" {
-			logger.Println("no Content-Length header, using request body length:", len(requestBody))
-			http.Error(w, "no Content-Length header, using request body length: "+strconv.Itoa(len(requestBody)), http.StatusBadRequest)
+			logAndSendError(w, http.StatusBadRequest, "no Content-Length header, using request body length: %d", len(requestBody))
 			return
 		}
 	}
@@ -194,14 +194,12 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		var expectedBody []byte
 		expectedBody, err = base64.StdEncoding.DecodeString(expectedReqBody)
 		if err != nil {
-			logger.Println("failed to decode the expected request body")
-			http.Error(w, "failed to decode the expected request body", http.StatusBadRequest)
+			logAndSendError(w, http.StatusBadRequest, "failed to decode the expected request body: %v", err)
 			return
 		}
 
 		if string(expectedBody) != string(requestBody) {
-			logger.Println("unexpected request body: got", string(requestBody), "expected", string(expectedBody))
-			http.Error(w, "unexpected request body: got "+string(requestBody)+", expected "+string(expectedBody), http.StatusBadRequest)
+			logAndSendError(w, http.StatusBadRequest, "unexpected request body: got %s, expected %s", string(requestBody), string(expectedBody))
 			return
 		}
 	} else {
@@ -212,18 +210,16 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		var responseHeaders []byte
 		responseHeaders, err = base64.StdEncoding.DecodeString(v)
 		if err != nil {
-			logger.Println("failed to decode the response headers")
-			http.Error(w, "failed to decode the response headers", http.StatusBadRequest)
+			logAndSendError(w, http.StatusBadRequest, "failed to decode the response headers: %v", err)
 			return
 		}
 		logger.Println("response headers", string(responseHeaders))
 
 		// Comma separated key-value pairs.
-		for _, kv := range bytes.Split(responseHeaders, []byte(",")) {
+		for kv := range bytes.SplitSeq(responseHeaders, []byte(",")) {
 			parts := bytes.SplitN(kv, []byte(":"), 2)
 			if len(parts) != 2 {
-				logger.Println("invalid header key-value pair", string(kv))
-				http.Error(w, "invalid header key-value pair "+string(kv), http.StatusBadRequest)
+				logAndSendError(w, http.StatusBadRequest, "invalid header key-value pair: %s", string(kv))
 				return
 			}
 			key := string(parts[0])
@@ -239,10 +235,17 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	if v := r.Header.Get(testupstreamlib.ResponseStatusKey); v != "" {
 		status, err = strconv.Atoi(v)
 		if err != nil {
-			logger.Println("failed to parse the response status")
-			http.Error(w, "failed to parse the response status", http.StatusBadRequest)
+			logAndSendError(w, http.StatusBadRequest, "failed to parse the response status: %v", err)
 			return
 		}
+	}
+
+	// Do the best-effort model detection for logging and verification.
+	model := gjson.GetBytes(requestBody, "model")
+	if model.Exists() {
+		logger.Println("detected model in the request:", model)
+		// Set the model in the response header for verification.
+		w.Header().Set("X-Model", model.String())
 	}
 
 	switch r.Header.Get(testupstreamlib.ResponseTypeKey) {
@@ -252,8 +255,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		var expResponseBody []byte
 		expResponseBody, err = base64.StdEncoding.DecodeString(r.Header.Get(testupstreamlib.ResponseBodyHeaderKey))
 		if err != nil {
-			logger.Println("failed to decode the response body")
-			http.Error(w, "failed to decode the response body", http.StatusBadRequest)
+			logAndSendError(w, http.StatusBadRequest, "failed to decode the response body: %v", err)
 			return
 		}
 
@@ -263,9 +265,9 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		// we treat it as a stream of pre-formatted "raw" SSE events. Otherwise, we treat it
 		// as a simple line-by-line stream that needs to be formatted.
 		if bytes.Contains(expResponseBody, []byte("\n\n")) {
-			eventBlocks := bytes.Split(expResponseBody, []byte("\n\n"))
+			eventBlocks := bytes.SplitSeq(expResponseBody, []byte("\n\n"))
 
-			for _, block := range eventBlocks {
+			for block := range eventBlocks {
 				// Skip any empty blocks that can result from splitting.
 				if len(bytes.TrimSpace(block)) == 0 {
 					continue
@@ -288,9 +290,9 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 		} else {
 			logger.Println("detected line-by-line stream, formatting as SSE")
-			lines := bytes.Split(expResponseBody, []byte("\n"))
+			lines := bytes.SplitSeq(expResponseBody, []byte("\n"))
 
-			for _, line := range lines {
+			for line := range lines {
 				if len(line) == 0 {
 					continue
 				}
@@ -319,14 +321,13 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		var expResponseBody []byte
 		expResponseBody, err = base64.StdEncoding.DecodeString(r.Header.Get(testupstreamlib.ResponseBodyHeaderKey))
 		if err != nil {
-			logger.Println("failed to decode the response body")
-			http.Error(w, "failed to decode the response body", http.StatusBadRequest)
+			logAndSendError(w, http.StatusBadRequest, "failed to decode the response body: %v", err)
 			return
 		}
 
 		w.WriteHeader(status)
 		e := eventstream.NewEncoder()
-		for _, line := range bytes.Split(expResponseBody, []byte("\n")) {
+		for line := range bytes.SplitSeq(expResponseBody, []byte("\n")) {
 			// Write each line as a chunk with AWS Event Stream format.
 			if len(line) == 0 {
 				continue
@@ -362,15 +363,13 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			// If the expected response body is not set, get the fake response if the path is known.
 			responseBody, err = getFakeResponse(r.URL.Path)
 			if err != nil {
-				logger.Println("failed to get the fake response")
-				http.Error(w, "failed to get the fake response", http.StatusBadRequest)
+				logAndSendError(w, http.StatusBadRequest, "failed to get the fake response for path %s: %v", r.URL.Path, err)
 				return
 			}
 		} else {
 			responseBody, err = base64.StdEncoding.DecodeString(expResponseBody)
 			if err != nil {
-				logger.Println("failed to decode the response body")
-				http.Error(w, "failed to decode the response body", http.StatusBadRequest)
+				logAndSendError(w, http.StatusBadRequest, "failed to decode the response body: %v", err)
 				return
 			}
 		}

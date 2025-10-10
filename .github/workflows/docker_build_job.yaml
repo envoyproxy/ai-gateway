@@ -14,6 +14,8 @@ jobs:
             cmd_path_prefix: cmd
           - command_name: "extproc"
             cmd_path_prefix: cmd
+          - command_name: "aigw"
+            cmd_path_prefix: cmd
           - command_name: "testupstream"
             cmd_path_prefix: tests/internal/testupstreamlib
     steps:
@@ -34,11 +36,11 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@49b3bc8e6bdd4a60e6116a5414239cba5943d3cf  # v3.2.0
+        uses: docker/setup-qemu-action@49b3bc8e6bdd4a60e6116a5414239cba5943d3cf # v3.2.0
 
       - name: Set up Docker buildx
         id: buildx
-        uses: docker/setup-buildx-action@988b5a0280414f521da01fcc63a27aeeb4b104db  # v3.6.1
+        uses: docker/setup-buildx-action@988b5a0280414f521da01fcc63a27aeeb4b104db # v3.6.1
 
       - name: Login into DockerHub
         uses: docker/login-action@v3
@@ -56,10 +58,10 @@ jobs:
           else
             TAG="${{ github.sha }}"
           fi
-          make docker-build.${{ matrix.command_name }} CMD_PATH_PREFIX=${{ matrix.cmd_path_prefix }}  ENABLE_MULTI_PLATFORMS=true TAG=$TAG DOCKER_BUILD_ARGS="--push"
+          make docker-build.${{ matrix.command_name }} CMD_PATH_PREFIX=${{ matrix.cmd_path_prefix }} ENABLE_MULTI_PLATFORMS=true TAG=$TAG DOCKER_BUILD_ARGS="--push"
 
       - name: Build and Push Image Latest
         run: |
           if [[ "$GITHUB_REF" != refs/tags/* ]]; then
-            make docker-build.${{ matrix.command_name }} CMD_PATH_PREFIX=${{ matrix.cmd_path_prefix }}  ENABLE_MULTI_PLATFORMS=true TAG="latest" DOCKER_BUILD_ARGS="--push"
+            make docker-build.${{ matrix.command_name }} CMD_PATH_PREFIX=${{ matrix.cmd_path_prefix }} ENABLE_MULTI_PLATFORMS=true TAG="latest" DOCKER_BUILD_ARGS="--push"
           fi

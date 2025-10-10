@@ -302,8 +302,6 @@ metadata:
   name: inference-pool-with-aigwroute
   namespace: default
 spec:
-  schema:
-    name: OpenAI
   parentRefs:
     - name: inference-pool-with-aigwroute
       kind: Gateway
@@ -353,7 +351,7 @@ Test vLLM Llama model (routed via InferencePool):
 
 ```bash
 curl -H "Content-Type: application/json" \
-    -d '{
+  -d '{
         "model": "meta-llama/Llama-3.1-8B-Instruct",
         "messages": [
             {
@@ -362,14 +360,14 @@ curl -H "Content-Type: application/json" \
             }
         ]
     }' \
-    http://$GATEWAY_IP/v1/chat/completions
+  http://$GATEWAY_IP/v1/chat/completions
 ```
 
 Test Mistral model (routed via InferencePool):
 
 ```bash
 curl -H "Content-Type: application/json" \
-    -d '{
+  -d '{
         "model": "mistral:latest",
         "messages": [
             {
@@ -378,14 +376,14 @@ curl -H "Content-Type: application/json" \
             }
         ]
     }' \
-    http://$GATEWAY_IP/v1/chat/completions
+  http://$GATEWAY_IP/v1/chat/completions
 ```
 
 Test AIService backend (non-InferencePool):
 
 ```bash
 curl -H "Content-Type: application/json" \
-    -d '{
+  -d '{
         "model": "some-cool-self-hosted-model",
         "messages": [
             {
@@ -394,7 +392,7 @@ curl -H "Content-Type: application/json" \
             }
         ]
     }' \
-    http://$GATEWAY_IP/v1/chat/completions
+  http://$GATEWAY_IP/v1/chat/completions
 ```
 
 ## Advanced Features
@@ -434,6 +432,71 @@ AIGatewayRoute provides rich metrics for InferencePool usage:
 - **Model-specific metrics**: Track usage per model
 - **Token consumption**: Monitor token usage and costs
 - **Endpoint performance**: Detailed metrics per inference endpoint
+
+## InferencePool Configuration Annotations
+
+InferencePool supports configuration annotations to customize the external processor behavior:
+
+### Processing Body Mode
+
+Configure how the external processor handles request and response bodies:
+
+```yaml
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferencePool
+metadata:
+  name: my-pool
+  namespace: default
+  annotations:
+    # Configure processing body mode: "duplex" (default) or "buffered"
+    aigateway.envoyproxy.io/processing-body-mode: "buffered"
+spec:
+  # ... other configuration ...
+```
+
+**Available values:**
+
+- `"duplex"` (default): Uses `FULL_DUPLEX_STREAMED` mode for streaming processing
+- `"buffered"`: Uses `BUFFERED` mode for buffered processing
+
+### Allow Mode Override
+
+Configure whether the external processor can override the processing mode:
+
+```yaml
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferencePool
+metadata:
+  name: my-pool
+  namespace: default
+  annotations:
+    # Configure allow mode override: "false" (default) or "true"
+    aigateway.envoyproxy.io/allow-mode-override: "true"
+spec:
+  # ... other configuration ...
+```
+
+**Available values:**
+
+- `"false"` (default): External processor cannot override the processing mode
+- `"true"`: External processor can override the processing mode
+
+### Combined Configuration
+
+You can use both annotations together:
+
+```yaml
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferencePool
+metadata:
+  name: my-pool
+  namespace: default
+  annotations:
+    aigateway.envoyproxy.io/processing-body-mode: "buffered"
+    aigateway.envoyproxy.io/allow-mode-override: "true"
+spec:
+  # ... other configuration ...
+```
 
 ## Key Advantages over HTTPRoute
 

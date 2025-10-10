@@ -9,17 +9,9 @@
 package openai
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-)
-
-var (
-	dataPrefix = []byte("data: ")
-	doneSuffix = []byte("[DONE]")
 )
 
 // convertSSEToJSON converts a complete SSE stream to a single JSON-encoded
@@ -27,49 +19,43 @@ var (
 // fields whose values are zero or empty, or nested objects where all fields
 // have zero values.
 //
-// This is optimized for BUFFERED mode where we receive the entire stream at once.
-func convertSSEToJSON(sseData []byte) ([]byte, error) {
-	if len(sseData) == 0 {
-		return nil, nil
-	}
-
+// TODO: This can be refactored in "streaming" in stateful way without asking for all chunks at once.
+// That would reduce a slice allocation for events.
+// TODO Or, even better, we can make the chunk version of buildResponseAttributes which accepts a single
+// openai.ChatCompletionResponseChunk one at a time, and then we won't need to accumulate all chunks
+// in memory.
+func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.ChatCompletionResponse {
 	var (
-		firstChunk *openai.ChatCompletionResponseChunk
-		content    strings.Builder
-		usage      *openai.ChatCompletionResponseUsage
-		role       string
+		firstChunk   *openai.ChatCompletionResponseChunk
+		content      strings.Builder
+		usage        *openai.ChatCompletionResponseUsage
+		annotations  []openai.Annotation
+		role         string
+		obfuscation  string
+		finishReason openai.ChatCompletionChoicesFinishReason
 	)
 
-	// Split into lines assuming single-line data per event.
-	lines := bytes.Split(sseData, []byte("\n"))
-
-	for _, line := range lines {
-		if len(line) == 0 || !bytes.HasPrefix(line, dataPrefix) {
-			continue
-		}
-
-		data := line[len(dataPrefix):]
-
-		if bytes.Equal(data, doneSuffix) {
-			break
-		}
-
-		var chunk openai.ChatCompletionResponseChunk
-		if err := json.Unmarshal(data, &chunk); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal chunk: %w", err)
-		}
-
+	for _, chunk := range chunks {
 		if firstChunk == nil {
-			firstChunk = &chunk
+			firstChunk = chunk
 		}
 
-		// Accumulate content and role from delta (assuming single choice at index 0).
-		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta != nil {
-			if chunk.Choices[0].Delta.Content != nil {
-				content.WriteString(*chunk.Choices[0].Delta.Content)
+		// Accumulate content, role, and annotations from delta (assuming single choice at index 0).
+		if len(chunk.Choices) > 0 {
+			if chunk.Choices[0].Delta != nil {
+				if chunk.Choices[0].Delta.Content != nil {
+					content.WriteString(*chunk.Choices[0].Delta.Content)
+				}
+				if chunk.Choices[0].Delta.Role != "" {
+					role = chunk.Choices[0].Delta.Role
+				}
+				if as := chunk.Choices[0].Delta.Annotations; as != nil && len(*as) > 0 {
+					annotations = append(annotations, *as...)
+				}
 			}
-			if chunk.Choices[0].Delta.Role != "" {
-				role = chunk.Choices[0].Delta.Role
+			// Capture finish_reason from any chunk that has it.
+			if chunk.Choices[0].FinishReason != "" {
+				finishReason = chunk.Choices[0].FinishReason
 			}
 		}
 
@@ -77,43 +63,64 @@ func convertSSEToJSON(sseData []byte) ([]byte, error) {
 		if chunk.Usage != nil {
 			usage = chunk.Usage
 		}
+
+		// Capture obfuscation from the last chunk that has it.
+		if chunk.Obfuscation != "" {
+			obfuscation = chunk.Obfuscation
+		}
 	}
 
 	// If no valid first chunk found, return a minimal response.
 	if firstChunk == nil {
-		return json.Marshal(openai.ChatCompletionResponse{
+		// Default to "stop" if no finish reason was captured.
+		if finishReason == "" {
+			finishReason = openai.ChatCompletionChoicesFinishReasonStop
+		}
+		return &openai.ChatCompletionResponse{
 			ID:      "",
 			Object:  "chat.completion.chunk",
 			Created: openai.JSONUNIXTime{},
 			Model:   "",
 			Choices: []openai.ChatCompletionResponseChoice{{
 				Index:        0,
-				FinishReason: "stop",
+				FinishReason: finishReason,
 				Message: openai.ChatCompletionResponseChoiceMessage{
 					Role: role,
 				},
 			}},
-		})
+		}
 	}
 
 	// Build the response as a chunk with accumulated content.
 	contentStr := content.String()
 
+	// Default to "stop" if no finish reason was captured.
+	if finishReason == "" {
+		finishReason = openai.ChatCompletionChoicesFinishReasonStop
+	}
+
+	var annotationsPtr *[]openai.Annotation
+	if len(annotations) > 0 {
+		annotationsPtr = &annotations
+	}
+
 	// Create a ChatCompletionResponse with all accumulated content.
-	response := openai.ChatCompletionResponse{
+	response := &openai.ChatCompletionResponse{
 		ID:                firstChunk.ID,
 		Object:            "chat.completion.chunk", // Keep chunk object type for streaming.
 		Created:           firstChunk.Created,
 		Model:             firstChunk.Model,
 		ServiceTier:       firstChunk.ServiceTier,
 		SystemFingerprint: firstChunk.SystemFingerprint,
+		Obfuscation:       obfuscation,
 		Choices: []openai.ChatCompletionResponseChoice{{
 			Message: openai.ChatCompletionResponseChoiceMessage{
-				Role:    role,
-				Content: &contentStr,
+				Role:        role,
+				Content:     &contentStr,
+				Annotations: annotationsPtr,
 			},
 			Index:        0,
-			FinishReason: "stop",
+			FinishReason: finishReason,
 		}},
 	}
 
@@ -121,5 +128,5 @@ func convertSSEToJSON(sseData []byte) ([]byte, error) {
 		response.Usage = *usage
 	}
 
-	return json.Marshal(response)
+	return response
 }

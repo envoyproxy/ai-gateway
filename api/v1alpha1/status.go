@@ -42,3 +42,12 @@ type BackendSecurityPolicyStatus struct {
 	// Known .status.conditions.type are: "Accepted", "NotAccepted".
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
+
+// MCPRouteStatus contains the conditions by the reconciliation result.
+type MCPRouteStatus struct {
+	// Conditions is the list of conditions by the reconciliation result.
+	// Currently, at most one condition is set.
+	//
+	// Known .status.conditions.type are: "Accepted", "NotAccepted".
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}

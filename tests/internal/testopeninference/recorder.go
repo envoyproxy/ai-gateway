@@ -32,7 +32,7 @@ import (
 )
 
 // proxyFunc is a function that starts a proxy for recording spans.
-type proxyFunc func(ctx context.Context, logger *log.Logger, openaiBaseUrl, otlpEndpoint string) (url string, closer func(), err error)
+type proxyFunc func(ctx context.Context, logger *log.Logger, cassette testopenai.Cassette, openaiBaseUrl, otlpEndpoint string) (url string, closer func(), err error)
 
 // spanRecorder records OpenInference spans for OpenAI API requests.
 type spanRecorder struct {
@@ -57,11 +57,11 @@ func (r *spanRecorder) recordSpan(ctx context.Context, cassette testopenai.Casse
 	collector, spanCh := r.startOTLPCollector()
 	defer collector.Close()
 
-	openaiBaseURL := fmt.Sprintf("http://localhost:%d/v1", openAIServer.Port())
+	openaiBaseURL := fmt.Sprintf("http://localhost:%d", openAIServer.Port())
 	otlpEndpoint := fmt.Sprintf("http://localhost:%d", getPort(collector.URL))
 	r.logger.Printf("Starting proxy container with OTLP endpoint: %s", otlpEndpoint)
 
-	proxyURL, closer, err := r.startProxy(ctx, r.logger, openaiBaseURL, otlpEndpoint)
+	proxyURL, closer, err := r.startProxy(ctx, r.logger, cassette, openaiBaseURL, otlpEndpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -95,6 +95,16 @@ func (r *spanRecorder) recordSpan(ctx context.Context, cassette testopenai.Casse
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
+
+	// Check for error responses that indicate cassette problems.
+	if resp.StatusCode == http.StatusConflict || resp.StatusCode == http.StatusInternalServerError {
+		body, _ := io.ReadAll(resp.Body)
+		bodyStr := strings.TrimSpace(string(body))
+		if bodyStr == "" {
+			bodyStr = "<empty body>"
+		}
+		return nil, fmt.Errorf("failed to call proxy (status %d): %s", resp.StatusCode, bodyStr)
+	}
 
 	if isStreaming {
 		r.logger.Printf("Reading streaming response...")
@@ -217,6 +227,11 @@ func (r *spanRecorder) saveSpanToFile(cassette testopenai.Cassette, span *tracev
 	}.Marshal(span)
 	if err != nil {
 		return fmt.Errorf("failed to marshal span: %w", err)
+	}
+
+	// Ensure the file ends with a newline to avoid `make precommit` failures.
+	if len(data) > 0 && data[len(data)-1] != '\n' {
+		data = append(data, '\n')
 	}
 
 	filename := filepath.Join(r.writeDir, fmt.Sprintf("%s.json", cassette))

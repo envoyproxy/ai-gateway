@@ -32,7 +32,7 @@ func TestAnthropicStreamParser_ErrorHandling(t *testing.T) {
 		_, _, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		_, _, _, err = translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), endOfStream)
+		_, _, _, _, err = translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), endOfStream, nil)
 		return err
 	}
 
@@ -96,10 +96,51 @@ data: {"type": "message_stop"}
 
 	t.Run("body read error", func(t *testing.T) {
 		parser := newAnthropicStreamParser("test-model")
-		_, _, _, err := parser.Process(&mockErrorReader{}, false)
+		_, _, _, _, err := parser.Process(&mockErrorReader{}, false, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to read from stream body")
 	})
+}
+
+// TestResponseModel_GCPAnthropicStreaming tests that GCP Anthropic streaming returns the request model
+// GCP Anthropic uses deterministic model mapping without virtualization
+func TestResponseModel_GCPAnthropicStreaming(t *testing.T) {
+	modelName := "claude-sonnet-4@20250514"
+	sseStream := `event: message_start
+data: {"type": "message_start", "message": {"id": "msg_1nZdL29xx5MUA1yADyHTEsnR8uuvGzszyY", "type": "message", "role": "assistant", "content": [], "model": "claude-sonnet-4@20250514", "stop_reason": null, "stop_sequence": null, "usage": {"input_tokens": 10, "output_tokens": 1}}}
+
+event: content_block_start
+data: {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hello"}}
+
+event: content_block_stop
+data: {"type": "content_block_stop", "index": 0}
+
+event: message_delta
+data: {"type": "message_delta", "delta": {"stop_reason": "end_turn", "stop_sequence":null}, "usage": {"output_tokens": 5}}
+
+event: message_stop
+data: {"type": "message_stop"}
+
+`
+	openAIReq := &openai.ChatCompletionRequest{
+		Stream:    true,
+		Model:     modelName, // Use the actual model name from documentation
+		MaxTokens: new(int64),
+	}
+
+	translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
+	_, _, err := translator.RequestBody(nil, openAIReq, false)
+	require.NoError(t, err)
+
+	// Test streaming response - GCP Anthropic doesn't return model in response, uses request model
+	_, _, tokenUsage, responseModel, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
+	require.NoError(t, err)
+	require.Equal(t, modelName, responseModel) // Returns the request model since no virtualization
+	require.Equal(t, uint32(10), tokenUsage.InputTokens)
+	require.Equal(t, uint32(5), tokenUsage.OutputTokens)
 }
 
 func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody_Streaming(t *testing.T) {
@@ -139,7 +180,7 @@ data: {"type": "message_stop"}
 		_, _, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		_, bm, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true)
+		_, bm, _, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bm)
 
@@ -248,7 +289,7 @@ data: {"type":"message_stop"}
 		_, _, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		_, bm, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true)
+		_, bm, _, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bm)
 		bodyStr := string(bm.GetBody())
@@ -318,7 +359,7 @@ data: {"type":"message_stop"}
 		_, _, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		_, bm, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true)
+		_, bm, _, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bm)
 		bodyStr := string(bm.GetBody())
@@ -345,7 +386,7 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta"
 		_, _, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		_, bm, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true)
+		_, bm, _, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bm)
 		bodyStr := string(bm.GetBody())
@@ -353,8 +394,8 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta"
 		var finalToolCallChunk openai.ChatCompletionResponseChunk
 
 		// Split the response into individual SSE messages and find the final data chunk.
-		lines := strings.Split(strings.TrimSpace(bodyStr), "\n\n")
-		for _, line := range lines {
+		lines := strings.SplitSeq(strings.TrimSpace(bodyStr), "\n\n")
+		for line := range lines {
 			if !strings.HasPrefix(line, "data: ") || strings.HasPrefix(line, "data: [DONE]") {
 				continue
 			}
@@ -403,7 +444,7 @@ data: {"type": "message_stop"}
 		_, _, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		_, bm, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true)
+		_, bm, _, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bm)
 		bodyStr := string(bm.GetBody())
@@ -412,8 +453,8 @@ data: {"type": "message_stop"}
 		var foundToolCallWithArgs bool
 		var finalFinishReason openai.ChatCompletionChoicesFinishReason
 
-		lines := strings.Split(strings.TrimSpace(bodyStr), "\n\n")
-		for _, line := range lines {
+		lines := strings.SplitSeq(strings.TrimSpace(bodyStr), "\n\n")
+		for line := range lines {
 			if !strings.HasPrefix(line, "data: ") || strings.Contains(line, "[DONE]") {
 				continue
 			}
@@ -462,7 +503,7 @@ func TestAnthropicStreamParser_EventTypes(t *testing.T) {
 		_, _, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		_, bm, tokenUsage, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), endOfStream)
+		_, bm, tokenUsage, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), endOfStream, nil)
 		return bm, tokenUsage, err
 	}
 
@@ -495,8 +536,8 @@ data: {"type": "content_block_stop", "index": 0}
 		// 1. Split the stream into individual data chunks
 		//    and remove the "data: " prefix.
 		var chunks []openai.ChatCompletionResponseChunk
-		lines := strings.Split(strings.TrimSpace(bodyStr), "\n\n")
-		for _, line := range lines {
+		lines := strings.SplitSeq(strings.TrimSpace(bodyStr), "\n\n")
+		for line := range lines {
 			if !strings.HasPrefix(line, "data: ") {
 				continue
 			}
@@ -593,8 +634,8 @@ data: {"type": "content_block_stop", "index": 0}
 
 		// 1. Unmarshal all the chunks from the stream response.
 		var chunks []openai.ChatCompletionResponseChunk
-		lines := strings.Split(strings.TrimSpace(bodyStr), "\n\n")
-		for _, line := range lines {
+		lines := strings.SplitSeq(strings.TrimSpace(bodyStr), "\n\n")
+		for line := range lines {
 			if !strings.HasPrefix(line, "data: ") {
 				continue
 			}
@@ -640,10 +681,10 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text
 		var contentChunk openai.ChatCompletionResponseChunk
 		foundChunk := false
 
-		lines := strings.Split(strings.TrimSpace(bodyStr), "\n\n")
-		for _, line := range lines {
-			if strings.HasPrefix(line, "data: ") {
-				jsonBody := strings.TrimPrefix(line, "data: ")
+		lines := strings.SplitSeq(strings.TrimSpace(bodyStr), "\n\n")
+		for line := range lines {
+			if after, ok := strings.CutPrefix(line, "data: "); ok {
+				jsonBody := after
 				// We only care about the chunk that has the text content.
 				if strings.Contains(jsonBody, `"content"`) {
 					err := json.Unmarshal([]byte(jsonBody), &contentChunk)

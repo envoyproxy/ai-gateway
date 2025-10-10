@@ -11,15 +11,10 @@ metadata:
   namespace: default
 spec:
   parentRefs:
-  - name: gateway
-  schema:
-    name: OpenAI
+    - name: gateway
   rules:
-  - matches:
-    - path:
-        type: PathPrefix
-        value: /v1/chat/completions
-    backendRefs:
-    - group: inference.networking.k8s.io
-      kind: InferencePool
-      name: my-inference-pool
+    - matches: []
+      backendRefs:
+        - group: inference.networking.k8s.io
+          kind: InferencePool
+          name: my-inference-pool

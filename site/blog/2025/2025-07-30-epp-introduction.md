@@ -4,7 +4,9 @@ title: Envoy AI Gateway Introduces Endpoint Picker Support
 authors: [missberg, xunzhuo]
 tags: [news, features]
 ---
+
 # Envoy AI Gateway Introduces Endpoint Picker Support: Enabling AI Inference Routing
+
 ![Reference Architecture for Envoy AI Gateway](./images/epp-blog-feature.png)
 
 ## Introduction
@@ -120,8 +122,6 @@ metadata:
   name: inference-pool-with-aigwroute
   namespace: default
 spec:
-  schema:
-    name: OpenAI
   targetRefs:
     - name: inference-pool-with-aigwroute
       kind: Gateway
@@ -255,7 +255,7 @@ Ready to get started with Envoy AI Gateway? Check out our [documentation](https:
 
 ---
 
-*Envoy AI Gateway continues to evolve as the premier solution for routing and managing AI workloads. Stay tuned for more exciting features and capabilities as we work to simplify, enhance, and improve the reliability and efficiency of AI deployment.*
+_Envoy AI Gateway continues to evolve as the premier solution for routing and managing AI workloads. Stay tuned for more exciting features and capabilities as we work to simplify, enhance, and improve the reliability and efficiency of AI deployment._
 
 ## Resources
 

@@ -6,12 +6,10 @@
 package extproc
 
 import (
-	"bytes"
-	"compress/gzip"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"strconv"
 
@@ -19,21 +17,24 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 // EmbeddingsProcessorFactory returns a factory method to instantiate the embeddings processor.
 func EmbeddingsProcessorFactory(em metrics.EmbeddingsMetrics) ProcessorFactory {
-	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
+	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "embeddings", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &embeddingsProcessorRouterFilter{
 				config:         config,
+				tracer:         tracing.EmbeddingsTracer(),
 				requestHeaders: requestHeaders,
 				logger:         logger,
 			}, nil
@@ -68,6 +69,10 @@ type embeddingsProcessorRouterFilter struct {
 	// when the request is retried.
 	originalRequestBody    *openai.EmbeddingRequest
 	originalRequestBodyRaw []byte
+	// tracer is the tracer used for requests.
+	tracer tracing.EmbeddingsTracer
+	// span is the tracing span for this request, created in ProcessRequestBody.
+	span tracing.EmbeddingsSpan
 	// upstreamFilterCount is the number of upstream filters that have been processed.
 	// This is used to determine if the request is a retry request.
 	upstreamFilterCount int
@@ -94,30 +99,41 @@ func (e *embeddingsProcessorRouterFilter) ProcessResponseBody(ctx context.Contex
 }
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
-func (e *embeddingsProcessorRouterFilter) ProcessRequestBody(_ context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
-	model, body, err := parseOpenAIEmbeddingBody(rawBody)
+func (e *embeddingsProcessorRouterFilter) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+	originalModel, body, err := parseOpenAIEmbeddingBody(rawBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
 
-	e.requestHeaders[e.config.modelNameHeaderKey] = model
+	e.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = originalModel
 
 	var additionalHeaders []*corev3.HeaderValueOption
 	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
 		// Set the model name to the request header with the key `x-ai-eg-model`.
-		Header: &corev3.HeaderValue{Key: e.config.modelNameHeaderKey, RawValue: []byte(model)},
+		Header: &corev3.HeaderValue{Key: internalapi.ModelNameHeaderKeyDefault, RawValue: []byte(originalModel)},
 	}, &corev3.HeaderValueOption{
 		Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(e.requestHeaders[":path"])},
 	})
 	e.originalRequestBody = body
 	e.originalRequestBodyRaw = rawBody.Body
+
+	// Tracing may need to inject headers, so create a header mutation here.
+	headerMutation := &extprocv3.HeaderMutation{
+		SetHeaders: additionalHeaders,
+	}
+	e.span = e.tracer.StartSpanAndInjectHeaders(
+		ctx,
+		e.requestHeaders,
+		headerMutation,
+		body,
+		rawBody.Body,
+	)
+
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{
 			RequestBody: &extprocv3.BodyResponse{
 				Response: &extprocv3.CommonResponse{
-					HeaderMutation: &extprocv3.HeaderMutation{
-						SetHeaders: additionalHeaders,
-					},
+					HeaderMutation:  headerMutation,
 					ClearRouteCache: true,
 				},
 			},
@@ -134,9 +150,10 @@ type embeddingsProcessorUpstreamFilter struct {
 	requestHeaders         map[string]string
 	responseHeaders        map[string]string
 	responseEncoding       string
-	modelNameOverride      string
+	modelNameOverride      internalapi.ModelNameOverride
 	backendName            string
 	handler                backendauth.Handler
+	headerMutator          *headermutator.HeaderMutator
 	originalRequestBodyRaw []byte
 	originalRequestBody    *openai.EmbeddingRequest
 	translator             translator.OpenAIEmbeddingTranslator
@@ -146,13 +163,15 @@ type embeddingsProcessorUpstreamFilter struct {
 	costs translator.LLMTokenUsage
 	// metrics tracking.
 	metrics metrics.EmbeddingsMetrics
+	// span is the tracing span for this request, inherited from the router filter.
+	span tracing.EmbeddingsSpan
 }
 
 // selectTranslator selects the translator based on the output schema.
 func (e *embeddingsProcessorUpstreamFilter) selectTranslator(out filterapi.VersionedAPISchema) error {
 	switch out.Name {
 	case filterapi.APISchemaOpenAI:
-		e.translator = translator.NewEmbeddingOpenAIToOpenAITranslator(out.Version, e.modelNameOverride)
+		e.translator = translator.NewEmbeddingOpenAIToOpenAITranslator(out.Version, e.modelNameOverride, e.span)
 	default:
 		return fmt.Errorf("unsupported API schema: backend=%s", out)
 	}
@@ -174,7 +193,11 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Co
 
 	// Start tracking metrics for this request.
 	e.metrics.StartRequest(e.requestHeaders)
-	e.metrics.SetModel(e.requestHeaders[e.config.modelNameHeaderKey])
+	// Set the original model from the request body before any overrides
+	e.metrics.SetOriginalModel(e.originalRequestBody.Model)
+	// Set the request model for metrics from the original model or override if applied.
+	reqModel := cmp.Or(e.requestHeaders[internalapi.ModelNameHeaderKeyDefault], e.originalRequestBody.Model)
+	e.metrics.SetRequestModel(reqModel)
 
 	headerMutation, bodyMutation, err := e.translator.RequestBody(e.originalRequestBodyRaw, e.originalRequestBody, e.onRetry)
 	if err != nil {
@@ -182,10 +205,18 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Co
 	}
 	if headerMutation == nil {
 		headerMutation = &extprocv3.HeaderMutation{}
-	} else {
-		for _, h := range headerMutation.SetHeaders {
-			e.requestHeaders[h.Header.Key] = string(h.Header.RawValue)
+	}
+
+	// Apply header mutations from the route and also restore original headers on retry.
+	if h := e.headerMutator; h != nil {
+		if hm := e.headerMutator.Mutate(e.requestHeaders, e.onRetry); hm != nil {
+			headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, hm.RemoveHeaders...)
+			headerMutation.SetHeaders = append(headerMutation.SetHeaders, hm.SetHeaders...)
 		}
+	}
+
+	for _, h := range headerMutation.SetHeaders {
+		e.requestHeaders[h.Header.Key] = string(h.Header.RawValue)
 	}
 	if h := e.handler; h != nil {
 		if err = h.Do(ctx, e.requestHeaders, headerMutation, bodyMutation); err != nil {
@@ -195,7 +226,7 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Co
 
 	var dm *structpb.Struct
 	if bm := bodyMutation.GetBody(); bm != nil {
-		dm = buildContentLengthDynamicMetadataOnRequest(e.config, len(bm))
+		dm = buildContentLengthDynamicMetadataOnRequest(len(bm))
 	}
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
@@ -240,30 +271,40 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseHeaders(ctx context.C
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
 func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+	recordRequestCompletionErr := false
 	defer func() {
-		e.metrics.RecordRequestCompletion(ctx, err == nil, e.requestHeaders)
-	}()
-	var br io.Reader
-	var isGzip bool
-	switch e.responseEncoding {
-	case "gzip":
-		br, err = gzip.NewReader(bytes.NewReader(body.Body))
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode gzip: %w", err)
+		if err != nil || recordRequestCompletionErr {
+			e.metrics.RecordRequestCompletion(ctx, false, e.requestHeaders)
+			return
 		}
-		isGzip = true
-	default:
-		br = bytes.NewReader(body.Body)
+		if body.EndOfStream {
+			e.metrics.RecordRequestCompletion(ctx, true, e.requestHeaders)
+		}
+	}()
+
+	// Decompress the body if needed using common utility.
+	decodingResult, err := decodeContentIfNeeded(body.Body, e.responseEncoding)
+	if err != nil {
+		return nil, err
 	}
 
 	// Assume all responses have a valid status code header.
 	if code, _ := strconv.Atoi(e.responseHeaders[":status"]); !isGoodStatusCode(code) {
 		var headerMutation *extprocv3.HeaderMutation
 		var bodyMutation *extprocv3.BodyMutation
-		headerMutation, bodyMutation, err = e.translator.ResponseError(e.responseHeaders, br)
+		headerMutation, bodyMutation, err = e.translator.ResponseError(e.responseHeaders, decodingResult.reader)
 		if err != nil {
 			return nil, fmt.Errorf("failed to transform response error: %w", err)
 		}
+		if e.span != nil {
+			b := bodyMutation.GetBody()
+			if b == nil {
+				b = body.Body
+			}
+			e.span.EndSpanOnError(code, b)
+		}
+		// Mark so the deferred handler records failure.
+		recordRequestCompletionErr = true
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_ResponseBody{
 				ResponseBody: &extprocv3.BodyResponse{
@@ -276,22 +317,13 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 		}, nil
 	}
 
-	headerMutation, bodyMutation, tokenUsage, err := e.translator.ResponseBody(e.responseHeaders, br, body.EndOfStream)
+	headerMutation, bodyMutation, tokenUsage, responseModel, err := e.translator.ResponseBody(e.responseHeaders, decodingResult.reader, body.EndOfStream)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}
-	if bodyMutation != nil && isGzip {
-		if headerMutation == nil {
-			headerMutation = &extprocv3.HeaderMutation{}
-		}
-		// TODO: this is a hotfix, we should update this to recompress since its in the header
-		// If the response was gzipped, ensure we remove the content-encoding header.
-		//
-		// This is only needed when the transformation is actually modifying the body. When the backend
-		// is in OpenAI format (and it's the first try before any retry), the response body is not modified,
-		// so we don't need to remove the header in that case.
-		headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, "content-encoding")
-	}
+
+	// Remove content-encoding header if original body encoded but was mutated in the processor.
+	headerMutation = removeContentEncodingIfNeeded(headerMutation, bodyMutation, decodingResult.isEncoded)
 
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ResponseBody{
@@ -308,23 +340,30 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 	e.costs.InputTokens += tokenUsage.InputTokens
 	e.costs.TotalTokens += tokenUsage.TotalTokens
 
+	e.metrics.SetResponseModel(responseModel)
+
 	// Update metrics with token usage.
-	e.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.TotalTokens, e.requestHeaders)
+	e.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, e.requestHeaders)
 
 	if body.EndOfStream && len(e.config.requestCosts) > 0 {
-		resp.DynamicMetadata, err = buildDynamicMetadata(e.config, &e.costs, e.requestHeaders, e.modelNameOverride, e.backendName)
+		resp.DynamicMetadata, err = buildDynamicMetadata(e.config, &e.costs, e.requestHeaders, e.backendName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
 		}
 	}
 
+	if body.EndOfStream && e.span != nil {
+		e.span.EndSpan()
+	}
 	return resp, nil
 }
 
 // SetBackend implements [Processor.SetBackend].
 func (e *embeddingsProcessorUpstreamFilter) SetBackend(ctx context.Context, b *filterapi.Backend, backendHandler backendauth.Handler, routeProcessor Processor) (err error) {
 	defer func() {
-		e.metrics.RecordRequestCompletion(ctx, err == nil, e.requestHeaders)
+		if err != nil {
+			e.metrics.RecordRequestCompletion(ctx, false, e.requestHeaders)
+		}
 	}()
 	rp, ok := routeProcessor.(*embeddingsProcessorRouterFilter)
 	if !ok {
@@ -334,13 +373,21 @@ func (e *embeddingsProcessorUpstreamFilter) SetBackend(ctx context.Context, b *f
 	e.metrics.SetBackend(b)
 	e.modelNameOverride = b.ModelNameOverride
 	e.backendName = b.Name
+	e.originalRequestBody = rp.originalRequestBody
+	e.originalRequestBodyRaw = rp.originalRequestBodyRaw
+	e.onRetry = rp.upstreamFilterCount > 1
+	e.span = rp.span
 	if err = e.selectTranslator(b.Schema); err != nil {
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
 	e.handler = backendHandler
-	e.originalRequestBody = rp.originalRequestBody
-	e.originalRequestBodyRaw = rp.originalRequestBodyRaw
-	e.onRetry = rp.upstreamFilterCount > 1
+	e.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
+	// Header-derived labels/CEL must be able to see the overridden request model.
+	if e.modelNameOverride != "" {
+		e.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = e.modelNameOverride
+		// Update metrics with the overridden model
+		e.metrics.SetRequestModel(e.modelNameOverride)
+	}
 	rp.upstreamFilter = e
 	return
 }

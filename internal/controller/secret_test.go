@@ -6,7 +6,8 @@
 package controller
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -62,11 +63,11 @@ func TestSecretController_Reconcile(t *testing.T) {
 	}})
 	require.NoError(t, err)
 	actual := eventCh.RequireItemsEventually(t, len(originals))
-	sort.Slice(actual, func(i, j int) bool {
-		return actual[i].Name < actual[j].Name
+	slices.SortFunc(actual, func(a, b *aigv1a1.BackendSecurityPolicy) int {
+		return cmp.Compare(a.Name, b.Name)
 	})
-	sort.Slice(originals, func(i, j int) bool {
-		return originals[i].Name < originals[j].Name
+	slices.SortFunc(originals, func(a, b *aigv1a1.BackendSecurityPolicy) int {
+		return cmp.Compare(a.Name, b.Name)
 	})
 	require.Equal(t, originals, actual)
 

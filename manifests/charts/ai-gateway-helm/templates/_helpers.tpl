@@ -67,3 +67,25 @@ Create the name of the service account to use
 {{- default "default" .Values.controller.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Convert extraEnvVars array to semicolon-separated string for extProc
+*/}}
+{{- define "ai-gateway-helm.extProc.envVarsString" -}}
+{{- $envVars := list -}}
+{{- range .Values.extProc.extraEnvVars -}}
+  {{- $envVars = append $envVars (printf "%s=%s" .name .value) -}}
+{{- end -}}
+{{- join ";" $envVars -}}
+{{- end }}
+
+{{/*
+Convert imagePullSecrets array to semicolon-separated string for extProc
+*/}}
+{{- define "ai-gateway-helm.extProc.imagePullSecretsString" -}}
+{{- $secrets := list -}}
+{{- range .Values.extProc.imagePullSecrets -}}
+  {{- $secrets = append $secrets .name -}}
+{{- end -}}
+{{- join ";" $secrets -}}
+{{- end }}

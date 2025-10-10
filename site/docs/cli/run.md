@@ -13,55 +13,71 @@ Since the project is primarily focused on the Kubernetes environment, this comma
 Not only does it help in testing the configuration, but it is also useful in a local development environment of the provider-agnostic AI applications.
 
 :::warning
-Currently, `aigw run` only properly works on Linux. macOS support is pending due to the Envoy v1.34+ binary not available for macOS yet. That will be resolved with https://github.com/Homebrew/homebrew-core/pull/223051.
+Currently, `aigw run` supports Linux and macOS.
 :::
 
-## Default Proxy
+## Quick Start
 
-By default, `aigw run` runs the AI Gateway with a default configuration that includes a proxy that listens on port `1975`.
+The simplest way to get started is to have `aigw` generate a configuration for
+you using environment variables. `aigw` supports auto-configuration using the same
+environment variables as the OpenAI SDK, making it easy to integrate with existing
+tooling. Here are some examples:
 
-It also includes a few default backend services:
-* [OpenAI](https://platform.openai.com/docs/api-reference): The API key is expected to be provided via the `OPENAI_API_KEY` environment variable.
-* [AWS Bedrock](https://aws.amazon.com/bedrock/)(us-east-1): The AWS credentials are expected to be provided via the conventional `~/.aws/credentials` file.
-* [Ollama](https://ollama.com/): The Ollama service is expected to be running on `localhost:11434` which is the default as per [the official documentation](https://github.com/Ollama/Ollama/blob/main/docs/faq.md#how-can-i-expose-Ollama-on-my-network).
-
-The routing configuration is as follows:
-* The special header `aigw-backend-selector` can be used to select the backend regardless of the "model" field in the request body.
-  * `aigw-backend-selector: openai` header will route to OpenAI,
-  * `aigw-backend-selector: aws` will route to AWS Bedrock, and
-  * `aigw-backend-selector: ollama` will route to Ollama.
-* If `aigw-backend-selector` is not present, the "model" field in the request body will be used to select the backend.
-  * If the "model" field is `gpt-4o-mini`, it will be routed to OpenAI,
-  * If the "model" field is `us.meta.llama3-2-1b-instruct-v1:0`, it will be routed to AWS Bedrock, and
-  * If the "model" field is `mistral:latest`, it will be routed to Ollama.
-
-You can view the full configuration by running `aigw run --show-default` to see exactly what the default configuration looks like.
-
-:::note
-We welcome contributions to enhance the default configuration, for example, by adding more well-known AI providers and models.
-:::
-
-### Try it out
-
-To run the AI Gateway with the default configuration, run the following command:
-```shell
-aigw run
+```bash
+# OpenAI
+OPENAI_API_KEY=sk-your-key aigw run
+# Azure OpenAI
+AZURE_OPENAI_ENDPOINT=https://example.openai.azure.com \
+  AZURE_OPENAI_API_KEY=your-key \
+  OPENAI_API_VERSION=2024-12-01-preview \
+  aigw run
+# Tetrate Agent Router Service (TARS)
+OPENAI_BASE_URL=https://api.router.tetrate.ai/v1 OPENAI_API_KEY=sk-your-key aigw run
+# Ollama running locally
+OPENAI_BASE_URL=http://localhost:11434/v1 OPENAI_API_KEY=unused aigw run
 ```
 
 Now, the AI Gateway is running locally with the default configuration serving at `localhost:1975`.
 
 Then, open a new terminal and run the following curl commands to test the AI Gateway.
-For example, use `mistral:latest` model to route to Ollama, assuming Ollama is running locally and `ollama pull mistral:latest` is executed to pull the model.
+For example, use `qwen2.5:0.5b` model to route to Ollama, assuming Ollama is running locally and `ollama pull qwen2.5:0.5b` is executed to pull the model.
 
 ```shell
 curl -H "Content-Type: application/json" -XPOST http://localhost:1975/v1/chat/completions \
-    -d '{"model": "mistral:latest","messages": [{"role": "user", "content": "Say this is a test!"}]}'
+  -d '{"model": "qwen2.5:0.5b","messages": [{"role": "user", "content": "Say this is a test!"}]}'
 ```
 
-Changing the `model` field value to `gpt-4o-mini` or `us.meta.llama3-2-1b-instruct-v1:0` will route to OpenAI or AWS Bedrock respectively.
-They require the respective credentials to be available as mentioned above.
+### Supported Environment Variables
 
-## Customize Configuration
+The following environment variables are compatible with the OpenAI SDK:
+
+**OpenAI / OpenAI-compatible backends:**
+
+When `OPENAI_API_KEY` is set, the following environment variables are read:
+
+| Variable          | Required | Example                     | Description                                          |
+| ----------------- | -------- | --------------------------- | ---------------------------------------------------- |
+| `OPENAI_API_KEY`  | Yes      | `sk-proj-...`               | API key for authentication (use "unused" for Ollama) |
+| `OPENAI_BASE_URL` | No       | `https://api.openai.com/v1` | Base URL of your OpenAI-compatible backend           |
+
+**Azure OpenAI:**
+
+When `AZURE_OPENAI_API_KEY` is set, the following environment variables are read:
+
+| Variable                | Required | Example                            | Description                                 |
+| ----------------------- | -------- | ---------------------------------- | ------------------------------------------- |
+| `AZURE_OPENAI_ENDPOINT` | Yes      | `https://example.openai.azure.com` | Your Azure endpoint, including the resource |
+| `AZURE_OPENAI_API_KEY`  | Yes      | `abc123...`                        | API key for authentication                  |
+| `OPENAI_API_VERSION`    | Yes      | `2024-12-01-preview`               | Azure OpenAI API version                    |
+
+**Optional headers (both OpenAI and Azure OpenAI):**
+
+| Variable            | Example    | Description                                                                                    |
+| ------------------- | ---------- | ---------------------------------------------------------------------------------------------- |
+| `OPENAI_ORG_ID`     | `org-...`  | Organization ID - adds `OpenAI-Organization` request header for billing and access control     |
+| `OPENAI_PROJECT_ID` | `proj_...` | Project ID - adds `OpenAI-Project` request header for project-level billing and access control |
+
+## Custom Configuration
 
 To run the AI Gateway with a custom configuration, provide the path to the configuration file as an argument to the `aigw run` command.
 For example, to run the AI Gateway with a custom configuration file named `config.yaml`, run the following command:
@@ -72,28 +88,42 @@ aigw run config.yaml
 
 The configuration uses the same API as the Envoy AI Gateway custom resources definitions. See [API Reference](../api/) for more information.
 
-The best way to start customizing the configuration is to start with the default configuration and modify it as needed.
+The best way to start customizing the configuration is to start with an [example configuration](https://github.com/envoyproxy/ai-gateway/tree/main/examples) and modify it as needed.
 
-### Modify the Default Configuration
+### Modify an Example Configuration
 
-First, save the default configuration to a file named `config.yaml` by running the following command:
+First, download an example configuration to use as a starting point:
 
 ```shell
-aigw run --show-default > default.yaml
+curl -o ollama.yaml https://raw.githubusercontent.com/envoyproxy/ai-gateway/refs/heads/main/examples/aigw/ollama.yaml
 ```
 
-Next, let's say change the `mistral:latest` model to `deepseek-r1:1.5b` and save the configuration to `custom.yaml`:
+Next, let's say change the model matcher from `.*` (match all) to specifically match `deepseek-r1:1.5b` and save the configuration to `custom.yaml`:
 
 ```diff
---- default.yaml        2025-03-26 11:27:30
-+++ custom.yaml 2025-03-26 11:28:55
-@@ -115,9 +115,9 @@
-     - matches:
+--- ollama.yaml
++++ custom.yaml
+@@ -88,7 +88,7 @@
          - headers:
-             - type: Exact
+             - type: RegularExpression
                name: x-ai-eg-model
--              value: mistral:latest
+-              value: .*
 +              value: deepseek-r1:1.5b
+```
+
+You can also use environment variable substitution (`envsubst`) to allow small
+changes without needing to copy a file. For example, you could use this syntax
+instead, to default the model to the `CHAT_MODEL` variable.
+
+```diff
+--- ollama.yaml
++++ custom.yaml
+@@ -88,7 +88,7 @@
+         - headers:
+             - type: RegularExpression
+               name: x-ai-eg-model
+-              value: .*
++              value: ${CHAT_MODEL:=deepseek-r1:1.5b}
 ```
 
 ### Run with the Custom Configuration
@@ -108,9 +138,174 @@ Now, the AI Gateway is running locally with the custom configuration serving at 
 
 ```shell
 curl -H "Content-Type: application/json" -XPOST http://localhost:1975/v1/chat/completions \
-    -d '{"model": "deepseek-r1:1.5b","messages": [{"role": "user", "content": "Say this is a test!"}]}'
+  -d '{"model": "deepseek-r1:1.5b","messages": [{"role": "user", "content": "Say this is a test!"}]}'
 ```
 
-### Note
+## MCP Configuration
 
-* The ExtProc will serve the prometheus metrics at `localhost:1064/metrics` by default where you can scrape the [LLM/AI metrics](../capabilities/observability/metrics.md).
+`aigw run` supports running as an [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) Gateway, allowing AI agents to connect to multiple MCP servers through a unified endpoint. The gateway aggregates tools from multiple backends, applies security policies, and provides observability for MCP traffic.
+
+### Using MCP Servers Configuration File
+
+Use the `--mcp-config` flag to load MCP server configuration from a JSON file. The format follows the canonical [MCP servers configuration](https://modelcontextprotocol.io/docs/getting-started/intro#configuring-mcp-servers) used by clients like Claude Desktop, Cursor, and VS Code:
+
+```json
+{
+  "mcpServers": {
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp"
+    },
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/readonly",
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_ACCESS_TOKEN}"
+      },
+      "includeTools": ["get_issue", "list_issues"]
+    }
+  }
+}
+```
+
+Start the MCP Gateway:
+
+```shell
+aigw run --mcp-config mcp-servers.json
+```
+
+The gateway will be available at `http://localhost:1975/mcp`. Configure your MCP client to connect to this URL.
+
+### Using Inline JSON Configuration
+
+For quick testing or when the configuration is provided programmatically, use the `--mcp-json` flag:
+
+```shell
+aigw run --mcp-json '{"mcpServers":{"context7":{"type":"http","url":"https://mcp.context7.com/mcp"}}}'
+```
+
+### MCP Servers Configuration Format
+
+Each server configuration in the `mcpServers` object supports the following properties:
+
+**`type`** (string, required)
+
+The transport protocol for the MCP server. Supported values: `"http"`, `"streamable-http"`, `"streamable_http"`, or `"streamableHttp"`.
+
+**`url`** (string, required)
+
+The full endpoint URL for the MCP server, including protocol, hostname, and path.
+
+**`headers`** (object, optional)
+
+HTTP headers to send with requests to the MCP server. Authorization headers with Bearer tokens are automatically extracted and injected as API keys.
+
+Example:
+
+```json
+"headers": {
+  "Authorization": "Bearer ${GITHUB_TOKEN}",
+  "X-Custom-Header": "value"
+}
+```
+
+Header values support environment variable substitution using `${VAR}` syntax. For example, `${GITHUB_TOKEN}` will be replaced at runtime with the value of the `GITHUB_TOKEN` environment variable.
+
+**`includeTools`** (array of strings, optional)
+
+List of specific tool names to expose from this server. If not specified, all tools from the server are exposed.
+
+This follows the same convention as [Gemini CLI's tool filtering](https://google-gemini.github.io/gemini-cli/docs/tools/mcp-server.html#optional).
+
+Example:
+
+```json
+"includeTools": ["get_issue", "list_issues", "search_issues"]
+```
+
+### Testing the MCP Gateway
+
+Use the [MCP Inspector](https://github.com/modelcontextprotocol/inspector) to test your gateway:
+
+```shell
+# List available tools
+npx @modelcontextprotocol/inspector@0.16.8 --cli http://localhost:1975/mcp --method tools/list
+
+# Call a tool
+npx @modelcontextprotocol/inspector@0.16.8 \
+  --cli http://localhost:1975/mcp \
+  --method tools/call \
+  --tool-name context7__resolve-library-id \
+  --tool-arg libraryName="react"
+```
+
+:::note
+Tool names are automatically prefixed with the server name (e.g., `github__get_issue`, `context7__resolve-library-id`) to route calls to the correct backend.
+:::
+
+### Advanced MCP Configuration
+
+For production deployments with advanced features like OAuth authentication, fine-grained access control, and Kubernetes integration, use the [`MCPRoute` API](/docs/capabilities/mcp/). The same configuration can be used in both `aigw run` standalone mode and Kubernetes environments.
+
+### Admin Endpoints
+
+While running, `aigw` serves admin endpoints on port `1064` by default:
+
+- `/metrics`: Prometheus metrics endpoint for [LLM/AI metrics](../capabilities/observability/metrics.md)
+- `/health`: Health check endpoint that verifies the external processor is healthy
+
+## OpenTelemetry
+
+Envoy AI Gateway's router joins and records distributed traces when supplied
+with an [OpenTelemetry](https://opentelemetry.io/) collector endpoint.
+
+Requests to the OpenAI Chat Completions and Embeddings endpoints are recorded
+as Spans which include typical timing and request details. In addition, there
+are GenAI attributes representing the LLM or Embeddings call including full
+request and response details, defined by [OpenInference semantic conventions][openinference].
+
+OpenInference attributes default to include full request and response data for
+both chat completions and embeddings. This can be toggled with configuration,
+but when enabled allows systems like [Arize Phoenix][phoenix] to perform
+evaluations of production requests captured in OpenTelemetry spans.
+
+For chat completions, this includes traditional LLM metrics such as correctness
+and hallucination detection. For embeddings, it enables agentic RAG evaluations
+focused on retrieval and semantic analysis.
+
+### OpenTelemetry configuration
+
+`aigw run` supports OpenTelemetry tracing via environment variables:
+
+- **[OTEL SDK][otel-env]**: OTLP exporter configuration that controls span
+  and metrics export such as:
+  - `OTEL_EXPORTER_OTLP_ENDPOINT`: Collector endpoint (e.g., `http://phoenix:6006`)
+  - `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`: Override traces endpoint separately
+  - `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`: Override metrics endpoint separately
+  - `OTEL_TRACES_EXPORTER`: Traces exporter type (e.g., `console`, `otlp`, `none`)
+  - `OTEL_METRICS_EXPORTER`: Metrics exporter type (e.g., `console`, `otlp`, `none`)
+  - `OTEL_BSP_SCHEDULE_DELAY`: Batch span processor delay (default: 5000ms)
+  - `OTEL_METRIC_EXPORT_INTERVAL`: Metrics export interval (default: 60000ms)
+
+- **[OpenInference][openinference-config]**: Control sensitive data redaction,
+  such as below. There is [similar config][openinference-embeddings] for embeddings:
+  - `OPENINFERENCE_HIDE_INPUTS`: Hide input messages/prompts (default: `false`)
+  - `OPENINFERENCE_HIDE_OUTPUTS`: Hide output messages/completions (default: `false`)
+  - `OPENINFERENCE_HIDE_EMBEDDINGS_TEXT`: Hide embeddings input (default: `false`)
+  - `OPENINFERENCE_HIDE_EMBEDDINGS_VECTORS`: Hide embeddings output (default: `false`)
+
+- **Header Mapping**: Map HTTP request headers to span attributes and metric labels. See [Session Tracking][session-tracking] for more details.
+  - `OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES`: Example: `x-team-id:team.id,x-user-id:user.id`
+  - `OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES`: Example: `x-session-id:session.id,x-user-id:user.id`
+
+See [docker-compose-otel.yaml][docker-compose-otel.yaml] for a complete example configuration.
+
+---
+
+[openinference]: https://github.com/Arize-ai/openinference/tree/main/spec
+[phoenix]: https://docs.arize.com/phoenix
+[otel-env]: https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/
+[openinference-config]: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
+[openinference-embeddings]: https://github.com/Arize-ai/openinference/blob/main/spec/embedding_spans.md
+[docker-compose-otel.yaml]: https://github.com/envoyproxy/ai-gateway/blob/main/cmd/aigw/docker-compose-otel.yaml
+[session-tracking]: ../capabilities/observability/tracing.md#session-tracking

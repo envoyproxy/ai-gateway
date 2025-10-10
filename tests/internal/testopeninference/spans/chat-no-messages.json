@@ -12,7 +12,7 @@
     {
       "key": "input.value",
       "value": {
-        "stringValue": "{\"messages\": [], \"model\": \"gpt-4.1-nano\"}"
+        "stringValue": "{\"messages\": [], \"model\": \"gpt-5-nano\"}"
       }
     },
     {
@@ -24,7 +24,7 @@
     {
       "key": "llm.invocation_parameters",
       "value": {
-        "stringValue": "{\"model\": \"gpt-4.1-nano\"}"
+        "stringValue": "{\"model\": \"gpt-5-nano\"}"
       }
     },
     {
@@ -53,7 +53,7 @@
         {
           "key": "exception.stacktrace",
           "value": {
-            "stringValue": "Traceback (most recent call last):\n  File \"/usr/local/lib/python3.13/site-packages/openinference/instrumentation/openai/_request.py\", line 306, in __call__\n    response = wrapped(*args, **kwargs)\n  File \"/usr/local/lib/python3.13/site-packages/openai/_base_client.py\", line 1044, in request\n    raise self._make_status_error_from_response(err.response) from None\nopenai.BadRequestError: Error code: 400 - {'error': {'code': 'empty_array', 'message': \"Invalid 'messages': empty array. Expected an array with minimum length 1, but got an empty array instead.\", 'param': 'messages', 'type': 'invalid_request_error'}}\n"
+            "stringValue": "Traceback (most recent call last):\n  File \"/usr/local/lib/python3.13/site-packages/openinference/instrumentation/openai/_request.py\", line 391, in __call__\n    response = await wrapped(*args, **kwargs)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.13/site-packages/openai/_base_client.py\", line 1594, in request\n    raise self._make_status_error_from_response(err.response) from None\nopenai.BadRequestError: Error code: 400 - {'error': {'code': 'empty_array', 'message': \"Invalid 'messages': empty array. Expected an array with minimum length 1, but got an empty array instead.\", 'param': 'messages', 'type': 'invalid_request_error'}}\n"
           }
         },
         {

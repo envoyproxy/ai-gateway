@@ -25,8 +25,8 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/prototext"
 
-	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
@@ -89,12 +89,10 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 	}
 
 	newConfig := &processorConfig{
-		uuid:               config.UUID,
-		modelNameHeaderKey: config.ModelNameHeaderKey,
-		backends:           backends,
-		metadataNamespace:  config.MetadataNamespace,
-		requestCosts:       costs,
-		declaredModels:     config.Models,
+		uuid:           config.UUID,
+		backends:       backends,
+		requestCosts:   costs,
+		declaredModels: config.Models,
 	}
 	s.config = newConfig // This is racey, but we don't care.
 	return nil
@@ -102,6 +100,7 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 
 // Register a new processor for the given request path.
 func (s *Server) Register(path string, newProcessor ProcessorFactory) {
+	s.logger.Info("Registering processor", slog.String("path", path))
 	s.processorFactories[path] = newProcessor
 }
 
@@ -115,6 +114,12 @@ func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFi
 		pathHeader = originalPathHeader
 	}
 	path := requestHeaders[pathHeader]
+
+	// Strip query parameters for processor lookup.
+	if queryIndex := strings.Index(path, "?"); queryIndex != -1 {
+		path = path[:queryIndex]
+	}
+
 	newProcessor, ok := s.processorFactories[path]
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", errNoProcessor, path)
@@ -183,7 +188,7 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 						Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 							ImmediateResponse: &extprocv3.ImmediateResponse{
 								Status:     &typev3.HttpStatus{Code: typev3.StatusCode_NotFound},
-								Body:       []byte(fmt.Sprintf("unsupported path: %s", path)),
+								Body:       fmt.Appendf(nil, "unsupported path: %s", path),
 								GrpcStatus: &extprocv3.GrpcStatus{Status: uint32(codes.NotFound)},
 							},
 						},

@@ -18,6 +18,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	anthropicVertex "github.com/anthropics/anthropic-sdk-go/vertex"
 	"github.com/google/go-cmp/cmp"
+	openaigo "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	"k8s.io/utils/ptr"
@@ -30,18 +31,67 @@ const (
 	testTool        = "test_123"
 )
 
+// TestResponseModel_GCPAnthropic tests that GCP Anthropic (non-streaming) returns the request model
+// GCP Anthropic uses deterministic model mapping without virtualization
+func TestResponseModel_GCPAnthropic(t *testing.T) {
+	modelName := "claude-sonnet-4@20250514"
+	translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", modelName)
+
+	// Initialize translator with the model
+	req := &openai.ChatCompletionRequest{
+		Model:     "claude-sonnet-4",
+		MaxTokens: ptr.To(int64(100)),
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				OfUser: &openai.ChatCompletionUserMessageParam{
+					Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+					Role:    openai.ChatMessageRoleUser,
+				},
+			},
+		},
+	}
+	reqBody, _ := json.Marshal(req)
+	_, _, err := translator.RequestBody(reqBody, req, false)
+	require.NoError(t, err)
+
+	// GCP Anthropic response doesn't have model field, uses Anthropic format
+	anthropicResponse := anthropic.Message{
+		ID:   "msg_01XYZ",
+		Type: constant.ValueOf[constant.Message](),
+		Role: constant.ValueOf[constant.Assistant](),
+		Content: []anthropic.ContentBlockUnion{
+			{
+				Type: "text",
+				Text: "Hello!",
+			},
+		},
+		StopReason: anthropic.StopReasonEndTurn,
+		Usage: anthropic.Usage{
+			InputTokens:  10,
+			OutputTokens: 5,
+		},
+	}
+
+	body, err := json.Marshal(anthropicResponse)
+	require.NoError(t, err)
+
+	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader(body), true, nil)
+	require.NoError(t, err)
+	require.Equal(t, modelName, responseModel) // Returns the request model since no virtualization
+	require.Equal(t, uint32(10), tokenUsage.InputTokens)
+	require.Equal(t, uint32(5), tokenUsage.OutputTokens)
+}
+
 func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T) {
 	// Define a common input request to use for both standard and vertex tests.
 	openAIReq := &openai.ChatCompletionRequest{
 		Model: claudeTestModel,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			{
-				Type:  openai.ChatMessageRoleSystem,
-				Value: openai.ChatCompletionSystemMessageParam{Content: openai.StringOrArray{Value: "You are a helpful assistant."}},
+				OfSystem: &openai.ChatCompletionSystemMessageParam{Content: openai.ContentUnion{Value: "You are a helpful assistant."}, Role: openai.ChatMessageRoleSystem},
 			},
 			{
-				Type:  openai.ChatMessageRoleUser,
-				Value: openai.ChatCompletionUserMessageParam{Content: openai.StringOrUserRoleContentUnion{Value: "Hello!"}},
+				OfUser: &openai.ChatCompletionUserMessageParam{Content: openai.StringOrUserRoleContentUnion{Value: "Hello!"}, Role: openai.ChatMessageRoleUser},
 			},
 		},
 		MaxTokens:   ptr.To(int64(1024)),
@@ -92,18 +142,18 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 			Model:               "claude-3-opus-20240229",
 			Messages: []openai.ChatCompletionMessageParamUnion{
 				{
-					Type: openai.ChatMessageRoleUser,
-					Value: openai.ChatCompletionUserMessageParam{
+					OfUser: &openai.ChatCompletionUserMessageParam{
 						Content: openai.StringOrUserRoleContentUnion{
 							Value: []openai.ChatCompletionContentPartUserUnionParam{
-								{TextContent: &openai.ChatCompletionContentPartTextParam{Text: "What is in this image?"}},
-								{ImageContent: &openai.ChatCompletionContentPartImageParam{
+								{OfText: &openai.ChatCompletionContentPartTextParam{Text: "What is in this image?"}},
+								{OfImageURL: &openai.ChatCompletionContentPartImageParam{
 									ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
 										URL: "data:image/jpeg;base64,dGVzdA==", // "test" in base64.
 									},
 								}},
 							},
 						},
+						Role: openai.ChatMessageRoleUser,
 					},
 				},
 			},
@@ -126,9 +176,9 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		multiSystemReq := &openai.ChatCompletionRequest{
 			Model: claudeTestModel,
 			Messages: []openai.ChatCompletionMessageParamUnion{
-				{Type: openai.ChatMessageRoleSystem, Value: openai.ChatCompletionSystemMessageParam{Content: openai.StringOrArray{Value: firstMsg}}},
-				{Type: openai.ChatMessageRoleDeveloper, Value: openai.ChatCompletionDeveloperMessageParam{Content: openai.StringOrArray{Value: secondMsg}}},
-				{Type: openai.ChatMessageRoleUser, Value: openai.ChatCompletionUserMessageParam{Content: openai.StringOrUserRoleContentUnion{Value: thirdMsg}}},
+				{OfSystem: &openai.ChatCompletionSystemMessageParam{Content: openai.ContentUnion{Value: firstMsg}, Role: openai.ChatMessageRoleSystem}},
+				{OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{Content: openai.ContentUnion{Value: secondMsg}, Role: openai.ChatMessageRoleDeveloper}},
+				{OfUser: &openai.ChatCompletionUserMessageParam{Content: openai.StringOrUserRoleContentUnion{Value: thirdMsg}, Role: openai.ChatMessageRoleUser}},
 			},
 			MaxTokens: ptr.To(int64(100)),
 		}
@@ -158,6 +208,44 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.Equal(t, ":path", pathHeader[0].Header.Key)
 		expectedPath := fmt.Sprintf("publishers/anthropic/models/%s:streamRawPredict", streamReq.Model)
 		require.Equal(t, expectedPath, string(pathHeader[0].Header.RawValue))
+	})
+
+	t.Run("Test message param", func(t *testing.T) {
+		openaiRequest := &openai.ChatCompletionRequest{
+			Model:       claudeTestModel,
+			Messages:    []openai.ChatCompletionMessageParamUnion{},
+			Temperature: ptr.To(0.1),
+			MaxTokens:   ptr.To(int64(100)),
+			TopP:        ptr.To(0.1),
+			Stop: openaigo.ChatCompletionNewParamsStopUnion{
+				OfStringArray: []string{"stop1", "stop2"},
+			},
+		}
+		messageParam, err := buildAnthropicParams(openaiRequest)
+		require.NoError(t, err)
+		require.Equal(t, int64(100), messageParam.MaxTokens)
+		require.Equal(t, "0.1", messageParam.TopP.String())
+		require.Equal(t, "0.1", messageParam.Temperature.String())
+		require.Equal(t, []string{"stop1", "stop2"}, messageParam.StopSequences)
+	})
+
+	t.Run("Test single stop", func(t *testing.T) {
+		openaiRequest := &openai.ChatCompletionRequest{
+			Model:       claudeTestModel,
+			Messages:    []openai.ChatCompletionMessageParamUnion{},
+			Temperature: ptr.To(0.1),
+			MaxTokens:   ptr.To(int64(100)),
+			TopP:        ptr.To(0.1),
+			Stop: openaigo.ChatCompletionNewParamsStopUnion{
+				OfString: openaigo.Opt[string]("stop1"),
+			},
+		}
+		messageParam, err := buildAnthropicParams(openaiRequest)
+		require.NoError(t, err)
+		require.Equal(t, int64(100), messageParam.MaxTokens)
+		require.Equal(t, "0.1", messageParam.TopP.String())
+		require.Equal(t, "0.1", messageParam.Temperature.String())
+		require.Equal(t, []string{"stop1"}, messageParam.StopSequences)
 	})
 
 	t.Run("Invalid Temperature (above bound)", func(t *testing.T) {
@@ -264,7 +352,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.T) {
 	t.Run("invalid json body", func(t *testing.T) {
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		_, _, _, err := translator.ResponseBody(map[string]string{statusHeaderName: "200"}, bytes.NewBufferString("invalid json"), true)
+		_, _, _, _, err := translator.ResponseBody(map[string]string{statusHeaderName: "200"}, bytes.NewBufferString("invalid json"), true, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to unmarshal body")
 	})
@@ -341,7 +429,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 			require.NoError(t, err, "Test setup failed: could not marshal input struct")
 
 			translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-			hm, bm, usedToken, err := translator.ResponseBody(tt.respHeaders, bytes.NewBuffer(body), true)
+			hm, bm, usedToken, _, err := translator.ResponseBody(tt.respHeaders, bytes.NewBuffer(body), true, nil)
 
 			require.NoError(t, err, "Translator returned an unexpected internal error")
 			require.NotNil(t, hm)
@@ -384,9 +472,9 @@ func TestMessageTranslation(t *testing.T) {
 			name: "assistant message with text",
 			inputMessages: []openai.ChatCompletionMessageParamUnion{
 				{
-					Type: openai.ChatMessageRoleAssistant,
-					Value: openai.ChatCompletionAssistantMessageParam{
+					OfAssistant: &openai.ChatCompletionAssistantMessageParam{
 						Content: openai.StringOrAssistantRoleContentUnion{Value: "Hello from the assistant."},
+						Role:    openai.ChatMessageRoleAssistant,
 					},
 				},
 			},
@@ -401,8 +489,7 @@ func TestMessageTranslation(t *testing.T) {
 			name: "assistant message with tool call",
 			inputMessages: []openai.ChatCompletionMessageParamUnion{
 				{
-					Type: openai.ChatMessageRoleAssistant,
-					Value: openai.ChatCompletionAssistantMessageParam{
+					OfAssistant: &openai.ChatCompletionAssistantMessageParam{
 						ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 							{
 								ID:       ptr.To(testTool),
@@ -410,6 +497,7 @@ func TestMessageTranslation(t *testing.T) {
 								Function: openai.ChatCompletionMessageToolCallFunctionParam{Name: "get_weather", Arguments: `{"location":"NYC"}`},
 							},
 						},
+						Role: openai.ChatMessageRoleAssistant,
 					},
 				},
 			},
@@ -422,7 +510,7 @@ func TestMessageTranslation(t *testing.T) {
 								ID:    testTool,
 								Type:  "tool_use",
 								Name:  "get_weather",
-								Input: map[string]interface{}{"location": "NYC"},
+								Input: map[string]any{"location": "NYC"},
 							},
 						},
 					},
@@ -433,14 +521,14 @@ func TestMessageTranslation(t *testing.T) {
 			name: "assistant message with refusal",
 			inputMessages: []openai.ChatCompletionMessageParamUnion{
 				{
-					Type: openai.ChatMessageRoleAssistant,
-					Value: openai.ChatCompletionAssistantMessageParam{
+					OfAssistant: &openai.ChatCompletionAssistantMessageParam{
 						Content: openai.StringOrAssistantRoleContentUnion{
 							Value: openai.ChatCompletionAssistantMessageParamContent{
 								Type:    openai.ChatCompletionAssistantMessageParamContentTypeRefusal,
 								Refusal: ptr.To("I cannot answer that."),
 							},
 						},
+						Role: openai.ChatMessageRoleAssistant,
 					},
 				},
 			},
@@ -455,12 +543,12 @@ func TestMessageTranslation(t *testing.T) {
 			name: "tool message with text content",
 			inputMessages: []openai.ChatCompletionMessageParamUnion{
 				{
-					Type: openai.ChatMessageRoleTool,
-					Value: openai.ChatCompletionToolMessageParam{
+					OfTool: &openai.ChatCompletionToolMessageParam{
 						ToolCallID: testTool,
-						Content: openai.StringOrArray{
+						Content: openai.ContentUnion{
 							Value: "The weather is 72 degrees and sunny.",
 						},
+						Role: openai.ChatMessageRoleTool,
 					},
 				},
 			},
@@ -489,9 +577,9 @@ func TestMessageTranslation(t *testing.T) {
 		{
 			name: "system and developer messages",
 			inputMessages: []openai.ChatCompletionMessageParamUnion{
-				{Type: openai.ChatMessageRoleSystem, Value: openai.ChatCompletionSystemMessageParam{Content: openai.StringOrArray{Value: "System prompt."}}},
-				{Type: openai.ChatMessageRoleUser, Value: openai.ChatCompletionUserMessageParam{Content: openai.StringOrUserRoleContentUnion{Value: "User message."}}},
-				{Type: openai.ChatMessageRoleDeveloper, Value: openai.ChatCompletionDeveloperMessageParam{Content: openai.StringOrArray{Value: "Developer prompt."}}},
+				{OfSystem: &openai.ChatCompletionSystemMessageParam{Content: openai.ContentUnion{Value: "System prompt."}, Role: openai.ChatMessageRoleSystem}},
+				{OfUser: &openai.ChatCompletionUserMessageParam{Content: openai.StringOrUserRoleContentUnion{Value: "User message."}, Role: openai.ChatMessageRoleUser}},
+				{OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{Content: openai.ContentUnion{Value: "Developer prompt."}, Role: openai.ChatMessageRoleDeveloper}},
 			},
 			expectedAnthropicMsgs: []anthropic.MessageParam{
 				{
@@ -508,11 +596,11 @@ func TestMessageTranslation(t *testing.T) {
 			name: "user message with content error",
 			inputMessages: []openai.ChatCompletionMessageParamUnion{
 				{
-					Type: openai.ChatMessageRoleUser,
-					Value: openai.ChatCompletionUserMessageParam{
+					OfUser: &openai.ChatCompletionUserMessageParam{
 						Content: openai.StringOrUserRoleContentUnion{
 							Value: 0,
 						},
+						Role: openai.ChatMessageRoleUser,
 					},
 				},
 			},
@@ -522,8 +610,7 @@ func TestMessageTranslation(t *testing.T) {
 			name: "assistant message with tool call error",
 			inputMessages: []openai.ChatCompletionMessageParamUnion{
 				{
-					Type: openai.ChatMessageRoleAssistant,
-					Value: openai.ChatCompletionAssistantMessageParam{
+					OfAssistant: &openai.ChatCompletionAssistantMessageParam{
 						ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 							{
 								ID:       ptr.To(testTool),
@@ -531,6 +618,7 @@ func TestMessageTranslation(t *testing.T) {
 								Function: openai.ChatCompletionMessageToolCallFunctionParam{Name: "get_weather", Arguments: `{"location":`},
 							},
 						},
+						Role: openai.ChatMessageRoleAssistant,
 					},
 				},
 			},
@@ -540,33 +628,30 @@ func TestMessageTranslation(t *testing.T) {
 			name: "tool message with content error",
 			inputMessages: []openai.ChatCompletionMessageParamUnion{
 				{
-					Type: openai.ChatMessageRoleTool,
-					Value: openai.ChatCompletionToolMessageParam{
+					OfTool: &openai.ChatCompletionToolMessageParam{
 						ToolCallID: testTool,
-						Content:    openai.StringOrArray{Value: 123},
+						Content:    openai.ContentUnion{Value: 123},
+						Role:       openai.ChatMessageRoleTool,
 					},
 				},
 			},
 			expectErr: true,
 		},
 		{
-			name: "tool message with image content",
+			name: "tool message with text parts array",
 			inputMessages: []openai.ChatCompletionMessageParamUnion{
 				{
-					Type: openai.ChatMessageRoleTool,
-					Value: openai.ChatCompletionToolMessageParam{
+					OfTool: &openai.ChatCompletionToolMessageParam{
 						ToolCallID: "tool_def",
-						Content: openai.StringOrArray{
-							Value: []openai.ChatCompletionContentPartUserUnionParam{
+						Content: openai.ContentUnion{
+							Value: []openai.ChatCompletionContentPartTextParam{
 								{
-									ImageContent: &openai.ChatCompletionContentPartImageParam{
-										ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
-											URL: "data:image/png;base64,dGVzdA==",
-										},
-									},
+									Type: "text",
+									Text: "Tool result with image: [image data]",
 								},
 							},
 						},
+						Role: openai.ChatMessageRoleTool,
 					},
 				},
 			},
@@ -580,14 +665,9 @@ func TestMessageTranslation(t *testing.T) {
 								Type:      "tool_result",
 								Content: []anthropic.ToolResultBlockParamContentUnion{
 									{
-										OfImage: &anthropic.ImageBlockParam{
-											Source: anthropic.ImageBlockParamSourceUnion{
-												OfBase64: &anthropic.Base64ImageSourceParam{
-													Data:      "dGVzdA==",
-													MediaType: "image/png",
-													Type:      "base64",
-												},
-											},
+										OfText: &anthropic.TextBlockParam{
+											Text: "Tool result with image: [image data]",
+											Type: "text",
 										},
 									},
 								},
@@ -601,17 +681,17 @@ func TestMessageTranslation(t *testing.T) {
 			name: "multiple tool messages aggregated correctly",
 			inputMessages: []openai.ChatCompletionMessageParamUnion{
 				{
-					Type: openai.ChatMessageRoleTool,
-					Value: openai.ChatCompletionToolMessageParam{
+					OfTool: &openai.ChatCompletionToolMessageParam{
 						ToolCallID: "tool_1",
-						Content:    openai.StringOrArray{Value: `{"temp": "72F"}`},
+						Content:    openai.ContentUnion{Value: `{"temp": "72F"}`},
+						Role:       openai.ChatMessageRoleTool,
 					},
 				},
 				{
-					Type: openai.ChatMessageRoleTool,
-					Value: openai.ChatCompletionToolMessageParam{
+					OfTool: &openai.ChatCompletionToolMessageParam{
 						ToolCallID: "tool_2",
-						Content:    openai.StringOrArray{Value: `{"time": "16:00"}`},
+						Content:    openai.ContentUnion{Value: `{"time": "16:00"}`},
+						Role:       openai.ChatMessageRoleTool,
 					},
 				},
 			},
@@ -707,7 +787,7 @@ func TestOpenAIToGCPAnthropicTranslator_ResponseError(t *testing.T) {
 	tests := []struct {
 		name            string
 		responseHeaders map[string]string
-		inputBody       interface{}
+		inputBody       any
 		expectedOutput  openai.Error
 	}{
 		{
@@ -798,12 +878,6 @@ func TestHelperFunctions(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid anthropic role")
 	})
-
-	t.Run("process stop with nil", func(t *testing.T) {
-		val, err := processStop(nil)
-		require.NoError(t, err)
-		require.Nil(t, val)
-	})
 }
 
 func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
@@ -823,7 +897,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 		{
 			name: "auto tool choice",
 			openAIReq: &openai.ChatCompletionRequest{
-				ToolChoice: "auto",
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
 				Tools:      openaiTestTool,
 			},
 			expectedTools: anthropicTestTool,
@@ -836,7 +910,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 		{
 			name: "any tool choice",
 			openAIReq: &openai.ChatCompletionRequest{
-				ToolChoice: "any",
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "any"},
 				Tools:      openaiTestTool,
 			},
 			expectedTools: anthropicTestTool,
@@ -847,7 +921,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 		{
 			name: "specific tool choice by name",
 			openAIReq: &openai.ChatCompletionRequest{
-				ToolChoice: openai.ToolChoice{Type: "function", Function: openai.ToolFunction{Name: "my_func"}},
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: openai.ChatCompletionNamedToolChoice{Type: "function", Function: openai.ChatCompletionNamedToolChoiceFunction{Name: "my_func"}}},
 				Tools:      openaiTestTool,
 			},
 			expectedTools: anthropicTestTool,
@@ -864,10 +938,10 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 						Function: &openai.FunctionDefinition{
 							Name:        "get_weather",
 							Description: "Get the weather",
-							Parameters: map[string]interface{}{
+							Parameters: map[string]any{
 								"type": "object",
-								"properties": map[string]interface{}{
-									"location": map[string]interface{}{"type": "string"},
+								"properties": map[string]any{
+									"location": map[string]any{"type": "string"},
 								},
 							},
 						},
@@ -881,8 +955,8 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 						Description: anthropic.String("Get the weather"),
 						InputSchema: anthropic.ToolInputSchemaParam{
 							Type: "object",
-							Properties: map[string]interface{}{
-								"location": map[string]interface{}{"type": "string"},
+							Properties: map[string]any{
+								"location": map[string]any{"type": "string"},
 							},
 						},
 					},
@@ -898,13 +972,13 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 						Function: &openai.FunctionDefinition{
 							Name:        "get_weather",
 							Description: "Get the weather with a required location",
-							Parameters: map[string]interface{}{
+							Parameters: map[string]any{
 								"type": "object",
-								"properties": map[string]interface{}{
-									"location": map[string]interface{}{"type": "string"},
-									"unit":     map[string]interface{}{"type": "string"},
+								"properties": map[string]any{
+									"location": map[string]any{"type": "string"},
+									"unit":     map[string]any{"type": "string"},
 								},
-								"required": []interface{}{"location"},
+								"required": []any{"location"},
 							},
 						},
 					},
@@ -917,9 +991,9 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 						Description: anthropic.String("Get the weather with a required location"),
 						InputSchema: anthropic.ToolInputSchemaParam{
 							Type: "object",
-							Properties: map[string]interface{}{
-								"location": map[string]interface{}{"type": "string"},
-								"unit":     map[string]interface{}{"type": "string"},
+							Properties: map[string]any{
+								"location": map[string]any{"type": "string"},
+								"unit":     map[string]any{"type": "string"},
 							},
 							Required: []string{"location"},
 						},
@@ -952,7 +1026,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 		{
 			name: "disable parallel tool calls",
 			openAIReq: &openai.ChatCompletionRequest{
-				ToolChoice:        "auto",
+				ToolChoice:        &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
 				Tools:             openaiTestTool,
 				ParallelToolCalls: ptr.To(false),
 			},
@@ -967,7 +1041,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 			name: "explicitly enable parallel tool calls",
 			openAIReq: &openai.ChatCompletionRequest{
 				Tools:             openaiTestTool,
-				ToolChoice:        "auto",
+				ToolChoice:        &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
 				ParallelToolCalls: ptr.To(true),
 			},
 			expectedTools: anthropicTestTool,
@@ -979,7 +1053,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 			name: "default disable parallel tool calls to false (nil)",
 			openAIReq: &openai.ChatCompletionRequest{
 				Tools:      openaiTestTool,
-				ToolChoice: "auto",
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
 			},
 			expectedTools: anthropicTestTool,
 			expectedToolChoice: anthropic.ToolChoiceUnionParam{
@@ -990,7 +1064,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 			name: "none tool choice",
 			openAIReq: &openai.ChatCompletionRequest{
 				Tools:      openaiTestTool,
-				ToolChoice: "none",
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "none"},
 			},
 			expectedTools: anthropicTestTool,
 			expectedToolChoice: anthropic.ToolChoiceUnionParam{
@@ -1001,7 +1075,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 			name: "function tool choice",
 			openAIReq: &openai.ChatCompletionRequest{
 				Tools:      openaiTestTool,
-				ToolChoice: "function",
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "function"},
 			},
 			expectedTools: anthropicTestTool,
 			expectedToolChoice: anthropic.ToolChoiceUnionParam{
@@ -1012,7 +1086,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 			name: "invalid tool choice string",
 			openAIReq: &openai.ChatCompletionRequest{
 				Tools:      openaiTestTool,
-				ToolChoice: "invalid_choice",
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "invalid_choice"},
 			},
 			expectErr: true,
 		},
@@ -1063,11 +1137,11 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 						Function: &openai.FunctionDefinition{
 							Name:        "get_weather",
 							Description: "Get the weather without type",
-							Parameters: map[string]interface{}{
-								"properties": map[string]interface{}{
-									"location": map[string]interface{}{"type": "string"},
+							Parameters: map[string]any{
+								"properties": map[string]any{
+									"location": map[string]any{"type": "string"},
 								},
-								"required": []interface{}{"location"},
+								"required": []any{"location"},
 							},
 						},
 					},
@@ -1080,8 +1154,8 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 						Description: anthropic.String("Get the weather without type"),
 						InputSchema: anthropic.ToolInputSchemaParam{
 							Type: "",
-							Properties: map[string]interface{}{
-								"location": map[string]interface{}{"type": "string"},
+							Properties: map[string]any{
+								"location": map[string]any{"type": "string"},
 							},
 							Required: []string{"location"},
 						},
@@ -1098,9 +1172,9 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 						Function: &openai.FunctionDefinition{
 							Name:        "get_weather",
 							Description: "Get the weather without properties",
-							Parameters: map[string]interface{}{
+							Parameters: map[string]any{
 								"type":     "object",
-								"required": []interface{}{"location"},
+								"required": []any{"location"},
 							},
 						},
 					},
@@ -1123,7 +1197,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 			name: "unsupported tool_choice type",
 			openAIReq: &openai.ChatCompletionRequest{
 				Tools:      openaiTestTool,
-				ToolChoice: 123, // Use an integer to trigger the default case.
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: 123}, // Use an integer to trigger the default case.
 			},
 			expectErr: true,
 		},
@@ -1201,7 +1275,7 @@ func TestFinishReasonTranslation(t *testing.T) {
 func TestContentTranslationCoverage(t *testing.T) {
 	tests := []struct {
 		name            string
-		inputContent    interface{}
+		inputContent    any
 		expectedContent []anthropic.ContentBlockParamUnion
 		expectErr       bool
 	}{
@@ -1216,7 +1290,7 @@ func TestContentTranslationCoverage(t *testing.T) {
 		{
 			name: "pdf data uri",
 			inputContent: []openai.ChatCompletionContentPartUserUnionParam{
-				{ImageContent: &openai.ChatCompletionContentPartImageParam{ImageURL: openai.ChatCompletionContentPartImageImageURLParam{URL: "data:application/pdf;base64,dGVzdA=="}}},
+				{OfImageURL: &openai.ChatCompletionContentPartImageParam{ImageURL: openai.ChatCompletionContentPartImageImageURLParam{URL: "data:application/pdf;base64,dGVzdA=="}}},
 			},
 			expectedContent: []anthropic.ContentBlockParamUnion{
 				{
@@ -1235,7 +1309,7 @@ func TestContentTranslationCoverage(t *testing.T) {
 		{
 			name: "pdf url",
 			inputContent: []openai.ChatCompletionContentPartUserUnionParam{
-				{ImageContent: &openai.ChatCompletionContentPartImageParam{ImageURL: openai.ChatCompletionContentPartImageImageURLParam{URL: "https://example.com/doc.pdf"}}},
+				{OfImageURL: &openai.ChatCompletionContentPartImageParam{ImageURL: openai.ChatCompletionContentPartImageImageURLParam{URL: "https://example.com/doc.pdf"}}},
 			},
 			expectedContent: []anthropic.ContentBlockParamUnion{
 				{
@@ -1253,7 +1327,7 @@ func TestContentTranslationCoverage(t *testing.T) {
 		{
 			name: "image url",
 			inputContent: []openai.ChatCompletionContentPartUserUnionParam{
-				{ImageContent: &openai.ChatCompletionContentPartImageParam{ImageURL: openai.ChatCompletionContentPartImageImageURLParam{URL: "https://example.com/image.png"}}},
+				{OfImageURL: &openai.ChatCompletionContentPartImageParam{ImageURL: openai.ChatCompletionContentPartImageImageURLParam{URL: "https://example.com/image.png"}}},
 			},
 			expectedContent: []anthropic.ContentBlockParamUnion{
 				{
@@ -1270,7 +1344,7 @@ func TestContentTranslationCoverage(t *testing.T) {
 		},
 		{
 			name:         "audio content error",
-			inputContent: []openai.ChatCompletionContentPartUserUnionParam{{InputAudioContent: &openai.ChatCompletionContentPartInputAudioParam{}}},
+			inputContent: []openai.ChatCompletionContentPartUserUnionParam{{OfInputAudio: &openai.ChatCompletionContentPartInputAudioParam{}}},
 			expectErr:    true,
 		},
 	}
@@ -1355,33 +1429,33 @@ func TestSystemPromptExtractionCoverage(t *testing.T) {
 		{
 			name: "developer message with content parts",
 			inputMsg: openai.ChatCompletionDeveloperMessageParam{
-				Content: openai.StringOrArray{Value: []openai.ChatCompletionContentPartUserUnionParam{
-					{TextContent: &openai.ChatCompletionContentPartTextParam{Text: "part 1"}},
-					{TextContent: &openai.ChatCompletionContentPartTextParam{Text: " part 2"}},
+				Content: openai.ContentUnion{Value: []openai.ChatCompletionContentPartTextParam{
+					{Type: "text", Text: "part 1"},
+					{Type: "text", Text: " part 2"},
 				}},
 			},
 			expectedPrompt: "part 1 part 2",
 		},
 		{
 			name:           "developer message with nil content",
-			inputMsg:       openai.ChatCompletionDeveloperMessageParam{Content: openai.StringOrArray{Value: nil}},
+			inputMsg:       openai.ChatCompletionDeveloperMessageParam{Content: openai.ContentUnion{Value: nil}},
 			expectedPrompt: "",
 		},
 		{
-			name: "developer message with StringOrArray of string",
+			name: "developer message with string content",
 			inputMsg: openai.ChatCompletionDeveloperMessageParam{
-				Content: openai.StringOrArray{Value: openai.StringOrArray{Value: "nested string"}},
+				Content: openai.ContentUnion{Value: "simple string"},
 			},
-			expectedPrompt: "nested string",
+			expectedPrompt: "simple string",
 		},
 		{
-			name: "developer message with StringOrArray of parts",
+			name: "developer message with text parts array",
 			inputMsg: openai.ChatCompletionDeveloperMessageParam{
-				Content: openai.StringOrArray{Value: openai.StringOrArray{Value: []openai.ChatCompletionContentPartUserUnionParam{
-					{TextContent: &openai.ChatCompletionContentPartTextParam{Text: "nested part"}},
-				}}},
+				Content: openai.ContentUnion{Value: []openai.ChatCompletionContentPartTextParam{
+					{Type: "text", Text: "text part"},
+				}},
 			},
-			expectedPrompt: "nested part",
+			expectedPrompt: "text part",
 		},
 	}
 

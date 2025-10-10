@@ -8,8 +8,7 @@
 # in the command line every time.
 -include .makerc
 
-# The Go-based tools are defined in Makefile.tools.mk.
-include Makefile.tools.mk
+GO_TOOL := go tool -modfile=tools/go.mod
 
 # The list of commands that can be built.
 COMMANDS := controller extproc
@@ -47,35 +46,33 @@ help:
 # This runs all necessary steps to prepare for a commit.
 .PHONY: precommit
 precommit: ## Run all necessary steps to prepare for a commit.
-precommit: tidy codespell apigen apidoc format lint editorconfig yamllint helm-test
+precommit: tidy spellcheck apigen apidoc format lint editorconfig helm-test
 
 .PHONY: lint
 lint: ## This runs the linter, formatter, and tidy on the codebase.
 	@echo "lint => ./..."
-	@go tool golangci-lint run --build-tags==test_crdcel,test_controller,test_extproc,test_e2e ./...
+	@$(GO_TOOL) golangci-lint run --build-tags==test_crdcel,test_controller,test_extproc,test_e2e ./...
 
-.PHONY: codespell
-CODESPELL_SKIP := $(shell cat .codespell.skip | tr \\n ',')
-CODESPELL_IGNORE_WORDS := ".codespell.ignorewords"
-codespell: $(CODESPELL) ## Spell check the codebase.
-	@echo "spell => ./..."
-	@$(CODESPELL) --skip $(CODESPELL_SKIP) --ignore-words $(CODESPELL_IGNORE_WORDS)
+.PHONY: spellcheck
+spellcheck:  ## Spell check the codebase.
+	@echo "misspell => ./..."
+	@$(GO_TOOL) misspell -error $$(git ls-files --cached --others --exclude-standard | (cd tools && go run ./ignorepaths ../.misspellignore))
 
-.PHONY: yamllint
-yamllint: $(YAMLLINT) ## Lint yaml files.
-	@echo "yamllint => ./..."
-	@$(YAMLLINT) --config-file=.yamllint $$(git ls-files :*.yml :*.yaml | xargs -L1 dirname | sort -u)
-
+# Some IDEs like Goland place `.go` files in the `.idea` directory when using code templates. Using a
+# git command to find the files ensures that only relevant files are formatted and that git-ignored
+# files do not get in the way.
+GO_FILES=$(shell git ls-files --cached --others --exclude-standard | grep '\.go$$')
 # This runs the formatter on the codebase as well as goimports via gci.
 .PHONY: format
 format: ## Format the codebase.
 	@echo "format => *.go"
-	@find . -type f -name '*.go' | xargs gofmt -s -w
-	@find . -type f -name '*.go' | xargs go tool gofumpt -l -w
-	@echo "gci => *.go"
-	@go tool gci write -s standard -s default -s "prefix(github.com/envoyproxy/ai-gateway)" `find . -name '*.go'`
+	@$(GO_TOOL) golangci-lint fmt $(GO_FILES)
 	@echo "licenses => **"
-	@go tool license-eye header fix
+	@$(GO_TOOL) license-eye header fix
+	@echo "prettier => **.{yaml,yml}"
+	@$(GO_TOOL) prettier --write '**/*.{yaml,yml}'
+	@echo "prettier => **.md"
+	@$(GO_TOOL) prettier --write '**/*.md'
 
 # This runs go mod tidy on every module.
 .PHONY: tidy
@@ -98,19 +95,19 @@ check: precommit ## Run all necessary steps to prepare for a commit and check fo
 # This runs the editorconfig-checker on the codebase.
 editorconfig:
 	@echo "running editorconfig-checker"
-	@go tool editorconfig-checker
+	@$(GO_TOOL) editorconfig-checker
 
 # This re-generates the CRDs for the API defined in the api/v1alpha1 directory.
 .PHONY: apigen
 apigen: ## Generate CRDs for the API defined in the api directory.
 	@echo "apigen => ./api/v1alpha1/..."
-	@go tool controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-crds-helm/templates
-	@go tool controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-helm/crds
+	@$(GO_TOOL) controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-crds-helm/templates
+	@$(GO_TOOL) controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-helm/crds
 
 # This generates the API documentation for the API defined in the api/v1alpha1 directory.
 .PHONY: apidoc
 apidoc: ## Generate API documentation for the API defined in the api directory.
-	@go tool crd-ref-docs \
+	@$(GO_TOOL) crd-ref-docs \
 		--source-path=api/v1alpha1 \
 		--config=site/crd-ref-docs/config-core.yaml \
 		--templates-dir=site/crd-ref-docs/templates \
@@ -132,8 +129,8 @@ test: ## Run the unit tests for the codebase. This doesn't run the integration t
 .PHONY: test-coverage
 test-coverage: ## Run the unit tests for the codebase with coverage check.
 	@mkdir -p $(OUTPUT_DIR)
-	@$(MAKE) test GO_TEST_ARGS="-coverprofile=$(OUTPUT_DIR)/go-test-coverage.out -covermode=atomic -coverpkg=github.com/envoyproxy/ai-gateway/... $(GO_TEST_ARGS)"
-	@go tool go-test-coverage --config=.testcoverage.yml
+	@$(MAKE) test GO_TEST_ARGS="-coverprofile=$(OUTPUT_DIR)/go-test-coverage.out -covermode=atomic -coverpkg=github.com/envoyproxy/ai-gateway/... -count=1 $(GO_TEST_ARGS)"
+	@$(GO_TOOL) go-test-coverage --config=.testcoverage.yml
 
 ENVTEST_K8S_VERSIONS ?= 1.31.0 1.32.0 1.33.0
 
@@ -152,13 +149,19 @@ test-crdcel: apigen ## Run the integration tests of CEL validation in CRD defini
 #
 # This requires the extproc binary to be built as well as Envoy binary to be available in the PATH.
 # The EXTPROC_BIN environment variable is exported to tell tests to use the pre-built binary.
+#
+# Since this is an integration test, we don't use -race, as it takes a very long
+# time to complete. For concurrency issues, use normal unit tests and race them.
 .PHONY: test-extproc # This requires the extproc binary to be built.
 test-extproc: build.extproc ## Run the integration tests for extproc without controller or k8s at all.
 	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
 	@echo "Run ExtProc test"
-	@EXTPROC_BIN=$(OUTPUT_DIR)/extproc-$(shell go env GOOS)-$(shell go env GOARCH) go test ./tests/extproc/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
+	@EXTPROC_BIN=$(OUTPUT_DIR)/extproc-$(shell go env GOOS)-$(shell go env GOARCH) go test ./tests/extproc/... $(GO_TEST_E2E_ARGS)
 
 # This runs the end-to-end tests for the controller with EnvTest.
+#
+# Since this is an integration test, we don't use -race, as it takes a very long
+# time to complete. For concurrency issues, use normal unit tests and race them.
 .PHONY: test-controller
 test-controller: apigen ## Run the integration tests for the controller with envtest.
 	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
@@ -171,6 +174,24 @@ test-controller: apigen ## Run the integration tests for the controller with env
 test-e2e: build-e2e ## Run the end-to-end tests with a local kind cluster.
 	@echo "Run E2E tests"
 	@go test -v ./tests/e2e/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
+
+# This runs the end-to-end tests for the controller and extproc with a local kind cluster.
+.PHONY: test-e2e-inference-extension
+test-e2e-inference-extension: build-e2e ## Run the end-to-end tests with a local kind cluster for Gateway API Inference Extension.
+	@echo "Run E2E tests for inference extension"
+	@go test -v ./tests/e2e-inference-extension/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
+
+# This runs the end-to-end upgrade tests for the controller and extproc with a local kind cluster.
+.PHONY: test-e2e-upgrade
+test-e2e-upgrade: build-e2e
+	@echo "Run E2E upgrade tests"
+	@go test -v ./tests/e2e-upgrade/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
+
+# This runs the MCP end-to-end tests.
+.PHONY: test-e2e-aigw
+test-e2e-aigw: build.aigw ## Run MCP end-to-end tests.
+	@echo "Run MCP E2E tests"
+	@go test -v ./tests/e2e-aigw/... -timeout 30m $(GO_TEST_E2E_ARGS)
 
 ##@ Common
 
@@ -215,6 +236,7 @@ build: ## Build all binaries under cmd/ directory.
 build-e2e: ## Build the docker images for the controller, extproc and testupstream for the e2e tests.
 	@$(MAKE) docker-build DOCKER_BUILD_ARGS="--load"
 	@$(MAKE) docker-build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib DOCKER_BUILD_ARGS="--load"
+	@$(MAKE) docker-build.testmcpserver CMD_PATH_PREFIX=tests/internal/testmcp DOCKER_BUILD_ARGS="--load"
 
 # This builds a docker image for a given command.
 #
@@ -245,9 +267,13 @@ docker-build.%: GOARCH_LIST = amd64 arm64
 docker-build.%: PLATFORMS = --platform linux/amd64,linux/arm64
 endif
 docker-build.%: ## Build a docker image for a given command.
-	$(eval COMMAND_NAME := $(subst docker-build.,,$@))
-	@$(MAKE) build.$(COMMAND_NAME) GOOS_LIST="linux" GOARCH_LIST="$(GOARCH_LIST)"
-	docker buildx build . -t $(OCI_REPOSITORY_PREFIX)-$(COMMAND_NAME):$(TAG) --build-arg COMMAND_NAME=$(COMMAND_NAME) $(PLATFORMS) $(DOCKER_BUILD_ARGS)
+	$(eval IMAGE_NAME := $(if $(filter aigw,$(*)),cli,$(*)))
+	$(eval VARIANT := $(if $(filter aigw,$(*)),base-nossl,static))
+	@$(MAKE) build.$(*) GOOS_LIST="linux" GOARCH_LIST="$(GOARCH_LIST)"
+	docker buildx build . -t $(OCI_REPOSITORY_PREFIX)-$(IMAGE_NAME):$(TAG) \
+		--build-arg VARIANT=$(VARIANT) \
+		--build-arg COMMAND_NAME=$(*) \
+		$(PLATFORMS) $(DOCKER_BUILD_ARGS)
 
 # This builds docker images for all commands under cmd/ directory. All options for `docker-build.%` apply.
 #
@@ -275,7 +301,7 @@ clean: ## Clears all built artifacts and installed binaries.
 .PHONY: helm-lint
 helm-lint: ## Lint envoy ai gateway relevant helm charts.
 	@echo "helm-lint => .${HELM_DIR}"
-	@go tool helm lint ${HELM_DIR}
+	@$(GO_TOOL) helm lint ${HELM_DIR}
 
 # This packages the helm chart into a tgz file, ready for deployment as well as for pushing to the OCI registry.
 # This must pass before `helm-push` can be run as well as on any commit.
@@ -285,7 +311,7 @@ helm-lint: ## Lint envoy ai gateway relevant helm charts.
 .PHONY: helm-package
 helm-package: helm-lint ## Package envoy ai gateway relevant helm charts.
 	@echo "helm-package => ${HELM_DIR}"
-	@go tool helm package ${HELM_DIR} --app-version ${TAG} --version ${HELM_CHART_VERSION} -d ${OUTPUT_DIR}
+	@$(GO_TOOL) helm package ${HELM_DIR} --app-version ${TAG} --version ${HELM_CHART_VERSION} -d ${OUTPUT_DIR}
 
 # This tests the helm chart, ensuring that the container images are set to have the correct version tag.
 .PHONY: helm-test
@@ -293,14 +319,14 @@ helm-test: HELM_CHART_VERSION = v9.9.9-latest
 helm-test: TAG = v9.9.9
 helm-test: HELM_CHART_PATH = $(OUTPUT_DIR)/ai-gateway-helm-${HELM_CHART_VERSION}.tgz
 helm-test: helm-package  ## Test the helm chart with a dummy version.
-	@go tool helm show chart ${HELM_CHART_PATH} | grep -q "version: ${HELM_CHART_VERSION}"
-	@go tool helm show chart ${HELM_CHART_PATH} | grep -q "appVersion: ${TAG}"
-	@go tool helm template ${HELM_CHART_PATH} | grep -q "docker.io/envoyproxy/ai-gateway-extproc:${TAG}"
-	@go tool helm template ${HELM_CHART_PATH} | grep -q "docker.io/envoyproxy/ai-gateway-controller:${TAG}"
+	@$(GO_TOOL) helm show chart ${HELM_CHART_PATH} | grep -q "version: ${HELM_CHART_VERSION}"
+	@$(GO_TOOL) helm show chart ${HELM_CHART_PATH} | grep -q "appVersion: ${TAG}"
+	@$(GO_TOOL) helm template ${HELM_CHART_PATH} | grep -q "docker.io/envoyproxy/ai-gateway-extproc:${TAG}"
+	@$(GO_TOOL) helm template ${HELM_CHART_PATH} | grep -q "docker.io/envoyproxy/ai-gateway-controller:${TAG}"
 
 # This pushes the helm chart to the OCI registry, requiring the access to the registry endpoint.
 .PHONY: helm-push
 helm-push: helm-package ## Push envoy ai gateway relevant helm charts to OCI registry
 	@echo "helm-push => .${HELM_DIR}"
-	@go tool helm push ${OUTPUT_DIR}/ai-gateway-crds-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}
-	@go tool helm push ${OUTPUT_DIR}/ai-gateway-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}
+	@$(GO_TOOL) helm push ${OUTPUT_DIR}/ai-gateway-crds-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}
+	@$(GO_TOOL) helm push ${OUTPUT_DIR}/ai-gateway-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}

@@ -12,7 +12,6 @@ package testopenai
 import (
 	"fmt"
 	"io"
-	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -33,16 +32,16 @@ type Server struct {
 
 // NewServer creates a new test OpenAI server (use port 0 for random).
 func NewServer(out io.Writer, port int) (*Server, error) {
-	return newServer(out, port, embeddedCassettes, cassettesDir)
+	return newServer(out, port, allVCRCassettes, cassettesDir)
 }
 
 // newServer creates a new test OpenAI server on a random port.
 //
 // out is where to write logs
 // port can be zero for a random port. The real value is available via Server.Port
-// cassettesFS is the filesystem containing pre-recorded cassettes.
+// cassettes is the pre-recorded cassettes.
 // cassettesDir is the directory name of a recording, only used when writing a new cassette.
-func newServer(out io.Writer, port int, cassettesFS fs.FS, cassettesDir string) (*Server, error) {
+func newServer(out io.Writer, port int, cassettes map[string]*cassette.Cassette, cassettesDir string) (*Server, error) {
 	logger := log.New(out, "[testopenai] ", 0)
 	// ":{port}" not "127.0.0.1:{port}" so Docker containers to access this server.
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port)) // #nosec G102 - need to bind to all interfaces for Docker
@@ -50,30 +49,49 @@ func newServer(out io.Writer, port int, cassettesFS fs.FS, cassettesDir string) 
 		return nil, fmt.Errorf("failed to create listener: %w", err)
 	}
 
-	// Load all cassettes from embedded filesystem.
-	cassettesSlice := loadCassettes(cassettesFS)
+	// Determine base URL and API key for recording.
+	// Prioritize Azure OpenAI over standard OpenAI.
+	var baseURL string
+	azureAPIKey := os.Getenv("AZURE_OPENAI_API_KEY")
+	azureAPIVersion := os.Getenv("OPENAI_API_VERSION")
+	azureDeployment := os.Getenv("AZURE_OPENAI_DEPLOYMENT")
+	apiKey := os.Getenv("OPENAI_API_KEY")
 
-	// Convert to map for faster lookup.
-	cassettes := make(map[string]*cassette.Cassette, len(cassettesSlice))
-	for _, c := range cassettesSlice {
-		name := c.Name
-		name = strings.TrimPrefix(name, "cassettes/")
-		name = strings.TrimSuffix(name, ".yaml")
-		cassettes[name] = c
+	if azureAPIKey != "" {
+		// Azure OpenAI mode
+		baseURL = os.Getenv("AZURE_OPENAI_ENDPOINT")
+		if baseURL == "" {
+			return nil, fmt.Errorf("AZURE_OPENAI_ENDPOINT is required when AZURE_OPENAI_API_KEY is set")
+		}
+		if azureAPIVersion == "" {
+			return nil, fmt.Errorf("OPENAI_API_VERSION is required when AZURE_OPENAI_API_KEY is set")
+		}
+		if azureDeployment == "" {
+			return nil, fmt.Errorf("AZURE_OPENAI_DEPLOYMENT is required when AZURE_OPENAI_API_KEY is set")
+		}
+		baseURL = strings.TrimSuffix(baseURL, "/")
+	} else {
+		// Standard OpenAI mode
+		baseURL = os.Getenv("OPENAI_BASE_URL")
+		if baseURL == "" {
+			baseURL = "https://api.openai.com/v1"
+		}
+		baseURL = strings.TrimSuffix(baseURL, "/")
 	}
 
-	// Determine base URL for recording.
-	baseURL := os.Getenv("OPENAI_BASE_URL")
-	if baseURL == "" {
-		baseURL = "https://api.openai.com/v1"
-	}
+	// Server base URL for matching cassettes (always local server)
+	serverBaseURL := fmt.Sprintf("http://%s", listener.Addr().String())
 
 	handler := &cassetteHandler{
 		logger:                 logger,
 		apiBase:                baseURL,
+		serverBase:             serverBaseURL,
 		cassettes:              cassettes,
 		cassettesDir:           cassettesDir,
-		apiKey:                 os.Getenv("OPENAI_API_KEY"),
+		azureAPIKey:            azureAPIKey,
+		azureAPIVersion:        azureAPIVersion,
+		azureDeployment:        azureDeployment,
+		apiKey:                 apiKey,
 		requestHeadersToRedact: make(map[string]struct{}, len(requestHeadersToRedact)),
 	}
 	for _, h := range requestHeadersToRedact {

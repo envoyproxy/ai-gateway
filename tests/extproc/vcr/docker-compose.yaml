@@ -9,13 +9,18 @@ volumes:
 
 services:
   extproc-build:
-    image: golang:1.24.6
+    image: golang:1.25
     container_name: extproc-build
     working_dir: /workspace
     volumes:
       - ../../..:/workspace
       - extproc-target:/workspace/out
-    command: ["bash", "-c", "go build -buildvcs=false -o /workspace/out/extproc ./cmd/extproc"]
+    command:
+      [
+        "bash",
+        "-c",
+        "go build -buildvcs=false -o /workspace/out/extproc ./cmd/extproc",
+      ]
 
   extproc:
     image: debian:trixie-slim
@@ -28,8 +33,7 @@ services:
       - ./extproc.yaml:/etc/extproc/config.yaml:ro
     # ExtProc ports (internal to Docker network, consumed by Envoy):
     # - 1063: gRPC service
-    # - 1064: metrics
-    # - 1065: health check
+    # - 1064: admin server (/metrics and /health endpoints)
     working_dir: /app
     command: ["./extproc", "-configPath", "/etc/extproc/config.yaml"]
 
@@ -37,12 +41,12 @@ services:
     image: alpine/ollama
     container_name: ollama-pull
     environment:
-      OLLAMA_HOST: localhost:11434  # intentionally not 127.0.0.1
+      OLLAMA_HOST: localhost:11434 # intentionally not 127.0.0.1
     env_file:
       - ../../../.env.ollama
     entrypoint: sh
     command: -c 'env | grep _MODEL | cut -d= -f2 | xargs -I{} ollama pull {}'
-    extra_hosts:  # send localhost traffic to the docker host, e.g. your laptop
+    extra_hosts: # send localhost traffic to the docker host, e.g. your laptop
       - "localhost:host-gateway"
 
   envoy:
@@ -56,20 +60,17 @@ services:
     volumes:
       - ./envoy.yaml:/etc/envoy/envoy.yaml:ro
     ports:
-      - "1062:1062"  # HTTP ingress
+      - "1062:1062" # HTTP ingress
     extra_hosts:
-      - "host.docker.internal:host-gateway"  # Needed to access Ollama running on the host
+      - "host.docker.internal:host-gateway" # Needed to access Ollama running on the host
     command: ["envoy", "-c", "/etc/envoy/envoy.yaml", "--log-level", "debug"]
 
   openai-client:
-    image: golang:1.24.5
+    image: golang:1.25
     container_name: openai-client
     profiles: ["test"]
     env_file:
       - ../../../.env.ollama
-    depends_on:
-      envoy:
-        condition: service_started
     command:
       - sh
       - -c

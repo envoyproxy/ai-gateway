@@ -14,9 +14,9 @@ import (
 	"github.com/envoyproxy/ai-gateway/tests/internal/testopenai"
 )
 
-// GetChatSpan returns the OpenInference span for a given cassette.
+// GetSpan returns the OpenInference span for a given cassette.
 // If the span doesn't exist in the cache, it records one using Docker.
-func GetChatSpan(ctx context.Context, out io.Writer, cassette testopenai.Cassette) (*tracev1.Span, error) {
+func GetSpan(ctx context.Context, out io.Writer, cassette testopenai.Cassette) (*tracev1.Span, error) {
 	server, err := newServer(out, embeddedSpans, spansDir)
 	if err != nil {
 		return nil, err

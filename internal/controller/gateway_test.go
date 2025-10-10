@@ -11,12 +11,10 @@ import (
 	"testing"
 	"time"
 
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/ptr"
@@ -28,8 +26,9 @@ import (
 	"sigs.k8s.io/yaml"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	"github.com/envoyproxy/ai-gateway/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 func TestGatewayController_Reconcile(t *testing.T) {
@@ -37,7 +36,7 @@ func TestGatewayController_Reconcile(t *testing.T) {
 	fakeKube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	c := NewGatewayController(fakeClient, fakeKube, ctrl.Log,
-		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil)
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil, true)
 
 	const namespace = "ns"
 	t.Run("not found must be non error", func(t *testing.T) {
@@ -65,18 +64,18 @@ func TestGatewayController_Reconcile(t *testing.T) {
 		Spec:       gwapiv1.GatewaySpec{},
 	})
 	require.NoError(t, err)
-	targets := []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+	targets := []gwapiv1a2.ParentReference{
 		{
-			LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
-				Name: okGwName, Kind: "Gateway", Group: "gateway.networking.k8s.io",
-			},
+			Name:  okGwName,
+			Kind:  ptr.To(gwapiv1a2.Kind("Gateway")),
+			Group: ptr.To(gwapiv1a2.Group("gateway.networking.k8s.io")),
 		},
 	}
 	for _, aigwRoute := range []*aigv1a1.AIGatewayRoute{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: namespace},
 			Spec: aigv1a1.AIGatewayRouteSpec{
-				TargetRefs: targets,
+				ParentRefs: targets,
 				Rules: []aigv1a1.AIGatewayRouteRule{
 					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
 				},
@@ -85,7 +84,7 @@ func TestGatewayController_Reconcile(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "route2", Namespace: namespace},
 			Spec: aigv1a1.AIGatewayRouteSpec{
-				TargetRefs: targets,
+				ParentRefs: targets,
 				Rules: []aigv1a1.AIGatewayRouteRule{
 					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "orange"}}},
 				},
@@ -165,8 +164,7 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	c := NewGatewayController(fakeClient, kube, ctrl.Log,
-
-		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil)
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil, true)
 
 	const gwNamespace = "ns"
 	routes := []aigv1a1.AIGatewayRoute{
@@ -175,12 +173,16 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 			Spec: aigv1a1.AIGatewayRouteSpec{
 				Rules: []aigv1a1.AIGatewayRouteRule{
 					{
-						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}},
+						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+							{Name: "apple"},
+							{Name: "invalid-bsp-backend"},  // This should be ignored as the BSP is invalid.
+							{Name: "non-existent-backend"}, // This should be ignored as the backend does not exist.
+						},
 						Matches: []aigv1a1.AIGatewayRouteRuleMatch{
 							{
 								Headers: []gwapiv1.HTTPHeaderMatch{
 									{
-										Name:  aigv1a1.AIModelHeaderKey,
+										Name:  internalapi.ModelNameHeaderKeyDefault,
 										Value: "mymodel",
 									},
 								},
@@ -213,11 +215,18 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: gwNamespace},
 			Spec: aigv1a1.AIServiceBackendSpec{
-				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+				BackendRef:     gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+				HeaderMutation: &aigv1a1.HTTPHeaderMutation{Set: []gwapiv1.HTTPHeader{{Name: "x-foo", Value: "foo"}}, Remove: []string{"x-bar"}},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: gwNamespace},
+			Spec: aigv1a1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "invalid-bsp-backend", Namespace: gwNamespace},
 			Spec: aigv1a1.AIServiceBackendSpec{
 				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
 			},
@@ -227,10 +236,29 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		require.NoError(t, err)
 	}
 
+	// Create a BackendSecurityPolicy that is invalid (missing secret ref).
+	err := fakeClient.Create(t.Context(), &aigv1a1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "invalid-bsp", Namespace: gwNamespace},
+		Spec: aigv1a1.BackendSecurityPolicySpec{
+			Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
+			APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{
+				SecretRef: &gwapiv1.SecretObjectReference{Name: "non-existent-secret"},
+			},
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
+				{
+					Kind:  "AIServiceBackend",
+					Group: "aigateway.envoyproxy.io",
+					Name:  "invalid-bsp-backend",
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+
 	for range 2 { // Reconcile twice to make sure the secret update path is working.
 		const someNamespace = "some-namespace"
 		configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
-		err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, "foouuid")
+		err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid")
 		require.NoError(t, err)
 
 		secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
@@ -247,7 +275,123 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		require.Equal(t, `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`, fc.LLMRequestCosts[3].CEL)
 		require.Len(t, fc.Models, 1)
 		require.Equal(t, "mymodel", fc.Models[0].Name)
+
+		require.Len(t, fc.Backends[0].HeaderMutation.Set, 1)
+		require.Len(t, fc.Backends[0].HeaderMutation.Remove, 1)
+		require.Equal(t, "x-foo", fc.Backends[0].HeaderMutation.Set[0].Name)
+		require.Equal(t, "foo", fc.Backends[0].HeaderMutation.Set[0].Value)
+		require.Equal(t, "x-bar", fc.Backends[0].HeaderMutation.Remove[0])
 	}
+}
+
+func TestGatewayController_reconcileFilterConfigSecret_SkipsDeletedRoutes(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+	c := NewGatewayController(fakeClient, kube, ctrl.Log,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil, true)
+
+	const gwNamespace = "ns"
+	now := metav1.Now()
+
+	// Create routes: one active, one being deleted.
+	routes := []aigv1a1.AIGatewayRoute{
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:              "active-route",
+				Namespace:         gwNamespace,
+				DeletionTimestamp: nil, // Active route.
+			},
+			Spec: aigv1a1.AIGatewayRouteSpec{
+				Rules: []aigv1a1.AIGatewayRouteRule{
+					{
+						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+							{Name: "apple"},
+						},
+						Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+							{
+								Headers: []gwapiv1.HTTPHeaderMatch{
+									{
+										Name:  internalapi.ModelNameHeaderKeyDefault,
+										Value: "mymodel",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:              "deleting-route",
+				Namespace:         gwNamespace,
+				DeletionTimestamp: &now, // Route being deleted.
+			},
+			Spec: aigv1a1.AIGatewayRouteSpec{
+				Rules: []aigv1a1.AIGatewayRouteRule{
+					{
+						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+							{Name: "orange"},
+						},
+						Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+							{
+								Headers: []gwapiv1.HTTPHeaderMatch{
+									{
+										Name:  internalapi.ModelNameHeaderKeyDefault,
+										Value: "deletedmodel",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Create AIServiceBackends for both routes.
+	for _, backend := range []*aigv1a1.AIServiceBackend{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: gwNamespace},
+			Spec: aigv1a1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: gwNamespace},
+			Spec: aigv1a1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+			},
+		},
+	} {
+		err := fakeClient.Create(t.Context(), backend)
+		require.NoError(t, err)
+	}
+
+	const someNamespace = "some-namespace"
+	configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
+
+	// Reconcile filter config secret.
+	err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid")
+	require.NoError(t, err)
+
+	// Verify the secret was created and only contains data from the active route.
+	secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
+	require.NoError(t, err)
+	configStr, ok := secret.StringData[FilterConfigKeyInSecret]
+	require.True(t, ok)
+
+	var fc filterapi.Config
+	require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
+
+	// Should only have one model (from the active route), not two (deleted route should be skipped).
+	require.Len(t, fc.Models, 1)
+	require.Equal(t, "mymodel", fc.Models[0].Name)
+
+	// Should only have one backend (from the active route).
+	require.Len(t, fc.Backends, 1)
+	require.Contains(t, fc.Backends[0].Name, "apple")
 }
 
 func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
@@ -256,7 +400,7 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	c := NewGatewayController(fakeClient, kube, ctrl.Log,
 
-		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil)
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil, true)
 
 	const namespace = "ns"
 	for _, bsp := range []*aigv1a1.BackendSecurityPolicy{
@@ -297,10 +441,25 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 			},
 		},
 		{
-			ObjectMeta: metav1.ObjectMeta{Name: "gcp", Namespace: namespace},
+			ObjectMeta: metav1.ObjectMeta{Name: "gcp-sa-key-file", Namespace: namespace},
 			Spec: aigv1a1.BackendSecurityPolicySpec{
-				Type:           aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
-				GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{},
+				Type: aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
+				GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+					CredentialsFile: &aigv1a1.GCPCredentialsFile{
+						SecretRef: &gwapiv1.SecretObjectReference{Name: "gcp-sa-key-file"},
+					},
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "gcp-wif", Namespace: namespace},
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				Type: aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
+				GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+					WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
+						OIDCExchangeToken: aigv1a1.GCPOIDCExchangeToken{},
+					},
+				},
 			},
 		},
 	} {
@@ -324,7 +483,11 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 			StringData: map[string]string{rotators.AzureAccessTokenKey: "thisisazurecredentials"},
 		},
 		{
-			ObjectMeta: metav1.ObjectMeta{Name: rotators.GetBSPSecretName("gcp"), Namespace: namespace},
+			ObjectMeta: metav1.ObjectMeta{Name: "gcp-sa-key-file", Namespace: namespace},
+			StringData: map[string]string{rotators.GCPServiceAccountJSON: "{}"},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: rotators.GetBSPSecretName("gcp-wif"), Namespace: namespace},
 			StringData: map[string]string{rotators.GCPAccessTokenKey: "thisisgcpcredentials"},
 		},
 	} {
@@ -361,7 +524,7 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 			},
 		},
 		{
-			bspName: "gcp",
+			bspName: "gcp-wif",
 			exp: &filterapi.BackendAuth{
 				GCPAuth: &filterapi.GCPAuth{AccessToken: "thisisgcpcredentials"},
 			},
@@ -384,7 +547,7 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 func TestGatewayController_bspToFilterAPIBackendAuth_ErrorCases(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	c := NewGatewayController(fakeClient, fake2.NewClientset(), ctrl.Log,
-		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil)
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil, true)
 
 	ctx := context.Background()
 	namespace := "test-namespace"
@@ -445,7 +608,7 @@ func TestGatewayController_bspToFilterAPIBackendAuth_ErrorCases(t *testing.T) {
 func TestGatewayController_GetSecretData_ErrorCases(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	c := NewGatewayController(fakeClient, fake2.NewClientset(), ctrl.Log,
-		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil)
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil, true)
 
 	ctx := context.Background()
 	namespace := "test-namespace"
@@ -470,7 +633,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	const v2Container = "ai-gateway-extproc:v2"
 	c := NewGatewayController(fakeClient, kube, ctrl.Log,
-		v2Container, false, nil)
+		v2Container, false, nil, true)
 	t.Run("pod with extproc", func(t *testing.T) {
 		pod, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), &corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
@@ -585,7 +748,7 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	const v2Container = "ai-gateway-extproc:v2"
 	c := NewGatewayController(fakeClient, kube, ctrl.Log,
-		v2Container, false, nil)
+		v2Container, false, nil, true)
 
 	t.Run("pod without extproc", func(t *testing.T) {
 		pod, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), &corev1.Pod{
@@ -700,7 +863,7 @@ func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	const v2Container = "ai-gateway-extproc:v2"
-	c := NewGatewayController(fakeClient, kube, ctrl.Log, v2Container, false, nil)
+	c := NewGatewayController(fakeClient, kube, ctrl.Log, v2Container, false, nil, true)
 
 	_, _, err := c.backendWithMaybeBSP(t.Context(), "foo", "bar")
 	require.ErrorContains(t, err, `aiservicebackends.aigateway.envoyproxy.io "bar" not found`)
@@ -717,15 +880,17 @@ func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
 	require.NotNil(t, backend)
 	require.Nil(t, bsp, "should not return BSP when backend exists without BSP")
 
-	// Create a new BSP for the existing backend.
+	// Create a new BSP for the existing backend, referencing the backend by name.
 	const bspName = "bsp-bar"
 	bspObj := &aigv1a1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: bspName, Namespace: backend.Namespace},
-		Spec:       aigv1a1.BackendSecurityPolicySpec{},
+		Spec: aigv1a1.BackendSecurityPolicySpec{
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
+				{Name: gwapiv1.ObjectName(backend.Name)},
+			},
+		},
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), bspObj))
-	// Update the backend to reference the BSP.
-	backend.Spec.BackendSecurityPolicyRef = &gwapiv1.LocalObjectReference{Name: bspName}
 	require.NoError(t, fakeClient.Update(t.Context(), backend))
 
 	// Check that we can retrieve the backend and BSP.
@@ -735,71 +900,77 @@ func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
 	require.NotNil(t, bsp, "should return BSP when backend exists with BSP")
 	require.Equal(t, bspName, bsp.Name, "should return the correct BSP name")
 
-	// Create a new BSP that has targetRefs (new pattern) to the backend.
+	// Create a new BSP that has the same target ref, and one that does not exist.
 	bspWithTargetRefs := &aigv1a1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: "bsp-bar-target-refs", Namespace: backend.Namespace},
 		Spec: aigv1a1.BackendSecurityPolicySpec{
-			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{{Name: gwapiv1.ObjectName(backend.Name)}},
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
+				{Name: gwapiv1.ObjectName(backend.Name)},
+				{Name: gwapiv1.ObjectName("non-existent-backend")},
+			},
 		},
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), bspWithTargetRefs))
 
-	// Update the backend to drop the old style BSP reference.
-	backend.Spec.BackendSecurityPolicyRef = nil
-	require.NoError(t, fakeClient.Update(t.Context(), backend))
-
-	// Check that we can retrieve the backend and the new BSP with targetRefs.
-	backend, bsp, err = c.backendWithMaybeBSP(t.Context(), backend.Namespace,
-		backend.Name)
-	require.NoError(t, err, "should not error when backend exists with BSP using targetRefs")
-	require.NotNil(t, backend, "should return backend when it exists")
-	require.NotNil(t, bsp, "should return BSP when backend exists with BSP using targetRefs")
-	require.Equal(t, bspWithTargetRefs.Name, bsp.Name, "should return the correct BSP name when using targetRefs")
-
-	// Create yet another BSP that has targetRefs (new pattern) to the backend, which should be the error case.
-	bspWithTargetRefs2 := &aigv1a1.BackendSecurityPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "bsp-bar-target-refs2", Namespace: backend.Namespace},
-		Spec: aigv1a1.BackendSecurityPolicySpec{
-			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{{Name: gwapiv1.ObjectName(backend.Name)}},
-		},
-	}
-	require.NoError(t, fakeClient.Create(t.Context(), bspWithTargetRefs2))
-	// Update the backend to drop the old style BSP reference.
-	backend.Spec.BackendSecurityPolicyRef = nil
-	require.NoError(t, fakeClient.Update(t.Context(), backend))
-
-	// Check that we can retrieve the backend and the new BSP with targetRefs, but it should error out
-	// because there are multiple BSPs with targetRefs pointing to the same backend.
-	backend, bsp, err = c.backendWithMaybeBSP(t.Context(), backend.Namespace,
-		backend.Name)
-	require.ErrorContains(t, err, "multiple BackendSecurityPolicies found for backend",
-		"should indicate that multiple BSPs with targetRefs exist for the same backend")
-	require.Nil(t, backend, "should not return backend when multiple BSPs with targetRefs exist")
-	require.Nil(t, bsp, "should not return BSP when multiple BSPs with targetRefs exist for the same backend")
+	// Then it should result in the error due to multiple BSPs found.
+	_, _, err = c.backendWithMaybeBSP(t.Context(), backend.Namespace, backend.Name)
+	require.ErrorContains(t, err, "multiple BackendSecurityPolicies found for backend bar")
 }
 
-func TestGatewayController_cleanUpV02(t *testing.T) {
-	c := &GatewayController{
-		logger: ctrl.Log.WithName("test"),
-		client: requireNewFakeClientWithIndexes(t),
+// Ensure MCP-only routes produce a correct MCPConfig in the filter Secret.
+func TestGatewayController_reconcileFilterMCPConfigSecret(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+	c := NewGatewayController(fakeClient, kube, ctrl.Log,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil, true)
+
+	const gwNamespace = "ns"
+	// Two routes with different CreationTimestamp for deterministic order.
+	mcpRoutes := []aigv1a1.MCPRoute{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "mcp-route-old", Namespace: gwNamespace, CreationTimestamp: metav1.NewTime(time.Now().Add(-2 * time.Hour))},
+			Spec: aigv1a1.MCPRouteSpec{
+				BackendRefs: []aigv1a1.MCPRouteBackendRef{{
+					BackendObjectReference: gwapiv1.BackendObjectReference{
+						Name: gwapiv1.ObjectName("backendA"),
+					},
+					ToolSelector: &aigv1a1.MCPToolFilter{
+						Include: []string{"toolA"},
+					},
+				}},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "mcp-route-new", Namespace: gwNamespace, CreationTimestamp: metav1.NewTime(time.Now().Add(-1 * time.Hour))},
+			Spec: aigv1a1.MCPRouteSpec{
+				BackendRefs: []aigv1a1.MCPRouteBackendRef{{
+					BackendObjectReference: gwapiv1.BackendObjectReference{
+						Name: gwapiv1.ObjectName("backendB"),
+					},
+					ToolSelector: &aigv1a1.MCPToolFilter{
+						Include: []string{"toolB"},
+					},
+				}},
+			},
+		},
 	}
 
-	err := c.client.Create(t.Context(), &egv1a1.EnvoyExtensionPolicy{ObjectMeta: metav1.ObjectMeta{
-		Name:      "ai-eg-eep-foo",
-		Namespace: "ns",
-	}})
-	require.NoError(t, err)
-	err = c.client.Create(t.Context(), &egv1a1.Backend{ObjectMeta: metav1.ObjectMeta{
-		Name: "envoy-ai-gateway-extproc-backend", Namespace: "ns",
-	}})
+	// Reconcile to produce the Secret with only MCP routes.
+	const someNamespace = "some-namespace"
+	configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
+	err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, nil, mcpRoutes, "mcp-uuid")
 	require.NoError(t, err)
 
-	c.cleanUpV02(t.Context(), &gwapiv1.Gateway{
-		ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "ns"},
-	})
-	// Check that the EEP and Backend are deleted.
-	err = c.client.Get(t.Context(), client.ObjectKey{Name: "ai-eg-eep-foo", Namespace: "ns"}, &egv1a1.EnvoyExtensionPolicy{})
-	require.True(t, apierrors.IsNotFound(err), "expected EEP to be deleted, but got: %v", err)
-	err = c.client.Get(t.Context(), client.ObjectKey{Name: "envoy-ai-gateway-extproc-backend", Namespace: "ns"}, &egv1a1.Backend{})
-	require.True(t, apierrors.IsNotFound(err), "expected Backend to be deleted, but got: %v", err)
+	// Read back and verify MCPConfig fields.
+	secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
+	require.NoError(t, err)
+	configStr, ok := secret.StringData[FilterConfigKeyInSecret]
+	require.True(t, ok)
+
+	var fc filterapi.Config
+	require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
+	require.Equal(t, "mcp-uuid", fc.UUID)
+	require.NotNil(t, fc.MCPConfig)
+	require.Equal(t, "http://127.0.0.1:"+strconv.Itoa(internalapi.MCPBackendListenerPort), fc.MCPConfig.BackendListenerAddr)
 }

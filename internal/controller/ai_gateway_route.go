@@ -56,18 +56,22 @@ type AIGatewayRouteController struct {
 	logger logr.Logger
 	// gatewayEventChan is a channel to send events to the gateway controller.
 	gatewayEventChan chan event.GenericEvent
+	// rootPrefix is the prefix for the root path of the AI Gateway.
+	rootPrefix string
 }
 
 // NewAIGatewayRouteController creates a new reconcile.TypedReconciler[reconcile.Request] for the AIGatewayRoute resource.
 func NewAIGatewayRouteController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
 	gatewayEventChan chan event.GenericEvent,
+	rootPrefix string,
 ) *AIGatewayRouteController {
 	return &AIGatewayRouteController{
 		client:           client,
 		kube:             kube,
 		logger:           logger,
 		gatewayEventChan: gatewayEventChan,
+		rootPrefix:       rootPrefix,
 	}
 }
 
@@ -184,10 +188,22 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 		// This means that this AIGatewayRoute is a new one.
 		httpRoute = gwapiv1.HTTPRoute{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      aiGatewayRoute.Name,
-				Namespace: aiGatewayRoute.Namespace,
+				Name:        aiGatewayRoute.Name,
+				Namespace:   aiGatewayRoute.Namespace,
+				Labels:      make(map[string]string),
+				Annotations: make(map[string]string),
 			},
 			Spec: gwapiv1.HTTPRouteSpec{},
+		}
+
+		// Copy labels from AIGatewayRoute to HTTPRoute.
+		for k, v := range aiGatewayRoute.Labels {
+			httpRoute.Labels[k] = v
+		}
+
+		// Copy non-controller annotations from AIGatewayRoute to HTTPRoute.
+		for k, v := range aiGatewayRoute.Annotations {
+			httpRoute.Annotations[k] = v
 		}
 		if err = ctrlutil.SetControllerReference(aiGatewayRoute, &httpRoute, c.client.Scheme()); err != nil {
 			panic(fmt.Errorf("BUG: failed to set controller reference for HTTPRoute: %w", err))
@@ -267,7 +283,10 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 		}
 		var matches []gwapiv1.HTTPRouteMatch
 		for j := range rule.Matches {
-			matches = append(matches, gwapiv1.HTTPRouteMatch{Headers: rule.Matches[j].Headers})
+			matches = append(matches, gwapiv1.HTTPRouteMatch{
+				Headers: rule.Matches[j].Headers,
+				Path:    &gwapiv1.HTTPPathMatch{Value: &c.rootPrefix},
+			})
 		}
 		rules = append(rules, gwapiv1.HTTPRouteRule{
 			BackendRefs: backendRefs,
@@ -279,7 +298,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 
 	rules = append(rules, gwapiv1.HTTPRouteRule{
 		Name:    ptr.To[gwapiv1.SectionName]("route-not-found"),
-		Matches: []gwapiv1.HTTPRouteMatch{{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}}},
+		Matches: []gwapiv1.HTTPRouteMatch{{Path: &gwapiv1.HTTPPathMatch{Value: &c.rootPrefix}}},
 		Filters: []gwapiv1.HTTPRouteFilter{{
 			Type: gwapiv1.HTTPRouteFilterExtensionRef,
 			ExtensionRef: &gwapiv1.LocalObjectReference{
@@ -292,37 +311,40 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 
 	dst.Spec.Rules = rules
 
+	// Initialize labels and annotations maps if they don't exist.
+	if dst.Labels == nil {
+		dst.Labels = make(map[string]string)
+	}
 	if dst.Annotations == nil {
 		dst.Annotations = make(map[string]string)
 	}
+
+	// Copy labels from AIGatewayRoute to HTTPRoute.
+	for k, v := range aiGatewayRoute.Labels {
+		dst.Labels[k] = v
+	}
+
+	// Copy non-controller annotations from AIGatewayRoute to HTTPRoute.
+	for k, v := range aiGatewayRoute.Annotations {
+		dst.Annotations[k] = v
+	}
+
 	// HACK: We need to set an annotation so that Envoy Gateway reconciles the HTTPRoute when the backend refs change.
 	dst.Annotations[httpRouteBackendRefPriorityAnnotationKey] = buildPriorityAnnotation(aiGatewayRoute.Spec.Rules)
 	dst.Annotations[httpRouteAnnotationForAIGatewayGeneratedIndication] = "true"
 
-	egNs := gwapiv1.Namespace(aiGatewayRoute.Namespace)
-	parentRefs := aiGatewayRoute.Spec.ParentRefs
-	for _, egRef := range aiGatewayRoute.Spec.TargetRefs {
-		egName := egRef.Name
-		var namespace *gwapiv1.Namespace
-		if egNs != "" { // This path is only for the `aigw translate`.
-			namespace = ptr.To(egNs)
-		}
-		parentRefs = append(parentRefs, gwapiv1.ParentReference{
-			Name:      egName,
-			Namespace: namespace,
-		})
-	}
-	dst.Spec.ParentRefs = parentRefs
+	dst.Spec.ParentRefs = aiGatewayRoute.Spec.ParentRefs
 	return nil
 }
 
 // syncGateways synchronizes the gateways referenced by the AIGatewayRoute by sending events to the gateway controller.
 func (c *AIGatewayRouteController) syncGateways(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
-	for _, t := range aiGatewayRoute.Spec.TargetRefs {
-		c.syncGateway(ctx, aiGatewayRoute.Namespace, string(t.Name))
-	}
 	for _, p := range aiGatewayRoute.Spec.ParentRefs {
-		c.syncGateway(ctx, aiGatewayRoute.Namespace, string(p.Name))
+		gwNamespace := aiGatewayRoute.Namespace
+		if p.Namespace != nil {
+			gwNamespace = string(*p.Namespace)
+		}
+		c.syncGateway(ctx, gwNamespace, string(p.Name))
 	}
 	return nil
 }

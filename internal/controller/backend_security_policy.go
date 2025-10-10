@@ -86,7 +86,7 @@ func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *ai
 	if handleFinalizer(ctx, c.client, c.logger, bsp, c.syncBackendSecurityPolicy) { // Propagate the bsp deletion all the way to relevant Gateways.
 		return res, nil
 	}
-	if bsp.Spec.Type != aigv1a1.BackendSecurityPolicyTypeAPIKey {
+	if bsp.Spec.Type != aigv1a1.BackendSecurityPolicyTypeAPIKey && bsp.Spec.Type != aigv1a1.BackendSecurityPolicyTypeAzureAPIKey {
 		res, err = c.rotateCredential(ctx, bsp)
 		if err != nil {
 			return res, err
@@ -163,20 +163,46 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		if err = validateGCPCredentialsParams(bsp.Spec.GCPCredentials); err != nil {
 			return ctrl.Result{}, fmt.Errorf("invalid GCP credentials configuration: %w", err)
 		}
-
-		// For GCP, OIDC is currently the only supported authentication method.
-		// If additional methods are added, validate that OIDC is used before calling getBackendSecurityPolicyAuthOIDC.
 		oidc := getBackendSecurityPolicyAuthOIDC(bsp.Spec)
+		if oidc != nil {
+			// Create the OIDC token provider that will be used to get tokens from the OIDC provider.
+			var oidcProvider tokenprovider.TokenProvider
+			oidcProvider, err = tokenprovider.NewOidcTokenProvider(ctx, c.client, oidc)
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to initialize OIDC provider: %w", err)
+			}
+			rotator, err = rotators.NewGCPOIDCTokenRotator(c.client, c.logger, *bsp, preRotationWindow, oidcProvider)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+		} else if credentialFile := bsp.Spec.GCPCredentials.CredentialsFile; credentialFile != nil {
+			secretNamespace := bsp.Namespace
+			if credentialFile.SecretRef.Namespace != nil {
+				secretNamespace = string(*credentialFile.SecretRef.Namespace)
+			}
+			secretName := string(credentialFile.SecretRef.Name)
+			var secret *corev1.Secret
+			secret, err = rotators.LookupSecret(ctx, c.client, secretNamespace, secretName)
+			if err != nil {
+				c.logger.Error(err, "failed to lookup gcp service account key secret", "namespace", secretNamespace, "name", secretName)
+				return ctrl.Result{}, err
+			}
+			serviceAccountKeyJSON, exists := secret.Data[rotators.GCPServiceAccountJSON]
+			if !exists {
+				return ctrl.Result{}, fmt.Errorf("missing gcp service account key %s", rotators.GCPServiceAccountJSON)
+			}
+			var tokenProvider tokenprovider.TokenProvider
+			tokenProvider, err = tokenprovider.NewGCPTokenProvider(ctx, serviceAccountKeyJSON)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
 
-		// Create the OIDC token provider that will be used to get tokens from the OIDC provider.
-		var oidcProvider tokenprovider.TokenProvider
-		oidcProvider, err = tokenprovider.NewOidcTokenProvider(ctx, c.client, oidc)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to initialize OIDC provider: %w", err)
-		}
-		rotator, err = rotators.NewGCPOIDCTokenRotator(c.client, c.logger, *bsp, preRotationWindow, oidcProvider)
-		if err != nil {
-			return ctrl.Result{}, err
+			rotator, err = rotators.NewGCPTokenRotator(c.client, c.kube, c.logger, bsp.Namespace, bsp.Name, preRotationWindow, tokenProvider)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+		} else {
+			return ctrl.Result{}, fmt.Errorf("one of service account key json file or oidc must be defined, namespace %s name %s", bsp.Namespace, bsp.Name)
 		}
 
 	default:
@@ -258,7 +284,7 @@ func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *e
 		}
 		return nil
 	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:
-		if spec.GCPCredentials != nil {
+		if spec.GCPCredentials != nil && spec.GCPCredentials.WorkloadIdentityFederationConfig != nil {
 			return &spec.GCPCredentials.WorkloadIdentityFederationConfig.OIDCExchangeToken.OIDC
 		}
 	}
@@ -274,16 +300,6 @@ func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.
 	// Handle both old and new patterns.
 	var allAIServiceBackends []aigv1a1.AIServiceBackend
 
-	// Old pattern: AIServiceBackend references BackendSecurityPolicy.
-	key := backendSecurityPolicyKey(bsp.Namespace, bsp.Name)
-	var referencingBackends aigv1a1.AIServiceBackendList
-	err := c.client.List(ctx, &referencingBackends, client.MatchingFields{k8sClientIndexBackendSecurityPolicyToReferencingAIServiceBackend: key})
-	if err != nil {
-		return fmt.Errorf("failed to list AIServiceBackendList (old pattern): %w", err)
-	}
-	allAIServiceBackends = append(allAIServiceBackends, referencingBackends.Items...)
-
-	// New pattern: BackendSecurityPolicy targets AIServiceBackend via targetRefs.
 	for _, targetRef := range bsp.Spec.TargetRefs {
 		var aiBackend aigv1a1.AIServiceBackend
 		err := c.client.Get(ctx, client.ObjectKey{
@@ -339,16 +355,17 @@ func validateGCPCredentialsParams(gcpCreds *aigv1a1.BackendSecurityPolicyGCPCred
 	}
 
 	wifConfig := gcpCreds.WorkloadIdentityFederationConfig
-	if wifConfig.ProjectID == "" {
-		return fmt.Errorf("invalid GCP Workload Identity Federation configuration: projectID cannot be empty")
+	if wifConfig != nil {
+		if wifConfig.ProjectID == "" {
+			return fmt.Errorf("invalid GCP Workload Identity Federation configuration: projectID cannot be empty")
+		}
+		if wifConfig.WorkloadIdentityPoolName == "" {
+			return fmt.Errorf("invalid GCP Workload Identity Federation configuration: workloadIdentityPoolName cannot be empty")
+		}
+		if wifConfig.WorkloadIdentityProviderName == "" {
+			return fmt.Errorf("invalid GCP Workload Identity Federation configuration: workloadIdentityProvider.name cannot be empty")
+		}
 	}
-	if wifConfig.WorkloadIdentityPoolName == "" {
-		return fmt.Errorf("invalid GCP Workload Identity Federation configuration: workloadIdentityPoolName cannot be empty")
-	}
-	if wifConfig.WorkloadIdentityProviderName == "" {
-		return fmt.Errorf("invalid GCP Workload Identity Federation configuration: workloadIdentityProvider.name cannot be empty")
-	}
-
 	return nil
 }
 
@@ -365,8 +382,13 @@ func getBSPGeneratedSecretName(bsp *aigv1a1.BackendSecurityPolicy) string {
 			return ""
 		}
 	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:
+		if bsp.Spec.GCPCredentials.WorkloadIdentityFederationConfig == nil {
+			return ""
+		}
 	case aigv1a1.BackendSecurityPolicyTypeAPIKey:
 		return "" // APIKey does not require rotation.
+	case aigv1a1.BackendSecurityPolicyTypeAzureAPIKey:
+		return "" // AzureAPIKey does not require rotation.
 	default:
 		panic("BUG: unsupported backend security policy type: " + string(bsp.Spec.Type))
 	}

@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
 
-	"github.com/envoyproxy/ai-gateway/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
@@ -37,12 +37,10 @@ func TestWithRealProviders(t *testing.T) {
 	cc := internaltesting.RequireNewCredentialsContext()
 
 	config := &filterapi.Config{
-		MetadataNamespace: "ai_gateway_llm_ns",
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 			{MetadataKey: "some_cel", Type: filterapi.LLMRequestCostTypeCEL, CEL: "1+1"},
 		},
-		ModelNameHeaderKey: "x-model-name",
 		Backends: []filterapi.Backend{
 			alwaysFailingBackend,
 			{Name: "openai", Schema: openAISchema, Auth: &filterapi.BackendAuth{
@@ -85,7 +83,7 @@ func TestWithRealProviders(t *testing.T) {
 		// Do not dump the log by default since it "might" contain sensitive information.
 		// On CI, they should be redacted by GHA automatically, but it would be better to not log them at all just in case.
 		// Note: This test won't run on CI for fork PRs.
-		false)
+		false, false)
 
 	listenerPort := env.EnvoyListenerPort()
 	listenerAddress := fmt.Sprintf("http://localhost:%d", listenerPort)
@@ -111,7 +109,7 @@ func TestWithRealProviders(t *testing.T) {
 		t.Run("embeddings", func(t *testing.T) {
 			for _, tc := range []realProvidersTestCase{
 				{name: "openai", modelName: "text-embedding-3-small", required: internaltesting.RequiredCredentialOpenAI},
-				{name: "gemini", modelName: "gemini-embedding-exp-03-07", required: internaltesting.RequiredCredentialGemini},
+				{name: "gemini", modelName: "gemini-embedding-001", required: internaltesting.RequiredCredentialGemini},
 				{name: "sambanova", modelName: "E5-Mistral-7B-Instruct", required: internaltesting.RequiredCredentialSambaNova},
 				{name: "deepinfra", modelName: "BAAI/bge-base-en-v1.5", required: internaltesting.RequiredCredentialDeepInfra},
 			} {
@@ -210,10 +208,12 @@ func TestWithRealProviders(t *testing.T) {
 		}
 	})
 
-	t.Run("Bedrock uses tool in response", func(t *testing.T) {
+	t.Run("uses tool in response", func(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress+"/v1/"), option.WithMaxRetries(0))
 		for _, tc := range []realProvidersTestCase{
-			{name: "aws-bedrock", modelName: "us.anthropic.claude-3-5-sonnet-20240620-v1:0", required: internaltesting.RequiredCredentialAWS}, // This will go to "aws-bedrock" using credentials file.
+			{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
+			{name: "aws-bedrock", modelName: "us.anthropic.claude-3-5-sonnet-20240620-v1:0", required: internaltesting.RequiredCredentialAWS},
+			{name: "gemini", modelName: "gemini-2.0-flash-lite", required: internaltesting.RequiredCredentialGemini},
 		} {
 			t.Run(tc.modelName, func(t *testing.T) {
 				cc.MaybeSkip(t, tc.required)
@@ -231,7 +231,7 @@ func TestWithRealProviders(t *testing.T) {
 									Description: openai.String("Get weather at the given location"),
 									Parameters: openai.FunctionParameters{
 										"type": "object",
-										"properties": map[string]interface{}{
+										"properties": map[string]any{
 											"location": map[string]string{
 												"type": "string",
 											},
@@ -241,7 +241,6 @@ func TestWithRealProviders(t *testing.T) {
 								},
 							},
 						},
-						Seed:  openai.Int(0),
 						Model: tc.modelName,
 					}
 					completion, err := client.Chat.Completions.New(context.Background(), params)
@@ -266,7 +265,7 @@ func TestWithRealProviders(t *testing.T) {
 						if toolCall.Function.Name == "get_weather" {
 							getWeatherCalled = true
 							// Extract the location from the function call arguments.
-							var args map[string]interface{}
+							var args map[string]any
 							if argErr := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); argErr != nil {
 								t.Logf("Error unmarshalling the function arguments: %v", argErr)
 							}
@@ -281,7 +280,7 @@ func TestWithRealProviders(t *testing.T) {
 							t.Logf("Appended tool message: %+v", *toolMessage.OfTool) // Debug log.
 						}
 					}
-					if getWeatherCalled == false {
+					if !getWeatherCalled {
 						t.Logf("get_weather tool not specified in chat completion response")
 						return false
 					}

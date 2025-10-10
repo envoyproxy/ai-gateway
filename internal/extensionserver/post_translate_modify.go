@@ -117,6 +117,10 @@ func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTra
 		})
 		s.log.Info("Added extproc-uds cluster to the list of clusters")
 	}
+
+	// Generate the resources needed to support MCP Gateway functionality.
+	s.maybeGenerateResourcesForMCPGateway(req)
+
 	response := &egextension.PostTranslateModifyResponse{Clusters: req.Clusters, Secrets: req.Secrets, Listeners: req.Listeners, Routes: req.Routes}
 	return response, nil
 }
@@ -163,7 +167,7 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 	err = s.k8sClient.Get(context.Background(), client.ObjectKey{Namespace: httpRouteNamespace, Name: httpRouteName}, &aigwRoute)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			s.log.Info("Skipping user-created HTTPRoute cluster modification",
+			s.log.Info("Skipping non-AIGatewayRoute HTTPRoute cluster modification",
 				"namespace", httpRouteNamespace, "name", httpRouteName)
 			return
 		}
@@ -348,14 +352,13 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 // 3. Configures per-route filters to disable EPP processing for non-InferencePool routes
 // This ensures that only routes targeting InferencePool backends go through the endpoint picker.
 func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, routes []*routev3.RouteConfiguration) {
-	listenerNameToRouteName := make(map[string]string)
+	listenerNameToRouteNames := make(map[string][]string)
 	listenerNameToListener := make(map[string]*listenerv3.Listener)
 	for _, listener := range listeners {
 		if strings.HasPrefix(listener.Name, "envoy-gateway") {
 			continue
 		}
-		routeConfigName := findListenerRouteConfig(listener)
-		listenerNameToRouteName[listener.Name] = routeConfigName
+		listenerNameToRouteNames[listener.Name] = findListenerRouteConfigs(listener)
 		listenerNameToListener[listener.Name] = listener
 	}
 
@@ -378,18 +381,20 @@ func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, 
 
 	// listenerToInferencePools builds a matrix of listeners and the inference pools they use.
 	listenerToInferencePools := make(map[string][]*gwaiev1.InferencePool)
-	for listener, routeCfgName := range listenerNameToRouteName {
-		if routeNameToRoute[routeCfgName] == nil {
-			continue
-		}
-		if routeNameToVHRouteNameToInferencePool[routeCfgName] == nil {
-			continue
-		}
-		for _, pool := range routeNameToVHRouteNameToInferencePool[routeCfgName] {
-			if listenerToInferencePools[listener] == nil {
-				listenerToInferencePools[listener] = make([]*gwaiev1.InferencePool, 0)
+	for listener, routeCfgNames := range listenerNameToRouteNames {
+		for _, name := range routeCfgNames {
+			if routeNameToRoute[name] == nil {
+				continue
 			}
-			listenerToInferencePools[listener] = append(listenerToInferencePools[listener], pool)
+			if routeNameToVHRouteNameToInferencePool[name] == nil {
+				continue
+			}
+			for _, pool := range routeNameToVHRouteNameToInferencePool[name] {
+				if listenerToInferencePools[listener] == nil {
+					listenerToInferencePools[listener] = make([]*gwaiev1.InferencePool, 0)
+				}
+				listenerToInferencePools[listener] = append(listenerToInferencePools[listener], pool)
+			}
 		}
 	}
 
@@ -397,22 +402,32 @@ func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, 
 	for listener, pools := range listenerToInferencePools {
 		s.log.Info("patching listener with inference pool filters", "listener", listener)
 		s.patchListenerWithInferencePoolFilters(listenerNameToListener[listener], pools)
-		routeCfgName := listenerNameToRouteName[listener]
-		routeCfg := routeNameToRoute[routeCfgName]
-		if routeCfg == nil {
-			continue
-		}
-		for _, vh := range routeCfg.VirtualHosts {
-			s.log.Info("patching virtual host with inference pool filters", "listener", listener, "virtual_host", vh.Name)
-			s.patchVirtualHostWithInferencePool(vh, pools)
+		routeCfgNames := listenerNameToRouteNames[listener]
+		for _, routeCfgName := range routeCfgNames {
+			routeCfg := routeNameToRoute[routeCfgName]
+			if routeCfg == nil {
+				continue
+			}
+			for _, vh := range routeCfg.VirtualHosts {
+				s.log.Info("patching virtual host with inference pool filters", "listener", listener, "virtual_host", vh.Name)
+				s.patchVirtualHostWithInferencePool(vh, pools)
+			}
 		}
 	}
 
-	for ln, rn := range listenerNameToRouteName {
-		listener := listenerNameToListener[ln]
-		routeConfig := routeNameToRoute[rn]
-		if routeConfig != nil {
-			s.insertRouterLevelAIGatewayExtProc(listener, routeConfig)
+	for _, ln := range listeners {
+		var enabled bool
+		for _, name := range listenerNameToRouteNames[ln.Name] {
+			routeCfg := routeNameToRoute[name]
+			if routeCfg == nil {
+				s.log.Info("skipping patching of non-existent route config", "route_config", name)
+				continue
+			}
+			enabled = enabled || s.enableRouterLevelAIGatewayExtProcOnRoute(routeCfg)
+		}
+		if enabled {
+			s.log.Info("inserting AI Gateway extproc filter into listener", "listener", ln.Name)
+			s.insertRouterLevelAIGatewayExtProc(ln)
 		}
 	}
 }
@@ -440,6 +455,7 @@ func (s *Server) patchListenerWithInferencePoolFilters(listener *listenerv3.List
 				continue
 			}
 			if baIndex == -1 {
+				s.log.Info("adding inference pool ext proc filter", "pool", pool.Name)
 				eppExtProc := buildInferencePoolHTTPFilter(pool)
 				poolFilters = append(poolFilters, eppExtProc)
 			}
@@ -453,13 +469,8 @@ func (s *Server) patchListenerWithInferencePoolFilters(listener *listenerv3.List
 		}
 
 		// Write the updated HCM back to the filter chain.
-		anyConnectionMgr, err := anypb.New(httpConManager)
-		if err != nil {
-			s.log.Error(err, "failed to marshal the updated HCM")
-			continue
-		}
 		currChain.Filters[hcmIndex].ConfigType = &listenerv3.Filter_TypedConfig{
-			TypedConfig: anyConnectionMgr,
+			TypedConfig: mustToAny(httpConManager),
 		}
 	}
 }
@@ -499,13 +510,16 @@ func (s *Server) patchVirtualHostWithInferencePool(vh *routev3.VirtualHost, infe
 	}
 }
 
-func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener, routeConfig *routev3.RouteConfiguration) {
-	relevantListener := false
+// enableRouterLevelAIGatewayExtProcOnRoute checks if the extproc filter should be enabled for routes
+// that are generated by AIGateway. It modifies the route configuration to enable the extproc filter
+// for those routes. It returns true if any route was modified.
+func (s *Server) enableRouterLevelAIGatewayExtProcOnRoute(routeConfig *routev3.RouteConfiguration) bool {
+	enabled := false
 	for _, vh := range routeConfig.VirtualHosts {
 		for _, route := range vh.Routes {
 			aiGatewayGenerated := s.isRouteGeneratedByAIGateway(route)
 			if aiGatewayGenerated {
-				relevantListener = true
+				enabled = true
 				if route.TypedPerFilterConfig == nil {
 					route.TypedPerFilterConfig = make(map[string]*anypb.Any)
 				}
@@ -516,71 +530,67 @@ func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener
 			}
 		}
 	}
+	return enabled
+}
 
-	// If we found at least one route generated by AIGateway, we need to add the extproc filter to the listener.
-	if relevantListener {
-		// First, get the filter chains from the listener.
-		filterChains := listener.GetFilterChains()
-		defaultFC := listener.DefaultFilterChain
-		if defaultFC != nil {
-			filterChains = append(filterChains, defaultFC)
+// insertRouterLevelAIGatewayExtProcExtProc inserts the AI Gateway external processor filter into the listener's filter chains.
+func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener) {
+	// First, get the filter chains from the listener.
+	filterChains := listener.GetFilterChains()
+	defaultFC := listener.DefaultFilterChain
+	if defaultFC != nil {
+		filterChains = append(filterChains, defaultFC)
+	}
+	// Go over all of the chains, and add the endpoint picker external processor filters.
+	for _, currChain := range filterChains {
+		httpConManager, hcmIndex, err := findHCM(currChain)
+		if err != nil {
+			s.log.Error(err, "failed to find an HCM in the current chain")
+			return
 		}
-		// Go over all of the chains, and add the endpoint picker external processor filters.
-		for _, currChain := range filterChains {
-			httpConManager, hcmIndex, err := findHCM(currChain)
-			if err != nil {
-				s.log.Error(err, "failed to find an HCM in the current chain")
-				continue
-			}
-			// Check if the extproc filter is already present.
-			if !shouldAIGatewayExtProcBeInserted(httpConManager.HttpFilters) {
-				continue // The filter is already present, nothing to do.
-			}
+		// Check if the extproc filter is already present.
+		if !shouldAIGatewayExtProcBeInserted(httpConManager.HttpFilters) {
+			return // The filter is already present, nothing to do.
+		}
 
-			extProcFilter := &httpconnectionmanagerv3.HttpFilter{
-				Name:     aiGatewayExtProcName,
-				Disabled: true, // Disable the filter by default, it will be enabled per route where the route is generated by AIGateway.
-				ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: mustToAny(&extprocv3.ExternalProcessor{
-					GrpcService: &corev3.GrpcService{
-						TargetSpecifier: &corev3.GrpcService_EnvoyGrpc_{
-							EnvoyGrpc: &corev3.GrpcService_EnvoyGrpc{
-								ClusterName: extProcUDSClusterName,
-							},
+		extProcFilter := &httpconnectionmanagerv3.HttpFilter{
+			Name:     aiGatewayExtProcName,
+			Disabled: true, // Disable the filter by default, it will be enabled per route where the route is generated by AIGateway.
+			ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: mustToAny(&extprocv3.ExternalProcessor{
+				GrpcService: &corev3.GrpcService{
+					TargetSpecifier: &corev3.GrpcService_EnvoyGrpc_{
+						EnvoyGrpc: &corev3.GrpcService_EnvoyGrpc{
+							ClusterName: extProcUDSClusterName,
 						},
 					},
-					MetadataOptions: &extprocv3.MetadataOptions{
-						ReceivingNamespaces: &extprocv3.MetadataOptions_MetadataNamespaces{
-							Untyped: []string{aigv1a1.AIGatewayFilterMetadataNamespace},
-						},
+				},
+				MetadataOptions: &extprocv3.MetadataOptions{
+					ReceivingNamespaces: &extprocv3.MetadataOptions_MetadataNamespaces{
+						Untyped: []string{aigv1a1.AIGatewayFilterMetadataNamespace},
 					},
-					ProcessingMode: &extprocv3.ProcessingMode{
-						RequestHeaderMode:   extprocv3.ProcessingMode_SEND,
-						RequestBodyMode:     extprocv3.ProcessingMode_BUFFERED,
-						RequestTrailerMode:  extprocv3.ProcessingMode_SKIP,
-						ResponseHeaderMode:  extprocv3.ProcessingMode_SEND,
-						ResponseBodyMode:    extprocv3.ProcessingMode_BUFFERED,
-						ResponseTrailerMode: extprocv3.ProcessingMode_SKIP,
-					},
-					MessageTimeout:    durationpb.New(10 * time.Second),
-					FailureModeAllow:  false,
-					AllowModeOverride: true,
-				})},
-			}
-
-			// Insert the AI Gateway extproc filter as the first extproc filter.
-			insertAIGatewayExtProcFilter(httpConManager, extProcFilter)
-			// Write the updated HCM back to the filter chain.
-			currChain.Filters[hcmIndex].ConfigType = &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(httpConManager)}
+				},
+				ProcessingMode: &extprocv3.ProcessingMode{
+					RequestHeaderMode:   extprocv3.ProcessingMode_SEND,
+					RequestBodyMode:     extprocv3.ProcessingMode_BUFFERED,
+					RequestTrailerMode:  extprocv3.ProcessingMode_SKIP,
+					ResponseHeaderMode:  extprocv3.ProcessingMode_SEND,
+					ResponseBodyMode:    extprocv3.ProcessingMode_BUFFERED,
+					ResponseTrailerMode: extprocv3.ProcessingMode_SKIP,
+				},
+				MessageTimeout:    durationpb.New(10 * time.Second),
+				FailureModeAllow:  false,
+				AllowModeOverride: true,
+			})},
 		}
+
+		// Insert the AI Gateway extproc filter as the first extproc filter.
+		insertAIGatewayExtProcFilter(httpConManager, extProcFilter)
+		// Write the updated HCM back to the filter chain.
+		currChain.Filters[hcmIndex].ConfigType = &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(httpConManager)}
 	}
 }
 
 func (s *Server) isRouteGeneratedByAIGateway(route *routev3.Route) bool {
-	if s.isStandAloneMode {
-		// In stand-alone mode, we don't have the route metadata, so we assume that all routes are generated by AIGateway.
-		return true
-	}
-
 	// The route metadata should look like this:
 	//
 	//	filterMetadata:
@@ -612,6 +622,19 @@ func (s *Server) isRouteGeneratedByAIGateway(route *routev3.Route) bool {
 		return false
 	}
 
+	if s.isStandAloneMode {
+		// In stand-alone mode, we don't have annotations to check, so instead use the name prefix.
+		for _, resource := range resources.GetListValue().Values {
+			// Skips all the MCP-related resources.
+			if name, ok := resource.GetStructValue().Fields["name"]; ok {
+				if strings.HasPrefix(name.GetStringValue(), internalapi.MCPGeneratedResourceCommonPrefix) {
+					return false
+				}
+			}
+		}
+		return true
+	}
+
 	// Walk through the resources to find the AIGateway-generated HTTPRoute annotation.
 	for _, resource := range resources.GetListValue().Values {
 		if resource.GetStructValue() == nil {
@@ -637,12 +660,7 @@ func (s *Server) isRouteGeneratedByAIGateway(route *routev3.Route) bool {
 
 func shouldAIGatewayExtProcBeInserted(filters []*httpconnectionmanagerv3.HttpFilter) bool {
 	for _, f := range filters {
-		if f.Name == aiGatewayExtProcName ||
-			// This is a backwards compatibility check for the old filter name generated by the EnvoyExtensionPolicy.
-			// https://github.com/envoyproxy/ai-gateway/blob/v0.2.1/internal/controller/gateway.go#L133
-			//
-			// TODO: remove after v0.3 release.
-			strings.Contains(f.Name, "ai-eg-eep-") {
+		if f.Name == aiGatewayExtProcName {
 			return false
 		}
 	}
@@ -683,4 +701,32 @@ var afterExtProcFilterPrefixes = []string{
 	egv1a1.EnvoyFilterCredentialInjector.String(),
 	egv1a1.EnvoyFilterCompressor.String(),
 	egv1a1.EnvoyFilterRouter.String(),
+}
+
+// findListenerRouteConfigs extracts route configuration names from the listener's filter chains.
+func findListenerRouteConfigs(listener *listenerv3.Listener) []string {
+	var names []string
+	// First, get the filter chains from the listener.
+	for _, filterChain := range listener.FilterChains {
+		httpConManager, _, err := findHCM(filterChain)
+		if err != nil {
+			continue // Skip this filter chain if it doesn't have an HTTP connection manager.
+		}
+		rds := httpConManager.GetRds()
+		if rds == nil {
+			continue // Skip if no route discovery service is configured.
+		}
+		if rds.RouteConfigName != "" {
+			names = append(names, rds.RouteConfigName)
+		}
+	}
+	httpConManager, _, err := findHCM(listener.DefaultFilterChain)
+	if err != nil {
+		return names // Return names collected so far, even if default filter chain has no HCM.
+	}
+	rds := httpConManager.GetRds()
+	if rds == nil {
+		return names // Return names collected so far, even if no RDS in default filter chain.
+	}
+	return append(names, rds.RouteConfigName) // Add default filter chain's route config name.
 }

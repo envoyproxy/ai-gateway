@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -15,6 +16,8 @@ import (
 	"github.com/alecthomas/kong"
 	ctrl "sigs.k8s.io/controller-runtime"
 
+	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
+	"github.com/envoyproxy/ai-gateway/internal/autoconfig"
 	"github.com/envoyproxy/ai-gateway/internal/version"
 )
 
@@ -23,32 +26,61 @@ type (
 	cmd struct {
 		// Version is the sub-command to show the version.
 		Version struct{} `cmd:"" help:"Show version."`
-		// Translate is the sub-command parsed by the `cmdTranslate` struct.
-		Translate cmdTranslate `cmd:"" help:"Translate yaml files containing AI Gateway resources to Envoy Gateway and Kubernetes resources. The translated resources are written to stdout."`
 		// Run is the sub-command parsed by the `cmdRun` struct.
 		Run cmdRun `cmd:"" help:"Run the AI Gateway locally for given configuration."`
-	}
-	// cmdTranslate corresponds to `aigw translate` command.
-	cmdTranslate struct {
-		Debug bool     `help:"Enable debug logging emitted to stderr."`
-		Paths []string `arg:"" name:"path" help:"Paths to yaml files to translate." type:"path"`
+		// Healthcheck is the sub-command to check if the aigw server is healthy.
+		Healthcheck cmdHealthcheck `cmd:"" help:"Docker HEALTHCHECK command."`
 	}
 	// cmdRun corresponds to `aigw run` command.
 	cmdRun struct {
-		Debug       bool   `help:"Enable debug logging emitted to stderr."`
-		Path        string `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional. When this is not given, aigw runs the default configuration. Use --show-default to check the default configuration's behavior" type:"path"`
-		ShowDefault bool   `help:"Show the default configuration, and exit."`
+		Debug     bool                   `help:"Enable debug logging emitted to stderr."`
+		Path      string                 `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional when at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY is set." type:"path"`
+		AdminPort int                    `help:"HTTP port for the admin server (serves /metrics and /health endpoints)." default:"1064"`
+		McpConfig string                 `name:"mcp-config" help:"Path to MCP servers configuration file." type:"path"`
+		McpJSON   string                 `name:"mcp-json" help:"JSON string of MCP servers configuration."`
+		mcpConfig *autoconfig.MCPServers `kong:"-"` // Internal field: normalized MCP JSON data
 	}
+	// cmdHealthcheck corresponds to `aigw healthcheck` command.
+	cmdHealthcheck struct{}
 )
 
+// Validate is called by Kong after parsing to validate the cmdRun arguments.
+func (c *cmdRun) Validate() error {
+	if c.McpConfig != "" && c.McpJSON != "" {
+		return fmt.Errorf("mcp-config and mcp-json are mutually exclusive")
+	}
+	if c.Path == "" && os.Getenv("OPENAI_API_KEY") == "" && os.Getenv("AZURE_OPENAI_API_KEY") == "" && c.McpConfig == "" && c.McpJSON == "" {
+		return fmt.Errorf("you must supply at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY or a config file path")
+	}
+
+	var mcpJSON string
+	if c.McpConfig != "" {
+		raw, err := os.ReadFile(c.McpConfig)
+		if err != nil {
+			return fmt.Errorf("failed to read MCP config file: %w", err)
+		}
+		mcpJSON = string(raw)
+	} else {
+		mcpJSON = c.McpJSON
+	}
+
+	if mcpJSON != "" {
+		var mcpConfig autoconfig.MCPServers
+		if err := json.Unmarshal([]byte(mcpJSON), &mcpConfig); err != nil {
+			return fmt.Errorf("failed to unmarshal MCP config: %w", err)
+		}
+		c.mcpConfig = &mcpConfig
+	}
+	return nil
+}
+
 type (
-	subCmdFn[T any] func(context.Context, T, io.Writer, io.Writer) error
-	translateFn     subCmdFn[cmdTranslate]
-	runFn           subCmdFn[cmdRun]
+	runFn         func(context.Context, cmdRun, runOpts, io.Writer, io.Writer) error
+	healthcheckFn func(context.Context, io.Writer, io.Writer) error
 )
 
 func main() {
-	doMain(ctrl.SetupSignalHandler(), os.Stdout, os.Stderr, os.Args[1:], os.Exit, translate, run)
+	doMain(ctrl.SetupSignalHandler(), os.Stdout, os.Stderr, os.Args[1:], os.Exit, run, healthcheck)
 }
 
 // doMain is the main entry point for the CLI. It parses the command line arguments and executes the appropriate command.
@@ -57,11 +89,10 @@ func main() {
 //   - stderr is the writer to use for standard error. Mainly for testing.
 //   - `args` are the command line arguments without the program name.
 //   - exitFn is the function to call to exit the program during the parsing of the command line arguments. Mainly for testing.
-//   - tf is the function to call to translate the AI Gateway resources to Envoy Gateway and Kubernetes resources. Mainly for testing.
 //   - rf is the function to call to run the AI Gateway locally. Mainly for testing.
 func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn func(int),
-	tf translateFn,
 	rf runFn,
+	hf healthcheckFn,
 ) {
 	var c cmd
 	parser, err := kong.New(&c,
@@ -78,15 +109,15 @@ func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn
 	switch parsed.Command() {
 	case "version":
 		_, _ = fmt.Fprintf(stdout, "Envoy AI Gateway CLI: %s\n", version.Version)
-	case "translate <path>":
-		err = tf(ctx, c.Translate, stdout, stderr)
-		if err != nil {
-			log.Fatalf("Error translating: %v", err)
-		}
 	case "run", "run <path>":
-		err = rf(ctx, c.Run, stdout, stderr)
+		err = rf(ctx, c.Run, runOpts{extProcLauncher: mainlib.Main}, stdout, stderr)
 		if err != nil {
 			log.Fatalf("Error running: %v", err)
+		}
+	case "healthcheck":
+		err = hf(ctx, stdout, stderr)
+		if err != nil {
+			log.Fatalf("Health check failed: %v", err)
 		}
 	default:
 		panic("unreachable")

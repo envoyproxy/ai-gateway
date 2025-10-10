@@ -10,6 +10,8 @@ package internalapi
 import (
 	"fmt"
 	"strings"
+
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
 
 const (
@@ -17,7 +19,40 @@ const (
 	InternalEndpointMetadataNamespace = "aigateway.envoy.io"
 	// InternalMetadataBackendNameKey is the key used to store the backend name
 	InternalMetadataBackendNameKey = "per_route_rule_backend_name"
+	// MCPBackendHeader is the special header key used to specify the target backend name.
+	MCPBackendHeader = "x-ai-eg-mcp-backend"
+	// MCPRouteHeader is the special header key used to identify the mcp route.
+	MCPRouteHeader = "x-ai-eg-mcp-route"
+	// MCPBackendListenerPort is the port for the MCP backend listener.
+	MCPBackendListenerPort = 10088
+	// MCPProxyPort is the port where the MCP proxy listens.
+	MCPProxyPort = 9856
+	// MCPGeneratedResourceCommonPrefix is the common prefix for all MCP-related generated resources.
+	MCPGeneratedResourceCommonPrefix = "ai-eg-mcp-"
+	// MCPMainHTTPRoutePrefix is the prefix for the main HTTPRoute resources generated for MCP.
+	MCPMainHTTPRoutePrefix = MCPGeneratedResourceCommonPrefix + "main-"
+	// MCPPerBackendRefHTTPRoutePrefix is the prefix for the per-backend-ref HTTPRoute resources generated for MCP.
+	MCPPerBackendRefHTTPRoutePrefix = MCPGeneratedResourceCommonPrefix + "br-"
+	// MCPPerBackendHTTPRouteFilterPrefix is the prefix for the HTTP route filter names for per-backend resources.
+	MCPPerBackendHTTPRouteFilterPrefix = MCPGeneratedResourceCommonPrefix + "brf-"
+
+	// MCPMetadataHeaderPrefix is the prefix for special headers used to pass metadata in the filter metadata.
+	// These headers are added internally to the requests to the upstream servers so they can be populated in the filter
+	// metadata. These headers are considered just internal, and they'll be removed once they are stored in the filter
+	// metadata to avoid sending unnecessary information to the upstream servers.
+	MCPMetadataHeaderPrefix = "x-ai-eg-mcp-metadata-"
+	// MCPMetadataHeaderRequestID is the special header key used to pass the MCP request ID in the filter metadata.
+	MCPMetadataHeaderRequestID = MCPMetadataHeaderPrefix + "request-id"
+	// MCPMetadataHeaderMethod is the special header key used to pass the MCP method in the filter metadata.
+	MCPMetadataHeaderMethod = MCPMetadataHeaderPrefix + "method"
 )
+
+// MCPInternalHeadersToMetadata maps special MCP headers to metadata keys.
+var MCPInternalHeadersToMetadata = map[string]string{
+	MCPBackendHeader:           "mcp_backend",
+	MCPMetadataHeaderMethod:    "mcp_method",
+	MCPMetadataHeaderRequestID: "mcp_request_id",
+}
 
 const (
 	// EndpointPickerHeaderKey is the header key used to specify the target backend endpoint.
@@ -46,11 +81,17 @@ const (
 	AIGatewayGeneratedHTTPRouteAnnotation = "ai-gateway-generated"
 )
 
-// ParseRequestHeaderLabelMapping parses comma-separated key-value pairs for header-to-label mapping.
-// The input format is "header1:label1,header2:label2" where header names are HTTP request
-// headers and label names are Prometheus metric labels.
-// Example: "x-team-id:team_id,x-user-id:user_id".
-func ParseRequestHeaderLabelMapping(s string) (map[string]string, error) {
+// ParseRequestHeaderAttributeMapping parses comma-separated key-value pairs for header-to-attribute mapping.
+// The input format is "header1:attribute1,header2:attribute2" where header names are HTTP request
+// headers and attribute names are Otel span or metric attributes.
+// Example: "x-session-id:session.id,x-user-id:user.id".
+//
+// Note: This serves a different purpose than OTEL's OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST,
+// which captures headers as span attributes for tracing.
+//
+// Note: We do not need to convert to Prometheus format (e.g., x-session-id → session.id) here,
+// as that's done implicitly in the Prometheus exporter.
+func ParseRequestHeaderAttributeMapping(s string) (map[string]string, error) {
 	if s == "" {
 		return nil, nil
 	}
@@ -61,23 +102,140 @@ func ParseRequestHeaderLabelMapping(s string) (map[string]string, error) {
 	for i, pair := range pairs {
 		pair = strings.TrimSpace(pair)
 		if pair == "" {
-			return nil, fmt.Errorf("empty header-label pair at position %d", i+1)
+			return nil, fmt.Errorf("empty header-attribute pair at position %d", i+1)
 		}
 
 		parts := strings.SplitN(pair, ":", 2)
 		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid header-label pair at position %d: %q (expected format: header:label)", i+1, pair)
+			return nil, fmt.Errorf("invalid header-attribute pair at position %d: %q (expected format: header:attribute)", i+1, pair)
 		}
 
 		header := strings.TrimSpace(parts[0])
-		label := strings.TrimSpace(parts[1])
+		attribute := strings.TrimSpace(parts[1])
 
-		if header == "" || label == "" {
-			return nil, fmt.Errorf("empty header or label at position %d: %q", i+1, pair)
+		if header == "" || attribute == "" {
+			return nil, fmt.Errorf("empty header or attribute at position %d: %q", i+1, pair)
 		}
 
-		result[header] = label
+		result[header] = attribute
 	}
 
 	return result, nil
 }
+
+// ModelNameHeaderKeyDefault is the default header key for the model name.
+const ModelNameHeaderKeyDefault = aigv1a1.AIModelHeaderKey
+
+// ModelNameHeaderKey is the configurable header key whose value is set by the gateway
+// based on the model extracted from the request body.
+//
+// This header is automatically populated by the gateway and cannot be set by end users
+// as it will be overwritten. The flow is:
+//  1. Router filter extracts OriginalModel from request body and sets this header
+//  2. HTTPRoute uses this header value for model-based routing
+//  3. If backend has ModelNameOverride, the header is updated with the override value
+//  4. Metrics and observability systems use the final header value
+//
+// Defaults to ModelNameHeaderKeyDefault.
+type ModelNameHeaderKey = string
+
+// ModelNameOverride represents a backend-specific model name that overrides
+// the OriginalModel in the client request to the router.
+//
+// Configuration:
+//   - Set via aigv1a1.AIGatewayRouteRuleBackendRef
+//   - Replaces the OriginalModel with a backend-specific model name
+//
+// Example:
+//   - server requests: "llama3-2-1b"
+//   - Override to: "us.meta.llama3-2-1b-instruct-v1:0" (for AWS Bedrock)
+//
+// Effects:
+//   - Updates the header specified by ModelNameHeaderKey
+//   - Used by routing, rate limiting, and observability systems
+type ModelNameOverride = string
+
+// OriginalModel is the model name extracted from the incoming request body
+// before any virtualization applies.
+//
+// Flow:
+//  1. Router filter extracts model from request body
+//  2. If ModelNameOverride is configured, RequestModel differs from OriginalModel
+//  3. Provider responds with ResponseModel (may differ from RequestModel)
+//
+// Example:
+//  1. OriginalModel: OpenAI Client sends: {"model": "gpt-5"}
+//  2. RequestModel: ModelNameOverride replaces with "gpt-5-nano"
+//  3. ResponseModel: OpenAI Platform sends: {"model": "gpt-5-nano-2025-08-07"}
+//
+// ### OpenTelemetry
+//
+// In OpenTelemetry Generative AI Metrics, this is an attribute on metrics such
+// as "gen_ai.server.token.usage". For example, an OpenAI Chat Completion
+// request to the "gpt-5" model results in a plain text string attribute:
+// "gen_ai.original.model" -> "gpt-5"
+type OriginalModel = string
+
+// RequestModel is the name of the model sent in the request to perform a
+// completion or to create embeddings.
+//
+// This is either the model received by the router's OpenAI Chat Completions or
+// Embeddings endpoints, or a ModelNameOverride.
+//
+// This is not necessarily the same as ResponseModel, and in some cases like
+// Azure OpenAI Service, this field isn't read at all.
+//
+// ### OpenTelemetry
+//
+// The RequestModel is a key attribute for correlating metrics with spans.
+//
+// In OpenInference (span semantics), this is the "model" field of invocation
+// parameters, explaining how the LLM was invoked. For example, an OpenAI
+// Chat Completion request to the "gpt-5-nano" model results in an JSON string
+// attribute: "llm.invocation_parameters" -> {"model": "gpt-5-nano"}
+//
+// In OpenTelemetry Generative AI Metrics, this is an attribute on metrics such
+// as "gen_ai.server.token.usage". For example, an OpenAI Chat Completion
+// request to the "gpt-5-nano" model results in a plain text string attribute:
+// "gen_ai.request.model" -> "gpt-5-nano"
+type RequestModel = string
+
+// ResponseModel is the name of the model that generated a response to a
+// completion or embeddings request.
+//
+// ### Relationship to RequestModel
+//
+// This may differ from the RequestModel unless the provider is deterministic:
+//   - Static Model Execution (AWS Bedrock)
+//   - Deterministic Snapshot Mapping (GCP providers)
+//
+// In virtualized providers, this may be different:
+//   - URI-Based Resolution (Azure OpenAI)
+//   - Automatic Routing & Resolution: (OpenAI Platform)
+//
+// See https://aigateway.envoyproxy.io/docs/capabilities/traffic/model-name-virtualization
+//
+// ### OpenTelemetry
+//
+// The ResponseModel is even more important that RequestModel for evaluation
+// use cases as it is the only field that authoritatively explains the model
+// used for a completion. It is a key attribute for correlating metrics with
+// spans.
+//
+// In OpenInference (span semantics), this is the "model_name" attribute.
+// parameters, explaining how the LLM was invoked. For example, an OpenAI
+// Chat Completion request to the "gpt-5-nano" model results in a plain text
+// attribute of the latest model: "llm.model_name" -> "gpt-5-nano-2025-08-07"
+//
+// In OpenTelemetry Generative AI Metrics, this is an attribute on metrics such
+// as "gen_ai.server.token.usage". For example, an OpenAI Chat Completion
+// request to the "gpt-5-nano" model results in a plain text attribute of the
+// latest model: "gen_ai.response.model" -> "gpt-5-nano-2025-08-07"
+type ResponseModel = string
+
+// AIGatewayFilterMetadataNamespace is the namespace used for the filter metadata related to AI Gateway.
+//
+// For example, token usage, input/output tokens, and request costs are stored in this namespace.
+// Aliased from aigv1a1.AIGatewayFilterMetadataNamespace to avoid making ExtProc directly depend
+// on the control plane API which is not a concern of ExtProc.
+const AIGatewayFilterMetadataNamespace = aigv1a1.AIGatewayFilterMetadataNamespace

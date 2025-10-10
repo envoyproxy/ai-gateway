@@ -120,13 +120,8 @@ func (c *InferencePoolController) getReferencedGateways(ctx context.Context, inf
 
 // validateExtensionReference checks if the ExtensionReference service exists.
 func (c *InferencePoolController) validateExtensionReference(ctx context.Context, inferencePool *gwaiev1.InferencePool) error {
-	// Check if ExtensionRef is specified.
-	if inferencePool.Spec.ExtensionRef == nil {
-		return nil // No extension reference to validate.
-	}
-
 	// Get the service name from ExtensionReference.
-	serviceName := inferencePool.Spec.ExtensionRef.Name
+	serviceName := inferencePool.Spec.EndpointPickerRef.Name
 	if serviceName == "" {
 		return fmt.Errorf("ExtensionReference name is empty")
 	}
@@ -241,17 +236,17 @@ func (c *InferencePoolController) updateInferencePoolStatus(ctx context.Context,
 	}
 
 	// Build Parents status.
-	var parents []gwaiev1.PoolStatus
+	var parents []gwaiev1.ParentStatus
 	for _, gw := range referencedGateways {
 		// Set Gateway group and kind according to Gateway API defaults.
 		gatewayGroup := "gateway.networking.k8s.io"
 		gatewayKind := "Gateway"
 
-		parentRef := gwaiev1.ParentGatewayReference{
+		parentRef := gwaiev1.ParentReference{
 			Group:     (*gwaiev1.Group)(&gatewayGroup),
-			Kind:      (*gwaiev1.Kind)(&gatewayKind),
+			Kind:      gwaiev1.Kind(gatewayKind),
 			Name:      gwaiev1.ObjectName(gw.Name),
-			Namespace: (*gwaiev1.Namespace)(&gw.Namespace),
+			Namespace: gwaiev1.Namespace(gw.Namespace),
 		}
 
 		var conditions []metav1.Condition
@@ -270,8 +265,8 @@ func (c *InferencePoolController) updateInferencePoolStatus(ctx context.Context,
 			conditions = append(conditions, resolvedRefsCondition)
 		}
 
-		parents = append(parents, gwaiev1.PoolStatus{
-			GatewayRef: parentRef,
+		parents = append(parents, gwaiev1.ParentStatus{
+			ParentRef:  parentRef,
 			Conditions: conditions,
 		})
 	}

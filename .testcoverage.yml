@@ -18,7 +18,10 @@ exclude:
     - zz_generated.deepcopy.go
     # They are test-only libraries.
     - tests/internal/envtest.go
+    - tests/internal/gotool.go
+    - tests/internal/e2elib/
     - tests/internal/testenvironment/
+    - tests/internal/testmcp/
     - tests/internal/testopeninference/openai_proxy.go
     - internal/testing/
     # TODO: Remove this exclusion.

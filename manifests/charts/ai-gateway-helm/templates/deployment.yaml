@@ -46,14 +46,27 @@ spec:
             - --extProcImage={{ .Values.extProc.image.repository }}:{{ .Values.extProc.image.tag | default .Chart.AppVersion }}
             - --extProcImagePullPolicy={{ .Values.extProc.imagePullPolicy }}
             - --extProcLogLevel={{ .Values.extProc.logLevel }}
-            {{- if .Values.controller.metricsRequestHeaderLabels }}
-            - --metricsRequestHeaderLabels={{ .Values.controller.metricsRequestHeaderLabels }}
+            {{- if .Values.extProc.imagePullSecrets }}
+            - --extProcImagePullSecrets={{ include "ai-gateway-helm.extProc.imagePullSecretsString" . }}
+            {{- end }}
+            {{- if or .Values.controller.metricsRequestHeaderAttributes .Values.controller.metricsRequestHeaderLabels }}
+            - --metricsRequestHeaderAttributes={{ .Values.controller.metricsRequestHeaderAttributes | default .Values.controller.metricsRequestHeaderLabels }}
+            {{- end }}
+            {{- if .Values.controller.spanRequestHeaderAttributes }}
+            - --spanRequestHeaderAttributes={{ .Values.controller.spanRequestHeaderAttributes }}
+            {{- end }}
+            {{- if .Values.extProc.extraEnvVars }}
+            - --extProcExtraEnvVars={{ include "ai-gateway-helm.extProc.envVarsString" . }}
             {{- end }}
             - --tlsCertDir=/certs
             - --tlsCertName={{ .Values.controller.mutatingWebhook.tlsCertName }}
             - --tlsKeyName={{ .Values.controller.mutatingWebhook.tlsKeyName }}
             {{- if .Values.controller.leaderElection.enabled }}
             - --enableLeaderElection=true
+            {{- end }}
+            - --rootPrefix={{ .Values.endpointConfig.rootPrefix }}
+            {{- if ne .Values.controller.maxRecvMsgSize nil }}
+            - --maxRecvMsgSize={{ .Values.controller.maxRecvMsgSize }}
             {{- end }}
           livenessProbe:
             grpc:
@@ -70,6 +83,9 @@ spec:
             - name: {{ $key }}
               value: {{ $val }}
           {{- end }}
+          {{- end }}
+          {{- if .Values.controller.extraEnvVars }}
+          {{- toYaml .Values.controller.extraEnvVars | nindent 12 }}
           {{- end }}
           readinessProbe:
             grpc:

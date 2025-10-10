@@ -78,8 +78,13 @@ const LLMProvidersList: LLMProvider[] = [
   {
     name: 'Vertex AI',
     logoUrl: '/img/providers/vertex-ai.svg',
-    status: 'in-progress',
+    status: 'supported',
   },
+  {
+    name: 'Tetrate Agent Router Service',
+    logoUrl: '/img/providers/tars.svg',
+    status: 'supported',
+  }
 ];
 
 function ProviderLogo({ name, logoUrl, status }: LLMProvider) {
@@ -118,7 +123,7 @@ export default function LLMProviders(): React.ReactElement {
           <div className={styles.titleUnderline}></div>
           <p className={styles.sectionDescription}>
             With the latest version of Envoy AI Gateway you can route traffic to these LLM providers out of the box.
-            For more information and the most up-to-date provider integrations, check out our <a href="/docs/latest/capabilities/llm-integrations/supported-providers" className={styles.docsLink}>
+            For more information and the most up-to-date provider integrations, check out our <a href="/docs/capabilities/llm-integrations/supported-providers" className={styles.docsLink}>
             provider documentation</a>.
           </p>
         </div>

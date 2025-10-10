@@ -17,8 +17,8 @@ import (
 	oteltrace "go.opentelemetry.io/otel/trace"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
-	"github.com/envoyproxy/ai-gateway/tests/testotel"
 )
 
 func TestChatCompletionRecorder_StartParams(t *testing.T) {
@@ -69,10 +69,10 @@ func TestChatCompletionRecorder_RecordRequest(t *testing.T) {
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(basicReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-4.1-nano"}`),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "Hello!"),
 			},
@@ -98,18 +98,16 @@ func TestChatCompletionRecorder_RecordRequest(t *testing.T) {
 func TestChatCompletionRecorder_RecordResponse(t *testing.T) {
 	tests := []struct {
 		name           string
-		statusCode     int
 		respBody       []byte
 		expectedAttrs  []attribute.KeyValue
 		expectedEvents []trace.Event
 		expectedStatus trace.Status
 	}{
 		{
-			name:       "successful response",
-			statusCode: 200,
-			respBody:   basicRespBody,
+			name:     "successful response",
+			respBody: basicRespBody,
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(openinference.LLMModelName, openai.ModelGPT41Nano),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
 				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
 				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageContent), "Hello! How can I help you today?"),
@@ -121,42 +119,18 @@ func TestChatCompletionRecorder_RecordResponse(t *testing.T) {
 			expectedEvents: nil,
 			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
 		},
-		{
-			name:          "error response",
-			statusCode:    400,
-			respBody:      []byte(`{"error":{"message":"Invalid request","type":"invalid_request_error"}}`),
-			expectedAttrs: []attribute.KeyValue{},
-			expectedEvents: []trace.Event{{
-				Name: "exception",
-				Attributes: []attribute.KeyValue{
-					attribute.String("exception.type", "BadRequestError"),
-					attribute.String("exception.message", `Error code: 400 - {"error":{"message":"Invalid request","type":"invalid_request_error"}}`),
-				},
-				Time: time.Time{},
-			}},
-			expectedStatus: trace.Status{
-				Code:        codes.Error,
-				Description: `Error code: 400 - {"error":{"message":"Invalid request","type":"invalid_request_error"}}`,
-			},
-		},
-		{
-			name:       "partial/invalid JSON response",
-			statusCode: 200,
-			respBody:   []byte(`{"id":"chatcmpl-123","object":"chat.completion"`),
-			expectedAttrs: []attribute.KeyValue{
-				attribute.String(openinference.OutputValue, `{"id":"chatcmpl-123","object":"chat.completion"`),
-			},
-			expectedEvents: []trace.Event{},
-			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			recorder := NewChatCompletionRecorderFromEnv()
 
+			resp := &openai.ChatCompletionResponse{}
+			err := json.Unmarshal(tt.respBody, resp)
+			require.NoError(t, err)
+
 			actualSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
-				recorder.RecordResponse(span, tt.statusCode, tt.respBody)
+				recorder.RecordResponse(span, resp)
 				return false
 			})
 
@@ -167,12 +141,34 @@ func TestChatCompletionRecorder_RecordResponse(t *testing.T) {
 	}
 }
 
-func TestChatCompletionRecorder_RecordChunk(t *testing.T) {
+func TestChatCompletionRecorder_RecordResponseOnError(t *testing.T) {
 	recorder := NewChatCompletionRecorderFromEnv()
 
 	actualSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
-		recorder.RecordChunk(span, 0) // First chunk adds event.
-		recorder.RecordChunk(span, 1) // Subsequent chunks do not.
+		recorder.RecordResponseOnError(span, 400, []byte(`{"error":{"message":"Invalid request","type":"invalid_request_error"}}`))
+		return false
+	})
+
+	openinference.RequireAttributesEqual(t, []attribute.KeyValue{}, actualSpan.Attributes)
+	openinference.RequireEventsEqual(t, []trace.Event{{
+		Name: "exception",
+		Attributes: []attribute.KeyValue{
+			attribute.String("exception.type", "BadRequestError"),
+			attribute.String("exception.message", `Error code: 400 - {"error":{"message":"Invalid request","type":"invalid_request_error"}}`),
+		},
+		Time: time.Time{},
+	}}, actualSpan.Events)
+	require.Equal(t, trace.Status{
+		Code:        codes.Error,
+		Description: `Error code: 400 - {"error":{"message":"Invalid request","type":"invalid_request_error"}}`,
+	}, actualSpan.Status)
+}
+
+func TestChatCompletionRecorder_RecordResponseChunks(t *testing.T) {
+	recorder := NewChatCompletionRecorderFromEnv()
+
+	actualSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+		recorder.RecordResponseChunks(span, []*openai.ChatCompletionResponseChunk{{}, {}})
 		return false
 	})
 

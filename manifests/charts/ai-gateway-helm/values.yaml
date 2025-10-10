@@ -5,24 +5,53 @@
 
 # Default values for ai-gateway-helm.
 
+# Global configuration for the endpoints supported by the AI Gateway.
+endpointConfig:
+  # The prefix for all the routes served by the AI Gateway. Defaulting to "/". All the generated routes will have this prefix.
+  #
+  # With the default "/", the AI Gateway will assume that the downstream client's OpenAI SDK will talk to the Gateway using the base_url
+  # set to "http://<gateway-hostname>/v1" which has the default "/v1" prefix in the base_url.
+  #
+  # This can be used for providing a separation between AIGatewayRoutes and normal HTTPRoutes when the top level "/v1/" is not desired.
+  rootPrefix: "/"
+
 extProc:
   image:
     repository: docker.io/envoyproxy/ai-gateway-extproc
     # Overrides the image tag whose default is the chart appVersion.
     tag: ""
   imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
   # One of "info", "debug", "trace", "warn", "error", "fatal", "panic".
   logLevel: info
+
+  ## @param extProc.extraEnvVars Array with extra environment variables to add to extProc containers
+  ## e.g:
+  ## extraEnvVars:
+  ##   - name: OTEL_SERVICE_NAME
+  ##     value: "ai-gateway-extproc"
+  ##   - name: OTEL_TRACES_EXPORTER
+  ##     value: "otlp"
+  ##
+  extraEnvVars: []
 
 controller:
   logLevel: info
   nameOverride: ""
   fullnameOverride: "ai-gateway-controller"
 
-  # Comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels.
-  # Format: "header1:label1,header2:label2"
-  # Example: "x-team-id:team_id,x-user-id:user_id"
+  # DEPRECATED: metricsRequestHeaderLabels will be removed after v0.4. Use metricsRequestHeaderAttributes instead.
   metricsRequestHeaderLabels: ""
+
+  # Comma-separated key-value pairs for mapping HTTP request headers to Otel metric attributes.
+  # Format: "header1:label1,header2:label2"
+  # Example: "x-team-id:team.id,x-user-id:user.id"
+  metricsRequestHeaderAttributes: ""
+
+  # Comma-separated key-value pairs for mapping HTTP request headers to otel span attributes.
+  # Format: "header1:attribute1,header2:attribute2"
+  # Example: "x-session-id:session.id,x-user-id:user.id"
+  spanRequestHeaderAttributes: ""
 
   # -- Service Account --
   serviceAccount:
@@ -49,6 +78,7 @@ controller:
   podAnnotations: {}
   podSecurityContext: {}
   securityContext: {}
+  # DEPRECATED: podEnv will be removed after v0.3. Use controller.extraEnvVars instead.
   # Example of a podEnv
   # AWS STS request when rotating OIDC credentials will be configured to use AI_GATEWAY_STS_PROXY_URL proxy if set.
   #  - key: AI_GATEWAY_STS_PROXY_URL
@@ -60,6 +90,15 @@ controller:
   #  - key: AI_GATEWAY_GCP_AUTH_PROXY_URL
   #    value: some-proxy-placeholder
   podEnv: {}
+
+  ## @param controller.extraEnvVars Array with extra environment variables to add to controller containers
+  ## e.g:
+  ## extraEnvVars:
+  ##   - name: FOO
+  ##     value: "bar"
+  ##
+  extraEnvVars: []
+
   # Example of volumes
   #  - mountPath: /placeholder/path
   #    name: volume-name
@@ -117,4 +156,8 @@ controller:
   nodeSelector: {}
   tolerations: []
   affinity: {}
-
+  # maxRecvMsgSize is the maximum message size in bytes that the gRPC extension server can receive
+  # from xDS (envoy-gateway).
+  # This value should be increased in setups where count/complexity of xDS
+  # resources (configuration) is big. Defaults to 4MB.
+  # maxRecvMsgSize: "4194304"
