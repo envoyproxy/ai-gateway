@@ -6,10 +6,12 @@
 package extproc
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -147,6 +149,21 @@ type messagesProcessorUpstreamFilter struct {
 	stream                 bool
 	metrics                metrics.ChatCompletionMetrics
 	costs                  translator.LLMTokenUsage
+	gzipBuffer             []byte
+}
+
+// createResponseBodyResponse creates a ProcessingResponse for response body processing.
+func createResponseBodyResponse(headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation) *extprocv3.ProcessingResponse {
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_ResponseBody{
+			ResponseBody: &extprocv3.BodyResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation: headerMutation,
+					BodyMutation:   bodyMutation,
+				},
+			},
+		},
+	}
 }
 
 // selectTranslator selects the translator based on the output schema.
@@ -269,14 +286,22 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseBody(ctx context.Contex
 		}
 	}()
 
-	// Decompress the body if needed using common utility.
-	decodingResult, err := decodeContentIfNeeded(body.Body, c.responseEncoding)
+	// Decompress response body with buffering support
+	decodingResult, err := decodeContentWithBuffering(body.Body, c.responseEncoding, &c.gzipBuffer, body.EndOfStream)
 	if err != nil {
 		return nil, err
 	}
 
-	// headerMutation, bodyMutation, tokenUsage, err := c.translator.ResponseBody(c.responseHeaders, br, body.EndOfStream).
-	headerMutation, bodyMutation, tokenUsage, responseModel, err := c.translator.ResponseBody(c.responseHeaders, decodingResult.reader, body.EndOfStream)
+	// Check if we got decompressed data or are still buffering
+	data, _ := io.ReadAll(decodingResult.reader)
+	if len(data) == 0 && c.stream && !body.EndOfStream {
+		// Still buffering incomplete data - return early with no mutations, skip metrics
+		return createResponseBodyResponse(nil, nil), nil
+	}
+
+	// Process the decompressed data
+	decodingResult.reader = bytes.NewReader(data)
+	headerMutation, bodyMutation, tokenUsage, responseModel, err := c.translator.ResponseBody(c.responseHeaders, decodingResult.reader, c.stream)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}
@@ -284,18 +309,11 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseBody(ctx context.Contex
 	c.metrics.SetResponseModel(responseModel)
 
 	// Remove content-encoding header if original body encoded but was mutated in the processor.
-	headerMutation = removeContentEncodingIfNeeded(headerMutation, bodyMutation, decodingResult.isEncoded)
-
-	resp := &extprocv3.ProcessingResponse{
-		Response: &extprocv3.ProcessingResponse_ResponseBody{
-			ResponseBody: &extprocv3.BodyResponse{
-				Response: &extprocv3.CommonResponse{
-					HeaderMutation: headerMutation,
-					BodyMutation:   bodyMutation,
-				},
-			},
-		},
+	if !c.stream || body.EndOfStream {
+		headerMutation = removeContentEncodingIfNeeded(headerMutation, bodyMutation, decodingResult.isEncoded)
 	}
+
+	resp := createResponseBodyResponse(headerMutation, bodyMutation)
 
 	c.costs.InputTokens += tokenUsage.InputTokens
 	c.costs.OutputTokens += tokenUsage.OutputTokens
