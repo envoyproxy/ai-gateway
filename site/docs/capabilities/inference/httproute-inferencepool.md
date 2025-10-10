@@ -40,7 +40,7 @@ kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for
 Deploy a sample inference backend that will serve as your inference endpoints:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/main/config/manifests/vllm/sim-deployment.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v1.0.1/config/manifests/vllm/sim-deployment.yaml
 ```
 
 This creates a simulated vLLM deployment with multiple replicas that can handle inference requests.
