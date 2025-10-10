@@ -774,7 +774,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			wantError:   false,
 			wantHeaderMut: &extprocv3.HeaderMutation{
 				SetHeaders: []*corev3.HeaderValueOption{{
-					Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("457")},
+					Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("515")},
 				}},
 			},
 			wantBodyMut: &extprocv3.BodyMutation{
@@ -807,7 +807,9 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
     "object": "chat.completion",
     "usage": {
         "completion_tokens": 12,
+        "completion_tokens_details": {},
         "prompt_tokens": 8,
+        "prompt_tokens_details": {},
         "total_tokens": 20
     }
 }`),
