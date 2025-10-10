@@ -347,7 +347,7 @@ func CleanupKindCluster(testsFailed bool, clusterName string) {
 }
 
 func installInferenceExtensionCRD(ctx context.Context) (err error) {
-	const infExtURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.0.1/experimental-manifests.yaml"
+	const infExtURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.0.1/manifests.yaml"
 	return KubectlApplyManifest(ctx, infExtURL)
 }
 
