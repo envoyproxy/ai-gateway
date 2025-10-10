@@ -22,10 +22,10 @@ Before starting, ensure you have:
 Install the Gateway API Inference Extension CRDs and controller:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v0.5.1/manifests.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.0.1/manifests.yaml
 ```
 
-After installing InferencePool CRD, enabled InferencePool support in Envoy Gateway, restart the deployment, and wait for it to be ready:
+After installing InferencePool CRD, enable InferencePool support in Envoy Gateway, restart the deployment, and wait for it to be ready:
 
 ```shell
 kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/inference-pool/config.yaml
@@ -40,7 +40,7 @@ kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for
 Deploy a sample inference backend that will serve as your inference endpoints:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.5.1/config/manifests/vllm/sim-deployment.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/main/config/manifests/vllm/sim-deployment.yaml
 ```
 
 This creates a simulated vLLM deployment with multiple replicas that can handle inference requests.
@@ -52,7 +52,7 @@ This creates a simulated vLLM deployment with multiple replicas that can handle 
 Create an InferenceObjective resource to define the model configuration:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.5.1/config/manifests/inferencemodel.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api-inference-extension/refs/tags/v1.0.1/config/manifests/inferenceobjective.yaml
 ```
 
 ## Step 4: Create InferencePool Resources
@@ -60,14 +60,15 @@ kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extens
 Deploy the InferencePool and related resources:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.5.1/config/manifests/inferencepool-resources.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v1.0.1/config/manifests/inferencepool-resources.yaml
 ```
 
 This creates:
 
 - InferencePool resource defining the endpoint selection criteria
-- Endpoint Picker Provider (EPP) deployment for intelligent routing
+- Endpoint Picker Provider (EPP) deployment for intelligent routing with advanced scheduling plugins
 - Associated services and configurations
+- RBAC permissions for accessing InferencePool and Pod resources
 
 ## Step 5: Configure Gateway and HTTPRoute
 
@@ -111,6 +112,7 @@ spec:
           kind: InferencePool
           name: vllm-llama3-8b-instruct
           namespace: default
+          port: 8080
           weight: 1
       matches:
         - path:
