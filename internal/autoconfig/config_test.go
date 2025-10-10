@@ -281,7 +281,7 @@ func TestWriteConfig(t *testing.T) {
 			expected: azureOpenAIWithOrgAndProjectYAML,
 		},
 		{
-			name: "OpenAI with debug logging",
+			name: "OpenAI with debug logging and custom Envoy version",
 			input: ConfigData{
 				Backends: []Backend{
 					{
@@ -297,7 +297,8 @@ func TestWriteConfig(t *testing.T) {
 					SchemaName:  "OpenAI",
 					Version:     "",
 				},
-				Debug: true,
+				Debug:        true,
+				EnvoyVersion: "1.35.0",
 			},
 			// TODO: raise issue in EG to allow doing effectively this:
 			// "--component-log-level ext_proc:trace,http:debug,connection:debug"

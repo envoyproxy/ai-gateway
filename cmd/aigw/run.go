@@ -219,11 +219,14 @@ func run(ctx context.Context, c cmdRun, o runOpts, stdout, stderr io.Writer) err
 			return
 		}
 		debugLogger.Info("Found Envoy admin server", "adminPort", envoyAdmin.Port())
-		pollEnvoyReady(ctx, debugLogger, envoyAdmin, 2*time.Second)
+		if err = pollEnvoyReady(ctx, debugLogger, envoyAdmin, 2*time.Second); err != nil {
+			return
+		}
 		c.AdminPort = envoyAdminPort // write back for testing
 		// Print a status message without any timestamp formatting
 		startDuration := time.Since(start).Round(100 * time.Millisecond)
-		_, _ = fmt.Fprintf(stderr, "Envoy AI Gateway listening on http://localhost:%d (admin http://localhost:%d) after %v\n", listenerPort, envoyAdmin.Port(), startDuration)
+		_, _ = fmt.Fprintf(stderr, "Envoy AI Gateway listening on http://localhost:%d (admin http://localhost:%d) after %v\n",
+			listenerPort, envoyAdmin.Port(), startDuration)
 	}()
 
 	// Start the gateway server. This will block until the server is stopped.
@@ -234,18 +237,18 @@ func run(ctx context.Context, c cmdRun, o runOpts, stdout, stderr io.Writer) err
 }
 
 // pollEnvoyReady polls Envoy's readiness until it is ready or the context is done.
-func pollEnvoyReady(ctx context.Context, l *slog.Logger, envoyAdmin aigw.EnvoyAdminClient, interval time.Duration) {
+func pollEnvoyReady(ctx context.Context, l *slog.Logger, envoyAdmin aigw.EnvoyAdminClient, interval time.Duration) error {
 	t := time.NewTicker(interval)
 	defer t.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return ctx.Err()
 		case <-t.C:
 			if err := envoyAdmin.IsReady(ctx); err == nil {
 				l.Info("Envoy is ready!")
-				return
+				return nil
 			} else {
 				l.Info("Waiting for Envoy to be ready...", "err", err)
 			}

@@ -39,6 +39,12 @@ metadata:
   name: envoy-ai-gateway
   namespace: default
 spec:
+{{- if .EnvoyVersion }}
+  provider:
+    type: Host
+    host:
+      envoyVersion: "{{ .EnvoyVersion }}"
+{{- end }}
   logging:
     level:
 {{- if .Debug }}

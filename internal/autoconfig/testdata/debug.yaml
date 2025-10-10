@@ -34,6 +34,10 @@ metadata:
   name: envoy-ai-gateway
   namespace: default
 spec:
+  provider:
+    type: Host
+    host:
+      envoyVersion: "1.35.0"
   logging:
     level:
       default: debug

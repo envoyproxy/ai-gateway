@@ -55,6 +55,7 @@ type ConfigData struct {
 	OpenAI         *OpenAIConfig   // OpenAI-specific configuration (nil for MCP-only mode)
 	MCPBackendRefs []MCPBackendRef // MCP routing configuration (nil/empty for OpenAI-only mode)
 	Debug          bool            // Enable debug logging for Envoy (includes component-level logging for ext_proc, http, connection)
+	EnvoyVersion   string          // Explicitly configure the version of Envoy to use.
 }
 
 // WriteConfig generates the AI Gateway configuration.
