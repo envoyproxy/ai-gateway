@@ -15,7 +15,7 @@ const (
 	defaultRequestTimeout gwapiv1.Duration = "60s"
 
 	// inferencePoolGroup is the API group for InferencePool resources.
-	inferencePoolGroup = "inference.networking.x-k8s.io"
+	inferencePoolGroup = "inference.networking.k8s.io"
 	// inferencePoolKind is the kind for InferencePool resources.
 	inferencePoolKind = "InferencePool"
 )

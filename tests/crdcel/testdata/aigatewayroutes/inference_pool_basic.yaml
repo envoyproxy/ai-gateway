@@ -13,11 +13,8 @@ spec:
   parentRefs:
     - name: gateway
   rules:
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /v1/chat/completions
+    - matches: []
       backendRefs:
-        - group: inference.networking.x-k8s.io
+        - group: inference.networking.k8s.io
           kind: InferencePool
           name: my-inference-pool

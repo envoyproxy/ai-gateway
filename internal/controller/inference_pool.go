@@ -17,13 +17,13 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
+	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
 
-// InferencePoolController implements [reconcile.TypedReconciler] for [gwaiev1a2.InferencePool].
+// InferencePoolController implements [reconcile.TypedReconciler] for [gwaiev1.InferencePool].
 //
 // This handles the InferencePool resource and updates its status based on associated Gateways.
 //
@@ -34,7 +34,7 @@ type InferencePoolController struct {
 	logger logr.Logger
 }
 
-// NewInferencePoolController creates a new reconcile.TypedReconciler for gwaiev1a2.InferencePool.
+// NewInferencePoolController creates a new reconcile.TypedReconciler for gwaiev1.InferencePool.
 func NewInferencePoolController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
 ) *InferencePoolController {
@@ -45,9 +45,9 @@ func NewInferencePoolController(
 	}
 }
 
-// Reconcile implements the [reconcile.TypedReconciler] for [gwaiev1a2.InferencePool].
+// Reconcile implements the [reconcile.TypedReconciler] for [gwaiev1.InferencePool].
 func (c *InferencePoolController) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
-	var inferencePool gwaiev1a2.InferencePool
+	var inferencePool gwaiev1.InferencePool
 	if err := c.client.Get(ctx, req.NamespacedName, &inferencePool); err != nil {
 		if client.IgnoreNotFound(err) == nil {
 			c.logger.Info("Deleting InferencePool",
@@ -69,7 +69,7 @@ func (c *InferencePoolController) Reconcile(ctx context.Context, req reconcile.R
 
 // syncInferencePool is the main logic for reconciling the InferencePool resource.
 // This is decoupled from the Reconcile method to centralize the error handling and status updates.
-func (c *InferencePoolController) syncInferencePool(ctx context.Context, inferencePool *gwaiev1a2.InferencePool) error {
+func (c *InferencePoolController) syncInferencePool(ctx context.Context, inferencePool *gwaiev1.InferencePool) error {
 	// Check if the ExtensionReference service exists.
 	if err := c.validateExtensionReference(ctx, inferencePool); err != nil {
 		return err
@@ -97,7 +97,7 @@ func (c *InferencePoolController) routeReferencesInferencePool(route *aigv1a1.AI
 }
 
 // getReferencedGateways returns all Gateways that reference the given InferencePool.
-func (c *InferencePoolController) getReferencedGateways(ctx context.Context, inferencePool *gwaiev1a2.InferencePool) (map[string]*gwapiv1.Gateway, error) {
+func (c *InferencePoolController) getReferencedGateways(ctx context.Context, inferencePool *gwaiev1.InferencePool) (map[string]*gwapiv1.Gateway, error) {
 	// Find all Gateways across all namespaces.
 	var gateways gwapiv1.GatewayList
 	if err := c.client.List(ctx, &gateways); err != nil {
@@ -119,14 +119,9 @@ func (c *InferencePoolController) getReferencedGateways(ctx context.Context, inf
 }
 
 // validateExtensionReference checks if the ExtensionReference service exists.
-func (c *InferencePoolController) validateExtensionReference(ctx context.Context, inferencePool *gwaiev1a2.InferencePool) error {
-	// Check if ExtensionRef is specified.
-	if inferencePool.Spec.ExtensionRef == nil {
-		return nil // No extension reference to validate.
-	}
-
+func (c *InferencePoolController) validateExtensionReference(ctx context.Context, inferencePool *gwaiev1.InferencePool) error {
 	// Get the service name from ExtensionReference.
-	serviceName := inferencePool.Spec.ExtensionRef.Name
+	serviceName := inferencePool.Spec.EndpointPickerRef.Name
 	if serviceName == "" {
 		return fmt.Errorf("ExtensionReference name is empty")
 	}
@@ -218,7 +213,7 @@ func (c *InferencePoolController) routeReferencesGateway(parentRefs []gwapiv1.Pa
 func (c *InferencePoolController) httpRouteReferencesInferencePool(route *gwapiv1.HTTPRoute, inferencePoolName string) bool {
 	for _, rule := range route.Spec.Rules {
 		for _, backendRef := range rule.BackendRefs {
-			if backendRef.Group != nil && string(*backendRef.Group) == "inference.networking.x-k8s.io" &&
+			if backendRef.Group != nil && string(*backendRef.Group) == "inference.networking.k8s.io" &&
 				backendRef.Kind != nil && string(*backendRef.Kind) == "InferencePool" &&
 				string(backendRef.Name) == inferencePoolName {
 				return true
@@ -229,7 +224,7 @@ func (c *InferencePoolController) httpRouteReferencesInferencePool(route *gwapiv
 }
 
 // updateInferencePoolStatus updates the status of the InferencePool.
-func (c *InferencePoolController) updateInferencePoolStatus(ctx context.Context, inferencePool *gwaiev1a2.InferencePool, conditionType string, message string) {
+func (c *InferencePoolController) updateInferencePoolStatus(ctx context.Context, inferencePool *gwaiev1.InferencePool, conditionType string, message string) {
 	// Check if this is an ExtensionReference validation error.
 	isExtensionRefError := conditionType == "NotAccepted" &&
 		(strings.Contains(message, "ExtensionReference service") && strings.Contains(message, "not found"))
@@ -241,17 +236,17 @@ func (c *InferencePoolController) updateInferencePoolStatus(ctx context.Context,
 	}
 
 	// Build Parents status.
-	var parents []gwaiev1a2.PoolStatus
+	var parents []gwaiev1.ParentStatus
 	for _, gw := range referencedGateways {
 		// Set Gateway group and kind according to Gateway API defaults.
 		gatewayGroup := "gateway.networking.k8s.io"
 		gatewayKind := "Gateway"
 
-		parentRef := gwaiev1a2.ParentGatewayReference{
-			Group:     (*gwaiev1a2.Group)(&gatewayGroup),
-			Kind:      (*gwaiev1a2.Kind)(&gatewayKind),
-			Name:      gwaiev1a2.ObjectName(gw.Name),
-			Namespace: (*gwaiev1a2.Namespace)(&gw.Namespace),
+		parentRef := gwaiev1.ParentReference{
+			Group:     (*gwaiev1.Group)(&gatewayGroup),
+			Kind:      gwaiev1.Kind(gatewayKind),
+			Name:      gwaiev1.ObjectName(gw.Name),
+			Namespace: gwaiev1.Namespace(gw.Namespace),
 		}
 
 		var conditions []metav1.Condition
@@ -270,8 +265,8 @@ func (c *InferencePoolController) updateInferencePoolStatus(ctx context.Context,
 			conditions = append(conditions, resolvedRefsCondition)
 		}
 
-		parents = append(parents, gwaiev1a2.PoolStatus{
-			GatewayRef: parentRef,
+		parents = append(parents, gwaiev1.ParentStatus{
+			ParentRef:  parentRef,
 			Conditions: conditions,
 		})
 	}
@@ -313,7 +308,7 @@ func (c *InferencePoolController) gatewayEventHandler(ctx context.Context, obj c
 	}
 
 	// Find all InferencePools in the same namespace that might be affected by this Gateway.
-	var inferencePools gwaiev1a2.InferencePoolList
+	var inferencePools gwaiev1.InferencePoolList
 	if err := c.client.List(ctx, &inferencePools, client.InNamespace(gateway.Namespace)); err != nil {
 		c.logger.Error(err, "failed to list InferencePools for Gateway event", "gateway", gateway.Name)
 		return nil
@@ -371,7 +366,7 @@ func (c *InferencePoolController) httpRouteEventHandler(_ context.Context, obj c
 	var requests []reconcile.Request
 	for _, rule := range route.Spec.Rules {
 		for _, backendRef := range rule.BackendRefs {
-			if backendRef.Group != nil && string(*backendRef.Group) == "inference.networking.x-k8s.io" &&
+			if backendRef.Group != nil && string(*backendRef.Group) == "inference.networking.k8s.io" &&
 				backendRef.Kind != nil && string(*backendRef.Kind) == "InferencePool" {
 				requests = append(requests, reconcile.Request{
 					NamespacedName: client.ObjectKey{

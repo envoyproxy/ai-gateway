@@ -51,7 +51,7 @@ When request goes to envoyproxy, it goes to the http filter chain, the ext-proc 
 The gRPC service info is pre-defined in [InferencePool](https://gateway-api-inference-extension.sigs.k8s.io/api-types/inferencepool/) extensionRef, giving an example below:
 
 ```
-apiVersion: inference.networking.x-k8s.io/v1alpha2
+apiVersion: inference.networking.k8s.io/v1
 kind: InferencePool
 metadata:
   name: vllm-llama3-8b-instruct
@@ -81,7 +81,7 @@ spec:
     name: inference-gateway
   rules:
   - backendRefs:
-    - group: inference.networking.x-k8s.io
+    - group: inference.networking.k8s.io
       kind: InferencePool
       name: vllm-llama3-8b-instruct
     matches:
@@ -209,7 +209,7 @@ This requires to expand the `AIGatewayRouteRuleBackendRef` with `BackendObjectRe
 - When it matches vllm-llama3-8b-instruct goes to InferencePool `vllm-llama3-8b-instruct`
 
 ```
-apiVersion: inference.networking.x-k8s.io/v1alpha2
+apiVersion: inference.networking.k8s.io/v1
 kind: InferencePool
 metadata:
   name: vllm-llama3-8b-instruct
@@ -249,7 +249,7 @@ spec:
               value: vllm-llama3-8b-instruct
       backendRefs:
         - name: vllm-llama3-8b-instruct
-        	group: inference.networking.x-k8s.io
+        	group: inference.networking.k8s.io
           kind: InferencePool
 ```
 
@@ -269,7 +269,7 @@ This approach is preferred because InferencePool resources do not require Backen
 - When it matches vllm-llama3-8b-instruct goes to AIServiceBackend `vllm-llama3-8b-instruct`
 
 ```yaml
-apiVersion: inference.networking.x-k8s.io/v1alpha2
+apiVersion: inference.networking.k8s.io/v1
 kind: InferencePool
 metadata:
   name: vllm-llama3-8b-instruct
@@ -319,7 +319,7 @@ spec:
     name: OpenAI
   backendRef:
     name: vllm-llama3-8b-instruct
-    group: inference.networking.x-k8s.io
+    group: inference.networking.k8s.io
     kind: InferencePool
 ```
 
@@ -384,7 +384,7 @@ It adds the the cluster with override_host loadBalancingPolicy, we can add the h
 Take the configuration below as an example:
 
 ```yaml
-apiVersion: inference.networking.x-k8s.io/v1alpha2
+apiVersion: inference.networking.k8s.io/v1
 kind: InferencePool
 metadata:
   name: vllm-llama3-8b-instruct
@@ -417,7 +417,7 @@ spec:
               value: vllm-llama3-8b-instruct
       backendRefs:
         - name: vllm-llama3-8b-instruct
-        	group: inference.networking.x-k8s.io
+        	group: inference.networking.k8s.io
           kind: InferencePool
 ```
 
@@ -582,7 +582,7 @@ spec:
               name: x-ai-eg-model
               value: meta-llama/Llama-3.1-8B-Instruct
       backendRefs:
-        - group: inference.networking.x-k8s.io
+        - group: inference.networking.k8s.io
           kind: InferencePool
           name: vllm-llama3-8b-instruct
     - matches:
@@ -591,7 +591,7 @@ spec:
               name: x-ai-eg-model
               value: mistral:latest
       backendRefs:
-        - group: inference.networking.x-k8s.io
+        - group: inference.networking.k8s.io
           kind: InferencePool
           name: mistral
     - matches:
@@ -619,7 +619,7 @@ spec:
       namespace: default
   rules:
     - backendRefs:
-        - group: inference.networking.x-k8s.io
+        - group: inference.networking.k8s.io
           kind: InferencePool
           name: vllm-llama3-8b-instruct
           namespace: default

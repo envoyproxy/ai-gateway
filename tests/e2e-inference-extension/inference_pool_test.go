@@ -18,7 +18,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
+	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 )
@@ -176,14 +176,14 @@ func testInferenceGatewayConnectivity(t *testing.T, egSelector, body string, add
 }
 
 // getInferencePoolStatus retrieves the status of an InferencePool resource.
-func getInferencePoolStatus(ctx context.Context, namespace, name string) (*gwaiev1a2.InferencePoolStatus, error) {
+func getInferencePoolStatus(ctx context.Context, namespace, name string) (*gwaiev1.InferencePoolStatus, error) {
 	cmd := exec.CommandContext(ctx, "kubectl", "get", "inferencepool", name, "-n", namespace, "-o", "json")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get InferencePool %s/%s: %w", namespace, name, err)
 	}
 
-	var inferencePool gwaiev1a2.InferencePool
+	var inferencePool gwaiev1.InferencePool
 	if err := json.Unmarshal(out, &inferencePool); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal InferencePool: %w", err)
 	}
@@ -207,10 +207,10 @@ func requireInferencePoolStatusValid(t *testing.T, namespace, inferencePoolName,
 		}
 
 		// Find the parent status for the expected Gateway.
-		var foundParent *gwaiev1a2.PoolStatus
+		var foundParent *gwaiev1.ParentStatus
 		for i := range status.Parents {
 			parent := &status.Parents[i]
-			if string(parent.GatewayRef.Name) == expectedGatewayName {
+			if string(parent.ParentRef.Name) == expectedGatewayName {
 				foundParent = parent
 				break
 			}
@@ -222,23 +222,23 @@ func requireInferencePoolStatusValid(t *testing.T, namespace, inferencePoolName,
 		}
 
 		// Validate the GatewayRef fields.
-		if foundParent.GatewayRef.Group == nil || string(*foundParent.GatewayRef.Group) != "gateway.networking.k8s.io" {
-			t.Logf("InferencePool %s parent GatewayRef has incorrect group: %v", inferencePoolName, foundParent.GatewayRef.Group)
+		if foundParent.ParentRef.Group == nil || string(*foundParent.ParentRef.Group) != "gateway.networking.k8s.io" {
+			t.Logf("InferencePool %s parent GatewayRef has incorrect group: %v", inferencePoolName, foundParent.ParentRef.Group)
 			return false
 		}
 
-		if foundParent.GatewayRef.Kind == nil || string(*foundParent.GatewayRef.Kind) != "Gateway" {
-			t.Logf("InferencePool %s parent GatewayRef has incorrect kind: %v", inferencePoolName, foundParent.GatewayRef.Kind)
+		if string(foundParent.ParentRef.Kind) != "Gateway" {
+			t.Logf("InferencePool %s parent GatewayRef has incorrect kind: %v", inferencePoolName, foundParent.ParentRef.Kind)
 			return false
 		}
 
-		if string(foundParent.GatewayRef.Name) != expectedGatewayName {
-			t.Logf("InferencePool %s parent GatewayRef has incorrect name: %s (expected %s)", inferencePoolName, foundParent.GatewayRef.Name, expectedGatewayName)
+		if string(foundParent.ParentRef.Name) != expectedGatewayName {
+			t.Logf("InferencePool %s parent GatewayRef has incorrect name: %s (expected %s)", inferencePoolName, foundParent.ParentRef.Name, expectedGatewayName)
 			return false
 		}
 
-		if foundParent.GatewayRef.Namespace == nil || string(*foundParent.GatewayRef.Namespace) != namespace {
-			t.Logf("InferencePool %s parent GatewayRef has incorrect namespace: %v (expected %s)", inferencePoolName, foundParent.GatewayRef.Namespace, namespace)
+		if string(foundParent.ParentRef.Namespace) != namespace {
+			t.Logf("InferencePool %s parent GatewayRef has incorrect namespace: %v (expected %s)", inferencePoolName, foundParent.ParentRef.Namespace, namespace)
 			return false
 		}
 

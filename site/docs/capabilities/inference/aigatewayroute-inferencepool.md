@@ -20,10 +20,10 @@ Before starting, ensure you have:
 Install the Gateway API Inference Extension CRDs and controller:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v0.5.1/manifests.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.0.1/manifests.yaml
 ```
 
-After installing InferencePool CRD, enabled InferencePool support in Envoy Gateway, restart the deployment, and wait for it to be ready:
+After installing InferencePool CRD, enable InferencePool support in Envoy Gateway, restart the deployment, and wait for it to be ready:
 
 ```shell
 kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/inference-pool/config.yaml
@@ -39,20 +39,20 @@ Deploy sample inference backends and related resources:
 
 ```bash
 # Deploy vLLM simulation backend
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.5.1/config/manifests/vllm/sim-deployment.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v1.0.1/config/manifests/vllm/sim-deployment.yaml
 
-# Deploy InferenceModel
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.5.1/config/manifests/inferencemodel.yaml
+# Deploy InferenceObjective
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api-inference-extension/refs/tags/v1.0.1/config/manifests/inferenceobjective.yaml
 
 # Deploy InferencePool resources
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.5.1/config/manifests/inferencepool-resources.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v1.0.1/config/manifests/inferencepool-resources.yaml
 ```
 
 > **Note**: These deployments create the `vllm-llama3-8b-instruct` InferencePool and related resources that are referenced in the AIGatewayRoute configuration below.
 
-## Step 3: Create EndpointPicker Resources
+## Step 3: Create Custom InferencePool Resources
 
-Create the base resources for the example, including additional inference backends:
+Create additional inference backends with custom EndpointPicker configuration:
 
 ```yaml
 cat <<EOF | kubectl apply -f -
@@ -68,7 +68,8 @@ spec:
     - protocol: TCP
       port: 8080
       targetPort: 8080
-  clusterIP: None  # Headless service for direct pod access
+  # The headless service allows the IP addresses of the pods to be resolved via the Service DNS.
+  clusterIP: None
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -101,27 +102,31 @@ spec:
             initialDelaySeconds: 1
             periodSeconds: 1
 ---
-apiVersion: inference.networking.x-k8s.io/v1alpha2
+apiVersion: inference.networking.k8s.io/v1
 kind: InferencePool
 metadata:
   name: mistral
   namespace: default
 spec:
-  targetPortNumber: 8080
+  targetPorts:
+    - number: 8080
   selector:
-    app: mistral-upstream
-  extensionRef:
+    matchLabels:
+      app: mistral-upstream
+  endpointPickerRef:
     name: mistral-epp
+    port:
+      number: 9002
 ---
 apiVersion: inference.networking.x-k8s.io/v1alpha2
-kind: InferenceModel
+kind: InferenceObjective
 metadata:
   name: mistral
   namespace: default
 spec:
-  modelName: mistral:latest
-  criticality: Critical
+  priority: 10
   poolRef:
+    # Bind the InferenceObjective to the InferencePool.
     name: mistral
 ---
 apiVersion: v1
@@ -138,6 +143,12 @@ spec:
       targetPort: 9002
       appProtocol: http2
   type: ClusterIP
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mistral-epp
+  namespace: default
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -156,24 +167,28 @@ spec:
       labels:
         app: mistral-epp
     spec:
+      serviceAccountName: mistral-epp
+      # Conservatively, this timeout should mirror the longest grace period of the pods within the pool
       terminationGracePeriodSeconds: 130
       containers:
         - name: epp
-          image: registry.k8s.io/gateway-api-inference-extension/epp:v0.5.1
+          image: registry.k8s.io/gateway-api-inference-extension/epp:v1.0.1
           imagePullPolicy: IfNotPresent
           args:
-            - -poolName
+            - --pool-name
             - "mistral"
-            - "-poolNamespace"
+            - "--pool-namespace"
             - "default"
-            - -v
+            - --v
             - "4"
             - --zap-encoder
             - "json"
-            - -grpcPort
+            - --grpc-port
             - "9002"
-            - -grpcHealthPort
+            - --grpc-health-port
             - "9003"
+            - "--config-file"
+            - "/config/default-plugins.yaml"
           ports:
             - containerPort: 9002
             - containerPort: 9003
@@ -191,6 +206,94 @@ spec:
               service: inference-extension
             initialDelaySeconds: 5
             periodSeconds: 10
+          volumeMounts:
+            - name: plugins-config-volume
+              mountPath: "/config"
+      volumes:
+        - name: plugins-config-volume
+          configMap:
+            name: plugins-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: plugins-config
+  namespace: default
+data:
+  default-plugins.yaml: |
+    apiVersion: inference.networking.x-k8s.io/v1alpha1
+    kind: EndpointPickerConfig
+    plugins:
+    - type: queue-scorer
+    - type: kv-cache-utilization-scorer
+    - type: prefix-cache-scorer
+    schedulingProfiles:
+    - name: default
+      plugins:
+      - pluginRef: queue-scorer
+      - pluginRef: kv-cache-utilization-scorer
+      - pluginRef: prefix-cache-scorer
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: pod-read
+  namespace: default
+rules:
+  - apiGroups: ["inference.networking.x-k8s.io"]
+    resources: ["inferenceobjectives", "inferencepools"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["inference.networking.k8s.io"]
+    resources: ["inferencepools"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "watch", "list"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: pod-read-binding
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: mistral-epp
+    namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pod-read
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: auth-reviewer
+rules:
+  - apiGroups:
+      - authentication.k8s.io
+    resources:
+      - tokenreviews
+    verbs:
+      - create
+  - apiGroups:
+      - authorization.k8s.io
+    resources:
+      - subjectaccessreviews
+    verbs:
+      - create
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: auth-reviewer-binding
+subjects:
+  - kind: ServiceAccount
+    name: mistral-epp
+    namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: auth-reviewer
 EOF
 ```
 
@@ -314,7 +417,7 @@ spec:
               name: x-ai-eg-model
               value: meta-llama/Llama-3.1-8B-Instruct
       backendRefs:
-        - group: inference.networking.x-k8s.io
+        - group: inference.networking.k8s.io
           kind: InferencePool
           name: vllm-llama3-8b-instruct
     # Route for Mistral model via InferencePool
@@ -324,7 +427,7 @@ spec:
               name: x-ai-eg-model
               value: mistral:latest
       backendRefs:
-        - group: inference.networking.x-k8s.io
+        - group: inference.networking.k8s.io
           kind: InferencePool
           name: mistral
     # Route for traditional backend (non-InferencePool)
@@ -442,7 +545,7 @@ InferencePool supports configuration annotations to customize the external proce
 Configure how the external processor handles request and response bodies:
 
 ```yaml
-apiVersion: inference.networking.x-k8s.io/v1alpha2
+apiVersion: inference.networking.k8s.io/v1
 kind: InferencePool
 metadata:
   name: my-pool
@@ -464,7 +567,7 @@ spec:
 Configure whether the external processor can override the processing mode:
 
 ```yaml
-apiVersion: inference.networking.x-k8s.io/v1alpha2
+apiVersion: inference.networking.k8s.io/v1
 kind: InferencePool
 metadata:
   name: my-pool
@@ -486,7 +589,7 @@ spec:
 You can use both annotations together:
 
 ```yaml
-apiVersion: inference.networking.x-k8s.io/v1alpha2
+apiVersion: inference.networking.k8s.io/v1
 kind: InferencePool
 metadata:
   name: my-pool

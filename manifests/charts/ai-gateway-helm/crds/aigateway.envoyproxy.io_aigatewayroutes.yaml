@@ -451,7 +451,7 @@ spec:
                             description: |-
                               Group is the group of the backend resource.
                               When not specified, defaults to aigateway.envoyproxy.io (AIServiceBackend).
-                              Currently, only "inference.networking.x-k8s.io" is supported for InferencePool resources.
+                              Currently, only "inference.networking.k8s.io" is supported for InferencePool resources.
                             maxLength: 253
                             pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                             type: string
@@ -505,9 +505,9 @@ spec:
                         - message: group and kind must be specified together
                           rule: '!has(self.group) && !has(self.kind) || (has(self.group)
                             && has(self.kind))'
-                        - message: only InferencePool from inference.networking.x-k8s.io
+                        - message: only InferencePool from inference.networking.k8s.io
                             group is supported
-                          rule: '!has(self.group) || (self.group == ''inference.networking.x-k8s.io''
+                          rule: '!has(self.group) || (self.group == ''inference.networking.k8s.io''
                             && self.kind == ''InferencePool'')'
                       maxItems: 128
                       type: array

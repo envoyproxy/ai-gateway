@@ -6,6 +6,8 @@
 package e2e
 
 import (
+	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -40,10 +42,19 @@ func TestGatewayAPIInferenceExtension(t *testing.T) {
 	config.SetupTimeoutConfig(&defaultTimeoutConfig)
 	options.TimeoutConfig = defaultTimeoutConfig
 	options.GatewayClassName = "inference-pool"
-	// enable EPPUnAvaliableFailOpen after https://github.com/kubernetes-sigs/gateway-api-inference-extension/pull/1265 merged.
-	options.SkipTests = []string{
-		"EppUnAvailableFailOpen",
-	}
+	options.SkipTests = []string{}
+
+	// Setup cleanup to print report even if test fails
+	t.Cleanup(func() {
+		if content, err := os.ReadFile(options.ReportOutputPath); err != nil {
+			t.Logf("Failed to read conformance report file %s: %v", options.ReportOutputPath, err)
+		} else {
+			fmt.Printf("\n=== CONFORMANCE TEST REPORT (CLEANUP) ===\n")
+			fmt.Printf("Report file: %s\n", options.ReportOutputPath)
+			fmt.Printf("Content:\n%s\n", string(content))
+			fmt.Printf("=== END OF REPORT (CLEANUP) ===\n\n")
+		}
+	})
 
 	gie.RunConformanceWithOptions(t, options)
 }

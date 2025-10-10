@@ -437,7 +437,7 @@ func Test_newHTTPRoute_InferencePool(t *testing.T) {
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
 						{
 							Name:   "test-inference-pool",
-							Group:  ptr.To("inference.networking.x-k8s.io"),
+							Group:  ptr.To("inference.networking.k8s.io"),
 							Kind:   ptr.To("InferencePool"),
 							Weight: ptr.To(int32(100)),
 						},
@@ -460,7 +460,7 @@ func Test_newHTTPRoute_InferencePool(t *testing.T) {
 
 	// Check the first rule (our InferencePool rule).
 	backendRef := httpRoute.Spec.Rules[0].BackendRefs[0]
-	require.Equal(t, "inference.networking.x-k8s.io", string(*backendRef.Group))
+	require.Equal(t, "inference.networking.k8s.io", string(*backendRef.Group))
 	require.Equal(t, "InferencePool", string(*backendRef.Kind))
 	require.Equal(t, "test-inference-pool", string(backendRef.Name))
 	require.Equal(t, "test-ns", string(*backendRef.Namespace))
