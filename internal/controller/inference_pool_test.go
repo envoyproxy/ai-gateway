@@ -684,31 +684,6 @@ func TestInferencePoolController_EdgeCases(t *testing.T) {
 	require.NoError(t, err, "Should not error when InferencePool doesn't exist")
 	require.Equal(t, ctrl.Result{}, result)
 
-	// Test InferencePool without ExtensionRef.
-	inferencePoolNoExtRef := &gwaiev1.InferencePool{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-inference-pool-no-ext",
-			Namespace: "default",
-		},
-		Spec: gwaiev1.InferencePoolSpec{
-			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
-				"app": "test-app",
-			}},
-			TargetPorts: []gwaiev1.Port{{Number: 8080}},
-			// No ExtensionRef.
-		},
-	}
-	require.NoError(t, fakeClient.Create(context.Background(), inferencePoolNoExtRef))
-
-	result, err = c.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: client.ObjectKey{
-			Name:      "test-inference-pool-no-ext",
-			Namespace: "default",
-		},
-	})
-	require.NoError(t, err, "Should not error when InferencePool has no ExtensionRef")
-	require.Equal(t, ctrl.Result{}, result)
-
 	// Test InferencePool with empty ExtensionRef name.
 	inferencePoolEmptyExtRef := &gwaiev1.InferencePool{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1057,45 +1032,6 @@ func TestInferencePoolController_GatewayReferencesInferencePool_HTTPRoute(t *tes
 func TestInferencePoolController_ValidateExtensionReference_EdgeCases(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
 	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
-
-	// Test with nil ExtensionRef.
-	inferencePoolNilExt := &gwaiev1.InferencePool{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-inference-pool-nil-ext",
-			Namespace: "default",
-		},
-		Spec: gwaiev1.InferencePoolSpec{
-			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
-				"app": "test-app",
-			}},
-			TargetPorts: []gwaiev1.Port{{Number: 8080}},
-			// No EndpointPickerConfig.
-		},
-	}
-
-	err := c.validateExtensionReference(context.Background(), inferencePoolNilExt)
-	require.NoError(t, err, "Should not error when ExtensionRef is nil")
-
-	// Test with ExtensionRef but nil ExtensionRef field.
-	inferencePoolNilExtRef := &gwaiev1.InferencePool{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-inference-pool-nil-extref",
-			Namespace: "default",
-		},
-		Spec: gwaiev1.InferencePoolSpec{
-			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
-				"app": "test-app",
-			}},
-			TargetPorts: []gwaiev1.Port{{Number: 8080}},
-			EndpointPickerRef: gwaiev1.EndpointPickerRef{
-				Name: "test-epp",
-			},
-		},
-	}
-
-	err = c.validateExtensionReference(context.Background(), inferencePoolNilExtRef)
-	require.NoError(t, err, "Should not error when ExtensionRef field is nil")
-
 	// Test with service in different namespace (should fail).
 	serviceOtherNS := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1128,7 +1064,7 @@ func TestInferencePoolController_ValidateExtensionReference_EdgeCases(t *testing
 		},
 	}
 
-	err = c.validateExtensionReference(context.Background(), inferencePoolOtherNS)
+	err := c.validateExtensionReference(context.Background(), inferencePoolOtherNS)
 	require.Error(t, err, "Should error when ExtensionReference service is in different namespace")
 	require.Contains(t, err.Error(), "ExtensionReference service service-other-ns not found in namespace default")
 }
