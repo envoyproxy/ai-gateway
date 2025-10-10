@@ -17,7 +17,7 @@ require (
 	github.com/cncf/xds/go v0.0.0-20250501225837-2ac532fd4443
 	github.com/coreos/go-oidc/v3 v3.15.0
 	github.com/docker/docker v28.4.0+incompatible
-	github.com/envoyproxy/gateway v0.5.0-rc.1.0.20251009182523-99872f9fb974
+	github.com/envoyproxy/gateway v0.5.0-rc.1.0.20251010174025-c7cc6ceff4ca
 	github.com/envoyproxy/go-control-plane v0.13.5-0.20250929230642-07d3df27ff4f
 	github.com/envoyproxy/go-control-plane/envoy v1.35.1-0.20250929230642-07d3df27ff4f
 	github.com/go-logr/logr v1.4.3
@@ -271,5 +271,3 @@ require (
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
 )
-
-replace github.com/envoyproxy/gateway => github.com/codefromthecrypt/gateway v0.0.0-20251010150135-f145f05a281c
