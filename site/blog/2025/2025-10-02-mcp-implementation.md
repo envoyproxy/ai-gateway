@@ -147,8 +147,8 @@ spec:
       # Only expose certain tools
       toolSelector:
         includeRegex:
-          - .*_pull_requests?.*
-          - .*_issues?.*
+          - .*pull_requests?.*
+          - .*issues?.*
       # Configure upstream authentication
       securityPolicy:
         apiKey:
