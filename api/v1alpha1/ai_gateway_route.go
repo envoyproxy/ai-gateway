@@ -266,7 +266,7 @@ type AIGatewayRouteRule struct {
 // It can reference either an AIServiceBackend or an InferencePool resource.
 //
 // +kubebuilder:validation:XValidation:rule="!has(self.group) && !has(self.kind) || (has(self.group) && has(self.kind))", message="group and kind must be specified together"
-// +kubebuilder:validation:XValidation:rule="!has(self.group) || (self.group == 'inference.networking.x-k8s.io' && self.kind == 'InferencePool')", message="only InferencePool from inference.networking.x-k8s.io group is supported"
+// +kubebuilder:validation:XValidation:rule="!has(self.group) || (self.group == 'inference.networking.k8s.io' && self.kind == 'InferencePool')", message="only InferencePool from inference.networking.k8s.io group is supported"
 type AIGatewayRouteRuleBackendRef struct {
 	// Name is the name of the backend resource.
 	// When Group and Kind are not specified, this refers to an AIServiceBackend.
@@ -278,7 +278,7 @@ type AIGatewayRouteRuleBackendRef struct {
 
 	// Group is the group of the backend resource.
 	// When not specified, defaults to aigateway.envoyproxy.io (AIServiceBackend).
-	// Currently, only "inference.networking.x-k8s.io" is supported for InferencePool resources.
+	// Currently, only "inference.networking.k8s.io" is supported for InferencePool resources.
 	//
 	// +optional
 	// +kubebuilder:validation:MaxLength=253

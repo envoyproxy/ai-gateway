@@ -51,7 +51,7 @@ func TestAIGatewayRoutes(t *testing.T) {
 		},
 		{
 			name:   "inference_pool_unsupported_group.yaml",
-			expErr: "spec.rules[0].backendRefs[0]: Invalid value: \"object\": only InferencePool from inference.networking.x-k8s.io group is supported",
+			expErr: "spec.rules[0].backendRefs[0]: Invalid value: \"object\": only InferencePool from inference.networking.k8s.io group is supported",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -30,7 +30,7 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
+	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -364,14 +364,14 @@ func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, 
 
 	// inferencePoolRoutes builds a matrix of route configs and the inference pools they use.
 	routeNameToRoute := make(map[string]*routev3.RouteConfiguration)
-	routeNameToVHRouteNameToInferencePool := make(map[string]map[string]*gwaiev1a2.InferencePool)
+	routeNameToVHRouteNameToInferencePool := make(map[string]map[string]*gwaiev1.InferencePool)
 	for _, routeCfg := range routes {
 		routeNameToRoute[routeCfg.Name] = routeCfg
 		for _, vh := range routeCfg.VirtualHosts {
 			for _, route := range vh.Routes {
 				if pool := getInferencePoolByMetadata(route.Metadata); pool != nil {
 					if routeNameToVHRouteNameToInferencePool[routeCfg.Name] == nil {
-						routeNameToVHRouteNameToInferencePool[routeCfg.Name] = make(map[string]*gwaiev1a2.InferencePool)
+						routeNameToVHRouteNameToInferencePool[routeCfg.Name] = make(map[string]*gwaiev1.InferencePool)
 					}
 					routeNameToVHRouteNameToInferencePool[routeCfg.Name][route.Name] = pool
 				}
@@ -380,7 +380,7 @@ func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, 
 	}
 
 	// listenerToInferencePools builds a matrix of listeners and the inference pools they use.
-	listenerToInferencePools := make(map[string][]*gwaiev1a2.InferencePool)
+	listenerToInferencePools := make(map[string][]*gwaiev1.InferencePool)
 	for listener, routeCfgNames := range listenerNameToRouteNames {
 		for _, name := range routeCfgNames {
 			if routeNameToRoute[name] == nil {
@@ -391,7 +391,7 @@ func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, 
 			}
 			for _, pool := range routeNameToVHRouteNameToInferencePool[name] {
 				if listenerToInferencePools[listener] == nil {
-					listenerToInferencePools[listener] = make([]*gwaiev1a2.InferencePool, 0)
+					listenerToInferencePools[listener] = make([]*gwaiev1.InferencePool, 0)
 				}
 				listenerToInferencePools[listener] = append(listenerToInferencePools[listener], pool)
 			}
@@ -433,7 +433,7 @@ func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, 
 }
 
 // patchListenerWithInferencePoolFilters adds the necessary HTTP filters to the listener to support InferencePool backends.
-func (s *Server) patchListenerWithInferencePoolFilters(listener *listenerv3.Listener, inferencePools []*gwaiev1a2.InferencePool) {
+func (s *Server) patchListenerWithInferencePoolFilters(listener *listenerv3.Listener, inferencePools []*gwaiev1.InferencePool) {
 	// First, get the filter chains from the listener.
 	filterChains := listener.GetFilterChains()
 	defaultFC := listener.DefaultFilterChain
@@ -476,8 +476,8 @@ func (s *Server) patchListenerWithInferencePoolFilters(listener *listenerv3.List
 }
 
 // patchVirtualHostWithInferencePool adds the necessary per-route configuration to disable.
-func (s *Server) patchVirtualHostWithInferencePool(vh *routev3.VirtualHost, inferencePools []*gwaiev1a2.InferencePool) {
-	inferenceMatrix := make(map[string]*gwaiev1a2.InferencePool)
+func (s *Server) patchVirtualHostWithInferencePool(vh *routev3.VirtualHost, inferencePools []*gwaiev1.InferencePool) {
+	inferenceMatrix := make(map[string]*gwaiev1.InferencePool)
 	for _, pool := range inferencePools {
 		inferenceMatrix[httpFilterNameForInferencePool(pool)] = pool
 	}
