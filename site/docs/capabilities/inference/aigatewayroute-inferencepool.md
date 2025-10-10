@@ -167,6 +167,7 @@ spec:
       labels:
         app: mistral-epp
     spec:
+      serviceAccountName: mistral-epp
       # Conservatively, this timeout should mirror the longest grace period of the pods within the pool
       terminationGracePeriodSeconds: 130
       containers:
