@@ -109,7 +109,7 @@ func Test_imageGenerationProcessorRouterFilter_ProcessRequestBody(t *testing.T) 
 
 	t.Run("ok", func(t *testing.T) {
 		headers := map[string]string{":path": "/v1/images/generations"}
-		const modelKey = "x-ai-gateway-model-key"
+		const modelKey = "x-ai-eg-model"
 		p := &imageGenerationProcessorRouterFilter{
 			config:         &processorConfig{},
 			requestHeaders: headers,
@@ -246,7 +246,7 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseBody(t *testing.
 					},
 				},
 			},
-			requestHeaders:    map[string]string{"x-aigw-model": "ai_gateway_llm"},
+			requestHeaders:    map[string]string{internalapi.ModelNameHeaderKeyDefault: "ai_gateway_llm"},
 			responseHeaders:   map[string]string{":status": "200"},
 			backendName:       "some_backend",
 			modelNameOverride: "ai_gateway_llm",
@@ -261,16 +261,16 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseBody(t *testing.
 
 		md := res.DynamicMetadata
 		require.NotNil(t, md)
-		require.Equal(t, float64(123), md.Fields["ai_gateway_llm_ns"].
+		require.Equal(t, float64(123), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
 			GetStructValue().Fields["output_token_usage"].GetNumberValue())
-		require.Equal(t, float64(1), md.Fields["ai_gateway_llm_ns"].
+		require.Equal(t, float64(1), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
 			GetStructValue().Fields["input_token_usage"].GetNumberValue())
-		require.Equal(t, float64(54321), md.Fields["ai_gateway_llm_ns"].
+		require.Equal(t, float64(54321), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
 			GetStructValue().Fields["cel_int"].GetNumberValue())
-		require.Equal(t, float64(9999), md.Fields["ai_gateway_llm_ns"].
+		require.Equal(t, float64(9999), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
 			GetStructValue().Fields["cel_uint"].GetNumberValue())
-		require.Equal(t, "ai_gateway_llm", md.Fields["ai_gateway_llm_ns"].GetStructValue().Fields["model_name_override"].GetStringValue())
-		require.Equal(t, "some_backend", md.Fields["ai_gateway_llm_ns"].GetStructValue().Fields["backend_name"].GetStringValue())
+		require.Equal(t, "ai_gateway_llm", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["model_name_override"].GetStringValue())
+		require.Equal(t, "some_backend", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["backend_name"].GetStringValue())
 	})
 
 	// Verify we record failure for non-2xx responses and do it exactly once (defer suppressed).
