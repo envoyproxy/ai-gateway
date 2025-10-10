@@ -47,8 +47,11 @@ type flags struct {
 	spanRequestHeaderAttributes    string
 	rootPrefix                     string
 	extProcExtraEnvVars            string
+	extProcImagePullSecrets        string
 	// extProcMaxRecvMsgSize is the maximum message size in bytes that the gRPC server can receive.
 	extProcMaxRecvMsgSize int
+	// maxRecvMsgSize is the maximum message size in bytes that the gRPC extension server can receive.
+	maxRecvMsgSize int
 }
 
 // parsePullPolicy parses string into a k8s PullPolicy.
@@ -141,10 +144,20 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		"",
 		"Semicolon-separated key=value pairs for extra environment variables in extProc container. Format: OTEL_SERVICE_NAME=ai-gateway;OTEL_TRACES_EXPORTER=otlp",
 	)
+	extProcImagePullSecrets := fs.String(
+		"extProcImagePullSecrets",
+		"",
+		"Semicolon-separated list of image pull secret names for extProc container. Format: my-registry-secret;another-secret",
+	)
 	extProcMaxRecvMsgSize := fs.Int(
 		"extProcMaxRecvMsgSize",
 		512*1024*1024,
 		"Maximum message size in bytes that the gRPC server can receive for extProc. Default is 512MB.",
+	)
+	maxRecvMsgSize := fs.Int(
+		"maxRecvMsgSize",
+		4*1024*1024,
+		"Maximum message size in bytes that the gRPC extension server can receive. Default is 4MB.",
 	)
 
 	if err := fs.Parse(args); err != nil {
@@ -198,6 +211,14 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		}
 	}
 
+	// Validate extProc image pull secrets if provided.
+	if *extProcImagePullSecrets != "" {
+		_, err := controller.ParseImagePullSecrets(*extProcImagePullSecrets)
+		if err != nil {
+			return flags{}, fmt.Errorf("invalid extProc image pull secrets: %w", err)
+		}
+	}
+
 	return flags{
 		extProcLogLevel:                *extProcLogLevelPtr,
 		extProcImage:                   *extProcImagePtr,
@@ -214,7 +235,9 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		spanRequestHeaderAttributes:    *spanRequestHeaderAttributes,
 		rootPrefix:                     *rootPrefix,
 		extProcExtraEnvVars:            *extProcExtraEnvVars,
+		extProcImagePullSecrets:        *extProcImagePullSecrets,
 		extProcMaxRecvMsgSize:          *extProcMaxRecvMsgSize,
+		maxRecvMsgSize:                 *maxRecvMsgSize,
 	}, nil
 }
 
@@ -271,7 +294,7 @@ func main() {
 
 	// Start the extension server running alongside the controller.
 	const extProcUDSPath = "/etc/ai-gateway-extproc-uds/run.sock"
-	s := grpc.NewServer()
+	s := grpc.NewServer(grpc.MaxRecvMsgSize(flags.maxRecvMsgSize))
 	extSrv := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false)
 	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
@@ -296,6 +319,7 @@ func main() {
 		TracingRequestHeaderAttributes: flags.spanRequestHeaderAttributes,
 		RootPrefix:                     flags.rootPrefix,
 		ExtProcExtraEnvVars:            flags.extProcExtraEnvVars,
+		ExtProcImagePullSecrets:        flags.extProcImagePullSecrets,
 		ExtProcMaxRecvMsgSize:          flags.extProcMaxRecvMsgSize,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")

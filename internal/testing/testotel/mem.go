@@ -17,7 +17,7 @@ import (
 
 // RecordNewSpan starts a new span with the given name and options and
 // immediately ends it. Then, it returns the recorded span.
-func RecordNewSpan(t *testing.T, spanName string, opts ...oteltrace.SpanStartOption) tracetest.SpanStub {
+func RecordNewSpan(t testing.TB, spanName string, opts ...oteltrace.SpanStartOption) tracetest.SpanStub {
 	return recordWithSpan(t, func(oteltrace.Span) bool {
 		return false
 	}, spanName, opts)
@@ -25,13 +25,13 @@ func RecordNewSpan(t *testing.T, spanName string, opts ...oteltrace.SpanStartOpt
 
 // RecordWithSpan executes the provided function with a span and returns the
 // recorded span. The function should return true if it ended the span.
-func RecordWithSpan(t *testing.T, fn func(oteltrace.Span) bool) tracetest.SpanStub {
+func RecordWithSpan(t testing.TB, fn func(oteltrace.Span) bool) tracetest.SpanStub {
 	spanName := "test"
 	opts := []oteltrace.SpanStartOption{oteltrace.WithSpanKind(oteltrace.SpanKindInternal)}
 	return recordWithSpan(t, fn, spanName, opts)
 }
 
-func recordWithSpan(t *testing.T, fn func(oteltrace.Span) bool, spanName string, opts []oteltrace.SpanStartOption) tracetest.SpanStub {
+func recordWithSpan(t testing.TB, fn func(oteltrace.Span) bool, spanName string, opts []oteltrace.SpanStartOption) tracetest.SpanStub {
 	exporter := tracetest.NewInMemoryExporter()
 	tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
 	tracer := tp.Tracer("test")

@@ -17,7 +17,6 @@ import (
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	listenerv3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
-	filelogv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
 	custom_responsev3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/custom_response/v3"
 	htomv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/header_to_metadata/v3"
 	routerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
@@ -45,11 +44,16 @@ func (s *Server) maybeGenerateResourcesForMCPGateway(req *egextension.PostTransl
 	// Order matters: do this before moving rules to the backend listener.
 	s.maybeUpdateMCPRoutes(req.Routes)
 
-	// Extract MCP backend filters from existing listeners and create the backend listener with those filters.
-	mcpBackendHTTPFilters := s.extractMCPBackendFiltersFromMCPProxyListener(req.Listeners)
+	// Create routes for the backend listener first to determine if MCP processing is needed
+	mcpBackendRoutes := s.createRoutesForBackendListener(req.Routes)
 
-	req.Listeners = append(req.Listeners, s.createBackendListener(mcpBackendHTTPFilters))
-	req.Routes = append(req.Routes, s.createRoutesForBackendListener(req.Routes))
+	// Only create the backend listener if there are routes for it
+	if mcpBackendRoutes != nil {
+		// Extract MCP backend filters from existing listeners and create the backend listener with those filters.
+		mcpBackendHTTPFilters, accessLogConfig := s.extractMCPBackendFiltersFromMCPProxyListener(req.Listeners)
+		req.Listeners = append(req.Listeners, s.createBackendListener(mcpBackendHTTPFilters, accessLogConfig))
+		req.Routes = append(req.Routes, mcpBackendRoutes)
+	}
 
 	// Modify routes with mcp-gateway-generated annotation to use mcpproxy-cluster.
 	s.modifyMCPGatewayGeneratedCluster(req.Clusters)
@@ -65,9 +69,10 @@ func (s *Server) maybeGenerateResourcesForMCPGateway(req *egextension.PostTransl
 }
 
 // createBackendListener creates the backend listener for MCP Gateway.
-func (s *Server) createBackendListener(mcpHTTPFilters []*httpconnectionmanagerv3.HttpFilter) *listenerv3.Listener {
+func (s *Server) createBackendListener(mcpHTTPFilters []*httpconnectionmanagerv3.HttpFilter, accessLogConfig []*accesslogv3.AccessLog) *listenerv3.Listener {
 	httpConManager := &httpconnectionmanagerv3.HttpConnectionManager{
 		StatPrefix: fmt.Sprintf("%s-http", mcpBackendListenerName),
+		AccessLog:  accessLogConfig,
 		RouteSpecifier: &httpconnectionmanagerv3.HttpConnectionManager_Rds{
 			Rds: &httpconnectionmanagerv3.Rds{
 				RouteConfigName: fmt.Sprintf("%s-route-config", mcpBackendListenerName),
@@ -78,17 +83,6 @@ func (s *Server) createBackendListener(mcpHTTPFilters []*httpconnectionmanagerv3
 					ResourceApiVersion: corev3.ApiVersion_V3,
 				},
 			},
-		},
-	}
-
-	// Add HTTP access log to the backend listener HCM (log to stdout via file logger to /dev/stdout).
-	// This helps debugging MCP traffic flowing through the backend listener.
-	// TODO(nacx): Make the AccessLogFormat configurable so that we emit access logs for upstream MCP server calls.
-	fal := &filelogv3.FileAccessLog{Path: "/dev/stdout"}
-	httpConManager.AccessLog = []*accesslogv3.AccessLog{
-		{
-			Name:       "envoy.access_loggers.file",
-			ConfigType: &accesslogv3.AccessLog_TypedConfig{TypedConfig: mustToAny(fal)},
 		},
 	}
 
@@ -163,7 +157,7 @@ func (s *Server) maybeUpdateMCPRoutes(routes []*routev3.RouteConfiguration) {
 	for _, routeConfig := range routes {
 		for _, vh := range routeConfig.VirtualHosts {
 			for _, route := range vh.Routes {
-				if strings.Contains(route.Name, internalapi.MCPHTTPRoutePrefix) {
+				if strings.Contains(route.Name, internalapi.MCPMainHTTPRoutePrefix) {
 					// Skip the frontend mcp proxy route(rule/0).
 					if strings.Contains(route.Name, "rule/0") {
 						continue
@@ -181,16 +175,17 @@ func (s *Server) maybeUpdateMCPRoutes(routes []*routev3.RouteConfiguration) {
 }
 
 // createRoutesForBackendListener creates routes for the backend listener.
+// The HCM of the backend listener will have all the per-backendRef HTTP routes.
+//
+// Returns nil if no MCP routes are found.
 func (s *Server) createRoutesForBackendListener(routes []*routev3.RouteConfiguration) *routev3.RouteConfiguration {
-	s.log.Info("creating routes for the backend MCP listener")
 	var backendListenerRoutes []*routev3.Route
 	for _, routeConfig := range routes {
 		for _, vh := range routeConfig.VirtualHosts {
-			s.log.Info("examining virtual host for backend MCP listener routes", "virtualHost", vh.Name)
 			var originalRoutes []*routev3.Route
 			for _, route := range vh.Routes {
-				if strings.Contains(route.Name, internalapi.MCPHTTPRoutePrefix) {
-					s.log.Info("found mcp-gateway-generated route, moving to backend MCP listener", "route", route.Name)
+				if strings.Contains(route.Name, internalapi.MCPPerBackendRefHTTPRoutePrefix) {
+					s.log.Info("found MCP route, processing for backend listener", "route", route.Name)
 					// Copy the route and modify it to use the backend header and mcpproxy-cluster.
 					marshaled, err := proto.Marshal(route)
 					if err != nil {
@@ -203,15 +198,11 @@ func (s *Server) createRoutesForBackendListener(routes []*routev3.RouteConfigura
 						continue
 					}
 					if routeAction := route.GetRoute(); routeAction != nil {
-						if cs, ok := routeAction.ClusterSpecifier.(*routev3.RouteAction_Cluster); ok && !strings.Contains(cs.Cluster, "rule/0") {
-							// TODO: skip the well-know route.
-							s.log.Info("stripping out non-rule-0 route for backend MCP listener", "route", route.Name)
+						if _, ok := routeAction.ClusterSpecifier.(*routev3.RouteAction_Cluster); ok {
 							backendListenerRoutes = append(backendListenerRoutes, copiedRoute)
 							continue
 						}
 					}
-				} else {
-					s.log.Info("keeping original route on original listener", "route", route)
 				}
 				originalRoutes = append(originalRoutes, route)
 			}
@@ -222,7 +213,7 @@ func (s *Server) createRoutesForBackendListener(routes []*routev3.RouteConfigura
 		return nil
 	}
 
-	s.log.Info("created routes for the backend MCP listener", "numRoutes", len(backendListenerRoutes))
+	s.log.Info("created routes for MCP backend listener", "numRoutes", len(backendListenerRoutes))
 	mcpRouteConfig := &routev3.RouteConfiguration{
 		Name: fmt.Sprintf("%s-route-config", mcpBackendListenerName),
 		VirtualHosts: []*routev3.VirtualHost{
@@ -240,7 +231,7 @@ func (s *Server) createRoutesForBackendListener(routes []*routev3.RouteConfigura
 // swaps it to the localhost.
 func (s *Server) modifyMCPGatewayGeneratedCluster(clusters []*clusterv3.Cluster) {
 	for _, c := range clusters {
-		if strings.Contains(c.Name, internalapi.MCPHTTPRoutePrefix) && strings.HasSuffix(c.Name, "/rule/0") {
+		if strings.Contains(c.Name, internalapi.MCPMainHTTPRoutePrefix) && strings.HasSuffix(c.Name, "/rule/0") {
 			name := c.Name
 			*c = clusterv3.Cluster{
 				Name:                 name,
@@ -279,8 +270,27 @@ func (s *Server) modifyMCPGatewayGeneratedCluster(clusters []*clusterv3.Cluster)
 // extractMCPBackendFiltersFromMCPProxyListener scans through MCP proxy listeners to find HTTP filters
 // that correspond to MCP backend processing (those with MCPBackendFilterPrefix in their names)
 // and extracts them from the proxy listeners so they can be moved to the backend listener.
-func (s *Server) extractMCPBackendFiltersFromMCPProxyListener(listeners []*listenerv3.Listener) []*httpconnectionmanagerv3.HttpFilter {
-	var mcpHTTPFilters []*httpconnectionmanagerv3.HttpFilter
+//
+// This method also returns the access log configuration to use in the MCP backend listener. We want to use the same
+// access log configuration that has been configured in the Gateway.
+// The challenge is that the MCP backend listener will have a single HCM, and here we have N listeners, each with its own
+// HCM, so we need to decide how to properly configure the access logs in the backend listener based on multiple input
+// access log configurations.
+//
+// The Envoy Gateway extension server works, it will call the main `PostTranslateModify` individually for each gateway. This means
+// that this method will receive ONLY listeners for the same gateway.
+// Since the access logs are configured in the EnvoyProxy resource, and the Gateway object targets the EnvoyProxy resource via the
+// "infrastructure" setting, it is guaranteed that all listeners here will have the same access log configuration, so it is safe to
+// just pick the first one.
+//
+// When using the envoy Gateway `mergeGateways` feature, this method will receive all the listeners attached to the GatewayClass instead.
+// This is still safe because in the end all Gateway objects will be attached to the same "infrastructure", so it is still safe to assume
+// that all received listeners will have the same access log configuration
+func (s *Server) extractMCPBackendFiltersFromMCPProxyListener(listeners []*listenerv3.Listener) ([]*httpconnectionmanagerv3.HttpFilter, []*accesslogv3.AccessLog) {
+	var (
+		mcpHTTPFilters  []*httpconnectionmanagerv3.HttpFilter
+		accessLogConfig []*accesslogv3.AccessLog
+	)
 
 	for _, listener := range listeners {
 		// Skip the backend MCP listener if it already exists.
@@ -301,6 +311,11 @@ func (s *Server) extractMCPBackendFiltersFromMCPProxyListener(listeners []*liste
 			if err != nil {
 				continue // Skip chains without HCM.
 			}
+
+			// All listeners will have the same access log configuration, as they all belong to the same gateway
+			// and share the infrastructure. We can just return any not-empty access log config and use that
+			// to configure the MCP backend listener with the same settings.
+			accessLogConfig = httpConManager.AccessLog
 
 			// Look for MCP HTTP filters in this HCM and extract them.
 			var remainingFilters []*httpconnectionmanagerv3.HttpFilter
@@ -325,15 +340,17 @@ func (s *Server) extractMCPBackendFiltersFromMCPProxyListener(listeners []*liste
 		}
 	}
 
-	s.log.Info("Extracted MCP HTTP filters", "count", len(mcpHTTPFilters))
-	return mcpHTTPFilters
+	if len(mcpHTTPFilters) > 0 {
+		s.log.Info("Extracted MCP HTTP filters", "count", len(mcpHTTPFilters))
+	}
+	return mcpHTTPFilters, accessLogConfig
 }
 
 // isMCPBackendHTTPFilter checks if an HTTP filter is used for MCP backend processing.
 func (s *Server) isMCPBackendHTTPFilter(filter *httpconnectionmanagerv3.HttpFilter) bool {
 	// Check if the filter name contains the MCP prefix
-	// MCP HTTPRouteFilters are typically named with the MCPBackendFilterPrefix.
-	if strings.Contains(filter.Name, internalapi.MCPBackendFilterPrefix) {
+	// MCP HTTPRouteFilters are typically named with the MCPPerBackendHTTPRouteFilterPrefix.
+	if strings.Contains(filter.Name, internalapi.MCPPerBackendHTTPRouteFilterPrefix) {
 		return true
 	}
 
@@ -344,7 +361,7 @@ func (s *Server) isMCPBackendHTTPFilter(filter *httpconnectionmanagerv3.HttpFilt
 // that handles MCP OAuth resources (contains both MCPHTTPRoutePrefix and oauthProtectedResourceMetadataSuffix).
 func (s *Server) isMCPOAuthCustomResponseFilter(filter *httpconnectionmanagerv3.HttpFilter) bool {
 	return strings.HasPrefix(filter.Name, "envoy.filters.http.custom_response/") &&
-		strings.Contains(filter.Name, internalapi.MCPHTTPRoutePrefix) &&
+		strings.Contains(filter.Name, internalapi.MCPGeneratedResourceCommonPrefix) &&
 		strings.HasSuffix(filter.Name, "-oauth-protected-resource-metadata")
 }
 
@@ -522,13 +539,12 @@ func (s *Server) modifyMCPOAuthCustomResponseRoute(routes []*routev3.RouteConfig
 				}
 
 				if route.GetDirectResponse() == nil || route.GetMatch() == nil {
-					s.log.Info("Skipping route without direct response or match", "routeName", route.Name)
 					continue
 				}
 
 				path := route.GetMatch().GetPath()
-				s.log.V(6).Info("Modifying route to add CORS headers", "routeName", route.Name, "path", path)
 				if isWellKnownOAuthPath(path) {
+					s.log.V(6).Info("Adding CORS headers to MCP OAuth route", "routeName", route.Name, "path", path)
 					// add CORS headers.
 					// CORS filter won't work with direct response, so we add the headers directly to the route.
 					// TODO: remove this step once Envoy Gateway supports this natively in the BackendTrafficPolicy ResponseOverride.

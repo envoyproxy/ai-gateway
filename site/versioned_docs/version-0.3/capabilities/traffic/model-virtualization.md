@@ -15,8 +15,9 @@ This guide covers the key feature and configuration for model virtualization.
 It is not uncommon for multiple AI providers to offer a similar or identical model, such as Llama-3-70b, etc.
 However, each provider tends to have its own unique naming convention for the same model.
 For example, `Claude 3.5 Sonnet` is hosted both on GCP and AWS Bedrock, but they have different model names:
-* GCP: `claude-3-5-sonnet-v2@20241022`, etc.
-* AWS Bedrock: `arn:aws:bedrock:us-west-2:123456789012:provisioned-model/abc123xyz`
+
+- GCP: `claude-3-5-sonnet-v2@20241022`, etc.
+- AWS Bedrock: `arn:aws:bedrock:us-west-2:123456789012:provisioned-model/abc123xyz`
 
 From downstream GenAI applications' perspective, it is beneficial to have a unified model name that abstracts away these differences.
 
@@ -35,18 +36,18 @@ metadata:
 spec:
   targetRefs: [...]
   rules:
-  - matches:
-      - headers:
-        - type: Exact
-          name: x-ai-eg-model
-          value: claude-3-5-sonnet-v2
-    backendRefs:
-    - name: aws-backend
-      modelNameOverride: arn:aws:bedrock:us-west-2:123456789012:provisioned-model/abc123xyz
-      weight: 50
-    - name: gcp-backend
-      modelNameOverride: claude-3-5-sonnet-v2@20241022
-      weight: 50
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: claude-3-5-sonnet-v2
+      backendRefs:
+        - name: aws-backend
+          modelNameOverride: arn:aws:bedrock:us-west-2:123456789012:provisioned-model/abc123xyz
+          weight: 50
+        - name: gcp-backend
+          modelNameOverride: claude-3-5-sonnet-v2@20241022
+          weight: 50
 ```
 
 This configuration allows downstream applications to use a unified model name `claude-3-5-sonnet-v2` while splitting traffic between the AWS Bedrock and GCP AI providers based on the specified `modelNameOverride`.
@@ -70,18 +71,18 @@ metadata:
 spec:
   targetRefs: [...]
   rules:
-  - matches:
-      - headers:
-        - type: Exact
-          name: x-ai-eg-model
-          value: gpt-4
-    backendRefs:
-    - name: openai-backend
-      # This doesn't specify modelNameOverride, so it will use the default model name `gpt-4` in the request.
-      priority: 0
-    - name: openai-backend
-      modelNameOverride: gpt-3.5-turbo
-      priority: 1
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: gpt-4
+      backendRefs:
+        - name: openai-backend
+          # This doesn't specify modelNameOverride, so it will use the default model name `gpt-4` in the request.
+          priority: 0
+        - name: openai-backend
+          modelNameOverride: gpt-3.5-turbo
+          priority: 1
 ```
 
 With this configuration, assuming the retry is properly configured as per the [Provider Fallback](./provider-fallback) page, if the request to `gpt-4` fails, Envoy AI Gateway will automatically retry the request to `gpt-3.5-turbo` on the same OpenAI provider without requiring any changes to the downstream application.

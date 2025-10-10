@@ -36,6 +36,7 @@ func TestMCP(t *testing.T) {
 	t.Cleanup(func() {
 		_ = e2elib.KubectlDeleteManifest(t.Context(), manifest)
 	})
+	maniyBackendsRouteToolNames := requireCreateMCPManyBackends(t)
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=mcp-gateway"
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
@@ -71,6 +72,10 @@ func TestMCP(t *testing.T) {
 			}, nil)
 		require.Error(t, err)
 		require.Nil(t, sess)
+	})
+	t.Run("many backends route", func(t *testing.T) {
+		testMCPRouteTools(t.Context(), t, client, fwd.Address(), "/mcp/many", maniyBackendsRouteToolNames,
+			nil, true, true)
 	})
 }
 
@@ -158,4 +163,65 @@ func testMCPServerAllToolNames(toolPrefix string) []string {
 		toolPrefix + testmcp.ToolCreateMessage.Tool.Name,
 		toolPrefix + testmcp.ToolNotificationCountsName,
 	}
+}
+
+func requireCreateMCPManyBackends(t *testing.T) []string {
+	const serviceTemplate = `
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-backend-%d
+  namespace: default
+spec:
+  selector:
+    app: mcp-backend
+  ports:
+    - protocol: TCP
+      port: 1063
+      targetPort: 1063
+  type: ClusterIP
+`
+	const backendRefTemplate = `
+    - name: mcp-backend-%d
+      port: 1063
+      securityPolicy:
+        apiKey:
+          inline: "test-api-key"
+`
+	var toolNames []string
+	var backendRefs []string
+	var services []string
+	for i := range 32 {
+		services = append(services, fmt.Sprintf(serviceTemplate, i))
+		backendRefs = append(backendRefs, fmt.Sprintf(backendRefTemplate, i))
+		toolNames = append(toolNames, testMCPServerAllToolNames(fmt.Sprintf("mcp-backend-%d__", i))...)
+	}
+	manifest := strings.Join(services, "---\n")
+	require.NoError(t, e2elib.KubectlApplyManifestStdin(t.Context(), manifest))
+	t.Cleanup(func() {
+		_ = e2elib.KubectlDeleteManifest(t.Context(), manifest)
+	})
+
+	const mcpRouteTemplate = `
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: MCPRoute
+metadata:
+  name: mcp-with-many-backends
+  namespace: default
+spec:
+  path: "/mcp/many"
+  parentRefs:
+    - name: mcp-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io
+      namespace: default
+  backendRefs:
+%s
+`
+	routeManifest := fmt.Sprintf(mcpRouteTemplate, strings.Join(backendRefs, "\n"))
+	require.NoError(t, e2elib.KubectlApplyManifestStdin(t.Context(), routeManifest))
+	t.Cleanup(func() {
+		_ = e2elib.KubectlDeleteManifest(t.Context(), routeManifest)
+	})
+	return toolNames
 }

@@ -351,7 +351,7 @@ Test vLLM Llama model (routed via InferencePool):
 
 ```bash
 curl -H "Content-Type: application/json" \
-    -d '{
+  -d '{
         "model": "meta-llama/Llama-3.1-8B-Instruct",
         "messages": [
             {
@@ -360,14 +360,14 @@ curl -H "Content-Type: application/json" \
             }
         ]
     }' \
-    http://$GATEWAY_IP/v1/chat/completions
+  http://$GATEWAY_IP/v1/chat/completions
 ```
 
 Test Mistral model (routed via InferencePool):
 
 ```bash
 curl -H "Content-Type: application/json" \
-    -d '{
+  -d '{
         "model": "mistral:latest",
         "messages": [
             {
@@ -376,14 +376,14 @@ curl -H "Content-Type: application/json" \
             }
         ]
     }' \
-    http://$GATEWAY_IP/v1/chat/completions
+  http://$GATEWAY_IP/v1/chat/completions
 ```
 
 Test AIService backend (non-InferencePool):
 
 ```bash
 curl -H "Content-Type: application/json" \
-    -d '{
+  -d '{
         "model": "some-cool-self-hosted-model",
         "messages": [
             {
@@ -392,7 +392,7 @@ curl -H "Content-Type: application/json" \
             }
         ]
     }' \
-    http://$GATEWAY_IP/v1/chat/completions
+  http://$GATEWAY_IP/v1/chat/completions
 ```
 
 ## Advanced Features

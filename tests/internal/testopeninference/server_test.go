@@ -29,28 +29,28 @@ func TestGetSpan(t *testing.T) {
     }`
 
 	tests := []struct {
-		name        string
-		files       map[string]*fstest.MapFile
-		recordSpans string
-		expectSpan  *tracev1.Span
-		expectError string
+		name          string
+		files         map[string]*fstest.MapFile
+		recordSpans   string
+		expectedSpan  *tracev1.Span
+		expectedError string
 	}{
 		{
 			name:  "cached",
 			files: map[string]*fstest.MapFile{"spans/chat-basic.json": {Data: []byte(validSpanJSON)}},
-			expectSpan: &tracev1.Span{
+			expectedSpan: &tracev1.Span{
 				Name: "ChatCompletion",
 				Kind: tracev1.Span_SPAN_KIND_INTERNAL,
 			},
 		},
 		{
-			name:        "missing no record",
-			expectError: "span not found for cassette chat-basic and RECORD_SPANS is not set",
+			name:          "missing no record",
+			expectedError: "span not found for cassette chat-basic and RECORD_SPANS is not set",
 		},
 		{
 			name:        "record enabled",
 			recordSpans: "true",
-			expectSpan: &tracev1.Span{
+			expectedSpan: &tracev1.Span{
 				Name: "ChatCompletion",
 				Kind: tracev1.Span_SPAN_KIND_INTERNAL,
 			},
@@ -64,19 +64,19 @@ func TestGetSpan(t *testing.T) {
 			}
 			s, err := newServer(io.Discard, fstest.MapFS(tt.files), t.TempDir())
 			require.NoError(t, err)
-			if tt.expectSpan != nil && tt.recordSpans != "" {
+			if tt.expectedSpan != nil && tt.recordSpans != "" {
 				s.recorder.startProxy = mockProxy
 			}
 			span, err := s.getSpan(t.Context(), testopenai.CassetteChatBasic)
-			if tt.expectError != "" {
-				require.EqualError(t, err, tt.expectError)
+			if tt.expectedError != "" {
+				require.EqualError(t, err, tt.expectedError)
 				return
 			}
 			require.NoError(t, err)
-			if tt.expectSpan != nil {
+			if tt.expectedSpan != nil {
 				require.NotNil(t, span)
-				require.Equal(t, tt.expectSpan.Name, span.Name)
-				require.Equal(t, tt.expectSpan.Kind, span.Kind)
+				require.Equal(t, tt.expectedSpan.Name, span.Name)
+				require.Equal(t, tt.expectedSpan.Kind, span.Kind)
 			} else {
 				require.Nil(t, span)
 			}

@@ -4,15 +4,15 @@
 
 <!-- toc -->
 
--   [Summary](#summary)
--   [Background](#background)
--   [Design](#design)
-    -   [Model Tracking Flow](#model-tracking-flow)
-    -   [Example Scenario](#example-scenario)
--   [Implementation](#implementation)
-    -   [Naming Rationale](#naming-rationale)
-    -   [OpenTelemetry Integration](#opentelemetry-integration)
--   [Prior Art](#prior-art)
+- [Summary](#summary)
+- [Background](#background)
+- [Design](#design)
+  - [Model Tracking Flow](#model-tracking-flow)
+  - [Example Scenario](#example-scenario)
+- [Implementation](#implementation)
+  - [Naming Rationale](#naming-rationale)
+  - [OpenTelemetry Integration](#opentelemetry-integration)
+- [Prior Art](#prior-art)
 
 <!-- /toc -->
 
@@ -23,10 +23,12 @@ This proposal introduces `OriginalModel` as the model name extracted from the in
 ## Background
 
 The Envoy AI Gateway currently tracks two model identifiers:
+
 - **RequestModel**: The model name sent to the backend (which may be overridden)
 - **ResponseModel**: The actual model used by the backend
 
 When model name overrides are configured, however, the original client request is not preserved. This creates challenges in:
+
 - Understanding which models clients are requesting versus what is actually served
 - Monitoring adoption patterns for new model versions
 - Auditing model usage for compliance and billing
@@ -63,6 +65,7 @@ Consider a client requesting `gpt-5`, which the gateway overrides to `gpt-5-nano
 ### Naming Rationale
 
 The term "original" aligns with established Envoy conventions:
+
 - Envoy uses `x-envoy-original-path` for the unmodified request path
 - The AI Gateway employs `x-ai-eg-original-path` internally
 - Documentation frequently refers to unmodified values as "the original" in comments
@@ -80,7 +83,8 @@ Alternatives considered but rejected include:
 **"requested"**: Used in production systems like LiteLLM, but already assigned in existing contexts, potentially causing confusion. It is more action-oriented but does not as clearly convey the unmodified status as "original."
 
 "Original" was selected for its:
-- Consistency with HTTP proxy standards (e.g., X-Forwarded-* headers)
+
+- Consistency with HTTP proxy standards (e.g., X-Forwarded-\* headers)
 - Emphasis on the unmodified state prior to gateway processing
 - Applicability in both simple and complex routing scenarios
 - Minimal risk of conflicting with existing OpenTelemetry attributes
@@ -98,6 +102,7 @@ gen_ai.response.model = "gpt-5-nano-2025-08-07"
 #### Metric Attribute Naming
 
 The attribute `gen_ai.original.model` adheres to these principles:
+
 - Placement under the `gen_ai` namespace, consistent with other model attributes
 - Clear, unambiguous semantic meaning
 - Flexibility for renaming via an OTEL collector if required
@@ -142,18 +147,19 @@ This enables tailored observability strategies while ensuring complete data capt
 
 Analysis of existing AI gateways shows diverse approaches to model tracking:
 
-| Gateway              | Metric Name                                               | Original Model           | Request Model          | Response Model          | Override Support                                  |
-|----------------------|-----------------------------------------------------------|--------------------------|------------------------|-------------------------|---------------------------------------------------|
-| **AgentGateway**     | [`gen_ai_client_token_usage`][agentgateway-metrics]       | `gen_ai_request_model`   | N/A                    | `gen_ai_response_model` | Config file per-provider                          |
-| **Envoy AI Gateway** | [`gen_ai.client.token.usage`][ai-gateway-metrics]         | `gen_ai.request.model`   | N/A                    | `gen_ai.response.model` | Backend config override                           |
-| **Bifrost**          | [`bifrost_upstream_requests_total`][bifrost-metrics]      | N/A                      | `model`                | N/A                     | N/A                                               |
-| **Higress**          | [`ai-statistics`][higress-metrics]                        | N/A                      | `gen_ai.request.model` | N/A                     | Provider-specific in ai-proxy                     |
-| **Kong AI Gateway**  | [`ai.*.meta`][kong-metrics]                               | N/A                      | `request_model`        | `response_model`        | Provider-specific                                 |
-| **Labring AI Proxy** | [`summary_minutes`][labring-metrics]                      | N/A                      | `model`                | N/A                     | Channel-based model mapping                       |
-| **LiteLLM**          | [`litellm_deployment_success_responses`][litellm-metrics] | `requested_model`        | `litellm_model_name`   | N/A                     | Config file aliasing and deployment mapping       |
-| **Llama Stack**      | [`prompt_tokens`][llama-stack-metrics]                    | N/A                      | `model_id`             | N/A                     | N/A                                               |
+| Gateway              | Metric Name                                               | Original Model         | Request Model          | Response Model          | Override Support                            |
+| -------------------- | --------------------------------------------------------- | ---------------------- | ---------------------- | ----------------------- | ------------------------------------------- |
+| **AgentGateway**     | [`gen_ai_client_token_usage`][agentgateway-metrics]       | `gen_ai_request_model` | N/A                    | `gen_ai_response_model` | Config file per-provider                    |
+| **Envoy AI Gateway** | [`gen_ai.client.token.usage`][ai-gateway-metrics]         | `gen_ai.request.model` | N/A                    | `gen_ai.response.model` | Backend config override                     |
+| **Bifrost**          | [`bifrost_upstream_requests_total`][bifrost-metrics]      | N/A                    | `model`                | N/A                     | N/A                                         |
+| **Higress**          | [`ai-statistics`][higress-metrics]                        | N/A                    | `gen_ai.request.model` | N/A                     | Provider-specific in ai-proxy               |
+| **Kong AI Gateway**  | [`ai.*.meta`][kong-metrics]                               | N/A                    | `request_model`        | `response_model`        | Provider-specific                           |
+| **Labring AI Proxy** | [`summary_minutes`][labring-metrics]                      | N/A                    | `model`                | N/A                     | Channel-based model mapping                 |
+| **LiteLLM**          | [`litellm_deployment_success_responses`][litellm-metrics] | `requested_model`      | `litellm_model_name`   | N/A                     | Config file aliasing and deployment mapping |
+| **Llama Stack**      | [`prompt_tokens`][llama-stack-metrics]                    | N/A                    | `model_id`             | N/A                     | N/A                                         |
 
 Key observations:
+
 - Most gateways do not differentiate between original and overridden models
 - LiteLLM stands out as the primary proxy tracking both (`requested_model` vs. `litellm_model_name`)
 - Attribute naming lacks standardization across implementations

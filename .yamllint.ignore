@@ -1,4 +1,0 @@
-manifests/charts/ai-gateway-helm
-tests/internal/testopenai/cassettes
-tests/internal/testopeninference/spans
-cmd/aigw/testdata

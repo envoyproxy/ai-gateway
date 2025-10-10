@@ -1,0 +1,7 @@
+manifests/charts/ai-gateway-helm
+manifests/charts/ai-gateway-crds-helm
+tests/internal/testopenai/cassettes
+tests/internal/testopeninference/spans
+cmd/aigw/testdata
+internal/autoconfig/testdata
+examples/aigw/ollama.yaml

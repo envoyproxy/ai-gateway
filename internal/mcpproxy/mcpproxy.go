@@ -47,31 +47,33 @@ type (
 
 	mcpProxyConfigRoute struct {
 		backends      map[filterapi.MCPBackendName]filterapi.MCPBackend
-		toolSelectors map[filterapi.MCPBackendName]*nameSelector
+		toolSelectors map[filterapi.MCPBackendName]*toolSelector
 	}
 
-	nameSelector struct {
+	// toolSelector filters tools using include patterns with exact matches or regular expressions.
+	toolSelector struct {
 		include        map[string]struct{}
 		includeRegexps []*regexp.Regexp
 	}
 )
 
-func (f *nameSelector) allows(tool string) bool {
-	// Only one of include/includeRegex can be set.
-	switch {
-	case len(f.include) > 0:
+func (f *toolSelector) allows(tool string) bool {
+	// Check include filters - if no filter, allow all; if filter exists, allow only matches
+	if len(f.include) > 0 {
 		_, ok := f.include[tool]
 		return ok
-	case len(f.includeRegexps) > 0:
+	}
+	if len(f.includeRegexps) > 0 {
 		for _, re := range f.includeRegexps {
 			if re.MatchString(tool) {
 				return true
 			}
 		}
 		return false
-	default:
-		return true // No filter, allow all.
 	}
+
+	// No filters, allow all
+	return true
 }
 
 // NewMCPProxy creates a new MCPProxy instance.
@@ -119,25 +121,25 @@ func (m *MCPProxy) LoadConfig(_ context.Context, config *filterapi.Config) error
 	for _, route := range mcpConfig.Routes {
 		r := &mcpProxyConfigRoute{
 			backends:      make(map[filterapi.MCPBackendName]filterapi.MCPBackend, len(route.Backends)),
-			toolSelectors: make(map[filterapi.MCPBackendName]*nameSelector, len(route.Backends)),
+			toolSelectors: make(map[filterapi.MCPBackendName]*toolSelector, len(route.Backends)),
 		}
 		for _, backend := range route.Backends {
 			r.backends[backend.Name] = backend
 			if s := backend.ToolSelector; s != nil {
-				ns := &nameSelector{
+				ts := &toolSelector{
 					include: make(map[string]struct{}),
 				}
 				for _, tool := range s.Include {
-					ns.include[tool] = struct{}{}
+					ts.include[tool] = struct{}{}
 				}
 				for _, expr := range s.IncludeRegex {
 					re, err := regexp.Compile(expr)
 					if err != nil {
 						return fmt.Errorf("failed to compile include regex %q for backend %q in route %q: %w", expr, backend.Name, route.Name, err)
 					}
-					ns.includeRegexps = append(ns.includeRegexps, re)
+					ts.includeRegexps = append(ts.includeRegexps, re)
 				}
-				r.toolSelectors[backend.Name] = ns
+				r.toolSelectors[backend.Name] = ts
 			}
 		}
 		newConfig.routes[route.Name] = r

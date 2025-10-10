@@ -24,7 +24,7 @@ extensionApis:
   enableBackend: true
 extensionManager:
   backendResources:
-    - group: inference.networking.x-k8s.io
+    - group: inference.networking.k8s.io
       kind: InferencePool
       version: v1alpha2
   hooks:

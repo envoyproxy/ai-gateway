@@ -42,6 +42,7 @@ type gatewayMutator struct {
 	spanRequestHeaderAttributes    string
 	rootPrefix                     string
 	extProcExtraEnvVars            []corev1.EnvVar
+	extProcImagePullSecrets        []corev1.LocalObjectReference
 	extProcMaxRecvMsgSize          int
 
 	// Whether to run the extProc container as a sidecar (true) as a normal container (false).
@@ -51,7 +52,7 @@ type gatewayMutator struct {
 
 func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.Logger,
 	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel,
-	udsPath, metricsRequestHeaderAttributes, spanRequestHeaderAttributes, rootPrefix, extProcExtraEnvVars string, extProcMaxRecvMsgSize int,
+	udsPath, metricsRequestHeaderAttributes, spanRequestHeaderAttributes, rootPrefix, extProcExtraEnvVars, extProcImagePullSecrets string, extProcMaxRecvMsgSize int,
 	extProcAsSideCar bool,
 ) *gatewayMutator {
 	var parsedEnvVars []corev1.EnvVar
@@ -63,6 +64,17 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 				"envVars", extProcExtraEnvVars)
 		}
 	}
+
+	var parsedImagePullSecrets []corev1.LocalObjectReference
+	if extProcImagePullSecrets != "" {
+		var err error
+		parsedImagePullSecrets, err = ParseImagePullSecrets(extProcImagePullSecrets)
+		if err != nil {
+			logger.Error(err, "failed to parse extProc image pull secrets, skipping",
+				"imagePullSecrets", extProcImagePullSecrets)
+		}
+	}
+
 	return &gatewayMutator{
 		c: c, codec: serializer.NewCodecFactory(Scheme),
 		kube:                           kube,
@@ -75,6 +87,7 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 		spanRequestHeaderAttributes:    spanRequestHeaderAttributes,
 		rootPrefix:                     rootPrefix,
 		extProcExtraEnvVars:            parsedEnvVars,
+		extProcImagePullSecrets:        parsedImagePullSecrets,
 		extProcMaxRecvMsgSize:          extProcMaxRecvMsgSize,
 		extProcAsSideCar:               extProcAsSideCar,
 	}
@@ -167,6 +180,31 @@ func ParseExtraEnvVars(s string) ([]corev1.EnvVar, error) {
 	return result, nil
 }
 
+// ParseImagePullSecrets parses semicolon-separated secret names into a list of
+// LocalObjectReference objects for image pull secrets.
+// Example: "my-registry-secret;another-secret".
+func ParseImagePullSecrets(s string) ([]corev1.LocalObjectReference, error) {
+	if s == "" {
+		return nil, nil
+	}
+
+	names := strings.Split(s, ";")
+	result := make([]corev1.LocalObjectReference, 0, len(names))
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue // Skip empty names from trailing semicolons.
+		}
+		result = append(result, corev1.LocalObjectReference{Name: name})
+	}
+
+	if len(result) == 0 {
+		return nil, nil
+	}
+
+	return result, nil
+}
+
 func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gatewayName, gatewayNamespace string) error {
 	var routes aigv1a1.AIGatewayRouteList
 	err := g.c.List(ctx, &routes, client.MatchingFields{
@@ -222,6 +260,11 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 			},
 		},
 	)
+
+	// Add imagePullSecrets for extProc if configured
+	if len(g.extProcImagePullSecrets) > 0 {
+		podspec.ImagePullSecrets = append(podspec.ImagePullSecrets, g.extProcImagePullSecrets...)
+	}
 
 	// Currently, we have to set the resources for the extproc container at route level.
 	// We choose one of the routes to set the resources for the extproc container.

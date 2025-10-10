@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -150,51 +151,83 @@ func TestHandleNotificationsPerBackend_SSE(t *testing.T) {
 }
 
 func TestSession_StreamNotifications(t *testing.T) {
-	// Single backend streaming two events with valid messages.
-	id1, _ := jsonrpc.MakeID("1")
-	id2, _ := jsonrpc.MakeID("2")
-	msg1, _ := jsonrpc.EncodeMessage(&jsonrpc.Request{Method: "a1", ID: id1})
-	msg2, _ := jsonrpc.EncodeMessage(&jsonrpc.Request{Method: "a2", ID: id2})
-	body := "event: a1\n" + "data: " + string(msg1) + "\n\n" + "event: a2\n" + "data: " + string(msg2) + "\n\n"
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		if r.Header.Get(internalapi.MCPBackendHeader) != "backend1" {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, b := range []byte(body) {
-			_, _ = w.Write([]byte{b})
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-	}))
-	defer srv.Close()
-	proxy := newTestMCPProxy()
-	proxy.backendListenerAddr = srv.URL
-
-	s := &session{
-		proxy: proxy,
-		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
-			"backend1": {
-				sessionID: "s1",
-			},
-		},
-		route: "test-route",
+	tests := []struct {
+		name              string
+		eventInterval     time.Duration
+		deadline          time.Duration
+		heartbeatInterval time.Duration
+		wantHeartbeats    bool
+	}{
+		// the default heartbeat interval is 1 second, but the events will come faster, so
+		// we don't expect any heartbeats.
+		{"fast events", 10 * time.Millisecond, 5 * time.Second, 10 * time.Second, false},
+		// configure a heartbeat interval faster than the event interval, so we expect heartbeats.
+		{"slow events", 20 * time.Millisecond, 5 * time.Second, 10 * time.Millisecond, true},
+		// disable heartbeats. Even though events come in slowly, we don't expect heartbeats.
+		{"no heartbeats", 50 * time.Millisecond, 25 * time.Second, 0, false},
 	}
-	rr := httptest.NewRecorder()
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
-	err2 := s.streamNotifications(ctx, rr)
-	require.NoError(t, err2)
-	out := rr.Body.String()
-	require.Contains(t, out, "event: a1")
-	require.Contains(t, out, "event: a2")
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Override the default heartbeat interval for testing.
+			originalHeartbeatInterval := heartbeatInterval
+			heartbeatInterval = tc.heartbeatInterval
+			t.Cleanup(func() { heartbeatInterval = originalHeartbeatInterval })
+
+			// Single backend streaming two events with valid messages.
+			id1, _ := jsonrpc.MakeID("1")
+			id2, _ := jsonrpc.MakeID("2")
+			msg1, _ := jsonrpc.EncodeMessage(&jsonrpc.Request{Method: "a1", ID: id1})
+			msg2, _ := jsonrpc.EncodeMessage(&jsonrpc.Request{Method: "a2", ID: id2})
+			body := "event: a1\n" + "data: " + string(msg1) + "\n\n" + "event: a2\n" + "data: " + string(msg2) + "\n\n"
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet {
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				if r.Header.Get(internalapi.MCPBackendHeader) != "backend1" {
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				w.Header().Set("Content-Type", "text/event-stream")
+				for _, b := range []byte(body) {
+					_, _ = w.Write([]byte{b})
+					if f, ok := w.(http.Flusher); ok {
+						f.Flush()
+					}
+					time.Sleep(tc.eventInterval)
+				}
+			}))
+			defer srv.Close()
+			proxy := newTestMCPProxy()
+			proxy.backendListenerAddr = srv.URL
+
+			s := &session{
+				proxy: proxy,
+				perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
+					"backend1": {
+						sessionID: "s1",
+					},
+				},
+				route: "test-route",
+			}
+			rr := httptest.NewRecorder()
+			ctx, cancel := context.WithTimeout(t.Context(), tc.deadline)
+			defer cancel()
+			err2 := s.streamNotifications(ctx, rr)
+			require.NoError(t, err2)
+			out := rr.Body.String()
+			require.Contains(t, out, "event: a1")
+			require.Contains(t, out, "event: a2")
+			heartbeatCount := strings.Count(out, `"method":"ping"`)
+
+			if tc.wantHeartbeats {
+				require.Greater(t, heartbeatCount, 1, "expected some heartbeats after the initial one")
+			} else {
+				require.Equal(t, 1, heartbeatCount, "expected only the initial heartbeat")
+			}
+		})
+	}
 }
 
 func TestSendRequestPerBackend_ErrorStatus(t *testing.T) {
@@ -230,4 +263,28 @@ func TestSendRequestPerBackend_EOF(t *testing.T) {
 		sessionID: "sess1",
 	}, http.MethodGet, nil)
 	require.True(t, err2 == nil || errors.Is(err2, io.EOF), "unexpected error: %v", err2)
+}
+
+func TestGetHeartbeatInterval(t *testing.T) {
+	defaultInterval := 1 * time.Minute
+
+	tests := []struct {
+		name string
+		env  string
+		want time.Duration
+	}{
+		{"unset", "", defaultInterval},
+		{"invalid", "invalid", defaultInterval},
+		{"zero", "0s", 0},
+		{"value", "5m", 5 * time.Minute},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.env != "" {
+				t.Setenv("MCP_PROXY_HEARTBEAT_INTERVAL", tt.env)
+			}
+			require.Equal(t, tt.want, getHeartbeatInterval(defaultInterval))
+		})
+	}
 }

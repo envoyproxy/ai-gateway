@@ -44,7 +44,7 @@ spec:
               name: x-ai-eg-model
               value: us.meta.llama3-2-1b-instruct-v1:0
       backendRefs:
-        - name: provider-fallback-always-failing-upstream  # This is the primary backend and trying to speak TLS, which always fails.
+        - name: provider-fallback-always-failing-upstream # This is the primary backend and trying to speak TLS, which always fails.
           priority: 0
         - name: provider-fallback-aws
           priority: 1
@@ -97,7 +97,7 @@ metadata:
   namespace: default
 spec:
   targetRefs:
-    - group: 'gateway.envoyproxy.io'
+    - group: "gateway.envoyproxy.io"
       kind: Backend
       name: provider-fallback-aws
   validation:
@@ -148,7 +148,7 @@ metadata:
   namespace: default
 spec:
   targetRefs:
-    - group: 'gateway.envoyproxy.io'
+    - group: "gateway.envoyproxy.io"
       kind: Backend
       name: provider-fallback-always-failing-upstream
   validation:

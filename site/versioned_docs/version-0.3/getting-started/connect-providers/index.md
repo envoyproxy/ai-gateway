@@ -38,6 +38,7 @@ When configuring AI providers, keep these security considerations in mind:
 ## Next Steps
 
 Choose your provider to get started:
+
 - [Connect OpenAI](./openai.md)
 - [Connect AWS Bedrock](./aws-bedrock.md)
 - [Connect Azure OpenAI](./azure-openai.md)

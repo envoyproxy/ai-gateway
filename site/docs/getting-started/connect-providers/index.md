@@ -39,6 +39,7 @@ When configuring AI providers, keep these security considerations in mind:
 ## Next Steps
 
 Choose your provider to get started:
+
 - [Connect Tetrate Agent Router Service (TARS)](./tars.md)
 - [Connect OpenAI](./openai.md)
 - [Connect AWS Bedrock](./aws-bedrock.md)

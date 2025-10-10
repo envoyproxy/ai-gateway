@@ -11,6 +11,7 @@ This guide will help you configure Envoy AI Gateway to work with AWS Bedrock's f
 ## Prerequisites
 
 Before you begin, you'll need:
+
 - AWS credentials with access to Bedrock
 - Basic setup completed from the [Basic Usage](../basic-usage.md) guide
 - Basic configuration removed as described in the [Advanced Configuration](./index.md) overview
@@ -18,6 +19,7 @@ Before you begin, you'll need:
 ## AWS Credentials Setup
 
 Ensure you have:
+
 1. An AWS account with Bedrock access enabled
 2. AWS credentials with permissions to:
    - `bedrock:InvokeModel`
@@ -46,6 +48,7 @@ curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/ba
 ### 2. Configure AWS Credentials
 
 Edit the `aws.yaml` file to replace these placeholder values:
+
 - `AWS_ACCESS_KEY_ID`: Your AWS access key ID
 - `AWS_SECRET_ACCESS_KEY`: Your AWS secret access key
 

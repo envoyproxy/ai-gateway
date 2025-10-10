@@ -37,12 +37,10 @@ func TestWithRealProviders(t *testing.T) {
 	cc := internaltesting.RequireNewCredentialsContext()
 
 	config := &filterapi.Config{
-		MetadataNamespace: "ai_gateway_llm_ns",
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 			{MetadataKey: "some_cel", Type: filterapi.LLMRequestCostTypeCEL, CEL: "1+1"},
 		},
-		ModelNameHeaderKey: "x-model-name",
 		Backends: []filterapi.Backend{
 			alwaysFailingBackend,
 			{Name: "openai", Schema: openAISchema, Auth: &filterapi.BackendAuth{

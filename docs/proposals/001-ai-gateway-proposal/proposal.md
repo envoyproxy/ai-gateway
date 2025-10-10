@@ -4,32 +4,34 @@
 
 <!-- toc -->
 
--   [Summary](#summary)
--   [Goals](#goals)
--   [Non-Goals](#non-goals)
--   [Design](#design)
-    -   [Personas](#personas)
-    -   [Axioms](#axioms)
-    -   [AIGatewayRoute](#aigatewayroute)
-    -   [AIServiceBackend](#aiservicebackend)
-    -   [BackendSecurityPolicy](#backendsecuritypolicy)
-    -   [Token Usage based Rate Limiting](#token-usage-rate-limiting)
-    -   [Diagrams](#diagrams)
+- [Summary](#summary)
+- [Goals](#goals)
+- [Non-Goals](#non-goals)
+- [Design](#design)
+  - [Personas](#personas)
+  - [Axioms](#axioms)
+  - [AIGatewayRoute](#aigatewayroute)
+  - [AIServiceBackend](#aiservicebackend)
+  - [BackendSecurityPolicy](#backendsecuritypolicy)
+  - [Token Usage based Rate Limiting](#token-usage-rate-limiting)
+  - [Diagrams](#diagrams)
 
 <!-- /toc -->
 
 ## Summary
+
 The `Envoy AI Gateway` is to act as a centralized access point for managing and controlling access to various AI models within an organization.
 It provides a single interface for developers to interact with different AI Services while ensuring security, governance and observability over AI traffic.
 
 It introduces new Custom Resource Definitions(CRD) to support the requirements of the `Envoy AI Gateway`: **AIGatewayRoute**, **AIServiceBackend** and **BackendSecurityPolicy**.
 
-* The `AIGatewayRoute` specifies the schema for the user requests and routing rules to the `AIServiceBackend`s.
-* The `AIServiceBackend` defines the AI service backend schema and security policy for various AI Services. This resource is managed by the Inference Platform Admin persona.
-* The `BackendSecurityPolicy` defines the authentication policy for upstream AI services using API key or cloud credentials.
-* Rate Limiting for LLM workload is based on tokens, we extend `Envoy Gateway` to support generic cost based rate limiting as envoy so far only supports request based rate limiting.
+- The `AIGatewayRoute` specifies the schema for the user requests and routing rules to the `AIServiceBackend`s.
+- The `AIServiceBackend` defines the AI service backend schema and security policy for various AI Services. This resource is managed by the Inference Platform Admin persona.
+- The `BackendSecurityPolicy` defines the authentication policy for upstream AI services using API key or cloud credentials.
+- Rate Limiting for LLM workload is based on tokens, we extend `Envoy Gateway` to support generic cost based rate limiting as envoy so far only supports request based rate limiting.
 
 ## Goals
+
 - Documentation of the 0.1 API decisions for posterity.
 - Document `Envoy AI Gateway` MVP features:
   - Upstream Model Access: Support accessing models from an initial list of AI Services: AWS Bedrock, OpenAI.
@@ -37,7 +39,6 @@ It introduces new Custom Resource Definitions(CRD) to support the requirements o
   - Traffic Management: Monitor and regulate AI service traffic, including token rate limiting by tracking token usages for LLM models.
   - Observability: Provide detailed insights into usage patterns, performance and potential issues through logging and metrics collection.
   - Policy Enforcement: Allow organizations to set specific rules and guidelines for how AI models can be accessed and used.
-
 
 ## Non-Goals
 
@@ -54,9 +55,10 @@ Before diving into the details of the API, descriptions of the personas will hel
 
 The Inference Platform Admin manages the gateway infrastructure necessary to route inference requests to a variety of AI Services.
 Including handling Ops for:
-  - A list of AI Services and supported models.
-  - AI Services API schema conversion and centralized upstream authentication configurations.
-  - Traffic policy including rate limiting, fallback resilience between AI Service backends.
+
+- A list of AI Services and supported models.
+- AI Services API schema conversion and centralized upstream authentication configurations.
+- Traffic policy including rate limiting, fallback resilience between AI Service backends.
 
 #### Payment Team
 
@@ -74,15 +76,13 @@ The API design is based on these axioms:
 - Gateway architecture should be extensible when customization is required.
 - The MVP heavily assumes that the requests are sent using the OpenAI spec, but open to the extension in the future.
 
-
 ### AIGatewayRoute
 
 `AIGatewayRoute` defines the unified user request schema and the routing rules to a list of supported `AIServiceBackend`s such as AWS Bedrock, GCP Vertex AI, Azure OpenAI and KServe for self-hosted LLMs.
 
 - `AIGatewayRoute` serves as a way to define the unified AI Gateway API which allows downstream clients to use a single schema API to interact with multiple `AIServiceBackend`s.
 - `AIGatewayRoute`s are defined to route to the `AIServiceBackend`s based on the HTTP header/path matching. The rules are matched in the `Envoy AI Gateway` external proc as the backend needs to be determined for request body transformation and upstream authentication.
-The `HTTPRoute` handles upstream routing once backend is selected using the AI gateway routing header.
-
+  The `HTTPRoute` handles upstream routing once backend is selected using the AI gateway routing header.
 
 ```golang
 // AIGatewayRouteSpec details the AIGatewayRoute configuration.
@@ -190,7 +190,6 @@ CEL string `json:"cel,omitempty"`
 }
 ```
 
-
 ### AIServiceBackend
 
 `AIServiceBackend` defines the AI service API schema and a reference to the `Envoy Gateway` backend for the target destination.
@@ -228,6 +227,7 @@ BackendSecurityPolicyRef *gwapiv1.LocalObjectReference `json:"backendSecurityPol
 ```
 
 ### BackendSecurityPolicy
+
 The `BeckendSecurityPolicy` defines the authentication methods of the upstream AI service. `APIKey` provides a simple authentication method to
 authenticate with upstream AI services such as OpenAI or Anthropic. For accessing models via cloud providers such as AWS, GCP, the cloud credential is managed with Kubernetes secrets or exchanged
 using OIDC federation.
@@ -309,36 +309,38 @@ type RateLimitCost struct {
 	// +notImplementedHide
 	Response *RateLimitCostSpecifier `json:"response,omitempty"`
 }
+
 // RateLimitCostSpecifier specifies where the Envoy retrieves the number to reduce the rate limit counters.
 //
 // +kubebuilder:validation:XValidation:rule="!(has(self.number) && has(self.metadata))",message="only one of number or metadata can be specified"
 type RateLimitCostSpecifier struct {
-// From specifies where to get the rate limit cost. Currently, only "Number" and "Metadata" are supported.
-//
-// +kubebuilder:validation:Required
-From RateLimitCostFrom `json:"from"`
-// Number specifies the fixed usage number to reduce the rate limit counters.
-// Using zero can be used to only check the rate limit counters without reducing them.
-//
-// +optional
-// +notImplementedHide
-Number *uint64 `json:"number,omitempty"`
-// Metadata specifies the per-request metadata to retrieve the usage number from.
-//
-// +optional
-// +notImplementedHide
-Metadata *RateLimitCostMetadata `json:"metadata,omitempty"`
+	// From specifies where to get the rate limit cost. Currently, only "Number" and "Metadata" are supported.
+	//
+	// +kubebuilder:validation:Required
+	From RateLimitCostFrom `json:"from"`
+	// Number specifies the fixed usage number to reduce the rate limit counters.
+	// Using zero can be used to only check the rate limit counters without reducing them.
+	//
+	// +optional
+	// +notImplementedHide
+	Number *uint64 `json:"number,omitempty"`
+	// Metadata specifies the per-request metadata to retrieve the usage number from.
+	//
+	// +optional
+	// +notImplementedHide
+	Metadata *RateLimitCostMetadata `json:"metadata,omitempty"`
 }
+
 // RateLimitCostMetadata specifies the filter metadata to retrieve the usage number from.
 type RateLimitCostMetadata struct {
-// Namespace is the namespace of the dynamic metadata.
-//
-// +kubebuilder:validation:Required
-Namespace string `json:"namespace"`
-// Key is the key to retrieve the usage number from the filter metadata.
-//
-// +kubebuilder:validation:Required
-Key string `json:"key"`
+	// Namespace is the namespace of the dynamic metadata.
+	//
+	// +kubebuilder:validation:Required
+	Namespace string `json:"namespace"`
+	// Key is the key to retrieve the usage number from the filter metadata.
+	//
+	// +kubebuilder:validation:Required
+	Key string `json:"key"`
 }
 ```
 
@@ -346,45 +348,46 @@ Key string `json:"key"`
 /// RateLimitRule defines the semantics for matching attributes
 // from the incoming requests, and setting limits for them.
 type RateLimitRule struct {
-// ClientSelectors holds the list of select conditions to select
-// specific clients using attributes from the traffic flow.
-// All individual select conditions must hold True for this rule
-// and its limit to be applied.
-//
-// If no client selectors are specified, the rule applies to all traffic of
-// the targeted Route.
-//
-// If the policy targets a Gateway, the rule applies to each Route of the Gateway.
-// Please note that each Route has its own rate limit counters. For example,
-// if a Gateway has two Routes, and the policy has a rule with limit 10rps,
-// each Route will have its own 10rps limit.
-//
-// +optional
-// +kubebuilder:validation:MaxItems=8
-ClientSelectors []RateLimitSelectCondition `json:"clientSelectors,omitempty"`
-// Limit holds the rate limit values.
-// This limit is applied for traffic flows when the selectors
-// compute to True, causing the request to be counted towards the limit.
-// The limit is enforced and the request is rate limited, i.e. a response with
-// 429 HTTP status code is sent back to the client when
-// the selected requests have reached the limit.
-Limit RateLimitValue `json:"limit"`
-// Cost specifies the cost of requests and responses for the rule.
-//
-// This is optional and if not specified, the default behavior is to reduce the rate limit counters by 1 on
-// the request path and do not reduce the rate limit counters on the response path.
-//
-// +optional
-// +notImplementedHide
-Cost *RateLimitCost `json:"cost,omitempty"`
+	// ClientSelectors holds the list of select conditions to select
+	// specific clients using attributes from the traffic flow.
+	// All individual select conditions must hold True for this rule
+	// and its limit to be applied.
+	//
+	// If no client selectors are specified, the rule applies to all traffic of
+	// the targeted Route.
+	//
+	// If the policy targets a Gateway, the rule applies to each Route of the Gateway.
+	// Please note that each Route has its own rate limit counters. For example,
+	// if a Gateway has two Routes, and the policy has a rule with limit 10rps,
+	// each Route will have its own 10rps limit.
+	//
+	// +optional
+	// +kubebuilder:validation:MaxItems=8
+	ClientSelectors []RateLimitSelectCondition `json:"clientSelectors,omitempty"`
+	// Limit holds the rate limit values.
+	// This limit is applied for traffic flows when the selectors
+	// compute to True, causing the request to be counted towards the limit.
+	// The limit is enforced and the request is rate limited, i.e. a response with
+	// 429 HTTP status code is sent back to the client when
+	// the selected requests have reached the limit.
+	Limit RateLimitValue `json:"limit"`
+	// Cost specifies the cost of requests and responses for the rule.
+	//
+	// This is optional and if not specified, the default behavior is to reduce the rate limit counters by 1 on
+	// the request path and do not reduce the rate limit counters on the response path.
+	//
+	// +optional
+	// +notImplementedHide
+	Cost *RateLimitCost `json:"cost,omitempty"`
 }
 ```
 
 ### Yaml Examples
 
 #### AIGatewayRoute
+
 The routing calculation in done in the `ExtProc` by analyzing the match rules on `AIGatewayRoute` spec to emulate the behavior in order to perform the AI Service specific transformation and authentication before the routing filter is applied,
- because it happens at the very end of the filter chain.
+because it happens at the very end of the filter chain.
 
 The `AIServiceBackend` rules are specified on the `AIGatewayRoute` based on model header matching, in this example `anthropic.claude-3-5-sonnet` is routed to the AWS Bedrock and `llama-3.3-70b-instruction` is routed to the KServe backend for the self-hosted llama model.
 `LLMRequestCost` is specified with the metadata key `llm_total_token` to store the cost of the LLM request.
@@ -427,8 +430,10 @@ spec:
 ```
 
 #### BackendSecurityPolicy
+
 `BackendSecurityPolicy` specifies the API key or credentials that `Envoy AI Gateway` uses to authenticate with the upstream AI service.
 In this example API key is used to authenticate with OpenAI service and AWS credential is used to authenticate with AWS Bedrock service.
+
 ```yaml
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
@@ -457,7 +462,9 @@ spec:
 ```
 
 #### AIServiceBackend
+
 Based on the gateway routes, we define the AWS Bedrock and KServe `AIServiceBackend` along with the `Envoy Gateway` backend resource using the FQDN for the routing destination.
+
 ```yaml
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
@@ -514,7 +521,6 @@ spec:
     - fqdn:
         hostname: bedrock-runtime.us-east-1.amazonaws.com
         port: 443
-
 ```
 
 #### BackendTrafficPolicy
@@ -534,26 +540,28 @@ spec:
     type: Global
     global:
       rules:
-      - clientSelectors:
-          - name: x-ai-eg-model
-            type: exact
-            value: llama-3.3-70b-instruction
-          - name: x-user-id
-            type: Distinct
-        limit:
-          # configure the number of allowed token per minute, per user and model
-          requests: 1000
-          unit: Minute
-        cost:
-          response:
-            from: Metadata
-            metadata:
-              namespace: "io.envoy.ai_gateway"
-              key: "llm_total_token"
+        - clientSelectors:
+            - name: x-ai-eg-model
+              type: exact
+              value: llama-3.3-70b-instruction
+            - name: x-user-id
+              type: Distinct
+          limit:
+            # configure the number of allowed token per minute, per user and model
+            requests: 1000
+            unit: Minute
+          cost:
+            response:
+              from: Metadata
+              metadata:
+                namespace: "io.envoy.ai_gateway"
+                key: "llm_total_token"
 ```
 
 ## Diagrams
+
 ### Control Plane
+
 `Envoy AI Gateway` extends `Envoy Gateway` using an Extension Server. `Envoy Gateway` can be configured to call an external server over gRPC with
 the xDS configuration before it is sent to Envoy Proxy. The `Envoy Gateway` extension Server provides a mechanism where `Envoy Gateway` tracks
 custom resources and then calls a set of hooks that allow the generated xDS configuration to be modified before it is sent to Envoy Proxy.
@@ -561,6 +569,7 @@ custom resources and then calls a set of hooks that allow the generated xDS conf
 ![Data Plane](./control_plane.png)
 
 AI Gateway ExtProc controller watches the `AIGatewayRoute` resource and perform the follow steps:
+
 - Reconciles the `Envoy Gateway` deployment and creates the extension policy.
 - Reconciles the `Envoy Gateway` ext proc deployment and mount the API key or AWS credential secret if the `AIServiceBackend` is AWS.
 - Reconciles `AIGatewayRoute` to calculate the backend and generates the `HTTPRoute` resource attaching the upstream host rewrite filter.
@@ -577,6 +586,7 @@ Below is a detailed view how an inference request works on `Envoy AI Gateway`.
 
 This diagram lightly follows the example request for routing to Anthropic claude 3.5 sonnet model on AWS Bedrock.
 The flow can be described as:
+
 - The request comes into `Envoy AI Gateway` instances.
 - Ext Authorization filter is applied for checking if the user or account is authorized to access the model.
 - `Envoy AI Gateway` ExtProc calculates the backend by matching request headers such as model name and inject the routing header `x-ai-eg-selected-backend` for envoy routing filter.
@@ -588,4 +598,3 @@ The flow can be described as:
 - Request is routed by the envoy proxy to the specified or calculated AI service backend.
 - Upon receiving the response from the AI service, the token usage limit is reduced by extracting the usage fields of the chat completion response.
   - the rate limit is enforced on the subsequent request.
-

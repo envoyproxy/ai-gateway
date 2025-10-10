@@ -22,6 +22,7 @@ The architecture is divided into two main planes:
    - Rate Limit Service manages token-based rate limiting
 
 The Control Plane configures the Data Plane through several paths:
+
 - AI Gateway Controller configures the External Processor as well as fine-tuning xDS configurations via Envoy Gateway extension server mechanism.
 - Envoy Gateway Controller configures Envoy Proxy through xDS as well as Rate Limit Service.
 
@@ -58,6 +59,8 @@ graph TB
     EGController -.->|Configures| RateLimit
     EGController -.->|Updates Config| Envoy
 ```
+
 For detailed information about specific components:
+
 - Learn more about the [Control Plane](./control-plane.md) components
 - Understand the [Data Plane](./data-plane.md) in detail

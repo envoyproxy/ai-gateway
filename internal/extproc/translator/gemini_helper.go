@@ -352,11 +352,11 @@ func openAIToolsToGeminiTools(openaiTools []openai.Tool) ([]genai.Tool, error) {
 //	   ]
 //	 }
 //	}
-func openAIToolChoiceToGeminiToolConfig(toolChoice any) (*genai.ToolConfig, error) {
+func openAIToolChoiceToGeminiToolConfig(toolChoice *openai.ChatCompletionToolChoiceUnion) (*genai.ToolConfig, error) {
 	if toolChoice == nil {
 		return nil, nil
 	}
-	switch tc := toolChoice.(type) {
+	switch tc := toolChoice.Value.(type) {
 	case string:
 		switch tc {
 		case "auto":
@@ -368,7 +368,7 @@ func openAIToolChoiceToGeminiToolConfig(toolChoice any) (*genai.ToolConfig, erro
 		default:
 			return nil, fmt.Errorf("unsupported tool choice: '%s'", tc)
 		}
-	case openai.ToolChoice:
+	case openai.ChatCompletionNamedToolChoice:
 		return &genai.ToolConfig{
 			FunctionCallingConfig: &genai.FunctionCallingConfig{
 				Mode:                 genai.FunctionCallingConfigModeAny,
@@ -415,14 +415,8 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) 
 			gc.ResponseMIMEType = mimeTypeApplicationJSON
 		case openAIReq.ResponseFormat.OfJSONSchema != nil:
 			var schemaMap map[string]any
-
-			switch sch := openAIReq.ResponseFormat.OfJSONSchema.JSONSchema.Schema.(type) {
-			case string:
-				if err := json.Unmarshal([]byte(sch), &schemaMap); err != nil {
-					return nil, fmt.Errorf("invalid JSON schema string: %w", err)
-				}
-			case map[string]any:
-				schemaMap = sch
+			if err := json.Unmarshal([]byte(openAIReq.ResponseFormat.OfJSONSchema.JSONSchema.Schema), &schemaMap); err != nil {
+				return nil, fmt.Errorf("invalid JSON schema: %w", err)
 			}
 
 			gc.ResponseMIMEType = mimeTypeApplicationJSON
@@ -490,6 +484,14 @@ func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate) ([]openai.Ch
 			}
 
 			choice.Message = message
+		}
+
+		if candidate.SafetyRatings != nil {
+			if choice.Message.Role == "" {
+				choice.Message.Role = openai.ChatMessageRoleAssistant
+			}
+
+			choice.Message.SafetyRatings = candidate.SafetyRatings
 		}
 
 		// Handle logprobs if available.

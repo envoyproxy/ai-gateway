@@ -618,7 +618,7 @@ type ChatCompletionResponseFormatJSONSchemaJSONSchema struct {
 	Description string `json:"description,omitempty"`
 	// The schema for the response format, described as a JSON Schema object. Learn how
 	// to build JSON schemas [here](https://json-schema.org/).
-	Schema any `json:"schema"`
+	Schema json.RawMessage `json:"schema"`
 	// Whether to enable strict schema adherence when generating the output. If set to
 	// true, the model will always follow the exact schema defined in the `schema`
 	// field. Only a subset of JSON Schema is supported when `strict` is `true`. To
@@ -943,7 +943,7 @@ type ChatCompletionRequest struct {
 	// Specifying a particular tool via `{"type": "function", "function": {"name": "my_function"}}` forces the model to call that tool.
 	// `none` is the default when no tools are present. `auto` is the default if tools are present.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-tool_choice
-	ToolChoice ChatCompletionToolChoice `json:"tool_choice,omitempty"` //nolint:tagliatelle //follow openai api
+	ToolChoice *ChatCompletionToolChoiceUnion `json:"tool_choice,omitempty"` //nolint:tagliatelle //follow openai api
 
 	// ParallelToolCalls enables multiple tools to be returned by the model.
 	// Docs: https://platform.openai.com/docs/guides/function-calling/parallel-function-calling
@@ -994,17 +994,6 @@ type Tool struct {
 	Function *FunctionDefinition `json:"function,omitempty"`
 }
 
-// ToolChoice represents the choice of tool.
-type ToolChoice struct {
-	Type     ToolType     `json:"type"`
-	Function ToolFunction `json:"function,omitempty"`
-}
-
-// ToolFunction represents the function to call.
-type ToolFunction struct {
-	Name string `json:"name"`
-}
-
 // ToolChoiceType represents the type of tool choice.
 type ToolChoiceType string
 
@@ -1019,14 +1008,38 @@ const (
 	ToolChoiceTypeFunction ToolChoiceType = "function"
 )
 
-// ChatCompletionToolChoice represents the tool choice for chat completions.
+// ChatCompletionToolChoiceUnion represents the tool choice for chat completions.
 // It can be either a string (none, auto, required) or a ChatCompletionNamedToolChoice object.
-type ChatCompletionToolChoice any
+type ChatCompletionToolChoiceUnion struct {
+	Value any
+}
+
+func (c ChatCompletionToolChoiceUnion) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.Value)
+}
+
+func (c *ChatCompletionToolChoiceUnion) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as string.
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		c.Value = str
+		return nil
+	}
+
+	// Try to unmarshal as ChatCompletionNamedToolChoice.
+	var namedChoice ChatCompletionNamedToolChoice
+	if err := json.Unmarshal(data, &namedChoice); err == nil {
+		c.Value = namedChoice
+		return nil
+	}
+
+	return errors.New("tool choice must be either string or ChatCompletionNamedToolChoice")
+}
 
 // ChatCompletionNamedToolChoice specifies a tool the model should use. Use to force the model to call a specific function.
 type ChatCompletionNamedToolChoice struct {
 	// Type is the type of the tool. Currently, only `function` is supported.
-	Type ToolChoiceType `json:"type"`
+	Type ToolType `json:"type"`
 	// Function specifies the function to call.
 	Function ChatCompletionNamedToolChoiceFunction `json:"function"`
 }
@@ -1207,6 +1220,13 @@ type ChatCompletionResponseChoiceMessage struct {
 	// ReasoningContent is used to hold any non-standard fields from the backend which supports reasoning,
 	// like "reasoningContent" from AWS Bedrock.
 	ReasoningContent *ReasoningContentUnion `json:"reasoning_content,omitempty"`
+
+	// GCPVertexAI specific fields.
+
+	// SafetyRatings contains safety ratings copied from the GCP Vertex AI response as-is.
+	// List of ratings for the safety of a response candidate. There is at most one rating per category.
+	// https://cloud.google.com/vertex-ai/generative-ai/docs/reference/rest/v1/GenerateContentResponse#SafetyRating
+	SafetyRatings []*genai.SafetyRating `json:"safety_ratings,omitempty"`
 }
 
 // URLCitation contains citation information for web search results.

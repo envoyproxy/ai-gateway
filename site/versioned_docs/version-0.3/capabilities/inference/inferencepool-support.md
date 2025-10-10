@@ -22,6 +22,7 @@ InferencePool is a Kubernetes custom resource that defines a pool of inference e
 ## Core Problems Solved
 
 Traditional load balancing treats all backends equally, but inference workloads have unique characteristics:
+
 - Variable processing times based on model complexity and input size
 - Different resource requirements for different models
 - Need for intelligent routing based on real-time metrics
@@ -92,16 +93,20 @@ sequenceDiagram
 Envoy AI Gateway supports two ways to use InferencePool:
 
 ### 1. HTTPRoute + InferencePool
+
 Direct integration with standard Gateway API HTTPRoute for simple inference routing scenarios.
 
 **Use Cases:**
+
 - Simple inference workloads without complex AI-specific requirements
 - Direct OpenAI-compatible API forwarding
 
 ### 2. AIGatewayRoute + InferencePool
+
 Enhanced integration with AI Gateway's custom route type for advanced AI-specific features.
 
 **Use Cases:**
+
 - Multi-model routing based on request content
 - Token-based rate limiting
 - Advanced observability and metrics

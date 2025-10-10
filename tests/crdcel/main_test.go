@@ -51,7 +51,7 @@ func TestAIGatewayRoutes(t *testing.T) {
 		},
 		{
 			name:   "inference_pool_unsupported_group.yaml",
-			expErr: "spec.rules[0].backendRefs[0]: Invalid value: \"object\": only InferencePool from inference.networking.x-k8s.io group is supported",
+			expErr: "spec.rules[0].backendRefs[0]: Invalid value: \"object\": only InferencePool from inference.networking.k8s.io group is supported",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -226,11 +226,11 @@ func TestMCPRoutes(t *testing.T) {
 		},
 		{
 			name:   "tool_selector_missing.yaml",
-			expErr: "spec.backendRefs[0].toolSelector: Invalid value: \"object\": one of include, includeRegex must be specified",
+			expErr: "spec.backendRefs[0].toolSelector: Invalid value: \"object\": exactly one of include or includeRegex must be specified",
 		},
 		{
 			name:   "tool_selector_both.yaml",
-			expErr: "spec.backendRefs[0].toolSelector: Invalid value: \"object\": one of include, includeRegex must be specified",
+			expErr: "spec.backendRefs[0].toolSelector: Invalid value: \"object\": exactly one of include or includeRegex must be specified",
 		},
 		{
 			name:   "backend_api_key_inline_and_secret.yaml",

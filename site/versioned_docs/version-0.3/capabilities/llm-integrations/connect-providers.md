@@ -40,8 +40,8 @@ metadata:
 spec:
   # API schema the backend expects
   schema:
-    name: OpenAI           # Provider API format
-    version: "v1"          # API version (optional for OpenAI, defaults to "v1")
+    name: OpenAI # Provider API format
+    version: "v1" # API version (optional for OpenAI, defaults to "v1")
 
   # Reference to the Envoy Gateway Backend resource
   backendRef:
@@ -54,13 +54,13 @@ spec:
 
 Different providers require different schema configurations:
 
-| Provider | Schema Configuration |
-|----------|---------------------|
-| OpenAI | `{"name":"OpenAI","version":"v1"}` |
-| AWS Bedrock | `{"name":"AWSBedrock"}` |
-| Azure OpenAI | `{"name":"AzureOpenAI","version":"2025-01-01-preview"}` |
-| GCP Vertex AI | `{"name":"GCPVertexAI"}` |
-| GCP Anthropic | `{"name":"GCPAnthropic"}` |
+| Provider      | Schema Configuration                                    |
+| ------------- | ------------------------------------------------------- |
+| OpenAI        | `{"name":"OpenAI","version":"v1"}`                      |
+| AWS Bedrock   | `{"name":"AWSBedrock"}`                                 |
+| Azure OpenAI  | `{"name":"AzureOpenAI","version":"2025-01-01-preview"}` |
+| GCP Vertex AI | `{"name":"GCPVertexAI"}`                                |
+| GCP Anthropic | `{"name":"GCPAnthropic"}`                               |
 
 :::tip
 Many providers offer OpenAI-compatible APIs, which allows them to use the OpenAI schema configuration with provider-specific version paths.
@@ -79,6 +79,7 @@ The `BackendSecurityPolicy` resource configures authentication credentials neede
 #### Authentication Types
 
 ##### API Key Authentication
+
 Commonly used across many providers
 
 ```yaml
@@ -99,6 +100,7 @@ The secret must contain the API key with the key name `"apiKey"`.
 :::
 
 ##### AWS Credentials
+
 Used when connecting to AWS Bedrock
 
 ```yaml
@@ -114,7 +116,7 @@ spec:
       secretRef:
         name: aws-secret
         namespace: default
-      profile: default  # Optional, defaults to "default"
+      profile: default # Optional, defaults to "default"
 ```
 
 :::note
@@ -122,6 +124,7 @@ The secret must contain the AWS credentials file with the key name `"credentials
 :::
 
 ##### Azure Credentials
+
 Used for connecting to Azure OpenAI
 
 ```yaml
@@ -144,6 +147,7 @@ The secret must contain the Azure client secret with the key name `"client-secre
 :::
 
 ##### GCP Credentials
+
 Used for connecting to GCP Vertex AI and Anthropic on GCP
 
 ```yaml
@@ -221,7 +225,6 @@ spec:
       backendRefs:
         - name: bedrock-backend
 ```
-
 
 ## Resource Relationships and Data Flow
 
@@ -333,7 +336,7 @@ spec:
               value: gpt-4o-mini
       backendRefs:
         - name: openai-backend
-        - name: groq-backend  # Fallback provider
+        - name: groq-backend # Fallback provider
 ```
 
 ### Model-Specific Routing
@@ -373,8 +376,6 @@ spec:
       backendRefs:
         - name: openai-embeddings-backend
 ```
-
-
 
 Configure model ownership and creation information for the `/models` endpoint:
 
@@ -446,21 +447,25 @@ All resources provide status conditions to monitor their health:
 ### Common Issues and Solutions
 
 **Authentication Failures (401/403)**
+
 - Verify API keys and credentials are correct
 - Check secret references and key names
 - Ensure credentials have necessary permissions
 
 **Schema Mismatch Errors**
+
 - Confirm the backend schema matches the provider's API
 - Check version specifications for provider-specific paths
 - Review API documentation for schema requirements
 
 **Routing Issues**
+
 - Verify header matching rules in AIGatewayRoute
 - Check that model names match expected values
 - Ensure backend references point to existing AIServiceBackends
 
 **Backend Reference Errors**
+
 - Ensure backendRef points to Envoy Gateway Backend resources
 - Verify the Backend resource exists and is properly configured
 - Check that the group field is set to `gateway.envoyproxy.io`

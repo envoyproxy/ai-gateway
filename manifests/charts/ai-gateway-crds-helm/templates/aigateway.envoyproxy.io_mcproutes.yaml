@@ -198,27 +198,29 @@ spec:
                     toolSelector:
                       description: |-
                         ToolSelector filters the tools exposed by this MCP server.
-                        Supports exact matches via include lists and RE2-compatible regular expressions via includeRegex.
+                        Supports exact matches and RE2-compatible regular expressions for both include and exclude patterns.
                         If not specified, all tools from the MCP server are exposed.
                       properties:
                         include:
-                          description: Include is a list of strings to include. If
-                            specified, only the strings in this list are included.
+                          description: Include is a list of tool names to include.
+                            Only the specified tools will be available.
                           items:
                             type: string
                           maxItems: 32
                           type: array
                         includeRegex:
-                          description: IncludeRegex is a list of RE2-compatible regular
-                            expressions that, when matched, include the string.
+                          description: |-
+                            IncludeRegex is a list of RE2-compatible regular expressions that, when matched, include the tool.
+                            Only tools matching these patterns will be available.
                           items:
                             type: string
                           maxItems: 32
                           type: array
                       type: object
                       x-kubernetes-validations:
-                      - message: one of include, includeRegex must be specified
-                        rule: has(self.include) != has(self.includeRegex)
+                      - message: exactly one of include or includeRegex must be specified
+                        rule: (has(self.include) && !has(self.includeRegex)) || (!has(self.include)
+                          && has(self.includeRegex))
                   required:
                   - name
                   type: object
@@ -226,7 +228,7 @@ spec:
                   - message: Must have port for Service reference
                     rule: '(size(self.group) == 0 && self.kind == ''Service'') ? has(self.port)
                       : true'
-                maxItems: 32
+                maxItems: 256
                 minItems: 1
                 type: array
                 x-kubernetes-validations:
@@ -916,8 +918,7 @@ spec:
                                                 items:
                                                   description: HTTPStatus defines
                                                     the http status code.
-                                                  exclusiveMaximum: true
-                                                  maximum: 600
+                                                  maximum: 599
                                                   minimum: 100
                                                   type: integer
                                                 type: array
@@ -1450,8 +1451,7 @@ spec:
                                             items:
                                               description: HTTPStatus defines the
                                                 http status code.
-                                              exclusiveMaximum: true
-                                              maximum: 600
+                                              maximum: 599
                                               minimum: 100
                                               type: integer
                                             type: array
@@ -1544,6 +1544,13 @@ spec:
                                         type: object
                                     type: object
                                 type: object
+                              cacheDuration:
+                                default: 300s
+                                description: |-
+                                  Duration is a string value representing a duration in time. The format is as specified
+                                  in GEP-2257, a strict subset of the syntax parsed by Golang time.ParseDuration.
+                                pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                type: string
                               uri:
                                 description: |-
                                   URI is the HTTPS URI to fetch the JWKS. Envoy's system trust bundle is used to validate the server certificate.

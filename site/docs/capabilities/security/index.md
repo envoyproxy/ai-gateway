@@ -4,6 +4,7 @@ title: Security
 ---
 
 # Security
+
 As Envoy AI Gateway is built on Envoy Gateway, you can leverage the Envoy Gateway Security Policy by attaching them to the Gateway and/or generated HTTPRoutes.
 
 :::tip
@@ -11,8 +12,8 @@ View all **[Envoy Gateway Security Docs](https://gateway.envoyproxy.io/docs/task
 :::
 
 ## Common Security Docs
-Below are a list of common security configurations that can be useful when securing your gateway leveraging Envoy Gateway configurations.
 
+Below are a list of common security configurations that can be useful when securing your gateway leveraging Envoy Gateway configurations.
 
 ### Access Control
 
@@ -26,5 +27,6 @@ Below are a list of common security configurations that can be useful when secur
 - [IP Allowlist/Denylist](https://gateway.envoyproxy.io/docs/tasks/security/restrict-ip-access/)
 
 ### TLS
+
 - [Setup TLS Certificate](https://gateway.envoyproxy.io/docs/tasks/security/secure-gateways/)
 - [Using TLS cert-manager](https://gateway.envoyproxy.io/docs/tasks/security/tls-cert-manager/)

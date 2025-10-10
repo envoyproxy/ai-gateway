@@ -28,21 +28,7 @@ func TestPublicMCPServers(t *testing.T) {
 			{
 				Name: "test-route",
 				Backends: []filterapi.MCPBackend{
-					{
-						Name: "learn-microsoft",
-						Path: "/api/mcp",
-						ToolSelector: &filterapi.MCPNameSelector{
-							IncludeRegex: []string{".*microsoft_docs?.*"},
-						},
-					},
 					{Name: "context7", Path: "/mcp"},
-					{
-						Name: "aws-knowledge",
-						Path: "/",
-						ToolSelector: &filterapi.MCPNameSelector{
-							Include: []string{"aws___read_documentation", "aws___search_documentation"},
-						},
-					},
 					{Name: "kiwi", Path: "/"},
 				},
 			},
@@ -56,8 +42,8 @@ func TestPublicMCPServers(t *testing.T) {
 			filterapi.MCPBackend{
 				Name: "github",
 				Path: "/mcp/readonly",
-				ToolSelector: &filterapi.MCPNameSelector{
-					IncludeRegex: []string{".*_pull_requests?.*", ".*_issues?.*"},
+				ToolSelector: &filterapi.MCPToolSelector{
+					IncludeRegex: []string{".*pull_requests?.*", ".*issues?.*"},
 				},
 			},
 		)
@@ -68,7 +54,7 @@ func TestPublicMCPServers(t *testing.T) {
 	require.NoError(t, err)
 
 	env := testenvironment.StartTestEnvironment(t,
-		func(_ testenvironment.TestingT, _ io.Writer, _ map[string]int) {}, map[string]int{"backend_listener": 9999},
+		func(_ testing.TB, _ io.Writer, _ map[string]int) {}, map[string]int{"backend_listener": 9999},
 		"", string(config), nil, envoyConfig, true, true, 120*time.Second,
 	)
 
@@ -95,25 +81,16 @@ func TestPublicMCPServers(t *testing.T) {
 		}
 
 		exps := []string{
-			"learn-microsoft__microsoft_docs_search",
-			"learn-microsoft__microsoft_docs_fetch",
 			"context7__resolve-library-id",
 			"context7__get-library-docs",
 			"kiwi__search-flight",
 			"kiwi__feedback-to-devs",
-			"aws-knowledge__aws___read_documentation",
-			"aws-knowledge__aws___search_documentation",
 		}
 
 		if githubConfigured {
 			exps = append(exps, "github__get_issue")
 			exps = append(exps, "github__get_issue_comments")
-			exps = append(exps, "github__get_pull_request")
-			exps = append(exps, "github__get_pull_request_diff")
-			exps = append(exps, "github__get_pull_request_files")
-			exps = append(exps, "github__get_pull_request_review_comments")
-			exps = append(exps, "github__get_pull_request_reviews")
-			exps = append(exps, "github__get_pull_request_status")
+			exps = append(exps, "github__pull_request_read")
 			exps = append(exps, "github__list_issue_types")
 			exps = append(exps, "github__list_issues")
 			exps = append(exps, "github__list_pull_requests")
@@ -135,19 +112,6 @@ func TestPublicMCPServers(t *testing.T) {
 		}
 		tests := []callToolTest{
 			{
-				toolName: "learn-microsoft__microsoft_docs_search",
-				params: map[string]any{
-					"query":    "microsoft 365",
-					"question": "What does microsoft 365 include?",
-				},
-			},
-			{
-				toolName: "learn-microsoft__microsoft_docs_fetch",
-				params: map[string]any{
-					"url": "https://learn.microsoft.com/en-us/copilot/manage",
-				},
-			},
-			{
 				toolName: "context7__resolve-library-id",
 				params: map[string]any{
 					"libraryName": "non-existent",
@@ -157,13 +121,6 @@ func TestPublicMCPServers(t *testing.T) {
 				toolName: "context7__get-library-docs",
 				params: map[string]any{
 					"context7CompatibleLibraryID": "/mongodb/docs",
-				},
-			},
-			{
-				toolName: "aws-knowledge__aws___search_documentation",
-				params: map[string]any{
-					"limit":         1,
-					"search_phrase": "DynamoDB",
 				},
 			},
 			{
@@ -189,10 +146,11 @@ func TestPublicMCPServers(t *testing.T) {
 		}
 		if githubConfigured {
 			tests = append(tests, callToolTest{
-				toolName: "github__get_pull_request",
+				toolName: "github__pull_request_read",
 				params: map[string]any{
 					"owner":      "envoyproxy",
 					"repo":       "ai-gateway",
+					"method":     "get",
 					"pullNumber": 1,
 				},
 			})

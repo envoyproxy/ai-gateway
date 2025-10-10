@@ -15,14 +15,14 @@ The easiest way to install Envoy AI Gateway is using the Helm chart. First, inst
 
 ```shell
 helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm \
-    --version v0.2.1 \
-    --namespace envoy-ai-gateway-system \
-    --create-namespace
+  --version v0.2.1 \
+  --namespace envoy-ai-gateway-system \
+  --create-namespace
 
 helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
-    --version v0.2.1 \
-    --namespace envoy-ai-gateway-system \
-    --create-namespace
+  --version v0.2.1 \
+  --namespace envoy-ai-gateway-system \
+  --create-namespace
 
 kubectl wait --timeout=2m -n envoy-ai-gateway-system deployment/ai-gateway-controller --for=condition=Available
 ```
@@ -49,11 +49,13 @@ but you need to remove the relevant configuration in the `config.yaml` file as w
 Check the status of the pods. All pods should be in the `Running` state with `Ready` status.
 
 Check AI Gateway pods:
+
 ```shell
 kubectl get pods -n envoy-ai-gateway-system
 ```
 
 Check Envoy Gateway pods:
+
 ```shell
 kubectl get pods -n envoy-gateway-system
 ```
@@ -63,5 +65,6 @@ kubectl get pods -n envoy-gateway-system
 ## Next Steps
 
 After completing the installation:
+
 - Continue to [Basic Usage](./basic-usage.md) to learn how to make your first request
 - Or jump to [Connect Providers](./connect-providers) to set up OpenAI and AWS Bedrock integration

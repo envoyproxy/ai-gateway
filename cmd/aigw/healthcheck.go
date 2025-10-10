@@ -7,44 +7,33 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"net/http"
+	"log/slog"
 	"time"
+
+	"github.com/envoyproxy/ai-gateway/internal/aigw"
 )
 
-// healthcheck performs an HTTP GET request to the admin server health endpoint.
-// This is used by Docker HEALTHCHECK to verify the aigw admin server is responsive.
-// It exits with code 0 on success (healthy) or 1 on failure (unhealthy).
-func healthcheck(ctx context.Context, port int, stdout, _ io.Writer) error {
-	url := fmt.Sprintf("http://localhost:%d/health", port)
+// healthcheck performs looks up the Envoy subprocess, gets its admin port,
+// and returns no error when ready.
+func healthcheck(ctx context.Context, _, stderr io.Writer) error {
+	// Give up to 1 second for the health check
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
 
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
+	logger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{}))
+	// In docker, pid 1 is the aigw process
+	return doHealthcheck(ctx, 1, logger)
+}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+func doHealthcheck(ctx context.Context, aigwPid int, logger *slog.Logger) error {
+	envoyAdmin, err := aigw.NewEnvoyAdminClient(ctx, aigwPid, 0)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		logger.Error("Failed to find Envoy admin server", "error", err)
+		return err
+	} else if err = envoyAdmin.IsReady(ctx); err != nil {
+		logger.Error("Envoy admin server is not ready", "adminPort", envoyAdmin.Port(), "error", err)
+		return err
 	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to connect to admin server")
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("unhealthy: status %d, body: %s", resp.StatusCode, string(body))
-	}
-
-	// Optionally read and print the response for debugging
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response: %w", err)
-	}
-
-	_, _ = fmt.Fprintf(stdout, "%s", body)
-	return nil
+	return err
 }

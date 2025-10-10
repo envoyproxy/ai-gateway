@@ -24,7 +24,7 @@ Before configuring any provider:
 
    ```shell
    kubectl delete -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/refs/tags/v0.1.5/examples/basic/basic.yaml
-
+   
    kubectl wait pods --timeout=15s \
      -l gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic \
      -n envoy-gateway-system \
@@ -50,5 +50,6 @@ When configuring AI providers, keep these security considerations in mind:
 ## Next Steps
 
 Choose your provider to get started:
+
 - [Connect OpenAI](./openai.md)
 - [Connect AWS Bedrock](./aws-bedrock.md)

@@ -21,6 +21,7 @@ extProc:
     # Overrides the image tag whose default is the chart appVersion.
     tag: ""
   imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
   # One of "info", "debug", "trace", "warn", "error", "fatal", "panic".
   logLevel: info
 
@@ -155,4 +156,8 @@ controller:
   nodeSelector: {}
   tolerations: []
   affinity: {}
-
+  # maxRecvMsgSize is the maximum message size in bytes that the gRPC extension server can receive
+  # from xDS (envoy-gateway).
+  # This value should be increased in setups where count/complexity of xDS
+  # resources (configuration) is big. Defaults to 4MB.
+  # maxRecvMsgSize: "4194304"

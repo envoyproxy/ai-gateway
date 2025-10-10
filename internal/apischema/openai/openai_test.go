@@ -15,6 +15,7 @@ import (
 	"github.com/openai/openai-go/v2"
 	"github.com/openai/openai-go/v2/packages/param"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genai"
 	"k8s.io/utils/ptr"
 )
 
@@ -121,16 +122,7 @@ func TestOpenAIChatCompletionResponseFormatUnionUnmarshal(t *testing.T) {
 					JSONSchema: ChatCompletionResponseFormatJSONSchemaJSONSchema{
 						Name:   "math_response",
 						Strict: true,
-						Schema: map[string]any{
-							"additionalProperties": false,
-							"type":                 "object",
-							"properties": map[string]any{
-								"step": map[string]any{
-									"type": "string",
-								},
-							},
-							"required": []any{"steps"},
-						},
+						Schema: json.RawMessage(`{ "type": "object", "properties": { "step": {"type": "string"} }, "required": [ "steps"], "additionalProperties": false }`),
 					},
 				},
 			},
@@ -344,16 +336,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 						JSONSchema: ChatCompletionResponseFormatJSONSchemaJSONSchema{
 							Name:   "math_response",
 							Strict: true,
-							Schema: map[string]any{
-								"additionalProperties": false,
-								"type":                 "object",
-								"properties": map[string]any{
-									"step": map[string]any{
-										"type": "string",
-									},
-								},
-								"required": []any{"steps"},
-							},
+							Schema: json.RawMessage(`{ "type": "object", "properties": { "step": {"type": "string"} }, "required": [ "steps"], "additionalProperties": false }`),
 						},
 					},
 				},
@@ -762,16 +745,7 @@ func TestChatCompletionResponseFormatUnionMarshal(t *testing.T) {
 					JSONSchema: ChatCompletionResponseFormatJSONSchemaJSONSchema{
 						Name:   "math_response",
 						Strict: true,
-						Schema: map[string]any{
-							"additionalProperties": false,
-							"type":                 "object",
-							"properties": map[string]any{
-								"step": map[string]any{
-									"type": "string",
-								},
-							},
-							"required": []any{"steps"},
-						},
+						Schema: json.RawMessage(`{ "type": "object", "properties": { "step": {"type": "string"} }, "required": [ "steps"], "additionalProperties": false }`),
 					},
 				},
 			},
@@ -1016,6 +990,69 @@ func TestChatCompletionResponse(t *testing.T) {
 					"prompt_tokens": 14,
 					"completion_tokens": 192,
 					"total_tokens": 206
+				}
+			}`,
+		},
+		{
+			name: "response with safety settings",
+			response: ChatCompletionResponse{
+				ID:      "chatcmpl-safety-test",
+				Created: JSONUNIXTime(time.Unix(1755135425, 0)),
+				Model:   "gpt-4.1-nano",
+				Object:  "chat.completion",
+				Choices: []ChatCompletionResponseChoice{
+					{
+						Index:        0,
+						FinishReason: ChatCompletionChoicesFinishReasonStop,
+						Message: ChatCompletionResponseChoiceMessage{
+							Role:    "assistant",
+							Content: ptr.To("This is a safe response"),
+							SafetyRatings: []*genai.SafetyRating{
+								{
+									Category:    genai.HarmCategoryHarassment,
+									Probability: genai.HarmProbabilityLow,
+								},
+								{
+									Category:    genai.HarmCategorySexuallyExplicit,
+									Probability: genai.HarmProbabilityNegligible,
+								},
+							},
+						},
+					},
+				},
+				Usage: ChatCompletionResponseUsage{
+					CompletionTokens: 5,
+					PromptTokens:     3,
+					TotalTokens:      8,
+				},
+			},
+			expected: `{
+				"id": "chatcmpl-safety-test",
+				"object": "chat.completion",
+				"created": 1755135425,
+				"model": "gpt-4.1-nano",
+				"choices": [{
+					"index": 0,
+					"message": {
+						"role": "assistant",
+						"content": "This is a safe response",
+						"safety_ratings": [
+							{
+								"category": "HARM_CATEGORY_HARASSMENT",
+								"probability": "LOW"
+							},
+							{
+								"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+								"probability": "NEGLIGIBLE"
+							}
+						]
+					},
+					"finish_reason": "stop"
+				}],
+				"usage": {
+					"prompt_tokens": 3,
+					"completion_tokens": 5,
+					"total_tokens": 8
 				}
 			}`,
 		},
@@ -2224,4 +2261,52 @@ func TestUsage(t *testing.T) {
 			require.Equal(t, tc.usage, decoded)
 		})
 	}
+}
+
+func TestChatCompletionNamedToolChoice_MarshalUnmarshal(t *testing.T) {
+	original := ChatCompletionNamedToolChoice{
+		Type: ToolTypeFunction,
+		Function: ChatCompletionNamedToolChoiceFunction{
+			Name: "my_func",
+		},
+	}
+	data, err := json.Marshal(original)
+	require.NoError(t, err)
+
+	var unmarshaled ChatCompletionNamedToolChoice
+	err = json.Unmarshal(data, &unmarshaled)
+	require.NoError(t, err)
+
+	require.Equal(t, original, unmarshaled)
+	require.Equal(t, "my_func", unmarshaled.Function.Name)
+}
+
+func TestChatCompletionToolChoiceUnion_MarshalUnmarshal(t *testing.T) {
+	// Test with string value
+	unionStr := ChatCompletionToolChoiceUnion{Value: "auto"}
+	dataStr, err := json.Marshal(unionStr)
+	require.NoError(t, err)
+
+	var unmarshaledStr ChatCompletionToolChoiceUnion
+	err = json.Unmarshal(dataStr, &unmarshaledStr)
+	require.NoError(t, err)
+	require.Equal(t, "auto", unmarshaledStr.Value)
+
+	// Test with ChatCompletionNamedToolChoice value
+	unionObj := ChatCompletionToolChoiceUnion{Value: ChatCompletionNamedToolChoice{
+		Type:     ToolTypeFunction,
+		Function: ChatCompletionNamedToolChoiceFunction{Name: "my_func"},
+	}}
+	dataObj, err := json.Marshal(unionObj)
+	require.NoError(t, err)
+
+	var unmarshaledObj ChatCompletionToolChoiceUnion
+	err = json.Unmarshal(dataObj, &unmarshaledObj)
+	require.NoError(t, err)
+
+	// Type assertion for struct value
+	namedChoice, ok := unmarshaledObj.Value.(ChatCompletionNamedToolChoice)
+	require.True(t, ok)
+	require.Equal(t, unionObj.Value, namedChoice)
+	require.Equal(t, "my_func", namedChoice.Function.Name)
 }

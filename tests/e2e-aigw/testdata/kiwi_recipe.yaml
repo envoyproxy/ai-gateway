@@ -1,0 +1,50 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+version: 1.0.0
+title: Flight Search Assistant
+description: |
+  This recipe helps users find flights from New York to Los Angeles using the MCP gateway.
+  It searches for flights on a specified date and returns the top 3 cheapest options in a structured JSON format.
+instructions: |
+  You are a helpful assistant that helps users find flights from New York to Los Angeles.
+
+prompt: |
+  Use the search-flight tool to search for flights from New York to Los Angeles on {{flight_date}}.
+  When specifying the departureDate parameter, use the format dd/mm/yyyy.
+  Display the first 3 results using the following JSON format:
+
+  Format the output as JSON with the following structure:
+  ```json
+  [
+    {
+      "airline": "airline name",
+      "flight_number": "flight number",
+      "departure_time": "departure time",
+      "arrival_time": "arrival time",
+      "duration": "flight duration",
+      "price": "price"
+    }
+  ]
+  ```
+
+  IMPORTANT: Print the full JSON response so it can be validated in the test output.
+
+extensions:
+  - name: mcp_gateway
+    type: streamable_http
+    uri: http://127.0.0.1:1975/mcp
+
+parameters:
+  - key: flight_date
+    input_type: string
+    requirement: required
+    description: flight date in MM/DD/YYYY format
+    default: "01/10/2025"
+
+settings:
+  goose_provider: ollama
+  goose_model: qwen3:0.6b
+  temperature: 0.0

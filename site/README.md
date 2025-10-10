@@ -18,19 +18,22 @@ npm install
 ### Run locally
 
 #### NPX
+
 ```
 npx docusaurus start
 ```
 
 #### NPM
+
 ```
 npm run start
 ```
 
 #### **When to Use Which?**
+
 - Use npx docusaurus start:
-    - For quick tests or temporary runs without installing the Docusaurus CLI.
-    - If you want to use the latest version of Docusaurus globally.
+  - For quick tests or temporary runs without installing the Docusaurus CLI.
+  - If you want to use the latest version of Docusaurus globally.
 - Use npm run start:
-    - For consistent and reproducible builds, ensuring you use the local version of Docusaurus.
-    - In your development workflow, where the start script is part of your project setup.
+  - For consistent and reproducible builds, ensuring you use the local version of Docusaurus.
+  - In your development workflow, where the start script is part of your project setup.

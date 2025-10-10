@@ -95,14 +95,14 @@ func isAnthropicSupportedImageMediaType(mediaType string) bool {
 }
 
 // translateAnthropicToolChoice converts the OpenAI tool_choice parameter to the Anthropic format.
-func translateAnthropicToolChoice(openAIToolChoice any, disableParallelToolUse anthropicParam.Opt[bool]) (anthropic.ToolChoiceUnionParam, error) {
+func translateAnthropicToolChoice(openAIToolChoice *openai.ChatCompletionToolChoiceUnion, disableParallelToolUse anthropicParam.Opt[bool]) (anthropic.ToolChoiceUnionParam, error) {
 	var toolChoice anthropic.ToolChoiceUnionParam
 
 	if openAIToolChoice == nil {
 		return toolChoice, nil
 	}
 
-	switch choice := openAIToolChoice.(type) {
+	switch choice := openAIToolChoice.Value.(type) {
 	case string:
 		switch choice {
 		case string(openAIconstant.ValueOf[openAIconstant.Auto]()):
@@ -121,7 +121,7 @@ func translateAnthropicToolChoice(openAIToolChoice any, disableParallelToolUse a
 		default:
 			return anthropic.ToolChoiceUnionParam{}, fmt.Errorf("unsupported tool_choice value: %s", choice)
 		}
-	case openai.ToolChoice:
+	case openai.ChatCompletionNamedToolChoice:
 		if choice.Type == openai.ToolTypeFunction && choice.Function.Name != "" {
 			toolChoice = anthropic.ToolChoiceUnionParam{
 				OfTool: &anthropic.ToolChoiceToolParam{
@@ -139,7 +139,7 @@ func translateAnthropicToolChoice(openAIToolChoice any, disableParallelToolUse a
 
 // translateOpenAItoAnthropicTools translates OpenAI tool and tool_choice parameters
 // into the Anthropic format and returns translated tool & tool choice.
-func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice any, parallelToolCalls *bool) (tools []anthropic.ToolUnionParam, toolChoice anthropic.ToolChoiceUnionParam, err error) {
+func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice *openai.ChatCompletionToolChoiceUnion, parallelToolCalls *bool) (tools []anthropic.ToolUnionParam, toolChoice anthropic.ToolChoiceUnionParam, err error) {
 	if len(openAITools) > 0 {
 		anthropicTools := make([]anthropic.ToolUnionParam, 0, len(openAITools))
 		for _, openAITool := range openAITools {

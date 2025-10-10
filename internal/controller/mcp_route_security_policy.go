@@ -79,7 +79,7 @@ func (c *MCPRouteController) syncMCPRouteSecurityPolicy(ctx context.Context, mcp
 // ensureAccessTokenSecurityPolicy ensures that the SecurityPolicy resource exists with JWT authentication to validate access tokens.
 func (c *MCPRouteController) ensureAccessTokenSecurityPolicy(ctx context.Context, mcpRoute *aigv1a1.MCPRoute, httpRouteName string) error {
 	var securityPolicy egv1a1.SecurityPolicy
-	securityPolicyName := internalapi.MCPHTTPRoutePrefix + mcpRoute.Name
+	securityPolicyName := internalapi.MCPGeneratedResourceCommonPrefix + mcpRoute.Name
 	err := c.client.Get(ctx, client.ObjectKey{Name: securityPolicyName, Namespace: mcpRoute.Namespace}, &securityPolicy)
 	existingPolicy := err == nil
 
@@ -497,7 +497,7 @@ func (c *MCPRouteController) buildOAuthAuthServerMetadataJSON(oauth *aigv1a1.MCP
 // cleanupSecurityPolicyResources deletes existing SecurityPolicy-related resources when SecurityPolicy is nil.
 func (c *MCPRouteController) cleanupSecurityPolicyResources(ctx context.Context, mcpRoute *aigv1a1.MCPRoute) error {
 	// Delete SecurityPolicy.
-	securityPolicyName := internalapi.MCPHTTPRoutePrefix + mcpRoute.Name
+	securityPolicyName := internalapi.MCPGeneratedResourceCommonPrefix + mcpRoute.Name
 	var securityPolicy egv1a1.SecurityPolicy
 	err := c.client.Get(ctx, client.ObjectKey{Name: securityPolicyName, Namespace: mcpRoute.Namespace}, &securityPolicy)
 	if err == nil {
@@ -637,11 +637,11 @@ func fetchOAuthAuthServerMetadata(authServer string) (*OAuthAuthServerMetadata, 
 }
 
 func oauthProtectedResourceMetadataName(mcpRouteName string) string {
-	return fmt.Sprintf("%s%s%s", internalapi.MCPHTTPRoutePrefix, mcpRouteName, oauthProtectedResourceMetadataSuffix)
+	return fmt.Sprintf("%s%s%s", internalapi.MCPGeneratedResourceCommonPrefix, mcpRouteName, oauthProtectedResourceMetadataSuffix)
 }
 
 func oauthAuthServerMetadataFilterName(mcpRouteName string) string {
-	return fmt.Sprintf("%s%s%s", internalapi.MCPHTTPRoutePrefix, mcpRouteName, oauthAuthServerMetadataSuffix)
+	return fmt.Sprintf("%s%s%s", internalapi.MCPGeneratedResourceCommonPrefix, mcpRouteName, oauthAuthServerMetadataSuffix)
 }
 
 // discoverJWKSURI attempts to discover the JWKS URI from the OAuth authorization server metadata.

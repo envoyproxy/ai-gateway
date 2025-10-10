@@ -203,7 +203,7 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 			}
 			require.NoError(t, err)
 
-			securityPolicyName := internalapi.MCPHTTPRoutePrefix + tt.mcpRoute.Name
+			securityPolicyName := internalapi.MCPGeneratedResourceCommonPrefix + tt.mcpRoute.Name
 			var securityPolicy egv1a1.SecurityPolicy
 			secPolErr := fakeClient.Get(t.Context(), client.ObjectKey{Name: securityPolicyName, Namespace: tt.mcpRoute.Namespace}, &securityPolicy)
 
@@ -223,7 +223,7 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 				require.Error(t, secPolErr, "SecurityPolicy should not exist")
 			}
 
-			backendTrafficPolicyName := internalapi.MCPHTTPRoutePrefix + tt.mcpRoute.Name + oauthProtectedResourceMetadataSuffix
+			backendTrafficPolicyName := internalapi.MCPGeneratedResourceCommonPrefix + tt.mcpRoute.Name + oauthProtectedResourceMetadataSuffix
 			var backendTrafficPolicy egv1a1.BackendTrafficPolicy
 			btpErr := fakeClient.Get(t.Context(), client.ObjectKey{Name: backendTrafficPolicyName, Namespace: tt.mcpRoute.Namespace}, &backendTrafficPolicy)
 
@@ -233,7 +233,7 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 				require.Error(t, btpErr, "BackendTrafficPolicy should not exist")
 			}
 
-			httpRouteFilterName := internalapi.MCPHTTPRoutePrefix + tt.mcpRoute.Name + oauthProtectedResourceMetadataSuffix
+			httpRouteFilterName := internalapi.MCPGeneratedResourceCommonPrefix + tt.mcpRoute.Name + oauthProtectedResourceMetadataSuffix
 			var httpRouteFilter egv1a1.HTTPRouteFilter
 			filterErr := fakeClient.Get(t.Context(), client.ObjectKey{Name: httpRouteFilterName, Namespace: tt.mcpRoute.Namespace}, &httpRouteFilter)
 
@@ -280,10 +280,10 @@ func TestMCPRouteControllerCleanupSecurityPolicyResources(t *testing.T) {
 	err = c.syncMCPRouteSecurityPolicy(t.Context(), mcpRoute, httpRouteName)
 	require.NoError(t, err)
 
-	securityPolicyName := internalapi.MCPHTTPRoutePrefix + mcpRoute.Name
-	backendTrafficPolicyName := internalapi.MCPHTTPRoutePrefix + mcpRoute.Name + oauthProtectedResourceMetadataSuffix
-	protecedResourceMetadataFilterName := internalapi.MCPHTTPRoutePrefix + mcpRoute.Name + oauthProtectedResourceMetadataSuffix
-	authServerMetadataFilterName := internalapi.MCPHTTPRoutePrefix + mcpRoute.Name + oauthAuthServerMetadataSuffix
+	securityPolicyName := internalapi.MCPGeneratedResourceCommonPrefix + mcpRoute.Name
+	backendTrafficPolicyName := internalapi.MCPGeneratedResourceCommonPrefix + mcpRoute.Name + oauthProtectedResourceMetadataSuffix
+	protecedResourceMetadataFilterName := internalapi.MCPGeneratedResourceCommonPrefix + mcpRoute.Name + oauthProtectedResourceMetadataSuffix
+	authServerMetadataFilterName := internalapi.MCPGeneratedResourceCommonPrefix + mcpRoute.Name + oauthAuthServerMetadataSuffix
 
 	var securityPolicy egv1a1.SecurityPolicy
 	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: securityPolicyName, Namespace: mcpRoute.Namespace}, &securityPolicy)

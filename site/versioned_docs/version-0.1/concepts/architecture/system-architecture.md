@@ -24,6 +24,7 @@ The architecture is divided into two main planes:
    - Rate Limit Service manages token-based rate limiting
 
 The Control Plane configures the Data Plane through several paths:
+
 - AI Gateway Controller configures the External Processor and Rate Limit Service
 - Envoy Gateway Controller configures Envoy Proxy through xDS
 
@@ -107,11 +108,13 @@ sequenceDiagram
 ## Summary
 
 The Envoy AI Gateway architecture provides a robust system for managing AI traffic through:
+
 - Clear separation of control and data plane responsibilities
 - Flexible configuration management
 - Efficient request processing and transformation
 - Token-based rate limiting capabilities
 
 For detailed information about specific components:
+
 - Learn more about the [Control Plane](./control-plane.md) components
 - Understand the [Data Plane](./data-plane.md) in detail

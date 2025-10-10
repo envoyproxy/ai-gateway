@@ -27,9 +27,14 @@ const (
 	MCPBackendListenerPort = 10088
 	// MCPProxyPort is the port where the MCP proxy listens.
 	MCPProxyPort = 9856
-	// MCPHTTPRoutePrefix is the prefix for the MCP HTTPRoute names.
-	MCPHTTPRoutePrefix     = "ai-eg-mcp-"
-	MCPBackendFilterPrefix = MCPHTTPRoutePrefix + "bf-"
+	// MCPGeneratedResourceCommonPrefix is the common prefix for all MCP-related generated resources.
+	MCPGeneratedResourceCommonPrefix = "ai-eg-mcp-"
+	// MCPMainHTTPRoutePrefix is the prefix for the main HTTPRoute resources generated for MCP.
+	MCPMainHTTPRoutePrefix = MCPGeneratedResourceCommonPrefix + "main-"
+	// MCPPerBackendRefHTTPRoutePrefix is the prefix for the per-backend-ref HTTPRoute resources generated for MCP.
+	MCPPerBackendRefHTTPRoutePrefix = MCPGeneratedResourceCommonPrefix + "br-"
+	// MCPPerBackendHTTPRouteFilterPrefix is the prefix for the HTTP route filter names for per-backend resources.
+	MCPPerBackendHTTPRouteFilterPrefix = MCPGeneratedResourceCommonPrefix + "brf-"
 
 	// MCPMetadataHeaderPrefix is the prefix for special headers used to pass metadata in the filter metadata.
 	// These headers are added internally to the requests to the upstream servers so they can be populated in the filter
@@ -227,3 +232,10 @@ type RequestModel = string
 // request to the "gpt-5-nano" model results in a plain text attribute of the
 // latest model: "gen_ai.response.model" -> "gpt-5-nano-2025-08-07"
 type ResponseModel = string
+
+// AIGatewayFilterMetadataNamespace is the namespace used for the filter metadata related to AI Gateway.
+//
+// For example, token usage, input/output tokens, and request costs are stored in this namespace.
+// Aliased from aigv1a1.AIGatewayFilterMetadataNamespace to avoid making ExtProc directly depend
+// on the control plane API which is not a concern of ExtProc.
+const AIGatewayFilterMetadataNamespace = aigv1a1.AIGatewayFilterMetadataNamespace
