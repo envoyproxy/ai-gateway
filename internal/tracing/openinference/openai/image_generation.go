@@ -80,7 +80,7 @@ func (r *ImageGenerationRecorder) RecordResponse(span trace.Span, resp *openaisd
 
 // RecordResponseOnError implements the same method as defined in tracing.ImageGenerationRecorder.
 func (r *ImageGenerationRecorder) RecordResponseOnError(span trace.Span, statusCode int, body []byte) {
-	recordImageGenerationResponseError(span, statusCode, string(body))
+	recordResponseError(span, statusCode, string(body))
 }
 
 // buildImageGenerationRequestAttributes builds OpenInference attributes from the image generation request.
@@ -138,13 +138,4 @@ func buildImageGenerationResponseAttributes(resp *openaisdk.ImagesResponse, conf
 	}
 
 	return attrs
-}
-
-// recordImageGenerationResponseError records error attributes to the span.
-func recordImageGenerationResponseError(span trace.Span, statusCode int, body string) {
-	span.SetStatus(codes.Error, "")
-	span.SetAttributes(
-		attribute.Int("http.status_code", statusCode),
-		attribute.String("gen_ai.error.message", body),
-	)
 }
