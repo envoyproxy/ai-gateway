@@ -88,7 +88,7 @@ This allows any MCP Proxy instance—not just the original one—to correctly fo
 ### Distributed Tracing
 
 The MCP Proxy supports distributed tracing by propagating trace context from incoming requests.
-W3C Trace Propagation is done via [the _meta field](https://modelcontextprotocol.io/specification/2025-06-18/basic#general-fields)
+W3C Trace Propagation is done via [the \_meta field](https://modelcontextprotocol.io/specification/2025-06-18/basic#general-fields)
 on the JSON-RPC messages.
 
 Several agent SDKs such as the [C#](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/src/ModelContextProtocol.Core),
@@ -112,7 +112,6 @@ looks like:
   }
 }
 ```
-
 
 ## Technical Gap between Envoy’s Extension vs the Protocol
 
