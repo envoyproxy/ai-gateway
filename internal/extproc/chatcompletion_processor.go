@@ -410,13 +410,13 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 		c.metrics.RecordTokenLatency(ctx, tokenUsage.OutputTokens, body.EndOfStream, c.requestHeaders)
 		// Emit usage once at end-of-stream using final totals.
 		if body.EndOfStream {
-			c.metrics.RecordTokenUsage(ctx, c.costs.InputTokens, c.costs.OutputTokens, c.requestHeaders)
+			c.metrics.RecordTokenUsage(ctx, c.costs.InputTokens, c.costs.CachedInputTokens, c.costs.OutputTokens, c.requestHeaders)
 		}
 		// TODO: if c.forcedStreamOptionIncludeUsage is true, we should not include usage in the response body since
 		// that's what the clients would expect. However, it is a little bit tricky as we simply just reading the streaming
 		// chunk by chunk, we only want to drop a specific line before the last chunk.
 	} else {
-		c.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.OutputTokens, c.requestHeaders)
+		c.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.CachedInputTokens, tokenUsage.OutputTokens, c.requestHeaders)
 	}
 
 	if body.EndOfStream && len(c.config.requestCosts) > 0 {
@@ -536,6 +536,8 @@ func buildDynamicMetadata(config *processorConfig, costs *translator.LLMTokenUsa
 		switch rc.Type {
 		case filterapi.LLMRequestCostTypeInputToken:
 			cost = costs.InputTokens
+		case filterapi.LLMRequestCostTypeCachedInputToken:
+			cost = costs.CachedInputTokens
 		case filterapi.LLMRequestCostTypeOutputToken:
 			cost = costs.OutputTokens
 		case filterapi.LLMRequestCostTypeTotalToken:
@@ -546,6 +548,7 @@ func buildDynamicMetadata(config *processorConfig, costs *translator.LLMTokenUsa
 				requestHeaders[internalapi.ModelNameHeaderKeyDefault],
 				backendName,
 				costs.InputTokens,
+				costs.CachedInputTokens,
 				costs.OutputTokens,
 				costs.TotalTokens,
 			)

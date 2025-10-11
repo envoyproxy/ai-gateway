@@ -31,6 +31,7 @@ AI Gateway has specific behavior for token tracking and rate limiting:
 
 3. **Token Types**:
    - `InputToken`: Counts tokens in the request prompt
+   - `CachedInputToken`: Counts _cached_ input tokens in the request prompt
    - `OutputToken`: Counts tokens in the model's response
    - `TotalToken`: Combines both input and output tokens
    - `CEL`: Allows custom token calculations using CEL expressions
@@ -55,6 +56,8 @@ spec:
   llmRequestCosts:
     - metadataKey: llm_input_token
       type: InputToken # Counts tokens in the request
+    - metadataKey: llm_cached_input_token
+      type: CachedInputToken # Counts cached input tokens in the request prompt
     - metadataKey: llm_output_token
       type: OutputToken # Counts tokens in the response
     - metadataKey: llm_total_token
@@ -68,7 +71,7 @@ spec:
   llmRequestCosts:
     - metadataKey: custom_cost
       type: CEL
-      cel: "input_tokens * 0.5 + output_tokens * 1.5" # Example: Weight output tokens more heavily
+      cel: "(input_tokens - cached_input_tokens) + (cached_input_tokens * 0.1) + output_tokens * 1.5" # Example: Weight cached tokens less and weight output tokens more heavily
 ```
 
 ### 2. Configure Rate Limits

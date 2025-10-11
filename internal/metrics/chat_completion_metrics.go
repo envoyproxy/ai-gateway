@@ -43,7 +43,7 @@ type ChatCompletionMetrics interface {
 	SetBackend(backend *filterapi.Backend)
 
 	// RecordTokenUsage records token usage metrics.
-	RecordTokenUsage(ctx context.Context, inputTokens, outputTokens uint32, requestHeaderLabelMapping map[string]string)
+	RecordTokenUsage(ctx context.Context, inputTokens, cachedInputTokens, outputTokens uint32, requestHeaderLabelMapping map[string]string)
 	// RecordRequestCompletion records latency metrics for the entire request.
 	RecordRequestCompletion(ctx context.Context, success bool, requestHeaderLabelMapping map[string]string)
 	// RecordTokenLatency records latency metrics for token generation.
@@ -71,12 +71,16 @@ func (c *chatCompletion) StartRequest(headers map[string]string) {
 }
 
 // RecordTokenUsage implements [ChatCompletion.RecordTokenUsage].
-func (c *chatCompletion) RecordTokenUsage(ctx context.Context, inputTokens, outputTokens uint32, requestHeaders map[string]string) {
+func (c *chatCompletion) RecordTokenUsage(ctx context.Context, inputTokens, cachedInputTokens, outputTokens uint32, requestHeaders map[string]string) {
 	attrs := c.buildBaseAttributes(requestHeaders)
 
 	c.metrics.tokenUsage.Record(ctx, float64(inputTokens),
 		metric.WithAttributeSet(attrs),
 		metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput)),
+	)
+	c.metrics.tokenUsage.Record(ctx, float64(cachedInputTokens),
+		metric.WithAttributeSet(attrs),
+		metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeCachedInput)),
 	)
 	c.metrics.tokenUsage.Record(ctx, float64(outputTokens),
 		metric.WithAttributeSet(attrs),

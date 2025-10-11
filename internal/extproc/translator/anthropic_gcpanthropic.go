@@ -159,10 +159,10 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, bo
 
 	// Extract token usage from the response.
 	tokenUsage = LLMTokenUsage{
-		InputTokens:  uint32(anthropicResp.Usage.InputTokens),                                    //nolint:gosec
-		OutputTokens: uint32(anthropicResp.Usage.OutputTokens),                                   //nolint:gosec
-		TotalTokens:  uint32(anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens), //nolint:gosec
-		CachedTokens: uint32(anthropicResp.Usage.CacheReadInputTokens),                           //nolint:gosec
+		InputTokens:       uint32(anthropicResp.Usage.InputTokens),                                    //nolint:gosec
+		OutputTokens:      uint32(anthropicResp.Usage.OutputTokens),                                   //nolint:gosec
+		TotalTokens:       uint32(anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens), //nolint:gosec
+		CachedInputTokens: uint32(anthropicResp.Usage.CacheReadInputTokens),                           //nolint:gosec
 	}
 
 	// Pass through the response body unchanged since both input and output are Anthropic format.
