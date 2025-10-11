@@ -120,6 +120,23 @@ func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFi
 		path = path[:queryIndex]
 	}
 
+	// Debug details about the processor selection.
+	if s.logger != nil {
+		availablePaths := make([]string, 0, len(s.processorFactories))
+		for k := range s.processorFactories {
+			availablePaths = append(availablePaths, k)
+		}
+		s.logger.Debug(
+			"selecting processor for path",
+			slog.String("path_header", pathHeader),
+			slog.String("raw_path", requestHeaders[pathHeader]),
+			slog.String("stripped_path", path),
+			slog.Bool("is_upstream_filter", isUpstreamFilter),
+			slog.Int("available_processors_count", len(availablePaths)),
+			slog.Any("available_paths", availablePaths),
+		)
+	}
+
 	newProcessor, ok := s.processorFactories[path]
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", errNoProcessor, path)
@@ -177,13 +194,39 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 		// request, and the processor will be instantiated only once.
 		if headers := req.GetRequestHeaders().GetHeaders(); headers != nil {
 			headersMap := headersToMap(headers)
+			// Log request headers (filtered) and key routing variables to help debug unsupported path.
+			if s.logger != nil && s.logger.Enabled(ctx, slog.LevelDebug) {
+				filteredHdrs := filterSensitiveHeadersForLogging(headers, sensitiveHeaderKeys)
+				s.logger.Debug(
+					"request headers received",
+					slog.Any("request_headers", filteredHdrs),
+				)
+			}
 			reqID = headersMap["x-request-id"]
 			// Assume that when attributes are set, this stream is for the upstream filter level.
 			isUpstreamFilter = req.GetAttributes() != nil
+			if s.logger != nil {
+				s.logger.Debug(
+					"instantiating processor",
+					slog.String("request_id", reqID),
+					slog.Bool("is_upstream_filter", isUpstreamFilter),
+					slog.String("path", headersMap[":path"]),
+					slog.String("original_path_header", headersMap[originalPathHeader]),
+					slog.Any("headers_map", headersMap),
+				)
+			}
 			p, err = s.processorForPath(headersMap, isUpstreamFilter)
 			if err != nil {
 				if errors.Is(err, errNoProcessor) {
 					path := headersMap[":path"]
+					if s.logger != nil {
+						s.logger.Debug(
+							"no processor registered for path",
+							slog.String("path", path),
+							slog.Bool("is_upstream_filter", isUpstreamFilter),
+							slog.String("request_id", reqID),
+						)
+					}
 					_ = stream.Send(&extprocv3.ProcessingResponse{
 						Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 							ImmediateResponse: &extprocv3.ImmediateResponse{

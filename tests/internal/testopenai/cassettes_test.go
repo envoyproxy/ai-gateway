@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +28,12 @@ func testNewRequest[R any](t *testing.T, tests []cassetteTestCase[R]) {
 	// documented way to backfill cassettes.
 	server, err := NewServer(os.Stdout, 0)
 	require.NoError(t, err)
-	defer server.Close()
+	defer func() {
+		// this sleep is required to wait till large cassettes are recorded
+		// remove this sleep when we have a way to wait for cassettes to be recorded
+		<-time.After(5 * time.Second)
+		server.Close()
+	}()
 
 	baseURL := server.URL()
 

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/andybalholm/brotli"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 )
 
@@ -21,7 +22,7 @@ type contentDecodingResult struct {
 }
 
 // decodeContentIfNeeded decompresses the response body based on the content-encoding header.
-// Currently, supports gzip encoding, but can be extended to support other encodings in the future.
+// Currently, supports gzip and brotli encoding, but can be extended to support other encodings in the future.
 // Returns a reader for the (potentially decompressed) body and metadata about the encoding.
 func decodeContentIfNeeded(body []byte, contentEncoding string) (contentDecodingResult, error) {
 	switch contentEncoding {
@@ -30,6 +31,12 @@ func decodeContentIfNeeded(body []byte, contentEncoding string) (contentDecoding
 		if err != nil {
 			return contentDecodingResult{}, fmt.Errorf("failed to decode gzip: %w", err)
 		}
+		return contentDecodingResult{
+			reader:    reader,
+			isEncoded: true,
+		}, nil
+	case "br":
+		reader := brotli.NewReader(bytes.NewReader(body))
 		return contentDecodingResult{
 			reader:    reader,
 			isEncoded: true,

@@ -24,13 +24,19 @@ const (
 	genaiAttributeTokenType     = "gen_ai.token.type" //nolint:gosec // metric name, not credential
 	genaiAttributeErrorType     = "error.type"
 
-	genaiOperationChat      = "chat"
-	genaiOperationEmbedding = "embeddings"
-	genaiProviderOpenAI     = "openai"
-	genaiProviderAWSBedrock = "aws.bedrock"
-	genaiTokenTypeInput     = "input"
-	genaiTokenTypeOutput    = "output"
-	genaiErrorTypeFallback  = "_OTHER"
+	// Image generation specific attributes (currently used in main codebase)
+	genaiAttributeImageCount = "gen_ai.image.count"
+	genaiAttributeImageModel = "gen_ai.image.model"
+	genaiAttributeImageSize  = "gen_ai.image.size"
+
+	genaiOperationChat            = "chat"
+	genaiOperationEmbedding       = "embeddings"
+	genaiOperationImageGeneration = "image_generation"
+	genaiProviderOpenAI           = "openai"
+	genaiProviderAWSBedrock       = "aws.bedrock"
+	genaiTokenTypeInput           = "input"
+	genaiTokenTypeOutput          = "output"
+	genaiErrorTypeFallback        = "_OTHER"
 )
 
 // genAI holds metrics according to the Semantic Conventions for Generative AI Metrics.
