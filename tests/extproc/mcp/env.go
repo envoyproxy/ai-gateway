@@ -3,7 +3,7 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-package extproc
+package mcp
 
 import (
 	"context"
@@ -11,12 +11,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
+	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
+	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
@@ -269,4 +272,37 @@ func (m *mcpEnv) newSession(t *testing.T) *mcpSession {
 	}
 	m.sessions[ret.session.ID()] = ret
 	return ret
+}
+
+// requireMCPSpan verifies that a span has the expected name and attributes.
+// It combines base MCP attributes with additional attributes provided by the caller,
+// then compares the entire attribute map against the span's attributes.
+func requireMCPSpan(t *testing.T, span *tracev1.Span, expectedName string, additionalAttrs map[string]string) {
+	t.Helper()
+	require.NotNil(t, span, "expected span but got nil")
+	require.Equalf(t, expectedName, span.Name, "span name mismatch, full span: %s", span.String())
+
+	// Extract all attributes from span into map[string]string
+	attrsFromSpan := make(map[string]string)
+	for _, attr := range span.Attributes {
+		if attr.Value.Value != nil {
+			if _, ok := attr.Value.Value.(*commonv1.AnyValue_StringValue); ok {
+				attrsFromSpan[attr.Key] = attr.Value.GetStringValue()
+			}
+		}
+	}
+
+	// Combine base attributes with additional attributes
+	combined := make(map[string]string)
+	// Base attributes that are always present
+	combined["mcp.protocol.version"] = "2025-06-18"
+	combined["mcp.transport"] = "http"
+	// mcp.request.id is dynamic, so we copy it from span
+	if reqID, ok := attrsFromSpan["mcp.request.id"]; ok {
+		combined["mcp.request.id"] = reqID
+	}
+	// Add additional attributes provided by caller
+	maps.Copy(combined, additionalAttrs)
+
+	require.Equalf(t, combined, attrsFromSpan, "span attributes mismatch, full span: %s", span.String())
 }
