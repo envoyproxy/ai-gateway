@@ -165,8 +165,15 @@ type MCPBackendAPIKey struct {
 
 // MCPRouteSecurityPolicy defines the security policy for a MCPRoute.
 type MCPRouteSecurityPolicy struct {
+	// OAuth defines the configuration for the MCP spec compatible OAuth authentication.
+	//
 	// +optional
 	OAuth *MCPRouteOAuth `json:"oauth,omitempty"`
+
+	// APIKeyAuth defines the configuration for the API Key Authentication.
+	//
+	// +optional
+	APIKeyAuth *egv1a1.APIKeyAuth `json:"apiKeyAuth,omitempty"`
 }
 
 // MCPRouteOAuth defines a MCP spec compatible OAuth authentication configuration for a MCPRoute.
