@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
@@ -61,11 +62,14 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, ope
 		o.requestModel = o.modelNameOverride
 	}
 
+	// URL encode the model name for the path to handle ARNs with special characters
+	encodedModelName := url.PathEscape(o.requestModel)
+
 	headerMutation = &extprocv3.HeaderMutation{
 		SetHeaders: []*corev3.HeaderValueOption{
 			{Header: &corev3.HeaderValue{
 				Key:      ":path",
-				RawValue: fmt.Appendf(nil, pathTemplate, o.requestModel),
+				RawValue: fmt.Appendf(nil, pathTemplate, encodedModelName),
 			}},
 		},
 	}
