@@ -31,6 +31,9 @@ spec:
   schema:
     name: AzureOpenAI
     version: 2025-01-01-preview
+    ## OR using OpenAI compatible API
+    # name: OpenAI
+    # version: openai/v1
   backendRef:
     name: envoy-ai-gateway-basic-azure
     kind: Backend
