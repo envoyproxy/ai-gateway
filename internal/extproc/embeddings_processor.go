@@ -172,6 +172,8 @@ func (e *embeddingsProcessorUpstreamFilter) selectTranslator(out filterapi.Versi
 	switch out.Name {
 	case filterapi.APISchemaOpenAI:
 		e.translator = translator.NewEmbeddingOpenAIToOpenAITranslator(out.Version, e.modelNameOverride, e.span)
+	case filterapi.APISchemaAzureOpenAI:
+		e.translator = translator.NewEmbeddingOpenAIToAzureOpenAITranslator(out.Version, e.modelNameOverride, e.span)
 	default:
 		return fmt.Errorf("unsupported API schema: backend=%s", out)
 	}
