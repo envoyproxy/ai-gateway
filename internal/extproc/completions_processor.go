@@ -24,24 +24,28 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 // CompletionsProcessorFactory returns a factory method to instantiate the completions processor.
-func CompletionsProcessorFactory(_ interface{}) ProcessorFactory {
-	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
+func CompletionsProcessorFactory(cm metrics.CompletionMetrics) ProcessorFactory {
+	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "completions", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &completionsProcessorRouterFilter{
 				config:         config,
+				tracer:         tracing.CompletionTracer(),
 				requestHeaders: requestHeaders,
 				logger:         logger,
+				metrics:        cm,
 			}, nil
 		}
 		return &completionsProcessorUpstreamFilter{
 			config:         config,
 			requestHeaders: requestHeaders,
 			logger:         logger,
+			metrics:        cm,
 		}, nil
 	}
 }
@@ -70,9 +74,15 @@ type completionsProcessorRouterFilter struct {
 	// forcedStreamOptionIncludeUsage is set to true if the original request is a streaming request and has the
 	// stream_options.include_usage=false. In that case, we force the option to be true to ensure that the token usage is calculated correctly.
 	forcedStreamOptionIncludeUsage bool
+	// tracer is the tracer used for requests.
+	tracer tracing.CompletionTracer
+	// span is the tracing span for this request, created in ProcessRequestBody.
+	span tracing.CompletionSpan
 	// upstreamFilterCount is the number of upstream filters that have been processed.
 	// This is used to determine if the request is a retry request.
 	upstreamFilterCount int
+	// metrics tracking.
+	metrics metrics.CompletionMetrics
 }
 
 // ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
@@ -96,7 +106,7 @@ func (c *completionsProcessorRouterFilter) ProcessResponseBody(ctx context.Conte
 }
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
-func (c *completionsProcessorRouterFilter) ProcessRequestBody(_ context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+func (c *completionsProcessorRouterFilter) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	originalModel, body, err := parseOpenAICompletionBody(rawBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
@@ -132,10 +142,17 @@ func (c *completionsProcessorRouterFilter) ProcessRequestBody(_ context.Context,
 	c.originalRequestBody = body
 	c.originalRequestBodyRaw = rawBody.Body
 
-	// Create a header mutation without tracing.
+	// Tracing may need to inject headers, so create a header mutation here.
 	headerMutation := &extprocv3.HeaderMutation{
 		SetHeaders: additionalHeaders,
 	}
+	c.span = c.tracer.StartSpanAndInjectHeaders(
+		ctx,
+		c.requestHeaders,
+		headerMutation,
+		body,
+		rawBody.Body,
+	)
 
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{
@@ -173,6 +190,10 @@ type completionsProcessorUpstreamFilter struct {
 	forcedStreamOptionIncludeUsage bool
 	// cost is the cost of the request that is accumulated during the processing of the response.
 	costs translator.LLMTokenUsage
+	// span is the tracing span for this request, inherited from the router filter.
+	span tracing.CompletionSpan
+	// metrics tracking.
+	metrics metrics.CompletionMetrics
 }
 
 // selectTranslator selects the translator based on the output schema.
@@ -193,6 +214,22 @@ func (c *completionsProcessorUpstreamFilter) selectTranslator(out filterapi.Vers
 // with the status CONTINUE_AND_REPLACE. This will allows Envoy to not send the request body again
 // to the extproc.
 func (c *completionsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Context, _ *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
+	defer func() {
+		if err != nil {
+			c.metrics.RecordRequestCompletion(ctx, false, c.requestHeaders)
+		}
+	}()
+	// Start tracking metrics for this request.
+	c.metrics.StartRequest(c.requestHeaders)
+	// Set the original model from the request body before any overrides
+	c.metrics.SetOriginalModel(c.originalRequestBody.Model)
+	// Set the request model for metrics from the original model or override if applied.
+	reqModel := c.originalRequestBody.Model
+	if override := c.requestHeaders[internalapi.ModelNameHeaderKeyDefault]; override != "" {
+		reqModel = override
+	}
+	c.metrics.SetRequestModel(reqModel)
+
 	headerMutation, bodyMutation, err := c.translator.RequestBody(c.originalRequestBodyRaw, c.originalRequestBody, c.onRetry)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request: %w", err)
@@ -241,7 +278,12 @@ func (c *completionsProcessorUpstreamFilter) ProcessRequestBody(context.Context,
 }
 
 // ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
-func (c *completionsProcessorUpstreamFilter) ProcessResponseHeaders(_ context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
+func (c *completionsProcessorUpstreamFilter) ProcessResponseHeaders(ctx context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
+	defer func() {
+		if err != nil {
+			c.metrics.RecordRequestCompletion(ctx, false, c.requestHeaders)
+		}
+	}()
 	c.responseHeaders = headersToMap(headers)
 	if enc := c.responseHeaders["content-encoding"]; enc != "" {
 		c.responseEncoding = enc
@@ -263,7 +305,19 @@ func (c *completionsProcessorUpstreamFilter) ProcessResponseHeaders(_ context.Co
 }
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
-func (c *completionsProcessorUpstreamFilter) ProcessResponseBody(_ context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+func (c *completionsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+	// Track whether we need to record request completion on error.
+	recordRequestCompletionErr := false
+	defer func() {
+		if err != nil || recordRequestCompletionErr {
+			c.metrics.RecordRequestCompletion(ctx, false, c.requestHeaders)
+			return
+		}
+		if body.EndOfStream {
+			c.metrics.RecordRequestCompletion(ctx, true, c.requestHeaders)
+		}
+	}()
+
 	// Decompress the body if needed using common utility.
 	decodingResult, err := decodeContentIfNeeded(body.Body, c.responseEncoding)
 	if err != nil {
@@ -272,11 +326,19 @@ func (c *completionsProcessorUpstreamFilter) ProcessResponseBody(_ context.Conte
 
 	// Assume all responses have a valid status code header.
 	if code, _ := strconv.Atoi(c.responseHeaders[":status"]); !isGoodStatusCode(code) {
+		recordRequestCompletionErr = true
 		var headerMutation *extprocv3.HeaderMutation
 		var bodyMutation *extprocv3.BodyMutation
 		headerMutation, bodyMutation, err = c.translator.ResponseError(c.responseHeaders, decodingResult.reader)
 		if err != nil {
 			return nil, fmt.Errorf("failed to transform response error: %w", err)
+		}
+		if c.span != nil {
+			b := bodyMutation.GetBody()
+			if b == nil {
+				b = body.Body
+			}
+			c.span.EndSpanOnError(code, b)
 		}
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_ResponseBody{
@@ -290,10 +352,13 @@ func (c *completionsProcessorUpstreamFilter) ProcessResponseBody(_ context.Conte
 		}, nil
 	}
 
-	headerMutation, bodyMutation, tokenUsage, responseModel, err := c.translator.ResponseBody(c.responseHeaders, decodingResult.reader, body.EndOfStream)
+	headerMutation, bodyMutation, tokenUsage, responseModel, err := c.translator.ResponseBody(c.responseHeaders, decodingResult.reader, body.EndOfStream, c.span)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}
+
+	// Set the response model for metrics
+	c.metrics.SetResponseModel(responseModel)
 
 	// Remove content-encoding header if original body encoded but was mutated in the processor.
 	headerMutation = removeContentEncodingIfNeeded(headerMutation, bodyMutation, decodingResult.isEncoded)
@@ -314,6 +379,18 @@ func (c *completionsProcessorUpstreamFilter) ProcessResponseBody(_ context.Conte
 	c.costs.OutputTokens += tokenUsage.OutputTokens
 	c.costs.TotalTokens += tokenUsage.TotalTokens
 
+	// Record metrics.
+	if c.stream {
+		// Token latency is only recorded for streaming responses
+		c.metrics.RecordTokenLatency(ctx, tokenUsage.OutputTokens, body.EndOfStream, c.requestHeaders)
+		// Emit usage once at end-of-stream using final totals.
+		if body.EndOfStream {
+			c.metrics.RecordTokenUsage(ctx, c.costs.InputTokens, c.costs.OutputTokens, c.requestHeaders)
+		}
+	} else {
+		c.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.OutputTokens, c.requestHeaders)
+	}
+
 	// Log the response model for debugging
 	if responseModel != "" {
 		c.logger.Debug("completion response model", "model", responseModel)
@@ -324,18 +401,32 @@ func (c *completionsProcessorUpstreamFilter) ProcessResponseBody(_ context.Conte
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
 		}
+		// Merge token latency metadata if streaming.
+		if c.stream {
+			c.mergeWithTokenLatencyMetadata(resp.DynamicMetadata)
+		}
+	}
+
+	if body.EndOfStream && c.span != nil {
+		c.span.EndSpan()
 	}
 
 	return resp, nil
 }
 
 // SetBackend implements [Processor.SetBackend].
-func (c *completionsProcessorUpstreamFilter) SetBackend(_ context.Context, b *filterapi.Backend, backendHandler backendauth.Handler, routeProcessor Processor) (err error) {
+func (c *completionsProcessorUpstreamFilter) SetBackend(ctx context.Context, b *filterapi.Backend, backendHandler backendauth.Handler, routeProcessor Processor) (err error) {
+	defer func() {
+		if err != nil {
+			c.metrics.RecordRequestCompletion(ctx, false, c.requestHeaders)
+		}
+	}()
 	rp, ok := routeProcessor.(*completionsProcessorRouterFilter)
 	if !ok {
 		panic("BUG: expected routeProcessor to be of type *completionsProcessorRouterFilter")
 	}
 	rp.upstreamFilterCount++
+	c.metrics.SetBackend(b)
 	c.modelNameOverride = b.ModelNameOverride
 	c.backendName = b.Name
 	c.originalRequestBody = rp.originalRequestBody
@@ -353,7 +444,20 @@ func (c *completionsProcessorUpstreamFilter) SetBackend(_ context.Context, b *fi
 		c.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = c.modelNameOverride
 	}
 	rp.upstreamFilter = c
+	c.span = rp.span
 	return
+}
+
+func (c *completionsProcessorUpstreamFilter) mergeWithTokenLatencyMetadata(metadata *structpb.Struct) {
+	timeToFirstTokenMs := c.metrics.GetTimeToFirstTokenMs()
+	interTokenLatencyMs := c.metrics.GetInterTokenLatencyMs()
+	innerVal := metadata.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+	if innerVal == nil {
+		innerVal = &structpb.Struct{Fields: make(map[string]*structpb.Value)}
+		metadata.Fields[internalapi.AIGatewayFilterMetadataNamespace] = structpb.NewStructValue(innerVal)
+	}
+	innerVal.Fields["token_latency_ttft"] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: timeToFirstTokenMs}}
+	innerVal.Fields["token_latency_itl"] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: interTokenLatencyMs}}
 }
 
 func parseOpenAICompletionBody(body *extprocv3.HttpBody) (modelName string, rb *openai.CompletionRequest, err error) {

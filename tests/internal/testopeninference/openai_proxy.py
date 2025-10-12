@@ -52,6 +52,26 @@ async def azure_chat_completions(deployment: str, request: Request) -> Response:
         is_streaming=request_data.get('stream', False)
     )
 
+@app.post("/v1/completions")
+async def completions(request: Request) -> Response:
+    request_data = await request.json()
+    return await handle_openai_request(
+        request,
+        client.completions.create,
+        request_data=request_data,
+        is_streaming=request_data.get('stream', False)
+    )
+
+@app.post("/openai/deployments/{deployment}/completions")
+async def azure_chat_completions(deployment: str, request: Request) -> Response:
+    request_data = await request.json()
+    return await handle_openai_request(
+        request,
+        client.completions.create,
+        request_data=request_data,
+        is_streaming=request_data.get('stream', False)
+    )
+
 @app.post("/v1/embeddings")
 async def embeddings(request: Request) -> Response:
     return await handle_openai_request(

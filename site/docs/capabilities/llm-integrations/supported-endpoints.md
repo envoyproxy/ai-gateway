@@ -114,6 +114,7 @@ curl -H "Content-Type: application/json" \
 - ✅ Single and batch prompt processing
 - ✅ Token usage tracking and cost calculation
 - ✅ Provider fallback and load balancing
+- ✅ Full metrics support (token usage, request duration, time to first token, inter-token latency)
 
 **Supported Providers:**
 
