@@ -10,28 +10,19 @@ import (
 	"context"
 	_ "embed"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"testing"
 	"time"
 
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
 	"github.com/tetratelabs/func-e/api"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
-	"github.com/envoyproxy/ai-gateway/internal/aigw"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
@@ -111,7 +102,7 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 	}
 	config := readFileFromProjectRoot(t, "examples/aigw/ollama.yaml")
 	ctx, cancel := context.WithCancel(t.Context())
-	_, done, _, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, config)
+	_, done, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, config)
 	require.NoError(t, err)
 	time.Sleep(time.Second)
 	cancel()
@@ -136,7 +127,7 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc_noListeners(t *testing.T
 		adminPort:                adminPort,
 	}
 
-	_, _, _, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(t.Context(), gatewayNoListenersConfig)
+	_, _, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(t.Context(), gatewayNoListenersConfig)
 	require.EqualError(t, err, "gateway aigw-run has no listeners configured")
 }
 
@@ -189,85 +180,6 @@ func Test_mustStartExtProc_withHeaderAttributes(t *testing.T) {
 	}
 }
 
-func TestTryFindEnvoyAdminPort(t *testing.T) {
-	gwWithProxy := func(name string) *gwapiv1.Gateway {
-		return &gwapiv1.Gateway{
-			Spec: gwapiv1.GatewaySpec{
-				Infrastructure: &gwapiv1.GatewayInfrastructure{
-					ParametersRef: &gwapiv1.LocalParametersReference{
-						Kind: "EnvoyProxy",
-						Name: name,
-					},
-				},
-			},
-		}
-	}
-
-	proxyWithAdminAddr := func(name, host string, port int) *egv1a1.EnvoyProxy {
-		return &egv1a1.EnvoyProxy{
-			ObjectMeta: metav1.ObjectMeta{Name: name},
-			Spec: egv1a1.EnvoyProxySpec{
-				Bootstrap: &egv1a1.ProxyBootstrap{
-					Value: ptr.To(fmt.Sprintf(`
-admin:
-  address:
-    socket_address:
-      address: %s
-      port_value: %d`, host, port)),
-				},
-			},
-		}
-	}
-
-	tests := []struct {
-		name     string
-		gw       *gwapiv1.Gateway
-		proxies  []*egv1a1.EnvoyProxy
-		expected int
-	}{
-		{
-			name:     "gateway with no envoy proxy",
-			gw:       &gwapiv1.Gateway{},
-			expected: 0,
-		},
-		{
-			name:     "gateway with non matching envoy proxy",
-			gw:       gwWithProxy("non-matching-proxy"),
-			proxies:  []*egv1a1.EnvoyProxy{proxyWithAdminAddr("proxy", "localhost", 8080)},
-			expected: 0,
-		},
-		{
-			name: "gateway with custom proxy no bootstrap",
-			gw:   gwWithProxy("proxy"),
-			proxies: []*egv1a1.EnvoyProxy{
-				{ObjectMeta: metav1.ObjectMeta{Name: "proxy"}},
-			},
-			expected: 0,
-		},
-		{
-			name: "gateway with custom bootstrap",
-			gw:   gwWithProxy("proxy"),
-			proxies: []*egv1a1.EnvoyProxy{
-				proxyWithAdminAddr("no-match", "localhost", 8081),
-				proxyWithAdminAddr("proxy", "127.0.0.1", 9901),
-			},
-			expected: 9901,
-		},
-	}
-
-	runCtx := &runCmdContext{
-		stderrLogger: slog.New(slog.DiscardHandler),
-		tmpdir:       t.TempDir(),
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			port := runCtx.tryFindEnvoyAdminPort(tt.gw, tt.proxies)
-			require.Equal(t, tt.expected, port)
-		})
-	}
-}
-
 func TestTryFindEnvoyListenerPort(t *testing.T) {
 	gwWithListener := func(port gwapiv1.PortNumber) *gwapiv1.Gateway {
 		return &gwapiv1.Gateway{
@@ -309,48 +221,6 @@ func TestTryFindEnvoyListenerPort(t *testing.T) {
 	}
 }
 
-func TestPollEnvoyReady(t *testing.T) {
-	successAt := 5
-	var callCount int
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
-		if callCount < successAt {
-			http.Error(w, "not ready", http.StatusServiceUnavailable)
-			return
-		}
-		if r.URL.Path == "/ready" {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("live"))
-		}
-	}))
-	t.Cleanup(s.Close)
-	u, err := url.Parse(s.URL)
-	require.NoError(t, err)
-
-	adminPort, err := strconv.Atoi(u.Port())
-	require.NoError(t, err)
-
-	l := slog.New(slog.DiscardHandler)
-
-	t.Run("ready", func(t *testing.T) {
-		t.Cleanup(func() { callCount = 0 })
-		envoyAdmin, err := aigw.NewEnvoyAdminClient(t.Context(), os.Getpid(), adminPort)
-		require.NoError(t, err)
-		require.NoError(t, pollEnvoyReady(t.Context(), l, envoyAdmin, 50*time.Millisecond))
-		require.Equal(t, successAt, callCount)
-	})
-
-	t.Run("abort on context done", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
-		t.Cleanup(cancel)
-		t.Cleanup(func() { callCount = 0 })
-		envoyAdmin, err := aigw.NewEnvoyAdminClient(ctx, os.Getpid(), adminPort)
-		require.NoError(t, err)
-		require.ErrorIs(t, pollEnvoyReady(ctx, l, envoyAdmin, 50*time.Millisecond), context.DeadlineExceeded)
-		require.Less(t, callCount, successAt)
-	})
-}
-
 func Test_newEnvoyMiddleware(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -368,16 +238,18 @@ func Test_newEnvoyMiddleware(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
+			start := time.Now()
+			listenerPort := 1975
 
-			middleware := newEnvoyRunMiddleware(&stdout, &stderr)
+			middleware := newEnvoyRunMiddleware(start, listenerPort, &stdout, &stderr)
 			require.NotNil(t, middleware)
 
 			err := middleware(func(ctx context.Context, args []string, options ...api.RunOption) error {
 				require.Equal(t, t.Context(), ctx)
 				require.Equal(t, []string{"test"}, args)
 
-				// 2 = EnvoyOut, EnvoyErr
-				require.Len(t, options, 2+len(tt.inputOptions))
+				// 3 = EnvoyOut, EnvoyErr, StartupHook
+				require.Len(t, options, 3+len(tt.inputOptions))
 				return nil
 			})(t.Context(), []string{"test"}, tt.inputOptions...)
 			require.NoError(t, err)
