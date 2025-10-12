@@ -44,7 +44,7 @@ func (o *openAIToAzureOpenAITranslatorV1Embedding) RequestBody(original []byte, 
 	modelName := req.Model
 	if o.modelNameOverride != "" {
 		// If modelName is set we override the model to be used for the request.
-		newBody, err = sjson.SetBytesOptions(original, "model", o.modelNameOverride, SJSONOptions)
+		newBody, err = sjson.SetBytesOptions(original, "model", o.modelNameOverride, sjsonOptions)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to set model name: %w", err)
 		}
