@@ -30,7 +30,8 @@ import (
 // stubMetrics implements metrics.MCPMetrics with no-ops.
 type stubMetrics struct{}
 
-func (stubMetrics) RecordRequestDuration(_ context.Context, _ *time.Time) {}
+func (s stubMetrics) WithRequestAttributes(_ *http.Request) metrics.MCPMetrics { return s }
+func (stubMetrics) RecordRequestDuration(_ context.Context, _ *time.Time)      {}
 func (stubMetrics) RecordRequestErrorDuration(_ context.Context, _ *time.Time, _ metrics.MCPErrorType) {
 }
 func (stubMetrics) RecordMethodCount(_ context.Context, _ string)                            {}

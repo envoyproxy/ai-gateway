@@ -23,17 +23,27 @@ func TestTracer_StartSpanAndInjectMeta(t *testing.T) {
 	exporter := tracetest.NewInMemoryExporter()
 	tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
 
-	tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator())
+	tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(),
+		map[string]string{"x-custom-attr": "custom.attr"})
 
 	reqID, _ := jsonrpc.MakeID("id")
 	r := &jsonrpc.Request{ID: reqID, Method: "initialize"}
 	p := &mcp.InitializeParams{}
-	span := tracer.StartSpanAndInjectMeta(t.Context(), r, p)
+	span := tracer.StartSpanAndInjectMeta(t.Context(), r, p, map[string]string{
+		"x-custom-attr": "custom-value",
+	})
 
 	require.NotNil(t, span)
 	meta := p.GetMeta()
 	require.NotNil(t, meta)
 	require.NotNil(t, meta["traceparent"])
+
+	// End the span to export it
+	span.EndSpan()
+	spans := exporter.GetSpans()
+	require.Len(t, spans, 1)
+	actualSpan := spans[0]
+	require.Contains(t, actualSpan.Attributes, attribute.String("custom.attr", "custom-value"))
 }
 
 func Test_getMCPAttributes(t *testing.T) {
@@ -221,12 +231,12 @@ func TestMCPTracer_SpanName(t *testing.T) {
 			exporter := tracetest.NewInMemoryExporter()
 			tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
 
-			tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator())
+			tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), nil)
 
 			reqID, _ := jsonrpc.MakeID("test-id")
 			req := &jsonrpc.Request{ID: reqID, Method: tt.method}
 
-			span := tracer.StartSpanAndInjectMeta(context.Background(), req, tt.params)
+			span := tracer.StartSpanAndInjectMeta(context.Background(), req, tt.params, nil)
 			require.NotNil(t, span)
 			span.EndSpan()
 

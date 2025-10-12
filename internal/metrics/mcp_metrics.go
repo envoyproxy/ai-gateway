@@ -7,6 +7,7 @@ package metrics
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -102,6 +103,8 @@ const (
 
 // MCPMetrics holds metrics for MCP.
 type MCPMetrics interface {
+	// WithRequestAttributes returns a new MCPMetrics instance with default attributes extracted from the HTTP request.
+	WithRequestAttributes(req *http.Request) MCPMetrics
 	// RecordRequestDuration records the duration of a success MCP request.
 	RecordRequestDuration(ctx context.Context, startAt *time.Time)
 	// RecordRequestErrorDuration records the duration of an MCP request that resulted in an error.
@@ -121,16 +124,19 @@ type MCPMetrics interface {
 }
 
 type mcp struct {
-	requestDuration        metric.Float64Histogram
-	methodCount            metric.Float64Counter
-	initializationDuration metric.Float64Histogram
-	capabilitiesNegotiated metric.Float64Counter
-	progressNotifications  metric.Float64Counter
+	requestDuration           metric.Float64Histogram
+	methodCount               metric.Float64Counter
+	initializationDuration    metric.Float64Histogram
+	capabilitiesNegotiated    metric.Float64Counter
+	progressNotifications     metric.Float64Counter
+	requestHeaderLabelMapping map[string]string // maps HTTP headers to metric label names.
+	defaultAttributes         []attribute.KeyValue
 }
 
 // NewMCP creates a new mcp metrics instance.
-func NewMCP(meter metric.Meter) MCPMetrics {
+func NewMCP(meter metric.Meter, requestHeaderLabelMapping map[string]string) MCPMetrics {
 	return &mcp{
+		requestHeaderLabelMapping: requestHeaderLabelMapping,
 		requestDuration: mustRegisterHistogram(meter,
 			mcpRequestDuration,
 			metric.WithDescription("Duration of MCP requests"),
@@ -159,13 +165,38 @@ func NewMCP(meter metric.Meter) MCPMetrics {
 	}
 }
 
+// WithRequestAttributes returns a new MCPMetrics instance with default attributes extracted from
+// the HTTP request headers.
+func (m *mcp) WithRequestAttributes(req *http.Request) MCPMetrics {
+	withAttrs := &mcp{
+		requestDuration:           m.requestDuration,
+		methodCount:               m.methodCount,
+		initializationDuration:    m.initializationDuration,
+		capabilitiesNegotiated:    m.capabilitiesNegotiated,
+		progressNotifications:     m.progressNotifications,
+		requestHeaderLabelMapping: m.requestHeaderLabelMapping,
+	}
+
+	// Apply header-to-attribute mapping if configured.
+	for headerName, attrName := range m.requestHeaderLabelMapping {
+		if headerValue := req.Header.Get(headerName); headerValue != "" {
+			withAttrs.defaultAttributes = append(
+				withAttrs.defaultAttributes,
+				attribute.String(attrName, headerValue),
+			)
+		}
+	}
+
+	return withAttrs
+}
+
 // RecordMethodCount implements [MCPMetrics.RecordMethodCount].
 func (m *mcp) RecordMethodCount(ctx context.Context, methodName string) {
 	if methodName == "" {
 		return
 	}
 	m.methodCount.Add(ctx, 1,
-		metric.WithAttributes(
+		m.withDefaultAttributes(
 			attribute.Key(mcpAttributeMethodName).String(methodName),
 			attribute.String(mcpAttributeStatusName, string(mcpStatusSuccess)),
 		))
@@ -174,7 +205,7 @@ func (m *mcp) RecordMethodCount(ctx context.Context, methodName string) {
 // RecordMethodErrorCount implements [MCPMetrics.RecordMethodErrorCount].
 func (m *mcp) RecordMethodErrorCount(ctx context.Context) {
 	m.methodCount.Add(ctx, 1,
-		metric.WithAttributes(
+		m.withDefaultAttributes(
 			attribute.String(mcpAttributeStatusName, string(mcpStatusError)),
 		))
 }
@@ -184,9 +215,8 @@ func (m *mcp) RecordRequestDuration(ctx context.Context, startAt *time.Time) {
 	if startAt == nil {
 		return
 	}
-
 	duration := time.Since(*startAt).Seconds()
-	m.requestDuration.Record(ctx, duration)
+	m.requestDuration.Record(ctx, duration, m.withDefaultAttributes())
 }
 
 // RecordRequestErrorDuration implements [MCPMetrics.RecordRequestErrorDuration].
@@ -196,7 +226,7 @@ func (m *mcp) RecordRequestErrorDuration(ctx context.Context, startAt *time.Time
 	}
 
 	duration := time.Since(*startAt).Seconds()
-	m.requestDuration.Record(ctx, duration, metric.WithAttributes(
+	m.requestDuration.Record(ctx, duration, m.withDefaultAttributes(
 		attribute.Key(mcpAttributeErrorType).String(string(errType)),
 	))
 }
@@ -207,12 +237,12 @@ func (m *mcp) RecordInitializationDuration(ctx context.Context, startAt *time.Ti
 		return
 	}
 	duration := time.Since(*startAt).Seconds()
-	m.initializationDuration.Record(ctx, duration)
+	m.initializationDuration.Record(ctx, duration, m.withDefaultAttributes())
 }
 
 // RecordProgress implements [MCPMetrics.RecordProgress].
 func (m *mcp) RecordProgress(ctx context.Context) {
-	m.progressNotifications.Add(ctx, 1)
+	m.progressNotifications.Add(ctx, 1, m.withDefaultAttributes())
 }
 
 // RecordClientCapabilities implements [MCPMetrics.RecordClientCapabilities].
@@ -223,28 +253,28 @@ func (m *mcp) RecordClientCapabilities(ctx context.Context, capabilities *mcpsdk
 
 	side := string(mcpCapabilitySideClient)
 	if l := len(capabilities.Experimental); l > 0 {
-		m.capabilitiesNegotiated.Add(ctx, float64(l), metric.WithAttributes(
+		m.capabilitiesNegotiated.Add(ctx, float64(l), m.withDefaultAttributes(
 			attribute.Key(mcpAttributeCapabilityType).String(string(mcpCapabilityTypeExperimental)),
 			attribute.Key(mcpAttributeCapabilitySide).String(side),
 		))
 	}
 
 	if capabilities.Roots.ListChanged {
-		m.capabilitiesNegotiated.Add(ctx, 1, metric.WithAttributes(
+		m.capabilitiesNegotiated.Add(ctx, 1, m.withDefaultAttributes(
 			attribute.Key(mcpAttributeCapabilityType).String(string(mcpCapabilityTypeRoots)),
 			attribute.Key(mcpAttributeCapabilitySide).String(side),
 		))
 	}
 
 	if capabilities.Sampling != nil {
-		m.capabilitiesNegotiated.Add(ctx, 1, metric.WithAttributes(
+		m.capabilitiesNegotiated.Add(ctx, 1, m.withDefaultAttributes(
 			attribute.Key(mcpAttributeCapabilityType).String(string(mcpCapabilityTypeSampling)),
 			attribute.Key(mcpAttributeCapabilitySide).String(side),
 		))
 	}
 
 	if capabilities.Elicitation != nil {
-		m.capabilitiesNegotiated.Add(ctx, 1, metric.WithAttributes(
+		m.capabilitiesNegotiated.Add(ctx, 1, m.withDefaultAttributes(
 			attribute.Key(mcpAttributeCapabilityType).String(string(mcpCapabilityTypeElicitation)),
 			attribute.Key(mcpAttributeCapabilitySide).String(side),
 		))
@@ -259,44 +289,49 @@ func (m *mcp) RecordServerCapabilities(ctx context.Context, serverCapa *mcpsdk.S
 
 	side := string(mcpCapabilitySideServer)
 	if serverCapa.Completions != nil {
-		m.capabilitiesNegotiated.Add(ctx, 1, metric.WithAttributes(
+		m.capabilitiesNegotiated.Add(ctx, 1, m.withDefaultAttributes(
 			attribute.Key(mcpAttributeCapabilityType).String(string(mcpCapabilityTypeCompletions)),
 			attribute.Key(mcpAttributeCapabilitySide).String(side),
 		))
 	}
 
 	if l := len(serverCapa.Experimental); l > 0 {
-		m.capabilitiesNegotiated.Add(ctx, float64(l), metric.WithAttributes(
+		m.capabilitiesNegotiated.Add(ctx, float64(l), m.withDefaultAttributes(
 			attribute.Key(mcpAttributeCapabilityType).String(string(mcpCapabilityTypeExperimental)),
 			attribute.Key(mcpAttributeCapabilitySide).String(side),
 		))
 	}
 
 	if serverCapa.Logging != nil {
-		m.capabilitiesNegotiated.Add(ctx, 1, metric.WithAttributes(
+		m.capabilitiesNegotiated.Add(ctx, 1, m.withDefaultAttributes(
 			attribute.Key(mcpAttributeCapabilityType).String(string(mcpCapabilityTypeLogging)),
 			attribute.Key(mcpAttributeCapabilitySide).String(side),
 		))
 	}
 
 	if serverCapa.Prompts != nil {
-		m.capabilitiesNegotiated.Add(ctx, 1, metric.WithAttributes(
+		m.capabilitiesNegotiated.Add(ctx, 1, m.withDefaultAttributes(
 			attribute.Key(mcpAttributeCapabilityType).String(string(mcpCapabilityTypePrompts)),
 			attribute.Key(mcpAttributeCapabilitySide).String(side),
 		))
 	}
 
 	if serverCapa.Resources != nil {
-		m.capabilitiesNegotiated.Add(ctx, 1, metric.WithAttributes(
+		m.capabilitiesNegotiated.Add(ctx, 1, m.withDefaultAttributes(
 			attribute.Key(mcpAttributeCapabilityType).String(string(mcpCapabilityTypeResources)),
 			attribute.Key(mcpAttributeCapabilitySide).String(side),
 		))
 	}
 
 	if serverCapa.Tools != nil {
-		m.capabilitiesNegotiated.Add(ctx, 1, metric.WithAttributes(
+		m.capabilitiesNegotiated.Add(ctx, 1, m.withDefaultAttributes(
 			attribute.Key(mcpAttributeCapabilityType).String(string(mcpCapabilityTypeTools)),
 			attribute.Key(mcpAttributeCapabilitySide).String(side),
 		))
 	}
+}
+
+// withDefaultAttributes appends default attributes to the provided attributes.
+func (m *mcp) withDefaultAttributes(attrs ...attribute.KeyValue) metric.MeasurementOption {
+	return metric.WithAttributes(append(m.defaultAttributes, attrs...)...)
 }

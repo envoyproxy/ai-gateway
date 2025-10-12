@@ -6,6 +6,7 @@
 package metrics
 
 import (
+	"net/http"
 	"testing"
 	"time"
 
@@ -21,15 +22,38 @@ func TestNewMCP(t *testing.T) {
 	mr := metric.NewManualReader()
 	meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
 
-	m := NewMCP(meter)
+	m := NewMCP(meter, nil)
 	require.NotNil(t, m)
+}
+
+func TestRecordMetricWithCustomAttributes(t *testing.T) {
+	mr := metric.NewManualReader()
+	meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
+
+	m := NewMCP(meter, map[string]string{"x-custom-attr": "attr.custom"})
+	require.NotNil(t, m)
+
+	req, err := http.NewRequest("GET", "https://example.com", nil)
+	require.NoError(t, err)
+	req.Header.Set("x-custom-attr", "test") // should be included in metrics
+	req.Header.Set("x-other-attr", "other") // should be ignored
+
+	m = m.WithRequestAttributes(req)
+
+	startAt := time.Now().Add(-1 * time.Minute)
+	m.RecordRequestDuration(t.Context(), &startAt)
+
+	count, sum := testotel.GetHistogramValues(t, mr, mcpRequestDuration,
+		attribute.NewSet(attribute.String("attr.custom", "test")))
+	require.Equal(t, uint64(1), count)
+	require.Equal(t, 60, int(sum))
 }
 
 func TestRecordRequestDuration(t *testing.T) {
 	mr := metric.NewManualReader()
 	meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
 
-	m := NewMCP(meter)
+	m := NewMCP(meter, nil)
 	require.NotNil(t, m)
 	startAt := time.Now().Add(-1 * time.Minute)
 	m.RecordRequestDuration(t.Context(), &startAt)
@@ -43,7 +67,7 @@ func TestRecordRequestErrorDuration(t *testing.T) {
 	mr := metric.NewManualReader()
 	meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
 
-	m := NewMCP(meter)
+	m := NewMCP(meter, nil)
 	require.NotNil(t, m)
 	startAt := time.Now().Add(-30 * time.Second)
 	m.RecordRequestErrorDuration(t.Context(), &startAt, MCPErrorUnsupportedProtocolVersion)
@@ -59,7 +83,7 @@ func TestRecordMethodCount(t *testing.T) {
 	mr := metric.NewManualReader()
 	meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
 
-	m := NewMCP(meter)
+	m := NewMCP(meter, nil)
 	require.NotNil(t, m)
 
 	m.RecordMethodCount(t.Context(), "test_method_name")
@@ -82,7 +106,7 @@ func TestRecordInitializationDuration(t *testing.T) {
 	mr := metric.NewManualReader()
 	meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
 
-	m := NewMCP(meter)
+	m := NewMCP(meter, nil)
 	require.NotNil(t, m)
 
 	startAt := time.Now().Add(-45 * time.Second)
@@ -97,7 +121,7 @@ func TestRecordCapabilitiesNegotiated(t *testing.T) {
 	mr := metric.NewManualReader()
 	meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
 
-	m := NewMCP(meter)
+	m := NewMCP(meter, nil)
 	require.NotNil(t, m)
 
 	m.RecordClientCapabilities(t.Context(), &mcpsdk.ClientCapabilities{
@@ -152,7 +176,7 @@ func TestRecordProgressNotifications(t *testing.T) {
 	mr := metric.NewManualReader()
 	meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
 
-	m := NewMCP(meter)
+	m := NewMCP(meter, nil)
 	require.NotNil(t, m)
 
 	m.RecordProgress(t.Context())

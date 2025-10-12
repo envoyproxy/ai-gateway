@@ -190,7 +190,7 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 		switch msg.Method {
 		case "notifications/roots/list_changed":
 			p := &mcp.RootsListChangedParams{}
-			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p)
+			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p, r.Header)
 			if err != nil {
 				errType = metrics.MCPErrorInvalidParam
 				onErrorResponse(w, http.StatusBadRequest, "invalid params")
@@ -199,7 +199,7 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 			err = m.handleNotificationsRootsListChanged(ctx, s, w, msg, span)
 		case "completion/complete":
 			p := &mcp.CompleteParams{}
-			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p)
+			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p, r.Header)
 			if err != nil {
 				errType = metrics.MCPErrorInvalidParam
 				onErrorResponse(w, http.StatusBadRequest, "invalid params")
@@ -209,7 +209,7 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 		case "notifications/progress":
 			m.metrics.RecordProgress(ctx)
 			p := &mcp.ProgressNotificationParams{}
-			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p)
+			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p, r.Header)
 			if err != nil {
 				errType = metrics.MCPErrorInvalidParam
 				onErrorResponse(w, http.StatusBadRequest, "invalid params")
@@ -219,7 +219,7 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 		case "initialize":
 			// The very first request from the client to establish a session.
 			p := &mcp.InitializeParams{}
-			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p)
+			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p, r.Header)
 			if err != nil {
 				errType = metrics.MCPErrorInvalidParam
 				m.l.Error("Failed to unmarshal initialize params", slog.String("error", err.Error()))
@@ -243,7 +243,7 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusAccepted)
 		case "logging/setLevel":
 			p := &mcp.SetLoggingLevelParams{}
-			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p)
+			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p, r.Header)
 			if err != nil {
 				errType = metrics.MCPErrorInvalidParam
 				m.l.Error("Failed to unmarshal set logging level params", slog.String("error", err.Error()))
@@ -256,7 +256,7 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 			err = m.handlePing(ctx, w, msg)
 		case "prompts/list":
 			p := &mcp.ListPromptsParams{}
-			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p)
+			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p, r.Header)
 			if err != nil {
 				errType = metrics.MCPErrorInvalidParam
 				onErrorResponse(w, http.StatusBadRequest, "invalid params")
@@ -265,7 +265,7 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 			err = m.handlePromptListRequest(ctx, s, w, msg, p, span)
 		case "prompts/get":
 			p := &mcp.GetPromptParams{}
-			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p)
+			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p, r.Header)
 			if err != nil {
 				errType = metrics.MCPErrorInvalidParam
 				onErrorResponse(w, http.StatusBadRequest, "invalid params")
@@ -274,7 +274,7 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 			err = m.handlePromptGetRequest(ctx, s, w, msg, p)
 		case "tools/call":
 			p := &mcp.CallToolParams{}
-			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p)
+			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p, r.Header)
 			if err != nil {
 				errType = metrics.MCPErrorInvalidParam
 				m.l.Error("Failed to unmarshal params", slog.String("method", msg.Method), slog.String("error", err.Error()))
@@ -284,7 +284,7 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 			err = m.handleToolCallRequest(ctx, s, w, msg, p, span)
 		case "tools/list":
 			p := &mcp.ListToolsParams{}
-			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p)
+			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p, r.Header)
 			if err != nil {
 				errType = metrics.MCPErrorInvalidParam
 				onErrorResponse(w, http.StatusBadRequest, "invalid params")
@@ -293,7 +293,7 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 			err = m.handleToolsListRequest(ctx, s, w, msg, p, span)
 		case "resources/list":
 			p := &mcp.ListResourcesParams{}
-			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p)
+			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p, r.Header)
 			if err != nil {
 				errType = metrics.MCPErrorInvalidParam
 				onErrorResponse(w, http.StatusBadRequest, "invalid params")
@@ -302,7 +302,7 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 			err = m.handleResourceListRequest(ctx, s, w, msg, p, span)
 		case "resources/read":
 			p := &mcp.ReadResourceParams{}
-			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p)
+			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p, r.Header)
 			if err != nil {
 				errType = metrics.MCPErrorInvalidParam
 				onErrorResponse(w, http.StatusBadRequest, "invalid params")
@@ -311,7 +311,7 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 			err = m.handleResourceReadRequest(ctx, s, w, msg, p)
 		case "resources/templates/list":
 			p := &mcp.ListResourceTemplatesParams{}
-			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p)
+			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p, r.Header)
 			if err != nil {
 				errType = metrics.MCPErrorInvalidParam
 				onErrorResponse(w, http.StatusBadRequest, "invalid params")
@@ -320,7 +320,7 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 			err = m.handleResourcesTemplatesListRequest(ctx, s, w, msg, p, span)
 		case "resources/subscribe":
 			p := &mcp.SubscribeParams{}
-			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p)
+			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p, r.Header)
 			if err != nil {
 				errType = metrics.MCPErrorInvalidParam
 				onErrorResponse(w, http.StatusBadRequest, "invalid params")
@@ -329,7 +329,7 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 			err = m.handleResourcesSubscribeRequest(ctx, s, w, msg, p, span)
 		case "resources/unsubscribe":
 			p := &mcp.UnsubscribeParams{}
-			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p)
+			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, p, r.Header)
 			if err != nil {
 				errType = metrics.MCPErrorInvalidParam
 				onErrorResponse(w, http.StatusBadRequest, "invalid params")
@@ -372,7 +372,6 @@ func errorType(err error) metrics.MCPErrorType {
 // handleInitializeRequest handles the "initialize" JSON-RPC method.
 func (m *MCPProxy) handleInitializeRequest(ctx context.Context, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.InitializeParams, route, subject string, span tracing.MCPSpan) error {
 	m.metrics.RecordClientCapabilities(ctx, p.Capabilities)
-
 	s, err := m.newSession(ctx, p, route, subject, span)
 	if err != nil {
 		m.l.Error("failed to create new session", slog.String("error", err.Error()))
@@ -1223,7 +1222,7 @@ func sendToAllBackendsAndAggregateResponsesImpl[responseType any](ctx context.Co
 }
 
 // parseParamsAndMaybeStartSpan parses the params from the JSON-RPC request and starts a tracing span if params is non-nil.
-func parseParamsAndMaybeStartSpan[paramType mcp.Params](ctx context.Context, m *MCPProxy, req *jsonrpc.Request, p paramType) (tracing.MCPSpan, error) {
+func parseParamsAndMaybeStartSpan[paramType mcp.Params](ctx context.Context, m *MCPProxy, req *jsonrpc.Request, p paramType, headers http.Header) (tracing.MCPSpan, error) {
 	if req.Params == nil {
 		return nil, nil
 	}
@@ -1233,7 +1232,13 @@ func parseParamsAndMaybeStartSpan[paramType mcp.Params](ctx context.Context, m *
 		return nil, err
 	}
 
-	span := m.tracer.StartSpanAndInjectMeta(ctx, req, p)
+	// TODO: headers with multiple values
+	headerMap := make(map[string]string, len(headers))
+	for header := range headers {
+		headerMap[header] = headers.Get(header)
+	}
+
+	span := m.tracer.StartSpanAndInjectMeta(ctx, req, p, headerMap)
 	return span, nil
 }
 

@@ -29,6 +29,11 @@ import (
 )
 
 type (
+	// ProxyConfig holds the main MCP proxy configuration.
+	ProxyConfig struct {
+		*mcpProxyConfig
+	}
+
 	// MCPProxy serves /mcp endpoint.
 	//
 	// This implements [extproc.ConfigReceiver] to gets the up-to-date configuration.
@@ -77,8 +82,8 @@ func (f *toolSelector) allows(tool string) bool {
 }
 
 // NewMCPProxy creates a new MCPProxy instance.
-func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracing.MCPTracer, sessionCrypto SessionCrypto) (*MCPProxy, *http.ServeMux, error) {
-	p := &MCPProxy{l: l, metrics: mcpMetrics, tracer: tracer, sessionCrypto: sessionCrypto}
+func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracing.MCPTracer, sessionCrypto SessionCrypto) (*ProxyConfig, *http.ServeMux, error) {
+	cfg := &ProxyConfig{}
 	mux := http.NewServeMux()
 	mux.HandleFunc(
 		// Must match all paths since the route selection happens at Envoy level and the "route" header is already
@@ -87,23 +92,31 @@ func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracing.M
 		// For example, if we mistakenly set /mcp here, only the route with prefix /mcp will be matched, and other routes
 		// with different prefixes will not be matched, which is not what we want.
 		"/", func(w http.ResponseWriter, r *http.Request) {
+			proxy := &MCPProxy{
+				mcpProxyConfig: cfg.mcpProxyConfig,
+				l:              l,
+				metrics:        mcpMetrics.WithRequestAttributes(r),
+				tracer:         tracer,
+				sessionCrypto:  sessionCrypto,
+			}
+
 			switch r.Method {
 			case http.MethodGet:
-				p.serveGET(w, r)
+				proxy.serveGET(w, r)
 			case http.MethodPost:
-				p.servePOST(w, r)
+				proxy.servePOST(w, r)
 			case http.MethodDelete:
-				p.serverDELETE(w, r)
+				proxy.serverDELETE(w, r)
 			default:
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			}
 		})
-	return p, mux, nil
+	return cfg, mux, nil
 }
 
 // LoadConfig implements [extproc.ConfigReceiver.LoadConfig] which will be called
 // when the configuration is updated on the file system.
-func (m *MCPProxy) LoadConfig(_ context.Context, config *filterapi.Config) error {
+func (p *ProxyConfig) LoadConfig(_ context.Context, config *filterapi.Config) error {
 	newConfig := &mcpProxyConfig{}
 	mcpConfig := config.MCPConfig
 	if config.MCPConfig == nil {
@@ -145,7 +158,7 @@ func (m *MCPProxy) LoadConfig(_ context.Context, config *filterapi.Config) error
 		newConfig.routes[route.Name] = r
 	}
 
-	m.mcpProxyConfig = newConfig // This is racy, but we don't care.
+	p.mcpProxyConfig = newConfig // This is racy, but we don't care.
 	return nil
 }
 
