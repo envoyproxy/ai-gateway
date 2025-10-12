@@ -224,7 +224,7 @@ func run(ctx context.Context, c cmdRun, o runOpts, stdout, stderr io.Writer) err
 			return
 		}
 		debugLogger.Info("Found Envoy admin server", "adminPort", envoyAdmin.Port())
-		if err = pollEnvoyReady(ctx, debugLogger, envoyAdmin, 2*time.Second); err != nil {
+		if err = pollEnvoyReady(ctx, debugLogger, envoyAdmin, 100*time.Millisecond); err != nil {
 			return
 		}
 		c.AdminPort = envoyAdminPort // write back for testing
