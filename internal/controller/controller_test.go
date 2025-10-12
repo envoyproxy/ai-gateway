@@ -136,6 +136,66 @@ func Test_backendSecurityPolicyIndexFunc(t *testing.T) {
 			},
 			expKey: "some-secret4.ns",
 		},
+		{
+			name: "Azure api key with namespace",
+			backendSecurityPolicy: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "some-backend-security-policy-5", Namespace: "ns"},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAzureAPIKey,
+					AzureAPIKey: &aigv1a1.BackendSecurityPolicyAzureAPIKey{
+						SecretRef: &gwapiv1.SecretObjectReference{
+							Name:      "some-secret5",
+							Namespace: ptr.To[gwapiv1.Namespace]("foo"),
+						},
+					},
+				},
+			},
+			expKey: "some-secret5.foo",
+		},
+		{
+			name: "Azure api key without namespace",
+			backendSecurityPolicy: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "some-backend-security-policy-6", Namespace: "ns"},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAzureAPIKey,
+					AzureAPIKey: &aigv1a1.BackendSecurityPolicyAzureAPIKey{
+						SecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret6"},
+					},
+				},
+			},
+			expKey: "some-secret6.ns",
+		},
+		{
+			name: "Azure credentials with namespace",
+			backendSecurityPolicy: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "some-backend-security-policy-7", Namespace: "ns"},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
+					AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
+						ClientSecretRef: &gwapiv1.SecretObjectReference{
+							Name:      "some-secret7",
+							Namespace: ptr.To[gwapiv1.Namespace]("foo"),
+						},
+					},
+				},
+			},
+			expKey: "some-secret7.foo",
+		},
+		{
+			name: "Azure credentials without namespace",
+			backendSecurityPolicy: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "some-backend-security-policy-8", Namespace: "ns"},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
+					AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
+						ClientSecretRef: &gwapiv1.SecretObjectReference{
+							Name: "some-secret8",
+						},
+					},
+				},
+			},
+			expKey: "some-secret8.ns",
+		},
 	} {
 		t.Run(bsp.name, func(t *testing.T) {
 			c := fake.NewClientBuilder().

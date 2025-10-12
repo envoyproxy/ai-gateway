@@ -29,7 +29,7 @@ var (
 			},
 			FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
 		}},
-		Usage: openai.ChatCompletionResponseUsage{
+		Usage: openai.Usage{
 			PromptTokens:     20,
 			CompletionTokens: 10,
 			TotalTokens:      30,
@@ -56,7 +56,7 @@ var (
 			},
 			FinishReason: openai.ChatCompletionChoicesFinishReasonToolCalls,
 		}},
-		Usage: openai.ChatCompletionResponseUsage{
+		Usage: openai.Usage{
 			PromptTokens:     10,
 			CompletionTokens: 20,
 			TotalTokens:      30,
@@ -78,7 +78,7 @@ var (
 			},
 			FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
 		}},
-		Usage: openai.ChatCompletionResponseUsage{
+		Usage: openai.Usage{
 			PromptTokens:     9,
 			CompletionTokens: 9,
 			TotalTokens:      18,

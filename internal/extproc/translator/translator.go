@@ -213,11 +213,14 @@ type LLMTokenUsage struct {
 	OutputTokens uint32
 	// TotalTokens is the total number of tokens consumed.
 	TotalTokens uint32
+	// CachedTokens is the total number of tokens read from cache.
+	CachedTokens uint32
 }
 
-// SJSONOptions are the options used for sjson operations in the translator.
-// This is also used outside the package to share the same options for consistency.
-var SJSONOptions = &sjson.Options{
-	Optimistic:     true,
-	ReplaceInPlace: true,
+// sjsonOptions are the options used for sjson operations in the translator.
+var sjsonOptions = &sjson.Options{
+	Optimistic: true,
+	// Note: DO NOT set ReplaceInPlace to true since at the translation layer, which might be called multiple times per retry,
+	// it must be ensured that the original body is not modified, i.e. the operation must be idempotent.
+	ReplaceInPlace: false,
 }

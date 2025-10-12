@@ -34,7 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
-	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
+	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a3 "sigs.k8s.io/gateway-api/apis/v1alpha3"
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
@@ -50,7 +50,7 @@ func init() {
 	utilruntime.Must(gwapiv1.Install(Scheme))
 	utilruntime.Must(gwapiv1a3.Install(Scheme))
 	utilruntime.Must(gwapiv1b1.Install(Scheme))
-	utilruntime.Must(gwaiev1a2.Install(Scheme))
+	utilruntime.Must(gwaiev1.Install(Scheme))
 }
 
 // Scheme contains the necessary schemes for the AI Gateway.
@@ -97,10 +97,16 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	if err = ApplyIndexing(ctx, indexer.IndexField); err != nil {
 		return fmt.Errorf("failed to apply indexing: %w", err)
 	}
+	var versionInfo *version.Info
+	kube := kubernetes.NewForConfigOrDie(config)
+	versionInfo, err = kube.Discovery().ServerVersion()
+	if err != nil {
+		return fmt.Errorf("failed to get server version: %w", err)
+	}
 
 	gatewayEventChan := make(chan event.GenericEvent, 100)
 	gatewayC := NewGatewayController(c, kubernetes.NewForConfigOrDie(config),
-		logger.WithName("gateway"), options.ExtProcImage, false, uuid.NewString)
+		logger.WithName("gateway"), options.ExtProcImage, false, uuid.NewString, isKubernetes133OrLater(versionInfo, logger))
 	if err = TypedControllerBuilderForCRD(mgr, &gwapiv1.Gateway{}).
 		WatchesRawSource(source.Channel(
 			gatewayEventChan,
@@ -155,7 +161,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	if err != nil {
 		return fmt.Errorf("failed to create CRD client for inference extension: %w", err)
 	}
-	const inferencePoolCRD = "inferencepools.inference.networking.x-k8s.io"
+	const inferencePoolCRD = "inferencepools.inference.networking.k8s.io"
 	if _, crdErr := crdClient.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, inferencePoolCRD, metav1.GetOptions{}); crdErr != nil {
 		if apierrors.IsNotFound(crdErr) {
 			logger.Info("InferencePool CRD not found, skipping InferencePool controller. " +
@@ -167,7 +173,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 		// CRD exists, create the controller.
 		inferencePoolC := NewInferencePoolController(c, kubernetes.NewForConfigOrDie(config), logger.
 			WithName("inference-pool"))
-		if err = TypedControllerBuilderForCRD(mgr, &gwaiev1a2.InferencePool{}).
+		if err = TypedControllerBuilderForCRD(mgr, &gwaiev1.InferencePool{}).
 			Watches(&gwapiv1.Gateway{}, handler.EnqueueRequestsFromMapFunc(inferencePoolC.gatewayEventHandler)).
 			Watches(&aigv1a1.AIGatewayRoute{}, handler.EnqueueRequestsFromMapFunc(inferencePoolC.aiGatewayRouteEventHandler)).
 			Watches(&gwapiv1.HTTPRoute{}, handler.EnqueueRequestsFromMapFunc(inferencePoolC.httpRouteEventHandler)).
@@ -196,13 +202,6 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	}
 
 	if !options.DisableMutatingWebhook {
-		kube := kubernetes.NewForConfigOrDie(config)
-		var versionInfo *version.Info
-		versionInfo, err = kube.Discovery().ServerVersion()
-		if err != nil {
-			return fmt.Errorf("failed to get server version: %w", err)
-		}
-
 		h := admission.WithCustomDefaulter(Scheme, &corev1.Pod{}, newGatewayMutator(c, kube,
 			logger.WithName("gateway-mutator"),
 			options.ExtProcImage,
@@ -351,6 +350,16 @@ func backendSecurityPolicyIndexFunc(o client.Object) []string {
 		gcpCreds := backendSecurityPolicy.Spec.GCPCredentials
 		if gcpCreds.CredentialsFile != nil {
 			key = getSecretNameAndNamespace(gcpCreds.CredentialsFile.SecretRef, backendSecurityPolicy.Namespace)
+		}
+	case aigv1a1.BackendSecurityPolicyTypeAzureAPIKey:
+		apiKey := backendSecurityPolicy.Spec.AzureAPIKey
+		key = getSecretNameAndNamespace(apiKey.SecretRef, backendSecurityPolicy.Namespace)
+	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+		azureCreds := backendSecurityPolicy.Spec.AzureCredentials
+		if azureCreds.ClientSecretRef != nil {
+			key = getSecretNameAndNamespace(azureCreds.ClientSecretRef, backendSecurityPolicy.Namespace)
+		} else if azureCreds.OIDCExchangeToken != nil {
+			key = backendSecurityPolicyKey(backendSecurityPolicy.Namespace, backendSecurityPolicy.Name)
 		}
 	}
 	return []string{key}

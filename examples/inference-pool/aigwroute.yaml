@@ -49,7 +49,7 @@ spec:
               name: Authorization
               value: sk-zyxwvutsrqponmlkjihgfedcba
       backendRefs:
-        - group: inference.networking.x-k8s.io
+        - group: inference.networking.k8s.io
           kind: InferencePool
           name: vllm-llama3-8b-instruct
     - matches:
@@ -58,7 +58,7 @@ spec:
               name: x-ai-eg-model
               value: mistral:latest
       backendRefs:
-        - group: inference.networking.x-k8s.io
+        - group: inference.networking.k8s.io
           kind: InferencePool
           name: mistral
     - matches:

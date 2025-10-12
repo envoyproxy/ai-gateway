@@ -108,7 +108,12 @@ func (c *completionsProcessorRouterFilter) ProcessRequestBody(_ context.Context,
 		body.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
 		// Rewrite the original bytes to include the stream_options.include_usage=true so that forcing the request body
 		// mutation, which uses this raw body, will also result in the stream_options.include_usage=true.
-		rawBody.Body, err = sjson.SetBytesOptions(rawBody.Body, "stream_options.include_usage", true, translator.SJSONOptions)
+		rawBody.Body, err = sjson.SetBytesOptions(rawBody.Body, "stream_options.include_usage", true, &sjson.Options{
+			Optimistic: true,
+			// Note: it is safe to do in-place replacement since this route level processor is executed once per request,
+			// and the result can be safely shared among possible multiple retries.
+			ReplaceInPlace: true,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to set stream_options: %w", err)
 		}

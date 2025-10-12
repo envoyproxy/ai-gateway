@@ -51,7 +51,7 @@ func TestAIGatewayRoutes(t *testing.T) {
 		},
 		{
 			name:   "inference_pool_unsupported_group.yaml",
-			expErr: "spec.rules[0].backendRefs[0]: Invalid value: \"object\": only InferencePool from inference.networking.x-k8s.io group is supported",
+			expErr: "spec.rules[0].backendRefs[0]: Invalid value: \"object\": only InferencePool from inference.networking.k8s.io group is supported",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -87,6 +87,7 @@ func TestAIServiceBackends(t *testing.T) {
 			name:   "unknown_schema.yaml",
 			expErr: "spec.schema.name: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"AWSBedrock\"",
 		},
+		{name: "k8s-svc.yaml", expErr: "BackendRef must be a Backend resource of Envoy Gateway"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data, err := testdata.ReadFile(path.Join("testdata/aiservicebackends", tc.name))

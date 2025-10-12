@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -1219,10 +1220,11 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 			hm, bm, err := o.RequestBody(nil, &originalReq, false)
 			var expPath string
 			require.Equal(t, tt.input.Stream, o.stream)
+			encodedModel := url.PathEscape(tt.input.Model)
 			if tt.input.Stream {
-				expPath = fmt.Sprintf("/model/%s/converse-stream", tt.input.Model)
+				expPath = fmt.Sprintf("/model/%s/converse-stream", encodedModel)
 			} else {
-				expPath = fmt.Sprintf("/model/%s/converse", tt.input.Model)
+				expPath = fmt.Sprintf("/model/%s/converse", encodedModel)
 			}
 			require.NoError(t, err)
 			require.NotNil(t, hm)
@@ -1256,7 +1258,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 		require.NotNil(t, hm.SetHeaders)
 		require.Len(t, hm.SetHeaders, 2)
 		require.Equal(t, ":path", hm.SetHeaders[0].Header.Key)
-		require.Equal(t, "/model/"+modelNameOverride+"/converse", string(hm.SetHeaders[0].Header.RawValue))
+		require.Equal(t, "/model/"+url.PathEscape(modelNameOverride)+"/converse", string(hm.SetHeaders[0].Header.RawValue))
 	})
 }
 
@@ -1442,9 +1444,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			name: "basic_testing",
 			input: awsbedrock.ConverseResponse{
 				Usage: &awsbedrock.TokenUsage{
-					InputTokens:  10,
-					OutputTokens: 20,
-					TotalTokens:  30,
+					InputTokens:          10,
+					OutputTokens:         20,
+					TotalTokens:          30,
+					CacheReadInputTokens: ptr.To(5),
 				},
 				Output: &awsbedrock.ConverseOutput{
 					Message: awsbedrock.Message{
@@ -1459,10 +1462,13 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			},
 			output: openai.ChatCompletionResponse{
 				Object: "chat.completion",
-				Usage: openai.ChatCompletionResponseUsage{
+				Usage: openai.Usage{
 					TotalTokens:      30,
 					PromptTokens:     10,
 					CompletionTokens: 20,
+					PromptTokensDetails: &openai.PromptTokensDetails{
+						CachedTokens: 5,
+					},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
@@ -1496,7 +1502,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			},
 			output: openai.ChatCompletionResponse{
 				Object: "chat.completion",
-				Usage: openai.ChatCompletionResponseUsage{
+				Usage: openai.Usage{
 					TotalTokens:      30,
 					PromptTokens:     10,
 					CompletionTokens: 20,
@@ -1584,7 +1590,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			},
 			output: openai.ChatCompletionResponse{
 				Object: "chat.completion",
-				Usage: openai.ChatCompletionResponseUsage{
+				Usage: openai.Usage{
 					TotalTokens:      30,
 					PromptTokens:     10,
 					CompletionTokens: 20,
@@ -1680,12 +1686,60 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			expectedBody, err := json.Marshal(tt.output)
 			require.NoError(t, err)
 			require.JSONEq(t, string(expectedBody), string(newBody))
-			require.Equal(t,
-				LLMTokenUsage{
-					InputTokens:  uint32(tt.output.Usage.PromptTokens),     //nolint:gosec
-					OutputTokens: uint32(tt.output.Usage.CompletionTokens), //nolint:gosec
-					TotalTokens:  uint32(tt.output.Usage.TotalTokens),      //nolint:gosec
-				}, usedToken)
+			expectedUsage := LLMTokenUsage{
+				InputTokens:  uint32(tt.output.Usage.PromptTokens),     //nolint:gosec
+				OutputTokens: uint32(tt.output.Usage.CompletionTokens), //nolint:gosec
+				TotalTokens:  uint32(tt.output.Usage.TotalTokens),      //nolint:gosec
+			}
+			if tt.input.Usage != nil && tt.input.Usage.CacheReadInputTokens != nil {
+				expectedUsage.CachedTokens = uint32(tt.output.Usage.PromptTokensDetails.CachedTokens) //nolint:gosec
+			}
+			require.Equal(t, expectedUsage, usedToken)
+		})
+	}
+}
+
+// TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBodyURLEncoding tests URL encoding of ARNs in paths
+func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBodyURLEncoding(t *testing.T) {
+	tests := []struct {
+		name         string
+		modelName    string
+		stream       bool
+		expectedPath string
+	}{
+		{
+			name:         "ARN with slashes",
+			modelName:    "arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+			stream:       false,
+			expectedPath: "/model/arn:aws:bedrock:us-east-1:123456789012:inference-profile%2Fus.anthropic.claude-3-5-sonnet-20241022-v2:0/converse",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
+			req := openai.ChatCompletionRequest{
+				Model:  tt.modelName,
+				Stream: tt.stream,
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: "test message",
+							},
+							Role: openai.ChatMessageRoleUser,
+						},
+					},
+				},
+			}
+
+			hm, _, err := o.RequestBody(nil, &req, false)
+			require.NoError(t, err)
+			require.NotNil(t, hm)
+			require.NotNil(t, hm.SetHeaders)
+			require.Len(t, hm.SetHeaders, 2)
+			require.Equal(t, ":path", hm.SetHeaders[0].Header.Key)
+			require.Equal(t, tt.expectedPath, string(hm.SetHeaders[0].Header.RawValue))
 		})
 	}
 }
@@ -1827,17 +1881,21 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 			name: "usage",
 			in: awsbedrock.ConverseStreamEvent{
 				Usage: &awsbedrock.TokenUsage{
-					InputTokens:  10,
-					OutputTokens: 20,
-					TotalTokens:  30,
+					InputTokens:          10,
+					OutputTokens:         20,
+					TotalTokens:          30,
+					CacheReadInputTokens: ptr.To(5),
 				},
 			},
 			out: &openai.ChatCompletionResponseChunk{
 				Object: "chat.completion.chunk",
-				Usage: &openai.ChatCompletionResponseUsage{
+				Usage: &openai.Usage{
 					TotalTokens:      30,
 					PromptTokens:     10,
 					CompletionTokens: 20,
+					PromptTokensDetails: &openai.PromptTokensDetails{
+						CachedTokens: 5,
+					},
 				},
 			},
 		},

@@ -46,19 +46,20 @@ const (
 // to check if the pods of the gateway deployment need to be rolled out.
 func NewGatewayController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
-	extProcImage string, standAlone bool, uuidFn func() string,
+	extProcImage string, standAlone bool, uuidFn func() string, extProcAsSideCar bool,
 ) *GatewayController {
 	uf := uuidFn
 	if uf == nil {
 		uf = uuid.NewString
 	}
 	return &GatewayController{
-		client:       client,
-		kube:         kube,
-		logger:       logger,
-		extProcImage: extProcImage,
-		standAlone:   standAlone,
-		uuidFn:       uf,
+		client:           client,
+		kube:             kube,
+		logger:           logger,
+		extProcImage:     extProcImage,
+		standAlone:       standAlone,
+		uuidFn:           uf,
+		extProcAsSideCar: extProcAsSideCar,
 	}
 }
 
@@ -71,6 +72,9 @@ type GatewayController struct {
 	// standAlone indicates whether the controller is running in standalone mode.
 	standAlone bool
 	uuidFn     func() string // Function to generate a new UUID for the filter config.
+	// Whether to run the extProc container as a sidecar (true) as a normal container (false).
+	// This is essentially a workaround for old k8s versions, and we can remove this in the future.
+	extProcAsSideCar bool
 }
 
 // Reconcile implements the reconcile.Reconciler for gwapiv1.Gateway.
@@ -469,11 +473,21 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 	for _, pod := range pods {
 		// Get the pod spec and check if it has the extproc container.
 		podSpec := pod.Spec
-		for i := range podSpec.Containers {
-			// If there's an extproc container with the current target image, we don't need to roll out the deployment.
-			if podSpec.Containers[i].Name == extProcContainerName && podSpec.Containers[i].Image == c.extProcImage {
-				rollout = false
-				break
+		if c.extProcAsSideCar {
+			for i := range podSpec.InitContainers {
+				// If there's an extproc sidecar container with the current target image, we don't need to roll out the deployment.
+				if podSpec.InitContainers[i].Name == extProcContainerName && podSpec.InitContainers[i].Image == c.extProcImage {
+					rollout = false
+					break
+				}
+			}
+		} else {
+			for i := range podSpec.Containers {
+				// If there's an extproc container with the current target image, we don't need to roll out the deployment.
+				if podSpec.Containers[i].Name == extProcContainerName && podSpec.Containers[i].Image == c.extProcImage {
+					rollout = false
+					break
+				}
 			}
 		}
 

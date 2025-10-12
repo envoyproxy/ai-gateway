@@ -29,13 +29,6 @@ func TestPublicMCPServers(t *testing.T) {
 				Name: "test-route",
 				Backends: []filterapi.MCPBackend{
 					{Name: "context7", Path: "/mcp"},
-					{
-						Name: "aws-knowledge",
-						Path: "/",
-						ToolSelector: &filterapi.MCPToolSelector{
-							Include: []string{"aws___read_documentation", "aws___search_documentation"},
-						},
-					},
 					{Name: "kiwi", Path: "/"},
 				},
 			},
@@ -50,7 +43,7 @@ func TestPublicMCPServers(t *testing.T) {
 				Name: "github",
 				Path: "/mcp/readonly",
 				ToolSelector: &filterapi.MCPToolSelector{
-					IncludeRegex: []string{".*_pull_requests?.*", ".*_issues?.*"},
+					IncludeRegex: []string{".*pull_requests?.*", ".*issues?.*"},
 				},
 			},
 		)
@@ -92,19 +85,12 @@ func TestPublicMCPServers(t *testing.T) {
 			"context7__get-library-docs",
 			"kiwi__search-flight",
 			"kiwi__feedback-to-devs",
-			"aws-knowledge__aws___read_documentation",
-			"aws-knowledge__aws___search_documentation",
 		}
 
 		if githubConfigured {
 			exps = append(exps, "github__get_issue")
 			exps = append(exps, "github__get_issue_comments")
-			exps = append(exps, "github__get_pull_request")
-			exps = append(exps, "github__get_pull_request_diff")
-			exps = append(exps, "github__get_pull_request_files")
-			exps = append(exps, "github__get_pull_request_review_comments")
-			exps = append(exps, "github__get_pull_request_reviews")
-			exps = append(exps, "github__get_pull_request_status")
+			exps = append(exps, "github__pull_request_read")
 			exps = append(exps, "github__list_issue_types")
 			exps = append(exps, "github__list_issues")
 			exps = append(exps, "github__list_pull_requests")
@@ -138,13 +124,6 @@ func TestPublicMCPServers(t *testing.T) {
 				},
 			},
 			{
-				toolName: "aws-knowledge__aws___search_documentation",
-				params: map[string]any{
-					"limit":         1,
-					"search_phrase": "DynamoDB",
-				},
-			},
-			{
 				toolName: "kiwi__search-flight",
 				params: map[string]any{
 					"flyFrom":                "LAX",
@@ -167,10 +146,11 @@ func TestPublicMCPServers(t *testing.T) {
 		}
 		if githubConfigured {
 			tests = append(tests, callToolTest{
-				toolName: "github__get_pull_request",
+				toolName: "github__pull_request_read",
 				params: map[string]any{
 					"owner":      "envoyproxy",
 					"repo":       "ai-gateway",
+					"method":     "get",
 					"pullNumber": 1,
 				},
 			})

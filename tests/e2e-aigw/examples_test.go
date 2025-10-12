@@ -29,11 +29,6 @@ var (
 	// Adjust these as services update, as they can be added, removed or renamed
 
 	allNonGithubTools = []string{
-		"aws-knowledge__aws___get_regional_availability",
-		"aws-knowledge__aws___list_regions",
-		"aws-knowledge__aws___read_documentation",
-		"aws-knowledge__aws___recommend",
-		"aws-knowledge__aws___search_documentation",
 		"context7__get-library-docs",
 		"context7__resolve-library-id",
 		"kiwi__feedback-to-devs",
@@ -42,16 +37,11 @@ var (
 	allGithubTools = []string{
 		"github__get_issue",
 		"github__get_issue_comments",
-		"github__get_pull_request",
-		"github__get_pull_request_diff",
-		"github__get_pull_request_files",
-		"github__get_pull_request_review_comments",
-		"github__get_pull_request_reviews",
-		"github__get_pull_request_status",
 		"github__list_issue_types",
 		"github__list_issues",
 		"github__list_pull_requests",
 		"github__list_sub_issues",
+		"github__pull_request_read",
 		"github__search_issues",
 		"github__search_pull_requests",
 	}
@@ -62,30 +52,21 @@ var (
 
 	// Filtered tools based on mcp_example.yaml selectors
 	filteredNonGithubTools = []string{
-		"aws-knowledge__aws___read_documentation",
-		"aws-knowledge__aws___search_documentation",
 		"context7__get-library-docs",
 		"context7__resolve-library-id",
 		"kiwi__feedback-to-devs",
 		"kiwi__search-flight",
 	}
 	filteredAllTools = []string{
-		"aws-knowledge__aws___read_documentation",
-		"aws-knowledge__aws___search_documentation",
 		"context7__get-library-docs",
 		"context7__resolve-library-id",
 		"github__get_issue",
 		"github__get_issue_comments",
-		"github__get_pull_request",
-		"github__get_pull_request_diff",
-		"github__get_pull_request_files",
-		"github__get_pull_request_review_comments",
-		"github__get_pull_request_reviews",
-		"github__get_pull_request_status",
 		"github__list_issue_types",
 		"github__list_issues",
 		"github__list_pull_requests",
 		"github__list_sub_issues",
+		"github__pull_request_read",
 		"github__search_issues",
 		"github__search_pull_requests",
 		"kiwi__feedback-to-devs",
@@ -147,13 +128,6 @@ func TestMCP_standalone(t *testing.T) {
 				},
 			},
 			{
-				toolName: "aws-knowledge__aws___search_documentation",
-				params: map[string]any{
-					"limit":         1,
-					"search_phrase": "DynamoDB",
-				},
-			},
-			{
 				toolName: "kiwi__search-flight",
 				params: map[string]any{
 					"flyFrom":                "LAX",
@@ -176,10 +150,11 @@ func TestMCP_standalone(t *testing.T) {
 		}
 		if githubConfigured {
 			tests = append(tests, callToolTest{
-				toolName: "github__get_pull_request",
+				toolName: "github__pull_request_read",
 				params: map[string]any{
 					"owner":      "envoyproxy",
 					"repo":       "ai-gateway",
+					"method":     "get",
 					"pullNumber": 1,
 				},
 			})

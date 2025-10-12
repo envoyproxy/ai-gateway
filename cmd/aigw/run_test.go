@@ -28,6 +28,7 @@ import (
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
+	"github.com/tetratelabs/func-e/api"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -38,6 +39,9 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
+
+// startupRegexp ensures the status message is written to stderr as we know we are healthy!
+var startupRegexp = `Envoy AI Gateway listening on http://localhost:1975 \(admin http://localhost:\d+\) after [^\n]+`
 
 func TestRun(t *testing.T) {
 	ollamaModel, err := internaltesting.GetOllamaModel(internaltesting.ChatModel)
@@ -56,12 +60,13 @@ func TestRun(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "unused")
 
 	buffers := internaltesting.DumpLogsOnFail(t, "aigw Stdout", "aigw Stderr")
+	stdout, stderr := buffers[0], buffers[1]
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cleanupRun(t, cancel)
 
 	go func() {
 		opts := runOpts{extProcLauncher: mainlib.Main}
-		require.NoError(t, run(ctx, cmdRun{Debug: true, AdminPort: adminPort}, opts, buffers[0], buffers[1]))
+		require.NoError(t, run(ctx, cmdRun{Debug: true, AdminPort: adminPort}, opts, stdout, stderr))
 	}()
 
 	client := openai.NewClient(option.WithBaseURL("http://localhost:1975/v1/"))
@@ -87,6 +92,9 @@ func TestRun(t *testing.T) {
 		}, 1*time.Minute, 2*time.Second,
 			"chat completion never succeeded")
 	})
+
+	// By now, we're listening
+	require.Regexp(t, startupRegexp, stderr.String())
 
 	t.Run("access metrics", func(t *testing.T) {
 		internaltesting.RequireEventuallyNoError(t, func() error {
@@ -135,23 +143,28 @@ func TestRunMCP(t *testing.T) {
 	}
 
 	buffers := internaltesting.DumpLogsOnFail(t, "aigw Stdout", "aigw Stderr")
+	stdout, stderr := buffers[0], buffers[1]
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cleanupRun(t, cancel)
 
 	go func() {
 		opts := runOpts{extProcLauncher: mainlib.Main}
-		require.NoError(t, run(ctx, cmdRun{Debug: true, AdminPort: adminPort, mcpConfig: mcpServers}, opts, buffers[0], buffers[1]))
+		require.NoError(t, run(ctx, cmdRun{Debug: true, AdminPort: adminPort, mcpConfig: mcpServers}, opts, stdout, stderr))
 	}()
 
 	url := fmt.Sprintf("http://localhost:%d/mcp", 1975)
 	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.1.0"},
 		&mcp.ClientOptions{})
+
+	// Calculate departure date as one week from now
+	departureDate := time.Now().AddDate(0, 0, 7).Format("02/01/2006")
+
 	callTool := &mcp.CallToolParams{
 		Name: "kiwi__search-flight",
 		Arguments: map[string]any{
 			"flyFrom":       "NYC",
 			"flyTo":         "LAX",
-			"departureDate": "15/12/2025",
+			"departureDate": departureDate,
 		},
 	}
 
@@ -175,6 +188,9 @@ func TestRunMCP(t *testing.T) {
 		}, 2*time.Minute, 2*time.Second,
 			"MCP tool call never succeeded")
 	})
+
+	// By now, we're listening
+	require.Regexp(t, startupRegexp, stderr.String())
 }
 
 func TestRunExtprocStartFailure(t *testing.T) {
@@ -220,7 +236,7 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 	}
 	config := readFileFromProjectRoot(t, "examples/aigw/ollama.yaml")
 	ctx, cancel := context.WithCancel(t.Context())
-	_, done, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, config)
+	_, done, _, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, config)
 	require.NoError(t, err)
 	time.Sleep(time.Second)
 	cancel()
@@ -245,7 +261,7 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc_noListeners(t *testing.T
 		adminPort:                adminPort,
 	}
 
-	_, _, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(t.Context(), gatewayNoListenersConfig)
+	_, _, _, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(t.Context(), gatewayNoListenersConfig)
 	require.EqualError(t, err, "gateway aigw-run has no listeners configured")
 }
 
@@ -445,7 +461,7 @@ func TestPollEnvoyReady(t *testing.T) {
 		t.Cleanup(func() { callCount = 0 })
 		envoyAdmin, err := aigw.NewEnvoyAdminClient(t.Context(), os.Getpid(), adminPort)
 		require.NoError(t, err)
-		pollEnvoyReady(t.Context(), l, envoyAdmin, 50*time.Millisecond)
+		require.NoError(t, pollEnvoyReady(t.Context(), l, envoyAdmin, 50*time.Millisecond))
 		require.Equal(t, successAt, callCount)
 	})
 
@@ -455,9 +471,43 @@ func TestPollEnvoyReady(t *testing.T) {
 		t.Cleanup(func() { callCount = 0 })
 		envoyAdmin, err := aigw.NewEnvoyAdminClient(ctx, os.Getpid(), adminPort)
 		require.NoError(t, err)
-		pollEnvoyReady(ctx, l, envoyAdmin, 50*time.Millisecond)
+		require.ErrorIs(t, pollEnvoyReady(ctx, l, envoyAdmin, 50*time.Millisecond), context.DeadlineExceeded)
 		require.Less(t, callCount, successAt)
 	})
+}
+
+func Test_newEnvoyMiddleware(t *testing.T) {
+	tests := []struct {
+		name         string
+		inputOptions []api.RunOption
+	}{
+		{
+			name: "no input options",
+		},
+		{
+			name:         "options appended",
+			inputOptions: []api.RunOption{api.EnvoyVersion("1.2.3")},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+
+			middleware := newEnvoyRunMiddleware(&stdout, &stderr)
+			require.NotNil(t, middleware)
+
+			err := middleware(func(ctx context.Context, args []string, options ...api.RunOption) error {
+				require.Equal(t, t.Context(), ctx)
+				require.Equal(t, []string{"test"}, args)
+
+				// 2 = EnvoyOut, EnvoyErr
+				require.Len(t, options, 2+len(tt.inputOptions))
+				return nil
+			})(t.Context(), []string{"test"}, tt.inputOptions...)
+			require.NoError(t, err)
+		})
+	}
 }
 
 func readFileFromProjectRoot(t *testing.T, file string) string {

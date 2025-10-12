@@ -56,7 +56,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(original []byte, 
 	var newBody []byte
 	if o.modelNameOverride != "" {
 		// If modelName is set we override the model to be used for the request.
-		newBody, err = sjson.SetBytesOptions(original, "model", o.modelNameOverride, SJSONOptions)
+		newBody, err = sjson.SetBytesOptions(original, "model", o.modelNameOverride, sjsonOptions)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to set model name: %w", err)
 		}
@@ -156,6 +156,9 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]str
 		InputTokens:  uint32(resp.Usage.PromptTokens),     //nolint:gosec
 		OutputTokens: uint32(resp.Usage.CompletionTokens), //nolint:gosec
 		TotalTokens:  uint32(resp.Usage.TotalTokens),      //nolint:gosec
+	}
+	if resp.Usage.PromptTokensDetails != nil {
+		tokenUsage.CachedTokens = uint32(resp.Usage.PromptTokensDetails.CachedTokens) //nolint:gosec
 	}
 	// Fallback to request model for test or non-compliant OpenAI backends
 	responseModel = cmp.Or(resp.Model, o.requestModel)

@@ -90,7 +90,7 @@ spec:
       namespace: default
   rules:
     - backendRefs:
-        - group: inference.networking.x-k8s.io
+        - group: inference.networking.k8s.io
           kind: InferencePool
           name: vllm-llama3-8b-instruct
           namespace: default
@@ -133,7 +133,7 @@ spec:
               name: x-ai-eg-model
               value: meta-llama/Llama-3.1-8B-Instruct
       backendRefs:
-        - group: inference.networking.x-k8s.io
+        - group: inference.networking.k8s.io
           kind: InferencePool
           name: vllm-llama3-8b-instruct
     - matches:
@@ -142,7 +142,7 @@ spec:
               name: x-ai-eg-model
               value: mistral:latest
       backendRefs:
-        - group: inference.networking.x-k8s.io
+        - group: inference.networking.k8s.io
           kind: InferencePool
           name: mistral
     - matches:
@@ -201,11 +201,11 @@ kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extens
 kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.5.1/config/manifests/vllm/sim-deployment.yaml
 ```
 
-### 3\. Configure InferenceModel and InferencePool
+### 3\. Configure InferenceObjective and InferencePool
 
 ```yaml
-apiVersion: inference.networking.x-k8s.io/v1alpha2
-kind: InferenceModel
+apiVersion: inference.networking.k8s.io/v1
+kind: InferenceObjective
 metadata:
   name: base-model
 spec:
@@ -214,7 +214,7 @@ spec:
   poolRef:
     name: vllm-llama3-8b-instruct
 ---
-apiVersion: inference.networking.x-k8s.io/v1alpha2
+apiVersion: inference.networking.k8s.io/v1
 kind: InferencePool
 metadata:
   name: vllm-llama3-8b-instruct

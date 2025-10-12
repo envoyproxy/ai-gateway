@@ -28,7 +28,7 @@ func convertSSEToJSON(chunks []*openai.ChatCompletionResponseChunk) *openai.Chat
 	var (
 		firstChunk   *openai.ChatCompletionResponseChunk
 		content      strings.Builder
-		usage        *openai.ChatCompletionResponseUsage
+		usage        *openai.Usage
 		annotations  []openai.Annotation
 		role         string
 		obfuscation  string
