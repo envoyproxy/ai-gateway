@@ -25,6 +25,10 @@ permissions:
   packages: write
   id-token: write
 
+env:
+  # Used in the e2e test matrix to test against the latest stable Envoy Gateway release.
+  LATEST_STABLE_EG_VERSION: v1.5.0
+
 jobs:
   changes:
     runs-on: ubuntu-latest
@@ -230,8 +234,8 @@ jobs:
         include:
           - name: latest
             envoy_gateway_version: v0.0.0-latest
-          - name: v1.5.0
-            envoy_gateway_version: v1.5.0
+          - name: ${{ env.LATEST_STABLE_EG_VERSION }}
+            envoy_gateway_version: ${{ env.LATEST_STABLE_EG_VERSION }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -288,7 +292,7 @@ jobs:
       - run: make test-e2e-upgrade
         env:
           # We only need to test the upgrade from the latest stable version of EG.
-          EG_VERSION: v1.5.0
+          EG_VERSION: ${{ env.LATEST_STABLE_EG_VERSION }}
           K8S_VERSION: ${{ matrix.k8s-version }}
 
   test_e2e_inference_extension:
@@ -306,8 +310,8 @@ jobs:
         include:
           - name: latest
             envoy_gateway_version: v0.0.0-latest
-          - name: v1.5.0
-            envoy_gateway_version: v1.5.0
+          - name: ${{ env.LATEST_STABLE_EG_VERSION }}
+            envoy_gateway_version: ${{ env.LATEST_STABLE_EG_VERSION }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -334,14 +338,6 @@ jobs:
     # E.g. Use https://github.com/douglascamata/setup-docker-macos-action  per the comment in
     # https://github.com/actions/runner-images/issues/17#issuecomment-1971073406
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: latest
-            envoy_gateway_version: v0.0.0-latest
-          - name: v1.5.0
-            envoy_gateway_version: v1.5.0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -359,7 +355,9 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - run: make test-e2e-namespaced
         env:
-          EG_VERSION: ${{ matrix.envoy_gateway_version }}
+          # We only need to test the with the latest stable version of EG, since this test does
+          # not depend on the EG version.
+          EG_VERSION: ${{ env.LATEST_STABLE_EG_VERSION }}
 
   test_e2e_aigw:
     needs: changes
