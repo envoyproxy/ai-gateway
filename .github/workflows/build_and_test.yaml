@@ -294,20 +294,12 @@ jobs:
   test_e2e_inference_extension:
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
-    name: E2E Test for Inference Extensions (Envoy Gateway ${{ matrix.name }})
+    name: E2E Test for Inference Extensions
     # TODO: make it possible to run this job on macOS as well, which is a bit tricky due to the nested
     # virtualization is not supported on macOS runners.
     # E.g. Use https://github.com/douglascamata/setup-docker-macos-action  per the comment in
     # https://github.com/actions/runner-images/issues/17#issuecomment-1971073406
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: latest
-            envoy_gateway_version: v0.0.0-latest
-          - name: v1.5.0
-            envoy_gateway_version: v1.5.0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -324,6 +316,10 @@ jobs:
           key: e2e-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
       - uses: docker/setup-buildx-action@v3
       - run: make test-e2e-inference-extension
+        env:
+          # We only need to test with the latest stable version of EG, since these e2e tests
+          # do not depend on the EG version.
+          EG_VERSION: v1.5.0
 
   test_e2e_aigw:
     needs: changes
