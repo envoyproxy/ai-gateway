@@ -102,12 +102,9 @@ func validateFlightSearchGooseResponse(t *testing.T, result string) (retry bool)
 	// Note: use any type for fields since we only care about presence and count here.
 	// This will help reduce flaky test failures due to unexpected types like Number vs String for Price.
 	type kiwiFlightSearchResult struct {
-		Airline       any `json:"airline"`
-		FlightNumber  any `json:"flight_number"`
-		DepartureTime any `json:"departure_time"`
-		ArrivalTime   any `json:"arrival_time"`
-		Duration      any `json:"duration"`
-		Price         any `json:"price"`
+		Airline      any `json:"airline"`
+		FlightNumber any `json:"flight_number"`
+		Price        any `json:"price"`
 	}
 
 	var flights struct {
