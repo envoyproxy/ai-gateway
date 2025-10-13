@@ -17,6 +17,12 @@ Examples demonstrating how to configure the MCP Gateway to connect AI agents to 
 - OAuth authentication with Keycloak
 - Combining LLM routes and MCP routes on the same Gateway
 
+### [Goose Integration](./goose/)
+
+Shows how to integrate the Goose AI agent framework with MCP tools,
+demonstrating unified routing of both LLM and MCP calls through the Envoy AI
+Gateway for single-agent origin.
+
 ## Advanced Features
 
 ### [Provider Fallback](./provider_fallback/)
