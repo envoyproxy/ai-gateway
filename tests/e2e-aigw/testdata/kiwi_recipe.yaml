@@ -31,6 +31,18 @@ prompt: |
 
   ***********ANY FLIGHT IS FINE. DO NOT CONSIDER ANY USER PREFERENCES.************
 
+# Start aigw like this to use Ollama and Kiwi MCP backends:
+# OPENAI_BASE_URL=http://localhost:11434/v1 OPENAI_API_KEY=unused aigw run --mcp-json '{
+#   "mcpServers": {
+#     "kiwi": {
+#       "type": "http",
+#       "url": "https://mcp.kiwi.com"
+#     }
+#   }
+# }'
+#
+# Then, run goose like this to use Envoy AI Gateway for both LLM and MCP:
+# OPENAI_HOST=http://127.0.0.1:1975 OPENAI_API_KEY=test-key goose run --provider openai --model qwen3:1.7b --recipe kiwi_recipe.yaml --params flight_date=31/12/2025
 extensions:
   - name: mcp_gateway
     type: streamable_http
@@ -41,11 +53,10 @@ parameters:
     input_type: string
     requirement: required
     description: flight date in DD/MM/YYYY format
-    default: "01/10/2025"
+    default: "31/12/2025"
 
 settings:
-  goose_provider: ollama
-  goose_model: qwen3:0.6b
+  # Remove this if using GPT-5 series (e.g., gpt-5, gpt-5-mini, gpt-5-nano)
   temperature: 0.0
 
 response:
