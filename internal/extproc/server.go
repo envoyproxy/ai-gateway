@@ -20,6 +20,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/google/cel-go/cel"
+	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
@@ -45,6 +46,7 @@ type Server struct {
 	processorFactories            map[string]ProcessorFactory
 	routerProcessorsPerReqID      map[string]Processor
 	routerProcessorsPerReqIDMutex sync.RWMutex
+	uuidFn                        func() string
 }
 
 // NewServer creates a new external processor server.
@@ -54,6 +56,7 @@ func NewServer(logger *slog.Logger, tracing tracing.Tracing) (*Server, error) {
 		tracing:                  tracing,
 		processorFactories:       make(map[string]ProcessorFactory),
 		routerProcessorsPerReqID: make(map[string]Processor),
+		uuidFn:                   uuid.NewString,
 	}
 	return srv, nil
 }
@@ -126,15 +129,6 @@ func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFi
 		for k := range s.processorFactories {
 			availablePaths = append(availablePaths, k)
 		}
-		s.logger.Debug(
-			"selecting processor for path",
-			slog.String("path_header", pathHeader),
-			slog.String("raw_path", requestHeaders[pathHeader]),
-			slog.String("stripped_path", path),
-			slog.Bool("is_upstream_filter", isUpstreamFilter),
-			slog.Int("available_processors_count", len(availablePaths)),
-			slog.Any("available_paths", availablePaths),
-		)
 	}
 
 	newProcessor, ok := s.processorFactories[path]
@@ -147,6 +141,10 @@ func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFi
 // originalPathHeader is the header used to pass the original path to the processor.
 // This is used in the upstream filter level to determine the original path of the request on retry.
 const originalPathHeader = "x-ai-eg-original-path"
+
+// internalReqIDHeader is the header used to pass the unique internal request ID to the upstream filter.
+// This ensures that the upstream filter uses the same unique ID as the router filter to avoid race conditions.
+const internalReqIDHeader = "x-ai-eg-internal-req-id"
 
 // Process implements [extprocv3.ExternalProcessorServer].
 func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error {
@@ -162,13 +160,14 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 	// to pass the request through without any processing as there would be nothing to process from AI Gateway's perspective.
 	var p Processor = passThroughProcessor{}
 	var isUpstreamFilter bool
-	var reqID string
+	var internalReqID string
+	var originalReqID string
 	var logger *slog.Logger
 	defer func() {
 		if !isUpstreamFilter {
 			s.routerProcessorsPerReqIDMutex.Lock()
 			defer s.routerProcessorsPerReqIDMutex.Unlock()
-			delete(s.routerProcessorsPerReqID, reqID)
+			delete(s.routerProcessorsPerReqID, internalReqID)
 		}
 	}()
 
@@ -194,39 +193,25 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 		// request, and the processor will be instantiated only once.
 		if headers := req.GetRequestHeaders().GetHeaders(); headers != nil {
 			headersMap := headersToMap(headers)
-			// Log request headers (filtered) and key routing variables to help debug unsupported path.
-			if s.logger != nil && s.logger.Enabled(ctx, slog.LevelDebug) {
-				filteredHdrs := filterSensitiveHeadersForLogging(headers, sensitiveHeaderKeys)
-				s.logger.Debug(
-					"request headers received",
-					slog.Any("request_headers", filteredHdrs),
-				)
-			}
-			reqID = headersMap["x-request-id"]
+			originalReqID = headersMap["x-request-id"]
 			// Assume that when attributes are set, this stream is for the upstream filter level.
 			isUpstreamFilter = req.GetAttributes() != nil
-			if s.logger != nil {
-				s.logger.Debug(
-					"instantiating processor",
-					slog.String("request_id", reqID),
-					slog.Bool("is_upstream_filter", isUpstreamFilter),
-					slog.String("path", headersMap[":path"]),
-					slog.String("original_path_header", headersMap[originalPathHeader]),
-					slog.Any("headers_map", headersMap),
-				)
+
+			if isUpstreamFilter {
+				// For upstream filter, use the internal request ID passed from the router filter
+				internalReqID = headersMap[internalReqIDHeader]
+				if internalReqID == "" {
+					return status.Errorf(codes.Internal, "missing internal request ID header from router filter")
+				}
+			} else {
+				// For router filter, create a unique internal request ID to avoid race conditions
+				// with duplicate x-request-id values by appending a UUID suffix to the original request ID
+				internalReqID = originalReqID + "-" + s.uuidFn()
 			}
 			p, err = s.processorForPath(headersMap, isUpstreamFilter)
 			if err != nil {
 				if errors.Is(err, errNoProcessor) {
 					path := headersMap[":path"]
-					if s.logger != nil {
-						s.logger.Debug(
-							"no processor registered for path",
-							slog.String("path", path),
-							slog.Bool("is_upstream_filter", isUpstreamFilter),
-							slog.String("request_id", reqID),
-						)
-					}
 					_ = stream.Send(&extprocv3.ProcessingResponse{
 						Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 							ImmediateResponse: &extprocv3.ImmediateResponse{
@@ -243,22 +228,22 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 			}
 			_, isEndpoinPicker := headersMap[internalapi.EndpointPickerHeaderKey]
 			if isUpstreamFilter {
-				if err = s.setBackend(ctx, p, reqID, isEndpoinPicker, req); err != nil {
+				if err = s.setBackend(ctx, p, internalReqID, isEndpoinPicker, req); err != nil {
 					s.logger.Error("error processing request message", slog.String("error", err.Error()))
 					return status.Errorf(codes.Unknown, "error processing request message: %v", err)
 				}
 			} else {
 				s.routerProcessorsPerReqIDMutex.Lock()
-				s.routerProcessorsPerReqID[reqID] = p
+				s.routerProcessorsPerReqID[internalReqID] = p
 				s.routerProcessorsPerReqIDMutex.Unlock()
 			}
 		}
 		if logger == nil {
-			logger = s.logger.With("request_id", reqID, "is_upstream_filter", isUpstreamFilter)
+			logger = s.logger.With("request_id", originalReqID, "is_upstream_filter", isUpstreamFilter)
 		}
 
 		// At this point, p is guaranteed to be a valid processor either from the concrete processor or the passThroughProcessor.
-		resp, err := s.processMsg(ctx, logger, p, req)
+		resp, err := s.processMsg(ctx, logger, p, req, internalReqID, isUpstreamFilter)
 		if err != nil {
 			s.logger.Error("error processing request message", slog.String("error", err.Error()))
 			return status.Errorf(codes.Unknown, "error processing request message: %v", err)
@@ -270,7 +255,7 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 	}
 }
 
-func (s *Server) processMsg(ctx context.Context, l *slog.Logger, p Processor, req *extprocv3.ProcessingRequest) (*extprocv3.ProcessingResponse, error) {
+func (s *Server) processMsg(ctx context.Context, l *slog.Logger, p Processor, req *extprocv3.ProcessingRequest, internalReqID string, isUpstreamFilter bool) (*extprocv3.ProcessingResponse, error) {
 	switch value := req.Request.(type) {
 	case *extprocv3.ProcessingRequest_RequestHeaders:
 		requestHdrs := req.GetRequestHeaders().Headers
@@ -283,6 +268,35 @@ func (s *Server) processMsg(ctx context.Context, l *slog.Logger, p Processor, re
 		if err != nil {
 			return nil, fmt.Errorf("cannot process request headers: %w", err)
 		}
+
+		// For router filter, inject the internal request ID header so upstream filter can use it
+		if !isUpstreamFilter && resp != nil {
+			if requestHeaders, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders); ok {
+				// Ensure we have header mutation to add the internal request ID
+				if requestHeaders.RequestHeaders == nil {
+					requestHeaders.RequestHeaders = &extprocv3.HeadersResponse{}
+				}
+				if requestHeaders.RequestHeaders.Response == nil {
+					requestHeaders.RequestHeaders.Response = &extprocv3.CommonResponse{}
+				}
+				if requestHeaders.RequestHeaders.Response.HeaderMutation == nil {
+					requestHeaders.RequestHeaders.Response.HeaderMutation = &extprocv3.HeaderMutation{}
+				}
+
+				// Add the internal request ID header
+				internalReqIDHeaderValue := &corev3.HeaderValueOption{
+					Header: &corev3.HeaderValue{
+						Key:      internalReqIDHeader,
+						RawValue: []byte(internalReqID),
+					},
+				}
+				requestHeaders.RequestHeaders.Response.HeaderMutation.SetHeaders = append(
+					requestHeaders.RequestHeaders.Response.HeaderMutation.SetHeaders,
+					internalReqIDHeaderValue,
+				)
+			}
+		}
+
 		l.Debug("request headers processed", slog.Any("response", resp))
 		return resp, nil
 	case *extprocv3.ProcessingRequest_RequestBody:
@@ -322,7 +336,7 @@ func (s *Server) processMsg(ctx context.Context, l *slog.Logger, p Processor, re
 
 // setBackend retrieves the backend from the request attributes and sets it in the processor. This is only called
 // if the processor is an upstream filter.
-func (s *Server) setBackend(ctx context.Context, p Processor, reqID string, isEndpointPicker bool, req *extprocv3.ProcessingRequest) error {
+func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID string, isEndpointPicker bool, req *extprocv3.ProcessingRequest) error {
 	attributes := req.GetAttributes()["envoy.filters.http.ext_proc"]
 	if attributes == nil || len(attributes.Fields) == 0 { // coverage-ignore
 		return status.Error(codes.Internal, "missing attributes in request")
@@ -360,10 +374,10 @@ func (s *Server) setBackend(ctx context.Context, p Processor, reqID string, isEn
 
 	s.routerProcessorsPerReqIDMutex.RLock()
 	defer s.routerProcessorsPerReqIDMutex.RUnlock()
-	routerProcessor, ok := s.routerProcessorsPerReqID[reqID]
+	routerProcessor, ok := s.routerProcessorsPerReqID[internalReqID]
 	if !ok {
 		return status.Errorf(codes.Internal, "no router processor found, request_id=%s, backend=%s",
-			reqID, backendName.GetStringValue())
+			internalReqID, backendName.GetStringValue())
 	}
 
 	if err := p.SetBackend(ctx, backend.b, backend.handler, routerProcessor); err != nil {
