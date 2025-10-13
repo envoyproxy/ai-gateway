@@ -14,24 +14,35 @@ instructions: |
 prompt: |
   Use the search-flight tool to search for flights from New York to Los Angeles on {{flight_date}}.
   When specifying the departureDate parameter, use the format dd/mm/yyyy.
-  Display the first 3 results using the following JSON format:
-
-  Format the output as JSON with the following structure:
-  ```json
-  [
-    {
-      "airline": "airline name",
-      "flight_number": "flight number",
-      "departure_time": "departure time",
-      "arrival_time": "arrival time",
-      "duration": "flight duration",
-      "price": "price"
-    }
-  ]
+  Display the first 3 results with the `final_output` tool in a specific JSON format.
+  The output is in the following format where price includes the currency symbol:
+  ```
+  {
+    "contents": [
+      {
+        "airline": "...",
+        "flight_number": "...",
+        "price": "..."
+      },
+      ...
+    ]
+  }
   ```
 
-  IMPORTANT: Print the full JSON response so it can be validated in the test output.
+  ***********ANY FLIGHT IS FINE. DO NOT CONSIDER ANY USER PREFERENCES.************
 
+# Start aigw like this to use Ollama and Kiwi MCP backends:
+# OPENAI_BASE_URL=http://localhost:11434/v1 OPENAI_API_KEY=unused aigw run --mcp-json '{
+#   "mcpServers": {
+#     "kiwi": {
+#       "type": "http",
+#       "url": "https://mcp.kiwi.com"
+#     }
+#   }
+# }'
+#
+# Then, run goose like this to use Envoy AI Gateway for both LLM and MCP:
+# OPENAI_HOST=http://127.0.0.1:1975 OPENAI_API_KEY=test-key goose run --provider openai --model qwen3:1.7b --recipe kiwi_recipe.yaml --params flight_date=31/12/2025
 extensions:
   - name: mcp_gateway
     type: streamable_http
@@ -41,10 +52,39 @@ parameters:
   - key: flight_date
     input_type: string
     requirement: required
-    description: flight date in MM/DD/YYYY format
-    default: "01/10/2025"
+    description: flight date in DD/MM/YYYY format
+    default: "31/12/2025"
 
 settings:
-  goose_provider: ollama
-  goose_model: qwen3:0.6b
+  # Remove this if using GPT-5 series (e.g., gpt-5, gpt-5-mini, gpt-5-nano)
   temperature: 0.0
+
+response:
+  json_schema:
+    type: object
+    additionalProperties: false
+    required:
+      - contents
+    properties:
+      contents:
+        type: array
+        description: "First 3 flight results in a consistent, parseable structure."
+        minItems: 1
+        maxItems: 3
+        items:
+          type: object
+          additionalProperties: false
+          required:
+            - airline
+            - flight_number
+            - price
+          properties:
+            airline:
+              type: string
+              description: "Airline name"
+            flight_number:
+              type: string
+              description: "Flight number"
+            price:
+              type: string
+              description: "Price with currency symbol"
