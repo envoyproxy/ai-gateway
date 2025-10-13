@@ -46,6 +46,7 @@ type Server struct {
 	processorFactories            map[string]ProcessorFactory
 	routerProcessorsPerReqID      map[string]Processor
 	routerProcessorsPerReqIDMutex sync.RWMutex
+	uuidFn                        func() string
 }
 
 // NewServer creates a new external processor server.
@@ -55,6 +56,7 @@ func NewServer(logger *slog.Logger, tracing tracing.Tracing) (*Server, error) {
 		tracing:                  tracing,
 		processorFactories:       make(map[string]ProcessorFactory),
 		routerProcessorsPerReqID: make(map[string]Processor),
+		uuidFn:                   uuid.NewString,
 	}
 	return srv, nil
 }
@@ -196,12 +198,7 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 			} else {
 				// For router filter, create a unique internal request ID to avoid race conditions
 				// with duplicate x-request-id values by appending a UUID suffix to the original request ID
-				internalReqID = originalReqID + "-" + uuid.NewString()
-
-				// Ctx will only contain the value for testing purposes
-				if testInternalReqID, ok := ctx.Value(internalReqIDHeader).(string); ok {
-					internalReqID = testInternalReqID
-				}
+				internalReqID = originalReqID + "-" + s.uuidFn()
 			}
 			p, err = s.processorForPath(headersMap, isUpstreamFilter)
 			if err != nil {

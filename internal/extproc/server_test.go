@@ -398,10 +398,10 @@ func TestServer_ProcessorSelection(t *testing.T) {
 					Response: &extprocv3.CommonResponse{
 						HeaderMutation: &extprocv3.HeaderMutation{
 							SetHeaders: []*corev3.HeaderValueOption{
-								&corev3.HeaderValueOption{
+								{
 									Header: &corev3.HeaderValue{
 										Key:      internalReqIDHeader,
-										RawValue: []byte("test-internal-req-id"),
+										RawValue: []byte("-test-internal-req-id"),
 									},
 								},
 							},
@@ -411,7 +411,10 @@ func TestServer_ProcessorSelection(t *testing.T) {
 			},
 		}
 
-		ctx = context.WithValue(ctx, internalReqIDHeader, "test-internal-req-id")
+		s.uuidFn = func() string {
+			return "test-internal-req-id"
+		}
+
 		ms := &mockExternalProcessingStream{t: t, ctx: ctx, retRecv: req, expResponseOnSend: expResponse}
 
 		err = s.Process(ms)
