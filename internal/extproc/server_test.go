@@ -120,7 +120,7 @@ func TestServer_List(t *testing.T) {
 func TestServer_processMsg(t *testing.T) {
 	t.Run("unknown request type", func(t *testing.T) {
 		s, p := requireNewServerWithMockProcessor(t)
-		_, err := s.processMsg(t.Context(), slog.Default(), p, &extprocv3.ProcessingRequest{})
+		_, err := s.processMsg(t.Context(), slog.Default(), p, &extprocv3.ProcessingRequest{}, "test-req-id", false)
 		require.ErrorContains(t, err, "unknown request type")
 	})
 	t.Run("request headers", func(t *testing.T) {
@@ -134,7 +134,7 @@ func TestServer_processMsg(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{Headers: hm}},
 		}
-		resp, err := s.processMsg(t.Context(), slog.Default(), p, req)
+		resp, err := s.processMsg(t.Context(), slog.Default(), p, req, "test-req-id", false)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
@@ -150,7 +150,7 @@ func TestServer_processMsg(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_RequestBody{RequestBody: reqBody},
 		}
-		resp, err := s.processMsg(t.Context(), slog.Default(), p, req)
+		resp, err := s.processMsg(t.Context(), slog.Default(), p, req, "test-req-id", false)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
@@ -166,7 +166,7 @@ func TestServer_processMsg(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_ResponseHeaders{ResponseHeaders: &extprocv3.HttpHeaders{Headers: hm}},
 		}
-		resp, err := s.processMsg(t.Context(), slog.Default(), p, req)
+		resp, err := s.processMsg(t.Context(), slog.Default(), p, req, "test-req-id", false)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
@@ -182,7 +182,7 @@ func TestServer_processMsg(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_ResponseHeaders{ResponseHeaders: &extprocv3.HttpHeaders{Headers: hm}},
 		}
-		resp, err := s.processMsg(t.Context(), slog.Default(), p, req)
+		resp, err := s.processMsg(t.Context(), slog.Default(), p, req, "test-req-id", false)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
@@ -198,7 +198,7 @@ func TestServer_processMsg(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_ResponseBody{ResponseBody: reqBody},
 		}
-		resp, err := s.processMsg(t.Context(), slog.Default(), p, req)
+		resp, err := s.processMsg(t.Context(), slog.Default(), p, req, "test-req-id", false)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
@@ -236,7 +236,7 @@ func TestServer_Process(t *testing.T) {
 	t.Run("upstream filter", func(t *testing.T) {
 		s, p := requireNewServerWithMockProcessor(t)
 
-		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: originalPathHeader, Value: "/"}, {Key: "foo", Value: "bar"}}}
+		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: originalPathHeader, Value: "/"}, {Key: internalReqIDHeader, Value: "test-req-id-123"}, {Key: "foo", Value: "bar"}}}
 		p.t = t
 		p.expHeaderMap = hm
 		req := &extprocv3.ProcessingRequest{
@@ -351,7 +351,7 @@ func TestServer_ProcessorSelection(t *testing.T) {
 	s.Register("/two", func(*processorConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
 		return &mockProcessor{
 			t:                     t,
-			expHeaderMap:          &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/two"}}},
+			expHeaderMap:          &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/two"}, {Key: "x-request-id", Value: "original-req-id"}}},
 			retProcessingResponse: &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}},
 		}, nil
 	})
@@ -388,11 +388,36 @@ func TestServer_ProcessorSelection(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_RequestHeaders{
 				RequestHeaders: &extprocv3.HttpHeaders{
-					Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/two"}}},
+					Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{
+						{Key: ":path", Value: "/two"},
+						{Key: "x-request-id", Value: "original-req-id"},
+					}},
 				},
 			},
 		}
-		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}
+		expResponse := &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_RequestHeaders{
+				RequestHeaders: &extprocv3.HeadersResponse{
+					Response: &extprocv3.CommonResponse{
+						HeaderMutation: &extprocv3.HeaderMutation{
+							SetHeaders: []*corev3.HeaderValueOption{
+								{
+									Header: &corev3.HeaderValue{
+										Key:      internalReqIDHeader,
+										RawValue: []byte("original-req-id-test-internal-req-id"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		s.uuidFn = func() string {
+			return "test-internal-req-id"
+		}
+
 		ms := &mockExternalProcessingStream{t: t, ctx: ctx, retRecv: req, expResponseOnSend: expResponse}
 
 		err = s.Process(ms)
