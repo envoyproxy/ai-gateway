@@ -73,3 +73,74 @@ func TestChatCompletionSpan_EndSpan(t *testing.T) {
 		attribute.Int("eventCount", 2),
 	}, actualSpan.Attributes)
 }
+
+func TestEmbeddingsSpan_EndSpanOnError(t *testing.T) {
+	msg := "embeddings error occurred"
+	actualSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+		s := &embeddingsSpan{span: span, recorder: testEmbeddingsRecorder{}}
+		s.EndSpanOnError(500, []byte(msg))
+		return true // EndSpanOnError ends the underlying span.
+	})
+
+	require.Equal(t, []attribute.KeyValue{
+		attribute.Int("statusCode", 500),
+		attribute.String("errorBody", msg),
+	}, actualSpan.Attributes)
+}
+
+func TestCompletionSpan_RecordResponseChunk(t *testing.T) {
+	chunks := []*openai.CompletionResponse{{}, {}}
+	s := &completionSpan{}
+	_ = testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+		s.span = span
+		s.RecordResponseChunk(chunks[0])
+		s.RecordResponseChunk(chunks[1])
+		return false // Recording of chunks shouldn't end the span.
+	})
+	require.Len(t, s.chunks, 2)
+	require.Equal(t, chunks, s.chunks)
+}
+
+func TestCompletionSpan_RecordResponse(t *testing.T) {
+	resp := &openai.CompletionResponse{ID: "cmpl-abc123"}
+	respBytes, err := json.Marshal(resp)
+	require.NoError(t, err)
+	s := &completionSpan{recorder: testCompletionRecorder{}}
+	actualSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+		s.span = span
+		s.RecordResponse(resp)
+		return false // Recording of response shouldn't end the span.
+	})
+	require.Empty(t, s.chunks)
+	require.Equal(t, []attribute.KeyValue{
+		attribute.Int("statusCode", 200),
+		attribute.Int("respBodyLen", len(respBytes)),
+	}, actualSpan.Attributes)
+}
+
+func TestCompletionSpan_EndSpanOnError(t *testing.T) {
+	msg := "completion error occurred"
+	actualSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+		s := &completionSpan{span: span, recorder: testCompletionRecorder{}}
+		s.EndSpanOnError(500, []byte(msg))
+		return true // EndSpanOnError ends the underlying span.
+	})
+
+	require.Equal(t, []attribute.KeyValue{
+		attribute.Int("statusCode", 500),
+		attribute.String("errorBody", msg),
+	}, actualSpan.Attributes)
+}
+
+func TestCompletionSpan_EndSpan(t *testing.T) {
+	s := &completionSpan{recorder: testCompletionRecorder{}, chunks: []*openai.CompletionResponse{{}, {}}}
+	actualSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+		s.span = span
+		s.EndSpan()
+		return true // EndSpan ends the underlying span.
+	})
+
+	require.Equal(t, []attribute.KeyValue{
+		attribute.Int("eventCount", 2),
+	}, actualSpan.Attributes)
+}

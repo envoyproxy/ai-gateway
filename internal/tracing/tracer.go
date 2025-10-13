@@ -162,3 +162,63 @@ func (t *embeddingsTracer) StartSpanAndInjectHeaders(ctx context.Context, header
 
 	return nil
 }
+
+// Ensure completionTracer implements [tracing.CompletionTracer].
+var _ tracing.CompletionTracer = (*completionTracer)(nil)
+
+func newCompletionTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.CompletionRecorder, headerAttributes map[string]string) tracing.CompletionTracer {
+	// Check if the tracer is a no-op by checking its type.
+	if _, ok := tracer.(noop.Tracer); ok {
+		return tracing.NoopCompletionTracer{}
+	}
+	return &completionTracer{
+		tracer:           tracer,
+		propagator:       propagator,
+		recorder:         recorder,
+		headerAttributes: headerAttributes,
+	}
+}
+
+type completionTracer struct {
+	tracer           trace.Tracer
+	recorder         tracing.CompletionRecorder
+	propagator       propagation.TextMapPropagator
+	headerAttributes map[string]string
+}
+
+// StartSpanAndInjectHeaders implements [tracing.CompletionTracer.StartSpanAndInjectHeaders].
+func (t *completionTracer) StartSpanAndInjectHeaders(ctx context.Context, headers map[string]string, mutableHeaders *extprocv3.HeaderMutation, req *openai.CompletionRequest, body []byte) tracing.CompletionSpan {
+	// Extract trace context from incoming headers.
+	parentCtx := t.propagator.Extract(ctx, propagation.MapCarrier(headers))
+
+	// Start the span with options appropriate for the semantic convention.
+	spanName, opts := t.recorder.StartParams(req, body)
+	newCtx, span := t.tracer.Start(parentCtx, spanName, opts...)
+
+	// Always inject trace context into the header mutation if provided.
+	// This ensures trace propagation works even for unsampled spans.
+	t.propagator.Inject(newCtx, &headerMutationCarrier{m: mutableHeaders})
+
+	// Only record request attributes if span is recording (sampled).
+	// This avoids expensive body processing for unsampled spans.
+	if span.IsRecording() {
+		t.recorder.RecordRequest(span, req, body)
+
+		// Apply header-to-attribute mapping if configured.
+		if len(t.headerAttributes) > 0 {
+			attrs := make([]attribute.KeyValue, 0, len(t.headerAttributes))
+			for headerName, attrName := range t.headerAttributes {
+				if headerValue, ok := headers[headerName]; ok {
+					attrs = append(attrs, attribute.String(attrName, headerValue))
+				}
+			}
+			if len(attrs) > 0 {
+				span.SetAttributes(attrs...)
+			}
+		}
+
+		return &completionSpan{span: span, recorder: t.recorder}
+	}
+
+	return nil
+}

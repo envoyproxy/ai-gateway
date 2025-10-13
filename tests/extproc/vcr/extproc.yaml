@@ -14,6 +14,11 @@ backends:
       name: OpenAI
       version: v1
     modelNameOverride: gpt-5-nano
+  - name: openai-completions-override
+    schema:
+      name: OpenAI
+      version: v1
+    modelNameOverride: babbage-002
   - name: openai-embeddings-override
     schema:
       name: OpenAI

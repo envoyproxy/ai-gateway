@@ -192,12 +192,12 @@ type OpenAICompletionTranslator interface {
 		err error,
 	)
 
-	// ResponseBody translates the response body.
-	// 	- `body` is the response body.
+	// ResponseBody translates the response body. When stream=true, this is called for each chunk of the response body.
+	// 	- `body` is the response body either chunk or the entire body, depending on the context.
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
 	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
 	//  - This returns `responseModel` that is the model name from the response (may differ from request model).
-	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
+	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool, span tracing.CompletionSpan) (
 		headerMutation *extprocv3.HeaderMutation,
 		bodyMutation *extprocv3.BodyMutation,
 		tokenUsage LLMTokenUsage,

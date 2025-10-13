@@ -229,6 +229,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		return fmt.Errorf("failed to create metrics: %w", err)
 	}
 	chatCompletionMetrics := metrics.NewChatCompletion(meter, metricsRequestHeaderAttributes)
+	completionMetrics := metrics.NewCompletion(meter, metricsRequestHeaderAttributes)
 	embeddingsMetrics := metrics.NewEmbeddings(meter, metricsRequestHeaderAttributes)
 	rerankMetrics := metrics.NewRerank(meter, metricsRequestHeaderAttributes)
 	mcpMetrics := metrics.NewMCP(meter)
@@ -243,7 +244,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		return fmt.Errorf("failed to create external processor server: %w", err)
 	}
 	server.Register(path.Join(flags.rootPrefix, "/v1/chat/completions"), extproc.ChatCompletionProcessorFactory(chatCompletionMetrics))
-	server.Register(path.Join(flags.rootPrefix, "/v1/completions"), extproc.CompletionsProcessorFactory(nil))
+	server.Register(path.Join(flags.rootPrefix, "/v1/completions"), extproc.CompletionsProcessorFactory(completionMetrics))
 	server.Register(path.Join(flags.rootPrefix, "/v1/embeddings"), extproc.EmbeddingsProcessorFactory(embeddingsMetrics))
 	server.Register(path.Join(flags.rootPrefix, "/v2/rerank"), extproc.RerankProcessorFactory(rerankMetrics))
 	server.Register(path.Join(flags.rootPrefix, "/v1/models"), extproc.NewModelsProcessor)

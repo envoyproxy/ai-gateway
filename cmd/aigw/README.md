@@ -77,7 +77,9 @@ metrics and tracing.
 All profiles below use at least these Docker services:
 
 - **aigw** (port 1975): Envoy AI Gateway CLI with OpenAI endpoints at `/v1/*` and MCP endpoint at `/mcp`
-- **chat-completion**: OpenAI Python client instrumented with OpenTelemetry
+- **chat-completion**: OpenAI Python client for chat completions, instrumented with OpenTelemetry
+- **completion**: OpenAI Python client for completions (legacy), instrumented with OpenTelemetry
+- **create-embeddings**: OpenAI Python client for embeddings, instrumented with OpenTelemetry
 
 ### Prerequisites
 
@@ -154,6 +156,7 @@ This configures the OTLP endpoint to otel-tui on port 4318.
    ```bash
    COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm chat-completion
    COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm create-embeddings
+   COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm completion
    COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm mcp
    ```
 
