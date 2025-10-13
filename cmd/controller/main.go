@@ -14,6 +14,8 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	egextension "github.com/envoyproxy/gateway/proto/extension"
 	"go.uber.org/zap/zapcore"
@@ -22,7 +24,9 @@ import (
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
@@ -51,7 +55,9 @@ type flags struct {
 	// extProcMaxRecvMsgSize is the maximum message size in bytes that the gRPC server can receive.
 	extProcMaxRecvMsgSize int
 	// maxRecvMsgSize is the maximum message size in bytes that the gRPC extension server can receive.
-	maxRecvMsgSize int
+	maxRecvMsgSize   int
+	watchNamespaces  []string
+	cacheSyncTimeout time.Duration
 }
 
 // parsePullPolicy parses string into a k8s PullPolicy.
@@ -62,6 +68,18 @@ func parsePullPolicy(s string) (corev1.PullPolicy, error) {
 	default:
 		return "", fmt.Errorf("invalid external processor pull policy: %q", s)
 	}
+}
+
+// parseWatchNamespaces parses a comma-separated list of namespaces into a slice of strings.
+func parseWatchNamespaces(s string) []string {
+	var namespaces []string
+	for _, n := range strings.Split(s, ",") {
+		ns := strings.TrimSpace(n)
+		if ns != "" {
+			namespaces = append(namespaces, ns)
+		}
+	}
+	return namespaces
 }
 
 // parseAndValidateFlags parses the command-line arguments provided in args,
@@ -159,6 +177,16 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		4*1024*1024,
 		"Maximum message size in bytes that the gRPC extension server can receive. Default is 4MB.",
 	)
+	watchNamespaces := fs.String(
+		"watchNamespaces",
+		"",
+		"Comma-separated list of namespaces to watch. If not set, the controller watches all namespaces.",
+	)
+	cacheSyncTimeout := fs.Duration(
+		"cacheSyncTimeout",
+		2*time.Minute, // This is the controller-runtime default
+		"Maximum time to wait for k8s caches to sync",
+	)
 
 	if err := fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
@@ -238,41 +266,47 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		extProcImagePullSecrets:        *extProcImagePullSecrets,
 		extProcMaxRecvMsgSize:          *extProcMaxRecvMsgSize,
 		maxRecvMsgSize:                 *maxRecvMsgSize,
+		watchNamespaces:                parseWatchNamespaces(*watchNamespaces),
+		cacheSyncTimeout:               *cacheSyncTimeout,
 	}, nil
 }
 
 func main() {
 	setupLog := ctrl.Log.WithName("setup")
 
-	flags, err := parseAndValidateFlags(os.Args[1:])
+	parsedFlags, err := parseAndValidateFlags(os.Args[1:])
 	if err != nil {
 		setupLog.Error(err, "failed to parse and validate flags")
 		os.Exit(1)
 	}
 
 	// Warn if deprecated flag is being used.
-	if flags.metricsRequestHeaderLabels != "" {
+	if parsedFlags.metricsRequestHeaderLabels != "" {
 		setupLog.Info("The --metricsRequestHeaderLabels flag is deprecated and will be removed in a future release. Please use --metricsRequestHeaderAttributes instead.")
 	}
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: flags.logLevel})))
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: parsedFlags.logLevel})))
 	k8sConfig := ctrl.GetConfigOrDie()
 
-	lis, err := net.Listen("tcp", flags.extensionServerPort)
+	lis, err := net.Listen("tcp", parsedFlags.extensionServerPort)
 	if err != nil {
-		setupLog.Error(err, "failed to listen", "port", flags.extensionServerPort)
+		setupLog.Error(err, "failed to listen", "port", parsedFlags.extensionServerPort)
 		os.Exit(1)
 	}
 
+	setupLog.Info("configuring kubernetes cache", "watch-namespaces", parsedFlags.watchNamespaces, "sync-timeout", parsedFlags.cacheSyncTimeout)
+
 	ctx := ctrl.SetupSignalHandler()
 	mgrOpts := ctrl.Options{
+		Cache:            setupCache(parsedFlags),
+		Controller:       config.Controller{CacheSyncTimeout: parsedFlags.cacheSyncTimeout},
 		Scheme:           controller.Scheme,
-		LeaderElection:   flags.enableLeaderElection,
+		LeaderElection:   parsedFlags.enableLeaderElection,
 		LeaderElectionID: "envoy-ai-gateway-controller",
 		WebhookServer: webhook.NewServer(webhook.Options{
-			CertDir:  flags.tlsCertDir,
-			CertName: flags.tlsCertName,
-			KeyName:  flags.tlsKeyName,
+			CertDir:  parsedFlags.tlsCertDir,
+			CertName: parsedFlags.tlsCertName,
+			KeyName:  parsedFlags.tlsKeyName,
 			Port:     9443,
 		}),
 	}
@@ -287,14 +321,14 @@ func main() {
 		setupLog.Error(err, "failed to create client")
 		os.Exit(1)
 	}
-	if err := maybePatchAdmissionWebhook(ctx, cli, filepath.Join(flags.tlsCertDir, flags.caBundleName)); err != nil {
+	if err := maybePatchAdmissionWebhook(ctx, cli, filepath.Join(parsedFlags.tlsCertDir, parsedFlags.caBundleName)); err != nil {
 		setupLog.Error(err, "failed to patch admission webhook")
 		os.Exit(1)
 	}
 
 	// Start the extension server running alongside the controller.
 	const extProcUDSPath = "/etc/ai-gateway-extproc-uds/run.sock"
-	s := grpc.NewServer(grpc.MaxRecvMsgSize(flags.maxRecvMsgSize))
+	s := grpc.NewServer(grpc.MaxRecvMsgSize(parsedFlags.maxRecvMsgSize))
 	extSrv := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false)
 	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
@@ -310,17 +344,17 @@ func main() {
 
 	// Start the controller.
 	if err := controller.StartControllers(ctx, mgr, k8sConfig, ctrl.Log.WithName("controller"), controller.Options{
-		ExtProcImage:                   flags.extProcImage,
-		ExtProcImagePullPolicy:         flags.extProcImagePullPolicy,
-		ExtProcLogLevel:                flags.extProcLogLevel,
-		EnableLeaderElection:           flags.enableLeaderElection,
+		ExtProcImage:                   parsedFlags.extProcImage,
+		ExtProcImagePullPolicy:         parsedFlags.extProcImagePullPolicy,
+		ExtProcLogLevel:                parsedFlags.extProcLogLevel,
+		EnableLeaderElection:           parsedFlags.enableLeaderElection,
 		UDSPath:                        extProcUDSPath,
-		MetricsRequestHeaderAttributes: flags.metricsRequestHeaderAttributes,
-		TracingRequestHeaderAttributes: flags.spanRequestHeaderAttributes,
-		RootPrefix:                     flags.rootPrefix,
-		ExtProcExtraEnvVars:            flags.extProcExtraEnvVars,
-		ExtProcImagePullSecrets:        flags.extProcImagePullSecrets,
-		ExtProcMaxRecvMsgSize:          flags.extProcMaxRecvMsgSize,
+		MetricsRequestHeaderAttributes: parsedFlags.metricsRequestHeaderAttributes,
+		TracingRequestHeaderAttributes: parsedFlags.spanRequestHeaderAttributes,
+		RootPrefix:                     parsedFlags.rootPrefix,
+		ExtProcExtraEnvVars:            parsedFlags.extProcExtraEnvVars,
+		ExtProcImagePullSecrets:        parsedFlags.extProcImagePullSecrets,
+		ExtProcMaxRecvMsgSize:          parsedFlags.extProcMaxRecvMsgSize,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}
@@ -355,4 +389,20 @@ func maybePatchAdmissionWebhook(ctx context.Context, cli client.Client, bundlePa
 		}
 	}
 	return nil
+}
+
+// setupCache sets up the cache options based on the provided flags.
+func setupCache(f flags) cache.Options {
+	var namespaceCacheConfig map[string]cache.Config
+	if len(f.watchNamespaces) > 0 {
+		namespaceCacheConfig = make(map[string]cache.Config, len(f.watchNamespaces))
+		for _, ns := range f.watchNamespaces {
+			namespaceCacheConfig[ns] = cache.Config{}
+		}
+	}
+
+	return cache.Options{
+		DefaultNamespaces: namespaceCacheConfig,
+		DefaultTransform:  cache.TransformStripManagedFields(),
+	}
 }
