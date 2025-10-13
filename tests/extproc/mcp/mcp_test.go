@@ -199,7 +199,7 @@ func testToolCallError(t *testing.T, m *mcpEnv) {
 	t.Run("validation error", func(t *testing.T) {
 		res, err := s.session.CallTool(t.Context(), &mcp.CallToolParams{
 			Name:      "default-mcp-backend__" + testmcp.ToolError.Tool.Name,
-			Arguments: testmcp.ToolErrorArgs{},
+			Arguments: testmcp.ToolErrorArgs{Error: "a"},
 		})
 		require.Error(t, err)
 		require.Nil(t, res)

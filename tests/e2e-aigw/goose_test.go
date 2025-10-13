@@ -59,6 +59,9 @@ func TestMCPGooseRecipe(t *testing.T) {
 
 				// Validate the output.
 				output := buffers[0].String()
+				output2 := buffers[1].String()
+				t.Logf("Goose Stdout: %s", output)
+				t.Logf("Goose Stderr: %s", output2)
 				if tc.validate(t, output) {
 					return fmt.Errorf("validation failed, retrying")
 				}
@@ -84,65 +87,42 @@ type gooseRecipeTestCase struct {
 
 // validateFlightSearchGooseResponse validates that a response contains valid flight search results.
 func validateFlightSearchGooseResponse(t *testing.T, result string) (retry bool) {
-	// Extract and validate JSON flight data.
-	response, ok := extractJSONFromGooseOutput(t, result)
-	if !ok {
-		t.Logf("Failed to extract JSON from Goose output, retrying...: %s", result)
-		return true // Retry if JSON extraction fails.
+	// Extract and validate JSON flight data which should be in the last line of the output.
+	lines := strings.Split(strings.TrimSpace(result), "\n")
+	if len(lines) == 0 {
+		t.Logf("No output lines found, retrying...")
+		return true // Retry if no output.
 	}
+
+	response := lines[len(lines)-1]
+	t.Logf("Extracted JSON response: %s", response)
 
 	// kiwiFlightSearchResult represents the expected structure of flight search results.
 	//
 	// Note: use any type for fields since we only care about presence and count here.
 	// This will help reduce flaky test failures due to unexpected types like Number vs String for Price.
 	type kiwiFlightSearchResult struct {
-		Airline       any `json:"airline"`
-		FlightNumber  any `json:"flight_number"`
-		DepartureTime any `json:"departure_time"`
-		ArrivalTime   any `json:"arrival_time"`
-		Duration      any `json:"duration"`
-		Price         any `json:"price"`
+		Airline      any `json:"airline"`
+		FlightNumber any `json:"flight_number"`
+		Price        any `json:"price"`
 	}
 
-	var flights []kiwiFlightSearchResult
+	var flights struct {
+		Flights []kiwiFlightSearchResult `json:"contents"`
+	}
 	err := json.Unmarshal([]byte(response), &flights)
 	if err != nil {
 		t.Logf("Failed to unmarshal flight search results, retrying...: %v", err)
 		return true // Retry if JSON is invalid.
 	}
 
-	if len(flights) < 3 {
-		t.Logf("Expected at least 3 flights, got %d, retrying...", len(flights))
+	if len(flights.Flights) < 3 {
+		t.Logf("Expected at least 3 flights, got %d, retrying...", len(flights.Flights))
 		return true // Retry if not enough flights.
 	}
 
-	for i, flight := range flights {
+	for i, flight := range flights.Flights {
 		t.Logf("Flight %d: %+v", i+1, flight)
 	}
 	return false
-}
-
-// extractJSONFromGooseOutput extracts the first JSON array from Goose output.
-//
-// Returns false if no JSON array is found.
-func extractJSONFromGooseOutput(t *testing.T, output string) (string, bool) {
-	const start, end = "```json", "```"
-	startIdx := strings.Index(output, start)
-	if startIdx == -1 {
-		t.Logf("No JSON array start found in output: %s", output)
-		return "", false
-	}
-	endIdx := strings.LastIndex(output, end)
-	if endIdx == -1 || endIdx < startIdx {
-		t.Logf("No JSON array end found in output: %s", output)
-		return "", false
-	}
-	jsonCandidate := output[startIdx+len(start) : endIdx]
-	// Validate it's actually JSON by attempting to parse.
-	var testArray []interface{}
-	if err := json.Unmarshal([]byte(jsonCandidate), &testArray); err != nil {
-		t.Logf("Extracted candidate is not valid JSON: %v: %s", err, jsonCandidate)
-		return "", false
-	}
-	return jsonCandidate, true
 }
