@@ -261,8 +261,11 @@ func (s *Server) processMsg(ctx context.Context, l *slog.Logger, p Processor, re
 
 		// For router filter, inject the internal request ID header so upstream filter can use it
 		if !isUpstreamFilter && resp != nil {
-			if requestHeaders, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders); ok && requestHeaders.RequestHeaders != nil {
+			if requestHeaders, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders); ok {
 				// Ensure we have header mutation to add the internal request ID
+				if requestHeaders.RequestHeaders == nil {
+					requestHeaders.RequestHeaders = &extprocv3.HeadersResponse{}
+				}
 				if requestHeaders.RequestHeaders.Response == nil {
 					requestHeaders.RequestHeaders.Response = &extprocv3.CommonResponse{}
 				}
