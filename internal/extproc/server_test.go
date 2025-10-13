@@ -351,7 +351,7 @@ func TestServer_ProcessorSelection(t *testing.T) {
 	s.Register("/two", func(*processorConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
 		return &mockProcessor{
 			t:                     t,
-			expHeaderMap:          &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/two"}}},
+			expHeaderMap:          &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/two"}, {Key: "x-request-id", Value: "original-req-id"}}},
 			retProcessingResponse: &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}},
 		}, nil
 	})
@@ -388,7 +388,10 @@ func TestServer_ProcessorSelection(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_RequestHeaders{
 				RequestHeaders: &extprocv3.HttpHeaders{
-					Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/two"}}},
+					Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{
+						{Key: ":path", Value: "/two"},
+						{Key: "x-request-id", Value: "original-req-id"},
+					}},
 				},
 			},
 		}
@@ -401,7 +404,7 @@ func TestServer_ProcessorSelection(t *testing.T) {
 								{
 									Header: &corev3.HeaderValue{
 										Key:      internalReqIDHeader,
-										RawValue: []byte("-test-internal-req-id"),
+										RawValue: []byte("original-req-id-test-internal-req-id"),
 									},
 								},
 							},
