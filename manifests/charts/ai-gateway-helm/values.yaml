@@ -67,6 +67,15 @@ controller:
   leaderElection:
     enabled: true
 
+  # Configuration for how the Kubernetes controllers watch the different resources.
+  watch:
+    # Namespaces to watch. An empty list means to watch all namespaces.
+    # Default is an empty list, to watch all namespaces.
+    namespaces: []
+    # Sync timeout for the Kubernetes cache. If the cache is not synced within this time, the controller will exit.
+    # Default is 2 minutes.
+    cacheSyncTimeout: 2m
+
   # -- Deployment configs --
   image:
     repository: docker.io/envoyproxy/ai-gateway-controller
