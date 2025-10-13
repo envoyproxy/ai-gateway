@@ -22,6 +22,12 @@ helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
 kubectl wait --timeout=2m -n envoy-ai-gateway-system deployment/ai-gateway-controller --for=condition=Available
 ```
 
+:::tip
+Note that you are browsing the documentation for the main branch version of Envoy AI Gateway, which is not a stable release.
+We highly recommend you replace `v0.0.0-latest` with `v0.0.0-${commit hash of https://github.com/envoyproxy/ai-gateway}` to pin to a specific version.
+Otherwise, the controller will be installed with the latest version at the time of installation, which can be unstable over time due to ongoing development (the latest container tags are overwritten).
+:::
+
 > If you are experiencing network issues with `docker.io` , you can install the helm chart from the code repo [ai-gateway-helm](https://github.com/envoyproxy/ai-gateway/tree/main/manifests/charts/ai-gateway-helm) instead.
 
 ### Installing CRDs separately
