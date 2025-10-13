@@ -869,6 +869,73 @@ data: [DONE]
 				TotalTokens:  8,
 			},
 		},
+		{
+			name: "response with model version field",
+			respHeaders: map[string]string{
+				"content-type": "application/json",
+			},
+			body: `{
+				"modelVersion": "gemini-1.5-pro-002",
+				"candidates": [
+					{
+						"content": {
+							"parts": [
+								{
+									"text": "Response with model version set."
+								}
+							]
+						},
+						"finishReason": "STOP",
+						"safetyRatings": []
+					}
+				],
+				"promptFeedback": {
+					"safetyRatings": []
+				},
+				"usageMetadata": {
+					"promptTokenCount": 6,
+					"candidatesTokenCount": 8,
+					"totalTokenCount": 14
+				}
+			}`,
+			endOfStream: true,
+			wantError:   false,
+			wantHeaderMut: &extprocv3.HeaderMutation{
+				SetHeaders: []*corev3.HeaderValueOption{{
+					Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("306")},
+				}},
+			},
+			wantBodyMut: &extprocv3.BodyMutation{
+				Mutation: &extprocv3.BodyMutation_Body{
+					Body: []byte(`{
+    "choices": [
+        {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+                "content": "Response with model version set.",
+                "role": "assistant"
+            }
+        }
+    ],
+    "model": "gemini-1.5-pro-002",
+    "object": "chat.completion",
+    "usage": {
+        "completion_tokens": 8,
+        "completion_tokens_details": {},
+        "prompt_tokens": 6,
+        "prompt_tokens_details": {},
+        "total_tokens": 14
+    }
+}`),
+				},
+			},
+			wantTokenUsage: LLMTokenUsage{
+				InputTokens:  6,
+				OutputTokens: 8,
+				TotalTokens:  14,
+			},
+		},
 	}
 
 	for _, tc := range tests {
