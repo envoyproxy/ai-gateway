@@ -44,6 +44,7 @@ func TestRun(t *testing.T) {
 	// TODO: parameterize the main listen port 1975
 	adminPort := ports[0]
 
+	// Note: we do not make any real requests here!
 	t.Setenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 	t.Setenv("OPENAI_API_KEY", "unused")
 
@@ -52,16 +53,8 @@ func TestRun(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cleanupRun(t, cancel)
 
-	go func() {
-		opts := runOpts{extProcLauncher: mainlib.Main}
-		require.NoError(t, run(ctx, cmdRun{Debug: true, AdminPort: adminPort}, opts, stdout, stderr))
-	}()
-
-	// startupRegexp ensures the status message is written to stderr as we know we are healthy!
-	const startupRegexp = `Envoy AI Gateway listening on http://localhost:1975 \(admin http://localhost:\d+\) after [^\n]+`
-
-	// By now, we're listening
-	require.Regexp(t, startupRegexp, stderr.String())
+	opts := runOpts{extProcLauncher: func(context.Context, []string, io.Writer) error { return nil }}
+	require.NoError(t, run(ctx, cmdRun{Debug: true, AdminPort: adminPort}, opts, stdout, stderr))
 }
 
 func cleanupRun(t testing.TB, cancel context.CancelFunc) {

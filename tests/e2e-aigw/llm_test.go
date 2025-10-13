@@ -1,3 +1,8 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
 package e2emcp
 
 import (
@@ -6,10 +11,11 @@ import (
 	"testing"
 	"time"
 
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
+
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 func TestAIGWRun_LLM(t *testing.T) {
