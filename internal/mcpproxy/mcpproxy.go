@@ -199,7 +199,7 @@ func (m *MCPProxy) newSession(ctx context.Context, p *mcp.InitializeParams, rout
 				// TODO: should we record a metric for this?
 				return
 			}
-			m.metrics.RecordInitializationDuration(ctx, &startAt)
+			m.metrics.RecordInitializationDuration(ctx, &startAt, p)
 			if m.l.Enabled(ctx, slog.LevelDebug) {
 				m.l.Debug("created MCP session", slog.String("backend", backend.Name), slog.String("session_id", string(initResult.sessionID)))
 			}
@@ -352,7 +352,7 @@ func (m *MCPProxy) initializeSession(ctx context.Context, routeName filterapi.MC
 		if m.l.Enabled(ctx, slog.LevelDebug) {
 			m.l.Debug("MCP session initialized", slog.Any("capabilities", initResult.Capabilities))
 		}
-		m.metrics.RecordServerCapabilities(ctx, initResult.Capabilities)
+		m.metrics.RecordServerCapabilities(ctx, initResult.Capabilities, p)
 	}
 
 	// Need to invoke "notifications/initialized" to complete the initialization.

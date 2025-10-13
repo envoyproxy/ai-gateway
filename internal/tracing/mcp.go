@@ -57,16 +57,16 @@ func (s mcpSpan) EndSpan() {
 
 // mcpTracer is an implementation of [tracing.MCPTracer].
 type mcpTracer struct {
-	tracer           trace.Tracer
-	propagator       propagation.TextMapPropagator
-	headerAttributes map[string]string
+	tracer            trace.Tracer
+	propagator        propagation.TextMapPropagator
+	attributeMappings map[string]string
 }
 
-func newMCPTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, headerAttributes map[string]string) tracing.MCPTracer {
+func newMCPTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, attributeMappings map[string]string) tracing.MCPTracer {
 	return mcpTracer{
-		tracer:           tracer,
-		propagator:       propagator,
-		headerAttributes: headerAttributes,
+		tracer:            tracer,
+		propagator:        propagator,
+		attributeMappings: attributeMappings,
 	}
 }
 
@@ -81,9 +81,14 @@ func (m mcpTracer) StartSpanAndInjectMeta(ctx context.Context, req *jsonrpc.Requ
 	attrs = append(attrs, getMCPParamsAsAttributes(param)...)
 
 	// Apply header-to-attribute mapping if configured.
-	for headerName, attrName := range m.headerAttributes {
-		if headerValue, ok := headers[headerName]; ok {
-			attrs = append(attrs, attribute.String(attrName, headerValue))
+	for srcName, targetName := range m.attributeMappings {
+		// Check if the attribute is present in the metadata first, as this is the common place to add custom attributes
+		// in MCP requests. Fall back to headers if not found in metadata.
+		// If the attribute is not found there, check if there is any custom header to map.
+		if metaValue, ok := param.GetMeta()[srcName]; ok {
+			attrs = append(attrs, attribute.String(targetName, fmt.Sprintf("%v", metaValue)))
+		} else if headerValue, ok := headers[srcName]; ok {
+			attrs = append(attrs, attribute.String(targetName, headerValue))
 		}
 	}
 

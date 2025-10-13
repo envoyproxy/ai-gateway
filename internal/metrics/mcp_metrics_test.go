@@ -30,21 +30,29 @@ func TestRecordMetricWithCustomAttributes(t *testing.T) {
 	mr := metric.NewManualReader()
 	meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
 
-	m := NewMCP(meter, map[string]string{"x-custom-attr": "attr.custom"})
+	m := NewMCP(meter, map[string]string{
+		"x-tracing-enrichment-user-region": "user.region",
+		"x-session-id":                     "session.id",
+	})
 	require.NotNil(t, m)
 
 	req, err := http.NewRequest("GET", "https://example.com", nil)
 	require.NoError(t, err)
-	req.Header.Set("x-custom-attr", "test") // should be included in metrics
-	req.Header.Set("x-other-attr", "other") // should be ignored
+	req.Header.Set("x-tracing-enrichment-user-region", "us-east-1") // should be included in metrics
+	req.Header.Set("x-other-attr", "other")                         // should be ignored
 
 	m = m.WithRequestAttributes(req)
 
 	startAt := time.Now().Add(-1 * time.Minute)
-	m.RecordRequestDuration(t.Context(), &startAt)
+	m.RecordRequestDuration(t.Context(), &startAt, &mcpsdk.InitializeParams{
+		Meta: map[string]any{"x-session-id": "sess-1234"},
+	})
 
 	count, sum := testotel.GetHistogramValues(t, mr, mcpRequestDuration,
-		attribute.NewSet(attribute.String("attr.custom", "test")))
+		attribute.NewSet(
+			attribute.String("user.region", "us-east-1"),
+			attribute.String("session.id", "sess-1234"),
+		))
 	require.Equal(t, uint64(1), count)
 	require.Equal(t, 60, int(sum))
 }
@@ -56,7 +64,7 @@ func TestRecordRequestDuration(t *testing.T) {
 	m := NewMCP(meter, nil)
 	require.NotNil(t, m)
 	startAt := time.Now().Add(-1 * time.Minute)
-	m.RecordRequestDuration(t.Context(), &startAt)
+	m.RecordRequestDuration(t.Context(), &startAt, nil)
 
 	count, sum := testotel.GetHistogramValues(t, mr, mcpRequestDuration, attribute.NewSet())
 	require.Equal(t, uint64(1), count)
@@ -70,7 +78,7 @@ func TestRecordRequestErrorDuration(t *testing.T) {
 	m := NewMCP(meter, nil)
 	require.NotNil(t, m)
 	startAt := time.Now().Add(-30 * time.Second)
-	m.RecordRequestErrorDuration(t.Context(), &startAt, MCPErrorUnsupportedProtocolVersion)
+	m.RecordRequestErrorDuration(t.Context(), &startAt, MCPErrorUnsupportedProtocolVersion, nil)
 
 	count, sum := testotel.GetHistogramValues(t, mr, mcpRequestDuration, attribute.NewSet(
 		attribute.Key(mcpAttributeErrorType).String(string(MCPErrorUnsupportedProtocolVersion)),
@@ -86,7 +94,7 @@ func TestRecordMethodCount(t *testing.T) {
 	m := NewMCP(meter, nil)
 	require.NotNil(t, m)
 
-	m.RecordMethodCount(t.Context(), "test_method_name")
+	m.RecordMethodCount(t.Context(), "test_method_name", nil)
 	attrs := attribute.NewSet(
 		attribute.Key(mcpAttributeMethodName).String("test_method_name"),
 		attribute.Key(mcpAttributeStatusName).String(string(mcpStatusSuccess)),
@@ -94,7 +102,7 @@ func TestRecordMethodCount(t *testing.T) {
 	val := testotel.GetCounterValue(t, mr, mcpMethodCount, attrs)
 	require.Equal(t, float64(1), val)
 
-	m.RecordMethodErrorCount(t.Context())
+	m.RecordMethodErrorCount(t.Context(), nil)
 	attrs = attribute.NewSet(
 		attribute.Key(mcpAttributeStatusName).String(string(mcpStatusError)),
 	)
@@ -110,7 +118,7 @@ func TestRecordInitializationDuration(t *testing.T) {
 	require.NotNil(t, m)
 
 	startAt := time.Now().Add(-45 * time.Second)
-	m.RecordInitializationDuration(t.Context(), &startAt)
+	m.RecordInitializationDuration(t.Context(), &startAt, nil)
 
 	count, sum := testotel.GetHistogramValues(t, mr, mcpInitializationDuration, attribute.NewSet())
 	require.Equal(t, uint64(1), count)
@@ -133,7 +141,7 @@ func TestRecordCapabilitiesNegotiated(t *testing.T) {
 			ListChanged bool "json:\"listChanged,omitempty\""
 		}{ListChanged: true},
 		Sampling: &mcpsdk.SamplingCapabilities{},
-	})
+	}, nil)
 	m.RecordServerCapabilities(t.Context(), &mcpsdk.ServerCapabilities{
 		Experimental: map[string]any{
 			"exp1": struct{}{},
@@ -143,7 +151,7 @@ func TestRecordCapabilitiesNegotiated(t *testing.T) {
 		Prompts:     &mcpsdk.PromptCapabilities{ListChanged: true},
 		Resources:   &mcpsdk.ResourceCapabilities{ListChanged: true, Subscribe: true},
 		Tools:       &mcpsdk.ToolCapabilities{ListChanged: true},
-	})
+	}, nil)
 	require.Equal(t, float64(2), testotel.GetCounterValue(t, mr, mcpCapabilitiesNegotiated, attribute.NewSet(
 		attribute.Key(mcpAttributeCapabilityType).String(string(mcpCapabilityTypeExperimental)),
 		attribute.Key(mcpAttributeCapabilitySide).String(string(mcpCapabilitySideClient)),
@@ -179,11 +187,11 @@ func TestRecordProgressNotifications(t *testing.T) {
 	m := NewMCP(meter, nil)
 	require.NotNil(t, m)
 
-	m.RecordProgress(t.Context())
+	m.RecordProgress(t.Context(), nil)
 	val := testotel.GetCounterValue(t, mr, mpcProgressNotifications, attribute.NewSet())
 	require.Equal(t, float64(1), val)
 
-	m.RecordProgress(t.Context())
+	m.RecordProgress(t.Context(), nil)
 	val = testotel.GetCounterValue(t, mr, mpcProgressNotifications, attribute.NewSet())
 	require.Equal(t, float64(2), val)
 }
