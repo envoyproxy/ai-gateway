@@ -361,7 +361,6 @@ jobs:
         env:
           EG_VERSION: ${{ matrix.envoy_gateway_version }}
 
-
   test_e2e_aigw:
     needs: changes
     name: E2E Test for aigw CLI
