@@ -8,6 +8,7 @@ package e2emcp
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -18,7 +19,10 @@ import (
 )
 
 func TestMCPGooseRecipe(t *testing.T) {
-	startAIGWCLI(t, aigwBin, "run", "--debug", "aigw_config.yaml")
+	startAIGWCLI(t, aigwBin, []string{
+		"OPENAI_BASE_URL=http://127.0.0.1:11434/v1",
+		"OPENAI_API_KEY=unused",
+	}, "run", "--debug", "--mcp-json", `{"mcpServers":{"kiwi":{"type":"http","url":"https://mcp.kiwi.com"}}}`)
 
 	for _, tc := range []gooseRecipeTestCase{
 		{
@@ -52,6 +56,12 @@ func TestMCPGooseRecipe(t *testing.T) {
 				cmd := exec.CommandContext(t.Context(), "goose", args...)
 				cmd.Stdout = buffers[0]
 				cmd.Stderr = buffers[1]
+				// Point Goose at aigw also for LLM access
+				cmd.Env = append(os.Environ(),
+					"OPENAI_HOST=http://127.0.0.1:1975",
+					"OPENAI_BASE_PATH=v1/chat/completions",
+					"OPENAI_API_KEY=test-key",
+				)
 
 				if err := cmd.Run(); err != nil {
 					return err
