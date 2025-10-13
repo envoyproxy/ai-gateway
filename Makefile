@@ -187,6 +187,12 @@ test-e2e-upgrade: build-e2e
 	@echo "Run E2E upgrade tests"
 	@go test -v ./tests/e2e-upgrade/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
 
+# This runs the end-to-end namespaced tests for the controller and extproc with a local kind cluster.
+.PHONY: test-e2e-namespaced
+test-e2e-namespaced: build-e2e
+	@echo "Run E2E namespaced tests"
+	@go test -v ./tests/e2e-namespaced/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
+
 # This runs the MCP end-to-end tests.
 .PHONY: test-e2e-aigw
 test-e2e-aigw: build.aigw ## Run MCP end-to-end tests.

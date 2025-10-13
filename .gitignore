@@ -13,6 +13,7 @@ ACCESS_LOG_PATH
 
 tests/e2e/logs/
 tests/e2e-inference-extension/logs/
+tests/e2e-namespaced/logs/
 tests/e2e-upgrade/logs/
 
 # Files and directories to ignore in the site directory

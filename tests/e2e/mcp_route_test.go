@@ -36,7 +36,7 @@ func TestMCP(t *testing.T) {
 	t.Cleanup(func() {
 		_ = e2elib.KubectlDeleteManifest(t.Context(), manifest)
 	})
-	maniyBackendsRouteToolNames := requireCreateMCPManyBackends(t)
+	manyBackendsRouteToolNames := requireCreateMCPManyBackends(t)
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=mcp-gateway"
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
@@ -74,7 +74,7 @@ func TestMCP(t *testing.T) {
 		require.Nil(t, sess)
 	})
 	t.Run("many backends route", func(t *testing.T) {
-		testMCPRouteTools(t.Context(), t, client, fwd.Address(), "/mcp/many", maniyBackendsRouteToolNames,
+		testMCPRouteTools(t.Context(), t, client, fwd.Address(), "/mcp/many", manyBackendsRouteToolNames,
 			nil, true, true)
 	})
 }
