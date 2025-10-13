@@ -111,7 +111,7 @@ var ToolError = TestTool[ToolErrorArgs, any]{
 				"error": {
 					Type:        "string",
 					Description: "Error message to return from the tool",
-					MinLength:   ptr(1),
+					MinLength:   ptr(2),
 				},
 			},
 			Required: []string{"error"},

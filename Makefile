@@ -193,10 +193,10 @@ test-e2e-namespaced: build-e2e
 	@echo "Run E2E namespaced tests"
 	@go test -v ./tests/e2e-namespaced/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
 
-# This runs the MCP end-to-end tests.
+# This runs the end-to-end tests for the aigw CLI.
 .PHONY: test-e2e-aigw
-test-e2e-aigw: build.aigw ## Run MCP end-to-end tests.
-	@echo "Run MCP E2E tests"
+test-e2e-aigw: build.aigw ## Run the end-to-end tests for the aigw CLI.
+	@echo "Run aigw CLI E2E tests"
 	@go test -v ./tests/e2e-aigw/... -timeout 30m $(GO_TEST_E2E_ARGS)
 
 ##@ Common
