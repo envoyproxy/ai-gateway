@@ -197,6 +197,11 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 				// For router filter, create a unique internal request ID to avoid race conditions
 				// with duplicate x-request-id values by appending a UUID suffix to the original request ID
 				internalReqID = originalReqID + "-" + uuid.NewString()
+
+				// Ctx will only contain the value for testing purposes
+				if testInternalReqID, ok := ctx.Value(internalReqIDHeader).(string); ok {
+					internalReqID = testInternalReqID
+				}
 			}
 			p, err = s.processorForPath(headersMap, isUpstreamFilter)
 			if err != nil {

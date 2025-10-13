@@ -392,7 +392,26 @@ func TestServer_ProcessorSelection(t *testing.T) {
 				},
 			},
 		}
-		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}
+		expResponse := &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_RequestHeaders{
+				RequestHeaders: &extprocv3.HeadersResponse{
+					Response: &extprocv3.CommonResponse{
+						HeaderMutation: &extprocv3.HeaderMutation{
+							SetHeaders: []*corev3.HeaderValueOption{
+								&corev3.HeaderValueOption{
+									Header: &corev3.HeaderValue{
+										Key:      internalReqIDHeader,
+										RawValue: []byte("test-internal-req-id"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		ctx = context.WithValue(ctx, internalReqIDHeader, "test-internal-req-id")
 		ms := &mockExternalProcessingStream{t: t, ctx: ctx, retRecv: req, expResponseOnSend: expResponse}
 
 		err = s.Process(ms)
