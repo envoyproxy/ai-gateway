@@ -324,6 +324,8 @@ jobs:
           key: e2e-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
       - uses: docker/setup-buildx-action@v3
       - run: make test-e2e-inference-extension
+        env:
+          EG_VERSION: ${{ matrix.envoy_gateway_version }}
 
   test_e2e_aigw:
     needs: changes
