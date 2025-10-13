@@ -109,9 +109,6 @@ func (i *imageGenerationProcessorRouterFilter) ProcessRequestBody(ctx context.Co
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
 
-	// OpenAI SDK doesn't expose a generic Stream flag for image generation; keep false for now.
-	isStreamingRequest := false
-
 	i.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = model
 
 	var additionalHeaders []*corev3.HeaderValueOption
@@ -122,13 +119,6 @@ func (i *imageGenerationProcessorRouterFilter) ProcessRequestBody(ctx context.Co
 		Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(i.requestHeaders[":path"])},
 	})
 
-	// Add streaming indicator header for downstream processing
-	if isStreamingRequest {
-		additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
-			Header: &corev3.HeaderValue{Key: "x-ai-eg-streaming", RawValue: []byte("true")},
-		})
-	}
-
 	i.originalRequestBody = body
 	i.originalRequestBodyRaw = rawBody.Body
 
@@ -136,6 +126,7 @@ func (i *imageGenerationProcessorRouterFilter) ProcessRequestBody(ctx context.Co
 	headerMutation := &extprocv3.HeaderMutation{
 		SetHeaders: additionalHeaders,
 	}
+
 	i.span = i.tracer.StartSpanAndInjectHeaders(
 		ctx,
 		i.requestHeaders,
@@ -190,9 +181,6 @@ func (i *imageGenerationProcessorUpstreamFilter) selectTranslator(out filterapi.
 	switch out.Name {
 	case filterapi.APISchemaOpenAI:
 		i.translator = translator.NewImageGenerationOpenAIToOpenAITranslator(out.Version, i.modelNameOverride, i.span)
-	case filterapi.APISchemaAWSBedrock:
-		// i.translator = translator.NewImageGenerationOpenAIToAWSBedrockTranslator(i.modelNameOverride)
-		i.translator = nil // Placeholder
 	default:
 		return fmt.Errorf("unsupported API schema: backend=%s", out)
 	}
@@ -219,7 +207,6 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessRequestHeaders(ctx conte
 	// Set the request model for metrics from the original model or override if applied.
 	reqModel := cmp.Or(i.requestHeaders[internalapi.ModelNameHeaderKeyDefault], i.originalRequestBody.Model)
 	i.metrics.SetRequestModel(reqModel)
-	i.metrics.SetResponseModel(reqModel)
 
 	// We force the body mutation in the following cases:
 	// * The request is a retry request because the body mutation might have happened the previous iteration.
@@ -420,6 +407,8 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessResponseBody(ctx context
 
 	// Update metrics with token usage (input/output only per OTEL spec).
 	i.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.OutputTokens, i.requestHeaders)
+
+	i.metrics.SetResponseModel(imageMetadata.Model)
 
 	// Record image generation metrics
 	i.metrics.RecordImageGeneration(ctx, imageMetadata.ImageCount, imageMetadata.Model, imageMetadata.Size, i.requestHeaders)
