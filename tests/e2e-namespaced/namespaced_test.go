@@ -61,6 +61,7 @@ func TestNamespaced(t *testing.T) {
 			modelNames = append(modelNames, model.ID)
 		}
 		sort.Strings(modelNames)
+		t.Logf("models: %v", modelNames)
 
 		require.Equal(c, wantModels, modelNames)
 	}, 40*time.Second, 3*time.Second)

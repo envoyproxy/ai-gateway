@@ -214,10 +214,11 @@ func TestNamespaceScopedCache(t *testing.T) {
 		Scheme: controller.Scheme,
 		Cache: cache.Options{
 			// Only watch the "test" namespace, where the test will be creating resources.
-			// Also initialize the cache with an unexiting namespace to verify it doesn't fail.
+			// Also initialize the cache with an unexisting namespace to verify it doesn't fail.
 			DefaultNamespaces: map[string]cache.Config{"test": {}, "unexisting": {}},
 			DefaultTransform:  cache.TransformStripManagedFields(),
 		},
+		Controller:     config.Controller{SkipNameValidation: ptr.To(true)},
 		LeaderElection: false,
 	})
 	require.NoError(t, err)
