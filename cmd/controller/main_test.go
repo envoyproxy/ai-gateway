@@ -8,11 +8,13 @@ package main
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -51,6 +53,8 @@ func Test_parseAndValidateFlags(t *testing.T) {
 					tc.dash + "extProcExtraEnvVars=OTEL_SERVICE_NAME=test;OTEL_TRACES_EXPORTER=console",
 					tc.dash + "spanRequestHeaderAttributes=x-session-id:session.id",
 					tc.dash + "maxRecvMsgSize=33554432",
+					tc.dash + "watchNamespaces=default,envoy-ai-gateway-system",
+					tc.dash + "cacheSyncTimeout=5m",
 				}
 				f, err := parseAndValidateFlags(args)
 				require.Equal(t, "debug", f.extProcLogLevel)
@@ -62,6 +66,8 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				require.Equal(t, "OTEL_SERVICE_NAME=test;OTEL_TRACES_EXPORTER=console", f.extProcExtraEnvVars)
 				require.Equal(t, "x-session-id:session.id", f.spanRequestHeaderAttributes)
 				require.Equal(t, 32*1024*1024, f.maxRecvMsgSize)
+				require.Equal(t, []string{"default", "envoy-ai-gateway-system"}, f.watchNamespaces)
+				require.Equal(t, 5*time.Minute, f.cacheSyncTimeout)
 				require.NoError(t, err)
 			})
 		}
@@ -242,4 +248,54 @@ func Test_parseAndValidateFlags_extProcImagePullSecrets(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_parseAndValidateFlags_watchNamespaces(t *testing.T) {
+	tests := []struct {
+		name     string
+		flags    []string
+		expected []string
+	}{
+		{"no watch namespaces", []string{}, nil},
+		{"single watch namespace", []string{"--watchNamespaces=default"}, []string{"default"}},
+		{"multiple watch namespaces", []string{"--watchNamespaces=default,envoy-ai-gateway-system"}, []string{"default", "envoy-ai-gateway-system"}},
+		{"watch namespaces with spaces", []string{"--watchNamespaces= default , envoy-ai-gateway-system "}, []string{"default", "envoy-ai-gateway-system"}},
+		{"empty string", []string{"--watchNamespaces="}, nil},
+		{"empty namespace names", []string{"--watchNamespaces=default,,envoy-ai-gateway-system"}, []string{"default", "envoy-ai-gateway-system"}},
+		{"only commas", []string{"--watchNamespaces=,,,"}, nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, err := parseAndValidateFlags(tt.flags)
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, f.watchNamespaces)
+		})
+	}
+}
+
+func TestSetupCache(t *testing.T) {
+	t.Run("default", func(t *testing.T) {
+		c := setupCache(flags{})
+
+		require.NotNil(t, c.DefaultTransform)
+		require.Nil(t, c.DefaultNamespaces)
+	})
+
+	t.Run("empty watch namespaces", func(t *testing.T) {
+		c := setupCache(flags{watchNamespaces: []string{}})
+
+		require.NotNil(t, c.DefaultTransform)
+		require.Nil(t, c.DefaultNamespaces)
+	})
+
+	t.Run("watch namespaces", func(t *testing.T) {
+		c := setupCache(flags{watchNamespaces: []string{"default", "envoy-ai-gateway-system"}})
+
+		require.NotNil(t, c.DefaultTransform)
+		require.Equal(t, map[string]cache.Config{
+			"default":                 {},
+			"envoy-ai-gateway-system": {},
+		}, c.DefaultNamespaces)
+	})
 }

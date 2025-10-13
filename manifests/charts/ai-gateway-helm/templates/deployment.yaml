@@ -68,6 +68,8 @@ spec:
             {{- if ne .Values.controller.maxRecvMsgSize nil }}
             - --maxRecvMsgSize={{ .Values.controller.maxRecvMsgSize }}
             {{- end }}
+            - --cacheSyncTimeout={{ .Values.controller.watch.cacheSyncTimeout }}
+            - --watchNamespaces={{ join "," .Values.controller.watch.namespaces }}
           livenessProbe:
             grpc:
               port: 1063

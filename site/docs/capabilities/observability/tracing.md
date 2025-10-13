@@ -15,10 +15,11 @@ export them to your choice of OpenTelemetry collector.
 Envoy AI Gateway's router joins and records distributed traces when supplied
 with an [OpenTelemetry](https://opentelemetry.io/) collector endpoint.
 
-Requests to the OpenAI Chat Completions and Embeddings endpoints are recorded
-as Spans which include typical timing and request details. In addition, there
-are GenAI attributes representing the LLM or Embeddings call including full
-request and response details, defined by [OpenInference semantic conventions][openinference].
+Requests to the OpenAI Chat Completions, Completions (legacy), and Embeddings
+endpoints are recorded as Spans which include typical timing and request
+details. In addition, there are GenAI attributes representing the LLM or
+Embeddings call including full request and response details, defined by
+[OpenInference semantic conventions][openinference].
 
 OpenInference attributes default to include full request and response data for
 both chat completions and embeddings. This can be toggled with configuration,

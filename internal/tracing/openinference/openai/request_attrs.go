@@ -55,7 +55,8 @@ func buildRequestAttributes(chatRequest *openai.ChatCompletionRequest, body stri
 			role := msg.ExtractMessgaeRole()
 			attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(i, openinference.MessageRole), role))
 
-			if msg.OfUser != nil {
+			switch {
+			case msg.OfUser != nil:
 				switch content := msg.OfUser.Content.Value.(type) {
 				case string:
 					if content != "" {
@@ -97,14 +98,91 @@ func buildRequestAttributes(chatRequest *openai.ChatCompletionRequest, body stri
 						}
 					}
 				}
-			} else {
-				// For other message types, use the simple extraction.
-				content := extractMessageContent(msg)
-				if content != "" {
-					if config.HideInputText {
-						content = openinference.RedactedValue
+			case msg.OfAssistant != nil:
+				switch content := msg.OfAssistant.Content.Value.(type) {
+				case string:
+					if content != "" {
+						if config.HideInputText {
+							content = openinference.RedactedValue
+						}
+						attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(i, openinference.MessageContent), content))
 					}
-					attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(i, openinference.MessageContent), content))
+				case []openai.ChatCompletionAssistantMessageParamContent:
+					for j, part := range content {
+						if part.Type == "text" && part.Text != nil {
+							text := *part.Text
+							if config.HideInputText {
+								text = openinference.RedactedValue
+							}
+							attrs = append(attrs,
+								attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), text),
+								attribute.String(openinference.InputMessageContentAttribute(i, j, "type"), "text"),
+							)
+						}
+					}
+				}
+			case msg.OfSystem != nil:
+				switch content := msg.OfSystem.Content.Value.(type) {
+				case string:
+					if content != "" {
+						if config.HideInputText {
+							content = openinference.RedactedValue
+						}
+						attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(i, openinference.MessageContent), content))
+					}
+				case []openai.ChatCompletionContentPartTextParam:
+					for j, part := range content {
+						text := part.Text
+						if config.HideInputText {
+							text = openinference.RedactedValue
+						}
+						attrs = append(attrs,
+							attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), text),
+							attribute.String(openinference.InputMessageContentAttribute(i, j, "type"), "text"),
+						)
+					}
+				}
+			case msg.OfDeveloper != nil:
+				switch content := msg.OfDeveloper.Content.Value.(type) {
+				case string:
+					if content != "" {
+						if config.HideInputText {
+							content = openinference.RedactedValue
+						}
+						attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(i, openinference.MessageContent), content))
+					}
+				case []openai.ChatCompletionContentPartTextParam:
+					for j, part := range content {
+						text := part.Text
+						if config.HideInputText {
+							text = openinference.RedactedValue
+						}
+						attrs = append(attrs,
+							attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), text),
+							attribute.String(openinference.InputMessageContentAttribute(i, j, "type"), "text"),
+						)
+					}
+				}
+			case msg.OfTool != nil:
+				switch content := msg.OfTool.Content.Value.(type) {
+				case string:
+					if content != "" {
+						if config.HideInputText {
+							content = openinference.RedactedValue
+						}
+						attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(i, openinference.MessageContent), content))
+					}
+				case []openai.ChatCompletionContentPartTextParam:
+					for j, part := range content {
+						text := part.Text
+						if config.HideInputText {
+							text = openinference.RedactedValue
+						}
+						attrs = append(attrs,
+							attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), text),
+							attribute.String(openinference.InputMessageContentAttribute(i, j, "type"), "text"),
+						)
+					}
 				}
 			}
 		}
@@ -120,60 +198,6 @@ func buildRequestAttributes(chatRequest *openai.ChatCompletionRequest, body stri
 	}
 
 	return attrs
-}
-
-// extractMessageContent extracts content from OpenAI message union types.
-func extractMessageContent(msg openai.ChatCompletionMessageParamUnion) string {
-	switch {
-	case msg.OfUser != nil:
-		content := msg.OfUser.Content
-		if content.Value == nil {
-			return ""
-		}
-		if content, ok := content.Value.(string); ok {
-			return content
-		}
-		return "[complex content]"
-	case msg.OfAssistant != nil:
-		content := msg.OfAssistant.Content
-
-		if content.Value == nil {
-			return ""
-		}
-		if content, ok := content.Value.(string); ok {
-			return content
-		}
-		return "[assistant message]"
-	case msg.OfSystem != nil:
-		content := msg.OfSystem.Content
-		if content.Value == nil {
-			return ""
-		}
-		if content, ok := content.Value.(string); ok {
-			return content
-		}
-		return "[system message]"
-	case msg.OfDeveloper != nil:
-		content := msg.OfDeveloper.Content
-		if content.Value == nil {
-			return ""
-		}
-		if content, ok := content.Value.(string); ok {
-			return content
-		}
-		return "[developer message]"
-	case msg.OfTool != nil:
-		content := msg.OfTool.Content
-		if content.Value == nil {
-			return ""
-		}
-		if content, ok := content.Value.(string); ok {
-			return content
-		}
-		return "[tool content]"
-	default:
-		return "[unknown message type]"
-	}
 }
 
 // isBase64URL checks if a string is a base64-encoded image URL.
@@ -233,6 +257,59 @@ func buildEmbeddingsRequestAttributes(embRequest *openai.EmbeddingRequest, body 
 				attrs = append(attrs, attribute.String(openinference.EmbeddingTextAttribute(i), text))
 			}
 		// Token inputs are not recorded to reduce span size.
+		case []int64:
+		case [][]int64:
+		}
+	}
+
+	return attrs
+}
+
+// completionInvocationParameters is the representation of LLMInvocationParameters
+// for completions, which includes all parameters except prompt, which has its
+// own attributes.
+// See: openinference-instrumentation-openai _request_attributes_extractor.py.
+type completionInvocationParameters struct {
+	openai.CompletionRequest
+	Prompt *openai.PromptUnion `json:"prompt,omitempty"`
+}
+
+// buildCompletionRequestAttributes builds OpenInference attributes from the completions request.
+func buildCompletionRequestAttributes(req *openai.CompletionRequest, body []byte, config *openinference.TraceConfig) []attribute.KeyValue {
+	attrs := []attribute.KeyValue{
+		attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+		attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+		attribute.String(openinference.LLMModelName, req.Model),
+	}
+
+	if config.HideInputs {
+		attrs = append(attrs, attribute.String(openinference.InputValue, openinference.RedactedValue))
+	} else {
+		attrs = append(attrs, attribute.String(openinference.InputValue, string(body)))
+		attrs = append(attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
+	}
+
+	if !config.HideLLMInvocationParameters {
+		if invocationParamsJSON, err := json.Marshal(completionInvocationParameters{
+			CompletionRequest: *req,
+		}); err == nil {
+			attrs = append(attrs, attribute.String(openinference.LLMInvocationParameters, string(invocationParamsJSON)))
+		}
+	}
+
+	// Handle prompts using indexed attribute format.
+	// Per OpenInference spec, we don't decode token arrays to text.
+	if !config.HideInputs && !config.HidePrompts {
+		switch prompt := req.Prompt.Value.(type) {
+		case string:
+			// Single string prompt
+			attrs = append(attrs, attribute.String(openinference.PromptTextAttribute(0), prompt))
+		case []string:
+			// Array of string prompts
+			for i, text := range prompt {
+				attrs = append(attrs, attribute.String(openinference.PromptTextAttribute(i), text))
+			}
+		// Token inputs are not recorded per spec guidance to avoid decoding complexity.
 		case []int64:
 		case [][]int64:
 		}

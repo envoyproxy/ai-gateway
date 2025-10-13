@@ -1,0 +1,78 @@
+{
+  "flags":  256,
+  "name":  "Completion",
+  "kind":  "SPAN_KIND_INTERNAL",
+  "attributes":  [
+    {
+      "key":  "llm.system",
+      "value":  {
+        "stringValue":  "openai"
+      }
+    },
+    {
+      "key":  "input.value",
+      "value":  {
+        "stringValue":  "{\"model\": \"babbage-002\", \"prompt\": \"\", \"max_tokens\": -1, \"temperature\": 3}"
+      }
+    },
+    {
+      "key":  "input.mime_type",
+      "value":  {
+        "stringValue":  "application/json"
+      }
+    },
+    {
+      "key":  "llm.invocation_parameters",
+      "value":  {
+        "stringValue":  "{\"model\": \"babbage-002\", \"max_tokens\": -1, \"temperature\": 3}"
+      }
+    },
+    {
+      "key":  "llm.prompts.0.prompt.text",
+      "value":  {
+        "stringValue":  ""
+      }
+    },
+    {
+      "key":  "openinference.span.kind",
+      "value":  {
+        "stringValue":  "LLM"
+      }
+    }
+  ],
+  "events":  [
+    {
+      "name":  "exception",
+      "attributes":  [
+        {
+          "key":  "exception.type",
+          "value":  {
+            "stringValue":  "openai.BadRequestError"
+          }
+        },
+        {
+          "key":  "exception.message",
+          "value":  {
+            "stringValue":  "Error code: 400 - {'error': {'code': 'integer_below_min_value', 'message': \"Invalid 'max_tokens': integer below minimum value. Expected a value >= 0, but got -1 instead.\", 'param': 'max_tokens', 'type': 'invalid_request_error'}}"
+          }
+        },
+        {
+          "key":  "exception.stacktrace",
+          "value":  {
+            "stringValue":  "Traceback (most recent call last):\n  File \"/usr/local/lib/python3.13/site-packages/openinference/instrumentation/openai/_request.py\", line 391, in __call__\n    response = await wrapped(*args, **kwargs)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.13/site-packages/openai/_base_client.py\", line 1594, in request\n    raise self._make_status_error_from_response(err.response) from None\nopenai.BadRequestError: Error code: 400 - {'error': {'code': 'integer_below_min_value', 'message': \"Invalid 'max_tokens': integer below minimum value. Expected a value >= 0, but got -1 instead.\", 'param': 'max_tokens', 'type': 'invalid_request_error'}}\n"
+          }
+        },
+        {
+          "key":  "exception.escaped",
+          "value":  {
+            "stringValue":  "False"
+          }
+        }
+      ]
+    }
+  ],
+  "status":  {
+    "message":  "BadRequestError: Error code: 400 - {'error': {'code': 'integer_below_min_value', 'message': \"Invalid 'max_tokens': integer below minimum value. Expected a value >= 0, but got -1 instead.\", 'param': 'max_tokens', 'type': 'invalid_request_error'}}",
+    "code":  "STATUS_CODE_ERROR"
+  }
+}

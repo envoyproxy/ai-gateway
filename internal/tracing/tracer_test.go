@@ -321,6 +321,229 @@ func TestEmbeddingsTracer_HeaderAttributeMapping(t *testing.T) {
 	require.True(t, foundSessionID, "session.id attribute not found")
 }
 
+func TestNewEmbeddingsTracer_Noop(t *testing.T) {
+	// Use noop tracer.
+	noopTracer := noop.Tracer{}
+
+	tracer := newEmbeddingsTracer(noopTracer, autoprop.NewTextMapPropagator(), testEmbeddingsRecorder{}, nil)
+
+	// Verify it returns NoopEmbeddingsTracer.
+	require.IsType(t, tracing.NoopEmbeddingsTracer{}, tracer)
+
+	// Test that noop tracer doesn't create spans.
+	headers := map[string]string{}
+	headerMutation := &extprocv3.HeaderMutation{}
+	testReq := &openai.EmbeddingRequest{Model: "text-embedding-ada-002"}
+
+	span := tracer.StartSpanAndInjectHeaders(t.Context(),
+		headers,
+		headerMutation,
+		testReq,
+		[]byte("{}"),
+	)
+
+	require.Nil(t, span)
+
+	// Verify no headers were injected.
+	require.Empty(t, headerMutation.SetHeaders)
+}
+
+func TestCompletionTracer_StartSpanAndInjectHeaders(t *testing.T) {
+	respBody := &openai.CompletionResponse{
+		ID:      "cmpl-abc123",
+		Object:  "text_completion",
+		Model:   "babbage-002",
+		Choices: []openai.CompletionChoice{{Text: "hello world", FinishReason: "stop"}},
+	}
+	respBodyBytes, err := json.Marshal(respBody)
+	require.NoError(t, err)
+	bodyLen := len(respBodyBytes)
+
+	completionReq := &openai.CompletionRequest{
+		Model:  "babbage-002",
+		Prompt: openai.PromptUnion{Value: "test prompt"},
+	}
+
+	completionReqStream := *completionReq
+	completionReqStream.Stream = true
+
+	tests := []struct {
+		name             string
+		req              *openai.CompletionRequest
+		existingHeaders  map[string]string
+		expectedSpanName string
+		expectedAttrs    []attribute.KeyValue
+		expectedTraceID  string
+	}{
+		{
+			name:             "non-streaming request",
+			req:              completionReq,
+			existingHeaders:  map[string]string{},
+			expectedSpanName: "completion-non-stream len: 46",
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String("req", "stream: false"),
+				attribute.Int("reqBodyLen", 46),
+				attribute.Int("statusCode", 200),
+				attribute.Int("respBodyLen", bodyLen),
+			},
+		},
+		{
+			name:             "streaming request",
+			req:              &completionReqStream,
+			existingHeaders:  map[string]string{},
+			expectedSpanName: "completion-stream len: 60",
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String("req", "stream: true"),
+				attribute.Int("reqBodyLen", 60),
+				attribute.Int("statusCode", 200),
+				attribute.Int("respBodyLen", bodyLen),
+			},
+		},
+		{
+			name: "with existing trace context",
+			req:  completionReq,
+			existingHeaders: map[string]string{
+				"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+			},
+			expectedSpanName: "completion-non-stream len: 46",
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String("req", "stream: false"),
+				attribute.Int("reqBodyLen", 46),
+				attribute.Int("statusCode", 200),
+				attribute.Int("respBodyLen", bodyLen),
+			},
+			expectedTraceID: "4bf92f3577b34da6a3ce929d0e0e4736",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			exporter := tracetest.NewInMemoryExporter()
+			tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
+
+			tracer := newCompletionTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testCompletionRecorder{}, nil)
+
+			headerMutation := &extprocv3.HeaderMutation{}
+			reqBody, err := json.Marshal(tt.req)
+			require.NoError(t, err)
+
+			span := tracer.StartSpanAndInjectHeaders(t.Context(),
+				tt.existingHeaders,
+				headerMutation,
+				tt.req,
+				reqBody,
+			)
+			require.IsType(t, &completionSpan{}, span)
+
+			// End the span to export it.
+			span.RecordResponse(respBody)
+			span.EndSpan()
+
+			spans := exporter.GetSpans()
+			require.Len(t, spans, 1)
+			actualSpan := spans[0]
+
+			// Check span state.
+			require.Equal(t, tt.expectedSpanName, actualSpan.Name)
+			require.Equal(t, tt.expectedAttrs, actualSpan.Attributes)
+			require.Empty(t, actualSpan.Events)
+
+			// Check header mutation.
+			traceID := actualSpan.SpanContext.TraceID().String()
+			if tt.expectedTraceID != "" {
+				require.Equal(t, tt.expectedTraceID, actualSpan.SpanContext.TraceID().String())
+			}
+			spanID := actualSpan.SpanContext.SpanID().String()
+			require.Equal(t, &extprocv3.HeaderMutation{
+				SetHeaders: []*corev3.HeaderValueOption{
+					{
+						Header: &corev3.HeaderValue{
+							Key:      "traceparent",
+							RawValue: []byte("00-" + traceID + "-" + spanID + "-01"),
+						},
+					},
+				},
+			}, headerMutation)
+		})
+	}
+}
+
+func TestNewCompletionTracer_Noop(t *testing.T) {
+	// Use noop tracer.
+	noopTracer := noop.Tracer{}
+
+	tracer := newCompletionTracer(noopTracer, autoprop.NewTextMapPropagator(), testCompletionRecorder{}, nil)
+
+	// Verify it returns NoopCompletionTracer.
+	require.IsType(t, tracing.NoopCompletionTracer{}, tracer)
+
+	// Test that noop tracer doesn't create spans.
+	headers := map[string]string{}
+	headerMutation := &extprocv3.HeaderMutation{}
+	testReq := &openai.CompletionRequest{Model: "test"}
+
+	span := tracer.StartSpanAndInjectHeaders(t.Context(),
+		headers,
+		headerMutation,
+		testReq,
+		[]byte("{}"),
+	)
+
+	require.Nil(t, span)
+
+	// Verify no headers were injected.
+	require.Empty(t, headerMutation.SetHeaders)
+}
+
+func TestCompletionTracer_HeaderAttributeMapping(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
+
+	// Configure header-to-attribute mapping
+	headerMapping := map[string]string{
+		"x-session-id": "session.id",
+	}
+
+	tracer := newCompletionTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testCompletionRecorder{}, headerMapping)
+
+	// Create request with headers
+	headers := map[string]string{
+		"x-session-id": "test-session-123",
+	}
+	headerMutation := &extprocv3.HeaderMutation{}
+	completionReq := &openai.CompletionRequest{
+		Model:  "babbage-002",
+		Prompt: openai.PromptUnion{Value: "test prompt"},
+	}
+	reqBody, err := json.Marshal(completionReq)
+	require.NoError(t, err)
+
+	span := tracer.StartSpanAndInjectHeaders(t.Context(),
+		headers,
+		headerMutation,
+		completionReq,
+		reqBody,
+	)
+	require.IsType(t, &completionSpan{}, span)
+
+	// End the span to export it
+	span.EndSpan()
+
+	spans := exporter.GetSpans()
+	require.Len(t, spans, 1)
+	actualSpan := spans[0]
+
+	// Verify header attribute was added
+	var foundSessionID bool
+	for _, attr := range actualSpan.Attributes {
+		if attr.Key == "session.id" {
+			require.Equal(t, "test-session-123", attr.Value.AsString())
+			foundSessionID = true
+		}
+	}
+	require.True(t, foundSessionID, "session.id attribute not found")
+}
+
 func TestHeaderMutationCarrier(t *testing.T) {
 	t.Run("Get panics", func(t *testing.T) {
 		carrier := &headerMutationCarrier{m: &extprocv3.HeaderMutation{}}
@@ -411,6 +634,40 @@ func (testEmbeddingsRecorder) RecordRequest(span oteltrace.Span, req *openai.Emb
 }
 
 func (testEmbeddingsRecorder) RecordResponse(span oteltrace.Span, resp *openai.EmbeddingResponse) {
+	span.SetAttributes(attribute.Int("statusCode", 200))
+	body, err := json.Marshal(resp)
+	if err != nil {
+		panic(err)
+	}
+	span.SetAttributes(attribute.Int("respBodyLen", len(body)))
+}
+
+var _ tracing.CompletionRecorder = testCompletionRecorder{}
+
+type testCompletionRecorder struct{}
+
+func (r testCompletionRecorder) RecordResponseChunks(span oteltrace.Span, chunks []*openai.CompletionResponse) {
+	span.SetAttributes(attribute.Int("eventCount", len(chunks)))
+}
+
+func (r testCompletionRecorder) RecordResponseOnError(span oteltrace.Span, statusCode int, body []byte) {
+	span.SetAttributes(attribute.Int("statusCode", statusCode))
+	span.SetAttributes(attribute.String("errorBody", string(body)))
+}
+
+func (testCompletionRecorder) StartParams(req *openai.CompletionRequest, body []byte) (spanName string, opts []oteltrace.SpanStartOption) {
+	if req.Stream {
+		return fmt.Sprintf("completion-stream len: %d", len(body)), startOpts
+	}
+	return fmt.Sprintf("completion-non-stream len: %d", len(body)), startOpts
+}
+
+func (testCompletionRecorder) RecordRequest(span oteltrace.Span, req *openai.CompletionRequest, body []byte) {
+	span.SetAttributes(attribute.String("req", fmt.Sprintf("stream: %v", req.Stream)))
+	span.SetAttributes(attribute.Int("reqBodyLen", len(body)))
+}
+
+func (testCompletionRecorder) RecordResponse(span oteltrace.Span, resp *openai.CompletionResponse) {
 	span.SetAttributes(attribute.Int("statusCode", 200))
 	body, err := json.Marshal(resp)
 	if err != nil {

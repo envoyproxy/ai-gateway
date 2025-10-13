@@ -79,11 +79,8 @@ func startOpenAIProxy(ctx context.Context, logger *log.Logger, cassette testopen
 		return "", nil, fmt.Errorf("failed to get mapped port: %w", err)
 	}
 
-	// For OpenAI, proxy expects /v1 prefix. For Azure, no prefix.
-	if strings.HasPrefix(cassette.String(), "azure-") {
-		url = fmt.Sprintf("http://localhost:%s", port.Port())
-	} else {
-		url = fmt.Sprintf("http://localhost:%s/v1", port.Port())
-	}
+	// Return base URL without /v1 prefix - buildPath in cassettes.go will add it.
+	// For Azure cassettes, buildPath uses Azure-specific paths without /v1.
+	url = fmt.Sprintf("http://localhost:%s", port.Port())
 	return url, closer, nil
 }

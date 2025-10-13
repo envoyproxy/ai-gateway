@@ -57,21 +57,19 @@ func buildAigwOnDemand() (string, error) {
 }
 
 // startAIGWCLI starts the aigw CLI as a subprocess with the given config file.
-func startAIGWCLI(t *testing.T, aigwBin string, arg ...string) {
-	// aigw has many fixed ports, some are in the envoy subprocess, such as
-	// Envoy's gateway port, and its adminPort if in yaml configuration.
+func startAIGWCLI(t *testing.T, aigwBin string, env []string, arg ...string) {
+	// aigw has many fixed ports: some are in the envoy subprocess
 	gatewayPort := 1975
-	envoyAdminPort := 9901
 
 	// Wait up to 10 seconds for both ports to be free.
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 
-	for isPortInUse(ctx, gatewayPort) || isPortInUse(ctx, envoyAdminPort) {
+	for isPortInUse(ctx, gatewayPort) {
 		select {
 		case <-ctx.Done():
 			require.FailNow(t, "Ports still in use after timeout",
-				"Ports %d and/or %d are still in use", gatewayPort, envoyAdminPort)
+				"Port %d is still in use", gatewayPort)
 		case <-time.After(500 * time.Millisecond):
 			// Retry after a short delay.
 		}
@@ -92,6 +90,7 @@ func startAIGWCLI(t *testing.T, aigwBin string, arg ...string) {
 	cmd := exec.CommandContext(cmdCtx, aigwBin, arg...)
 	cmd.Stdout = buffers[0]
 	cmd.Stderr = buffers[1]
+	cmd.Env = append(os.Environ(), env...)
 	cmd.WaitDelay = 3 * time.Second // auto-kill after 3 seconds.
 
 	require.NoError(t, cmd.Start())
@@ -120,10 +119,10 @@ func startAIGWCLI(t *testing.T, aigwBin string, arg ...string) {
 	t.Logf("aigw process started with PID %d", cmd.Process.Pid)
 
 	// Wait for health check using RequireEventuallyNoError.
-	t.Log("Waiting for aigw to start (Envoy admin endpoint)...")
-	envoyAdmin, err := aigw.NewEnvoyAdminClient(t.Context(), 1, envoyAdminPort)
+	envoyAdmin, err := aigw.NewEnvoyAdminClient(t.Context(), cmd.Process.Pid, 0)
 	require.NoError(t, err)
 
+	t.Logf("Waiting for aigw to start (admin port %d)...", envoyAdmin.Port())
 	internaltesting.RequireEventuallyNoError(t, func() error {
 		return envoyAdmin.IsReady(t.Context())
 	}, 180*time.Second, 2*time.Second,
