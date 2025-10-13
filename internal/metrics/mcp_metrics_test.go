@@ -40,6 +40,7 @@ func TestRecordMetricWithCustomAttributes(t *testing.T) {
 	require.NoError(t, err)
 	req.Header.Set("x-tracing-enrichment-user-region", "us-east-1") // should be included in metrics
 	req.Header.Set("x-other-attr", "other")                         // should be ignored
+	req.Header.Set("x-session-id", "123")                           // should be ignored as the value in the metadata takes precedence
 
 	m = m.WithRequestAttributes(req)
 

@@ -24,13 +24,17 @@ func TestTracer_StartSpanAndInjectMeta(t *testing.T) {
 	tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
 
 	tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(),
-		map[string]string{"x-tracing-enrichment-user-region": "user.region"})
+		map[string]string{
+			"x-tracing-enrichment-user-region": "user.region",
+			"x-session-id":                     "session.id",
+		})
 
 	reqID, _ := jsonrpc.MakeID("id")
 	r := &jsonrpc.Request{ID: reqID, Method: "initialize"}
-	p := &mcp.InitializeParams{}
+	p := &mcp.InitializeParams{Meta: map[string]any{"x-session-id": "sess-1234"}}
 	span := tracer.StartSpanAndInjectMeta(t.Context(), r, p, map[string]string{
 		"x-tracing-enrichment-user-region": "us-east-1",
+		"x-session-id":                     "123", // should be ignored as the value in the metadata takes precedence
 	})
 
 	require.NotNil(t, span)
@@ -44,6 +48,8 @@ func TestTracer_StartSpanAndInjectMeta(t *testing.T) {
 	require.Len(t, spans, 1)
 	actualSpan := spans[0]
 	require.Contains(t, actualSpan.Attributes, attribute.String("user.region", "us-east-1"))
+	require.Contains(t, actualSpan.Attributes, attribute.String("session.id", "sess-1234"))
+	require.NotContains(t, actualSpan.Attributes, attribute.String("session.id", "123"))
 }
 
 func Test_getMCPAttributes(t *testing.T) {
