@@ -241,6 +241,125 @@ var (
 		}},
 	}
 	emptyContentReqBody = mustJSON(emptyContentReq)
+
+	// Request with assistant message string content.
+	assistantStringReq = &openai.ChatCompletionRequest{
+		Model: openai.ModelGPT5Nano,
+		Messages: []openai.ChatCompletionMessageParamUnion{{
+			OfAssistant: &openai.ChatCompletionAssistantMessageParam{
+				Role:    openai.ChatMessageRoleAssistant,
+				Content: openai.StringOrAssistantRoleContentUnion{Value: "I'm doing well, thank you!"},
+			},
+		}},
+	}
+	assistantStringReqBody = mustJSON(assistantStringReq)
+
+	// Request with assistant message array content.
+	assistantArrayReq = &openai.ChatCompletionRequest{
+		Model: openai.ModelGPT5Nano,
+		Messages: []openai.ChatCompletionMessageParamUnion{{
+			OfAssistant: &openai.ChatCompletionAssistantMessageParam{
+				Role: openai.ChatMessageRoleAssistant,
+				Content: openai.StringOrAssistantRoleContentUnion{
+					Value: []openai.ChatCompletionAssistantMessageParamContent{
+						{Type: "text", Text: ptr("Part 1")},
+						{Type: "text", Text: ptr("Part 2")},
+					},
+				},
+			},
+		}},
+	}
+	assistantArrayReqBody = mustJSON(assistantArrayReq)
+
+	// Request with developer message.
+	developerReq = &openai.ChatCompletionRequest{
+		Model: openai.ModelGPT5Nano,
+		Messages: []openai.ChatCompletionMessageParamUnion{{
+			OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
+				Role:    openai.ChatMessageRoleDeveloper,
+				Content: openai.ContentUnion{Value: "Internal developer note"},
+			},
+		}},
+	}
+	developerReqBody = mustJSON(developerReq)
+
+	// Request with developer message array content.
+	developerArrayReq = &openai.ChatCompletionRequest{
+		Model: openai.ModelGPT5Nano,
+		Messages: []openai.ChatCompletionMessageParamUnion{{
+			OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
+				Role: openai.ChatMessageRoleDeveloper,
+				Content: openai.ContentUnion{
+					Value: []openai.ChatCompletionContentPartTextParam{
+						{Type: "text", Text: "instruction1"},
+						{Type: "text", Text: "instruction2"},
+					},
+				},
+			},
+		}},
+	}
+	developerArrayReqBody = mustJSON(developerArrayReq)
+
+	// Request with system message array content.
+	systemArrayReq = &openai.ChatCompletionRequest{
+		Model: openai.ModelGPT5Nano,
+		Messages: []openai.ChatCompletionMessageParamUnion{{
+			OfSystem: &openai.ChatCompletionSystemMessageParam{
+				Role: openai.ChatMessageRoleSystem,
+				Content: openai.ContentUnion{
+					Value: []openai.ChatCompletionContentPartTextParam{
+						{Type: "text", Text: "System instruction 1"},
+						{Type: "text", Text: "System instruction 2"},
+					},
+				},
+			},
+		}},
+	}
+	systemArrayReqBody = mustJSON(systemArrayReq)
+
+	// Request with tool message array content.
+	toolArrayReq = &openai.ChatCompletionRequest{
+		Model: openai.ModelGPT5Nano,
+		Messages: []openai.ChatCompletionMessageParamUnion{{
+			OfTool: &openai.ChatCompletionToolMessageParam{
+				Role:       openai.ChatMessageRoleTool,
+				ToolCallID: "call_456",
+				Content: openai.ContentUnion{
+					Value: []openai.ChatCompletionContentPartTextParam{
+						{Type: "text", Text: "result1"},
+						{Type: "text", Text: "result2"},
+					},
+				},
+			},
+		}},
+	}
+	toolArrayReqBody = mustJSON(toolArrayReq)
+
+	// Request with nil content messages.
+	nilContentReq = &openai.ChatCompletionRequest{
+		Model: openai.ModelGPT5Nano,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				OfUser: &openai.ChatCompletionUserMessageParam{
+					Role:    openai.ChatMessageRoleUser,
+					Content: openai.StringOrUserRoleContentUnion{Value: nil},
+				},
+			},
+			{
+				OfAssistant: &openai.ChatCompletionAssistantMessageParam{
+					Role:    openai.ChatMessageRoleAssistant,
+					Content: openai.StringOrAssistantRoleContentUnion{Value: nil},
+				},
+			},
+			{
+				OfSystem: &openai.ChatCompletionSystemMessageParam{
+					Role:    openai.ChatMessageRoleSystem,
+					Content: openai.ContentUnion{Value: nil},
+				},
+			},
+		},
+	}
+	nilContentReqBody = mustJSON(nilContentReq)
 )
 
 func TestBuildRequestAttributes(t *testing.T) {
@@ -473,6 +592,127 @@ func TestBuildRequestAttributes(t *testing.T) {
 				attribute.String(openinference.InputMessageAttribute(1, openinference.MessageContent), openinference.RedactedValue),
 			},
 		},
+		{
+			name:    "assistant message with string content",
+			req:     assistantStringReq,
+			reqBody: string(assistantStringReqBody),
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
+				attribute.String(openinference.InputValue, string(assistantStringReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleAssistant),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "I'm doing well, thank you!"),
+			},
+		},
+		{
+			name:    "assistant message with array content",
+			req:     assistantArrayReq,
+			reqBody: string(assistantArrayReqBody),
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
+				attribute.String(openinference.InputValue, string(assistantArrayReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleAssistant),
+				attribute.String(openinference.InputMessageContentAttribute(0, 0, "text"), "Part 1"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 1, "text"), "Part 2"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 1, "type"), "text"),
+			},
+		},
+		{
+			name:    "developer message with string content",
+			req:     developerReq,
+			reqBody: string(developerReqBody),
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
+				attribute.String(openinference.InputValue, string(developerReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleDeveloper),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "Internal developer note"),
+			},
+		},
+		{
+			name:    "developer message with array content",
+			req:     developerArrayReq,
+			reqBody: string(developerArrayReqBody),
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
+				attribute.String(openinference.InputValue, string(developerArrayReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleDeveloper),
+				attribute.String(openinference.InputMessageContentAttribute(0, 0, "text"), "instruction1"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 1, "text"), "instruction2"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 1, "type"), "text"),
+			},
+		},
+		{
+			name:    "system message with array content",
+			req:     systemArrayReq,
+			reqBody: string(systemArrayReqBody),
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
+				attribute.String(openinference.InputValue, string(systemArrayReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleSystem),
+				attribute.String(openinference.InputMessageContentAttribute(0, 0, "text"), "System instruction 1"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 1, "text"), "System instruction 2"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 1, "type"), "text"),
+			},
+		},
+		{
+			name:    "tool message with array content",
+			req:     toolArrayReq,
+			reqBody: string(toolArrayReqBody),
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
+				attribute.String(openinference.InputValue, string(toolArrayReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleTool),
+				attribute.String(openinference.InputMessageContentAttribute(0, 0, "text"), "result1"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 1, "text"), "result2"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 1, "type"), "text"),
+			},
+		},
+		{
+			name:    "messages with nil content",
+			req:     nilContentReq,
+			reqBody: string(nilContentReqBody),
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
+				attribute.String(openinference.InputValue, string(nilContentReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), openai.ChatMessageRoleUser),
+				// nil content is skipped
+				attribute.String(openinference.InputMessageAttribute(1, openinference.MessageRole), openai.ChatMessageRoleAssistant),
+				// nil content is skipped
+				attribute.String(openinference.InputMessageAttribute(2, openinference.MessageRole), openai.ChatMessageRoleSystem),
+				// nil content is skipped
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -483,226 +723,6 @@ func TestBuildRequestAttributes(t *testing.T) {
 			attrs := buildRequestAttributes(tt.req, tt.reqBody, tt.config)
 
 			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
-		})
-	}
-}
-
-func TestExtractMessageContent(t *testing.T) {
-	tests := []struct {
-		name     string
-		msg      openai.ChatCompletionMessageParamUnion
-		expected string
-	}{
-		// User message tests.
-		{
-			name: "user message with string content",
-			msg: openai.ChatCompletionMessageParamUnion{
-				OfUser: &openai.ChatCompletionUserMessageParam{
-					Content: openai.StringOrUserRoleContentUnion{
-						Value: "Hello, how are you?",
-					},
-					Role: openai.ChatMessageRoleUser,
-				},
-			},
-			expected: "Hello, how are you?",
-		},
-		{
-			name: "user message with nil content",
-			msg: openai.ChatCompletionMessageParamUnion{
-				OfUser: &openai.ChatCompletionUserMessageParam{
-					Content: openai.StringOrUserRoleContentUnion{
-						Value: nil,
-					},
-					Role: openai.ChatMessageRoleUser,
-				},
-			},
-			expected: "",
-		},
-		{
-			name: "user message with complex content",
-			msg: openai.ChatCompletionMessageParamUnion{
-				OfUser: &openai.ChatCompletionUserMessageParam{
-					Content: openai.StringOrUserRoleContentUnion{
-						Value: []openai.ChatCompletionContentPartUserUnionParam{
-							{OfText: &openai.ChatCompletionContentPartTextParam{Text: "Part 1"}},
-							{OfText: &openai.ChatCompletionContentPartTextParam{Text: "Part 2"}},
-						},
-					},
-					Role: openai.ChatMessageRoleUser,
-				},
-			},
-			expected: "[complex content]",
-		},
-		// Assistant message tests.
-		{
-			name: "assistant message with string content",
-			msg: openai.ChatCompletionMessageParamUnion{
-				OfAssistant: &openai.ChatCompletionAssistantMessageParam{
-					Content: openai.StringOrAssistantRoleContentUnion{
-						Value: "I'm doing well, thank you!",
-					},
-					Role: openai.ChatMessageRoleAssistant,
-				},
-			},
-			expected: "I'm doing well, thank you!",
-		},
-		{
-			name: "assistant message with nil content",
-			msg: openai.ChatCompletionMessageParamUnion{
-				OfAssistant: &openai.ChatCompletionAssistantMessageParam{
-					Content: openai.StringOrAssistantRoleContentUnion{
-						Value: nil,
-					},
-					Role: openai.ChatMessageRoleAssistant,
-				},
-			},
-			expected: "",
-		},
-		// System message tests.
-		{
-			name: "system message with string content",
-			msg: openai.ChatCompletionMessageParamUnion{
-				OfSystem: &openai.ChatCompletionSystemMessageParam{
-					Content: openai.ContentUnion{
-						Value: "You are a helpful assistant.",
-					},
-					Role: openai.ChatMessageRoleSystem,
-				},
-			},
-			expected: "You are a helpful assistant.",
-		},
-		// Developer message tests.
-		{
-			name: "developer message with string content",
-			msg: openai.ChatCompletionMessageParamUnion{
-				OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
-					Content: openai.ContentUnion{
-						Value: "Internal developer note",
-					},
-					Role: openai.ChatMessageRoleDeveloper,
-				},
-			},
-			expected: "Internal developer note",
-		},
-		// Tool message tests.
-		{
-			name: "tool message with string content",
-			msg: openai.ChatCompletionMessageParamUnion{
-				OfTool: &openai.ChatCompletionToolMessageParam{
-					Content: openai.ContentUnion{
-						Value: "Tool response content",
-					},
-					Role: openai.ChatMessageRoleTool,
-				},
-			},
-			expected: "Tool response content",
-		},
-		{
-			name: "assistant message with empty string content",
-			msg: openai.ChatCompletionMessageParamUnion{
-				OfAssistant: &openai.ChatCompletionAssistantMessageParam{
-					Role:    openai.ChatMessageRoleAssistant,
-					Content: openai.StringOrAssistantRoleContentUnion{Value: ""},
-				},
-			},
-			expected: "",
-		},
-		{
-			name: "assistant message with non-string content",
-			msg: openai.ChatCompletionMessageParamUnion{
-				OfAssistant: &openai.ChatCompletionAssistantMessageParam{
-					Content: openai.StringOrAssistantRoleContentUnion{
-						Value: []openai.ChatCompletionAssistantMessageParamContent{
-							{Type: "text", Text: ptr("Part 1")},
-						},
-					},
-					Role: openai.ChatMessageRoleAssistant,
-				},
-			},
-			expected: "[assistant message]",
-		},
-		{
-			name: "system message with nil content",
-			msg: openai.ChatCompletionMessageParamUnion{
-				OfSystem: &openai.ChatCompletionSystemMessageParam{
-					Content: openai.ContentUnion{Value: nil},
-					Role:    openai.ChatMessageRoleSystem,
-				},
-			},
-			expected: "",
-		},
-		{
-			name: "system message with array content",
-			msg: openai.ChatCompletionMessageParamUnion{
-				OfSystem: &openai.ChatCompletionSystemMessageParam{
-					Content: openai.ContentUnion{Value: []openai.ChatCompletionContentPartTextParam{
-						{Type: "text", Text: "instruction1"},
-						{Type: "text", Text: "instruction2"},
-					}},
-					Role: openai.ChatMessageRoleSystem,
-				},
-			},
-			expected: "[system message]",
-		},
-		{
-			name: "developer message with nil content",
-			msg: openai.ChatCompletionMessageParamUnion{
-				OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
-					Content: openai.ContentUnion{Value: nil},
-					Role:    openai.ChatMessageRoleDeveloper,
-				},
-			},
-			expected: "",
-		},
-		{
-			name: "developer message with array content",
-			msg: openai.ChatCompletionMessageParamUnion{
-				OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
-					Role: openai.ChatMessageRoleDeveloper,
-					Content: openai.ContentUnion{Value: []openai.ChatCompletionContentPartTextParam{
-						{Type: "text", Text: "instruction1"},
-						{Type: "text", Text: "instruction2"},
-					}},
-				},
-			},
-			expected: "[developer message]",
-		},
-		{
-			name: "tool message with nil content",
-			msg: openai.ChatCompletionMessageParamUnion{
-				OfTool: &openai.ChatCompletionToolMessageParam{
-					Content: openai.ContentUnion{Value: nil},
-					Role:    openai.ChatMessageRoleTool,
-				},
-			},
-			expected: "",
-		},
-		{
-			name: "tool message with array content",
-			msg: openai.ChatCompletionMessageParamUnion{
-				OfTool: &openai.ChatCompletionToolMessageParam{
-					Role:       openai.ChatMessageRoleTool,
-					ToolCallID: "call_123",
-					Content: openai.ContentUnion{Value: []openai.ChatCompletionContentPartTextParam{
-						{Type: "text", Text: "result1"},
-						{Type: "text", Text: "result2"},
-					}},
-				},
-			},
-			expected: "[tool content]",
-		},
-		// Unknown message type.
-		{
-			name:     "unknown message type",
-			msg:      openai.ChatCompletionMessageParamUnion{},
-			expected: "[unknown message type]",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := extractMessageContent(tt.msg)
-			require.Equal(t, tt.expected, result)
 		})
 	}
 }
@@ -739,6 +759,133 @@ func TestIsBase64URL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := isBase64URL(tt.url)
 			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestBuildCompletionRequestAttributes(t *testing.T) {
+	basicCompletionReq := &openai.CompletionRequest{
+		Model:  "gpt-3.5-turbo-instruct",
+		Prompt: openai.PromptUnion{Value: "Say this is a test"},
+	}
+	basicCompletionReqBody := mustJSON(basicCompletionReq)
+
+	arrayCompletionReq := &openai.CompletionRequest{
+		Model:  "gpt-3.5-turbo-instruct",
+		Prompt: openai.PromptUnion{Value: []string{"Say this is a test", "Say hello"}},
+	}
+	arrayCompletionReqBody := mustJSON(arrayCompletionReq)
+
+	tokenCompletionReq := &openai.CompletionRequest{
+		Model:  "gpt-3.5-turbo-instruct",
+		Prompt: openai.PromptUnion{Value: []int64{1, 2, 3}},
+	}
+	tokenCompletionReqBody := mustJSON(tokenCompletionReq)
+
+	tests := []struct {
+		name          string
+		req           *openai.CompletionRequest
+		reqBody       []byte
+		config        *openinference.TraceConfig
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name:    "basic string prompt",
+			req:     basicCompletionReq,
+			reqBody: basicCompletionReqBody,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, "gpt-3.5-turbo-instruct"),
+				attribute.String(openinference.InputValue, string(basicCompletionReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-3.5-turbo-instruct"}`),
+				attribute.String(openinference.PromptTextAttribute(0), "Say this is a test"),
+			},
+		},
+		{
+			name:    "array prompts",
+			req:     arrayCompletionReq,
+			reqBody: arrayCompletionReqBody,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, "gpt-3.5-turbo-instruct"),
+				attribute.String(openinference.InputValue, string(arrayCompletionReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-3.5-turbo-instruct"}`),
+				attribute.String(openinference.PromptTextAttribute(0), "Say this is a test"),
+				attribute.String(openinference.PromptTextAttribute(1), "Say hello"),
+			},
+		},
+		{
+			name:    "token prompts not recorded",
+			req:     tokenCompletionReq,
+			reqBody: tokenCompletionReqBody,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, "gpt-3.5-turbo-instruct"),
+				attribute.String(openinference.InputValue, string(tokenCompletionReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-3.5-turbo-instruct"}`),
+				// No prompt attributes for token arrays
+			},
+		},
+		{
+			name:    "hide inputs",
+			req:     basicCompletionReq,
+			reqBody: basicCompletionReqBody,
+			config:  &openinference.TraceConfig{HideInputs: true},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, "gpt-3.5-turbo-instruct"),
+				attribute.String(openinference.InputValue, openinference.RedactedValue),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-3.5-turbo-instruct"}`),
+				// No prompts when HideInputs is true
+			},
+		},
+		{
+			name:    "hide prompts",
+			req:     basicCompletionReq,
+			reqBody: basicCompletionReqBody,
+			config:  &openinference.TraceConfig{HidePrompts: true},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, "gpt-3.5-turbo-instruct"),
+				attribute.String(openinference.InputValue, string(basicCompletionReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-3.5-turbo-instruct"}`),
+				// No prompt attributes when HidePrompts is true
+			},
+		},
+		{
+			name:    "hide invocation parameters",
+			req:     basicCompletionReq,
+			reqBody: basicCompletionReqBody,
+			config:  &openinference.TraceConfig{HideLLMInvocationParameters: true},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, "gpt-3.5-turbo-instruct"),
+				attribute.String(openinference.InputValue, string(basicCompletionReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.PromptTextAttribute(0), "Say this is a test"),
+				// No LLMInvocationParameters when HideLLMInvocationParameters is true
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.config == nil {
+				tt.config = openinference.NewTraceConfig()
+			}
+			attrs := buildCompletionRequestAttributes(tt.req, tt.reqBody, tt.config)
+
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
 		})
 	}
 }

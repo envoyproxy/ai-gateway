@@ -30,6 +30,7 @@ const (
 	genaiAttributeImageSize  = "gen_ai.image.size"
 
 	genaiOperationChat            = "chat"
+	genaiOperationCompletion      = "completion"
 	genaiOperationEmbedding       = "embeddings"
 	genaiOperationImageGeneration = "image_generation"
 	genaiProviderOpenAI           = "openai"

@@ -67,6 +67,23 @@ const (
 	MimeTypeJSON = "application/json"
 )
 
+// Completions API constants (Legacy Text Completion).
+//
+// These constants define attributes for the legacy completions API, distinct from chat completions.
+// They use indexed attribute format with discriminated union structure for future expansion.
+// Reference: https://github.com/Arize-ai/openinference/blob/main/spec/semantic_conventions.md#completions-api-legacy-text-completion
+const (
+	// LLMPrompts prefix for prompt attributes in completions API.
+	// Usage: llm.prompts.{index}.prompt.text
+	// Prompts provided to a completions API, indexed starting from 0.
+	LLMPrompts = "llm.prompts"
+
+	// LLMChoices prefix for completion choice attributes in completions API.
+	// Usage: llm.choices.{index}.completion.text
+	// Text choices returned from a completions API, indexed starting from 0.
+	LLMChoices = "llm.choices"
+)
+
 // LLM Message constants.
 //
 // These constants define attributes for LLM input and output messages using.
@@ -218,4 +235,30 @@ func EmbeddingTextAttribute(index int) string {
 //     Example: "AACAPwAAAEA=" → [1.5, 2.0]
 func EmbeddingVectorAttribute(index int) string {
 	return fmt.Sprintf("%s.%d.embedding.vector", EmbeddingEmbeddings, index)
+}
+
+// PromptTextAttribute creates an attribute key for prompt text in completions API.
+// Format: llm.prompts.{index}.prompt.text
+//
+// Example: llm.prompts.0.prompt.text, llm.prompts.1.prompt.text
+//
+// The nested structure (.prompt.text) uses a discriminated union pattern that mirrors
+// llm.input_messages and llm.output_messages, allowing for future expansion.
+//
+// Reference: https://github.com/Arize-ai/openinference/blob/main/spec/semantic_conventions.md#completions-api-legacy-text-completion
+func PromptTextAttribute(index int) string {
+	return fmt.Sprintf("%s.%d.prompt.text", LLMPrompts, index)
+}
+
+// ChoiceTextAttribute creates an attribute key for completion choice text.
+// Format: llm.choices.{index}.completion.text
+//
+// Example: llm.choices.0.completion.text, llm.choices.1.completion.text
+//
+// The nested structure (.completion.text) uses a discriminated union pattern that mirrors
+// the prompt structure, allowing for future expansion with additional choice metadata.
+//
+// Reference: https://github.com/Arize-ai/openinference/blob/main/spec/semantic_conventions.md#completions-api-legacy-text-completion
+func ChoiceTextAttribute(index int) string {
+	return fmt.Sprintf("%s.%d.completion.text", LLMChoices, index)
 }

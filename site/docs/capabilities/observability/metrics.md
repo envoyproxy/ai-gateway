@@ -13,14 +13,29 @@ Envoy AI Gateway is designed to intercept and process AI/LLM requests, that enab
 Currently, it collects metrics and exports them to Prometheus for monitoring in the OpenTelemetry format as specified by the [OpenTelemetry Gen AI Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/attributes-registry/gen-ai/).
 Not all metrics are supported yet, but the Envoy AI Gateway will continue to add more metrics in the future.
 
+### Supported Endpoints
+
+Metrics are collected for the following LLM endpoints:
+
+- **`/v1/chat/completions`** - Chat completions (streaming and non-streaming)
+- **`/v1/completions`** - Legacy text completions (streaming and non-streaming)
+- **`/v1/embeddings`** - Text embeddings
+- **`/anthropic/v1/messages`** - Anthropic messages (streaming and non-streaming)
+
 For example, the Envoy AI Gateway collects metrics such as:
 
-- [**`gen_ai.client.token.usage`**](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#metric-gen_aiclienttokenusage): Number of tokens processed. The label `gen_ai_token_type` can be used to differentiate between input, output, and total tokens.
+- [**`gen_ai.client.token.usage`**](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#metric-gen_aiclienttokenusage): Number of tokens processed. The attribute `gen_ai.token.type` can be used to differentiate between input, output, and total tokens.
 - [**`gen_ai.server.request.duration`**](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#metric-gen_aiserverrequestduration): Measured from the start of the received request headers in the Envoy AI Gateway filter to the end of the processed response body processing.
 - [**`gen_ai.server.time_to_first_token`**](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#metric-gen_aiservertime_to_first_token): Measured from the start of the received request headers in the Envoy AI Gateway filter to the receiving of the first token in the response body handling.
 - [**`gen_ai.server.time_per_output_token`**](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#metric-gen_aiservertime_per_output_token): The latency between consecutive tokens, if supported, or by chunks/tokens otherwise.
 
-Each metric comes with some default labels such as `gen_ai_request_model` that contains the model name, etc.
+Each metric comes with some default attributes such as:
+
+- `gen_ai.operation.name` - The operation type (`chat`, `completion`, `embeddings`, `messages`)
+- `gen_ai.original.model` - The original model name from the request body
+- `gen_ai.request.model` - The model name requested (may be overridden)
+- `gen_ai.response.model` - The model name returned in the response
+- `gen_ai.provider.name` - The provider name (e.g., `openai`, `anthropic`)
 
 ## Trying it out
 

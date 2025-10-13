@@ -21,6 +21,7 @@ func TestGetAllSpans(t *testing.T) {
 		cassettes []testopenai.Cassette
 	}{
 		{"ChatCompletion", testopenai.ChatCassettes()},
+		{"Completion", testopenai.CompletionCassettes()},
 		{"CreateEmbeddings", testopenai.EmbeddingsCassettes()},
 		{"ImageGeneration", testopenai.ImageCassettes()},
 	}

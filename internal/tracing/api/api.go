@@ -27,6 +27,8 @@ type Tracing interface {
 	ChatCompletionTracer() ChatCompletionTracer
 	// ImageGenerationTracer creates spans for OpenAI image generation requests.
 	ImageGenerationTracer() ImageGenerationTracer
+	// CompletionTracer creates spans for OpenAI completion requests on /completions endpoint.
+	CompletionTracer() CompletionTracer
 	// EmbeddingsTracer creates spans for OpenAI embeddings requests on /embeddings endpoint.
 	EmbeddingsTracer() EmbeddingsTracer
 	// MCPTracer creates spans for MCP requests.
@@ -42,6 +44,7 @@ type TracingConfig struct {
 	Tracer                  trace.Tracer
 	Propagator              propagation.TextMapPropagator
 	ChatCompletionRecorder  ChatCompletionRecorder
+	CompletionRecorder      CompletionRecorder
 	ImageGenerationRecorder ImageGenerationRecorder
 	EmbeddingsRecorder      EmbeddingsRecorder
 }
@@ -56,6 +59,11 @@ func (t NoopTracing) MCPTracer() MCPTracer {
 // ChatCompletionTracer implements Tracing.ChatCompletionTracer.
 func (NoopTracing) ChatCompletionTracer() ChatCompletionTracer {
 	return NoopChatCompletionTracer{}
+}
+
+// CompletionTracer implements Tracing.CompletionTracer.
+func (NoopTracing) CompletionTracer() CompletionTracer {
+	return NoopCompletionTracer{}
 }
 
 // EmbeddingsTracer implements Tracing.EmbeddingsTracer.
@@ -140,6 +148,79 @@ type NoopChatCompletionTracer struct{}
 
 // StartSpanAndInjectHeaders implements ChatCompletionTracer.StartSpanAndInjectHeaders.
 func (NoopChatCompletionTracer) StartSpanAndInjectHeaders(context.Context, map[string]string, *extprocv3.HeaderMutation, *openai.ChatCompletionRequest, []byte) ChatCompletionSpan {
+	return nil
+}
+
+// CompletionTracer creates spans for OpenAI completion requests.
+type CompletionTracer interface {
+	// StartSpanAndInjectHeaders starts a span and injects trace context into
+	// the header mutation.
+	//
+	// Parameters:
+	//   - ctx: might include a parent span context.
+	//   - headers: Incoming HTTP headers used to extract parent trace context.
+	//   - headerMutation: The new LLM Span will have its context written to
+	//     these headers unless NoopTracing is used.
+	//   - req: The OpenAI completion request. Used to detect streaming
+	//     and record request attributes.
+	//   - body: contains the original raw request body as a byte slice.
+	//
+	// Returns nil unless the span is sampled.
+	StartSpanAndInjectHeaders(ctx context.Context, headers map[string]string, headerMutation *extprocv3.HeaderMutation, req *openai.CompletionRequest, body []byte) CompletionSpan
+}
+
+// CompletionSpan represents an OpenAI completion request.
+type CompletionSpan interface {
+	// RecordResponseChunk records the response chunk attributes to the span for streaming response.
+	// Note: Unlike chat completions, completion streaming uses full CompletionResponse objects, not deltas.
+	RecordResponseChunk(resp *openai.CompletionResponse)
+
+	// RecordResponse records the response attributes to the span for non-streaming response.
+	RecordResponse(resp *openai.CompletionResponse)
+
+	// EndSpanOnError finalizes and ends the span with an error status.
+	EndSpanOnError(statusCode int, body []byte)
+
+	// EndSpan finalizes and ends the span.
+	EndSpan()
+}
+
+// CompletionRecorder records attributes to a span according to a semantic
+// convention.
+type CompletionRecorder interface {
+	// StartParams returns the name and options to start the span with.
+	//
+	// Parameters:
+	//   - req: contains the completion request
+	//   - body: contains the complete request body.
+	//
+	// Note: Do not do any expensive data conversions as the span might not be
+	// sampled.
+	StartParams(req *openai.CompletionRequest, body []byte) (spanName string, opts []trace.SpanStartOption)
+
+	// RecordRequest records request attributes to the span.
+	//
+	// Parameters:
+	//   - req: contains the completion request
+	//   - body: contains the complete request body.
+	RecordRequest(span trace.Span, req *openai.CompletionRequest, body []byte)
+
+	// RecordResponseChunks records response chunk attributes to the span for streaming response.
+	// Note: Completion chunks are full CompletionResponse objects, not deltas like chat.
+	RecordResponseChunks(span trace.Span, chunks []*openai.CompletionResponse)
+
+	// RecordResponse records response attributes to the span for non-streaming response.
+	RecordResponse(span trace.Span, resp *openai.CompletionResponse)
+
+	// RecordResponseOnError ends recording the span with an error status.
+	RecordResponseOnError(span trace.Span, statusCode int, body []byte)
+}
+
+// NoopCompletionTracer is a CompletionTracer that doesn't do anything.
+type NoopCompletionTracer struct{}
+
+// StartSpanAndInjectHeaders implements CompletionTracer.StartSpanAndInjectHeaders.
+func (NoopCompletionTracer) StartSpanAndInjectHeaders(context.Context, map[string]string, *extprocv3.HeaderMutation, *openai.CompletionRequest, []byte) CompletionSpan {
 	return nil
 }
 
