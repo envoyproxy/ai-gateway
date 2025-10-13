@@ -332,7 +332,7 @@ jobs:
   test_e2e_namespaced:
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
-    name: E2E Test for Namespaced Controller (Envoy Gateway ${{ matrix.name }})
+    name: E2E Test for Namespaced Controller (Envoy Gateway ${{ env.LATEST_STABLE_EG_VERSION }})
     # TODO: make it possible to run this job on macOS as well, which is a bit tricky due to the nested
     # virtualization is not supported on macOS runners.
     # E.g. Use https://github.com/douglascamata/setup-docker-macos-action  per the comment in
