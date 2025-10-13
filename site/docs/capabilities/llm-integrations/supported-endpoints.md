@@ -152,7 +152,7 @@ curl -H "Content-Type: application/json" \
 **Supported Providers:**
 
 - OpenAI
-- Any OpenAI-compatible provider that supports embeddings
+- Any OpenAI-compatible provider that supports embeddings, including Azure OpenAI.
 
 ### Rerank
 
