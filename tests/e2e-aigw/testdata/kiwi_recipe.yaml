@@ -1,0 +1,79 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+version: 1.0.0
+title: Flight Search Assistant
+description: |
+  This recipe helps users find flights from New York to Los Angeles using the MCP gateway.
+  It searches for flights on a specified date and returns the top 3 cheapest options in a structured JSON format.
+instructions: |
+  You are a helpful assistant that helps users find flights from New York to Los Angeles.
+
+prompt: |
+  Use the search-flight tool to search for flights from New York to Los Angeles on {{flight_date}}.
+  When specifying the departureDate parameter, use the format dd/mm/yyyy.
+  Display the first 3 results with the `final_output` tool in a specific JSON format.
+  The output is in the following format where price includes the currency symbol:
+  ```
+  {
+    "contents": [
+      {
+        "airline": "...",
+        "flight_number": "...",
+        "price": "..."
+      },
+      ...
+    ]
+  }
+  ```
+
+  ***********ANY FLIGHT IS FINE. DO NOT CONSIDER ANY USER PREFERENCES.************
+
+extensions:
+  - name: mcp_gateway
+    type: streamable_http
+    uri: http://127.0.0.1:1975/mcp
+
+parameters:
+  - key: flight_date
+    input_type: string
+    requirement: required
+    description: flight date in DD/MM/YYYY format
+    default: "01/10/2025"
+
+settings:
+  goose_provider: ollama
+  goose_model: qwen3:0.6b
+  temperature: 0.0
+
+response:
+  json_schema:
+    type: object
+    additionalProperties: false
+    required:
+      - contents
+    properties:
+      contents:
+        type: array
+        description: "First 3 flight results in a consistent, parseable structure."
+        minItems: 1
+        maxItems: 3
+        items:
+          type: object
+          additionalProperties: false
+          required:
+            - airline
+            - flight_number
+            - price
+          properties:
+            airline:
+              type: string
+              description: "Airline name"
+            flight_number:
+              type: string
+              description: "Flight number"
+            price:
+              type: string
+              description: "Price with currency symbol"
