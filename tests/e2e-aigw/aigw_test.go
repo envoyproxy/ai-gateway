@@ -57,7 +57,7 @@ func buildAigwOnDemand() (string, error) {
 }
 
 // startAIGWCLI starts the aigw CLI as a subprocess with the given config file.
-func startAIGWCLI(t *testing.T, aigwBin string, env []string, arg ...string) {
+func startAIGWCLI(t *testing.T, aigwBin string, env []string, arg ...string) (adminPort int) {
 	// aigw has many fixed ports: some are in the envoy subprocess
 	gatewayPort := 1975
 
@@ -151,6 +151,7 @@ func startAIGWCLI(t *testing.T, aigwBin string, env []string, arg ...string) {
 		"MCP endpoint never became available")
 
 	t.Log("aigw CLI is ready with MCP endpoint")
+	return envoyAdmin.Port()
 }
 
 // Function to check if a port is in use (returns true if listening).
