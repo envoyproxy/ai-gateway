@@ -19,6 +19,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 // NewCompletionOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI translation for completions.
@@ -91,7 +92,7 @@ func (o *openAIToOpenAITranslatorV1Completion) ResponseHeaders(map[string]string
 // ResponseBody implements [OpenAICompletionTranslator.ResponseBody].
 // OpenAI completions support model virtualization through automatic routing and resolution,
 // so we return the actual model from the response body which may differ from the requested model.
-func (o *openAIToOpenAITranslatorV1Completion) ResponseBody(_ map[string]string, body io.Reader, _ bool) (
+func (o *openAIToOpenAITranslatorV1Completion) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracing.CompletionSpan) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
 	// For streaming, just pass through and extract metadata from SSE chunks
@@ -102,7 +103,7 @@ func (o *openAIToOpenAITranslatorV1Completion) ResponseBody(_ map[string]string,
 			return nil, nil, tokenUsage, "", fmt.Errorf("failed to read body: %w", err)
 		}
 		o.buffered = append(o.buffered, buf...)
-		tokenUsage = o.extractUsageFromBufferEvent()
+		tokenUsage = o.extractUsageFromBufferEvent(span)
 		responseModel = o.streamingResponseModel
 		// Pass through the SSE data as-is
 		return nil, nil, tokenUsage, responseModel, nil
@@ -136,6 +137,11 @@ func (o *openAIToOpenAITranslatorV1Completion) ResponseBody(_ map[string]string,
 		}
 	}
 
+	// Record non-streaming response to span if tracing is enabled.
+	if span != nil {
+		span.RecordResponse(&resp)
+	}
+
 	// Pass through the original body without re-encoding to preserve formatting
 	bodyMutation = &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: bodyBytes}}
 
@@ -151,7 +157,8 @@ func (o *openAIToOpenAITranslatorV1Completion) ResponseBody(_ map[string]string,
 
 // extractUsageFromBufferEvent extracts the token usage and model from the buffered SSE events.
 // It scans complete lines and returns the latest usage found in this batch.
-func (o *openAIToOpenAITranslatorV1Completion) extractUsageFromBufferEvent() (tokenUsage LLMTokenUsage) {
+// It also records each parsed chunk to the tracing span if provided.
+func (o *openAIToOpenAITranslatorV1Completion) extractUsageFromBufferEvent(span tracing.CompletionSpan) (tokenUsage LLMTokenUsage) {
 	for {
 		i := bytes.IndexByte(o.buffered, '\n')
 		if i == -1 {
@@ -178,6 +185,12 @@ func (o *openAIToOpenAITranslatorV1Completion) extractUsageFromBufferEvent() (to
 			// Store the response model for future batches
 			o.streamingResponseModel = event.Model
 		}
+
+		// Record streaming chunk to span if tracing is enabled.
+		if span != nil {
+			span.RecordResponseChunk(event)
+		}
+
 		if usage := event.Usage; usage != nil {
 			tokenUsage.InputTokens = uint32(usage.PromptTokens)      //nolint:gosec
 			tokenUsage.OutputTokens = uint32(usage.CompletionTokens) //nolint:gosec

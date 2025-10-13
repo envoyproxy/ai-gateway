@@ -1,0 +1,82 @@
+{
+  "flags":  256,
+  "name":  "Completion",
+  "kind":  "SPAN_KIND_INTERNAL",
+  "attributes":  [
+    {
+      "key":  "llm.system",
+      "value":  {
+        "stringValue":  "openai"
+      }
+    },
+    {
+      "key":  "input.value",
+      "value":  {
+        "stringValue":  "{\"model\": \"babbage-002\", \"prompt\": [755, 16178, 1471, 997, 262, 422, 308, 2717, 220, 16, 512, 286, 471, 308, 198, 262, 775, 512, 286, 471, 16178, 1471, 12, 16, 8, 489, 16178, 1471, 12, 17, 8], \"max_tokens\": 25, \"temperature\": 0.5, \"top_p\": 0.9}"
+      }
+    },
+    {
+      "key":  "input.mime_type",
+      "value":  {
+        "stringValue":  "application/json"
+      }
+    },
+    {
+      "key":  "output.value",
+      "value":  {
+        "stringValue":  "{\"id\":\"cmpl-CKz4nFKJDGUt78k1Kkp0oZqXDOn4u\",\"choices\":[{\"finish_reason\":\"length\",\"index\":0,\"logprobs\":null,\"text\":\" + fib(n-3) + fib(n-4)\\n\\nprint fib(1000)\\nprint fib(1000000)\\n\"}],\"created\":1759117373,\"model\":\"babbage:2023-07-21-v2\",\"object\":\"text_completion\",\"usage\":{\"completion_tokens\":25,\"prompt_tokens\":31,\"total_tokens\":56}}"
+      }
+    },
+    {
+      "key":  "output.mime_type",
+      "value":  {
+        "stringValue":  "application/json"
+      }
+    },
+    {
+      "key":  "llm.invocation_parameters",
+      "value":  {
+        "stringValue":  "{\"model\": \"babbage-002\", \"max_tokens\": 25, \"temperature\": 0.5, \"top_p\": 0.9}"
+      }
+    },
+    {
+      "key":  "llm.model_name",
+      "value":  {
+        "stringValue":  "babbage:2023-07-21-v2"
+      }
+    },
+    {
+      "key":  "llm.token_count.total",
+      "value":  {
+        "intValue":  "56"
+      }
+    },
+    {
+      "key":  "llm.token_count.prompt",
+      "value":  {
+        "intValue":  "31"
+      }
+    },
+    {
+      "key":  "llm.token_count.completion",
+      "value":  {
+        "intValue":  "25"
+      }
+    },
+    {
+      "key":  "llm.choices.0.completion.text",
+      "value":  {
+        "stringValue":  " + fib(n-3) + fib(n-4)\n\nprint fib(1000)\nprint fib(1000000)\n"
+      }
+    },
+    {
+      "key":  "openinference.span.kind",
+      "value":  {
+        "stringValue":  "LLM"
+      }
+    }
+  ],
+  "status":  {
+    "code":  "STATUS_CODE_OK"
+  }
+}

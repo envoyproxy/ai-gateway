@@ -330,3 +330,119 @@ func TestDecodeBase64Embeddings(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildCompletionResponseAttributes(t *testing.T) {
+	basicCompletionResp := &openai.CompletionResponse{
+		Model: "gpt-3.5-turbo-instruct",
+		Choices: []openai.CompletionChoice{
+			{
+				Text:  "This is a test",
+				Index: ptr(0),
+			},
+		},
+		Usage: &openai.Usage{
+			PromptTokens:     5,
+			CompletionTokens: 4,
+			TotalTokens:      9,
+		},
+	}
+
+	multiChoiceResp := &openai.CompletionResponse{
+		Model: "gpt-3.5-turbo-instruct",
+		Choices: []openai.CompletionChoice{
+			{
+				Text:  "First choice",
+				Index: ptr(0),
+			},
+			{
+				Text:  "Second choice",
+				Index: ptr(1),
+			},
+		},
+		Usage: &openai.Usage{
+			PromptTokens:     5,
+			CompletionTokens: 6,
+			TotalTokens:      11,
+		},
+	}
+
+	tests := []struct {
+		name          string
+		resp          *openai.CompletionResponse
+		config        *openinference.TraceConfig
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name: "basic response",
+			resp: basicCompletionResp,
+			config: &openinference.TraceConfig{
+				HideOutputs: false,
+				HideChoices: false,
+			},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.LLMModelName, "gpt-3.5-turbo-instruct"),
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.ChoiceTextAttribute(0), "This is a test"),
+				attribute.Int(openinference.LLMTokenCountPrompt, 5),
+				attribute.Int(openinference.LLMTokenCountCompletion, 4),
+				attribute.Int(openinference.LLMTokenCountTotal, 9),
+			},
+		},
+		{
+			name: "multiple choices",
+			resp: multiChoiceResp,
+			config: &openinference.TraceConfig{
+				HideOutputs: false,
+				HideChoices: false,
+			},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.LLMModelName, "gpt-3.5-turbo-instruct"),
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.ChoiceTextAttribute(0), "First choice"),
+				attribute.String(openinference.ChoiceTextAttribute(1), "Second choice"),
+				attribute.Int(openinference.LLMTokenCountPrompt, 5),
+				attribute.Int(openinference.LLMTokenCountCompletion, 6),
+				attribute.Int(openinference.LLMTokenCountTotal, 11),
+			},
+		},
+		{
+			name: "hide outputs",
+			resp: basicCompletionResp,
+			config: &openinference.TraceConfig{
+				HideOutputs: true,
+			},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.LLMModelName, "gpt-3.5-turbo-instruct"),
+				// No OutputMimeType when HideOutputs is true
+				// No choices when HideOutputs is true
+				attribute.Int(openinference.LLMTokenCountPrompt, 5),
+				attribute.Int(openinference.LLMTokenCountCompletion, 4),
+				attribute.Int(openinference.LLMTokenCountTotal, 9),
+			},
+		},
+		{
+			name: "hide choices",
+			resp: basicCompletionResp,
+			config: &openinference.TraceConfig{
+				HideOutputs: false,
+				HideChoices: true,
+			},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.LLMModelName, "gpt-3.5-turbo-instruct"),
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
+				// No choice text attributes when HideChoices is true
+				attribute.Int(openinference.LLMTokenCountPrompt, 5),
+				attribute.Int(openinference.LLMTokenCountCompletion, 4),
+				attribute.Int(openinference.LLMTokenCountTotal, 9),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs := buildCompletionResponseAttributes(tt.resp, tt.config)
+
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
+		})
+	}
+}
