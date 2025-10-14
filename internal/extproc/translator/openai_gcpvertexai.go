@@ -122,9 +122,15 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(_ map[strin
 		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("error decoding GCP response: %w", err)
 	}
 
+	responseModel = o.requestModel
+	if gcpResp.ModelVersion != "" {
+		// Use the model version from the response if available.
+		responseModel = gcpResp.ModelVersion
+	}
+
 	var openAIRespBytes []byte
 	// Convert to OpenAI format.
-	openAIResp, err := o.geminiResponseToOpenAIMessage(gcpResp)
+	openAIResp, err := o.geminiResponseToOpenAIMessage(gcpResp, responseModel)
 	if err != nil {
 		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("error converting GCP response to OpenAI format: %w", err)
 	}
@@ -149,7 +155,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(_ map[strin
 	if span != nil {
 		span.RecordResponse(openAIResp)
 	}
-	return headerMutation, bodyMutation, usage, o.requestModel, nil
+	return headerMutation, bodyMutation, usage, responseModel, nil
 }
 
 // handleStreamingResponse handles streaming responses from GCP Gemini API.
@@ -322,7 +328,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) applyVendorSpecificField
 	}
 }
 
-func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMessage(gcr genai.GenerateContentResponse) (*openai.ChatCompletionResponse, error) {
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMessage(gcr genai.GenerateContentResponse, responseModel string) (*openai.ChatCompletionResponse, error) {
 	// Convert candidates to OpenAI choices.
 	choices, err := geminiCandidatesToOpenAIChoices(gcr.Candidates)
 	if err != nil {
@@ -331,6 +337,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMe
 
 	// Set up the OpenAI response.
 	openaiResp := &openai.ChatCompletionResponse{
+		Model:   responseModel,
 		Choices: choices,
 		Object:  "chat.completion",
 		Usage:   geminiUsageToOpenAIUsage(gcr.UsageMetadata),
