@@ -287,6 +287,18 @@ func TestServePOST_JSONRPCRequest(t *testing.T) {
 			expStatusCode: 202,
 		},
 		{
+			name:          "initialize invalid param",
+			method:        "initialize",
+			params:        "invalid-param",
+			expStatusCode: 400,
+		},
+		{
+			name:          "initialize without route header",
+			method:        "initialize",
+			params:        &mcp.InitializeParams{},
+			expStatusCode: 500,
+		},
+		{
 			method:           "tools/list",
 			upstreamResponse: `{"jsonrpc":"2.0","id":"1","result":{"tools":[{"name":"my-tool"},{"name":"test-tool"}]}}`,
 			params:           &mcp.ListToolsParams{},
@@ -299,6 +311,18 @@ func TestServePOST_JSONRPCRequest(t *testing.T) {
 			},
 		},
 		{
+			method:           "notifications/roots/list_changed",
+			upstreamResponse: `{"jsonrpc":"2.0","id":"1","result":{}}`,
+			params:           &mcp.RootsListChangedParams{},
+			expStatusCode:    202,
+		},
+		{
+			name:          "notifications/roots/list_changed invalid param",
+			method:        "notifications/roots/list_changed",
+			params:        "invalid-param",
+			expStatusCode: 400,
+		},
+		{
 			method:           "prompts/list",
 			upstreamResponse: `{"jsonrpc":"2.0","id":"1","result":{"prompts":[{"name":"my-prompt"}]}}`,
 			params:           &mcp.ListPromptsParams{},
@@ -309,6 +333,12 @@ func TestServePOST_JSONRPCRequest(t *testing.T) {
 				require.Len(t, result.Prompts, 1)
 				require.Equal(t, "backend1__my-prompt", result.Prompts[0].Name)
 			},
+		},
+		{
+			name:          "prompts/list invalid param type",
+			method:        "prompts/list",
+			params:        "invalid",
+			expStatusCode: 400,
 		},
 		{
 			method:           "resources/list",
