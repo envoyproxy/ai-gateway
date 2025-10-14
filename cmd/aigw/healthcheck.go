@@ -11,7 +11,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/envoyproxy/ai-gateway/internal/aigw"
+	"github.com/tetratelabs/func-e/experimental/admin"
 )
 
 // healthcheck performs looks up the Envoy subprocess, gets its admin port,
@@ -27,13 +27,12 @@ func healthcheck(ctx context.Context, _, stderr io.Writer) error {
 }
 
 func doHealthcheck(ctx context.Context, aigwPid int, logger *slog.Logger) error {
-	envoyAdmin, err := aigw.NewEnvoyAdminClient(ctx, aigwPid, 0)
-	if err != nil {
+	if adminClient, err := admin.NewAdminClient(ctx, aigwPid); err != nil {
 		logger.Error("Failed to find Envoy admin server", "error", err)
 		return err
-	} else if err = envoyAdmin.IsReady(ctx); err != nil {
-		logger.Error("Envoy admin server is not ready", "adminPort", envoyAdmin.Port(), "error", err)
+	} else if err = adminClient.IsReady(ctx); err != nil {
+		logger.Error("Envoy admin server is not ready", "adminPort", adminClient.Port(), "error", err)
 		return err
 	}
-	return err
+	return nil
 }
