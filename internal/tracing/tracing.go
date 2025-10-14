@@ -191,7 +191,7 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 			embeddingsRecorder,
 			headerAttrs,
 		),
-		mcpTracer: newMCPTracer(tracer, propagator),
+		mcpTracer: newMCPTracer(tracer, propagator, headerAttrs),
 		shutdown:  tp.Shutdown, // we have to shut down what we create.
 	}, nil
 }
