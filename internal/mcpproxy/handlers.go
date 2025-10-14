@@ -154,12 +154,20 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid JSON-RPC message: %v", err))
 		return
 	}
+
 	switch msg := rawMsg.(type) {
 	case *jsonrpc.Response:
 		if str, ok := msg.ID.Raw().(string); ok && strings.HasPrefix(str, envoyAIGatewayServerToClientPingRequestIDPrefix) {
 			w.Header().Set(sessionIDHeader, string(s.clientGatewaySessionID()))
 			w.WriteHeader(http.StatusAccepted)
 		} else {
+			// We do require a Session ID. If it is not present, a 400 Bad Request response should be returned:
+			// https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#session-management
+			if s == nil {
+				errType = metrics.MCPErrorInvalidSessionID
+				onErrorResponse(w, http.StatusBadRequest, "missing session ID")
+				return
+			}
 			m.l.Debug("Decoded MCP response", slog.Any("response", msg))
 			err = m.handleClientToServerResponse(ctx, s, w, msg)
 		}
@@ -169,6 +177,16 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 			m.l.Debug("Decoded MCP request",
 				slog.Any("id", msg.ID), slog.String("method", msg.Method), slog.String("params", string(msg.Params)))
 		}
+
+		// We do require a Session ID. If it is not present for requests other than initialize,
+		// a 400 Bad Request response should be returned:
+		// https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#session-management
+		if s == nil && msg.Method != "initialize" {
+			errType = metrics.MCPErrorInvalidSessionID
+			onErrorResponse(w, http.StatusBadRequest, "missing session ID")
+			return
+		}
+
 		switch msg.Method {
 		case "notifications/roots/list_changed":
 			p := &mcp.RootsListChangedParams{}
