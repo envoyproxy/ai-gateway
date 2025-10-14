@@ -71,7 +71,7 @@ func newTestMCPProxyWithTracer(t tracingapi.MCPTracer) *MCPProxy {
 func newTestMCPProxyWithOTEL(mr *sdkmetric.ManualReader, tracer tracingapi.MCPTracer) *MCPProxy {
 	mcpProxy := newTestMCPProxyWithTracer(tracer)
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
-	mcpProxy.metrics = metrics.NewMCP(meter)
+	mcpProxy.metrics = metrics.NewMCP(meter, nil)
 	return mcpProxy
 }
 
@@ -1598,7 +1598,7 @@ func Test_parseParamsAndMaybeStartSpan(t *testing.T) {
 	trace, err := tracing.NewTracingFromEnv(t.Context(), t.Output(), nil)
 	require.NoError(t, err)
 	m.tracer = trace.MCPTracer()
-	s, err := parseParamsAndMaybeStartSpan(t.Context(), m, req, p)
+	s, err := parseParamsAndMaybeStartSpan(t.Context(), m, req, p, nil)
 	require.NoError(t, err)
 	require.NotNil(t, s)
 	// Make sure that traceparent is not empty, that's span started.
@@ -1611,7 +1611,7 @@ func Test_parseParamsAndMaybeStartSpan_NilParam(t *testing.T) {
 	}
 	p := &mcp.GetPromptParams{}
 	m := newTestMCPProxy()
-	s, err := parseParamsAndMaybeStartSpan(t.Context(), m, req, p)
+	s, err := parseParamsAndMaybeStartSpan(t.Context(), m, req, p, nil)
 	require.NoError(t, err)
 	require.Nil(t, s)
 }
