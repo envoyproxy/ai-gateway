@@ -45,6 +45,9 @@ type gatewayMutator struct {
 	extProcImagePullSecrets        []corev1.LocalObjectReference
 	extProcMaxRecvMsgSize          int
 
+	// mcpSessionEncryptionSeed is the seed used to derive the encryption key for MCP session data.
+	mcpSessionEncryptionSeed string
+
 	// Whether to run the extProc container as a sidecar (true) as a normal container (false).
 	// This is essentially a workaround for old k8s versions, and we can remove this in the future.
 	extProcAsSideCar bool
@@ -54,6 +57,7 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel,
 	udsPath, metricsRequestHeaderAttributes, spanRequestHeaderAttributes, rootPrefix, extProcExtraEnvVars, extProcImagePullSecrets string, extProcMaxRecvMsgSize int,
 	extProcAsSideCar bool,
+	mcpSessionEncryptionSeed string,
 ) *gatewayMutator {
 	var parsedEnvVars []corev1.EnvVar
 	if extProcExtraEnvVars != "" {
@@ -90,6 +94,7 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 		extProcImagePullSecrets:        parsedImagePullSecrets,
 		extProcMaxRecvMsgSize:          extProcMaxRecvMsgSize,
 		extProcAsSideCar:               extProcAsSideCar,
+		mcpSessionEncryptionSeed:       mcpSessionEncryptionSeed,
 	}
 }
 
@@ -123,7 +128,8 @@ func (g *gatewayMutator) buildExtProcArgs(filterConfigFullPath string, extProcAd
 		"-maxRecvMsgSize", fmt.Sprintf("%d", g.extProcMaxRecvMsgSize),
 	}
 	if needMCP {
-		args = append(args, "-mcpAddr", ":"+strconv.Itoa(internalapi.MCPProxyPort))
+		args = append(args, "-mcpAddr", ":"+strconv.Itoa(internalapi.MCPProxyPort),
+			"-mcpSessionEncryptionSeed", g.mcpSessionEncryptionSeed)
 	}
 
 	// Add metrics header label mapping if configured.

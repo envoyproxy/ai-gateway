@@ -55,9 +55,10 @@ type flags struct {
 	// extProcMaxRecvMsgSize is the maximum message size in bytes that the gRPC server can receive.
 	extProcMaxRecvMsgSize int
 	// maxRecvMsgSize is the maximum message size in bytes that the gRPC extension server can receive.
-	maxRecvMsgSize   int
-	watchNamespaces  []string
-	cacheSyncTimeout time.Duration
+	maxRecvMsgSize           int
+	mcpSessionEncryptionSeed string
+	watchNamespaces          []string
+	cacheSyncTimeout         time.Duration
 }
 
 // parsePullPolicy parses string into a k8s PullPolicy.
@@ -187,6 +188,13 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		2*time.Minute, // This is the controller-runtime default
 		"Maximum time to wait for k8s caches to sync",
 	)
+	mcpSessionEncryptionSeed := fs.String(
+		"mcpSessionEncryptionSeed",
+		"seed",
+		"Arbitrary string seed used to derive the MCP session encryption key. "+
+			"Do not include commas as they are used as separators. You can optionally pass \"fallback\" seed after the first one to allow for key rotation. "+
+			"For example: \"new-seed,old-seed-for-fallback\". The fallback seed is only used for decryption.",
+	)
 
 	if err := fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
@@ -268,6 +276,7 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		maxRecvMsgSize:                 *maxRecvMsgSize,
 		watchNamespaces:                parseWatchNamespaces(*watchNamespaces),
 		cacheSyncTimeout:               *cacheSyncTimeout,
+		mcpSessionEncryptionSeed:       *mcpSessionEncryptionSeed,
 	}, nil
 }
 
@@ -355,6 +364,7 @@ func main() {
 		ExtProcExtraEnvVars:            parsedFlags.extProcExtraEnvVars,
 		ExtProcImagePullSecrets:        parsedFlags.extProcImagePullSecrets,
 		ExtProcMaxRecvMsgSize:          parsedFlags.extProcMaxRecvMsgSize,
+		MCPSessionEncryptionSeed:       parsedFlags.mcpSessionEncryptionSeed,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}

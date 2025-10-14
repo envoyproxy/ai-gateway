@@ -85,6 +85,8 @@ type Options struct {
 	ExtProcImagePullSecrets string
 	// ExtProcMaxRecvMsgSize is the maximum message size in bytes that the gRPC server can receive for extProc.
 	ExtProcMaxRecvMsgSize int
+	// MCPSessionEncryptionSeed is the seed used to derive the encryption key for MCP session encryption.
+	MCPSessionEncryptionSeed string
 }
 
 // StartControllers starts the controllers for the AI Gateway.
@@ -215,6 +217,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.ExtProcImagePullSecrets,
 			options.ExtProcMaxRecvMsgSize,
 			isKubernetes133OrLater(versionInfo, logger),
+			options.MCPSessionEncryptionSeed,
 		))
 		mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{Handler: h})
 	}
