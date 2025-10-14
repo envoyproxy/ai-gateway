@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tetratelabs/func-e/experimental/admin"
 
-	"github.com/envoyproxy/ai-gateway/internal/aigw"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
@@ -79,13 +79,14 @@ func startAIGWCLI(t *testing.T, aigwBin string, env []string, arg ...string) (ad
 	buffers := internaltesting.DumpLogsOnFail(t, "aigw Stdout", "aigw Stderr")
 
 	t.Logf("Starting aigw with args: %v", arg)
-	// Note: do not pass t.Context() to CommandContext, as it's canceled *before* t.Cleanup functions are called.
+	// Note: do not pass t.Context() to CommandContext, as it's canceled
+	// *before* t.Cleanup functions are called.
 	//
 	// > Context returns a context that is canceled just before
 	// > Cleanup-registered functions are called.
 	//
-	// That means, the subprocess gets killed before we can send it an interrupt signal for graceful shutdown,
-	// which results in orphaned subprocesses.
+	// That means the subprocess gets killed before we can send it an interrupt
+	// signal for graceful shutdown, which results in orphaned subprocesses.
 	cmdCtx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(cmdCtx, aigwBin, arg...)
 	cmd.Stdout = buffers[0]
@@ -118,15 +119,13 @@ func startAIGWCLI(t *testing.T, aigwBin string, env []string, arg ...string) (ad
 
 	t.Logf("aigw process started with PID %d", cmd.Process.Pid)
 
-	// Wait for health check using RequireEventuallyNoError.
-	envoyAdmin, err := aigw.NewEnvoyAdminClient(t.Context(), cmd.Process.Pid, 0)
+	t.Log("Waiting for aigw to start (Envoy admin endpoint)...")
+
+	adminClient, err := admin.NewAdminClient(t.Context(), cmd.Process.Pid)
 	require.NoError(t, err)
 
-	t.Logf("Waiting for aigw to start (admin port %d)...", envoyAdmin.Port())
-	internaltesting.RequireEventuallyNoError(t, func() error {
-		return envoyAdmin.IsReady(t.Context())
-	}, 180*time.Second, 2*time.Second,
-		"Envoy never became ready")
+	err = adminClient.AwaitReady(t.Context(), time.Second)
+	require.NoError(t, err)
 
 	// Wait for MCP endpoint using RequireEventuallyNoError.
 	t.Log("Waiting for MCP endpoint to be available...")
@@ -151,7 +150,7 @@ func startAIGWCLI(t *testing.T, aigwBin string, env []string, arg ...string) (ad
 		"MCP endpoint never became available")
 
 	t.Log("aigw CLI is ready with MCP endpoint")
-	return envoyAdmin.Port()
+	return adminClient.Port()
 }
 
 // Function to check if a port is in use (returns true if listening).
