@@ -363,7 +363,8 @@ jobs:
           FUNC_E_HOME: /tmp/envoy-gateway # hard-coded directory in EG
       - name: Install Goose
         env:
-          GOOSE_VERSION: v1.8.0
+          GOOSE_VERSION: v1.10.0
+          OS: Linux
         run: |
           curl -fsSL https://github.com/block/goose/releases/download/stable/download_cli.sh | CONFIGURE=false bash
       - env:
