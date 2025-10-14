@@ -548,6 +548,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 	specifier := "rawPredict"
 	if openAIReq.Stream {
 		specifier = "streamRawPredict"
+		body, _ = sjson.SetBytes(body, "stream", true)
 		o.streamParser = newAnthropicStreamParser(o.requestModel)
 	}
 

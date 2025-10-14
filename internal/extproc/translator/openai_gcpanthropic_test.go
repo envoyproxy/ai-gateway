@@ -191,7 +191,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.Equal(t, thirdMsg, gjson.GetBytes(body, "messages.0.content.0.text").String())
 	})
 
-	t.Run("Streaming Request Path", func(t *testing.T) {
+	t.Run("Streaming Request Validation", func(t *testing.T) {
 		streamReq := &openai.ChatCompletionRequest{
 			Model:     claudeTestModel,
 			Messages:  []openai.ChatCompletionMessageParamUnion{},
@@ -199,7 +199,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 			Stream:    true,
 		}
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		hm, _, err := translator.RequestBody(nil, streamReq, false)
+		hm, bm, err := translator.RequestBody(nil, streamReq, false)
 		require.NoError(t, err)
 		require.NotNil(t, hm)
 
@@ -208,6 +208,9 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.Equal(t, ":path", pathHeader[0].Header.Key)
 		expectedPath := fmt.Sprintf("publishers/anthropic/models/%s:streamRawPredict", streamReq.Model)
 		require.Equal(t, expectedPath, string(pathHeader[0].Header.RawValue))
+
+		body := bm.GetBody()
+		require.True(t, gjson.GetBytes(body, "stream").Bool(), `body should contain "stream": true`)
 	})
 
 	t.Run("Test message param", func(t *testing.T) {
