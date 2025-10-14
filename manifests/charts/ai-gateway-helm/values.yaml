@@ -176,4 +176,5 @@ controller:
   #	Do not include commas as they are used as separators. You can optionally pass "fallback" seed after the first one to allow for key rotation.
   #	For example: "new-seed,old-seed-for-fallback". The fallback seed is only used for decryption.
   #
-  # mcpSessionEncryptionSeed: "some-random-string,with-one-optional-comma-separated-fallback-seed"
+  # This value should be set to a secure random string in production environments instead of the default below.
+  mcpSessionEncryptionSeed: "default-insecure-seed"
