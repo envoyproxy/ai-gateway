@@ -24,9 +24,6 @@ import (
 	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/openai/openai-go"
-	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 	"github.com/tetratelabs/func-e/api"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,28 +32,20 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
 	"github.com/envoyproxy/ai-gateway/internal/aigw"
-	"github.com/envoyproxy/ai-gateway/internal/autoconfig"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
-// startupRegexp ensures the status message is written to stderr as we know we are healthy!
-var startupRegexp = `Envoy AI Gateway listening on http://localhost:1975 \(admin http://localhost:\d+\) after [^\n]+`
-
+// TestRun verifies that the main run function starts up correctly without making any actual requests.
+//
+// The real e2e tests are in tests/e2e-aigw.
 func TestRun(t *testing.T) {
-	ollamaModel, err := internaltesting.GetOllamaModel(internaltesting.ChatModel)
-	if err == nil {
-		err = internaltesting.CheckIfOllamaReady(ollamaModel)
-	}
-	if err != nil {
-		t.Skip(err)
-	}
-
 	ports := internaltesting.RequireRandomPorts(t, 1)
 	// TODO: parameterize the main listen port 1975
 	adminPort := ports[0]
 
-	t.Setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
+	// Note: we do not make any real requests here!
+	t.Setenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 	t.Setenv("OPENAI_API_KEY", "unused")
 
 	buffers := internaltesting.DumpLogsOnFail(t, "aigw Stdout", "aigw Stderr")
@@ -64,55 +53,8 @@ func TestRun(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cleanupRun(t, cancel)
 
-	go func() {
-		opts := runOpts{extProcLauncher: mainlib.Main}
-		require.NoError(t, run(ctx, cmdRun{Debug: true, AdminPort: adminPort}, opts, stdout, stderr))
-	}()
-
-	client := openai.NewClient(option.WithBaseURL("http://localhost:1975/v1/"))
-	chatReq := openai.ChatCompletionNewParams{
-		Messages: []openai.ChatCompletionMessageParamUnion{
-			openai.UserMessage("Say this is a test"),
-		},
-		Model: ollamaModel,
-	}
-
-	t.Run("chat completion", func(t *testing.T) {
-		internaltesting.RequireEventuallyNoError(t, func() error {
-			chatCompletion, err := client.Chat.Completions.New(ctx, chatReq)
-			if err != nil {
-				return fmt.Errorf("chat completion failed: %w", err)
-			}
-			for _, choice := range chatCompletion.Choices {
-				if choice.Message.Content != "" {
-					return nil
-				}
-			}
-			return fmt.Errorf("no content in response")
-		}, 1*time.Minute, 2*time.Second,
-			"chat completion never succeeded")
-	})
-
-	// By now, we're listening
-	require.Regexp(t, startupRegexp, stderr.String())
-
-	t.Run("access metrics", func(t *testing.T) {
-		internaltesting.RequireEventuallyNoError(t, func() error {
-			req, err := http.NewRequest(http.MethodGet,
-				fmt.Sprintf("http://localhost:%d/metrics", adminPort), nil)
-			require.NoError(t, err)
-			resp, err := http.DefaultClient.Do(req)
-			if err != nil {
-				return err
-			}
-			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusOK {
-				return fmt.Errorf("status %d", resp.StatusCode)
-			}
-			return nil
-		}, 1*time.Minute, time.Second,
-			"metrics endpoint never became available")
-	})
+	opts := runOpts{extProcLauncher: func(context.Context, []string, io.Writer) error { return nil }}
+	require.NoError(t, run(ctx, cmdRun{Debug: true, AdminPort: adminPort}, opts, stdout, stderr))
 }
 
 func cleanupRun(t testing.TB, cancel context.CancelFunc) {
@@ -124,73 +66,6 @@ func cleanupRun(t testing.TB, cancel context.CancelFunc) {
 	if err := os.RemoveAll("/tmp/envoy-gateway/certs"); err != nil {
 		t.Logf("Failed to delete envoy gateway certs: %v", err)
 	}
-}
-
-// TestRunMCP runs the AIGW with MCP configured and verifies calling a tool.
-// It uses the same MCP config as docker-compose.yaml to ensure consistency.
-func TestRunMCP(t *testing.T) {
-	ports := internaltesting.RequireRandomPorts(t, 1)
-	// TODO: parameterize the main listen port 1975
-	adminPort := ports[0]
-
-	mcpServers := &autoconfig.MCPServers{
-		McpServers: map[string]autoconfig.MCPServer{
-			"kiwi": {
-				Type: "http",
-				URL:  "https://mcp.kiwi.com",
-			},
-		},
-	}
-
-	buffers := internaltesting.DumpLogsOnFail(t, "aigw Stdout", "aigw Stderr")
-	stdout, stderr := buffers[0], buffers[1]
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cleanupRun(t, cancel)
-
-	go func() {
-		opts := runOpts{extProcLauncher: mainlib.Main}
-		require.NoError(t, run(ctx, cmdRun{Debug: true, AdminPort: adminPort, mcpConfig: mcpServers}, opts, stdout, stderr))
-	}()
-
-	url := fmt.Sprintf("http://localhost:%d/mcp", 1975)
-	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.1.0"},
-		&mcp.ClientOptions{})
-
-	// Calculate departure date as one week from now
-	departureDate := time.Now().AddDate(0, 0, 7).Format("02/01/2006")
-
-	callTool := &mcp.CallToolParams{
-		Name: "kiwi__search-flight",
-		Arguments: map[string]any{
-			"flyFrom":       "NYC",
-			"flyTo":         "LAX",
-			"departureDate": departureDate,
-		},
-	}
-
-	t.Run("call tool", func(t *testing.T) {
-		internaltesting.RequireEventuallyNoError(t, func() error {
-			session, err := mcpClient.Connect(t.Context(),
-				&mcp.StreamableClientTransport{Endpoint: url}, nil)
-			if err != nil {
-				return fmt.Errorf("connect failed: %w", err)
-			}
-			defer session.Close()
-
-			resp, err := session.CallTool(t.Context(), callTool)
-			if err != nil {
-				return fmt.Errorf("call tool failed: %w", err)
-			}
-			if resp.IsError {
-				return fmt.Errorf("tool returned error response")
-			}
-			return nil
-		}, 2*time.Minute, 2*time.Second,
-			"MCP tool call never succeeded")
-	})
-
-	// By now, we're listening
-	require.Regexp(t, startupRegexp, stderr.String())
 }
 
 func TestRunExtprocStartFailure(t *testing.T) {
