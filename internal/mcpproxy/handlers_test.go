@@ -42,7 +42,7 @@ func newTestMCPProxy() *MCPProxy {
 
 func newTestMCPProxyWithTracer(t tracingapi.MCPTracer) *MCPProxy {
 	return &MCPProxy{
-		sessionCrypto: DefaultSessionCrypto("test"),
+		sessionCrypto: DefaultSessionCrypto("test", ""),
 		mcpProxyConfig: &mcpProxyConfig{
 			backendListenerAddr: "http://test-backend",
 			routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{

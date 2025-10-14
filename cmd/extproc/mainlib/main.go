@@ -105,7 +105,9 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 	fs.StringVar(&flags.mcpSessionEncryptionSeed,
 		"mcpSessionEncryptionSeed",
 		"mcp",
-		"seed used to derive the MCP session encryption key. This should be set to a secure value in production.",
+		"Arbitrary string seed used to derive the MCP session encryption key. "+
+			"Do not include commas as they are used as separators. You can optionally pass \"fallback\" seed after the first one to allow for key rotation. "+
+			"For example: \"new-seed,old-seed-for-fallback\". The fallback seed is only used for decryption.",
 	)
 	fs.DurationVar(&flags.mcpWriteTimeout, "mcpWriteTimeout", 120*time.Second,
 		"The maximum duration before timing out writes of the MCP response")
@@ -261,7 +263,8 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 
 	var mcpServer *http.Server
 	if mcpLis != nil {
-		mcpSessionCrypto := mcpproxy.DefaultSessionCrypto(flags.mcpSessionEncryptionSeed)
+		seed, fallbackSeed, _ := strings.Cut(flags.mcpSessionEncryptionSeed, ",")
+		mcpSessionCrypto := mcpproxy.DefaultSessionCrypto(seed, fallbackSeed)
 		var mcpProxyMux *http.ServeMux
 		var mcpProxy *mcpproxy.MCPProxy
 		mcpProxy, mcpProxyMux, err = mcpproxy.NewMCPProxy(l.With("component", "mcp-proxy"), mcpMetrics,

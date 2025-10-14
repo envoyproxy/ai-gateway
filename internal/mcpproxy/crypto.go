@@ -26,12 +26,24 @@ type SessionCrypto interface {
 }
 
 // DefaultSessionCrypto returns a SessionCrypto implementation using PBKDF2 for key derivation and AES-GCM for encryption.
-func DefaultSessionCrypto(seed string) SessionCrypto {
-	return pbkdf2AesGcm{
+func DefaultSessionCrypto(seed, fallbackSeed string) SessionCrypto {
+	primary := &pbkdf2AesGcm{
 		seed:       seed,    // Seed used to derive the encryption key.
 		saltSize:   16,      // Salt size for PBKDF2.
 		keyLength:  32,      // Key length for AES-256.
 		iterations: 100_000, // Number of PBKDF2 iterations (trade security vs performance).
+	}
+	if fallbackSeed == "" {
+		return primary
+	}
+	return &fallbackEnabledSessionCrypto{
+		primary: primary,
+		fallback: &pbkdf2AesGcm{
+			seed:       fallbackSeed,
+			saltSize:   16,
+			keyLength:  32,
+			iterations: 100_000,
+		},
 	}
 }
 
@@ -118,4 +130,27 @@ func (p pbkdf2AesGcm) Decrypt(encrypted string) (string, error) {
 		return "", err
 	}
 	return string(plaintext), nil
+}
+
+// fallbackEnabledSessionCrypto tries to decrypt using the primary SessionCrypto first for decryption.
+// If that fails and a fallback SessionCrypto is provided, it tries to decrypt using the fallback.
+type fallbackEnabledSessionCrypto struct {
+	primary, fallback SessionCrypto
+}
+
+// Encrypt always uses the primary SessionCrypto.
+func (f fallbackEnabledSessionCrypto) Encrypt(plaintext string) (string, error) {
+	return f.primary.Encrypt(plaintext)
+}
+
+// Decrypt tries the primary SessionCrypto first, and if that fails and a fallback is provided, it tries the fallback.
+func (f fallbackEnabledSessionCrypto) Decrypt(encrypted string) (string, error) {
+	plaintext, err := f.primary.Decrypt(encrypted)
+	if err == nil {
+		return plaintext, nil
+	}
+	if f.fallback != nil {
+		return f.fallback.Decrypt(encrypted)
+	}
+	return "", err
 }

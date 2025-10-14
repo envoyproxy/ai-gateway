@@ -61,7 +61,7 @@ var noopTracer = tracing.NoopMCPTracer{}
 
 func TestNewMCPProxy(t *testing.T) {
 	l := slog.Default()
-	proxy, mux, err := NewMCPProxy(l, stubMetrics{}, noopTracer, DefaultSessionCrypto("test"))
+	proxy, mux, err := NewMCPProxy(l, stubMetrics{}, noopTracer, DefaultSessionCrypto("test", ""))
 
 	require.NoError(t, err)
 	require.NotNil(t, proxy)
@@ -72,7 +72,7 @@ func TestNewMCPProxy(t *testing.T) {
 
 func TestMCPProxy_HTTPMethods(t *testing.T) {
 	l := slog.Default()
-	_, mux, err := NewMCPProxy(l, stubMetrics{}, noopTracer, DefaultSessionCrypto("test"))
+	_, mux, err := NewMCPProxy(l, stubMetrics{}, noopTracer, DefaultSessionCrypto("test", ""))
 	require.NoError(t, err)
 
 	// Test unsupported method.
