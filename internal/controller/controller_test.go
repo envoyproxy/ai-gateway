@@ -196,6 +196,32 @@ func Test_backendSecurityPolicyIndexFunc(t *testing.T) {
 			},
 			expKey: "some-secret8.ns",
 		},
+		{
+			name: "AWS OIDC exchange token",
+			backendSecurityPolicy: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "some-backend-security-policy-9", Namespace: "foo"},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+					AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+						OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{},
+					},
+				},
+			},
+			expKey: "some-backend-security-policy-9.foo",
+		},
+		{
+			name: "Azure OIDC exchange token",
+			backendSecurityPolicy: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "some-backend-security-policy-10", Namespace: "foo"},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
+					AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
+						OIDCExchangeToken: &aigv1a1.AzureOIDCExchangeToken{},
+					},
+				},
+			},
+			expKey: "some-backend-security-policy-10.foo",
+		},
 	} {
 		t.Run(bsp.name, func(t *testing.T) {
 			c := fake.NewClientBuilder().
