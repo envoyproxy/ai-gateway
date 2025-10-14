@@ -29,6 +29,7 @@ func NewAnthropicToGCPAnthropicTranslator(apiVersion string, modelNameOverride i
 }
 
 type anthropicToGCPAnthropicTranslator struct {
+	// TODO: reuse anthropicToAnthropicTranslator and embed it here to avoid code duplication.
 	apiVersion        string
 	modelNameOverride internalapi.ModelNameOverride
 	requestModel      internalapi.RequestModel
@@ -104,7 +105,6 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, bo
 		// Parse SSE format - split by lines and look for data: lines.
 		for line := range bytes.Lines(bodyBytes) {
 			line = bytes.TrimSpace(line)
-			dataPrefix := []byte("data: ")
 			if bytes.HasPrefix(line, dataPrefix) {
 				jsonData := bytes.TrimPrefix(line, dataPrefix)
 

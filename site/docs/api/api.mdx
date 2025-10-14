@@ -387,6 +387,7 @@ MCPRouteList contains a list of MCPRoute.
 - [AzureOIDCExchangeToken](#azureoidcexchangetoken)
 - [BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)
 - [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
+- [BackendSecurityPolicyAnthropicAPIKey](#backendsecuritypolicyanthropicapikey)
 - [BackendSecurityPolicyAzureAPIKey](#backendsecuritypolicyazureapikey)
 - [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
 - [BackendSecurityPolicyGCPCredentials](#backendsecuritypolicygcpcredentials)
@@ -746,6 +747,11 @@ APISchema defines the API schema.
   type="enum"
   required="false"
   description="APISchemaGCPAnthropic is the schema for Anthropic models hosted on GCP's Vertex AI platform.<br />Returns native Anthropic format responses for seamless integration.<br />https://docs.anthropic.com/en/api/claude-on-vertex-ai<br />"
+/><ApiField
+  name="Anthropic"
+  type="enum"
+  required="false"
+  description="APISchemaAnthropic is the native Anthropic API schema.<br />https://docs.claude.com/en/home<br />"
 />
 #### AWSCredentialsFile
 
@@ -895,6 +901,27 @@ BackendSecurityPolicyAWSCredentials contains the supported authentication mechan
   type="[AWSOIDCExchangeToken](#awsoidcexchangetoken)"
   required="false"
   description="OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be<br />used to obtain temporary credentials to access AWS."
+/>
+
+
+#### BackendSecurityPolicyAnthropicAPIKey
+
+
+
+**Appears in:**
+- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+
+BackendSecurityPolicyAnthropicAPIKey specifies the Anthropic API key.
+
+##### Fields
+
+
+
+<ApiField
+  name="secretRef"
+  type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
+  required="true"
+  description="SecretRef is the reference to the secret containing the Anthropic API key.<br />ai-gateway must be given the permission to read this secret.<br />The key of the secret should be `apiKey`."
 />
 
 
@@ -1078,6 +1105,11 @@ Only one type of BackendSecurityPolicy can be defined.
   type="[BackendSecurityPolicyGCPCredentials](#backendsecuritypolicygcpcredentials)"
   required="false"
   description="GCPCredentials is a mechanism to access a backend(s). GCP specific logic will be applied."
+/><ApiField
+  name="anthropicAPIKey"
+  type="[BackendSecurityPolicyAnthropicAPIKey](#backendsecuritypolicyanthropicapikey)"
+  required="false"
+  description="AnthropicAPIKey is a mechanism to access Anthropic backend(s). The API key will be injected into the `x-api-key` header.<br />https://docs.claude.com/en/api/overview#authentication"
 />
 
 
@@ -1127,6 +1159,11 @@ BackendSecurityPolicyType specifies the type of auth mechanism used to access a 
   description=""
 /><ApiField
   name="AzureAPIKey"
+  type="enum"
+  required="false"
+  description=""
+/><ApiField
+  name="AnthropicAPIKey"
   type="enum"
   required="false"
   description=""
