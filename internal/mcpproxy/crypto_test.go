@@ -12,7 +12,7 @@ import (
 )
 
 func TestSessionEncryption(t *testing.T) {
-	sc := DefaultSessionCrypto("test")
+	sc := DefaultSessionCrypto("test", "")
 
 	enc, err := sc.Encrypt("plaintext")
 	require.NoError(t, err)
@@ -23,7 +23,7 @@ func TestSessionEncryption(t *testing.T) {
 }
 
 func TestEncryptionIsSalted(t *testing.T) {
-	sc := DefaultSessionCrypto("test")
+	sc := DefaultSessionCrypto("test", "")
 
 	enc1, err := sc.Encrypt("plaintext")
 	require.NoError(t, err)
@@ -34,8 +34,8 @@ func TestEncryptionIsSalted(t *testing.T) {
 }
 
 func TestDecryptWrongSeed(t *testing.T) {
-	sc1 := DefaultSessionCrypto("test1")
-	sc2 := DefaultSessionCrypto("test2")
+	sc1 := DefaultSessionCrypto("test1", "")
+	sc2 := DefaultSessionCrypto("test2", "")
 
 	enc, err := sc1.Encrypt("plaintext")
 	require.NoError(t, err)
@@ -45,9 +45,34 @@ func TestDecryptWrongSeed(t *testing.T) {
 	require.Empty(t, dec)
 }
 
+func TestDecryptFallbackSeed(t *testing.T) {
+	sc1 := DefaultSessionCrypto("test1", "")
+	sc2 := DefaultSessionCrypto("test2", "test1")
+
+	// Decrypting should work with the fallback seed.
+	enc, err := sc1.Encrypt("plaintext")
+	require.NoError(t, err)
+	dec, err := sc2.Decrypt(enc)
+	require.NoError(t, err)
+	require.Equal(t, "plaintext", dec)
+
+	// Encrypting should happen with the latest seed.
+	enc2, err := sc2.Encrypt("plaintext2")
+	require.NoError(t, err)
+	require.NotEqual(t, enc, enc2)
+
+	dec2, err := sc1.Decrypt(enc2)
+	require.Error(t, err)
+	require.Empty(t, dec2)
+
+	dec2, err = sc2.Decrypt(enc2)
+	require.NoError(t, err)
+	require.Equal(t, "plaintext2", dec2)
+}
+
 func TestDecryptDifferentInstancesSameSeed(t *testing.T) {
-	sc1 := DefaultSessionCrypto("test")
-	sc2 := DefaultSessionCrypto("test")
+	sc1 := DefaultSessionCrypto("test", "")
+	sc2 := DefaultSessionCrypto("test", "")
 
 	enc, err := sc1.Encrypt("plaintext")
 	require.NoError(t, err)
