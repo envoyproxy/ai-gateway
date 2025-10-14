@@ -82,3 +82,21 @@ func (r *AIGatewayRouteRule) HasAIServiceBackends() bool {
 	}
 	return false
 }
+
+// GetNamespace returns the namespace for the backend reference.
+// If the namespace is not specified, it returns the provided defaultNamespace.
+func (ref *AIGatewayRouteRuleBackendRef) GetNamespace(defaultNamespace string) string {
+	if ref.Namespace != nil && *ref.Namespace != "" {
+		return string(*ref.Namespace)
+	}
+	return defaultNamespace
+}
+
+// IsCrossNamespace returns true if the backend reference is a cross-namespace reference.
+// A cross-namespace reference is one where the namespace field is specified and differs from the routeNamespace.
+func (ref *AIGatewayRouteRuleBackendRef) IsCrossNamespace(routeNamespace string) bool {
+	if ref.Namespace == nil || *ref.Namespace == "" {
+		return false
+	}
+	return string(*ref.Namespace) != routeNamespace
+}

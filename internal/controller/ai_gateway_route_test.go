@@ -24,6 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
+	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
@@ -614,4 +615,238 @@ func TestAIGatewayRouteController_syncGateways_NamespaceDetermination(t *testing
 	// Verify second gateway: gateway2 in other-ns (explicitly specified).
 	require.Equal(t, "gateway2", gw2.Name)
 	require.Equal(t, "other-ns", gw2.Namespace)
+}
+
+func TestAIGatewayRouteController_CrossNamespaceBackend_WithReferenceGrant(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch, "/v1")
+
+	// Create backend in backend-ns namespace
+	backend := &aigv1a1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "cross-ns-backend",
+			Namespace: "backend-ns",
+		},
+		Spec: aigv1a1.AIServiceBackendSpec{
+			APISchema: aigv1a1.VersionedAPISchema{
+				Name:    aigv1a1.APISchemaOpenAI,
+				Version: ptr.To("v1"),
+			},
+			BackendRef: gwapiv1.BackendObjectReference{
+				Group: ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
+				Kind:  ptr.To(gwapiv1.Kind("Backend")),
+				Name:  "my-backend",
+			},
+		},
+	}
+	err := fakeClient.Create(t.Context(), backend)
+	require.NoError(t, err)
+
+	// Create ReferenceGrant allowing cross-namespace access
+	grant := &gwapiv1b1.ReferenceGrant{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "allow-from-route-ns",
+			Namespace: "backend-ns",
+		},
+		Spec: gwapiv1b1.ReferenceGrantSpec{
+			From: []gwapiv1b1.ReferenceGrantFrom{
+				{
+					Group:     "aigateway.envoyproxy.io",
+					Kind:      "AIGatewayRoute",
+					Namespace: "route-ns",
+				},
+			},
+			To: []gwapiv1b1.ReferenceGrantTo{
+				{
+					Group: "aigateway.envoyproxy.io",
+					Kind:  "AIServiceBackend",
+				},
+			},
+		},
+	}
+	err = fakeClient.Create(t.Context(), grant)
+	require.NoError(t, err)
+
+	// Create AIGatewayRoute in route-ns that references backend in backend-ns
+	route := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "cross-ns-route",
+			Namespace: "route-ns",
+		},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{
+							Name:      "cross-ns-backend",
+							Namespace: ptr.To(gwapiv1.Namespace("backend-ns")),
+							Weight:    ptr.To[int32](1),
+						},
+					},
+				},
+			},
+		},
+	}
+	err = fakeClient.Create(t.Context(), route)
+	require.NoError(t, err)
+
+	// Reconcile should succeed with ReferenceGrant
+	_, err = c.Reconcile(t.Context(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Namespace: "route-ns", Name: "cross-ns-route"},
+	})
+	require.NoError(t, err)
+
+	// Verify that HTTPRoute was created
+	var httpRoute gwapiv1.HTTPRoute
+	err = fakeClient.Get(t.Context(), types.NamespacedName{
+		Namespace: "route-ns",
+		Name:      "cross-ns-route",
+	}, &httpRoute)
+	require.NoError(t, err)
+
+	// Verify the status is Accepted
+	var updatedRoute aigv1a1.AIGatewayRoute
+	err = fakeClient.Get(t.Context(), types.NamespacedName{
+		Namespace: "route-ns",
+		Name:      "cross-ns-route",
+	}, &updatedRoute)
+	require.NoError(t, err)
+	require.Len(t, updatedRoute.Status.Conditions, 1)
+	require.Equal(t, aigv1a1.ConditionTypeAccepted, updatedRoute.Status.Conditions[0].Type)
+}
+
+func TestAIGatewayRouteController_CrossNamespaceBackend_WithoutReferenceGrant(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch, "/v1")
+
+	// Create backend in backend-ns namespace
+	backend := &aigv1a1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "cross-ns-backend",
+			Namespace: "backend-ns",
+		},
+		Spec: aigv1a1.AIServiceBackendSpec{
+			APISchema: aigv1a1.VersionedAPISchema{
+				Name:    aigv1a1.APISchemaOpenAI,
+				Version: ptr.To("v1"),
+			},
+			BackendRef: gwapiv1.BackendObjectReference{
+				Group: ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
+				Kind:  ptr.To(gwapiv1.Kind("Backend")),
+				Name:  "my-backend",
+			},
+		},
+	}
+	err := fakeClient.Create(t.Context(), backend)
+	require.NoError(t, err)
+
+	// Create AIGatewayRoute in route-ns that references backend in backend-ns
+	// WITHOUT creating a ReferenceGrant
+	route := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "cross-ns-route",
+			Namespace: "route-ns",
+		},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{
+							Name:      "cross-ns-backend",
+							Namespace: ptr.To(gwapiv1.Namespace("backend-ns")),
+							Weight:    ptr.To[int32](1),
+						},
+					},
+				},
+			},
+		},
+	}
+	err = fakeClient.Create(t.Context(), route)
+	require.NoError(t, err)
+
+	// Reconcile should fail without ReferenceGrant
+	_, err = c.Reconcile(t.Context(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Namespace: "route-ns", Name: "cross-ns-route"},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "is not permitted")
+	require.Contains(t, err.Error(), "no valid ReferenceGrant found")
+
+	// Verify the status is NotAccepted
+	var updatedRoute aigv1a1.AIGatewayRoute
+	err = fakeClient.Get(t.Context(), types.NamespacedName{
+		Namespace: "route-ns",
+		Name:      "cross-ns-route",
+	}, &updatedRoute)
+	require.NoError(t, err)
+	require.Len(t, updatedRoute.Status.Conditions, 1)
+	require.Equal(t, aigv1a1.ConditionTypeNotAccepted, updatedRoute.Status.Conditions[0].Type)
+}
+
+func TestAIGatewayRouteController_SameNamespaceBackend_NoReferenceGrantNeeded(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch, "/v1")
+
+	// Create backend in same namespace as route
+	backend := &aigv1a1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "same-ns-backend",
+			Namespace: "default",
+		},
+		Spec: aigv1a1.AIServiceBackendSpec{
+			APISchema: aigv1a1.VersionedAPISchema{
+				Name:    aigv1a1.APISchemaOpenAI,
+				Version: ptr.To("v1"),
+			},
+			BackendRef: gwapiv1.BackendObjectReference{
+				Group: ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
+				Kind:  ptr.To(gwapiv1.Kind("Backend")),
+				Name:  "my-backend",
+			},
+		},
+	}
+	err := fakeClient.Create(t.Context(), backend)
+	require.NoError(t, err)
+
+	// Create AIGatewayRoute in same namespace
+	route := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "same-ns-route",
+			Namespace: "default",
+		},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{
+							Name:   "same-ns-backend",
+							Weight: ptr.To[int32](1),
+							// No namespace specified, should use route's namespace
+						},
+					},
+				},
+			},
+		},
+	}
+	err = fakeClient.Create(t.Context(), route)
+	require.NoError(t, err)
+
+	// Reconcile should succeed without ReferenceGrant for same-namespace reference
+	_, err = c.Reconcile(t.Context(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Namespace: "default", Name: "same-ns-route"},
+	})
+	require.NoError(t, err)
+
+	// Verify the status is Accepted
+	var updatedRoute aigv1a1.AIGatewayRoute
+	err = fakeClient.Get(t.Context(), types.NamespacedName{
+		Namespace: "default",
+		Name:      "same-ns-route",
+	}, &updatedRoute)
+	require.NoError(t, err)
+	require.Len(t, updatedRoute.Status.Conditions, 1)
+	require.Equal(t, aigv1a1.ConditionTypeAccepted, updatedRoute.Status.Conditions[0].Type)
 }

@@ -17,11 +17,13 @@ import (
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 )
 
-// TestCrossNamespace tests AIGatewayRoute referencing Gateway in different namespaces.
+// TestCrossNamespace tests AIGatewayRoute with cross-namespace references.
 // This test validates that:
-// 1. A Gateway in one namespace (gateway-ns) can be referenced by an AIGatewayRoute in another namespace (route-ns)
-// 2. The generated HTTPRoute and other resources work correctly across namespaces
-// 3. Traffic routing works end-to-end through the cross-namespace setup.
+//  1. A Gateway in one namespace (gateway-ns) can be referenced by an AIGatewayRoute in another namespace (route-ns)
+//  2. An AIServiceBackend in one namespace (backend-ns) can be referenced by an AIGatewayRoute in another namespace (route-ns)
+//     when a valid ReferenceGrant exists
+//  3. The generated HTTPRoute and other resources work correctly across namespaces
+//  4. Traffic routing works end-to-end through the cross-namespace setup.
 func TestCrossNamespace(t *testing.T) {
 	const manifest = "testdata/cross_namespace.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
@@ -30,9 +32,9 @@ func TestCrossNamespace(t *testing.T) {
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=cross-namespace-gateway"
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
 
-	t.Run("cross-namespace-routing", func(t *testing.T) {
-		// Test that the AIGatewayRoute in route-ns can successfully route traffic.
-		// through the Gateway in gateway-ns.
+	t.Run("cross-namespace-backend-with-referencegrant", func(t *testing.T) {
+		// Test that the AIGatewayRoute in route-ns can successfully route traffic
+		// to an AIServiceBackend in backend-ns (different namespace) via ReferenceGrant.
 		require.Eventually(t, func() bool {
 			fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
 			defer fwd.Kill()
@@ -44,9 +46,9 @@ func TestCrossNamespace(t *testing.T) {
 
 			chatCompletion, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 				Messages: []openai.ChatCompletionMessageParamUnion{
-					openai.UserMessage("Test cross-namespace routing"),
+					openai.UserMessage("Test cross-namespace backend routing with ReferenceGrant"),
 				},
-				Model: "cross-namespace-test-model",
+				Model: "cross-namespace-backend-model",
 			})
 			if err != nil {
 				t.Logf("error: %v", err)

@@ -58,6 +58,8 @@ type AIGatewayRouteController struct {
 	gatewayEventChan chan event.GenericEvent
 	// rootPrefix is the prefix for the root path of the AI Gateway.
 	rootPrefix string
+	// referenceGrantValidator validates cross-namespace references using ReferenceGrant.
+	referenceGrantValidator *ReferenceGrantValidator
 }
 
 // NewAIGatewayRouteController creates a new reconcile.TypedReconciler[reconcile.Request] for the AIGatewayRoute resource.
@@ -67,11 +69,12 @@ func NewAIGatewayRouteController(
 	rootPrefix string,
 ) *AIGatewayRouteController {
 	return &AIGatewayRouteController{
-		client:           client,
-		kube:             kube,
-		logger:           logger,
-		gatewayEventChan: gatewayEventChan,
-		rootPrefix:       rootPrefix,
+		client:                  client,
+		kube:                    kube,
+		logger:                  logger,
+		gatewayEventChan:        gatewayEventChan,
+		rootPrefix:              rootPrefix,
+		referenceGrantValidator: NewReferenceGrantValidator(client),
 	}
 }
 
@@ -252,7 +255,8 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 		var backendRefs []gwapiv1.HTTPBackendRef
 		for j := range rule.BackendRefs {
 			br := &rule.BackendRefs[j]
-			dstName := fmt.Sprintf("%s.%s", br.Name, aiGatewayRoute.Namespace)
+			backendNamespace := br.GetNamespace(aiGatewayRoute.Namespace)
+			dstName := fmt.Sprintf("%s.%s", br.Name, backendNamespace)
 
 			if br.IsInferencePool() {
 				// Handle InferencePool backend reference.
@@ -262,16 +266,16 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 							Group:     (*gwapiv1.Group)(br.Group),
 							Kind:      (*gwapiv1.Kind)(br.Kind),
 							Name:      gwapiv1.ObjectName(br.Name),
-							Namespace: (*gwapiv1.Namespace)(&aiGatewayRoute.Namespace),
+							Namespace: (*gwapiv1.Namespace)(&backendNamespace),
 						},
 						Weight: br.Weight,
 					}},
 				)
 			} else {
-				// Handle AIServiceBackend reference.
-				backend, err := c.backend(ctx, aiGatewayRoute.Namespace, br.Name)
+				// Handle AIServiceBackend reference with cross-namespace validation.
+				backend, err := c.validateAndGetBackend(ctx, aiGatewayRoute, br)
 				if err != nil {
-					return fmt.Errorf("AIServiceBackend %s not found", dstName)
+					return fmt.Errorf("failed to get AIServiceBackend %s: %w", dstName, err)
 				}
 				backendRefs = append(backendRefs,
 					gwapiv1.HTTPBackendRef{BackendRef: gwapiv1.BackendRef{
@@ -369,6 +373,36 @@ func (c *AIGatewayRouteController) backend(ctx context.Context, namespace, name 
 	if err := c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, backend); err != nil {
 		return nil, err
 	}
+	return backend, nil
+}
+
+// validateAndGetBackend validates a backend reference (including cross-namespace ReferenceGrant check)
+// and returns the AIServiceBackend if valid.
+func (c *AIGatewayRouteController) validateAndGetBackend(
+	ctx context.Context,
+	aiGatewayRoute *aigv1a1.AIGatewayRoute,
+	backendRef *aigv1a1.AIGatewayRouteRuleBackendRef,
+) (*aigv1a1.AIServiceBackend, error) {
+	backendNamespace := backendRef.GetNamespace(aiGatewayRoute.Namespace)
+
+	// Validate cross-namespace reference if applicable
+	if backendRef.IsCrossNamespace(aiGatewayRoute.Namespace) {
+		if err := c.referenceGrantValidator.ValidateAIServiceBackendReference(
+			ctx,
+			aiGatewayRoute.Namespace,
+			backendNamespace,
+			backendRef.Name,
+		); err != nil {
+			return nil, err
+		}
+	}
+
+	// Get the backend
+	backend, err := c.backend(ctx, backendNamespace, backendRef.Name)
+	if err != nil {
+		return nil, fmt.Errorf("AIServiceBackend %s.%s not found", backendRef.Name, backendNamespace)
+	}
+
 	return backend, nil
 }
 
