@@ -7,6 +7,7 @@ package controller
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -21,6 +22,7 @@ import (
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 func TestGatewayMutator_Default(t *testing.T) {
@@ -51,6 +53,7 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 		extProcImagePullSecrets        string
 		extprocTest                    func(t *testing.T, container corev1.Container)
 		podTest                        func(t *testing.T, pod corev1.Pod)
+		needMCP                        bool
 	}{
 		{
 			name: "basic extproc container",
@@ -59,6 +62,25 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 			},
 			podTest: func(t *testing.T, pod corev1.Pod) {
 				require.Empty(t, pod.Spec.ImagePullSecrets)
+			},
+		},
+		{
+			name:    "basic extproc container with MCPRoute",
+			needMCP: true,
+			extprocTest: func(t *testing.T, container corev1.Container) {
+				var foundMCPAddr, foundMCPSeed bool
+				for i, arg := range container.Args {
+					switch arg {
+					case "-mcpAddr":
+						foundMCPAddr = true
+						require.Equal(t, ":"+strconv.Itoa(internalapi.MCPProxyPort), container.Args[i+1])
+					case "-mcpSessionEncryptionSeed":
+						foundMCPSeed = true
+						require.Equal(t, "seed", container.Args[i+1])
+					}
+				}
+				require.True(t, foundMCPAddr)
+				require.True(t, foundMCPSeed)
 			},
 		},
 		{
@@ -190,6 +212,22 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 					})
 					require.NoError(t, err)
 
+					if tt.needMCP {
+						err = fakeClient.Create(t.Context(), &aigv1a1.MCPRoute{
+							ObjectMeta: metav1.ObjectMeta{Name: "test-mcp", Namespace: gwNamespace},
+							Spec: aigv1a1.MCPRouteSpec{
+								ParentRefs: []gwapiv1a2.ParentReference{
+									{
+										Name:  gwName,
+										Kind:  ptr.To(gwapiv1a2.Kind("Gateway")),
+										Group: ptr.To(gwapiv1a2.Group("gateway.networking.k8s.io")),
+									},
+								},
+							},
+						})
+						require.NoError(t, err)
+					}
+
 					pod := &corev1.Pod{
 						ObjectMeta: metav1.ObjectMeta{Name: "test-pod", Namespace: "test-namespace"},
 						Spec: corev1.PodSpec{
@@ -227,7 +265,9 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 
 					require.Equal(t, "ai-gateway-extproc", extProcContainer.Name)
 					tt.extprocTest(t, extProcContainer)
-					tt.podTest(t, *pod)
+					if tt.podTest != nil {
+						tt.podTest(t, *pod)
+					}
 				})
 			}
 		})
@@ -239,7 +279,7 @@ func newTestGatewayMutator(fakeClient client.Client, fakeKube *fake2.Clientset, 
 	return newGatewayMutator(
 		fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
 		"info", "/tmp/extproc.sock", metricsRequestHeaderAttributes, spanRequestHeaderAttributes, "/v1", extProcExtraEnvVars, extProcImagePullSecrets, 512*1024*1024,
-		sidecar,
+		sidecar, "seed",
 	)
 }
 
