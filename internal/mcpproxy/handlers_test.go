@@ -32,7 +32,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing"
+	"github.com/envoyproxy/ai-gateway/internal/tracing"
 	tracingapi "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -162,6 +162,15 @@ func TestServePOST_InvalidSessionID(t *testing.T) {
 	proxy.servePOST(rr, req)
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 	require.Contains(t, rr.Body.String(), "invalid session ID")
+}
+
+func TestServePOST_MissingSessionID(t *testing.T) {
+	proxy := newTestMCPProxy()
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"test-tool"},"id":"1"}`))
+	rr := httptest.NewRecorder()
+	proxy.servePOST(rr, req)
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	require.Contains(t, rr.Body.String(), "missing session ID")
 }
 
 func TestServePOST_InitializeRequest(t *testing.T) {
@@ -611,6 +620,7 @@ func TestServePOST_UnsupportedMethod(t *testing.T) {
 	require.NoError(t, err)
 
 	httpReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	httpReq.Header.Set(sessionIDHeader, secureID(t, proxy, "test-route@@backend1:dGVzdC1zZXNzaW9u")) // "test-session" base64 encoded.
 	rr := httptest.NewRecorder()
 
 	proxy.servePOST(rr, httpReq)
@@ -803,6 +813,7 @@ func TestServePOST_NotificationsInitialized(t *testing.T) {
 	require.NoError(t, err)
 
 	httpReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	httpReq.Header.Set(sessionIDHeader, secureID(t, proxy, "test-route@@backend1:dGVzdC1zZXNzaW9u")) // "test-session" base64 encoded.
 	rr := httptest.NewRecorder()
 
 	proxy.servePOST(rr, httpReq)
@@ -883,6 +894,7 @@ func TestServePOST_InvalidPromptsGetParams(t *testing.T) {
 	require.NoError(t, err)
 
 	httpReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	httpReq.Header.Set(sessionIDHeader, secureID(t, proxy, "test-route@@backend1:dGVzdC1zZXNzaW9u")) // "test-session" base64 encoded.
 	rr := httptest.NewRecorder()
 
 	proxy.servePOST(rr, httpReq)
