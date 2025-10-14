@@ -27,7 +27,7 @@ func TestTracer_StartSpanAndInjectMeta(t *testing.T) {
 	tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(),
 		map[string]string{
 			"x-tracing-enrichment-user-region": "user.region",
-			"x-session-id":                     "session.id",
+			"X-Session-Id":                     "session.id",
 			"CustomAttr":                       "custom.attr",
 		})
 
@@ -56,7 +56,7 @@ func TestTracer_StartSpanAndInjectMeta(t *testing.T) {
 	require.Len(t, spans, 1)
 	actualSpan := spans[0]
 	require.Contains(t, actualSpan.Attributes, attribute.String("user.region", "us-east-1"))
-	require.Contains(t, actualSpan.Attributes, attribute.String("session.id", "sess-1234"))
+	require.Contains(t, actualSpan.Attributes, attribute.String("session.id", "sess-4567"))
 	require.Contains(t, actualSpan.Attributes, attribute.String("custom.attr", "custom-value2"))
 	require.NotContains(t, actualSpan.Attributes, attribute.String("session.id", "123"))
 	require.NotContains(t, actualSpan.Attributes, attribute.String("custom.attr", "custom-value1"))

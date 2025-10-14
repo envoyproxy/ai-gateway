@@ -14,6 +14,8 @@ import (
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+
+	"github.com/envoyproxy/ai-gateway/internal/lang"
 )
 
 // nolint: godot
@@ -337,8 +339,8 @@ func (m *mcp) withDefaultAttributes(params mcpsdk.Params, attrs ...attribute.Key
 	all := make([]attribute.KeyValue, 0, len(m.defaultAttributes)+len(m.requestHeaderAttributeMapping)+len(attrs))
 	all = append(all, m.defaultAttributes...)
 	if params != nil {
-		for k, v := range params.GetMeta() {
-			if target, ok := m.requestHeaderAttributeMapping[k]; ok {
+		for src, target := range m.requestHeaderAttributeMapping {
+			if v := lang.CaseInsensitiveValue(params.GetMeta(), src); v != "" {
 				all = append(all, attribute.String(target, fmt.Sprintf("%v", v)))
 			}
 		}
