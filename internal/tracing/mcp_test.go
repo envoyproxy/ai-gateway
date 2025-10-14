@@ -7,6 +7,7 @@ package tracing
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
@@ -27,15 +28,22 @@ func TestTracer_StartSpanAndInjectMeta(t *testing.T) {
 		map[string]string{
 			"x-tracing-enrichment-user-region": "user.region",
 			"x-session-id":                     "session.id",
+			"CustomAttr":                       "custom.attr",
 		})
+
+	headers := make(http.Header)
+	headers.Add("X-Tracing-Enrichment-User-Region", "us-east-1")
+	headers.Add("X-Session-Id", "123") // should be ignored as the value in the metadata takes precedence
 
 	reqID, _ := jsonrpc.MakeID("id")
 	r := &jsonrpc.Request{ID: reqID, Method: "initialize"}
-	p := &mcp.InitializeParams{Meta: map[string]any{"x-session-id": "sess-1234"}}
-	span := tracer.StartSpanAndInjectMeta(t.Context(), r, p, map[string]string{
-		"x-tracing-enrichment-user-region": "us-east-1",
-		"x-session-id":                     "123", // should be ignored as the value in the metadata takes precedence
-	})
+	p := &mcp.InitializeParams{Meta: map[string]any{
+		"x-session-id": "sess-1234", // alphabetical order wins when multiple values match case-insensitively
+		"X-SESSION-ID": "sess-4567",
+		"customattr":   "custom-value1", // exact match should win over case-insensitive match
+		"CustomAttr":   "custom-value2",
+	}}
+	span := tracer.StartSpanAndInjectMeta(t.Context(), r, p, headers)
 
 	require.NotNil(t, span)
 	meta := p.GetMeta()
@@ -49,7 +57,9 @@ func TestTracer_StartSpanAndInjectMeta(t *testing.T) {
 	actualSpan := spans[0]
 	require.Contains(t, actualSpan.Attributes, attribute.String("user.region", "us-east-1"))
 	require.Contains(t, actualSpan.Attributes, attribute.String("session.id", "sess-1234"))
+	require.Contains(t, actualSpan.Attributes, attribute.String("custom.attr", "custom-value2"))
 	require.NotContains(t, actualSpan.Attributes, attribute.String("session.id", "123"))
+	require.NotContains(t, actualSpan.Attributes, attribute.String("custom.attr", "custom-value1"))
 }
 
 func Test_getMCPAttributes(t *testing.T) {

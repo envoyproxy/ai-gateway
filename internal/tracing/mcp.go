@@ -8,6 +8,11 @@ package tracing
 import (
 	"context"
 	"fmt"
+	"maps"
+	"net/http"
+	"slices"
+	"sort"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -71,7 +76,7 @@ func newMCPTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator,
 }
 
 // StartSpanAndInjectMeta implements [tracing.MCPTracer.StartSpanAndInjectMeta].
-func (m mcpTracer) StartSpanAndInjectMeta(ctx context.Context, req *jsonrpc.Request, param mcp.Params, headers map[string]string) tracing.MCPSpan {
+func (m mcpTracer) StartSpanAndInjectMeta(ctx context.Context, req *jsonrpc.Request, param mcp.Params, headers http.Header) tracing.MCPSpan {
 	attrs := []attribute.KeyValue{
 		attribute.String("mcp.protocol.version", "2025-06-18"),
 		attribute.String("mcp.transport", "http"),
@@ -85,9 +90,9 @@ func (m mcpTracer) StartSpanAndInjectMeta(ctx context.Context, req *jsonrpc.Requ
 		// Check if the attribute is present in the metadata first, as this is the common place to add custom attributes
 		// in MCP requests. Fall back to headers if not found in metadata.
 		// If the attribute is not found there, check if there is any custom header to map.
-		if metaValue, ok := param.GetMeta()[srcName]; ok {
-			attrs = append(attrs, attribute.String(targetName, fmt.Sprintf("%v", metaValue)))
-		} else if headerValue, ok := headers[srcName]; ok {
+		if metaValue := caseInsensitiveValue(param.GetMeta(), srcName); metaValue != "" {
+			attrs = append(attrs, attribute.String(targetName, metaValue))
+		} else if headerValue := headers.Get(srcName); headerValue != "" { // this is case-insensitive
 			attrs = append(attrs, attribute.String(targetName, headerValue))
 		}
 	}
@@ -119,6 +124,31 @@ func (m mcpTracer) StartSpanAndInjectMeta(ctx context.Context, req *jsonrpc.Requ
 	}
 
 	return nil
+}
+
+// caseInsensitiveValue retrieves a value from the meta map in a case-insensitive manner.
+// If the same key is present in different cases, the first one in alphabetical order
+// that matches is returned.
+// If the key is not found, it returns an empty string.
+func caseInsensitiveValue(meta map[string]any, key string) string {
+	if meta == nil {
+		return ""
+	}
+
+	if v, ok := meta[key]; ok {
+		return fmt.Sprintf("%v", v)
+	}
+
+	keys := slices.Collect(maps.Keys(meta))
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		if strings.EqualFold(k, key) {
+			return fmt.Sprintf("%v", meta[k])
+		}
+	}
+
+	return ""
 }
 
 func getMCPParamsAsAttributes(p mcp.Params) []attribute.KeyValue {

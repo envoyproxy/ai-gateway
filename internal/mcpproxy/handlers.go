@@ -1237,13 +1237,7 @@ func parseParamsAndMaybeStartSpan[paramType mcp.Params](ctx context.Context, m *
 		return nil, err
 	}
 
-	// TODO: headers with multiple values
-	headerMap := make(map[string]string, len(headers))
-	for header := range headers {
-		headerMap[header] = headers.Get(header)
-	}
-
-	span := m.tracer.StartSpanAndInjectMeta(ctx, req, p, headerMap)
+	span := m.tracer.StartSpanAndInjectMeta(ctx, req, p, headers)
 	return span, nil
 }
 

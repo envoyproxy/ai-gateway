@@ -9,6 +9,7 @@ package api
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -26,7 +27,7 @@ type MCPTracer interface {
 	//   - headers: Request HTTP request headers.
 	//
 	// Returns nil unless the span is sampled.
-	StartSpanAndInjectMeta(ctx context.Context, req *jsonrpc.Request, param mcp.Params, headers map[string]string) MCPSpan
+	StartSpanAndInjectMeta(ctx context.Context, req *jsonrpc.Request, param mcp.Params, headers http.Header) MCPSpan
 }
 
 // MCPSpan represents an MCP span.
@@ -46,6 +47,6 @@ var _ MCPTracer = NoopMCPTracer{}
 type NoopMCPTracer struct{}
 
 // StartSpanAndInjectMeta implements [MCPTracer.StartSpanAndInjectMeta].
-func (NoopMCPTracer) StartSpanAndInjectMeta(context.Context, *jsonrpc.Request, mcp.Params, map[string]string) MCPSpan {
+func (NoopMCPTracer) StartSpanAndInjectMeta(context.Context, *jsonrpc.Request, mcp.Params, http.Header) MCPSpan {
 	return nil
 }
