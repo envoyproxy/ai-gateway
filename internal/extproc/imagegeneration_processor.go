@@ -400,7 +400,6 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessResponseBody(ctx context
 		},
 	}
 
-	// TODO: we need to investigate if we need to accumulate the token usage for streaming responses.
 	i.costs.InputTokens += tokenUsage.InputTokens
 	i.costs.OutputTokens += tokenUsage.OutputTokens
 	i.costs.TotalTokens += tokenUsage.TotalTokens

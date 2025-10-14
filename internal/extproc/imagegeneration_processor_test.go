@@ -53,11 +53,6 @@ func Test_imageGenerationProcessorUpstreamFilter_SelectTranslator(t *testing.T) 
 		require.NoError(t, err)
 		require.NotNil(t, c.translator)
 	})
-	t.Run("supported aws bedrock", func(t *testing.T) {
-		err := c.selectTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock})
-		require.NoError(t, err)
-		require.Nil(t, c.translator) // Placeholder implementation
-	})
 }
 
 type mockImageGenerationTracer struct {

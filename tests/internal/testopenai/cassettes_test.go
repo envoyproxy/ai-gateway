@@ -29,8 +29,8 @@ func testNewRequest[R any](t *testing.T, tests []cassetteTestCase[R]) {
 	server, err := NewServer(os.Stdout, 0)
 	require.NoError(t, err)
 	defer func() {
-		// this sleep is required to wait till large cassettes are recorded
-		// remove this sleep when we have a way to wait for cassettes to be recorded
+		// This sleep is required to wait until large cassettes are recorded.
+		// Remove this sleep when there is a proper way to wait for cassettes to be recorded.
 		<-time.After(5 * time.Second)
 		server.Close()
 	}()

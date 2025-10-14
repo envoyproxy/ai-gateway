@@ -131,26 +131,9 @@ func (o *openAIToOpenAIImageGenerationTranslator) ResponseBody(_ map[string]stri
 		return nil, nil, tokenUsage, imageMetadata, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// Debug logging for response body content
-	bodyPreview := string(bodyBytes)
-	if len(bodyPreview) > 200 {
-		bodyPreview = bodyPreview[:200] + "..."
-	}
-	fmt.Printf("DEBUG: Image generation translator received body - Length: %d, Preview: %s\n", len(bodyBytes), bodyPreview)
-
-	// Check if body looks like JSON
-	if len(bodyBytes) > 0 && bodyBytes[0] != '{' && bodyBytes[0] != '[' {
-		previewLen := 10
-		if len(bodyBytes) < previewLen {
-			previewLen = len(bodyBytes)
-		}
-		fmt.Printf("DEBUG: Body does not start with JSON character. First %d bytes: %v\n", previewLen, bodyBytes[:previewLen])
-	}
-
 	// Decode using OpenAI SDK v2 schema to avoid drift.
 	resp := &openaisdk.ImagesResponse{}
 	if err := json.Unmarshal(bodyBytes, &resp); err != nil {
-		fmt.Printf("DEBUG: JSON unmarshal failed - Error: %v, Body preview: %s\n", err, bodyPreview)
 		return nil, nil, tokenUsage, imageMetadata, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 
@@ -167,14 +150,4 @@ func (o *openAIToOpenAIImageGenerationTranslator) ResponseBody(_ map[string]stri
 	imageMetadata.Size = string(resp.Size)
 
 	return
-}
-
-// extractUsageFromBufferEvent extracts token usage from buffered streaming events.
-// This is currently not applicable for image generation as it doesn't use streaming.
-// TODO: Implement if streaming support is added for image generation in the future.
-// NOTE: image generation currently does not use streaming; keep for future parity with other translators.
-//
-//lint:ignore U1000 kept for parity and future use
-func (o *openAIToOpenAIImageGenerationTranslator) extractUsageFromBufferEvent(_ tracing.ImageGenerationSpan) LLMTokenUsage {
-	return LLMTokenUsage{}
 }
