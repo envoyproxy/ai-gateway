@@ -673,7 +673,13 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 		return nil, nil, tokenUsage, "", fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 
+	responseModel = o.requestModel
+	if anthropicResp.Model != "" {
+		responseModel = string(anthropicResp.Model)
+	}
+
 	openAIResp := &openai.ChatCompletionResponse{
+		Model:   responseModel,
 		Object:  string(openAIconstant.ValueOf[openAIconstant.ChatCompletion]()),
 		Choices: make([]openai.ChatCompletionResponseChoice, 0),
 	}
@@ -734,5 +740,5 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 	if span != nil {
 		span.RecordResponse(openAIResp)
 	}
-	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, tokenUsage, o.requestModel, nil
+	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, tokenUsage, responseModel, nil
 }

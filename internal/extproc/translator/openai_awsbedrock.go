@@ -639,6 +639,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 	openAIResp := &openai.ChatCompletionResponse{
+		// We use request model as response model since bedrock does not return the modelName in the response.
+		Model:   o.requestModel,
 		Object:  "chat.completion",
 		Choices: make([]openai.ChatCompletionResponseChoice, 0),
 	}

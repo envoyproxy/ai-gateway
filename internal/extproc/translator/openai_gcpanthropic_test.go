@@ -433,6 +433,37 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 				},
 			},
 		},
+		{
+			name: "response with model field set",
+			inputResponse: &anthropic.Message{
+				ID:         "msg_01XYZ123",
+				Model:      "claude-3-5-sonnet-20241022",
+				Role:       constant.Assistant(anthropic.MessageParamRoleAssistant),
+				Content:    []anthropic.ContentBlockUnion{{Type: "text", Text: "Model field test response."}},
+				StopReason: anthropic.StopReasonEndTurn,
+				Usage:      anthropic.Usage{InputTokens: 8, OutputTokens: 12, CacheReadInputTokens: 2},
+			},
+			respHeaders: map[string]string{statusHeaderName: "200"},
+			expectedOpenAIResponse: openai.ChatCompletionResponse{
+				Model:  "claude-3-5-sonnet-20241022",
+				Object: "chat.completion",
+				Usage: openai.Usage{
+					PromptTokens:     8,
+					CompletionTokens: 12,
+					TotalTokens:      20,
+					PromptTokensDetails: &openai.PromptTokensDetails{
+						CachedTokens: 2,
+					},
+				},
+				Choices: []openai.ChatCompletionResponseChoice{
+					{
+						Index:        0,
+						Message:      openai.ChatCompletionResponseChoiceMessage{Role: "assistant", Content: ptr.To("Model field test response.")},
+						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
