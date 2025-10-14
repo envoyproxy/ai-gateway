@@ -165,7 +165,7 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 			// https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#session-management
 			if s == nil {
 				errType = metrics.MCPErrorInvalidSessionID
-				onErrorResponse(w, http.StatusBadRequest, "missing session id")
+				onErrorResponse(w, http.StatusBadRequest, "missing session ID")
 				return
 			}
 			m.l.Debug("Decoded MCP response", slog.Any("response", msg))
