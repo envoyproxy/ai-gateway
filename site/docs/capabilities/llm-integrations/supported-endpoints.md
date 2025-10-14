@@ -78,6 +78,7 @@ curl -H "Content-Type: application/json" \
 
 **Supported Providers:**
 
+- Anthropic
 - GCP Anthropic
 
 **Example:**
