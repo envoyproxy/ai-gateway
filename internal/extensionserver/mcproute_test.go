@@ -124,13 +124,69 @@ func TestServer_createRoutesForBackendListener(t *testing.T) {
 			},
 			expectedRoute: nil,
 		},
+		{
+			name: "with MCP routes",
+			routes: []*routev3.RouteConfiguration{
+				{
+					VirtualHosts: []*routev3.VirtualHost{
+						{
+							Name:   "test-vh",
+							Routes: []*routev3.Route{{Name: "normal"}},
+						},
+					},
+				},
+				{
+					VirtualHosts: []*routev3.VirtualHost{
+						{
+							Name:    "mcp-vh",
+							Domains: []string{"*"},
+							Routes: []*routev3.Route{
+								{
+									Name: internalapi.MCPPerBackendRefHTTPRoutePrefix + "foo/rule/0",
+									Action: &routev3.Route_Route{
+										Route: &routev3.RouteAction{ClusterSpecifier: &routev3.RouteAction_Cluster{}},
+									},
+								},
+								{
+									Name: internalapi.MCPPerBackendRefHTTPRoutePrefix + "bar/rule/1",
+									Action: &routev3.Route_Route{
+										Route: &routev3.RouteAction{ClusterSpecifier: &routev3.RouteAction_Cluster{}},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedRoute: &routev3.RouteConfiguration{
+				Name: "aigateway-mcp-backend-listener-route-config",
+				VirtualHosts: []*routev3.VirtualHost{
+					{
+						Domains: []string{"*"},
+						Name:    "aigateway-mcp-backend-listener-wildcard",
+						Routes: []*routev3.Route{
+							{Name: internalapi.MCPPerBackendRefHTTPRoutePrefix + "foo/rule/0", Action: &routev3.Route_Route{
+								Route: &routev3.RouteAction{ClusterSpecifier: &routev3.RouteAction_Cluster{}},
+							}},
+							{Name: internalapi.MCPPerBackendRefHTTPRoutePrefix + "bar/rule/1", Action: &routev3.Route_Route{
+								Route: &routev3.RouteAction{ClusterSpecifier: &routev3.RouteAction_Cluster{}},
+							}},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &Server{log: testr.New(t)}
 			route := s.createRoutesForBackendListener(tt.routes)
-			require.Equal(t, tt.expectedRoute, route)
+			if tt.expectedRoute == nil {
+				require.Nil(t, route)
+			} else {
+				require.Empty(t, cmp.Diff(tt.expectedRoute, route, protocmp.Transform()))
+			}
 		})
 	}
 }
