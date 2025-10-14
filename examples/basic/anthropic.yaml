@@ -83,4 +83,4 @@ metadata:
   namespace: default
 type: Opaque
 stringData:
-  apiKey: ANTHROPIC_API_KEY # Replace with your OpenAI API key.
+  apiKey: ANTHROPIC_API_KEY # Replace with your Anthropic API key.
