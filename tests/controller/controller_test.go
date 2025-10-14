@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,6 +29,7 @@ import (
 	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/config"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -77,8 +79,9 @@ func TestStartControllers(t *testing.T) {
 				Spec: aigv1a1.AIServiceBackendSpec{
 					APISchema: defaultSchema,
 					BackendRef: gwapiv1.BackendObjectReference{
-						Name: gwapiv1.ObjectName(backend),
-						Port: ptr.To[gwapiv1.PortNumber](8080),
+						Name:  gwapiv1.ObjectName(backend),
+						Kind:  ptr.To(gwapiv1.Kind("Backend")),
+						Group: ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
 					},
 				},
 			})
@@ -203,6 +206,81 @@ func TestStartControllers(t *testing.T) {
 	}
 }
 
+func TestNamespaceScopedCache(t *testing.T) {
+	_, cfg, _ := testsinternal.NewEnvTest(t)
+	opts := controller.Options{EnableLeaderElection: false, DisableMutatingWebhook: true}
+
+	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+		Scheme: controller.Scheme,
+		Cache: cache.Options{
+			// Only watch the "test" namespace, where the test will be creating resources.
+			// Also initialize the cache with an unexisting namespace to verify it doesn't fail.
+			DefaultNamespaces: map[string]cache.Config{"test": {}, "unexisting": {}},
+			DefaultTransform:  cache.TransformStripManagedFields(),
+		},
+		Controller:     config.Controller{SkipNameValidation: ptr.To(true)},
+		LeaderElection: false,
+	})
+	require.NoError(t, err)
+
+	ctx := t.Context()
+	go func() {
+		startErr := controller.StartControllers(ctx, mgr, cfg, defaultLogger(), opts)
+		require.NoError(t, startErr)
+	}()
+
+	// Create one backend in the "default" namespace and one in the "test" namespace.
+	// Only the one in the "test" namespace should be seen by the manager Client as the
+	// other namespace is not watched.
+
+	require.NoError(t, mgr.GetClient().Create(ctx, &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{Name: "test"},
+	}))
+	require.NoError(t, mgr.GetClient().Create(ctx, &aigv1a1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "backend1", Namespace: "default"},
+		Spec: aigv1a1.AIServiceBackendSpec{
+			APISchema: defaultSchema,
+			BackendRef: gwapiv1.BackendObjectReference{
+				Name:  "backend1",
+				Kind:  ptr.To(gwapiv1.Kind("Backend")),
+				Group: ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
+			},
+		},
+	}))
+	require.NoError(t, mgr.GetClient().Create(ctx, &aigv1a1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "backend2", Namespace: "test"},
+		Spec: aigv1a1.AIServiceBackendSpec{
+			APISchema: defaultSchema,
+			BackendRef: gwapiv1.BackendObjectReference{
+				Name:  "backend2",
+				Kind:  ptr.To(gwapiv1.Kind("Backend")),
+				Group: ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
+			},
+		},
+	}))
+
+	// Verify that the object in the cached namespace is seen.
+	require.Eventually(t, func() bool {
+		var aiBackend aigv1a1.AIServiceBackend
+		err = mgr.GetClient().Get(ctx, client.ObjectKey{Name: "backend2", Namespace: "test"}, &aiBackend)
+		if err != nil {
+			t.Logf("failed to get backend: %v", err)
+			return false
+		}
+		require.Equal(t, "test", aiBackend.Namespace)
+		require.Equal(t, "backend2", aiBackend.Name)
+		return true
+	}, 30*time.Second, 200*time.Millisecond)
+
+	// Verify that objects in uncached namespaces aren't seen or can't be retrieved due to the cache
+	// failing on an unknown namespace.
+	require.Never(t, func() bool {
+		var backends aigv1a1.AIServiceBackendList
+		err = mgr.GetClient().List(ctx, &backends, client.InNamespace("default"))
+		return (err != nil && !strings.Contains(err.Error(), "unknown namespace")) || len(backends.Items) > 0
+	}, 5*time.Second, 200*time.Millisecond)
+}
+
 func TestAIGatewayRouteController(t *testing.T) {
 	c, cfg, k := testsinternal.NewEnvTest(t)
 
@@ -274,8 +352,9 @@ func TestAIGatewayRouteController(t *testing.T) {
 			Spec: aigv1a1.AIServiceBackendSpec{
 				APISchema: defaultSchema,
 				BackendRef: gwapiv1.BackendObjectReference{
-					Name: gwapiv1.ObjectName(b),
-					Port: ptr.To[gwapiv1.PortNumber](8080),
+					Name:  gwapiv1.ObjectName(b),
+					Kind:  ptr.To(gwapiv1.Kind("Backend")),
+					Group: ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
 				},
 			},
 		})
@@ -404,8 +483,9 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 			Spec: aigv1a1.AIServiceBackendSpec{
 				APISchema: defaultSchema,
 				BackendRef: gwapiv1.BackendObjectReference{
-					Name: gwapiv1.ObjectName("mybackend"),
-					Port: ptr.To[gwapiv1.PortNumber](8080),
+					Name:  gwapiv1.ObjectName("mybackend"),
+					Kind:  ptr.To(gwapiv1.Kind("Backend")),
+					Group: ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
 				},
 			},
 		},
@@ -414,8 +494,9 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 			Spec: aigv1a1.AIServiceBackendSpec{
 				APISchema: defaultSchema,
 				BackendRef: gwapiv1.BackendObjectReference{
-					Name: gwapiv1.ObjectName("mybackend"),
-					Port: ptr.To[gwapiv1.PortNumber](8080),
+					Name:  gwapiv1.ObjectName("mybackend"),
+					Kind:  ptr.To(gwapiv1.Kind("Backend")),
+					Group: ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
 				},
 			},
 		},
@@ -610,8 +691,9 @@ func TestAIServiceBackendController(t *testing.T) {
 			Spec: aigv1a1.AIServiceBackendSpec{
 				APISchema: defaultSchema,
 				BackendRef: gwapiv1.BackendObjectReference{
-					Name: gwapiv1.ObjectName("mybackend"),
-					Port: ptr.To[gwapiv1.PortNumber](8080),
+					Name:  gwapiv1.ObjectName("mybackend"),
+					Kind:  ptr.To(gwapiv1.Kind("Backend")),
+					Group: ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
 				},
 			},
 		}
@@ -633,7 +715,7 @@ func TestAIServiceBackendController(t *testing.T) {
 			var origin aigv1a1.AIServiceBackend
 			err = c.Get(t.Context(), client.ObjectKey{Name: aiServiceBackendName, Namespace: aiServiceBackendNamespace}, &origin)
 			require.NoError(t, err)
-			origin.Spec.BackendRef.Port = ptr.To[gwapiv1.PortNumber](9090)
+			origin.Spec.BackendRef.Name = "mybackend-updated"
 			return c.Update(t.Context(), &origin)
 		})
 		require.NoError(t, err)

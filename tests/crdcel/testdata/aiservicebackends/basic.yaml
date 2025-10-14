@@ -13,5 +13,6 @@ spec:
     name: AWSBedrock
   backendRef:
     name: dog-service
-    kind: Service
+    kind: Backend
+    group: gateway.envoyproxy.io
     port: 80

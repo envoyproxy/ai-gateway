@@ -43,27 +43,31 @@ func Test_translate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			buf := &bytes.Buffer{}
 			// Multiple files should be supported and duplicated resources should be deduplicated.
-			err := translate(t.Context(), cmdTranslate{Paths: []string{tc.in, tc.in}, Debug: true}, buf, os.Stderr)
+			err := translate(t.Context(), []string{tc.in, tc.in}, buf, os.Stderr)
 			require.NoError(t, err)
 			outBuf, err := os.ReadFile(tc.out)
 			require.NoError(t, err)
+
 			outHTTPRoutes, outEnvoyExtensionPolicy, outHTTPRouteFilter,
 				outConfigMaps, outSecrets, outDeployments, outServices,
-				outBackends, outBackendTLSPolicy, outGatewayClass, outGateway := requireCollectTranslatedObjects(t, buf.String())
+				outBackends, outBackendTLSPolicy, outGatewayClass, outGateway, outEnvoyProxy, outBackendTrafficPolicy, outSecurityPolicy := requireCollectTranslatedObjects(t, buf.String())
 			expHTTPRoutes, expEnvoyExtensionPolicy, expHTTPRouteFilter,
 				expConfigMaps, expSecrets, expDeployments, expServices,
-				expBackends, expBackendTLSPolicy, expGatewayClass, expGateway := requireCollectTranslatedObjects(t, string(outBuf))
-			assert.Equal(t, expHTTPRoutes, outHTTPRoutes)
-			assert.Equal(t, expEnvoyExtensionPolicy, outEnvoyExtensionPolicy)
-			assert.Equal(t, expHTTPRouteFilter, outHTTPRouteFilter)
-			assert.Equal(t, expConfigMaps, outConfigMaps)
-			assert.Equal(t, expSecrets, outSecrets)
-			assert.Equal(t, expDeployments, outDeployments)
-			assert.Equal(t, expServices, outServices)
-			assert.Equal(t, expBackends, outBackends)
-			assert.Equal(t, expBackendTLSPolicy, outBackendTLSPolicy)
-			assert.Equal(t, expGatewayClass, outGatewayClass)
-			assert.Equal(t, expGateway, outGateway)
+				expBackends, expBackendTLSPolicy, expGatewayClass, expGateway, expEnvoyProxy, expBackendTrafficPolicy, expSecurityPolicy := requireCollectTranslatedObjects(t, string(outBuf))
+			assert.ElementsMatch(t, expHTTPRoutes, outHTTPRoutes)
+			assert.ElementsMatch(t, expEnvoyExtensionPolicy, outEnvoyExtensionPolicy)
+			assert.ElementsMatch(t, expHTTPRouteFilter, outHTTPRouteFilter)
+			assert.ElementsMatch(t, expConfigMaps, outConfigMaps)
+			assert.ElementsMatch(t, expSecrets, outSecrets)
+			assert.ElementsMatch(t, expDeployments, outDeployments)
+			assert.ElementsMatch(t, expServices, outServices)
+			assert.ElementsMatch(t, expBackends, outBackends)
+			assert.ElementsMatch(t, expBackendTLSPolicy, outBackendTLSPolicy)
+			assert.ElementsMatch(t, expGatewayClass, outGatewayClass)
+			assert.ElementsMatch(t, expGateway, outGateway)
+			assert.ElementsMatch(t, expEnvoyProxy, outEnvoyProxy)
+			assert.ElementsMatch(t, expBackendTrafficPolicy, outBackendTrafficPolicy)
+			assert.ElementsMatch(t, expSecurityPolicy, outSecurityPolicy)
 		})
 	}
 }
@@ -80,6 +84,9 @@ func requireCollectTranslatedObjects(t *testing.T, yamlInput string) (
 	outBackendTLSPolicy []gwapiv1a3.BackendTLSPolicy,
 	outGatewayClasses []gwapiv1.GatewayClass,
 	outGateway []gwapiv1.Gateway,
+	outEnvoyProxy []egv1a1.EnvoyProxy,
+	outBackendTrafficPolicy []egv1a1.BackendTrafficPolicy,
+	outSecurityPolicy []egv1a1.SecurityPolicy,
 ) {
 	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader([]byte(yamlInput)), 4096)
 	for {
@@ -121,6 +128,12 @@ func requireCollectTranslatedObjects(t *testing.T, yamlInput string) (
 			mustExtractAndAppend(obj, &outGatewayClasses)
 		case "Gateway":
 			mustExtractAndAppend(obj, &outGateway)
+		case "EnvoyProxy":
+			mustExtractAndAppend(obj, &outEnvoyProxy)
+		case "BackendTrafficPolicy":
+			mustExtractAndAppend(obj, &outBackendTrafficPolicy)
+		case "SecurityPolicy":
+			mustExtractAndAppend(obj, &outSecurityPolicy)
 		default:
 			t.Fatalf("Skipping unknown kind %q", obj.GetKind())
 		}

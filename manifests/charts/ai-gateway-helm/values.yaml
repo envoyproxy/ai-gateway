@@ -21,6 +21,7 @@ extProc:
     # Overrides the image tag whose default is the chart appVersion.
     tag: ""
   imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
   # One of "info", "debug", "trace", "warn", "error", "fatal", "panic".
   logLevel: info
 
@@ -39,10 +40,18 @@ controller:
   nameOverride: ""
   fullnameOverride: "ai-gateway-controller"
 
-  # Comma-separated key-value pairs for mapping HTTP request headers to Prometheus metric labels.
-  # Format: "header1:label1,header2:label2"
-  # Example: "x-team-id:team_id,x-user-id:user_id"
+  # DEPRECATED: metricsRequestHeaderLabels will be removed after v0.4. Use metricsRequestHeaderAttributes instead.
   metricsRequestHeaderLabels: ""
+
+  # Comma-separated key-value pairs for mapping HTTP request headers to Otel metric attributes.
+  # Format: "header1:label1,header2:label2"
+  # Example: "x-team-id:team.id,x-user-id:user.id"
+  metricsRequestHeaderAttributes: ""
+
+  # Comma-separated key-value pairs for mapping HTTP request headers to otel span attributes.
+  # Format: "header1:attribute1,header2:attribute2"
+  # Example: "x-session-id:session.id,x-user-id:user.id"
+  spanRequestHeaderAttributes: ""
 
   # -- Service Account --
   serviceAccount:
@@ -57,6 +66,15 @@ controller:
   # Enable leader election mechanism for protecting against split brain if multiple operator pods/replicas are started.
   leaderElection:
     enabled: true
+
+  # Configuration for how the Kubernetes controllers watch the different resources.
+  watch:
+    # Namespaces to watch. An empty list means to watch all namespaces.
+    # Default is an empty list, to watch all namespaces.
+    namespaces: []
+    # Sync timeout for the Kubernetes cache. If the cache is not synced within this time, the controller will exit.
+    # Default is 2 minutes.
+    cacheSyncTimeout: 2m
 
   # -- Deployment configs --
   image:
@@ -147,4 +165,8 @@ controller:
   nodeSelector: {}
   tolerations: []
   affinity: {}
-
+  # maxRecvMsgSize is the maximum message size in bytes that the gRPC extension server can receive
+  # from xDS (envoy-gateway).
+  # This value should be increased in setups where count/complexity of xDS
+  # resources (configuration) is big. Defaults to 4MB.
+  # maxRecvMsgSize: "4194304"

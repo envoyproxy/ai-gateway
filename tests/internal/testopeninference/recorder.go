@@ -32,7 +32,7 @@ import (
 )
 
 // proxyFunc is a function that starts a proxy for recording spans.
-type proxyFunc func(ctx context.Context, logger *log.Logger, openaiBaseUrl, otlpEndpoint string) (url string, closer func(), err error)
+type proxyFunc func(ctx context.Context, logger *log.Logger, cassette testopenai.Cassette, openaiBaseUrl, otlpEndpoint string) (url string, closer func(), err error)
 
 // spanRecorder records OpenInference spans for OpenAI API requests.
 type spanRecorder struct {
@@ -57,11 +57,11 @@ func (r *spanRecorder) recordSpan(ctx context.Context, cassette testopenai.Casse
 	collector, spanCh := r.startOTLPCollector()
 	defer collector.Close()
 
-	openaiBaseURL := fmt.Sprintf("http://localhost:%d/v1", openAIServer.Port())
+	openaiBaseURL := fmt.Sprintf("http://localhost:%d", openAIServer.Port())
 	otlpEndpoint := fmt.Sprintf("http://localhost:%d", getPort(collector.URL))
 	r.logger.Printf("Starting proxy container with OTLP endpoint: %s", otlpEndpoint)
 
-	proxyURL, closer, err := r.startProxy(ctx, r.logger, openaiBaseURL, otlpEndpoint)
+	proxyURL, closer, err := r.startProxy(ctx, r.logger, cassette, openaiBaseURL, otlpEndpoint)
 	if err != nil {
 		return nil, err
 	}

@@ -112,10 +112,13 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 		finalChunk := openai.ChatCompletionResponseChunk{
 			Object:  "chat.completion.chunk",
 			Choices: []openai.ChatCompletionResponseChunkChoice{},
-			Usage: &openai.ChatCompletionResponseUsage{
+			Usage: &openai.Usage{
 				PromptTokens:     int(p.tokenUsage.InputTokens),
 				CompletionTokens: int(p.tokenUsage.OutputTokens),
 				TotalTokens:      int(p.tokenUsage.TotalTokens),
+				PromptTokensDetails: &openai.PromptTokensDetails{
+					CachedTokens: int(p.tokenUsage.CachedTokens),
+				},
 			},
 		}
 
@@ -191,7 +194,8 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			return nil, fmt.Errorf("unmarshal message_start: %w", err)
 		}
 		p.activeMessageID = event.Message.ID
-		p.tokenUsage.InputTokens = uint32(event.Message.Usage.InputTokens) //nolint:gosec
+		p.tokenUsage.InputTokens = uint32(event.Message.Usage.InputTokens)            //nolint:gosec
+		p.tokenUsage.CachedTokens += uint32(event.Message.Usage.CacheReadInputTokens) //nolint:gosec
 		return nil, nil
 
 	case string(constant.ValueOf[constant.ContentBlockStart]()):
@@ -254,6 +258,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if event.Delta.StopReason != "" {
 			p.stopReason = event.Delta.StopReason
 		}
+		p.tokenUsage.CachedTokens += uint32(event.Usage.CacheReadInputTokens) //nolint:gosec
 		return nil, nil
 
 	case string(constant.ValueOf[constant.ContentBlockDelta]()):

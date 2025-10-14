@@ -80,6 +80,11 @@ const LLMProvidersList: LLMProvider[] = [
     logoUrl: '/img/providers/vertex-ai.svg',
     status: 'supported',
   },
+  {
+    name: 'Tetrate Agent Router Service',
+    logoUrl: '/img/providers/tars.svg',
+    status: 'supported',
+  }
 ];
 
 function ProviderLogo({ name, logoUrl, status }: LLMProvider) {

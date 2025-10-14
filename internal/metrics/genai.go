@@ -18,18 +18,20 @@ const (
 
 	genaiAttributeOperationName = "gen_ai.operation.name"
 	genaiAttributeProviderName  = "gen_ai.provider.name"
+	genaiAttributeOriginalModel = "gen_ai.original.model"
 	genaiAttributeRequestModel  = "gen_ai.request.model"
 	genaiAttributeResponseModel = "gen_ai.response.model"
 	genaiAttributeTokenType     = "gen_ai.token.type" //nolint:gosec // metric name, not credential
 	genaiAttributeErrorType     = "error.type"
 
-	genaiOperationChat      = "chat"
-	genaiOperationEmbedding = "embeddings"
-	genaiProviderOpenAI     = "openai"
-	genaiProviderAWSBedrock = "aws.bedrock"
-	genaiTokenTypeInput     = "input"
-	genaiTokenTypeOutput    = "output"
-	genaiErrorTypeFallback  = "_OTHER"
+	genaiOperationChat       = "chat"
+	genaiOperationCompletion = "completion"
+	genaiOperationEmbedding  = "embeddings"
+	genaiProviderOpenAI      = "openai"
+	genaiProviderAWSBedrock  = "aws.bedrock"
+	genaiTokenTypeInput      = "input"
+	genaiTokenTypeOutput     = "output"
+	genaiErrorTypeFallback   = "_OTHER"
 )
 
 // genAI holds metrics according to the Semantic Conventions for Generative AI Metrics.
@@ -83,13 +85,4 @@ func newGenAI(meter metric.Meter) *genAI {
 			metric.WithExplicitBucketBoundaries(0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.75, 1.0, 2.5),
 		),
 	}
-}
-
-// mustRegisterHistogram registers a histogram with the meter and panics if it fails.
-func mustRegisterHistogram(meter metric.Meter, name string, options ...metric.Float64HistogramOption) metric.Float64Histogram {
-	h, err := meter.Float64Histogram(name, options...)
-	if err != nil {
-		panic(err)
-	}
-	return h
 }

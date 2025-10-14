@@ -30,7 +30,7 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	gwaiev1a2 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha2"
+	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -117,6 +117,10 @@ func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTra
 		})
 		s.log.Info("Added extproc-uds cluster to the list of clusters")
 	}
+
+	// Generate the resources needed to support MCP Gateway functionality.
+	s.maybeGenerateResourcesForMCPGateway(req)
+
 	response := &egextension.PostTranslateModifyResponse{Clusters: req.Clusters, Secrets: req.Secrets, Listeners: req.Listeners, Routes: req.Routes}
 	return response, nil
 }
@@ -163,7 +167,7 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 	err = s.k8sClient.Get(context.Background(), client.ObjectKey{Namespace: httpRouteNamespace, Name: httpRouteName}, &aigwRoute)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			s.log.Info("Skipping user-created HTTPRoute cluster modification",
+			s.log.Info("Skipping non-AIGatewayRoute HTTPRoute cluster modification",
 				"namespace", httpRouteNamespace, "name", httpRouteName)
 			return
 		}
@@ -360,14 +364,14 @@ func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, 
 
 	// inferencePoolRoutes builds a matrix of route configs and the inference pools they use.
 	routeNameToRoute := make(map[string]*routev3.RouteConfiguration)
-	routeNameToVHRouteNameToInferencePool := make(map[string]map[string]*gwaiev1a2.InferencePool)
+	routeNameToVHRouteNameToInferencePool := make(map[string]map[string]*gwaiev1.InferencePool)
 	for _, routeCfg := range routes {
 		routeNameToRoute[routeCfg.Name] = routeCfg
 		for _, vh := range routeCfg.VirtualHosts {
 			for _, route := range vh.Routes {
 				if pool := getInferencePoolByMetadata(route.Metadata); pool != nil {
 					if routeNameToVHRouteNameToInferencePool[routeCfg.Name] == nil {
-						routeNameToVHRouteNameToInferencePool[routeCfg.Name] = make(map[string]*gwaiev1a2.InferencePool)
+						routeNameToVHRouteNameToInferencePool[routeCfg.Name] = make(map[string]*gwaiev1.InferencePool)
 					}
 					routeNameToVHRouteNameToInferencePool[routeCfg.Name][route.Name] = pool
 				}
@@ -376,7 +380,7 @@ func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, 
 	}
 
 	// listenerToInferencePools builds a matrix of listeners and the inference pools they use.
-	listenerToInferencePools := make(map[string][]*gwaiev1a2.InferencePool)
+	listenerToInferencePools := make(map[string][]*gwaiev1.InferencePool)
 	for listener, routeCfgNames := range listenerNameToRouteNames {
 		for _, name := range routeCfgNames {
 			if routeNameToRoute[name] == nil {
@@ -387,7 +391,7 @@ func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, 
 			}
 			for _, pool := range routeNameToVHRouteNameToInferencePool[name] {
 				if listenerToInferencePools[listener] == nil {
-					listenerToInferencePools[listener] = make([]*gwaiev1a2.InferencePool, 0)
+					listenerToInferencePools[listener] = make([]*gwaiev1.InferencePool, 0)
 				}
 				listenerToInferencePools[listener] = append(listenerToInferencePools[listener], pool)
 			}
@@ -429,7 +433,7 @@ func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, 
 }
 
 // patchListenerWithInferencePoolFilters adds the necessary HTTP filters to the listener to support InferencePool backends.
-func (s *Server) patchListenerWithInferencePoolFilters(listener *listenerv3.Listener, inferencePools []*gwaiev1a2.InferencePool) {
+func (s *Server) patchListenerWithInferencePoolFilters(listener *listenerv3.Listener, inferencePools []*gwaiev1.InferencePool) {
 	// First, get the filter chains from the listener.
 	filterChains := listener.GetFilterChains()
 	defaultFC := listener.DefaultFilterChain
@@ -465,20 +469,15 @@ func (s *Server) patchListenerWithInferencePoolFilters(listener *listenerv3.List
 		}
 
 		// Write the updated HCM back to the filter chain.
-		anyConnectionMgr, err := anypb.New(httpConManager)
-		if err != nil {
-			s.log.Error(err, "failed to marshal the updated HCM")
-			continue
-		}
 		currChain.Filters[hcmIndex].ConfigType = &listenerv3.Filter_TypedConfig{
-			TypedConfig: anyConnectionMgr,
+			TypedConfig: mustToAny(httpConManager),
 		}
 	}
 }
 
 // patchVirtualHostWithInferencePool adds the necessary per-route configuration to disable.
-func (s *Server) patchVirtualHostWithInferencePool(vh *routev3.VirtualHost, inferencePools []*gwaiev1a2.InferencePool) {
-	inferenceMatrix := make(map[string]*gwaiev1a2.InferencePool)
+func (s *Server) patchVirtualHostWithInferencePool(vh *routev3.VirtualHost, inferencePools []*gwaiev1.InferencePool) {
+	inferenceMatrix := make(map[string]*gwaiev1.InferencePool)
 	for _, pool := range inferencePools {
 		inferenceMatrix[httpFilterNameForInferencePool(pool)] = pool
 	}
@@ -592,11 +591,6 @@ func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener
 }
 
 func (s *Server) isRouteGeneratedByAIGateway(route *routev3.Route) bool {
-	if s.isStandAloneMode {
-		// In stand-alone mode, we don't have the route metadata, so we assume that all routes are generated by AIGateway.
-		return true
-	}
-
 	// The route metadata should look like this:
 	//
 	//	filterMetadata:
@@ -626,6 +620,19 @@ func (s *Server) isRouteGeneratedByAIGateway(route *routev3.Route) bool {
 	if resources.GetListValue() == nil || len(resources.GetListValue().Values) == 0 {
 		s.log.Info("no resources found in the envoy-gateway metadata, skipping", "route", route.Name)
 		return false
+	}
+
+	if s.isStandAloneMode {
+		// In stand-alone mode, we don't have annotations to check, so instead use the name prefix.
+		for _, resource := range resources.GetListValue().Values {
+			// Skips all the MCP-related resources.
+			if name, ok := resource.GetStructValue().Fields["name"]; ok {
+				if strings.HasPrefix(name.GetStringValue(), internalapi.MCPGeneratedResourceCommonPrefix) {
+					return false
+				}
+			}
+		}
+		return true
 	}
 
 	// Walk through the resources to find the AIGateway-generated HTTPRoute annotation.

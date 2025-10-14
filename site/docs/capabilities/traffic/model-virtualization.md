@@ -15,8 +15,9 @@ This guide covers the key feature and configuration for model virtualization.
 It is not uncommon for multiple AI providers to offer a similar or identical model, such as Llama-3-70b, etc.
 However, each provider tends to have its own unique naming convention for the same model.
 For example, `Claude 4 Sonnet` is hosted both on GCP and AWS Bedrock, but they have different model names:
-* GCP: `claude-sonnet-4@20250514`, etc.
-* AWS Bedrock: `anthropic.claude-sonnet-4-20250514-v1:0`
+
+- GCP: `claude-sonnet-4@20250514`, etc.
+- AWS Bedrock: `anthropic.claude-sonnet-4-20250514-v1:0`
 
 Even within the same provider, model names may vary based on deployment configurations or versions.
 For example, an OpenAI Platform request to `gpt-5-nano` might result in a response from `gpt-5-nano-2025-08-07`.
@@ -35,7 +36,7 @@ AI providers handle model naming and execution differently to balance flexibilit
 - **Third-Party Delegation**: Delegates embeddings to specialized third-party services with separate APIs, integrating ecosystem expertise while focusing on core capabilities.
 
 | Upstream         | API Type         | Virtualization Type            | Request Model Example                     | Response Model Example     |
-|------------------|------------------|--------------------------------|-------------------------------------------|----------------------------|
+| ---------------- | ---------------- | ------------------------------ | ----------------------------------------- | -------------------------- |
 | **awsbedrock**   | Chat Completions | Static Model Execution         | `anthropic.claude-sonnet-4-20250514-v1:0` | N/A (no model field)       |
 | **awsbedrock**   | Embeddings       | Static Model Execution         | `amazon.titan-embed-text-v2:0`            | N/A (no model field)       |
 | **azureopenai**  | Chat Completions | URI-Based Resolution           | `{any-value}` (ignored)                   | `gpt-5-nano-2025-08-07`    |
@@ -48,7 +49,9 @@ AI providers handle model naming and execution differently to balance flexibilit
 | **openai**       | Embeddings       | Static Model Execution         | `text-embedding-3-small`                  | `text-embedding-3-small`   |
 
 ### Azure OpenAI URI-Based Behavior
+
 Azure OpenAI has a unique approach where [the model field in the request JSON is completely ignored][azure-model-ignored]. The deployment name in the URI path determines which model is actually used, and the response returns the actual versioned model name:
+
 - **URI Format**: `https://{resource}.openai.azure.com/openai/deployments/{deployment-name}/chat/completions`
 - **Request Body**: `{"model": "anything"}` ← This value is ignored
 - **Response**: `{"model": "gpt-5-nano-2025-08-07"}` ← Returns the actual versioned model name
@@ -56,10 +59,13 @@ Azure OpenAI has a unique approach where [the model field in the request JSON is
 This means [Azure OpenAI doesn't read the model field from the request JSON at all][azure-deployment-resolution] - it uses the deployment name from the URI path exclusively, but returns the real underlying versioned model identifier in the response.
 
 ### AWS Bedrock Static Execution
+
 AWS Bedrock uses static model execution with immutable versioned identifiers. The Converse API does not return a model field in responses. Each model ID like `anthropic.claude-sonnet-4-20250514-v1:0` represents a specific, frozen model version with no automatic updates or routing.
 
 ### GCP Anthropic Embeddings Delegation
+
 GCP Anthropic delegates embeddings to [Voyage AI's specialized embedding models][anthropic-embeddings-voyage] rather than providing Claude-native embeddings. Available models include:
+
 - `voyage-3.5` - Balanced performance embedding model
 - `voyage-3-large` - Best quality general-purpose embeddings
 - `voyage-code-3` - Optimized for code retrieval
@@ -68,9 +74,11 @@ GCP Anthropic delegates embeddings to [Voyage AI's specialized embedding models]
 This delegation approach allows Anthropic to focus on language model capabilities while leveraging domain expertise for embeddings.
 
 ### OpenAI Virtualization
+
 OpenAI performs automatic model routing where [generic identifiers like `gpt-5-nano` may route to different model versions][openai-model-routing] like `gpt-5-nano-2025-08-07` based on availability and optimization.
 
 ### GCP Provider Behavior
+
 Both GCP Anthropic and GCP Vertex AI use endpoint-based model resolution where [the model is specified in the URI path rather than returned in the response body][gcp-endpoint-resolution]. This provides deterministic behavior with timestamped snapshots.
 
 ## Virtualization with modelNameOverride API
@@ -88,18 +96,18 @@ metadata:
 spec:
   targetRefs: [...]
   rules:
-  - matches:
-      - headers:
-        - type: Exact
-          name: x-ai-eg-model
-          value: claude-4-sonnet
-    backendRefs:
-    - name: aws-backend
-      modelNameOverride: anthropic.claude-sonnet-4-20250514-v1:0
-      weight: 50
-    - name: gcp-backend
-      modelNameOverride: claude-sonnet-4@20250514
-      weight: 50
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: claude-4-sonnet
+      backendRefs:
+        - name: aws-backend
+          modelNameOverride: anthropic.claude-sonnet-4-20250514-v1:0
+          weight: 50
+        - name: gcp-backend
+          modelNameOverride: claude-sonnet-4@20250514
+          weight: 50
 ```
 
 This configuration allows downstream applications to use a unified model name `claude-4-sonnet` while splitting traffic between the AWS Bedrock and GCP AI providers based on the specified `modelNameOverride`.
@@ -123,23 +131,24 @@ metadata:
 spec:
   targetRefs: [...]
   rules:
-  - matches:
-      - headers:
-        - type: Exact
-          name: x-ai-eg-model
-          value: gpt-5-nano
-    backendRefs:
-    - name: openai-backend
-      # This doesn't specify modelNameOverride, so it will use the default model name `gpt-5-nano` in the request.
-      priority: 0
-    - name: openai-backend
-      modelNameOverride: gpt-5-nano-mini
-      priority: 1
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: gpt-5-nano
+      backendRefs:
+        - name: openai-backend
+          # This doesn't specify modelNameOverride, so it will use the default model name `gpt-5-nano` in the request.
+          priority: 0
+        - name: openai-backend
+          modelNameOverride: gpt-5-nano-mini
+          priority: 1
 ```
 
 With this configuration, assuming the retry is properly configured as per the [Provider Fallback](./provider-fallback) page, if the request to `gpt-5-nano` fails, Envoy AI Gateway will automatically retry the request to `gpt-5-nano-mini` on the same OpenAI provider without requiring any changes to the downstream application.
 
 ---
+
 [azure-model-ignored]: https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/chatgpt
 [azure-deployment-resolution]: https://learn.microsoft.com/en-us/azure/ai-foundry/openai/faq
 [anthropic-embeddings-voyage]: https://docs.anthropic.com/en/docs/build-with-claude/embeddings

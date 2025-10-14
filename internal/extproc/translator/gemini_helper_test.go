@@ -6,6 +6,7 @@
 package translator
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -34,13 +35,13 @@ func TestOpenAIMessagesToGeminiContents(t *testing.T) {
 				{
 					OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
 						Role:    openai.ChatMessageRoleDeveloper,
-						Content: openai.StringOrArray{Value: "This is a developer message"},
+						Content: openai.ContentUnion{Value: "This is a developer message"},
 					},
 				},
 				{
 					OfSystem: &openai.ChatCompletionSystemMessageParam{
 						Role:    openai.ChatMessageRoleSystem,
-						Content: openai.StringOrArray{Value: "This is a system message"},
+						Content: openai.ContentUnion{Value: "This is a system message"},
 					},
 				},
 				{
@@ -69,7 +70,7 @@ func TestOpenAIMessagesToGeminiContents(t *testing.T) {
 				{
 					OfTool: &openai.ChatCompletionToolMessageParam{
 						ToolCallID: "tool_call_1",
-						Content:    openai.StringOrArray{Value: "This is a message from the example_tool"},
+						Content:    openai.ContentUnion{Value: "This is a message from the example_tool"},
 					},
 				},
 			},
@@ -349,7 +350,7 @@ func TestDeveloperMsgToGeminiParts(t *testing.T) {
 		{
 			name: "string content",
 			msg: openai.ChatCompletionDeveloperMessageParam{
-				Content: openai.StringOrArray{
+				Content: openai.ContentUnion{
 					Value: "This is a system message",
 				},
 				Role: openai.ChatMessageRoleSystem,
@@ -361,7 +362,7 @@ func TestDeveloperMsgToGeminiParts(t *testing.T) {
 		{
 			name: "content as string array",
 			msg: openai.ChatCompletionDeveloperMessageParam{
-				Content: openai.StringOrArray{
+				Content: openai.ContentUnion{
 					Value: []openai.ChatCompletionContentPartTextParam{
 						{Text: "This is a system message"},
 						{Text: "It can be multiline"},
@@ -377,7 +378,7 @@ func TestDeveloperMsgToGeminiParts(t *testing.T) {
 		{
 			name: "invalid content type",
 			msg: openai.ChatCompletionDeveloperMessageParam{
-				Content: openai.StringOrArray{
+				Content: openai.ContentUnion{
 					Value: 10, // Invalid type.
 				},
 				Role: openai.ChatMessageRoleSystem,
@@ -417,7 +418,7 @@ func TestToolMsgToGeminiParts(t *testing.T) {
 		{
 			name: "Tool message with invalid content",
 			msg: openai.ChatCompletionToolMessageParam{
-				Content: openai.StringOrArray{
+				Content: openai.ContentUnion{
 					Value: 10, // Invalid type.
 				},
 				Role:       openai.ChatMessageRoleTool,
@@ -429,7 +430,7 @@ func TestToolMsgToGeminiParts(t *testing.T) {
 		{
 			name: "Tool message with string content",
 			msg: openai.ChatCompletionToolMessageParam{
-				Content: openai.StringOrArray{
+				Content: openai.ContentUnion{
 					Value: "This is a tool message",
 				},
 				Role:       openai.ChatMessageRoleTool,
@@ -446,7 +447,7 @@ func TestToolMsgToGeminiParts(t *testing.T) {
 		{
 			name: "Tool message with string array content",
 			msg: openai.ChatCompletionToolMessageParam{
-				Content: openai.StringOrArray{
+				Content: openai.ContentUnion{
 					Value: []openai.ChatCompletionContentPartTextParam{
 						{
 							Type: string(openai.ChatCompletionContentPartTextTypeText),
@@ -800,9 +801,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
 						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
 						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
-							Schema: map[string]any{
-								"type": "string",
-							},
+							Schema: json.RawMessage(`{"type": "string"}`),
 						},
 					},
 				},
@@ -819,7 +818,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
 						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
 						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
-							Schema: `{"type":"string"}`,
+							Schema: json.RawMessage(`{"type":"string"}`),
 						},
 					},
 				},
@@ -836,12 +835,12 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
 						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
 						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
-							Schema: `{"type":`, // invalid JSON.
+							Schema: json.RawMessage(`{"type":`), // invalid JSON.
 						},
 					},
 				},
 			},
-			expectedErrMsg: "invalid JSON schema string",
+			expectedErrMsg: "invalid JSON schema",
 		},
 	}
 
@@ -995,30 +994,32 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 func TestOpenAIToolChoiceToGeminiToolConfig(t *testing.T) {
 	tests := []struct {
 		name      string
-		input     any
+		input     *openai.ChatCompletionToolChoiceUnion
 		expected  *genai.ToolConfig
 		expectErr string
 	}{
 		{
 			name:     "string auto",
-			input:    "auto",
+			input:    &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
 			expected: &genai.ToolConfig{FunctionCallingConfig: &genai.FunctionCallingConfig{Mode: genai.FunctionCallingConfigModeAuto}},
 		},
 		{
 			name:     "string none",
-			input:    "none",
+			input:    &openai.ChatCompletionToolChoiceUnion{Value: "none"},
 			expected: &genai.ToolConfig{FunctionCallingConfig: &genai.FunctionCallingConfig{Mode: genai.FunctionCallingConfigModeNone}},
 		},
 		{
 			name:     "string required",
-			input:    "required",
+			input:    &openai.ChatCompletionToolChoiceUnion{Value: "required"},
 			expected: &genai.ToolConfig{FunctionCallingConfig: &genai.FunctionCallingConfig{Mode: genai.FunctionCallingConfigModeAny}},
 		},
 		{
 			name: "ToolChoice struct",
-			input: openai.ToolChoice{
-				Type:     openai.ToolTypeFunction,
-				Function: openai.ToolFunction{Name: "myfunc"},
+			input: &openai.ChatCompletionToolChoiceUnion{
+				Value: openai.ChatCompletionNamedToolChoice{
+					Type:     openai.ToolTypeFunction,
+					Function: openai.ChatCompletionNamedToolChoiceFunction{Name: "myfunc"},
+				},
 			},
 			expected: &genai.ToolConfig{
 				FunctionCallingConfig: &genai.FunctionCallingConfig{
@@ -1030,12 +1031,12 @@ func TestOpenAIToolChoiceToGeminiToolConfig(t *testing.T) {
 		},
 		{
 			name:      "unsupported type",
-			input:     123,
+			input:     &openai.ChatCompletionToolChoiceUnion{Value: 123},
 			expectErr: "unsupported tool choice type",
 		},
 		{
 			name:      "unsupported string value",
-			input:     "invalid",
+			input:     &openai.ChatCompletionToolChoiceUnion{Value: "invalid"},
 			expectErr: "unsupported tool choice: 'invalid'",
 		},
 	}

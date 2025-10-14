@@ -21,7 +21,7 @@ type contentDecodingResult struct {
 }
 
 // decodeContentIfNeeded decompresses the response body based on the content-encoding header.
-// Currently supports gzip encoding, but can be extended to support other encodings in the future.
+// Currently, supports gzip encoding, but can be extended to support other encodings in the future.
 // Returns a reader for the (potentially decompressed) body and metadata about the encoding.
 func decodeContentIfNeeded(body []byte, contentEncoding string) (contentDecodingResult, error) {
 	switch contentEncoding {

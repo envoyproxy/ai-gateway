@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 // Cassette is an HTTP interaction recording.
@@ -70,6 +71,47 @@ const (
 	// See https://github.com/openai/openai-agents-python/tree/main/examples/financial_research_agent
 	CassetteChatOpenAIAgentsPython
 
+	// Cassettes for the OpenAI /v1/completions endpoint.
+
+	// CassetteCompletionBasic tests standard single-prompt code completion
+	// requests typical of LoRA-tuned CodeLlama or Starcoder models deployed via
+	// vLLM/llama.cpp. Uses fibonacci function as representative coding task for
+	// model evaluation.
+	// See: https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html
+	CassetteCompletionBasic
+	// CassetteCompletionToken is CassetteCompletionBasic, but with cl100k_base
+	// tokens as input instead of text strings. This simulates LoRA fine-tuning
+	// workflows requiring precise tokenization control.
+	CassetteCompletionToken
+	// CassetteCompletionStreaming is CassetteCompletionBasic, with streaming
+	// enabled to test real-time token delivery common in IDE.
+	CassetteCompletionStreaming
+	// CassetteCompletionStreamingUsage is CassetteCompletionStreaming, but
+	// with include_usage enabled to test detailed token usage reporting.
+	CassetteCompletionStreamingUsage
+	// CassetteCompletionTextBatch tests multiple code completion variants
+	// generated simultaneously, common in IDE autocomplete where users select
+	// from LoRA model suggestions. Full vs truncated prompts simulate real
+	// editing scenarios.
+	// See: https://community.openai.com/t/n-argument-vs-batch-input/59121
+	CassetteCompletionTextBatch
+	// CassetteCompletionTokenBatch is CassetteCompletionTextBatch, but with
+	// cl100k_base tokens as input instead of text strings. This simulates LoRA
+	// fine-tuning workflows requiring precise tokenization control.
+	CassetteCompletionTokenBatch
+	// CassetteCompletionSuffix tests the suffix parameter for fill-in-the-middle
+	// completion tasks. The model generates code to insert between a prompt (partial
+	// function definition) and a suffix (function call). Also tests logprobs for
+	// confidence scoring and n for multiple completion variants. Only gpt-3.5-turbo-instruct
+	// supports the suffix parameter.
+	// See: https://platform.openai.com/docs/guides/completions/inserting-text
+	CassetteCompletionSuffix
+	// CassetteCompletionBadRequest is a request with multiple validation
+	// errors.
+	CassetteCompletionBadRequest
+	// CassetteCompletionUnknownModel is a request with a non-existent model.
+	CassetteCompletionUnknownModel
+
 	// Cassettes for the OpenAI /embeddings endpoint.
 
 	// CassetteEmbeddingsBasic is the canonical OpenAI embeddings request with a single string input.
@@ -92,6 +134,13 @@ const (
 	CassetteEmbeddingsWhitespace
 	// CassetteEmbeddingsBadRequest tests request with multiple validation errors.
 	CassetteEmbeddingsBadRequest
+
+	// Cassettes for Azure OpenAI Service.
+
+	// CassetteAzureChatBasic is the same as CassetteChatBasic, except using
+	// Azure OpenAI Service authentication and endpoint format.
+	CassetteAzureChatBasic
+
 	_cassetteNameEnd // Sentinel value for iteration.
 )
 
@@ -117,6 +166,18 @@ var stringValues = map[Cassette]string{
 	CassetteChatWebSearch:              "chat-web-search",
 	CassetteChatStreamingWebSearch:     "chat-streaming-web-search",
 	CassetteChatOpenAIAgentsPython:     "chat-openai-agents-python",
+
+	CassetteAzureChatBasic: "azure-chat-basic",
+
+	CassetteCompletionBasic:          "completion-basic",
+	CassetteCompletionToken:          "completion-token",
+	CassetteCompletionStreaming:      "completion-streaming",
+	CassetteCompletionStreamingUsage: "completion-streaming-usage",
+	CassetteCompletionTextBatch:      "completion-text-batch",
+	CassetteCompletionTokenBatch:     "completion-token-batch",
+	CassetteCompletionSuffix:         "completion-suffix",
+	CassetteCompletionBadRequest:     "completion-bad-request",
+	CassetteCompletionUnknownModel:   "completion-unknown-model",
 
 	CassetteEmbeddingsBasic:        "embeddings-basic",
 	CassetteEmbeddingsBase64:       "embeddings-base64",
@@ -144,11 +205,25 @@ func (c Cassette) String() string {
 // CassetteNameHeader according to the pre-recorded cassette.
 func NewRequest(ctx context.Context, baseURL string, cassette Cassette) (*http.Request, error) {
 	if r, ok := chatRequests[cassette]; ok {
-		return newRequest(ctx, cassette, baseURL+"/chat/completions", r)
+		path := buildPath(cassette, "/chat/completions", baseURL, r)
+		return newRequest(ctx, cassette, path, r)
+	} else if r, ok := completionRequests[cassette]; ok {
+		path := buildPath(cassette, "/completions", baseURL, r)
+		return newRequest(ctx, cassette, path, r)
 	} else if r, ok := embeddingsRequests[cassette]; ok {
-		return newRequest(ctx, cassette, baseURL+"/embeddings", r)
+		path := buildPath(cassette, "/embeddings", baseURL, r)
+		return newRequest(ctx, cassette, path, r)
 	}
 	return nil, fmt.Errorf("unknown cassette: %s", cassette)
+}
+
+// buildPath builds the full URL path based on cassette type (Azure vs OpenAI).
+func buildPath(cassette Cassette, endpoint, baseURL string, requestBody any) string {
+	if strings.HasPrefix(cassette.String(), "azure-") {
+		model := extractModel(requestBody)
+		return baseURL + buildAzurePath(endpoint, model)
+	}
+	return baseURL + "/v1" + endpoint
 }
 
 // ResponseBody is used in tests to avoid duplicating body content when the

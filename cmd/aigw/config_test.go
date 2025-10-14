@@ -11,25 +11,54 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/envoyproxy/ai-gateway/internal/autoconfig"
 )
 
+var testMcpServers = &autoconfig.MCPServers{
+	McpServers: map[string]autoconfig.MCPServer{
+		"dreamtap": {
+			Type: "http",
+			URL:  "https://dreamtap.xyz/mcp",
+		},
+	},
+}
+
+// TestReadConfig is mainly for coverage as the autoconfig package is tested more thoroughly.
 func TestReadConfig(t *testing.T) {
 	tests := []struct {
-		name           string
-		path           string
-		envVars        map[string]string
-		expectHostname string
-		expectPort     string
-		expectError    string
+		name            string
+		path            string
+		mcpServers      *autoconfig.MCPServers
+		envVars         map[string]string
+		expectHostnames []string
+		expectPort      string
+		expectError     string
 	}{
+		{
+			name:            "generates config for MCP",
+			mcpServers:      testMcpServers,
+			expectHostnames: []string{"dreamtap.xyz"},
+			expectPort:      "443",
+		},
+		{
+			name: "generates config for MCP and OpenAI",
+			envVars: map[string]string{
+				"OPENAI_API_KEY":  "test-key",
+				"OPENAI_BASE_URL": "http://localhost:11434/v1",
+			},
+			mcpServers:      testMcpServers,
+			expectHostnames: []string{"127.0.0.1.nip.io", "dreamtap.xyz"},
+			expectPort:      "11434",
+		},
 		{
 			name: "generates config from OpenAI env vars for localhost",
 			envVars: map[string]string{
 				"OPENAI_API_KEY":  "test-key",
 				"OPENAI_BASE_URL": "http://localhost:11434/v1",
 			},
-			expectHostname: "127.0.0.1.nip.io",
-			expectPort:     "11434",
+			expectHostnames: []string{"127.0.0.1.nip.io"},
+			expectPort:      "11434",
 		},
 		{
 			name: "generates config from OpenAI env vars for custom host",
@@ -37,16 +66,16 @@ func TestReadConfig(t *testing.T) {
 				"OPENAI_API_KEY":  "test-key",
 				"OPENAI_BASE_URL": "http://myservice:8080/v1",
 			},
-			expectHostname: "myservice",
-			expectPort:     "8080",
+			expectHostnames: []string{"myservice"},
+			expectPort:      "8080",
 		},
 		{
 			name: "defaults to OpenAI when only API key is set",
 			envVars: map[string]string{
 				"OPENAI_API_KEY": "test-key",
 			},
-			expectHostname: "api.openai.com",
-			expectPort:     "443",
+			expectHostnames: []string{"api.openai.com"},
+			expectPort:      "443",
 		},
 	}
 
@@ -60,26 +89,28 @@ func TestReadConfig(t *testing.T) {
 				t.Setenv(k, v)
 			}
 
-			config, err := readConfig(tt.path)
+			config, err := readConfig(tt.path, tt.mcpServers, false)
 			if tt.expectError != "" {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tt.expectError)
 			} else {
 				require.NoError(t, err)
-				require.Contains(t, config, "hostname: "+tt.expectHostname)
+				for _, expectHostname := range tt.expectHostnames {
+					require.Contains(t, config, "hostname: "+expectHostname)
+				}
 				require.Contains(t, config, "port: "+tt.expectPort)
 			}
 		})
 	}
 
 	t.Run("error when file and no OPENAI_API_KEY", func(t *testing.T) {
-		_, err := readConfig("")
+		_, err := readConfig("", nil, false)
 		require.Error(t, err)
-		require.EqualError(t, err, "you must supply at least OPENAI_API_KEY or a config file path")
+		require.EqualError(t, err, "you must supply at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY or a config file path")
 	})
 
 	t.Run("error when file does not exist", func(t *testing.T) {
-		_, err := readConfig("/non/existent/file.yaml")
+		_, err := readConfig("/non/existent/file.yaml", nil, false)
 		require.Error(t, err)
 		require.EqualError(t, err, "error reading config: open /non/existent/file.yaml: no such file or directory")
 	})

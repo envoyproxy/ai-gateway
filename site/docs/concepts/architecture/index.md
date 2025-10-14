@@ -17,9 +17,11 @@ Envoy AI Gateway integrates with Envoy Gateway for the control plane and Envoy P
 ## Key Concepts
 
 ### Control Plane
+
 A control plane is a component that manages the configuration of the data plane. We utilize Envoy Gateway as a central control plane, and Envoy AI Gateway works in conjunction with it to manage the data plane configuration.
 
 ### Data Plane
+
 The data plane is the component that sits in the request path and processes the requests. In the context of Envoy AI Gateway, the data plane consists of Envoy Proxy and the AI Gateway external processor that processes the AI requests.
 
 ## In This Section
@@ -41,4 +43,5 @@ The data plane is the component that sits in the request path and processes the 
 ## What's Next
 
 After understanding the architecture:
+
 - Check out our [Getting Started](../../getting-started/index.md) guide for hands-on experience

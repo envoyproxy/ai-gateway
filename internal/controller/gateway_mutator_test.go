@@ -6,6 +6,7 @@
 package controller
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -25,7 +26,7 @@ import (
 func TestGatewayMutator_Default(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	fakeKube := fake2.NewClientset()
-	g := newTestGatewayMutator(fakeClient, fakeKube, "", "")
+	g := newTestGatewayMutator(fakeClient, fakeKube, "", "", "", "", false)
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-pod", Namespace: "test-namespace"},
 		Spec: corev1.PodSpec{
@@ -43,15 +44,21 @@ func TestGatewayMutator_Default(t *testing.T) {
 
 func TestGatewayMutator_mutatePod(t *testing.T) {
 	tests := []struct {
-		name                       string
-		metricsRequestHeaderLabels string
-		extProcExtraEnvVars        string
-		extprocTest                func(t *testing.T, container corev1.Container)
+		name                           string
+		metricsRequestHeaderAttributes string
+		spanRequestHeaderAttributes    string
+		extProcExtraEnvVars            string
+		extProcImagePullSecrets        string
+		extprocTest                    func(t *testing.T, container corev1.Container)
+		podTest                        func(t *testing.T, pod corev1.Pod)
 	}{
 		{
 			name: "basic extproc container",
 			extprocTest: func(t *testing.T, container corev1.Container) {
 				require.Empty(t, container.Env)
+			},
+			podTest: func(t *testing.T, pod corev1.Pod) {
+				require.Empty(t, pod.Spec.ImagePullSecrets)
 			},
 		},
 		{
@@ -63,92 +70,176 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 					{Name: "OTEL_TRACES_EXPORTER", Value: "otlp"},
 				}, container.Env)
 			},
-		},
-		{
-			name:                       "with metrics request header labels",
-			metricsRequestHeaderLabels: "x-team-id:team_id,x-user-id:user_id",
-			extprocTest: func(t *testing.T, container corev1.Container) {
-				require.Empty(t, container.Env)
-				require.Contains(t, container.Args, "-metricsRequestHeaderLabels")
-				require.Contains(t, container.Args, "x-team-id:team_id,x-user-id:user_id")
+			podTest: func(t *testing.T, pod corev1.Pod) {
+				require.Empty(t, pod.Spec.ImagePullSecrets)
 			},
 		},
 		{
-			name:                       "with both metrics and env vars",
-			metricsRequestHeaderLabels: "x-request-id:request_id",
-			extProcExtraEnvVars:        "OTEL_SERVICE_NAME=custom-service",
+			name:                           "with metrics request header labels",
+			metricsRequestHeaderAttributes: "x-team-id:team.id,x-user-id:user.id",
+			extprocTest: func(t *testing.T, container corev1.Container) {
+				require.Empty(t, container.Env)
+				require.Contains(t, container.Args, "-metricsRequestHeaderAttributes")
+				require.Contains(t, container.Args, "x-team-id:team.id,x-user-id:user.id")
+			},
+			podTest: func(t *testing.T, pod corev1.Pod) {
+				require.Empty(t, pod.Spec.ImagePullSecrets)
+			},
+		},
+		{
+			name:                           "with both metrics and env vars",
+			metricsRequestHeaderAttributes: "x-team-id:team.id",
+			extProcExtraEnvVars:            "OTEL_SERVICE_NAME=custom-service",
 			extprocTest: func(t *testing.T, container corev1.Container) {
 				require.Equal(t, []corev1.EnvVar{
 					{Name: "OTEL_SERVICE_NAME", Value: "custom-service"},
 				}, container.Env)
-				require.Contains(t, container.Args, "-metricsRequestHeaderLabels")
-				require.Contains(t, container.Args, "x-request-id:request_id")
+				require.Contains(t, container.Args, "-metricsRequestHeaderAttributes")
+				require.Contains(t, container.Args, "x-team-id:team.id")
+			},
+			podTest: func(t *testing.T, pod corev1.Pod) {
+				require.Empty(t, pod.Spec.ImagePullSecrets)
+			},
+		},
+		{
+			name:                        "with tracing request header attributes",
+			spanRequestHeaderAttributes: "x-session-id:session.id,x-user-id:user.id",
+			extprocTest: func(t *testing.T, container corev1.Container) {
+				require.Empty(t, container.Env)
+				require.Contains(t, container.Args, "-spanRequestHeaderAttributes")
+				require.Contains(t, container.Args, "x-session-id:session.id,x-user-id:user.id")
+			},
+			podTest: func(t *testing.T, pod corev1.Pod) {
+				require.Empty(t, pod.Spec.ImagePullSecrets)
+			},
+		},
+		{
+			name:                           "with metrics, tracing, and env vars",
+			metricsRequestHeaderAttributes: "x-user-id:user.id",
+			spanRequestHeaderAttributes:    "x-session-id:session.id",
+			extProcExtraEnvVars:            "OTEL_SERVICE_NAME=test-service",
+			extprocTest: func(t *testing.T, container corev1.Container) {
+				require.Equal(t, []corev1.EnvVar{
+					{Name: "OTEL_SERVICE_NAME", Value: "test-service"},
+				}, container.Env)
+				require.Contains(t, container.Args, "-metricsRequestHeaderAttributes")
+				require.Contains(t, container.Args, "x-user-id:user.id")
+				require.Contains(t, container.Args, "-spanRequestHeaderAttributes")
+				require.Contains(t, container.Args, "x-session-id:session.id")
+			},
+			podTest: func(t *testing.T, pod corev1.Pod) {
+				require.Empty(t, pod.Spec.ImagePullSecrets)
+			},
+		},
+		{
+			name:                    "with image pull secrets",
+			extProcImagePullSecrets: "my-registry-secret;backup-secret",
+			extprocTest: func(t *testing.T, container corev1.Container) {
+				require.Empty(t, container.Env)
+			},
+			podTest: func(t *testing.T, pod corev1.Pod) {
+				expectedSecrets := []corev1.LocalObjectReference{
+					{Name: "my-registry-secret"},
+					{Name: "backup-secret"},
+				}
+				require.Equal(t, expectedSecrets, pod.Spec.ImagePullSecrets)
+			},
+		},
+		{
+			name:                    "with image pull secrets and env vars",
+			extProcExtraEnvVars:     "OTEL_SERVICE_NAME=test-service",
+			extProcImagePullSecrets: "my-registry-secret",
+			extprocTest: func(t *testing.T, container corev1.Container) {
+				require.Equal(t, []corev1.EnvVar{
+					{Name: "OTEL_SERVICE_NAME", Value: "test-service"},
+				}, container.Env)
+			},
+			podTest: func(t *testing.T, pod corev1.Pod) {
+				expectedSecrets := []corev1.LocalObjectReference{
+					{Name: "my-registry-secret"},
+				}
+				require.Equal(t, expectedSecrets, pod.Spec.ImagePullSecrets)
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fakeClient := requireNewFakeClientWithIndexes(t)
-			fakeKube := fake2.NewClientset()
-			g := newTestGatewayMutator(fakeClient, fakeKube, tt.metricsRequestHeaderLabels, tt.extProcExtraEnvVars)
+			for _, sidecar := range []bool{true, false} {
+				t.Run(fmt.Sprintf("sidecar=%v", sidecar), func(t *testing.T) {
+					fakeClient := requireNewFakeClientWithIndexes(t)
+					fakeKube := fake2.NewClientset()
+					g := newTestGatewayMutator(fakeClient, fakeKube, tt.metricsRequestHeaderAttributes, tt.spanRequestHeaderAttributes, tt.extProcExtraEnvVars, tt.extProcImagePullSecrets, sidecar)
 
-			const gwName, gwNamespace = "test-gateway", "test-namespace"
-			err := fakeClient.Create(t.Context(), &aigv1a1.AIGatewayRoute{
-				ObjectMeta: metav1.ObjectMeta{Name: gwName, Namespace: gwNamespace},
-				Spec: aigv1a1.AIGatewayRouteSpec{
-					ParentRefs: []gwapiv1a2.ParentReference{
-						{
-							Name:  gwName,
-							Kind:  ptr.To(gwapiv1a2.Kind("Gateway")),
-							Group: ptr.To(gwapiv1a2.Group("gateway.networking.k8s.io")),
+					const gwName, gwNamespace = "test-gateway", "test-namespace"
+					err := fakeClient.Create(t.Context(), &aigv1a1.AIGatewayRoute{
+						ObjectMeta: metav1.ObjectMeta{Name: gwName, Namespace: gwNamespace},
+						Spec: aigv1a1.AIGatewayRouteSpec{
+							ParentRefs: []gwapiv1a2.ParentReference{
+								{
+									Name:  gwName,
+									Kind:  ptr.To(gwapiv1a2.Kind("Gateway")),
+									Group: ptr.To(gwapiv1a2.Group("gateway.networking.k8s.io")),
+								},
+							},
+							Rules: []aigv1a1.AIGatewayRouteRule{
+								{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
+							},
+							FilterConfig: &aigv1a1.AIGatewayFilterConfig{},
 						},
-					},
-					Rules: []aigv1a1.AIGatewayRouteRule{
-						{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
-					},
-					FilterConfig: &aigv1a1.AIGatewayFilterConfig{},
-				},
-			})
-			require.NoError(t, err)
+					})
+					require.NoError(t, err)
 
-			pod := &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-pod", Namespace: "test-namespace"},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{{Name: "envoy"}},
-				},
+					pod := &corev1.Pod{
+						ObjectMeta: metav1.ObjectMeta{Name: "test-pod", Namespace: "test-namespace"},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{{Name: "envoy"}},
+						},
+					}
+
+					// At this point, the config secret does not exist, so the pod should not be mutated.
+					err = g.mutatePod(t.Context(), pod, gwName, gwNamespace)
+					require.NoError(t, err)
+					require.Len(t, pod.Spec.Containers, 1)
+
+					// Create the config secret and mutate the pod again.
+					_, err = g.kube.CoreV1().Secrets("test-namespace").Create(t.Context(),
+						&corev1.Secret{
+							ObjectMeta: metav1.ObjectMeta{Name: FilterConfigSecretPerGatewayName(
+								gwName, gwNamespace,
+							), Namespace: "test-namespace"},
+						}, metav1.CreateOptions{})
+					require.NoError(t, err)
+					err = g.mutatePod(t.Context(), pod, gwName, gwNamespace)
+					require.NoError(t, err)
+
+					var extProcContainer corev1.Container
+					if sidecar {
+						require.Len(t, pod.Spec.Containers, 1)
+						require.Len(t, pod.Spec.InitContainers, 1)
+						extProcContainer = pod.Spec.InitContainers[0]
+						require.NotNil(t, extProcContainer.RestartPolicy)
+						require.Equal(t, corev1.ContainerRestartPolicyAlways, *extProcContainer.RestartPolicy)
+					} else {
+						require.Len(t, pod.Spec.Containers, 2)
+						extProcContainer = pod.Spec.Containers[1]
+					}
+
+					require.Equal(t, "ai-gateway-extproc", extProcContainer.Name)
+					tt.extprocTest(t, extProcContainer)
+					tt.podTest(t, *pod)
+				})
 			}
-
-			// At this point, the config secret does not exist, so the pod should not be mutated.
-			err = g.mutatePod(t.Context(), pod, gwName, gwNamespace)
-			require.NoError(t, err)
-			require.Len(t, pod.Spec.Containers, 1)
-
-			// Create the config secret and mutate the pod again.
-			_, err = g.kube.CoreV1().Secrets("test-namespace").Create(t.Context(),
-				&corev1.Secret{
-					ObjectMeta: metav1.ObjectMeta{Name: FilterConfigSecretPerGatewayName(
-						gwName, gwNamespace,
-					), Namespace: "test-namespace"},
-				}, metav1.CreateOptions{})
-			require.NoError(t, err)
-			err = g.mutatePod(t.Context(), pod, gwName, gwNamespace)
-			require.NoError(t, err)
-			require.Len(t, pod.Spec.Containers, 2)
-
-			// The second container is extproc - pass it to the test function.
-			extprocContainer := pod.Spec.Containers[1]
-			require.Equal(t, "ai-gateway-extproc", extprocContainer.Name)
-			tt.extprocTest(t, extprocContainer)
 		})
 	}
 }
 
-func newTestGatewayMutator(fakeClient client.Client, fakeKube *fake2.Clientset, metricsRequestHeaderLabels, extProcExtraEnvVars string) *gatewayMutator {
+func newTestGatewayMutator(fakeClient client.Client, fakeKube *fake2.Clientset, metricsRequestHeaderAttributes, spanRequestHeaderAttributes, extProcExtraEnvVars, extProcImagePullSecrets string, sidecar bool) *gatewayMutator {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	return newGatewayMutator(
 		fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
-		"info", "/tmp/extproc.sock", metricsRequestHeaderLabels, "/v1", extProcExtraEnvVars, 512*1024*1024,
+		"info", "/tmp/extproc.sock", metricsRequestHeaderAttributes, spanRequestHeaderAttributes, "/v1", extProcExtraEnvVars, extProcImagePullSecrets, 512*1024*1024,
+		sidecar,
 	)
 }
 
@@ -241,6 +332,77 @@ func TestParseExtraEnvVars(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ParseExtraEnvVars(tt.input)
+			if tt.wantError != "" {
+				require.Error(t, err)
+				require.Equal(t, tt.wantError, err.Error())
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.want, got)
+			}
+		})
+	}
+}
+
+func TestParseImagePullSecrets(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		want      []corev1.LocalObjectReference
+		wantError string
+	}{
+		{
+			name:  "empty string",
+			input: "",
+			want:  nil,
+		},
+		{
+			name:  "single secret",
+			input: "my-registry-secret",
+			want:  []corev1.LocalObjectReference{{Name: "my-registry-secret"}},
+		},
+		{
+			name:  "multiple secrets",
+			input: "my-registry-secret;backup-secret;third-secret",
+			want: []corev1.LocalObjectReference{
+				{Name: "my-registry-secret"},
+				{Name: "backup-secret"},
+				{Name: "third-secret"},
+			},
+		},
+		{
+			name:  "secrets with spaces",
+			input: " my-registry-secret ; backup-secret ",
+			want: []corev1.LocalObjectReference{
+				{Name: "my-registry-secret"},
+				{Name: "backup-secret"},
+			},
+		},
+		{
+			name:  "trailing semicolon",
+			input: "my-registry-secret;backup-secret;",
+			want: []corev1.LocalObjectReference{
+				{Name: "my-registry-secret"},
+				{Name: "backup-secret"},
+			},
+		},
+		{
+			name:  "only semicolons",
+			input: ";;;",
+			want:  nil,
+		},
+		{
+			name:  "empty secret names",
+			input: "my-secret;;backup-secret",
+			want: []corev1.LocalObjectReference{
+				{Name: "my-secret"},
+				{Name: "backup-secret"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseImagePullSecrets(tt.input)
 			if tt.wantError != "" {
 				require.Error(t, err)
 				require.Equal(t, tt.wantError, err.Error())

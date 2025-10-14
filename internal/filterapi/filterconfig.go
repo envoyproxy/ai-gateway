@@ -12,7 +12,6 @@
 package filterapi
 
 import (
-	"fmt"
 	"os"
 	"time"
 
@@ -23,27 +22,29 @@ import (
 
 // DefaultConfig is the default configuration that can be used as a
 // fallback when the configuration is not explicitly provided.
-var DefaultConfig = fmt.Sprintf(`
-schema:
-  name: OpenAI
-modelNameHeaderKey: %s
-`, internalapi.ModelNameHeaderKeyDefault)
+var DefaultConfig = ``
 
 // Config is the configuration for the Envoy AI Gateway filter.
 type Config struct {
 	// UUID is the unique identifier of the filter configuration assigned by the AI Gateway when the configuration is updated.
 	UUID string `json:"uuid,omitempty"`
 	// MetadataNamespace is the namespace of the dynamic metadata to be used by the filter.
+	// Deprecated.
+	// TODO: Drop this after v0.4.0.
 	MetadataNamespace string `json:"metadataNamespace"`
 	// LLMRequestCost configures the cost of each LLM-related request. Optional. If this is provided, the filter will populate
 	// the "calculated" cost in the filter metadata at the end of the response body processing.
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
 	// ModelNameHeaderKey is the header key to be populated with the model name by the filter.
+	// Deprecated.
+	// TODO: Drop this after v0.4.0.
 	ModelNameHeaderKey internalapi.ModelNameHeaderKey `json:"modelNameHeaderKey"`
 	// Backends is the list of backends that this listener can route to.
 	Backends []Backend `json:"backends,omitempty"`
 	// Models is the list of models that this route is aware of. Used to populate the "/models" endpoint in OpenAI-compatible APIs.
 	Models []Model `json:"models,omitempty"`
+	// MCPConfig is the configuration for the MCPRoute implementations.
+	MCPConfig *MCPConfig `json:"mcpConfig,omitempty"`
 }
 
 // Model corresponds to the OpenAI model object in the OpenAI-compatible APIs
@@ -137,6 +138,8 @@ type BackendAuth struct {
 	APIKey *APIKeyAuth `json:"apiKey,omitempty"`
 	// AWSAuth specifies the location of the AWS credential file and region.
 	AWSAuth *AWSAuth `json:"aws,omitempty"`
+	// AzureAPIKey is the Azure OpenAI API key.
+	AzureAPIKey *AzureAPIKeyAuth `json:"azureApiKey,omitempty"`
 	// AzureAuth specifies the location of Azure access token file.
 	AzureAuth *AzureAuth `json:"azure,omitempty"`
 	// GCPAuth specifies the location of GCP credential file.
@@ -154,6 +157,12 @@ type AWSAuth struct {
 // APIKeyAuth defines the file that will be mounted to the external proc.
 type APIKeyAuth struct {
 	// Key is the API key as a literal string.
+	Key string `json:"key"`
+}
+
+// AzureAPIKeyAuth defines the Azure OpenAI API key.
+type AzureAPIKeyAuth struct {
+	// Key is the Azure API key as a literal string.
 	Key string `json:"key"`
 }
 

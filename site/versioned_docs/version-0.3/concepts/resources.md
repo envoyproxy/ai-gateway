@@ -10,17 +10,18 @@ The Envoy AI Gateway uses several custom resources to manage AI traffic. Here's 
 
 ## Resource Reference
 
-| Resource | Purpose | API Reference |
-|----------|---------|---------------|
-| AIGatewayRoute | Defines unified API and routing rules for AI traffic | [AIGatewayRoute](../api/api.mdx#aigatewayroute) |
-| AIServiceBackend | Represents individual AI service backends | [AIServiceBackend](../api/api.mdx#aiservicebackend) |
-| BackendSecurityPolicy | Configures authentication for backend access | [BackendSecurityPolicy](../api/api.mdx#backendsecuritypolicy) |
+| Resource              | Purpose                                              | API Reference                                                 |
+| --------------------- | ---------------------------------------------------- | ------------------------------------------------------------- |
+| AIGatewayRoute        | Defines unified API and routing rules for AI traffic | [AIGatewayRoute](../api/api.mdx#aigatewayroute)               |
+| AIServiceBackend      | Represents individual AI service backends            | [AIServiceBackend](../api/api.mdx#aiservicebackend)           |
+| BackendSecurityPolicy | Configures authentication for backend access         | [BackendSecurityPolicy](../api/api.mdx#backendsecuritypolicy) |
 
 ## Core Resources
 
 ### AIGatewayRoute
 
 A resource that defines a unified AI API for a Gateway, allowing clients to interact with multiple AI backends using a single schema.
+
 - Specifies the input API schema for client requests
 - Contains routing rules to direct traffic to appropriate backends
 - Manages request/response transformations between different API schemas

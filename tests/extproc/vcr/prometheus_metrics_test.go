@@ -28,10 +28,10 @@ import (
 func TestPrometheusMetrics(t *testing.T) {
 	env := startTestEnvironment(t, extprocBin, extprocConfig, nil, envoyConfig)
 	listenerPort := env.EnvoyListenerPort()
-	metricsPort := env.ExtProcMetricsPort()
+	adminPort := env.ExtProcAdminPort()
 
 	// Send the chat request.
-	req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d/v1", listenerPort), testopenai.CassetteChatBasic)
+	req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d", listenerPort), testopenai.CassetteChatBasic)
 	require.NoError(t, err)
 
 	resp, err := http.DefaultClient.Do(req)
@@ -47,7 +47,7 @@ func TestPrometheusMetrics(t *testing.T) {
 	parser := expfmt.NewTextParser(model.UTF8Validation)
 	var metricFamilies map[string]*dto.MetricFamily
 	require.Eventually(t, func() bool {
-		metricsReq, err := http.NewRequestWithContext(t.Context(), http.MethodGet, fmt.Sprintf("http://localhost:%d/metrics", metricsPort), nil)
+		metricsReq, err := http.NewRequestWithContext(t.Context(), http.MethodGet, fmt.Sprintf("http://localhost:%d/metrics", adminPort), nil)
 		require.NoError(t, err)
 
 		metricsResp, err := http.DefaultClient.Do(metricsReq)
@@ -87,6 +87,7 @@ func verifyPrometheusRequestDuration(t *testing.T, metric *dto.MetricFamily, exp
 	expectedLabels := map[string]string{
 		"gen_ai_operation_name": "chat",
 		"gen_ai_provider_name":  "openai",
+		"gen_ai_original_model": expectedRequestModel, // For non-override cases, original equals request
 		"gen_ai_request_model":  expectedRequestModel,
 		"gen_ai_response_model": "gpt-5-nano-2025-08-07",
 		"otel_scope_name":       "envoyproxy/ai-gateway",
@@ -144,6 +145,7 @@ func verifyPrometheusTokenUsage(t *testing.T, metric *dto.MetricFamily, expected
 		expectedLabels := map[string]string{
 			"gen_ai_operation_name": "chat",
 			"gen_ai_provider_name":  "openai",
+			"gen_ai_original_model": expectedModel, // For non-override cases, original equals request
 			"gen_ai_request_model":  expectedModel,
 			"gen_ai_response_model": "gpt-5-nano-2025-08-07",
 			"gen_ai_token_type":     tc.tokenType,

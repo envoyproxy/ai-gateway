@@ -8,8 +8,7 @@
 # in the command line every time.
 -include .makerc
 
-# The Go-based tools are defined in Makefile.tools.mk.
-include Makefile.tools.mk
+GO_TOOL := go tool -modfile=tools/go.mod
 
 # The list of commands that can be built.
 COMMANDS := controller extproc
@@ -47,24 +46,17 @@ help:
 # This runs all necessary steps to prepare for a commit.
 .PHONY: precommit
 precommit: ## Run all necessary steps to prepare for a commit.
-precommit: tidy codespell apigen apidoc format lint editorconfig yamllint helm-test
+precommit: tidy spellcheck apigen apidoc format lint editorconfig helm-test
 
 .PHONY: lint
 lint: ## This runs the linter, formatter, and tidy on the codebase.
 	@echo "lint => ./..."
 	@$(GO_TOOL) golangci-lint run --build-tags==test_crdcel,test_controller,test_extproc,test_e2e ./...
 
-.PHONY: codespell
-CODESPELL_SKIP := $(shell cat .codespell.skip | tr \\n ',')
-CODESPELL_IGNORE_WORDS := ".codespell.ignorewords"
-codespell: $(CODESPELL) ## Spell check the codebase.
-	@echo "spell => ./..."
-	@$(CODESPELL) --skip $(CODESPELL_SKIP) --ignore-words $(CODESPELL_IGNORE_WORDS)
-
-.PHONY: yamllint
-yamllint: $(YAMLLINT) ## Lint yaml files.
-	@echo "yamllint => ./..."
-	@$(YAMLLINT) --config-file=.yamllint $$(git ls-files :*.yml :*.yaml | xargs -L1 dirname | sort -u)
+.PHONY: spellcheck
+spellcheck:  ## Spell check the codebase.
+	@echo "misspell => ./..."
+	@$(GO_TOOL) misspell -error $$(git ls-files --cached --others --exclude-standard | (cd tools && go run ./ignorepaths ../.misspellignore))
 
 # Some IDEs like Goland place `.go` files in the `.idea` directory when using code templates. Using a
 # git command to find the files ensures that only relevant files are formatted and that git-ignored
@@ -74,12 +66,13 @@ GO_FILES=$(shell git ls-files --cached --others --exclude-standard | grep '\.go$
 .PHONY: format
 format: ## Format the codebase.
 	@echo "format => *.go"
-	@gofmt -s -w $(GO_FILES)
-	@$(GO_TOOL) gofumpt -l -w $(GO_FILES)
-	@echo "gci => *.go"
-	@$(GO_TOOL) gci write -s standard -s default -s "prefix(github.com/envoyproxy/ai-gateway)" $(GO_FILES)
+	@$(GO_TOOL) golangci-lint fmt $(GO_FILES)
 	@echo "licenses => **"
 	@$(GO_TOOL) license-eye header fix
+	@echo "prettier => **.{yaml,yml}"
+	@$(GO_TOOL) prettier --write '**/*.{yaml,yml}'
+	@echo "prettier => **.md"
+	@$(GO_TOOL) prettier --write '**/*.md'
 
 # This runs go mod tidy on every module.
 .PHONY: tidy
@@ -156,13 +149,19 @@ test-crdcel: apigen ## Run the integration tests of CEL validation in CRD defini
 #
 # This requires the extproc binary to be built as well as Envoy binary to be available in the PATH.
 # The EXTPROC_BIN environment variable is exported to tell tests to use the pre-built binary.
+#
+# Since this is an integration test, we don't use -race, as it takes a very long
+# time to complete. For concurrency issues, use normal unit tests and race them.
 .PHONY: test-extproc # This requires the extproc binary to be built.
 test-extproc: build.extproc ## Run the integration tests for extproc without controller or k8s at all.
 	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
 	@echo "Run ExtProc test"
-	@EXTPROC_BIN=$(OUTPUT_DIR)/extproc-$(shell go env GOOS)-$(shell go env GOARCH) go test ./tests/extproc/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
+	@EXTPROC_BIN=$(OUTPUT_DIR)/extproc-$(shell go env GOOS)-$(shell go env GOARCH) go test ./tests/extproc/... $(GO_TEST_E2E_ARGS)
 
 # This runs the end-to-end tests for the controller with EnvTest.
+#
+# Since this is an integration test, we don't use -race, as it takes a very long
+# time to complete. For concurrency issues, use normal unit tests and race them.
 .PHONY: test-controller
 test-controller: apigen ## Run the integration tests for the controller with envtest.
 	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
@@ -181,6 +180,24 @@ test-e2e: build-e2e ## Run the end-to-end tests with a local kind cluster.
 test-e2e-inference-extension: build-e2e ## Run the end-to-end tests with a local kind cluster for Gateway API Inference Extension.
 	@echo "Run E2E tests for inference extension"
 	@go test -v ./tests/e2e-inference-extension/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
+
+# This runs the end-to-end upgrade tests for the controller and extproc with a local kind cluster.
+.PHONY: test-e2e-upgrade
+test-e2e-upgrade: build-e2e
+	@echo "Run E2E upgrade tests"
+	@go test -v ./tests/e2e-upgrade/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
+
+# This runs the end-to-end namespaced tests for the controller and extproc with a local kind cluster.
+.PHONY: test-e2e-namespaced
+test-e2e-namespaced: build-e2e
+	@echo "Run E2E namespaced tests"
+	@go test -v ./tests/e2e-namespaced/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
+
+# This runs the end-to-end tests for the aigw CLI.
+.PHONY: test-e2e-aigw
+test-e2e-aigw: build.aigw ## Run the end-to-end tests for the aigw CLI.
+	@echo "Run aigw CLI E2E tests"
+	@go test -v ./tests/e2e-aigw/... -timeout 30m $(GO_TEST_E2E_ARGS)
 
 ##@ Common
 
@@ -225,6 +242,7 @@ build: ## Build all binaries under cmd/ directory.
 build-e2e: ## Build the docker images for the controller, extproc and testupstream for the e2e tests.
 	@$(MAKE) docker-build DOCKER_BUILD_ARGS="--load"
 	@$(MAKE) docker-build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib DOCKER_BUILD_ARGS="--load"
+	@$(MAKE) docker-build.testmcpserver CMD_PATH_PREFIX=tests/internal/testmcp DOCKER_BUILD_ARGS="--load"
 
 # This builds a docker image for a given command.
 #

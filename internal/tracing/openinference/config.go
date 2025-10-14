@@ -12,7 +12,7 @@ import (
 
 // Environment variable names for trace configuration following Python OpenInference conventions.
 // These environment variables control the privacy and observability settings for OpenInference tracing.
-// See: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
+// See: https://github.com/Arize-ai/openinference/blob/main/spec/embedding_spans.md
 const (
 	// EnvHideLLMInvocationParameters is the environment variable for TraceConfig.HideLLMInvocationParameters.
 	EnvHideLLMInvocationParameters = "OPENINFERENCE_HIDE_LLM_INVOCATION_PARAMETERS"
@@ -30,18 +30,27 @@ const (
 	EnvHideInputText = "OPENINFERENCE_HIDE_INPUT_TEXT"
 	// EnvHideOutputText is the environment variable for TraceConfig.HideOutputText.
 	EnvHideOutputText = "OPENINFERENCE_HIDE_OUTPUT_TEXT"
-	// EnvHideEmbeddingVectors is the environment variable for TraceConfig.HideEmbeddingVectors.
-	EnvHideEmbeddingVectors = "OPENINFERENCE_HIDE_EMBEDDING_VECTORS"
+	// EnvHideEmbeddingsText is the environment variable for TraceConfig.HideEmbeddingsText.
+	EnvHideEmbeddingsText = "OPENINFERENCE_HIDE_EMBEDDINGS_TEXT"
+	// EnvHideEmbeddingsVectors is the environment variable for TraceConfig.HideEmbeddingsVectors.
+	EnvHideEmbeddingsVectors = "OPENINFERENCE_HIDE_EMBEDDINGS_VECTORS"
 	// EnvBase64ImageMaxLength is the environment variable for TraceConfig.Base64ImageMaxLength.
 	EnvBase64ImageMaxLength = "OPENINFERENCE_BASE64_IMAGE_MAX_LENGTH"
 	// EnvHidePrompts is the environment variable for TraceConfig.HidePrompts.
+	// Hides LLM prompts (completions API).
+	// See: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
 	EnvHidePrompts = "OPENINFERENCE_HIDE_PROMPTS"
+	// EnvHideChoices is the environment variable for TraceConfig.HideChoices.
+	// Hides LLM choices (completions API outputs).
+	// See: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
+	EnvHideChoices = "OPENINFERENCE_HIDE_CHOICES"
 )
 
 // Default values for trace configuration.
 const (
 	defaultHideLLMInvocationParameters = false
 	defaultHidePrompts                 = false
+	defaultHideChoices                 = false
 	defaultHideInputs                  = false
 	defaultHideOutputs                 = false
 	defaultHideInputMessages           = false
@@ -49,7 +58,8 @@ const (
 	defaultHideInputImages             = false
 	defaultHideInputText               = false
 	defaultHideOutputText              = false
-	defaultHideEmbeddingVectors        = false
+	defaultHideEmbeddingsVectors       = false
+	defaultHideEmbeddingsText          = false
 	defaultBase64ImageMaxLength        = 32000
 )
 
@@ -65,7 +75,7 @@ const RedactedValue = "__REDACTED__"
 // to prioritize environment variables.
 //
 // This implementation follows the OpenInference configuration specification:
-// https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
+// https://github.com/Arize-ai/openinference/blob/main/spec/embedding_spans.md
 type TraceConfig struct {
 	// HideLLMInvocationParameters controls whether LLM invocation parameters are hidden.
 	// This is independent of HideInputs.
@@ -91,17 +101,31 @@ type TraceConfig struct {
 	// HideOutputText controls whether text from output messages is hidden.
 	// Only applies when output messages are not already hidden.
 	HideOutputText bool
-	// HideEmbeddingVectors controls whether embedding vectors are hidden.
-	HideEmbeddingVectors bool
+	// HideEmbeddingsText controls whether embedding text is hidden.
+	// Maps to OPENINFERENCE_HIDE_EMBEDDINGS_TEXT environment variable.
+	// When true, embedding.embeddings.N.embedding.text attributes contain "__REDACTED__".
+	HideEmbeddingsText bool
+	// HideEmbeddingsVectors controls whether embedding vectors are hidden.
+	// Maps to OPENINFERENCE_HIDE_EMBEDDINGS_VECTORS environment variable.
+	// When true, embedding.embeddings.N.embedding.vector attributes contain "__REDACTED__".
+	HideEmbeddingsVectors bool
 	// Base64ImageMaxLength limits the characters of a base64 encoding of an image.
 	Base64ImageMaxLength int
 	// HidePrompts controls whether LLM prompts are hidden.
+	// Maps to OPENINFERENCE_HIDE_PROMPTS environment variable.
+	// Only applies to completions API (not chat completions).
+	// When true, llm.prompts.N.prompt.text attributes contain "__REDACTED__".
 	HidePrompts bool
+	// HideChoices controls whether LLM choices are hidden.
+	// Maps to OPENINFERENCE_HIDE_CHOICES environment variable.
+	// Only applies to completions API outputs (not chat completions).
+	// When true, llm.choices.N.completion.text attributes contain "__REDACTED__".
+	HideChoices bool
 }
 
 // NewTraceConfig creates a new TraceConfig with default values.
 //
-// See: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
+// See: https://github.com/Arize-ai/openinference/blob/main/spec/embedding_spans.md
 func NewTraceConfig() *TraceConfig {
 	return &TraceConfig{
 		HideLLMInvocationParameters: defaultHideLLMInvocationParameters,
@@ -112,16 +136,18 @@ func NewTraceConfig() *TraceConfig {
 		HideInputImages:             defaultHideInputImages,
 		HideInputText:               defaultHideInputText,
 		HideOutputText:              defaultHideOutputText,
-		HideEmbeddingVectors:        defaultHideEmbeddingVectors,
+		HideEmbeddingsVectors:       defaultHideEmbeddingsVectors,
+		HideEmbeddingsText:          defaultHideEmbeddingsText,
 		Base64ImageMaxLength:        defaultBase64ImageMaxLength,
 		HidePrompts:                 defaultHidePrompts,
+		HideChoices:                 defaultHideChoices,
 	}
 }
 
 // NewTraceConfigFromEnv creates a new TraceConfig with values from environment
 // variables or their corresponding defaults.
 //
-// See: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
+// See: https://github.com/Arize-ai/openinference/blob/main/spec/embedding_spans.md
 func NewTraceConfigFromEnv() *TraceConfig {
 	return &TraceConfig{
 		HideLLMInvocationParameters: getBoolEnv(EnvHideLLMInvocationParameters, defaultHideLLMInvocationParameters),
@@ -132,9 +158,11 @@ func NewTraceConfigFromEnv() *TraceConfig {
 		HideInputImages:             getBoolEnv(EnvHideInputImages, defaultHideInputImages),
 		HideInputText:               getBoolEnv(EnvHideInputText, defaultHideInputText),
 		HideOutputText:              getBoolEnv(EnvHideOutputText, defaultHideOutputText),
-		HideEmbeddingVectors:        getBoolEnv(EnvHideEmbeddingVectors, defaultHideEmbeddingVectors),
+		HideEmbeddingsVectors:       getBoolEnv(EnvHideEmbeddingsVectors, defaultHideEmbeddingsVectors),
+		HideEmbeddingsText:          getBoolEnv(EnvHideEmbeddingsText, defaultHideEmbeddingsText),
 		Base64ImageMaxLength:        getIntEnv(EnvBase64ImageMaxLength, defaultBase64ImageMaxLength),
 		HidePrompts:                 getBoolEnv(EnvHidePrompts, defaultHidePrompts),
+		HideChoices:                 getBoolEnv(EnvHideChoices, defaultHideChoices),
 	}
 }
 

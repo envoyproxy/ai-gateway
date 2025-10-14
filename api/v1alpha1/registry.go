@@ -14,6 +14,7 @@ func init() {
 	SchemeBuilder.Register(&AIGatewayRoute{}, &AIGatewayRouteList{})
 	SchemeBuilder.Register(&AIServiceBackend{}, &AIServiceBackendList{})
 	SchemeBuilder.Register(&BackendSecurityPolicy{}, &BackendSecurityPolicyList{})
+	SchemeBuilder.Register(&MCPRoute{}, &MCPRouteList{})
 }
 
 const GroupName = "aigateway.envoyproxy.io"

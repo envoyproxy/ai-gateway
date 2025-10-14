@@ -233,7 +233,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
 						OfSystem: &openai.ChatCompletionSystemMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: "You are a helpful assistant",
 							},
 							Role: openai.ChatMessageRoleSystem,
@@ -287,7 +287,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
 						OfSystem: &openai.ChatCompletionSystemMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: "You are a helpful assistant",
 							},
 							Role: openai.ChatMessageRoleSystem,
@@ -342,7 +342,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
 						OfSystem: &openai.ChatCompletionSystemMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: "You are a helpful assistant",
 							},
 							Role: openai.ChatMessageRoleSystem,
@@ -391,7 +391,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
 						OfSystem: &openai.ChatCompletionSystemMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: "You are a helpful assistant",
 							},
 							Role: openai.ChatMessageRoleSystem,
@@ -683,14 +683,16 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 				"usageMetadata": {
 					"promptTokenCount": 10,
 					"candidatesTokenCount": 15,
-					"totalTokenCount": 25
+					"totalTokenCount": 25,
+                    "cachedContentTokenCount": 10,
+                    "thoughtsTokenCount": 10
 				}
 			}`,
 			endOfStream: true,
 			wantError:   false,
 			wantHeaderMut: &extprocv3.HeaderMutation{
 				SetHeaders: []*corev3.HeaderValueOption{{
-					Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("256")},
+					Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("353")},
 				}},
 			},
 			wantBodyMut: &extprocv3.BodyMutation{
@@ -709,7 +711,13 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
     "object": "chat.completion",
     "usage": {
         "completion_tokens": 15,
+        "completion_tokens_details": {
+            "reasoning_tokens": 10
+        },
         "prompt_tokens": 10,
+        "prompt_tokens_details": {
+            "cached_tokens": 10
+        },
         "total_tokens": 25
     }
 }`),
@@ -719,6 +727,98 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 				InputTokens:  10,
 				OutputTokens: 15,
 				TotalTokens:  25,
+			},
+		},
+		{
+			name: "response with safety ratings",
+			respHeaders: map[string]string{
+				"content-type": "application/json",
+			},
+			body: `{
+				"candidates": [
+					{
+						"content": {
+							"parts": [
+								{
+									"text": "This is a safe response from the AI assistant."
+								}
+							]
+						},
+						"finishReason": "STOP",
+						"safetyRatings": [
+							{
+								"category": "HARM_CATEGORY_HARASSMENT",
+								"probability": "LOW"
+							},
+							{
+								"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+								"probability": "NEGLIGIBLE"
+							},
+							{
+								"category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+								"probability": "MEDIUM"
+							}
+						]
+					}
+				],
+				"promptFeedback": {
+					"safetyRatings": []
+				},
+				"usageMetadata": {
+					"promptTokenCount": 8,
+					"candidatesTokenCount": 12,
+					"totalTokenCount": 20
+				}
+			}`,
+			endOfStream: true,
+			wantError:   false,
+			wantHeaderMut: &extprocv3.HeaderMutation{
+				SetHeaders: []*corev3.HeaderValueOption{{
+					Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("515")},
+				}},
+			},
+			wantBodyMut: &extprocv3.BodyMutation{
+				Mutation: &extprocv3.BodyMutation_Body{
+					Body: []byte(`{
+    "choices": [
+        {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+                "content": "This is a safe response from the AI assistant.",
+                "role": "assistant",
+                "safety_ratings": [
+                    {
+                        "category": "HARM_CATEGORY_HARASSMENT",
+                        "probability": "LOW"
+                    },
+                    {
+                        "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                        "probability": "NEGLIGIBLE"
+                    },
+                    {
+                        "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                        "probability": "MEDIUM"
+                    }
+                ]
+            }
+        }
+    ],
+    "object": "chat.completion",
+    "usage": {
+        "completion_tokens": 12,
+        "completion_tokens_details": {},
+        "prompt_tokens": 8,
+        "prompt_tokens_details": {},
+        "total_tokens": 20
+    }
+}`),
+				},
+			},
+			wantTokenUsage: LLMTokenUsage{
+				InputTokens:  8,
+				OutputTokens: 12,
+				TotalTokens:  20,
 			},
 		},
 		{
@@ -757,7 +857,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			wantHeaderMut: nil,
 			wantBodyMut: &extprocv3.BodyMutation{
 				Mutation: &extprocv3.BodyMutation_Body{
-					Body: []byte(`data: {"choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk","usage":{"completion_tokens":3,"prompt_tokens":5,"total_tokens":8}}
+					Body: []byte(`data: {"choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{},"prompt_tokens_details":{}}}
 
 data: [DONE]
 `),

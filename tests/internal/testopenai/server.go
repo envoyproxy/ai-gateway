@@ -49,18 +49,49 @@ func newServer(out io.Writer, port int, cassettes map[string]*cassette.Cassette,
 		return nil, fmt.Errorf("failed to create listener: %w", err)
 	}
 
-	// Determine base URL for recording.
-	baseURL := os.Getenv("OPENAI_BASE_URL")
-	if baseURL == "" {
-		baseURL = "https://api.openai.com/v1"
+	// Determine base URL and API key for recording.
+	// Prioritize Azure OpenAI over standard OpenAI.
+	var baseURL string
+	azureAPIKey := os.Getenv("AZURE_OPENAI_API_KEY")
+	azureAPIVersion := os.Getenv("OPENAI_API_VERSION")
+	azureDeployment := os.Getenv("AZURE_OPENAI_DEPLOYMENT")
+	apiKey := os.Getenv("OPENAI_API_KEY")
+
+	if azureAPIKey != "" {
+		// Azure OpenAI mode
+		baseURL = os.Getenv("AZURE_OPENAI_ENDPOINT")
+		if baseURL == "" {
+			return nil, fmt.Errorf("AZURE_OPENAI_ENDPOINT is required when AZURE_OPENAI_API_KEY is set")
+		}
+		if azureAPIVersion == "" {
+			return nil, fmt.Errorf("OPENAI_API_VERSION is required when AZURE_OPENAI_API_KEY is set")
+		}
+		if azureDeployment == "" {
+			return nil, fmt.Errorf("AZURE_OPENAI_DEPLOYMENT is required when AZURE_OPENAI_API_KEY is set")
+		}
+		baseURL = strings.TrimSuffix(baseURL, "/")
+	} else {
+		// Standard OpenAI mode
+		baseURL = os.Getenv("OPENAI_BASE_URL")
+		if baseURL == "" {
+			baseURL = "https://api.openai.com/v1"
+		}
+		baseURL = strings.TrimSuffix(baseURL, "/")
 	}
+
+	// Server base URL for matching cassettes (always local server)
+	serverBaseURL := fmt.Sprintf("http://%s", listener.Addr().String())
 
 	handler := &cassetteHandler{
 		logger:                 logger,
 		apiBase:                baseURL,
+		serverBase:             serverBaseURL,
 		cassettes:              cassettes,
 		cassettesDir:           cassettesDir,
-		apiKey:                 os.Getenv("OPENAI_API_KEY"),
+		azureAPIKey:            azureAPIKey,
+		azureAPIVersion:        azureAPIVersion,
+		azureDeployment:        azureDeployment,
+		apiKey:                 apiKey,
 		requestHeadersToRedact: make(map[string]struct{}, len(requestHeadersToRedact)),
 	}
 	for _, h := range requestHeadersToRedact {

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -41,7 +42,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
 						OfSystem: &openai.ChatCompletionSystemMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: "from-system",
 							},
 							Role: openai.ChatMessageRoleSystem,
@@ -49,7 +50,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 					},
 					{
 						OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: "from-developer",
 							},
 							Role: openai.ChatMessageRoleDeveloper,
@@ -81,7 +82,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 					},
 					{
 						OfTool: &openai.ChatCompletionToolMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: "Weather in Queens, NY is 70F and clear skies.",
 							},
 							ToolCallID: "call_6g7a",
@@ -215,7 +216,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
 						OfSystem: &openai.ChatCompletionSystemMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: []openai.ChatCompletionContentPartTextParam{
 									{Text: "from-system"},
 								},
@@ -225,7 +226,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 					},
 					{
 						OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: []openai.ChatCompletionContentPartTextParam{
 									{Text: "from-developer"},
 								},
@@ -311,7 +312,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
 						OfSystem: &openai.ChatCompletionSystemMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: []openai.ChatCompletionContentPartTextParam{
 									{Text: "from-system"},
 								},
@@ -505,7 +506,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						},
 					},
 				},
-				ToolChoice: "auto",
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
 			},
 			output: awsbedrock.ConverseInput{
 				InferenceConfig: &awsbedrock.InferenceConfiguration{},
@@ -556,7 +557,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						},
 					},
 				},
-				ToolChoice: "required",
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "required"},
 			},
 			output: awsbedrock.ConverseInput{
 				InferenceConfig: &awsbedrock.InferenceConfiguration{},
@@ -607,7 +608,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						},
 					},
 				},
-				ToolChoice: "some-tools",
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "some-tools"},
 			},
 			output: awsbedrock.ConverseInput{
 				InferenceConfig: &awsbedrock.InferenceConfiguration{},
@@ -662,10 +663,12 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						},
 					},
 				},
-				ToolChoice: openai.ToolChoice{
-					Type: openai.ToolType("function"),
-					Function: openai.ToolFunction{
-						Name: "my_function",
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{
+					Value: openai.ChatCompletionNamedToolChoice{
+						Type: openai.ToolType("function"),
+						Function: openai.ChatCompletionNamedToolChoiceFunction{
+							Name: "my_function",
+						},
 					},
 				},
 			},
@@ -693,7 +696,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 					},
 					ToolChoice: &awsbedrock.ToolChoice{
 						Tool: &awsbedrock.SpecificToolChoice{
-							Name: ptr.To("function"),
+							Name: ptr.To("my_function"),
 						},
 					},
 				},
@@ -805,7 +808,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 					},
 					{
 						OfTool: &openai.ChatCompletionToolMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: "The weather in Dallas TX is 98 degrees fahrenheit with mostly cloudy skies and a change of rain in the evening.",
 							},
 							Role:       openai.ChatMessageRoleTool,
@@ -814,7 +817,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 					},
 					{
 						OfTool: &openai.ChatCompletionToolMessageParam{
-							Content: openai.StringOrArray{
+							Content: openai.ContentUnion{
 								Value: "The weather in Orlando FL is 78 degrees fahrenheit with clear skies.",
 							},
 							Role:       openai.ChatMessageRoleTool,
@@ -1049,7 +1052,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						OfTool: &openai.ChatCompletionToolMessageParam{
 							Role:       openai.ChatMessageRoleTool,
 							ToolCallID: "tool_call_123",
-							Content:    openai.StringOrArray{Value: "{\"temperature\": 88}"},
+							Content:    openai.ContentUnion{Value: "{\"temperature\": 88}"},
 						},
 					},
 				},
@@ -1217,10 +1220,11 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 			hm, bm, err := o.RequestBody(nil, &originalReq, false)
 			var expPath string
 			require.Equal(t, tt.input.Stream, o.stream)
+			encodedModel := url.PathEscape(tt.input.Model)
 			if tt.input.Stream {
-				expPath = fmt.Sprintf("/model/%s/converse-stream", tt.input.Model)
+				expPath = fmt.Sprintf("/model/%s/converse-stream", encodedModel)
 			} else {
-				expPath = fmt.Sprintf("/model/%s/converse", tt.input.Model)
+				expPath = fmt.Sprintf("/model/%s/converse", encodedModel)
 			}
 			require.NoError(t, err)
 			require.NotNil(t, hm)
@@ -1254,7 +1258,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 		require.NotNil(t, hm.SetHeaders)
 		require.Len(t, hm.SetHeaders, 2)
 		require.Equal(t, ":path", hm.SetHeaders[0].Header.Key)
-		require.Equal(t, "/model/"+modelNameOverride+"/converse", string(hm.SetHeaders[0].Header.RawValue))
+		require.Equal(t, "/model/"+url.PathEscape(modelNameOverride)+"/converse", string(hm.SetHeaders[0].Header.RawValue))
 	})
 }
 
@@ -1348,7 +1352,7 @@ data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"id":nul
 
 data: {"choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls"}],"object":"chat.completion.chunk"}
 
-data: {"object":"chat.completion.chunk","usage":{"completion_tokens":75,"prompt_tokens":386,"total_tokens":461}}
+data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":386,"completion_tokens":75,"total_tokens":461}}
 
 data: [DONE]
 `, result)
@@ -1440,9 +1444,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			name: "basic_testing",
 			input: awsbedrock.ConverseResponse{
 				Usage: &awsbedrock.TokenUsage{
-					InputTokens:  10,
-					OutputTokens: 20,
-					TotalTokens:  30,
+					InputTokens:          10,
+					OutputTokens:         20,
+					TotalTokens:          30,
+					CacheReadInputTokens: ptr.To(5),
 				},
 				Output: &awsbedrock.ConverseOutput{
 					Message: awsbedrock.Message{
@@ -1457,10 +1462,13 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			},
 			output: openai.ChatCompletionResponse{
 				Object: "chat.completion",
-				Usage: openai.ChatCompletionResponseUsage{
+				Usage: openai.Usage{
 					TotalTokens:      30,
 					PromptTokens:     10,
 					CompletionTokens: 20,
+					PromptTokensDetails: &openai.PromptTokensDetails{
+						CachedTokens: 5,
+					},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
@@ -1494,7 +1502,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			},
 			output: openai.ChatCompletionResponse{
 				Object: "chat.completion",
-				Usage: openai.ChatCompletionResponseUsage{
+				Usage: openai.Usage{
 					TotalTokens:      30,
 					PromptTokens:     10,
 					CompletionTokens: 20,
@@ -1582,7 +1590,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			},
 			output: openai.ChatCompletionResponse{
 				Object: "chat.completion",
-				Usage: openai.ChatCompletionResponseUsage{
+				Usage: openai.Usage{
 					TotalTokens:      30,
 					PromptTokens:     10,
 					CompletionTokens: 20,
@@ -1678,12 +1686,104 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			expectedBody, err := json.Marshal(tt.output)
 			require.NoError(t, err)
 			require.JSONEq(t, string(expectedBody), string(newBody))
-			require.Equal(t,
-				LLMTokenUsage{
-					InputTokens:  uint32(tt.output.Usage.PromptTokens),     //nolint:gosec
-					OutputTokens: uint32(tt.output.Usage.CompletionTokens), //nolint:gosec
-					TotalTokens:  uint32(tt.output.Usage.TotalTokens),      //nolint:gosec
-				}, usedToken)
+			expectedUsage := LLMTokenUsage{
+				InputTokens:  uint32(tt.output.Usage.PromptTokens),     //nolint:gosec
+				OutputTokens: uint32(tt.output.Usage.CompletionTokens), //nolint:gosec
+				TotalTokens:  uint32(tt.output.Usage.TotalTokens),      //nolint:gosec
+			}
+			if tt.input.Usage != nil && tt.input.Usage.CacheReadInputTokens != nil {
+				expectedUsage.CachedTokens = uint32(tt.output.Usage.PromptTokensDetails.CachedTokens) //nolint:gosec
+			}
+			require.Equal(t, expectedUsage, usedToken)
+		})
+	}
+}
+
+// TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBodyURLEncoding tests URL encoding of ARNs in paths
+func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBodyURLEncoding(t *testing.T) {
+	tests := []struct {
+		name         string
+		modelName    string
+		stream       bool
+		expectedPath string
+	}{
+		{
+			name:         "ARN with slashes",
+			modelName:    "arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+			stream:       false,
+			expectedPath: "/model/arn:aws:bedrock:us-east-1:123456789012:inference-profile%2Fus.anthropic.claude-3-5-sonnet-20241022-v2:0/converse",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
+			req := openai.ChatCompletionRequest{
+				Model:  tt.modelName,
+				Stream: tt.stream,
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: "test message",
+							},
+							Role: openai.ChatMessageRoleUser,
+						},
+					},
+				},
+			}
+
+			hm, _, err := o.RequestBody(nil, &req, false)
+			require.NoError(t, err)
+			require.NotNil(t, hm)
+			require.NotNil(t, hm.SetHeaders)
+			require.Len(t, hm.SetHeaders, 2)
+			require.Equal(t, ":path", hm.SetHeaders[0].Header.Key)
+			require.Equal(t, tt.expectedPath, string(hm.SetHeaders[0].Header.RawValue))
+		})
+	}
+}
+
+func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBodyErr(t *testing.T) {
+	tests := []struct {
+		name  string
+		input openai.ChatCompletionRequest
+		err   error
+	}{
+		{
+			name: "test unexpected  tool choice type",
+			input: openai.ChatCompletionRequest{
+				Model: "gpt-4o",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: "from-user",
+							},
+							Role: openai.ChatMessageRoleUser,
+						},
+					},
+				},
+				Tools: []openai.Tool{
+					{
+						Type: "function",
+						Function: &openai.FunctionDefinition{
+							Name:        "get_current_weather",
+							Description: "Get the current weather in a given location",
+						},
+					},
+				},
+				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: 123},
+			},
+			err: fmt.Errorf("unexpected type: int"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
+			originalReq := tt.input
+			_, _, err := o.RequestBody(nil, &originalReq, false)
+			require.Equal(t, err.Error(), tt.err.Error())
 		})
 	}
 }
@@ -1781,17 +1881,21 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 			name: "usage",
 			in: awsbedrock.ConverseStreamEvent{
 				Usage: &awsbedrock.TokenUsage{
-					InputTokens:  10,
-					OutputTokens: 20,
-					TotalTokens:  30,
+					InputTokens:          10,
+					OutputTokens:         20,
+					TotalTokens:          30,
+					CacheReadInputTokens: ptr.To(5),
 				},
 			},
 			out: &openai.ChatCompletionResponseChunk{
 				Object: "chat.completion.chunk",
-				Usage: &openai.ChatCompletionResponseUsage{
+				Usage: &openai.Usage{
 					TotalTokens:      30,
 					PromptTokens:     10,
 					CompletionTokens: 20,
+					PromptTokensDetails: &openai.PromptTokensDetails{
+						CachedTokens: 5,
+					},
 				},
 			},
 		},

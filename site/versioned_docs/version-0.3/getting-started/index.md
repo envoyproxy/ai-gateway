@@ -37,5 +37,6 @@ This getting started guide is organized into several sections:
 ## Need Help?
 
 If you run into any issues:
+
 - Join our [Community Slack](https://envoyproxy.slack.com/archives/C07Q4N24VAA)
 - File an issue on [GitHub](https://github.com/envoyproxy/ai-gateway/issues)

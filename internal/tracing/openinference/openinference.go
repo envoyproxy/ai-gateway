@@ -19,6 +19,9 @@ const (
 
 	// SpanKindLLM indicates a Large Language Model operation.
 	SpanKindLLM = "LLM"
+
+	// SpanKindEmbedding indicates an Embedding operation.
+	SpanKindEmbedding = "EMBEDDING"
 )
 
 // LLM Operation constants.
@@ -62,6 +65,23 @@ const (
 
 	// MimeTypeJSON for JSON content.
 	MimeTypeJSON = "application/json"
+)
+
+// Completions API constants (Legacy Text Completion).
+//
+// These constants define attributes for the legacy completions API, distinct from chat completions.
+// They use indexed attribute format with discriminated union structure for future expansion.
+// Reference: https://github.com/Arize-ai/openinference/blob/main/spec/semantic_conventions.md#completions-api-legacy-text-completion
+const (
+	// LLMPrompts prefix for prompt attributes in completions API.
+	// Usage: llm.prompts.{index}.prompt.text
+	// Prompts provided to a completions API, indexed starting from 0.
+	LLMPrompts = "llm.prompts"
+
+	// LLMChoices prefix for completion choice attributes in completions API.
+	// Usage: llm.choices.{index}.completion.text
+	// Text choices returned from a completions API, indexed starting from 0.
+	LLMChoices = "llm.choices"
 )
 
 // LLM Message constants.
@@ -168,4 +188,77 @@ func OutputMessageAttribute(index int, suffix string) string {
 // OutputMessageToolCallAttribute creates an attribute key for a tool call.
 func OutputMessageToolCallAttribute(messageIndex, toolCallIndex int, suffix string) string {
 	return fmt.Sprintf("%s.%d.%s.%d.%s", LLMOutputMessages, messageIndex, MessageToolCalls, toolCallIndex, suffix)
+}
+
+// Embedding Operation constants.
+//
+// These constants define attributes for Embedding operations.
+// Reference: https://github.com/Arize-ai/openinference/blob/main/spec/embedding_spans.md
+const (
+	// EmbeddingModelName specifies the name of the embedding model.
+	// Example: "text-embedding-3-small"
+	EmbeddingModelName = "embedding.model_name"
+
+	// EmbeddingInvocationParameters contains the invocation parameters as JSON string.
+	// This includes parameters sent to the model excluding input.
+	// Example: {"model": "text-embedding-3-small", "encoding_format": "float"}
+	EmbeddingInvocationParameters = "embedding.invocation_parameters"
+
+	// EmbeddingEmbeddings is the prefix for embedding data attributes in batch operations.
+	// Forms the base for nested attributes like embedding.embeddings.{index}.embedding.text
+	// and embedding.embeddings.{index}.embedding.vector.
+	EmbeddingEmbeddings = "embedding.embeddings"
+)
+
+// EmbeddingTextAttribute creates an attribute key for embedding input text.
+// Format: embedding.embeddings.{index}.embedding.text
+//
+// Text attributes are populated ONLY when the input is already text (strings).
+// These attributes are recorded during the request phase to ensure availability even on errors.
+//
+// Token IDs (pre-tokenized integer arrays) are NOT decoded to text because:
+//   - Cross-provider incompatibility: Same token IDs represent different text across tokenizers
+//     (OpenAI uses cl100k_base, Ollama uses BERT/WordPiece/etc.)
+//   - Runtime impossibility: OpenAI-compatible APIs may serve any model with unknown tokenizers
+//   - Heavy dependencies: Supporting all tokenizers would require libraries beyond tiktoken
+func EmbeddingTextAttribute(index int) string {
+	return fmt.Sprintf("%s.%d.embedding.text", EmbeddingEmbeddings, index)
+}
+
+// EmbeddingVectorAttribute creates an attribute key for embedding output vector.
+// Format: embedding.embeddings.{index}.embedding.vector
+//
+// Vector attributes MUST contain float arrays, regardless of the API response format:
+//   - Float response format: Store vectors directly as float arrays
+//   - Base64 response format: MUST decode base64-encoded strings to float arrays before recording
+//     (Base64 encoding is ~25% more compact in transmission but must be decoded for consistency)
+//     Example: "AACAPwAAAEA=" → [1.5, 2.0]
+func EmbeddingVectorAttribute(index int) string {
+	return fmt.Sprintf("%s.%d.embedding.vector", EmbeddingEmbeddings, index)
+}
+
+// PromptTextAttribute creates an attribute key for prompt text in completions API.
+// Format: llm.prompts.{index}.prompt.text
+//
+// Example: llm.prompts.0.prompt.text, llm.prompts.1.prompt.text
+//
+// The nested structure (.prompt.text) uses a discriminated union pattern that mirrors
+// llm.input_messages and llm.output_messages, allowing for future expansion.
+//
+// Reference: https://github.com/Arize-ai/openinference/blob/main/spec/semantic_conventions.md#completions-api-legacy-text-completion
+func PromptTextAttribute(index int) string {
+	return fmt.Sprintf("%s.%d.prompt.text", LLMPrompts, index)
+}
+
+// ChoiceTextAttribute creates an attribute key for completion choice text.
+// Format: llm.choices.{index}.completion.text
+//
+// Example: llm.choices.0.completion.text, llm.choices.1.completion.text
+//
+// The nested structure (.completion.text) uses a discriminated union pattern that mirrors
+// the prompt structure, allowing for future expansion with additional choice metadata.
+//
+// Reference: https://github.com/Arize-ai/openinference/blob/main/spec/semantic_conventions.md#completions-api-legacy-text-completion
+func ChoiceTextAttribute(index int) string {
+	return fmt.Sprintf("%s.%d.completion.text", LLMChoices, index)
 }

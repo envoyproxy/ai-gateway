@@ -47,8 +47,9 @@ spec:
           format:
             type: JSON
             json:
-              # AI specific fields. The properties in the dynamic metadata expressions must match the ones
-              # defined in the AIGatewayRoute llmRequestCosts field.
+              # LLM specific fields. The properties in the dynamic metadata
+              # expressions must match the ones defined in the AIGatewayRoute
+              # llmRequestCosts field.
               genai_model_name: "%REQ(X-AI-EG-MODEL)%"
               genai_model_name_override: "%DYNAMIC_METADATA(io.envoy.ai_gateway:model_name_override)%"
               genai_backend_name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:backend_name)%"
@@ -150,14 +151,9 @@ kind: Secret
 metadata:
   name: openai-apikey
   namespace: default
-  annotations:
-    # This will tell the CLI to replace the value of the apiKey field
-    # with the value of the environment variable OPENAI_API_KEY.
-    substitution.aigw.run/env/apiKey: OPENAI_API_KEY
 type: Opaque
 stringData:
-  # This will be replaced with the environment variable OPENAI_API_KEY.
-  apiKey: PLACEHOLDER_OPENAI_API_KEY
+  apiKey: ${OPENAI_API_KEY}
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
@@ -173,3 +169,4 @@ spec:
   apiKey:
     secretRef:
       name: openai-apikey
+---

@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -24,8 +25,12 @@ import (
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
-// userIDMetricsLabel is the label used for user ID in the Prometheus metrics.
+// userIDAttribute is the attribute used for user ID in otel span and metrics.
 // This is passed via a helm value to the AI Gateway deployment.
+const userIDAttribute = "user.id"
+
+// userIDMetricsLabel is the Prometheus label the userIDAttribute becomes when
+// exported as a metric.
 const userIDMetricsLabel = "user_id"
 
 func Test_Examples_TokenRateLimit(t *testing.T) {
@@ -110,7 +115,10 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 	require.Eventually(t, func() bool {
 		fwd := e2elib.RequireNewHTTPPortForwarder(t, "monitoring", "app=prometheus", 9090)
 		defer fwd.Kill()
-		const query = `sum(gen_ai_client_token_usage_token_sum{gateway_envoyproxy_io_owning_gateway_name = "envoy-ai-gateway-token-ratelimit"}) by (gen_ai_request_model, gen_ai_token_type, user_id)`
+		// notice all labels are snake_case in Prometheus even though the otel inputs are dotted.
+		query := fmt.Sprintf(
+			`sum(gen_ai_client_token_usage_token_sum{gateway_envoyproxy_io_owning_gateway_name = "envoy-ai-gateway-token-ratelimit"}) by (gen_ai_request_model, gen_ai_token_type, %s)`,
+			userIDMetricsLabel)
 		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/v1/query?query=%s", fwd.Address(), url.QueryEscape(query)), nil)
 		require.NoError(t, err)
 		resp, err := http.DefaultClient.Do(req)
@@ -145,13 +153,20 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 			require.Equal(t, modelName, result.Metric["gen_ai_request_model"])
 			typ := result.Metric["gen_ai_token_type"]
 			actualTypes = append(actualTypes, typ)
+			// Look up based on the label, not the attribute name it was derived from!
 			uID, ok := result.Metric[userIDMetricsLabel]
 			require.True(t, ok, userIDMetricsLabel+" should be present in the metric")
 			t.Logf("Type: %s, Value: %v, User ID: %s", typ, result.Value, uID)
 		}
-		// We should see input and output token types (total was removed per OTEL spec).
-		require.Contains(t, actualTypes, "input")
-		require.Contains(t, actualTypes, "output")
+		// Metrics should include input and output (total is a response
+		// attribute, but not a metric).
+		//
+		// Note: We don't use require.Contains as that will crash the
+		// eventually loop when there are no metrics, yet.
+		if !slices.Contains(actualTypes, "input") || !slices.Contains(actualTypes, "output") {
+			t.Logf("waiting until there are both input and output tokens: %v", actualTypes)
+			return false
+		}
 		return true
 	}, 2*time.Minute, 1*time.Second)
 }

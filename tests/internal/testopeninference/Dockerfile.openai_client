@@ -4,7 +4,7 @@
 # the root of the repo.
 
 # Use glibc-based image with pre-compiled wheels for psutil
-FROM python:3.13-slim
+FROM python:3.13-slim AS base
 
 RUN python -m pip install --upgrade pip
 
@@ -16,5 +16,18 @@ RUN pip install openai \
     openinference-instrumentation-openai
 
 ENTRYPOINT ["sh", "-c"]
+
+# For chat completion, use the OpenAI CLI
+FROM base AS chat-completion
 # OpenInference only uses spans, not metrics or logs - disable them via CLI args
 CMD ["opentelemetry-instrument --service_name openai-cli --metrics_exporter none --logs_exporter none openai api chat.completions.create -t 0 -m ${CHAT_MODEL} --message user 'Answer in up to 3 words: Which ocean contains Bouvet Island?'"]
+
+# For create embeddings, use the OpenAI SDK because the CLI does not support it
+FROM base AS create-embeddings
+# OpenInference only uses spans, not metrics or logs - disable them via CLI args
+CMD ["opentelemetry-instrument --service_name openai-cli --metrics_exporter none --logs_exporter none python -c 'import os; from openai import OpenAI; print(OpenAI().embeddings.create(input=\"How do I reset my password?\", model=os.environ[\"EMBEDDINGS_MODEL\"]))'"]
+
+# For completions, use the OpenAI SDK because the CLI does not support it
+FROM base AS completion
+# OpenInference only uses spans, not metrics or logs - disable them via CLI args
+CMD ["opentelemetry-instrument --service_name openai-cli --metrics_exporter none --logs_exporter none python -c 'import os; from openai import OpenAI; print(OpenAI().completions.create(prompt=\"def fib(n):\\n    if n <= 1:\\n        return n\\n    else:\\n        return fib(n-1) + fib(n-2)\", model=os.environ[\"COMPLETION_MODEL\"], max_tokens=25, temperature=0.4, top_p=0.9))'"]

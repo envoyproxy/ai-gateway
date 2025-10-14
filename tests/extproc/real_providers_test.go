@@ -37,12 +37,10 @@ func TestWithRealProviders(t *testing.T) {
 	cc := internaltesting.RequireNewCredentialsContext()
 
 	config := &filterapi.Config{
-		MetadataNamespace: "ai_gateway_llm_ns",
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 			{MetadataKey: "some_cel", Type: filterapi.LLMRequestCostTypeCEL, CEL: "1+1"},
 		},
-		ModelNameHeaderKey: "x-model-name",
 		Backends: []filterapi.Backend{
 			alwaysFailingBackend,
 			{Name: "openai", Schema: openAISchema, Auth: &filterapi.BackendAuth{
@@ -111,7 +109,7 @@ func TestWithRealProviders(t *testing.T) {
 		t.Run("embeddings", func(t *testing.T) {
 			for _, tc := range []realProvidersTestCase{
 				{name: "openai", modelName: "text-embedding-3-small", required: internaltesting.RequiredCredentialOpenAI},
-				{name: "gemini", modelName: "gemini-embedding-exp-03-07", required: internaltesting.RequiredCredentialGemini},
+				{name: "gemini", modelName: "gemini-embedding-001", required: internaltesting.RequiredCredentialGemini},
 				{name: "sambanova", modelName: "E5-Mistral-7B-Instruct", required: internaltesting.RequiredCredentialSambaNova},
 				{name: "deepinfra", modelName: "BAAI/bge-base-en-v1.5", required: internaltesting.RequiredCredentialDeepInfra},
 			} {

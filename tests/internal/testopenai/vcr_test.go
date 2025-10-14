@@ -247,7 +247,7 @@ func TestHandler_OutdatedCassette(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	// Check error message.
+	// Using require.Contains because temp directory path varies between test runs.
 	require.Contains(t, string(body), "Interaction out of date")
 	require.Contains(t, string(body), "chat-basic.yaml")
 	require.Contains(t, string(body), "re-record")
@@ -279,9 +279,8 @@ func TestHandler_NoAPIKeyError(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	// Check error message.
-	require.Contains(t, string(body), "No cassette found")
-	require.Contains(t, string(body), "set OPENAI_API_KEY")
+	expected := "TestOpenAI Error: No cassette found for POST /v1/chat/completions. To record OpenAI cassettes, set OPENAI_API_KEY environment variable and provide X-Cassette-Name header.\n"
+	require.Equal(t, expected, string(body))
 }
 
 // TestLoadCassettes_EmbeddedFS tests loading cassettes from embedded filesystem.
@@ -524,4 +523,175 @@ func TestAfterCaptureHook_InvalidJSONInRequest(t *testing.T) {
 	err := afterCaptureHook(interaction)
 	require.NoError(t, err) // prettyPrintJSON returns unchanged body without error for invalid JSON.
 	require.Equal(t, "invalid json {", interaction.Request.Body)
+}
+
+// TestAfterCaptureHook_AzureScrubbing tests Azure URL and deployment name scrubbing.
+func TestAfterCaptureHook_AzureScrubbing(t *testing.T) {
+	tests := []struct {
+		name        string
+		inputURL    string
+		inputBody   string
+		expectedURL string
+		expectError bool
+	}{
+		{
+			name:        "scrubs Azure resource name",
+			inputURL:    "https://my-private-resource.cognitiveservices.azure.com/openai/deployments/my-deployment/chat/completions",
+			inputBody:   `{"model": "gpt-4", "messages": [{"role": "user", "content": "hello"}]}`,
+			expectedURL: "https://resource-name.cognitiveservices.azure.com/openai/deployments/gpt-4/chat/completions",
+		},
+		{
+			name:        "scrubs deployment name and replaces with model",
+			inputURL:    "https://adria-mg8sjkj6-eastus2.cognitiveservices.azure.com/openai/deployments/secret-deployment-123/chat/completions",
+			inputBody:   `{"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "test"}]}`,
+			expectedURL: "https://resource-name.cognitiveservices.azure.com/openai/deployments/gpt-4o-mini/chat/completions",
+		},
+		{
+			name:        "handles different Azure regions",
+			inputURL:    "https://my-resource-westus.cognitiveservices.azure.com/openai/deployments/deploy-name/embeddings",
+			inputBody:   `{"model": "text-embedding-ada-002", "input": "test"}`,
+			expectedURL: "https://resource-name.cognitiveservices.azure.com/openai/deployments/text-embedding-ada-002/embeddings",
+		},
+		{
+			name:        "non-Azure URL unchanged",
+			inputURL:    "https://api.openai.com/v1/chat/completions",
+			inputBody:   `{"model": "gpt-4", "messages": [{"role": "user", "content": "hello"}]}`,
+			expectedURL: "https://api.openai.com/v1/chat/completions",
+		},
+		{
+			name:        "Azure deployment path but no model in body",
+			inputURL:    "https://my-resource.cognitiveservices.azure.com/openai/deployments/my-deploy/chat/completions",
+			inputBody:   `{"messages": [{"role": "user", "content": "hello"}]}`,
+			expectError: true,
+		},
+		{
+			name:        "Azure deployment path but empty model",
+			inputURL:    "https://my-resource.cognitiveservices.azure.com/openai/deployments/my-deploy/chat/completions",
+			inputBody:   `{"model": "", "messages": []}`,
+			expectError: true,
+		},
+		{
+			name:        "Azure deployment path but invalid JSON body",
+			inputURL:    "https://my-resource.cognitiveservices.azure.com/openai/deployments/my-deploy/chat/completions",
+			inputBody:   `{invalid json`,
+			expectError: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			interaction := &cassette.Interaction{
+				Request: cassette.Request{
+					URL:  tc.inputURL,
+					Body: tc.inputBody,
+					Headers: map[string][]string{
+						"Content-Type": {"application/json"},
+					},
+				},
+				Response: cassette.Response{
+					Headers: map[string][]string{},
+				},
+			}
+
+			err := afterCaptureHook(interaction)
+
+			if tc.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedURL, interaction.Request.URL)
+			}
+		})
+	}
+}
+
+// TestAfterCaptureHook_AzureHeaderScrubbing tests Azure-specific header scrubbing.
+func TestAfterCaptureHook_AzureHeaderScrubbing(t *testing.T) {
+	tests := []struct {
+		name           string
+		requestHeaders http.Header
+		expectHeaders  http.Header
+	}{
+		{
+			name: "removes api-key header lowercase",
+			requestHeaders: http.Header{
+				"api-key":      {"azure-key-123"},
+				"Content-Type": {"application/json"},
+			},
+			expectHeaders: http.Header{
+				"Content-Type":   {"application/json"},
+				"Content-Length": {"2"},
+			},
+		},
+		{
+			name: "removes Api-Key header mixed case",
+			requestHeaders: http.Header{
+				"Api-Key":      {"azure-key-123"},
+				"Content-Type": {"application/json"},
+			},
+			expectHeaders: http.Header{
+				"Content-Type":   {"application/json"},
+				"Content-Length": {"2"},
+			},
+		},
+		{
+			name: "removes Cookie header",
+			requestHeaders: http.Header{
+				"Cookie":       {"session=secret"},
+				"Content-Type": {"application/json"},
+			},
+			expectHeaders: http.Header{
+				"Content-Type":   {"application/json"},
+				"Content-Length": {"2"},
+			},
+		},
+		{
+			name: "removes Openai-Organization header",
+			requestHeaders: http.Header{
+				"Openai-Organization": {"org-123"},
+				"Content-Type":        {"application/json"},
+			},
+			expectHeaders: http.Header{
+				"Content-Type":   {"application/json"},
+				"Content-Length": {"2"},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			interaction := &cassette.Interaction{
+				Request: cassette.Request{
+					URL:     "https://api.openai.com/v1/chat/completions",
+					Body:    "{}",
+					Headers: tc.requestHeaders,
+				},
+				Response: cassette.Response{
+					Headers: http.Header{},
+				},
+			}
+
+			err := afterCaptureHook(interaction)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectHeaders, interaction.Request.Headers)
+		})
+	}
+}
+
+// TestFilterHeaders_AzureCaseInsensitive tests case-insensitive Azure header filtering.
+func TestFilterHeaders_AzureCaseInsensitive(t *testing.T) {
+	headers := http.Header{
+		"Authorization": {"Bearer token"},
+		"api-key":       {"azure-key"},
+		"Api-Key":       {"another-key"},
+		"Content-Type":  {"application/json"},
+		"X-Custom":      {"value"},
+	}
+
+	filtered := filterHeaders(headers, []string{"Authorization", "Api-Key"})
+
+	require.Equal(t, http.Header{
+		"Content-Type": {"application/json"},
+		"X-Custom":     {"value"},
+	}, filtered)
 }

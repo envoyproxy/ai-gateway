@@ -44,3 +44,60 @@ func (s *chatCompletionSpan) EndSpanOnError(statusCode int, body []byte) {
 	s.recorder.RecordResponseOnError(s.span, statusCode, body)
 	s.span.End()
 }
+
+// Ensure embeddingsSpan implements EmbeddingsSpan.
+var _ tracing.EmbeddingsSpan = (*embeddingsSpan)(nil)
+
+type embeddingsSpan struct {
+	span     trace.Span
+	recorder tracing.EmbeddingsRecorder
+}
+
+// RecordResponse invokes [tracing.EmbeddingsRecorder.RecordResponse].
+func (s *embeddingsSpan) RecordResponse(resp *openai.EmbeddingResponse) {
+	s.recorder.RecordResponse(s.span, resp)
+}
+
+// EndSpan finalizes and ends the span.
+func (s *embeddingsSpan) EndSpan() {
+	s.span.End()
+}
+
+// EndSpanOnError invokes [tracing.EmbeddingsRecorder.RecordResponseOnError].
+func (s *embeddingsSpan) EndSpanOnError(statusCode int, body []byte) {
+	s.recorder.RecordResponseOnError(s.span, statusCode, body)
+	s.span.End()
+}
+
+// Ensure completionSpan implements CompletionSpan.
+var _ tracing.CompletionSpan = (*completionSpan)(nil)
+
+type completionSpan struct {
+	span     trace.Span
+	recorder tracing.CompletionRecorder
+	chunks   []*openai.CompletionResponse
+}
+
+// RecordResponseChunk invokes [tracing.CompletionRecorder.RecordResponseChunk].
+func (s *completionSpan) RecordResponseChunk(resp *openai.CompletionResponse) {
+	s.chunks = append(s.chunks, resp) // Delay recording until EndSpan to collect all events.
+}
+
+// RecordResponse invokes [tracing.CompletionRecorder.RecordResponse].
+func (s *completionSpan) RecordResponse(resp *openai.CompletionResponse) {
+	s.recorder.RecordResponse(s.span, resp)
+}
+
+// EndSpan invokes [tracing.CompletionRecorder.RecordResponseChunks].
+func (s *completionSpan) EndSpan() {
+	if len(s.chunks) > 0 {
+		s.recorder.RecordResponseChunks(s.span, s.chunks)
+	}
+	s.span.End()
+}
+
+// EndSpanOnError invokes [tracing.CompletionRecorder.RecordResponseOnError].
+func (s *completionSpan) EndSpanOnError(statusCode int, body []byte) {
+	s.recorder.RecordResponseOnError(s.span, statusCode, body)
+	s.span.End()
+}

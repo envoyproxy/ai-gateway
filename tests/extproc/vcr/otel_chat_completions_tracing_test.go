@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -25,6 +26,10 @@ func TestOtelOpenAIChatCompletions_span(t *testing.T) {
 
 	was5xx := false
 	for _, cassette := range testopenai.ChatCassettes() {
+		if strings.HasPrefix(cassette.String(), "azure-") {
+			continue // Skip Azure as they are tested separately.
+		}
+
 		if was5xx {
 			return // rather than also failing subsequent tests, which confuses root cause.
 		}
@@ -34,7 +39,7 @@ func TestOtelOpenAIChatCompletions_span(t *testing.T) {
 
 		t.Run(cassette.String(), func(t *testing.T) {
 			// Send request.
-			req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d/v1", listenerPort), cassette)
+			req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d", listenerPort), cassette)
 			require.NoError(t, err)
 
 			resp, err := http.DefaultClient.Do(req)
@@ -60,7 +65,7 @@ func TestOtelOpenAIChatCompletions_span_modelNameOverride(t *testing.T) {
 	env := setupOtelTestEnvironment(t)
 	listenerPort := env.EnvoyListenerPort()
 
-	req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d/v1", listenerPort), testopenai.CassetteChatBasic)
+	req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d", listenerPort), testopenai.CassetteChatBasic)
 	require.NoError(t, err)
 	// Set the x-test-backend which envoy.yaml routes to the openai-chat-override
 	// backend in extproc.yaml. This backend overrides the model to gpt-5-nano.
@@ -91,7 +96,7 @@ func TestOtelOpenAIChatCompletions_propagation(t *testing.T) {
 	env := setupOtelTestEnvironment(t)
 	listenerPort := env.EnvoyListenerPort()
 
-	req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d/v1", listenerPort), testopenai.CassetteChatBasic)
+	req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d", listenerPort), testopenai.CassetteChatBasic)
 	require.NoError(t, err)
 	traceID := "12345678901234567890123456789012"
 	req.Header.Add("traceparent", "00-"+traceID+"-1234567890123456-01")

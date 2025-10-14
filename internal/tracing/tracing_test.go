@@ -17,16 +17,12 @@ import (
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/contrib/propagators/autoprop"
-	"go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/trace/noop"
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
-	openaitracing "github.com/envoyproxy/ai-gateway/internal/tracing/openinference/openai"
 )
 
 // TestNewTracingFromEnv_DefaultServiceName tests that the service name.
@@ -61,7 +57,7 @@ func TestNewTracingFromEnv_DefaultServiceName(t *testing.T) {
 			}
 
 			var stdout bytes.Buffer
-			result, err := NewTracingFromEnv(t.Context(), &stdout)
+			result, err := NewTracingFromEnv(t.Context(), &stdout, nil)
 			require.NoError(t, err)
 			t.Cleanup(func() {
 				_ = result.Shutdown(t.Context())
@@ -117,7 +113,7 @@ func TestNewTracingFromEnv_DisabledByEnv(t *testing.T) {
 				t.Setenv(k, v)
 			}
 
-			result, err := NewTracingFromEnv(t.Context(), io.Discard)
+			result, err := NewTracingFromEnv(t.Context(), io.Discard, nil)
 			require.NoError(t, err)
 			require.IsType(t, tracing.NoopTracing{}, result)
 		})
@@ -170,7 +166,7 @@ func TestNewTracingFromEnv_EndpointHierarchy(t *testing.T) {
 				t.Setenv(k, v)
 			}
 
-			result, err := NewTracingFromEnv(t.Context(), io.Discard)
+			result, err := NewTracingFromEnv(t.Context(), io.Discard, nil)
 			require.NoError(t, err)
 
 			if tt.expectActive {
@@ -235,7 +231,7 @@ func TestNewTracingFromEnv_ConsoleExporter(t *testing.T) {
 			}
 
 			var stdout bytes.Buffer
-			result, err := NewTracingFromEnv(t.Context(), &stdout)
+			result, err := NewTracingFromEnv(t.Context(), &stdout, nil)
 			require.NoError(t, err)
 			t.Cleanup(func() {
 				_ = result.Shutdown(context.Background())
@@ -394,11 +390,11 @@ func TestNewTracingFromEnv_OtelPropagators(t *testing.T) {
 	}
 }
 
-// TestNewTracingFromEnv_OpenInferenceRedaction tests that the OpenInference.
+// TestNewTracingFromEnv_ChatCompletion_Redaction tests that the OpenInference.
 // environment variables (OPENINFERENCE_HIDE_INPUTS and OPENINFERENCE_HIDE_OUTPUTS)
 // work correctly to redact sensitive data from spans, following the OpenInference.
 // configuration specification.
-func TestNewTracingFromEnv_OpenInferenceRedaction(t *testing.T) {
+func TestNewTracingFromEnv_ChatCompletion_Redaction(t *testing.T) {
 	tests := []struct {
 		name        string
 		hideInputs  bool
@@ -508,48 +504,13 @@ func newTracingFromEnvForTest(t *testing.T, stdout io.Writer) (*testotel.OTLPCol
 	t.Cleanup(collector.Close)
 	collector.SetEnv(t.Setenv)
 
-	result, err := NewTracingFromEnv(t.Context(), stdout)
+	result, err := NewTracingFromEnv(t.Context(), stdout, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = result.Shutdown(context.Background())
 	})
 
 	return collector, result
-}
-
-func TestNewTracing(t *testing.T) {
-	t.Run("with noop tracer", func(t *testing.T) {
-		config := &tracing.TracingConfig{
-			Tracer:                 noop.Tracer{},
-			Propagator:             autoprop.NewTextMapPropagator(),
-			ChatCompletionRecorder: openaitracing.NewChatCompletionRecorderFromEnv(),
-		}
-
-		result := NewTracing(config)
-		require.IsType(t, tracing.NoopTracing{}, result)
-	})
-
-	t.Run("with real tracer", func(t *testing.T) {
-		tp := trace.NewTracerProvider()
-		t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
-
-		config := &tracing.TracingConfig{
-			Tracer:                 tp.Tracer("test"),
-			Propagator:             autoprop.NewTextMapPropagator(),
-			ChatCompletionRecorder: openaitracing.NewChatCompletionRecorderFromEnv(),
-		}
-
-		result := NewTracing(config)
-		require.IsType(t, &tracingImpl{}, result)
-
-		// Test that ChatCompletionTracer returns the expected tracer.
-		tracer := result.ChatCompletionTracer()
-		require.NotNil(t, tracer)
-
-		// Test that Shutdown returns nil when tp wasn't created internally.
-		err := result.Shutdown(t.Context())
-		require.NoError(t, err)
-	})
 }
 
 func TestNoopShutdown(t *testing.T) {
@@ -573,7 +534,7 @@ func TestNewTracingFromEnv_OTLPHeaders(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", ts.URL)
 	t.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")
 
-	result, err := NewTracingFromEnv(t.Context(), io.Discard)
+	result, err := NewTracingFromEnv(t.Context(), io.Discard, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = result.Shutdown(context.Background())
@@ -590,6 +551,115 @@ func TestNewTracingFromEnv_OTLPHeaders(t *testing.T) {
 	}
 
 	require.Equal(t, expectedAuthorization, <-actualAuthorization)
+}
+
+// TestNewTracingFromEnv_Embeddings_Redaction tests that the OpenInference
+// environment variables (OPENINFERENCE_HIDE_EMBEDDINGS_TEXT and OPENINFERENCE_HIDE_EMBEDDINGS_VECTORS)
+// work correctly to redact sensitive data from embeddings spans, following the OpenInference
+// configuration specification.
+func TestNewTracingFromEnv_Embeddings_Redaction(t *testing.T) {
+	tests := []struct {
+		name                  string
+		hideEmbeddingsText    bool
+		hideEmbeddingsVectors bool
+	}{
+		{
+			name:                  "no redaction",
+			hideEmbeddingsText:    false,
+			hideEmbeddingsVectors: false,
+		},
+		{
+			name:                  "hide embeddings text only",
+			hideEmbeddingsText:    true,
+			hideEmbeddingsVectors: false,
+		},
+		{
+			name:                  "hide embeddings vectors only",
+			hideEmbeddingsText:    false,
+			hideEmbeddingsVectors: true,
+		},
+		{
+			name:                  "hide embeddings text and vectors",
+			hideEmbeddingsText:    true,
+			hideEmbeddingsVectors: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(openinference.EnvHideEmbeddingsText, strconv.FormatBool(tt.hideEmbeddingsText))
+			t.Setenv(openinference.EnvHideEmbeddingsVectors, strconv.FormatBool(tt.hideEmbeddingsVectors))
+
+			collector, tr := newTracingFromEnvForTest(t, io.Discard)
+			tracer := tr.EmbeddingsTracer()
+
+			// Create a test request with sensitive data.
+			req := &openai.EmbeddingRequest{
+				Model: "text-embedding-3-small",
+				Input: openai.EmbeddingRequestInput{
+					Value: "Sensitive embedding text",
+				},
+			}
+			reqBody := []byte(`{"input":"Sensitive embedding text","model":"text-embedding-3-small"}`)
+			respBody := &openai.EmbeddingResponse{
+				Object: "list",
+				Model:  "text-embedding-3-small",
+				Data: []openai.Embedding{{
+					Object: "embedding",
+					Index:  0,
+					Embedding: openai.EmbeddingUnion{
+						Value: []float64{0.1, 0.2, 0.3, 0.4, 0.5},
+					},
+				}},
+				Usage: openai.EmbeddingUsage{
+					PromptTokens: 5,
+					TotalTokens:  5,
+				},
+			}
+
+			// Start a span and record request/response.
+			span := tracer.StartSpanAndInjectHeaders(
+				t.Context(),
+				map[string]string{},
+				&extprocv3.HeaderMutation{},
+				req,
+				reqBody,
+			)
+			require.NotNil(t, span)
+			span.RecordResponse(respBody)
+			span.EndSpan()
+
+			// Check the recorded span.
+			v1Span := collector.TakeSpan()
+			require.NotNil(t, v1Span)
+
+			// Check if embeddings text/vectors are redacted as expected.
+			attrs := make(map[string]string)
+			hasVector := false
+			for _, kv := range v1Span.Attributes {
+				attrs[kv.Key] = kv.Value.GetStringValue()
+				if kv.Key == openinference.EmbeddingVectorAttribute(0) {
+					hasVector = true
+				}
+			}
+
+			// Check embeddings text redaction.
+			textAttrKey := openinference.EmbeddingTextAttribute(0)
+			if tt.hideEmbeddingsText {
+				_, hasText := attrs[textAttrKey]
+				require.False(t, hasText, "embedding text should be hidden")
+			} else {
+				require.Equal(t, "Sensitive embedding text", attrs[textAttrKey], "embedding text should be present")
+			}
+
+			// Check embeddings vector redaction.
+			if tt.hideEmbeddingsVectors {
+				require.False(t, hasVector, "embedding vectors should be hidden")
+			} else {
+				require.True(t, hasVector, "embedding vectors should be present")
+			}
+		})
+	}
 }
 
 // startCompletionsSpan is a test helper that creates a span with a basic request.

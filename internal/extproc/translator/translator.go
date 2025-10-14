@@ -124,6 +124,49 @@ type OpenAIEmbeddingTranslator interface {
 	ResponseError(respHeaders map[string]string, body io.Reader) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error)
 }
 
+// OpenAICompletionTranslator translates the request and response messages between the client and the backend API schemas
+// for /v1/completions endpoint of OpenAI.
+//
+// This is created per request and is not thread-safe.
+type OpenAICompletionTranslator interface {
+	// RequestBody translates the request body.
+	// 	- `raw` is the raw request body.
+	// 	- `body` is the request body parsed into the [openai.CompletionRequest].
+	//	- `onRetry` is true if this is a retry request.
+	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
+	RequestBody(raw []byte, body *openai.CompletionRequest, onRetry bool) (
+		headerMutation *extprocv3.HeaderMutation,
+		bodyMutation *extprocv3.BodyMutation,
+		err error,
+	)
+
+	// ResponseHeaders translates the response headers.
+	// 	- `headers` is the response headers.
+	//	- This returns `headerMutation` that can be nil to indicate no mutation.
+	ResponseHeaders(headers map[string]string) (
+		headerMutation *extprocv3.HeaderMutation,
+		err error,
+	)
+
+	// ResponseBody translates the response body. When stream=true, this is called for each chunk of the response body.
+	// 	- `body` is the response body either chunk or the entire body, depending on the context.
+	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
+	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
+	//  - This returns `responseModel` that is the model name from the response (may differ from request model).
+	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool, span tracing.CompletionSpan) (
+		headerMutation *extprocv3.HeaderMutation,
+		bodyMutation *extprocv3.BodyMutation,
+		tokenUsage LLMTokenUsage,
+		responseModel internalapi.ResponseModel,
+		err error,
+	)
+
+	// ResponseError translates the response error. This is called when the upstream response status code is not successful (2xx).
+	// 	- `respHeaders` is the response headers.
+	// 	- `body` is the response body that contains the error message.
+	ResponseError(respHeaders map[string]string, body io.Reader) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error)
+}
+
 // AnthropicMessagesTranslator translates the request and response messages between the client and the backend API schemas
 // for /v1/messages endpoint of Anthropic.
 //
@@ -170,11 +213,14 @@ type LLMTokenUsage struct {
 	OutputTokens uint32
 	// TotalTokens is the total number of tokens consumed.
 	TotalTokens uint32
+	// CachedTokens is the total number of tokens read from cache.
+	CachedTokens uint32
 }
 
-// SJSONOptions are the options used for sjson operations in the translator.
-// This is also used outside the package to share the same options for consistency.
-var SJSONOptions = &sjson.Options{
-	Optimistic:     true,
-	ReplaceInPlace: true,
+// sjsonOptions are the options used for sjson operations in the translator.
+var sjsonOptions = &sjson.Options{
+	Optimistic: true,
+	// Note: DO NOT set ReplaceInPlace to true since at the translation layer, which might be called multiple times per retry,
+	// it must be ensured that the original body is not modified, i.e. the operation must be idempotent.
+	ReplaceInPlace: false,
 }

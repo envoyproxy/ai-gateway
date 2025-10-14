@@ -95,14 +95,14 @@ func isAnthropicSupportedImageMediaType(mediaType string) bool {
 }
 
 // translateAnthropicToolChoice converts the OpenAI tool_choice parameter to the Anthropic format.
-func translateAnthropicToolChoice(openAIToolChoice any, disableParallelToolUse anthropicParam.Opt[bool]) (anthropic.ToolChoiceUnionParam, error) {
+func translateAnthropicToolChoice(openAIToolChoice *openai.ChatCompletionToolChoiceUnion, disableParallelToolUse anthropicParam.Opt[bool]) (anthropic.ToolChoiceUnionParam, error) {
 	var toolChoice anthropic.ToolChoiceUnionParam
 
 	if openAIToolChoice == nil {
 		return toolChoice, nil
 	}
 
-	switch choice := openAIToolChoice.(type) {
+	switch choice := openAIToolChoice.Value.(type) {
 	case string:
 		switch choice {
 		case string(openAIconstant.ValueOf[openAIconstant.Auto]()):
@@ -121,7 +121,7 @@ func translateAnthropicToolChoice(openAIToolChoice any, disableParallelToolUse a
 		default:
 			return anthropic.ToolChoiceUnionParam{}, fmt.Errorf("unsupported tool_choice value: %s", choice)
 		}
-	case openai.ToolChoice:
+	case openai.ChatCompletionNamedToolChoice:
 		if choice.Type == openai.ToolTypeFunction && choice.Function.Name != "" {
 			toolChoice = anthropic.ToolChoiceUnionParam{
 				OfTool: &anthropic.ToolChoiceToolParam{
@@ -139,7 +139,7 @@ func translateAnthropicToolChoice(openAIToolChoice any, disableParallelToolUse a
 
 // translateOpenAItoAnthropicTools translates OpenAI tool and tool_choice parameters
 // into the Anthropic format and returns translated tool & tool choice.
-func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice any, parallelToolCalls *bool) (tools []anthropic.ToolUnionParam, toolChoice anthropic.ToolChoiceUnionParam, err error) {
+func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice *openai.ChatCompletionToolChoiceUnion, parallelToolCalls *bool) (tools []anthropic.ToolUnionParam, toolChoice anthropic.ToolChoiceUnionParam, err error) {
 	if len(openAITools) > 0 {
 		anthropicTools := make([]anthropic.ToolUnionParam, 0, len(openAITools))
 		for _, openAITool := range openAITools {
@@ -276,7 +276,7 @@ func openAIToAnthropicContent(content any) ([]anthropic.ContentBlockParamUnion, 
 		}, nil
 	case []openai.ChatCompletionContentPartUserUnionParam:
 		return convertContentPartsToAnthropic(v)
-	case openai.StringOrArray:
+	case openai.ContentUnion:
 		switch val := v.Value.(type) {
 		case string:
 			if val == "" {
@@ -285,10 +285,17 @@ func openAIToAnthropicContent(content any) ([]anthropic.ContentBlockParamUnion, 
 			return []anthropic.ContentBlockParamUnion{
 				anthropic.NewTextBlock(val),
 			}, nil
-		case []openai.ChatCompletionContentPartUserUnionParam:
-			return openAIToAnthropicContent(val)
+		case []openai.ChatCompletionContentPartTextParam:
+			// Convert text params to string and create text block
+			var sb strings.Builder
+			for _, part := range val {
+				sb.WriteString(part.Text)
+			}
+			return []anthropic.ContentBlockParamUnion{
+				anthropic.NewTextBlock(sb.String()),
+			}, nil
 		default:
-			return nil, fmt.Errorf("unsupported StringOrArray value type: %T", val)
+			return nil, fmt.Errorf("unsupported ContentUnion value type: %T", val)
 		}
 	}
 	return nil, fmt.Errorf("unsupported OpenAI content type: %T", content)
@@ -300,32 +307,16 @@ func extractSystemPromptFromDeveloperMsg(msg openai.ChatCompletionDeveloperMessa
 		return ""
 	case string:
 		return v
-	case []openai.ChatCompletionContentPartUserUnionParam:
+	case []openai.ChatCompletionContentPartTextParam:
 		// Concatenate all text parts for completeness.
 		var sb strings.Builder
 		for _, part := range v {
-			if part.OfText != nil {
-				sb.WriteString(part.OfText.Text)
-			}
+			sb.WriteString(part.Text)
 		}
 		return sb.String()
-	case openai.StringOrArray:
-		switch val := v.Value.(type) {
-		case string:
-			return val
-		case []openai.ChatCompletionContentPartUserUnionParam:
-			var sb strings.Builder
-			for _, part := range val {
-				if part.OfText != nil {
-					sb.WriteString(part.OfText.Text)
-				}
-			}
-			return sb.String()
-		}
 	default:
 		return ""
 	}
-	return ""
 }
 
 func anthropicRoleToOpenAIRole(role anthropic.MessageParamRole) (string, error) {
@@ -690,11 +681,15 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 		InputTokens:  uint32(anthropicResp.Usage.InputTokens),                                    //nolint:gosec
 		OutputTokens: uint32(anthropicResp.Usage.OutputTokens),                                   //nolint:gosec
 		TotalTokens:  uint32(anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens), //nolint:gosec
+		CachedTokens: uint32(anthropicResp.Usage.CacheReadInputTokens),                           //nolint:gosec
 	}
-	openAIResp.Usage = openai.ChatCompletionResponseUsage{
+	openAIResp.Usage = openai.Usage{
 		CompletionTokens: int(anthropicResp.Usage.OutputTokens),
 		PromptTokens:     int(anthropicResp.Usage.InputTokens),
 		TotalTokens:      int(anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens),
+		PromptTokensDetails: &openai.PromptTokensDetails{
+			CachedTokens: int(anthropicResp.Usage.CacheReadInputTokens),
+		},
 	}
 
 	finishReason, err := anthropicToOpenAIFinishReason(anthropicResp.StopReason)

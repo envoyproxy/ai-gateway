@@ -36,7 +36,7 @@ func TestGatewayController_Reconcile(t *testing.T) {
 	fakeKube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	c := NewGatewayController(fakeClient, fakeKube, ctrl.Log,
-		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil)
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil, true)
 
 	const namespace = "ns"
 	t.Run("not found must be non error", func(t *testing.T) {
@@ -164,7 +164,7 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	c := NewGatewayController(fakeClient, kube, ctrl.Log,
-		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil)
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil, true)
 
 	const gwNamespace = "ns"
 	routes := []aigv1a1.AIGatewayRoute{
@@ -258,7 +258,7 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 	for range 2 { // Reconcile twice to make sure the secret update path is working.
 		const someNamespace = "some-namespace"
 		configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
-		err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, "foouuid")
+		err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid")
 		require.NoError(t, err)
 
 		secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
@@ -289,7 +289,7 @@ func TestGatewayController_reconcileFilterConfigSecret_SkipsDeletedRoutes(t *tes
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	c := NewGatewayController(fakeClient, kube, ctrl.Log,
-		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil)
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil, true)
 
 	const gwNamespace = "ns"
 	now := metav1.Now()
@@ -373,7 +373,7 @@ func TestGatewayController_reconcileFilterConfigSecret_SkipsDeletedRoutes(t *tes
 	configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
 
 	// Reconcile filter config secret.
-	err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, "foouuid")
+	err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid")
 	require.NoError(t, err)
 
 	// Verify the secret was created and only contains data from the active route.
@@ -400,7 +400,7 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	c := NewGatewayController(fakeClient, kube, ctrl.Log,
 
-		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil)
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil, true)
 
 	const namespace = "ns"
 	for _, bsp := range []*aigv1a1.BackendSecurityPolicy{
@@ -547,7 +547,7 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 func TestGatewayController_bspToFilterAPIBackendAuth_ErrorCases(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	c := NewGatewayController(fakeClient, fake2.NewClientset(), ctrl.Log,
-		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil)
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil, true)
 
 	ctx := context.Background()
 	namespace := "test-namespace"
@@ -608,7 +608,7 @@ func TestGatewayController_bspToFilterAPIBackendAuth_ErrorCases(t *testing.T) {
 func TestGatewayController_GetSecretData_ErrorCases(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	c := NewGatewayController(fakeClient, fake2.NewClientset(), ctrl.Log,
-		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil)
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil, true)
 
 	ctx := context.Background()
 	namespace := "test-namespace"
@@ -633,7 +633,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	const v2Container = "ai-gateway-extproc:v2"
 	c := NewGatewayController(fakeClient, kube, ctrl.Log,
-		v2Container, false, nil)
+		v2Container, false, nil, true)
 	t.Run("pod with extproc", func(t *testing.T) {
 		pod, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), &corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
@@ -748,7 +748,7 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	const v2Container = "ai-gateway-extproc:v2"
 	c := NewGatewayController(fakeClient, kube, ctrl.Log,
-		v2Container, false, nil)
+		v2Container, false, nil, true)
 
 	t.Run("pod without extproc", func(t *testing.T) {
 		pod, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), &corev1.Pod{
@@ -863,7 +863,7 @@ func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	const v2Container = "ai-gateway-extproc:v2"
-	c := NewGatewayController(fakeClient, kube, ctrl.Log, v2Container, false, nil)
+	c := NewGatewayController(fakeClient, kube, ctrl.Log, v2Container, false, nil, true)
 
 	_, _, err := c.backendWithMaybeBSP(t.Context(), "foo", "bar")
 	require.ErrorContains(t, err, `aiservicebackends.aigateway.envoyproxy.io "bar" not found`)
@@ -915,4 +915,62 @@ func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
 	// Then it should result in the error due to multiple BSPs found.
 	_, _, err = c.backendWithMaybeBSP(t.Context(), backend.Namespace, backend.Name)
 	require.ErrorContains(t, err, "multiple BackendSecurityPolicies found for backend bar")
+}
+
+// Ensure MCP-only routes produce a correct MCPConfig in the filter Secret.
+func TestGatewayController_reconcileFilterMCPConfigSecret(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+	c := NewGatewayController(fakeClient, kube, ctrl.Log,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", false, nil, true)
+
+	const gwNamespace = "ns"
+	// Two routes with different CreationTimestamp for deterministic order.
+	mcpRoutes := []aigv1a1.MCPRoute{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "mcp-route-old", Namespace: gwNamespace, CreationTimestamp: metav1.NewTime(time.Now().Add(-2 * time.Hour))},
+			Spec: aigv1a1.MCPRouteSpec{
+				BackendRefs: []aigv1a1.MCPRouteBackendRef{{
+					BackendObjectReference: gwapiv1.BackendObjectReference{
+						Name: gwapiv1.ObjectName("backendA"),
+					},
+					ToolSelector: &aigv1a1.MCPToolFilter{
+						Include: []string{"toolA"},
+					},
+				}},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "mcp-route-new", Namespace: gwNamespace, CreationTimestamp: metav1.NewTime(time.Now().Add(-1 * time.Hour))},
+			Spec: aigv1a1.MCPRouteSpec{
+				BackendRefs: []aigv1a1.MCPRouteBackendRef{{
+					BackendObjectReference: gwapiv1.BackendObjectReference{
+						Name: gwapiv1.ObjectName("backendB"),
+					},
+					ToolSelector: &aigv1a1.MCPToolFilter{
+						Include: []string{"toolB"},
+					},
+				}},
+			},
+		},
+	}
+
+	// Reconcile to produce the Secret with only MCP routes.
+	const someNamespace = "some-namespace"
+	configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
+	err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, nil, mcpRoutes, "mcp-uuid")
+	require.NoError(t, err)
+
+	// Read back and verify MCPConfig fields.
+	secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
+	require.NoError(t, err)
+	configStr, ok := secret.StringData[FilterConfigKeyInSecret]
+	require.True(t, ok)
+
+	var fc filterapi.Config
+	require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
+	require.Equal(t, "mcp-uuid", fc.UUID)
+	require.NotNil(t, fc.MCPConfig)
+	require.Equal(t, "http://127.0.0.1:"+strconv.Itoa(internalapi.MCPBackendListenerPort), fc.MCPConfig.BackendListenerAddr)
 }

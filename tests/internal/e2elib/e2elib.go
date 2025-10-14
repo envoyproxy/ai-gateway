@@ -10,16 +10,21 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/singleflight"
 
 	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 )
@@ -30,9 +35,8 @@ const (
 	// EnvoyGatewayDefaultServicePort is the default service port for the Envoy Gateway.
 	EnvoyGatewayDefaultServicePort = 80
 
-	kindClusterName = "envoy-ai-gateway"
-	kindLogDir      = "./logs"
-	metallbVersion  = "v0.13.10"
+	kindLogDir     = "./logs"
+	metallbVersion = "v0.13.10"
 )
 
 // By default, kind logs are collected when the e2e tests fail. The TEST_KEEP_CLUSTER environment variable
@@ -50,70 +54,71 @@ func cleanupLog(msg string) {
 	fmt.Printf("\u001b[32m=== CLEANUP LOG: %s\u001B[0m\n", msg)
 }
 
+// AIGatewayHelmOption contains options for installing the AI Gateway Helm chart.
+type AIGatewayHelmOption struct {
+	// ChartVersion is the version of the AI Gateway Helm chart to install. If empty, the locally built chart is used.
+	// Otherwise, it should be a valid semver version string and the chart will be pulled from the Docker Hub OCI registry.
+	//
+	// For example, giving "v0.3.0" here will result in install oci://docker.io/envoyproxy/ai-gateway-helm --version v0.3.0.
+	ChartVersion string
+	// AdditionalArgs are additional arguments to pass to the Helm install/upgrade command.
+	AdditionalArgs []string
+}
+
 // TestMain is the entry point for the e2e tests. It sets up the kind cluster, installs the Envoy Gateway,
 // and installs the AI Gateway. It can be called with additional flags for the AI Gateway Helm chart.
 //
 // When the inferenceExtension flag is set to true, it also installs the Inference Extension and the
 // Inference Pool resources, and the Envoy Gateway configuration which are required for the tests.
-func TestMain(m *testing.M, aiGatewayHelmFlags []string, inferenceExtension bool) {
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(5*time.Minute))
-
-	// The following code sets up the kind cluster, installs the Envoy Gateway, and installs the AI Gateway.
-	// They must be idempotent and can be run multiple times so that we can run the tests multiple times on
-	// failures.
-
-	run := false
-	defer func() {
-		// If the setup or some tests panic, try to collect the cluster logs.
-		if r := recover(); r != nil {
-			cleanupKindCluster(true)
-		}
-		if !run {
-			panic("BUG: no tests were run. This is likely a bug during the setup")
-		}
-	}()
-
-	if err := initKindCluster(ctx); err != nil {
-		cancel()
-		panic(err)
-	}
-
-	if inferenceExtension {
-		if err := initMetalLB(ctx); err != nil {
-			cancel()
-			panic(err)
-		}
-		if err := installInferencePoolEnvironment(ctx); err != nil {
-			cancel()
-			panic(err)
-		}
-	}
-	if err := initEnvoyGateway(ctx, inferenceExtension); err != nil {
-		cancel()
-		panic(err)
-	}
-
-	if err := initAIGateway(ctx, aiGatewayHelmFlags); err != nil {
-		cancel()
-		panic(err)
-	}
-
-	if !inferenceExtension {
-		if err := initPrometheus(ctx); err != nil {
-			cancel()
-			panic(err)
-		}
+func TestMain(m *testing.M, aigwOpts AIGatewayHelmOption, inferenceExtension, needPrometheus bool) {
+	const defaultKindClusterName = "envoy-ai-gateway"
+	err := SetupAll(context.Background(), defaultKindClusterName, aigwOpts, inferenceExtension, needPrometheus)
+	if err != nil {
+		CleanupKindCluster(true, defaultKindClusterName)
+		fmt.Printf("Failed to set up the test environment: %v\n", err)
+		os.Exit(1)
 	}
 	code := m.Run()
-	run = true
-	cancel()
-
-	cleanupKindCluster(code != 0)
-
+	CleanupKindCluster(code != 0, defaultKindClusterName)
 	os.Exit(code) // nolint: gocritic
 }
 
-func initKindCluster(ctx context.Context) (err error) {
+// SetupAll sets up the kind cluster, installs the Envoy Gateway, and installs the AI Gateway.
+func SetupAll(ctx context.Context, clusterName string, aigwOpts AIGatewayHelmOption, inferenceExtension, needPrometheus bool) error {
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithDeadline(ctx, time.Now().Add(5*time.Minute))
+	defer cancel()
+	// The following code sets up the kind cluster, installs the Envoy Gateway, and installs the AI Gateway.
+	// They must be idempotent and can be run multiple times so that we can run the tests multiple times on
+	// failures.
+	if err := initKindCluster(ctx, clusterName); err != nil {
+		return fmt.Errorf("failed to initialize kind cluster: %w", err)
+	}
+	if err := initMetalLB(ctx); err != nil {
+		return fmt.Errorf("failed to initialize MetalLB: %w", err)
+	}
+	if inferenceExtension {
+		if err := installInferencePoolEnvironment(ctx); err != nil {
+			return fmt.Errorf("failed to install inference pool environment: %w", err)
+		}
+	}
+	if err := initEnvoyGateway(ctx, inferenceExtension); err != nil {
+		return fmt.Errorf("failed to initialize Envoy Gateway: %w", err)
+	}
+
+	if err := InstallOrUpgradeAIGateway(ctx, aigwOpts); err != nil {
+		return fmt.Errorf("failed to install or upgrade AI Gateway: %w", err)
+	}
+
+	if needPrometheus {
+		if err := initPrometheus(ctx); err != nil {
+			return fmt.Errorf("failed to initialize Prometheus: %w", err)
+		}
+	}
+	return nil
+}
+
+func initKindCluster(ctx context.Context, clusterName string) (err error) {
 	initLog("Setting up the kind cluster")
 	start := time.Now()
 	defer func() {
@@ -121,15 +126,21 @@ func initKindCluster(ctx context.Context) (err error) {
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)", elapsed.Seconds()))
 	}()
 
-	initLog(fmt.Sprintf("\tCreating kind cluster named %s", kindClusterName))
-	out, err := testsinternal.RunGoToolContext(ctx, "kind", "create", "cluster", "--name", kindClusterName)
+	args := []string{"create", "cluster", "--name", clusterName}
+	// If K8S_VERSION is set, use the specified Kubernetes version for the kind node image.
+	if k8sVersion := os.Getenv("K8S_VERSION"); k8sVersion != "" {
+		args = append(args, "--image", "kindest/node:"+k8sVersion)
+		initLog(fmt.Sprintf("\tUsing Kubernetes version %s for kind cluster", k8sVersion))
+	}
+	initLog(fmt.Sprintf("\tCreating kind cluster named %s", clusterName))
+	out, err := testsinternal.RunGoToolContext(ctx, "kind", args...)
 	if err != nil && !strings.Contains(err.Error(), "already exist") {
 		fmt.Printf("Error creating kind cluster: %s\n", out)
 		return
 	}
 
-	initLog(fmt.Sprintf("\tSwitching kubectl context to %s", kindClusterName))
-	cmd := testsinternal.GoToolCmdContext(ctx, "kind", "export", "kubeconfig", "--name", kindClusterName)
+	initLog(fmt.Sprintf("\tSwitching kubectl context to %s", clusterName))
+	cmd := testsinternal.GoToolCmdContext(ctx, "kind", "export", "kubeconfig", "--name", clusterName)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err = cmd.Run(); err != nil {
@@ -141,8 +152,9 @@ func initKindCluster(ctx context.Context) (err error) {
 		"docker.io/envoyproxy/ai-gateway-controller:latest",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest",
 		"docker.io/envoyproxy/ai-gateway-testupstream:latest",
+		"docker.io/envoyproxy/ai-gateway-testmcpserver:latest",
 	} {
-		cmd := testsinternal.GoToolCmdContext(ctx, "kind", "load", "docker-image", image, "--name", kindClusterName)
+		cmd := testsinternal.GoToolCmdContext(ctx, "kind", "load", "docker-image", image, "--name", clusterName)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err = cmd.Run(); err != nil {
@@ -194,12 +206,12 @@ func initMetalLB(ctx context.Context) (err error) {
 
 	// Wait for MetalLB deployments to be ready.
 	initLog("\tWaiting for MetalLB controller deployment to be ready")
-	if err = kubectlWaitForDeploymentReady("metallb-system", "controller"); err != nil {
+	if err = kubectlWaitForDeploymentReady(ctx, "metallb-system", "controller"); err != nil {
 		return fmt.Errorf("failed to wait for MetalLB controller: %w", err)
 	}
 
 	initLog("\tWaiting for MetalLB speaker daemonset to be ready")
-	if err = kubectlWaitForDaemonSetReady("metallb-system", "speaker"); err != nil {
+	if err = kubectlWaitForDaemonSetReady(ctx, "metallb-system", "speaker"); err != nil {
 		return fmt.Errorf("failed to wait for MetalLB speaker: %w", err)
 	}
 
@@ -312,17 +324,22 @@ spec:
 	}
 }
 
-func cleanupKindCluster(testsFailed bool) {
+// CleanupKindCluster cleans up the kind cluster if the test succeeds and the
+// TEST_KEEP_CLUSTER environment variable is not set to "true".
+//
+// Also, if the tests failed or TEST_KEEP_CLUSTER is "true", it collects the kind logs
+// into the ./logs directory.
+func CleanupKindCluster(testsFailed bool, clusterName string) {
 	if testsFailed || keepCluster {
 		cleanupLog("Collecting logs from the kind cluster")
-		cmd := testsinternal.GoToolCmd("kind", "export", "logs", "--name", kindClusterName, kindLogDir)
+		cmd := testsinternal.GoToolCmd("kind", "export", "logs", "--name", clusterName, kindLogDir)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		_ = cmd.Run()
 	}
 	if !testsFailed && !keepCluster {
 		cleanupLog("Destroying the kind cluster")
-		cmd := testsinternal.GoToolCmd("kind", "delete", "cluster", "--name", kindClusterName)
+		cmd := testsinternal.GoToolCmd("kind", "delete", "cluster", "--name", clusterName)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		_ = cmd.Run()
@@ -330,7 +347,7 @@ func cleanupKindCluster(testsFailed bool) {
 }
 
 func installInferenceExtensionCRD(ctx context.Context) (err error) {
-	const infExtURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v0.5.1/manifests.yaml"
+	const infExtURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.0.1/manifests.yaml"
 	return KubectlApplyManifest(ctx, infExtURL)
 }
 
@@ -340,12 +357,12 @@ func installVLLMDeployment(ctx context.Context) (err error) {
 }
 
 func installInferenceModel(ctx context.Context) (err error) {
-	const inferenceModelURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.5.1/config/manifests/inferencemodel.yaml"
+	const inferenceModelURL = "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api-inference-extension/refs/tags/v1.0.1/config/manifests/inferenceobjective.yaml"
 	return KubectlApplyManifest(ctx, inferenceModelURL)
 }
 
 func installInferencePoolResources(ctx context.Context) (err error) {
-	const inferencePoolURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v0.5.1/config/manifests/inferencepool-resources.yaml"
+	const inferencePoolURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v1.0.1/config/manifests/inferencepool-resources.yaml"
 	return KubectlApplyManifest(ctx, inferencePoolURL)
 }
 
@@ -405,14 +422,15 @@ func initEnvoyGateway(ctx context.Context, inferenceExtension bool) (err error) 
 		return
 	}
 	initLog("\tWaiting for Ratelimit deployment to be ready")
-	if err = kubectlWaitForDeploymentReady("envoy-gateway-system", "envoy-ratelimit"); err != nil {
+	if err = kubectlWaitForDeploymentReady(ctx, "envoy-gateway-system", "envoy-ratelimit"); err != nil {
 		return
 	}
 	initLog("\tWaiting for Envoy Gateway deployment to be ready")
-	return kubectlWaitForDeploymentReady("envoy-gateway-system", "envoy-gateway")
+	return kubectlWaitForDeploymentReady(ctx, "envoy-gateway-system", "envoy-gateway")
 }
 
-func initAIGateway(ctx context.Context, aiGatewayHelmFlags []string) (err error) {
+// InstallOrUpgradeAIGateway installs or upgrades the AI Gateway using Helm.
+func InstallOrUpgradeAIGateway(ctx context.Context, aigw AIGatewayHelmOption) (err error) {
 	initLog("Installing AI Gateway")
 	start := time.Now()
 	defer func() {
@@ -420,23 +438,30 @@ func initAIGateway(ctx context.Context, aiGatewayHelmFlags []string) (err error)
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)\n", elapsed.Seconds()))
 	}()
 	initLog("\tHelm Install")
-	helmCRD := testsinternal.GoToolCmdContext(ctx, "helm", "upgrade", "-i", "ai-eg-crd",
-		"../../manifests/charts/ai-gateway-crds-helm",
-		"-n", "envoy-ai-gateway-system", "--create-namespace")
-	helmCRD.Stdout = os.Stdout
-	helmCRD.Stderr = os.Stderr
-	if err = helmCRD.Run(); err != nil {
+	cdrChartArgs := []string{"upgrade", "-i", "ai-eg-crd"}
+	if aigw.ChartVersion != "" {
+		cdrChartArgs = append(cdrChartArgs, "oci://docker.io/envoyproxy/ai-gateway-crds-helm", "--version", aigw.ChartVersion)
+	} else {
+		cdrChartArgs = append(cdrChartArgs, "../../manifests/charts/ai-gateway-crds-helm")
+	}
+	cdrChartArgs = append(cdrChartArgs, "-n", "envoy-ai-gateway-system", "--create-namespace")
+	crdChart := testsinternal.GoToolCmdContext(ctx, "helm", cdrChartArgs...)
+	crdChart.Stdout = os.Stdout
+	crdChart.Stderr = os.Stderr
+	if err = crdChart.Run(); err != nil {
 		return
 	}
 
-	args := []string{
-		"upgrade", "-i", "ai-eg",
-		"../../manifests/charts/ai-gateway-helm",
-		"-n", "envoy-ai-gateway-system", "--create-namespace",
+	mainChartArgs := []string{"upgrade", "-i", "ai-eg"}
+	if aigw.ChartVersion != "" {
+		mainChartArgs = append(mainChartArgs, "oci://docker.io/envoyproxy/ai-gateway-helm", "--version", aigw.ChartVersion)
+	} else {
+		mainChartArgs = append(mainChartArgs, "../../manifests/charts/ai-gateway-helm")
 	}
-	args = append(args, aiGatewayHelmFlags...)
+	mainChartArgs = append(mainChartArgs, "-n", "envoy-ai-gateway-system", "--create-namespace")
+	mainChartArgs = append(mainChartArgs, aigw.AdditionalArgs...)
 
-	helm := testsinternal.GoToolCmdContext(ctx, "helm", args...)
+	helm := testsinternal.GoToolCmdContext(ctx, "helm", mainChartArgs...)
 	helm.Stdout = os.Stdout
 	helm.Stderr = os.Stderr
 	if err = helm.Run(); err != nil {
@@ -447,7 +472,7 @@ func initAIGateway(ctx context.Context, aiGatewayHelmFlags []string) (err error)
 	if err = kubectlRestartDeployment(ctx, "envoy-ai-gateway-system", "ai-gateway-controller"); err != nil {
 		return
 	}
-	return kubectlWaitForDeploymentReady("envoy-ai-gateway-system", "ai-gateway-controller")
+	return kubectlWaitForDeploymentReady(ctx, "envoy-ai-gateway-system", "ai-gateway-controller")
 }
 
 func initPrometheus(ctx context.Context) (err error) {
@@ -462,7 +487,7 @@ func initPrometheus(ctx context.Context) (err error) {
 		return
 	}
 	initLog("\twaiting for deployment")
-	return kubectlWaitForDeploymentReady("monitoring", "prometheus")
+	return kubectlWaitForDeploymentReady(ctx, "monitoring", "prometheus")
 }
 
 // Kubectl runs the kubectl command with the given context and arguments.
@@ -496,14 +521,14 @@ func kubectlRestartDeployment(ctx context.Context, namespace, deployment string)
 	return cmd.Run()
 }
 
-func kubectlWaitForDeploymentReady(namespace, deployment string) (err error) {
-	cmd := Kubectl(context.Background(), "wait", "--timeout=2m", "-n", namespace,
+func kubectlWaitForDeploymentReady(ctx context.Context, namespace, deployment string) (err error) {
+	cmd := Kubectl(ctx, "wait", "--timeout=2m", "-n", namespace,
 		"deployment/"+deployment, "--for=create")
 	if err = cmd.Run(); err != nil {
 		return fmt.Errorf("error waiting for deployment %s in namespace %s: %w", deployment, namespace, err)
 	}
 
-	cmd = Kubectl(context.Background(), "wait", "--timeout=2m", "-n", namespace,
+	cmd = Kubectl(ctx, "wait", "--timeout=2m", "-n", namespace,
 		"deployment/"+deployment, "--for=condition=Available")
 	if err = cmd.Run(); err != nil {
 		return fmt.Errorf("error waiting for deployment %s in namespace %s: %w", deployment, namespace, err)
@@ -511,16 +536,16 @@ func kubectlWaitForDeploymentReady(namespace, deployment string) (err error) {
 	return
 }
 
-func kubectlWaitForDaemonSetReady(namespace, daemonset string) (err error) {
+func kubectlWaitForDaemonSetReady(ctx context.Context, namespace, daemonset string) (err error) {
 	// Wait for daemonset to be created.
-	cmd := Kubectl(context.Background(), "wait", "--timeout=2m", "-n", namespace,
+	cmd := Kubectl(ctx, "wait", "--timeout=2m", "-n", namespace,
 		"daemonset/"+daemonset, "--for=create")
 	if err = cmd.Run(); err != nil {
 		return fmt.Errorf("error waiting for daemonset %s in namespace %s: %w", daemonset, namespace, err)
 	}
 
 	// Wait for daemonset pods to be ready using jsonpath.
-	cmd = Kubectl(context.Background(), "wait", "--timeout=2m", "-n", namespace,
+	cmd = Kubectl(ctx, "wait", "--timeout=2m", "-n", namespace,
 		"daemonset/"+daemonset, "--for=jsonpath={.status.numberReady}=1")
 	if err = cmd.Run(); err != nil {
 		return fmt.Errorf("error waiting for daemonset %s pods to be ready in namespace %s: %w", daemonset, namespace, err)
@@ -530,93 +555,354 @@ func kubectlWaitForDaemonSetReady(namespace, daemonset string) (err error) {
 
 // RequireWaitForGatewayPodReady waits for the Envoy Gateway pod with the given selector to be ready.
 func RequireWaitForGatewayPodReady(t *testing.T, selector string) {
-	// Wait for the Envoy Gateway pod containing the extproc container.
-	require.Eventually(t, func() bool {
-		cmd := Kubectl(t.Context(), "get", "pod", "-n", EnvoyGatewayNamespace,
-			"--selector="+selector, "-o", "jsonpath='{.items[0].spec.containers[*].name}'")
-		cmd.Stdout = nil // To ensure that we can capture the output by Output().
-		out, err := cmd.Output()
-		if err != nil {
-			t.Logf("error: %v", err)
-			return false
-		}
-		return strings.Contains(string(out), "ai-gateway-extproc")
-	}, 2*time.Minute, 1*time.Second)
-
+	requireWaitForGatewayPod(t, selector)
 	RequireWaitForPodReady(t, selector)
+}
+
+// RequireGatewayListenerAddressViaMetalLB gets the external IP address of the Gateway via MetalLB.
+func RequireGatewayListenerAddressViaMetalLB(t *testing.T, namespace, name string) (addr string) {
+	cmd := Kubectl(t.Context(), "get", "gateway", "-n", namespace, name,
+		"-o", "jsonpath={.status.addresses[0].value}")
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	out, err := cmd.Output()
+	require.NoError(t, err, "failed to get gateway address")
+	addr = strings.TrimSpace(string(out))
+	return
+}
+
+// requireWaitForGatewayPod waits for the Envoy Gateway pod containing the
+// extproc container.
+func requireWaitForGatewayPod(t *testing.T, selector string) {
+	waitUntilKubectl(t, 2*time.Minute, 1*time.Second, func(output string) error {
+		if !strings.Contains(output, "ai-gateway-extproc") {
+			return fmt.Errorf("container not found, output: %s", output)
+		}
+		return nil
+	}, "get", "pod", "-n", EnvoyGatewayNamespace,
+		"--selector="+selector, "-o", "jsonpath='{.items[0].spec.initContainers[*].name} {.items[0].spec.containers[*].name}'")
 }
 
 // RequireWaitForPodReady waits for the pod with the given selector to be ready.
 func RequireWaitForPodReady(t *testing.T, selector string) {
-	// This repeats the wait subcommand in order to be able to wait for the
-	// resources not created yet.
-	require.Eventually(t, func() bool {
-		cmd := Kubectl(t.Context(), "wait", "--timeout=2s", "-n", EnvoyGatewayNamespace,
-			"pods", "--for=condition=Ready", "-l", selector)
-		return cmd.Run() == nil
-	}, 3*time.Minute, 5*time.Second)
+	waitUntilKubectl(t, 3*time.Minute, 5*time.Second, func(_ string) error {
+		return nil // Success if the command exited 0, ignore output.
+	}, "wait", "--timeout=2s", "-n", EnvoyGatewayNamespace,
+		"pods", "--for=condition=Ready", "-l", selector)
 }
 
 // RequireNewHTTPPortForwarder creates a new port forwarder for the given namespace and selector.
-func RequireNewHTTPPortForwarder(t *testing.T, namespace string, selector string, port int) PortForwarder {
-	f, err := newServicePortForwarder(t.Context(), namespace, selector, port)
+// Returns a PortForwarder that automatically handles connection recovery during pod rolling updates.
+func RequireNewHTTPPortForwarder(t *testing.T, namespace string, selector string, servicePort int) PortForwarder {
+	f, err := newServicePortForwarder(t.Context(), newKubectlPortForward, namespace, selector, 0, servicePort)
 	require.NoError(t, err)
-	require.Eventually(t, func() bool {
-		res, err := http.Get(f.Address())
-		if err != nil {
-			t.Logf("error: %v", err)
-			return false
-		}
-		_ = res.Body.Close()
-		return true // We don't care about the response.
-	}, 3*time.Minute, 200*time.Millisecond)
 	return f
 }
 
+// PortForwarder provides HTTP access to services in a Kubernetes cluster via kubectl port-forward.
+// Thread-safe for concurrent use. Automatically recovers from connection failures during pod rolling updates.
+type PortForwarder interface {
+	// Post sends an HTTP POST request and returns the response body.
+	// Automatically retries on stale connections during serviceURL rollouts.
+	Post(ctx context.Context, path, body string) ([]byte, error)
+	// Kill terminates the port-forward process.
+	Kill()
+	// Address returns the local address (e.g., "http://127.0.0.1:12345").
+	Address() string
+}
+
 // newServicePortForwarder creates a new local port forwarder for the namespace and selector.
-func newServicePortForwarder(ctx context.Context, namespace, selector string, podPort int) (f PortForwarder, err error) {
-	l, err := net.Listen("tcp", "localhost:0")
+func newServicePortForwarder(ctx context.Context, newPortForward newPortForwardFn, namespace, selector string, localPort, servicePort int) (PortForwarder, error) {
+	var lc net.ListenConfig
+	l, err := lc.Listen(ctx, "tcp", fmt.Sprintf("localhost:%d", localPort))
 	if err != nil {
-		return PortForwarder{}, fmt.Errorf("failed to get a local available port for Pod %q: %w", selector, err)
+		return nil, fmt.Errorf("failed to get a local available port for Pod %q: %w", selector, err)
 	}
 	err = l.Close()
 	if err != nil {
-		return PortForwarder{}, err
+		return nil, err
 	}
-	f.localPort = l.Addr().(*net.TCPAddr).Port
 
-	cmd := Kubectl(ctx, "get", "svc", "-n", namespace,
-		"--selector="+selector, "-o", "jsonpath='{.items[0].metadata.name}'")
-	cmd.Stdout = nil // To ensure that we can capture the output by Output().
-	out, err := cmd.Output()
-	if err != nil {
-		return PortForwarder{}, fmt.Errorf("failed to get service name: %w", err)
-	}
-	serviceName := string(out[1 : len(out)-1]) // Remove the quotes.
+	localPort = l.Addr().(*net.TCPAddr).Port
 
-	cmd = Kubectl(ctx, "port-forward",
-		"-n", namespace, "svc/"+serviceName,
-		fmt.Sprintf("%d:%d", f.localPort, podPort),
-	)
-	if err := cmd.Start(); err != nil {
-		return PortForwarder{}, fmt.Errorf("failed to start port-forward: %w", err)
+	f := &portForwarder{
+		localURL: &url.URL{
+			Scheme: "http",
+			Host:   fmt.Sprintf("127.0.0.1:%d", localPort),
+		},
+		portForward: newPortForward(namespace, selector, localPort, servicePort),
 	}
-	f.cmd = cmd
-	return
+
+	if err = f.portForward.start(ctx); err != nil {
+		return nil, err
+	} else if err = f.waitReady(ctx); err != nil {
+		f.portForward.kill()
+		return nil, err
+	}
+	return f, nil
 }
 
-// PortForwarder is a local port forwarder to a pod.
-type PortForwarder struct {
-	cmd       *exec.Cmd
-	localPort int
+// portForward starts a port forwarding process.
+type portForward interface {
+	start(ctx context.Context) error
+	kill()
+}
+
+// kubectlPortForward implements portForward using kubectl.
+type kubectlPortForward struct {
+	namespace   string
+	selector    string
+	localPort   int
+	servicePort int
+	cmd         *exec.Cmd
+	cmdMu       sync.Mutex
+}
+
+type newPortForwardFn func(namespace, selector string, localPort, servicePort int) portForward
+
+func newKubectlPortForward(namespace, selector string, localPort, servicePort int) portForward {
+	return &kubectlPortForward{
+		namespace:   namespace,
+		selector:    selector,
+		localPort:   localPort,
+		servicePort: servicePort,
+	}
+}
+
+type serviceList struct {
+	Items []struct {
+		Metadata struct {
+			Name string `json:"name"`
+		} `json:"metadata"`
+	} `json:"items"`
+}
+
+func (k *kubectlPortForward) start(ctx context.Context) error {
+	cmd := Kubectl(ctx, "get", "svc", "-n", k.namespace,
+		"--selector="+k.selector, "-o", "json")
+	cmd.Stdout = nil
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to get service name: %w", err)
+	}
+
+	var svcs serviceList
+	if err := json.Unmarshal(out, &svcs); err != nil {
+		return fmt.Errorf("failed to parse service list: %w", err)
+	}
+	if len(svcs.Items) == 0 {
+		return fmt.Errorf("no service found for selector %q", k.selector)
+	}
+	serviceName := svcs.Items[0].Metadata.Name
+
+	cmd = Kubectl(ctx, "port-forward",
+		"-n", k.namespace, "svc/"+serviceName,
+		fmt.Sprintf("%d:%d", k.localPort, k.servicePort),
+	)
+	cmd.Stdout = io.Discard
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start port-forward: %w", err)
+	}
+	k.cmdMu.Lock()
+	k.cmd = cmd
+	k.cmdMu.Unlock()
+	return nil
+}
+
+func (k *kubectlPortForward) kill() {
+	k.cmdMu.Lock()
+	defer k.cmdMu.Unlock()
+	if k.cmd != nil && k.cmd.Process != nil {
+		_ = k.cmd.Process.Kill()
+	}
+}
+
+// portForwarder implements PortForwarder.
+type portForwarder struct {
+	localURL      *url.URL
+	portForward   portForward
+	restartFlight singleflight.Group
+}
+
+// poll repeatedly checks a condition until it succeeds or the context is done.
+func poll(ctx context.Context, interval time.Duration, check func() error) error {
+	for {
+		if err := check(); err == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(interval):
+		}
+	}
+}
+
+// restart recreates the port-forward connection on the same local port.
+func (f *portForwarder) restart(ctx context.Context) error {
+	f.Kill()
+
+	// Wait for port to actually be released by the dying process.
+	err := poll(ctx, 50*time.Millisecond, func() error {
+		dialer := net.Dialer{Timeout: 100 * time.Millisecond}
+		conn, err := dialer.DialContext(ctx, "tcp", f.localURL.Host)
+		if err != nil {
+			// Connection refused = port is free.
+			return nil
+		}
+		_ = conn.Close()
+		return errors.New("port still in use")
+	})
+	if err != nil {
+		return err
+	}
+
+	if err = f.portForward.start(ctx); err != nil {
+		return err
+	}
+	return f.waitReady(ctx)
+}
+
+// waitReady polls until port-forward is ready to accept HTTP traffic.
+func (f *portForwarder) waitReady(ctx context.Context) error {
+	client := &http.Client{Timeout: 500 * time.Millisecond}
+	req, err := http.NewRequestWithContext(ctx, "GET", f.localURL.String()+"/", nil)
+	if err != nil {
+		return err
+	}
+
+	return poll(ctx, 100*time.Millisecond, func() error {
+		// Try actual HTTP request to verify port-forward is fully functional.
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+		_ = resp.Body.Close()
+		// Any response (even 404) means port-forward is working.
+		return nil
+	})
+}
+
+// handleStaleConnection coordinates restart across concurrent goroutines using singleflight.
+// Returns (restarted=true, err) if this goroutine performed the restart.
+// Returns (restarted=false, err=nil) if another goroutine restarted and this one waited.
+func (f *portForwarder) handleStaleConnection(ctx context.Context) (bool, error) {
+	_, err, shared := f.restartFlight.Do("restart", func() (interface{}, error) {
+		return nil, f.restart(ctx)
+	})
+	// shared=false means we performed the restart, shared=true means we waited
+	return !shared, err
+}
+
+// Post sends an HTTP POST request with automatic retry on stale connections.
+func (f *portForwarder) Post(ctx context.Context, path, body string) ([]byte, error) {
+	addr := f.localURL.String() + path
+
+	const maxRestarts = 5
+	restarts := 0
+	for {
+		if restarts > 0 {
+			time.Sleep(time.Duration(restarts*100) * time.Millisecond)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, addr, strings.NewReader(body))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+
+		var resp *http.Response
+		var respBody []byte
+		var doErr error
+		resp, doErr = http.DefaultClient.Do(req)
+		isStale := isStaleConnectionError(doErr)
+		if doErr == nil {
+			respBody, err = io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if err != nil {
+				return nil, fmt.Errorf("failed to read response body: %w", err)
+			}
+			// Empty 500 indicates broken upstream (stale forward during rollout).
+			if resp.StatusCode == http.StatusInternalServerError && len(respBody) == 0 {
+				isStale = true
+			}
+		}
+
+		if isStale {
+			restarted, restartErr := f.handleStaleConnection(ctx)
+			if restartErr != nil {
+				return nil, fmt.Errorf("failed to restart port-forward: %w", restartErr)
+			}
+			if restarted {
+				restarts++
+			}
+			if restarts >= maxRestarts {
+				if doErr != nil {
+					return nil, doErr
+				}
+				return nil, fmt.Errorf("request failed with status %s: %s", resp.Status, string(respBody))
+			}
+			continue
+		}
+
+		if doErr != nil {
+			return nil, doErr
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("request failed with status %s: %s", resp.Status, string(respBody))
+		}
+		return respBody, nil
+	}
 }
 
 // Kill stops the port forwarder.
-func (f PortForwarder) Kill() {
-	_ = f.cmd.Process.Kill()
+func (f *portForwarder) Kill() {
+	f.portForward.kill()
 }
 
 // Address returns the address of the port forwarder.
-func (f PortForwarder) Address() string {
-	return fmt.Sprintf("http://127.0.0.1:%d", f.localPort)
+func (f *portForwarder) Address() string {
+	return f.localURL.String()
+}
+
+// isStaleConnectionError checks if an error indicates a stale port-forward connection.
+func isStaleConnectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, io.EOF) {
+		return true
+	}
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "connection") ||
+		strings.Contains(errStr, "closed") ||
+		strings.Contains(errStr, "reset") ||
+		strings.Contains(errStr, "refused")
+}
+
+// waitUntilKubectl polls by running a kubectl command with the given args
+// until the verifyOut predicate returns nil or the timeout is reached.
+//
+// Unlike require.Eventually, this retains the output of the last mismatch.
+func waitUntilKubectl(t *testing.T, timeout time.Duration, pollInterval time.Duration, verifyOut func(output string) error, args ...string) {
+	var lastErr error
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		cmd := Kubectl(t.Context(), args...)
+		cmd.Stdout = nil // To ensure that we can capture the output by Output().
+		out, err := cmd.Output()
+		if err != nil {
+			lastErr = err
+			time.Sleep(pollInterval)
+			continue
+		}
+		err = verifyOut(string(out))
+		if err == nil {
+			return
+		}
+		lastErr = err
+		time.Sleep(pollInterval)
+	}
+	require.Fail(t, "timed out waiting", "last error: %v", lastErr)
 }

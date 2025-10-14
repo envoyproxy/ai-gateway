@@ -301,7 +301,6 @@ spec:
                               By default, its unset.
                             properties:
                               sameSite:
-                                default: Strict
                                 enum:
                                 - Lax
                                 - Strict
@@ -400,6 +399,12 @@ spec:
                             required:
                             - headers
                             type: object
+                          disableTokenEncryption:
+                            description: |-
+                              Disable token encryption. When set to true, both the access token and the ID token will be stored in plain text.
+                              This option should only be used in secure environments where token encryption is not required.
+                              Default is false (tokens are encrypted).
+                            type: boolean
                           forwardAccessToken:
                             description: |-
                               ForwardAccessToken indicates whether the Envoy should forward the access token
@@ -799,8 +804,7 @@ spec:
                                                 items:
                                                   description: HTTPStatus defines
                                                     the http status code.
-                                                  exclusiveMaximum: true
-                                                  maximum: 600
+                                                  maximum: 599
                                                   minimum: 100
                                                   type: integer
                                                 type: array
@@ -1333,8 +1337,7 @@ spec:
                                             items:
                                               description: HTTPStatus defines the
                                                 http status code.
-                                              exclusiveMaximum: true
-                                              maximum: 600
+                                              maximum: 599
                                               minimum: 100
                                               type: integer
                                             type: array
@@ -1510,6 +1513,57 @@ spec:
                     type: string
                 required:
                 - region
+                type: object
+              azureAPIKey:
+                description: AzureAPIKey is a mechanism to access Azure OpenAI backend(s).
+                  The API key will be injected into the api-key header.
+                properties:
+                  secretRef:
+                    description: |-
+                      SecretRef is the reference to the secret containing the Azure API key.
+                      ai-gateway must be given the permission to read this secret.
+                      The key of the secret should be "apiKey".
+                    properties:
+                      group:
+                        default: ""
+                        description: |-
+                          Group is the group of the referent. For example, "gateway.networking.k8s.io".
+                          When unspecified or empty string, core API group is inferred.
+                        maxLength: 253
+                        pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                        type: string
+                      kind:
+                        default: Secret
+                        description: Kind is kind of the referent. For example "Secret".
+                        maxLength: 63
+                        minLength: 1
+                        pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
+                        type: string
+                      name:
+                        description: Name is the name of the referent.
+                        maxLength: 253
+                        minLength: 1
+                        type: string
+                      namespace:
+                        description: |-
+                          Namespace is the namespace of the referenced object. When unspecified, the local
+                          namespace is inferred.
+
+                          Note that when a namespace different than the local namespace is specified,
+                          a ReferenceGrant object is required in the referent namespace to allow that
+                          namespace's owner to accept the reference. See the ReferenceGrant
+                          documentation for details.
+
+                          Support: Core
+                        maxLength: 63
+                        minLength: 1
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                        type: string
+                    required:
+                    - name
+                    type: object
+                required:
+                - secretRef
                 type: object
               azureCredentials:
                 description: AzureCredentials is a mechanism to access a backend(s).
@@ -1690,7 +1744,6 @@ spec:
                               By default, its unset.
                             properties:
                               sameSite:
-                                default: Strict
                                 enum:
                                 - Lax
                                 - Strict
@@ -1789,6 +1842,12 @@ spec:
                             required:
                             - headers
                             type: object
+                          disableTokenEncryption:
+                            description: |-
+                              Disable token encryption. When set to true, both the access token and the ID token will be stored in plain text.
+                              This option should only be used in secure environments where token encryption is not required.
+                              Default is false (tokens are encrypted).
+                            type: boolean
                           forwardAccessToken:
                             description: |-
                               ForwardAccessToken indicates whether the Envoy should forward the access token
@@ -2188,8 +2247,7 @@ spec:
                                                 items:
                                                   description: HTTPStatus defines
                                                     the http status code.
-                                                  exclusiveMaximum: true
-                                                  maximum: 600
+                                                  maximum: 599
                                                   minimum: 100
                                                   type: integer
                                                 type: array
@@ -2722,8 +2780,7 @@ spec:
                                             items:
                                               description: HTTPStatus defines the
                                                 http status code.
-                                              exclusiveMaximum: true
-                                              maximum: 600
+                                              maximum: 599
                                               minimum: 100
                                               type: integer
                                             type: array
@@ -3100,7 +3157,6 @@ spec:
                                   By default, its unset.
                                 properties:
                                   sameSite:
-                                    default: Strict
                                     enum:
                                     - Lax
                                     - Strict
@@ -3199,6 +3255,12 @@ spec:
                                 required:
                                 - headers
                                 type: object
+                              disableTokenEncryption:
+                                description: |-
+                                  Disable token encryption. When set to true, both the access token and the ID token will be stored in plain text.
+                                  This option should only be used in secure environments where token encryption is not required.
+                                  Default is false (tokens are encrypted).
+                                type: boolean
                               forwardAccessToken:
                                 description: |-
                                   ForwardAccessToken indicates whether the Envoy should forward the access token
@@ -3603,8 +3665,7 @@ spec:
                                                     items:
                                                       description: HTTPStatus defines
                                                         the http status code.
-                                                      exclusiveMaximum: true
-                                                      maximum: 600
+                                                      maximum: 599
                                                       minimum: 100
                                                       type: integer
                                                     type: array
@@ -4144,8 +4205,7 @@ spec:
                                                 items:
                                                   description: HTTPStatus defines
                                                     the http status code.
-                                                  exclusiveMaximum: true
-                                                  maximum: 600
+                                                  maximum: 599
                                                   minimum: 100
                                                   type: integer
                                                 type: array
@@ -4403,6 +4463,7 @@ spec:
                 enum:
                 - APIKey
                 - AWSCredentials
+                - AzureAPIKey
                 - AzureCredentials
                 - GCPCredentials
                 type: string
@@ -4412,22 +4473,28 @@ spec:
             x-kubernetes-validations:
             - message: When type is APIKey, only apiKey field should be set
               rule: 'self.type == ''APIKey'' ? (has(self.apiKey) && !has(self.awsCredentials)
-                && !has(self.azureCredentials) && !has(self.gcpCredentials)) : true'
+                && !has(self.azureAPIKey) && !has(self.azureCredentials) && !has(self.gcpCredentials))
+                : true'
             - message: When type is AWSCredentials, only awsCredentials field should
                 be set
               rule: 'self.type == ''AWSCredentials'' ? (has(self.awsCredentials) &&
-                !has(self.apiKey) && !has(self.azureCredentials) && !has(self.gcpCredentials))
+                !has(self.apiKey) && !has(self.azureAPIKey) && !has(self.azureCredentials)
+                && !has(self.gcpCredentials)) : true'
+            - message: When type is AzureAPIKey, only azureAPIKey field should be
+                set
+              rule: 'self.type == ''AzureAPIKey'' ? (has(self.azureAPIKey) && !has(self.apiKey)
+                && !has(self.awsCredentials) && !has(self.azureCredentials) && !has(self.gcpCredentials))
                 : true'
             - message: When type is AzureCredentials, only azureCredentials field
                 should be set
               rule: 'self.type == ''AzureCredentials'' ? (has(self.azureCredentials)
-                && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.gcpCredentials))
-                : true'
+                && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey)
+                && !has(self.gcpCredentials)) : true'
             - message: When type is GCPCredentials, only gcpCredentials field should
                 be set
               rule: 'self.type == ''GCPCredentials'' ? (has(self.gcpCredentials) &&
-                !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureCredentials))
-                : true'
+                !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey)
+                && !has(self.azureCredentials)) : true'
           status:
             description: Status defines the status details of the BackendSecurityPolicy.
             properties:

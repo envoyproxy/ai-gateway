@@ -15,28 +15,28 @@ header:
   paths-ignore:
     - site
     - out
-    - '.github'
-    - '.bin'
-    - '**/go.mod'
-    - '**/go.sum'
-    - '**/*.md'
-    - '**/*.json'
-    - '**/*.txt'
-    - '**/*.hcl'
-    - '**/.gitignore'
-    - '**/.helmignore'
+    - ".github"
+    - ".bin"
+    - "**/go.mod"
+    - "**/go.sum"
+    - "**/*.md"
+    - "**/*.json"
+    - "**/*.txt"
+    - "**/*.hcl"
+    - "**/.gitignore"
+    - "**/.helmignore"
     - .trivyignore
-    - '.codespell.*'
     - .editorconfig
     - .golangci.yml
+    - .misspellignore
+    - .prettierignore
     - .testcoverage.yml
-    - '.yamllint*'
     - LICENSE
     - CODEOWNERS
     - pre-commit.sh
     - tests/extproc/testdata/server.key
     - tests/extproc/testdata/server.crt
     - .env.ollama
-    - '**/.env*'
+    - "**/.env*"
     - tests/internal/testopenai/cassettes
     - .github/codecov.yml
