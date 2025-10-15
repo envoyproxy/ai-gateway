@@ -22,6 +22,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	openaigo "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
@@ -2241,9 +2242,11 @@ func TestResponseModel_AWSBedrock(t *testing.T) {
 		}
 	}`
 
-	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader([]byte(bedrockResponse)), true, nil)
+	_, bm, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader([]byte(bedrockResponse)), true, nil)
 	require.NoError(t, err)
 	require.Equal(t, modelName, responseModel) // Returns the request model since no virtualization
+	respBodyModel := gjson.GetBytes(bm.GetBody(), "model").Value()
+	require.Equal(t, modelName, respBodyModel)
 	require.Equal(t, uint32(10), tokenUsage.InputTokens)
 	require.Equal(t, uint32(5), tokenUsage.OutputTokens)
 }

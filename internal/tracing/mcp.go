@@ -8,6 +8,7 @@ package tracing
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -16,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/envoyproxy/ai-gateway/internal/lang"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -57,16 +59,21 @@ func (s mcpSpan) EndSpan() {
 
 // mcpTracer is an implementation of [tracing.MCPTracer].
 type mcpTracer struct {
-	tracer     trace.Tracer
-	propagator propagation.TextMapPropagator
+	tracer            trace.Tracer
+	propagator        propagation.TextMapPropagator
+	attributeMappings map[string]string
 }
 
-func newMCPTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator) tracing.MCPTracer {
-	return mcpTracer{tracer: tracer, propagator: propagator}
+func newMCPTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, attributeMappings map[string]string) tracing.MCPTracer {
+	return mcpTracer{
+		tracer:            tracer,
+		propagator:        propagator,
+		attributeMappings: attributeMappings,
+	}
 }
 
 // StartSpanAndInjectMeta implements [tracing.MCPTracer.StartSpanAndInjectMeta].
-func (m mcpTracer) StartSpanAndInjectMeta(ctx context.Context, req *jsonrpc.Request, param mcp.Params) tracing.MCPSpan {
+func (m mcpTracer) StartSpanAndInjectMeta(ctx context.Context, req *jsonrpc.Request, param mcp.Params, headers http.Header) tracing.MCPSpan {
 	attrs := []attribute.KeyValue{
 		attribute.String("mcp.protocol.version", "2025-06-18"),
 		attribute.String("mcp.transport", "http"),
@@ -74,6 +81,18 @@ func (m mcpTracer) StartSpanAndInjectMeta(ctx context.Context, req *jsonrpc.Requ
 		attribute.String("mcp.method.name", req.Method),
 	}
 	attrs = append(attrs, getMCPParamsAsAttributes(param)...)
+
+	// Apply header-to-attribute mapping if configured.
+	for srcName, targetName := range m.attributeMappings {
+		// Check if the attribute is present in the metadata first, as this is the common place to add custom attributes
+		// in MCP requests. Fall back to headers if not found in metadata.
+		// If the attribute is not found there, check if there is any custom header to map.
+		if metaValue := lang.CaseInsensitiveValue(param.GetMeta(), srcName); metaValue != "" {
+			attrs = append(attrs, attribute.String(targetName, metaValue))
+		} else if headerValue := headers.Get(srcName); headerValue != "" { // this is case-insensitive
+			attrs = append(attrs, attribute.String(targetName, headerValue))
+		}
+	}
 
 	// Extract trace context from incoming meta.
 	mutableMeta := param.GetMeta()

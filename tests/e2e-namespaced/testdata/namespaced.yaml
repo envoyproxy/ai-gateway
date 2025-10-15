@@ -1,0 +1,151 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# Create namespaces for the test
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway-ns
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: route1-ns
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: route2-ns
+---
+# GatewayClass (cluster-scoped resource)
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: gwc
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+# Gateway in gateway-ns namespace
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: gw
+  namespace: gateway-ns
+spec:
+  gatewayClassName: gwc
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: proxy
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: proxy
+  namespace: gateway-ns
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        container:
+          # Clear the default memory/cpu requirements for local tests.
+          resources: {}
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: route1
+  namespace: route1-ns
+spec:
+  parentRefs:
+    - name: gw
+      namespace: gateway-ns
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: route1-model
+      backendRefs:
+        - name: route1-backend
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: route1-backend
+  namespace: route1-ns
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: route1-backend
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: route1-backend
+  namespace: route1-ns
+spec:
+  endpoints:
+    - fqdn:
+        hostname: envoy-ai-gateway-basic-testupstream.default.svc.cluster.local
+        port: 80
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: route2
+  namespace: route2-ns
+spec:
+  parentRefs:
+    - name: gw
+      namespace: gateway-ns
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: route2-model
+      backendRefs:
+        - name: route2-backend
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: route2-backend
+  namespace: route2-ns
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: route1-backend
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: route2-backend
+  namespace: route1-ns
+spec:
+  endpoints:
+    - fqdn:
+        hostname: envoy-ai-gateway-basic-testupstream.default.svc.cluster.local
+        port: 80

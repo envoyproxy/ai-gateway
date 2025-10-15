@@ -133,3 +133,39 @@ func decodeBase64Embeddings(encoded string) ([]float64, error) {
 
 	return result, nil
 }
+
+// buildCompletionResponseAttributes builds OpenInference attributes from the completions response.
+func buildCompletionResponseAttributes(resp *openai.CompletionResponse, config *openinference.TraceConfig) []attribute.KeyValue {
+	attrs := []attribute.KeyValue{
+		attribute.String(openinference.LLMModelName, resp.Model),
+	}
+
+	if !config.HideOutputs {
+		attrs = append(attrs, attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON))
+	}
+
+	// Handle choices using indexed attribute format.
+	// Per OpenInference spec, we record completion text for each choice.
+	if !config.HideOutputs && !config.HideChoices {
+		for i, choice := range resp.Choices {
+			text := choice.Text
+			attrs = append(attrs, attribute.String(openinference.ChoiceTextAttribute(i), text))
+		}
+	}
+
+	// Token counts are considered metadata and are still included even when output content is hidden.
+	u := resp.Usage
+	if u != nil {
+		if pt := u.PromptTokens; pt > 0 {
+			attrs = append(attrs, attribute.Int(openinference.LLMTokenCountPrompt, pt))
+		}
+		if ct := u.CompletionTokens; ct > 0 {
+			attrs = append(attrs, attribute.Int(openinference.LLMTokenCountCompletion, ct))
+		}
+		if tt := u.TotalTokens; tt > 0 {
+			attrs = append(attrs, attribute.Int(openinference.LLMTokenCountTotal, tt))
+		}
+	}
+
+	return attrs
+}

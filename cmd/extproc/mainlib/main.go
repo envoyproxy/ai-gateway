@@ -105,7 +105,9 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 	fs.StringVar(&flags.mcpSessionEncryptionSeed,
 		"mcpSessionEncryptionSeed",
 		"mcp",
-		"seed used to derive the MCP session encryption key. This should be set to a secure value in production.",
+		"Arbitrary string seed used to derive the MCP session encryption key. "+
+			"Do not include commas as they are used as separators. You can optionally pass \"fallback\" seed after the first one to allow for key rotation. "+
+			"For example: \"new-seed,old-seed-for-fallback\". The fallback seed is only used for decryption.",
 	)
 	fs.DurationVar(&flags.mcpWriteTimeout, "mcpWriteTimeout", 120*time.Second,
 		"The maximum duration before timing out writes of the MCP response")
@@ -229,8 +231,9 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		return fmt.Errorf("failed to create metrics: %w", err)
 	}
 	chatCompletionMetrics := metrics.NewChatCompletion(meter, metricsRequestHeaderAttributes)
+	completionMetrics := metrics.NewCompletion(meter, metricsRequestHeaderAttributes)
 	embeddingsMetrics := metrics.NewEmbeddings(meter, metricsRequestHeaderAttributes)
-	mcpMetrics := metrics.NewMCP(meter)
+	mcpMetrics := metrics.NewMCP(meter, metricsRequestHeaderAttributes)
 
 	tracing, err := tracing.NewTracingFromEnv(ctx, os.Stdout, spanRequestHeaderAttributes)
 	if err != nil {
@@ -242,7 +245,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		return fmt.Errorf("failed to create external processor server: %w", err)
 	}
 	server.Register(path.Join(flags.rootPrefix, "/v1/chat/completions"), extproc.ChatCompletionProcessorFactory(chatCompletionMetrics))
-	server.Register(path.Join(flags.rootPrefix, "/v1/completions"), extproc.CompletionsProcessorFactory(nil))
+	server.Register(path.Join(flags.rootPrefix, "/v1/completions"), extproc.CompletionsProcessorFactory(completionMetrics))
 	server.Register(path.Join(flags.rootPrefix, "/v1/embeddings"), extproc.EmbeddingsProcessorFactory(embeddingsMetrics))
 	server.Register(path.Join(flags.rootPrefix, "/v1/models"), extproc.NewModelsProcessor)
 	server.Register(path.Join(flags.rootPrefix, "/anthropic/v1/messages"), extproc.MessagesProcessorFactory(chatCompletionMetrics))
@@ -258,15 +261,16 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 
 	var mcpServer *http.Server
 	if mcpLis != nil {
-		mcpSessionCrypto := mcpproxy.DefaultSessionCrypto(flags.mcpSessionEncryptionSeed)
+		seed, fallbackSeed, _ := strings.Cut(flags.mcpSessionEncryptionSeed, ",")
+		mcpSessionCrypto := mcpproxy.DefaultSessionCrypto(seed, fallbackSeed)
 		var mcpProxyMux *http.ServeMux
-		var mcpProxy *mcpproxy.MCPProxy
-		mcpProxy, mcpProxyMux, err = mcpproxy.NewMCPProxy(l.With("component", "mcp-proxy"), mcpMetrics,
+		var mcpProxyConfig *mcpproxy.ProxyConfig
+		mcpProxyConfig, mcpProxyMux, err = mcpproxy.NewMCPProxy(l.With("component", "mcp-proxy"), mcpMetrics,
 			tracing.MCPTracer(), mcpSessionCrypto)
 		if err != nil {
 			return fmt.Errorf("failed to create MCP proxy: %w", err)
 		}
-		if err = extproc.StartConfigWatcher(ctx, flags.configPath, mcpProxy, l, time.Second*5); err != nil {
+		if err = extproc.StartConfigWatcher(ctx, flags.configPath, mcpProxyConfig, l, time.Second*5); err != nil {
 			return fmt.Errorf("failed to start config watcher: %w", err)
 		}
 

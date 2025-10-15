@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"slices"
 	"sort"
 	"testing"
 	"time"
@@ -34,21 +33,6 @@ var (
 		"kiwi__feedback-to-devs",
 		"kiwi__search-flight",
 	}
-	allGithubTools = []string{
-		"github__get_issue",
-		"github__get_issue_comments",
-		"github__list_issue_types",
-		"github__list_issues",
-		"github__list_pull_requests",
-		"github__list_sub_issues",
-		"github__pull_request_read",
-		"github__search_issues",
-		"github__search_pull_requests",
-	}
-	allTools = func() []string {
-		combined := append(append([]string{}, allNonGithubTools...), allGithubTools...)
-		return slices.Sorted(slices.Values(combined))
-	}()
 
 	// Filtered tools based on mcp_example.yaml selectors
 	filteredNonGithubTools = []string{
@@ -82,7 +66,7 @@ func TestMCP_standalone(t *testing.T) {
 	}
 
 	exampleYaml := path.Join(examplesDir, "mcp_example.yaml")
-	startAIGWCLI(t, aigwBin, "run", "--debug", exampleYaml)
+	startAIGWCLI(t, aigwBin, nil, "run", "--debug", exampleYaml)
 
 	url := fmt.Sprintf("http://localhost:%d/mcp", 1975)
 	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "public-mcp-client", Version: "0.1.0"}, &mcp.ClientOptions{})
@@ -187,7 +171,7 @@ func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func TestMCP_standalone_oauth(t *testing.T) {
-	startAIGWCLI(t, aigwBin, "run", "--debug", path.Join(examplesDir, "mcp_oauth_example.yaml"))
+	startAIGWCLI(t, aigwBin, nil, "run", "--debug", path.Join(examplesDir, "mcp_oauth_example.yaml"))
 
 	url := fmt.Sprintf("http://localhost:%d/mcp", 1975)
 

@@ -67,6 +67,15 @@ controller:
   leaderElection:
     enabled: true
 
+  # Configuration for how the Kubernetes controllers watch the different resources.
+  watch:
+    # Namespaces to watch. An empty list means to watch all namespaces.
+    # Default is an empty list, to watch all namespaces.
+    namespaces: []
+    # Sync timeout for the Kubernetes cache. If the cache is not synced within this time, the controller will exit.
+    # Default is 2 minutes.
+    cacheSyncTimeout: 2m
+
   # -- Deployment configs --
   image:
     repository: docker.io/envoyproxy/ai-gateway-controller
@@ -156,8 +165,16 @@ controller:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+
   # maxRecvMsgSize is the maximum message size in bytes that the gRPC extension server can receive
   # from xDS (envoy-gateway).
   # This value should be increased in setups where count/complexity of xDS
   # resources (configuration) is big. Defaults to 4MB.
   # maxRecvMsgSize: "4194304"
+
+  # mcpSessionEncryptionSeed is an arbitrary string seed used to derive the MCP session encryption key.
+  #	Do not include commas as they are used as separators. You can optionally pass "fallback" seed after the first one to allow for key rotation.
+  #	For example: "new-seed,old-seed-for-fallback". The fallback seed is only used for decryption.
+  #
+  # This value should be set to a secure random string in production environments instead of the default below.
+  mcpSessionEncryptionSeed: "default-insecure-seed"

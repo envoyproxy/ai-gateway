@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tetratelabs/func-e/experimental/admin"
 
-	"github.com/envoyproxy/ai-gateway/internal/aigw"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
@@ -57,21 +57,19 @@ func buildAigwOnDemand() (string, error) {
 }
 
 // startAIGWCLI starts the aigw CLI as a subprocess with the given config file.
-func startAIGWCLI(t *testing.T, aigwBin string, arg ...string) {
-	// aigw has many fixed ports, some are in the envoy subprocess, such as
-	// Envoy's gateway port, and its adminPort if in yaml configuration.
+func startAIGWCLI(t *testing.T, aigwBin string, env []string, arg ...string) (adminPort int) {
+	// aigw has many fixed ports: some are in the envoy subprocess
 	gatewayPort := 1975
-	envoyAdminPort := 9901
 
 	// Wait up to 10 seconds for both ports to be free.
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 
-	for isPortInUse(ctx, gatewayPort) || isPortInUse(ctx, envoyAdminPort) {
+	for isPortInUse(ctx, gatewayPort) {
 		select {
 		case <-ctx.Done():
 			require.FailNow(t, "Ports still in use after timeout",
-				"Ports %d and/or %d are still in use", gatewayPort, envoyAdminPort)
+				"Port %d is still in use", gatewayPort)
 		case <-time.After(500 * time.Millisecond):
 			// Retry after a short delay.
 		}
@@ -81,17 +79,19 @@ func startAIGWCLI(t *testing.T, aigwBin string, arg ...string) {
 	buffers := internaltesting.DumpLogsOnFail(t, "aigw Stdout", "aigw Stderr")
 
 	t.Logf("Starting aigw with args: %v", arg)
-	// Note: do not pass t.Context() to CommandContext, as it's canceled *before* t.Cleanup functions are called.
+	// Note: do not pass t.Context() to CommandContext, as it's canceled
+	// *before* t.Cleanup functions are called.
 	//
 	// > Context returns a context that is canceled just before
 	// > Cleanup-registered functions are called.
 	//
-	// That means, the subprocess gets killed before we can send it an interrupt signal for graceful shutdown,
-	// which results in orphaned subprocesses.
+	// That means the subprocess gets killed before we can send it an interrupt
+	// signal for graceful shutdown, which results in orphaned subprocesses.
 	cmdCtx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(cmdCtx, aigwBin, arg...)
 	cmd.Stdout = buffers[0]
 	cmd.Stderr = buffers[1]
+	cmd.Env = append(os.Environ(), env...)
 	cmd.WaitDelay = 3 * time.Second // auto-kill after 3 seconds.
 
 	require.NoError(t, cmd.Start())
@@ -119,15 +119,13 @@ func startAIGWCLI(t *testing.T, aigwBin string, arg ...string) {
 
 	t.Logf("aigw process started with PID %d", cmd.Process.Pid)
 
-	// Wait for health check using RequireEventuallyNoError.
 	t.Log("Waiting for aigw to start (Envoy admin endpoint)...")
-	envoyAdmin, err := aigw.NewEnvoyAdminClient(t.Context(), 1, envoyAdminPort)
+
+	adminClient, err := admin.NewAdminClient(t.Context(), cmd.Process.Pid)
 	require.NoError(t, err)
 
-	internaltesting.RequireEventuallyNoError(t, func() error {
-		return envoyAdmin.IsReady(t.Context())
-	}, 180*time.Second, 2*time.Second,
-		"Envoy never became ready")
+	err = adminClient.AwaitReady(t.Context(), time.Second)
+	require.NoError(t, err)
 
 	// Wait for MCP endpoint using RequireEventuallyNoError.
 	t.Log("Waiting for MCP endpoint to be available...")
@@ -152,6 +150,7 @@ func startAIGWCLI(t *testing.T, aigwBin string, arg ...string) {
 		"MCP endpoint never became available")
 
 	t.Log("aigw CLI is ready with MCP endpoint")
+	return adminClient.Port()
 }
 
 // Function to check if a port is in use (returns true if listening).

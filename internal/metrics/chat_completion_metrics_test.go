@@ -218,7 +218,7 @@ func TestHeaderLabelMapping(t *testing.T) {
 	pm.RecordTokenUsage(t.Context(), 10, 8, 5, requestHeaders)
 
 	// Verify that the header mapping is set correctly.
-	assert.Equal(t, headerMapping, pm.requestHeaderLabelMapping)
+	assert.Equal(t, headerMapping, pm.requestHeaderAttributeMapping)
 
 	// Verify that the metrics are recorded with the mapped header attributes.
 	attrs := attribute.NewSet(

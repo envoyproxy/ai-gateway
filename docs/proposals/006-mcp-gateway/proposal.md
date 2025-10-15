@@ -85,6 +85,34 @@ These arrive via the notification stream, and the client must respond.
 To ensure responses are routed to the correct upstream MCP server, the MCP Proxy encodes server information into the JSON-RPC `ID` field.
 This allows any MCP Proxy instance—not just the original one—to correctly forward responses.
 
+### Distributed Tracing
+
+The MCP Proxy supports distributed tracing by propagating trace context from incoming requests.
+W3C Trace Propagation is done via [the \_meta field](https://modelcontextprotocol.io/specification/2025-06-18/basic#general-fields)
+on the JSON-RPC messages.
+
+Several agent SDKs such as the [C#](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/src/ModelContextProtocol.Core),
+[Typescript](https://github.com/modelcontextprotocol/typescript-sdk) or
+[OpenInference Python MCP](https://github.com/Arize-ai/openinference/tree/main/python/instrumentation/openinference-instrumentation-mcp), already propagate the trace context in the
+`_meta` field, so using that field will make the implementation compatible with existing exosystem. The tracing metadata
+looks like:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "weather_tool",
+    "arguments": {...},
+    "_meta": {
+      "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+      "tracestate": "congo=t61rcWkgMzE",
+      "progressToken": "abc123"  // MCP-defined field
+    }
+  }
+}
+```
+
 ## Technical Gap between Envoy’s Extension vs the Protocol
 
 It is natural to consider Envoy’s native extension mechanisms (e.g., ExtProc, already used in this project).

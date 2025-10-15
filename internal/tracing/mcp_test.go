@@ -7,6 +7,7 @@ package tracing
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
@@ -23,17 +24,42 @@ func TestTracer_StartSpanAndInjectMeta(t *testing.T) {
 	exporter := tracetest.NewInMemoryExporter()
 	tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
 
-	tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator())
+	tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(),
+		map[string]string{
+			"x-tracing-enrichment-user-region": "user.region",
+			"X-Session-Id":                     "session.id",
+			"CustomAttr":                       "custom.attr",
+		})
+
+	headers := make(http.Header)
+	headers.Add("X-Tracing-Enrichment-User-Region", "us-east-1")
+	headers.Add("X-Session-Id", "123") // should be ignored as the value in the metadata takes precedence
 
 	reqID, _ := jsonrpc.MakeID("id")
 	r := &jsonrpc.Request{ID: reqID, Method: "initialize"}
-	p := &mcp.InitializeParams{}
-	span := tracer.StartSpanAndInjectMeta(t.Context(), r, p)
+	p := &mcp.InitializeParams{Meta: map[string]any{
+		"x-session-id": "sess-1234", // alphabetical order wins when multiple values match case-insensitively
+		"X-SESSION-ID": "sess-4567",
+		"customattr":   "custom-value1", // exact match should win over case-insensitive match
+		"CustomAttr":   "custom-value2",
+	}}
+	span := tracer.StartSpanAndInjectMeta(t.Context(), r, p, headers)
 
 	require.NotNil(t, span)
 	meta := p.GetMeta()
 	require.NotNil(t, meta)
 	require.NotNil(t, meta["traceparent"])
+
+	// End the span to export it
+	span.EndSpan()
+	spans := exporter.GetSpans()
+	require.Len(t, spans, 1)
+	actualSpan := spans[0]
+	require.Contains(t, actualSpan.Attributes, attribute.String("user.region", "us-east-1"))
+	require.Contains(t, actualSpan.Attributes, attribute.String("session.id", "sess-4567"))
+	require.Contains(t, actualSpan.Attributes, attribute.String("custom.attr", "custom-value2"))
+	require.NotContains(t, actualSpan.Attributes, attribute.String("session.id", "123"))
+	require.NotContains(t, actualSpan.Attributes, attribute.String("custom.attr", "custom-value1"))
 }
 
 func Test_getMCPAttributes(t *testing.T) {
@@ -221,12 +247,12 @@ func TestMCPTracer_SpanName(t *testing.T) {
 			exporter := tracetest.NewInMemoryExporter()
 			tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
 
-			tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator())
+			tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), nil)
 
 			reqID, _ := jsonrpc.MakeID("test-id")
 			req := &jsonrpc.Request{ID: reqID, Method: tt.method}
 
-			span := tracer.StartSpanAndInjectMeta(context.Background(), req, tt.params)
+			span := tracer.StartSpanAndInjectMeta(context.Background(), req, tt.params, nil)
 			require.NotNil(t, span)
 			span.EndSpan()
 

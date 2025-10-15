@@ -37,13 +37,20 @@ const (
 	// EnvBase64ImageMaxLength is the environment variable for TraceConfig.Base64ImageMaxLength.
 	EnvBase64ImageMaxLength = "OPENINFERENCE_BASE64_IMAGE_MAX_LENGTH"
 	// EnvHidePrompts is the environment variable for TraceConfig.HidePrompts.
+	// Hides LLM prompts (completions API).
+	// See: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
 	EnvHidePrompts = "OPENINFERENCE_HIDE_PROMPTS"
+	// EnvHideChoices is the environment variable for TraceConfig.HideChoices.
+	// Hides LLM choices (completions API outputs).
+	// See: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
+	EnvHideChoices = "OPENINFERENCE_HIDE_CHOICES"
 )
 
 // Default values for trace configuration.
 const (
 	defaultHideLLMInvocationParameters = false
 	defaultHidePrompts                 = false
+	defaultHideChoices                 = false
 	defaultHideInputs                  = false
 	defaultHideOutputs                 = false
 	defaultHideInputMessages           = false
@@ -105,7 +112,15 @@ type TraceConfig struct {
 	// Base64ImageMaxLength limits the characters of a base64 encoding of an image.
 	Base64ImageMaxLength int
 	// HidePrompts controls whether LLM prompts are hidden.
+	// Maps to OPENINFERENCE_HIDE_PROMPTS environment variable.
+	// Only applies to completions API (not chat completions).
+	// When true, llm.prompts.N.prompt.text attributes contain "__REDACTED__".
 	HidePrompts bool
+	// HideChoices controls whether LLM choices are hidden.
+	// Maps to OPENINFERENCE_HIDE_CHOICES environment variable.
+	// Only applies to completions API outputs (not chat completions).
+	// When true, llm.choices.N.completion.text attributes contain "__REDACTED__".
+	HideChoices bool
 }
 
 // NewTraceConfig creates a new TraceConfig with default values.
@@ -125,6 +140,7 @@ func NewTraceConfig() *TraceConfig {
 		HideEmbeddingsText:          defaultHideEmbeddingsText,
 		Base64ImageMaxLength:        defaultBase64ImageMaxLength,
 		HidePrompts:                 defaultHidePrompts,
+		HideChoices:                 defaultHideChoices,
 	}
 }
 
@@ -146,6 +162,7 @@ func NewTraceConfigFromEnv() *TraceConfig {
 		HideEmbeddingsText:          getBoolEnv(EnvHideEmbeddingsText, defaultHideEmbeddingsText),
 		Base64ImageMaxLength:        getIntEnv(EnvBase64ImageMaxLength, defaultBase64ImageMaxLength),
 		HidePrompts:                 getBoolEnv(EnvHidePrompts, defaultHidePrompts),
+		HideChoices:                 getBoolEnv(EnvHideChoices, defaultHideChoices),
 	}
 }
 

@@ -26,6 +26,7 @@ var _ tracing.Tracing = (*tracingImpl)(nil)
 
 type tracingImpl struct {
 	chatCompletionTracer tracing.ChatCompletionTracer
+	completionTracer     tracing.CompletionTracer
 	embeddingsTracer     tracing.EmbeddingsTracer
 	mcpTracer            tracing.MCPTracer
 	// shutdown is nil when we didn't create tp.
@@ -35,6 +36,11 @@ type tracingImpl struct {
 // ChatCompletionTracer implements the same method as documented on api.Tracing.
 func (t *tracingImpl) ChatCompletionTracer() tracing.ChatCompletionTracer {
 	return t.chatCompletionTracer
+}
+
+// CompletionTracer implements the same method as documented on api.Tracing.
+func (t *tracingImpl) CompletionTracer() tracing.CompletionTracer {
+	return t.completionTracer
 }
 
 // EmbeddingsTracer implements the same method as documented on api.Tracing.
@@ -150,6 +156,7 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 
 	// Default to OpenInference trace span semantic conventions.
 	chatRecorder := openai.NewChatCompletionRecorderFromEnv()
+	completionRecorder := openai.NewCompletionRecorderFromEnv()
 	embeddingsRecorder := openai.NewEmbeddingsRecorderFromEnv()
 
 	tracer := tp.Tracer("envoyproxy/ai-gateway")
@@ -160,13 +167,19 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 			chatRecorder,
 			headerAttrs,
 		),
+		completionTracer: newCompletionTracer(
+			tracer,
+			propagator,
+			completionRecorder,
+			headerAttrs,
+		),
 		embeddingsTracer: newEmbeddingsTracer(
 			tracer,
 			propagator,
 			embeddingsRecorder,
 			headerAttrs,
 		),
-		mcpTracer: newMCPTracer(tracer, propagator),
+		mcpTracer: newMCPTracer(tracer, propagator, headerAttrs),
 		shutdown:  tp.Shutdown, // we have to shut down what we create.
 	}, nil
 }

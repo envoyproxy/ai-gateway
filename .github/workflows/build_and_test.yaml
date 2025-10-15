@@ -67,32 +67,7 @@ jobs:
             ~/go/pkg/mod
             ~/go/bin
           key: unittest-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}-${{ matrix.os }}
-
-      # This runs ollama server to be used in `aigw run` end-to-end tests.
-      # The test case using it will be skipped if ollama is not available.
-      # Since installing it and pulling the model takes a while, we do it only for Linux runners.
-      - name: Start Ollama server
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          curl -fsSL https://ollama.com/install.sh | sh && sudo systemctl stop ollama
-          nohup ollama serve > ollama.log 2>&1 &
-          timeout 30 sh -c 'until nc -z localhost 11434; do sleep 1; done'
-          grep _MODEL .env.ollama | cut -d= -f2 | xargs -I{} ollama pull {}
-        env:
-          OLLAMA_CONTEXT_LENGTH: 131072 # Larger context for goose
-          OLLAMA_HOST: 0.0.0.0
-      # Download Envoy via func-e using implicit default version `aigw` would
-      # otherwise need to download during test runs.
-      - name: Download Envoy via func-e
-        run: go tool -modfile=tools/go.mod func-e run --version
-        env:
-          FUNC_E_HOME: /tmp/envoy-gateway # hard-coded directory in EG
-      - env:
-          TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
-          TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
-          TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
-          TEST_GITHUB_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: make test-coverage
+      - run: make test-coverage
       - if: failure()
         run: cat ollama.log || true
       - name: Upload coverage to Codecov
@@ -294,20 +269,12 @@ jobs:
   test_e2e_inference_extension:
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
-    name: E2E Test for Inference Extensions (Envoy Gateway ${{ matrix.name }})
+    name: E2E Test for Inference Extensions
     # TODO: make it possible to run this job on macOS as well, which is a bit tricky due to the nested
     # virtualization is not supported on macOS runners.
     # E.g. Use https://github.com/douglascamata/setup-docker-macos-action  per the comment in
     # https://github.com/actions/runner-images/issues/17#issuecomment-1971073406
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: latest
-            envoy_gateway_version: v0.0.0-latest
-          - name: v1.5.0
-            envoy_gateway_version: v1.5.0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -324,6 +291,40 @@ jobs:
           key: e2e-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
       - uses: docker/setup-buildx-action@v3
       - run: make test-e2e-inference-extension
+        env:
+          # We only need to test with the latest stable version of EG, since these e2e tests
+          # do not depend on the EG version.
+          EG_VERSION: v1.5.0
+
+  test_e2e_namespaced:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    name: E2E Test for Namespaced Controller
+    # TODO: make it possible to run this job on macOS as well, which is a bit tricky due to the nested
+    # virtualization is not supported on macOS runners.
+    # E.g. Use https://github.com/douglascamata/setup-docker-macos-action  per the comment in
+    # https://github.com/actions/runner-images/issues/17#issuecomment-1971073406
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/go/pkg/mod
+            ~/go/bin
+          key: e2e-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+      - uses: docker/setup-buildx-action@v3
+      - run: make test-e2e-namespaced
+        env:
+          # We only need to test with the latest stable version of EG, since these e2e tests
+          # do not depend on the EG version.
+          EG_VERSION: v1.5.0
 
   test_e2e_aigw:
     needs: changes
@@ -361,9 +362,15 @@ jobs:
         env:
           FUNC_E_HOME: /tmp/envoy-gateway # hard-coded directory in EG
       - name: Install Goose
+        env:
+          GOOSE_VERSION: v1.10.0
+          OS: Linux
         run: |
           curl -fsSL https://github.com/block/goose/releases/download/stable/download_cli.sh | CONFIGURE=false bash
-      - run: make test-e2e-aigw
+      - env:
+          # This is used to access the GitHub MCP server.
+          TEST_GITHUB_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: make test-e2e-aigw
       - if: failure()
         run: cat ollama.log || true
 

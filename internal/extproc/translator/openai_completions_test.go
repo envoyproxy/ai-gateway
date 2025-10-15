@@ -179,6 +179,7 @@ func TestOpenAIToOpenAITranslatorV1CompletionResponseBody(t *testing.T) {
 				respHeaders,
 				strings.NewReader(tc.responseBody),
 				true,
+				nil,
 			)
 
 			if tc.expError {
@@ -225,6 +226,7 @@ data: [DONE]
 		respHeaders,
 		strings.NewReader(chunk1),
 		false,
+		nil,
 	)
 	require.NoError(t, err)
 	require.Nil(t, headerMutation)
@@ -237,6 +239,7 @@ data: [DONE]
 		respHeaders,
 		strings.NewReader(chunk2),
 		false,
+		nil,
 	)
 	require.NoError(t, err)
 	require.Nil(t, headerMutation)
@@ -249,6 +252,7 @@ data: [DONE]
 		respHeaders,
 		strings.NewReader(chunk3),
 		true,
+		nil,
 	)
 	require.NoError(t, err)
 	require.Nil(t, headerMutation)
