@@ -548,6 +548,10 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 	specifier := "rawPredict"
 	if openAIReq.Stream {
 		specifier = "streamRawPredict"
+		body, err = sjson.SetBytes(body, "stream", true)
+		if err != nil {
+			return
+		}
 		o.streamParser = newAnthropicStreamParser(o.requestModel)
 	}
 
@@ -558,7 +562,10 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 	if o.apiVersion != "" {
 		anthropicVersion = o.apiVersion
 	}
-	body, _ = sjson.SetBytes(body, anthropicVersionKey, anthropicVersion)
+	body, err = sjson.SetBytes(body, anthropicVersionKey, anthropicVersion)
+	if err != nil {
+		return
+	}
 
 	headerMutation, bodyMutation = buildRequestMutations(pathSuffix, body)
 	return
