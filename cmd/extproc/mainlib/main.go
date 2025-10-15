@@ -231,6 +231,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		return fmt.Errorf("failed to create metrics: %w", err)
 	}
 	chatCompletionMetrics := metrics.NewChatCompletion(meter, metricsRequestHeaderAttributes)
+	messagesMetrics := metrics.NewMessages(meter, metricsRequestHeaderAttributes)
 	completionMetrics := metrics.NewCompletion(meter, metricsRequestHeaderAttributes)
 	embeddingsMetrics := metrics.NewEmbeddings(meter, metricsRequestHeaderAttributes)
 	rerankMetrics := metrics.NewRerank(meter, metricsRequestHeaderAttributes)
@@ -250,7 +251,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	server.Register(path.Join(flags.rootPrefix, "/v1/embeddings"), extproc.EmbeddingsProcessorFactory(embeddingsMetrics))
 	server.Register(path.Join(flags.rootPrefix, "/v2/rerank"), extproc.RerankProcessorFactory(rerankMetrics))
 	server.Register(path.Join(flags.rootPrefix, "/v1/models"), extproc.NewModelsProcessor)
-	server.Register(path.Join(flags.rootPrefix, "/anthropic/v1/messages"), extproc.MessagesProcessorFactory(chatCompletionMetrics))
+	server.Register(path.Join(flags.rootPrefix, "/anthropic/v1/messages"), extproc.MessagesProcessorFactory(messagesMetrics))
 
 	if watchErr := extproc.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); watchErr != nil {
 		return fmt.Errorf("failed to start config watcher: %w", watchErr)

@@ -27,6 +27,7 @@ const (
 	genaiOperationChat       = "chat"
 	genaiOperationCompletion = "completion"
 	genaiOperationEmbedding  = "embeddings"
+	genaiOperationMessages   = "messages"
 	genaiOperationRerank     = "rerank"
 	genaiProviderOpenAI      = "openai"
 	genaiProviderAWSBedrock  = "aws.bedrock"
