@@ -49,6 +49,8 @@ spec:
   llmRequestCosts:
     - metadataKey: llm_input_token
       type: InputToken
+    - metadataKey: llm_cached_input_token
+      type: CachedInputToken
     - metadataKey: llm_output_token
       type: OutputToken
     - metadataKey: llm_total_token
@@ -163,6 +165,26 @@ spec:
               metadata:
                 namespace: io.envoy.ai_gateway
                 key: llm_total_token
+
+        # Repeat the same configuration for a different token type.
+        # This configures the cached input token limit, and it has a different budget than others,
+        # so it will be rate limited separately.
+        - clientSelectors:
+            - headers:
+                - name: x-user-id
+                  type: Distinct
+          limit:
+            requests: 100
+            unit: Hour
+          cost:
+            request:
+              from: Number
+              number: 0
+            response:
+              from: Metadata
+              metadata:
+                namespace: io.envoy.ai_gateway
+                key: llm_cached_input_token
 
         # Repeat the same configuration for a different token type.
         # This configures the token limit based on the CEL expression.
