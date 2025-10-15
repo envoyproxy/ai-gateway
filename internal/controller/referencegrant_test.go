@@ -262,6 +262,26 @@ func TestReferenceGrantValidator_ValidateAIServiceBackendReference(t *testing.T)
 			}
 		})
 	}
+
+	// Test case where List returns an error
+	t.Run("List ReferenceGrants error", func(t *testing.T) {
+		// Create a scheme without ReferenceGrant to cause List error
+		badScheme := runtime.NewScheme()
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(badScheme).
+			Build()
+
+		validator := NewReferenceGrantValidator(fakeClient)
+		err := validator.ValidateAIServiceBackendReference(
+			context.Background(),
+			"route-ns",
+			"backend-ns",
+			"test-backend",
+		)
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to list ReferenceGrants")
+	})
 }
 
 func TestReferenceGrantValidator_GetAffectedAIGatewayRoutes(t *testing.T) {
@@ -457,6 +477,44 @@ func TestReferenceGrantValidator_GetAffectedAIGatewayRoutes(t *testing.T) {
 			require.ElementsMatch(t, tt.expectedRoutes, actualRouteNames)
 		})
 	}
+
+	// Test case where List returns an error
+	t.Run("List AIGatewayRoutes error", func(t *testing.T) {
+		// Create a scheme without AIGatewayRoute to cause List error
+		badScheme := runtime.NewScheme()
+		_ = gwapiv1b1.Install(badScheme)
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(badScheme).
+			Build()
+
+		validator := NewReferenceGrantValidator(fakeClient)
+		grant := &gwapiv1b1.ReferenceGrant{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-grant",
+				Namespace: "backend-ns",
+			},
+			Spec: gwapiv1b1.ReferenceGrantSpec{
+				From: []gwapiv1b1.ReferenceGrantFrom{
+					{
+						Group:     aiServiceBackendGroup,
+						Kind:      aiGatewayRouteKind,
+						Namespace: "route-ns",
+					},
+				},
+				To: []gwapiv1b1.ReferenceGrantTo{
+					{
+						Group: aiServiceBackendGroup,
+						Kind:  aiServiceBackendKind,
+					},
+				},
+			},
+		}
+
+		routes, err := validator.GetAffectedAIGatewayRoutes(context.Background(), grant)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to list AIGatewayRoutes")
+		require.Nil(t, routes)
+	})
 }
 
 func TestReferenceGrantController_Reconcile(t *testing.T) {
@@ -716,4 +774,209 @@ func TestNewReferenceGrantController(t *testing.T) {
 	require.Equal(t, logger, controller.logger)
 	require.Equal(t, aiGatewayRouteChan, controller.aiGatewayRouteChan)
 	require.NotNil(t, controller.referenceGrantHelper)
+}
+
+// TestReferenceGrantValidator_MatchesFrom_WrongGroup tests matchesFrom with wrong group
+func TestReferenceGrantValidator_MatchesFrom_WrongGroup(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = gwapiv1b1.Install(scheme)
+	_ = aigv1a1.AddToScheme(scheme)
+
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	validator := NewReferenceGrantValidator(fakeClient)
+
+	from := &gwapiv1b1.ReferenceGrantFrom{
+		Group:     "wrong.group",
+		Kind:      aiGatewayRouteKind,
+		Namespace: "route-ns",
+	}
+
+	result := validator.matchesFrom(from, "route-ns")
+	require.False(t, result, "should return false for wrong group")
+}
+
+// TestReferenceGrantValidator_MatchesFrom_WrongKind tests matchesFrom with wrong kind
+func TestReferenceGrantValidator_MatchesFrom_WrongKind(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = gwapiv1b1.Install(scheme)
+	_ = aigv1a1.AddToScheme(scheme)
+
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	validator := NewReferenceGrantValidator(fakeClient)
+
+	from := &gwapiv1b1.ReferenceGrantFrom{
+		Group:     aiServiceBackendGroup,
+		Kind:      "WrongKind",
+		Namespace: "route-ns",
+	}
+
+	result := validator.matchesFrom(from, "route-ns")
+	require.False(t, result, "should return false for wrong kind")
+}
+
+// TestReferenceGrantValidator_MatchesFrom_WrongNamespace tests matchesFrom with wrong namespace
+func TestReferenceGrantValidator_MatchesFrom_WrongNamespace(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = gwapiv1b1.Install(scheme)
+	_ = aigv1a1.AddToScheme(scheme)
+
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	validator := NewReferenceGrantValidator(fakeClient)
+
+	from := &gwapiv1b1.ReferenceGrantFrom{
+		Group:     aiServiceBackendGroup,
+		Kind:      aiGatewayRouteKind,
+		Namespace: "wrong-ns",
+	}
+
+	result := validator.matchesFrom(from, "route-ns")
+	require.False(t, result, "should return false for wrong namespace")
+}
+
+// TestReferenceGrantValidator_MatchesTo_WrongGroup tests matchesTo with wrong group
+func TestReferenceGrantValidator_MatchesTo_WrongGroup(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = gwapiv1b1.Install(scheme)
+	_ = aigv1a1.AddToScheme(scheme)
+
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	validator := NewReferenceGrantValidator(fakeClient)
+
+	to := &gwapiv1b1.ReferenceGrantTo{
+		Group: "wrong.group",
+		Kind:  aiServiceBackendKind,
+	}
+
+	result := validator.matchesTo(to)
+	require.False(t, result, "should return false for wrong group")
+}
+
+// TestReferenceGrantValidator_MatchesTo_WrongKind tests matchesTo with wrong kind
+func TestReferenceGrantValidator_MatchesTo_WrongKind(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = gwapiv1b1.Install(scheme)
+	_ = aigv1a1.AddToScheme(scheme)
+
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	validator := NewReferenceGrantValidator(fakeClient)
+
+	to := &gwapiv1b1.ReferenceGrantTo{
+		Group: aiServiceBackendGroup,
+		Kind:  "WrongKind",
+	}
+
+	result := validator.matchesTo(to)
+	require.False(t, result, "should return false for wrong kind")
+}
+
+// TestReferenceGrantController_Reconcile_GetError tests reconcile when Get returns error
+func TestReferenceGrantController_Reconcile_GetError(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = gwapiv1b1.Install(scheme)
+	_ = aigv1a1.AddToScheme(scheme)
+
+	// Create a fake client that will return an error for Get operations
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		Build()
+
+	aiGatewayRouteChan := make(chan event.GenericEvent, 10)
+	logger := logr.Discard()
+
+	controller := NewReferenceGrantController(fakeClient, logger, aiGatewayRouteChan)
+
+	// Try to reconcile a non-existent ReferenceGrant - this should be handled gracefully
+	req := reconcile.Request{
+		NamespacedName: client.ObjectKey{
+			Namespace: "test-ns",
+			Name:      "non-existent",
+		},
+	}
+
+	result, err := controller.Reconcile(context.Background(), req)
+	require.NoError(t, err, "should ignore not found errors")
+	require.Equal(t, reconcile.Result{}, result)
+}
+
+// TestReferenceGrantValidator_GetAffectedAIGatewayRoutes_WithNonMatchingFrom tests GetAffectedAIGatewayRoutes with non-matching From
+func TestReferenceGrantValidator_GetAffectedAIGatewayRoutes_WithNonMatchingFrom(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = gwapiv1b1.Install(scheme)
+	_ = aigv1a1.AddToScheme(scheme)
+
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	validator := NewReferenceGrantValidator(fakeClient)
+
+	grant := &gwapiv1b1.ReferenceGrant{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-grant",
+			Namespace: "backend-ns",
+		},
+		Spec: gwapiv1b1.ReferenceGrantSpec{
+			From: []gwapiv1b1.ReferenceGrantFrom{
+				{
+					Group:     "wrong.group", // Wrong group
+					Kind:      aiGatewayRouteKind,
+					Namespace: "route-ns",
+				},
+			},
+			To: []gwapiv1b1.ReferenceGrantTo{
+				{
+					Group: aiServiceBackendGroup,
+					Kind:  aiServiceBackendKind,
+				},
+			},
+		},
+	}
+
+	routes, err := validator.GetAffectedAIGatewayRoutes(context.Background(), grant)
+	require.NoError(t, err)
+	require.Empty(t, routes, "should not return any routes when From doesn't match")
+}
+
+// TestReferenceGrantController_Reconcile_GetAffectedRoutesError tests when GetAffectedAIGatewayRoutes returns an error
+func TestReferenceGrantController_Reconcile_GetAffectedRoutesError(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = gwapiv1b1.Install(scheme)
+
+	referenceGrant := &gwapiv1b1.ReferenceGrant{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-grant",
+			Namespace: "backend-ns",
+		},
+		Spec: gwapiv1b1.ReferenceGrantSpec{
+			From: []gwapiv1b1.ReferenceGrantFrom{
+				{
+					Group:     aiServiceBackendGroup,
+					Kind:      aiGatewayRouteKind,
+					Namespace: "route-ns",
+				},
+			},
+			To: []gwapiv1b1.ReferenceGrantTo{
+				{
+					Group: aiServiceBackendGroup,
+					Kind:  aiServiceBackendKind,
+				},
+			},
+		},
+	}
+
+	// Create fake client without AIGatewayRoute in scheme to cause List error
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(referenceGrant).
+		Build()
+
+	aiGatewayRouteChan := make(chan event.GenericEvent, 10)
+	logger := logr.Discard()
+
+	controller := NewReferenceGrantController(fakeClient, logger, aiGatewayRouteChan)
+
+	req := reconcile.Request{
+		NamespacedName: client.ObjectKeyFromObject(referenceGrant),
+	}
+
+	result, err := controller.Reconcile(context.Background(), req)
+	require.Error(t, err, "should return error when GetAffectedAIGatewayRoutes fails")
+	require.Equal(t, reconcile.Result{}, result)
 }

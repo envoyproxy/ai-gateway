@@ -81,6 +81,11 @@ func TestAIGatewayRouteRuleBackendRef_IsInferencePool(t *testing.T) {
 		expected bool
 	}{
 		{
+			name:     "Nil reference",
+			ref:      nil,
+			expected: false,
+		},
+		{
 			name: "AIServiceBackend reference (no group/kind)",
 			ref: &AIGatewayRouteRuleBackendRef{
 				Name: "test-backend",
@@ -162,6 +167,11 @@ func TestAIGatewayRouteRule_HasInferencePoolBackends(t *testing.T) {
 		expected bool
 	}{
 		{
+			name:     "Nil rule",
+			rule:     nil,
+			expected: false,
+		},
+		{
 			name: "No backends",
 			rule: &AIGatewayRouteRule{
 				BackendRefs: []AIGatewayRouteRuleBackendRef{},
@@ -221,6 +231,11 @@ func TestAIGatewayRouteRule_HasAIServiceBackends(t *testing.T) {
 		rule     *AIGatewayRouteRule
 		expected bool
 	}{
+		{
+			name:     "Nil rule",
+			rule:     nil,
+			expected: false,
+		},
 		{
 			name: "No backends",
 			rule: &AIGatewayRouteRule{
