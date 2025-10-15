@@ -55,7 +55,6 @@ spec:
       extractFrom:
         - headers:
             - "X-API-KEY"
-      sanitize: true
   backendRefs:
     - name: mcp-backend-api-key
       port: 1063
