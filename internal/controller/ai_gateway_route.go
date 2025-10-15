@@ -266,7 +266,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 							Group:     (*gwapiv1.Group)(br.Group),
 							Kind:      (*gwapiv1.Kind)(br.Kind),
 							Name:      gwapiv1.ObjectName(br.Name),
-							Namespace: (*gwapiv1.Namespace)(&backendNamespace),
+							Namespace: (*gwapiv1.Namespace)(&aiGatewayRoute.Namespace),
 						},
 						Weight: br.Weight,
 					}},

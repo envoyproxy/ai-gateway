@@ -77,6 +77,21 @@ spec:
     - group: aigateway.envoyproxy.io
       kind: AIServiceBackend
 ---
+# ReferenceGrant allowing HTTPRoute in route-ns to reference Backend in backend-ns
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-httproute-to-backend
+  namespace: backend-ns
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: route-ns
+  to:
+    - group: gateway.envoyproxy.io
+      kind: Backend
+---
 # AIGatewayRoute in route-ns namespace referencing Gateway in gateway-ns
 # and AIServiceBackend in backend-ns (cross-namespace backend reference)
 apiVersion: aigateway.envoyproxy.io/v1alpha1
