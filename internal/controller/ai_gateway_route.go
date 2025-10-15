@@ -277,9 +277,22 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 				if err != nil {
 					return fmt.Errorf("failed to get AIServiceBackend %s: %w", dstName, err)
 				}
+
+				// Copy the BackendObjectReference from the AIServiceBackend.
+				backendObjRef := backend.Spec.BackendRef
+
+				// Ensure the namespace is explicitly set in the BackendObjectReference.
+				// If the AIServiceBackend is in a different namespace than the AIGatewayRoute,
+				// the Backend it references is also in that namespace, and we need to set
+				// the namespace explicitly in the HTTPRoute's backendRef.
+				if backendObjRef.Namespace == nil {
+					ns := gwapiv1.Namespace(backend.Namespace)
+					backendObjRef.Namespace = &ns
+				}
+
 				backendRefs = append(backendRefs,
 					gwapiv1.HTTPBackendRef{BackendRef: gwapiv1.BackendRef{
-						BackendObjectReference: backend.Spec.BackendRef,
+						BackendObjectReference: backendObjRef,
 						Weight:                 br.Weight,
 					}},
 				)
