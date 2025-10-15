@@ -112,10 +112,10 @@ func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body 
 		return nil, nil, tokenUsage, responseModel, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 	tokenUsage = LLMTokenUsage{
-		InputTokens:  uint32(anthropicResp.Usage.InputTokens),                                    //nolint:gosec
-		OutputTokens: uint32(anthropicResp.Usage.OutputTokens),                                   //nolint:gosec
-		TotalTokens:  uint32(anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens), //nolint:gosec
-		CachedTokens: uint32(anthropicResp.Usage.CacheReadInputTokens),                           //nolint:gosec
+		InputTokens:       uint32(anthropicResp.Usage.InputTokens),                                    //nolint:gosec
+		OutputTokens:      uint32(anthropicResp.Usage.OutputTokens),                                   //nolint:gosec
+		TotalTokens:       uint32(anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens), //nolint:gosec
+		CachedInputTokens: uint32(anthropicResp.Usage.CacheReadInputTokens),                           //nolint:gosec
 	}
 	responseModel = cmp.Or(internalapi.ResponseModel(anthropicResp.Model), a.requestModel)
 	return nil, nil, tokenUsage, responseModel, nil
@@ -153,7 +153,7 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent() (tokenUsa
 			tokenUsage.InputTokens = uint32(usage.InputTokens)                      //nolint:gosec
 			tokenUsage.OutputTokens = uint32(usage.OutputTokens)                    //nolint:gosec
 			tokenUsage.TotalTokens = uint32(usage.InputTokens + usage.OutputTokens) //nolint:gosec
-			tokenUsage.CachedTokens = uint32(usage.CacheReadInputTokens)            //nolint:gosec
+			tokenUsage.CachedInputTokens = uint32(usage.CacheReadInputTokens)       //nolint:gosec
 		}
 	}
 }

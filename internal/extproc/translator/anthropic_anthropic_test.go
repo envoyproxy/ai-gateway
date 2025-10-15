@@ -153,7 +153,7 @@ event: content_block_stop
 data: {"type":"content_block_stop","index":0             }
 
 event: message_delta
-data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":16}               }
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":1,"output_tokens":16}               }
 
 event: message_stop
 data: {"type":"message_stop"       }`
@@ -170,9 +170,10 @@ data: {"type":"message_stop"       }`
 	require.Nil(t, headerMutation)
 	require.Nil(t, bodyMutation)
 	require.Equal(t, LLMTokenUsage{
-		InputTokens:  9,
-		OutputTokens: 16,
-		TotalTokens:  25,
+		InputTokens:       9,
+		OutputTokens:      16,
+		TotalTokens:       25,
+		CachedInputTokens: 1,
 	}, tokenUsage)
 	require.Equal(t, "claude-sonnet-4-5-20250929", responseModel)
 }
