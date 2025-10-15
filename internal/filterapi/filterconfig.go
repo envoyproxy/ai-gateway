@@ -115,6 +115,8 @@ const (
 	// APISchemaGCPAnthropic represents the Google Cloud Anthropic API schema.
 	// Used for Claude models hosted on Google Cloud Vertex AI.
 	APISchemaGCPAnthropic APISchemaName = "GCPAnthropic"
+	// APISchemaAnthropic represents the standard Anthropic API schema.
+	APISchemaAnthropic APISchemaName = "Anthropic"
 )
 
 // RouteRuleName is the name of the route rule.
@@ -141,7 +143,9 @@ type BackendAuth struct {
 	// AWSAuth specifies the location of the AWS credential file and region.
 	AWSAuth *AWSAuth `json:"aws,omitempty"`
 	// AzureAPIKey is the Azure OpenAI API key.
-	AzureAPIKey *AzureAPIKeyAuth `json:"azureApiKey,omitempty"`
+	AzureAPIKey *AzureAPIKeyAuth `json:"azureAPIKey,omitempty"`
+	// AnthropicAPIKey is the Anthropic API key.
+	AnthropicAPIKey *AnthropicAPIKeyAuth `json:"anthropicAPIKey,omitempty"`
 	// AzureAuth specifies the location of Azure access token file.
 	AzureAuth *AzureAuth `json:"azure,omitempty"`
 	// GCPAuth specifies the location of GCP credential file.
@@ -165,6 +169,12 @@ type APIKeyAuth struct {
 // AzureAPIKeyAuth defines the Azure OpenAI API key.
 type AzureAPIKeyAuth struct {
 	// Key is the Azure API key as a literal string.
+	Key string `json:"key"`
+}
+
+// AnthropicAPIKeyAuth defines the Anthropic API key.
+type AnthropicAPIKeyAuth struct {
+	// Key is the Anthropic API key as a literal string.
 	Key string `json:"key"`
 }
 

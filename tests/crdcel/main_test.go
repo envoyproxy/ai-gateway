@@ -81,6 +81,7 @@ func TestAIServiceBackends(t *testing.T) {
 		expErr string
 	}{
 		{name: "basic.yaml"},
+		{name: "anthropic-schema.yaml"},
 		{name: "basic-eg-backend-aws.yaml"},
 		{name: "basic-eg-backend-azure.yaml"},
 		{
@@ -173,12 +174,12 @@ func TestBackendSecurityPolicies(t *testing.T) {
 			name:   "gcp_with_apikey.yaml",
 			expErr: "When type is GCPCredentials, only gcpCredentials field should be set",
 		},
-		// Valid test cases - these should pass.
 		{name: "azure_oidc.yaml"},
 		{name: "azure_valid_credentials.yaml"},
 		{name: "aws_credential_file.yaml"},
 		{name: "aws_oidc.yaml"},
 		{name: "gcp_oidc.yaml"},
+		{name: "anthropic-apikey.yaml"},
 		{name: "targetrefs_basic.yaml"},
 		{name: "targetrefs_multiple.yaml"},
 		{

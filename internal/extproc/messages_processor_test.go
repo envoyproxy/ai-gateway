@@ -271,6 +271,14 @@ func TestSelectTranslator(t *testing.T) {
 						},
 					},
 				},
+				"anthropic": {
+					b: &filterapi.Backend{
+						Name: "anthropic",
+						Schema: filterapi.VersionedAPISchema{
+							Name: filterapi.APISchemaAnthropic,
+						},
+					},
+				},
 			},
 		},
 		logger: slog.Default(),
@@ -284,6 +292,11 @@ func TestSelectTranslator(t *testing.T) {
 		{
 			name:        "gcp backend",
 			backend:     "gcp",
+			expectError: false,
+		},
+		{
+			name:        "anthropic backend",
+			backend:     "anthropic",
 			expectError: false,
 		},
 		{
