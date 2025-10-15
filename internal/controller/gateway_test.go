@@ -464,6 +464,15 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 				},
 			},
 		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "bsp-anthropic-apikey", Namespace: namespace},
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				Type: aigv1a1.BackendSecurityPolicyTypeAnthropicAPIKey,
+				AnthropicAPIKey: &aigv1a1.BackendSecurityPolicyAnthropicAPIKey{
+					SecretRef: &gwapiv1.SecretObjectReference{Name: "api-key-secret"},
+				},
+			},
+		},
 	} {
 		require.NoError(t, fakeClient.Create(t.Context(), bsp))
 	}
@@ -529,6 +538,12 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 			bspName: "gcp-wif",
 			exp: &filterapi.BackendAuth{
 				GCPAuth: &filterapi.GCPAuth{AccessToken: "thisisgcpcredentials"},
+			},
+		},
+		{
+			bspName: "bsp-anthropic-apikey",
+			exp: &filterapi.BackendAuth{
+				AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: "thisisapikey"},
 			},
 		},
 	} {

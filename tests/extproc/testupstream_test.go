@@ -6,6 +6,7 @@
 package extproc
 
 import (
+	"cmp"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -70,6 +71,12 @@ func TestWithTestUpstream(t *testing.T) {
 				},
 				ModelNameOverride: "bad-model",
 			},
+			{
+				Name:   "testupstream-anthropic",
+				Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic}, Auth: &filterapi.BackendAuth{
+					AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: "anthropic-api-key"},
+				},
+			},
 		},
 		Models: []filterapi.Model{
 			{Name: "some-model1", OwnedBy: "Envoy AI Gateway", CreatedAt: now},
@@ -133,6 +140,7 @@ func TestWithTestUpstream(t *testing.T) {
 		// expResponseHeaders are the expected headers from the gateway.
 		expResponseHeaders map[string]string
 		// expResponseBody is the expected body from the gateway to the client.
+		// If this is empty, the responseBody from the test upstream is expected to be returned as-is.
 		expResponseBody string
 		// expResponseBodyFunc is a function to check the response body. This can be used instead of the expResponseBody field.
 		expResponseBodyFunc func(require.TestingT, []byte)
@@ -857,6 +865,74 @@ data: {"type": "message_stop"}
 
 `,
 		},
+		{
+			name:              "anthropic - /anthropic/v1/messages",
+			backend:           "anthropic",
+			path:              "/anthropic/v1/messages",
+			method:            http.MethodPost,
+			expRequestHeaders: map[string]string{"x-api-key": "anthropic-api-key"},
+			requestBody: `{
+    "model": "claude-sonnet-4-5",
+    "max_tokens": 1000,
+    "messages": [
+      {
+        "role": "user",
+        "content": "say hi"
+      }
+    ]
+  }`,
+			expPath:      "/v1/messages",
+			responseBody: `{"model":"claude-sonnet-4-5-20250929","id":"msg_01J5gW6Sffiem6avXSAooZZw","type":"message","role":"assistant","content":[{"type":"text","text":"Hi! 👋 How can I help you today?"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":16,"service_tier":"standard"}}`,
+			expStatus:    http.StatusOK,
+		},
+		{
+			name:              "anthropic - /anthropic/v1/messages - streaming",
+			backend:           "anthropic",
+			path:              "/anthropic/v1/messages",
+			method:            http.MethodPost,
+			expRequestHeaders: map[string]string{"x-api-key": "anthropic-api-key"},
+			responseType:      "sse",
+			requestBody: `{
+    "model": "claude-sonnet-4-5",
+    "max_tokens": 1000,
+    "messages": [
+      {
+        "role": "user",
+        "content": "say hi"
+      }
+    ], "stream": true
+  }`,
+			expPath: "/v1/messages",
+			responseBody: `
+event: message_start
+data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_01BfvfMsg2gBzwsk6PZRLtDg","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":1,"service_tier":"standard"}}    }
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"! 👋 How"}      }
+
+event: ping
+data: {"type": "ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" can I help you today?"}   }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0             }
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":16}               }
+
+event: message_stop
+data: {"type":"message_stop"       }
+`,
+			expStatus: http.StatusOK,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			listenerAddress := fmt.Sprintf("http://localhost:%d", listenerPort)
@@ -913,6 +989,9 @@ data: {"type": "message_stop"}
 				if lastErr != nil {
 					return false
 				}
+				t.Logf("Response status: %d", resp.StatusCode)
+				t.Logf("Response headers: %+v", resp.Header)
+				t.Logf("Response body: %s", string(lastBody))
 
 				lastStatusCode = resp.StatusCode
 				lastHeaders = resp.Header
@@ -926,12 +1005,14 @@ data: {"type": "message_stop"}
 			case tc.expResponseBodyFunc != nil:
 				tc.expResponseBodyFunc(t, lastBody)
 			case tc.responseType != "" || tc.expStatus == http.StatusNotFound:
-				// Use plain-text comparison for streaming or 404 responses
-				require.Equal(t, tc.expResponseBody, string(lastBody), "Response body mismatch")
+				expResponseBody := cmp.Or(tc.expResponseBody, tc.responseBody)
+				// Use plain-text comparison for streaming or 404 responses.
+				require.Equal(t, strings.TrimSpace(expResponseBody), strings.TrimSpace(string(lastBody)), "Response body mismatch")
 			default:
-				// Use JSON comparison for regular responses
+				expResponseBody := cmp.Or(tc.expResponseBody, tc.responseBody)
+				// Use JSON comparison for regular responses.
 				bodyStr := m.ReplaceAllString(string(lastBody), "<UUID4-replaced>")
-				expectedResponseBody := m.ReplaceAllString(tc.expResponseBody, "<UUID4-replaced>")
+				expectedResponseBody := m.ReplaceAllString(expResponseBody, "<UUID4-replaced>")
 				require.JSONEq(t, expectedResponseBody, bodyStr, "Response body mismatch")
 			}
 

@@ -13,7 +13,7 @@ import (
 )
 
 // RequiredCredential is a bit flag for the required credentials.
-type RequiredCredential byte
+type RequiredCredential uint64
 
 const (
 	// RequiredCredentialOpenAI is the bit flag for the OpenAI API key.
@@ -36,14 +36,18 @@ const (
 	// RequiredCredentialDeepInfra is the bit flag for the DeepInfra API key.
 	// https://deepinfra.com/docs/openai_api
 	RequiredCredentialDeepInfra
+	// RequiredCredentialAnthropic is the bit flag for the Anthropic API key.
+	RequiredCredentialAnthropic
 )
 
 // CredentialsContext holds the context for the credentials used in the tests.
 type CredentialsContext struct {
-	// OpenAIValid, AWSValid, AzureValid are true if the credentials are set and ready to use the real services.
-	OpenAIValid, AWSValid, AzureValid, GeminiValid, GroqValid, GrokValid, SambaNovaValid, DeepInfraValid bool
+	// OpenAIValid, AWSValid, AzureValid, etc. are true if the credentials are set and ready to use the real services.
+	OpenAIValid, AWSValid, AzureValid, GeminiValid, GroqValid, GrokValid, SambaNovaValid, DeepInfraValid, AnthropicValid bool
 	// OpenAIAPIKey is the OpenAI API key. This defaults to "dummy-openai-api-key" if not set.
 	OpenAIAPIKey string
+	// AnthropicAPIKey is the Anthropic API key. This defaults to "dummy-anthropic-api-key" if not set.
+	AnthropicAPIKey string
 	// AWSFileLiteral contains the AWS credentials in the format of a file literal.
 	AWSFileLiteral     string
 	AWSAccessKeyID     string
@@ -87,6 +91,9 @@ func (c CredentialsContext) MaybeSkip(t testing.TB, required RequiredCredential)
 	}
 	if required&RequiredCredentialDeepInfra != 0 && !c.DeepInfraValid {
 		t.Skip("skipping test as DeepInfra API key is not set in TEST_DEEPINFRA_API_KEY")
+	}
+	if required&RequiredCredentialAnthropic != 0 && !c.AnthropicValid {
+		t.Skip("skipping test as Anthropic API key is not set in TEST_ANTHROPIC_API_KEY")
 	}
 }
 
@@ -144,5 +151,10 @@ func RequireNewCredentialsContext() (ctx CredentialsContext) {
 			ctx.AWSAccessKeyID, ctx.AWSSecretAccessKey,
 		)
 	}
+
+	// Set up credential file for Anthropic.
+	anthropicAPIKeyEnv := os.Getenv("TEST_ANTHROPIC_API_KEY")
+	ctx.AnthropicValid = anthropicAPIKeyEnv != ""
+	ctx.AnthropicAPIKey = cmp.Or(anthropicAPIKeyEnv, "dummy-anthropic-api-key")
 	return
 }
