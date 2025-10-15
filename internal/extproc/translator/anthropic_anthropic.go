@@ -22,8 +22,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
-// NewAnthropicToAnthropicTranslator creates a translator for Anthropic to GCP Anthropic format.
-// This is essentially a passthrough translator with GCP-specific modifications.
+// NewAnthropicToAnthropicTranslator creates a passthrough translator for Anthropic.
 func NewAnthropicToAnthropicTranslator(version string, modelNameOverride internalapi.ModelNameOverride) AnthropicMessagesTranslator {
 	// TODO: use "version" in APISchema struct to set the specific prefix if needed like OpenAI does. However, two questions:
 	// 	* Is there any "Anthropic compatible" API that uses a different prefix like OpenAI does?
@@ -40,8 +39,7 @@ type anthropicToAnthropicTranslator struct {
 	streamingResponseModel internalapi.ResponseModel
 }
 
-// RequestBody implements [AnthropicMessagesTranslator.RequestBody] for Anthropic to GCP Anthropic translation.
-// This handles the transformation from native Anthropic format to GCP Anthropic format.
+// RequestBody implements [AnthropicMessagesTranslator.RequestBody].
 func (a *anthropicToAnthropicTranslator) RequestBody(original []byte, body *anthropicschema.MessagesRequest, forceBodyMutation bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
@@ -84,15 +82,14 @@ func (a *anthropicToAnthropicTranslator) RequestBody(original []byte, body *anth
 	return
 }
 
-// ResponseHeaders implements [AnthropicMessagesTranslator.ResponseHeaders] for Anthropic to GCP Anthropic.
+// ResponseHeaders implements [AnthropicMessagesTranslator.ResponseHeaders].
 func (a *anthropicToAnthropicTranslator) ResponseHeaders(_ map[string]string) (
 	headerMutation *extprocv3.HeaderMutation, err error,
 ) {
 	return nil, nil
 }
 
-// ResponseBody implements [AnthropicMessagesTranslator.ResponseBody] for Anthropic to GCP Anthropic.
-// This is essentially a passthrough since both use the same Anthropic response format.
+// ResponseBody implements [AnthropicMessagesTranslator.ResponseBody].
 func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel string, err error,
 ) {
