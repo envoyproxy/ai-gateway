@@ -172,6 +172,7 @@ type mockChatCompletionMetrics struct {
 	backend             string
 	requestSuccessCount int
 	requestErrorCount   int
+	cachedInputCount    int
 	tokenUsageCount     int
 	// streamingOutputTokens tracks the cumulative output tokens recorded via RecordTokenLatency.
 	streamingOutputTokens int
@@ -201,8 +202,9 @@ func (m *mockChatCompletionMetrics) SetResponseModel(responseModel internalapi.R
 func (m *mockChatCompletionMetrics) SetBackend(backend *filterapi.Backend) { m.backend = backend.Name }
 
 // RecordTokenUsage implements [metrics.ChatCompletion].
-func (m *mockChatCompletionMetrics) RecordTokenUsage(_ context.Context, input, output uint32, _ map[string]string) {
+func (m *mockChatCompletionMetrics) RecordTokenUsage(_ context.Context, input, cachedInput, output uint32, _ map[string]string) {
 	m.tokenUsageCount += int(input + output)
+	m.cachedInputCount += int(cachedInput)
 }
 
 // RecordTokenLatency implements [metrics.ChatCompletion].

@@ -8,14 +8,13 @@ package metrics
 import "go.opentelemetry.io/otel/metric"
 
 const (
-	// Metric names, attributes and values according to the Semantic Conventions for Generative AI Metrics.
-	// See: https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/
-
+	// Metrics (names)
 	genaiMetricClientTokenUsage         = "gen_ai.client.token.usage" //nolint:gosec // metric name, not credential
 	genaiMetricServerRequestDuration    = "gen_ai.server.request.duration"
 	genaiMetricServerTimeToFirstToken   = "gen_ai.server.time_to_first_token"   //nolint:gosec // metric name, not credential
 	genaiMetricServerTimePerOutputToken = "gen_ai.server.time_per_output_token" //nolint:gosec // metric name, not credential
 
+	// Attributes (keys)
 	genaiAttributeOperationName = "gen_ai.operation.name"
 	genaiAttributeProviderName  = "gen_ai.provider.name"
 	genaiAttributeOriginalModel = "gen_ai.original.model"
@@ -24,20 +23,32 @@ const (
 	genaiAttributeTokenType     = "gen_ai.token.type" //nolint:gosec // metric name, not credential
 	genaiAttributeErrorType     = "error.type"
 
-	// Image generation specific attributes (currently used in main codebase)
+	// Image attributes
 	genaiAttributeImageCount = "gen_ai.image.count"
 	genaiAttributeImageModel = "gen_ai.image.model"
 	genaiAttributeImageSize  = "gen_ai.image.size"
 
+	// Operations
 	genaiOperationChat            = "chat"
 	genaiOperationCompletion      = "completion"
 	genaiOperationEmbedding       = "embeddings"
 	genaiOperationImageGeneration = "image_generation"
-	genaiProviderOpenAI           = "openai"
-	genaiProviderAWSBedrock       = "aws.bedrock"
-	genaiTokenTypeInput           = "input"
-	genaiTokenTypeOutput          = "output"
-	genaiErrorTypeFallback        = "_OTHER"
+
+	// Providers
+	genaiProviderOpenAI     = "openai"
+	genaiProviderAWSBedrock = "aws.bedrock"
+
+	// Token types
+	genaiTokenTypeInput  = "input"
+	genaiTokenTypeOutput = "output"
+	// "cached_input" is not yet part of the spec but has been proposed:
+	// https://github.com/open-telemetry/semantic-conventions/issues/1959
+	//
+	// However, the spec says "a custom value MAY be used.", so we can use it now.
+	genaiTokenTypeCachedInput = "cached_input" // proposed; allowed as custom value
+
+	// Error types
+	genaiErrorTypeFallback = "_OTHER"
 )
 
 // genAI holds metrics according to the Semantic Conventions for Generative AI Metrics.

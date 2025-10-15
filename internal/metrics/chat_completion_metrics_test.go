@@ -71,19 +71,24 @@ func TestRecordTokenUsage(t *testing.T) {
 			attribute.Key(genaiAttributeResponseModel).String("test-model"),
 		}
 		// gen_ai.token.type values - https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#common-attributes
-		inputAttrs  = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput))...)
-		outputAttrs = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeOutput))...)
+		inputAttrs       = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput))...)
+		outputAttrs      = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeOutput))...)
+		cachedInputAttrs = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeCachedInput))...)
 	)
 
 	pm.SetOriginalModel("test-model")
 	pm.SetRequestModel("test-model")
 	pm.SetResponseModel("test-model")
 	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
-	pm.RecordTokenUsage(t.Context(), 10, 5, nil)
+	pm.RecordTokenUsage(t.Context(), 10, 8, 5, nil)
 
 	count, sum := testotel.GetHistogramValues(t, mr, genaiMetricClientTokenUsage, inputAttrs)
 	assert.Equal(t, uint64(1), count)
 	assert.Equal(t, 10.0, sum)
+
+	count, sum = testotel.GetHistogramValues(t, mr, genaiMetricClientTokenUsage, cachedInputAttrs)
+	assert.Equal(t, uint64(1), count)
+	assert.Equal(t, 8.0, sum)
 
 	count, sum = testotel.GetHistogramValues(t, mr, genaiMetricClientTokenUsage, outputAttrs)
 	assert.Equal(t, uint64(1), count)
@@ -210,7 +215,7 @@ func TestHeaderLabelMapping(t *testing.T) {
 	pm.SetRequestModel("test-model")
 	pm.SetResponseModel("test-model")
 	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
-	pm.RecordTokenUsage(t.Context(), 10, 5, requestHeaders)
+	pm.RecordTokenUsage(t.Context(), 10, 8, 5, requestHeaders)
 
 	// Verify that the header mapping is set correctly.
 	assert.Equal(t, headerMapping, pm.requestHeaderAttributeMapping)
@@ -255,7 +260,7 @@ func TestModelNameHeaderKey(t *testing.T) {
 	// Response model is what the backend actually used
 	pm.SetResponseModel("us.meta.llama3-2-1b-instruct-v1:0")
 
-	pm.RecordTokenUsage(t.Context(), 10, 5, headers)
+	pm.RecordTokenUsage(t.Context(), 10, 8, 5, headers)
 
 	// Verify metrics use the overridden request model and original model
 	inputAttrs := attribute.NewSet(
@@ -280,7 +285,7 @@ func TestLabels_SetModel_RequestAndResponseDiffer(t *testing.T) {
 	pm.SetOriginalModel("orig-model")
 	pm.SetRequestModel("req-model")
 	pm.SetResponseModel("res-model")
-	pm.RecordTokenUsage(t.Context(), 1, 2, nil)
+	pm.RecordTokenUsage(t.Context(), 2, 1, 3, nil)
 
 	inputAttrs := attribute.NewSet(
 		attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
@@ -291,6 +296,18 @@ func TestLabels_SetModel_RequestAndResponseDiffer(t *testing.T) {
 		attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput),
 	)
 	count, sum := getHistogramValues(t, mr, genaiMetricClientTokenUsage, inputAttrs)
+	assert.Equal(t, uint64(1), count)
+	assert.Equal(t, 2.0, sum)
+
+	cachedInputAttrs := attribute.NewSet(
+		attribute.Key(genaiAttributeOperationName).String(genaiOperationChat),
+		attribute.Key(genaiAttributeProviderName).String(genaiProviderOpenAI),
+		attribute.Key(genaiAttributeOriginalModel).String("orig-model"),
+		attribute.Key(genaiAttributeRequestModel).String("req-model"),
+		attribute.Key(genaiAttributeResponseModel).String("res-model"),
+		attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeCachedInput),
+	)
+	count, sum = getHistogramValues(t, mr, genaiMetricClientTokenUsage, cachedInputAttrs)
 	assert.Equal(t, uint64(1), count)
 	assert.Equal(t, 1.0, sum)
 
@@ -304,7 +321,7 @@ func TestLabels_SetModel_RequestAndResponseDiffer(t *testing.T) {
 	)
 	count, sum = getHistogramValues(t, mr, genaiMetricClientTokenUsage, outputAttrs)
 	assert.Equal(t, uint64(1), count)
-	assert.Equal(t, 2.0, sum)
+	assert.Equal(t, 3.0, sum)
 }
 
 // getHistogramValues returns the count and sum of a histogram metric with the given attributes.

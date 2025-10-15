@@ -691,10 +691,10 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 		Choices: make([]openai.ChatCompletionResponseChoice, 0),
 	}
 	tokenUsage = LLMTokenUsage{
-		InputTokens:  uint32(anthropicResp.Usage.InputTokens),                                    //nolint:gosec
-		OutputTokens: uint32(anthropicResp.Usage.OutputTokens),                                   //nolint:gosec
-		TotalTokens:  uint32(anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens), //nolint:gosec
-		CachedTokens: uint32(anthropicResp.Usage.CacheReadInputTokens),                           //nolint:gosec
+		InputTokens:       uint32(anthropicResp.Usage.InputTokens),                                    //nolint:gosec
+		OutputTokens:      uint32(anthropicResp.Usage.OutputTokens),                                   //nolint:gosec
+		TotalTokens:       uint32(anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens), //nolint:gosec
+		CachedInputTokens: uint32(anthropicResp.Usage.CacheReadInputTokens),                           //nolint:gosec
 	}
 	openAIResp.Usage = openai.Usage{
 		CompletionTokens: int(anthropicResp.Usage.OutputTokens),

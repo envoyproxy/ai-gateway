@@ -260,6 +260,8 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				switch cost.Type {
 				case aigv1a1.LLMRequestCostTypeInputToken:
 					fc.Type = filterapi.LLMRequestCostTypeInputToken
+				case aigv1a1.LLMRequestCostTypeCachedInputToken:
+					fc.Type = filterapi.LLMRequestCostTypeCachedInputToken
 				case aigv1a1.LLMRequestCostTypeOutputToken:
 					fc.Type = filterapi.LLMRequestCostTypeOutputToken
 				case aigv1a1.LLMRequestCostTypeTotalToken:
