@@ -492,10 +492,10 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 			require.NoError(t, err)
 
 			expectedTokenUsage := LLMTokenUsage{
-				InputTokens:  uint32(tt.expectedOpenAIResponse.Usage.PromptTokens),                     //nolint:gosec
-				OutputTokens: uint32(tt.expectedOpenAIResponse.Usage.CompletionTokens),                 //nolint:gosec
-				TotalTokens:  uint32(tt.expectedOpenAIResponse.Usage.TotalTokens),                      //nolint:gosec
-				CachedTokens: uint32(tt.expectedOpenAIResponse.Usage.PromptTokensDetails.CachedTokens), //nolint:gosec
+				InputTokens:       uint32(tt.expectedOpenAIResponse.Usage.PromptTokens),                     //nolint:gosec
+				OutputTokens:      uint32(tt.expectedOpenAIResponse.Usage.CompletionTokens),                 //nolint:gosec
+				TotalTokens:       uint32(tt.expectedOpenAIResponse.Usage.TotalTokens),                      //nolint:gosec
+				CachedInputTokens: uint32(tt.expectedOpenAIResponse.Usage.PromptTokensDetails.CachedTokens), //nolint:gosec
 			}
 			require.Equal(t, expectedTokenUsage, usedToken)
 

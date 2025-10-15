@@ -257,8 +257,8 @@ type LLMTokenUsage struct {
 	OutputTokens uint32
 	// TotalTokens is the total number of tokens consumed.
 	TotalTokens uint32
-	// CachedTokens is the total number of tokens read from cache.
-	CachedTokens uint32
+	// CachedInputTokens is the total number of tokens read from cache.
+	CachedInputTokens uint32
 }
 
 // sjsonOptions are the options used for sjson operations in the translator.

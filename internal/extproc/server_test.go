@@ -84,7 +84,7 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.Equal(t, "1 + 1", s.config.requestCosts[1].CEL)
 		prog := s.config.requestCosts[1].celProg
 		require.NotNil(t, prog)
-		val, err := llmcostcel.EvaluateProgram(prog, "", "", 1, 1, 1)
+		val, err := llmcostcel.EvaluateProgram(prog, "", "", 1, 1, 1, 1)
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), val)
 		require.Equal(t, config.Models, s.config.declaredModels)
