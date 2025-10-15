@@ -30,15 +30,19 @@ import (
 // stubMetrics implements metrics.MCPMetrics with no-ops.
 type stubMetrics struct{}
 
-func (stubMetrics) RecordRequestDuration(_ context.Context, _ *time.Time) {}
-func (stubMetrics) RecordRequestErrorDuration(_ context.Context, _ *time.Time, _ metrics.MCPErrorType) {
+func (s stubMetrics) WithRequestAttributes(_ *http.Request) metrics.MCPMetrics             { return s }
+func (stubMetrics) RecordRequestDuration(_ context.Context, _ *time.Time, _ mcpsdk.Params) {}
+func (stubMetrics) RecordRequestErrorDuration(_ context.Context, _ *time.Time, _ metrics.MCPErrorType, _ mcpsdk.Params) {
 }
-func (stubMetrics) RecordMethodCount(_ context.Context, _ string)                            {}
-func (stubMetrics) RecordMethodErrorCount(_ context.Context)                                 {}
-func (stubMetrics) RecordInitializationDuration(_ context.Context, _ *time.Time)             {}
-func (stubMetrics) RecordClientCapabilities(_ context.Context, _ *mcpsdk.ClientCapabilities) {}
-func (stubMetrics) RecordServerCapabilities(_ context.Context, _ *mcpsdk.ServerCapabilities) {}
-func (stubMetrics) RecordProgress(_ context.Context)                                         {}
+func (stubMetrics) RecordMethodCount(_ context.Context, _ string, _ mcpsdk.Params)                {}
+func (stubMetrics) RecordMethodErrorCount(_ context.Context, _ mcpsdk.Params)                     {}
+func (stubMetrics) RecordInitializationDuration(_ context.Context, _ *time.Time, _ mcpsdk.Params) {}
+func (stubMetrics) RecordClientCapabilities(_ context.Context, _ *mcpsdk.ClientCapabilities, _ mcpsdk.Params) {
+}
+
+func (stubMetrics) RecordServerCapabilities(_ context.Context, _ *mcpsdk.ServerCapabilities, _ mcpsdk.Params) {
+}
+func (stubMetrics) RecordProgress(_ context.Context, _ mcpsdk.Params) {}
 
 func TestBackendSessionIDs_Success(t *testing.T) {
 	backendA := "backendA"

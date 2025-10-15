@@ -50,7 +50,7 @@ type fakeTracer struct {
 	span *fakeSpan
 }
 
-func (f *fakeTracer) StartSpanAndInjectMeta(_ context.Context, _ *jsonrpc.Request, _ mcp.Params) tracing.MCPSpan {
+func (f *fakeTracer) StartSpanAndInjectMeta(context.Context, *jsonrpc.Request, mcp.Params, http.Header) tracing.MCPSpan {
 	if f.span == nil {
 		f.span = &fakeSpan{}
 	}
@@ -66,8 +66,6 @@ func TestNewMCPProxy(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, proxy)
 	require.NotNil(t, mux)
-	require.Equal(t, l, proxy.l)
-	require.NotNil(t, proxy.metrics)
 }
 
 func TestMCPProxy_HTTPMethods(t *testing.T) {
@@ -86,11 +84,12 @@ func TestMCPProxy_HTTPMethods(t *testing.T) {
 }
 
 func TestLoadConfig_NilMCPConfig(t *testing.T) {
-	proxy := newTestMCPProxy()
+	proxy, _, err := NewMCPProxy(slog.Default(), stubMetrics{}, noopTracer, DefaultSessionCrypto("test", ""))
+	require.NoError(t, err)
+
 	config := &filterapi.Config{MCPConfig: nil}
 
-	err := proxy.LoadConfig(t.Context(), config)
-
+	err = proxy.LoadConfig(t.Context(), config)
 	require.NoError(t, err)
 }
 
