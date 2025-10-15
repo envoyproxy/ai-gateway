@@ -32,6 +32,7 @@ const (
 	genaiOperationChat            = "chat"
 	genaiOperationCompletion      = "completion"
 	genaiOperationEmbedding       = "embeddings"
+	genaiOperationMessages        = "messages"
 	genaiOperationImageGeneration = "image_generation"
 
 	// Providers
