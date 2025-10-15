@@ -22,17 +22,11 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
-// "2023-06-01" is the latest Anthropic API version and is required to be set in the "anthropic-version" header.
-// It is unlikely that they will introduce breaking changes, so it should be safe to hardcode this version here.
-//
-// https://docs.claude.com/en/api/versioning#version-history
-const anthropicAPIVersion = "2023-06-01"
-
 // NewAnthropicToAnthropicTranslator creates a translator for Anthropic to GCP Anthropic format.
 // This is essentially a passthrough translator with GCP-specific modifications.
 func NewAnthropicToAnthropicTranslator(version string, modelNameOverride internalapi.ModelNameOverride) AnthropicMessagesTranslator {
 	// TODO: use "version" in APISchema struct to set the specific prefix if needed like OpenAI does. However, two questions:
-	// 	* Is there any "Anthropic" compatible API that uses a different prefix like OpenAI does?
+	// 	* Is there any "Anthropic compatible" API that uses a different prefix like OpenAI does?
 	// 	* Even if there is, we should refactor the APISchema struct to have "prefix" field instead of abusing "version" field.
 	_ = version
 	return &anthropicToAnthropicTranslator{modelNameOverride: modelNameOverride}
@@ -71,10 +65,6 @@ func (a *anthropicToAnthropicTranslator) RequestBody(original []byte, body *anth
 
 	headerMutation = &extprocv3.HeaderMutation{
 		SetHeaders: []*corev3.HeaderValueOption{
-			{Header: &corev3.HeaderValue{
-				Key:      "anthropic-version",
-				RawValue: []byte(anthropicAPIVersion),
-			}},
 			{Header: &corev3.HeaderValue{
 				Key:      ":path",
 				RawValue: []byte("/v1/messages"),

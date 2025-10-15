@@ -75,12 +75,6 @@ func TestAnthropicToAnthropic_RequestBody(t *testing.T) {
 				SetHeaders: []*corev3.HeaderValueOption{
 					{
 						Header: &corev3.HeaderValue{
-							Key:      "anthropic-version",
-							RawValue: []byte(anthropicAPIVersion),
-						},
-					},
-					{
-						Header: &corev3.HeaderValue{
 							Key:      ":path",
 							RawValue: []byte("/v1/messages"),
 						},
