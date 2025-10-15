@@ -172,7 +172,7 @@ type AzureAPIKeyAuth struct {
 
 // AnthropicAPIKeyAuth defines the Anthropic API key.
 type AnthropicAPIKeyAuth struct {
-	// Key is the Azure API key as a literal string.
+	// Key is the Anthropic API key as a literal string.
 	Key string `json:"key"`
 }
 
