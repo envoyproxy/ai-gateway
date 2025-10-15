@@ -418,8 +418,8 @@ github.com/telepresenceio/watchable v0.0.0-20220726211108-9bb86f92afa7 h1:GMw3nE
 github.com/telepresenceio/watchable v0.0.0-20220726211108-9bb86f92afa7/go.mod h1:ihJ97e2gsd8GuzFF/I3B1qcik3XZLpXjumQifXi8Slg=
 github.com/testcontainers/testcontainers-go v0.39.0 h1:uCUJ5tA+fcxbFAB0uP3pIK3EJ2IjjDUHFSZ1H1UxAts=
 github.com/testcontainers/testcontainers-go v0.39.0/go.mod h1:qmHpkG7H5uPf/EvOORKvS6EuDkBUPE3zpVGaH9NL7f8=
-github.com/tetratelabs/func-e v1.2.1-0.20251010163145-1ac9967298d1 h1:zjQcVD/q96ekAQ2cf1/lyQFVHhBMqgf1Vh1W2JlNXxE=
-github.com/tetratelabs/func-e v1.2.1-0.20251010163145-1ac9967298d1/go.mod h1:SUI/iKWW9ZpORlRDikEzZKxvsuPwAgDsKXm04V8EBQw=
+github.com/tetratelabs/func-e v1.3.0 h1:u6FS+ec2hs9vn+vX5X2GEB9JeqCajz/A4rvlsdktnQ4=
+github.com/tetratelabs/func-e v1.3.0/go.mod h1:zq1g5hXTBV3rNOXruLeMquQvZse0kscUSQg9NvkUz6U=
 github.com/tidwall/gjson v1.14.2/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
 github.com/tidwall/gjson v1.18.0 h1:FIDeeyB800efLX89e5a8Y0BNH+LOngJyGrIWxG2FKQY=
 github.com/tidwall/gjson v1.18.0/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=

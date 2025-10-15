@@ -32,7 +32,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing"
+	"github.com/envoyproxy/ai-gateway/internal/tracing"
 	tracingapi "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -42,7 +42,7 @@ func newTestMCPProxy() *MCPProxy {
 
 func newTestMCPProxyWithTracer(t tracingapi.MCPTracer) *MCPProxy {
 	return &MCPProxy{
-		sessionCrypto: DefaultSessionCrypto("test"),
+		sessionCrypto: DefaultSessionCrypto("test", ""),
 		mcpProxyConfig: &mcpProxyConfig{
 			backendListenerAddr: "http://test-backend",
 			routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
@@ -71,7 +71,7 @@ func newTestMCPProxyWithTracer(t tracingapi.MCPTracer) *MCPProxy {
 func newTestMCPProxyWithOTEL(mr *sdkmetric.ManualReader, tracer tracingapi.MCPTracer) *MCPProxy {
 	mcpProxy := newTestMCPProxyWithTracer(tracer)
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
-	mcpProxy.metrics = metrics.NewMCP(meter)
+	mcpProxy.metrics = metrics.NewMCP(meter, nil)
 	return mcpProxy
 }
 
@@ -162,6 +162,15 @@ func TestServePOST_InvalidSessionID(t *testing.T) {
 	proxy.servePOST(rr, req)
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 	require.Contains(t, rr.Body.String(), "invalid session ID")
+}
+
+func TestServePOST_MissingSessionID(t *testing.T) {
+	proxy := newTestMCPProxy()
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"test-tool"},"id":"1"}`))
+	rr := httptest.NewRecorder()
+	proxy.servePOST(rr, req)
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	require.Contains(t, rr.Body.String(), "missing session ID")
 }
 
 func TestServePOST_InitializeRequest(t *testing.T) {
@@ -278,6 +287,18 @@ func TestServePOST_JSONRPCRequest(t *testing.T) {
 			expStatusCode: 202,
 		},
 		{
+			name:          "initialize invalid param",
+			method:        "initialize",
+			params:        "invalid-param",
+			expStatusCode: 400,
+		},
+		{
+			name:          "initialize without route header",
+			method:        "initialize",
+			params:        &mcp.InitializeParams{},
+			expStatusCode: 500,
+		},
+		{
 			method:           "tools/list",
 			upstreamResponse: `{"jsonrpc":"2.0","id":"1","result":{"tools":[{"name":"my-tool"},{"name":"test-tool"}]}}`,
 			params:           &mcp.ListToolsParams{},
@@ -290,6 +311,18 @@ func TestServePOST_JSONRPCRequest(t *testing.T) {
 			},
 		},
 		{
+			method:           "notifications/roots/list_changed",
+			upstreamResponse: `{"jsonrpc":"2.0","id":"1","result":{}}`,
+			params:           &mcp.RootsListChangedParams{},
+			expStatusCode:    202,
+		},
+		{
+			name:          "notifications/roots/list_changed invalid param",
+			method:        "notifications/roots/list_changed",
+			params:        "invalid-param",
+			expStatusCode: 400,
+		},
+		{
 			method:           "prompts/list",
 			upstreamResponse: `{"jsonrpc":"2.0","id":"1","result":{"prompts":[{"name":"my-prompt"}]}}`,
 			params:           &mcp.ListPromptsParams{},
@@ -300,6 +333,12 @@ func TestServePOST_JSONRPCRequest(t *testing.T) {
 				require.Len(t, result.Prompts, 1)
 				require.Equal(t, "backend1__my-prompt", result.Prompts[0].Name)
 			},
+		},
+		{
+			name:          "prompts/list invalid param type",
+			method:        "prompts/list",
+			params:        "invalid",
+			expStatusCode: 400,
 		},
 		{
 			method:           "resources/list",
@@ -611,6 +650,7 @@ func TestServePOST_UnsupportedMethod(t *testing.T) {
 	require.NoError(t, err)
 
 	httpReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	httpReq.Header.Set(sessionIDHeader, secureID(t, proxy, "test-route@@backend1:dGVzdC1zZXNzaW9u")) // "test-session" base64 encoded.
 	rr := httptest.NewRecorder()
 
 	proxy.servePOST(rr, httpReq)
@@ -803,6 +843,7 @@ func TestServePOST_NotificationsInitialized(t *testing.T) {
 	require.NoError(t, err)
 
 	httpReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	httpReq.Header.Set(sessionIDHeader, secureID(t, proxy, "test-route@@backend1:dGVzdC1zZXNzaW9u")) // "test-session" base64 encoded.
 	rr := httptest.NewRecorder()
 
 	proxy.servePOST(rr, httpReq)
@@ -883,6 +924,7 @@ func TestServePOST_InvalidPromptsGetParams(t *testing.T) {
 	require.NoError(t, err)
 
 	httpReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	httpReq.Header.Set(sessionIDHeader, secureID(t, proxy, "test-route@@backend1:dGVzdC1zZXNzaW9u")) // "test-session" base64 encoded.
 	rr := httptest.NewRecorder()
 
 	proxy.servePOST(rr, httpReq)
@@ -1556,7 +1598,7 @@ func Test_parseParamsAndMaybeStartSpan(t *testing.T) {
 	trace, err := tracing.NewTracingFromEnv(t.Context(), t.Output(), nil)
 	require.NoError(t, err)
 	m.tracer = trace.MCPTracer()
-	s, err := parseParamsAndMaybeStartSpan(t.Context(), m, req, p)
+	s, err := parseParamsAndMaybeStartSpan(t.Context(), m, req, p, nil)
 	require.NoError(t, err)
 	require.NotNil(t, s)
 	// Make sure that traceparent is not empty, that's span started.
@@ -1569,7 +1611,7 @@ func Test_parseParamsAndMaybeStartSpan_NilParam(t *testing.T) {
 	}
 	p := &mcp.GetPromptParams{}
 	m := newTestMCPProxy()
-	s, err := parseParamsAndMaybeStartSpan(t.Context(), m, req, p)
+	s, err := parseParamsAndMaybeStartSpan(t.Context(), m, req, p, nil)
 	require.NoError(t, err)
 	require.Nil(t, s)
 }
