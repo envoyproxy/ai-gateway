@@ -31,7 +31,7 @@ import (
 //
 // Requests: Only accepts Anthropic format requests.
 // Responses: Returns Anthropic format responses.
-func MessagesProcessorFactory(ccm metrics.ChatCompletionMetrics) ProcessorFactory {
+func MessagesProcessorFactory(ccm metrics.MessagesMetrics) ProcessorFactory {
 	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "anthropic-messages", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
@@ -145,7 +145,7 @@ type messagesProcessorUpstreamFilter struct {
 	translator             translator.AnthropicMessagesTranslator
 	onRetry                bool
 	stream                 bool
-	metrics                metrics.ChatCompletionMetrics
+	metrics                metrics.MessagesMetrics
 	costs                  translator.LLMTokenUsage
 }
 
