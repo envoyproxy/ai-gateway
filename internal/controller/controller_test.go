@@ -222,6 +222,19 @@ func Test_backendSecurityPolicyIndexFunc(t *testing.T) {
 			},
 			expKey: "some-backend-security-policy-10.foo",
 		},
+		{
+			name: "anthropic api key",
+			backendSecurityPolicy: &aigv1a1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "some-backend-security-policy-2", Namespace: "ns"},
+				Spec: aigv1a1.BackendSecurityPolicySpec{
+					Type: aigv1a1.BackendSecurityPolicyTypeAnthropicAPIKey,
+					AnthropicAPIKey: &aigv1a1.BackendSecurityPolicyAnthropicAPIKey{
+						SecretRef: &gwapiv1.SecretObjectReference{Name: "some-aaaa"},
+					},
+				},
+			},
+			expKey: "some-aaaa.ns",
+		},
 	} {
 		t.Run(bsp.name, func(t *testing.T) {
 			c := fake.NewClientBuilder().
