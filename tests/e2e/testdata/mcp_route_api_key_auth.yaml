@@ -33,9 +33,8 @@ metadata:
   name: mcp-api-key-clients
   namespace: default
 type: Opaque
-data:
-  # based64 encoded "valid-mcp-api-key"
-  client1: "dmFsaWQtbWNwLWFwaS1rZXk="
+stringData:
+  client1: "valid-mcp-api-key"
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: MCPRoute
