@@ -59,7 +59,7 @@ type AIGatewayRouteController struct {
 	// rootPrefix is the prefix for the root path of the AI Gateway.
 	rootPrefix string
 	// referenceGrantValidator validates cross-namespace references using ReferenceGrant.
-	referenceGrantValidator *ReferenceGrantValidator
+	referenceGrantValidator *referenceGrantValidator
 }
 
 // NewAIGatewayRouteController creates a new reconcile.TypedReconciler[reconcile.Request] for the AIGatewayRoute resource.
@@ -74,7 +74,7 @@ func NewAIGatewayRouteController(
 		logger:                  logger,
 		gatewayEventChan:        gatewayEventChan,
 		rootPrefix:              rootPrefix,
-		referenceGrantValidator: NewReferenceGrantValidator(client),
+		referenceGrantValidator: newReferenceGrantValidator(client),
 	}
 }
 
@@ -401,7 +401,7 @@ func (c *AIGatewayRouteController) validateAndGetBackend(
 
 	// Validate cross-namespace reference if applicable
 	if backendRef.IsCrossNamespace(aiGatewayRoute.Namespace) {
-		if err := c.referenceGrantValidator.ValidateAIServiceBackendReference(
+		if err := c.referenceGrantValidator.validateAIServiceBackendReference(
 			ctx,
 			aiGatewayRoute.Namespace,
 			backendNamespace,

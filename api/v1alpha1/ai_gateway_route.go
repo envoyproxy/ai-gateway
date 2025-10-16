@@ -288,8 +288,6 @@ type AIGatewayRouteRuleBackendRef struct {
 	// namespace's owner to accept the reference. See the ReferenceGrant
 	// documentation for details.
 	//
-	// Support: Core
-	//
 	// +optional
 	Namespace *gwapiv1.Namespace `json:"namespace,omitempty"`
 

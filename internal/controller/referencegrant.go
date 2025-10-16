@@ -11,8 +11,6 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
-
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
 
 const (
@@ -25,13 +23,13 @@ const (
 )
 
 // ReferenceGrantValidator validates cross-namespace references using ReferenceGrant resources.
-type ReferenceGrantValidator struct {
+type referenceGrantValidator struct {
 	client client.Client
 }
 
 // NewReferenceGrantValidator creates a new ReferenceGrantValidator.
-func NewReferenceGrantValidator(c client.Client) *ReferenceGrantValidator {
-	return &ReferenceGrantValidator{client: c}
+func newReferenceGrantValidator(c client.Client) *referenceGrantValidator {
+	return &referenceGrantValidator{client: c}
 }
 
 // ValidateAIServiceBackendReference validates that an AIGatewayRoute can reference an AIServiceBackend
@@ -45,7 +43,7 @@ func NewReferenceGrantValidator(c client.Client) *ReferenceGrantValidator {
 //
 // Returns:
 //   - error: nil if the reference is valid (same namespace or valid ReferenceGrant exists), error otherwise
-func (v *ReferenceGrantValidator) ValidateAIServiceBackendReference(
+func (v *referenceGrantValidator) validateAIServiceBackendReference(
 	ctx context.Context,
 	routeNamespace string,
 	backendNamespace string,
@@ -63,8 +61,9 @@ func (v *ReferenceGrantValidator) ValidateAIServiceBackendReference(
 	}
 
 	// Check if any ReferenceGrant allows this cross-namespace reference
-	for _, grant := range referenceGrants.Items {
-		if v.isReferenceGrantValid(&grant, routeNamespace) {
+	for i := range referenceGrants.Items {
+		grant := &referenceGrants.Items[i]
+		if v.isReferenceGrantValid(grant, routeNamespace) {
 			return nil
 		}
 	}
@@ -78,7 +77,7 @@ func (v *ReferenceGrantValidator) ValidateAIServiceBackendReference(
 }
 
 // isReferenceGrantValid checks if a ReferenceGrant allows an AIGatewayRoute to reference an AIServiceBackend.
-func (v *ReferenceGrantValidator) isReferenceGrantValid(grant *gwapiv1b1.ReferenceGrant, fromNamespace string) bool {
+func (v *referenceGrantValidator) isReferenceGrantValid(grant *gwapiv1b1.ReferenceGrant, fromNamespace string) bool {
 	// Check if the grant allows references from the route's namespace
 	fromAllowed := false
 	for _, from := range grant.Spec.From {
@@ -103,7 +102,7 @@ func (v *ReferenceGrantValidator) isReferenceGrantValid(grant *gwapiv1b1.Referen
 }
 
 // matchesFrom checks if a ReferenceGrantFrom matches the AIGatewayRoute reference.
-func (v *ReferenceGrantValidator) matchesFrom(from *gwapiv1b1.ReferenceGrantFrom, fromNamespace string) bool {
+func (v *referenceGrantValidator) matchesFrom(from *gwapiv1b1.ReferenceGrantFrom, fromNamespace string) bool {
 	// Check group
 	if from.Group != aiServiceBackendGroup {
 		return false
@@ -123,7 +122,7 @@ func (v *ReferenceGrantValidator) matchesFrom(from *gwapiv1b1.ReferenceGrantFrom
 }
 
 // matchesTo checks if a ReferenceGrantTo matches the AIServiceBackend.
-func (v *ReferenceGrantValidator) matchesTo(to *gwapiv1b1.ReferenceGrantTo) bool {
+func (v *referenceGrantValidator) matchesTo(to *gwapiv1b1.ReferenceGrantTo) bool {
 	// Check group
 	if to.Group != aiServiceBackendGroup {
 		return false
@@ -140,51 +139,4 @@ func (v *ReferenceGrantValidator) matchesTo(to *gwapiv1b1.ReferenceGrantTo) bool
 	// For now, we only check group and kind as per Gateway API spec
 
 	return true
-}
-
-// GetAffectedAIGatewayRoutes returns all AIGatewayRoutes that might be affected by a ReferenceGrant change.
-// This is used to trigger reconciliation when a ReferenceGrant is created, updated, or deleted.
-func (v *ReferenceGrantValidator) GetAffectedAIGatewayRoutes(
-	ctx context.Context,
-	grant *gwapiv1b1.ReferenceGrant,
-) ([]aigv1a1.AIGatewayRoute, error) {
-	var affectedRoutes []aigv1a1.AIGatewayRoute
-
-	// For each "from" reference in the grant, find AIGatewayRoutes in that namespace
-	// that might reference AIServiceBackends in the grant's namespace
-	for _, from := range grant.Spec.From {
-		if from.Group != aiServiceBackendGroup || from.Kind != aiGatewayRouteKind {
-			continue
-		}
-
-		var routes aigv1a1.AIGatewayRouteList
-		if err := v.client.List(ctx, &routes, client.InNamespace(string(from.Namespace))); err != nil {
-			return nil, fmt.Errorf("failed to list AIGatewayRoutes in namespace %s: %w", from.Namespace, err)
-		}
-
-		// Check if any of these routes reference backends in the grant's namespace
-		for _, route := range routes.Items {
-			if v.routeReferencesNamespace(&route, grant.Namespace) {
-				affectedRoutes = append(affectedRoutes, route)
-			}
-		}
-	}
-
-	return affectedRoutes, nil
-}
-
-// routeReferencesNamespace checks if an AIGatewayRoute has any backend references to a specific namespace.
-func (v *ReferenceGrantValidator) routeReferencesNamespace(route *aigv1a1.AIGatewayRoute, namespace string) bool {
-	for _, rule := range route.Spec.Rules {
-		for _, backendRef := range rule.BackendRefs {
-			// Only check AIServiceBackend references
-			if backendRef.IsAIServiceBackend() {
-				backendNs := backendRef.GetNamespace(route.Namespace)
-				if backendNs == namespace {
-					return true
-				}
-			}
-		}
-	}
-	return false
 }

@@ -7,6 +7,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-logr/logr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -14,6 +15,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
+
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
 
 // ReferenceGrantController implements [reconcile.TypedReconciler] for ReferenceGrant.
@@ -23,10 +26,9 @@ import (
 //
 // Exported for testing purposes.
 type ReferenceGrantController struct {
-	client               client.Client
-	logger               logr.Logger
-	aiGatewayRouteChan   chan event.GenericEvent
-	referenceGrantHelper *ReferenceGrantValidator
+	client             client.Client
+	logger             logr.Logger
+	aiGatewayRouteChan chan event.GenericEvent
 }
 
 // NewReferenceGrantController creates a new [reconcile.TypedReconciler] for ReferenceGrant.
@@ -36,10 +38,9 @@ func NewReferenceGrantController(
 	aiGatewayRouteChan chan event.GenericEvent,
 ) *ReferenceGrantController {
 	return &ReferenceGrantController{
-		client:               c,
-		logger:               logger,
-		aiGatewayRouteChan:   aiGatewayRouteChan,
-		referenceGrantHelper: NewReferenceGrantValidator(c),
+		client:             c,
+		logger:             logger,
+		aiGatewayRouteChan: aiGatewayRouteChan,
 	}
 }
 
@@ -61,7 +62,7 @@ func (c *ReferenceGrantController) Reconcile(ctx context.Context, req reconcile.
 	}
 
 	// Get all AIGatewayRoutes that might be affected by this ReferenceGrant
-	affectedRoutes, err := c.referenceGrantHelper.GetAffectedAIGatewayRoutes(ctx, &referenceGrant)
+	affectedRoutes, err := c.getAffectedAIGatewayRoutes(ctx, &referenceGrant)
 	if err != nil {
 		c.logger.Error(err, "failed to get affected AIGatewayRoutes",
 			"namespace", referenceGrant.Namespace, "name", referenceGrant.Name)
@@ -77,4 +78,51 @@ func (c *ReferenceGrantController) Reconcile(ctx context.Context, req reconcile.
 	}
 
 	return reconcile.Result{}, nil
+}
+
+// getAffectedAIGatewayRoutes returns all AIGatewayRoutes that might be affected by a ReferenceGrant change.
+// This is used to trigger reconciliation when a ReferenceGrant is created, updated, or deleted.
+func (c *ReferenceGrantController) getAffectedAIGatewayRoutes(
+	ctx context.Context,
+	grant *gwapiv1b1.ReferenceGrant,
+) ([]aigv1a1.AIGatewayRoute, error) {
+	var affectedRoutes []aigv1a1.AIGatewayRoute
+
+	// For each "from" reference in the grant, find AIGatewayRoutes in that namespace
+	// that might reference AIServiceBackends in the grant's namespace
+	for _, from := range grant.Spec.From {
+		if from.Group != aiServiceBackendGroup || from.Kind != aiGatewayRouteKind {
+			continue
+		}
+
+		var routes aigv1a1.AIGatewayRouteList
+		if err := c.client.List(ctx, &routes, client.InNamespace(string(from.Namespace))); err != nil {
+			return nil, fmt.Errorf("failed to list AIGatewayRoutes in namespace %s: %w", from.Namespace, err)
+		}
+
+		// Check if any of these routes reference backends in the grant's namespace
+		for _, route := range routes.Items {
+			if c.routeReferencesNamespace(&route, grant.Namespace) {
+				affectedRoutes = append(affectedRoutes, route)
+			}
+		}
+	}
+
+	return affectedRoutes, nil
+}
+
+// routeReferencesNamespace checks if an AIGatewayRoute has any backend references to a specific namespace.
+func (c *ReferenceGrantController) routeReferencesNamespace(route *aigv1a1.AIGatewayRoute, namespace string) bool {
+	for _, rule := range route.Spec.Rules {
+		for _, backendRef := range rule.BackendRefs {
+			// Only check AIServiceBackend references
+			if backendRef.IsAIServiceBackend() {
+				backendNs := backendRef.GetNamespace(route.Namespace)
+				if backendNs == namespace {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
