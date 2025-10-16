@@ -183,5 +183,3 @@ controller:
 envoyGateway:
   # The namespace where the Envoy Gateway controller is installed.
   namespace : envoy-gateway-system
-  # The name of the service account used by the Envoy Gateway controller.
-  serviceAccountName: envoy-gateway

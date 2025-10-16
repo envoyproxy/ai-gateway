@@ -30,6 +30,8 @@ roleRef:
   name: envoy-ai-gateway-inference-pool-reader
 subjects:
   - kind: ServiceAccount
-    name: {{ .Values.envoyGateway.serviceAccountName }}
+    # The service account name is hardcoded to "envoy-gateway":
+    # https://github.com/envoyproxy/gateway/blob/70af785fba094929bc6044a57470d429205c4d5e/charts/gateway-helm/templates/envoy-gateway-serviceaccount.yaml#L4
+    name: envoy-gateway
     namespace: {{ .Values.envoyGateway.namespace }}
 ---
