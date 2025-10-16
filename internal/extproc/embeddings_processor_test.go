@@ -725,7 +725,7 @@ func TestEmbeddingsProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *tes
 		}
 
 		rp := &embeddingsProcessorRouterFilter{
-			requestHeaders: headers,
+			requestHeaders:         headers,
 			originalRequestBody:    &openai.EmbeddingRequest{Model: "some-model"},
 			originalRequestBodyRaw: embeddingBodyFromModel(t, "some-model"),
 		}
@@ -778,7 +778,7 @@ func TestEmbeddingsProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *tes
 		}
 
 		rp := &embeddingsProcessorRouterFilter{
-			requestHeaders: originalHeaders,
+			requestHeaders:         originalHeaders,
 			originalRequestBody:    &openai.EmbeddingRequest{Model: "some-model"},
 			originalRequestBodyRaw: embeddingBodyFromModel(t, "some-model"),
 		}
