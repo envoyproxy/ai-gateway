@@ -428,6 +428,42 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend_Success(t *testing.T)
 	require.NotNil(t, p.translator)
 }
 
+// Regression test for fallback: ensure SetBackend uses per-attempt copies so translator
+// mutations (e.g., model override) do not modify the router filter's original request body.
+func Test_chatCompletionProcessorUpstreamFilter_SetBackend_DoesNotMutateRouterOriginal(t *testing.T) {
+	headers := map[string]string{":path": "/v1/chat/completions", internalapi.ModelNameHeaderKeyDefault: "orig-model"}
+	mm := &mockChatCompletionMetrics{}
+	p := &chatCompletionProcessorUpstreamFilter{
+		config:         &processorConfig{},
+		requestHeaders: headers,
+		logger:         slog.Default(),
+		metrics:        mm,
+	}
+	rp := &chatCompletionProcessorRouterFilter{
+		originalRequestBody:    &openai.ChatCompletionRequest{Model: "orig-model"},
+		originalRequestBodyRaw: bodyFromModel(t, "orig-model", false, nil),
+	}
+	err := p.SetBackend(t.Context(), &filterapi.Backend{
+		Name:              "openai",
+		Schema:            filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"},
+		ModelNameOverride: "override-model",
+	}, nil, rp)
+	require.NoError(t, err)
+
+	// Process request headers to trigger translation which will override the model in the per-attempt copy.
+	_, err = p.ProcessRequestHeaders(t.Context(), nil)
+	require.NoError(t, err)
+
+	// Router's stored original must remain unchanged.
+	require.Equal(t, "orig-model", rp.originalRequestBody.Model)
+	var rb openai.ChatCompletionRequest
+	require.NoError(t, json.Unmarshal(rp.originalRequestBodyRaw, &rb))
+	require.Equal(t, "orig-model", rb.Model)
+
+	// Upstream filter's per-attempt copy should reflect override after translation.
+	require.Equal(t, "override-model", p.originalRequestBody.Model)
+}
+
 func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
 	for _, tc := range []struct {
 		name                       string
@@ -712,8 +748,9 @@ func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestor
 		headerMutation := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response.HeaderMutation
 		require.NotNil(t, headerMutation)
 		require.ElementsMatch(t, []string{"authorization", "x-api-key"}, headerMutation.RemoveHeaders)
-		require.NotContains(t, p.requestHeaders, "authorization")
-		require.NotContains(t, p.requestHeaders, "x-api-key")
+		// Sensitive headers remain locally for metrics, but will be stripped upstream by Envoy.
+		require.Equal(t, "secret", p.requestHeaders["authorization"])
+		require.Equal(t, "key123", p.requestHeaders["x-api-key"])
 		require.Equal(t, "value", p.requestHeaders["other"])
 	})
 

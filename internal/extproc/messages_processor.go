@@ -351,8 +351,16 @@ func (c *messagesProcessorUpstreamFilter) SetBackend(ctx context.Context, b *fil
 		// Update metrics with the overridden model
 		c.metrics.SetRequestModel(c.modelNameOverride)
 	}
-	c.originalRequestBody = rp.originalRequestBody
-	c.originalRequestBodyRaw = rp.originalRequestBodyRaw
+	// Make per-attempt copies so translator/auth mutations do not affect router state or future retries.
+	c.originalRequestBody = nil
+	c.originalRequestBodyRaw = nil
+	if rp.originalRequestBody != nil {
+		bodyCopy := *rp.originalRequestBody
+		c.originalRequestBody = &bodyCopy
+	}
+	if rp.originalRequestBodyRaw != nil {
+		c.originalRequestBodyRaw = append([]byte(nil), rp.originalRequestBodyRaw...)
+	}
 	c.onRetry = rp.upstreamFilterCount > 1
 
 	// Determine if this is a streaming request from the parsed body.

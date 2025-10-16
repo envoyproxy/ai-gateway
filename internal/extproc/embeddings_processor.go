@@ -375,8 +375,16 @@ func (e *embeddingsProcessorUpstreamFilter) SetBackend(ctx context.Context, b *f
 	e.metrics.SetBackend(b)
 	e.modelNameOverride = b.ModelNameOverride
 	e.backendName = b.Name
-	e.originalRequestBody = rp.originalRequestBody
-	e.originalRequestBodyRaw = rp.originalRequestBodyRaw
+	// Make per-attempt copies so translator/auth mutations do not affect router state or future retries.
+	e.originalRequestBody = nil
+	e.originalRequestBodyRaw = nil
+	if rp.originalRequestBody != nil {
+		bodyCopy := *rp.originalRequestBody
+		e.originalRequestBody = &bodyCopy
+	}
+	if rp.originalRequestBodyRaw != nil {
+		e.originalRequestBodyRaw = append([]byte(nil), rp.originalRequestBodyRaw...)
+	}
 	e.onRetry = rp.upstreamFilterCount > 1
 	e.span = rp.span
 	if err = e.selectTranslator(b.Schema); err != nil {
