@@ -25,6 +25,9 @@ type completion struct {
 	totalOutputTokens uint32
 }
 
+// CompletionMetricsFactory is a closure that creates a new CompletionMetrics instance.
+type CompletionMetricsFactory func() CompletionMetrics
+
 // CompletionMetrics is the interface for the completion AI Gateway metrics.
 type CompletionMetrics interface {
 	// StartRequest initializes timing for a new request.
@@ -54,10 +57,13 @@ type CompletionMetrics interface {
 	GetInterTokenLatencyMs() float64
 }
 
-// NewCompletion creates a new CompletionMetrics instance.
-func NewCompletion(meter metric.Meter, requestHeaderLabelMapping map[string]string) CompletionMetrics {
-	return &completion{
-		baseMetrics: newBaseMetrics(meter, genaiOperationCompletion, requestHeaderLabelMapping),
+// NewCompletionFactory returns a closure to create a new CompletionMetrics instance.
+func NewCompletionFactory(meter metric.Meter, requestHeaderLabelMapping map[string]string) CompletionMetricsFactory {
+	b := baseMetricsFactory{metrics: newGenAI(meter), requestHeaderAttributeMapping: requestHeaderLabelMapping}
+	return func() CompletionMetrics {
+		return &completion{
+			baseMetrics: b.newBaseMetrics(genaiOperationCompletion),
+		}
 	}
 }
 

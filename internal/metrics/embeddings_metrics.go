@@ -20,6 +20,9 @@ type embeddings struct {
 	baseMetrics
 }
 
+// EmbeddingsMetricsFactory is a closure that creates a new EmbeddingsMetrics instance.
+type EmbeddingsMetricsFactory func() EmbeddingsMetrics
+
 // EmbeddingsMetrics is the interface for the embeddings AI Gateway metrics.
 type EmbeddingsMetrics interface {
 	// StartRequest initializes timing for a new request.
@@ -43,10 +46,13 @@ type EmbeddingsMetrics interface {
 	RecordRequestCompletion(ctx context.Context, success bool, requestHeaderLabelMapping map[string]string)
 }
 
-// NewEmbeddings creates a new Embeddings instance.
-func NewEmbeddings(meter metric.Meter, requestHeaderAttributeMapping map[string]string) EmbeddingsMetrics {
-	return &embeddings{
-		baseMetrics: newBaseMetrics(meter, genaiOperationEmbedding, requestHeaderAttributeMapping),
+// NewEmbeddingsFactory returns a closure to create a new Embeddings instance.
+func NewEmbeddingsFactory(meter metric.Meter, requestHeaderAttributeMapping map[string]string) EmbeddingsMetricsFactory {
+	b := baseMetricsFactory{metrics: newGenAI(meter), requestHeaderAttributeMapping: requestHeaderAttributeMapping}
+	return func() EmbeddingsMetrics {
+		return &embeddings{
+			baseMetrics: b.newBaseMetrics(genaiOperationEmbedding),
+		}
 	}
 }
 

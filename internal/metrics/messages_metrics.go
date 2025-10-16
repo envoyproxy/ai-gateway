@@ -7,6 +7,9 @@ package metrics
 
 import "go.opentelemetry.io/otel/metric"
 
+// MessagesMetricsFactory is a closure that creates a new MessagesMetrics instance.
+type MessagesMetricsFactory func() MessagesMetrics
+
 // MessagesMetrics is the interface for the /messages endpoint AI Gateway metrics.
 //
 // Semantically, it is identical to ChatCompletionMetrics, so it embeds that interface.
@@ -16,9 +19,10 @@ type MessagesMetrics interface {
 	ChatCompletionMetrics
 }
 
-// NewMessages creates a new x.MessagesMetrics instance.
-func NewMessages(meter metric.Meter, requestHeaderLabelMapping map[string]string) MessagesMetrics {
-	return &chatCompletion{
-		baseMetrics: newBaseMetrics(meter, genaiOperationMessages, requestHeaderLabelMapping),
+// NewMessagesFactory returns a closure that creates a new MessagesMetrics instance.
+func NewMessagesFactory(meter metric.Meter, requestHeaderLabelMapping map[string]string) MessagesMetricsFactory {
+	b := baseMetricsFactory{metrics: newGenAI(meter), requestHeaderAttributeMapping: requestHeaderLabelMapping}
+	return func() MessagesMetrics {
+		return &chatCompletion{baseMetrics: b.newBaseMetrics(genaiOperationMessages)}
 	}
 }
