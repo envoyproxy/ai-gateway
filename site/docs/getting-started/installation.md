@@ -58,7 +58,6 @@ After installing Envoy AI Gateway, apply the AI Gateway-specific configuration t
 ```shell
 kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/manifests/envoy-gateway-config/redis.yaml
 kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/manifests/envoy-gateway-config/config.yaml
-kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/manifests/envoy-gateway-config/rbac.yaml
 
 kubectl rollout restart -n envoy-gateway-system deployment/envoy-gateway
 
