@@ -196,7 +196,7 @@ func (o *openAIToOpenAITranslatorV1Completion) extractUsageFromBufferEvent(span 
 			tokenUsage.OutputTokens = uint32(usage.CompletionTokens) //nolint:gosec
 			tokenUsage.TotalTokens = uint32(usage.TotalTokens)       //nolint:gosec
 			if usage.PromptTokensDetails != nil {
-				tokenUsage.CachedTokens = uint32(usage.PromptTokensDetails.CachedTokens) //nolint:gosec
+				tokenUsage.CachedInputTokens = uint32(usage.PromptTokensDetails.CachedTokens) //nolint:gosec
 			}
 			// Do not mark buffering done; keep scanning to return the latest usage in this batch.
 		}

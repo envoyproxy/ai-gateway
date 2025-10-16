@@ -31,7 +31,11 @@ For example, the Envoy AI Gateway collects metrics such as:
 
 Each metric comes with some default attributes such as:
 
-- `gen_ai.operation.name` - The operation type (`chat`, `completion`, `embeddings`, `messages`)
+- `gen_ai.operation.name`
+  - `chat`: For `/v1/chat/completions` endpoint.
+  - `completion`: For `/v1/completions` endpoint.
+  - `embedding`: For `/v1/embeddings` endpoint.
+  - `messages`: For `/anthropic/v1/messages` endpoint.
 - `gen_ai.original.model` - The original model name from the request body
 - `gen_ai.request.model` - The model name requested (may be overridden)
 - `gen_ai.response.model` - The model name returned in the response

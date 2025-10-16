@@ -50,6 +50,12 @@ aws_secret_access_key = test
 				},
 			},
 		},
+		{
+			name: "AnthropicAPIKey",
+			config: &filterapi.BackendAuth{
+				AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: "TEST"},
+			},
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := NewHandler(t.Context(), tt.config)

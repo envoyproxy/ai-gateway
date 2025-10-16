@@ -29,6 +29,7 @@ func NewAnthropicToGCPAnthropicTranslator(apiVersion string, modelNameOverride i
 }
 
 type anthropicToGCPAnthropicTranslator struct {
+	// TODO: reuse anthropicToAnthropicTranslator and embed it here to avoid code duplication.
 	apiVersion        string
 	modelNameOverride internalapi.ModelNameOverride
 	requestModel      internalapi.RequestModel
@@ -104,7 +105,6 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, bo
 		// Parse SSE format - split by lines and look for data: lines.
 		for line := range bytes.Lines(bodyBytes) {
 			line = bytes.TrimSpace(line)
-			dataPrefix := []byte("data: ")
 			if bytes.HasPrefix(line, dataPrefix) {
 				jsonData := bytes.TrimPrefix(line, dataPrefix)
 
@@ -159,10 +159,10 @@ func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, bo
 
 	// Extract token usage from the response.
 	tokenUsage = LLMTokenUsage{
-		InputTokens:  uint32(anthropicResp.Usage.InputTokens),                                    //nolint:gosec
-		OutputTokens: uint32(anthropicResp.Usage.OutputTokens),                                   //nolint:gosec
-		TotalTokens:  uint32(anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens), //nolint:gosec
-		CachedTokens: uint32(anthropicResp.Usage.CacheReadInputTokens),                           //nolint:gosec
+		InputTokens:       uint32(anthropicResp.Usage.InputTokens),                                    //nolint:gosec
+		OutputTokens:      uint32(anthropicResp.Usage.OutputTokens),                                   //nolint:gosec
+		TotalTokens:       uint32(anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens), //nolint:gosec
+		CachedInputTokens: uint32(anthropicResp.Usage.CacheReadInputTokens),                           //nolint:gosec
 	}
 
 	// Pass through the response body unchanged since both input and output are Anthropic format.

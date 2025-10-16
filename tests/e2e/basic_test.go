@@ -7,11 +7,15 @@ package e2e
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/anthropics/anthropic-sdk-go"
+	anthropicoption "github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
@@ -32,13 +36,14 @@ func Test_Examples_Basic(t *testing.T) {
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic"
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
 
-	testUpstreamCase := examplesBasicTestCase{name: "testupsream", modelName: "some-cool-self-hosted-model"}
+	testUpstreamCase := examplesBasicChatCompletionsTestCase{name: "testupsream", modelName: "some-cool-self-hosted-model"}
 	testUpstreamCase.run(t, egSelector)
 
 	// This requires the following environment variables to be set:
 	//   - TEST_AWS_ACCESS_KEY_ID
 	//   - TEST_AWS_SECRET_ACCESS_KEY
 	//   - TEST_OPENAI_API_KEY
+	//   - TEST_ANTHROPIC_API_KEY
 	//
 	// A test case will be skipped if the corresponding environment variable is not set.
 	t.Run("with credentials", func(t *testing.T) {
@@ -54,29 +59,82 @@ func Test_Examples_Basic(t *testing.T) {
 		awsManifestReplaced = strings.ReplaceAll(awsManifestReplaced, "AWS_SECRET_ACCESS_KEY", cc.AWSSecretAccessKey)
 		require.NoError(t, e2elib.KubectlApplyManifestStdin(t.Context(), awsManifestReplaced))
 
+		anthropicManifest, err := os.ReadFile(manifestDir + "/anthropic.yaml")
+		require.NoError(t, err)
+		require.NoError(t, e2elib.KubectlApplyManifestStdin(t.Context(), strings.ReplaceAll(string(anthropicManifest), "ANTHROPIC_API_KEY", cc.AnthropicAPIKey)))
+
 		time.Sleep(5 * time.Second) // At least 5 seconds for the updated secret to be propagated.
 
-		for _, tc := range []examplesBasicTestCase{
+		for _, tc := range []examplesBasicChatCompletionsTestCase{
 			{name: "openai", modelName: "gpt-4o-mini", skip: !cc.OpenAIValid},
 			{name: "aws", modelName: "us.meta.llama3-2-1b-instruct-v1:0", skip: !cc.AWSValid},
 		} {
 			tc.run(t, egSelector)
 		}
+
+		t.Run("anthropic", func(t *testing.T) {
+			cc.MaybeSkip(t, internaltesting.RequiredCredentialAnthropic)
+			internaltesting.RequireEventuallyNoError(t, func() error {
+				fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+				defer fwd.Kill()
+
+				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+				defer cancel()
+
+				client := anthropic.NewClient(
+					anthropicoption.WithAPIKey("dummy"),
+					anthropicoption.WithBaseURL(fwd.Address()+"/anthropic/"),
+				)
+
+				stream := client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
+					Model:     anthropic.ModelClaudeSonnet4_5,
+					MaxTokens: 1024,
+					Messages: []anthropic.MessageParam{
+						anthropic.NewUserMessage(anthropic.NewTextBlock("say hi.")),
+					},
+				})
+
+				message := anthropic.Message{}
+				nonEmptyResponse := false
+				for stream.Next() {
+					event := stream.Current()
+					err = message.Accumulate(event)
+					if err != nil {
+						return fmt.Errorf("failed to accumulate event: %w", err)
+					}
+
+					t.Logf("event: %+v", event)
+					if eventVariant, ok := event.AsAny().(anthropic.ContentBlockDeltaEvent); ok {
+						if textDelta, ok := eventVariant.Delta.AsAny().(anthropic.TextDelta); ok {
+							nonEmptyResponse = true
+							t.Logf("received text delta: %s", textDelta.Text)
+						}
+					}
+				}
+				if err = stream.Err(); err != nil {
+					return fmt.Errorf("stream error: %w", err)
+				}
+				if !nonEmptyResponse {
+					return errors.New("no non-empty response received")
+				}
+				return nil
+			}, 20*time.Second, 3*time.Second)
+		})
 	})
 }
 
-type examplesBasicTestCase struct {
+type examplesBasicChatCompletionsTestCase struct {
 	name      string
 	modelName string
 	skip      bool
 }
 
-func (tc examplesBasicTestCase) run(t *testing.T, egSelector string) {
+func (tc examplesBasicChatCompletionsTestCase) run(t *testing.T, egSelector string) {
 	t.Run(tc.name, func(t *testing.T) {
 		if tc.skip {
 			t.Skip("skipped due to missing credentials")
 		}
-		require.Eventually(t, func() bool {
+		internaltesting.RequireEventuallyNoError(t, func() error {
 			fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
 			defer fwd.Kill()
 
@@ -92,8 +150,7 @@ func (tc examplesBasicTestCase) run(t *testing.T, egSelector string) {
 				Model: tc.modelName,
 			})
 			if err != nil {
-				t.Logf("error: %v", err)
-				return false
+				return fmt.Errorf("chat completion error: %w", err)
 			}
 			var choiceNonEmpty bool
 			for _, choice := range chatCompletion.Choices {
@@ -102,7 +159,10 @@ func (tc examplesBasicTestCase) run(t *testing.T, egSelector string) {
 					choiceNonEmpty = true
 				}
 			}
-			return choiceNonEmpty
+			if !choiceNonEmpty {
+				return errors.New("no non-empty choice found")
+			}
+			return nil
 		}, 20*time.Second, 3*time.Second)
 	})
 }

@@ -194,6 +194,7 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 					{MetadataKey: "foo", Type: aigv1a1.LLMRequestCostTypeInputToken},
 					{MetadataKey: "bar", Type: aigv1a1.LLMRequestCostTypeOutputToken},
 					{MetadataKey: "baz", Type: aigv1a1.LLMRequestCostTypeTotalToken},
+					{MetadataKey: "qux", Type: aigv1a1.LLMRequestCostTypeCachedInputToken},
 				},
 			},
 		},
@@ -267,12 +268,13 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		require.True(t, ok)
 		var fc filterapi.Config
 		require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
-		require.Len(t, fc.LLMRequestCosts, 4)
+		require.Len(t, fc.LLMRequestCosts, 5)
 		require.Equal(t, filterapi.LLMRequestCostTypeInputToken, fc.LLMRequestCosts[0].Type)
 		require.Equal(t, filterapi.LLMRequestCostTypeOutputToken, fc.LLMRequestCosts[1].Type)
 		require.Equal(t, filterapi.LLMRequestCostTypeTotalToken, fc.LLMRequestCosts[2].Type)
-		require.Equal(t, filterapi.LLMRequestCostTypeCEL, fc.LLMRequestCosts[3].Type)
-		require.Equal(t, `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`, fc.LLMRequestCosts[3].CEL)
+		require.Equal(t, filterapi.LLMRequestCostTypeCachedInputToken, fc.LLMRequestCosts[3].Type)
+		require.Equal(t, filterapi.LLMRequestCostTypeCEL, fc.LLMRequestCosts[4].Type)
+		require.Equal(t, `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`, fc.LLMRequestCosts[4].CEL)
 		require.Len(t, fc.Models, 1)
 		require.Equal(t, "mymodel", fc.Models[0].Name)
 
@@ -462,6 +464,15 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 				},
 			},
 		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "bsp-anthropic-apikey", Namespace: namespace},
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				Type: aigv1a1.BackendSecurityPolicyTypeAnthropicAPIKey,
+				AnthropicAPIKey: &aigv1a1.BackendSecurityPolicyAnthropicAPIKey{
+					SecretRef: &gwapiv1.SecretObjectReference{Name: "api-key-secret"},
+				},
+			},
+		},
 	} {
 		require.NoError(t, fakeClient.Create(t.Context(), bsp))
 	}
@@ -527,6 +538,12 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 			bspName: "gcp-wif",
 			exp: &filterapi.BackendAuth{
 				GCPAuth: &filterapi.GCPAuth{AccessToken: "thisisgcpcredentials"},
+			},
+		},
+		{
+			bspName: "bsp-anthropic-apikey",
+			exp: &filterapi.BackendAuth{
+				AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: "thisisapikey"},
 			},
 		},
 	} {

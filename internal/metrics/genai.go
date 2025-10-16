@@ -27,11 +27,17 @@ const (
 	genaiOperationChat       = "chat"
 	genaiOperationCompletion = "completion"
 	genaiOperationEmbedding  = "embeddings"
+	genaiOperationMessages   = "messages"
 	genaiProviderOpenAI      = "openai"
 	genaiProviderAWSBedrock  = "aws.bedrock"
 	genaiTokenTypeInput      = "input"
 	genaiTokenTypeOutput     = "output"
-	genaiErrorTypeFallback   = "_OTHER"
+	// "cached_input" is not yet part of the spec but has been proposed:
+	// https://github.com/open-telemetry/semantic-conventions/issues/1959
+	//
+	// However, the spec says "a custom value MAY be used.", so we can use it now.
+	genaiTokenTypeCachedInput = "cached_input"
+	genaiErrorTypeFallback    = "_OTHER"
 )
 
 // genAI holds metrics according to the Semantic Conventions for Generative AI Metrics.
