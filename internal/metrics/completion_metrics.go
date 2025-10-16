@@ -70,10 +70,6 @@ func NewCompletionFactory(meter metric.Meter, requestHeaderLabelMapping map[stri
 // StartRequest initializes timing for a new request.
 func (c *completion) StartRequest(headers map[string]string) {
 	c.baseMetrics.StartRequest(headers)
-	c.firstTokenSent = false
-	c.totalOutputTokens = 0
-	c.timeToFirstToken = 0
-	c.interTokenLatency = 0
 }
 
 // RecordTokenUsage implements [CompletionMetrics.RecordTokenUsage].
