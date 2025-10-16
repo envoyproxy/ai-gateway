@@ -101,7 +101,7 @@ func TestEmbeddings_HeaderLabelMapping(t *testing.T) {
 	em.RecordTokenUsage(t.Context(), 10, requestHeaders)
 
 	// Verify that the header mapping is set correctly.
-	assert.Equal(t, headerMapping, em.requestHeaderLabelMapping)
+	assert.Equal(t, headerMapping, em.requestHeaderAttributeMapping)
 
 	// Verify that the metrics are recorded with the mapped header attributes.
 	attrs := attribute.NewSet(

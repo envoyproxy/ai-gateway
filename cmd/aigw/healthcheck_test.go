@@ -8,19 +8,16 @@ package main
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"io"
 	"log/slog"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"strconv"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	func_e "github.com/tetratelabs/func-e"
+	"github.com/tetratelabs/func-e/api"
+	"github.com/tetratelabs/func-e/experimental/admin"
 )
 
 func Test_healthcheck(t *testing.T) {
@@ -38,38 +35,32 @@ func Test_healthcheck(t *testing.T) {
 	})
 
 	t.Run("returns nil when ready", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			require.Equal(t, "/ready", r.URL.Path)
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("live"))
-		}))
-		defer server.Close()
-
-		u, err := url.Parse(server.URL)
-		require.NoError(t, err)
-		port, err := strconv.Atoi(u.Port())
-		require.NoError(t, err)
-
-		adminFile := filepath.Join(t.TempDir(), "admin-address.txt")
-		require.NoError(t, os.WriteFile(adminFile, []byte(fmt.Sprintf("127.0.0.1:%d", port)), 0o600))
-
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 
-		cmdStr := fmt.Sprintf("sleep 30 && echo -- --admin-address-path %s", adminFile)
-		cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
-		require.NoError(t, cmd.Start())
-		defer func() {
-			_ = cmd.Process.Kill()
-			_, _ = cmd.Process.Wait()
-		}()
+		var healthCheckErr error
+		var log bytes.Buffer
 
-		time.Sleep(100 * time.Millisecond)
+		// Even though AdminClient.IsReady exists, we don't have it injected in
+		// Docker. This intentionally ignores the parameter.
+		startupHook := func(ctx context.Context, _ admin.AdminClient, _ string) error {
+			logger := slog.New(slog.NewTextHandler(&log, nil))
+			healthCheckErr = doHealthcheck(ctx, pid, logger)
+			// Cancel immediately to stop Envoy and complete test quickly
+			cancel()
+			return nil
+		}
 
-		var buf bytes.Buffer
-		logger := slog.New(slog.NewTextHandler(&buf, nil))
-		err = doHealthcheck(t.Context(), pid, logger)
+		// Run with minimal Envoy config
+		err := func_e.Run(ctx, []string{
+			"--config-yaml",
+			"admin: {address: {socket_address: {address: '127.0.0.1', port_value: 0}}}",
+		}, api.Out(io.Discard), api.EnvoyOut(io.Discard), api.EnvoyErr(io.Discard), admin.WithStartupHook(startupHook))
+
+		// Expect nil error since Run returns nil on context cancellation (documented behavior)
 		require.NoError(t, err)
-		require.Empty(t, buf)
+
+		require.NoError(t, healthCheckErr)
+		require.Empty(t, log)
 	})
 }

@@ -1,0 +1,86 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-basic-anthropic
+  namespace: default
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway-basic
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: claude-sonnet-4-5
+      backendRefs:
+        - name: envoy-ai-gateway-basic-anthropic
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-basic-anthropic
+  namespace: default
+spec:
+  schema:
+    name: Anthropic
+  backendRef:
+    name: envoy-ai-gateway-basic-anthropic
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: envoy-ai-gateway-basic-anthropic-apikey
+  namespace: default
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: envoy-ai-gateway-basic-anthropic
+  type: AnthropicAPIKey
+  anthropicAPIKey:
+    secretRef:
+      name: envoy-ai-gateway-basic-anthropic-apikey
+      namespace: default
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: envoy-ai-gateway-basic-anthropic
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: api.anthropic.com
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: envoy-ai-gateway-basic-anthropic-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: "gateway.envoyproxy.io"
+      kind: Backend
+      name: envoy-ai-gateway-basic-anthropic
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: api.anthropic.com
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: envoy-ai-gateway-basic-anthropic-apikey
+  namespace: default
+type: Opaque
+stringData:
+  apiKey: ANTHROPIC_API_KEY # Replace with your Anthropic API key.

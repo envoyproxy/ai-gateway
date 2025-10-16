@@ -191,7 +191,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.Equal(t, thirdMsg, gjson.GetBytes(body, "messages.0.content.0.text").String())
 	})
 
-	t.Run("Streaming Request Path", func(t *testing.T) {
+	t.Run("Streaming Request Validation", func(t *testing.T) {
 		streamReq := &openai.ChatCompletionRequest{
 			Model:     claudeTestModel,
 			Messages:  []openai.ChatCompletionMessageParamUnion{},
@@ -199,7 +199,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 			Stream:    true,
 		}
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		hm, _, err := translator.RequestBody(nil, streamReq, false)
+		hm, bm, err := translator.RequestBody(nil, streamReq, false)
 		require.NoError(t, err)
 		require.NotNil(t, hm)
 
@@ -208,6 +208,9 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.Equal(t, ":path", pathHeader[0].Header.Key)
 		expectedPath := fmt.Sprintf("publishers/anthropic/models/%s:streamRawPredict", streamReq.Model)
 		require.Equal(t, expectedPath, string(pathHeader[0].Header.RawValue))
+
+		body := bm.GetBody()
+		require.True(t, gjson.GetBytes(body, "stream").Bool(), `body should contain "stream": true`)
 	})
 
 	t.Run("Test message param", func(t *testing.T) {
@@ -433,6 +436,37 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 				},
 			},
 		},
+		{
+			name: "response with model field set",
+			inputResponse: &anthropic.Message{
+				ID:         "msg_01XYZ123",
+				Model:      "claude-3-5-sonnet-20241022",
+				Role:       constant.Assistant(anthropic.MessageParamRoleAssistant),
+				Content:    []anthropic.ContentBlockUnion{{Type: "text", Text: "Model field test response."}},
+				StopReason: anthropic.StopReasonEndTurn,
+				Usage:      anthropic.Usage{InputTokens: 8, OutputTokens: 12, CacheReadInputTokens: 2},
+			},
+			respHeaders: map[string]string{statusHeaderName: "200"},
+			expectedOpenAIResponse: openai.ChatCompletionResponse{
+				Model:  "claude-3-5-sonnet-20241022",
+				Object: "chat.completion",
+				Usage: openai.Usage{
+					PromptTokens:     8,
+					CompletionTokens: 12,
+					TotalTokens:      20,
+					PromptTokensDetails: &openai.PromptTokensDetails{
+						CachedTokens: 2,
+					},
+				},
+				Choices: []openai.ChatCompletionResponseChoice{
+					{
+						Index:        0,
+						Message:      openai.ChatCompletionResponseChoiceMessage{Role: "assistant", Content: ptr.To("Model field test response.")},
+						FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -458,10 +492,10 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 			require.NoError(t, err)
 
 			expectedTokenUsage := LLMTokenUsage{
-				InputTokens:  uint32(tt.expectedOpenAIResponse.Usage.PromptTokens),                     //nolint:gosec
-				OutputTokens: uint32(tt.expectedOpenAIResponse.Usage.CompletionTokens),                 //nolint:gosec
-				TotalTokens:  uint32(tt.expectedOpenAIResponse.Usage.TotalTokens),                      //nolint:gosec
-				CachedTokens: uint32(tt.expectedOpenAIResponse.Usage.PromptTokensDetails.CachedTokens), //nolint:gosec
+				InputTokens:       uint32(tt.expectedOpenAIResponse.Usage.PromptTokens),                     //nolint:gosec
+				OutputTokens:      uint32(tt.expectedOpenAIResponse.Usage.CompletionTokens),                 //nolint:gosec
+				TotalTokens:       uint32(tt.expectedOpenAIResponse.Usage.TotalTokens),                      //nolint:gosec
+				CachedInputTokens: uint32(tt.expectedOpenAIResponse.Usage.PromptTokensDetails.CachedTokens), //nolint:gosec
 			}
 			require.Equal(t, expectedTokenUsage, usedToken)
 

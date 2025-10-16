@@ -608,7 +608,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 					TotalTokens:  uint32(usage.TotalTokens),  //nolint:gosec
 				}
 				if usage.CacheReadInputTokens != nil {
-					tokenUsage.CachedTokens = uint32(*usage.CacheReadInputTokens) //nolint:gosec
+					tokenUsage.CachedInputTokens = uint32(*usage.CacheReadInputTokens) //nolint:gosec
 				}
 			}
 			oaiEvent, ok := o.convertEvent(event)
@@ -639,6 +639,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 	openAIResp := &openai.ChatCompletionResponse{
+		// We use request model as response model since bedrock does not return the modelName in the response.
+		Model:   o.requestModel,
 		Object:  "chat.completion",
 		Choices: make([]openai.ChatCompletionResponseChoice, 0),
 	}
@@ -655,7 +657,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 			CompletionTokens: bedrockResp.Usage.OutputTokens,
 		}
 		if bedrockResp.Usage.CacheReadInputTokens != nil {
-			tokenUsage.CachedTokens = uint32(*bedrockResp.Usage.CacheReadInputTokens) //nolint:gosec
+			tokenUsage.CachedInputTokens = uint32(*bedrockResp.Usage.CacheReadInputTokens) //nolint:gosec
 			openAIResp.Usage.PromptTokensDetails = &openai.PromptTokensDetails{
 				CachedTokens: *bedrockResp.Usage.CacheReadInputTokens,
 			}

@@ -117,7 +117,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 				CompletionTokens: int(p.tokenUsage.OutputTokens),
 				TotalTokens:      int(p.tokenUsage.TotalTokens),
 				PromptTokensDetails: &openai.PromptTokensDetails{
-					CachedTokens: int(p.tokenUsage.CachedTokens),
+					CachedTokens: int(p.tokenUsage.CachedInputTokens),
 				},
 			},
 		}
@@ -194,8 +194,8 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			return nil, fmt.Errorf("unmarshal message_start: %w", err)
 		}
 		p.activeMessageID = event.Message.ID
-		p.tokenUsage.InputTokens = uint32(event.Message.Usage.InputTokens)            //nolint:gosec
-		p.tokenUsage.CachedTokens += uint32(event.Message.Usage.CacheReadInputTokens) //nolint:gosec
+		p.tokenUsage.InputTokens = uint32(event.Message.Usage.InputTokens)                 //nolint:gosec
+		p.tokenUsage.CachedInputTokens += uint32(event.Message.Usage.CacheReadInputTokens) //nolint:gosec
 		return nil, nil
 
 	case string(constant.ValueOf[constant.ContentBlockStart]()):
@@ -258,7 +258,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if event.Delta.StopReason != "" {
 			p.stopReason = event.Delta.StopReason
 		}
-		p.tokenUsage.CachedTokens += uint32(event.Usage.CacheReadInputTokens) //nolint:gosec
+		p.tokenUsage.CachedInputTokens += uint32(event.Usage.CacheReadInputTokens) //nolint:gosec
 		return nil, nil
 
 	case string(constant.ValueOf[constant.ContentBlockDelta]()):
