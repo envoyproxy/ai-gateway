@@ -56,16 +56,12 @@ helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
 After installing Envoy AI Gateway, apply the AI Gateway-specific configuration to Envoy Gateway, restart the deployment, and wait for it to be ready:
 
 ```shell
-kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/manifests/envoy-gateway-config/redis.yaml
 kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/manifests/envoy-gateway-config/config.yaml
 
 kubectl rollout restart -n envoy-gateway-system deployment/envoy-gateway
 
 kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
 ```
-
-Note that the redis configuration is only used for the rate limiting feature. If you don't need rate limiting, you can skip the redis configuration,
-but you need to remove the relevant configuration in the `config.yaml` file as well.
 
 :::tip Verify Installation
 

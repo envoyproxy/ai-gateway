@@ -47,6 +47,11 @@ For model providers with OpenAI schema transformations (like AWS Bedrock), AI Ga
 
 ## Configuration
 
+:::tip
+* Envoy Gateway's rate limiting feature requires a redis deployment pointed by the Envoy Gateway installation time configuration.
+* See https://github.com/envoyproxy/ai-gateway/tree/main/examples/token_ratelimit for a complete example including redis deployment.
+:::
+
 ### 1. Configure Token Tracking
 
 AI Gateway automatically tracks token usage for each request. Configure which token counts you want to track in your `AIGatewayRoute`:
