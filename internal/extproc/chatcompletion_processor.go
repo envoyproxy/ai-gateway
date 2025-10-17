@@ -462,17 +462,8 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	if c.modelNameOverride != "" {
 		c.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = c.modelNameOverride
 	}
-	// Make per-attempt copies so mutations in translators/auth do not leak back to the router state
-	// and do not affect subsequent retries/fallbacks.
-	c.originalRequestBody = nil
-	c.originalRequestBodyRaw = nil
-	if rp.originalRequestBody != nil {
-		bodyCopy := *rp.originalRequestBody
-		c.originalRequestBody = &bodyCopy
-	}
-	if rp.originalRequestBodyRaw != nil {
-		c.originalRequestBodyRaw = append([]byte(nil), rp.originalRequestBodyRaw...)
-	}
+	c.originalRequestBody = rp.originalRequestBody
+	c.originalRequestBodyRaw = rp.originalRequestBodyRaw
 	c.onRetry = rp.upstreamFilterCount > 1
 	c.stream = c.originalRequestBody.Stream
 	if isEndpointPicker {

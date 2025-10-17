@@ -429,16 +429,8 @@ func (c *completionsProcessorUpstreamFilter) SetBackend(ctx context.Context, b *
 	c.metrics.SetBackend(b)
 	c.modelNameOverride = b.ModelNameOverride
 	c.backendName = b.Name
-	// Make per-attempt copies so translator/auth mutations do not affect router state or future retries.
-	c.originalRequestBody = nil
-	c.originalRequestBodyRaw = nil
-	if rp.originalRequestBody != nil {
-		bodyCopy := *rp.originalRequestBody
-		c.originalRequestBody = &bodyCopy
-	}
-	if rp.originalRequestBodyRaw != nil {
-		c.originalRequestBodyRaw = append([]byte(nil), rp.originalRequestBodyRaw...)
-	}
+	c.originalRequestBody = rp.originalRequestBody
+	c.originalRequestBodyRaw = rp.originalRequestBodyRaw
 	c.onRetry = rp.upstreamFilterCount > 1
 	c.stream = c.originalRequestBody.Stream
 	c.forcedStreamOptionIncludeUsage = rp.forcedStreamOptionIncludeUsage

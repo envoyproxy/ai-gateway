@@ -262,14 +262,10 @@ func Test_embeddingsProcessorUpstreamFilter_SetBackend(t *testing.T) {
 		logger:         slog.Default(),
 		metrics:        mm,
 	}
-	routerFilter := &embeddingsProcessorRouterFilter{
-		originalRequestBody:    &openai.EmbeddingRequest{Model: "some-model"},
-		originalRequestBodyRaw: embeddingBodyFromModel(t, "some-model"),
-	}
 	err := p.SetBackend(t.Context(), &filterapi.Backend{
 		Name:   "some-backend",
 		Schema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
-	}, nil, routerFilter)
+	}, nil, &embeddingsProcessorRouterFilter{})
 	require.ErrorContains(t, err, "unsupported API schema: backend={some-schema v10.0}")
 	mm.RequireRequestFailure(t)
 	mm.RequireTokenUsage(t, 0)
@@ -297,40 +293,6 @@ func Test_embeddingsProcessorUpstreamFilter_SetBackend_Success(t *testing.T) {
 	mm.RequireSelectedBackend(t, "openai")
 	require.Equal(t, "override-model", p.requestHeaders["x-ai-eg-model"])
 	require.NotNil(t, p.translator)
-}
-
-// Regression test: ensure SetBackend uses per-attempt copies so translator mutations
-// do not modify the router filter's original request body for embeddings.
-func Test_embeddingsProcessorUpstreamFilter_SetBackend_DoesNotMutateRouterOriginal(t *testing.T) {
-	headers := map[string]string{":path": "/v1/embeddings", internalapi.ModelNameHeaderKeyDefault: "orig-model"}
-	mm := &mockEmbeddingsMetrics{}
-	p := &embeddingsProcessorUpstreamFilter{
-		config:         &processorConfig{},
-		requestHeaders: headers,
-		logger:         slog.Default(),
-		metrics:        mm,
-	}
-	rp := &embeddingsProcessorRouterFilter{
-		originalRequestBody:    &openai.EmbeddingRequest{Model: "orig-model"},
-		originalRequestBodyRaw: embeddingBodyFromModel(t, "orig-model"),
-	}
-	err := p.SetBackend(t.Context(), &filterapi.Backend{
-		Name:              "openai",
-		Schema:            filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"},
-		ModelNameOverride: "override-model",
-	}, nil, rp)
-	require.NoError(t, err)
-
-	// Process request headers to trigger translation which could override model in per-attempt copy.
-	p.translator = &mockEmbeddingTranslator{t: t, expRequestBody: p.originalRequestBody}
-	_, err = p.ProcessRequestHeaders(t.Context(), nil)
-	require.NoError(t, err)
-
-	// Router's stored original must remain unchanged.
-	require.Equal(t, "orig-model", rp.originalRequestBody.Model)
-	var rb openai.EmbeddingRequest
-	require.NoError(t, json.Unmarshal(rp.originalRequestBodyRaw, &rb))
-	require.Equal(t, "orig-model", rb.Model)
 }
 
 func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
@@ -725,9 +687,7 @@ func TestEmbeddingsProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *tes
 		}
 
 		rp := &embeddingsProcessorRouterFilter{
-			requestHeaders:         headers,
-			originalRequestBody:    &openai.EmbeddingRequest{Model: "some-model"},
-			originalRequestBodyRaw: embeddingBodyFromModel(t, "some-model"),
+			requestHeaders: headers,
 		}
 
 		err := p.SetBackend(t.Context(), &filterapi.Backend{
@@ -778,9 +738,7 @@ func TestEmbeddingsProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *tes
 		}
 
 		rp := &embeddingsProcessorRouterFilter{
-			requestHeaders:         originalHeaders,
-			originalRequestBody:    &openai.EmbeddingRequest{Model: "some-model"},
-			originalRequestBodyRaw: embeddingBodyFromModel(t, "some-model"),
+			requestHeaders: originalHeaders,
 		}
 
 		err := p.SetBackend(t.Context(), &filterapi.Backend{

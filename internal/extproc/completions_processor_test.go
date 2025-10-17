@@ -737,40 +737,6 @@ func Test_completionsProcessorUpstreamFilter_SetBackend_Success(t *testing.T) {
 	}
 }
 
-// Regression test: ensure SetBackend uses per-attempt copies so translator mutations
-// do not modify the router filter's original request body for completions.
-func Test_completionsProcessorUpstreamFilter_SetBackend_DoesNotMutateRouterOriginal(t *testing.T) {
-	headers := map[string]string{":path": "/v1/completions", internalapi.ModelNameHeaderKeyDefault: "orig-model"}
-	mm := &mockCompletionMetrics{}
-	p := &completionsProcessorUpstreamFilter{
-		config:         &processorConfig{},
-		requestHeaders: headers,
-		logger:         slog.Default(),
-		metrics:        mm,
-	}
-	rp := &completionsProcessorRouterFilter{
-		originalRequestBody:    &openai.CompletionRequest{Model: "orig-model"},
-		originalRequestBodyRaw: []byte(`{"model":"orig-model"}`),
-	}
-	err := p.SetBackend(t.Context(), &filterapi.Backend{
-		Name:              "openai",
-		Schema:            filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"},
-		ModelNameOverride: "override-model",
-	}, nil, rp)
-	require.NoError(t, err)
-
-	// Process request headers to trigger translation which could override model in per-attempt copy.
-	p.translator = &mockCompletionTranslator{t: t}
-	_, err = p.ProcessRequestHeaders(t.Context(), nil)
-	require.NoError(t, err)
-
-	// Router's stored original must remain unchanged.
-	require.Equal(t, "orig-model", rp.originalRequestBody.Model)
-	var rb openai.CompletionRequest
-	require.NoError(t, json.Unmarshal(rp.originalRequestBodyRaw, &rb))
-	require.Equal(t, "orig-model", rb.Model)
-}
-
 func TestCompletions_ParseBody(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		original := openai.CompletionRequest{
