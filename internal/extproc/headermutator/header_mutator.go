@@ -8,11 +8,11 @@ package headermutator
 import (
 	"strings"
 
-	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 type HeaderMutator struct {
