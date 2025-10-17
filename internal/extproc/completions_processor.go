@@ -38,7 +38,6 @@ func CompletionsProcessorFactory(f metrics.CompletionMetricsFactory) ProcessorFa
 				tracer:         tracing.CompletionTracer(),
 				requestHeaders: requestHeaders,
 				logger:         logger,
-				metrics:        f(),
 			}, nil
 		}
 		return &completionsProcessorUpstreamFilter{
@@ -81,8 +80,6 @@ type completionsProcessorRouterFilter struct {
 	// upstreamFilterCount is the number of upstream filters that have been processed.
 	// This is used to determine if the request is a retry request.
 	upstreamFilterCount int
-	// metrics tracking.
-	metrics metrics.CompletionMetrics
 }
 
 // ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
