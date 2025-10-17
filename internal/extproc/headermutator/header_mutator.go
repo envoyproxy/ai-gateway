@@ -84,7 +84,7 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) *extproc
 			// Skip Envoy AI Gateway headers since some of them are populated after the originalHeaders are captured.
 			// This should be safe since these headers are managed by Envoy AI Gateway itself, not expected to be
 			// modified by users via header mutation API.
-			if strings.HasPrefix(key, internalapi.EnvoyAIGatewayHeaderPrefix) {
+			if strings.HasPrefix(key, internalapi.EnvoyAIGatewayHeaderPrefix) || strings.HasPrefix(key, ":") {
 				continue
 			}
 			if _, set := setHeadersSet[key]; set {
