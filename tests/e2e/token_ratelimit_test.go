@@ -35,7 +35,7 @@ const userIDAttribute = "user.id"
 const userIDMetricsLabel = "user_id"
 
 func Test_Examples_TokenRateLimit(t *testing.T) {
-	const manifest = "../../examples/token_ratelimit/token_ratelimit.yaml"
+	const manifest = "../../examples/token_ratelimit/"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
 	t.Cleanup(func() {
 		_ = e2elib.KubectlDeleteManifest(t.Context(), manifest)
@@ -43,6 +43,10 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-token-ratelimit"
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
+
+	// Wait for the redis pod to be ready so that the rate limit can be performed correctly.
+	e2elib.RequireWaitForPodReady(t, e2elib.EnvoyGatewayNamespace, "app.kubernetes.io/component=ratelimit")
+	e2elib.RequireWaitForPodReady(t, "redis-system", "app=redis")
 
 	const modelName = "rate-limit-funky-model"
 	makeRequest := func(userID string, input, output, total int, cachedInput *int, expStatus int) {
