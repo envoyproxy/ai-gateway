@@ -77,23 +77,26 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) *extproc
 				})
 			}
 		}
-		// 1. Remove any headers that were added in the previous attempt (not part of original headers and not being set now)
+		// 1. Remove any headers that were added in the previous attempt (not part of original headers and not being set now).
 		// 2. Restore any original headers that were modified in the previous attempt (and not being set now).
 		for key := range headers {
 			key = strings.ToLower(key)
+			if strings.HasPrefix(key, internalapi.EnvoyAIGatewayHeaderPrefix) {
+				continue
+			}
+			if _, set := setHeadersSet[key]; set {
+				continue
+			}
 			originalValue, exists := h.originalHeaders[key]
-			_, set := setHeadersSet[key]
-			if !set && !strings.HasPrefix(key, internalapi.EnvoyAIGatewayHeaderPrefix) {
-				if !exists {
-					delete(headers, key)
-					headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, key)
-				} else {
-					// Restore original value.
-					headers[key] = originalValue
-					headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
-						Header: &corev3.HeaderValue{Key: key, RawValue: []byte(originalValue)},
-					})
-				}
+			if !exists {
+				delete(headers, key)
+				headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, key)
+			} else {
+				// Restore original value.
+				headers[key] = originalValue
+				headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+					Header: &corev3.HeaderValue{Key: key, RawValue: []byte(originalValue)},
+				})
 			}
 		}
 	}
