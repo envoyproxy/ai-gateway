@@ -12,10 +12,11 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 type HeaderMutator struct {
-	// getOrignalHeaders Callback to get removed sensitive headers from the router filter.
+	// getOriginalHeaders Callback to get removed sensitive headers from the router filter.
 	originalHeaders map[string]string
 
 	// headerMutations is a list of header mutations to apply.
@@ -40,6 +41,9 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) *extproc
 	if !skipRemove {
 		for _, h := range h.headerMutations.Remove {
 			key := strings.ToLower(h)
+			if shouldIgnoreHeader(key) {
+				continue
+			}
 			removedHeadersSet[key] = struct{}{}
 			if _, ok := headers[key]; ok {
 				// Do NOT delete from the local headers map so metrics can still read it.
@@ -54,6 +58,9 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) *extproc
 	if !skipSet {
 		for _, h := range h.headerMutations.Set {
 			key := strings.ToLower(h.Name)
+			if shouldIgnoreHeader(key) {
+				continue
+			}
 			setHeadersSet[key] = struct{}{}
 			headers[key] = h.Value
 			headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
@@ -62,21 +69,65 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) *extproc
 		}
 	}
 
-	// Restore original headers on retry, only if not being removed, set or not already present.
-	if onRetry && h.originalHeaders != nil {
+	if onRetry {
+		// Restore original headers on retry, only if not being removed, set or not already present.
 		for h, v := range h.originalHeaders {
 			key := strings.ToLower(h)
+			if shouldIgnoreHeader(key) {
+				continue
+			}
 			_, isRemoved := removedHeadersSet[key]
 			_, isSet := setHeadersSet[key]
 			_, exists := headers[key]
 			if !isRemoved && !exists && !isSet {
 				headers[h] = v
+				setHeadersSet[key] = struct{}{}
 				headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
 					Header: &corev3.HeaderValue{Key: h, RawValue: []byte(v)},
 				})
 			}
 		}
+		// 1. Remove any headers that were added in the previous attempt (not part of original headers and not being set now).
+		// 2. Restore any original headers that were modified in the previous attempt (and not being set now).
+		for key := range headers {
+			key = strings.ToLower(key)
+			if shouldIgnoreHeader(key) {
+				continue
+			}
+			if _, set := setHeadersSet[key]; set {
+				continue
+			}
+			originalValue, exists := h.originalHeaders[key]
+			if !exists {
+				delete(headers, key)
+				headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, key)
+			} else {
+				// Restore original value.
+				headers[key] = originalValue
+				headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+					Header: &corev3.HeaderValue{Key: key, RawValue: []byte(originalValue)},
+				})
+			}
+		}
 	}
-
 	return headerMutation
+}
+
+// shouldIgnoreHeader returns true if the header key should be ignored for mutation.
+//
+// Skip Envoy AI Gateway headers since some of them are populated after the originalHeaders are captured.
+// This should be safe since these headers are managed by Envoy AI Gateway itself, not expected to be
+// modified by users via header mutation API.
+//
+// Also, skip Envoy pseudo-headers beginning with ':'.
+func shouldIgnoreHeader(key string) bool {
+	// Ignore Envoy pseudo-headers beginning with ':'.
+	if strings.HasPrefix(key, ":") {
+		return true
+	}
+	// Ignore internal headers beginning with Envoy AI Gateway prefix.
+	if strings.HasPrefix(key, internalapi.EnvoyAIGatewayHeaderPrefix) {
+		return true
+	}
+	return false
 }
