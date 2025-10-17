@@ -140,16 +140,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Note: we cannot run the latest Envoy version on macOS due to https://github.com/tetratelabs/archive-envoy/issues/12.
-        # Once it's supported, the following "binary installation" steps below can be just removed and
-        # we can simply exec.Cmd with "go tool -modfile=tools/go.mod func-e run" with the envoy version configured via ENVOY_VERSION env var.
         include:
-          - version: 1.35.0 # NOTE: when updating this, also update the comment in the CONTRIBUTING.md file.
+          - version: 1.35.0
             os: ubuntu-latest
-          - version: 1.35.0 # NOTE: when updating this, also update the comment in the CONTRIBUTING.md file.
+          - version: 1.35.0
             os: macos-latest
-          - version: latest
+          - version: 1.36.0
             os: ubuntu-latest
+          - version: 1.36.0
+            os: macos-latest
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -164,19 +163,6 @@ jobs:
             ~/go/pkg/mod
             ~/go/bin
           key: extproc-tests-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
-      - name: Install stable Envoy via func-e
-        if: matrix.version != 'latest'
-        run: |
-          go tool -modfile=tools/go.mod func-e use ${{ matrix.version }}
-          echo $HOME/.func-e/versions/${{ matrix.version }}/bin >> $GITHUB_PATH
-      - name: Install latest Envoy
-        if: matrix.version == 'latest'
-        run: |
-          export ENVOY_BIN_DIR=$HOME/envoy/bin
-          mkdir -p $ENVOY_BIN_DIR
-          docker run -v $ENVOY_BIN_DIR:/tmp/ci -w /tmp/ci \
-          --entrypoint /bin/cp envoyproxy/envoy-dev:latest /usr/local/bin/envoy .
-          echo $ENVOY_BIN_DIR >> $GITHUB_PATH
       - env:
           TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
           TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
@@ -187,6 +173,8 @@ jobs:
           TEST_SAMBANOVA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_SAMBANOVA_API_KEY }}
           TEST_DEEPINFRA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_DEEPINFRA_API_KEY }}
           TEST_GITHUB_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # This will be picked up by func-e to run the specified Envoy version.
+          ENVOY_VERSION: ${{ matrix.version }}
         run: make test-extproc
 
   test_e2e:
