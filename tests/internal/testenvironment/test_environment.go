@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 
@@ -257,7 +258,7 @@ func requireEnvoy(t testing.TB,
 	envoyYamlPath := t.TempDir() + "/envoy.yaml"
 	require.NoError(t, os.WriteFile(envoyYamlPath, []byte(processedConfig), 0o600))
 
-	cmd := exec.CommandContext(t.Context(), "envoy",
+	cmd := testsinternal.GoToolCmdContext(t.Context(), "func-e", "run",
 		"-c", envoyYamlPath,
 		"--concurrency", strconv.Itoa(max(runtime.NumCPU(), 2)),
 		// This allows multiple Envoy instances to run in parallel.
@@ -265,6 +266,8 @@ func requireEnvoy(t testing.TB,
 		// Add debug logging for http.
 		"--component-log-level", "http:debug",
 	)
+	// Use the existing environment for func-e.
+	cmd.Env = os.Environ()
 
 	// wait for the ready message or exit.
 	StartAndAwaitReady(t, cmd, stdout, stderr, "starting main dispatch loop")
