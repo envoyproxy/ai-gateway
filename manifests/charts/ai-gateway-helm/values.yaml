@@ -178,3 +178,8 @@ controller:
   #
   # This value should be set to a secure random string in production environments instead of the default below.
   mcpSessionEncryptionSeed: "default-insecure-seed"
+
+# Configuration for the Envoy Gateway component that AI Gateway relies on to program Envoy.
+envoyGateway:
+  # The namespace where the Envoy Gateway controller is installed.
+  namespace : envoy-gateway-system

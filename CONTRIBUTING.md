@@ -106,3 +106,4 @@ make sure that these automated checks pass after you open a PR by following the 
   as commit message by default. Maintainers may request contributors to
   edit the pull request title and description to ensure that it remains descriptive as a
   commit message. Alternatively, maintainers may change the commit message directly at the time of merge.
+- If you have any questions during the review, please feel free to ask the maintainers listed in [MAINTAINERS.md](./MAINTAINERS.md).
