@@ -81,6 +81,9 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) *extproc
 		// 2. Restore any original headers that were modified in the previous attempt (and not being set now).
 		for key := range headers {
 			key = strings.ToLower(key)
+			// Skip Envoy AI Gateway headers since some of them are populated after the originalHeaders are captured.
+			// This should be safe since these headers are managed by Envoy AI Gateway itself, not expected to be
+			// modified by users via header mutation API.
 			if strings.HasPrefix(key, internalapi.EnvoyAIGatewayHeaderPrefix) {
 				continue
 			}
