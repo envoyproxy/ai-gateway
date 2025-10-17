@@ -22,7 +22,7 @@ const (
 	// InternalMetadataBackendNameKey is the key used to store the backend name
 	InternalMetadataBackendNameKey = "per_route_rule_backend_name"
 	// MCPBackendHeader is the special header key used to specify the target backend name.
-	MCPBackendHeader = EnvoyAIGatewayHeaderPrefix + "eg-mcp-backend"
+	MCPBackendHeader = EnvoyAIGatewayHeaderPrefix + "mcp-backend"
 	// MCPRouteHeader is the special header key used to identify the mcp route.
 	MCPRouteHeader = EnvoyAIGatewayHeaderPrefix + "mcp-route"
 	// MCPBackendListenerPort is the port for the MCP backend listener.
