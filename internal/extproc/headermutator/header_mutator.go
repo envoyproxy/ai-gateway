@@ -42,7 +42,8 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) *extproc
 			key := strings.ToLower(h)
 			removedHeadersSet[key] = struct{}{}
 			if _, ok := headers[key]; ok {
-				delete(headers, key)
+				// Do NOT delete from the local headers map so metrics can still read it.
+				// Instead, always instruct Envoy to remove it before forwarding upstream.
 				headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, h)
 			}
 		}
