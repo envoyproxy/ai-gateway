@@ -84,8 +84,13 @@ const LLMProvidersList: LLMProvider[] = [
     name: 'Tetrate Agent Router Service',
     logoUrl: '/img/providers/tars.svg',
     status: 'supported',
+  },
+  {
+    name: 'Anthropic',
+    logoUrl: '/img/providers/anthropic.svg',
+    status: 'supported',
   }
-];
+].sort((a, b) => a.name.localeCompare(b.name)) as LLMProvider[];
 
 function ProviderLogo({ name, logoUrl, status }: LLMProvider) {
   return (
@@ -122,8 +127,8 @@ export default function LLMProviders(): React.ReactElement {
           </Heading>
           <div className={styles.titleUnderline}></div>
           <p className={styles.sectionDescription}>
-            With the latest version of Envoy AI Gateway you can route traffic to these LLM providers out of the box.
-            For more information and the most up-to-date provider integrations, check out our <a href="/docs/capabilities/llm-integrations/supported-providers" className={styles.docsLink}>
+            With the <code>latest</code> version of Envoy AI Gateway you can route traffic to these LLM providers, displayed alphabetically, out of the box.
+            <br /><br />For more information and the most up-to-date provider integrations, check out our <a href="/docs/capabilities/llm-integrations/supported-providers" className={styles.docsLink}>
             provider documentation</a>.
           </p>
         </div>
