@@ -258,7 +258,16 @@ func requireEnvoy(t testing.TB,
 	envoyYamlPath := t.TempDir() + "/envoy.yaml"
 	require.NoError(t, os.WriteFile(envoyYamlPath, []byte(processedConfig), 0o600))
 
-	cmd := testsinternal.GoToolCmdContext(t.Context(), "func-e", "run",
+	// Note: do not pass t.Context() to CommandContext, as it's canceled
+	// *before* t.Cleanup functions are called.
+	//
+	// > Context returns a context that is canceled just before
+	// > Cleanup-registered functions are called.
+	//
+	// That means the subprocess gets killed before we can send it an interrupt
+	// signal for graceful shutdown, which results in orphaned subprocesses.
+	ctx, cancel := context.WithCancel(context.Background())
+	cmd := testsinternal.GoToolCmdContext(ctx, "func-e", "run",
 		"-c", envoyYamlPath,
 		"--concurrency", strconv.Itoa(max(runtime.NumCPU(), 2)),
 		// This allows multiple Envoy instances to run in parallel.
@@ -268,6 +277,20 @@ func requireEnvoy(t testing.TB,
 	)
 	// Use the existing environment for func-e.
 	cmd.Env = os.Environ()
+	cmd.WaitDelay = 3 * time.Second // auto-kill after 3 seconds.
+	t.Cleanup(func() {
+		defer cancel()
+		// Graceful shutdown, should kill the Envoy subprocess, too.
+		if err := cmd.Process.Signal(os.Interrupt); err != nil {
+			t.Logf("Failed to send interrupt to aigw process: %v", err)
+		}
+		// Wait for the process to exit gracefully, in worst case this is
+		// killed in 3 seconds by WaitDelay above. In that case, you may
+		// have a zombie Envoy process left behind!
+		if _, err := cmd.Process.Wait(); err != nil {
+			t.Logf("Failed to wait for aigw process to exit: %v", err)
+		}
+	})
 
 	// wait for the ready message or exit.
 	StartAndAwaitReady(t, cmd, stdout, stderr, "starting main dispatch loop")
