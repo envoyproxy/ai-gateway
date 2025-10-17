@@ -300,6 +300,63 @@ focused on retrieval and semantic analysis.
 
 See [docker-compose-otel.yaml][docker-compose-otel.yaml] for a complete example configuration.
 
+## Configuration
+
+### File Locations
+
+`aigw run` uses the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html) to organize files:
+
+| Environment Variable | Default Path          | Purpose                     |
+| -------------------- | --------------------- | --------------------------- |
+| `AIGW_CONFIG_HOME`   | `~/.config/aigw`      | User configuration files    |
+| `AIGW_DATA_HOME`     | `~/.local/share/aigw` | Downloaded Envoy binaries   |
+| `AIGW_STATE_HOME`    | `~/.local/state/aigw` | Persistent logs and configs |
+| `AIGW_RUNTIME_DIR`   | `/tmp/aigw-${UID}`    | Ephemeral runtime files     |
+
+See [Installation - Configuration](./installation.md#configuration) for more details about XDG directories.
+
+### File Mappings
+
+Each invocation creates a unique run identifier (`runID`) in format `YYYYMMDD_HHMMSS_UUU` to isolate concurrent runs:
+
+| File Type                 | Purpose                                  | Path                                                             | Type    |
+| ------------------------- | ---------------------------------------- | ---------------------------------------------------------------- | ------- |
+| Default Config            | Configuration file location              | `${AIGW_CONFIG_HOME}/config.yaml`                                | CONFIG  |
+| Envoy Version Preference  | Selected Envoy version (via func-e)      | `${AIGW_CONFIG_HOME}/envoy-version`                              | CONFIG  |
+| Envoy Binaries            | Downloaded executables (via func-e)      | `${AIGW_DATA_HOME}/envoy-versions/{version}/bin/envoy`           | DATA    |
+| AIGW Logs                 | Gateway logs and stderr output           | `${AIGW_STATE_HOME}/runs/{runID}/aigw.log`                       | STATE   |
+| Envoy Gateway Config      | Generated EG configuration               | `${AIGW_STATE_HOME}/runs/{runID}/envoy-gateway-config.yaml`      | STATE   |
+| Envoy Gateway Resources   | Generated EG resources (Gateway, Routes) | `${AIGW_STATE_HOME}/runs/{runID}/envoy-ai-gateway-resources/...` | STATE   |
+| External Processor Config | Generated extproc configuration          | `${AIGW_STATE_HOME}/runs/{runID}/extproc-config.yaml`            | STATE   |
+| Envoy Run Logs (func-e)   | Envoy stdout/stderr (via func-e)         | `${AIGW_STATE_HOME}/envoy-runs/{runID}/stdout.log,stderr.log`    | STATE   |
+| UDS Socket                | Unix domain socket for extproc           | `${AIGW_RUNTIME_DIR}/{runID}/uds.sock`                           | RUNTIME |
+| Admin Address (func-e)    | Envoy admin endpoint (via func-e)        | `${AIGW_RUNTIME_DIR}/{runID}/admin-address.txt`                  | RUNTIME |
+
+**File Categories:**
+
+- **CONFIG**: User-specific configuration (persistent, shared across runs)
+- **DATA**: Downloaded binaries (persistent, shared across runs)
+- **STATE**: Per-run logs and configs (persistent for debugging)
+- **RUNTIME**: Ephemeral files like sockets (cleaned on reboot)
+
+### `runID`
+
+By default, `aigw run` generates a timestamp-based `runID` for each invocation. You can customize this for predictable paths:
+
+```shell
+# Use run ID "0" for Docker/Kubernetes deployments
+aigw run --run-id=0
+
+# Or via environment variable
+AIGW_RUN_ID=production aigw run
+```
+
+Custom run IDs:
+
+- Enable predictable file paths in containers
+- Allow correlation across multiple runs with the same ID
+- Must not contain path separators (`/` or `\`)
+
 ---
 
 [openinference]: https://github.com/Arize-ai/openinference/tree/main/spec
