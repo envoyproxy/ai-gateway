@@ -15,14 +15,16 @@ import (
 )
 
 const (
+	// EnvoyAIGatewayHeaderPrefix is the prefix for special headers used by AI Gateway, either for internal or external use.
+	EnvoyAIGatewayHeaderPrefix = "x-ai-eg-"
 	// InternalEndpointMetadataNamespace is the namespace used for the dynamic metadata for internal use.
 	InternalEndpointMetadataNamespace = "aigateway.envoy.io"
 	// InternalMetadataBackendNameKey is the key used to store the backend name
 	InternalMetadataBackendNameKey = "per_route_rule_backend_name"
 	// MCPBackendHeader is the special header key used to specify the target backend name.
-	MCPBackendHeader = "x-ai-eg-mcp-backend"
+	MCPBackendHeader = EnvoyAIGatewayHeaderPrefix + "eg-mcp-backend"
 	// MCPRouteHeader is the special header key used to identify the mcp route.
-	MCPRouteHeader = "x-ai-eg-mcp-route"
+	MCPRouteHeader = EnvoyAIGatewayHeaderPrefix + "mcp-route"
 	// MCPBackendListenerPort is the port for the MCP backend listener.
 	MCPBackendListenerPort = 10088
 	// MCPProxyPort is the port where the MCP proxy listens.

@@ -41,13 +41,17 @@ func TestHeaderMutator_Mutate(t *testing.T) {
 
 	t.Run("restore original headers on retry", func(t *testing.T) {
 		originalHeaders := map[string]string{
-			"authorization": "secret",
-			"x-api-key":     "key123",
-			"other":         "value",
+			"authorization":    "secret",
+			"x-api-key":        "key123",
+			"other":            "value",
+			"only-in-original": "original",
+			"in-original-too-bad-previous-attempt-set": "pikachu",
 		}
 		headers := map[string]string{
 			"other":         "value",
 			"authorization": "secret",
+			"in-original-too-bad-previous-attempt-set": "charmander",
+			"only-set-previously":                      "bulbasaur",
 		}
 		mutations := &filterapi.HTTPHeaderMutation{
 			Remove: []string{"authorization"},
@@ -57,9 +61,11 @@ func TestHeaderMutator_Mutate(t *testing.T) {
 		mutation := mutator.Mutate(headers, true)
 
 		require.NotNil(t, mutation)
-		require.ElementsMatch(t, []string{"authorization"}, mutation.RemoveHeaders)
+		require.ElementsMatch(t, []string{"authorization", "only-set-previously"}, mutation.RemoveHeaders)
 		require.Equal(t, "key123", headers["x-api-key"])
 		require.Equal(t, "value", headers["other"])
 		require.Equal(t, "secret", headers["authorization"])
+		require.Equal(t, "original", headers["only-in-original"])
+		require.Equal(t, "pikachu", headers["in-original-too-bad-previous-attempt-set"])
 	})
 }

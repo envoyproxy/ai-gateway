@@ -8,6 +8,7 @@ package headermutator
 import (
 	"strings"
 
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
@@ -62,8 +63,8 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) *extproc
 		}
 	}
 
-	// Restore original headers on retry, only if not being removed, set or not already present.
-	if onRetry && h.originalHeaders != nil {
+	if onRetry {
+		// Restore original headers on retry, only if not being removed, set or not already present.
 		for h, v := range h.originalHeaders {
 			key := strings.ToLower(h)
 			_, isRemoved := removedHeadersSet[key]
@@ -76,7 +77,24 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) *extproc
 				})
 			}
 		}
+		// Remove any headers that were added in the previous attempt (not part of original headers and not being set now)
+		for key := range headers {
+			key = strings.ToLower(key)
+			originalValue, exists := h.originalHeaders[key]
+			_, set := setHeadersSet[key]
+			if !set && !strings.HasPrefix(key, internalapi.EnvoyAIGatewayHeaderPrefix) {
+				if !exists {
+					delete(headers, key)
+					headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, key)
+				} else {
+					// Restore original value.
+					headers[key] = originalValue
+					headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+						Header: &corev3.HeaderValue{Key: key, RawValue: []byte(originalValue)},
+					})
+				}
+			}
+		}
 	}
-
 	return headerMutation
 }
