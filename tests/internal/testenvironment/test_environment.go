@@ -19,12 +19,12 @@ import (
 	"testing"
 	"time"
 
-	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
+	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 )
 
 // TestEnvironment holds all the services needed for tests.
