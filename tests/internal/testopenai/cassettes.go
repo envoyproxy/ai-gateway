@@ -135,6 +135,11 @@ const (
 	// CassetteEmbeddingsBadRequest tests request with multiple validation errors.
 	CassetteEmbeddingsBadRequest
 
+	// Cassettes for the OpenAI /v1/images/generations endpoint.
+
+	// CassetteImageGenerationBasic is a basic image generation request with model and prompt.
+	CassetteImageGenerationBasic
+
 	// Cassettes for Azure OpenAI Service.
 
 	// CassetteAzureChatBasic is the same as CassetteChatBasic, except using
@@ -189,6 +194,8 @@ var stringValues = map[Cassette]string{
 	CassetteEmbeddingsMaxTokens:    "embeddings-max-tokens",
 	CassetteEmbeddingsWhitespace:   "embeddings-whitespace",
 	CassetteEmbeddingsBadRequest:   "embeddings-bad-request",
+
+	CassetteImageGenerationBasic: "image-generation-basic",
 }
 
 // String returns the string representation of the cassette name.
@@ -212,6 +219,9 @@ func NewRequest(ctx context.Context, baseURL string, cassette Cassette) (*http.R
 		return newRequest(ctx, cassette, path, r)
 	} else if r, ok := embeddingsRequests[cassette]; ok {
 		path := buildPath(cassette, "/embeddings", baseURL, r)
+		return newRequest(ctx, cassette, path, r)
+	} else if r, ok := imageRequests[cassette]; ok {
+		path := buildPath(cassette, "/images/generations", baseURL, r)
 		return newRequest(ctx, cassette, path, r)
 	}
 	return nil, fmt.Errorf("unknown cassette: %s", cassette)

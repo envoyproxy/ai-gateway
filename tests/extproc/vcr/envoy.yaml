@@ -97,6 +97,10 @@ static_resources:
                           route:
                             cluster: openai
                         - match:
+                            path: "/v1/images/generations"
+                          route:
+                            cluster: openai
+                        - match:
                             path: "/v1/models"
                           route:
                             cluster: openai

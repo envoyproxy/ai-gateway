@@ -156,6 +156,39 @@ curl -H "Content-Type: application/json" \
 - OpenAI
 - Any OpenAI-compatible provider that supports embeddings, including Azure OpenAI.
 
+### Image Generation
+
+**Endpoint:** `POST /v1/images/generations`
+
+**Status:** ✅ Supported
+
+**Description:** Generate one or more images from a text prompt using OpenAI-compatible models.
+
+**Features:**
+
+- **Non-streaming responses**: Returns JSON payload with image URLs or base64 content
+- **Model selection**: Via request body `model` or `x-ai-eg-model` header
+- **Parameters**: `prompt`, `size`, `n`, `quality`, `response_format`
+- **Metrics**: Records image count, model, and size; token usage when provided
+- **Provider fallback and load balancing**
+
+**Supported Providers:**
+
+- OpenAI
+
+**Example:**
+
+```bash
+curl -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-image-1",
+    "prompt": "a serene mountain landscape at sunrise in watercolor",
+    "size": "1024x1024",
+    "n": 1
+  }' \
+  $GATEWAY_URL/v1/images/generations
+```
+
 ### Models
 
 **Endpoint:** `GET /v1/models`

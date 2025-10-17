@@ -86,6 +86,20 @@ async def azure_embeddings(deployment: str, request: Request) -> Response:
         client.embeddings.create
     )
 
+@app.post("/v1/images/generations")
+async def images_generations(request: Request) -> Response:
+    return await handle_openai_request(
+        request,
+        client.images.generate
+    )
+
+@app.post("/openai/deployments/{deployment}/images/generations")
+async def azure_images_generations(deployment: str, request: Request) -> Response:
+    return await handle_openai_request(
+        request,
+        client.images.generate
+    )
+
 async def handle_openai_request(
     request: Request,
     client_method,
@@ -95,7 +109,7 @@ async def handle_openai_request(
     try:
         if request_data is None:
             request_data = await request.json()
-        logger.info(f"Received request: {json.dumps(request_data)}")
+        logger.info(f"Received request: {json.dumps(request_data)[:600]}")
 
         cassette_name = request.headers.get('X-Cassette-Name')
         extra_headers = {"X-Cassette-Name": cassette_name} if cassette_name else {}

@@ -1,0 +1,23 @@
+{
+  "flags": 256,
+  "name": "ImageGeneration",
+  "kind": "SPAN_KIND_INTERNAL",
+  "attributes": [
+    {
+      "key": "llm.system",
+      "value": {
+        "stringValue": "openai"
+      }
+    },
+    {
+      "key": "input.mime_type",
+      "value": {
+        "stringValue": "application/json"
+      }
+    }
+  ],
+  "status": {
+    "code": "STATUS_CODE_OK"
+  }
+}
+
