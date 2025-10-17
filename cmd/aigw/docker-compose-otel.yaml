@@ -159,6 +159,24 @@ services:
       - OPENAI_BASE_URL=http://aigw:1975/v1
       - OPENAI_API_KEY=unused
 
+  # completion is the standard OpenAI client (`openai` in pip), instrumented
+  # with the following OpenTelemetry instrumentation libraries:
+  # - openinference-instrumentation-openai (completions spans)
+  # - opentelemetry-instrumentation-httpx (HTTP client spans and trace headers)
+  completion:
+    build:
+      context: ../../tests/internal/testopeninference
+      dockerfile: Dockerfile.openai_client
+      target: completion
+    container_name: completion
+    profiles: ["test"]
+    env_file:
+      - ../../.env.ollama
+      - .env.otel.${COMPOSE_PROFILES:-console}
+    environment:
+      - OPENAI_BASE_URL=http://aigw:1975/v1
+      - OPENAI_API_KEY=unused
+
   # mcp is a test client for calling MCP tools through aigw.
   # TODO: add client tracing + mcp propagation to this
   mcp:

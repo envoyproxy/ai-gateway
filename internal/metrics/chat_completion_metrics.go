@@ -25,6 +25,9 @@ type chatCompletion struct {
 	totalOutputTokens uint32
 }
 
+// ChatCompletionMetricsFactory is a closure that creates a new ChatCompletionMetrics instance.
+type ChatCompletionMetricsFactory func() ChatCompletionMetrics
+
 // ChatCompletionMetrics is the interface for the chat completion AI Gateway metrics.
 type ChatCompletionMetrics interface {
 	// StartRequest initializes timing for a new request.
@@ -54,20 +57,17 @@ type ChatCompletionMetrics interface {
 	GetInterTokenLatencyMs() float64
 }
 
-// NewChatCompletion creates a new x.ChatCompletionMetrics instance.
-func NewChatCompletion(meter metric.Meter, requestHeaderLabelMapping map[string]string) ChatCompletionMetrics {
-	return &chatCompletion{
-		baseMetrics: newBaseMetrics(meter, genaiOperationChat, requestHeaderLabelMapping),
+// NewChatCompletionFactory returns a closure to create a new ChatCompletionMetrics instance.
+func NewChatCompletionFactory(meter metric.Meter, requestHeaderLabelMapping map[string]string) ChatCompletionMetricsFactory {
+	b := baseMetricsFactory{metrics: newGenAI(meter), requestHeaderAttributeMapping: requestHeaderLabelMapping}
+	return func() ChatCompletionMetrics {
+		return &chatCompletion{baseMetrics: b.newBaseMetrics(genaiOperationChat)}
 	}
 }
 
 // StartRequest initializes timing for a new request.
 func (c *chatCompletion) StartRequest(headers map[string]string) {
 	c.baseMetrics.StartRequest(headers)
-	c.firstTokenSent = false
-	c.totalOutputTokens = 0
-	c.timeToFirstToken = 0
-	c.interTokenLatency = 0
 }
 
 // RecordTokenUsage implements [ChatCompletion.RecordTokenUsage].

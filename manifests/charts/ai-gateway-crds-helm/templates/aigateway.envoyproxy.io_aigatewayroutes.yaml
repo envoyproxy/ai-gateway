@@ -435,7 +435,11 @@ spec:
                         BackendRefs is the list of backends that this rule will route the traffic to.
                         Each backend can have a weight that determines the traffic distribution.
 
-                        The namespace of each backend is "local", i.e. the same namespace as the AIGatewayRoute.
+                        The namespace of each backend defaults to the same namespace as the AIGatewayRoute when not specified.
+                        Cross-namespace references are supported by specifying the namespace field.
+                        When a namespace different than the AIGatewayRoute's namespace is specified,
+                        a ReferenceGrant object is required in the referent namespace to allow that
+                        namespace's owner to accept the reference.
 
                         BackendRefs can reference either AIServiceBackend resources (default) or InferencePool resources
                         from the Gateway API Inference Extension. When referencing InferencePool resources:
@@ -479,6 +483,19 @@ spec:
                               When Group and Kind are not specified, this refers to an AIServiceBackend.
                               When Group and Kind are specified, this refers to the resource of the specified type.
                             minLength: 1
+                            type: string
+                          namespace:
+                            description: |-
+                              Namespace is the namespace of the backend resource.
+                              When unspecified (or empty string), this refers to the local namespace of the AIGatewayRoute.
+
+                              Note that when a namespace different than the local namespace is specified,
+                              a ReferenceGrant object is required in the referent namespace to allow that
+                              namespace's owner to accept the reference. See the ReferenceGrant
+                              documentation for details.
+                            maxLength: 63
+                            minLength: 1
+                            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                             type: string
                           priority:
                             default: 0
