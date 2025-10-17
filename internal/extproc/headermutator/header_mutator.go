@@ -77,7 +77,8 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) *extproc
 				})
 			}
 		}
-		// Remove any headers that were added in the previous attempt (not part of original headers and not being set now)
+		// 1. Remove any headers that were added in the previous attempt (not part of original headers and not being set now)
+		// 2. Restore any original headers that were modified in the previous attempt (and not being set now).
 		for key := range headers {
 			key = strings.ToLower(key)
 			originalValue, exists := h.originalHeaders[key]

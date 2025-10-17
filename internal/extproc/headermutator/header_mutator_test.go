@@ -45,12 +45,12 @@ func TestHeaderMutator_Mutate(t *testing.T) {
 			"x-api-key":        "key123",
 			"other":            "value",
 			"only-in-original": "original",
-			"in-original-too-bad-previous-attempt-set": "pikachu",
+			"in-original-too-but-previous-attempt-set": "pikachu",
 		}
 		headers := map[string]string{
 			"other":         "value",
 			"authorization": "secret",
-			"in-original-too-bad-previous-attempt-set": "charmander",
+			"in-original-too-but-previous-attempt-set": "charmander",
 			"only-set-previously":                      "bulbasaur",
 		}
 		mutations := &filterapi.HTTPHeaderMutation{
@@ -66,6 +66,6 @@ func TestHeaderMutator_Mutate(t *testing.T) {
 		require.Equal(t, "value", headers["other"])
 		require.Equal(t, "secret", headers["authorization"])
 		require.Equal(t, "original", headers["only-in-original"])
-		require.Equal(t, "pikachu", headers["in-original-too-bad-previous-attempt-set"])
+		require.Equal(t, "pikachu", headers["in-original-too-but-previous-attempt-set"])
 	})
 }
