@@ -45,39 +45,45 @@ const (
 
 // syncMCPRouteSecurityPolicy reconciles MCPRouteSecurityPolicy and creates/updates its associated envoy gateway resources.
 func (c *MCPRouteController) syncMCPRouteSecurityPolicy(ctx context.Context, mcpRoute *aigv1a1.MCPRoute, httpRouteName string) error {
-	if mcpRoute.Spec.SecurityPolicy != nil && mcpRoute.Spec.SecurityPolicy.OAuth != nil {
-		// Create and manage SecurityPolicy to enforce JWT authentication for access token validation.
-		// The SecurityPolicy will be associated with the HTTPRoute MCP proxy rule only.
-		if secErr := c.ensureAccessTokenSecurityPolicy(ctx, mcpRoute, httpRouteName); secErr != nil {
+	securityPolicy := mcpRoute.Spec.SecurityPolicy
+	hasOAuth := securityPolicy != nil && securityPolicy.OAuth != nil
+	hasAPIKeyAuth := securityPolicy != nil && securityPolicy.APIKeyAuth != nil
+	securityPolicyConfigured := hasOAuth || hasAPIKeyAuth
+
+	if securityPolicyConfigured {
+		// Create and manage SecurityPolicy to enforce client authentication on the MCP proxy rule.
+		if secErr := c.ensureSecurityPolicy(ctx, mcpRoute, httpRouteName); secErr != nil {
 			return fmt.Errorf("failed to ensure SecurityPolicy: %w", secErr)
 		}
 
-		// Create BackendTrafficPolicy for WWW-Authenticate header with OAuth resource metadata in 401 responses.
-		if btpErr := c.ensureOAuthProtectedResourceMetadataBTP(ctx, mcpRoute, httpRouteName); btpErr != nil {
-			return fmt.Errorf("failed to ensure BackendTrafficPolicy: %w", btpErr)
-		}
-
-		// Create HTTPRouteFilter for OAuth protected resource metadata endpoint.
-		if hrfErr := c.ensureOAuthProtectedResourceMetadataHRF(ctx, mcpRoute); hrfErr != nil {
-			return fmt.Errorf("failed to ensure HTTPRouteFilter: %w", hrfErr)
-		}
-
-		// Create HTTPRouteFilter for OAuth authorization server metadata endpoint.
-		if hrfErr := c.ensureOAuthAuthServerMetadataHTTPRouteFilter(ctx, mcpRoute); hrfErr != nil {
-			return fmt.Errorf("failed to ensure AuthServer HTTPRouteFilter: %w", hrfErr)
+		// Create OAuth-related resources if OAuth is configured.
+		if hasOAuth {
+			if err := c.ensureOAuthResources(ctx, mcpRoute, httpRouteName); err != nil {
+				return fmt.Errorf("failed to ensure OAuth resources: %w", err)
+			}
+		} else {
+			// Clean up any OAuth-specific resources if OAuth is no longer configured.
+			if err := c.cleanupOAuthResources(ctx, mcpRoute); err != nil {
+				return fmt.Errorf("failed to cleanup OAuth resources: %w", err)
+			}
 		}
 	} else {
-		// Clean up existing SecurityPolicy resources when SecurityPolicy is nil.
+		// Clean up existing SecurityPolicy resources if no authentication is configured.
 		if err := c.cleanupSecurityPolicyResources(ctx, mcpRoute); err != nil {
 			return fmt.Errorf("failed to cleanup SecurityPolicy resources: %w", err)
+		}
+
+		// Clean up any existing OAuth-specific resources if no authentication is configured.
+		if err := c.cleanupOAuthResources(ctx, mcpRoute); err != nil {
+			return fmt.Errorf("failed to cleanup OAuth resources: %w", err)
 		}
 	}
 
 	return nil
 }
 
-// ensureAccessTokenSecurityPolicy ensures that the SecurityPolicy resource exists with JWT authentication to validate access tokens.
-func (c *MCPRouteController) ensureAccessTokenSecurityPolicy(ctx context.Context, mcpRoute *aigv1a1.MCPRoute, httpRouteName string) error {
+// ensureSecurityPolicy ensures that the SecurityPolicy resource exists with the configured authentication methods.
+func (c *MCPRouteController) ensureSecurityPolicy(ctx context.Context, mcpRoute *aigv1a1.MCPRoute, httpRouteName string) error {
 	var securityPolicy egv1a1.SecurityPolicy
 	securityPolicyName := internalapi.MCPGeneratedResourceCommonPrefix + mcpRoute.Name
 	err := c.client.Get(ctx, client.ObjectKey{Name: securityPolicyName, Namespace: mcpRoute.Namespace}, &securityPolicy)
@@ -99,54 +105,60 @@ func (c *MCPRouteController) ensureAccessTokenSecurityPolicy(ctx context.Context
 		return fmt.Errorf("failed to get SecurityPolicy: %w", err)
 	}
 
-	// Configure JWT authentication.
-	auth := mcpRoute.Spec.SecurityPolicy.OAuth
-	name := "mcp-jwt-provider"
-	jwtProvider := egv1a1.JWTProvider{
-		Name:      name,
-		Audiences: auth.Audiences,
-	}
+	securityPolicySpec := egv1a1.SecurityPolicySpec{}
 
-	// Configure JWKS source: use explicit config if provided, otherwise auto-discover from authorization server metadata.
-	if auth.JWKS != nil {
-		jwtProvider.RemoteJWKS = auth.JWKS.RemoteJWKS
-		jwtProvider.LocalJWKS = auth.JWKS.LocalJWKS
-	} else {
-		// Auto-discover JWKS URI from authorization server metadata.
-		c.logger.Info("Auto-discovering JWKS URI from authorization server metadata", "issuer", auth.Issuer)
-		jwksURI, discoveryErr := c.discoverJWKSURI(auth.Issuer)
-		if discoveryErr != nil {
-			return fmt.Errorf("failed to auto-discover JWKS URI: %w", discoveryErr)
-		}
-		c.logger.Info("Found JWKS URI from authorization server metadata", "issuer", auth.Issuer, "jwks_uri", jwksURI)
-
-		jwtProvider.RemoteJWKS = &egv1a1.RemoteJWKS{
-			URI: jwksURI,
+	// Configure JWT authentication to validate access tokens if OAuth is enabled.
+	if oauth := mcpRoute.Spec.SecurityPolicy.OAuth; oauth != nil {
+		name := "mcp-jwt-provider"
+		jwtProvider := egv1a1.JWTProvider{
+			Name:      name,
+			Audiences: oauth.Audiences,
 		}
 
-		// If the JWKS URI is an HTTPS backend, try to discover the backend service for Envoy to fetch JWKS.
-		if strings.HasPrefix(jwksURI, "https://") {
-			c.logger.Info("Auto-discovering backends with TLS config to fetch JWKS URI", "jwks_uri", jwksURI)
-			jwtProvider.RemoteJWKS.BackendRefs, err = c.tryGetBackendsForJWKS(ctx, jwksURI)
-			if err != nil {
-				// log the error but continue, hoping the JWKS can be fetched without explicitly setting the backend cluster.
-				c.logger.Error(err, "could not find a backend with TLS config to fetch the remote JWKS", "jwks_uri", jwksURI)
+		// Configure JWKS source: use explicit config if provided, otherwise auto-discover from authorization server metadata.
+		if oauth.JWKS != nil {
+			jwtProvider.RemoteJWKS = oauth.JWKS.RemoteJWKS
+			jwtProvider.LocalJWKS = oauth.JWKS.LocalJWKS
+		} else {
+			// Auto-discover JWKS URI from authorization server metadata.
+			c.logger.Info("Auto-discovering JWKS URI from authorization server metadata", "issuer", oauth.Issuer)
+			jwksURI, discoveryErr := c.discoverJWKSURI(oauth.Issuer)
+			if discoveryErr != nil {
+				return fmt.Errorf("failed to auto-discover JWKS URI: %w", discoveryErr)
+			}
+			c.logger.Info("Found JWKS URI from authorization server metadata", "issuer", oauth.Issuer, "jwks_uri", jwksURI)
+
+			jwtProvider.RemoteJWKS = &egv1a1.RemoteJWKS{
+				URI: jwksURI,
+			}
+
+			// If the JWKS URI is an HTTPS backend, try to discover the backend service for Envoy to fetch JWKS.
+			if strings.HasPrefix(jwksURI, "https://") {
+				c.logger.Info("Auto-discovering backends with TLS config to fetch JWKS URI", "jwks_uri", jwksURI)
+				jwtProvider.RemoteJWKS.BackendRefs, err = c.tryGetBackendsForJWKS(ctx, jwksURI)
+				if err != nil {
+					// log the error but continue, hoping the JWKS can be fetched without explicitly setting the backend cluster.
+					c.logger.Error(err, "could not find a backend with TLS config to fetch the remote JWKS", "jwks_uri", jwksURI)
+				}
 			}
 		}
+
+		securityPolicySpec.JWT = &egv1a1.JWT{
+			Providers: []egv1a1.JWTProvider{jwtProvider},
+		}
 	}
 
-	securityPolicy.Spec = egv1a1.SecurityPolicySpec{
-		JWT: &egv1a1.JWT{
-			Providers: []egv1a1.JWTProvider{jwtProvider},
-		},
+	// Configure API Key authentication if enabled.
+	if apiKeyAuth := mcpRoute.Spec.SecurityPolicy.APIKeyAuth; apiKeyAuth != nil {
+		securityPolicySpec.APIKeyAuth = apiKeyAuth.DeepCopy()
 	}
 
 	// The SecurityPolicy should only apply to the HTTPRoute MCP proxy rule.
 	// However, since HTTPRouteRule name is experimental in Gateway API, and some vendors (e.g. GKE Gateway) do not
 	// support it yet, we currently do not set the sectionName to avoid compatibility issues.
-	// The jwt filter will be removed from backend routes in the extension server.
+	// The jwt and API key auth filter will be removed from backend routes in the extension server.
 	// TODO: use sectionName to target the MCP proxy rule only when the HTTPRouteRule name is in stable channel.
-	securityPolicy.Spec.TargetRefs = []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+	securityPolicySpec.TargetRefs = []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
 		{
 			LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
 				Group: "gateway.networking.k8s.io",
@@ -155,6 +167,8 @@ func (c *MCPRouteController) ensureAccessTokenSecurityPolicy(ctx context.Context
 			},
 		},
 	}
+
+	securityPolicy.Spec = securityPolicySpec
 
 	if existingPolicy {
 		c.logger.Info("Updating SecurityPolicy", "namespace", securityPolicy.Namespace, "name", securityPolicy.Name)
@@ -508,11 +522,32 @@ func (c *MCPRouteController) cleanupSecurityPolicyResources(ctx context.Context,
 	} else if !apierrors.IsNotFound(err) {
 		return fmt.Errorf("failed to get SecurityPolicy for deletion: %w", err)
 	}
+	return nil
+}
 
+func (c *MCPRouteController) ensureOAuthResources(ctx context.Context, mcpRoute *aigv1a1.MCPRoute, httpRouteName string) error {
+	// Create BackendTrafficPolicy for WWW-Authenticate header with OAuth resource metadata in 401 responses.
+	if btpErr := c.ensureOAuthProtectedResourceMetadataBTP(ctx, mcpRoute, httpRouteName); btpErr != nil {
+		return fmt.Errorf("failed to ensure BackendTrafficPolicy: %w", btpErr)
+	}
+
+	// Create HTTPRouteFilter for OAuth protected resource metadata endpoint.
+	if hrfErr := c.ensureOAuthProtectedResourceMetadataHRF(ctx, mcpRoute); hrfErr != nil {
+		return fmt.Errorf("failed to ensure HTTPRouteFilter: %w", hrfErr)
+	}
+
+	// Create HTTPRouteFilter for OAuth authorization server metadata endpoint.
+	if hrfErr := c.ensureOAuthAuthServerMetadataHTTPRouteFilter(ctx, mcpRoute); hrfErr != nil {
+		return fmt.Errorf("failed to ensure AuthServer HTTPRouteFilter: %w", hrfErr)
+	}
+	return nil
+}
+
+func (c *MCPRouteController) cleanupOAuthResources(ctx context.Context, mcpRoute *aigv1a1.MCPRoute) error {
 	// Delete BackendTrafficPolicy.
 	backendTrafficPolicyName := oauthProtectedResourceMetadataName(mcpRoute.Name)
 	var backendTrafficPolicy egv1a1.BackendTrafficPolicy
-	err = c.client.Get(ctx, client.ObjectKey{Name: backendTrafficPolicyName, Namespace: mcpRoute.Namespace}, &backendTrafficPolicy)
+	err := c.client.Get(ctx, client.ObjectKey{Name: backendTrafficPolicyName, Namespace: mcpRoute.Namespace}, &backendTrafficPolicy)
 	if err == nil {
 		c.logger.Info("Deleting BackendTrafficPolicy", "namespace", backendTrafficPolicy.Namespace, "name", backendTrafficPolicy.Name)
 		if err = c.client.Delete(ctx, &backendTrafficPolicy); err != nil {
