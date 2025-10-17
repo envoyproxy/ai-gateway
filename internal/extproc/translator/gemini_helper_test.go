@@ -842,6 +842,36 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 			},
 			expectedErrMsg: "invalid JSON schema",
 		},
+		{
+			name: "guided choice",
+			input: &openai.ChatCompletionRequest{
+				GuidedChoice: []string{"Positive", "Negative"},
+			},
+			expectedGenerationConfig: &genai.GenerationConfig{
+				ResponseMIMEType: "text/x.enum",
+				ResponseSchema:   &genai.Schema{Type: "STRING", Enum: []string{"Positive", "Negative"}},
+			},
+		},
+		{
+			name: "guided regex",
+			input: &openai.ChatCompletionRequest{
+				GuidedRegex: "\\w+@\\w+\\.com\\n",
+			},
+			expectedGenerationConfig: &genai.GenerationConfig{
+				ResponseMIMEType: "application/json",
+				ResponseSchema:   &genai.Schema{Type: "STRING", Pattern: "\\w+@\\w+\\.com\\n"},
+			},
+		},
+		{
+			name: "guided json",
+			input: &openai.ChatCompletionRequest{
+				GuidedJSON: json.RawMessage(`{"type": "string"}`),
+			},
+			expectedGenerationConfig: &genai.GenerationConfig{
+				ResponseMIMEType:   "application/json",
+				ResponseJsonSchema: json.RawMessage(`{"type": "string"}`),
+			},
+		},
 	}
 
 	for _, tc := range tests {

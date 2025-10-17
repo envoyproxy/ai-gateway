@@ -976,6 +976,15 @@ type ChatCompletionRequest struct {
 
 	// AnthropicVendorFields configures the Anthropic specific fields during schema translation.
 	*AnthropicVendorFields `json:",inline,omitempty"`
+
+	// GuidedChoice: The output will be exactly one of the choices.
+	GuidedChoice []string `json:"guided_choice,omitzero"`
+
+	// GuidedRegex: The output will follow the regex pattern.
+	GuidedRegex string `json:"guided_regex,omitzero"`
+
+	// GuidedJSON: The output will follow the JSON schema.
+	GuidedJSON json.RawMessage `json:"guided_json,omitzero"`
 }
 
 type StreamOptions struct {

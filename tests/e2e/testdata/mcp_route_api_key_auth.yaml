@@ -1,0 +1,109 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: mcp-gateway-class-api-key
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: mcp-gateway-api-key
+  namespace: default
+spec:
+  gatewayClassName: mcp-gateway-class-api-key
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: envoy-mcp-gateway-api-key
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mcp-api-key-clients
+  namespace: default
+type: Opaque
+stringData:
+  client1: "valid-mcp-api-key"
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: MCPRoute
+metadata:
+  name: mcp-route-api-key
+  namespace: default
+spec:
+  parentRefs:
+    - name: mcp-gateway-api-key
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  securityPolicy:
+    apiKeyAuth:
+      credentialRefs:
+        - name: mcp-api-key-clients
+          namespace: default
+      extractFrom:
+        - headers:
+            - "X-API-KEY"
+  backendRefs:
+    - name: mcp-backend-api-key
+      port: 1063
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-backend-api-key
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-backend-api-key
+  template:
+    metadata:
+      labels:
+        app: mcp-backend-api-key
+    spec:
+      containers:
+        - name: mcp-backend-api-key
+          image: docker.io/envoyproxy/ai-gateway-testmcpserver:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 1063
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-backend-api-key
+  namespace: default
+spec:
+  selector:
+    app: mcp-backend-api-key
+  ports:
+    - protocol: TCP
+      port: 1063
+      targetPort: 1063
+  type: ClusterIP
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: envoy-mcp-gateway-api-key
+  namespace: default
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        container:
+          # Clear the default memory/cpu requirements for local tests.
+          resources: {}

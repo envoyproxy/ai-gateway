@@ -103,7 +103,7 @@ func TestInferencePoolIntegration(t *testing.T) {
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), httpRouteManifest))
 
 	egSelector = "gateway.envoyproxy.io/owning-gateway-name=inference-pool-with-httproute"
-	e2elib.RequireWaitForPodReady(t, egSelector)
+	e2elib.RequireWaitForPodReady(t, e2elib.EnvoyGatewayNamespace, egSelector)
 
 	// Verify InferencePool status is correctly set for the HTTPRoute Gateway.
 	t.Run("verify_inference_pool_status_httproute", func(t *testing.T) {

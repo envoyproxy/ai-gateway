@@ -62,7 +62,6 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(original []byte, 
 		}
 		// Make everything coherent.
 		o.requestModel = o.modelNameOverride
-		req.Model = o.modelNameOverride
 	}
 
 	// Always set the path header to the chat completions endpoint so that the request is routed correctly.

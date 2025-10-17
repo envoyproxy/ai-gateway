@@ -421,10 +421,6 @@ func initEnvoyGateway(ctx context.Context, inferenceExtension bool) (err error) 
 	if err = kubectlRestartDeployment(ctx, "envoy-gateway-system", "envoy-gateway"); err != nil {
 		return
 	}
-	initLog("\tWaiting for Ratelimit deployment to be ready")
-	if err = kubectlWaitForDeploymentReady(ctx, "envoy-gateway-system", "envoy-ratelimit"); err != nil {
-		return
-	}
 	initLog("\tWaiting for Envoy Gateway deployment to be ready")
 	return kubectlWaitForDeploymentReady(ctx, "envoy-gateway-system", "envoy-gateway")
 }
@@ -556,7 +552,7 @@ func kubectlWaitForDaemonSetReady(ctx context.Context, namespace, daemonset stri
 // RequireWaitForGatewayPodReady waits for the Envoy Gateway pod with the given selector to be ready.
 func RequireWaitForGatewayPodReady(t *testing.T, selector string) {
 	requireWaitForGatewayPod(t, selector)
-	RequireWaitForPodReady(t, selector)
+	RequireWaitForPodReady(t, EnvoyGatewayNamespace, selector)
 }
 
 // RequireGatewayListenerAddressViaMetalLB gets the external IP address of the Gateway via MetalLB.
@@ -584,10 +580,10 @@ func requireWaitForGatewayPod(t *testing.T, selector string) {
 }
 
 // RequireWaitForPodReady waits for the pod with the given selector to be ready.
-func RequireWaitForPodReady(t *testing.T, selector string) {
+func RequireWaitForPodReady(t *testing.T, namespace, selector string) {
 	waitUntilKubectl(t, 3*time.Minute, 5*time.Second, func(_ string) error {
 		return nil // Success if the command exited 0, ignore output.
-	}, "wait", "--timeout=2s", "-n", EnvoyGatewayNamespace,
+	}, "wait", "--timeout=2s", "-n", namespace,
 		"pods", "--for=condition=Ready", "-l", selector)
 }
 
