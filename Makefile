@@ -155,6 +155,8 @@ test-crdcel: apigen ## Run the integration tests of CEL validation in CRD defini
 .PHONY: test-extproc # This requires the extproc binary to be built.
 test-extproc: build.extproc ## Run the integration tests for extproc without controller or k8s at all.
 	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
+	@echo "Ensure func-e is built for test-extproc"
+	@@$(GO_TOOL) func-e help >/dev/null 2>&1
 	@echo "Run ExtProc test"
 	@EXTPROC_BIN=$(OUTPUT_DIR)/extproc-$(shell go env GOOS)-$(shell go env GOARCH) go test ./tests/extproc/... $(GO_TEST_E2E_ARGS)
 
