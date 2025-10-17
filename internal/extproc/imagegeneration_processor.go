@@ -404,11 +404,10 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessResponseBody(ctx context
 	i.costs.OutputTokens += tokenUsage.OutputTokens
 	i.costs.TotalTokens += tokenUsage.TotalTokens
 
+	// Ensure response model is set before recording metrics so attributes include it.
+	i.metrics.SetResponseModel(imageMetadata.Model)
 	// Update metrics with token usage (input/output only per OTEL spec).
 	i.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.OutputTokens, i.requestHeaders)
-
-	i.metrics.SetResponseModel(imageMetadata.Model)
-
 	// Record image generation metrics
 	i.metrics.RecordImageGeneration(ctx, imageMetadata.ImageCount, imageMetadata.Model, imageMetadata.Size, i.requestHeaders)
 

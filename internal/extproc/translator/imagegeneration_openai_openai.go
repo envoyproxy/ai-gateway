@@ -6,6 +6,7 @@
 package translator
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -32,11 +33,12 @@ type openAIToOpenAIImageGenerationTranslator struct {
 	// The path of the images generations endpoint to be used for the request. It is prefixed with the OpenAI path prefix.
 	path string
 	// span is the tracing span for this request, inherited from the router filter.
-	span tracing.ImageGenerationSpan
+	span         tracing.ImageGenerationSpan
+	requestModel internalapi.RequestModel
 }
 
 // RequestBody implements [ImageGenerationTranslator.RequestBody].
-func (o *openAIToOpenAIImageGenerationTranslator) RequestBody(original []byte, _ *openaisdk.ImageGenerateParams, forceBodyMutation bool) (
+func (o *openAIToOpenAIImageGenerationTranslator) RequestBody(original []byte, p *openaisdk.ImageGenerateParams, forceBodyMutation bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
 	var newBody []byte
@@ -47,6 +49,7 @@ func (o *openAIToOpenAIImageGenerationTranslator) RequestBody(original []byte, _
 			return nil, nil, fmt.Errorf("failed to set model name: %w", err)
 		}
 	}
+	o.requestModel = cmp.Or(o.modelNameOverride, p.Model)
 
 	// Always set the path header to the images generations endpoint so that the request is routed correctly.
 	headerMutation = &extprocv3.HeaderMutation{
@@ -144,9 +147,9 @@ func (o *openAIToOpenAIImageGenerationTranslator) ResponseBody(_ map[string]stri
 		tokenUsage.TotalTokens = uint32(resp.Usage.TotalTokens)   //nolint:gosec
 	}
 
-	// Extract image generation metadata for metrics (model may be absent in SDK response)
+	// Extract image generation metadata for metrics.
 	imageMetadata.ImageCount = len(resp.Data)
-	imageMetadata.Model = ""
+	imageMetadata.Model = o.requestModel // Model is not present in the response, so we assume the request model == response model.
 	imageMetadata.Size = string(resp.Size)
 
 	return
