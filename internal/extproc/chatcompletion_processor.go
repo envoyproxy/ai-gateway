@@ -31,7 +31,7 @@ import (
 )
 
 // ChatCompletionProcessorFactory returns a factory method to instantiate the chat completion processor.
-func ChatCompletionProcessorFactory(ccm metrics.ChatCompletionMetrics) ProcessorFactory {
+func ChatCompletionProcessorFactory(f metrics.ChatCompletionMetricsFactory) ProcessorFactory {
 	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "chat-completion", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
@@ -46,7 +46,7 @@ func ChatCompletionProcessorFactory(ccm metrics.ChatCompletionMetrics) Processor
 			config:         config,
 			requestHeaders: requestHeaders,
 			logger:         logger,
-			metrics:        ccm,
+			metrics:        f(),
 		}, nil
 	}
 }

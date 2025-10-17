@@ -28,8 +28,8 @@ import (
 )
 
 func TestMessagesProcessorFactory(t *testing.T) {
-	chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
-	factory := MessagesProcessorFactory(chatMetrics)
+	m := metrics.NewMessagesFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})
+	factory := MessagesProcessorFactory(m)
 	require.NotNil(t, factory, "MessagesProcessorFactory should return a non-nil factory")
 
 	// Test creating a router filter.
@@ -401,7 +401,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithMocks(t *test
 			}
 
 			// Create mock metrics.
-			chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+			chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 
 			// Create processor.
 			processor := &messagesProcessorUpstreamFilter{
@@ -436,7 +436,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseHeaders_WithMocks(t *tes
 		retErr:            nil,
 	}
 
-	chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+	chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 	processor := &messagesProcessorUpstreamFilter{
 		config:         &processorConfig{},
 		requestHeaders: make(map[string]string),
@@ -461,7 +461,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_WithMocks(t *testin
 		retErr:            nil,
 	}
 
-	chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+	chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 	processor := &messagesProcessorUpstreamFilter{
 		config:         &processorConfig{},
 		requestHeaders: make(map[string]string),
@@ -532,7 +532,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_CompletionOnlyAtEnd
 }
 
 func TestMessagesProcessorUpstreamFilter_MergeWithTokenLatencyMetadata(t *testing.T) {
-	chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+	chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 	processor := &messagesProcessorUpstreamFilter{
 		config:  &processorConfig{},
 		logger:  slog.Default(),
@@ -561,7 +561,7 @@ func TestMessagesProcessorUpstreamFilter_MergeWithTokenLatencyMetadata(t *testin
 
 func TestMessagesProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	headers := map[string]string{":path": "/anthropic/v1/messages"}
-	chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+	chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 	processor := &messagesProcessorUpstreamFilter{
 		config: &processorConfig{
 			requestCosts: []processorConfigRequestCost{
@@ -587,7 +587,7 @@ func TestMessagesProcessorUpstreamFilter_SetBackend(t *testing.T) {
 
 func Test_messagesProcessorUpstreamFilter_SetBackend_Success(t *testing.T) {
 	headers := map[string]string{":path": "/anthropic/v1/messages", internalapi.ModelNameHeaderKeyDefault: "claude"}
-	chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+	chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 	p := &messagesProcessorUpstreamFilter{
 		config:         &processorConfig{},
 		requestHeaders: headers,
@@ -724,7 +724,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 		}
 
 		// Create mock metrics.
-		chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+		chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 
 		// Create processor.
 		processor := &messagesProcessorUpstreamFilter{
@@ -802,7 +802,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 		}
 
 		// Create mock metrics.
-		chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+		chatMetrics := metrics.NewMessagesFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 
 		// Create processor.
 		processor := &messagesProcessorUpstreamFilter{
@@ -889,7 +889,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 		}
 
 		// Create mock metrics.
-		chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+		chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 
 		// Create processor.
 		processor := &messagesProcessorUpstreamFilter{
@@ -925,7 +925,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 func TestMessagesProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *testing.T) {
 	t.Run("header mutator created correctly", func(t *testing.T) {
 		headers := map[string]string{":path": "/anthropic/v1/messages"}
-		chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+		chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 		p := &messagesProcessorUpstreamFilter{
 			config:         &processorConfig{},
 			requestHeaders: headers,
@@ -981,7 +981,7 @@ func TestMessagesProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *testi
 
 	t.Run("header mutator with original headers", func(t *testing.T) {
 		headers := map[string]string{":path": "/anthropic/v1/messages"}
-		chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+		chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 		p := &messagesProcessorUpstreamFilter{
 			config:         &processorConfig{},
 			requestHeaders: headers,

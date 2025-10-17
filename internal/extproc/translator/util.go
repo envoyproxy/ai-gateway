@@ -11,8 +11,8 @@ import (
 	"regexp"
 	"strconv"
 
-	"github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	"github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	ext_procv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
@@ -24,6 +24,7 @@ const (
 	mimeTypeImageWEBP       = "image/webp"
 	mimeTypeTextPlain       = "text/plain"
 	mimeTypeApplicationJSON = "application/json"
+	mimeTypeApplicationEnum = "text/x.enum"
 )
 
 // regDataURI follows the web uri regex definition.

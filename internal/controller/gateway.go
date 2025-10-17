@@ -226,11 +226,12 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				} else {
 					var backendObj *aigv1a1.AIServiceBackend
 					var bsp *aigv1a1.BackendSecurityPolicy
-					backendObj, bsp, err = c.backendWithMaybeBSP(ctx, aiGatewayRoute.Namespace, backendRef.Name)
+					backendNamespace := backendRef.GetNamespace(aiGatewayRoute.Namespace)
+					backendObj, bsp, err = c.backendWithMaybeBSP(ctx, backendNamespace, backendRef.Name)
 					if err != nil {
 						c.logger.Error(err, "failed to get backend or backend security policy. Skipping this backend.",
 							"backend_name", backendRef.Name, "aigatewayroute", aiGatewayRoute.Name,
-							"namespace", aiGatewayRoute.Namespace)
+							"namespace", backendNamespace)
 						continue
 					}
 					b.HeaderMutation = headerMutationToFilterAPI(backendObj.Spec.HeaderMutation)

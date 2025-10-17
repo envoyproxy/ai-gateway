@@ -424,6 +424,29 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) 
 		}
 	}
 
+	if openAIReq.GuidedChoice != nil {
+		if existSchema := gc.ResponseSchema != nil || gc.ResponseJsonSchema != nil; existSchema {
+			return nil, fmt.Errorf("duplicate json scheme specifications")
+		}
+
+		gc.ResponseMIMEType = mimeTypeApplicationEnum
+		gc.ResponseSchema = &genai.Schema{Type: "STRING", Enum: openAIReq.GuidedChoice}
+	}
+	if openAIReq.GuidedRegex != "" {
+		if existSchema := gc.ResponseSchema != nil || gc.ResponseJsonSchema != nil; existSchema {
+			return nil, fmt.Errorf("duplicate json scheme specifications")
+		}
+		gc.ResponseMIMEType = mimeTypeApplicationJSON
+		gc.ResponseSchema = &genai.Schema{Type: "STRING", Pattern: openAIReq.GuidedRegex}
+	}
+	if openAIReq.GuidedJSON != nil {
+		if existSchema := gc.ResponseSchema != nil || gc.ResponseJsonSchema != nil; existSchema {
+			return nil, fmt.Errorf("duplicate json scheme specifications")
+		}
+		gc.ResponseMIMEType = mimeTypeApplicationJSON
+		gc.ResponseJsonSchema = openAIReq.GuidedJSON
+	}
+
 	if openAIReq.N != nil {
 		gc.CandidateCount = int32(*openAIReq.N) // nolint:gosec
 	}

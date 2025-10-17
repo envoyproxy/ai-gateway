@@ -505,7 +505,7 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
   name="backendRefs"
   type="[AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref) array"
   required="false"
-  description="BackendRefs is the list of backends that this rule will route the traffic to.<br />Each backend can have a weight that determines the traffic distribution.<br />The namespace of each backend is `local`, i.e. the same namespace as the AIGatewayRoute.<br />BackendRefs can reference either AIServiceBackend resources (default) or InferencePool resources<br />from the Gateway API Inference Extension. When referencing InferencePool resources:<br />- Only one InferencePool backend is allowed per rule<br />- Cannot mix InferencePool with AIServiceBackend references in the same rule<br />- Fallback behavior is handled by the InferencePool's endpoint picker<br />For AIServiceBackend references, you can achieve fallback behavior by configuring multiple backends<br />combined with the BackendTrafficPolicy of Envoy Gateway.<br />Please refer to https://gateway.envoyproxy.io/docs/tasks/traffic/failover/ as well as<br />https://gateway.envoyproxy.io/docs/tasks/traffic/retry/."
+  description="BackendRefs is the list of backends that this rule will route the traffic to.<br />Each backend can have a weight that determines the traffic distribution.<br />The namespace of each backend defaults to the same namespace as the AIGatewayRoute when not specified.<br />Cross-namespace references are supported by specifying the namespace field.<br />When a namespace different than the AIGatewayRoute's namespace is specified,<br />a ReferenceGrant object is required in the referent namespace to allow that<br />namespace's owner to accept the reference.<br />BackendRefs can reference either AIServiceBackend resources (default) or InferencePool resources<br />from the Gateway API Inference Extension. When referencing InferencePool resources:<br />- Only one InferencePool backend is allowed per rule<br />- Cannot mix InferencePool with AIServiceBackend references in the same rule<br />- Fallback behavior is handled by the InferencePool's endpoint picker<br />For AIServiceBackend references, you can achieve fallback behavior by configuring multiple backends<br />combined with the BackendTrafficPolicy of Envoy Gateway.<br />Please refer to https://gateway.envoyproxy.io/docs/tasks/traffic/failover/ as well as<br />https://gateway.envoyproxy.io/docs/tasks/traffic/retry/."
 /><ApiField
   name="matches"
   type="[AIGatewayRouteRuleMatch](#aigatewayrouterulematch) array"
@@ -549,6 +549,11 @@ It can reference either an AIServiceBackend or an InferencePool resource.
   type="string"
   required="true"
   description="Name is the name of the backend resource.<br />When Group and Kind are not specified, this refers to an AIServiceBackend.<br />When Group and Kind are specified, this refers to the resource of the specified type."
+/><ApiField
+  name="namespace"
+  type="[Namespace](#namespace)"
+  required="false"
+  description="Namespace is the namespace of the backend resource.<br />When unspecified (or empty string), this refers to the local namespace of the AIGatewayRoute.<br />Note that when a namespace different than the local namespace is specified,<br />a ReferenceGrant object is required in the referent namespace to allow that<br />namespace's owner to accept the reference. See the ReferenceGrant<br />documentation for details."
 /><ApiField
   name="group"
   type="string"
@@ -1574,7 +1579,12 @@ MCPRouteSecurityPolicy defines the security policy for a MCPRoute.
   name="oauth"
   type="[MCPRouteOAuth](#mcprouteoauth)"
   required="false"
-  description=""
+  description="OAuth defines the configuration for the MCP spec compatible OAuth authentication."
+/><ApiField
+  name="apiKeyAuth"
+  type="[APIKeyAuth](#apikeyauth)"
+  required="false"
+  description="APIKeyAuth defines the configuration for the API Key Authentication."
 />
 
 

@@ -230,10 +230,10 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to create metrics: %w", err)
 	}
-	chatCompletionMetrics := metrics.NewChatCompletion(meter, metricsRequestHeaderAttributes)
-	messagesMetrics := metrics.NewMessages(meter, metricsRequestHeaderAttributes)
-	completionMetrics := metrics.NewCompletion(meter, metricsRequestHeaderAttributes)
-	embeddingsMetrics := metrics.NewEmbeddings(meter, metricsRequestHeaderAttributes)
+	chatCompletionMetrics := metrics.NewChatCompletionFactory(meter, metricsRequestHeaderAttributes)
+	messagesMetrics := metrics.NewMessagesFactory(meter, metricsRequestHeaderAttributes)
+	completionMetrics := metrics.NewCompletionFactory(meter, metricsRequestHeaderAttributes)
+	embeddingsMetrics := metrics.NewEmbeddingsFactory(meter, metricsRequestHeaderAttributes)
 	mcpMetrics := metrics.NewMCP(meter, metricsRequestHeaderAttributes)
 
 	tracing, err := tracing.NewTracingFromEnv(ctx, os.Stdout, spanRequestHeaderAttributes)

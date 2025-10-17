@@ -23,6 +23,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -36,7 +37,9 @@ func TestEmbeddings_Schema(t *testing.T) {
 	})
 	t.Run("supported openai / on upstream", func(t *testing.T) {
 		cfg := &processorConfig{}
-		routeFilter, err := EmbeddingsProcessorFactory(nil)(cfg, nil, slog.Default(), tracing.NoopTracing{}, true)
+		routeFilter, err := EmbeddingsProcessorFactory(func() metrics.EmbeddingsMetrics {
+			return &mockEmbeddingsMetrics{}
+		})(cfg, nil, slog.Default(), tracing.NoopTracing{}, true)
 		require.NoError(t, err)
 		require.NotNil(t, routeFilter)
 		require.IsType(t, &embeddingsProcessorUpstreamFilter{}, routeFilter)

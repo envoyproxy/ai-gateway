@@ -81,6 +81,11 @@ func TestAIGatewayRouteRuleBackendRef_IsInferencePool(t *testing.T) {
 		expected bool
 	}{
 		{
+			name:     "Nil reference",
+			ref:      nil,
+			expected: false,
+		},
+		{
 			name: "AIServiceBackend reference (no group/kind)",
 			ref: &AIGatewayRouteRuleBackendRef{
 				Name: "test-backend",
@@ -162,6 +167,11 @@ func TestAIGatewayRouteRule_HasInferencePoolBackends(t *testing.T) {
 		expected bool
 	}{
 		{
+			name:     "Nil rule",
+			rule:     nil,
+			expected: false,
+		},
+		{
 			name: "No backends",
 			rule: &AIGatewayRouteRule{
 				BackendRefs: []AIGatewayRouteRuleBackendRef{},
@@ -222,6 +232,11 @@ func TestAIGatewayRouteRule_HasAIServiceBackends(t *testing.T) {
 		expected bool
 	}{
 		{
+			name:     "Nil rule",
+			rule:     nil,
+			expected: false,
+		},
+		{
 			name: "No backends",
 			rule: &AIGatewayRouteRule{
 				BackendRefs: []AIGatewayRouteRuleBackendRef{},
@@ -256,6 +271,110 @@ func TestAIGatewayRouteRule_HasAIServiceBackends(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.rule.HasAIServiceBackends()
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestAIGatewayRouteRuleBackendRef_GetNamespace(t *testing.T) {
+	tests := []struct {
+		name             string
+		ref              *AIGatewayRouteRuleBackendRef
+		defaultNamespace string
+		expected         string
+	}{
+		{
+			name: "No namespace specified - should use default",
+			ref: &AIGatewayRouteRuleBackendRef{
+				Name: "test-backend",
+			},
+			defaultNamespace: "default",
+			expected:         "default",
+		},
+		{
+			name: "Empty namespace specified - should use default",
+			ref: &AIGatewayRouteRuleBackendRef{
+				Name:      "test-backend",
+				Namespace: ptr.To(gwapiv1.Namespace("")),
+			},
+			defaultNamespace: "default",
+			expected:         "default",
+		},
+		{
+			name: "Specific namespace specified - should use specified namespace",
+			ref: &AIGatewayRouteRuleBackendRef{
+				Name:      "test-backend",
+				Namespace: ptr.To(gwapiv1.Namespace("other-namespace")),
+			},
+			defaultNamespace: "default",
+			expected:         "other-namespace",
+		},
+		{
+			name: "Same namespace as default - should use specified namespace",
+			ref: &AIGatewayRouteRuleBackendRef{
+				Name:      "test-backend",
+				Namespace: ptr.To(gwapiv1.Namespace("default")),
+			},
+			defaultNamespace: "default",
+			expected:         "default",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.ref.GetNamespace(tt.defaultNamespace)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestAIGatewayRouteRuleBackendRef_IsCrossNamespace(t *testing.T) {
+	tests := []struct {
+		name           string
+		ref            *AIGatewayRouteRuleBackendRef
+		routeNamespace string
+		expected       bool
+	}{
+		{
+			name: "No namespace specified - not cross-namespace",
+			ref: &AIGatewayRouteRuleBackendRef{
+				Name: "test-backend",
+			},
+			routeNamespace: "default",
+			expected:       false,
+		},
+		{
+			name: "Empty namespace specified - not cross-namespace",
+			ref: &AIGatewayRouteRuleBackendRef{
+				Name:      "test-backend",
+				Namespace: ptr.To(gwapiv1.Namespace("")),
+			},
+			routeNamespace: "default",
+			expected:       false,
+		},
+		{
+			name: "Same namespace as route - not cross-namespace",
+			ref: &AIGatewayRouteRuleBackendRef{
+				Name:      "test-backend",
+				Namespace: ptr.To(gwapiv1.Namespace("default")),
+			},
+			routeNamespace: "default",
+			expected:       false,
+		},
+		{
+			name: "Different namespace from route - is cross-namespace",
+			ref: &AIGatewayRouteRuleBackendRef{
+				Name:      "test-backend",
+				Namespace: ptr.To(gwapiv1.Namespace("other-namespace")),
+			},
+			routeNamespace: "default",
+			expected:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.ref.IsCrossNamespace(tt.routeNamespace)
 			require.Equal(t, tt.expected, result)
 		})
 	}
