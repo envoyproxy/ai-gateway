@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 func TestHeaderMutator_Mutate(t *testing.T) {
@@ -46,12 +47,18 @@ func TestHeaderMutator_Mutate(t *testing.T) {
 			"other":            "value",
 			"only-in-original": "original",
 			"in-original-too-but-previous-attempt-set": "pikachu",
+			// Envoy pseudo-header should be ignored.
+			":path": "/v1/endpoint",
+			// Internal headers should be ignored.
+			internalapi.EnvoyAIGatewayHeaderPrefix + "-foo-bar": "should-not-be-included",
 		}
 		headers := map[string]string{
 			"other":         "value",
 			"authorization": "secret",
 			"in-original-too-but-previous-attempt-set": "charmander",
 			"only-set-previously":                      "bulbasaur",
+			// Internal headers should be ignored.
+			internalapi.EnvoyAIGatewayHeaderPrefix + "-dog-cat": "should-not-be-included",
 		}
 		mutations := &filterapi.HTTPHeaderMutation{
 			Remove: []string{"authorization"},
@@ -62,6 +69,17 @@ func TestHeaderMutator_Mutate(t *testing.T) {
 
 		require.NotNil(t, mutation)
 		require.ElementsMatch(t, []string{"authorization", "only-set-previously"}, mutation.RemoveHeaders)
+		require.Len(t, mutation.SetHeaders, 5)
+		setHeadersMap := make(map[string]string)
+		for _, h := range mutation.SetHeaders {
+			setHeadersMap[h.Header.Key] = string(h.Header.RawValue)
+		}
+		require.Equal(t, "key123", setHeadersMap["x-api-key"])
+		require.Equal(t, "value", setHeadersMap["other"])
+		require.Equal(t, "secret", setHeadersMap["authorization"])
+		require.Equal(t, "original", setHeadersMap["only-in-original"])
+		require.Equal(t, "pikachu", setHeadersMap["in-original-too-but-previous-attempt-set"])
+		// Check the final headers map too.
 		require.Equal(t, "key123", headers["x-api-key"])
 		require.Equal(t, "value", headers["other"])
 		require.Equal(t, "secret", headers["authorization"])
