@@ -23,7 +23,7 @@ func TestImageGeneration_RecordTokenUsage(t *testing.T) {
 	var (
 		mr    = metric.NewManualReader()
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-		im    = NewImageGeneration(meter, nil).(*imageGeneration)
+		im    = NewImageGenerationFactory(meter, nil)().(*imageGeneration)
 
 		attrsBase = []attribute.KeyValue{
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationImageGeneration),
@@ -57,18 +57,23 @@ func TestImageGeneration_RecordImageGeneration(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		mr := metric.NewManualReader()
 		meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-		im := NewImageGeneration(meter, nil).(*imageGeneration)
+		im := NewImageGenerationFactory(meter, nil)().(*imageGeneration)
 
-		// Base attributes plus image-specific ones
-		attrs := attribute.NewSet(
+		// Base attributes for request duration metric (no image-specific attributes)
+		baseAttrs := attribute.NewSet(
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationImageGeneration),
 			attribute.Key(genaiAttributeProviderName).String(genaiProviderOpenAI),
 			attribute.Key(genaiAttributeOriginalModel).String("img-model"),
 			attribute.Key(genaiAttributeRequestModel).String("img-model"),
 			attribute.Key(genaiAttributeResponseModel).String("img-model"),
-			attribute.Key("gen_ai.image.count").Int(2),
-			attribute.Key("gen_ai.image.model").String("img-model"),
-			attribute.Key("gen_ai.image.size").String("1024x1024"),
+		)
+		// Extended attributes for image-info metric
+		imageAttrs := attribute.NewSet(
+			append(baseAttrs.ToSlice(),
+				attribute.Key(genaiAttributeImageCount).Int(2),
+				attribute.Key(genaiAttributeImageModel).String("img-model"),
+				attribute.Key(genaiAttributeImageSize).String("1024x1024"),
+			)...,
 		)
 
 		im.StartRequest(nil)
@@ -80,9 +85,14 @@ func TestImageGeneration_RecordImageGeneration(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 		im.RecordImageGeneration(t.Context(), 2, "img-model", "1024x1024", nil)
 
-		count, sum := getHistogramValues(t, mr, genaiMetricServerRequestDuration, attrs)
+		count, sum := getHistogramValues(t, mr, genaiMetricServerRequestDuration, baseAttrs)
 		assert.Equal(t, uint64(1), count)
 		assert.Equal(t, 10*time.Millisecond.Seconds(), sum)
+
+		// Verify the auxiliary image-info metric captured the image-specific attributes
+		count, sum = getHistogramValues(t, mr, "ai_gateway.image.generation", imageAttrs)
+		assert.Equal(t, uint64(1), count)
+		assert.Equal(t, 1.0, sum)
 	})
 }
 
@@ -92,7 +102,7 @@ func TestImageGeneration_HeaderLabelMapping(t *testing.T) {
 		mr            = metric.NewManualReader()
 		meter         = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
 		headerMapping = map[string]string{"x-user-id": "user_id", "x-org-id": "org_id"}
-		im            = NewImageGeneration(meter, headerMapping).(*imageGeneration)
+		im            = NewImageGenerationFactory(meter, headerMapping)().(*imageGeneration)
 	)
 
 	requestHeaders := map[string]string{

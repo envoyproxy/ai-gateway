@@ -19,6 +19,9 @@ import (
 // imageGeneration is the implementation for the image generation AI Gateway metrics.
 type imageGeneration struct {
 	baseMetrics
+	// imageInfo records a unit-less sample with image-specific attributes
+	// so we can attach size/model/count without affecting request duration semantics.
+	imageInfo metric.Float64Histogram
 }
 
 // ImageGenerationMetrics is the interface for the image generation AI Gateway metrics.
@@ -44,10 +47,21 @@ type ImageGenerationMetrics interface {
 	RecordImageGeneration(ctx context.Context, imageCount int, model, size string, requestHeaderLabelMapping map[string]string)
 }
 
-// NewImageGeneration creates a new ImageGenerationMetrics instance.
-func NewImageGeneration(meter metric.Meter, requestHeaderLabelMapping map[string]string) ImageGenerationMetrics {
-	return &imageGeneration{
-		baseMetrics: newBaseMetrics(meter, genaiOperationImageGeneration, requestHeaderLabelMapping),
+// ImageGenerationMetricsFactory is a closure that creates a new ImageGenerationMetrics instance.
+type ImageGenerationMetricsFactory func() ImageGenerationMetrics
+
+// NewImageGenerationFactory returns a closure to create a new ImageGenerationMetrics instance.
+func NewImageGenerationFactory(meter metric.Meter, requestHeaderLabelMapping map[string]string) ImageGenerationMetricsFactory {
+	b := baseMetricsFactory{metrics: newGenAI(meter), requestHeaderAttributeMapping: requestHeaderLabelMapping}
+	return func() ImageGenerationMetrics {
+		return &imageGeneration{
+			baseMetrics: b.newBaseMetrics(genaiOperationImageGeneration),
+			imageInfo: mustRegisterHistogram(
+				meter,
+				"ai_gateway.image.generation",
+				metric.WithDescription("Image generation request marker with image-specific attributes"),
+			),
+		}
 	}
 }
 
@@ -91,8 +105,11 @@ func (i *imageGeneration) RecordTokenUsage(ctx context.Context, inputTokens, out
 // RecordImageGeneration implements [ImageGeneration.RecordImageGeneration].
 func (i *imageGeneration) RecordImageGeneration(ctx context.Context, imageCount int, model, size string, requestHeaders map[string]string) {
 	attrs := i.buildBaseAttributes(requestHeaders)
+	// Record request duration with base attributes only for consistency with other operations/tests.
+	i.metrics.requestLatency.Record(ctx, time.Since(i.requestStart).Seconds(), metric.WithAttributeSet(attrs))
 
-	// Add image-specific attributes
+	// Record a unit-less sample carrying image-specific attributes for observability.
+	// This avoids modifying the base duration metric's attribute set.
 	extendedAttrs := attribute.NewSet(
 		append(attrs.ToSlice(),
 			attribute.Key(genaiAttributeImageCount).Int(imageCount),
@@ -100,9 +117,7 @@ func (i *imageGeneration) RecordImageGeneration(ctx context.Context, imageCount 
 			attribute.Key(genaiAttributeImageSize).String(size),
 		)...,
 	)
-
-	// Record image generation metrics
-	i.metrics.requestLatency.Record(ctx, time.Since(i.requestStart).Seconds(), metric.WithAttributeSet(extendedAttrs))
+	i.imageInfo.Record(ctx, 1, metric.WithAttributeSet(extendedAttrs))
 }
 
 // GetTimeToGenerate returns the time taken to generate images.

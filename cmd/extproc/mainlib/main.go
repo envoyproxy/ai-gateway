@@ -234,7 +234,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	messagesMetrics := metrics.NewMessagesFactory(meter, metricsRequestHeaderAttributes)
 	completionMetrics := metrics.NewCompletionFactory(meter, metricsRequestHeaderAttributes)
 	embeddingsMetrics := metrics.NewEmbeddingsFactory(meter, metricsRequestHeaderAttributes)
-	imageGenerationMetrics := metrics.NewImageGeneration(meter, metricsRequestHeaderAttributes)
+	imageGenerationMetrics := metrics.NewImageGenerationFactory(meter, metricsRequestHeaderAttributes)()
 
 	mcpMetrics := metrics.NewMCP(meter, metricsRequestHeaderAttributes)
 
