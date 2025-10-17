@@ -1007,7 +1007,10 @@ data: {"type":"message_stop"       }
 				}
 				defer func() { _ = resp.Body.Close() }()
 
-				failIf5xx(t, resp, &was5xx)
+				// Only fail-fast on unexpected 5xx. Some test cases intentionally expect 5xx.
+				if tc.expStatus < http.StatusInternalServerError {
+					failIf5xx(t, resp, &was5xx)
+				}
 
 				lastBody, lastErr = io.ReadAll(resp.Body)
 				if lastErr != nil {
