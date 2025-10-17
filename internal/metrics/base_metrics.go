@@ -16,6 +16,23 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
+type baseMetricsFactory struct {
+	metrics                       *genAI
+	requestHeaderAttributeMapping map[string]string // maps HTTP headers to metric attribute names.
+}
+
+func (f *baseMetricsFactory) newBaseMetrics(operation string) baseMetrics {
+	return baseMetrics{
+		metrics:                       f.metrics,
+		operation:                     operation,
+		originalModel:                 "unknown",
+		requestModel:                  "unknown",
+		responseModel:                 "unknown",
+		backend:                       "unknown",
+		requestHeaderAttributeMapping: f.requestHeaderAttributeMapping,
+	}
+}
+
 // baseMetrics provides shared functionality for AI Gateway metrics implementations.
 type baseMetrics struct {
 	metrics      *genAI
@@ -29,19 +46,6 @@ type baseMetrics struct {
 	responseModel                 string
 	backend                       string
 	requestHeaderAttributeMapping map[string]string // maps HTTP headers to metric attribute names.
-}
-
-// newBaseMetrics creates a new baseMetrics instance with the specified operation.
-func newBaseMetrics(meter metric.Meter, operation string, requestHeaderAttributeMapping map[string]string) baseMetrics {
-	return baseMetrics{
-		metrics:                       newGenAI(meter),
-		operation:                     operation,
-		originalModel:                 "unknown",
-		requestModel:                  "unknown",
-		responseModel:                 "unknown",
-		backend:                       "unknown",
-		requestHeaderAttributeMapping: requestHeaderAttributeMapping,
-	}
 }
 
 // StartRequest initializes timing for a new request.

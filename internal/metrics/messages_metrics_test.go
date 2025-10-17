@@ -15,7 +15,7 @@ import (
 func TestNewMessages(t *testing.T) {
 	mr := metric.NewManualReader()
 	meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-	pm, ok := NewMessages(meter, nil).(*chatCompletion)
+	pm, ok := NewMessagesFactory(meter, nil)().(*chatCompletion)
 	require.True(t, ok)
 	require.NotNil(t, pm)
 	require.NotNil(t, pm.baseMetrics)
