@@ -28,7 +28,7 @@ import (
 )
 
 // EmbeddingsProcessorFactory returns a factory method to instantiate the embeddings processor.
-func EmbeddingsProcessorFactory(em metrics.EmbeddingsMetrics) ProcessorFactory {
+func EmbeddingsProcessorFactory(f metrics.EmbeddingsMetricsFactory) ProcessorFactory {
 	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "embeddings", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
@@ -43,7 +43,7 @@ func EmbeddingsProcessorFactory(em metrics.EmbeddingsMetrics) ProcessorFactory {
 			config:         config,
 			requestHeaders: requestHeaders,
 			logger:         logger,
-			metrics:        em,
+			metrics:        f(),
 		}, nil
 	}
 }

@@ -19,7 +19,7 @@ import (
 func TestEmbeddings_RecordTokenUsage(t *testing.T) {
 	mr := sdkmetric.NewManualReader()
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
-	em := NewEmbeddings(meter, nil).(*embeddings)
+	em := NewEmbeddingsFactory(meter, nil)().(*embeddings)
 
 	attrs := []attribute.KeyValue{
 		attribute.Key(genaiAttributeOperationName).String(genaiOperationEmbedding),
@@ -45,7 +45,7 @@ func TestEmbeddings_RecordTokenUsage(t *testing.T) {
 func TestEmbeddings_RecordTokenUsage_MultipleRecords(t *testing.T) {
 	mr := sdkmetric.NewManualReader()
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
-	em := NewEmbeddings(meter, nil).(*embeddings)
+	em := NewEmbeddingsFactory(meter, nil)().(*embeddings)
 
 	em.SetOriginalModel("text-embedding-3-small")
 	em.SetRequestModel("text-embedding-3-small")
@@ -85,7 +85,7 @@ func TestEmbeddings_HeaderLabelMapping(t *testing.T) {
 		"x-api-key":   "api_key",
 	}
 
-	em := NewEmbeddings(meter, headerMapping).(*embeddings)
+	em := NewEmbeddingsFactory(meter, headerMapping)().(*embeddings)
 
 	// Test with headers that should be mapped.
 	requestHeaders := map[string]string{
@@ -122,7 +122,7 @@ func TestEmbeddings_HeaderLabelMapping(t *testing.T) {
 func TestEmbeddings_Labels_SetModel_RequestAndResponseDiffer(t *testing.T) {
 	mr := sdkmetric.NewManualReader()
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
-	em := NewEmbeddings(meter, nil).(*embeddings)
+	em := NewEmbeddingsFactory(meter, nil)().(*embeddings)
 
 	em.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 	em.SetOriginalModel("orig-embed")

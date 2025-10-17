@@ -29,7 +29,7 @@ import (
 )
 
 // CompletionsProcessorFactory returns a factory method to instantiate the completions processor.
-func CompletionsProcessorFactory(cm metrics.CompletionMetrics) ProcessorFactory {
+func CompletionsProcessorFactory(f metrics.CompletionMetricsFactory) ProcessorFactory {
 	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "completions", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
@@ -38,14 +38,14 @@ func CompletionsProcessorFactory(cm metrics.CompletionMetrics) ProcessorFactory 
 				tracer:         tracing.CompletionTracer(),
 				requestHeaders: requestHeaders,
 				logger:         logger,
-				metrics:        cm,
+				metrics:        f(),
 			}, nil
 		}
 		return &completionsProcessorUpstreamFilter{
 			config:         config,
 			requestHeaders: requestHeaders,
 			logger:         logger,
-			metrics:        cm,
+			metrics:        f(),
 		}, nil
 	}
 }
