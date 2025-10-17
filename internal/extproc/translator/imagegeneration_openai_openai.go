@@ -33,7 +33,9 @@ type openAIToOpenAIImageGenerationTranslator struct {
 	// The path of the images generations endpoint to be used for the request. It is prefixed with the OpenAI path prefix.
 	path string
 	// span is the tracing span for this request, inherited from the router filter.
-	span         tracing.ImageGenerationSpan
+	span tracing.ImageGenerationSpan
+	// requestModel stores the effective model for this request (override or provided)
+	// so we can attribute metrics later; the OpenAI Images response omits a model field.
 	requestModel internalapi.RequestModel
 }
 
@@ -49,6 +51,8 @@ func (o *openAIToOpenAIImageGenerationTranslator) RequestBody(original []byte, p
 			return nil, nil, fmt.Errorf("failed to set model name: %w", err)
 		}
 	}
+	// Persist the effective model used. The Images endpoint omits model in responses,
+	// so we derive it from the request (or override) for downstream metrics.
 	o.requestModel = cmp.Or(o.modelNameOverride, p.Model)
 
 	// Always set the path header to the images generations endpoint so that the request is routed correctly.
@@ -84,39 +88,42 @@ func (o *openAIToOpenAIImageGenerationTranslator) ResponseError(respHeaders map[
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
 	statusCode := respHeaders[statusHeaderName]
-	if v, ok := respHeaders[contentTypeHeaderName]; ok && v != jsonContentType {
-		var openaiError ImageGenerationError
-		buf, err := io.ReadAll(body)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to read error body: %w", err)
-		}
-		openaiError = ImageGenerationError{
-			Error: struct {
-				Type    string  `json:"type"`
-				Message string  `json:"message"`
-				Code    *string `json:"code,omitempty"`
-				Param   *string `json:"param,omitempty"`
-			}{
-				Type:    openAIBackendError,
-				Message: string(buf),
-				Code:    &statusCode,
-			},
-		}
-		mut := &extprocv3.BodyMutation_Body{}
-		mut.Body, err = json.Marshal(openaiError)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to marshal error body: %w", err)
-		}
-		headerMutation = &extprocv3.HeaderMutation{}
-		// Ensure downstream sees a JSON error payload
-		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{Header: &corev3.HeaderValue{
-			Key:      contentTypeHeaderName,
-			RawValue: []byte(jsonContentType),
-		}})
-		setContentLength(headerMutation, mut.Body)
-		return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, nil
+	// Read the upstream error body regardless of content-type. Some backends may mislabel it.
+	buf, err := io.ReadAll(body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read error body: %w", err)
 	}
-	return nil, nil, nil
+	// If upstream already returned JSON, preserve it as-is.
+	var js map[string]any
+	if json.Unmarshal(buf, &js) == nil {
+		return nil, nil, nil
+	}
+	// Otherwise, wrap the plain-text (or non-JSON) error into OpenAI Images error schema.
+	openaiError := ImageGenerationError{
+		Error: struct {
+			Type    string  `json:"type"`
+			Message string  `json:"message"`
+			Code    *string `json:"code,omitempty"`
+			Param   *string `json:"param,omitempty"`
+		}{
+			Type:    openAIBackendError,
+			Message: string(buf),
+			Code:    &statusCode,
+		},
+	}
+	mut := &extprocv3.BodyMutation_Body{}
+	mut.Body, err = json.Marshal(openaiError)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to marshal error body: %w", err)
+	}
+	headerMutation = &extprocv3.HeaderMutation{}
+	// Ensure downstream sees a JSON error payload
+	headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{Header: &corev3.HeaderValue{
+		Key:      contentTypeHeaderName,
+		RawValue: []byte(jsonContentType),
+	}})
+	setContentLength(headerMutation, mut.Body)
+	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, nil
 }
 
 // ResponseHeaders implements [ImageGenerationTranslator.ResponseHeaders].
