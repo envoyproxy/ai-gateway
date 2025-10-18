@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -275,8 +276,11 @@ func requireEnvoy(t testing.TB,
 		// Add debug logging for http.
 		"--component-log-level", "http:debug",
 	)
-	// Use the existing environment for func-e.
-	cmd.Env = os.Environ()
+	// func-e will use the version specified in the project root's .envoy-version file.
+	cmd.Dir = internaltesting.FindProjectRoot()
+	version, err := os.ReadFile(filepath.Join(cmd.Dir, ".envoy-version"))
+	require.NoError(t, err)
+	t.Logf("Starting Envoy version %s", strings.TrimSpace(string(version)))
 	cmd.WaitDelay = 3 * time.Second // auto-kill after 3 seconds.
 	t.Cleanup(func() {
 		defer cancel()
