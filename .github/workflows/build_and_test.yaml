@@ -167,8 +167,6 @@ jobs:
           TEST_SAMBANOVA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_SAMBANOVA_API_KEY }}
           TEST_DEEPINFRA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_DEEPINFRA_API_KEY }}
           TEST_GITHUB_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # This will be picked up by func-e to run the specified Envoy version.
-          ENVOY_VERSION: 1.36.0
         run: make test-extproc
 
   test_e2e:
