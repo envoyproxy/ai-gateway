@@ -59,9 +59,7 @@ var (
 		Region:      "gcp-region",
 		ProjectName: "gcp-project-name",
 	}}}
-	// This always failing backend is configured to have AWS Bedrock schema so that
-	// we can test that the extproc can fallback to the different schema. E.g. Primary AWS and then OpenAI.
-	alwaysFailingBackend = filterapi.Backend{Name: "always-failing-backend", Schema: awsBedrockSchema}
+	alwaysFailingBackend = filterapi.Backend{Name: "always-failing-backend", Schema: openAISchema}
 
 	// envoyConfig is the embedded Envoy configuration template.
 	//
