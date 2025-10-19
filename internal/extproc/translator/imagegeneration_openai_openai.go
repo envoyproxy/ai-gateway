@@ -94,8 +94,7 @@ func (o *openAIToOpenAIImageGenerationTranslator) ResponseError(respHeaders map[
 		return nil, nil, fmt.Errorf("failed to read error body: %w", err)
 	}
 	// If upstream already returned JSON, preserve it as-is.
-	var js map[string]any
-	if json.Unmarshal(buf, &js) == nil {
+	if json.Valid(buf) {
 		return nil, nil, nil
 	}
 	// Otherwise, wrap the plain-text (or non-JSON) error into OpenAI Images error schema.
@@ -135,16 +134,10 @@ func (o *openAIToOpenAIImageGenerationTranslator) ResponseHeaders(map[string]str
 func (o *openAIToOpenAIImageGenerationTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, imageMetadata ImageGenerationMetadata, err error,
 ) {
-	// Read the entire response body first to debug any issues
-	bodyBytes, err := io.ReadAll(body)
-	if err != nil {
-		return nil, nil, tokenUsage, imageMetadata, fmt.Errorf("failed to read response body: %w", err)
-	}
-
 	// Decode using OpenAI SDK v2 schema to avoid drift.
 	resp := &openaisdk.ImagesResponse{}
-	if err := json.Unmarshal(bodyBytes, &resp); err != nil {
-		return nil, nil, tokenUsage, imageMetadata, fmt.Errorf("failed to unmarshal body: %w", err)
+	if err := json.NewDecoder(body).Decode(&resp); err != nil {
+		return nil, nil, tokenUsage, imageMetadata, fmt.Errorf("failed to decode response body: %w", err)
 	}
 
 	// Populate token usage if provided (GPT-Image-1); otherwise remain zero.
