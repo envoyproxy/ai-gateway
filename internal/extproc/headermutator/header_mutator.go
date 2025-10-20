@@ -39,8 +39,7 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) *extproc
 	// Removes sensitive headers before sending to backend.
 	removedHeadersSet := make(map[string]struct{})
 	if !skipRemove {
-		for _, h := range h.headerMutations.Remove {
-			key := strings.ToLower(h)
+		for _, key := range h.headerMutations.Remove {
 			if shouldIgnoreHeader(key) {
 				continue
 			}
@@ -48,7 +47,7 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) *extproc
 			if _, ok := headers[key]; ok {
 				// Do NOT delete from the local headers map so metrics can still read it.
 				// Instead, always instruct Envoy to remove it before forwarding upstream.
-				headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, h)
+				headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, key)
 			}
 		}
 	}
@@ -57,7 +56,7 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) *extproc
 	setHeadersSet := make(map[string]struct{})
 	if !skipSet {
 		for _, h := range h.headerMutations.Set {
-			key := strings.ToLower(h.Name)
+			key := h.Name
 			if shouldIgnoreHeader(key) {
 				continue
 			}
@@ -71,8 +70,7 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) *extproc
 
 	if onRetry {
 		// Restore original headers on retry, only if not being removed, set or not already present.
-		for h, v := range h.originalHeaders {
-			key := strings.ToLower(h)
+		for key, v := range h.originalHeaders {
 			if shouldIgnoreHeader(key) {
 				continue
 			}
@@ -80,17 +78,16 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) *extproc
 			_, isSet := setHeadersSet[key]
 			_, exists := headers[key]
 			if !isRemoved && !exists && !isSet {
-				headers[h] = v
+				headers[key] = v
 				setHeadersSet[key] = struct{}{}
 				headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
-					Header: &corev3.HeaderValue{Key: h, RawValue: []byte(v)},
+					Header: &corev3.HeaderValue{Key: key, RawValue: []byte(v)},
 				})
 			}
 		}
 		// 1. Remove any headers that were added in the previous attempt (not part of original headers and not being set now).
 		// 2. Restore any original headers that were modified in the previous attempt (and not being set now).
 		for key := range headers {
-			key = strings.ToLower(key)
 			if shouldIgnoreHeader(key) {
 				continue
 			}

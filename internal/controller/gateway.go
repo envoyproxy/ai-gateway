@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -167,9 +168,12 @@ func headerMutationToFilterAPI(m *aigv1a1.HTTPHeaderMutation) *filterapi.HTTPHea
 		return nil
 	}
 	ret := &filterapi.HTTPHeaderMutation{}
-	ret.Remove = append(ret.Remove, m.Remove...)
+	ret.Remove = make([]string, 0, len(m.Remove))
+	for _, h := range m.Remove {
+		ret.Remove = append(ret.Remove, strings.ToLower(h))
+	}
 	for _, h := range m.Set {
-		ret.Set = append(ret.Set, filterapi.HTTPHeader{Name: string(h.Name), Value: h.Value})
+		ret.Set = append(ret.Set, filterapi.HTTPHeader{Name: strings.ToLower(string(h.Name)), Value: h.Value})
 	}
 	return ret
 }
