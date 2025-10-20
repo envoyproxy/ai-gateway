@@ -699,7 +699,7 @@ func TestEmbeddingsProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *tes
 		require.NotNil(t, restoredHeader)
 		require.Equal(t, []byte("original-value"), restoredHeader.Header.RawValue)
 		require.Equal(t, "original-value", testHeaders["x-custom"])
-		// x-existing should not be restored because it already exists.
+		// x-existing should be equal to existing-value from original headers.
 		require.Equal(t, "existing-value", testHeaders["x-existing"])
 	})
 }

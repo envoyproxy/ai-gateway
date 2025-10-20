@@ -929,7 +929,7 @@ func TestMessagesProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *testi
 
 		// Test retry scenario - original headers should be restored.
 		testHeaders := map[string]string{
-			"x-existing": "current-value",
+			"x-existing": "previously-set-value",
 		}
 		mutation := p.headerMutator.Mutate(testHeaders, true) // onRetry = true.
 
@@ -948,7 +948,7 @@ func TestMessagesProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *testi
 		require.NotNil(t, restoredHeader)
 		require.Equal(t, []byte("original-value"), restoredHeader.Header.RawValue)
 		require.Equal(t, "original-value", testHeaders["x-custom"])
-		// x-existing should not be restored because it already exists.
+		// x-existing should be equal to existing-value from original headers.
 		require.Equal(t, "existing-value", testHeaders["x-existing"])
 	})
 }

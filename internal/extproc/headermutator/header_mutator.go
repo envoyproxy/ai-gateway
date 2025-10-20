@@ -16,7 +16,7 @@ import (
 )
 
 type HeaderMutator struct {
-	// getOriginalHeaders Callback to get removed sensitive headers from the router filter.
+	// originalHeaders is a map of original headers inherited from the router processor.
 	originalHeaders map[string]string
 
 	// headerMutations is a list of header mutations to apply.
@@ -94,7 +94,7 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) *extproc
 			if shouldIgnoreHeader(key) {
 				continue
 			}
-			if _, set := setHeadersSet[key]; set {
+			if _, isSet := setHeadersSet[key]; isSet {
 				continue
 			}
 			originalValue, exists := h.originalHeaders[key]
