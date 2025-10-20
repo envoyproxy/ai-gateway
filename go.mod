@@ -1,7 +1,7 @@
 module github.com/envoyproxy/ai-gateway
 
 // Explicitly specify the Go patch version to be able to purge the CI cache correctly.
-go 1.25.2
+go 1.25.3
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.19.1
@@ -17,7 +17,7 @@ require (
 	github.com/cncf/xds/go v0.0.0-20250501225837-2ac532fd4443
 	github.com/coreos/go-oidc/v3 v3.16.0
 	github.com/docker/docker v28.5.1+incompatible
-	github.com/envoyproxy/gateway v0.5.0-rc.1.0.20251010174025-c7cc6ceff4ca
+	github.com/envoyproxy/gateway v0.5.0-rc.1.0.20251020052851-16aa8100498d
 	github.com/envoyproxy/go-control-plane v0.13.5-0.20250929230642-07d3df27ff4f
 	github.com/envoyproxy/go-control-plane/envoy v1.35.1-0.20250929230642-07d3df27ff4f
 	github.com/go-logr/logr v1.4.3
@@ -112,7 +112,7 @@ require (
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/distribution/reference v0.6.0 // indirect
-	github.com/docker/cli v28.5.0+incompatible // indirect
+	github.com/docker/cli v28.5.1+incompatible // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.3 // indirect
 	github.com/docker/go-connections v0.6.0 // indirect
