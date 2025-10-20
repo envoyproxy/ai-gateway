@@ -209,12 +209,14 @@ type HTTPHeaderMutation struct {
 	Set []HTTPHeader `json:"set,omitempty"`
 	// Remove the given header(s) from the HTTP request before the action. The
 	// value of Remove is a list of HTTP header names.
+	// This is always ensured to be lower-cased like Envoy does internally.
 	Remove []string `json:"remove,omitempty"`
 }
 
 // HTTPHeader represents an HTTP Header name and value as defined by RFC 7230.
 type HTTPHeader struct {
 	// Name is the name of the HTTP Header to be matched.
+	// This is always ensured to be lower-cased like Envoy does internally.
 	Name string `json:"name"`
 	// Value is the value of HTTP Header to be matched.
 	Value string `json:"value"`

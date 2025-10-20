@@ -262,8 +262,8 @@ func requireEnvoy(t testing.TB,
 		"--concurrency", strconv.Itoa(max(runtime.NumCPU(), 2)),
 		// This allows multiple Envoy instances to run in parallel.
 		"--base-id", strconv.Itoa(time.Now().Nanosecond()),
-		// Add debug logging for extproc.
-		"--component-log-level", "ext_proc:trace,http:debug,connection:debug",
+		// Add debug logging for http.
+		"--component-log-level", "http:debug",
 	)
 
 	// wait for the ready message or exit.

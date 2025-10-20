@@ -61,10 +61,6 @@ func TestWithTestUpstream(t *testing.T) {
 			testUpstreamAzureBackend,
 			testUpstreamGCPVertexAIBackend,
 			testUpstreamGCPAnthropicAIBackend,
-			// TODO: this shouldn't be needed. The previous per-backend headers shouldn't affect the subsequent retries.
-			{Name: "testupstream-openai-always-200", Schema: openAISchema, HeaderMutation: &filterapi.HTTPHeaderMutation{
-				Set: []filterapi.HTTPHeader{{Name: testupstreamlib.ResponseStatusKey, Value: "200"}},
-			}},
 			{
 				Name: "testupstream-openai-5xx", Schema: openAISchema, HeaderMutation: &filterapi.HTTPHeaderMutation{
 					Set: []filterapi.HTTPHeader{{Name: testupstreamlib.ResponseStatusKey, Value: "500"}},

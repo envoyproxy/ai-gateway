@@ -461,7 +461,7 @@ static_resources:
                 metadata:
                   filter_metadata:
                     aigateway.envoy.io:
-                      per_route_rule_backend_name: "testupstream-openai-always-200"
+                      per_route_rule_backend_name: "testupstream-openai"
             priority: 1 # Secondary.
     - name: testupstream-modelname-override
       connect_timeout: 0.25s
