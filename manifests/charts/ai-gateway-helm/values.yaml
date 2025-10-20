@@ -32,6 +32,9 @@ extProc:
   ##     value: "ai-gateway-extproc"
   ##   - name: OTEL_TRACES_EXPORTER
   ##     value: "otlp"
+  ##   # This enables pprof endpoint at "localhost:6060/debug/pprof" that can be accessed via port-forwarding for profiling.
+  ##   - name: ENABLE_PPROF
+  ##     value: "true"
   ##
   extraEnvVars: []
 

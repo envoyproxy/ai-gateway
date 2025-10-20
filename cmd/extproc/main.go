@@ -8,6 +8,8 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -17,6 +19,16 @@ import (
 )
 
 func main() {
+	// Run the pprof server if the ENABLE_PPROF environment variable is set to true.
+	if os.Getenv("ENABLE_PPROF") != "" {
+		go func() {
+			pprofPort := "6060" // default pprof port
+			if err := http.ListenAndServe("localhost:"+pprofPort, nil); err != nil {
+				log.Printf("pprof server failed to start: %v", err)
+			}
+		}()
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	signalsChan := make(chan os.Signal, 1)
 	signal.Notify(signalsChan, syscall.SIGINT, syscall.SIGTERM)
