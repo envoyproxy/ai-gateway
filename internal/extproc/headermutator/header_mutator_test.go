@@ -32,8 +32,9 @@ func TestHeaderMutator_Mutate(t *testing.T) {
 		require.Len(t, mutation.SetHeaders, 1)
 		require.Equal(t, "x-new-header", mutation.SetHeaders[0].Header.Key)
 		require.Equal(t, []byte("newval"), mutation.SetHeaders[0].Header.RawValue)
-		require.NotContains(t, headers, "authorization")
-		require.NotContains(t, headers, "x-api-key")
+		// Sensitive headers remain locally for metrics, but will be stripped upstream by Envoy.
+		require.Equal(t, "secret", headers["authorization"])
+		require.Equal(t, "key123", headers["x-api-key"])
 		require.Equal(t, "newval", headers["x-new-header"])
 		require.Equal(t, "value", headers["other"])
 	})
@@ -46,7 +47,7 @@ func TestHeaderMutator_Mutate(t *testing.T) {
 		}
 		headers := map[string]string{
 			"other":         "value",
-			"authorization": "key123",
+			"authorization": "secret",
 		}
 		mutations := &filterapi.HTTPHeaderMutation{
 			Remove: []string{"authorization"},
@@ -59,7 +60,6 @@ func TestHeaderMutator_Mutate(t *testing.T) {
 		require.ElementsMatch(t, []string{"authorization"}, mutation.RemoveHeaders)
 		require.Equal(t, "key123", headers["x-api-key"])
 		require.Equal(t, "value", headers["other"])
-		// authorization should not be restored since it's in Remove.
-		require.NotContains(t, headers, "authorization")
+		require.Equal(t, "secret", headers["authorization"])
 	})
 }

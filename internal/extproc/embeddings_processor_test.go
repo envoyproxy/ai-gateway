@@ -550,8 +550,9 @@ func TestEmbeddingsProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutat
 
 		// Check that headers were modified in the request headers.
 		require.Equal(t, "new-value", headers["x-new-header"])
-		require.NotContains(t, headers, "authorization")
-		require.NotContains(t, headers, "x-api-key")
+		// Sensitive headers remain locally for metrics, but will be stripped upstream by Envoy.
+		require.Equal(t, "bearer token123", headers["authorization"])
+		require.Equal(t, "secret-key", headers["x-api-key"])
 		// x-custom remains unchanged since it wasn't in the mutations.
 		require.Equal(t, "custom-value", headers["x-custom"])
 	})
