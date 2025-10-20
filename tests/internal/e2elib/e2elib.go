@@ -24,10 +24,10 @@ import (
 	"testing"
 	"time"
 
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/singleflight"
 
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 )
 
