@@ -46,8 +46,8 @@ func Test_Examples_ProviderFallback(t *testing.T) {
 	require.NoError(t, e2elib.KubectlApplyManifestStdin(t.Context(), replaced))
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
 	t.Cleanup(func() {
-		_ = e2elib.KubectlDeleteManifest(t.Context(), baseManifest)
-		_ = e2elib.KubectlDeleteManifest(t.Context(), fallbackManifest)
+		_ = e2elib.KubectlDeleteManifest(context.Background(), baseManifest)
+		_ = e2elib.KubectlDeleteManifest(context.Background(), fallbackManifest)
 	})
 
 	const body = `{"model": "us.meta.llama3-2-1b-instruct-v1:0","messages": [{"role": "user", "content": "Say this is a test!"}],"temperature": 0.7}`

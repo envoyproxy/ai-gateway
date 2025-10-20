@@ -21,8 +21,6 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
-	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
-	gwapiv1a3 "sigs.k8s.io/gateway-api/apis/v1alpha3"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -132,13 +130,13 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 				},
 			},
 			extraObjs: []client.Object{
-				&gwapiv1a3.BackendTLSPolicy{
+				&gwapiv1.BackendTLSPolicy{
 					ObjectMeta: metav1.ObjectMeta{Name: "non-matching-backend-tls", Namespace: "default"},
-					Spec: gwapiv1a3.BackendTLSPolicySpec{
-						Validation: gwapiv1a3.BackendTLSPolicyValidation{Hostname: gwapiv1.PreciseHostname("example.com")},
-						TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+					Spec: gwapiv1.BackendTLSPolicySpec{
+						Validation: gwapiv1.BackendTLSPolicyValidation{Hostname: gwapiv1.PreciseHostname("example.com")},
+						TargetRefs: []gwapiv1.LocalPolicyTargetReferenceWithSectionName{
 							{
-								LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
+								LocalPolicyTargetReference: gwapiv1.LocalPolicyTargetReference{
 									Group: "gateway.envoyproxy.io/v1alpha1",
 									Kind:  "Backend",
 									Name:  "non-matching-backend",
@@ -147,13 +145,13 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 						},
 					},
 				},
-				&gwapiv1a3.BackendTLSPolicy{
+				&gwapiv1.BackendTLSPolicy{
 					ObjectMeta: metav1.ObjectMeta{Name: "jwks-backend-tls", Namespace: "default"},
-					Spec: gwapiv1a3.BackendTLSPolicySpec{
-						Validation: gwapiv1a3.BackendTLSPolicyValidation{Hostname: gwapiv1.PreciseHostname(serverURL.Hostname())},
-						TargetRefs: []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+					Spec: gwapiv1.BackendTLSPolicySpec{
+						Validation: gwapiv1.BackendTLSPolicyValidation{Hostname: gwapiv1.PreciseHostname(serverURL.Hostname())},
+						TargetRefs: []gwapiv1.LocalPolicyTargetReferenceWithSectionName{
 							{
-								LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
+								LocalPolicyTargetReference: gwapiv1.LocalPolicyTargetReference{
 									Group: "gateway.envoyproxy.io/v1alpha1",
 									Kind:  "Backend",
 									Name:  "jwks-backend",
