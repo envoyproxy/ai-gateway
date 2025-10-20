@@ -25,8 +25,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
-	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
-	gwapiv1a3 "sigs.k8s.io/gateway-api/apis/v1alpha3"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -158,9 +156,9 @@ func (c *MCPRouteController) ensureSecurityPolicy(ctx context.Context, mcpRoute 
 	// support it yet, we currently do not set the sectionName to avoid compatibility issues.
 	// The jwt and API key auth filter will be removed from backend routes in the extension server.
 	// TODO: use sectionName to target the MCP proxy rule only when the HTTPRouteRule name is in stable channel.
-	securityPolicySpec.TargetRefs = []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+	securityPolicySpec.TargetRefs = []gwapiv1.LocalPolicyTargetReferenceWithSectionName{
 		{
-			LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
+			LocalPolicyTargetReference: gwapiv1.LocalPolicyTargetReference{
 				Group: "gateway.networking.k8s.io",
 				Kind:  "HTTPRoute",
 				Name:  gwapiv1.ObjectName(httpRouteName),
@@ -246,9 +244,9 @@ func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataBTP(ctx context
 	}
 
 	// Target the HTTPRoute MCP proxy rule only.
-	backendTrafficPolicy.Spec.TargetRefs = []gwapiv1a2.LocalPolicyTargetReferenceWithSectionName{
+	backendTrafficPolicy.Spec.TargetRefs = []gwapiv1.LocalPolicyTargetReferenceWithSectionName{
 		{
-			LocalPolicyTargetReference: gwapiv1a2.LocalPolicyTargetReference{
+			LocalPolicyTargetReference: gwapiv1.LocalPolicyTargetReference{
 				Group: "gateway.networking.k8s.io",
 				Kind:  "HTTPRoute",
 				Name:  gwapiv1.ObjectName(httpRouteName),
@@ -696,7 +694,7 @@ func (c *MCPRouteController) discoverJWKSURI(issuer string) (string, error) {
 
 // tryGetBackendsForJWKS attempts to find a BackendCluster that can reach the given JWKS URL.
 func (c *MCPRouteController) tryGetBackendsForJWKS(ctx context.Context, jwksURL string) ([]egv1a1.BackendRef, error) {
-	var backendTLSPolicies gwapiv1a3.BackendTLSPolicyList
+	var backendTLSPolicies gwapiv1.BackendTLSPolicyList
 	if err := c.client.List(ctx, &backendTLSPolicies); err != nil {
 		return nil, fmt.Errorf("failed to list BackendTLSPolicy: %w", err)
 	}

@@ -132,11 +132,11 @@ func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFi
 
 // originalPathHeader is the header used to pass the original path to the processor.
 // This is used in the upstream filter level to determine the original path of the request on retry.
-const originalPathHeader = "x-ai-eg-original-path"
+const originalPathHeader = internalapi.EnvoyAIGatewayHeaderPrefix + "original-path"
 
 // internalReqIDHeader is the header used to pass the unique internal request ID to the upstream filter.
 // This ensures that the upstream filter uses the same unique ID as the router filter to avoid race conditions.
-const internalReqIDHeader = "x-ai-eg-internal-req-id"
+const internalReqIDHeader = internalapi.EnvoyAIGatewayHeaderPrefix + "internal-req-id"
 
 // Process implements [extprocv3.ExternalProcessorServer].
 func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error {

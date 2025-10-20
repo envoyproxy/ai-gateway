@@ -38,7 +38,7 @@ func TestMCPRouteOAuth(t *testing.T) {
 	const manifest = "testdata/mcp_route_oauth.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
 	t.Cleanup(func() {
-		_ = e2elib.KubectlDeleteManifest(t.Context(), manifest)
+		_ = e2elib.KubectlDeleteManifest(context.Background(), manifest)
 	})
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=mcp-gateway-oauth"
