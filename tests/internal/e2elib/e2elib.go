@@ -366,7 +366,7 @@ func inferenceExtensionVersion() string {
 
 func installInferencePoolEnvironment(ctx context.Context) (err error) {
 	infExtVersion := inferenceExtensionVersion()
-	if err := KubectlApplyManifest(ctx,
+	if err = KubectlApplyManifest(ctx,
 		fmt.Sprintf("https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/%s/manifests.yaml", infExtVersion),
 	); err != nil {
 		return fmt.Errorf("failed to install inference extension CRDs: %w", err)
