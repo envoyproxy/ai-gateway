@@ -18,11 +18,13 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/singleflight"
 
@@ -346,44 +348,40 @@ func CleanupKindCluster(testsFailed bool, clusterName string) {
 	}
 }
 
-func installInferenceExtensionCRD(ctx context.Context) (err error) {
-	const infExtURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.0.1/manifests.yaml"
-	return KubectlApplyManifest(ctx, infExtURL)
-}
-
-func installVLLMDeployment(ctx context.Context) (err error) {
-	const vllmURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/main/config/manifests/vllm/sim-deployment.yaml"
-	return KubectlApplyManifest(ctx, vllmURL)
-}
-
-func installInferenceModel(ctx context.Context) (err error) {
-	const inferenceModelURL = "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api-inference-extension/refs/tags/v1.0.1/config/manifests/inferenceobjective.yaml"
-	return KubectlApplyManifest(ctx, inferenceModelURL)
-}
-
-func installInferencePoolResources(ctx context.Context) (err error) {
-	const inferencePoolURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v1.0.1/config/manifests/inferencepool-resources.yaml"
-	return KubectlApplyManifest(ctx, inferencePoolURL)
+func inferenceExtensionVersion() string {
+	goMod := path.Join(internaltesting.FindProjectRoot(), "go.mod")
+	data, err := os.ReadFile(goMod)
+	if err != nil {
+		panic(fmt.Sprintf("failed to read go.mod: %v", err))
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		parts := strings.SplitN(line, " ", 2)
+		if len(parts) == 2 && parts[0] == "sigs.k8s.io/gateway-api-inference-extension" {
+			return strings.TrimSpace(parts[1])
+		}
+	}
+	panic("failed to find extension version in go.mod")
 }
 
 func installInferencePoolEnvironment(ctx context.Context) (err error) {
-	// Install all InferencePool related resources in sequence.
-	if err = installInferenceExtensionCRD(ctx); err != nil {
+	infExtVersion := inferenceExtensionVersion()
+	if err := KubectlApplyManifest(ctx,
+		fmt.Sprintf("https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/%s/manifests.yaml", infExtVersion),
+	); err != nil {
 		return fmt.Errorf("failed to install inference extension CRDs: %w", err)
 	}
-
-	if err = installVLLMDeployment(ctx); err != nil {
-		return fmt.Errorf("failed to install vLLM deployment: %w", err)
+	baseURL := fmt.Sprintf("https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/%s/config/manifests", infExtVersion)
+	for _, manifest := range []string{
+		"vllm/sim-deployment.yaml",
+		"inferencepool-resources.yaml",
+		"inferenceobjective.yaml",
+	} {
+		initLog(fmt.Sprintf("\tApplying InferencePool manifest: %s", manifest))
+		if err = KubectlApplyManifest(ctx, fmt.Sprintf("%s/%s", baseURL, manifest)); err != nil {
+			return fmt.Errorf("failed to apply InferencePool manifest %s: %w", manifest, err)
+		}
 	}
-
-	if err = installInferenceModel(ctx); err != nil {
-		return fmt.Errorf("failed to install inference model: %w", err)
-	}
-
-	if err = installInferencePoolResources(ctx); err != nil {
-		return fmt.Errorf("failed to install inference pool resources: %w", err)
-	}
-
 	return nil
 }
 
