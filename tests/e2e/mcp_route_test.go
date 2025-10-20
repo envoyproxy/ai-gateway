@@ -34,7 +34,7 @@ func TestMCP(t *testing.T) {
 	const manifest = "testdata/mcp_route.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
 	t.Cleanup(func() {
-		_ = e2elib.KubectlDeleteManifest(t.Context(), manifest)
+		_ = e2elib.KubectlDeleteManifest(context.Background(), manifest)
 	})
 	manyBackendsRouteToolNames := requireCreateMCPManyBackends(t)
 
@@ -199,7 +199,7 @@ spec:
 	manifest := strings.Join(services, "---\n")
 	require.NoError(t, e2elib.KubectlApplyManifestStdin(t.Context(), manifest))
 	t.Cleanup(func() {
-		_ = e2elib.KubectlDeleteManifest(t.Context(), manifest)
+		_ = e2elib.KubectlDeleteManifest(context.Background(), manifest)
 	})
 
 	const mcpRouteTemplate = `
@@ -221,7 +221,7 @@ spec:
 	routeManifest := fmt.Sprintf(mcpRouteTemplate, strings.Join(backendRefs, "\n"))
 	require.NoError(t, e2elib.KubectlApplyManifestStdin(t.Context(), routeManifest))
 	t.Cleanup(func() {
-		_ = e2elib.KubectlDeleteManifest(t.Context(), routeManifest)
+		_ = e2elib.KubectlDeleteManifest(context.Background(), routeManifest)
 	})
 	return toolNames
 }
