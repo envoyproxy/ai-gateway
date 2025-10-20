@@ -19,10 +19,10 @@ import (
 )
 
 func main() {
-	// Run the pprof server if the ENABLE_PPROF environment variable is set to true.
+	// Run the pprof server if the ENABLE_PPROF environment variable is non-empty.
 	if os.Getenv("ENABLE_PPROF") != "" {
 		go func() {
-			pprofPort := "6060" // default pprof port
+			const pprofPort = "6060" // The same default port as in th Go pprof documentation.
 			if err := http.ListenAndServe("localhost:"+pprofPort, nil); err != nil {
 				log.Printf("pprof server failed to start: %v", err)
 			}
