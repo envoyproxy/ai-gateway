@@ -6,12 +6,10 @@
 package extproc
 
 import (
-	"bytes"
 	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"strconv"
 
@@ -272,15 +270,6 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessResponseHeaders(ctx cont
 		i.responseEncoding = enc
 	}
 
-	// Debug logging for response headers
-	if i.logger.Enabled(ctx, slog.LevelDebug) {
-		i.logger.Debug("response headers received",
-			slog.String("content-type", i.responseHeaders["content-type"]),
-			slog.String("content-encoding", i.responseHeaders["content-encoding"]),
-			slog.String("status", i.responseHeaders[":status"]),
-			slog.String("response_encoding", i.responseEncoding))
-	}
-
 	headerMutation, err := i.translator.ResponseHeaders(i.responseHeaders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response headers: %w", err)
@@ -312,39 +301,10 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessResponseBody(ctx context
 		}
 	}()
 
-	// Debug logging for raw response body
-	if i.logger.Enabled(ctx, slog.LevelDebug) {
-		bodyPreview := string(body.Body)
-		if len(bodyPreview) > 100 {
-			bodyPreview = bodyPreview[:100] + "..."
-		}
-		i.logger.Debug("raw response body received",
-			slog.Int("body_length", len(body.Body)),
-			slog.String("body_preview", bodyPreview),
-			slog.String("content_encoding", i.responseEncoding),
-			slog.Bool("end_of_stream", body.EndOfStream))
-	}
-
 	// Decompress the body if needed using common utility.
 	decodingResult, err := decodeContentIfNeeded(body.Body, i.responseEncoding)
 	if err != nil {
 		return nil, err
-	}
-
-	// Debug logging for decoded response body
-	if i.logger.Enabled(ctx, slog.LevelDebug) {
-		decodedBytes, _ := io.ReadAll(decodingResult.reader)
-		decodedPreview := string(decodedBytes)
-		if len(decodedPreview) > 100 {
-			decodedPreview = decodedPreview[:100] + "..."
-		}
-		i.logger.Debug("decoded response body",
-			slog.Int("decoded_length", len(decodedBytes)),
-			slog.String("decoded_preview", decodedPreview),
-			slog.Bool("was_encoded", decodingResult.isEncoded))
-
-		// Reset reader for translator
-		decodingResult.reader = bytes.NewReader(decodedBytes)
 	}
 
 	// Assume all responses have a valid status code header.
@@ -445,15 +405,6 @@ func (i *imageGenerationProcessorUpstreamFilter) SetBackend(ctx context.Context,
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
 
-	// Debug logging for backend selection
-	if i.logger.Enabled(ctx, slog.LevelDebug) {
-		i.logger.Debug("backend selected for image generation",
-			slog.String("backend_name", b.Name),
-			slog.String("schema_name", string(b.Schema.Name)),
-			slog.String("schema_version", b.Schema.Version),
-			slog.String("model_override", i.modelNameOverride),
-			slog.Bool("translator_set", i.translator != nil))
-	}
 	i.handler = backendHandler
 	i.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
 	// Sync header with backend model so header-derived labels/CEL use the actual model.
