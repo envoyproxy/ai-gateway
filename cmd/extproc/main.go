@@ -7,9 +7,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
-	_ "net/http/pprof"
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -19,12 +20,23 @@ import (
 )
 
 func main() {
-	// Run the pprof server if the ENABLE_PPROF environment variable is non-empty.
-	if os.Getenv("ENABLE_PPROF") != "" {
+	// Run the pprof server if the DISABLE_PPROF environment variable is not set.
+	//
+	// Enabling the pprof server by default helps with debugging performance issues in production.
+	// The impact should be negligible when the actual pprof endpoints are not being accessed.
+	if _, ok := os.LookupEnv("DISABLE_PPROF"); !ok {
 		go func() {
 			const pprofPort = "6060" // The same default port as in th Go pprof documentation.
-			if err := http.ListenAndServe("localhost:"+pprofPort, nil); err != nil {
-				log.Printf("pprof server failed to start: %v", err)
+			mux := http.NewServeMux()
+			mux.HandleFunc("/debug/pprof/", pprof.Index)
+			mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+			mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+			mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+			mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+			server := &http.Server{Addr: ":" + pprofPort, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+			log.Printf("starting pprof server on port %s", pprofPort)
+			if err := server.ListenAndServe(); err != nil && errors.Is(err, http.ErrServerClosed) {
+				log.Printf("pprof server stopped: %v", err)
 			}
 		}()
 	}
