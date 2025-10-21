@@ -512,6 +512,13 @@ func (m *mockBackendAuthHandler) Do(context.Context, map[string]string, *extproc
 	return nil
 }
 
+// mockBackendAuthHandlerError returns error on Do.
+type mockBackendAuthHandlerError struct{}
+
+func (m *mockBackendAuthHandlerError) Do(context.Context, map[string]string, *extprocv3.HeaderMutation, *extprocv3.BodyMutation) error {
+	return io.EOF
+}
+
 // mockImageGenerationMetrics implements [metrics.ImageGenerationMetrics] for testing.
 type mockImageGenerationMetrics struct {
 	requestSuccessCount int

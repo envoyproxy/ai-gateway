@@ -6,6 +6,8 @@
 package extproc
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -96,6 +98,30 @@ func (m *mockImageGenerationSpan) RecordResponse(_ *openaisdk.ImagesResponse) {
 }
 
 func Test_imageGenerationProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
+	t.Run("response pass-through and delegation", func(t *testing.T) {
+		// When upstreamFilter is nil, router should pass-through using passThroughProcessor.
+		rf := &imageGenerationProcessorRouterFilter{}
+		prh, err := rf.ProcessResponseHeaders(t.Context(), &corev3.HeaderMap{})
+		require.NoError(t, err)
+		require.NotNil(t, prh)
+
+		prb, err := rf.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{Body: []byte("abc")})
+		require.NoError(t, err)
+		require.NotNil(t, prb)
+
+		// When upstreamFilter is set, router should delegate to upstream filter.
+		upstream := &mockProcessor{t: t, expHeaderMap: &corev3.HeaderMap{}, expBody: &extprocv3.HttpBody{Body: []byte("abc")},
+			retProcessingResponse: &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{}}}
+		rf.upstreamFilter = upstream
+		prh2, err := rf.ProcessResponseHeaders(t.Context(), &corev3.HeaderMap{})
+		require.NoError(t, err)
+		require.Equal(t, upstream.retProcessingResponse, prh2)
+
+		upstream.retProcessingResponse = &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseBody{}}
+		prb2, err := rf.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{Body: []byte("abc")})
+		require.NoError(t, err)
+		require.Equal(t, upstream.retProcessingResponse, prb2)
+	})
 	t.Run("body parser error", func(t *testing.T) {
 		p := &imageGenerationProcessorRouterFilter{}
 		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: []byte("not-json")})
@@ -268,7 +294,7 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseBody(t *testing.
 		require.Equal(t, "some_backend", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["backend_name"].GetStringValue())
 	})
 
-	// Verify we record failure for non-2xx responses and do it exactly once (defer suppressed).
+	// Verify we record failure for non-2xx responses and do it exactly once (defer suppressed), and span records error.
 	t.Run("non-2xx status failure once", func(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("error-body"), EndOfStream: true}
 		expHeadMut := &extprocv3.HeaderMutation{}
@@ -280,6 +306,7 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseBody(t *testing.
 			metrics:         mm,
 			responseHeaders: map[string]string{":status": "500"},
 			logger:          slog.Default(),
+			span:            &mockImageGenerationSpan{},
 		}
 		res, err := p.ProcessResponseBody(t.Context(), inBody)
 		require.NoError(t, err)
@@ -287,6 +314,40 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseBody(t *testing.
 		require.Equal(t, expBodyMut, commonRes.BodyMutation)
 		require.Equal(t, expHeadMut, commonRes.HeaderMutation)
 		mm.RequireRequestFailure(t)
+		// assert span error recorded
+		s := p.span.(*mockImageGenerationSpan)
+		require.Equal(t, 500, s.errorStatus)
+		require.Equal(t, "error-body", s.errBody)
+	})
+
+	// Verify content-encoding header is removed when encoded body is mutated.
+	t.Run("gzip encoded body with mutation removes content-encoding", func(t *testing.T) {
+		var gz bytes.Buffer
+		zw := gzip.NewWriter(&gz)
+		_, err := zw.Write([]byte("encoded-body"))
+		require.NoError(t, err)
+		require.NoError(t, zw.Close())
+		inBody := &extprocv3.HttpBody{Body: gz.Bytes(), EndOfStream: true}
+		mm := &mockImageGenerationMetrics{}
+		mt := &mockImageGenerationTranslator{
+			// translator returns a non-nil body mutation indicating processor changed body
+			retBodyMutation:   &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: []byte("changed")}},
+			retHeaderMutation: &extprocv3.HeaderMutation{},
+		}
+		p := &imageGenerationProcessorUpstreamFilter{
+			translator:       mt,
+			metrics:          mm,
+			logger:           slog.Default(),
+			responseHeaders:  map[string]string{":status": "200"},
+			responseEncoding: "gzip",
+			config:           &processorConfig{},
+		}
+		res, err := p.ProcessResponseBody(t.Context(), inBody)
+		require.NoError(t, err)
+		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
+		reqHM := commonRes.HeaderMutation
+		require.Contains(t, reqHM.RemoveHeaders, "content-encoding")
+		mm.RequireRequestSuccess(t)
 	})
 }
 
@@ -311,6 +372,36 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessRequestHeaders(t *testin
 		require.NotNil(t, resp)
 		mm.RequireRequestNotCompleted(t)
 		mm.RequireSelectedModel(t, "dall-e-3")
+	})
+
+	t.Run("auth handler error path records failure", func(t *testing.T) {
+		headers := map[string]string{":path": "/v1/images/generations", internalapi.ModelNameHeaderKeyDefault: "dall-e-3"}
+		mm := &mockImageGenerationMetrics{}
+		body := &openaisdk.ImageGenerateParams{Model: openaisdk.ImageModel("dall-e-3"), Prompt: "a cat"}
+		mt := &mockImageGenerationTranslator{t: t, expRequestBody: body}
+		p := &imageGenerationProcessorUpstreamFilter{
+			config:                 &processorConfig{},
+			requestHeaders:         headers,
+			logger:                 slog.Default(),
+			metrics:                mm,
+			originalRequestBodyRaw: imageGenerationBodyFromModel(t, "dall-e-3"),
+			originalRequestBody:    body,
+			// handler returns error to simulate backend auth failure
+			handler:    &mockBackendAuthHandlerError{},
+			translator: mt,
+		}
+		_, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.Error(t, err)
+		mm.RequireRequestFailure(t)
+	})
+
+	// Ensure upstream ProcessRequestBody panics as documented and streaming flag behavior is off.
+	t.Run("upstream body panic and streaming off", func(t *testing.T) {
+		p := &imageGenerationProcessorUpstreamFilter{}
+		require.False(t, p.stream)
+		require.Panics(t, func() {
+			_, _ = p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
+		})
 	})
 }
 

@@ -553,6 +553,45 @@ func TestNewTracingFromEnv_OTLPHeaders(t *testing.T) {
 	require.Equal(t, expectedAuthorization, <-actualAuthorization)
 }
 
+// TestNewTracingFromEnv_HeaderAttributeMapping verifies that headerAttributeMapping
+// passed to NewTracingFromEnv is applied by tracers to set span attributes.
+func TestNewTracingFromEnv_HeaderAttributeMapping(t *testing.T) {
+	collector := testotel.StartOTLPCollector()
+	t.Cleanup(collector.Close)
+	collector.SetEnv(t.Setenv)
+
+	mapping := map[string]string{
+		"x-session-id": "session.id",
+		"x-user-id":    "user.id",
+	}
+
+	result, err := NewTracingFromEnv(t.Context(), io.Discard, mapping)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = result.Shutdown(context.Background()) })
+
+	headers := map[string]string{
+		"x-session-id": "abc123",
+		"x-user-id":    "user456",
+	}
+	headerMutation := &extprocv3.HeaderMutation{}
+
+	tr := result.ChatCompletionTracer()
+	req := &openai.ChatCompletionRequest{Model: openai.ModelGPT5Nano}
+	span := tr.StartSpanAndInjectHeaders(t.Context(), headers, headerMutation, req, []byte("{}"))
+	require.NotNil(t, span)
+	span.EndSpan()
+
+	v1Span := collector.TakeSpan()
+	require.NotNil(t, v1Span)
+
+	attrs := make(map[string]string)
+	for _, kv := range v1Span.Attributes {
+		attrs[kv.Key] = kv.Value.GetStringValue()
+	}
+	require.Equal(t, "abc123", attrs["session.id"])
+	require.Equal(t, "user456", attrs["user.id"])
+}
+
 // TestNewTracingFromEnv_Embeddings_Redaction tests that the OpenInference
 // environment variables (OPENINFERENCE_HIDE_EMBEDDINGS_TEXT and OPENINFERENCE_HIDE_EMBEDDINGS_VECTORS)
 // work correctly to redact sensitive data from embeddings spans, following the OpenInference
