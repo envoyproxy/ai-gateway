@@ -41,6 +41,12 @@ Each metric comes with some default attributes such as:
 - `gen_ai.response.model` - The model name returned in the response
 - `gen_ai.provider.name` - The provider name (e.g., `openai`, `anthropic`)
 
+:::tip
+
+You can enrich the metrics with custom labels extracted from HTTP request headers. It can be configured via the `controller.metricsRequestHeaderAttributes` helm installation value. Please refer to [values.yaml](https://github.com/envoyproxy/ai-gateway/blob/main/manifests/charts/ai-gateway-helm/values.yaml) for more details including other configurations.
+
+:::
+
 ## Trying it out
 
 Before you begin, you'll need to complete the basic setup from the [Basic Usage](/docs/getting-started/basic-usage) guide.
