@@ -109,38 +109,3 @@ and then you would get the response like this, assuming you have made some reque
   ]
 }
 ```
-
-## Metrics Enrichment with Custom Headers
-
-The AI Gateway supports enriching metrics with custom labels extracted from HTTP request headers. This is useful for tracking metrics by customer, tenant, or other request-specific metadata.
-
-> If you apply this configuration after following the getting started guide you need to restart the Envoy proxy pods
-
-### Configuration
-
-#### Using Helm Commands
-
-To enable metrics enrichment when installing or upgrading the AI Gateway:
-
-```shell
-helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
-  --version v0.0.0-latest \
-  --namespace envoy-ai-gateway-system \
-  --create-namespace \
-  --set controller.metricsRequestHeaderLabels="x-customer-id:customer_id,x-tenant-id:tenant_id"
-```
-
-#### GitOps
-
-```YAML
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: envoy-ai-gateway
-spec:
-  values:
-    controller:
-      # Map HTTP request headers to Prometheus metric labels
-      # Format: "header1:label1,header2:label2"
-      metricsRequestHeaderLabels: "x-customer-id:customer_id,x-tenant-id:tenant_id"
-```
