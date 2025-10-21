@@ -10,7 +10,12 @@ import (
 	"time"
 )
 
-const pprofPort = "6060" // The same default port as in th Go pprof documentation.
+const (
+	pprofPort = "6060" // The same default port as in th Go pprof documentation.
+	// DisableEnvVarKey is the environment variable name to disable the pprof server.
+	// If this environment variable is set to any value, the pprof server will not be started.
+	DisableEnvVarKey = "DISABLE_PPROF"
+)
 
 // Run the pprof server if the DISABLE_PPROF environment variable is not set.
 // This is non-blocking and will run the pprof server in a separate goroutine until the provided context is cancelled.
@@ -18,7 +23,7 @@ const pprofPort = "6060" // The same default port as in th Go pprof documentatio
 // Enabling the pprof server by default helps with debugging performance issues in production.
 // The impact should be negligible when the actual pprof endpoints are not being accessed.
 func Run(ctx context.Context) {
-	if _, ok := os.LookupEnv("DISABLE_PPROF"); !ok {
+	if _, ok := os.LookupEnv(DisableEnvVarKey); !ok {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/debug/pprof/", pprof.Index)
 		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)

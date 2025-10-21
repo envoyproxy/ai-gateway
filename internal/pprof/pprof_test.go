@@ -2,17 +2,15 @@ package pprof
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestRun_disabled(t *testing.T) {
-	t.Setenv("DISABLE_PPROF", "true")
+	t.Setenv(DisableEnvVarKey, "anything")
 	ctx, cancel := context.WithCancel(context.Background())
 	Run(ctx)
 	// Try accessing the pprof server here if needed.
@@ -31,10 +29,8 @@ func TestRun_enabled(t *testing.T) {
 	require.NotNil(t, resp)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	fmt.Println(string(body))
 	require.Contains(t, string(body),
 		// Test binary name should be present in the cmdline output.
 		"pprof.test")
 	cancel()
-	time.Sleep(1 * time.Second)
 }
