@@ -20,11 +20,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/envoyproxy/ai-gateway/internal/pprof"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
+	"github.com/envoyproxy/ai-gateway/internal/pprof"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 )
