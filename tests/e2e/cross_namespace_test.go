@@ -27,6 +27,9 @@ import (
 func TestCrossNamespace(t *testing.T) {
 	const manifest = "testdata/cross_namespace.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
+	t.Cleanup(func() {
+		_ = e2elib.KubectlDeleteManifest(t.Context(), manifest)
+	})
 
 	// Wait for the Gateway pod to be ready with the correct selector.
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=cross-namespace-gateway"

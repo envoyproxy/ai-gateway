@@ -6,6 +6,7 @@
 package e2e
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -38,7 +39,7 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 	const manifest = "../../examples/token_ratelimit/"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
 	t.Cleanup(func() {
-		_ = e2elib.KubectlDeleteManifest(t.Context(), manifest)
+		_ = e2elib.KubectlDeleteManifest(context.Background(), manifest)
 	})
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-token-ratelimit"

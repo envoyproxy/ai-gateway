@@ -216,8 +216,11 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: gwNamespace},
 			Spec: aigv1a1.AIServiceBackendSpec{
-				BackendRef:     gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
-				HeaderMutation: &aigv1a1.HTTPHeaderMutation{Set: []gwapiv1.HTTPHeader{{Name: "x-foo", Value: "foo"}}, Remove: []string{"x-bar"}},
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+				HeaderMutation: &aigv1a1.HTTPHeaderMutation{Set: []gwapiv1.HTTPHeader{
+					// Header name should be normalized to lowercase in the filter config.
+					{Name: "X-Foo", Value: "foo"},
+				}, Remove: []string{"x-Bar"}},
 			},
 		},
 		{
