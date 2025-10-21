@@ -7,7 +7,7 @@ Please reach out to them for any questions, issues, or contributions related to 
   - Area: Everything
   - [Envoy Proxy](https://github.com/envoyproxy/envoy) Maintainer
 - Dan Sun ([@yuzisun](https://github.com/yuzisun))
-  - Area: Everything, focusing on enterprise integration & core LLM features.
+  - Area: Everything, focusing on enterprise integration & core LLM features
   - [KServe](https://github.com/kserve/kserve) Maintainer
 - Erica Hughberg ([@missBerg](https://github.com/missBerg))
   - Area: Documentation, WebSite, Community
