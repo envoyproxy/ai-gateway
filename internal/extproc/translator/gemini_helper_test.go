@@ -876,7 +876,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := openAIReqToGeminiGenerationConfig(tc.input)
+			got, _, err := openAIReqToGeminiGenerationConfig(tc.input)
 			if tc.expectedErrMsg != "" {
 				require.ErrorContains(t, err, tc.expectedErrMsg)
 			} else {
