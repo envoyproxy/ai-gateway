@@ -58,6 +58,24 @@ services:
       - "host.docker.internal:host-gateway"
     command: ["run", "--mcp-config", "/etc/aigw/mcp-servers.json"]
 
+  # aigw-images is a second gateway instance pointing to OpenAI for image generation
+  aigw-images:
+    image: envoyproxy/ai-gateway-cli:latest
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        VARIANT: base-nossl
+        COMMAND_NAME: aigw
+    container_name: aigw-images
+    environment:
+      - OPENAI_BASE_URL=https://api.openai.com/v1
+    env_file:
+      - ../../.env.images
+    ports:
+      - "2975:1975"
+    command: ["run"]
+
   # chat-completion is a simple curl-based test client for sending requests to aigw.
   chat-completion:
     image: golang:1.25
@@ -115,6 +133,23 @@ services:
     extra_hosts: # localhost:host-gateway trick doesn't work with aigw
       - "host.docker.internal:host-gateway"
 
+  # image-generation (curl) sends requests to aigw-images backed by OpenAI
+  image-generation:
+    image: golang:1.25
+    container_name: image-generation
+    profiles: ["test"]
+    env_file:
+      - ../../.env.images
+    command:
+      - sh
+      - -c
+      - |
+        curl -s -w %{http_code} \
+          -X POST http://aigw-images:1975/v1/images/generations \
+          -H "Content-Type: application/json" \
+          -H "x-ai-eg-model: $$IMAGE_GENERATION_MODEL" \
+          -d "{\"model\":\"$$IMAGE_GENERATION_MODEL\",\"prompt\":\"A watercolor painting of a red fox in a birch forest\",\"size\":\"1024x1024\",\"quality\":\"low\"}"
+
   # mcp is a test client for calling MCP tools through aigw.
   mcp:
     image: ghcr.io/modelcontextprotocol/inspector:latest
@@ -136,22 +171,3 @@ services:
       - --tool-arg
       - departureDate=15/12/2025
 
-  # image-generation is a simple curl-based test client for sending image
-  # generation requests to aigw.
-  image-generation:
-    image: golang:1.25
-    container_name: image-generation
-    profiles: ["test"]
-    env_file:
-      - ../../.env.ollama
-    command:
-      - sh
-      - -c
-      - |
-        curl -s -w %{http_code} \
-          -X POST http://aigw:1975/v1/images/generations \
-          -H "Authorization: Bearer unused" \
-          -H "Content-Type: application/json" \
-          -d "{\"model\":\"$$IMAGE_GENERATION_MODEL\",\"prompt\":\"A watercolor painting of a red fox in a birch forest\",\"size\":\"1024x1024\",\"quality\":\"low\"}"
-    extra_hosts: # localhost:host-gateway trick doesn't work with aigw
-      - "host.docker.internal:host-gateway"

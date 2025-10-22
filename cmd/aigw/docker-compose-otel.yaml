@@ -87,6 +87,24 @@ services:
       - "host.docker.internal:host-gateway"
     command: ["run", "--mcp-config", "/etc/aigw/mcp-servers.json"]
 
+  # aigw-images points to OpenAI for image generation
+  aigw-images:
+    image: envoyproxy/ai-gateway-cli:latest
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        VARIANT: base-nossl
+        COMMAND_NAME: aigw
+    container_name: aigw-images
+    environment:
+      - OPENAI_BASE_URL=https://api.openai.com/v1
+    env_file:
+      - ../../.env.images
+    ports:
+      - "2975:1975"
+    command: ["run"]
+
   # chat-completion is the standard OpenAI client (`openai` in pip), instrumented
   # with the following OpenTelemetry instrumentation libraries:
   # - openinference-instrumentation-python (LLM chat completion spans)
@@ -141,6 +159,24 @@ services:
       - OPENAI_BASE_URL=http://aigw:1975/v1
       - OPENAI_API_KEY=unused
 
+  # image-generation (instrumented Python client) calls aigw-images
+  image-generation:
+    build:
+      context: ../../tests/internal/testopeninference
+      dockerfile: Dockerfile.openai_client
+      target: completion
+    container_name: image-generation
+    profiles: ["test"]
+    env_file:
+      - ../../.env.images
+      - .env.otel.${COMPOSE_PROFILES:-console}
+    environment:
+      - OPENAI_BASE_URL=http://aigw-images:1975/v1
+      - OPENAI_API_KEY=unused
+    command: >-
+      opentelemetry-instrument --service_name openai-cli --metrics_exporter none --logs_exporter none
+      python -c 'import os; from openai import OpenAI; m=os.environ["IMAGE_GENERATION_MODEL"]; print(OpenAI().images.generate(model=m, prompt="A watercolor painting of a red fox in a birch forest", size="1024x1024", quality="low", extra_headers={"x-ai-eg-model": m}))'
+
   # mcp is a test client for calling MCP tools through aigw.
   # TODO: add client tracing + mcp propagation to this
   mcp:
@@ -163,20 +199,3 @@ services:
       - --tool-arg
       - departureDate=15/12/2025
 
-  # image-generation is a simple curl-based test client for sending image
-  # generation requests to aigw.
-  image-generation:
-    image: golang:1.25
-    container_name: image-generation
-    profiles: ["test"]
-    env_file:
-      - ../../.env.ollama
-    command:
-      - sh
-      - -c
-      - |
-        curl -s -w %{http_code} \
-          -X POST http://aigw:1975/v1/images/generations \
-          -H "Authorization: Bearer unused" \
-          -H "Content-Type: application/json" \
-          -d "{\"model\":\"$$IMAGE_GENERATION_MODEL\",\"prompt\":\"A watercolor painting of a red fox in a birch forest\",\"size\":\"1024x1024\",\"quality\":\"low\"}"

@@ -63,20 +63,23 @@ Here are values we use for Ollama:
 
      This calls the kiwi MCP server through aigw's MCP Gateway at `/mcp`.
 
-   - Image generation:
-     - Using service:
-       ```bash
-       docker compose run --rm image-generation
-       ```
-     - Using curl (save to file):
-       ```bash
-       curl -s \
-         -X POST http://localhost:1975/v1/images/generations \
-         -H "Authorization: Bearer unused" \
-         -H "Content-Type: application/json" \
-         -d '{"model":"gpt-image-1-mini","prompt":"A watercolor painting of a red fox in a birch forest","size":"1024x1024","quality":"low"}' \
-         | jq -r '.data[0].b64_json' | base64 -d > image.png
-       ```
+   - Image generation (OpenAI-backed via a separate gateway `aigw-images`):
+
+     1. Create a file `.env.images` at the repo root with:
+
+        ```bash
+        OPENAI_API_KEY=sk-...
+        IMAGE_GENERATION_MODEL=gpt-image-1-mini
+        ```
+
+     2. Start the stack and run the client:
+
+        ```bash
+        docker compose up --build -d
+        docker compose run --rm image-generation
+        ```
+
+   
 
 4. **Shutdown the example stack**:
 
@@ -175,7 +178,7 @@ This configures the OTLP endpoint to otel-tui on port 4318.
    COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm create-embeddings
    COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm completion
    COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm mcp
-   # Image generation
+   # Image generation (OpenAI-backed via aigw-images)
    COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm image-generation
    ```
 
