@@ -1443,6 +1443,14 @@ func TestExtractTextFromGeminiParts(t *testing.T) {
 			expected:     "positiveunquotednegative",
 		},
 		{
+			name: "regex mode with only double-quoted first and last words",
+			parts: []*genai.Part{
+				{Text: "\"\"ERROR\" Unable to connect to database \"DatabaseModule\"\""},
+			},
+			responseMode: ResponseModeRegex,
+			expected:     "\"ERROR\" Unable to connect to database \"DatabaseModule\"",
+		},
+		{
 			name: "non-regex mode with double-quoted text (should not remove quotes)",
 			parts: []*genai.Part{
 				{Text: `"positive"`},
