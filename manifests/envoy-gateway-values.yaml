@@ -18,37 +18,36 @@
 #   -f envoy-gateway-values.yaml -f examples/inference-pool/envoy-gateway-values-addon.yaml
 
 config:
-  apiVersion: gateway.envoyproxy.io/v1alpha1
-  kind: EnvoyGateway
-  gateway:
-    controllerName: gateway.envoyproxy.io/gatewayclass-controller
-  logging:
-    level:
-      default: info
-  provider:
-    type: Kubernetes
-  extensionApis:
-    enableEnvoyPatchPolicy: true
-    enableBackend: true
-  extensionManager:
-    hooks:
-      xdsTranslator:
-        translation:
-          listener:
-            includeAll: true
-          route:
-            includeAll: true
-          cluster:
-            includeAll: true
-          secret:
-            includeAll: true
-        post:
-          - Translation
-          - Cluster
-          - Route
-    service:
-      fqdn:
-        # Update this hostname to match your AI Gateway controller service name and namespace
-        # Default is ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local
-        hostname: ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local
-        port: 1063
+  envoyGateway:
+    gateway:
+      controllerName: gateway.envoyproxy.io/gatewayclass-controller
+    logging:
+      level:
+        default: info
+    provider:
+      type: Kubernetes
+    extensionApis:
+      enableEnvoyPatchPolicy: true
+      enableBackend: true
+    extensionManager:
+      hooks:
+        xdsTranslator:
+          translation:
+            listener:
+              includeAll: true
+            route:
+              includeAll: true
+            cluster:
+              includeAll: true
+            secret:
+              includeAll: true
+          post:
+            - Translation
+            - Cluster
+            - Route
+      service:
+        fqdn:
+          # Update this hostname to match your AI Gateway controller service name and namespace
+          # Default is ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local
+          hostname: ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local
+          port: 1063

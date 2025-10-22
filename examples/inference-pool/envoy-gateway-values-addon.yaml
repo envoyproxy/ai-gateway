@@ -19,9 +19,10 @@
 #   -f envoy-gateway-values-addon.yaml
 
 config:
-  extensionManager:
-    # Enable InferencePool custom resource support
-    backendResources:
-      - group: inference.networking.k8s.io
-        kind: InferencePool
-        version: v1
+  envoyGateway:
+    extensionManager:
+      # Enable InferencePool custom resource support
+      backendResources:
+        - group: inference.networking.k8s.io
+          kind: InferencePool
+          version: v1

@@ -17,23 +17,24 @@
 # - Redis must be deployed (see redis.yaml in this directory)
 
 config:
-  provider:
-    kubernetes:
-      rateLimitDeployment:
-        patch:
-          type: StrategicMerge
-          value:
-            spec:
-              template:
-                spec:
-                  containers:
-                    - imagePullPolicy: IfNotPresent
-                      name: envoy-ratelimit
-                      image: docker.io/envoyproxy/ratelimit:60d8e81b
-  rateLimit:
-    backend:
-      type: Redis
-      redis:
-        # Update this URL to match your Redis service location
-        # This assumes Redis is deployed using the redis.yaml in this directory
-        url: redis.redis-system.svc.cluster.local:6379
+  envoyGateway:
+    provider:
+      kubernetes:
+        rateLimitDeployment:
+          patch:
+            type: StrategicMerge
+            value:
+              spec:
+                template:
+                  spec:
+                    containers:
+                      - imagePullPolicy: IfNotPresent
+                        name: envoy-ratelimit
+                        image: docker.io/envoyproxy/ratelimit:60d8e81b
+    rateLimit:
+      backend:
+        type: Redis
+        redis:
+          # Update this URL to match your Redis service location
+          # This assumes Redis is deployed using the redis.yaml in this directory
+          url: redis.redis-system.svc.cluster.local:6379
