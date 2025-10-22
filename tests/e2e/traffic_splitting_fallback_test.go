@@ -6,6 +6,7 @@
 package e2e
 
 import (
+	"context"
 	"encoding/base64"
 	"net/http"
 	"strings"
@@ -24,7 +25,7 @@ func TestTrafficSplittingFallback(t *testing.T) {
 	const manifest = "testdata/traffic_splitting_fallback.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
 	t.Cleanup(func() {
-		_ = e2elib.KubectlDeleteManifest(t.Context(), manifest)
+		_ = e2elib.KubectlDeleteManifest(context.Background(), manifest)
 	})
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=traffic-splitting-fallback"

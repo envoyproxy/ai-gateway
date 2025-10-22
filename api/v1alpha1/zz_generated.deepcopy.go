@@ -656,9 +656,7 @@ func (in *BackendSecurityPolicySpec) DeepCopyInto(out *BackendSecurityPolicySpec
 	if in.TargetRefs != nil {
 		in, out := &in.TargetRefs, &out.TargetRefs
 		*out = make([]v1alpha2.LocalPolicyTargetReference, len(*in))
-		for i := range *in {
-			(*in)[i].DeepCopyInto(&(*out)[i])
-		}
+		copy(*out, *in)
 	}
 	if in.APIKey != nil {
 		in, out := &in.APIKey, &out.APIKey
