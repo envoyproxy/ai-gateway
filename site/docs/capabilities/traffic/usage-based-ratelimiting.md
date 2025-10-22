@@ -47,10 +47,37 @@ For model providers with OpenAI schema transformations (like AWS Bedrock), AI Ga
 
 ## Configuration
 
-:::tip
+:::tip Prerequisites
 
-- Envoy Gateway's rate limiting feature requires a redis deployment pointed by the Envoy Gateway installation time configuration.
-- See https://github.com/envoyproxy/ai-gateway/tree/main/examples/token_ratelimit for a complete example including redis deployment.
+Rate limiting requires two components to be configured:
+
+1. **Redis Deployment**: A Redis instance must be running to store rate limit data. See the [redis.yaml example](https://github.com/envoyproxy/ai-gateway/blob/main/examples/token_ratelimit/redis.yaml) for a simple deployment.
+
+2. **Envoy Gateway Configuration**: Envoy Gateway must be configured at installation time to enable rate limiting and point to your Redis instance. This is done by passing a values file when installing the Envoy Gateway helm chart:
+
+   ```yaml
+   # In envoy-gateway-values.yaml
+   config:
+     rateLimit:
+       backend:
+         type: Redis
+         redis:
+           url: redis.redis-system.svc.cluster.local:6379
+     provider:
+       kubernetes:
+         rateLimitDeployment:
+           patch:
+             type: StrategicMerge
+             value:
+               spec:
+                 template:
+                   spec:
+                     containers:
+                       - name: envoy-ratelimit
+                         image: docker.io/envoyproxy/ratelimit:60d8e81b
+   ```
+
+   See the complete [envoy-gateway-values-addon.yaml](https://github.com/envoyproxy/ai-gateway/blob/main/examples/token_ratelimit/envoy-gateway-values-addon.yaml) addon file. This should be combined with the base configuration as shown in the [token_ratelimit example](https://github.com/envoyproxy/ai-gateway/tree/main/examples/token_ratelimit).
 
 :::
 
