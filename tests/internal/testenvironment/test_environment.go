@@ -24,6 +24,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
+	"github.com/envoyproxy/ai-gateway/internal/pprof"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 )
@@ -313,6 +314,8 @@ func requireExtProc(t testing.TB, out io.Writer, bin, config string, env []strin
 		"-mcpWriteTimeout", mcpWriteTimeout.String(),
 		"-logLevel", "info",
 	}
+	// Disable pprof for tests to avoid port conflicts.
+	env = append(env, fmt.Sprintf("%s=true", pprof.DisableEnvVarKey))
 	t.Logf("Starting ExtProc with args: %v", args)
 	if inProcess {
 		go func() {
