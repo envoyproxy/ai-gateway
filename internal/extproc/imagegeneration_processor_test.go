@@ -110,8 +110,10 @@ func Test_imageGenerationProcessorRouterFilter_ProcessRequestBody(t *testing.T) 
 		require.NotNil(t, prb)
 
 		// When upstreamFilter is set, router should delegate to upstream filter.
-		upstream := &mockProcessor{t: t, expHeaderMap: &corev3.HeaderMap{}, expBody: &extprocv3.HttpBody{Body: []byte("abc")},
-			retProcessingResponse: &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{}}}
+		upstream := &mockProcessor{
+			t: t, expHeaderMap: &corev3.HeaderMap{}, expBody: &extprocv3.HttpBody{Body: []byte("abc")},
+			retProcessingResponse: &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{}},
+		}
 		rf.upstreamFilter = upstream
 		prh2, err := rf.ProcessResponseHeaders(t.Context(), &corev3.HeaderMap{})
 		require.NoError(t, err)
