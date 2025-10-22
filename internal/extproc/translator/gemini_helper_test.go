@@ -883,6 +883,18 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 			},
 			expectedResponseMode: ResponseModeJSON,
 		},
+		{
+			name: "multiple format specifiers - ResponseFormat and GuidedChoice",
+			input: &openai.ChatCompletionRequest{
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfText: &openai.ChatCompletionResponseFormatTextParam{
+						Type: openai.ChatCompletionResponseFormatTypeText,
+					},
+				},
+				GuidedChoice: []string{"A", "B"},
+			},
+			expectedErrMsg: "multiple format specifiers specified",
+		},
 	}
 
 	for _, tc := range tests {

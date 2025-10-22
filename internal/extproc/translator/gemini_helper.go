@@ -419,7 +419,10 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) 
 		gc.ResponseLogprobs = *openAIReq.LogProbs
 	}
 
+	formatSpecifiedCount := 0
+
 	if openAIReq.ResponseFormat != nil {
+		formatSpecifiedCount++
 		switch {
 		case openAIReq.ResponseFormat.OfText != nil:
 			responseMode = ResponseModeText
@@ -441,6 +444,7 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) 
 	}
 
 	if openAIReq.GuidedChoice != nil {
+		formatSpecifiedCount++
 		if existSchema := gc.ResponseSchema != nil || gc.ResponseJsonSchema != nil; existSchema {
 			return nil, responseMode, fmt.Errorf("duplicate json scheme specifications")
 		}
@@ -450,6 +454,7 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) 
 		gc.ResponseSchema = &genai.Schema{Type: "STRING", Enum: openAIReq.GuidedChoice}
 	}
 	if openAIReq.GuidedRegex != "" {
+		formatSpecifiedCount++
 		if existSchema := gc.ResponseSchema != nil || gc.ResponseJsonSchema != nil; existSchema {
 			return nil, responseMode, fmt.Errorf("duplicate json scheme specifications")
 		}
@@ -458,6 +463,7 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) 
 		gc.ResponseSchema = &genai.Schema{Type: "STRING", Pattern: openAIReq.GuidedRegex}
 	}
 	if openAIReq.GuidedJSON != nil {
+		formatSpecifiedCount++
 		if existSchema := gc.ResponseSchema != nil || gc.ResponseJsonSchema != nil; existSchema {
 			return nil, responseMode, fmt.Errorf("duplicate json scheme specifications")
 		}
@@ -465,6 +471,12 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) 
 
 		gc.ResponseMIMEType = mimeTypeApplicationJSON
 		gc.ResponseJsonSchema = openAIReq.GuidedJSON
+	}
+
+	// ResponseFormat and guidedJSON/guidedChoice/guidedRegex are mutually exclusive.
+	// Verify only one is specified.
+	if formatSpecifiedCount > 1 {
+		return nil, responseMode, fmt.Errorf("multiple format specifiers specified. only one of responseFormat, guidedChoice, guidedRegex, guidedJSON can be specified")
 	}
 
 	if openAIReq.N != nil {
