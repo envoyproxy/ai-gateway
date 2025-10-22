@@ -397,7 +397,8 @@ func initEnvoyGateway(ctx context.Context, inferenceExtension bool) (err error) 
 	}()
 	initLog("\tHelm Install")
 	// Build helm command with base values + addons based on what features are needed
-	helmArgs := []string{"upgrade", "-i", "eg",
+	helmArgs := []string{
+		"upgrade", "-i", "eg",
 		"oci://docker.io/envoyproxy/gateway-helm", "--version", egVersion,
 		"-n", "envoy-gateway-system", "--create-namespace",
 		"-f", "../../manifests/envoy-gateway-values.yaml",
