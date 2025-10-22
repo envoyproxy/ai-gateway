@@ -54,37 +54,34 @@ type openAIToGCPAnthropicTranslatorV1ChatCompletion struct {
 
 // isCacheEnabled checks if caching is enabled for a given message.
 func isCacheEnabled(msg *openai.ChatCompletionMessageParamUnion) bool {
-	var cache *openai.CacheValue
+	var anthropicFields *openai.AnthropicMessageFields
 	switch {
 	case msg.OfSystem != nil:
-		cache = msg.OfSystem.Cache
+		anthropicFields = msg.OfSystem.AnthropicMessageFields
 	case msg.OfDeveloper != nil:
-		cache = msg.OfDeveloper.Cache
+		anthropicFields = msg.OfDeveloper.AnthropicMessageFields
 	case msg.OfUser != nil:
-		cache = msg.OfUser.Cache
+		anthropicFields = msg.OfUser.AnthropicMessageFields
 	case msg.OfAssistant != nil:
-		cache = msg.OfAssistant.Cache
+		anthropicFields = msg.OfAssistant.AnthropicMessageFields
 	case msg.OfTool != nil:
-		cache = msg.OfTool.Cache
+		anthropicFields = msg.OfTool.AnthropicMessageFields
 	}
-	return cache != nil && cache.Enabled
+	return anthropicFields != nil && anthropicFields.CacheControl.Type == "ephemeral"
 }
 
 // applyCacheControlToContent applies cache control to a slice of Anthropic content blocks if caching is enabled.
-func applyCacheControlToContent(content []anthropic.ContentBlockParamUnion, cacheEnabled bool) []anthropic.ContentBlockParamUnion {
-	if !cacheEnabled {
-		return content
-	}
+func applyCacheControlToContent(content []anthropic.ContentBlockParamUnion, cacheControlParam anthropic.CacheControlEphemeralParam) []anthropic.ContentBlockParamUnion {
 	for i := range content {
 		switch {
 		case content[i].OfText != nil:
-			content[i].OfText.CacheControl = anthropic.NewCacheControlEphemeralParam()
+			content[i].OfText.CacheControl = cacheControlParam
 		case content[i].OfImage != nil:
-			content[i].OfImage.CacheControl = anthropic.NewCacheControlEphemeralParam()
+			content[i].OfImage.CacheControl = cacheControlParam
 		case content[i].OfToolUse != nil:
-			content[i].OfToolUse.CacheControl = anthropic.NewCacheControlEphemeralParam()
+			content[i].OfToolUse.CacheControl = cacheControlParam
 		case content[i].OfToolResult != nil:
-			content[i].OfToolResult.CacheControl = anthropic.NewCacheControlEphemeralParam()
+			content[i].OfToolResult.CacheControl = cacheControlParam
 		}
 	}
 	return content
@@ -434,7 +431,7 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 			systemText := extractSystemPromptFromDeveloperMsg(devParam)
 			systemBlock := anthropic.TextBlockParam{Text: systemText}
 			if cacheEnabled {
-				systemBlock.CacheControl = anthropic.NewCacheControlEphemeralParam()
+				systemBlock.CacheControl = msg.OfSystem.CacheControl
 			}
 			systemBlocks = append(systemBlocks, systemBlock)
 			i++
@@ -442,7 +439,7 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 			systemText := extractSystemPromptFromDeveloperMsg(*msg.OfDeveloper)
 			systemBlock := anthropic.TextBlockParam{Text: systemText}
 			if cacheEnabled {
-				systemBlock.CacheControl = anthropic.NewCacheControlEphemeralParam()
+				systemBlock.CacheControl = msg.OfDeveloper.CacheControl
 			}
 			systemBlocks = append(systemBlocks, systemBlock)
 			i++
@@ -453,9 +450,12 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 			if err != nil {
 				return
 			}
+			if cacheEnabled {
+				content = applyCacheControlToContent(content, msg.OfUser.CacheControl)
+			}
 			anthropicMsg := anthropic.MessageParam{
 				Role:    anthropic.MessageParamRoleUser,
-				Content: applyCacheControlToContent(content, cacheEnabled),
+				Content: content,
 			}
 			anthropicMessages = append(anthropicMessages, anthropicMsg)
 			i++
@@ -466,7 +466,9 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 			if err != nil {
 				return
 			}
-			messages.Content = applyCacheControlToContent(messages.Content, cacheEnabled)
+			if cacheEnabled {
+				messages.Content = applyCacheControlToContent(messages.Content, msg.OfAssistant.CacheControl)
+			}
 			anthropicMessages = append(anthropicMessages, messages)
 			i++
 		case msg.OfTool != nil:
@@ -510,7 +512,10 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 					IsError:   anthropic.Bool(isError),
 				}
 				toolResultBlockUnion := anthropic.ContentBlockParamUnion{OfToolResult: &toolResultBlock}
-				toolResultBlocks = append(toolResultBlocks, applyCacheControlToContent([]anthropic.ContentBlockParamUnion{toolResultBlockUnion}, isCacheEnabled(currentMsg))[0])
+				if isCacheEnabled(currentMsg) {
+					toolResultBlockUnion = applyCacheControlToContent([]anthropic.ContentBlockParamUnion{toolResultBlockUnion}, toolMsg.CacheControl)[0]
+				}
+				toolResultBlocks = append(toolResultBlocks, toolResultBlockUnion)
 				i++
 			}
 			// Append all aggregated tool results.

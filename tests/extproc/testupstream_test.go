@@ -317,7 +317,7 @@ func TestWithTestUpstream(t *testing.T) {
 			backend:           "gcp-anthropicai",
 			path:              "/v1/chat/completions",
 			method:            http.MethodPost,
-			requestBody:       `{"model":"claude-3-sonnet","max_completion_tokens":1024, "messages":[{"role":"user","content":"Hello!", "cache": {"enabled": true}}]}`,
+			requestBody:       `{"model":"claude-3-sonnet","max_completion_tokens":1024, "messages":[{"role":"user","content":"Hello!", "cache_control": {"type": "ephemeral"}}]}`,
 			expRequestBody:    `{"max_tokens":1024,"messages":[{"content":[{"text":"Hello!","cache_control":{"type":"ephemeral"},"type":"text"}],"role":"user"}],"anthropic_version":"vertex-2023-10-16"}`,
 			expHost:           "gcp-region-aiplatform.googleapis.com",
 			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:rawPredict",
