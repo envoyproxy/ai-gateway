@@ -8,7 +8,7 @@
 #
 # This is only necessary if you want to use the rate limit feature.
 # When enabling rate limiting, you need to configure Envoy Gateway to point to this Redis instance.
-# See the envoy-gateway-values.yaml file in this directory for the complete configuration example.
+# See the envoy-gateway-values-addon.yaml file in this directory for the complete configuration example.
 ---
 kind: Namespace
 apiVersion: v1

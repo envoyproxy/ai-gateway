@@ -141,3 +141,5 @@ To use InferencePool with Envoy AI Gateway, you'll need to:
 4. **Deploy Endpoint Picker**: Install and configure the endpoint picker provider
 
 The following sections provide detailed guides for both integration approaches with complete examples and step-by-step instructions.
+
+For a quick setup guide with working examples, see the [InferencePool example](https://github.com/envoyproxy/ai-gateway/tree/main/examples/inference-pool).
