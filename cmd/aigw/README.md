@@ -182,7 +182,6 @@ This configures the OTLP endpoint to otel-tui on port 4318.
    ```bash
    COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm chat-completion
    COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm create-embeddings
-   COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm completion
    COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm mcp
    # Image generation
    COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm image-generation
