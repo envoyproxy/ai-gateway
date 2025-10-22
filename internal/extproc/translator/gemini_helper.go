@@ -29,15 +29,15 @@ const (
 	httpHeaderKeyContentLength     = "Content-Length"
 )
 
-// ResponseMode represents the type of response mode for Gemini requests
-type ResponseMode string
+// geminiResponseMode represents the type of response mode for Gemini requests
+type geminiResponseMode string
 
 const (
-	ResponseModeNone  ResponseMode = "NONE"
-	ResponseModeText  ResponseMode = "TEXT"
-	ResponseModeJSON  ResponseMode = "JSON"
-	ResponseModeEnum  ResponseMode = "ENUM"
-	ResponseModeRegex ResponseMode = "REGEX"
+	responseModeNone  geminiResponseMode = "NONE"
+	responseModeText  geminiResponseMode = "TEXT"
+	responseModeJSON  geminiResponseMode = "JSON"
+	responseModeEnum  geminiResponseMode = "ENUM"
+	responseModeRegex geminiResponseMode = "REGEX"
 )
 
 // -------------------------------------------------------------
@@ -393,8 +393,8 @@ func openAIToolChoiceToGeminiToolConfig(toolChoice *openai.ChatCompletionToolCho
 }
 
 // openAIReqToGeminiGenerationConfig converts OpenAI request to Gemini GenerationConfig.
-func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) (*genai.GenerationConfig, ResponseMode, error) {
-	responseMode := ResponseModeNone
+func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) (*genai.GenerationConfig, geminiResponseMode, error) {
+	responseMode := responseModeNone
 	gc := &genai.GenerationConfig{}
 	if openAIReq.Temperature != nil {
 		f := float32(*openAIReq.Temperature)
@@ -425,10 +425,10 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) 
 		formatSpecifiedCount++
 		switch {
 		case openAIReq.ResponseFormat.OfText != nil:
-			responseMode = ResponseModeText
+			responseMode = responseModeText
 			gc.ResponseMIMEType = mimeTypeTextPlain
 		case openAIReq.ResponseFormat.OfJSONObject != nil:
-			responseMode = ResponseModeJSON
+			responseMode = responseModeJSON
 			gc.ResponseMIMEType = mimeTypeApplicationJSON
 		case openAIReq.ResponseFormat.OfJSONSchema != nil:
 			var schemaMap map[string]any
@@ -436,7 +436,7 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) 
 				return nil, responseMode, fmt.Errorf("invalid JSON schema: %w", err)
 			}
 
-			responseMode = ResponseModeJSON
+			responseMode = responseModeJSON
 
 			gc.ResponseMIMEType = mimeTypeApplicationJSON
 			gc.ResponseJsonSchema = schemaMap
@@ -449,7 +449,7 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) 
 			return nil, responseMode, fmt.Errorf("duplicate json scheme specifications")
 		}
 
-		responseMode = ResponseModeEnum
+		responseMode = responseModeEnum
 		gc.ResponseMIMEType = mimeTypeApplicationEnum
 		gc.ResponseSchema = &genai.Schema{Type: "STRING", Enum: openAIReq.GuidedChoice}
 	}
@@ -458,7 +458,7 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) 
 		if existSchema := gc.ResponseSchema != nil || gc.ResponseJsonSchema != nil; existSchema {
 			return nil, responseMode, fmt.Errorf("duplicate json scheme specifications")
 		}
-		responseMode = ResponseModeRegex
+		responseMode = responseModeRegex
 		gc.ResponseMIMEType = mimeTypeApplicationJSON
 		gc.ResponseSchema = &genai.Schema{Type: "STRING", Pattern: openAIReq.GuidedRegex}
 	}
@@ -467,7 +467,7 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) 
 		if existSchema := gc.ResponseSchema != nil || gc.ResponseJsonSchema != nil; existSchema {
 			return nil, responseMode, fmt.Errorf("duplicate json scheme specifications")
 		}
-		responseMode = ResponseModeJSON
+		responseMode = responseModeJSON
 
 		gc.ResponseMIMEType = mimeTypeApplicationJSON
 		gc.ResponseJsonSchema = openAIReq.GuidedJSON
@@ -504,7 +504,7 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) 
 // --------------------------------------------------------------.
 
 // geminiCandidatesToOpenAIChoices converts Gemini candidates to OpenAI choices.
-func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate, responseMode ResponseMode) ([]openai.ChatCompletionResponseChoice, error) {
+func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate, responseMode geminiResponseMode) ([]openai.ChatCompletionResponseChoice, error) {
 	choices := make([]openai.ChatCompletionResponseChoice, 0, len(candidates))
 
 	for idx, candidate := range candidates {
@@ -577,11 +577,11 @@ func geminiFinishReasonToOpenAI(reason genai.FinishReason) openai.ChatCompletion
 }
 
 // extractTextFromGeminiParts extracts text from Gemini parts.
-func extractTextFromGeminiParts(parts []*genai.Part, responseMode ResponseMode) string {
+func extractTextFromGeminiParts(parts []*genai.Part, responseMode geminiResponseMode) string {
 	var text string
 	for _, part := range parts {
 		if part != nil && part.Text != "" {
-			if responseMode == ResponseModeRegex {
+			if responseMode == responseModeRegex {
 				// GCP doesn't natively support REGEX response modes, so we instead express them as json schema.
 				// This causes the response to be wrapped in double-quotes.
 				// E.g. `"positive"` (the double-quotes at the start and end are unwanted)
@@ -706,7 +706,7 @@ func buildGCPModelPathSuffix(publisher, model, gcpMethod string, queryParams ...
 }
 
 // geminiCandidatesToOpenAIStreamingChoices converts Gemini candidates to OpenAI streaming choices.
-func geminiCandidatesToOpenAIStreamingChoices(candidates []*genai.Candidate, responseMode ResponseMode) ([]openai.ChatCompletionResponseChunkChoice, error) {
+func geminiCandidatesToOpenAIStreamingChoices(candidates []*genai.Candidate, responseMode geminiResponseMode) ([]openai.ChatCompletionResponseChunkChoice, error) {
 	choices := make([]openai.ChatCompletionResponseChunkChoice, 0, len(candidates))
 
 	for _, candidate := range candidates {

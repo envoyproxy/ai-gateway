@@ -48,7 +48,7 @@ func NewChatCompletionOpenAIToGCPVertexAITranslator(modelNameOverride internalap
 // Note: This uses the Gemini native API directly, not Vertex AI's OpenAI-compatible API:
 // https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/inference
 type openAIToGCPVertexAITranslatorV1ChatCompletion struct {
-	responseMode      ResponseMode
+	responseMode      geminiResponseMode
 	modelNameOverride internalapi.ModelNameOverride
 	stream            bool   // Track if this is a streaming request.
 	bufferedBody      []byte // Buffer for incomplete JSON chunks.
