@@ -123,14 +123,6 @@ func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFi
 		path = path[:queryIndex]
 	}
 
-	// Debug details about the processor selection.
-	if s.logger != nil {
-		availablePaths := make([]string, 0, len(s.processorFactories))
-		for k := range s.processorFactories {
-			availablePaths = append(availablePaths, k)
-		}
-	}
-
 	newProcessor, ok := s.processorFactories[path]
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", errNoProcessor, path)
