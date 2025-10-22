@@ -51,91 +51,6 @@ helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
   --skip-crds
 ```
 
-## Configuring Envoy Gateway
-
-Envoy Gateway needs to be configured with AI Gateway-specific settings. The configuration is passed via helm values when installing/upgrading Envoy Gateway.
-
-### Using Helm Values Files
-
-Use the base Envoy Gateway values file for AI Gateway integration. You can combine it with addon files for additional features:
-
-```shell
-# Basic installation (no rate limiting)
-helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \
-  --version v0.0.0-latest \
-  --namespace envoy-gateway-system \
-  --create-namespace \
-  -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/manifests/envoy-gateway-values.yaml
-
-kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
-```
-
-### Configuration Details
-
-The Envoy Gateway configuration must include the following AI Gateway-specific settings:
-
-<details>
-<summary>Click to view full configuration with explanations</summary>
-
-```yaml
-config:
-  apiVersion: gateway.envoyproxy.io/v1alpha1
-  kind: EnvoyGateway
-  gateway:
-    controllerName: gateway.envoyproxy.io/gatewayclass-controller
-  logging:
-    level:
-      default: info
-  provider:
-    type: Kubernetes
-  extensionApis:
-    # Required: Enable Backend API for AI service backends
-    enableEnvoyPatchPolicy: true
-    enableBackend: true
-  extensionManager:
-    hooks:
-      xdsTranslator:
-        translation:
-          # Required: AI Gateway needs to translate all resource types
-          listener:
-            includeAll: true
-          route:
-            includeAll: true
-          cluster:
-            includeAll: true
-          secret:
-            includeAll: true
-        post:
-          # Required: Enable post-translation hooks
-          - Translation
-          - Cluster
-          - Route
-    service:
-      fqdn:
-        # IMPORTANT: Update this to match your AI Gateway controller service
-        # Format: <service-name>.<namespace>.svc.cluster.local
-        # Default if you followed the installation steps above:
-        hostname: ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local
-        port: 1063
-```
-
-</details>
-
-**What to customize:**
-
-- `extensionManager.service.fqdn.hostname`: If you installed AI Gateway in a different namespace or with a different name, update this value to match your deployment.
-
-:::tip Adding Features with Addons
-
-Need additional features like rate limiting or InferencePool? You can add them using addon values files:
-
-- **Rate Limiting**: See the [token_ratelimit example](https://github.com/envoyproxy/ai-gateway/tree/main/examples/token_ratelimit) for setup with Redis and rate limiting configuration
-- **InferencePool**: See the [inference-pool example](https://github.com/envoyproxy/ai-gateway/tree/main/examples/inference-pool) for intelligent request routing across multiple endpoints
-
-These examples show how to combine the base configuration with addon files using multiple `-f` flags.
-
-:::
-
 :::tip Verify Installation
 
 Check the status of the pods. All pods should be in the `Running` state with `Ready` status.
@@ -144,12 +59,6 @@ Check AI Gateway pods:
 
 ```shell
 kubectl get pods -n envoy-ai-gateway-system
-```
-
-Check Envoy Gateway pods:
-
-```shell
-kubectl get pods -n envoy-gateway-system
 ```
 
 :::
