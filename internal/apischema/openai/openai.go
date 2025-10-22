@@ -315,9 +315,6 @@ func (s *EmbeddingRequestInput) UnmarshalJSON(data []byte) (err error) {
 	if err != nil {
 		return
 	}
-	if _, ok := s.Value.([][]int64); ok {
-		return fmt.Errorf("input has unsupported type [][]int64")
-	}
 	return
 }
 

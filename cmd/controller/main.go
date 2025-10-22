@@ -33,6 +33,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/pprof"
 )
 
 type flags struct {
@@ -306,6 +307,7 @@ func main() {
 	setupLog.Info("configuring kubernetes cache", "watch-namespaces", parsedFlags.watchNamespaces, "sync-timeout", parsedFlags.cacheSyncTimeout)
 
 	ctx := ctrl.SetupSignalHandler()
+	pprof.Run(ctx)
 	mgrOpts := ctrl.Options{
 		Cache:            setupCache(parsedFlags),
 		Controller:       config.Controller{CacheSyncTimeout: parsedFlags.cacheSyncTimeout},

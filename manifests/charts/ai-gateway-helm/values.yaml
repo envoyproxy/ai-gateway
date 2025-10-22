@@ -32,6 +32,10 @@ extProc:
   ##     value: "ai-gateway-extproc"
   ##   - name: OTEL_TRACES_EXPORTER
   ##     value: "otlp"
+  ##   # This disables pprof endpoint at "localhost:6060/debug/pprof" that can be accessed via port-forwarding for profiling.
+  ##   # Enabled by default for troubleshooting purposes given the impact is negligible when not in use.
+  ##   - name: DISABLE_PPROF
+  ##     value: "true"
   ##
   extraEnvVars: []
 
@@ -103,9 +107,10 @@ controller:
   ## @param controller.extraEnvVars Array with extra environment variables to add to controller containers
   ## e.g:
   ## extraEnvVars:
-  ##   - name: FOO
-  ##     value: "bar"
-  ##
+  ##   # This disables pprof endpoint at "localhost:6060/debug/pprof" that can be accessed via port-forwarding for profiling.
+  ##   # Enabled by default for troubleshooting purposes given the impact is negligible when not in use.
+  ##   - name: DISABLE_PPROF
+  ##     value: "true"
   extraEnvVars: []
 
   # Example of volumes
