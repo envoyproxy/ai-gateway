@@ -396,29 +396,24 @@ func initEnvoyGateway(ctx context.Context, inferenceExtension bool) (err error) 
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)", elapsed.Seconds()))
 	}()
 	initLog("\tHelm Install")
-	helm := testsinternal.GoToolCmdContext(ctx, "helm", "upgrade", "-i", "eg",
+	// Build helm command with base values + addons based on what features are needed
+	helmArgs := []string{
+		"upgrade", "-i", "eg",
 		"oci://docker.io/envoyproxy/gateway-helm", "--version", egVersion,
-		"-n", "envoy-gateway-system", "--create-namespace")
+		"-n", "envoy-gateway-system", "--create-namespace",
+		"-f", "../../manifests/envoy-gateway-values.yaml",
+		"-f", "../../examples/token_ratelimit/envoy-gateway-values-addon.yaml",
+	}
+	if inferenceExtension {
+		helmArgs = append(helmArgs, "-f", "../../examples/inference-pool/envoy-gateway-values-addon.yaml")
+	}
+	helm := testsinternal.GoToolCmdContext(ctx, "helm", helmArgs...)
 	helm.Stdout = os.Stdout
 	helm.Stderr = os.Stderr
 	if err = helm.Run(); err != nil {
 		return
 	}
 
-	initLog("\tApplying Patch for Envoy Gateway")
-	if err = KubectlApplyManifest(ctx, "../../manifests/envoy-gateway-config/"); err != nil {
-		return
-	}
-	if inferenceExtension {
-		initLog("\tApplying InferencePool Patch for Envoy Gateway")
-		if err = KubectlApplyManifest(ctx, "../../examples/inference-pool/config.yaml"); err != nil {
-			return
-		}
-	}
-	initLog("\tRestart Envoy Gateway deployment")
-	if err = kubectlRestartDeployment(ctx, "envoy-gateway-system", "envoy-gateway"); err != nil {
-		return
-	}
 	initLog("\tWaiting for Envoy Gateway deployment to be ready")
 	return kubectlWaitForDeploymentReady(ctx, "envoy-gateway-system", "envoy-gateway")
 }

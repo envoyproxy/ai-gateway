@@ -36,10 +36,19 @@ const userIDAttribute = "user.id"
 const userIDMetricsLabel = "user_id"
 
 func Test_Examples_TokenRateLimit(t *testing.T) {
-	const manifest = "../../examples/token_ratelimit/"
-	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
+	const manifestDir = "../../examples/token_ratelimit"
+	// Apply specific manifest files, not the entire directory (to avoid applying Helm values files)
+	manifests := []string{
+		manifestDir + "/redis.yaml",
+		manifestDir + "/token_ratelimit.yaml",
+	}
+	for _, manifest := range manifests {
+		require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
+	}
 	t.Cleanup(func() {
-		_ = e2elib.KubectlDeleteManifest(context.Background(), manifest)
+		for _, manifest := range manifests {
+			_ = e2elib.KubectlDeleteManifest(context.Background(), manifest)
+		}
 	})
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-token-ratelimit"
