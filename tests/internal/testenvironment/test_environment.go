@@ -257,7 +257,7 @@ func requireEnvoy(t testing.TB,
 	envoyYamlPath := t.TempDir() + "/envoy.yaml"
 	require.NoError(t, os.WriteFile(envoyYamlPath, []byte(processedConfig), 0o600))
 
-	cmd := exec.CommandContext(t.Context(), "envoy",
+	cmd := exec.CommandContext(t.Context(), "func-e", "run", // "envoy",
 		"-c", envoyYamlPath,
 		"--concurrency", strconv.Itoa(max(runtime.NumCPU(), 2)),
 		// This allows multiple Envoy instances to run in parallel.
