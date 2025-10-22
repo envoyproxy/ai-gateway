@@ -11,6 +11,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	openaisdk "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/require"
 )
@@ -65,7 +66,9 @@ func TestOpenAIToOpenAIImageTranslator_ResponseError_NonJSON(t *testing.T) {
 	require.NotNil(t, bm)
 
 	// Body should be OpenAI error JSON
-	var got ImageGenerationError
+	var got struct {
+		Error openai.ErrorType `json:"error"`
+	}
 	require.NoError(t, json.Unmarshal(bm.GetBody(), &got))
 	require.Equal(t, openAIBackendError, got.Error.Type)
 }

@@ -18,6 +18,7 @@ import (
 	openaisdk "github.com/openai/openai-go/v2"
 	"github.com/tidwall/sjson"
 
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
@@ -97,14 +98,11 @@ func (o *openAIToOpenAIImageGenerationTranslator) ResponseError(respHeaders map[
 	if json.Valid(buf) {
 		return nil, nil, nil
 	}
-	// Otherwise, wrap the plain-text (or non-JSON) error into OpenAI Images error schema.
-	openaiError := ImageGenerationError{
-		Error: struct {
-			Type    string  `json:"type"`
-			Message string  `json:"message"`
-			Code    *string `json:"code,omitempty"`
-			Param   *string `json:"param,omitempty"`
-		}{
+	// Otherwise, wrap the plain-text (or non-JSON) error into OpenAI REST error schema.
+	openaiError := struct {
+		Error openai.ErrorType `json:"error"`
+	}{
+		Error: openai.ErrorType{
 			Type:    openAIBackendError,
 			Message: string(buf),
 			Code:    &statusCode,
