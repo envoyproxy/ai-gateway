@@ -71,7 +71,6 @@ Flags:
 		{
 			name:         "run no arg",
 			args:         []string{"run"},
-			env:          map[string]string{"OPENAI_API_KEY": "", "AZURE_OPENAI_API_KEY": ""},
 			rf:           func(context.Context, cmdRun, runOpts, io.Writer, io.Writer) error { return nil },
 			expPanicCode: ptr.To(80),
 		},
@@ -191,9 +190,6 @@ func TestCmdRun_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Ensure a clean environment for validation.
-			t.Setenv("OPENAI_API_KEY", "")
-			t.Setenv("AZURE_OPENAI_API_KEY", "")
 			for k, v := range tt.envVars {
 				t.Setenv(k, v)
 			}

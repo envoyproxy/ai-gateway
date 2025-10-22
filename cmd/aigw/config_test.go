@@ -84,7 +84,6 @@ func TestReadConfig(t *testing.T) {
 			// Clear any existing env vars
 			t.Setenv("OPENAI_API_KEY", "")
 			t.Setenv("OPENAI_BASE_URL", "")
-			t.Setenv("AZURE_OPENAI_API_KEY", "")
 
 			for k, v := range tt.envVars {
 				t.Setenv(k, v)
@@ -105,9 +104,6 @@ func TestReadConfig(t *testing.T) {
 	}
 
 	t.Run("error when file and no OPENAI_API_KEY", func(t *testing.T) {
-		// Ensure both OpenAI and Azure keys are unset so readConfig errors
-		t.Setenv("OPENAI_API_KEY", "")
-		t.Setenv("AZURE_OPENAI_API_KEY", "")
 		_, err := readConfig("", nil, false)
 		require.Error(t, err)
 		require.EqualError(t, err, "you must supply at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY or a config file path")

@@ -78,16 +78,7 @@ Here are values we use for Ollama:
          | jq -r '.data[0].b64_json' | base64 -d > image.png
        ```
 
-4. **Create embeddings**:
-
-   The `embeddings` service uses `curl` to send an embeddings request
-   to the AI Gateway CLI (aigw) which routes it to Ollama.
-
-   ```bash
-   docker compose run --rm embeddings
-   ```
-
-5. **Shutdown the example stack**:
+4. **Shutdown the example stack**:
 
    `down` stops the containers and removes the volumes used by the stack.
 
@@ -182,6 +173,7 @@ This configures the OTLP endpoint to otel-tui on port 4318.
    ```bash
    COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm chat-completion
    COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm create-embeddings
+   COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm completion
    COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm mcp
    # Image generation
    COMPOSE_PROFILES="<profile>" docker compose -f docker-compose-otel.yaml run --build --rm image-generation

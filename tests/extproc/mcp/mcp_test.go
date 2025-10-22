@@ -674,8 +674,7 @@ func testElicit(t *testing.T, m *mcpEnv) {
 func testNotificationCancelled(t *testing.T, m *mcpEnv) {
 	s := m.newSession(t)
 
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
+	ctx, cancel := context.WithCancel(t.Context()) //nolint: govet
 	doneCh := make(chan any)
 	go func() {
 		_, _ = s.session.CallTool(ctx, &mcp.CallToolParams{
