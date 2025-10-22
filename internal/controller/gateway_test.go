@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
 	appsv1 "k8s.io/api/apps/v1"
@@ -993,4 +995,159 @@ func TestGatewayController_reconcileFilterMCPConfigSecret(t *testing.T) {
 	require.Equal(t, "mcp-uuid", fc.UUID)
 	require.NotNil(t, fc.MCPConfig)
 	require.Equal(t, "http://127.0.0.1:"+strconv.Itoa(internalapi.MCPBackendListenerPort), fc.MCPConfig.BackendListenerAddr)
+}
+
+func Test_mergeHeaderMutations(t *testing.T) {
+	tests := []struct {
+		name         string
+		routeLevel   *aigv1a1.HTTPHeaderMutation
+		backendLevel *aigv1a1.HTTPHeaderMutation
+		expected     *aigv1a1.HTTPHeaderMutation
+	}{
+		{
+			name:         "both nil",
+			routeLevel:   nil,
+			backendLevel: nil,
+			expected:     nil,
+		},
+		{
+			name:       "route nil, backend has values",
+			routeLevel: nil,
+			backendLevel: &aigv1a1.HTTPHeaderMutation{
+				Set:    []gwapiv1.HTTPHeader{{Name: "Backend-Header", Value: "backend-value"}},
+				Remove: []string{"Backend-Remove"},
+			},
+			expected: &aigv1a1.HTTPHeaderMutation{
+				Set:    []gwapiv1.HTTPHeader{{Name: "Backend-Header", Value: "backend-value"}},
+				Remove: []string{"Backend-Remove"},
+			},
+		},
+		{
+			name: "route has values, backend nil",
+			routeLevel: &aigv1a1.HTTPHeaderMutation{
+				Set:    []gwapiv1.HTTPHeader{{Name: "Route-Header", Value: "route-value"}},
+				Remove: []string{"Route-Remove"},
+			},
+			backendLevel: nil,
+			expected: &aigv1a1.HTTPHeaderMutation{
+				Set:    []gwapiv1.HTTPHeader{{Name: "Route-Header", Value: "route-value"}},
+				Remove: []string{"Route-Remove"},
+			},
+		},
+		{
+			name: "no conflicts - different headers",
+			routeLevel: &aigv1a1.HTTPHeaderMutation{
+				Set:    []gwapiv1.HTTPHeader{{Name: "Route-Header", Value: "route-value"}},
+				Remove: []string{"Route-Remove"},
+			},
+			backendLevel: &aigv1a1.HTTPHeaderMutation{
+				Set:    []gwapiv1.HTTPHeader{{Name: "Backend-Header", Value: "backend-value"}},
+				Remove: []string{"Backend-Remove"},
+			},
+			expected: &aigv1a1.HTTPHeaderMutation{
+				Set: []gwapiv1.HTTPHeader{
+					{Name: "Backend-Header", Value: "backend-value"},
+					{Name: "Route-Header", Value: "route-value"},
+				},
+				Remove: []string{"backend-remove", "route-remove"},
+			},
+		},
+		{
+			name: "route overrides backend for same header name",
+			routeLevel: &aigv1a1.HTTPHeaderMutation{
+				Set: []gwapiv1.HTTPHeader{{Name: "X-Custom", Value: "route-value"}},
+			},
+			backendLevel: &aigv1a1.HTTPHeaderMutation{
+				Set: []gwapiv1.HTTPHeader{{Name: "X-Custom", Value: "backend-value"}},
+			},
+			expected: &aigv1a1.HTTPHeaderMutation{
+				Set: []gwapiv1.HTTPHeader{{Name: "X-Custom", Value: "route-value"}},
+			},
+		},
+		{
+			name: "case insensitive header name conflicts",
+			routeLevel: &aigv1a1.HTTPHeaderMutation{
+				Set: []gwapiv1.HTTPHeader{{Name: "x-custom", Value: "route-value"}},
+			},
+			backendLevel: &aigv1a1.HTTPHeaderMutation{
+				Set: []gwapiv1.HTTPHeader{{Name: "X-CUSTOM", Value: "backend-value"}},
+			},
+			expected: &aigv1a1.HTTPHeaderMutation{
+				Set: []gwapiv1.HTTPHeader{{Name: "x-custom", Value: "route-value"}},
+			},
+		},
+		{
+			name: "remove operations are combined and deduplicated",
+			routeLevel: &aigv1a1.HTTPHeaderMutation{
+				Remove: []string{"X-Remove", "x-shared"},
+			},
+			backendLevel: &aigv1a1.HTTPHeaderMutation{
+				Remove: []string{"X-Backend-Remove", "X-SHARED"},
+			},
+			expected: &aigv1a1.HTTPHeaderMutation{
+				Remove: []string{"x-backend-remove", "x-remove", "x-shared"},
+			},
+		},
+		{
+			name: "complex merge scenario",
+			routeLevel: &aigv1a1.HTTPHeaderMutation{
+				Set: []gwapiv1.HTTPHeader{
+					{Name: "X-Route-Only", Value: "route-only"},
+					{Name: "X-Override", Value: "route-wins"},
+				},
+				Remove: []string{"X-Route-Remove", "x-shared-remove"},
+			},
+			backendLevel: &aigv1a1.HTTPHeaderMutation{
+				Set: []gwapiv1.HTTPHeader{
+					{Name: "X-Backend-Only", Value: "backend-only"},
+					{Name: "x-override", Value: "backend-loses"},
+				},
+				Remove: []string{"X-Backend-Remove", "X-SHARED-REMOVE"},
+			},
+			expected: &aigv1a1.HTTPHeaderMutation{
+				Set: []gwapiv1.HTTPHeader{
+					{Name: "X-Backend-Only", Value: "backend-only"},
+					{Name: "X-Override", Value: "route-wins"},
+					{Name: "X-Route-Only", Value: "route-only"},
+				},
+				Remove: []string{"x-backend-remove", "x-route-remove", "x-shared-remove"},
+			},
+		},
+		{
+			name: "empty mutations",
+			routeLevel: &aigv1a1.HTTPHeaderMutation{
+				Set:    []gwapiv1.HTTPHeader{},
+				Remove: []string{},
+			},
+			backendLevel: &aigv1a1.HTTPHeaderMutation{
+				Set:    []gwapiv1.HTTPHeader{},
+				Remove: []string{},
+			},
+			expected: &aigv1a1.HTTPHeaderMutation{
+				Set:    nil,
+				Remove: nil,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := mergeHeaderMutations(tt.routeLevel, tt.backendLevel)
+
+			if tt.expected == nil {
+				require.Nil(t, result)
+				return
+			}
+
+			require.NotNil(t, result)
+
+			if d := cmp.Diff(tt.expected, result, cmpopts.SortSlices(func(a, b gwapiv1.HTTPHeader) bool {
+				return a.Name < b.Name
+			}), cmpopts.SortSlices(func(a, b string) bool {
+				return a < b
+			})); d != "" {
+				t.Errorf("mergeHeaderMutations() mismatch (-expected +got):\n%s", d)
+			}
+		})
+	}
 }

@@ -178,6 +178,53 @@ func headerMutationToFilterAPI(m *aigv1a1.HTTPHeaderMutation) *filterapi.HTTPHea
 	return ret
 }
 
+// mergeHeaderMutations merges route-level and backend-level HeaderMutation with route-level taking precedence.
+// Returns the merged HeaderMutation where route-level operations override backend-level operations for conflicting headers.
+func mergeHeaderMutations(routeLevel, backendLevel *aigv1a1.HTTPHeaderMutation) *aigv1a1.HTTPHeaderMutation {
+	if routeLevel == nil {
+		return backendLevel
+	}
+	if backendLevel == nil {
+		return routeLevel
+	}
+
+	result := &aigv1a1.HTTPHeaderMutation{}
+
+	// Merge Set operations (route-level wins conflicts)
+	headerMap := make(map[string]gwapiv1.HTTPHeader)
+
+	// Add backend-level headers first
+	for _, h := range backendLevel.Set {
+		headerMap[strings.ToLower(string(h.Name))] = h
+	}
+
+	// Override with route-level headers (route-level wins)
+	for _, h := range routeLevel.Set {
+		headerMap[strings.ToLower(string(h.Name))] = h
+	}
+
+	// Convert back to slice
+	for _, h := range headerMap {
+		result.Set = append(result.Set, h)
+	}
+
+	// Merge Remove operations (combine and deduplicate)
+	removeMap := make(map[string]bool)
+
+	for _, h := range backendLevel.Remove {
+		removeMap[strings.ToLower(h)] = true
+	}
+	for _, h := range routeLevel.Remove {
+		removeMap[strings.ToLower(h)] = true
+	}
+
+	for h := range removeMap {
+		result.Remove = append(result.Remove, h)
+	}
+
+	return result
+}
+
 // reconcileFilterConfigSecret updates the filter config secret for the external processor.
 func (c *GatewayController) reconcileFilterConfigSecret(
 	ctx context.Context,
@@ -238,7 +285,16 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 							"namespace", backendNamespace)
 						continue
 					}
-					b.HeaderMutation = headerMutationToFilterAPI(backendObj.Spec.HeaderMutation)
+
+					// Extract HeaderMutation from both route and backend levels
+					routeHeaderMutation := backendRef.HeaderMutation
+					backendHeaderMutation := backendObj.Spec.HeaderMutation
+
+					// Merge with route-level taking precedence over backend-level
+					mergedHeaderMutation := mergeHeaderMutations(routeHeaderMutation, backendHeaderMutation)
+
+					// Convert to FilterAPI format
+					b.HeaderMutation = headerMutationToFilterAPI(mergedHeaderMutation)
 					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
 					if bsp != nil {
 						b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, bsp)

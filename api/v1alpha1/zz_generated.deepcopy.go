@@ -178,6 +178,11 @@ func (in *AIGatewayRouteRuleBackendRef) DeepCopyInto(out *AIGatewayRouteRuleBack
 		*out = new(string)
 		**out = **in
 	}
+	if in.HeaderMutation != nil {
+		in, out := &in.HeaderMutation, &out.HeaderMutation
+		*out = new(HTTPHeaderMutation)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.Weight != nil {
 		in, out := &in.Weight, &out.Weight
 		*out = new(int32)
