@@ -4,7 +4,11 @@
 # the root of the repo.
 
 # This is a simple example of a Redis deployment that is used
-# by the default Envoy Gateway setting in config.yaml. TODO: modify this comment when https://github.com/envoyproxy/ai-gateway/issues/1191 is fixed.
+# by the Envoy Gateway rate limiting feature.
+#
+# This is only necessary if you want to use the rate limit feature.
+# When enabling rate limiting, you need to configure Envoy Gateway to point to this Redis instance.
+# See the envoy-gateway-values-addon.yaml file in this directory for the complete configuration example.
 ---
 kind: Namespace
 apiVersion: v1
