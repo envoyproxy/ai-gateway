@@ -400,7 +400,7 @@ func initEnvoyGateway(ctx context.Context, inferenceExtension bool) (err error) 
 	helmArgs := []string{"upgrade", "-i", "eg",
 		"oci://docker.io/envoyproxy/gateway-helm", "--version", egVersion,
 		"-n", "envoy-gateway-system", "--create-namespace",
-		"-f", "../../examples/basic/envoy-gateway-values.yaml",
+		"-f", "../../manifests/envoy-gateway-values.yaml",
 		"-f", "../../examples/token_ratelimit/envoy-gateway-values-addon.yaml",
 	}
 	if inferenceExtension {

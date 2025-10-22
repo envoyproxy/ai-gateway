@@ -10,11 +10,11 @@
 #     --version v0.0.0-latest \
 #     --namespace envoy-gateway-system \
 #     --create-namespace \
-#     -f ../basic/envoy-gateway-values.yaml \
+#     -f ../../manifests/envoy-gateway-values.yaml \
 #     -f envoy-gateway-values-addon.yaml
 #
 # You can also combine with rate limiting:
-#   -f ../basic/envoy-gateway-values.yaml \
+#   -f ../../manifests/envoy-gateway-values.yaml \
 #   -f ../token_ratelimit/envoy-gateway-values-addon.yaml \
 #   -f envoy-gateway-values-addon.yaml
 

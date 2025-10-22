@@ -65,7 +65,7 @@ helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \
   --version v0.0.0-latest \
   --namespace envoy-gateway-system \
   --create-namespace \
-  -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/envoy-gateway-values.yaml
+  -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/manifests/envoy-gateway-values.yaml
 
 kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
 ```

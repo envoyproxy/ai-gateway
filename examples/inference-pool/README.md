@@ -4,7 +4,7 @@ This example demonstrates how to use AI Gateway with the InferencePool feature, 
 
 ## Files in This Directory
 
-- **`envoy-gateway-values-addon.yaml`**: Envoy Gateway values addon for InferencePool support. Combine with `../basic/envoy-gateway-values.yaml`.
+- **`envoy-gateway-values-addon.yaml`**: Envoy Gateway values addon for InferencePool support. Combine with `../../manifests/envoy-gateway-values.yaml`.
 - **`base.yaml`**: Complete example that includes Gateway, AIServiceBackend, InferencePool CRDs, and a sample application deployment.
 - **`aigwroute.yaml`**: Example AIGatewayRoute that uses InferencePool as a backend.
 - **`httproute.yaml`**: Example HTTPRoute for traditional HTTP routing to InferencePool endpoints.
@@ -19,7 +19,7 @@ This example demonstrates how to use AI Gateway with the InferencePool feature, 
      --version v0.0.0-latest \
      --namespace envoy-gateway-system \
      --create-namespace \
-     -f ../basic/envoy-gateway-values.yaml \
+     -f ../../manifests/envoy-gateway-values.yaml \
      -f envoy-gateway-values-addon.yaml
    ```
 

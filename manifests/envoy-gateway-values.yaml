@@ -14,8 +14,8 @@
 #     -f envoy-gateway-values.yaml
 #
 # For additional features, combine with addon values files:
-#   -f envoy-gateway-values.yaml -f ../token_ratelimit/envoy-gateway-values-addon.yaml
-#   -f envoy-gateway-values.yaml -f ../inference-pool/envoy-gateway-values-addon.yaml
+#   -f envoy-gateway-values.yaml -f examples/token_ratelimit/envoy-gateway-values-addon.yaml
+#   -f envoy-gateway-values.yaml -f examples/inference-pool/envoy-gateway-values-addon.yaml
 
 config:
   apiVersion: gateway.envoyproxy.io/v1alpha1

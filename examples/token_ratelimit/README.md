@@ -7,7 +7,7 @@ of each request.
 
 ## Files in This Directory
 
-- **`envoy-gateway-values-addon.yaml`**: Envoy Gateway values addon for rate limiting. Combine with `../basic/envoy-gateway-values.yaml`.
+- **`envoy-gateway-values-addon.yaml`**: Envoy Gateway values addon for rate limiting. Combine with `../../manifests/envoy-gateway-values.yaml`.
 - **`redis.yaml`**: Redis deployment required for rate limiting. Deploy this before enabling rate limiting in Envoy Gateway.
 - **`token_ratelimit.yaml`**: Example AIGatewayRoute configuration that demonstrates token-based rate limiting.
 
@@ -20,7 +20,7 @@ of each request.
      --version v0.0.0-latest \
      --namespace envoy-gateway-system \
      --create-namespace \
-     -f ../basic/envoy-gateway-values.yaml \
+     -f ../../manifests/envoy-gateway-values.yaml \
      -f envoy-gateway-values-addon.yaml
    ```
 
