@@ -3,7 +3,6 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-
 package backendauth
 
 import (
@@ -18,7 +17,7 @@ import (
 // Run with: go test -bench=BenchmarkAWSHandler_Do -benchmem -tags=benchmark ./internal/extproc/backendauth/
 func BenchmarkAWSHandler_Do(b *testing.B) {
 	b.Run("file_credentials", func(b *testing.B) {
-		awsFileBody := "[default]\naws_access_key_id=AKIAIOSFODNN7EXAMPLE\naws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\n"
+		awsFileBody := "[default]\naws_access_key_id=AKIAIOSFODNN7EXAMPLE\naws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\n" //nolint:gosec
 		handler, err := newAWSHandler(b.Context(), &filterapi.AWSAuth{
 			CredentialFileLiteral: awsFileBody,
 			Region:                "us-east-1",
@@ -65,7 +64,7 @@ func BenchmarkAWSHandler_Do(b *testing.B) {
 	})
 
 	b.Run("concurrent", func(b *testing.B) {
-		awsFileBody := "[default]\naws_access_key_id=AKIAIOSFODNN7EXAMPLE\naws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\n"
+		awsFileBody := "[default]\naws_access_key_id=AKIAIOSFODNN7EXAMPLE\naws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\n" //nolint:gosec
 		handler, err := newAWSHandler(b.Context(), &filterapi.AWSAuth{
 			CredentialFileLiteral: awsFileBody,
 			Region:                "us-east-1",
@@ -88,7 +87,7 @@ func BenchmarkAWSHandler_Do(b *testing.B) {
 	})
 
 	b.Run("just_credential_retrieve", func(b *testing.B) {
-		awsFileBody := "[default]\naws_access_key_id=AKIAIOSFODNN7EXAMPLE\naws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\n"
+		awsFileBody := "[default]\naws_access_key_id=AKIAIOSFODNN7EXAMPLE\naws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\n" //nolint:gosec
 		handler, err := newAWSHandler(b.Context(), &filterapi.AWSAuth{
 			CredentialFileLiteral: awsFileBody,
 			Region:                "us-east-1",
