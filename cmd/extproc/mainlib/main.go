@@ -230,6 +230,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	}
 	chatCompletionMetrics := metrics.NewChatCompletion(meter, metricsRequestHeaderAttributes)
 	embeddingsMetrics := metrics.NewEmbeddings(meter, metricsRequestHeaderAttributes)
+	rerankMetrics := metrics.NewRerank(meter, metricsRequestHeaderAttributes)
 	mcpMetrics := metrics.NewMCP(meter)
 
 	tracing, err := tracing.NewTracingFromEnv(ctx, os.Stdout, spanRequestHeaderAttributes)
@@ -244,6 +245,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	server.Register(path.Join(flags.rootPrefix, "/v1/chat/completions"), extproc.ChatCompletionProcessorFactory(chatCompletionMetrics))
 	server.Register(path.Join(flags.rootPrefix, "/v1/completions"), extproc.CompletionsProcessorFactory(nil))
 	server.Register(path.Join(flags.rootPrefix, "/v1/embeddings"), extproc.EmbeddingsProcessorFactory(embeddingsMetrics))
+	server.Register(path.Join(flags.rootPrefix, "/v2/rerank"), extproc.RerankProcessorFactory(rerankMetrics))
 	server.Register(path.Join(flags.rootPrefix, "/v1/models"), extproc.NewModelsProcessor)
 	server.Register(path.Join(flags.rootPrefix, "/anthropic/v1/messages"), extproc.MessagesProcessorFactory(chatCompletionMetrics))
 

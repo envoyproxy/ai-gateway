@@ -103,6 +103,8 @@ type APISchemaName string
 const (
 	// APISchemaOpenAI represents the standard OpenAI API schema.
 	APISchemaOpenAI APISchemaName = "OpenAI"
+	// APISchemaCohere represents the Cohere API schema.
+	APISchemaCohere APISchemaName = "Cohere"
 	// APISchemaAWSBedrock represents the AWS Bedrock API schema.
 	APISchemaAWSBedrock APISchemaName = "AWSBedrock"
 	// APISchemaAzureOpenAI represents the Azure OpenAI API schema.

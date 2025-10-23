@@ -14,6 +14,7 @@ import (
 	"github.com/tidwall/sjson"
 
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
+	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
@@ -92,6 +93,49 @@ type OpenAIEmbeddingTranslator interface {
 	//	- `onRetry` is true if this is a retry request.
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
 	RequestBody(raw []byte, body *openai.EmbeddingRequest, onRetry bool) (
+		headerMutation *extprocv3.HeaderMutation,
+		bodyMutation *extprocv3.BodyMutation,
+		err error,
+	)
+
+	// ResponseHeaders translates the response headers.
+	// 	- `headers` is the response headers.
+	//	- This returns `headerMutation` that can be nil to indicate no mutation.
+	ResponseHeaders(headers map[string]string) (
+		headerMutation *extprocv3.HeaderMutation,
+		err error,
+	)
+
+	// ResponseBody translates the response body.
+	// 	- `body` is the response body.
+	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
+	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
+	//  - This returns `responseModel` that is the model name from the response (may differ from request model).
+	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
+		headerMutation *extprocv3.HeaderMutation,
+		bodyMutation *extprocv3.BodyMutation,
+		tokenUsage LLMTokenUsage,
+		responseModel internalapi.ResponseModel,
+		err error,
+	)
+
+	// ResponseError translates the response error. This is called when the upstream response status code is not successful (2xx).
+	// 	- `respHeaders` is the response headers.
+	// 	- `body` is the response body that contains the error message.
+	ResponseError(respHeaders map[string]string, body io.Reader) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error)
+}
+
+// CohereRerankTranslator translates the request and response messages between the client and the backend API schemas
+// for /v2/rerank endpoint of Cohere.
+//
+// This is created per request and is not thread-safe.
+type CohereRerankTranslator interface {
+	// RequestBody translates the request body.
+	// 	- `raw` is the raw request body.
+	// 	- `body` is the request body parsed into the Cohere rerank v2 request.
+	//	- `onRetry` is true if this is a retry request.
+	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
+	RequestBody(raw []byte, body *cohereschema.CohereRerankV2Request, onRetry bool) (
 		headerMutation *extprocv3.HeaderMutation,
 		bodyMutation *extprocv3.BodyMutation,
 		err error,
