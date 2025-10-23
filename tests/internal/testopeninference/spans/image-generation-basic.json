@@ -5,9 +5,6 @@
   "attributes": [
     {"key": "llm.system", "value": {"stringValue": "openai"}},
     {"key": "llm.model_name", "value": {"stringValue": "gpt-image-1-mini"}},
-    {"key": "gen_ai.image.prompt", "value": {"stringValue": "A simple black-and-white line drawing of a cat playing with yarn"}},
-    {"key": "gen_ai.image.quality", "value": {"stringValue": "low"}},
-    {"key": "gen_ai.image.size", "value": {"stringValue": "1024x1024"}},
     {"key": "gen_ai.operation.name", "value": {"stringValue": "image_generation"}},
     {"key": "openinference.span.kind", "value": {"stringValue": "LLM"}},
     {"key": "input.mime_type", "value": {"stringValue": "application/json"}},

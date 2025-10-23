@@ -11,9 +11,10 @@ import (
 	"io"
 	"testing"
 
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	openaisdk "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/require"
+
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
 func TestOpenAIToOpenAIImageTranslator_RequestBody_ModelOverrideAndPath(t *testing.T) {
@@ -77,15 +78,13 @@ func TestOpenAIToOpenAIImageTranslator_ResponseBody_OK(t *testing.T) {
 	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "", nil)
 	resp := &openaisdk.ImagesResponse{Size: openaisdk.ImagesResponseSize1024x1024}
 	buf, _ := json.Marshal(resp)
-	hm, bm, usage, metadata, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true)
+	hm, bm, usage, responseModel, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true)
 	require.NoError(t, err)
 	require.Nil(t, hm)
 	require.Nil(t, bm)
 	require.Equal(t, uint32(0), usage.InputTokens)
 	require.Equal(t, uint32(0), usage.TotalTokens)
-	require.Equal(t, 0, metadata.ImageCount)
-	require.Empty(t, metadata.Model)
-	require.Equal(t, string(openaisdk.ImagesResponseSize1024x1024), metadata.Size)
+	require.Empty(t, responseModel)
 }
 
 func TestOpenAIToOpenAIImageTranslator_RequestBody_NoOverrideNoForce(t *testing.T) {
@@ -141,11 +140,9 @@ func TestOpenAIToOpenAIImageTranslator_ResponseBody_ModelPropagatesFromRequest(t
 		Size: openaisdk.ImagesResponseSize1024x1024,
 	}
 	buf, _ := json.Marshal(resp)
-	_, _, _, md, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true)
+	_, _, _, respModel, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true)
 	require.NoError(t, err)
-	require.Equal(t, 2, md.ImageCount)
-	require.Equal(t, "gpt-image-1", md.Model)
-	require.Equal(t, string(openaisdk.ImagesResponseSize1024x1024), md.Size)
+	require.Equal(t, "gpt-image-1", respModel)
 }
 
 func TestOpenAIToOpenAIImageTranslator_ResponseHeaders_NoOp(t *testing.T) {

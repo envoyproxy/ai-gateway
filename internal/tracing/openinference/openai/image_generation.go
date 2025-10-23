@@ -73,6 +73,8 @@ func (r *ImageGenerationRecorder) RecordResponse(span trace.Span, resp *openaisd
 			bodyString = string(marshaled)
 		}
 	}
+	// Match ChatCompletion recorder: include output MIME type and value
+	attrs = append(attrs, attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON))
 	attrs = append(attrs, attribute.String(openinference.OutputValue, bodyString))
 	span.SetAttributes(attrs...)
 	span.SetStatus(codes.Ok, "")
@@ -98,44 +100,14 @@ func buildImageGenerationRequestAttributes(req *openaisdk.ImageGenerateParams, b
 		attrs = append(attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
 	}
 
-	// Add image generation specific attributes
-	attrs = append(attrs, attribute.String("gen_ai.operation.name", "image_generation"))
-	attrs = append(attrs, attribute.String("gen_ai.image.prompt", req.Prompt))
-	attrs = append(attrs, attribute.String("gen_ai.image.size", string(req.Size)))
-	attrs = append(attrs, attribute.String("gen_ai.image.quality", string(req.Quality)))
-	attrs = append(attrs, attribute.String("gen_ai.image.response_format", string(req.ResponseFormat)))
-	if req.N.Valid() {
-		attrs = append(attrs, attribute.Int("gen_ai.image.n", int(req.N.Value)))
-	}
-
 	return attrs
 }
 
 // buildImageGenerationResponseAttributes builds OpenInference attributes from the image generation response.
-func buildImageGenerationResponseAttributes(resp *openaisdk.ImagesResponse, config *openinference.TraceConfig) []attribute.KeyValue {
-	attrs := []attribute.KeyValue{
-		attribute.Int("gen_ai.image.count", len(resp.Data)),
-	}
+func buildImageGenerationResponseAttributes(_ *openaisdk.ImagesResponse, _ *openinference.TraceConfig) []attribute.KeyValue {
+	attrs := []attribute.KeyValue{}
 
-	// Add image URLs if not hidden (SDK uses string field for URL)
-	if !config.HideOutputs && resp.Data != nil {
-		urls := make([]string, 0, len(resp.Data))
-		for _, data := range resp.Data {
-			if data.URL != "" {
-				urls = append(urls, data.URL)
-			}
-		}
-		if len(urls) > 0 {
-			urlStr := ""
-			for i, url := range urls {
-				if i > 0 {
-					urlStr += ","
-				}
-				urlStr += url
-			}
-			attrs = append(attrs, attribute.String("gen_ai.image.urls", urlStr))
-		}
-	}
+	// No image-specific response attributes
 
 	return attrs
 }

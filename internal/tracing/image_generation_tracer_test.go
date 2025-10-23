@@ -82,7 +82,6 @@ func TestImageGenerationTracer_StartSpanAndInjectHeaders(t *testing.T) {
 				attribute.Int("reqBodyLen", reqBodyLen),
 				attribute.Int("statusCode", 200),
 				attribute.Int("respBodyLen", bodyLen),
-				attribute.Int("imageCount", 1),
 			},
 		},
 		{
@@ -102,7 +101,6 @@ func TestImageGenerationTracer_StartSpanAndInjectHeaders(t *testing.T) {
 				attribute.Int("reqBodyLen", reqBodyLen),
 				attribute.Int("statusCode", 200),
 				attribute.Int("respBodyLen", bodyLen),
-				attribute.Int("imageCount", 1),
 			},
 			expectedTraceID: "4bf92f3577b34da6a3ce929d0e0e4736",
 		},
@@ -128,7 +126,6 @@ func TestImageGenerationTracer_StartSpanAndInjectHeaders(t *testing.T) {
 				attribute.Int("reqBodyLen", 0), // Will be calculated in test
 				attribute.Int("statusCode", 200),
 				attribute.Int("respBodyLen", bodyLen),
-				attribute.Int("imageCount", 1), // Response has 1 image
 			},
 		},
 	}
@@ -349,7 +346,7 @@ func TestImageGenerationTracer_MultipleImagesResponse(t *testing.T) {
 		attribute.Int("reqBodyLen", len(reqBody)),
 		attribute.Int("statusCode", 200),
 		attribute.Int("respBodyLen", 0), // Will be calculated
-		attribute.Int("imageCount", 3),
+
 	}
 
 	// Update respBodyLen with actual value
@@ -395,7 +392,6 @@ func (r testImageGenTracerRecorder) RecordResponse(span oteltrace.Span, resp *op
 		panic(err)
 	}
 	span.SetAttributes(attribute.Int("respBodyLen", len(body)))
-	span.SetAttributes(attribute.Int("imageCount", len(resp.Data)))
 }
 
 func (r testImageGenTracerRecorder) RecordResponseOnError(span oteltrace.Span, statusCode int, body []byte) {

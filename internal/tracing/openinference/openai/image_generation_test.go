@@ -20,6 +20,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 )
 
 var (
@@ -86,11 +87,11 @@ func TestImageGenerationRecorder_RecordRequest(t *testing.T) {
 			req:     basicImageReq,
 			reqBody: basicImageReqBody,
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String("gen_ai.operation.name", "image_generation"),
-				attribute.String("gen_ai.image.size", "1024x1024"),
-				attribute.String("gen_ai.image.quality", "high"),
-				attribute.String("gen_ai.image.response_format", "b64_json"),
-				attribute.String("gen_ai.image.n", "1"),
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, openaisdk.ImageModelGPTImage1),
+				attribute.String(openinference.InputValue, string(basicImageReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
 			},
 		},
 	}
@@ -106,11 +107,11 @@ func TestImageGenerationRecorder_RecordRequest(t *testing.T) {
 
 			// Check that key attributes are present
 			attrs := attributesToMap(actualSpan.Attributes)
-			require.Equal(t, "image_generation", attrs["gen_ai.operation.name"])
-			require.Equal(t, "1024x1024", attrs["gen_ai.image.size"])
-			require.Equal(t, "high", attrs["gen_ai.image.quality"])
-			require.Equal(t, "b64_json", attrs["gen_ai.image.response_format"])
-			require.Equal(t, "1", attrs["gen_ai.image.n"])
+			require.Equal(t, openinference.SpanKindLLM, attrs[openinference.SpanKind])
+			require.Equal(t, openinference.LLMSystemOpenAI, attrs[openinference.LLMSystem])
+			require.Equal(t, openaisdk.ImageModelGPTImage1, attrs[openinference.LLMModelName])
+			require.Equal(t, string(basicImageReqBody), attrs[openinference.InputValue])
+			require.Equal(t, openinference.MimeTypeJSON, attrs[openinference.InputMimeType])
 		})
 	}
 }
@@ -123,12 +124,9 @@ func TestImageGenerationRecorder_RecordResponse(t *testing.T) {
 		expectedStatus trace.Status
 	}{
 		{
-			name:     "successful response",
-			respBody: basicImageRespBody,
-			expectedAttrs: []attribute.KeyValue{
-				attribute.String("gen_ai.image.count", "1"),
-				attribute.String("gen_ai.image.urls", "https://example.com/img.png"),
-			},
+			name:           "successful response",
+			respBody:       basicImageRespBody,
+			expectedAttrs:  []attribute.KeyValue{},
 			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
 		},
 	}
@@ -147,9 +145,7 @@ func TestImageGenerationRecorder_RecordResponse(t *testing.T) {
 			})
 
 			// Check that key attributes are present
-			attrs := attributesToMap(actualSpan.Attributes)
-			require.Equal(t, "1", attrs["gen_ai.image.count"])
-			require.Equal(t, "https://example.com/img.png", attrs["gen_ai.image.urls"])
+			_ = attributesToMap(actualSpan.Attributes)
 			require.Equal(t, trace.Status{Code: codes.Ok, Description: ""}, actualSpan.Status)
 		})
 	}

@@ -39,7 +39,6 @@ func (r testImageGenerationRecorder) RecordResponse(span oteltrace.Span, resp *o
 	span.SetAttributes(
 		attribute.Int("statusCode", 200),
 		attribute.Int("respBodyLen", len(respBytes)),
-		attribute.Int("imageCount", len(resp.Data)),
 	)
 }
 
@@ -73,7 +72,6 @@ func TestImageGenerationSpan_RecordResponse(t *testing.T) {
 	require.Equal(t, []attribute.KeyValue{
 		attribute.Int("statusCode", 200),
 		attribute.Int("respBodyLen", len(respBytes)),
-		attribute.Int("imageCount", 1),
 	}, actualSpan.Attributes)
 }
 
@@ -130,7 +128,6 @@ func TestImageGenerationSpan_RecordResponse_WithMultipleImages(t *testing.T) {
 	require.Equal(t, []attribute.KeyValue{
 		attribute.Int("statusCode", 200),
 		attribute.Int("respBodyLen", len(respBytes)),
-		attribute.Int("imageCount", 3),
 	}, actualSpan.Attributes)
 }
 

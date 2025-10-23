@@ -473,7 +473,7 @@ type mockImageGenerationTranslator struct {
 	retHeaderMutation           *extprocv3.HeaderMutation
 	retBodyMutation             *extprocv3.BodyMutation
 	retUsedToken                translator.LLMTokenUsage
-	retImageMetadata            translator.ImageGenerationMetadata
+	retResponseModel            internalapi.ResponseModel
 }
 
 func (m *mockImageGenerationTranslator) RequestBody(_ []byte, req *openaisdk.ImageGenerateParams, forceBodyMutation bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
@@ -495,14 +495,14 @@ func (m *mockImageGenerationTranslator) ResponseHeaders(headers map[string]strin
 	return m.retHeaderMutation, m.retErr
 }
 
-func (m *mockImageGenerationTranslator) ResponseBody(headers map[string]string, body io.Reader, endOfStream bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, translator.LLMTokenUsage, translator.ImageGenerationMetadata, error) {
+func (m *mockImageGenerationTranslator) ResponseBody(headers map[string]string, body io.Reader, endOfStream bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, translator.LLMTokenUsage, internalapi.ResponseModel, error) {
 	_ = headers
 	if m.expResponseBody != nil {
 		bodyBytes, _ := io.ReadAll(body)
 		require.Equal(m.t, m.expResponseBody.Body, bodyBytes)
 		require.Equal(m.t, m.expResponseBody.EndOfStream, endOfStream)
 	}
-	return m.retHeaderMutation, m.retBodyMutation, m.retUsedToken, m.retImageMetadata, m.retErr
+	return m.retHeaderMutation, m.retBodyMutation, m.retUsedToken, m.retResponseModel, m.retErr
 }
 
 func (m *mockImageGenerationTranslator) ResponseError(headers map[string]string, body io.Reader) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {

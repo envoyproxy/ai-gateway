@@ -130,12 +130,12 @@ func (o *openAIToOpenAIImageGenerationTranslator) ResponseHeaders(map[string]str
 
 // ResponseBody implements [ImageGenerationTranslator.ResponseBody].
 func (o *openAIToOpenAIImageGenerationTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, imageMetadata ImageGenerationMetadata, err error,
+	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
 	// Decode using OpenAI SDK v2 schema to avoid drift.
 	resp := &openaisdk.ImagesResponse{}
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
-		return nil, nil, tokenUsage, imageMetadata, fmt.Errorf("failed to decode response body: %w", err)
+		return nil, nil, tokenUsage, responseModel, fmt.Errorf("failed to decode response body: %w", err)
 	}
 
 	// Populate token usage if provided (GPT-Image-1); otherwise remain zero.
@@ -145,10 +145,8 @@ func (o *openAIToOpenAIImageGenerationTranslator) ResponseBody(_ map[string]stri
 		tokenUsage.TotalTokens = uint32(resp.Usage.TotalTokens)   //nolint:gosec
 	}
 
-	// Extract image generation metadata for metrics.
-	imageMetadata.ImageCount = len(resp.Data)
-	imageMetadata.Model = o.requestModel // Model is not present in the response, so we assume the request model == response model.
-	imageMetadata.Size = string(resp.Size)
+	// Provide response model for metrics
+	responseModel = o.requestModel
 
 	return
 }

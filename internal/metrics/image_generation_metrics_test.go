@@ -59,21 +59,13 @@ func TestImageGeneration_RecordImageGeneration(t *testing.T) {
 		meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
 		im := NewImageGenerationFactory(meter, nil)().(*imageGeneration)
 
-		// Base attributes for request duration metric (no image-specific attributes)
+		// Base attributes for request duration metric
 		baseAttrs := attribute.NewSet(
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationImageGeneration),
 			attribute.Key(genaiAttributeProviderName).String(genaiProviderOpenAI),
 			attribute.Key(genaiAttributeOriginalModel).String("img-model"),
 			attribute.Key(genaiAttributeRequestModel).String("img-model"),
 			attribute.Key(genaiAttributeResponseModel).String("img-model"),
-		)
-		// Extended attributes for image-info metric
-		imageAttrs := attribute.NewSet(
-			append(baseAttrs.ToSlice(),
-				attribute.Key(genaiAttributeImageCount).Int(2),
-				attribute.Key(genaiAttributeImageModel).String("img-model"),
-				attribute.Key(genaiAttributeImageSize).String("1024x1024"),
-			)...,
 		)
 
 		im.StartRequest(nil)
@@ -83,16 +75,11 @@ func TestImageGeneration_RecordImageGeneration(t *testing.T) {
 		im.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 
 		time.Sleep(10 * time.Millisecond)
-		im.RecordImageGeneration(t.Context(), 2, "img-model", "1024x1024", nil)
+		im.RecordImageGeneration(t.Context(), nil)
 
 		count, sum := getHistogramValues(t, mr, genaiMetricServerRequestDuration, baseAttrs)
 		assert.Equal(t, uint64(1), count)
 		assert.Equal(t, 10*time.Millisecond.Seconds(), sum)
-
-		// Verify the auxiliary image-info metric captured the image-specific attributes
-		count, sum = getHistogramValues(t, mr, "ai_gateway.image.generation", imageAttrs)
-		assert.Equal(t, uint64(1), count)
-		assert.Equal(t, 1.0, sum)
 	})
 }
 

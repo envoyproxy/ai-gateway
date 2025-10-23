@@ -340,8 +340,8 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessResponseBody(ctx context
 	var headerMutation *extprocv3.HeaderMutation
 	var bodyMutation *extprocv3.BodyMutation
 	var tokenUsage translator.LLMTokenUsage
-	var imageMetadata translator.ImageGenerationMetadata
-	headerMutation, bodyMutation, tokenUsage, imageMetadata, err = i.translator.ResponseBody(i.responseHeaders, decodingResult.reader, body.EndOfStream)
+	var responseModel internalapi.ResponseModel
+	headerMutation, bodyMutation, tokenUsage, responseModel, err = i.translator.ResponseBody(i.responseHeaders, decodingResult.reader, body.EndOfStream)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}
@@ -365,11 +365,11 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessResponseBody(ctx context
 	i.costs.TotalTokens += tokenUsage.TotalTokens
 
 	// Ensure response model is set before recording metrics so attributes include it.
-	i.metrics.SetResponseModel(imageMetadata.Model)
+	i.metrics.SetResponseModel(responseModel)
 	// Update metrics with token usage (input/output only per OTEL spec).
 	i.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.OutputTokens, i.requestHeaders)
 	// Record image generation metrics
-	i.metrics.RecordImageGeneration(ctx, imageMetadata.ImageCount, imageMetadata.Model, imageMetadata.Size, i.requestHeaders)
+	i.metrics.RecordImageGeneration(ctx, i.requestHeaders)
 
 	if body.EndOfStream && len(i.config.requestCosts) > 0 {
 		metadata, err := buildDynamicMetadata(i.config, &i.costs, i.requestHeaders, i.backendName)

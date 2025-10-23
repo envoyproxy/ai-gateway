@@ -218,17 +218,6 @@ type LLMTokenUsage struct {
 	CachedInputTokens uint32
 }
 
-// ImageGenerationMetadata contains metadata extracted from image generation responses
-// for metrics and observability.
-type ImageGenerationMetadata struct {
-	// ImageCount is the number of images generated in the response.
-	ImageCount int
-	// Model is the AI model used for image generation.
-	Model string
-	// Size is the size/dimensions of the generated images.
-	Size string
-}
-
 // sjsonOptions are the options used for sjson operations in the translator.
 var sjsonOptions = &sjson.Options{
 	Optimistic: true,
@@ -264,11 +253,12 @@ type ImageGenerationTranslator interface {
 	// ResponseBody translates the response body.
 	// 	- body is the response body.
 	//	- This returns headerMutation and bodyMutation that can be nil to indicate no mutation.
+	//  - This returns responseModel that is the model name from the response (may differ from request model).
 	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
 		headerMutation *extprocv3.HeaderMutation,
 		bodyMutation *extprocv3.BodyMutation,
 		tokenUsage LLMTokenUsage,
-		imageMetadata ImageGenerationMetadata,
+		responseModel internalapi.ResponseModel,
 		err error,
 	)
 

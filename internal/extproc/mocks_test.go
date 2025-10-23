@@ -557,7 +557,7 @@ func (m *mockImageGenerationMetrics) RecordRequestCompletion(_ context.Context, 
 	}
 }
 
-func (m *mockImageGenerationMetrics) RecordImageGeneration(_ context.Context, _ int, _ string, _ string, _ map[string]string) {
+func (m *mockImageGenerationMetrics) RecordImageGeneration(_ context.Context, _ map[string]string) {
 }
 
 func (m *mockImageGenerationMetrics) RequireRequestFailure(t *testing.T) {

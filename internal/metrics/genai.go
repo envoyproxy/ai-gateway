@@ -24,10 +24,6 @@ const (
 	genaiAttributeTokenType     = "gen_ai.token.type" //nolint:gosec // metric name, not credential
 	genaiAttributeErrorType     = "error.type"
 
-	genaiAttributeImageCount = "gen_ai.image.count"
-	genaiAttributeImageModel = "gen_ai.image.model"
-	genaiAttributeImageSize  = "gen_ai.image.size"
-
 	genaiOperationChat            = "chat"
 	genaiOperationCompletion      = "completion"
 	genaiOperationEmbedding       = "embeddings"
