@@ -54,8 +54,9 @@ from agents.mcp import MCPServer, MCPServerStreamableHttp, MCPUtil
 async def main(prompt: str, model_name: str, mcp_url: str):
     async with MCPServerStreamableHttp(
         name="Envoy AI Gateway MCP",
-        params={"url": mcp_url, "timeout": 300},
+        params={"url": mcp_url, "timeout": 30.0},
         cache_tools_list=True,
+        client_session_timeout_seconds=30.0,
     ) as server:
         model = OpenAIProvider(use_responses=False).get_model(model_name)
         agent = Agent(name="Assistant", model=model, mcp_servers=[server])
