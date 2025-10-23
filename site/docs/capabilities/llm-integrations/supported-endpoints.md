@@ -156,6 +156,40 @@ curl -H "Content-Type: application/json" \
 - OpenAI
 - Any OpenAI-compatible provider that supports embeddings, including Azure OpenAI.
 
+### Image Generation
+
+**Endpoint:** `POST /v1/images/generations`
+
+**Status:** ✅ Supported
+
+**Description:** Generate one or more images from a text prompt using OpenAI-compatible models.
+
+**Features:**
+
+- **Non-streaming responses**: Returns JSON payload with image URLs or base64 content
+- **Model selection**: Via request body `model` or `x-ai-eg-model` header
+- **Parameters**: `prompt`, `size`, `n`, `quality`, `response_format`
+- **Metrics**: Records image count, model, and size; token usage when provided
+- **Provider fallback and load balancing**
+
+**Supported Providers:**
+
+- OpenAI
+- Any OpenAI-compatible provider that supports image generations
+
+**Example:**
+
+```bash
+curl -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-image-1",
+    "prompt": "a serene mountain landscape at sunrise in watercolor",
+    "size": "1024x1024",
+    "n": 1
+  }' \
+  $GATEWAY_URL/v1/images/generations
+```
+
 ### Rerank
 
 **Endpoint:** `POST /v2/rerank`
@@ -213,26 +247,26 @@ curl $GATEWAY_URL/v1/models
 
 The following table summarizes which providers support which endpoints:
 
-| Provider                                                                                              | Chat Completions | Completions | Embeddings | Rerank | Anthropic Messages | Notes                                                                                                                |
-| ----------------------------------------------------------------------------------------------------- | :--------------: | :---------: | :--------: | :----: | :----------------: | -------------------------------------------------------------------------------------------------------------------- |
-| [OpenAI](https://platform.openai.com/docs/api-reference)                                              |        ✅        |     ✅      |     ✅     |   ❌   |         ❌         |                                                                                                                      |
-| [AWS Bedrock](https://docs.aws.amazon.com/bedrock/latest/APIReference/)                               |        ✅        |     🚧      |     🚧     |   ❌   |         ❌         | Via API translation                                                                                                  |
-| [Azure OpenAI](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference)                  |        ✅        |     🚧      |     ✅     |   ❌   |         ❌         | Via API translation or via [OpenAI-compatible API](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/latest) |
-| [Google Gemini](https://ai.google.dev/gemini-api/docs/openai)                                         |        ✅        |     ⚠️      |     ✅     |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
-| [Groq](https://console.groq.com/docs/openai)                                                          |        ✅        |     ❌      |     ❌     |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
-| [Grok](https://docs.x.ai/docs/api-reference)                                                          |        ✅        |     ⚠️      |     ❌     |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
-| [Together AI](https://docs.together.ai/docs/openai-api-compatibility)                                 |        ⚠️        |     ⚠️      |     ⚠️     |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
-| [Cohere](https://docs.cohere.com/reference/rerank)                                                    |        ⚠️        |     ⚠️      |     ⚠️     |   ✅   |         ❌         | Native Cohere Rerank v2 endpoint                                                                                     |
-| [Mistral](https://docs.mistral.ai/api/)                                                               |        ⚠️        |     ⚠️      |     ⚠️     |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
-| [DeepInfra](https://deepinfra.com/docs/inference)                                                     |        ✅        |     ⚠️      |     ✅     |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
-| [DeepSeek](https://api-docs.deepseek.com/)                                                            |        ⚠️        |     ⚠️      |     ❌     |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
-| [Hunyuan](https://cloud.tencent.com/document/product/1729/111007)                                     |        ⚠️        |     ⚠️      |     ⚠️     |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
-| [Tencent LLM Knowledge Engine](https://www.tencentcloud.com/document/product/1255/70381)              |        ⚠️        |     ❌      |     ❌     |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
-| [Tetrate Agent Router Service (TARS)](https://router.tetrate.ai/)                                     |        ⚠️        |     ⚠️      |     ⚠️     |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
-| [Google Vertex AI](https://cloud.google.com/vertex-ai/docs/reference/rest)                            |        ✅        |     🚧      |     🚧     |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
-| [Anthropic on Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude) |        ✅        |     ❌      |     🚧     |   ❌   |         ✅         | Via OpenAI-compatible API and Native Anthropic API                                                                   |
-| [SambaNova](https://docs.sambanova.ai/sambastudio/latest/open-ai-api.html)                            |        ✅        |     ⚠️      |     ✅     |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
-| [Anthropic](https://docs.claude.com/en/home)                                                          |        ✅        |     ❌      |     ❌     |   ❌   |         ✅         | Via OpenAI-compatible API and Native Anthropic API                                                                   |
+| Provider                                                                                              | Chat Completions | Completions | Embeddings | Image Generation | Rerank | Anthropic Messages | Notes                                                                                                                |
+| ----------------------------------------------------------------------------------------------------- | :--------------: | :---------: | :--------: | :--------------: | :----: | :----------------: | -------------------------------------------------------------------------------------------------------------------- |
+| [OpenAI](https://platform.openai.com/docs/api-reference)                                              |        ✅        |     ✅      |     ✅     |        ✅        |   ❌   |         ❌         |                                                                                                                      |
+| [AWS Bedrock](https://docs.aws.amazon.com/bedrock/latest/APIReference/)                               |        ✅        |     🚧      |     🚧     |        ❌        |   ❌   |         ❌         | Via API translation                                                                                                  |
+| [Azure OpenAI](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference)                  |        ✅        |     🚧      |     ✅     |        ⚠️        |   ❌   |         ❌         | Via API translation or via [OpenAI-compatible API](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/latest) |
+| [Google Gemini](https://ai.google.dev/gemini-api/docs/openai)                                         |        ✅        |     ⚠️      |     ✅     |        ⚠️        |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
+| [Groq](https://console.groq.com/docs/openai)                                                          |        ✅        |     ❌      |     ❌     |        ❌        |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
+| [Grok](https://docs.x.ai/docs/api-reference)                                                          |        ✅        |     ⚠️      |     ❌     |        ⚠️        |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
+| [Together AI](https://docs.together.ai/docs/openai-api-compatibility)                                 |        ⚠️        |     ⚠️      |     ⚠️     |        ⚠️        |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
+| [Cohere](https://docs.cohere.com/reference/rerank)                                                    |        ⚠️        |     ⚠️      |     ⚠️     |        ❌        |   ✅   |         ❌         | Native Cohere Rerank v2 endpoint                                                                                     |
+| [Mistral](https://docs.mistral.ai/api/)                                                               |        ⚠️        |     ⚠️      |     ⚠️     |        ❌        |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
+| [DeepInfra](https://deepinfra.com/docs/inference)                                                     |        ✅        |     ⚠️      |     ✅     |        ⚠️        |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
+| [DeepSeek](https://api-docs.deepseek.com/)                                                            |        ⚠️        |     ⚠️      |     ❌     |        ❌        |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
+| [Hunyuan](https://cloud.tencent.com/document/product/1729/111007)                                     |        ⚠️        |     ⚠️      |     ⚠️     |        ❌        |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
+| [Tencent LLM Knowledge Engine](https://www.tencentcloud.com/document/product/1255/70381)              |        ⚠️        |     ❌      |     ❌     |        ❌        |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
+| [Tetrate Agent Router Service (TARS)](https://router.tetrate.ai/)                                     |        ⚠️        |     ⚠️      |     ⚠️     |        ❌        |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
+| [Google Vertex AI](https://cloud.google.com/vertex-ai/docs/reference/rest)                            |        ✅        |     🚧      |     🚧     |        ❌        |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
+| [Anthropic on Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude) |        ✅        |     ❌      |     🚧     |        ❌        |   ❌   |         ✅         | Via OpenAI-compatible API and Native Anthropic API                                                                   |
+| [SambaNova](https://docs.sambanova.ai/sambastudio/latest/open-ai-api.html)                            |        ✅        |     ⚠️      |     ✅     |        ❌        |   ❌   |         ❌         | Via OpenAI-compatible API                                                                                            |
+| [Anthropic](https://docs.claude.com/en/home)                                                          |        ✅        |     ❌      |     ❌     |        ❌        |   ❌   |         ✅         | Via OpenAI-compatible API and Native Anthropic API                                                                   |
 
 - ✅ - Supported and Tested on Envoy AI Gateway CI
 - ⚠️️ - Expected to work based on provider documentation, but not tested on the CI.
