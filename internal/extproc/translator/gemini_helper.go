@@ -414,13 +414,22 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) 
 		case openAIReq.ResponseFormat.OfJSONObject != nil:
 			gc.ResponseMIMEType = mimeTypeApplicationJSON
 		case openAIReq.ResponseFormat.OfJSONSchema != nil:
+			gc.ResponseMIMEType = mimeTypeApplicationJSON
 			var schemaMap map[string]any
 			if err := json.Unmarshal([]byte(openAIReq.ResponseFormat.OfJSONSchema.JSONSchema.Schema), &schemaMap); err != nil {
 				return nil, fmt.Errorf("invalid JSON schema: %w", err)
 			}
+			// it only works with gemini2.5 according to https://ai.google.dev/gemini-api/docs/structured-output#json-schema
+			if strings.Contains(openAIReq.Model, "gemini") && strings.Contains(openAIReq.Model, "2.5") { // TODO: users might be able to change the mapping?
+				gc.ResponseJsonSchema = schemaMap
+			} else {
+				convertedSchema, err := jsonSchemaToGemini(schemaMap)
+				if err != nil {
+					return nil, fmt.Errorf("invalid JSON schema: %w", err)
+				}
+				gc.ResponseSchema = convertedSchema
 
-			gc.ResponseMIMEType = mimeTypeApplicationJSON
-			gc.ResponseJsonSchema = schemaMap
+			}
 		}
 	}
 

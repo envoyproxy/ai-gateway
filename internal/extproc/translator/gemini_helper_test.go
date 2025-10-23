@@ -721,6 +721,7 @@ func TestUserMsgToGeminiParts(t *testing.T) {
 }
 
 func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
+	trueBool := true
 	tests := []struct {
 		name                     string
 		input                    *openai.ChatCompletionRequest
@@ -797,6 +798,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 		{
 			name: "json schema (map)",
 			input: &openai.ChatCompletionRequest{
+				Model: "gemini-2.5",
 				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
 					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
 						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
@@ -814,6 +816,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 		{
 			name: "json schema (string)",
 			input: &openai.ChatCompletionRequest{
+				Model: "gemini-2.5",
 				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
 					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
 						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
@@ -831,6 +834,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 		{
 			name: "json schema (invalid string)",
 			input: &openai.ChatCompletionRequest{
+				Model: "gemini-2.5",
 				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
 					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
 						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
@@ -870,6 +874,253 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 			expectedGenerationConfig: &genai.GenerationConfig{
 				ResponseMIMEType:   "application/json",
 				ResponseJsonSchema: json.RawMessage(`{"type": "string"}`),
+			},
+		},
+		{
+			name: "nested schema for ResponseSchema",
+			input: &openai.ChatCompletionRequest{
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
+							Schema: json.RawMessage(`{
+    "type": "object",
+    "properties": {
+        "steps": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/step"
+            }
+        },
+        "final_answer": {
+            "type": "string"
+        }
+    },
+    "$defs": {
+        "step": {
+            "type": "object",
+            "properties": {
+                "explanation": {
+                    "type": "string"
+                },
+                "output": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "explanation",
+                "output"
+            ],
+            "additionalProperties": false
+        }
+    },
+    "required": [
+        "steps",
+        "final_answer"
+    ],
+    "additionalProperties": false
+}`),
+						},
+					},
+				},
+			},
+			expectedGenerationConfig: &genai.GenerationConfig{
+				ResponseMIMEType: "application/json",
+				ResponseSchema: &genai.Schema{
+					Properties: map[string]*genai.Schema{
+						"final_answer": {Type: "string"},
+						"steps": {
+							Items: &genai.Schema{
+								Properties: map[string]*genai.Schema{
+									"explanation": {Type: "string"},
+									"output":      {Type: "string"},
+								},
+								Type: "object",
+							},
+							Type: "array",
+						},
+					},
+					Type: "object",
+				},
+			},
+		},
+
+		{
+			name: "anyof list for ResponseSchema",
+			input: &openai.ChatCompletionRequest{
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
+							Schema: json.RawMessage(`{
+    "type": "object",
+    "properties": {
+        "item": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "description": "The user object to insert into the database",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "The name of the user"
+                        },
+                        "age": {
+                            "type": "number",
+                            "description": "The age of the user"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "name",
+                        "age"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "description": "The address object to insert into the database",
+                    "properties": {
+                        "number": {
+                            "type": "string",
+                            "description": "The number of the address. Eg. for 123 main st, this would be 123"
+                        },
+                        "street": {
+                            "type": "string",
+                            "description": "The street name. Eg. for 123 main st, this would be main st"
+                        },
+                        "city": {
+                            "type": "string",
+                            "description": "The city of the address"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "number",
+                        "street",
+                        "city"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "description": "The email address object to insert into the database",
+                    "properties": {
+                        "company": {
+                            "type": "string",
+                            "description": "The company to use."
+                        },
+                        "url": {
+                            "type": "string",
+                            "description": "The email address"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "company",
+                        "url"
+                    ]
+                }
+            ]
+        }
+    },
+    "additionalProperties": false,
+    "required": [
+        "item"
+    ]
+}`),
+						},
+					},
+				},
+			},
+			expectedGenerationConfig: &genai.GenerationConfig{
+				ResponseMIMEType: "application/json",
+				ResponseSchema: &genai.Schema{
+					Properties: map[string]*genai.Schema{
+						"item": {
+							AnyOf: []*genai.Schema{
+								{
+									Properties: map[string]*genai.Schema{
+										"age":  {Type: "number"},
+										"name": {Type: "string"},
+									},
+									Type: "object",
+								},
+								{
+									Properties: map[string]*genai.Schema{
+										"city":   {Type: "string"},
+										"number": {Type: "string"},
+										"street": {Type: "string"},
+									},
+									Type: "object",
+								},
+								{
+									Properties: map[string]*genai.Schema{
+										"company": {Type: "string"},
+										"url":     {Type: "string"},
+									},
+									Type: "object",
+								},
+							},
+						},
+					},
+					Type: "object",
+				},
+			},
+		},
+
+		{
+			name: "anyof null for ResponseSchema",
+			input: &openai.ChatCompletionRequest{
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
+							Schema: json.RawMessage(`{
+    "type": "object",
+    "description": "Data model identifying a single paragraph for paragraph re-ranking.",
+    "properties": {
+        "paragraph_id": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "title": "Paragraph Id"
+        },
+        "document_id": {
+            "title": "Document Id",
+            "type": "string"
+        }
+    },
+    "required": [
+        "paragraph_id",
+        "document_id"
+    ],
+    "title": "ParagraphIdentifier",
+    "additionalProperties": false
+}`),
+						},
+					},
+				},
+			},
+			expectedGenerationConfig: &genai.GenerationConfig{
+				ResponseMIMEType: "application/json",
+				ResponseSchema: &genai.Schema{
+					Properties: map[string]*genai.Schema{
+						"document_id": {Type: "string"},
+						"paragraph_id": {
+							AnyOf: []*genai.Schema{
+								{
+									Type: "string",
+								},
+							},
+							Nullable: &trueBool,
+						},
+					},
+					Type: "object",
+				},
 			},
 		},
 	}
