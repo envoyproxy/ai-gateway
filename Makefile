@@ -46,7 +46,7 @@ help:
 # This runs all necessary steps to prepare for a commit.
 .PHONY: precommit
 precommit: ## Run all necessary steps to prepare for a commit.
-precommit: tidy spellcheck apigen apidoc format lint editorconfig helm-test
+precommit: tidy spellcheck apigen apidoc format lint editorconfig helm-verify-crds helm-test
 
 .PHONY: lint
 lint: ## This runs the linter, formatter, and tidy on the codebase.
@@ -102,7 +102,6 @@ editorconfig:
 apigen: ## Generate CRDs for the API defined in the api directory.
 	@echo "apigen => ./api/v1alpha1/..."
 	@$(GO_TOOL) controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-crds-helm/templates
-	@$(GO_TOOL) controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-helm/crds
 
 # This generates the API documentation for the API defined in the api/v1alpha1 directory.
 .PHONY: apidoc
@@ -331,6 +330,26 @@ helm-test: helm-package  ## Test the helm chart with a dummy version.
 	@$(GO_TOOL) helm show chart ${HELM_CHART_PATH} | grep -q "appVersion: ${TAG}"
 	@$(GO_TOOL) helm template ${HELM_CHART_PATH} | grep -q "docker.io/envoyproxy/ai-gateway-extproc:${TAG}"
 	@$(GO_TOOL) helm template ${HELM_CHART_PATH} | grep -q "docker.io/envoyproxy/ai-gateway-controller:${TAG}"
+
+# This verifies that CRDs in ai-gateway-helm match those in ai-gateway-crds-helm (ignoring Helm conditionals and comments).
+.PHONY: helm-verify-crds
+helm-verify-crds: ## Verify CRDs are in sync between ai-gateway-helm and ai-gateway-crds-helm charts.
+	@echo "Verifying CRDs are in sync..."
+	@mkdir -p $(OUTPUT_DIR)/crd-check
+	@$(GO_TOOL) helm template test ./manifests/charts/ai-gateway-crds-helm > $(OUTPUT_DIR)/crd-check/base-crds.yaml
+	# Dynamically get all CRD files in the /templates/crds/ folder and generate --show-only flags for each
+	@CRD_FILES=$$(find ./manifests/charts/ai-gateway-helm/templates/crds -name "*.yaml" -type f -printf "templates/crds/%f\n" | sort); \
+	CRD_FLAGS=$$(echo "$$CRD_FILES" | sed 's/^/--show-only /'); \
+	$(GO_TOOL) helm template test ./manifests/charts/ai-gateway-helm --set crds.enabled=true --set crds.keep=false $$CRD_FLAGS > $(OUTPUT_DIR)/crd-check/helm-crds.yaml
+	@sed '/^#/d; /^$$/d' $(OUTPUT_DIR)/crd-check/base-crds.yaml | uniq > $(OUTPUT_DIR)/crd-check/base-crds-clean.yaml
+	@sed '/^#/d; /^$$/d' $(OUTPUT_DIR)/crd-check/helm-crds.yaml | uniq > $(OUTPUT_DIR)/crd-check/helm-crds-clean.yaml
+	@diff -u $(OUTPUT_DIR)/crd-check/base-crds-clean.yaml $(OUTPUT_DIR)/crd-check/helm-crds-clean.yaml > /dev/null || { \
+		echo "ERROR: CRDs are out of sync between ai-gateway-helm and ai-gateway-crds-helm"; \
+		echo "To fix: Update CRDs in manifests/charts/ai-gateway-helm/templates/crds/ to match manifests/charts/ai-gateway-crds-helm/templates/"; \
+		diff -u $(OUTPUT_DIR)/crd-check/base-crds-clean.yaml $(OUTPUT_DIR)/crd-check/helm-crds-clean.yaml | head -50; \
+		exit 1; \
+	}
+	@echo "✓ All CRDs are in sync"
 
 # This pushes the helm chart to the OCI registry, requiring the access to the registry endpoint.
 .PHONY: helm-push

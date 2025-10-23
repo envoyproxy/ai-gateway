@@ -448,6 +448,7 @@ func InstallOrUpgradeAIGateway(ctx context.Context, aigw AIGatewayHelmOption) (e
 		mainChartArgs = append(mainChartArgs, "../../manifests/charts/ai-gateway-helm")
 	}
 	mainChartArgs = append(mainChartArgs, "-n", "envoy-ai-gateway-system", "--create-namespace")
+	mainChartArgs = append(mainChartArgs, "--set", "crds.enabled=false")
 	mainChartArgs = append(mainChartArgs, aigw.AdditionalArgs...)
 
 	helm := testsinternal.GoToolCmdContext(ctx, "helm", mainChartArgs...)
