@@ -50,8 +50,10 @@ precommit: tidy spellcheck apigen apidoc format lint editorconfig helm-test
 
 .PHONY: lint
 lint: ## This runs the linter, formatter, and tidy on the codebase.
-	@echo "lint => ./..."
+	@echo "golangci-lint => ./..."
 	@$(GO_TOOL) golangci-lint run --build-tags==test_crdcel,test_controller,test_extproc,test_e2e ./...
+	@echo "actionlint => ./..."
+	@$(GO_TOOL) actionlint
 
 .PHONY: spellcheck
 spellcheck:  ## Spell check the codebase.

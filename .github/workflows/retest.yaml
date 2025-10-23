@@ -9,8 +9,7 @@ permissions:
 
 jobs:
   retest:
-    if: |
-      ${{
+    if: ${{
          github.event.issue.pull_request
          && github.repository == 'envoyproxy/ai-gateway'
          && github.actor != 'repokitteh-read-only[bot]'
