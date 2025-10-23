@@ -5,6 +5,17 @@
 
 # Default values for ai-gateway-helm.
 
+# CRD installation control
+crds:
+  # Specifies whether CRDs should be installed as part of this chart.
+  # Set to false when using ai-gateway-crds-helm as a separate subchart to avoid conflicts.
+  enabled: true
+
+  # If true, CRDs will not be deleted when the Helm release is uninstalled.
+  # This is recommended for production environments to prevent accidental data loss.
+  # When set to true, adds the "helm.sh/resource-policy: keep" annotation to CRDs.
+  keep: true
+
 # Global configuration for the endpoints supported by the AI Gateway.
 endpointConfig:
   # The prefix for all the routes served by the AI Gateway. Defaulting to "/". All the generated routes will have this prefix.

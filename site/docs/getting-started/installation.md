@@ -30,6 +30,18 @@ Otherwise, the controller will be installed with the latest version at the time 
 
 > If you are experiencing network issues with `docker.io` , you can install the helm chart from the code repo [ai-gateway-helm](https://github.com/envoyproxy/ai-gateway/tree/main/manifests/charts/ai-gateway-helm) instead.
 
+### CRD Retention
+
+By default, CRDs are retained when the Helm release is uninstalled (`crds.keep=true`). This prevents accidental data loss in production environments. To change this behavior:
+
+```shell
+helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
+  --version v0.0.0-latest \
+  --namespace envoy-ai-gateway-system \
+  --create-namespace \
+  --set crds.keep=false
+```
+
 ### Installing CRDs separately
 
 If you want to manage the CRDs separately, install the CRD Helm chart (`ai-gateway-crds-helm`) which will install just the CRDs:
@@ -41,14 +53,14 @@ helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm \
   --create-namespace
 ```
 
-After the CRDs are installed, you can install the AI Gateway Helm chart without re-installing the CRDs by using the `--skip-crds` flag.
+After the CRDs are installed, install the AI Gateway Helm chart with CRDs disabled:
 
 ```shell
 helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
   --version v0.0.0-latest \
   --namespace envoy-ai-gateway-system \
   --create-namespace \
-  --skip-crds
+  --set crds.enabled=false
 ```
 
 :::tip Verify Installation
