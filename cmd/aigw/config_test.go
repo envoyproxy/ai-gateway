@@ -86,12 +86,12 @@ func TestReadConfig(t *testing.T) {
 			expectPort:      "443",
 		},
 		{
-			name: "generates config for both OpenAI and Anthropic",
+			name: "OpenAI takes precedence when both are set",
 			envVars: map[string]string{
 				"OPENAI_API_KEY":    "test-key",
 				"ANTHROPIC_API_KEY": "sk-ant-test123",
 			},
-			expectHostnames: []string{"api.openai.com", "api.anthropic.com"},
+			expectHostnames: []string{"api.openai.com"},
 			expectPort:      "443",
 		},
 	}

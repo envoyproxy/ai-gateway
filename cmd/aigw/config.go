@@ -40,22 +40,20 @@ func readConfig(path string, mcpServers *autoconfig.MCPServers, debug bool) (str
 		}
 	}
 
-	// Add OpenAI config from ENV if available
+	// Add OpenAI config from ENV if available (takes precedence over Anthropic)
 	if os.Getenv("OPENAI_API_KEY") != "" || os.Getenv("AZURE_OPENAI_API_KEY") != "" {
 		if err := autoconfig.PopulateOpenAIEnvConfig(&data); err != nil {
 			return "", err
 		}
-	}
-
-	// Add Anthropic config from ENV if available
-	if os.Getenv("ANTHROPIC_API_KEY") != "" {
+	} else if os.Getenv("ANTHROPIC_API_KEY") != "" {
+		// Add Anthropic config from ENV if available (only when OpenAI is not configured)
 		if err := autoconfig.PopulateAnthropicEnvConfig(&data); err != nil {
 			return "", err
 		}
 	}
 
 	// If we've found no config data, return an error.
-	if reflect.DeepEqual(data, autoconfig.ConfigData{Debug: debug, EnvoyVersion: os.Getenv("ENVOY_VERSION")}) {
+	if reflect.DeepEqual(data, autoconfig.ConfigData{Debug: debug}) {
 		return "", errors.New("you must supply at least OPENAI_API_KEY, AZURE_OPENAI_API_KEY, ANTHROPIC_API_KEY, or a config file path")
 	}
 
