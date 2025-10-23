@@ -1,0 +1,166 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# This example demonstrates how to configure AWS Bedrock with EKS Pod Identity,
+# eliminating the need for static AWS credentials or OIDC provider configuration.
+#
+# Prerequisites for EKS Pod Identity:
+# 1. EKS cluster v1.24+
+# 2. EKS Pod Identity Agent installed (DaemonSet)
+# 3. IAM role with Bedrock permissions and trust policy for pods.eks.amazonaws.com
+# 4. Pod Identity association created linking your ServiceAccount to the IAM role
+#
+# For AWS Pod Identity setup instructions, see:
+# https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html
+#
+# For AI Gateway integration instructions, see:
+# https://docs.envoyproxy.io/ai-gateway/latest/getting-started/connect-providers/aws-bedrock.html
+
+---
+# Step 1: Create a ServiceAccount for the data plane
+# Note: No annotations needed for Pod Identity (unlike IRSA)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ai-gateway-dataplane-aws
+  namespace: envoy-gateway-system
+---
+# Step 2: Create minimal RBAC for the ServiceAccount
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ai-gateway-dataplane-aws
+  namespace: envoy-gateway-system
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ai-gateway-dataplane-aws
+  namespace: envoy-gateway-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ai-gateway-dataplane-aws
+subjects:
+  - kind: ServiceAccount
+    name: ai-gateway-dataplane-aws
+    namespace: envoy-gateway-system
+---
+# Step 3: Create custom EnvoyProxy configuration that uses the ServiceAccount
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: ai-gateway-with-aws
+  namespace: envoy-gateway-system
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        pod:
+          # This tells Envoy Gateway to use our AWS-enabled ServiceAccount
+          serviceAccountName: ai-gateway-dataplane-aws
+---
+# Step 4: Create Gateway that references the custom EnvoyProxy
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: envoy-ai-gateway-basic
+  namespace: default
+  annotations:
+    # This links the Gateway to use our custom EnvoyProxy with AWS credentials
+    gateway.envoyproxy.io/envoy-proxy: envoy-gateway-system/ai-gateway-with-aws
+spec:
+  gatewayClassName: envoy-ai-gateway
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+---
+# Step 5: Create AIGatewayRoute for routing to Bedrock
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-basic-aws
+  namespace: default
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway-basic
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: us.meta.llama3-2-1b-instruct-v1:0
+      backendRefs:
+        - name: envoy-ai-gateway-basic-aws
+---
+# Step 6: Create AIServiceBackend for AWS Bedrock
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-basic-aws
+  namespace: default
+spec:
+  schema:
+    name: AWSBedrock
+  backendRef:
+    name: envoy-ai-gateway-basic-aws
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+# Step 7: Create BackendSecurityPolicy using AWS credential chain
+# This automatically detects and uses EKS Pod Identity credentials!
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: envoy-ai-gateway-basic-aws
+  namespace: default
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: envoy-ai-gateway-basic-aws
+  type: AWSCredentials
+  awsCredentials:
+    region: us-east-1
+    # No credentialsFile or oidcExchangeToken needed!
+    # The AWS SDK will automatically use the default credential chain which includes:
+    # - EKS Pod Identity (if Pod Identity association exists)
+    # - IRSA (if ServiceAccount has eks.amazonaws.com/role-arn annotation)
+    # - Other AWS credential sources (environment variables, instance profile, etc.)
+---
+# Step 8: Create Backend pointing to AWS Bedrock
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: envoy-ai-gateway-basic-aws
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: bedrock-runtime.us-east-1.amazonaws.com
+        port: 443
+---
+# Step 9: Create BackendTLSPolicy for HTTPS
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: envoy-ai-gateway-basic-aws-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: "gateway.envoyproxy.io"
+      kind: Backend
+      name: envoy-ai-gateway-basic-aws
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: bedrock-runtime.us-east-1.amazonaws.com

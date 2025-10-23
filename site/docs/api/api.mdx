@@ -885,7 +885,19 @@ BackendSecurityPolicyAPIKey specifies the API key.
 **Appears in:**
 - [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
 
-BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access aws.
+BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access AWS.
+
+When neither CredentialsFile nor OIDCExchangeToken is specified, the AWS SDK's default credential chain
+will be used. This automatically supports various authentication methods in the following order:
+ 1. Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN)
+ 2. EKS Pod Identity - automatically rotates credentials for pods in EKS clusters
+ 3. IAM Roles for Service Accounts (IRSA) - injects credentials via mounted service account tokens
+ 4. EC2 instance metadata (IAM instance roles)
+ 5. ECS task roles
+
+The default credential chain is recommended for Kubernetes deployments as it supports automatic
+credential rotation without manual configuration. Credentials are refreshed automatically when
+they approach expiration (typically hourly for IRSA and Pod Identity).
 
 ##### Fields
 
@@ -900,12 +912,12 @@ BackendSecurityPolicyAWSCredentials contains the supported authentication mechan
   name="credentialsFile"
   type="[AWSCredentialsFile](#awscredentialsfile)"
   required="false"
-  description="CredentialsFile specifies the credentials file to use for the AWS provider."
+  description="CredentialsFile specifies the credentials file to use for the AWS provider.<br />When specified, this takes precedence over the default credential chain."
 /><ApiField
   name="oidcExchangeToken"
   type="[AWSOIDCExchangeToken](#awsoidcexchangetoken)"
   required="false"
-  description="OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be<br />used to obtain temporary credentials to access AWS."
+  description="OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be<br />used to obtain temporary credentials to access AWS.<br />When specified, this takes precedence over the default credential chain."
 />
 
 
