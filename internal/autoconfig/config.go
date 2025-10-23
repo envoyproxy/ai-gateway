@@ -83,7 +83,7 @@ func WriteConfig(data *ConfigData) (string, error) {
 	return buf.String(), nil
 }
 
-// parsedURL holds parsed URL components for creating Backend and OpenAIConfig.
+// parsedURL holds parsed URL components for creating Backend, OpenAIConfig, and AnthropicConfig.
 type parsedURL struct {
 	hostname         string
 	originalHostname string
@@ -96,13 +96,13 @@ type parsedURL struct {
 func parseURL(baseURL string) (*parsedURL, error) {
 	u, err := url.Parse(baseURL)
 	if err != nil {
-		return nil, fmt.Errorf("invalid OPENAI_BASE_URL: %w", err)
+		return nil, fmt.Errorf("invalid base URL: %w", err)
 	}
 
 	// Extract hostname
 	hostname := u.Hostname()
 	if hostname == "" {
-		return nil, fmt.Errorf("invalid OPENAI_BASE_URL: missing hostname")
+		return nil, fmt.Errorf("invalid base URL: missing hostname")
 	}
 	originalHostname := hostname
 
@@ -121,13 +121,13 @@ func parseURL(baseURL string) (*parsedURL, error) {
 		case "http":
 			port = 80
 		default:
-			return nil, fmt.Errorf("invalid OPENAI_BASE_URL: unsupported scheme %q", u.Scheme)
+			return nil, fmt.Errorf("invalid base URL: unsupported scheme %q", u.Scheme)
 		}
 	} else {
 		var err error
 		port, err = strconv.Atoi(portStr)
 		if err != nil {
-			return nil, fmt.Errorf("invalid port in OPENAI_BASE_URL: %w", err)
+			return nil, fmt.Errorf("invalid port in base URL: %w", err)
 		}
 	}
 
