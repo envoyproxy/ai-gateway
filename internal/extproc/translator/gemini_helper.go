@@ -586,10 +586,8 @@ func extractTextFromGeminiParts(parts []*genai.Part, responseMode geminiResponse
 				// This causes the response to be wrapped in double-quotes.
 				// E.g. `"positive"` (the double-quotes at the start and end are unwanted)
 				// Here we remove the wrapping double-quotes.
-				if len(part.Text) > 2 && part.Text[0] == '"' && part.Text[len(part.Text)-1] == '"' {
-					part.Text = strings.TrimPrefix(part.Text, "\"")
-					part.Text = strings.TrimSuffix(part.Text, "\"")
-				}
+				part.Text = strings.TrimPrefix(part.Text, "\"")
+				part.Text = strings.TrimSuffix(part.Text, "\"")
 			}
 			text += part.Text
 		}
