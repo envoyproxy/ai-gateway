@@ -29,22 +29,54 @@ func TestSSEEventParser_SingleEvent(t *testing.T) {
 	require.NoError(t, err)
 	req := &jsonrpc.Request{Method: "initialize", ID: id}
 	encoded := mustEncode(t, req)
-	raw := bytes.Join([][]byte{
-		[]byte("event: message\n"),
-		[]byte("id: 42\n"),
-		append([]byte("data: "), encoded...),
-		[]byte("\n\n"),
-	}, nil)
-	p := newSSEEventParser(bytes.NewReader(raw), "mybackend")
-	ev, err := p.next()
-	require.NoError(t, err)
-	require.Equal(t, "message", ev.event)
-	require.Equal(t, "42", ev.id)
-	require.Len(t, ev.messages, 1)
-	gotReq, ok := ev.messages[0].(*jsonrpc.Request)
-	require.True(t, ok)
-	require.Equal(t, req.Method, gotReq.Method)
-	require.Equal(t, req.ID, gotReq.ID)
+
+	tests := []struct {
+		name string
+		raw  []byte
+	}{
+		{
+			"with LF separators",
+			bytes.Join([][]byte{
+				[]byte("event: message\n"),
+				[]byte("id: 42\n"),
+				append([]byte("data: "), encoded...),
+				[]byte("\n\n"),
+			}, nil),
+		},
+		{
+			"with CR separators",
+			bytes.Join([][]byte{
+				[]byte("event: message\r"),
+				[]byte("id: 42\r"),
+				append([]byte("data: "), encoded...),
+				[]byte("\r\r"),
+			}, nil),
+		},
+		{
+			"with CRLF separators",
+			bytes.Join([][]byte{
+				[]byte("event: message\r\n"),
+				[]byte("id: 42\r\n"),
+				append([]byte("data: "), encoded...),
+				[]byte("\r\n\r\n"),
+			}, nil),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := newSSEEventParser(bytes.NewReader(tt.raw), "mybackend")
+			ev, err := p.next()
+			require.NoError(t, err)
+			require.Equal(t, "message", ev.event)
+			require.Equal(t, "42", ev.id)
+			require.Len(t, ev.messages, 1)
+			gotReq, ok := ev.messages[0].(*jsonrpc.Request)
+			require.True(t, ok)
+			require.Equal(t, req.Method, gotReq.Method)
+			require.Equal(t, req.ID, gotReq.ID)
+		})
+	}
 }
 
 func TestSSEEventParser_MultipleEvents(t *testing.T) {
@@ -54,19 +86,47 @@ func TestSSEEventParser_MultipleEvents(t *testing.T) {
 	require.NoError(t, err)
 	r1 := &jsonrpc.Request{Method: "foo", ID: id1}
 	r2 := &jsonrpc.Request{Method: "bar", ID: id2}
-	raw := bytes.Join([][]byte{
-		[]byte("event: e1\n"), append([]byte("data: "), mustEncode(t, r1)...), []byte("\n\n"),
-		[]byte("event: e2\n"), append([]byte("data: "), mustEncode(t, r2)...), []byte("\n\n"),
-	}, nil)
-	p := newSSEEventParser(bytes.NewReader(raw), "mybackend")
-	ev1, err := p.next()
-	require.NoError(t, err)
-	ev2, err := p.next()
-	require.NoError(t, err)
-	require.Equal(t, "e1", ev1.event)
-	require.Equal(t, "e2", ev2.event)
-	require.Len(t, ev1.messages, 1)
-	require.Len(t, ev2.messages, 1)
+
+	tests := []struct {
+		name string
+		raw  []byte
+	}{
+		{
+			"with LF separators",
+			bytes.Join([][]byte{
+				[]byte("event: e1\n"), append([]byte("data: "), mustEncode(t, r1)...), []byte("\n\n"),
+				[]byte("event: e2\n"), append([]byte("data: "), mustEncode(t, r2)...), []byte("\n\n"),
+			}, nil),
+		},
+		{
+			"with CR separators",
+			bytes.Join([][]byte{
+				[]byte("event: e1\r"), append([]byte("data: "), mustEncode(t, r1)...), []byte("\r\r"),
+				[]byte("event: e2\r"), append([]byte("data: "), mustEncode(t, r2)...), []byte("\r\r"),
+			}, nil),
+		},
+		{
+			"with CRLF separators",
+			bytes.Join([][]byte{
+				[]byte("event: e1\r\n"), append([]byte("data: "), mustEncode(t, r1)...), []byte("\r\n\r\n"),
+				[]byte("event: e2\r\n"), append([]byte("data: "), mustEncode(t, r2)...), []byte("\r\n\r\n"),
+			}, nil),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := newSSEEventParser(bytes.NewReader(tt.raw), "mybackend")
+			ev1, err := p.next()
+			require.NoError(t, err)
+			ev2, err := p.next()
+			require.NoError(t, err)
+			require.Equal(t, "e1", ev1.event)
+			require.Equal(t, "e2", ev2.event)
+			require.Len(t, ev1.messages, 1)
+			require.Len(t, ev2.messages, 1)
+		})
+	}
 }
 
 // partialReader simulates an io.Reader that returns provided chunks sequentially.
@@ -89,17 +149,42 @@ func TestSSEEventParser_PartialReads(t *testing.T) {
 	require.NoError(t, err)
 	req := &jsonrpc.Request{Method: "stream", ID: id}
 	encoded := mustEncode(t, req)
-	// Break the event into awkward chunks to ensure the parser buffers correctly.
-	event := bytes.Join([][]byte{
-		[]byte("event:"), []byte(" message\nid"), []byte(": 99\n"), []byte("data: "), encoded, []byte("\n\n"),
-	}, nil)
-	pr := &partialReader{chunks: [][]byte{event[:5], event[5:12], event[12:20], event[20:30], event[30:]}}
-	p := newSSEEventParser(pr, "mybackend")
-	ev, err := p.next()
-	require.NoError(t, err)
-	require.Equal(t, "message", ev.event)
-	require.Equal(t, "99", ev.id)
-	require.Len(t, ev.messages, 1)
+
+	tests := []struct {
+		name string
+		raw  []byte
+	}{
+		{
+			"with LF separators",
+			bytes.Join([][]byte{
+				[]byte("event:"), []byte(" message\nid"), []byte(": 99\n"), []byte("data: "), encoded, []byte("\n\n"),
+			}, nil),
+		},
+		{
+			"with CR separators",
+			bytes.Join([][]byte{
+				[]byte("event:"), []byte(" message\rid"), []byte(": 99\r"), []byte("data: "), encoded, []byte("\r\r"),
+			}, nil),
+		},
+		{
+			"with CRLF separators",
+			bytes.Join([][]byte{
+				[]byte("event:"), []byte(" message\r\nid"), []byte(": 99\r\n"), []byte("data: "), encoded, []byte("\r\n\r\n"),
+			}, nil),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pr := &partialReader{chunks: [][]byte{tt.raw[:5], tt.raw[5:12], tt.raw[12:20], tt.raw[20:30], tt.raw[30:]}}
+			p := newSSEEventParser(pr, "mybackend")
+			ev, err := p.next()
+			require.NoError(t, err)
+			require.Equal(t, "message", ev.event)
+			require.Equal(t, "99", ev.id)
+			require.Len(t, ev.messages, 1)
+		})
+	}
 }
 
 func TestSSEEventParser_InvalidJSONRPCMessage(t *testing.T) {
@@ -117,30 +202,80 @@ func TestSSEEvent_WriteAndMaybeFlush(t *testing.T) {
 	require.NoError(t, err)
 	req := &jsonrpc.Request{Method: "foo", ID: id}
 	resp := &jsonrpc.Response{ID: id}
-	ev := &sseEvent{event: "custom", id: "7", messages: []jsonrpc.Message{req, resp}}
-	rr := httptest.NewRecorder()
-	ev.writeAndMaybeFlush(rr)
-	output := rr.Body.String()
-	// Basic structural assertions.
-	require.Contains(t, output, "event: custom\n")
-	require.Contains(t, output, "id: 7\n")
-	require.Contains(t, output, "data: ")
-	// It ends with the separator (blank line).
-	require.True(t, bytes.HasSuffix([]byte(output), []byte("\n\n")))
+
+	t.Run("with LF separators", func(t *testing.T) {
+		ev := &sseEvent{event: "custom", id: "7", messages: []jsonrpc.Message{req, resp}}
+		rr := httptest.NewRecorder()
+		ev.writeAndMaybeFlush(rr)
+		output := rr.Body.String()
+		// Basic structural assertions.
+		require.Contains(t, output, "event: custom\n")
+		require.Contains(t, output, "id: 7\n")
+		require.Contains(t, output, "data: ")
+		// It ends with the separator (blank line).
+		require.True(t, bytes.HasSuffix([]byte(output), []byte("\n\n")))
+	})
+	t.Run("with CR separators", func(t *testing.T) {
+		ev := &sseEvent{event: "custom", id: "7", messages: []jsonrpc.Message{req, resp}, separator: sseSeparatorCR}
+		rr := httptest.NewRecorder()
+		ev.writeAndMaybeFlush(rr)
+		output := rr.Body.String()
+		// Basic structural assertions.
+		require.Contains(t, output, "event: custom\r")
+		require.Contains(t, output, "id: 7\r")
+		require.Contains(t, output, "data: ")
+		// It ends with the separator (blank line).
+		require.True(t, bytes.HasSuffix([]byte(output), []byte("\r\r")))
+	})
+
+	t.Run("with CRLF separators", func(t *testing.T) {
+		ev := &sseEvent{event: "custom", id: "7", messages: []jsonrpc.Message{req, resp}, separator: sseSeparatorCRLF}
+		rr := httptest.NewRecorder()
+		ev.writeAndMaybeFlush(rr)
+		output := rr.Body.String()
+		// Basic structural assertions.
+		require.Contains(t, output, "event: custom\r\n")
+		require.Contains(t, output, "id: 7\r\n")
+		require.Contains(t, output, "data: ")
+		// It ends with the separator (blank line).
+		require.True(t, bytes.HasSuffix([]byte(output), []byte("\r\n\r\n")))
+	})
 }
 
 func TestSSEEventParser_EndOfStream(t *testing.T) {
 	// One good event then EOF.
 	req := &jsonrpc.Request{Method: "last"}
-	raw := bytes.Join([][]byte{append([]byte("data: "), mustEncode(t, req)...), []byte("\n\n")}, nil)
-	p := newSSEEventParser(bytes.NewReader(raw), "mybackend")
-	ev, err := p.next()
-	require.NoError(t, err)
-	require.NotNil(t, ev)
-	// Next call should return EOF.
-	_, err = p.next()
-	require.Error(t, err)
-	if !errors.Is(err, io.EOF) { // Allow other final errors but usually EOF.
-		t.Logf("received terminal error: %v", err)
+
+	tests := []struct {
+		name string
+		raw  []byte
+	}{
+		{
+			"with LF separators",
+			bytes.Join([][]byte{append([]byte("data: "), mustEncode(t, req)...), []byte("\n\n")}, nil),
+		},
+		{
+			"with CR separators",
+			bytes.Join([][]byte{append([]byte("data: "), mustEncode(t, req)...), []byte("\r\r")}, nil),
+		},
+		{
+			"with CRLF separators",
+			bytes.Join([][]byte{append([]byte("data: "), mustEncode(t, req)...), []byte("\r\n\r\n")}, nil),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := newSSEEventParser(bytes.NewReader(tt.raw), "mybackend")
+			ev, err := p.next()
+			require.NoError(t, err)
+			require.NotNil(t, ev)
+			// Next call should return EOF.
+			_, err = p.next()
+			require.Error(t, err)
+			if !errors.Is(err, io.EOF) { // Allow other final errors but usually EOF.
+				t.Logf("received terminal error: %v", err)
+			}
+		})
 	}
 }
