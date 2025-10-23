@@ -47,9 +47,16 @@ func readConfig(path string, mcpServers *autoconfig.MCPServers, debug bool) (str
 		}
 	}
 
+	// Add Anthropic config from ENV if available
+	if os.Getenv("ANTHROPIC_API_KEY") != "" {
+		if err := autoconfig.PopulateAnthropicEnvConfig(&data); err != nil {
+			return "", err
+		}
+	}
+
 	// If we've found no config data, return an error.
-	if reflect.DeepEqual(data, autoconfig.ConfigData{Debug: debug}) {
-		return "", errors.New("you must supply at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY or a config file path")
+	if reflect.DeepEqual(data, autoconfig.ConfigData{Debug: debug, EnvoyVersion: os.Getenv("ENVOY_VERSION")}) {
+		return "", errors.New("you must supply at least OPENAI_API_KEY, AZURE_OPENAI_API_KEY, ANTHROPIC_API_KEY, or a config file path")
 	}
 
 	// We have any auto-generated config: write it and apply envsubst
