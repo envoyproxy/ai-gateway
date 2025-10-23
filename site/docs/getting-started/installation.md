@@ -51,18 +51,6 @@ helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
   --skip-crds
 ```
 
-## Configuring Envoy Gateway
-
-After installing Envoy AI Gateway, apply the AI Gateway-specific configuration to Envoy Gateway, restart the deployment, and wait for it to be ready:
-
-```shell
-kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/manifests/envoy-gateway-config/config.yaml
-
-kubectl rollout restart -n envoy-gateway-system deployment/envoy-gateway
-
-kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
-```
-
 :::tip Verify Installation
 
 Check the status of the pods. All pods should be in the `Running` state with `Ready` status.
@@ -71,12 +59,6 @@ Check AI Gateway pods:
 
 ```shell
 kubectl get pods -n envoy-ai-gateway-system
-```
-
-Check Envoy Gateway pods:
-
-```shell
-kubectl get pods -n envoy-gateway-system
 ```
 
 :::
