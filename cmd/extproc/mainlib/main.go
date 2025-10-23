@@ -234,6 +234,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	messagesMetrics := metrics.NewMessages(meter, metricsRequestHeaderAttributes)
 	completionMetrics := metrics.NewCompletion(meter, metricsRequestHeaderAttributes)
 	embeddingsMetrics := metrics.NewEmbeddings(meter, metricsRequestHeaderAttributes)
+	responsesMetrics := metrics.NewResponses(meter, metricsRequestHeaderAttributes)
 	mcpMetrics := metrics.NewMCP(meter, metricsRequestHeaderAttributes)
 
 	tracing, err := tracing.NewTracingFromEnv(ctx, os.Stdout, spanRequestHeaderAttributes)
@@ -248,6 +249,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	server.Register(path.Join(flags.rootPrefix, "/v1/chat/completions"), extproc.ChatCompletionProcessorFactory(chatCompletionMetrics))
 	server.Register(path.Join(flags.rootPrefix, "/v1/completions"), extproc.CompletionsProcessorFactory(completionMetrics))
 	server.Register(path.Join(flags.rootPrefix, "/v1/embeddings"), extproc.EmbeddingsProcessorFactory(embeddingsMetrics))
+	server.Register(path.Join(flags.rootPrefix, "/v1/responses"), extproc.ResponsesProcessorFactory(responsesMetrics))
 	server.Register(path.Join(flags.rootPrefix, "/v1/models"), extproc.NewModelsProcessor)
 	server.Register(path.Join(flags.rootPrefix, "/anthropic/v1/messages"), extproc.MessagesProcessorFactory(messagesMetrics))
 
