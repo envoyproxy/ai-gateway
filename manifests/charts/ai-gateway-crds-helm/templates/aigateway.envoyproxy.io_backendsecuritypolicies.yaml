@@ -165,8 +165,9 @@ spec:
                   AWS specific logic will be applied.
                 properties:
                   credentialsFile:
-                    description: CredentialsFile specifies the credentials file to
-                      use for the AWS provider.
+                    description: |-
+                      CredentialsFile specifies the credentials file to use for the AWS provider.
+                      When specified, this takes precedence over the default credential chain.
                     properties:
                       profile:
                         default: default
@@ -225,6 +226,7 @@ spec:
                     description: |-
                       OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be
                       used to obtain temporary credentials to access AWS.
+                      When specified, this takes precedence over the default credential chain.
                     properties:
                       aud:
                         description: Aud defines the audience that this ID Token is
