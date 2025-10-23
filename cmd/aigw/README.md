@@ -56,11 +56,9 @@ Here are values we use for Ollama:
      ```
 
    - MCP (Model Context Protocol) tool call:
-
      ```bash
      docker compose run --rm mcp
      ```
-
      This calls the kiwi MCP server through aigw's MCP Gateway at `/mcp`.
 
 4. **Shutdown the example stack**:
