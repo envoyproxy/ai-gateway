@@ -38,15 +38,6 @@ cp pre-commit.sh .git/hooks/pre-commit
 
 All test targets are prefixed with `test-*` and can be run via `make test-<target>`.
 
-Some test commands might require additional dependencies to be installed on your machine.
-For example,
-
-- The latest `kubectl` binary for running `make test-e2e`.
-  - See: https://kubernetes.io/docs/tasks/tools/
-
-Other than that, everything will be automatically managed and installed via `make` targets,
-and you should not need to worry about the dependencies (tell us if you do).
-
 Additionally, some of the test cases in `test-e2e` and `test-extproc` might require some credentials.
 You will find which credentials are required in the output of the test command. All test cases requiring
 credentials are skipped by default when the credentials are not provided. If you
