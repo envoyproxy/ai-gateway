@@ -59,12 +59,12 @@ type MCPBackendRef struct {
 // ConfigData holds all template data for generating the AI Gateway configuration.
 // It supports OpenAI-only, Anthropic-only, MCP-only, or combined configurations.
 type ConfigData struct {
-	Backends       []Backend       // All backend endpoints (unified - includes OpenAI, Anthropic, and MCP backends)
-	OpenAI         *OpenAIConfig   // OpenAI-specific configuration (nil when not present)
+	Backends       []Backend        // All backend endpoints (unified - includes OpenAI, Anthropic, and MCP backends)
+	OpenAI         *OpenAIConfig    // OpenAI-specific configuration (nil when not present)
 	Anthropic      *AnthropicConfig // Anthropic-specific configuration (nil when not present)
-	MCPBackendRefs []MCPBackendRef // MCP routing configuration (nil/empty for OpenAI-only or Anthropic-only mode)
-	Debug          bool            // Enable debug logging for Envoy (includes component-level logging for ext_proc, http, connection)
-	EnvoyVersion   string          // Explicitly configure the version of Envoy to use.
+	MCPBackendRefs []MCPBackendRef  // MCP routing configuration (nil/empty for OpenAI-only or Anthropic-only mode)
+	Debug          bool             // Enable debug logging for Envoy (includes component-level logging for ext_proc, http, connection)
+	EnvoyVersion   string           // Explicitly configure the version of Envoy to use.
 }
 
 // WriteConfig generates the AI Gateway configuration.

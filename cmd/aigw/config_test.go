@@ -77,6 +77,23 @@ func TestReadConfig(t *testing.T) {
 			expectHostnames: []string{"api.openai.com"},
 			expectPort:      "443",
 		},
+		{
+			name: "generates config from Anthropic env vars",
+			envVars: map[string]string{
+				"ANTHROPIC_API_KEY": "sk-ant-test123",
+			},
+			expectHostnames: []string{"api.anthropic.com"},
+			expectPort:      "443",
+		},
+		{
+			name: "generates config for both OpenAI and Anthropic",
+			envVars: map[string]string{
+				"OPENAI_API_KEY":    "test-key",
+				"ANTHROPIC_API_KEY": "sk-ant-test123",
+			},
+			expectHostnames: []string{"api.openai.com", "api.anthropic.com"},
+			expectPort:      "443",
+		},
 	}
 
 	for _, tt := range tests {
@@ -84,6 +101,8 @@ func TestReadConfig(t *testing.T) {
 			// Clear any existing env vars
 			t.Setenv("OPENAI_API_KEY", "")
 			t.Setenv("OPENAI_BASE_URL", "")
+			t.Setenv("ANTHROPIC_API_KEY", "")
+			t.Setenv("ANTHROPIC_BASE_URL", "")
 
 			for k, v := range tt.envVars {
 				t.Setenv(k, v)
@@ -106,7 +125,7 @@ func TestReadConfig(t *testing.T) {
 	t.Run("error when file and no OPENAI_API_KEY", func(t *testing.T) {
 		_, err := readConfig("", nil, false)
 		require.Error(t, err)
-		require.EqualError(t, err, "you must supply at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY or a config file path")
+		require.EqualError(t, err, "you must supply at least OPENAI_API_KEY, AZURE_OPENAI_API_KEY, ANTHROPIC_API_KEY, or a config file path")
 	})
 
 	t.Run("error when file does not exist", func(t *testing.T) {
