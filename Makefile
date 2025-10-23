@@ -338,7 +338,7 @@ helm-verify-crds: ## Verify CRDs are in sync between ai-gateway-helm and ai-gate
 	@mkdir -p $(OUTPUT_DIR)/crd-check
 	@$(GO_TOOL) helm template test ./manifests/charts/ai-gateway-crds-helm > $(OUTPUT_DIR)/crd-check/base-crds.yaml
 	# Dynamically get all CRD files in the /templates/crds/ folder and generate --show-only flags for each
-	@CRD_FILES=$$(find ./manifests/charts/ai-gateway-helm/templates/crds -name "*.yaml" -type f -printf "templates/crds/%f\n" | sort); \
+	@CRD_FILES=$$(find ./manifests/charts/ai-gateway-helm/templates/crds -name "*.yaml" -type f -exec basename {} \; | sed 's|^|templates/crds/|' | sort); \
 	CRD_FLAGS=$$(echo "$$CRD_FILES" | sed 's/^/--show-only /'); \
 	$(GO_TOOL) helm template test ./manifests/charts/ai-gateway-helm --set crds.enabled=true --set crds.keep=false $$CRD_FLAGS > $(OUTPUT_DIR)/crd-check/helm-crds.yaml
 	@sed '/^#/d; /^$$/d' $(OUTPUT_DIR)/crd-check/base-crds.yaml | uniq > $(OUTPUT_DIR)/crd-check/base-crds-clean.yaml
