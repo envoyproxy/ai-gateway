@@ -439,6 +439,16 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 			},
 		},
 		{
+			ObjectMeta: metav1.ObjectMeta{Name: "aws-default-chain", Namespace: namespace},
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
+				AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+					Region: "us-west-2",
+					// No CredentialsFile or OIDCExchangeToken - uses default credential chain
+				},
+			},
+		},
+		{
 			ObjectMeta: metav1.ObjectMeta{Name: "azure-oidc", Namespace: namespace},
 			Spec: aigv1a1.BackendSecurityPolicySpec{
 				Type:             aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
@@ -529,6 +539,15 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 			bspName: "aws-oidc",
 			exp: &filterapi.BackendAuth{
 				AWSAuth: &filterapi.AWSAuth{CredentialFileLiteral: "thisisawscredentials"},
+			},
+		},
+		{
+			bspName: "aws-default-chain",
+			exp: &filterapi.BackendAuth{
+				AWSAuth: &filterapi.AWSAuth{
+					Region: "us-west-2",
+					// CredentialFileLiteral is empty - uses default credential chain (IRSA/Pod Identity)
+				},
 			},
 		},
 		{
