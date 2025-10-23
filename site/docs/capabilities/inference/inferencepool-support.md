@@ -135,7 +135,9 @@ AIGatewayRoute provides several advantages over standard HTTPRoute when used wit
 
 To use InferencePool with Envoy AI Gateway, you'll need to:
 
-1. **Install Prerequisites**: Deploy Gateway API Inference Extension
+1. **Install Prerequisites**:
+   - Deploy Gateway API Inference Extension CRD.
+   - Configure Envoy Gateway with the InferencePool support. See [Envoy Gateway Installation Guide](../../getting-started/prerequisites.md#additional-features-rate-limiting-inferencepool-etc) for details.
 2. **Configure InferencePool**: Define your inference endpoints and selection criteria
 3. **Set up Routes**: Configure either HTTPRoute or AIGatewayRoute to use the InferencePool
 4. **Deploy Endpoint Picker**: Install and configure the endpoint picker provider
