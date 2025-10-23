@@ -83,7 +83,7 @@ func TestWithTestUpstream(t *testing.T) {
 				name:            "openai",
 				modelName:       "non-existent-model",
 				expStatus:       404,
-				expResponseBody: `No matching route found. It is likely that the model specified your request is not configured in the Gateway.`,
+				expResponseBody: `No matching route found. It is likely because the model specified in your request is not configured in the Gateway.`,
 			},
 			{
 				name:               "openai-header-mutation",
