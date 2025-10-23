@@ -42,6 +42,7 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 	// Upgrade the existing "ai-eg" release with new env vars.
 	helm := testsinternal.GoToolCmdContext(ctx, "helm", "upgrade", "ai-eg", "--force",
 		helmChartPath,
+		"--set", "crds.enabled=false", // CRDs are managed by ai-eg-crd release
 		"--set", "controller.metricsRequestHeaderAttributes=x-user-id:"+userIDAttribute, // existing setting
 		"--set", "controller.spanRequestHeaderAttributes=x-user-id:"+userIDAttribute, // existing setting
 		"--set", "extProc.extraEnvVars[0].name=OTEL_TRACES_EXPORTER",
@@ -63,6 +64,7 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 		// Re-install AI Gateway with default settings.
 		_, _ = testsinternal.RunGoToolContext(ctx, "helm", "upgrade", "ai-eg", "--force",
 			helmChartPath,
+			"--set", "crds.enabled=false", // CRDs are managed by ai-eg-crd release
 			"-n", "envoy-ai-gateway-system")
 
 		// Clean up the test manifest resources including namespace.
