@@ -136,7 +136,7 @@ type CohereRerankTranslator interface {
 	// 	- `body` is the request body parsed into the Cohere rerank v2 request.
 	//	- `onRetry` is true if this is a retry request.
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
-	RequestBody(raw []byte, body *cohereschema.CohereRerankV2Request, onRetry bool) (
+	RequestBody(raw []byte, body *cohereschema.RerankV2Request, onRetry bool) (
 		headerMutation *extprocv3.HeaderMutation,
 		bodyMutation *extprocv3.BodyMutation,
 		err error,

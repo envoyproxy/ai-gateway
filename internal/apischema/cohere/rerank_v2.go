@@ -6,9 +6,9 @@
 // Package cohere contains Cohere API schema definitions.
 package cohere
 
-// CohereRerankV2Request represents the request body for Cohere Rerank API v2.
+// RerankV2Request represents the request body for Cohere Rerank API v2.
 // Docs: https://docs.cohere.com/reference/rerank
-type CohereRerankV2Request struct {
+type RerankV2Request struct {
 	// Model identifier to use, e.g. "rerank-v3.5".
 	Model string `json:"model"`
 	// Query to rank documents against.
@@ -22,19 +22,19 @@ type CohereRerankV2Request struct {
 	MaxTokensPerDoc *int `json:"max_tokens_per_doc,omitempty"`
 }
 
-// CohereRerankV2Response represents the response from Cohere Rerank API v2.
+// RerankV2Response represents the response from Cohere Rerank API v2.
 // Docs: https://docs.cohere.com/reference/rerank
-type CohereRerankV2Response struct {
+type RerankV2Response struct {
 	// Ordered list of ranked documents with scores.
-	Results []CohereRerankV2Result `json:"results"`
+	Results []RerankV2Result `json:"results"`
 	// Unique request ID.
 	ID string `json:"id,omitempty"`
 	// Additional metadata including API version and billing.
-	Meta *CohereRerankV2Meta `json:"meta,omitempty"`
+	Meta *RerankV2Meta `json:"meta,omitempty"`
 }
 
-// CohereRerankV2Result is a single ranked item in the response.
-type CohereRerankV2Result struct {
+// RerankV2Result is a single ranked item in the response.
+type RerankV2Result struct {
 	// Index is the position of the matched item in the input documents slice.
 	Index int `json:"index"`
 	// RelevanceScore is the model-assigned score indicating how well the
@@ -42,22 +42,22 @@ type CohereRerankV2Result struct {
 	RelevanceScore float64 `json:"relevance_score"`
 }
 
-// CohereRerankV2Meta contains metadata returned by the API.
-type CohereRerankV2Meta struct {
+// RerankV2Meta contains metadata returned by the API.
+type RerankV2Meta struct {
 	// APIVersion contains the version information for the API that processed the request.
-	APIVersion *CohereRerankV2APIVersion `json:"api_version,omitempty"`
+	APIVersion *RerankV2APIVersion `json:"api_version,omitempty"`
 	// BilledUnits reports the billed resource usage for this request.
-	BilledUnits *CohereRerankV2BilledUnits `json:"billed_units,omitempty"`
+	BilledUnits *RerankV2BilledUnits `json:"billed_units,omitempty"`
 	// Tokens provides the token usage breakdown for the request/response.
-	Tokens *CohereRerankV2Tokens `json:"tokens,omitempty"`
+	Tokens *RerankV2Tokens `json:"tokens,omitempty"`
 	// CachedTokens is the number of prompt tokens that hit the inference cache.
 	CachedTokens *float64 `json:"cached_tokens,omitempty"`
 	// Warnings contains any non-fatal warnings generated while processing the request.
 	Warnings []string `json:"warnings,omitempty"`
 }
 
-// CohereRerankV2APIVersion describes the API version details in the response meta.
-type CohereRerankV2APIVersion struct {
+// RerankV2APIVersion describes the API version details in the response meta.
+type RerankV2APIVersion struct {
 	// Version is the API version string (e.g., "2").
 	Version string `json:"version"`
 	// IsDeprecated indicates whether this API version is deprecated (nullable).
@@ -66,8 +66,8 @@ type CohereRerankV2APIVersion struct {
 	IsExperimental *bool `json:"is_experimental,omitempty"`
 }
 
-// CohereRerankV2BilledUnits contains usage metrics related to the request.
-type CohereRerankV2BilledUnits struct {
+// RerankV2BilledUnits contains usage metrics related to the request.
+type RerankV2BilledUnits struct {
 	// Images is the number of billed images (nullable).
 	Images *float64 `json:"images,omitempty"`
 	// InputTokens is the number of billed input tokens (nullable).
@@ -80,17 +80,17 @@ type CohereRerankV2BilledUnits struct {
 	Classifications *float64 `json:"classifications,omitempty"`
 }
 
-// CohereRerankV2Tokens captures token accounting for the request.
+// RerankV2Tokens captures token accounting for the request.
 // Docs: https://docs.cohere.com/reference/rerank#response.body.meta.tokens
-type CohereRerankV2Tokens struct {
+type RerankV2Tokens struct {
 	// InputTokens is the number of tokens used as input to the model (nullable).
 	InputTokens *float64 `json:"input_tokens,omitempty"`
 	// OutputTokens is the number of tokens produced by the model (nullable).
 	OutputTokens *float64 `json:"output_tokens,omitempty"`
 }
 
-// CohereRerankV2Error describes a Cohere v2 error.
-type CohereRerankV2Error struct {
+// RerankV2Error describes a Cohere v2 error.
+type RerankV2Error struct {
 	// ID is a unique identifier for the error (nullable).
 	ID *string `json:"id,omitempty"`
 	// Message is a human-readable description of the error (nullable).

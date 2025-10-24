@@ -29,7 +29,7 @@ import (
 
 // RerankProcessorFactory returns a factory method to instantiate the rerank processor.
 func RerankProcessorFactory(f metrics.RerankMetricsFactory) ProcessorFactory {
-	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
+	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "rerank", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &rerankProcessorRouterFilter{
@@ -66,7 +66,7 @@ type rerankProcessorRouterFilter struct {
 	// originalRequestBody is the original request body that is passed to the upstream filter.
 	// This is used to perform the transformation of the request body on the original input
 	// when the request is retried.
-	originalRequestBody    *cohereschema.CohereRerankV2Request
+	originalRequestBody    *cohereschema.RerankV2Request
 	originalRequestBodyRaw []byte
 	// upstreamFilterCount is the number of upstream filters that have been processed.
 	// This is used to determine if the request is a retry request.
@@ -94,7 +94,7 @@ func (r *rerankProcessorRouterFilter) ProcessResponseBody(ctx context.Context, b
 }
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
-func (r *rerankProcessorRouterFilter) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+func (r *rerankProcessorRouterFilter) ProcessRequestBody(_ context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	originalModel, body, err := parseCohereRerankV2Body(rawBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
@@ -141,7 +141,7 @@ type rerankProcessorUpstreamFilter struct {
 	handler                backendauth.Handler
 	headerMutator          *headermutator.HeaderMutator
 	originalRequestBodyRaw []byte
-	originalRequestBody    *cohereschema.CohereRerankV2Request
+	originalRequestBody    *cohereschema.RerankV2Request
 	translator             translator.CohereRerankTranslator
 	// onRetry is true if this is a retry request at the upstream filter.
 	onRetry bool
@@ -367,8 +367,8 @@ func (r *rerankProcessorUpstreamFilter) SetBackend(ctx context.Context, b *filte
 	return
 }
 
-func parseCohereRerankV2Body(body *extprocv3.HttpBody) (modelName string, rb *cohereschema.CohereRerankV2Request, err error) {
-	var req cohereschema.CohereRerankV2Request
+func parseCohereRerankV2Body(body *extprocv3.HttpBody) (modelName string, rb *cohereschema.RerankV2Request, err error) {
+	var req cohereschema.RerankV2Request
 	if err := json.Unmarshal(body.Body, &req); err != nil {
 		return "", nil, fmt.Errorf("failed to unmarshal body: %w", err)
 	}

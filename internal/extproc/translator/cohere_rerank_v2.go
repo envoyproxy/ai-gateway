@@ -35,7 +35,7 @@ type cohereToCohereTranslatorV2Rerank struct {
 }
 
 // RequestBody implements [CohereRerankTranslator.RequestBody].
-func (t *cohereToCohereTranslatorV2Rerank) RequestBody(original []byte, _ *cohereschema.CohereRerankV2Request, onRetry bool) (
+func (t *cohereToCohereTranslatorV2Rerank) RequestBody(original []byte, _ *cohereschema.RerankV2Request, onRetry bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
 	var newBody []byte
@@ -78,7 +78,7 @@ func (t *cohereToCohereTranslatorV2Rerank) ResponseHeaders(map[string]string) (h
 func (t *cohereToCohereTranslatorV2Rerank) ResponseBody(_ map[string]string, body io.Reader, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
-	var resp cohereschema.CohereRerankV2Response
+	var resp cohereschema.RerankV2Response
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
 		return nil, nil, tokenUsage, "", fmt.Errorf("failed to unmarshal body: %w", err)
 	}
@@ -92,7 +92,7 @@ func (t *cohereToCohereTranslatorV2Rerank) ResponseBody(_ map[string]string, bod
 		}
 		if resp.Meta.Tokens.OutputTokens != nil {
 			tokenUsage.OutputTokens = uint32(*resp.Meta.Tokens.OutputTokens) //nolint:gosec
-			tokenUsage.TotalTokens = tokenUsage.TotalTokens + tokenUsage.OutputTokens
+			tokenUsage.TotalTokens += tokenUsage.OutputTokens
 		}
 	}
 
@@ -114,7 +114,7 @@ func (t *cohereToCohereTranslatorV2Rerank) ResponseError(respHeaders map[string]
 		}
 		message := string(buf)
 		// Wrap as a minimal Cohere v2 error JSON for consistency.
-		cohereErr := cohereschema.CohereRerankV2Error{
+		cohereErr := cohereschema.RerankV2Error{
 			Message: &message,
 			ID:      &statusCode,
 		}

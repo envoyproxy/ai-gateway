@@ -23,6 +23,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 func TestRerank_Schema(t *testing.T) {
@@ -34,7 +35,7 @@ func TestRerank_Schema(t *testing.T) {
 	})
 	t.Run("on upstream", func(t *testing.T) {
 		cfg := &processorConfig{}
-		p, err := RerankProcessorFactory(nil)(cfg, nil, slog.Default(), nil, true)
+		p, err := RerankProcessorFactory(func() metrics.RerankMetrics { return &mockRerankMetrics{} })(cfg, nil, slog.Default(), nil, true)
 		require.NoError(t, err)
 		require.IsType(t, &rerankProcessorUpstreamFilter{}, p)
 	})
@@ -79,7 +80,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
 	t.Run("translator error", func(t *testing.T) {
 		headers := map[string]string{":path": "/v2/rerank", internalapi.ModelNameHeaderKeyDefault: "rerank-english-v3"}
 		raw := rerankBodyFromModel("rerank-english-v3")
-		var body cohere.CohereRerankV2Request
+		var body cohere.RerankV2Request
 		require.NoError(t, json.Unmarshal(raw, &body))
 		mt := &mockRerankTranslator{t: t, expRequestBody: &body, retErr: errors.New("boom")}
 		mm := &mockRerankMetrics{}
@@ -104,7 +105,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
 
 	t.Run("ok with header mutation and auth", func(t *testing.T) {
 		raw := rerankBodyFromModel("rerank-english-v3")
-		var body cohere.CohereRerankV2Request
+		var body cohere.RerankV2Request
 		require.NoError(t, json.Unmarshal(raw, &body))
 		headers := map[string]string{":path": "/v2/rerank", internalapi.ModelNameHeaderKeyDefault: "rerank-english-v3"}
 		headerMut := &extprocv3.HeaderMutation{SetHeaders: []*corev3.HeaderValueOption{{Header: &corev3.HeaderValue{Key: "foo", RawValue: []byte("bar")}}}}
@@ -285,7 +286,7 @@ func rerankBodyFromModel(model string) []byte {
 type mockRerankTranslator struct {
 	t                   *testing.T
 	expHeaders          map[string]string
-	expRequestBody      *cohere.CohereRerankV2Request
+	expRequestBody      *cohere.RerankV2Request
 	expResponseBody     *extprocv3.HttpBody
 	retHeaderMutation   *extprocv3.HeaderMutation
 	retBodyMutation     *extprocv3.BodyMutation
@@ -295,7 +296,7 @@ type mockRerankTranslator struct {
 	responseErrorCalled bool
 }
 
-func (m *mockRerankTranslator) RequestBody(raw []byte, body *cohere.CohereRerankV2Request, onRetry bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
+func (m *mockRerankTranslator) RequestBody(raw []byte, body *cohere.RerankV2Request, onRetry bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
 	if m.expRequestBody != nil {
 		require.Equal(m.t, m.expRequestBody.Model, body.Model)
 	}
@@ -345,6 +346,7 @@ func (m *mockRerankMetrics) SetBackend(backend *filterapi.Backend) { m.backend =
 func (m *mockRerankMetrics) RecordTokenUsage(_ context.Context, input uint32, _ map[string]string) {
 	m.inputTokens += input
 }
+
 func (m *mockRerankMetrics) RecordRequestCompletion(_ context.Context, success bool, _ map[string]string) {
 	m.completed = &success
 }
@@ -353,16 +355,20 @@ func (m *mockRerankMetrics) RequireRequestSuccess(t *testing.T) {
 	require.NotNil(t, m.completed)
 	require.True(t, *m.completed)
 }
+
 func (m *mockRerankMetrics) RequireRequestFailure(t *testing.T) {
 	require.NotNil(t, m.completed)
 	require.False(t, *m.completed)
 }
+
 func (m *mockRerankMetrics) RequireRequestNotCompleted(t *testing.T) {
 	require.Nil(t, m.completed)
 }
+
 func (m *mockRerankMetrics) RequireTokenUsage(t *testing.T, input uint32) {
 	require.Equal(t, input, m.inputTokens)
 }
+
 func (m *mockRerankMetrics) RequireSelectedBackend(t *testing.T, backend string) {
 	require.Equal(t, backend, m.backend)
 }

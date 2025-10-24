@@ -50,7 +50,7 @@ func TestCohereToCohereTranslatorV2Rerank_RequestBody(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			translator := NewRerankCohereToCohereTranslator("v2", tc.modelNameOverride)
 			originalBody := `{"model":"rerank-english-v3","query":"reset password","documents":["doc1","doc2"]}`
-			var req cohereschema.CohereRerankV2Request
+			var req cohereschema.RerankV2Request
 			require.NoError(t, json.Unmarshal([]byte(originalBody), &req))
 
 			headerMutation, bodyMutation, err := translator.RequestBody([]byte(originalBody), &req, tc.onRetry)
@@ -132,7 +132,7 @@ func TestCohereToCohereTranslatorV2Rerank_ResponseBody(t *testing.T) {
 
 			require.NoError(t, err)
 			require.Equal(t, tc.expTokenUsage, tokenUsage)
-			require.Equal(t, "", string(responseModel))
+			require.Empty(t, responseModel)
 			require.Nil(t, headerMutation)
 			require.Nil(t, bodyMutation)
 		})
@@ -154,7 +154,7 @@ func TestCohereToCohereTranslatorV2Rerank_ResponseError(t *testing.T) {
 		require.NotNil(t, headerMutation)
 		require.NotNil(t, bodyMutation)
 
-		var cohereErr cohereschema.CohereRerankV2Error
+		var cohereErr cohereschema.RerankV2Error
 		require.NoError(t, json.Unmarshal(bodyMutation.GetBody(), &cohereErr))
 		require.NotNil(t, cohereErr.Message)
 		require.Equal(t, errorBody, *cohereErr.Message)
