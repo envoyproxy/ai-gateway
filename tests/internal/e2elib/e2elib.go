@@ -512,12 +512,21 @@ func requireWaitForGatewayPod(t *testing.T, selector string) {
 		"--selector="+selector, "-o", "jsonpath='{.items[*].spec.initContainers[*].name} {.items[*].spec.containers[*].name}'")
 }
 
-// RequireWaitForPodReady waits for the pod with the given selector to be ready.
+// RequireWaitForPodReady waits for at least one pod with the given selector to be ready.
 func RequireWaitForPodReady(t *testing.T, namespace, selector string) {
-	waitUntilKubectl(t, 3*time.Minute, 5*time.Second, func(_ string) error {
-		return nil // Success if the command exited 0, ignore output.
-	}, "wait", "--timeout=60s", "-n", namespace,
-		"pods", "--for=condition=Ready", "-l", selector)
+	waitUntilKubectl(t, 3*time.Minute, 5*time.Second, func(output string) error {
+		// Check if we got at least one "True" status, indicating a ready pod
+		output = strings.TrimSpace(output)
+		if output == "" || output == "''" {
+			return fmt.Errorf("no pods found with selector %s", selector)
+		}
+		// The output will be like "True True False" or just "True" if there are ready pods
+		if strings.Contains(output, "True") {
+			return nil // At least one pod is ready
+		}
+		return fmt.Errorf("no ready pods found, statuses: %s", output)
+	}, "get", "pods", "-n", namespace, "-l", selector,
+		"-o", "jsonpath={.items[*].status.conditions[?(@.type==\"Ready\")].status}")
 }
 
 // RequireNewHTTPPortForwarder creates a new port forwarder for the given namespace and selector.
