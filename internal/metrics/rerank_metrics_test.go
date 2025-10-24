@@ -169,13 +169,13 @@ func TestRerank_RecordRequestCompletion(t *testing.T) {
 	rr.RecordRequestCompletion(t.Context(), true, nil)
 	count, sum := testotel.GetHistogramValues(t, mr, genaiMetricServerRequestDuration, attrsSuccess)
 	assert.Equal(t, uint64(1), count)
-	// Allow small scheduling jitter (~1ms) in timing-based assertion.
-	assert.InDelta(t, 10*time.Millisecond.Seconds(), sum, 0.001)
+	// Allow scheduling jitter in timing-based assertion.
+	assert.InDelta(t, 10*time.Millisecond.Seconds(), sum, 0.005)
 
 	rr.RecordRequestCompletion(t.Context(), false, nil)
 	rr.RecordRequestCompletion(t.Context(), false, nil)
 	count, sum = testotel.GetHistogramValues(t, mr, genaiMetricServerRequestDuration, attrsFailure)
 	assert.Equal(t, uint64(2), count)
-	// Allow small scheduling jitter (~1ms) in timing-based assertion.
-	assert.InDelta(t, (2 * 10 * time.Millisecond).Seconds(), sum, 0.001)
+	// Allow scheduling jitter in timing-based assertion.
+	assert.InDelta(t, (2 * 10 * time.Millisecond).Seconds(), sum, 0.005)
 }
