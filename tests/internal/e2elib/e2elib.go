@@ -516,7 +516,7 @@ func requireWaitForGatewayPod(t *testing.T, selector string) {
 func RequireWaitForPodReady(t *testing.T, namespace, selector string) {
 	waitUntilKubectl(t, 3*time.Minute, 5*time.Second, func(_ string) error {
 		return nil // Success if the command exited 0, ignore output.
-	}, "wait", "--timeout=2s", "-n", namespace,
+	}, "wait", "--timeout=30s", "-n", namespace,
 		"pods", "--for=condition=Ready", "-l", selector)
 }
 
