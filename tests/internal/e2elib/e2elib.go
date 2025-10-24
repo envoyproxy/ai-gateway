@@ -638,7 +638,8 @@ func (k *kubectlPortForward) start(ctx context.Context) error {
 		fmt.Sprintf("%d:%d", k.localPort, k.servicePort),
 	)
 	cmd.Stdout = io.Discard
-	cmd.Stderr = os.Stderr
+	// Discard stderr to avoid "lost connection to pod" errors during cleanup
+	cmd.Stderr = io.Discard
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start port-forward: %w", err)
 	}

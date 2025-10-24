@@ -122,6 +122,15 @@ func (k *kubectlCmd) Output() ([]byte, error) {
 	return outBuf.Bytes(), err
 }
 
+// CombinedOutput executes the kubectl command and returns combined stdout and stderr
+func (k *kubectlCmd) CombinedOutput() ([]byte, error) {
+	var outBuf bytes.Buffer
+	k.Stdout = &outBuf
+	k.Stderr = &outBuf
+	err := k.Run()
+	return outBuf.Bytes(), err
+}
+
 // Kubectl runs the kubectl command with the given context and arguments.
 // Returns a command that can be executed like exec.Cmd but uses kubectl library internally.
 func Kubectl(ctx context.Context, args ...string) *kubectlCmd {
