@@ -53,7 +53,7 @@ func readConfig(path string, mcpServers *autoconfig.MCPServers, debug bool) (str
 	}
 
 	// If we've found no config data, return an error.
-	if reflect.DeepEqual(data, autoconfig.ConfigData{Debug: debug}) {
+	if reflect.DeepEqual(data, autoconfig.ConfigData{Debug: debug, EnvoyVersion: os.Getenv("ENVOY_VERSION")}) {
 		return "", errors.New("you must supply at least OPENAI_API_KEY, AZURE_OPENAI_API_KEY, ANTHROPIC_API_KEY, or a config file path")
 	}
 
