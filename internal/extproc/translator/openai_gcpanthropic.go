@@ -53,6 +53,41 @@ type openAIToGCPAnthropicTranslatorV1ChatCompletion struct {
 	requestModel      internalapi.RequestModel
 }
 
+// isCacheEnabled checks if caching is enabled for a given message.
+func isCacheEnabled(msg *openai.ChatCompletionMessageParamUnion) bool {
+	var anthropicFields *openai.AnthropicMessageFields
+	switch {
+	case msg.OfSystem != nil:
+		anthropicFields = msg.OfSystem.AnthropicMessageFields
+	case msg.OfDeveloper != nil:
+		anthropicFields = msg.OfDeveloper.AnthropicMessageFields
+	case msg.OfUser != nil:
+		anthropicFields = msg.OfUser.AnthropicMessageFields
+	case msg.OfAssistant != nil:
+		anthropicFields = msg.OfAssistant.AnthropicMessageFields
+	case msg.OfTool != nil:
+		anthropicFields = msg.OfTool.AnthropicMessageFields
+	}
+	return anthropicFields != nil && anthropicFields.CacheControl.Type == "ephemeral"
+}
+
+// applyCacheControlToContent applies cache control to a slice of Anthropic content blocks if caching is enabled.
+func applyCacheControlToContent(content []anthropic.ContentBlockParamUnion, cacheControlParam anthropic.CacheControlEphemeralParam) []anthropic.ContentBlockParamUnion {
+	for i := range content {
+		switch {
+		case content[i].OfText != nil:
+			content[i].OfText.CacheControl = cacheControlParam
+		case content[i].OfImage != nil:
+			content[i].OfImage.CacheControl = cacheControlParam
+		case content[i].OfToolUse != nil:
+			content[i].OfToolUse.CacheControl = cacheControlParam
+		case content[i].OfToolResult != nil:
+			content[i].OfToolResult.CacheControl = cacheControlParam
+		}
+	}
+	return content
+}
+
 func anthropicToOpenAIFinishReason(stopReason anthropic.StopReason) (openai.ChatCompletionChoicesFinishReason, error) {
 	switch stopReason {
 	// The most common stop reason. Indicates Claude finished its response naturally.
@@ -379,13 +414,25 @@ func openAIMessageToAnthropicMessageRoleAssistant(openAiMessage *openai.ChatComp
 func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUnion) (anthropicMessages []anthropic.MessageParam, systemBlocks []anthropic.TextBlockParam, err error) {
 	for i := 0; i < len(openAIMsgs); {
 		msg := &openAIMsgs[i]
+		cacheEnabled := isCacheEnabled(msg)
+
 		switch {
 		case msg.OfSystem != nil:
 			devParam := systemMsgToDeveloperMsg(*msg.OfSystem)
-			systemBlocks = append(systemBlocks, anthropic.TextBlockParam{Text: extractSystemPromptFromDeveloperMsg(devParam)})
+			systemText := extractSystemPromptFromDeveloperMsg(devParam)
+			systemBlock := anthropic.TextBlockParam{Text: systemText}
+			if cacheEnabled {
+				systemBlock.CacheControl = msg.OfSystem.CacheControl
+			}
+			systemBlocks = append(systemBlocks, systemBlock)
 			i++
 		case msg.OfDeveloper != nil:
-			systemBlocks = append(systemBlocks, anthropic.TextBlockParam{Text: extractSystemPromptFromDeveloperMsg(*msg.OfDeveloper)})
+			systemText := extractSystemPromptFromDeveloperMsg(*msg.OfDeveloper)
+			systemBlock := anthropic.TextBlockParam{Text: systemText}
+			if cacheEnabled {
+				systemBlock.CacheControl = msg.OfDeveloper.CacheControl
+			}
+			systemBlocks = append(systemBlocks, systemBlock)
 			i++
 		case msg.OfUser != nil:
 			message := *msg.OfUser
@@ -393,6 +440,9 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 			content, err = openAIToAnthropicContent(message.Content.Value)
 			if err != nil {
 				return
+			}
+			if cacheEnabled {
+				content = applyCacheControlToContent(content, msg.OfUser.CacheControl)
 			}
 			anthropicMsg := anthropic.MessageParam{
 				Role:    anthropic.MessageParamRoleUser,
@@ -407,6 +457,9 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 			if err != nil {
 				return
 			}
+			if cacheEnabled {
+				messages.Content = applyCacheControlToContent(messages.Content, msg.OfAssistant.CacheControl)
+			}
 			anthropicMessages = append(anthropicMessages, messages)
 			i++
 		case msg.OfTool != nil:
@@ -416,6 +469,7 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 			for i < len(openAIMsgs) && openAIMsgs[i].ExtractMessgaeRole() == openai.ChatMessageRoleTool {
 				currentMsg := &openAIMsgs[i]
 				toolMsg := currentMsg.OfTool
+
 				var contentBlocks []anthropic.ContentBlockParamUnion
 				contentBlocks, err = openAIToAnthropicContent(toolMsg.Content)
 				if err != nil {
@@ -448,7 +502,11 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 					Content:   toolContent,
 					IsError:   anthropic.Bool(isError),
 				}
-				toolResultBlocks = append(toolResultBlocks, anthropic.ContentBlockParamUnion{OfToolResult: &toolResultBlock})
+				toolResultBlockUnion := anthropic.ContentBlockParamUnion{OfToolResult: &toolResultBlock}
+				if isCacheEnabled(currentMsg) {
+					toolResultBlockUnion = applyCacheControlToContent([]anthropic.ContentBlockParamUnion{toolResultBlockUnion}, toolMsg.CacheControl)[0]
+				}
+				toolResultBlocks = append(toolResultBlocks, toolResultBlockUnion)
 				i++
 			}
 			// Append all aggregated tool results.

@@ -1513,3 +1513,295 @@ func TestSystemPromptExtractionCoverage(t *testing.T) {
 		})
 	}
 }
+
+func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_Cache(t *testing.T) {
+	t.Run("full request with mixed caching", func(t *testing.T) {
+		openAIReq := &openai.ChatCompletionRequest{
+			Model: "gcp.claude-3.5-haiku",
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				// System message with cache enabled.
+				{OfSystem: &openai.ChatCompletionSystemMessageParam{
+					Role:                   openai.ChatMessageRoleSystem,
+					Content:                openai.ContentUnion{Value: "You are a helpful assistant."},
+					AnthropicMessageFields: &openai.AnthropicMessageFields{CacheControl: anthropic.NewCacheControlEphemeralParam()},
+				}},
+				// User message with cache enabled.
+				{OfUser: &openai.ChatCompletionUserMessageParam{
+					Role:                   openai.ChatMessageRoleUser,
+					Content:                openai.StringOrUserRoleContentUnion{Value: "How's the weather?"},
+					AnthropicMessageFields: &openai.AnthropicMessageFields{CacheControl: anthropic.NewCacheControlEphemeralParam()},
+				}},
+				// Assistant message with cache enabled.
+				{OfAssistant: &openai.ChatCompletionAssistantMessageParam{
+					Role:    openai.ChatMessageRoleAssistant,
+					Content: openai.StringOrAssistantRoleContentUnion{Value: "I'll check the weather for you."},
+					ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+						{
+							ID:   ptr.To("call_789"),
+							Type: openai.ChatCompletionMessageToolCallTypeFunction,
+							Function: openai.ChatCompletionMessageToolCallFunctionParam{
+								Name:      "get_weather",
+								Arguments: `{"location": "New York"}`,
+							},
+						},
+					},
+					AnthropicMessageFields: &openai.AnthropicMessageFields{CacheControl: anthropic.NewCacheControlEphemeralParam()},
+				}},
+				// Tool message with cache enabled.
+				{OfTool: &openai.ChatCompletionToolMessageParam{
+					Role:                   openai.ChatMessageRoleTool,
+					Content:                openai.ContentUnion{Value: "It's sunny and 75°F in New York."},
+					ToolCallID:             "call_789",
+					AnthropicMessageFields: &openai.AnthropicMessageFields{CacheControl: anthropic.NewCacheControlEphemeralParam()},
+				}},
+				// User message with cache disabled.
+				{OfUser: &openai.ChatCompletionUserMessageParam{
+					Role:                   openai.ChatMessageRoleUser,
+					Content:                openai.StringOrUserRoleContentUnion{Value: "Thanks! What about tomorrow?"},
+					AnthropicMessageFields: nil,
+				}},
+			},
+			MaxTokens: ptr.To(int64(100)),
+		}
+
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
+		_, bm, err := translator.RequestBody(nil, openAIReq, false)
+		require.NoError(t, err)
+
+		body := bm.GetBody()
+		result := gjson.ParseBytes(body)
+
+		// Check system message (cache enabled).
+		require.Equal(t, "ephemeral", result.Get("system.0.cache_control.type").String())
+
+		// Check user message (cache enabled).
+		require.Equal(t, "ephemeral", result.Get("messages.0.content.0.cache_control.type").String())
+
+		// Check assistant message (cache enabled for both text and tool_use parts).
+		require.Equal(t, "ephemeral", result.Get("messages.1.content.0.cache_control.type").String())
+		require.Equal(t, "ephemeral", result.Get("messages.1.content.1.cache_control.type").String())
+
+		// Check tool message (aggregated into a user message, cache enabled).
+		require.Equal(t, "ephemeral", result.Get("messages.2.content.0.cache_control.type").String())
+
+		// Check second user message (cache disabled).
+		require.False(t, result.Get("messages.3.content.0.cache_control").Exists())
+	})
+
+	t.Run("cache with different structures", func(t *testing.T) {
+		testCases := []struct {
+			name            string
+			content         any
+			anthropicFields *openai.AnthropicMessageFields
+			expectCache     bool
+		}{
+			{name: "simple text cache enabled", content: "This is a test message", anthropicFields: &openai.AnthropicMessageFields{CacheControl: anthropic.CacheControlEphemeralParam{Type: "ephemeral"}}, expectCache: true},
+			{name: "simple text cache disabled", content: "This is a test message", anthropicFields: &openai.AnthropicMessageFields{CacheControl: anthropic.CacheControlEphemeralParam{Type: ""}}, expectCache: false},
+			{name: "multi-part text cache enabled", content: []openai.ChatCompletionContentPartUserUnionParam{
+				{OfText: &openai.ChatCompletionContentPartTextParam{Type: "text", Text: "This is a content part"}},
+			}, anthropicFields: &openai.AnthropicMessageFields{CacheControl: anthropic.CacheControlEphemeralParam{Type: "ephemeral"}}, expectCache: true},
+			{name: "multi-part text cache disabled", content: []openai.ChatCompletionContentPartUserUnionParam{
+				{OfText: &openai.ChatCompletionContentPartTextParam{Type: "text", Text: "This is a content part"}},
+			}, anthropicFields: &openai.AnthropicMessageFields{CacheControl: anthropic.CacheControlEphemeralParam{Type: ""}}, expectCache: false},
+			{name: "missing cache field", content: "Test Message", anthropicFields: nil, expectCache: false},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				req := &openai.ChatCompletionRequest{
+					Model: "claude-3-haiku",
+					Messages: []openai.ChatCompletionMessageParamUnion{
+						{OfUser: &openai.ChatCompletionUserMessageParam{
+							Role:                   openai.ChatMessageRoleUser,
+							Content:                openai.StringOrUserRoleContentUnion{Value: tc.content},
+							AnthropicMessageFields: tc.anthropicFields,
+						}},
+					},
+					MaxTokens: ptr.To(int64(10)),
+				}
+
+				translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
+				_, bm, err := translator.RequestBody(nil, req, false)
+				require.NoError(t, err)
+
+				result := gjson.ParseBytes(bm.GetBody())
+				cacheControl := result.Get("messages.0.content.0.cache_control")
+
+				if tc.expectCache {
+					require.True(t, cacheControl.Exists())
+					require.Equal(t, "ephemeral", cacheControl.Get("type").String())
+				} else {
+					require.False(t, cacheControl.Exists())
+				}
+			})
+		}
+	})
+
+	t.Run("tool use caching", func(t *testing.T) {
+		testCases := []struct {
+			name            string
+			anthropicFields *openai.AnthropicMessageFields
+			expectCache     bool
+		}{
+			{name: "cache enabled", anthropicFields: &openai.AnthropicMessageFields{CacheControl: anthropic.CacheControlEphemeralParam{Type: "ephemeral"}}, expectCache: true},
+			{name: "cache disabled", anthropicFields: &openai.AnthropicMessageFields{CacheControl: anthropic.CacheControlEphemeralParam{Type: ""}}, expectCache: false},
+			{name: "cache missing", anthropicFields: nil, expectCache: false},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				req := &openai.ChatCompletionRequest{
+					Model: "claude-3-haiku",
+					Messages: []openai.ChatCompletionMessageParamUnion{
+						{OfAssistant: &openai.ChatCompletionAssistantMessageParam{
+							Role: openai.ChatMessageRoleAssistant,
+							ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+								{
+									ID:   ptr.To("call_123"),
+									Type: openai.ChatCompletionMessageToolCallTypeFunction,
+									Function: openai.ChatCompletionMessageToolCallFunctionParam{
+										Name:      "get_weather",
+										Arguments: `{"location": "New York"}`,
+									},
+								},
+							},
+							AnthropicMessageFields: tc.anthropicFields,
+						}},
+					},
+					MaxTokens: ptr.To(int64(10)),
+				}
+
+				translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
+				_, bm, err := translator.RequestBody(nil, req, false)
+				require.NoError(t, err)
+
+				result := gjson.ParseBytes(bm.GetBody())
+				toolUseBlock := result.Get("messages.0.content.0")
+				cacheControl := toolUseBlock.Get("cache_control")
+
+				require.Equal(t, "tool_use", toolUseBlock.Get("type").String())
+				require.Equal(t, "get_weather", toolUseBlock.Get("name").String())
+				require.Equal(t, "New York", toolUseBlock.Get("input.location").String())
+
+				if tc.expectCache {
+					require.True(t, cacheControl.Exists())
+					require.Equal(t, "ephemeral", cacheControl.Get("type").String())
+				} else {
+					require.False(t, cacheControl.Exists())
+				}
+			})
+		}
+	})
+	t.Run("cache with image content", func(t *testing.T) {
+		req := &openai.ChatCompletionRequest{
+			Model: "claude-3-opus",
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{OfUser: &openai.ChatCompletionUserMessageParam{
+					Role: openai.ChatMessageRoleUser,
+					Content: openai.StringOrUserRoleContentUnion{
+						Value: []openai.ChatCompletionContentPartUserUnionParam{
+							{OfText: &openai.ChatCompletionContentPartTextParam{Text: "What's in this image?", Type: "text"}},
+							{OfImageURL: &openai.ChatCompletionContentPartImageParam{
+								Type: "image_url",
+								ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+									URL: "data:image/jpeg;base64,dGVzdA==",
+								},
+							}},
+						},
+					},
+					AnthropicMessageFields: &openai.AnthropicMessageFields{
+						CacheControl: anthropic.CacheControlEphemeralParam{Type: "ephemeral"},
+					},
+				}},
+			},
+			MaxTokens: ptr.To(int64(50)),
+		}
+
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
+		_, bm, err := translator.RequestBody(nil, req, false)
+		require.NoError(t, err)
+
+		result := gjson.ParseBytes(bm.GetBody())
+
+		// Check that both the text part and the image part have cache_control.
+		require.True(t, result.Get("messages.0.content.0.cache_control").Exists(), "cache should exist for text part")
+		require.Equal(t, "ephemeral", result.Get("messages.0.content.0.cache_control.type").String())
+
+		require.True(t, result.Get("messages.0.content.1.cache_control").Exists(), "cache should exist for image part")
+		require.Equal(t, "ephemeral", result.Get("messages.0.content.1.cache_control.type").String())
+	})
+	t.Run("developer message caching", func(t *testing.T) {
+		openAIReq := &openai.ChatCompletionRequest{
+			Model: "gcp.claude-3.5-haiku",
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				// Developer message with cache enabled.
+				{OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
+					Role:    openai.ChatMessageRoleDeveloper,
+					Content: openai.ContentUnion{Value: "You are an expert Go programmer."},
+					AnthropicMessageFields: &openai.AnthropicMessageFields{
+						CacheControl: anthropic.CacheControlEphemeralParam{Type: "ephemeral"},
+					},
+				}},
+			},
+			MaxTokens: ptr.To(int64(100)),
+		}
+
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
+		_, bm, err := translator.RequestBody(nil, openAIReq, false)
+		require.NoError(t, err)
+
+		body := bm.GetBody()
+		result := gjson.ParseBytes(body)
+
+		// Check that the developer message, which becomes part of the 'system' prompt, is cached.
+		require.Equal(t, "ephemeral", result.Get("system.0.cache_control.type").String())
+	})
+	t.Run("aggregated tool messages with mixed caching", func(t *testing.T) {
+		// This test ensures that caching is applied on a per-tool-message basis,
+		// even when they are aggregated into a single user message.
+		openAIReq := &openai.ChatCompletionRequest{
+			Model: "gcp.claude-3.5-haiku",
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				// First tool message, cache disabled
+				{OfTool: &openai.ChatCompletionToolMessageParam{
+					Role:                   openai.ChatMessageRoleTool,
+					Content:                openai.ContentUnion{Value: "Result for tool 1"},
+					ToolCallID:             "call_001",
+					AnthropicMessageFields: nil,
+				}},
+				// Second tool message, cache not "ephemeral" (i.e., disabled).
+				{OfTool: &openai.ChatCompletionToolMessageParam{
+					Role:                   openai.ChatMessageRoleTool,
+					Content:                openai.ContentUnion{Value: "Result for tool 2"},
+					ToolCallID:             "call_002",
+					AnthropicMessageFields: &openai.AnthropicMessageFields{CacheControl: anthropic.CacheControlEphemeralParam{Type: ""}},
+				}},
+				// Third tool message, cache enabled.
+				{OfTool: &openai.ChatCompletionToolMessageParam{
+					Role:       openai.ChatMessageRoleTool,
+					Content:    openai.ContentUnion{Value: "Result for tool 3"},
+					ToolCallID: "call_003",
+					AnthropicMessageFields: &openai.AnthropicMessageFields{
+						CacheControl: anthropic.CacheControlEphemeralParam{Type: "ephemeral"},
+					},
+				}},
+			},
+			MaxTokens: ptr.To(int64(100)),
+		}
+
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
+		_, bm, err := translator.RequestBody(nil, openAIReq, false)
+		require.NoError(t, err)
+
+		body := bm.GetBody()
+		result := gjson.ParseBytes(body)
+
+		// The translator creates a single user message with two tool_result blocks.
+		// The first & second block should NOT have cache_control.
+		require.False(t, result.Get("messages.0.content.0.cache_control").Exists(), "first tool_result should not be cached")
+		require.False(t, result.Get("messages.0.content.1.cache_control").Exists(), "second tool_result should not be cached")
+
+		// The third block SHOULD have cache_control.
+		require.Equal(t, "ephemeral", result.Get("messages.0.content.2.cache_control.type").String(), "third tool_result should be cached")
+	})
+}
