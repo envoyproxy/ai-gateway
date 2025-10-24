@@ -101,7 +101,29 @@ The secret must contain the API key with the key name `"apiKey"`.
 
 ##### AWS Credentials
 
-Used when connecting to AWS Bedrock
+Used when connecting to AWS Bedrock. Supports three authentication methods:
+
+**Option 1: EKS Pod Identity or IRSA (Recommended for production)**
+
+When running on EKS, the AWS SDK automatically uses the default credential chain, which includes EKS Pod Identity and IRSA. Simply configure the region:
+
+```yaml
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: bedrock-auth
+spec:
+  type: AWSCredentials
+  awsCredentials:
+    region: us-east-1
+    # No credentialsFile needed - automatically uses:
+    # - EKS Pod Identity (if Pod Identity association exists)
+    # - IRSA (if ServiceAccount has eks.amazonaws.com/role-arn annotation)
+```
+
+See the [Connect AWS Bedrock guide](../../getting-started/connect-providers/aws-bedrock.md) for detailed setup instructions.
+
+**Option 2: Static Credentials (Development/Testing)**
 
 ```yaml
 apiVersion: aigateway.envoyproxy.io/v1alpha1
@@ -120,7 +142,7 @@ spec:
 ```
 
 :::note
-The secret must contain the AWS credentials file with the key name `"credentials"`.
+When using static credentials, the secret must contain the AWS credentials file with the key name `"credentials"`.
 :::
 
 ##### Azure Credentials

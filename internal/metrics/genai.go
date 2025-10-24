@@ -24,14 +24,15 @@ const (
 	genaiAttributeTokenType     = "gen_ai.token.type" //nolint:gosec // metric name, not credential
 	genaiAttributeErrorType     = "error.type"
 
-	genaiOperationChat       = "chat"
-	genaiOperationCompletion = "completion"
-	genaiOperationEmbedding  = "embeddings"
-	genaiOperationMessages   = "messages"
-	genaiProviderOpenAI      = "openai"
-	genaiProviderAWSBedrock  = "aws.bedrock"
-	genaiTokenTypeInput      = "input"
-	genaiTokenTypeOutput     = "output"
+	genaiOperationChat            = "chat"
+	genaiOperationCompletion      = "completion"
+	genaiOperationEmbedding       = "embeddings"
+	genaiOperationMessages        = "messages"
+	genaiOperationImageGeneration = "image_generation"
+	genaiProviderOpenAI           = "openai"
+	genaiProviderAWSBedrock       = "aws.bedrock"
+	genaiTokenTypeInput           = "input"
+	genaiTokenTypeOutput          = "output"
 	// "cached_input" is not yet part of the spec but has been proposed:
 	// https://github.com/open-telemetry/semantic-conventions/issues/1959
 	//

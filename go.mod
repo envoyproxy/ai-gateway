@@ -8,6 +8,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.13.0
 	github.com/a8m/envsubst v1.4.3
 	github.com/alecthomas/kong v1.12.1
+	github.com/andybalholm/brotli v1.2.0
 	github.com/anthropics/anthropic-sdk-go v1.14.0
 	github.com/aws/aws-sdk-go-v2 v1.39.3
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.2
