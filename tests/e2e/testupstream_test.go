@@ -295,15 +295,18 @@ stringData:
 
 // extractFilterConfigFromSecret extracts the filter-config.yaml content from the given secret name.
 func extractFilterConfigFromSecret(ctx context.Context, name string) (string, error) {
-	secret, err := e2elib.GetSecret(ctx, e2elib.EnvoyGatewayNamespace, name)
+	ctrl := e2elib.Kubectl(ctx, "get", "secrets", "-n", e2elib.EnvoyGatewayNamespace,
+		name, "-o",
+		`jsonpath='{.data.filter-config\.yaml}'`)
+	ctrl.Stderr = nil
+	ctrl.Stdout = nil
+	output, err := ctrl.Output()
 	if err != nil {
-		return "", fmt.Errorf("failed to get secret: %w", err)
+		return "", fmt.Errorf("failed to get filter-config.yaml from secret: %w", err)
 	}
-
-	filterConfigBytes, ok := secret.Data["filter-config.yaml"]
-	if !ok {
-		return "", fmt.Errorf("filter-config.yaml not found in secret")
+	decoded, err := base64.StdEncoding.DecodeString(strings.Trim(string(output), "'"))
+	if err != nil {
+		return "", fmt.Errorf("failed to base64 decode filter-config.yaml: %w", err)
 	}
-
-	return string(filterConfigBytes), nil
+	return string(decoded), nil
 }

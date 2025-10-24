@@ -7,16 +7,17 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
@@ -176,14 +177,15 @@ func testInferenceGatewayConnectivity(t *testing.T, egSelector, body string, add
 
 // getInferencePoolStatus retrieves the status of an InferencePool resource.
 func getInferencePoolStatus(ctx context.Context, namespace, name string) (*gwaiev1.InferencePoolStatus, error) {
-	obj, err := e2elib.GetUnstructuredResource(ctx, namespace, name, "gateway-api-inference-extension.networking.x-k8s.io", "v1", "inferencepools")
+	cmd := exec.CommandContext(ctx, "kubectl", "get", "inferencepool", name, "-n", namespace, "-o", "json")
+	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get InferencePool %s/%s: %w", namespace, name, err)
 	}
 
 	var inferencePool gwaiev1.InferencePool
-	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &inferencePool); err != nil {
-		return nil, fmt.Errorf("failed to convert InferencePool: %w", err)
+	if err := json.Unmarshal(out, &inferencePool); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal InferencePool: %w", err)
 	}
 
 	return &inferencePool.Status, nil

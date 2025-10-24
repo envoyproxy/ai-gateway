@@ -6,8 +6,10 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -15,7 +17,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	corev1 "k8s.io/api/core/v1"
 
 	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
@@ -68,14 +69,20 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 		_ = e2elib.KubectlDeleteManifest(restoreCtx, manifest)
 
 		// Delete the test namespace to clean up completely.
-		_ = e2elib.DeleteNamespace(restoreCtx, "otel-test-namespace")
+		deleteNs := exec.CommandContext(restoreCtx, "kubectl", "delete", "namespace",
+			"otel-test-namespace", "--ignore-not-found=true")
+		_ = deleteNs.Run()
 	})
 
 	// Restart controller to pick up new configuration.
-	require.NoError(t, e2elib.RestartDeployment(ctx, "envoy-ai-gateway-system", "ai-gateway-controller"))
+	restartCmd := exec.CommandContext(ctx, "kubectl", "rollout", "restart",
+		"deployment/ai-gateway-controller", "-n", "envoy-ai-gateway-system")
+	require.NoError(t, restartCmd.Run())
 
 	// Wait for deployment to be ready.
-	require.NoError(t, e2elib.WaitForDeploymentReady(ctx, "envoy-ai-gateway-system", "ai-gateway-controller"))
+	waitCmd := exec.CommandContext(ctx, "kubectl", "wait", "--timeout=2m",
+		"-n", "envoy-ai-gateway-system", "deployment/ai-gateway-controller", "--for=condition=available")
+	require.NoError(t, waitCmd.Run())
 
 	// Apply the test manifest which will trigger pod creation.
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
@@ -86,60 +93,77 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 	// Get pod name from envoy-gateway-system namespace (where pods are created).
 	require.Eventually(t, func() bool {
 		const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-otel-test"
-		pods, err := e2elib.GetPodsBySelector(ctx, e2elib.EnvoyGatewayNamespace, egSelector)
+		getPodsCmd := exec.CommandContext(ctx, "kubectl", "get", "pods", // #nosec G204
+			"-n", e2elib.EnvoyGatewayNamespace,
+			"-l", egSelector,
+			"-o", "jsonpath={.items[0].metadata.name}")
+
+		var podNameBytes []byte
+		podNameBytes, err := getPodsCmd.Output()
 		if err != nil {
-			t.Logf("Failed to get pods: %v", err)
+			t.Logf("Failed to get pod name: %v", err)
 			return false // Retry if command fails.
 		}
-
-		if len(pods) == 0 {
+		podName := string(podNameBytes)
+		if len(podName) == 0 {
 			t.Log("No pods found with the specified selector, retrying...")
 			return false // Retry if no pods found.
 		}
-
-		pod := pods[0]
-		podName := pod.Name
 		t.Logf("Found pod: %s", podName)
 
-		// Find the extProc init container and check env vars
-		var extProcContainer *corev1.Container
-		for i := range pod.Spec.InitContainers {
-			if pod.Spec.InitContainers[i].Name == "ai-gateway-extproc" {
-				extProcContainer = &pod.Spec.InitContainers[i]
-				break
-			}
+		// Get the pod description to check env vars.
+		describeCmd := exec.CommandContext(ctx, "kubectl", "get", "pod", podName,
+			"-n", e2elib.EnvoyGatewayNamespace,
+			"-o", "jsonpath={.spec.initContainers[?(@.name=='ai-gateway-extproc')].env}")
+
+		describeOutput := &bytes.Buffer{}
+		describeCmd.Stdout = describeOutput
+		describeCmd.Stderr = describeOutput
+
+		err = describeCmd.Run()
+		if err != nil {
+			t.Logf("Failed to describe pod %s: %v", podName, err)
+			return false // Retry if command fails.
 		}
 
-		if extProcContainer == nil {
-			t.Log("ai-gateway-extproc container not found in pod init containers, retrying...")
-			return false
+		envVars := describeOutput.String()
+		t.Logf("Environment variables in extProc container: %s", envVars)
+
+		// Get the container args to check header attributes configuration.
+		argsCmd := exec.CommandContext(ctx, "kubectl", "get", "pod", podName,
+			"-n", e2elib.EnvoyGatewayNamespace,
+			"-o", "jsonpath={.spec.initContainers[?(@.name=='ai-gateway-extproc')].args}")
+
+		argsOutput := &bytes.Buffer{}
+		argsCmd.Stdout = argsOutput
+		argsCmd.Stderr = argsOutput
+
+		err = argsCmd.Run()
+		if err != nil {
+			t.Logf("Failed to get container args for pod %s: %v", podName, err)
+			return false // Retry if command fails.
 		}
 
-		// Check environment variables
-		envVarsFound := make(map[string]string)
-		for _, env := range extProcContainer.Env {
-			envVarsFound[env.Name] = env.Value
-		}
-		t.Logf("Environment variables in extProc container: %+v", envVarsFound)
-
-		// Check container args
-		containerArgs := strings.Join(extProcContainer.Args, " ")
-		t.Logf("Container args in extProc container: %+v", extProcContainer.Args)
+		containerArgs := argsOutput.String()
+		t.Logf("Container args in extProc container: %s", containerArgs)
 
 		defer func() {
 			// Deletes the pods to ensure they are recreated with the new configuration for the next iteration.
-			err = e2elib.DeletePod(ctx, e2elib.EnvoyGatewayNamespace, podName)
+			deletePodsCmd := e2elib.Kubectl(ctx, "delete", "pod", podName,
+				"-n", e2elib.EnvoyGatewayNamespace,
+				"--ignore-not-found=true")
+			err = deletePodsCmd.Run()
 			if err != nil {
 				t.Logf("Failed to delete pod %s: %v", podName, err)
 			}
 		}()
 
 		// Verify that our OTEL env vars are present in the pod spec.
-		if val, ok := envVarsFound["OTEL_TRACES_EXPORTER"]; !ok || val != "console" {
+		if !strings.Contains(envVars, `"name":"OTEL_TRACES_EXPORTER","value":"console"`) {
 			t.Log("Expected OTEL_TRACES_EXPORTER=console in extProc container spec")
 			return false
 		}
-		if val, ok := envVarsFound["OTEL_SERVICE_NAME"]; !ok || val != "ai-gateway-e2e-test" {
+		if !strings.Contains(envVars, `"name":"OTEL_SERVICE_NAME","value":"ai-gateway-e2e-test"`) {
 			t.Log("Expected OTEL_SERVICE_NAME=ai-gateway-e2e-test in extProc container spec")
 			return false
 		}

@@ -6,6 +6,7 @@
 package e2elib
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/json"
@@ -19,13 +20,12 @@ import (
 	"os/exec"
 	"path"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/singleflight"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
@@ -183,11 +183,16 @@ func initMetalLB(ctx context.Context) (err error) {
 
 	// Create memberlist secret if it doesn't exist.
 	initLog("\tCreating memberlist secret if needed")
-	_, err = kubeGetSecret(ctx, "metallb-system", "memberlist")
+	cmd := Kubectl(ctx, "get", "secret", "-n", "metallb-system", "memberlist", "--no-headers", "--ignore-not-found", "-o", "custom-columns=NAME:.metadata.name")
+	cmd.Stdout = nil
+	out, err := cmd.Output()
 	if err != nil {
-		// Secret doesn't exist, create it
+		return fmt.Errorf("failed to check memberlist secret: %w", err)
+	}
+
+	if strings.TrimSpace(string(out)) == "" {
 		// Generate random secret key.
-		cmd := exec.CommandContext(ctx, "openssl", "rand", "-base64", "128")
+		cmd = exec.CommandContext(ctx, "openssl", "rand", "-base64", "128")
 		cmd.Stderr = os.Stderr
 		var secretKey []byte
 		secretKey, err = cmd.Output()
@@ -195,10 +200,8 @@ func initMetalLB(ctx context.Context) (err error) {
 			return fmt.Errorf("failed to generate secret key: %w", err)
 		}
 
-		err = kubeCreateSecret(ctx, "metallb-system", "memberlist", map[string][]byte{
-			"secretkey": []byte(strings.TrimSpace(string(secretKey))),
-		})
-		if err != nil {
+		cmd = Kubectl(ctx, "create", "secret", "generic", "-n", "metallb-system", "memberlist", "--from-literal=secretkey="+strings.TrimSpace(string(secretKey)))
+		if err = cmd.Run(); err != nil {
 			return fmt.Errorf("failed to create memberlist secret: %w", err)
 		}
 	}
@@ -476,68 +479,6 @@ func initPrometheus(ctx context.Context) (err error) {
 	return kubectlWaitForDeploymentReady(ctx, "monitoring", "prometheus")
 }
 
-// KubectlApplyManifest applies a Kubernetes manifest from a URL or file path using client-go.
-func KubectlApplyManifest(ctx context.Context, manifest string) (err error) {
-	return kubeApplyManifest(ctx, manifest)
-}
-
-// KubectlApplyManifestStdin applies the given manifest using client-go, reading from a string.
-func KubectlApplyManifestStdin(ctx context.Context, manifest string) (err error) {
-	return kubeApplyManifestStdin(ctx, manifest)
-}
-
-// KubectlDeleteManifest deletes the given manifest using client-go.
-func KubectlDeleteManifest(ctx context.Context, manifest string) (err error) {
-	return kubeDeleteManifest(ctx, manifest)
-}
-
-// DeleteNamespace deletes a namespace
-func DeleteNamespace(ctx context.Context, name string) error {
-	return kubeDeleteNamespace(ctx, name)
-}
-
-// RestartDeployment restarts a deployment
-func RestartDeployment(ctx context.Context, namespace, deployment string) error {
-	return kubeRestartDeployment(ctx, namespace, deployment)
-}
-
-// WaitForDeploymentReady waits for a deployment to be ready with a 2 minute timeout
-func WaitForDeploymentReady(ctx context.Context, namespace, deployment string) error {
-	return kubeWaitForDeploymentReady(ctx, namespace, deployment, 2*time.Minute)
-}
-
-// GetPodsBySelector gets pods matching a selector
-func GetPodsBySelector(ctx context.Context, namespace, selector string) ([]corev1.Pod, error) {
-	return kubeGetPodsBySelector(ctx, namespace, selector)
-}
-
-// DeletePod deletes a pod
-func DeletePod(ctx context.Context, namespace, name string) error {
-	return kubeDeletePod(ctx, namespace, name)
-}
-
-// GetUnstructuredResource gets an unstructured resource by GVR
-func GetUnstructuredResource(ctx context.Context, namespace, name, group, version, resource string) (*unstructured.Unstructured, error) {
-	return kubeGetUnstructuredResource(ctx, namespace, name, group, version, resource)
-}
-
-// GetSecret gets a secret from the cluster
-func GetSecret(ctx context.Context, namespace, name string) (*corev1.Secret, error) {
-	return kubeGetSecret(ctx, namespace, name)
-}
-
-func kubectlRestartDeployment(ctx context.Context, namespace, deployment string) error {
-	return kubeRestartDeployment(ctx, namespace, deployment)
-}
-
-func kubectlWaitForDeploymentReady(ctx context.Context, namespace, deployment string) (err error) {
-	return kubeWaitForDeploymentReady(ctx, namespace, deployment, 2*time.Minute)
-}
-
-func kubectlWaitForDaemonSetReady(ctx context.Context, namespace, daemonset string) (err error) {
-	return kubeWaitForDaemonSetReady(ctx, namespace, daemonset, 2*time.Minute)
-}
-
 // RequireWaitForGatewayPodReady waits for the Envoy Gateway pod with the given selector to be ready.
 func RequireWaitForGatewayPodReady(t *testing.T, selector string) {
 	requireWaitForGatewayPod(t, selector)
@@ -546,41 +487,34 @@ func RequireWaitForGatewayPodReady(t *testing.T, selector string) {
 
 // RequireGatewayListenerAddressViaMetalLB gets the external IP address of the Gateway via MetalLB.
 func RequireGatewayListenerAddressViaMetalLB(t *testing.T, namespace, name string) (addr string) {
-	var err error
-	addr, err = kubeGetGatewayAddress(t.Context(), namespace, name)
+	cmd := Kubectl(t.Context(), "get", "gateway", "-n", namespace, name,
+		"-o", "jsonpath={.status.addresses[0].value}")
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	out, err := cmd.Output()
 	require.NoError(t, err, "failed to get gateway address")
+	addr = strings.TrimSpace(string(out))
 	return
 }
 
 // requireWaitForGatewayPod waits for the Envoy Gateway pod containing the
 // extproc container.
 func requireWaitForGatewayPod(t *testing.T, selector string) {
-	require.Eventually(t, func() bool {
-		pods, err := kubeGetPodsBySelector(t.Context(), EnvoyGatewayNamespace, selector)
-		if err != nil || len(pods) == 0 {
-			return false
+	waitUntilKubectl(t, 2*time.Minute, 1*time.Second, func(output string) error {
+		if !strings.Contains(output, "ai-gateway-extproc") {
+			return fmt.Errorf("container not found, output: %s", output)
 		}
-
-		// Check if the pod has the ai-gateway-extproc container
-		pod := pods[0]
-		for _, container := range pod.Spec.InitContainers {
-			if container.Name == "ai-gateway-extproc" {
-				return true
-			}
-		}
-		for _, container := range pod.Spec.Containers {
-			if container.Name == "ai-gateway-extproc" {
-				return true
-			}
-		}
-		return false
-	}, 2*time.Minute, 1*time.Second, "ai-gateway-extproc container not found in pod")
+		return nil
+	}, "get", "pod", "-n", EnvoyGatewayNamespace,
+		"--selector="+selector, "-o", "jsonpath='{.items[0].spec.initContainers[*].name} {.items[0].spec.containers[*].name}'")
 }
 
 // RequireWaitForPodReady waits for the pod with the given selector to be ready.
 func RequireWaitForPodReady(t *testing.T, namespace, selector string) {
-	err := kubeWaitForPodReady(t.Context(), namespace, selector, 3*time.Minute)
-	require.NoError(t, err, "failed to wait for pod to be ready")
+	waitUntilKubectl(t, 3*time.Minute, 5*time.Second, func(_ string) error {
+		return nil // Success if the command exited 0, ignore output.
+	}, "wait", "--timeout=2s", "-n", namespace,
+		"pods", "--for=condition=Ready", "-l", selector)
 }
 
 // RequireNewHTTPPortForwarder creates a new port forwarder for the given namespace and selector.
@@ -640,10 +574,25 @@ type portForward interface {
 	kill()
 }
 
+// kubectlPortForward implements portForward using kubectl.
+type kubectlPortForward struct {
+	namespace   string
+	selector    string
+	localPort   int
+	servicePort int
+	cmd         *exec.Cmd
+	cmdMu       sync.Mutex
+}
+
 type newPortForwardFn func(namespace, selector string, localPort, servicePort int) portForward
 
 func newKubectlPortForward(namespace, selector string, localPort, servicePort int) portForward {
-	return newKubePortForward(namespace, selector, localPort, servicePort)
+	return &kubectlPortForward{
+		namespace:   namespace,
+		selector:    selector,
+		localPort:   localPort,
+		servicePort: servicePort,
+	}
 }
 
 type serviceList struct {
@@ -652,6 +601,47 @@ type serviceList struct {
 			Name string `json:"name"`
 		} `json:"metadata"`
 	} `json:"items"`
+}
+
+func (k *kubectlPortForward) start(ctx context.Context) error {
+	cmd := Kubectl(ctx, "get", "svc", "-n", k.namespace,
+		"--selector="+k.selector, "-o", "json")
+	cmd.Stdout = nil
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to get service name: %w", err)
+	}
+
+	var svcs serviceList
+	if err := json.Unmarshal(out, &svcs); err != nil {
+		return fmt.Errorf("failed to parse service list: %w", err)
+	}
+	if len(svcs.Items) == 0 {
+		return fmt.Errorf("no service found for selector %q", k.selector)
+	}
+	serviceName := svcs.Items[0].Metadata.Name
+
+	cmd = Kubectl(ctx, "port-forward",
+		"-n", k.namespace, "svc/"+serviceName,
+		fmt.Sprintf("%d:%d", k.localPort, k.servicePort),
+	)
+	cmd.Stdout = io.Discard
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start port-forward: %w", err)
+	}
+	k.cmdMu.Lock()
+	k.cmd = cmd
+	k.cmdMu.Unlock()
+	return nil
+}
+
+func (k *kubectlPortForward) kill() {
+	k.cmdMu.Lock()
+	defer k.cmdMu.Unlock()
+	if k.cmd != nil && k.cmd.Process != nil {
+		_ = k.cmd.Process.Kill()
+	}
 }
 
 // portForwarder implements PortForwarder.
@@ -815,4 +805,30 @@ func isStaleConnectionError(err error) bool {
 		strings.Contains(errStr, "closed") ||
 		strings.Contains(errStr, "reset") ||
 		strings.Contains(errStr, "refused")
+}
+
+// waitUntilKubectl polls by running a kubectl command with the given args
+// until the verifyOut predicate returns nil or the timeout is reached.
+//
+// Unlike require.Eventually, this retains the output of the last mismatch.
+func waitUntilKubectl(t *testing.T, timeout time.Duration, pollInterval time.Duration, verifyOut func(output string) error, args ...string) {
+	var lastErr error
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		cmd := Kubectl(t.Context(), args...)
+		cmd.Stdout = nil // To ensure that we can capture the output by Output().
+		out, err := cmd.Output()
+		if err != nil {
+			lastErr = err
+			time.Sleep(pollInterval)
+			continue
+		}
+		err = verifyOut(string(out))
+		if err == nil {
+			return
+		}
+		lastErr = err
+		time.Sleep(pollInterval)
+	}
+	require.Fail(t, "timed out waiting", "last error: %v", lastErr)
 }
