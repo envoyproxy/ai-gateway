@@ -64,7 +64,9 @@ func (k *kubectlCmd) Run() error {
 	})
 	
 	kubectlCmd.SetArgs(k.args)
-	kubectlCmd.SetContext(k.ctx)
+	if k.ctx != nil {
+		kubectlCmd.SetContext(k.ctx)
+	}
 
 	return kubectlCmd.Execute()
 }
