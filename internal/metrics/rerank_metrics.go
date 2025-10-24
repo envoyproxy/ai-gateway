@@ -20,6 +20,9 @@ type rerank struct {
 	baseMetrics
 }
 
+// RerankMetricsFactory is a closure that creates a new RerankMetrics instance.
+type RerankMetricsFactory func() RerankMetrics
+
 // RerankMetrics is the interface for the rerank AI Gateway metrics.
 type RerankMetrics interface {
 	// StartRequest initializes timing for a new request.
@@ -43,10 +46,13 @@ type RerankMetrics interface {
 	RecordRequestCompletion(ctx context.Context, success bool, requestHeaderLabelMapping map[string]string)
 }
 
-// NewRerank creates a new Rerank instance.
-func NewRerank(meter metric.Meter, requestHeaderLabelMapping map[string]string) RerankMetrics {
-	return &rerank{
-		baseMetrics: newBaseMetrics(meter, genaiOperationRerank, requestHeaderLabelMapping),
+// NewRerankFactory returns a closure to create a new Rerank instance.
+func NewRerankFactory(meter metric.Meter, requestHeaderAttributeMapping map[string]string) RerankMetricsFactory {
+	b := baseMetricsFactory{metrics: newGenAI(meter), requestHeaderAttributeMapping: requestHeaderAttributeMapping}
+	return func() RerankMetrics {
+		return &rerank{
+			baseMetrics: b.newBaseMetrics(genaiOperationRerank),
+		}
 	}
 }
 

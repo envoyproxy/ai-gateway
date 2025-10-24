@@ -235,7 +235,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	completionMetrics := metrics.NewCompletionFactory(meter, metricsRequestHeaderAttributes)
 	embeddingsMetrics := metrics.NewEmbeddingsFactory(meter, metricsRequestHeaderAttributes)
 	imageGenerationMetrics := metrics.NewImageGenerationFactory(meter, metricsRequestHeaderAttributes)()
-	rerankMetrics := metrics.NewRerank(meter, metricsRequestHeaderAttributes)
+	rerankMetrics := metrics.NewRerankFactory(meter, metricsRequestHeaderAttributes)
 	mcpMetrics := metrics.NewMCP(meter, metricsRequestHeaderAttributes)
 
 	tracing, err := tracing.NewTracingFromEnv(ctx, os.Stdout, spanRequestHeaderAttributes)
