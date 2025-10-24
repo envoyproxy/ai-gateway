@@ -28,8 +28,8 @@ import (
 )
 
 func TestMessagesProcessorFactory(t *testing.T) {
-	chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
-	factory := MessagesProcessorFactory(chatMetrics)
+	m := metrics.NewMessagesFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})
+	factory := MessagesProcessorFactory(m)
 	require.NotNil(t, factory, "MessagesProcessorFactory should return a non-nil factory")
 
 	// Test creating a router filter.
@@ -271,6 +271,14 @@ func TestSelectTranslator(t *testing.T) {
 						},
 					},
 				},
+				"anthropic": {
+					b: &filterapi.Backend{
+						Name: "anthropic",
+						Schema: filterapi.VersionedAPISchema{
+							Name: filterapi.APISchemaAnthropic,
+						},
+					},
+				},
 			},
 		},
 		logger: slog.Default(),
@@ -284,6 +292,11 @@ func TestSelectTranslator(t *testing.T) {
 		{
 			name:        "gcp backend",
 			backend:     "gcp",
+			expectError: false,
+		},
+		{
+			name:        "anthropic backend",
+			backend:     "anthropic",
 			expectError: false,
 		},
 		{
@@ -388,7 +401,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithMocks(t *test
 			}
 
 			// Create mock metrics.
-			chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+			chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 
 			// Create processor.
 			processor := &messagesProcessorUpstreamFilter{
@@ -423,7 +436,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseHeaders_WithMocks(t *tes
 		retErr:            nil,
 	}
 
-	chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+	chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 	processor := &messagesProcessorUpstreamFilter{
 		config:         &processorConfig{},
 		requestHeaders: make(map[string]string),
@@ -448,7 +461,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_WithMocks(t *testin
 		retErr:            nil,
 	}
 
-	chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+	chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 	processor := &messagesProcessorUpstreamFilter{
 		config:         &processorConfig{},
 		requestHeaders: make(map[string]string),
@@ -519,7 +532,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_CompletionOnlyAtEnd
 }
 
 func TestMessagesProcessorUpstreamFilter_MergeWithTokenLatencyMetadata(t *testing.T) {
-	chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+	chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 	processor := &messagesProcessorUpstreamFilter{
 		config:  &processorConfig{},
 		logger:  slog.Default(),
@@ -548,7 +561,7 @@ func TestMessagesProcessorUpstreamFilter_MergeWithTokenLatencyMetadata(t *testin
 
 func TestMessagesProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	headers := map[string]string{":path": "/anthropic/v1/messages"}
-	chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+	chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 	processor := &messagesProcessorUpstreamFilter{
 		config: &processorConfig{
 			requestCosts: []processorConfigRequestCost{
@@ -574,7 +587,7 @@ func TestMessagesProcessorUpstreamFilter_SetBackend(t *testing.T) {
 
 func Test_messagesProcessorUpstreamFilter_SetBackend_Success(t *testing.T) {
 	headers := map[string]string{":path": "/anthropic/v1/messages", internalapi.ModelNameHeaderKeyDefault: "claude"}
-	chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+	chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 	p := &messagesProcessorUpstreamFilter{
 		config:         &processorConfig{},
 		requestHeaders: headers,
@@ -711,7 +724,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 		}
 
 		// Create mock metrics.
-		chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+		chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 
 		// Create processor.
 		processor := &messagesProcessorUpstreamFilter{
@@ -749,104 +762,11 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 
 		// Check that headers were modified in the request headers.
 		require.Equal(t, "new-value", headers["x-new-header"])
-		require.NotContains(t, headers, "authorization")
-		require.NotContains(t, headers, "x-api-key")
+		// Sensitive headers remain locally for metrics, but will be stripped upstream by Envoy.
+		require.Equal(t, "bearer token123", headers["authorization"])
+		require.Equal(t, "secret-key", headers["x-api-key"])
 		// x-custom remains unchanged since it wasn't in the mutations.
 		require.Equal(t, "custom-value", headers["x-custom"])
-	})
-
-	t.Run("header mutations restored on retry", func(t *testing.T) {
-		headers := map[string]string{
-			":path":         "/anthropic/v1/messages",
-			"x-ai-eg-model": "claude-3-sonnet",
-			// "x-custom" is not present in current headers, so it can be restored.
-			"x-new-header": "new-value", // Already set from previous mutation.
-		}
-
-		// Create request body.
-		requestBody := &anthropicschema.MessagesRequest{
-			"model":      "claude-3-sonnet",
-			"max_tokens": 1000,
-			"messages":   []any{map[string]any{"role": "user", "content": "Hello"}},
-		}
-		requestBodyRaw := []byte(`{"model": "claude-3-sonnet", "max_tokens": 1000, "messages": [{"role": "user", "content": "Hello"}]}`)
-
-		// Create header mutations that don't remove x-custom (so it can be restored).
-		headerMutations := &filterapi.HTTPHeaderMutation{
-			Remove: []string{"authorization", "x-api-key"},
-			Set:    []filterapi.HTTPHeader{{Name: "x-new-header", Value: "updated-value"}},
-		}
-
-		// Create mock translator.
-		mockTranslator := mockAnthropicTranslator{
-			t:                           t,
-			expRequestBody:              requestBody,
-			expForceRequestBodyMutation: true, // This is a retry request.
-			retHeaderMutation:           &extprocv3.HeaderMutation{},
-			retBodyMutation:             &extprocv3.BodyMutation{},
-			retErr:                      nil,
-		}
-
-		// Create mock metrics.
-		chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
-
-		// Create processor.
-		processor := &messagesProcessorUpstreamFilter{
-			config:                 &processorConfig{},
-			requestHeaders:         headers,
-			logger:                 slog.Default(),
-			metrics:                chatMetrics,
-			translator:             mockTranslator,
-			originalRequestBody:    requestBody,
-			originalRequestBodyRaw: requestBodyRaw,
-			handler:                &mockBackendAuthHandler{},
-			onRetry:                true, // This is a retry request.
-		}
-
-		// Use the same headers map as the original headers (this simulates the router filter's requestHeaders).
-		originalHeaders := map[string]string{
-			":path":         "/anthropic/v1/messages",
-			"x-ai-eg-model": "claude-3-sonnet",
-			"authorization": "bearer original-token", // This will be removed, so won't be restored.
-			"x-api-key":     "original-secret",       // This will be removed, so won't be restored.
-			"x-custom":      "original-custom",       // This won't be removed, so can be restored.
-			"x-new-header":  "original-value",        // This will be set, so won't be restored.
-		}
-		processor.headerMutator = headermutator.NewHeaderMutator(headerMutations, originalHeaders)
-
-		ctx := context.Background()
-		response, err := processor.ProcessRequestHeaders(ctx, nil)
-
-		require.NoError(t, err)
-		require.NotNil(t, response)
-
-		commonRes := response.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response
-
-		// Check that header mutations were applied.
-		require.NotNil(t, commonRes.HeaderMutation)
-		// RemoveHeaders should be empty because authorization/x-api-key don't exist in current headers.
-		require.Empty(t, commonRes.HeaderMutation.RemoveHeaders)
-		require.Len(t, commonRes.HeaderMutation.SetHeaders, 2) // Updated header + restored header.
-
-		// Check that x-custom header was restored on retry (it's not being removed or set).
-		var restoredHeader *corev3.HeaderValueOption
-		var updatedHeader *corev3.HeaderValueOption
-		for _, h := range commonRes.HeaderMutation.SetHeaders {
-			switch h.Header.Key {
-			case "x-custom":
-				restoredHeader = h
-			case "x-new-header":
-				updatedHeader = h
-			}
-		}
-		require.NotNil(t, restoredHeader)
-		require.Equal(t, []byte("original-custom"), restoredHeader.Header.RawValue)
-		require.NotNil(t, updatedHeader)
-		require.Equal(t, []byte("updated-value"), updatedHeader.Header.RawValue)
-
-		// Check that headers were updated in the request headers.
-		require.Equal(t, "updated-value", headers["x-new-header"])
-		require.Equal(t, "original-custom", headers["x-custom"])
 	})
 
 	t.Run("no header mutations when mutator is nil", func(t *testing.T) {
@@ -875,7 +795,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 		}
 
 		// Create mock metrics.
-		chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+		chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 
 		// Create processor.
 		processor := &messagesProcessorUpstreamFilter{
@@ -911,7 +831,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 func TestMessagesProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *testing.T) {
 	t.Run("header mutator created correctly", func(t *testing.T) {
 		headers := map[string]string{":path": "/anthropic/v1/messages"}
-		chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+		chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 		p := &messagesProcessorUpstreamFilter{
 			config:         &processorConfig{},
 			requestHeaders: headers,
@@ -967,7 +887,7 @@ func TestMessagesProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *testi
 
 	t.Run("header mutator with original headers", func(t *testing.T) {
 		headers := map[string]string{":path": "/anthropic/v1/messages"}
-		chatMetrics := metrics.NewChatCompletion(noop.NewMeterProvider().Meter("test"), map[string]string{})
+		chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 		p := &messagesProcessorUpstreamFilter{
 			config:         &processorConfig{},
 			requestHeaders: headers,
@@ -1009,7 +929,7 @@ func TestMessagesProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *testi
 
 		// Test retry scenario - original headers should be restored.
 		testHeaders := map[string]string{
-			"x-existing": "current-value", // This exists, so won't be restored.
+			"x-existing": "previously-set-value",
 		}
 		mutation := p.headerMutator.Mutate(testHeaders, true) // onRetry = true.
 
@@ -1028,7 +948,7 @@ func TestMessagesProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *testi
 		require.NotNil(t, restoredHeader)
 		require.Equal(t, []byte("original-value"), restoredHeader.Header.RawValue)
 		require.Equal(t, "original-value", testHeaders["x-custom"])
-		// x-existing should not be restored because it already exists.
-		require.Equal(t, "current-value", testHeaders["x-existing"])
+		// x-existing should be equal to existing-value from original headers.
+		require.Equal(t, "existing-value", testHeaders["x-existing"])
 	})
 }

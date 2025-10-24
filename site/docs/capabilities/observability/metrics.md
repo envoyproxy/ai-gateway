@@ -31,11 +31,22 @@ For example, the Envoy AI Gateway collects metrics such as:
 
 Each metric comes with some default attributes such as:
 
-- `gen_ai.operation.name` - The operation type (`chat`, `completion`, `embeddings`, `messages`)
+- `gen_ai.operation.name`
+  - `chat`: For `/v1/chat/completions` endpoint.
+  - `completion`: For `/v1/completions` endpoint.
+  - `embedding`: For `/v1/embeddings` endpoint.
+  - `image_generation`: For `/v1/images/generations` endpoint.
+  - `messages`: For `/anthropic/v1/messages` endpoint.
 - `gen_ai.original.model` - The original model name from the request body
 - `gen_ai.request.model` - The model name requested (may be overridden)
 - `gen_ai.response.model` - The model name returned in the response
 - `gen_ai.provider.name` - The provider name (e.g., `openai`, `anthropic`)
+
+:::tip
+
+You can enrich the metrics with custom labels extracted from HTTP request headers. It can be configured via the `controller.metricsRequestHeaderAttributes` helm installation value. Please refer to [values.yaml](https://github.com/envoyproxy/ai-gateway/blob/main/manifests/charts/ai-gateway-helm/values.yaml) for more details including other configurations.
+
+:::
 
 ## Trying it out
 

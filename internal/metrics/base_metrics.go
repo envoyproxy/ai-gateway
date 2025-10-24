@@ -16,6 +16,23 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
+type baseMetricsFactory struct {
+	metrics                       *genAI
+	requestHeaderAttributeMapping map[string]string // maps HTTP headers to metric attribute names.
+}
+
+func (f *baseMetricsFactory) newBaseMetrics(operation string) baseMetrics {
+	return baseMetrics{
+		metrics:                       f.metrics,
+		operation:                     operation,
+		originalModel:                 "unknown",
+		requestModel:                  "unknown",
+		responseModel:                 "unknown",
+		backend:                       "unknown",
+		requestHeaderAttributeMapping: f.requestHeaderAttributeMapping,
+	}
+}
+
 // baseMetrics provides shared functionality for AI Gateway metrics implementations.
 type baseMetrics struct {
 	metrics      *genAI
@@ -26,22 +43,9 @@ type baseMetrics struct {
 	// requestModel is the original model from the request body.
 	requestModel string
 	// responseModel is the model that ultimately generated the response (may differ due to backend override).
-	responseModel             string
-	backend                   string
-	requestHeaderLabelMapping map[string]string // maps HTTP headers to metric label names.
-}
-
-// newBaseMetrics creates a new baseMetrics instance with the specified operation.
-func newBaseMetrics(meter metric.Meter, operation string, requestHeaderLabelMapping map[string]string) baseMetrics {
-	return baseMetrics{
-		metrics:                   newGenAI(meter),
-		operation:                 operation,
-		originalModel:             "unknown",
-		requestModel:              "unknown",
-		responseModel:             "unknown",
-		backend:                   "unknown",
-		requestHeaderLabelMapping: requestHeaderLabelMapping,
-	}
+	responseModel                 string
+	backend                       string
+	requestHeaderAttributeMapping map[string]string // maps HTTP headers to metric attribute names.
 }
 
 // StartRequest initializes timing for a new request.
@@ -85,13 +89,13 @@ func (b *baseMetrics) buildBaseAttributes(headers map[string]string) attribute.S
 	origModel := attribute.Key(genaiAttributeOriginalModel).String(b.originalModel)
 	reqModel := attribute.Key(genaiAttributeRequestModel).String(b.requestModel)
 	respModel := attribute.Key(genaiAttributeResponseModel).String(b.responseModel)
-	if len(b.requestHeaderLabelMapping) == 0 {
+	if len(b.requestHeaderAttributeMapping) == 0 {
 		return attribute.NewSet(opt, provider, origModel, reqModel, respModel)
 	}
 
 	// Add header values as attributes based on the header mapping if headers are provided.
 	attrs := []attribute.KeyValue{opt, provider, origModel, reqModel, respModel}
-	for headerName, labelName := range b.requestHeaderLabelMapping {
+	for headerName, labelName := range b.requestHeaderAttributeMapping {
 		if headerValue, exists := headers[headerName]; exists {
 			attrs = append(attrs, attribute.Key(labelName).String(headerValue))
 		}

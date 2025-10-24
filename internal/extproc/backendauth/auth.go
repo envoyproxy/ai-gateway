@@ -35,6 +35,8 @@ func NewHandler(ctx context.Context, config *filterapi.BackendAuth) (Handler, er
 		return newAzureHandler(config.AzureAuth)
 	case config.GCPAuth != nil:
 		return newGCPHandler(config.GCPAuth)
+	case config.AnthropicAPIKey != nil:
+		return newAnthropicAPIKeyHandler(config.AnthropicAPIKey)
 	default:
 		return nil, errors.New("no backend auth handler found")
 	}

@@ -24,6 +24,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -48,7 +49,9 @@ func TestCompletions_Schema(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &processorConfig{}
-			filter, err := CompletionsProcessorFactory(nil)(cfg, nil, slog.Default(), tracing.NoopTracing{}, tt.onUpstream)
+			filter, err := CompletionsProcessorFactory(func() metrics.CompletionMetrics {
+				return &mockCompletionMetrics{}
+			})(cfg, nil, slog.Default(), tracing.NoopTracing{}, tt.onUpstream)
 			require.NoError(t, err)
 			require.NotNil(t, filter)
 			require.IsType(t, tt.expectedType, filter)
@@ -861,8 +864,9 @@ func Test_completionsProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestore(t
 		headerMutation := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response.HeaderMutation
 		require.NotNil(t, headerMutation)
 		require.ElementsMatch(t, []string{"authorization", "x-api-key"}, headerMutation.RemoveHeaders)
-		require.NotContains(t, p.requestHeaders, "authorization")
-		require.NotContains(t, p.requestHeaders, "x-api-key")
+		// Sensitive headers remain locally for metrics, but will be stripped upstream by Envoy.
+		require.Equal(t, "secret", p.requestHeaders["authorization"])
+		require.Equal(t, "key123", p.requestHeaders["x-api-key"])
 		require.Equal(t, "value", p.requestHeaders["other"])
 	})
 

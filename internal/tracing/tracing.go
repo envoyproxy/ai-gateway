@@ -25,10 +25,11 @@ import (
 var _ tracing.Tracing = (*tracingImpl)(nil)
 
 type tracingImpl struct {
-	chatCompletionTracer tracing.ChatCompletionTracer
-	completionTracer     tracing.CompletionTracer
-	embeddingsTracer     tracing.EmbeddingsTracer
-	mcpTracer            tracing.MCPTracer
+	chatCompletionTracer  tracing.ChatCompletionTracer
+	completionTracer      tracing.CompletionTracer
+	imageGenerationTracer tracing.ImageGenerationTracer
+	embeddingsTracer      tracing.EmbeddingsTracer
+	mcpTracer             tracing.MCPTracer
 	// shutdown is nil when we didn't create tp.
 	shutdown func(context.Context) error
 }
@@ -46,6 +47,11 @@ func (t *tracingImpl) CompletionTracer() tracing.CompletionTracer {
 // EmbeddingsTracer implements the same method as documented on api.Tracing.
 func (t *tracingImpl) EmbeddingsTracer() tracing.EmbeddingsTracer {
 	return t.embeddingsTracer
+}
+
+// ImageGenerationTracer implements the same method as documented on api.Tracing.
+func (t *tracingImpl) ImageGenerationTracer() tracing.ImageGenerationTracer {
+	return t.imageGenerationTracer
 }
 
 func (t *tracingImpl) MCPTracer() tracing.MCPTracer {
@@ -156,6 +162,7 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 
 	// Default to OpenInference trace span semantic conventions.
 	chatRecorder := openai.NewChatCompletionRecorderFromEnv()
+	imageRecorder := openai.NewImageGenerationRecorderFromEnv()
 	completionRecorder := openai.NewCompletionRecorderFromEnv()
 	embeddingsRecorder := openai.NewEmbeddingsRecorderFromEnv()
 
@@ -166,6 +173,11 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 			propagator,
 			chatRecorder,
 			headerAttrs,
+		),
+		imageGenerationTracer: newImageGenerationTracer(
+			tracer,
+			propagator,
+			imageRecorder,
 		),
 		completionTracer: newCompletionTracer(
 			tracer,
@@ -179,7 +191,7 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 			embeddingsRecorder,
 			headerAttrs,
 		),
-		mcpTracer: newMCPTracer(tracer, propagator),
+		mcpTracer: newMCPTracer(tracer, propagator, headerAttrs),
 		shutdown:  tp.Shutdown, // we have to shut down what we create.
 	}, nil
 }

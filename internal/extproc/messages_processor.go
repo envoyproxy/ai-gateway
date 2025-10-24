@@ -31,7 +31,7 @@ import (
 //
 // Requests: Only accepts Anthropic format requests.
 // Responses: Returns Anthropic format responses.
-func MessagesProcessorFactory(ccm metrics.ChatCompletionMetrics) ProcessorFactory {
+func MessagesProcessorFactory(f metrics.MessagesMetricsFactory) ProcessorFactory {
 	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "anthropic-messages", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
@@ -45,7 +45,7 @@ func MessagesProcessorFactory(ccm metrics.ChatCompletionMetrics) ProcessorFactor
 			config:         config,
 			requestHeaders: requestHeaders,
 			logger:         logger,
-			metrics:        ccm,
+			metrics:        f(),
 		}, nil
 	}
 }
@@ -145,7 +145,7 @@ type messagesProcessorUpstreamFilter struct {
 	translator             translator.AnthropicMessagesTranslator
 	onRetry                bool
 	stream                 bool
-	metrics                metrics.ChatCompletionMetrics
+	metrics                metrics.MessagesMetrics
 	costs                  translator.LLMTokenUsage
 }
 
@@ -157,10 +157,12 @@ func (c *messagesProcessorUpstreamFilter) selectTranslator(out filterapi.Version
 		// Anthropic → GCP Anthropic (request direction translator).
 		// Uses backend config version (GCP Vertex AI requires specific versions like "vertex-2023-10-16").
 		c.translator = translator.NewAnthropicToGCPAnthropicTranslator(out.Version, c.modelNameOverride)
-		return nil
+	case filterapi.APISchemaAnthropic:
+		c.translator = translator.NewAnthropicToAnthropicTranslator(out.Version, c.modelNameOverride)
 	default:
 		return fmt.Errorf("/v1/messages endpoint only supports backends that return native Anthropic format (GCPAnthropic). Backend %s uses different model format", out.Name)
 	}
+	return nil
 }
 
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
@@ -302,7 +304,7 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseBody(ctx context.Contex
 	c.costs.TotalTokens += tokenUsage.TotalTokens
 
 	// Update metrics with token usage.
-	c.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.OutputTokens, c.requestHeaders)
+	c.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.CachedInputTokens, tokenUsage.OutputTokens, c.requestHeaders)
 	if c.stream {
 		c.metrics.RecordTokenLatency(ctx, tokenUsage.OutputTokens, body.EndOfStream, c.requestHeaders)
 	}

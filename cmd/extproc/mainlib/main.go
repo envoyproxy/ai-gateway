@@ -230,10 +230,12 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to create metrics: %w", err)
 	}
-	chatCompletionMetrics := metrics.NewChatCompletion(meter, metricsRequestHeaderAttributes)
-	completionMetrics := metrics.NewCompletion(meter, metricsRequestHeaderAttributes)
-	embeddingsMetrics := metrics.NewEmbeddings(meter, metricsRequestHeaderAttributes)
-	mcpMetrics := metrics.NewMCP(meter)
+	chatCompletionMetrics := metrics.NewChatCompletionFactory(meter, metricsRequestHeaderAttributes)
+	messagesMetrics := metrics.NewMessagesFactory(meter, metricsRequestHeaderAttributes)
+	completionMetrics := metrics.NewCompletionFactory(meter, metricsRequestHeaderAttributes)
+	embeddingsMetrics := metrics.NewEmbeddingsFactory(meter, metricsRequestHeaderAttributes)
+	imageGenerationMetrics := metrics.NewImageGenerationFactory(meter, metricsRequestHeaderAttributes)()
+	mcpMetrics := metrics.NewMCP(meter, metricsRequestHeaderAttributes)
 
 	tracing, err := tracing.NewTracingFromEnv(ctx, os.Stdout, spanRequestHeaderAttributes)
 	if err != nil {
@@ -247,8 +249,9 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	server.Register(path.Join(flags.rootPrefix, "/v1/chat/completions"), extproc.ChatCompletionProcessorFactory(chatCompletionMetrics))
 	server.Register(path.Join(flags.rootPrefix, "/v1/completions"), extproc.CompletionsProcessorFactory(completionMetrics))
 	server.Register(path.Join(flags.rootPrefix, "/v1/embeddings"), extproc.EmbeddingsProcessorFactory(embeddingsMetrics))
+	server.Register(path.Join(flags.rootPrefix, "/v1/images/generations"), extproc.ImageGenerationProcessorFactory(imageGenerationMetrics))
 	server.Register(path.Join(flags.rootPrefix, "/v1/models"), extproc.NewModelsProcessor)
-	server.Register(path.Join(flags.rootPrefix, "/anthropic/v1/messages"), extproc.MessagesProcessorFactory(chatCompletionMetrics))
+	server.Register(path.Join(flags.rootPrefix, "/anthropic/v1/messages"), extproc.MessagesProcessorFactory(messagesMetrics))
 
 	if watchErr := extproc.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); watchErr != nil {
 		return fmt.Errorf("failed to start config watcher: %w", watchErr)
@@ -264,13 +267,13 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		seed, fallbackSeed, _ := strings.Cut(flags.mcpSessionEncryptionSeed, ",")
 		mcpSessionCrypto := mcpproxy.DefaultSessionCrypto(seed, fallbackSeed)
 		var mcpProxyMux *http.ServeMux
-		var mcpProxy *mcpproxy.MCPProxy
-		mcpProxy, mcpProxyMux, err = mcpproxy.NewMCPProxy(l.With("component", "mcp-proxy"), mcpMetrics,
+		var mcpProxyConfig *mcpproxy.ProxyConfig
+		mcpProxyConfig, mcpProxyMux, err = mcpproxy.NewMCPProxy(l.With("component", "mcp-proxy"), mcpMetrics,
 			tracing.MCPTracer(), mcpSessionCrypto)
 		if err != nil {
 			return fmt.Errorf("failed to create MCP proxy: %w", err)
 		}
-		if err = extproc.StartConfigWatcher(ctx, flags.configPath, mcpProxy, l, time.Second*5); err != nil {
+		if err = extproc.StartConfigWatcher(ctx, flags.configPath, mcpProxyConfig, l, time.Second*5); err != nil {
 			return fmt.Errorf("failed to start config watcher: %w", err)
 		}
 

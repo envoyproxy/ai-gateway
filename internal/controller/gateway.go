@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -167,9 +168,12 @@ func headerMutationToFilterAPI(m *aigv1a1.HTTPHeaderMutation) *filterapi.HTTPHea
 		return nil
 	}
 	ret := &filterapi.HTTPHeaderMutation{}
-	ret.Remove = append(ret.Remove, m.Remove...)
+	ret.Remove = make([]string, 0, len(m.Remove))
+	for _, h := range m.Remove {
+		ret.Remove = append(ret.Remove, strings.ToLower(h))
+	}
 	for _, h := range m.Set {
-		ret.Set = append(ret.Set, filterapi.HTTPHeader{Name: string(h.Name), Value: h.Value})
+		ret.Set = append(ret.Set, filterapi.HTTPHeader{Name: strings.ToLower(string(h.Name)), Value: h.Value})
 	}
 	return ret
 }
@@ -226,11 +230,12 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				} else {
 					var backendObj *aigv1a1.AIServiceBackend
 					var bsp *aigv1a1.BackendSecurityPolicy
-					backendObj, bsp, err = c.backendWithMaybeBSP(ctx, aiGatewayRoute.Namespace, backendRef.Name)
+					backendNamespace := backendRef.GetNamespace(aiGatewayRoute.Namespace)
+					backendObj, bsp, err = c.backendWithMaybeBSP(ctx, backendNamespace, backendRef.Name)
 					if err != nil {
 						c.logger.Error(err, "failed to get backend or backend security policy. Skipping this backend.",
 							"backend_name", backendRef.Name, "aigatewayroute", aiGatewayRoute.Name,
-							"namespace", aiGatewayRoute.Namespace)
+							"namespace", backendNamespace)
 						continue
 					}
 					b.HeaderMutation = headerMutationToFilterAPI(backendObj.Spec.HeaderMutation)
@@ -260,6 +265,8 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				switch cost.Type {
 				case aigv1a1.LLMRequestCostTypeInputToken:
 					fc.Type = filterapi.LLMRequestCostTypeInputToken
+				case aigv1a1.LLMRequestCostTypeCachedInputToken:
+					fc.Type = filterapi.LLMRequestCostTypeCachedInputToken
 				case aigv1a1.LLMRequestCostTypeOutputToken:
 					fc.Type = filterapi.LLMRequestCostTypeOutputToken
 				case aigv1a1.LLMRequestCostTypeTotalToken:
@@ -365,9 +372,29 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
 		}
 		return &filterapi.BackendAuth{AzureAPIKey: &filterapi.AzureAPIKeyAuth{Key: apiKey}}, nil
+	case aigv1a1.BackendSecurityPolicyTypeAnthropicAPIKey:
+		secretName := string(backendSecurityPolicy.Spec.AnthropicAPIKey.SecretRef.Name)
+		apiKey, err := c.getSecretData(ctx, namespace, secretName, apiKeyInSecret)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
+		}
+		return &filterapi.BackendAuth{AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: apiKey}}, nil
 	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
+		awsCred := backendSecurityPolicy.Spec.AWSCredentials
+
+		// If no credentials file or OIDC token is configured, use default credential chain
+		// This allows IRSA/Pod Identity to work automatically
+		if awsCred.CredentialsFile == nil && awsCred.OIDCExchangeToken == nil {
+			return &filterapi.BackendAuth{
+				AWSAuth: &filterapi.AWSAuth{
+					Region: awsCred.Region,
+				},
+			}, nil
+		}
+
+		// Otherwise, fetch credentials from secret
 		var secretName string
-		if awsCred := backendSecurityPolicy.Spec.AWSCredentials; awsCred.CredentialsFile != nil {
+		if awsCred.CredentialsFile != nil {
 			secretName = string(awsCred.CredentialsFile.SecretRef.Name)
 		} else {
 			secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
@@ -379,7 +406,7 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 		return &filterapi.BackendAuth{
 			AWSAuth: &filterapi.AWSAuth{
 				CredentialFileLiteral: credentialsLiteral,
-				Region:                backendSecurityPolicy.Spec.AWSCredentials.Region,
+				Region:                awsCred.Region,
 			},
 		}, nil
 	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:

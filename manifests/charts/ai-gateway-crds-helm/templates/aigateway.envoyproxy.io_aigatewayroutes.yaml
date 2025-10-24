@@ -167,7 +167,8 @@ spec:
                   example, let's say we have the following LLMRequestCosts configuration:\n```yaml\n\tllmRequestCosts:\n\t-
                   metadataKey: llm_input_token\n\t  type: InputToken\n\t- metadataKey:
                   llm_output_token\n\t  type: OutputToken\n\t- metadataKey: llm_total_token\n\t
-                  \ type: TotalToken\n```\nThen, with the following BackendTrafficPolicy
+                  \ type: TotalToken\n\t- metadataKey: llm_cached_input_token\n\t
+                  \ type: CachedInputToken\n```\nThen, with the following BackendTrafficPolicy
                   of Envoy Gateway, you can have three\nrate limit buckets for each
                   unique x-user-id header value. One bucket is for the input token,\nthe
                   other is for the output token, and the last one is for the total
@@ -220,14 +221,17 @@ spec:
                         model: the model name extracted from the request content.
                         Type: string.\n\t* backend: the backend name in the form of
                         \"name.namespace\". Type: string.\n\t* input_tokens: the number
-                        of input tokens. Type: unsigned integer.\n\t* output_tokens:
-                        the number of output tokens. Type: unsigned integer.\n\t*
-                        total_tokens: the total number of tokens. Type: unsigned integer.\n\nFor
-                        example, the following expressions are valid:\n\n\t* \"model
-                        == 'llama' ?  input_tokens + output_token * 0.5 : total_tokens\"\n\t*
-                        \"backend == 'foo.default' ?  input_tokens + output_tokens
-                        : total_tokens\"\n\t* \"input_tokens + output_tokens + total_tokens\"\n\t*
-                        \"input_tokens * output_tokens\""
+                        of input tokens. Type: unsigned integer.\n\t* cached_input_tokens:
+                        the number of cached input tokens. Type: unsigned integer.\n\t*
+                        output_tokens: the number of output tokens. Type: unsigned
+                        integer.\n\t* total_tokens: the total number of tokens. Type:
+                        unsigned integer.\n\nFor example, the following expressions
+                        are valid:\n\n\t* \"model == 'llama' ?  input_tokens + output_token
+                        * 0.5 : total_tokens\"\n\t* \"backend == 'foo.default' ?  input_tokens
+                        + output_tokens : total_tokens\"\n\t* \"backend == 'bar.default'
+                        ?  (input_tokens - cached_input_tokens) + cached_input_tokens
+                        * 0.1 + output_tokens : total_tokens\"\n\t* \"input_tokens
+                        + output_tokens + total_tokens\"\n\t* \"input_tokens * output_tokens\""
                       type: string
                     metadataKey:
                       description: MetadataKey is the key of the metadata to store
@@ -241,6 +245,7 @@ spec:
                       enum:
                       - OutputToken
                       - InputToken
+                      - CachedInputToken
                       - TotalToken
                       - CEL
                       type: string
@@ -430,7 +435,11 @@ spec:
                         BackendRefs is the list of backends that this rule will route the traffic to.
                         Each backend can have a weight that determines the traffic distribution.
 
-                        The namespace of each backend is "local", i.e. the same namespace as the AIGatewayRoute.
+                        The namespace of each backend defaults to the same namespace as the AIGatewayRoute when not specified.
+                        Cross-namespace references are supported by specifying the namespace field.
+                        When a namespace different than the AIGatewayRoute's namespace is specified,
+                        a ReferenceGrant object is required in the referent namespace to allow that
+                        namespace's owner to accept the reference.
 
                         BackendRefs can reference either AIServiceBackend resources (default) or InferencePool resources
                         from the Gateway API Inference Extension. When referencing InferencePool resources:
@@ -474,6 +483,19 @@ spec:
                               When Group and Kind are not specified, this refers to an AIServiceBackend.
                               When Group and Kind are specified, this refers to the resource of the specified type.
                             minLength: 1
+                            type: string
+                          namespace:
+                            description: |-
+                              Namespace is the namespace of the backend resource.
+                              When unspecified (or empty string), this refers to the local namespace of the AIGatewayRoute.
+
+                              Note that when a namespace different than the local namespace is specified,
+                              a ReferenceGrant object is required in the referent namespace to allow that
+                              namespace's owner to accept the reference. See the ReferenceGrant
+                              documentation for details.
+                            maxLength: 63
+                            minLength: 1
+                            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                             type: string
                           priority:
                             default: 0

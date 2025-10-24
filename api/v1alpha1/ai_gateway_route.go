@@ -103,6 +103,8 @@ type AIGatewayRouteSpec struct {
 	//	  type: OutputToken
 	//	- metadataKey: llm_total_token
 	//	  type: TotalToken
+	//	- metadataKey: llm_cached_input_token
+	//	  type: CachedInputToken
 	// ```
 	// Then, with the following BackendTrafficPolicy of Envoy Gateway, you can have three
 	// rate limit buckets for each unique x-user-id header value. One bucket is for the input token,
@@ -198,7 +200,11 @@ type AIGatewayRouteRule struct {
 	// BackendRefs is the list of backends that this rule will route the traffic to.
 	// Each backend can have a weight that determines the traffic distribution.
 	//
-	// The namespace of each backend is "local", i.e. the same namespace as the AIGatewayRoute.
+	// The namespace of each backend defaults to the same namespace as the AIGatewayRoute when not specified.
+	// Cross-namespace references are supported by specifying the namespace field.
+	// When a namespace different than the AIGatewayRoute's namespace is specified,
+	// a ReferenceGrant object is required in the referent namespace to allow that
+	// namespace's owner to accept the reference.
 	//
 	// BackendRefs can reference either AIServiceBackend resources (default) or InferencePool resources
 	// from the Gateway API Inference Extension. When referencing InferencePool resources:
@@ -275,6 +281,17 @@ type AIGatewayRouteRuleBackendRef struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
+
+	// Namespace is the namespace of the backend resource.
+	// When unspecified (or empty string), this refers to the local namespace of the AIGatewayRoute.
+	//
+	// Note that when a namespace different than the local namespace is specified,
+	// a ReferenceGrant object is required in the referent namespace to allow that
+	// namespace's owner to accept the reference. See the ReferenceGrant
+	// documentation for details.
+	//
+	// +optional
+	Namespace *gwapiv1.Namespace `json:"namespace,omitempty"`
 
 	// Group is the group of the backend resource.
 	// When not specified, defaults to aigateway.envoyproxy.io (AIServiceBackend).

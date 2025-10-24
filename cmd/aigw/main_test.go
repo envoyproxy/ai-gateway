@@ -8,6 +8,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -97,6 +98,12 @@ Flags:
 			rf:   func(context.Context, cmdRun, *runOpts, io.Writer, io.Writer) error { return nil },
 		},
 		{
+			name: "run with Anthropic env",
+			args: []string{"run"},
+			env:  map[string]string{"ANTHROPIC_API_KEY": "dummy-key"},
+			rf:   func(context.Context, cmdRun, *runOpts, io.Writer, io.Writer) error { return nil },
+		},
+		{
 			name: "run help",
 			args: []string{"run", "--help"},
 			rf:   func(context.Context, cmdRun, *runOpts, io.Writer, io.Writer) error { return nil },
@@ -107,7 +114,8 @@ Run the AI Gateway locally for given configuration.
 Arguments:
   [<path>]    Path to the AI Gateway configuration yaml file. Defaults to
               $AIGW_CONFIG_HOME/config.yaml if exists, otherwise optional when
-              at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY is set.
+              at least OPENAI_API_KEY, AZURE_OPENAI_API_KEY or ANTHROPIC_API_KEY
+              is set.
 
 Flags:
   -h, --help                  Show context-sensitive help.
@@ -155,6 +163,7 @@ Flags:
 			} else {
 				doMain(t.Context(), out, os.Stderr, tt.args, nil, tt.rf, tt.hf)
 			}
+			fmt.Println(out.String())
 			require.Equal(t, tt.expOut, out.String())
 		})
 	}
@@ -355,7 +364,7 @@ func TestCmdRun_Validate(t *testing.T) {
 			name:          "no config and no env vars",
 			path:          "",
 			envVars:       map[string]string{},
-			expectedError: "you must supply at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY or a config file path",
+			expectedError: "you must supply at least OPENAI_API_KEY, AZURE_OPENAI_API_KEY, ANTHROPIC_API_KEY, or a config file path",
 		},
 		{
 			name:    "config path provided",
@@ -382,6 +391,13 @@ func TestCmdRun_Validate(t *testing.T) {
 			envVars: map[string]string{
 				"OPENAI_API_KEY":       "sk-test",
 				"AZURE_OPENAI_API_KEY": "azure-key",
+			},
+		},
+		{
+			name: "ANTHROPIC_API_KEY set",
+			path: "",
+			envVars: map[string]string{
+				"ANTHROPIC_API_KEY": "sk-ant-test",
 			},
 		},
 		{

@@ -6,6 +6,7 @@
 package extproc
 
 import (
+	"cmp"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -60,15 +61,17 @@ func TestWithTestUpstream(t *testing.T) {
 			testUpstreamAzureBackend,
 			testUpstreamGCPVertexAIBackend,
 			testUpstreamGCPAnthropicAIBackend,
-			// TODO: this shouldn't be needed. The previous per-backend headers shouldn't affect the subsequent retries.
-			{Name: "testupstream-openai-always-200", Schema: openAISchema, HeaderMutation: &filterapi.HTTPHeaderMutation{
-				Set: []filterapi.HTTPHeader{{Name: testupstreamlib.ResponseStatusKey, Value: "200"}},
-			}},
 			{
 				Name: "testupstream-openai-5xx", Schema: openAISchema, HeaderMutation: &filterapi.HTTPHeaderMutation{
 					Set: []filterapi.HTTPHeader{{Name: testupstreamlib.ResponseStatusKey, Value: "500"}},
 				},
 				ModelNameOverride: "bad-model",
+			},
+			{
+				Name:   "testupstream-anthropic",
+				Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic}, Auth: &filterapi.BackendAuth{
+					AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: "anthropic-api-key"},
+				},
 			},
 		},
 		Models: []filterapi.Model{
@@ -133,10 +136,35 @@ func TestWithTestUpstream(t *testing.T) {
 		// expResponseHeaders are the expected headers from the gateway.
 		expResponseHeaders map[string]string
 		// expResponseBody is the expected body from the gateway to the client.
+		// If this is empty, the responseBody from the test upstream is expected to be returned as-is.
 		expResponseBody string
 		// expResponseBodyFunc is a function to check the response body. This can be used instead of the expResponseBody field.
 		expResponseBodyFunc func(require.TestingT, []byte)
 	}{
+		{
+			name:            "openai - /v1/images/generations",
+			backend:         "openai",
+			path:            "/v1/images/generations",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"gpt-image-1-mini","prompt":"a cat wearing sunglasses","size":"1024x1024","quality":"low"}`,
+			expPath:         "/v1/images/generations",
+			responseBody:    `{"created":1736890000,"data":[{"url":"https://example.com/image1.png"}],"model":"gpt-image-1-mini","usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"created":1736890000,"data":[{"url":"https://example.com/image1.png"}],"model":"gpt-image-1-mini","usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}`,
+		},
+		{
+			name:            "openai - /v1/images/generations - non json upstream error mapped to OpenAI",
+			backend:         "openai",
+			path:            "/v1/images/generations",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"dall-e-3","prompt":"a scenic beach"}`,
+			expPath:         "/v1/images/generations",
+			responseHeaders: "content-type:text/plain",
+			responseStatus:  strconv.Itoa(http.StatusServiceUnavailable),
+			responseBody:    `backend timeout`,
+			expStatus:       http.StatusServiceUnavailable,
+			expResponseBody: `{"error":{"type":"OpenAIBackendError","message":"backend timeout","code":"503"}}`,
+		},
 		{
 			name:            "unknown path",
 			path:            "/unknown",
@@ -534,7 +562,7 @@ data: [DONE]
 			method:            http.MethodPost,
 			responseType:      "sse",
 			requestBody:       `{"model":"claude-3-sonnet","max_completion_tokens":1024, "messages":[{"role":"user","content":"Why is the sky blue?"}], "stream": true}`,
-			expRequestBody:    `{"max_tokens":1024,"messages":[{"content":[{"text":"Why is the sky blue?","type":"text"}],"role":"user"}],"anthropic_version":"vertex-2023-10-16"}`,
+			expRequestBody:    `{"max_tokens":1024,"messages":[{"content":[{"text":"Why is the sky blue?","type":"text"}],"role":"user"}],"stream":true,"anthropic_version":"vertex-2023-10-16"}`,
 			expHost:           "gcp-region-aiplatform.googleapis.com",
 			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:streamRawPredict",
 			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
@@ -857,6 +885,74 @@ data: {"type": "message_stop"}
 
 `,
 		},
+		{
+			name:              "anthropic - /anthropic/v1/messages",
+			backend:           "anthropic",
+			path:              "/anthropic/v1/messages",
+			method:            http.MethodPost,
+			expRequestHeaders: map[string]string{"x-api-key": "anthropic-api-key"},
+			requestBody: `{
+    "model": "claude-sonnet-4-5",
+    "max_tokens": 1000,
+    "messages": [
+      {
+        "role": "user",
+        "content": "say hi"
+      }
+    ]
+  }`,
+			expPath:      "/v1/messages",
+			responseBody: `{"model":"claude-sonnet-4-5-20250929","id":"msg_01J5gW6Sffiem6avXSAooZZw","type":"message","role":"assistant","content":[{"type":"text","text":"Hi! 👋 How can I help you today?"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":16,"service_tier":"standard"}}`,
+			expStatus:    http.StatusOK,
+		},
+		{
+			name:              "anthropic - /anthropic/v1/messages - streaming",
+			backend:           "anthropic",
+			path:              "/anthropic/v1/messages",
+			method:            http.MethodPost,
+			expRequestHeaders: map[string]string{"x-api-key": "anthropic-api-key"},
+			responseType:      "sse",
+			requestBody: `{
+    "model": "claude-sonnet-4-5",
+    "max_tokens": 1000,
+    "messages": [
+      {
+        "role": "user",
+        "content": "say hi"
+      }
+    ], "stream": true
+  }`,
+			expPath: "/v1/messages",
+			responseBody: `
+event: message_start
+data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_01BfvfMsg2gBzwsk6PZRLtDg","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":1,"service_tier":"standard"}}    }
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"! 👋 How"}      }
+
+event: ping
+data: {"type": "ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" can I help you today?"}   }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0             }
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":16}               }
+
+event: message_stop
+data: {"type":"message_stop"       }
+`,
+			expStatus: http.StatusOK,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			listenerAddress := fmt.Sprintf("http://localhost:%d", listenerPort)
@@ -907,12 +1003,18 @@ data: {"type": "message_stop"}
 				}
 				defer func() { _ = resp.Body.Close() }()
 
-				failIf5xx(t, resp, &was5xx)
+				// Only fail-fast on unexpected 5xx. Some test cases intentionally expect 5xx.
+				if tc.expStatus < http.StatusInternalServerError {
+					failIf5xx(t, resp, &was5xx)
+				}
 
 				lastBody, lastErr = io.ReadAll(resp.Body)
 				if lastErr != nil {
 					return false
 				}
+				t.Logf("Response status: %d", resp.StatusCode)
+				t.Logf("Response headers: %+v", resp.Header)
+				t.Logf("Response body: %s", string(lastBody))
 
 				lastStatusCode = resp.StatusCode
 				lastHeaders = resp.Header
@@ -926,12 +1028,14 @@ data: {"type": "message_stop"}
 			case tc.expResponseBodyFunc != nil:
 				tc.expResponseBodyFunc(t, lastBody)
 			case tc.responseType != "" || tc.expStatus == http.StatusNotFound:
-				// Use plain-text comparison for streaming or 404 responses
-				require.Equal(t, tc.expResponseBody, string(lastBody), "Response body mismatch")
+				expResponseBody := cmp.Or(tc.expResponseBody, tc.responseBody)
+				// Use plain-text comparison for streaming or 404 responses.
+				require.Equal(t, strings.TrimSpace(expResponseBody), strings.TrimSpace(string(lastBody)), "Response body mismatch")
 			default:
-				// Use JSON comparison for regular responses
+				expResponseBody := cmp.Or(tc.expResponseBody, tc.responseBody)
+				// Use JSON comparison for regular responses.
 				bodyStr := m.ReplaceAllString(string(lastBody), "<UUID4-replaced>")
-				expectedResponseBody := m.ReplaceAllString(tc.expResponseBody, "<UUID4-replaced>")
+				expectedResponseBody := m.ReplaceAllString(expResponseBody, "<UUID4-replaced>")
 				require.JSONEq(t, expectedResponseBody, bodyStr, "Response body mismatch")
 			}
 

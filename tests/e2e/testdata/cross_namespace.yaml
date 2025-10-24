@@ -14,6 +14,11 @@ kind: Namespace
 metadata:
   name: route-ns
 ---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: backend-ns
+---
 # GatewayClass (cluster-scoped resource)
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
@@ -57,7 +62,38 @@ spec:
           # Clear the default memory/cpu requirements for local tests.
           resources: {}
 ---
+# ReferenceGrant allowing AIGatewayRoute in route-ns to reference AIServiceBackend in backend-ns
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-route-to-backend
+  namespace: backend-ns
+spec:
+  from:
+    - group: aigateway.envoyproxy.io
+      kind: AIGatewayRoute
+      namespace: route-ns
+  to:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+---
+# ReferenceGrant allowing HTTPRoute in route-ns to reference Backend in backend-ns
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-httproute-to-backend
+  namespace: backend-ns
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: route-ns
+  to:
+    - group: gateway.envoyproxy.io
+      kind: Backend
+---
 # AIGatewayRoute in route-ns namespace referencing Gateway in gateway-ns
+# and AIServiceBackend in backend-ns (cross-namespace backend reference)
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute
 metadata:
@@ -66,7 +102,7 @@ metadata:
 spec:
   parentRefs:
     - name: cross-namespace-gateway
-      namespace: gateway-ns # Cross-namespace reference
+      namespace: gateway-ns # Cross-namespace Gateway reference
       kind: Gateway
       group: gateway.networking.k8s.io
   rules:
@@ -74,16 +110,17 @@ spec:
         - headers:
             - type: Exact
               name: x-ai-eg-model
-              value: cross-namespace-test-model
+              value: cross-namespace-backend-model
       backendRefs:
         - name: cross-namespace-backend
+          namespace: backend-ns # Cross-namespace AIServiceBackend reference
 ---
-# AIServiceBackend in route-ns namespace (same as AIGatewayRoute)
+# AIServiceBackend in backend-ns namespace (different from AIGatewayRoute)
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
 metadata:
   name: cross-namespace-backend
-  namespace: route-ns
+  namespace: backend-ns
 spec:
   schema:
     name: OpenAI
@@ -97,7 +134,7 @@ apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
 metadata:
   name: cross-namespace-backend-api-key
-  namespace: route-ns
+  namespace: backend-ns
 spec:
   type: APIKey
   targetRefs:
@@ -107,36 +144,36 @@ spec:
   apiKey:
     secretRef:
       name: cross-namespace-api-key-secret
-      namespace: route-ns
+      namespace: backend-ns
 ---
 # Secret for API key
 apiVersion: v1
 kind: Secret
 metadata:
   name: cross-namespace-api-key-secret
-  namespace: route-ns
+  namespace: backend-ns
 type: Opaque
 stringData:
   apiKey: dummy-cross-namespace-token
 ---
-# Envoy Gateway Backend in route-ns namespace
+# Envoy Gateway Backend in backend-ns namespace
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
 metadata:
   name: cross-namespace-envoy-backend
-  namespace: route-ns
+  namespace: backend-ns
 spec:
   endpoints:
     - fqdn:
-        hostname: cross-namespace-testupstream.route-ns.svc.cluster.local
+        hostname: cross-namespace-testupstream.backend-ns.svc.cluster.local
         port: 80
 ---
-# Test upstream deployment in route-ns
+# Test upstream deployment in backend-ns
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: cross-namespace-testupstream
-  namespace: route-ns
+  namespace: backend-ns
 spec:
   replicas: 1
   selector:
@@ -155,7 +192,7 @@ spec:
             - containerPort: 8080
           env:
             - name: TESTUPSTREAM_ID
-              value: cross-namespace
+              value: cross-namespace-backend
           readinessProbe:
             httpGet:
               path: /health
@@ -163,12 +200,12 @@ spec:
             initialDelaySeconds: 1
             periodSeconds: 1
 ---
-# Service for the test upstream in route-ns
+# Service for the test upstream in backend-ns
 apiVersion: v1
 kind: Service
 metadata:
   name: cross-namespace-testupstream
-  namespace: route-ns
+  namespace: backend-ns
 spec:
   selector:
     app: cross-namespace-testupstream

@@ -25,6 +25,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
@@ -39,7 +40,9 @@ func TestChatCompletion_Schema(t *testing.T) {
 	})
 	t.Run("supported openai / on upstream", func(t *testing.T) {
 		cfg := &processorConfig{}
-		routeFilter, err := ChatCompletionProcessorFactory(nil)(cfg, nil, slog.Default(), tracing.NoopTracing{}, true)
+		routeFilter, err := ChatCompletionProcessorFactory(func() metrics.ChatCompletionMetrics {
+			return &mockChatCompletionMetrics{}
+		})(cfg, nil, slog.Default(), tracing.NoopTracing{}, true)
 		require.NoError(t, err)
 		require.NotNil(t, routeFilter)
 		require.IsType(t, &chatCompletionProcessorUpstreamFilter{}, routeFilter)
@@ -259,7 +262,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		mt := &mockTranslator{
 			t: t, expResponseBody: inBody,
 			retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut,
-			retUsedToken: translator.LLMTokenUsage{OutputTokens: 123, InputTokens: 1},
+			retUsedToken: translator.LLMTokenUsage{OutputTokens: 123, InputTokens: 1, CachedInputTokens: 1},
 		}
 
 		celProgInt, err := llmcostcel.NewProgram("54321")
@@ -275,6 +278,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 				requestCosts: []processorConfigRequestCost{
 					{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"}},
 					{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeInputToken, MetadataKey: "input_token_usage"}},
+					{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCachedInputToken, MetadataKey: "cached_input_token_usage"}},
 					{
 						celProg:        celProgInt,
 						LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCEL, MetadataKey: "cel_int"},
@@ -304,6 +308,8 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 			GetStructValue().Fields["output_token_usage"].GetNumberValue())
 		require.Equal(t, float64(1), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
 			GetStructValue().Fields["input_token_usage"].GetNumberValue())
+		require.Equal(t, float64(1), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
+			GetStructValue().Fields["cached_input_token_usage"].GetNumberValue())
 		require.Equal(t, float64(54321), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
 			GetStructValue().Fields["cel_int"].GetNumberValue())
 		require.Equal(t, float64(9999), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
@@ -356,11 +362,12 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		// Final chunk should mark success and record usage once.
 		final := &extprocv3.HttpBody{Body: []byte("chunk-final"), EndOfStream: true}
 		mt.expResponseBody = final
-		mt.retUsedToken = translator.LLMTokenUsage{InputTokens: 5, OutputTokens: 138, TotalTokens: 143}
+		mt.retUsedToken = translator.LLMTokenUsage{InputTokens: 5, CachedInputTokens: 3, OutputTokens: 138, TotalTokens: 143}
 		_, err = p.ProcessResponseBody(t.Context(), final)
 		require.NoError(t, err)
 		mm.RequireRequestSuccess(t)
 		require.Equal(t, 143, mm.tokenUsageCount)       // 5 input + 138 output
+		require.Equal(t, 3, mm.cachedInputCount)        // cached input tokens
 		require.Equal(t, 138, mm.streamingOutputTokens) // accumulated output tokens from stream
 	})
 }
@@ -708,8 +715,9 @@ func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestor
 		headerMutation := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response.HeaderMutation
 		require.NotNil(t, headerMutation)
 		require.ElementsMatch(t, []string{"authorization", "x-api-key"}, headerMutation.RemoveHeaders)
-		require.NotContains(t, p.requestHeaders, "authorization")
-		require.NotContains(t, p.requestHeaders, "x-api-key")
+		// Sensitive headers remain locally for metrics, but will be stripped upstream by Envoy.
+		require.Equal(t, "secret", p.requestHeaders["authorization"])
+		require.Equal(t, "key123", p.requestHeaders["x-api-key"])
 		require.Equal(t, "value", p.requestHeaders["other"])
 	})
 

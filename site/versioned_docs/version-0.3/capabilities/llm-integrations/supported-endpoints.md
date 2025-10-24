@@ -152,7 +152,7 @@ curl $GATEWAY_URL/v1/models
 The following table summarizes which providers support which endpoints:
 
 | Provider                                                                                              | Chat Completions | Embeddings | Notes                                              |
-| ----------------------------------------------------------------------------------------------------- | :--------------: | :--------: | -------------------------------------------------- | --- |
+| ----------------------------------------------------------------------------------------------------- | :--------------: | :--------: | -------------------------------------------------- |
 | [OpenAI](https://platform.openai.com/docs/api-reference)                                              |        ✅        |     ✅     |                                                    |
 | [AWS Bedrock](https://docs.aws.amazon.com/bedrock/latest/APIReference/)                               |        ✅        |     🚧     | Via API translation                                |
 | [Azure OpenAI](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference)                  |        ✅        |     🚧     | Via API translation                                |
@@ -168,7 +168,7 @@ The following table summarizes which providers support which endpoints:
 | [Tencent LLM Knowledge Engine](https://www.tencentcloud.com/document/product/1255/70381)              |        ⚠️        |     ❌     | Via OpenAI-compatible API                          |
 | [Google Vertex AI](https://cloud.google.com/vertex-ai/docs/reference/rest)                            |        ✅        |     🚧     | Via OpenAI-compatible API                          |
 | [Anthropic on Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude) |        ✅        |     🚧     | Via OpenAI-compatible API and Native Anthropic API |
-| [SambaNova](https://docs.sambanova.ai/sambastudio/latest/open-ai-api.html)                            |        ✅        |     ✅     | Via OpenAI-compatible API                          |     |
+| [SambaNova](https://docs.sambanova.ai/sambastudio/latest/open-ai-api.html)                            |        ✅        |     ✅     | Via OpenAI-compatible API                          |
 
 - ✅ - Supported and Tested on Envoy AI Gateway CI
 - ⚠️️ - Expected to work based on provider documentation, but not tested on the CI.

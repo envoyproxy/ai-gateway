@@ -31,6 +31,7 @@ AI Gateway has specific behavior for token tracking and rate limiting:
 
 3. **Token Types**:
    - `InputToken`: Counts tokens in the request prompt
+   - `CachedInputToken`: Counts _cached_ input tokens in the request prompt
    - `OutputToken`: Counts tokens in the model's response
    - `TotalToken`: Combines both input and output tokens
    - `CEL`: Allows custom token calculations using CEL expressions
@@ -46,6 +47,16 @@ For model providers with OpenAI schema transformations (like AWS Bedrock), AI Ga
 
 ## Configuration
 
+:::tip Prerequisites
+
+Rate limiting requires two components to be configured:
+
+1. **Redis Deployment**: A Redis instance must be running to store rate limit data. See the [redis.yaml example](https://github.com/envoyproxy/ai-gateway/blob/main/examples/token_ratelimit/redis.yaml) for a simple deployment.
+
+2. **Envoy Gateway Configuration**: Envoy Gateway must be configured at installation time to enable rate limiting and point to your Redis instance. See [Envoy Gateway Installation Guide](../../getting-started/prerequisites.md#additional-features-rate-limiting-inferencepool-etc)
+
+:::
+
 ### 1. Configure Token Tracking
 
 AI Gateway automatically tracks token usage for each request. Configure which token counts you want to track in your `AIGatewayRoute`:
@@ -55,6 +66,8 @@ spec:
   llmRequestCosts:
     - metadataKey: llm_input_token
       type: InputToken # Counts tokens in the request
+    - metadataKey: llm_cached_input_token
+      type: CachedInputToken # Counts cached input tokens in the request prompt
     - metadataKey: llm_output_token
       type: OutputToken # Counts tokens in the response
     - metadataKey: llm_total_token
@@ -68,7 +81,7 @@ spec:
   llmRequestCosts:
     - metadataKey: custom_cost
       type: CEL
-      cel: "input_tokens * 0.5 + output_tokens * 1.5" # Example: Weight output tokens more heavily
+      cel: "(input_tokens - cached_input_tokens) + (cached_input_tokens * 0.1) + output_tokens * 1.5" # Example: Weight cached tokens less and weight output tokens more heavily
 ```
 
 ### 2. Configure Rate Limits

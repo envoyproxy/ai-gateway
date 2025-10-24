@@ -627,11 +627,6 @@ func TestEmbeddingRequestInputUnmarshal(t *testing.T) {
 			data:        []byte{},
 			expectedErr: "truncated input data",
 		},
-		{
-			name:        "nested int array (unsupported type)",
-			data:        []byte(`[[1, 2, 3], [4, 5, 6]]`),
-			expectedErr: "input has unsupported type [][]int64",
-		},
 	}
 
 	for _, tc := range errorCases {
