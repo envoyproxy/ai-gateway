@@ -500,12 +500,16 @@ func RequireGatewayListenerAddressViaMetalLB(t *testing.T, namespace, name strin
 // extproc container.
 func requireWaitForGatewayPod(t *testing.T, selector string) {
 	waitUntilKubectl(t, 2*time.Minute, 1*time.Second, func(output string) error {
+		// Output will be empty if no pods exist yet
+		if output == "" || output == "''" {
+			return fmt.Errorf("no pods found")
+		}
 		if !strings.Contains(output, "ai-gateway-extproc") {
 			return fmt.Errorf("container not found, output: %s", output)
 		}
 		return nil
 	}, "get", "pod", "-n", EnvoyGatewayNamespace,
-		"--selector="+selector, "-o", "jsonpath='{.items[0].spec.initContainers[*].name} {.items[0].spec.containers[*].name}'")
+		"--selector="+selector, "-o", "jsonpath='{.items[*].spec.initContainers[*].name} {.items[*].spec.containers[*].name}'")
 }
 
 // RequireWaitForPodReady waits for the pod with the given selector to be ready.
@@ -813,6 +817,7 @@ func isStaleConnectionError(err error) bool {
 func waitUntilKubectl(t *testing.T, timeout time.Duration, pollInterval time.Duration, verifyOut func(output string) error, args ...string) {
 	var lastErr error
 	deadline := time.Now().Add(timeout)
+	startTime := time.Now()
 	for time.Now().Before(deadline) {
 		cmd := Kubectl(t.Context(), args...)
 		cmd.Stdout = nil // To ensure that we can capture the output by Output().
@@ -829,5 +834,6 @@ func waitUntilKubectl(t *testing.T, timeout time.Duration, pollInterval time.Dur
 		lastErr = err
 		time.Sleep(pollInterval)
 	}
-	require.Fail(t, "timed out waiting", "last error: %v", lastErr)
+	elapsed := time.Since(startTime)
+	require.Fail(t, "timed out waiting", "waited %v, last error: %v", elapsed, lastErr)
 }
