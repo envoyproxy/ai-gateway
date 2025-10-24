@@ -569,12 +569,12 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingTokenUsage(t *t
 			bodyReader := bytes.NewReader([]byte(tt.chunk))
 			respHeaders := map[string]string{"content-type": "application/json"}
 
-			headerMutation, bodyMutation, tokenUsage, _, err := translator.ResponseBody(respHeaders, bodyReader, tt.endOfStream)
+			// These tests are for streaming SSE chunks, so use isStreaming=true
+			headerMutation, bodyMutation, tokenUsage, _, err := translator.ResponseBody(respHeaders, bodyReader, true)
 
 			require.NoError(t, err)
 			require.Nil(t, headerMutation)
-			require.NotNil(t, bodyMutation)
-			require.Equal(t, tt.expectedBody, string(bodyMutation.GetBody()))
+			require.Nil(t, bodyMutation) // No body mutation to preserve original encoding
 			require.Equal(t, tt.expectedUsage, tokenUsage)
 		})
 	}
@@ -649,12 +649,12 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases(t *te
 			bodyReader := bytes.NewReader([]byte(tt.chunk))
 			respHeaders := map[string]string{"content-type": "application/json"}
 
-			headerMutation, bodyMutation, tokenUsage, _, err := translator.ResponseBody(respHeaders, bodyReader, false)
+			// These are streaming edge case tests, so use isStreaming=true
+			headerMutation, bodyMutation, tokenUsage, _, err := translator.ResponseBody(respHeaders, bodyReader, true)
 
 			require.NoError(t, err)
 			require.Nil(t, headerMutation)
-			require.NotNil(t, bodyMutation)
-			require.Equal(t, tt.chunk, string(bodyMutation.GetBody()))
+			require.Nil(t, bodyMutation) // No body mutation to preserve original encoding
 			require.Equal(t, tt.expectedUsage, tokenUsage)
 		})
 	}
