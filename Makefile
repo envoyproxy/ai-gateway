@@ -104,7 +104,6 @@ editorconfig:
 apigen: ## Generate CRDs for the API defined in the api directory.
 	@echo "apigen => ./api/v1alpha1/..."
 	@$(GO_TOOL) controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-crds-helm/templates
-	@$(GO_TOOL) controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-helm/crds
 
 # This generates the API documentation for the API defined in the api/v1alpha1 directory.
 .PHONY: apidoc
