@@ -16,6 +16,9 @@ tests/e2e-inference-extension/logs/
 tests/e2e-namespaced/logs/
 tests/e2e-upgrade/logs/
 
+# Test binaries
+*.test
+
 # Files and directories to ignore in the site directory
 # dependencies
 site/node_modules
