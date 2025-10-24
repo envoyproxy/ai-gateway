@@ -200,7 +200,7 @@ func applyUnstructuredObject(ctx context.Context, clientset *kubernetes.Clientse
 
 	// Get the REST mapping for the resource
 	gv := gvk.GroupVersion()
-	
+
 	// Use dynamic client to apply the resource
 	// For common resource types, we can handle them directly
 	switch gvk.Kind {
@@ -249,7 +249,7 @@ func applyUnstructuredObject(ctx context.Context, clientset *kubernetes.Clientse
 		// For other resources, use the dynamic client
 		// Determine the resource type
 		resourceName := strings.ToLower(gvk.Kind) + "s"
-		
+
 		gvr := gv.WithResource(resourceName)
 		var resourceClient dynamic.ResourceInterface
 		if namespace != "" {
@@ -639,7 +639,7 @@ func kubeDeleteNamespace(ctx context.Context, name string) error {
 // kubePortForward implements port forwarding to a service
 type kubePortForward struct {
 	namespace   string
-	serviceName string
+	selector    string
 	localPort   int
 	servicePort int
 	stopChan    chan struct{}
@@ -650,6 +650,7 @@ type kubePortForward struct {
 func newKubePortForward(namespace, selector string, localPort, servicePort int) portForward {
 	return &kubePortForward{
 		namespace:   namespace,
+		selector:    selector,
 		localPort:   localPort,
 		servicePort: servicePort,
 		stopChan:    make(chan struct{}, 1),
@@ -668,27 +669,16 @@ func (k *kubePortForward) start(ctx context.Context) error {
 		return err
 	}
 
-	// Get the service name
-	services, err := clientset.CoreV1().Services(k.namespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to list services: %w", err)
-	}
-
-	if len(services.Items) == 0 {
-		return fmt.Errorf("no service found in namespace %s", k.namespace)
-	}
-
-	// Use the first service
-	k.serviceName = services.Items[0].Name
-
-	// Get a pod from the service
-	pods, err := clientset.CoreV1().Pods(k.namespace).List(ctx, metav1.ListOptions{})
+	// Get pods matching the selector
+	pods, err := clientset.CoreV1().Pods(k.namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: k.selector,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to list pods: %w", err)
 	}
 
 	if len(pods.Items) == 0 {
-		return fmt.Errorf("no pods found in namespace %s", k.namespace)
+		return fmt.Errorf("no pods found in namespace %s with selector %s", k.namespace, k.selector)
 	}
 
 	podName := pods.Items[0].Name
@@ -708,7 +698,7 @@ func (k *kubePortForward) start(ctx context.Context) error {
 	dialer := spdy.NewDialer(upgrader, &http.Client{Transport: transport}, "POST", req.URL())
 
 	ports := []string{fmt.Sprintf("%d:%d", k.localPort, k.servicePort)}
-	
+
 	readyOut := &bytes.Buffer{}
 	errOut := &bytes.Buffer{}
 
