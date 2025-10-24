@@ -81,6 +81,12 @@ Flags:
 			rf:   func(context.Context, cmdRun, runOpts, io.Writer, io.Writer) error { return nil },
 		},
 		{
+			name: "run with Anthropic env",
+			args: []string{"run"},
+			env:  map[string]string{"ANTHROPIC_API_KEY": "dummy-key"},
+			rf:   func(context.Context, cmdRun, runOpts, io.Writer, io.Writer) error { return nil },
+		},
+		{
 			name: "run help",
 			args: []string{"run", "--help"},
 			rf:   func(context.Context, cmdRun, runOpts, io.Writer, io.Writer) error { return nil },
@@ -90,7 +96,8 @@ Run the AI Gateway locally for given configuration.
 
 Arguments:
   [<path>]    Path to the AI Gateway configuration yaml file. Optional when at
-              least OPENAI_API_KEY or AZURE_OPENAI_API_KEY is set.
+              least OPENAI_API_KEY, AZURE_OPENAI_API_KEY, or ANTHROPIC_API_KEY
+              is set.
 
 Flags:
   -h, --help                 Show context-sensitive help.
@@ -143,7 +150,7 @@ func TestCmdRun_Validate(t *testing.T) {
 			name:          "no config and no env vars",
 			cmd:           cmdRun{Path: ""},
 			envVars:       map[string]string{},
-			expectedError: "you must supply at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY or a config file path",
+			expectedError: "you must supply at least OPENAI_API_KEY, AZURE_OPENAI_API_KEY, ANTHROPIC_API_KEY, or a config file path",
 		},
 		{
 			name:    "config path provided",
@@ -170,6 +177,13 @@ func TestCmdRun_Validate(t *testing.T) {
 			envVars: map[string]string{
 				"OPENAI_API_KEY":       "sk-test",
 				"AZURE_OPENAI_API_KEY": "azure-key",
+			},
+		},
+		{
+			name: "ANTHROPIC_API_KEY set",
+			cmd:  cmdRun{Path: ""},
+			envVars: map[string]string{
+				"ANTHROPIC_API_KEY": "sk-ant-test",
 			},
 		},
 		{

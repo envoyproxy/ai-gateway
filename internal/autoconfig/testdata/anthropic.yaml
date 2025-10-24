@@ -2,16 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
-{{- if .MCPBackendRefs }}
-
-# Configuration for Envoy AI Gateway with MCP servers
-{{- else if .OpenAI }}
-
-# Configuration for Envoy AI Gateway with OpenAI compatible endpoint
-{{- else if .Anthropic }}
 
 # Configuration for Envoy AI Gateway with Anthropic endpoint
-{{- end }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
@@ -42,19 +34,9 @@ metadata:
   name: envoy-ai-gateway
   namespace: default
 spec:
-{{- if .EnvoyVersion }}
-  provider:
-    type: Host
-    host:
-      envoyVersion: "{{ .EnvoyVersion }}"
-{{- end }}
   logging:
     level:
-{{- if .Debug }}
-      default: debug
-{{- else }}
       default: error
-{{- end }}
   telemetry:
     accessLog:
       settings:
@@ -65,7 +47,6 @@ spec:
           format:
             type: JSON
             json:
-{{- if or .OpenAI .Anthropic }}
               # LLM specific fields. The properties in the dynamic metadata
               # expressions must match the ones defined in the AIGatewayRoute
               # llmRequestCosts field.
@@ -74,14 +55,6 @@ spec:
               genai_backend_name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:backend_name)%"
               genai_tokens_input: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_input_token)%"
               genai_tokens_output: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_output_token)%"
-{{- end }}
-{{- if .MCPBackendRefs }}
-              # MCP specific fields
-              mcp_request_id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_request_id)%"
-              mcp_session_id: "%REQ(MCP-SESSION-ID)%"
-              mcp_method: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_method)%"
-              mcp_backend: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)%"
-{{- end }}
               # A few default fields
               start_time: "%START_TIME%"
               method: "%REQ(:METHOD)%"
@@ -100,38 +73,6 @@ spec:
               downstream_local_address: "%DOWNSTREAM_LOCAL_ADDRESS%"
               downstream_remote_address: "%DOWNSTREAM_REMOTE_ADDRESS%"
 ---
-{{- if .OpenAI }}
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIGatewayRoute
-metadata:
-  name: aigw-run
-  namespace: default
-spec:
-  parentRefs:
-    - name: aigw-run
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  # Simple rule: route everything to OpenAI backend
-  rules:
-    - matches:
-        - headers:
-            - type: RegularExpression
-              name: x-ai-eg-model
-              value: .*
-      backendRefs:
-        - name: {{ .OpenAI.BackendName }}
-          namespace: default
-      timeouts:
-        request: 120s
-  # Configure the LLM request costs so they can be included in the Envoy access logs
-  llmRequestCosts:
-    - metadataKey: llm_input_token
-      type: InputToken
-    - metadataKey: llm_output_token
-      type: OutputToken
----
-{{- end }}
-{{- if .Anthropic }}
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute
 metadata:
@@ -150,7 +91,7 @@ spec:
               name: x-ai-eg-model
               value: .*
       backendRefs:
-        - name: {{ .Anthropic.BackendName }}
+        - name: anthropic
           namespace: default
       timeouts:
         request: 120s
@@ -161,126 +102,47 @@ spec:
     - metadataKey: llm_output_token
       type: OutputToken
 ---
-{{- end }}
-{{- if .MCPBackendRefs }}
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: MCPRoute
-metadata:
-  name: mcp-route
-  namespace: default
-spec:
-  parentRefs:
-    - name: aigw-run
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  path: "/mcp"
-  backendRefs:
-  {{- range .MCPBackendRefs }}
-    - name: {{ .BackendName }}
-      kind: Backend
-      group: gateway.envoyproxy.io
-      path: "{{ .Path }}"
-      {{- if .IncludeTools }}
-      toolSelector:
-        include:
-          {{- range .IncludeTools }}
-          - {{ . }}
-          {{- end }}
-      {{- end }}
-      {{- if .APIKey }}
-      securityPolicy:
-        apiKey:
-          secretRef:
-            name: {{ .BackendName }}-token
-      {{- end }}
-  {{- end }}
----
-{{- end }}
-{{- range .Backends }}
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
 metadata:
-  name: {{ .Name }}
+  name: anthropic
   namespace: default
 spec:
   endpoints:
     - fqdn:
-        hostname: {{ .Hostname }}
-        port: {{ .Port }}
+        hostname: api.anthropic.com
+        port: 443
 ---
-{{- end }}
-{{- if .OpenAI }}
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
 metadata:
-  name: {{ .OpenAI.BackendName }}
+  name: anthropic
   namespace: default
 spec:
   timeouts:
     request: 3m
   schema:
-    name: {{ .OpenAI.SchemaName }}
-{{- if .OpenAI.Version }}
-    version: "{{ .OpenAI.Version }}"
-{{- end }}
+    name: Anthropic
   backendRef:
-    name: {{ .OpenAI.BackendName }}
-    kind: Backend
-    group: gateway.envoyproxy.io
-    namespace: default
-{{- if or .OpenAI.OrganizationID .OpenAI.ProjectID }}
-  headerMutation:
-    set:
-{{- if .OpenAI.OrganizationID }}
-      - name: "OpenAI-Organization"
-        value: "{{ .OpenAI.OrganizationID }}"
-{{- end }}
-{{- if .OpenAI.ProjectID }}
-      - name: "OpenAI-Project"
-        value: "{{ .OpenAI.ProjectID }}"
-{{- end }}
-{{- end }}
----
-{{- end }}
-{{- if .Anthropic }}
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIServiceBackend
-metadata:
-  name: {{ .Anthropic.BackendName }}
-  namespace: default
-spec:
-  timeouts:
-    request: 3m
-  schema:
-    name: {{ .Anthropic.SchemaName }}
-{{- if .Anthropic.Version }}
-    version: "{{ .Anthropic.Version }}"
-{{- end }}
-  backendRef:
-    name: {{ .Anthropic.BackendName }}
+    name: anthropic
     kind: Backend
     group: gateway.envoyproxy.io
     namespace: default
 ---
-{{- end }}
-{{- range .Backends }}
-{{- if .NeedsTLS }}
 apiVersion: gateway.networking.k8s.io/v1alpha3
 kind: BackendTLSPolicy
 metadata:
-  name: {{ .Name }}-tls
+  name: anthropic-tls
   namespace: default
 spec:
   targetRefs:
     - group: 'gateway.envoyproxy.io'
       kind: Backend
-      name: {{ .Name }}
+      name: anthropic
   validation:
     wellKnownCACertificates: "System"
-    hostname: {{ .OriginalHostname }}
+    hostname: api.anthropic.com
 ---
-{{- end }}
-{{- end }}
 # By default, Envoy Gateway sets the buffer limit to 32kiB which is not
 # sufficient for AI workloads. This ClientTrafficPolicy sets the buffer limit
 # to 50MiB as an example.
@@ -298,44 +160,6 @@ spec:
   connection:
     bufferLimit: 50Mi
 ---
-{{- if .OpenAI }}
-apiVersion: v1
-kind: Secret
-metadata:
-  name: openai-apikey
-  namespace: default
-type: Opaque
-stringData:
-{{- if eq .OpenAI.SchemaName "AzureOpenAI" }}
-  apiKey: ${AZURE_OPENAI_API_KEY}
-{{- else }}
-  apiKey: ${OPENAI_API_KEY}
-{{- end }}
----
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: BackendSecurityPolicy
-metadata:
-  name: openai-apikey
-  namespace: default
-spec:
-  targetRefs:
-    - group: aigateway.envoyproxy.io
-      kind: AIServiceBackend
-      name: {{ .OpenAI.BackendName }}
-{{- if eq .OpenAI.SchemaName "AzureOpenAI" }}
-  type: AzureAPIKey
-  azureAPIKey:
-    secretRef:
-      name: openai-apikey
-{{- else }}
-  type: APIKey
-  apiKey:
-    secretRef:
-      name: openai-apikey
-{{- end }}
----
-{{- end }}
-{{- if .Anthropic }}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -354,23 +178,9 @@ spec:
   targetRefs:
     - group: aigateway.envoyproxy.io
       kind: AIServiceBackend
-      name: {{ .Anthropic.BackendName }}
+      name: anthropic
   type: AnthropicAPIKey
   anthropicAPIKey:
     secretRef:
       name: anthropic-apikey
 ---
-{{- end }}
-{{- range .MCPBackendRefs }}
-{{- if .APIKey }}
-kind: Secret
-apiVersion: v1
-metadata:
-  name: {{ .BackendName }}-token
-  namespace: default
-type: Opaque
-stringData:
-  apiKey: {{ .APIKey }}
----
-{{- end }}
-{{- end }}
