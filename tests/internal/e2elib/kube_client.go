@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -21,6 +20,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer/yaml"
 	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/apimachinery/pkg/watch"
@@ -194,7 +194,7 @@ func kubeApplyManifestReader(ctx context.Context, reader io.Reader) error {
 }
 
 // applyUnstructuredObject applies an unstructured object using server-side apply
-func applyUnstructuredObject(ctx context.Context, clientset *kubernetes.Clientset, dynClient dynamic.Interface, obj *unstructured.Unstructured, gvk *runtime.GroupVersionKind) error {
+func applyUnstructuredObject(ctx context.Context, clientset *kubernetes.Clientset, dynClient dynamic.Interface, obj *unstructured.Unstructured, gvk *schema.GroupVersionKind) error {
 	namespace := obj.GetNamespace()
 	name := obj.GetName()
 
@@ -744,7 +744,7 @@ func kubeGetUnstructuredResource(ctx context.Context, namespace, name, group, ve
 		return nil, err
 	}
 
-	gvr := metav1.GroupVersionResource{
+	gvr := schema.GroupVersionResource{
 		Group:    group,
 		Version:  version,
 		Resource: resource,

@@ -521,6 +521,11 @@ func GetUnstructuredResource(ctx context.Context, namespace, name, group, versio
 	return kubeGetUnstructuredResource(ctx, namespace, name, group, version, resource)
 }
 
+// GetSecret gets a secret from the cluster
+func GetSecret(ctx context.Context, namespace, name string) (*corev1.Secret, error) {
+	return kubeGetSecret(ctx, namespace, name)
+}
+
 func kubectlRestartDeployment(ctx context.Context, namespace, deployment string) error {
 	return kubeRestartDeployment(ctx, namespace, deployment)
 }

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -122,6 +123,7 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 		t.Logf("Environment variables in extProc container: %+v", envVarsFound)
 
 		// Check container args
+		containerArgs := strings.Join(extProcContainer.Args, " ")
 		t.Logf("Container args in extProc container: %+v", extProcContainer.Args)
 
 		defer func() {
@@ -133,11 +135,11 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 		}()
 
 		// Verify that our OTEL env vars are present in the pod spec.
-		if !strings.Contains(envVars, `"name":"OTEL_TRACES_EXPORTER","value":"console"`) {
+		if val, ok := envVarsFound["OTEL_TRACES_EXPORTER"]; !ok || val != "console" {
 			t.Log("Expected OTEL_TRACES_EXPORTER=console in extProc container spec")
 			return false
 		}
-		if !strings.Contains(envVars, `"name":"OTEL_SERVICE_NAME","value":"ai-gateway-e2e-test"`) {
+		if val, ok := envVarsFound["OTEL_SERVICE_NAME"]; !ok || val != "ai-gateway-e2e-test" {
 			t.Log("Expected OTEL_SERVICE_NAME=ai-gateway-e2e-test in extProc container spec")
 			return false
 		}
