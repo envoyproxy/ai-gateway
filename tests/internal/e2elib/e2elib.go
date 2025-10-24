@@ -6,7 +6,6 @@
 package e2elib
 
 import (
-	"bytes"
 	"cmp"
 	"context"
 	"encoding/json"
@@ -192,10 +191,10 @@ func initMetalLB(ctx context.Context) (err error) {
 
 	if strings.TrimSpace(string(out)) == "" {
 		// Generate random secret key.
-		cmd = exec.CommandContext(ctx, "openssl", "rand", "-base64", "128")
-		cmd.Stderr = os.Stderr
+		opensslCmd := exec.CommandContext(ctx, "openssl", "rand", "-base64", "128")
+		opensslCmd.Stderr = os.Stderr
 		var secretKey []byte
-		secretKey, err = cmd.Output()
+		secretKey, err = opensslCmd.Output()
 		if err != nil {
 			return fmt.Errorf("failed to generate secret key: %w", err)
 		}
@@ -580,7 +579,7 @@ type kubectlPortForward struct {
 	selector    string
 	localPort   int
 	servicePort int
-	cmd         *exec.Cmd
+	cmd         *kubectlCmd
 	cmdMu       sync.Mutex
 }
 

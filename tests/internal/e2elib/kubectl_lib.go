@@ -17,11 +17,25 @@ import (
 
 // kubectlCmd wraps kubectl library calls to provide an exec.Cmd-like interface
 type kubectlCmd struct {
-	ctx    context.Context
-	args   []string
-	Stdin  io.Reader
-	Stdout io.Writer
-	Stderr io.Writer
+	ctx     context.Context
+	args    []string
+	Stdin   io.Reader
+	Stdout  io.Writer
+	Stderr  io.Writer
+	Process *kubectlProcess
+}
+
+// kubectlProcess mimics os/exec.Cmd Process field for compatibility
+type kubectlProcess struct {
+	cancel context.CancelFunc
+}
+
+// Kill terminates the kubectl process
+func (p *kubectlProcess) Kill() error {
+	if p.cancel != nil {
+		p.cancel()
+	}
+	return nil
 }
 
 // Run executes the kubectl command
@@ -47,6 +61,40 @@ func (k *kubectlCmd) Run() error {
 	kubectlCmd.SetErr(stderr)
 
 	return kubectlCmd.Execute()
+}
+
+// Start begins the kubectl command asynchronously
+func (k *kubectlCmd) Start() error {
+	// Create a cancellable context for the process
+	ctx, cancel := context.WithCancel(k.ctx)
+	k.Process = &kubectlProcess{cancel: cancel}
+
+	stdin := k.Stdin
+	if stdin == nil {
+		stdin = os.Stdin
+	}
+	stdout := k.Stdout
+	if stdout == nil {
+		stdout = os.Stdout
+	}
+	stderr := k.Stderr
+	if stderr == nil {
+		stderr = os.Stderr
+	}
+
+	kubectlCmd := cmd.NewDefaultKubectlCommand()
+	kubectlCmd.SetArgs(k.args)
+	kubectlCmd.SetContext(ctx)
+	kubectlCmd.SetIn(stdin)
+	kubectlCmd.SetOut(stdout)
+	kubectlCmd.SetErr(stderr)
+
+	// Start the command in a goroutine
+	go func() {
+		_ = kubectlCmd.Execute()
+	}()
+
+	return nil
 }
 
 // Output executes the kubectl command and returns stdout
@@ -120,5 +168,6 @@ func kubectlWaitForDaemonSetReady(ctx context.Context, namespace, daemonset stri
 	}
 	return nil
 }
+
 
 
