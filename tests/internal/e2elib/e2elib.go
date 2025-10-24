@@ -818,8 +818,11 @@ func waitUntilKubectl(t *testing.T, timeout time.Duration, pollInterval time.Dur
 	var lastErr error
 	deadline := time.Now().Add(timeout)
 	startTime := time.Now()
+	attemptCount := 0
 	for time.Now().Before(deadline) {
-		cmd := Kubectl(t.Context(), args...)
+		attemptCount++
+		// Use background context instead of test context to avoid premature cancellation
+		cmd := Kubectl(context.Background(), args...)
 		cmd.Stdout = nil // To ensure that we can capture the output by Output().
 		out, err := cmd.Output()
 		if err != nil {
@@ -835,5 +838,5 @@ func waitUntilKubectl(t *testing.T, timeout time.Duration, pollInterval time.Dur
 		time.Sleep(pollInterval)
 	}
 	elapsed := time.Since(startTime)
-	require.Fail(t, "timed out waiting", "waited %v, last error: %v", elapsed, lastErr)
+	require.Fail(t, "timed out waiting", "waited %v after %d attempts, last error: %v", elapsed, attemptCount, lastErr)
 }
