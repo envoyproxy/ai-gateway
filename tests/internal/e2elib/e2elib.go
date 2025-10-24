@@ -6,7 +6,6 @@
 package e2elib
 
 import (
-	"bufio"
 	"cmp"
 	"context"
 	"encoding/json"
@@ -341,33 +340,11 @@ func CleanupKindCluster(testsFailed bool, clusterName string) {
 	}
 	if !testsFailed && !keepCluster {
 		cleanupLog("Destroying the kind cluster")
-		// Temporarily redirect stderr to suppress "error: lost connection to pod" from background kubectl processes
-		oldStderr := os.Stderr
-		r, w, _ := os.Pipe()
-		os.Stderr = w
-		
-		// Filter stderr output
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			scanner := bufio.NewScanner(r)
-			for scanner.Scan() {
-				line := scanner.Text()
-				if !strings.Contains(line, "error: lost connection to pod") {
-					fmt.Fprintln(oldStderr, line)
-				}
-			}
-		}()
-		
 		cmd := testsinternal.GoToolCmd("kind", "delete", "cluster", "--name", clusterName)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+		// Discard both stdout and stderr to suppress kubectl port-forward "lost connection" errors
+		cmd.Stdout = io.Discard
+		cmd.Stderr = io.Discard
 		_ = cmd.Run()
-		
-		// Restore stderr
-		w.Close()
-		<-done
-		os.Stderr = oldStderr
 	}
 }
 
