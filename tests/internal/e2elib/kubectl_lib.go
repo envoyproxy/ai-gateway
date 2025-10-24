@@ -135,9 +135,23 @@ func KubectlApplyManifest(ctx context.Context, manifest string) error {
 }
 
 func KubectlApplyManifestStdin(ctx context.Context, manifest string) error {
-	cmd := Kubectl(ctx, "apply", "--server-side", "-f", "-")
-	cmd.Stdin = bytes.NewBufferString(manifest)
-	return cmd.Run()
+	// Write manifest to a temporary file since kubectl library doesn't properly read from stdin
+	tmpfile, err := os.CreateTemp("", "kubectl-manifest-*.yaml")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(tmpfile.Name())
+	
+	if _, err := tmpfile.WriteString(manifest); err != nil {
+		tmpfile.Close()
+		return fmt.Errorf("failed to write manifest to temp file: %w", err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file: %w", err)
+	}
+	
+	// Apply using file path instead of stdin
+	return KubectlApplyManifest(ctx, tmpfile.Name())
 }
 
 func KubectlDeleteManifest(ctx context.Context, manifest string) error {
