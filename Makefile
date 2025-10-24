@@ -215,7 +215,7 @@ test-e2e-aigw: build.aigw ## Run the end-to-end tests for the aigw CLI.
 #
 # Example:
 # - `make build.controller GOOS_LIST="linux darwin" GOARCH_LIST="amd64 arm64"`
-CMD_PATH_PREFIX ?= cmd
+CMD_PATH_PREFIX ?= cmdtest
 GOOS_LIST ?= $(shell go env GOOS)
 GOARCH_LIST ?= $(shell go env GOARCH)
 .PHONY: build.%
