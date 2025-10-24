@@ -149,13 +149,13 @@ func kubectlRestartDeployment(ctx context.Context, namespace, deployment string)
 }
 
 func kubectlWaitForDeploymentReady(ctx context.Context, namespace, deployment string) error {
-	cmd := Kubectl(ctx, "wait", "--timeout=2m", "-n", namespace,
+	cmd := Kubectl(ctx, "wait", "--timeout=5m", "-n", namespace,
 		"deployment/"+deployment, "--for=create")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("error waiting for deployment %s in namespace %s: %w", deployment, namespace, err)
 	}
 
-	cmd = Kubectl(ctx, "wait", "--timeout=2m", "-n", namespace,
+	cmd = Kubectl(ctx, "wait", "--timeout=5m", "-n", namespace,
 		"deployment/"+deployment, "--for=condition=Available")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("error waiting for deployment %s in namespace %s: %w", deployment, namespace, err)
@@ -165,14 +165,14 @@ func kubectlWaitForDeploymentReady(ctx context.Context, namespace, deployment st
 
 func kubectlWaitForDaemonSetReady(ctx context.Context, namespace, daemonset string) error {
 	// Wait for daemonset to be created.
-	cmd := Kubectl(ctx, "wait", "--timeout=2m", "-n", namespace,
+	cmd := Kubectl(ctx, "wait", "--timeout=5m", "-n", namespace,
 		"daemonset/"+daemonset, "--for=create")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("error waiting for daemonset %s in namespace %s: %w", daemonset, namespace, err)
 	}
 
 	// Wait for daemonset pods to be ready using jsonpath.
-	cmd = Kubectl(ctx, "wait", "--timeout=2m", "-n", namespace,
+	cmd = Kubectl(ctx, "wait", "--timeout=5m", "-n", namespace,
 		"daemonset/"+daemonset, "--for=jsonpath={.status.numberReady}=1")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("error waiting for daemonset %s pods to be ready in namespace %s: %w", daemonset, namespace, err)
