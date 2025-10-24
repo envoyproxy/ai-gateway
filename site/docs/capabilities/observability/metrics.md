@@ -35,6 +35,7 @@ Each metric comes with some default attributes such as:
   - `chat`: For `/v1/chat/completions` endpoint.
   - `completion`: For `/v1/completions` endpoint.
   - `embedding`: For `/v1/embeddings` endpoint.
+  - `image_generation`: For `/v1/images/generations` endpoint.
   - `messages`: For `/anthropic/v1/messages` endpoint.
 - `gen_ai.original.model` - The original model name from the request body
 - `gen_ai.request.model` - The model name requested (may be overridden)

@@ -182,8 +182,7 @@ metadata:
 spec:
   directResponse:
     body:
-      inline: No matching route found. It is likely that the model specified your
-        request is not configured in the Gateway.
+      inline: No matching route found. It is likely because the model specified in your request is not configured in the Gateway.
       type: null
     statusCode: 404
 ---

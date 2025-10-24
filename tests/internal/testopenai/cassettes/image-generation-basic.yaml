@@ -1,0 +1,60 @@
+---
+version: 2
+interactions:
+- id: 0
+  request:
+    proto: HTTP/1.1
+    proto_major: 1
+    proto_minor: 1
+    content_length: 139
+    host: api.openai.com
+    body: "{\n  \"model\": \"gpt-image-1-mini\",\n  \"prompt\": \"A simple black-and-white line drawing of a cat playing with yarn\",\n  \"size\": \"1024x1024\",\n  \"quality\": \"low\"\n}"
+    headers:
+      Accept-Encoding:
+      - gzip
+      Content-Length:
+      - "139"
+      Content-Type:
+      - application/json
+      User-Agent:
+      - Go-http-client/1.1
+    url: https://api.openai.com/v1/images/generations
+    method: POST
+  response:
+    proto: HTTP/2.0
+    proto_major: 2
+    proto_minor: 0
+    content_length: 544
+    body: "{\n  \"created\": 1760092079,\n  \"data\": [\n    {\n      \"url\": \"https://oaidalleapiprodscus.blob.core.windows.net/private/org-lKxIBdltrjcFbzboW0t1hthB/user-EdKNxj0PjYS29CfjUcR77ybc/img-3Ah2ERYmeJLYrRlxnuWPFpXG.png?st=2025-10-10T09%3A27%3A58Z&se=2025-10-10T11%3A27%3A58Z&sp=r&sv=2024-08-04&sr=b&rscd=inline&rsct=image/png&skoid=475fd488-6c59-44a5-9aa9-31c4db451bea&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2025-10-10T10%3A27%3A58Z&ske=2025-10-11T10%3A27%3A58Z&sks=b&skv=2024-08-04&sig=IlzMauzcIHqE5/JLQsiMglI0mqbGlrpQC/mvJz4TYuc%3D\"\n    }\n  ]\n}"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 98c56d4f2dd889f6-BOM
+      Content-Length:
+      - "544"
+      Content-Type:
+      - application/json
+      Date:
+      - Fri, 10 Oct 2025 10:27:59 GMT
+      Openai-Processing-Ms:
+      - "13023"
+      Openai-Project:
+      - proj_Ro6stNUOKIiLVqRr1zdjaFoh
+      Openai-Version:
+      - "2020-10-01"
+      Server:
+      - cloudflare
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      X-Content-Type-Options:
+      - nosniff
+      X-Envoy-Upstream-Service-Time:
+      - "13027"
+      X-Request-Id:
+      - req_54999507941c487a8f1997287aaa8cf6
+    status: 200 OK
+    code: 200
+    duration: 14.290895958s

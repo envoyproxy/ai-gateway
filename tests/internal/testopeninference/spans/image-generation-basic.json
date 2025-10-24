@@ -1,0 +1,13 @@
+{
+  "flags": 256,
+  "name": "ImageGeneration",
+  "kind": "SPAN_KIND_INTERNAL",
+  "attributes": [
+    {"key": "llm.system", "value": {"stringValue": "openai"}},
+    {"key": "llm.model_name", "value": {"stringValue": "gpt-image-1-mini"}},
+    {"key": "openinference.span.kind", "value": {"stringValue": "LLM"}},
+    {"key": "input.mime_type", "value": {"stringValue": "application/json"}},
+    {"key": "input.value", "value": {"stringValue": "{\"model\":\"gpt-image-1-mini\",\"prompt\":\"A simple black-and-white line drawing of a cat playing with yarn\",\"quality\":\"low\",\"size\":\"1024x1024\"}"}}
+  ],
+  "status": {}
+}
