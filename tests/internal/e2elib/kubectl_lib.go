@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 
+	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"k8s.io/kubectl/pkg/cmd"
 )
 
@@ -53,12 +54,17 @@ func (k *kubectlCmd) Run() error {
 		stderr = os.Stderr
 	}
 
-	kubectlCmd := cmd.NewDefaultKubectlCommand()
+	// Create kubectl command with proper IO configuration
+	kubectlCmd := cmd.NewDefaultKubectlCommandWithArgs(cmd.KubectlOptions{
+		IOStreams: genericiooptions.IOStreams{
+			In:     stdin,
+			Out:    stdout,
+			ErrOut: stderr,
+		},
+	})
+	
 	kubectlCmd.SetArgs(k.args)
 	kubectlCmd.SetContext(k.ctx)
-	kubectlCmd.SetIn(stdin)
-	kubectlCmd.SetOut(stdout)
-	kubectlCmd.SetErr(stderr)
 
 	return kubectlCmd.Execute()
 }
@@ -82,12 +88,17 @@ func (k *kubectlCmd) Start() error {
 		stderr = os.Stderr
 	}
 
-	kubectlCmd := cmd.NewDefaultKubectlCommand()
+	// Create kubectl command with proper IO configuration
+	kubectlCmd := cmd.NewDefaultKubectlCommandWithArgs(cmd.KubectlOptions{
+		IOStreams: genericiooptions.IOStreams{
+			In:     stdin,
+			Out:    stdout,
+			ErrOut: stderr,
+		},
+	})
+	
 	kubectlCmd.SetArgs(k.args)
 	kubectlCmd.SetContext(ctx)
-	kubectlCmd.SetIn(stdin)
-	kubectlCmd.SetOut(stdout)
-	kubectlCmd.SetErr(stderr)
 
 	// Start the command in a goroutine
 	go func() {
