@@ -34,7 +34,7 @@ type (
 	// cmdRun corresponds to `aigw run` command.
 	cmdRun struct {
 		Debug     bool                   `help:"Enable debug logging emitted to stderr."`
-		Path      string                 `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional when at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY is set." type:"path"`
+		Path      string                 `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Optional when at least OPENAI_API_KEY, AZURE_OPENAI_API_KEY, or ANTHROPIC_API_KEY is set." type:"path"`
 		AdminPort int                    `help:"HTTP port for the admin server (serves /metrics and /health endpoints)." default:"1064"`
 		McpConfig string                 `name:"mcp-config" help:"Path to MCP servers configuration file." type:"path"`
 		McpJSON   string                 `name:"mcp-json" help:"JSON string of MCP servers configuration."`
@@ -49,8 +49,8 @@ func (c *cmdRun) Validate() error {
 	if c.McpConfig != "" && c.McpJSON != "" {
 		return fmt.Errorf("mcp-config and mcp-json are mutually exclusive")
 	}
-	if c.Path == "" && os.Getenv("OPENAI_API_KEY") == "" && os.Getenv("AZURE_OPENAI_API_KEY") == "" && c.McpConfig == "" && c.McpJSON == "" {
-		return fmt.Errorf("you must supply at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY or a config file path")
+	if c.Path == "" && os.Getenv("OPENAI_API_KEY") == "" && os.Getenv("AZURE_OPENAI_API_KEY") == "" && os.Getenv("ANTHROPIC_API_KEY") == "" && c.McpConfig == "" && c.McpJSON == "" {
+		return fmt.Errorf("you must supply at least OPENAI_API_KEY, AZURE_OPENAI_API_KEY, ANTHROPIC_API_KEY, or a config file path")
 	}
 
 	var mcpJSON string

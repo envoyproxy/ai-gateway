@@ -38,6 +38,14 @@ type OpenAIConfig struct {
 	ProjectID      string // Optional OpenAI-Project header value
 }
 
+// AnthropicConfig holds Anthropic-specific configuration for generating AIServiceBackend resources.
+// This is nil when no Anthropic configuration is present.
+type AnthropicConfig struct {
+	BackendName string // References a Backend.Name (typically "anthropic")
+	SchemaName  string // Schema name: "Anthropic"
+	Version     string // API version (Anthropic path prefix)
+}
+
 // MCPBackendRef references a backend with MCP-specific routing configuration.
 // Used to generate MCPRoute backendRefs with path, tool filtering, and authentication.
 type MCPBackendRef struct {
@@ -49,13 +57,14 @@ type MCPBackendRef struct {
 }
 
 // ConfigData holds all template data for generating the AI Gateway configuration.
-// It supports OpenAI-only, MCP-only, or combined OpenAI+MCP configurations.
+// It supports OpenAI-only, Anthropic-only, MCP-only, or combined configurations.
 type ConfigData struct {
-	Backends       []Backend       // All backend endpoints (unified - includes OpenAI and MCP backends)
-	OpenAI         *OpenAIConfig   // OpenAI-specific configuration (nil for MCP-only mode)
-	MCPBackendRefs []MCPBackendRef // MCP routing configuration (nil/empty for OpenAI-only mode)
-	Debug          bool            // Enable debug logging for Envoy (includes component-level logging for ext_proc, http, connection)
-	EnvoyVersion   string          // Explicitly configure the version of Envoy to use.
+	Backends       []Backend        // All backend endpoints (unified - includes OpenAI, Anthropic, and MCP backends)
+	OpenAI         *OpenAIConfig    // OpenAI-specific configuration (nil when not present)
+	Anthropic      *AnthropicConfig // Anthropic-specific configuration (nil when not present)
+	MCPBackendRefs []MCPBackendRef  // MCP routing configuration (nil/empty for OpenAI-only or Anthropic-only mode)
+	Debug          bool             // Enable debug logging for Envoy (includes component-level logging for ext_proc, http, connection)
+	EnvoyVersion   string           // Explicitly configure the version of Envoy to use.
 }
 
 // WriteConfig generates the AI Gateway configuration.
@@ -74,7 +83,7 @@ func WriteConfig(data *ConfigData) (string, error) {
 	return buf.String(), nil
 }
 
-// parsedURL holds parsed URL components for creating Backend and OpenAIConfig.
+// parsedURL holds parsed URL components for creating Backend, OpenAIConfig, and AnthropicConfig.
 type parsedURL struct {
 	hostname         string
 	originalHostname string
@@ -87,13 +96,13 @@ type parsedURL struct {
 func parseURL(baseURL string) (*parsedURL, error) {
 	u, err := url.Parse(baseURL)
 	if err != nil {
-		return nil, fmt.Errorf("invalid OPENAI_BASE_URL: %w", err)
+		return nil, fmt.Errorf("invalid base URL: %w", err)
 	}
 
 	// Extract hostname
 	hostname := u.Hostname()
 	if hostname == "" {
-		return nil, fmt.Errorf("invalid OPENAI_BASE_URL: missing hostname")
+		return nil, fmt.Errorf("invalid base URL: missing hostname")
 	}
 	originalHostname := hostname
 
@@ -112,13 +121,13 @@ func parseURL(baseURL string) (*parsedURL, error) {
 		case "http":
 			port = 80
 		default:
-			return nil, fmt.Errorf("invalid OPENAI_BASE_URL: unsupported scheme %q", u.Scheme)
+			return nil, fmt.Errorf("invalid base URL: unsupported scheme %q", u.Scheme)
 		}
 	} else {
 		var err error
 		port, err = strconv.Atoi(portStr)
 		if err != nil {
-			return nil, fmt.Errorf("invalid port in OPENAI_BASE_URL: %w", err)
+			return nil, fmt.Errorf("invalid port in base URL: %w", err)
 		}
 	}
 
