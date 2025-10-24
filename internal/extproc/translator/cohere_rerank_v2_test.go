@@ -7,6 +7,7 @@ package translator
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -14,6 +15,10 @@ import (
 
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 )
+
+type alwaysErrReader struct{}
+
+func (alwaysErrReader) Read(_ []byte) (int, error) { return 0, errors.New("read error") }
 
 func TestCohereToCohereTranslatorV2Rerank_RequestBody(t *testing.T) {
 	for _, tc := range []struct {
@@ -77,6 +82,24 @@ func TestCohereToCohereTranslatorV2Rerank_RequestBody(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCohereToCohereTranslatorV2Rerank_RequestBody_InvalidJSONCreatesBodyWithOverride(t *testing.T) {
+	translator := NewRerankCohereToCohereTranslator("v2", "override-model")
+	// Provide invalid JSON; sjson with Optimistic mode can still produce a body with the override.
+	originalBody := []byte("not-json")
+	var req cohereschema.RerankV2Request
+	headerMutation, bodyMutation, err := translator.RequestBody(originalBody, &req, false)
+	require.NoError(t, err)
+	require.NotNil(t, headerMutation)
+	require.NotNil(t, bodyMutation)
+	// Body should contain the override model
+	require.Contains(t, string(bodyMutation.GetBody()), `"model":"override-model"`)
+	// Verify content-length header is set alongside :path
+	require.GreaterOrEqual(t, len(headerMutation.SetHeaders), 2)
+	require.Equal(t, ":path", headerMutation.SetHeaders[0].Header.Key)
+	require.Equal(t, "/v2/rerank", string(headerMutation.SetHeaders[0].Header.RawValue))
+	require.Equal(t, "content-length", headerMutation.SetHeaders[1].Header.Key)
 }
 
 func TestCohereToCohereTranslatorV2Rerank_ResponseHeaders(t *testing.T) {
@@ -171,6 +194,18 @@ func TestCohereToCohereTranslatorV2Rerank_ResponseError(t *testing.T) {
 
 		headerMutation, bodyMutation, err := translator.ResponseError(respHeaders, strings.NewReader(errorBody))
 		require.NoError(t, err)
+		require.Nil(t, headerMutation)
+		require.Nil(t, bodyMutation)
+	})
+
+	t.Run("read_error", func(t *testing.T) {
+		respHeaders := map[string]string{
+			statusHeaderName:      "500",
+			contentTypeHeaderName: "text/plain",
+		}
+		headerMutation, bodyMutation, err := translator.ResponseError(respHeaders, alwaysErrReader{})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "failed to read error body")
 		require.Nil(t, headerMutation)
 		require.Nil(t, bodyMutation)
 	})

@@ -7,6 +7,7 @@ package extproc
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -19,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	cohere "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -132,6 +134,191 @@ func Test_rerankProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
 		mm.RequireRequestNotCompleted(t)
 		require.Equal(t, "rerank-english-v3", mm.originalModel)
 		require.Equal(t, "rerank-english-v3", mm.requestModel)
+	})
+}
+
+func Test_rerankProcessorUpstreamFilter_ProcessRequestHeaders_HeaderMutatorMerge(t *testing.T) {
+	// Translator returns no mutations; header mutator should still apply remove/set.
+	raw := rerankBodyFromModel("rerank-english-v3")
+	var body cohere.RerankV2Request
+	require.NoError(t, json.Unmarshal(raw, &body))
+	headers := map[string]string{":path": "/v2/rerank", "authorization": "Bearer xyz"}
+	mt := &mockRerankTranslator{t: t, expRequestBody: &body}
+	mm := &mockRerankMetrics{}
+	mutCfg := &filterapi.HTTPHeaderMutation{
+		Remove: []string{"authorization"},
+		Set:    []filterapi.HTTPHeader{{Name: "x-api-key", Value: "k"}},
+	}
+	p := &rerankProcessorUpstreamFilter{
+		config:                 &processorConfig{},
+		requestHeaders:         headers,
+		logger:                 slog.Default(),
+		metrics:                mm,
+		translator:             mt,
+		originalRequestBodyRaw: raw,
+		originalRequestBody:    &body,
+		handler:                &mockBackendAuthHandler{},
+		headerMutator:          headermutator.NewHeaderMutator(mutCfg, headers),
+	}
+	resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+	require.NoError(t, err)
+	req := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
+	common := req.RequestHeaders.Response
+	require.NotNil(t, common.HeaderMutation)
+	// Expect removal of authorization and setting x-api-key
+	require.Contains(t, common.HeaderMutation.RemoveHeaders, "authorization")
+	foundSet := false
+	for _, h := range common.HeaderMutation.SetHeaders {
+		if h.Header.Key == "x-api-key" && string(h.Header.RawValue) == "k" {
+			foundSet = true
+			break
+		}
+	}
+	require.True(t, foundSet)
+}
+
+func Test_rerankProcessorUpstreamFilter_ProcessRequestHeaders_AuthError(t *testing.T) {
+	raw := rerankBodyFromModel("rerank-english-v3")
+	var body cohere.RerankV2Request
+	require.NoError(t, json.Unmarshal(raw, &body))
+	headers := map[string]string{":path": "/v2/rerank", internalapi.ModelNameHeaderKeyDefault: "rerank-english-v3"}
+	mt := &mockRerankTranslator{t: t, expRequestBody: &body}
+	mm := &mockRerankMetrics{}
+	p := &rerankProcessorUpstreamFilter{
+		config:                 &processorConfig{},
+		requestHeaders:         headers,
+		logger:                 slog.Default(),
+		metrics:                mm,
+		translator:             mt,
+		originalRequestBodyRaw: raw,
+		originalRequestBody:    &body,
+		handler:                &mockBackendAuthHandlerError{},
+	}
+	_, err := p.ProcessRequestHeaders(t.Context(), nil)
+	require.ErrorContains(t, err, "failed to do auth request")
+	mm.RequireRequestFailure(t)
+}
+
+func Test_rerankProcessorUpstreamFilter_ProcessRequestBody_Panic(t *testing.T) {
+	p := &rerankProcessorUpstreamFilter{}
+	require.Panics(t, func() { _, _ = p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{}) })
+}
+
+func Test_rerankProcessorUpstreamFilter_ProcessResponseHeaders_ErrorAndEncoding(t *testing.T) {
+	mm := &mockRerankMetrics{}
+	mt := &mockRerankTranslator{t: t, retErr: errors.New("hdr fail")}
+	p := &rerankProcessorUpstreamFilter{translator: mt, metrics: mm}
+	inHeaders := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: "content-encoding", Value: "gzip"}}}
+	_, err := p.ProcessResponseHeaders(t.Context(), inHeaders)
+	require.ErrorContains(t, err, "failed to transform response headers")
+	mm.RequireRequestFailure(t)
+}
+
+func gzipBytes(t *testing.T, b []byte) []byte {
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	_, err := zw.Write(b)
+	require.NoError(t, err)
+	require.NoError(t, zw.Close())
+	return buf.Bytes()
+}
+
+func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_DecodeAndRemoveContentEncoding(t *testing.T) {
+	plain := []byte("ok")
+	gz := gzipBytes(t, plain)
+	mm := &mockRerankMetrics{}
+	mt := &mockRerankTranslator{
+		t:               t,
+		expResponseBody: &extprocv3.HttpBody{Body: plain},
+		retBodyMutation: &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: []byte("mut")}},
+	}
+	p := &rerankProcessorUpstreamFilter{
+		translator:       mt,
+		metrics:          mm,
+		responseHeaders:  map[string]string{":status": "200"},
+		responseEncoding: "gzip",
+	}
+	res, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{Body: gz, EndOfStream: false})
+	require.NoError(t, err)
+	common := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
+	require.Contains(t, common.HeaderMutation.RemoveHeaders, "content-encoding")
+}
+
+func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_DecodeError(t *testing.T) {
+	mm := &mockRerankMetrics{}
+	mt := &mockRerankTranslator{t: t}
+	p := &rerankProcessorUpstreamFilter{
+		translator:       mt,
+		metrics:          mm,
+		responseHeaders:  map[string]string{":status": "200"},
+		responseEncoding: "gzip",
+	}
+	// Invalid gzip payload triggers decode error
+	_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{Body: []byte("not-gzip"), EndOfStream: true})
+	require.Error(t, err)
+	mm.RequireRequestFailure(t)
+}
+
+func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_ErrorTransformError(t *testing.T) {
+	mm := &mockRerankMetrics{}
+	mt := &mockRerankTranslator{t: t, retErr: errors.New("boom")}
+	p := &rerankProcessorUpstreamFilter{
+		translator:      mt,
+		metrics:         mm,
+		responseHeaders: map[string]string{":status": "500"},
+	}
+	_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{Body: []byte("err"), EndOfStream: true})
+	require.ErrorContains(t, err, "failed to transform response error")
+}
+
+func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_ResponseTransformError(t *testing.T) {
+	mm := &mockRerankMetrics{}
+	mt := &mockRerankTranslator{t: t, retErr: errors.New("boom")}
+	p := &rerankProcessorUpstreamFilter{
+		translator:      mt,
+		metrics:         mm,
+		responseHeaders: map[string]string{":status": "200"},
+	}
+	_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{Body: []byte("ok"), EndOfStream: true})
+	require.ErrorContains(t, err, "failed to transform response")
+}
+
+func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_MetadataError(t *testing.T) {
+	mm := &mockRerankMetrics{}
+	mt := &mockRerankTranslator{
+		t:                 t,
+		expResponseBody:   &extprocv3.HttpBody{Body: []byte("ok")},
+		retHeaderMutation: &extprocv3.HeaderMutation{},
+		retBodyMutation:   &extprocv3.BodyMutation{},
+	}
+	p := &rerankProcessorUpstreamFilter{
+		translator:      mt,
+		metrics:         mm,
+		config:          &processorConfig{requestCosts: []processorConfigRequestCost{{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostType("unknown"), MetadataKey: "x"}}}},
+		responseHeaders: map[string]string{":status": "200"},
+	}
+	_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{Body: []byte("ok"), EndOfStream: true})
+	require.ErrorContains(t, err, "failed to build dynamic metadata")
+}
+
+func Test_rerankProcessorUpstreamFilter_SetBackend_SupportedWithOverride(t *testing.T) {
+	headers := map[string]string{":path": "/v2/rerank"}
+	mm := &mockRerankMetrics{}
+	p := &rerankProcessorUpstreamFilter{config: &processorConfig{}, requestHeaders: headers, logger: slog.Default(), metrics: mm}
+	rp := &rerankProcessorRouterFilter{requestHeaders: headers}
+	err := p.SetBackend(t.Context(), &filterapi.Backend{ModelNameOverride: "override", Name: "cohere-backend", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaCohere, Version: "v2"}}, nil, rp)
+	require.NoError(t, err)
+	require.NotNil(t, p.translator)
+	require.NotNil(t, p.headerMutator)
+	require.Equal(t, "override", headers[internalapi.ModelNameHeaderKeyDefault])
+	require.Equal(t, "override", mm.requestModel)
+	require.Equal(t, p, rp.upstreamFilter)
+}
+
+func Test_rerankProcessorUpstreamFilter_SetBackend_PanicWrongRoute(t *testing.T) {
+	p := &rerankProcessorUpstreamFilter{config: &processorConfig{}, requestHeaders: map[string]string{}, logger: slog.Default(), metrics: &mockRerankMetrics{}}
+	require.Panics(t, func() {
+		_ = p.SetBackend(t.Context(), &filterapi.Backend{Name: "b", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaCohere, Version: "v2"}}, nil, &mockProcessor{})
 	})
 }
 
