@@ -23,7 +23,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer/yaml"
 	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
-	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -426,44 +425,25 @@ func kubeWaitForDeploymentReady(ctx context.Context, namespace, deployment strin
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	// Wait for deployment to exist first
-	for {
-		_, err := clientset.AppsV1().Deployments(namespace).Get(ctx, deployment, metav1.GetOptions{})
-		if err == nil {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for deployment %s/%s to be created: %w", namespace, deployment, ctx.Err())
-		case <-time.After(1 * time.Second):
-		}
-	}
-
-	// Watch for deployment to become ready
-	watcher, err := clientset.AppsV1().Deployments(namespace).Watch(ctx, metav1.ListOptions{
-		FieldSelector: fmt.Sprintf("metadata.name=%s", deployment),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to watch deployment: %w", err)
-	}
-	defer watcher.Stop()
+	// Poll for deployment to be ready
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("timeout waiting for deployment %s/%s to be ready: %w", namespace, deployment, ctx.Err())
-		case event := <-watcher.ResultChan():
-			if event.Type == watch.Added || event.Type == watch.Modified {
-				deploy, ok := event.Object.(*appsv1.Deployment)
-				if !ok {
-					continue
-				}
+		case <-ticker.C:
+			deploy, err := clientset.AppsV1().Deployments(namespace).Get(ctx, deployment, metav1.GetOptions{})
+			if err != nil {
+				// Deployment doesn't exist yet, continue waiting
+				continue
+			}
 
-				// Check if deployment is available
-				for _, cond := range deploy.Status.Conditions {
-					if cond.Type == appsv1.DeploymentAvailable && cond.Status == corev1.ConditionTrue {
-						return nil
-					}
+			// Check if deployment is available
+			for _, cond := range deploy.Status.Conditions {
+				if cond.Type == appsv1.DeploymentAvailable && cond.Status == corev1.ConditionTrue {
+					return nil
 				}
 			}
 		}
@@ -481,43 +461,24 @@ func kubeWaitForDaemonSetReady(ctx context.Context, namespace, daemonset string,
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	// Wait for daemonset to exist first
-	for {
-		_, err := clientset.AppsV1().DaemonSets(namespace).Get(ctx, daemonset, metav1.GetOptions{})
-		if err == nil {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for daemonset %s/%s to be created: %w", namespace, daemonset, ctx.Err())
-		case <-time.After(1 * time.Second):
-		}
-	}
-
-	// Watch for daemonset to become ready
-	watcher, err := clientset.AppsV1().DaemonSets(namespace).Watch(ctx, metav1.ListOptions{
-		FieldSelector: fmt.Sprintf("metadata.name=%s", daemonset),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to watch daemonset: %w", err)
-	}
-	defer watcher.Stop()
+	// Poll for daemonset to be ready
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("timeout waiting for daemonset %s/%s to be ready: %w", namespace, daemonset, ctx.Err())
-		case event := <-watcher.ResultChan():
-			if event.Type == watch.Added || event.Type == watch.Modified {
-				ds, ok := event.Object.(*appsv1.DaemonSet)
-				if !ok {
-					continue
-				}
+		case <-ticker.C:
+			ds, err := clientset.AppsV1().DaemonSets(namespace).Get(ctx, daemonset, metav1.GetOptions{})
+			if err != nil {
+				// DaemonSet doesn't exist yet, continue waiting
+				continue
+			}
 
-				// Check if at least one pod is ready
-				if ds.Status.NumberReady > 0 {
-					return nil
-				}
+			// Check if at least one pod is ready
+			if ds.Status.NumberReady > 0 {
+				return nil
 			}
 		}
 	}
