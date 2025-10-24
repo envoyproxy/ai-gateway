@@ -36,6 +36,7 @@ const (
 var (
 	openAISchema         = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}
 	awsBedrockSchema     = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}
+	awsAnthropicSchema   = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSAnthropic}
 	azureOpenAISchema    = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2025-01-01-preview"}
 	gcpVertexAISchema    = filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPVertexAI}
 	gcpAnthropicAISchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPAnthropic, Version: "vertex-2023-10-16"}

@@ -235,6 +235,7 @@ spec:
                     - GCPVertexAI
                     - GCPAnthropic
                     - Anthropic
+                    - AWSAnthropic
                     type: string
                   version:
                     description: |-

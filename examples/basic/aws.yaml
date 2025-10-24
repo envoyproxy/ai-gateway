@@ -23,6 +23,25 @@ spec:
         - name: envoy-ai-gateway-basic-aws
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-basic-aws-bedrock-anthropic
+  namespace: default
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway-basic
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: anthropic.claude-3-5-sonnet-20241022-v2:0
+      backendRefs:
+        - name: envoy-ai-gateway-basic-aws-bedrock-anthropic
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
 metadata:
   name: envoy-ai-gateway-basic-aws
@@ -30,6 +49,20 @@ metadata:
 spec:
   schema:
     name: AWSBedrock
+  backendRef:
+    name: envoy-ai-gateway-basic-aws
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-basic-aws-bedrock-anthropic
+  namespace: default
+spec:
+  schema:
+    name: AWSAnthropic
+    version: bedrock-2023-05-31
   backendRef:
     name: envoy-ai-gateway-basic-aws
     kind: Backend
@@ -45,6 +78,9 @@ spec:
     - group: aigateway.envoyproxy.io
       kind: AIServiceBackend
       name: envoy-ai-gateway-basic-aws
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: envoy-ai-gateway-basic-aws-bedrock-anthropic
   type: AWSCredentials
   awsCredentials:
     region: us-east-1
@@ -85,6 +121,7 @@ metadata:
 type: Opaque
 stringData:
   # Replace this with your AWS credentials.
+  # You can also use AWS IAM roles for service accounts (IRSA) in EKS.
   credentials: |
     [default]
     aws_access_key_id = AWS_ACCESS_KEY_ID

@@ -29,7 +29,6 @@ import (
 
 // currently a requirement for GCP Vertex / Anthropic API https://docs.anthropic.com/en/api/claude-on-vertex-ai
 const (
-	anthropicVersionKey   = "anthropic_version"
 	gcpBackendError       = "GCPBackendError"
 	tempNotSupportedError = "temperature %.2f is not supported by Anthropic (must be between 0.0 and 1.0)"
 )

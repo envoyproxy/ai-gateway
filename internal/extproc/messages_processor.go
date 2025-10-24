@@ -157,10 +157,13 @@ func (c *messagesProcessorUpstreamFilter) selectTranslator(out filterapi.Version
 		// Anthropic → GCP Anthropic (request direction translator).
 		// Uses backend config version (GCP Vertex AI requires specific versions like "vertex-2023-10-16").
 		c.translator = translator.NewAnthropicToGCPAnthropicTranslator(out.Version, c.modelNameOverride)
+	case filterapi.APISchemaAWSAnthropic:
+		// Anthropic → AWS Bedrock Anthropic (request direction translator).
+		c.translator = translator.NewAnthropicToAWSAnthropicTranslator(out.Version, c.modelNameOverride)
 	case filterapi.APISchemaAnthropic:
 		c.translator = translator.NewAnthropicToAnthropicTranslator(out.Version, c.modelNameOverride)
 	default:
-		return fmt.Errorf("/v1/messages endpoint only supports backends that return native Anthropic format (GCPAnthropic). Backend %s uses different model format", out.Name)
+		return fmt.Errorf("/v1/messages endpoint only supports backends that return native Anthropic format (Anthropic, GCPAnthropic, AWSAnthropic). Backend %s uses different model format", out.Name)
 	}
 	return nil
 }
