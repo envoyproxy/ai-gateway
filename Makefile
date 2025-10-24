@@ -49,9 +49,11 @@ precommit: ## Run all necessary steps to prepare for a commit.
 precommit: tidy spellcheck apigen apidoc format lint editorconfig helm-test
 
 .PHONY: lint
-lint: ## This runs the linter, formatter, and tidy on the codebase.
-	@echo "lint => ./..."
+lint: ## This runs the linter on the codebase.
+	@echo "golangci-lint => ./..."
 	@$(GO_TOOL) golangci-lint run --build-tags==test_crdcel,test_controller,test_extproc,test_e2e ./...
+	@echo "actionlint => ./..."
+	@$(GO_TOOL) actionlint -shellcheck="" # Disabling shellcheck as it requires additional host dependencies.
 
 .PHONY: spellcheck
 spellcheck:  ## Spell check the codebase.
