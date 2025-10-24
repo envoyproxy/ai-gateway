@@ -113,7 +113,10 @@ func (k *kubectlCmd) Start() error {
 // Output executes the kubectl command and returns stdout
 func (k *kubectlCmd) Output() ([]byte, error) {
 	var outBuf bytes.Buffer
+	var errBuf bytes.Buffer
 	k.Stdout = &outBuf
+	// Suppress stderr to avoid noisy error output during retries
+	k.Stderr = &errBuf
 	err := k.Run()
 	return outBuf.Bytes(), err
 }
