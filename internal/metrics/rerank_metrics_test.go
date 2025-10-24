@@ -20,7 +20,7 @@ import (
 func TestRerank_RecordTokenUsage(t *testing.T) {
 	mr := sdkmetric.NewManualReader()
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
-	rr := NewRerank(meter, nil).(*rerank)
+	rr := NewRerankFactory(meter, nil)().(*rerank)
 
 	attrs := []attribute.KeyValue{
 		attribute.Key(genaiAttributeOperationName).String(genaiOperationRerank),
@@ -46,7 +46,7 @@ func TestRerank_RecordTokenUsage(t *testing.T) {
 func TestRerank_RecordTokenUsage_MultipleRecords(t *testing.T) {
 	mr := sdkmetric.NewManualReader()
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
-	rr := NewRerank(meter, nil).(*rerank)
+	rr := NewRerankFactory(meter, nil)().(*rerank)
 
 	rr.SetOriginalModel("rerank-english-v3")
 	rr.SetRequestModel("rerank-english-v3")
@@ -86,7 +86,7 @@ func TestRerank_HeaderLabelMapping(t *testing.T) {
 		"x-api-key":   "api_key",
 	}
 
-	rr := NewRerank(meter, headerMapping).(*rerank)
+	rr := NewRerankFactory(meter, headerMapping)().(*rerank)
 
 	// Test with headers that should be mapped.
 	requestHeaders := map[string]string{
@@ -102,7 +102,7 @@ func TestRerank_HeaderLabelMapping(t *testing.T) {
 	rr.RecordTokenUsage(t.Context(), 10, requestHeaders)
 
 	// Verify that the header mapping is set correctly.
-	assert.Equal(t, headerMapping, rr.requestHeaderLabelMapping)
+	assert.Equal(t, headerMapping, rr.requestHeaderAttributeMapping)
 
 	// Verify that the metrics are recorded with the mapped header attributes.
 	attrs := attribute.NewSet(
@@ -123,7 +123,7 @@ func TestRerank_HeaderLabelMapping(t *testing.T) {
 func TestRerank_Labels_SetModel_RequestAndResponseDiffer(t *testing.T) {
 	mr := sdkmetric.NewManualReader()
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
-	rr := NewRerank(meter, nil).(*rerank)
+	rr := NewRerankFactory(meter, nil)().(*rerank)
 
 	rr.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 	rr.SetOriginalModel("orig-rerank")
@@ -147,7 +147,7 @@ func TestRerank_Labels_SetModel_RequestAndResponseDiffer(t *testing.T) {
 func TestRerank_RecordRequestCompletion(t *testing.T) {
 	mr := sdkmetric.NewManualReader()
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
-	rr := NewRerank(meter, nil).(*rerank)
+	rr := NewRerankFactory(meter, nil)().(*rerank)
 
 	attrs := []attribute.KeyValue{
 		attribute.Key(genaiAttributeOperationName).String(genaiOperationRerank),

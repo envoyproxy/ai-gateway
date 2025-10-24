@@ -28,7 +28,7 @@ import (
 )
 
 // RerankProcessorFactory returns a factory method to instantiate the rerank processor.
-func RerankProcessorFactory(rr metrics.RerankMetrics) ProcessorFactory {
+func RerankProcessorFactory(f metrics.RerankMetricsFactory) ProcessorFactory {
 	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "rerank", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
@@ -42,7 +42,7 @@ func RerankProcessorFactory(rr metrics.RerankMetrics) ProcessorFactory {
 			config:         config,
 			requestHeaders: requestHeaders,
 			logger:         logger,
-			metrics:        rr,
+			metrics:        f(),
 		}, nil
 	}
 }
