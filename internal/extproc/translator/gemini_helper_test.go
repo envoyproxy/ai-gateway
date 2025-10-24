@@ -725,6 +725,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 		name                     string
 		input                    *openai.ChatCompletionRequest
 		expectedGenerationConfig *genai.GenerationConfig
+		expectedResponseMode     geminiResponseMode
 		expectedErrMsg           string
 	}{
 		{
@@ -755,11 +756,13 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				FrequencyPenalty: ptr.To(float32(0.5)),
 				StopSequences:    []string{"stop1", "stop2"},
 			},
+			expectedResponseMode: responseModeNone,
 		},
 		{
 			name:                     "minimal fields",
 			input:                    &openai.ChatCompletionRequest{},
 			expectedGenerationConfig: &genai.GenerationConfig{},
+			expectedResponseMode:     responseModeNone,
 		},
 		{
 			name: "stop sequences",
@@ -771,6 +774,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 			expectedGenerationConfig: &genai.GenerationConfig{
 				StopSequences: []string{"stop1"},
 			},
+			expectedResponseMode: responseModeNone,
 		},
 		{
 			name: "text",
@@ -782,6 +786,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				},
 			},
 			expectedGenerationConfig: &genai.GenerationConfig{ResponseMIMEType: "text/plain"},
+			expectedResponseMode:     responseModeText,
 		},
 		{
 			name: "json object",
@@ -793,6 +798,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				},
 			},
 			expectedGenerationConfig: &genai.GenerationConfig{ResponseMIMEType: "application/json"},
+			expectedResponseMode:     responseModeJSON,
 		},
 		{
 			name: "json schema (map)",
@@ -810,6 +816,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				ResponseMIMEType:   "application/json",
 				ResponseJsonSchema: map[string]any{"type": "string"},
 			},
+			expectedResponseMode: responseModeJSON,
 		},
 		{
 			name: "json schema (string)",
@@ -827,6 +834,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				ResponseMIMEType:   "application/json",
 				ResponseJsonSchema: map[string]any{"type": "string"},
 			},
+			expectedResponseMode: responseModeJSON,
 		},
 		{
 			name: "json schema (invalid string)",
@@ -851,6 +859,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				ResponseMIMEType: "text/x.enum",
 				ResponseSchema:   &genai.Schema{Type: "STRING", Enum: []string{"Positive", "Negative"}},
 			},
+			expectedResponseMode: responseModeEnum,
 		},
 		{
 			name: "guided regex",
@@ -861,6 +870,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				ResponseMIMEType: "application/json",
 				ResponseSchema:   &genai.Schema{Type: "STRING", Pattern: "\\w+@\\w+\\.com\\n"},
 			},
+			expectedResponseMode: responseModeRegex,
 		},
 		{
 			name: "guided json",
@@ -871,12 +881,25 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				ResponseMIMEType:   "application/json",
 				ResponseJsonSchema: json.RawMessage(`{"type": "string"}`),
 			},
+			expectedResponseMode: responseModeJSON,
+		},
+		{
+			name: "multiple format specifiers - ResponseFormat and GuidedChoice",
+			input: &openai.ChatCompletionRequest{
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfText: &openai.ChatCompletionResponseFormatTextParam{
+						Type: openai.ChatCompletionResponseFormatTypeText,
+					},
+				},
+				GuidedChoice: []string{"A", "B"},
+			},
+			expectedErrMsg: "multiple format specifiers specified",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := openAIReqToGeminiGenerationConfig(tc.input)
+			got, responseMode, err := openAIReqToGeminiGenerationConfig(tc.input)
 			if tc.expectedErrMsg != "" {
 				require.ErrorContains(t, err, tc.expectedErrMsg)
 			} else {
@@ -884,6 +907,10 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 
 				if diff := cmp.Diff(tc.expectedGenerationConfig, got, cmpopts.IgnoreUnexported(genai.GenerationConfig{})); diff != "" {
 					t.Errorf("GenerationConfig mismatch (-want +got):\n%s", diff)
+				}
+
+				if responseMode != tc.expectedResponseMode {
+					t.Errorf("geminiResponseMode mismatch: got %v, want %v", responseMode, tc.expectedResponseMode)
 				}
 			}
 		})
@@ -1385,6 +1412,80 @@ func TestGeminiFinishReasonToOpenAI(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := geminiFinishReasonToOpenAI(tt.input)
 			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestExtractTextFromGeminiParts(t *testing.T) {
+	tests := []struct {
+		name         string
+		parts        []*genai.Part
+		responseMode geminiResponseMode
+		expected     string
+	}{
+		{
+			name:         "nil parts",
+			parts:        nil,
+			responseMode: responseModeNone,
+			expected:     "",
+		},
+		{
+			name:         "empty parts",
+			parts:        []*genai.Part{},
+			responseMode: responseModeNone,
+			expected:     "",
+		},
+		{
+			name: "multiple text parts without regex mode",
+			parts: []*genai.Part{
+				{Text: "Hello, "},
+				{Text: "world!"},
+			},
+			responseMode: responseModeJSON,
+			expected:     "Hello, world!",
+		},
+		{
+			name: "regex mode with mixed quoted and unquoted text",
+			parts: []*genai.Part{
+				{Text: `"positive"`},
+				{Text: `unquoted`},
+				{Text: `"negative"`},
+			},
+			responseMode: responseModeRegex,
+			expected:     "positiveunquotednegative",
+		},
+		{
+			name: "regex mode with only double-quoted first and last words",
+			parts: []*genai.Part{
+				{Text: "\"\"ERROR\" Unable to connect to database \"DatabaseModule\"\""},
+			},
+			responseMode: responseModeRegex,
+			expected:     "\"ERROR\" Unable to connect to database \"DatabaseModule\"",
+		},
+		{
+			name: "non-regex mode with double-quoted text (should not remove quotes)",
+			parts: []*genai.Part{
+				{Text: `"positive"`},
+			},
+			responseMode: responseModeJSON,
+			expected:     `"positive"`,
+		},
+		{
+			name: "regex mode with text containing internal quotes",
+			parts: []*genai.Part{
+				{Text: `"He said \"hello\" to me"`},
+			},
+			responseMode: responseModeRegex,
+			expected:     `He said \"hello\" to me`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := extractTextFromGeminiParts(tc.parts, tc.responseMode)
+			if result != tc.expected {
+				t.Errorf("extractTextFromGeminiParts() = %q, want %q", result, tc.expected)
+			}
 		})
 	}
 }
