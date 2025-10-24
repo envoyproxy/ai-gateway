@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"k8s.io/kubectl/pkg/cmd"
@@ -158,7 +159,29 @@ func KubectlApplyManifestStdin(ctx context.Context, manifest string) error {
 }
 
 func KubectlDeleteManifest(ctx context.Context, manifest string) error {
-	cmd := Kubectl(ctx, "delete", "-f", manifest)
+	// If manifest looks like a URL or file path, use it directly
+	if strings.HasPrefix(manifest, "http://") || strings.HasPrefix(manifest, "https://") || 
+		!strings.Contains(manifest, "\n") {
+		cmd := Kubectl(ctx, "delete", "-f", manifest)
+		return cmd.Run()
+	}
+	
+	// Otherwise it's YAML content, write to temp file
+	tmpfile, err := os.CreateTemp("", "kubectl-delete-*.yaml")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(tmpfile.Name())
+	
+	if _, err := tmpfile.Write([]byte(manifest)); err != nil {
+		tmpfile.Close()
+		return fmt.Errorf("failed to write to temp file: %w", err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file: %w", err)
+	}
+	
+	cmd := Kubectl(ctx, "delete", "-f", tmpfile.Name())
 	return cmd.Run()
 }
 
