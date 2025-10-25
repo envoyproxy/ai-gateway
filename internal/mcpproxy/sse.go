@@ -50,7 +50,7 @@ func (p *sseEventParser) next() (*sseEvent, error) {
 			var buffered *sseEvent
 			if err == io.EOF && buf.Len() > 0 {
 				// If we have accumulated content, return it as the last event.
-				buffered, _ = p.parseEvent(buf.Bytes())
+				buffered, _ = p.parseEvent(&buf)
 			}
 			return buffered, err
 		}
@@ -73,7 +73,7 @@ func (p *sseEventParser) next() (*sseEvent, error) {
 		case '\n':
 			buf.WriteByte('\n')
 			if prevWasNewline { // double newline -> end of event.
-				return p.parseEvent(buf.Bytes())
+				return p.parseEvent(&buf)
 			}
 			prevWasNewline = true
 		default:
@@ -84,9 +84,14 @@ func (p *sseEventParser) next() (*sseEvent, error) {
 }
 
 // parseEvent parses one normalized block into an sseEvent.
-func (p *sseEventParser) parseEvent(block []byte) (*sseEvent, error) {
-	ret := &sseEvent{}
-	for _, line := range bytes.Split(block, []byte{'\n'}) {
+func (p *sseEventParser) parseEvent(buf *bytes.Buffer) (*sseEvent, error) {
+	var (
+		ret     = &sseEvent{}
+		scanner = bufio.NewScanner(buf)
+	)
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
 		switch {
 		case bytes.HasPrefix(line, sseEventPrefix):
 			ret.event = string(bytes.TrimSpace(line[7:]))
@@ -101,7 +106,8 @@ func (p *sseEventParser) parseEvent(block []byte) (*sseEvent, error) {
 			ret.messages = append(ret.messages, msg)
 		}
 	}
-	return ret, nil
+
+	return ret, scanner.Err()
 }
 
 type sseEvent struct {
