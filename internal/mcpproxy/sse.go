@@ -6,6 +6,7 @@
 package mcpproxy
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -16,48 +17,76 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
+var (
+	sseEventPrefix = []byte("event: ")
+	sseIDPrefix    = []byte("id: ")
+	sseDataPrefix  = []byte("data: ")
+)
+
+// sseEventParser reads bytes from a reader and parses the SSE Events gracefully
+// handling the different line terminations: CR, LF, CRLF.
 type sseEventParser struct {
 	backend filterapi.MCPBackendName
-	r       io.Reader
-	readBuf [4096]byte
-	buf     []byte
+	r       *bufio.Reader
 }
 
 func newSSEEventParser(r io.Reader, backend filterapi.MCPBackendName) sseEventParser {
-	return sseEventParser{r: r, backend: backend}
+	return sseEventParser{
+		r:       bufio.NewReader(r),
+		backend: backend,
+	}
 }
 
-type sseEvent struct {
-	event, id string
-	messages  []jsonrpc.Message
-	backend   filterapi.MCPBackendName
-}
-
-var (
-	sseEventSeparator = []byte{'\n', '\n'}
-	sseEventPrefix    = []byte("event: ")
-	sseIDPrefix       = []byte("id: ")
-	sseDataPrefix     = []byte("data: ")
-	sseFieldSeparator = []byte{'\n'}
-)
-
+// next reads the next SSE event from the stream.
 func (p *sseEventParser) next() (*sseEvent, error) {
-	idx := -1
-	for idx == -1 {
-		idx = bytes.Index(p.buf, sseEventSeparator)
-		if idx < 0 {
-			n, err := p.r.Read(p.readBuf[:])
-			if n > 0 {
-				p.buf = append(p.buf, p.readBuf[:n]...)
-			} else {
+	var (
+		buf            bytes.Buffer
+		prevWasNewline bool
+	)
+
+	for {
+		b, err := p.r.ReadByte()
+		if err != nil {
+			var buffered *sseEvent
+			if err == io.EOF && buf.Len() > 0 {
+				// If we have accumulated content, return it as the last event.
+				buffered, _ = p.parseEvent(buf.Bytes())
+			}
+			return buffered, err
+		}
+
+		switch b {
+		case '\r':
+			peek, err := p.r.Peek(1)
+			// if we try to peek, but we get an EOF, it is OK. We're at the end of
+			// and event, and we just process the new line normally.
+			if err != nil && err != io.EOF {
 				return nil, err
 			}
+			if len(peek) > 0 && peek[0] == '\n' {
+				// consume the '\n' that follows '\r' to normalize newlines.
+				if _, err = p.r.ReadByte(); err != nil {
+					return nil, err
+				}
+			}
+			fallthrough // process as a normal newline.
+		case '\n':
+			buf.WriteByte('\n')
+			if prevWasNewline { // double newline -> end of event.
+				return p.parseEvent(buf.Bytes())
+			}
+			prevWasNewline = true
+		default:
+			prevWasNewline = false
+			buf.WriteByte(b)
 		}
 	}
+}
 
-	event := p.buf[:idx+2]
-	ret := &sseEvent{backend: p.backend}
-	for _, line := range bytes.Split(event, sseFieldSeparator) {
+// parseEvent parses one normalized block into an sseEvent.
+func (p *sseEventParser) parseEvent(block []byte) (*sseEvent, error) {
+	ret := &sseEvent{}
+	for _, line := range bytes.Split(block, []byte{'\n'}) {
 		switch {
 		case bytes.HasPrefix(line, sseEventPrefix):
 			ret.event = string(bytes.TrimSpace(line[7:]))
@@ -72,28 +101,33 @@ func (p *sseEventParser) next() (*sseEvent, error) {
 			ret.messages = append(ret.messages, msg)
 		}
 	}
-	p.buf = p.buf[idx+2:]
 	return ret, nil
+}
+
+type sseEvent struct {
+	event, id string
+	messages  []jsonrpc.Message
+	backend   filterapi.MCPBackendName
 }
 
 func (e *sseEvent) writeAndMaybeFlush(w io.Writer) {
 	if e.event != "" {
 		_, _ = w.Write(sseEventPrefix)
 		_, _ = w.Write([]byte(e.event))
-		_, _ = w.Write(sseFieldSeparator)
+		_, _ = w.Write([]byte{'\n'})
 	}
 	if e.id != "" {
 		_, _ = w.Write(sseIDPrefix)
 		_, _ = w.Write([]byte(e.id))
-		_, _ = w.Write(sseFieldSeparator)
+		_, _ = w.Write([]byte{'\n'})
 	}
 	for _, msg := range e.messages {
 		_, _ = w.Write(sseDataPrefix)
 		data, _ := jsonrpc.EncodeMessage(msg)
 		_, _ = w.Write(data)
-		_, _ = w.Write(sseFieldSeparator)
+		_, _ = w.Write([]byte{'\n'})
 	}
-	_, _ = w.Write(sseEventSeparator)
+	_, _ = w.Write([]byte{'\n', '\n'})
 
 	// Flush the response writer to ensure the event is sent immediately.
 	if f, ok := w.(http.Flusher); ok {
