@@ -61,6 +61,24 @@ func TestSSEEventParser_SingleEvent(t *testing.T) {
 				[]byte("\r\n\r\n"),
 			}, nil),
 		},
+		{
+			"with mixed separators",
+			bytes.Join([][]byte{
+				[]byte("event: message\r\n"),
+				[]byte("id: 42\n"),
+				append([]byte("data: "), encoded...),
+				[]byte("\r\r"),
+			}, nil),
+		},
+		{
+			"with mixed separators",
+			bytes.Join([][]byte{
+				[]byte("event: message\r"),
+				[]byte("id: 42\r\n"),
+				append([]byte("data: "), encoded...),
+				[]byte("\n\n"),
+			}, nil),
+		},
 	}
 
 	for _, tt := range tests {
@@ -110,6 +128,13 @@ func TestSSEEventParser_MultipleEvents(t *testing.T) {
 			bytes.Join([][]byte{
 				[]byte("event: e1\r\n"), append([]byte("data: "), mustEncode(t, r1)...), []byte("\r\n\r\n"),
 				[]byte("event: e2\r\n"), append([]byte("data: "), mustEncode(t, r2)...), []byte("\r\n\r\n"),
+			}, nil),
+		},
+		{
+			"with mixes separators",
+			bytes.Join([][]byte{
+				[]byte("event: e1\n"), append([]byte("data: "), mustEncode(t, r1)...), []byte("\n\n"),
+				[]byte("event: e2\r\n"), append([]byte("data: "), mustEncode(t, r2)...), []byte("\r\r"),
 			}, nil),
 		},
 	}
@@ -172,6 +197,12 @@ func TestSSEEventParser_PartialReads(t *testing.T) {
 				[]byte("event:"), []byte(" message\r\nid"), []byte(": 99\r\n"), []byte("data: "), encoded, []byte("\r\n\r\n"),
 			}, nil),
 		},
+		{
+			"with mixed separators",
+			bytes.Join([][]byte{
+				[]byte("event:"), []byte(" message\nid"), []byte(": 99\r"), []byte("data: "), encoded, []byte("\r\r"),
+			}, nil),
+		},
 	}
 
 	for _, tt := range tests {
@@ -185,6 +216,17 @@ func TestSSEEventParser_PartialReads(t *testing.T) {
 			require.Len(t, ev.messages, 1)
 		})
 	}
+}
+
+func TestSSEEventParser_IncompleteEvent(t *testing.T) {
+	raw := []byte("event: foo\ndat")
+	p := newSSEEventParser(bytes.NewReader(raw), "mybackend")
+	ev, err := p.next()
+	require.NotNil(t, ev)
+	require.ErrorIs(t, err, io.EOF)
+	require.Equal(t, "foo", ev.event)
+	require.Empty(t, ev.id)
+	require.Nil(t, ev.messages)
 }
 
 func TestSSEEventParser_InvalidJSONRPCMessage(t *testing.T) {
@@ -203,43 +245,16 @@ func TestSSEEvent_WriteAndMaybeFlush(t *testing.T) {
 	req := &jsonrpc.Request{Method: "foo", ID: id}
 	resp := &jsonrpc.Response{ID: id}
 
-	t.Run("with LF separators", func(t *testing.T) {
-		ev := &sseEvent{event: "custom", id: "7", messages: []jsonrpc.Message{req, resp}}
-		rr := httptest.NewRecorder()
-		ev.writeAndMaybeFlush(rr)
-		output := rr.Body.String()
-		// Basic structural assertions.
-		require.Contains(t, output, "event: custom\n")
-		require.Contains(t, output, "id: 7\n")
-		require.Contains(t, output, "data: ")
-		// It ends with the separator (blank line).
-		require.True(t, bytes.HasSuffix([]byte(output), []byte("\n\n")))
-	})
-	t.Run("with CR separators", func(t *testing.T) {
-		ev := &sseEvent{event: "custom", id: "7", messages: []jsonrpc.Message{req, resp}, separator: sseSeparatorCR}
-		rr := httptest.NewRecorder()
-		ev.writeAndMaybeFlush(rr)
-		output := rr.Body.String()
-		// Basic structural assertions.
-		require.Contains(t, output, "event: custom\r")
-		require.Contains(t, output, "id: 7\r")
-		require.Contains(t, output, "data: ")
-		// It ends with the separator (blank line).
-		require.True(t, bytes.HasSuffix([]byte(output), []byte("\r\r")))
-	})
-
-	t.Run("with CRLF separators", func(t *testing.T) {
-		ev := &sseEvent{event: "custom", id: "7", messages: []jsonrpc.Message{req, resp}, separator: sseSeparatorCRLF}
-		rr := httptest.NewRecorder()
-		ev.writeAndMaybeFlush(rr)
-		output := rr.Body.String()
-		// Basic structural assertions.
-		require.Contains(t, output, "event: custom\r\n")
-		require.Contains(t, output, "id: 7\r\n")
-		require.Contains(t, output, "data: ")
-		// It ends with the separator (blank line).
-		require.True(t, bytes.HasSuffix([]byte(output), []byte("\r\n\r\n")))
-	})
+	ev := &sseEvent{event: "custom", id: "7", messages: []jsonrpc.Message{req, resp}}
+	rr := httptest.NewRecorder()
+	ev.writeAndMaybeFlush(rr)
+	output := rr.Body.String()
+	// Basic structural assertions.
+	require.Contains(t, output, "event: custom\n")
+	require.Contains(t, output, "id: 7\n")
+	require.Contains(t, output, "data: ")
+	// It ends with the separator (blank line).
+	require.True(t, bytes.HasSuffix([]byte(output), []byte("\n\n")))
 }
 
 func TestSSEEventParser_EndOfStream(t *testing.T) {
@@ -261,6 +276,10 @@ func TestSSEEventParser_EndOfStream(t *testing.T) {
 		{
 			"with CRLF separators",
 			bytes.Join([][]byte{append([]byte("data: "), mustEncode(t, req)...), []byte("\r\n\r\n")}, nil),
+		},
+		{
+			"with mixed separators",
+			bytes.Join([][]byte{append([]byte("id: 12\rdata: "), mustEncode(t, req)...), []byte("\r\n\r\n")}, nil),
 		},
 	}
 
