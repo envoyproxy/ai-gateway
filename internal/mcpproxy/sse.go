@@ -49,7 +49,10 @@ func (p *sseEventParser) next() (*sseEvent, error) {
 		if err != nil {
 			var buffered *sseEvent
 			if err == io.EOF && buf.Len() > 0 {
-				// If we have accumulated content, return it as the last event.
+				// If we have accumulated content, return it as the last event, but still
+				// return the EOF error, as this may not be a desired state. If all events
+				// are properly formed, we shouldn't reach this point and should have returned
+				// after reading a double newline indicating the end of the event.
 				buffered, _ = p.parseEvent(buf.Bytes())
 			}
 			return buffered, err
