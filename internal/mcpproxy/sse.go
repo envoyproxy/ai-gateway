@@ -86,7 +86,7 @@ func (p *sseEventParser) next() (*sseEvent, error) {
 // parseEvent parses one normalized block into an sseEvent.
 func (p *sseEventParser) parseEvent(buf *bytes.Buffer) (*sseEvent, error) {
 	var (
-		ret     = &sseEvent{}
+		ret     = &sseEvent{backend: p.backend}
 		scanner = bufio.NewScanner(buf)
 	)
 
