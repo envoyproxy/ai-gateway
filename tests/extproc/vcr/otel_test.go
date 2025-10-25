@@ -32,6 +32,11 @@ type otelTestEnvironment struct {
 
 // setupOtelTestEnvironment starts all required services and returns ports and a closer.
 func setupOtelTestEnvironment(t *testing.T, extraExtProcEnv ...string) *otelTestEnvironment {
+	// clear env vars before starting the tests
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+	t.Setenv("OTEL_METRICS_EXPORTER", "")
+	t.Setenv("OTEL_SERVICE_NAME", "")
+
 	// Start OTLP collector.
 	collector := testotel.StartOTLPCollector()
 	t.Cleanup(collector.Close)
