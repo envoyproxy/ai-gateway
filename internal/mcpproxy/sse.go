@@ -6,6 +6,7 @@
 package mcpproxy
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -16,57 +17,76 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
-type sseEventParser struct {
-	backend   filterapi.MCPBackendName
-	r         io.Reader
-	readBuf   [4096]byte
-	buf       []byte
-	separator sseSeparator
-}
-
-func newSSEEventParser(r io.Reader, backend filterapi.MCPBackendName) sseEventParser {
-	return sseEventParser{r: r, backend: backend}
-}
-
-type sseEvent struct {
-	event, id string
-	messages  []jsonrpc.Message
-	backend   filterapi.MCPBackendName
-	separator sseSeparator
-}
-
 var (
 	sseEventPrefix = []byte("event: ")
 	sseIDPrefix    = []byte("id: ")
 	sseDataPrefix  = []byte("data: ")
-
-	sseSeparatorLF   = newSSESeparator([]byte{'\n'})
-	sseSeparatorCR   = newSSESeparator([]byte{'\r'})
-	sseSeparatorCRLF = newSSESeparator([]byte{'\r', '\n'})
 )
 
+// sseEventParser reads bytes from a reader and parses the SSE Events gracefully
+// handling the different line terminations: CR, LF, CRLF.
+type sseEventParser struct {
+	backend filterapi.MCPBackendName
+	r       *bufio.Reader
+}
+
+func newSSEEventParser(r io.Reader, backend filterapi.MCPBackendName) sseEventParser {
+	return sseEventParser{
+		r:       bufio.NewReader(r),
+		backend: backend,
+	}
+}
+
+// next reads the next SSE event from the stream.
 func (p *sseEventParser) next() (*sseEvent, error) {
-	idx := -1
-	for idx == -1 {
-		idx = p.findSeparator()
-		if idx < 0 {
-			n, err := p.r.Read(p.readBuf[:])
-			if n > 0 {
-				p.buf = append(p.buf, p.readBuf[:n]...)
-			} else {
+	var (
+		buf            bytes.Buffer
+		prevWasNewline bool
+	)
+
+	for {
+		b, err := p.r.ReadByte()
+		if err != nil {
+			var buffered *sseEvent
+			if err == io.EOF && buf.Len() > 0 {
+				// If we have accumulated content, return it as the last event.
+				buffered, _ = p.parseEvent(buf.Bytes())
+			}
+			return buffered, err
+		}
+
+		switch b {
+		case '\r':
+			peek, err := p.r.Peek(1)
+			// if we try to peek, but we get an EOF, it is OK. We're at the end of
+			// and event, and we just process the new line normally.
+			if err != nil && err != io.EOF {
 				return nil, err
 			}
+			if len(peek) > 0 && peek[0] == '\n' {
+				// consume the '\n' that follows '\r' to normalize newlines.
+				if _, err = p.r.ReadByte(); err != nil {
+					return nil, err
+				}
+			}
+			fallthrough // process as a normal newline.
+		case '\n':
+			buf.WriteByte('\n')
+			if prevWasNewline { // double newline -> end of event.
+				return p.parseEvent(buf.Bytes())
+			}
+			prevWasNewline = true
+		default:
+			prevWasNewline = false
+			buf.WriteByte(b)
 		}
 	}
+}
 
-	// At this point the separator should always be set.
-	sepLen := len(p.separator.event())
-	event := p.buf[:idx+sepLen]
-	ret := &sseEvent{
-		backend:   p.backend,
-		separator: p.separator,
-	}
-	for _, line := range bytes.Split(event, p.separator.field()) {
+// parseEvent parses one normalized block into an sseEvent.
+func (p *sseEventParser) parseEvent(block []byte) (*sseEvent, error) {
+	ret := &sseEvent{}
+	for _, line := range bytes.Split(block, []byte{'\n'}) {
 		switch {
 		case bytes.HasPrefix(line, sseEventPrefix):
 			ret.event = string(bytes.TrimSpace(line[7:]))
@@ -81,90 +101,36 @@ func (p *sseEventParser) next() (*sseEvent, error) {
 			ret.messages = append(ret.messages, msg)
 		}
 	}
-	p.buf = p.buf[idx+sepLen:]
 	return ret, nil
 }
 
-// findSeparator finds the index of the next event separator in the buffer.
-// Lines must be separated by either a U+000D CARRIAGE RETURN U+000A LINE FEED (CRLF) character pair,
-// a single U+000A LINE FEED (LF) character, or a single U+000D CARRIAGE RETURN (CR) character.
-func (p *sseEventParser) findSeparator() int {
-	if p.separator != nil {
-		return bytes.Index(p.buf, p.separator.event())
-	}
-
-	idx := bytes.Index(p.buf, sseSeparatorCRLF.event())
-	if idx >= 0 {
-		p.separator = sseSeparatorCRLF
-		return idx
-	}
-
-	idx = bytes.Index(p.buf, sseSeparatorLF.event())
-	if idx >= 0 {
-		p.separator = sseSeparatorLF
-		return idx
-	}
-
-	idx = bytes.Index(p.buf, sseSeparatorCR.event())
-	if idx >= 0 {
-		p.separator = sseSeparatorCR
-		return idx
-	}
-
-	return idx
+type sseEvent struct {
+	event, id string
+	messages  []jsonrpc.Message
+	backend   filterapi.MCPBackendName
 }
 
 func (e *sseEvent) writeAndMaybeFlush(w io.Writer) {
-	if e.separator == nil { // Default to LF separator.
-		e.separator = sseSeparatorLF
-	}
-
 	if e.event != "" {
 		_, _ = w.Write(sseEventPrefix)
 		_, _ = w.Write([]byte(e.event))
-		_, _ = w.Write(e.separator.field())
+		_, _ = w.Write([]byte{'\n'})
 	}
 	if e.id != "" {
 		_, _ = w.Write(sseIDPrefix)
 		_, _ = w.Write([]byte(e.id))
-		_, _ = w.Write(e.separator.field())
+		_, _ = w.Write([]byte{'\n'})
 	}
 	for _, msg := range e.messages {
 		_, _ = w.Write(sseDataPrefix)
 		data, _ := jsonrpc.EncodeMessage(msg)
 		_, _ = w.Write(data)
-		_, _ = w.Write(e.separator.field())
+		_, _ = w.Write([]byte{'\n'})
 	}
-	_, _ = w.Write(e.separator.event())
+	_, _ = w.Write([]byte{'\n', '\n'})
 
 	// Flush the response writer to ensure the event is sent immediately.
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
 	}
 }
-
-// sseSeparator defines the line and event separators for SSE parsing and writing.
-type sseSeparator interface {
-	// field returns the line separator.
-	field() []byte
-	// event returns the event separator.
-	event() []byte
-}
-
-var _ sseSeparator = (*separator)(nil)
-
-// separator implements sseSeparator.
-type separator struct {
-	fieldSep, eventSep []byte
-}
-
-// newSSESeparator creates a new sseSeparator with the given line separator.
-func newSSESeparator(lineSeparator []byte) sseSeparator {
-	return separator{
-		fieldSep: lineSeparator,
-		eventSep: append(lineSeparator, lineSeparator...),
-	}
-}
-
-func (s separator) field() []byte { return s.fieldSep }
-func (s separator) event() []byte { return s.eventSep }
