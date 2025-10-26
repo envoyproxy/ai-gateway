@@ -209,13 +209,13 @@ func mergeHeaderMutations(routeLevel, backendLevel *aigv1a1.HTTPHeaderMutation) 
 	}
 
 	// Merge Remove operations (combine and deduplicate)
-	removeMap := make(map[string]bool)
+	removeMap := make(map[string]struct{})
 
 	for _, h := range backendLevel.Remove {
-		removeMap[strings.ToLower(h)] = true
+		removeMap[strings.ToLower(h)] = struct{}{}
 	}
 	for _, h := range routeLevel.Remove {
-		removeMap[strings.ToLower(h)] = true
+		removeMap[strings.ToLower(h)] = struct{}{}
 	}
 
 	for h := range removeMap {
