@@ -22,10 +22,7 @@ you can mount it as a volume.
 The following example runs the AI Gateway with the default configuration for the [OpenAI provider](../getting-started/connect-providers/openai.md):
 
 ```shell
-$ docker run --rm -p 1975:1975 -e OPENAI_API_KEY=OPENAI_API_KEY envoyproxy/ai-gateway-cli run
-looking up the latest patch for Envoy version 1.35
-1.35.3 is already downloaded
-starting: /tmp/envoy-gateway/versions/1.35.3/bin/envoy in run directory /tmp/envoy-gateway/runs/1758086300246501521
+docker run --rm -p 1975:1975 -e OPENAI_API_KEY=OPENAI_API_KEY envoyproxy/ai-gateway-cli run
 ```
 
 ## Building the latest version
@@ -75,6 +72,26 @@ Commands:
 
 Run "aigw <command> --help" for more information on a command.
 ```
+
+## Configuration
+
+The [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html) defines standard locations for user-specific files:
+
+- **Config files**: User-specific configuration (persistent, shared)
+- **Data files**: Downloaded binaries (persistent, shared)
+- **State files**: Logs and configs per run (persistent, debugging)
+- **Runtime files**: Ephemeral files like sockets (deleted on reboot)
+
+`aigw` adopts these conventions to separate configuration, downloaded Envoy binaries, logs, and ephemeral runtime files.
+
+| Environment Variable | Default Path          | CLI Flag        |
+| -------------------- | --------------------- | --------------- |
+| `AIGW_CONFIG_HOME`   | `~/.config/aigw`      | `--config-home` |
+| `AIGW_DATA_HOME`     | `~/.local/share/aigw` | `--data-home`   |
+| `AIGW_STATE_HOME`    | `~/.local/state/aigw` | `--state-home`  |
+| `AIGW_RUNTIME_DIR`   | `/tmp/aigw-${UID}`    | `--runtime-dir` |
+
+**Priority**: CLI flags > Environment variables > Defaults
 
 ## What's next?
 

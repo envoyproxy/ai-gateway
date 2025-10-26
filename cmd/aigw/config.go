@@ -9,7 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 
 	"github.com/a8m/envsubst"
 
@@ -63,4 +65,30 @@ func readConfig(path string, mcpServers *autoconfig.MCPServers, debug bool) (str
 		return "", err
 	}
 	return envsubst.String(config)
+}
+
+// expandPath expands environment variables and tilde in paths, then converts to absolute path.
+// Returns empty string if input is empty.
+// Replaces ~/  with ${HOME}/ before expanding environment variables.
+func expandPath(path string) string {
+	if path == "" {
+		return ""
+	}
+
+	// Replace ~/ with ${HOME}/
+	if strings.HasPrefix(path, "~/") {
+		path = "${HOME}/" + path[2:]
+	}
+
+	// Expand environment variables
+	expanded := os.ExpandEnv(path)
+
+	// Convert to absolute path
+	abs, err := filepath.Abs(expanded)
+	if err != nil {
+		// If we can't get absolute path, return expanded path
+		return expanded
+	}
+
+	return abs
 }
