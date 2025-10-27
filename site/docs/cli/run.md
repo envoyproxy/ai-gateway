@@ -162,7 +162,7 @@ Use the `--mcp-config` flag to load MCP server configuration from a JSON file. T
       "headers": {
         "Authorization": "Bearer ${GITHUB_ACCESS_TOKEN}"
       },
-      "includeTools": ["get_issue", "list_issues"]
+      "includeTools": ["issue_read", "list_issues"]
     }
   }
 }
@@ -220,7 +220,7 @@ This follows the same convention as [Gemini CLI's tool filtering](https://google
 Example:
 
 ```json
-"includeTools": ["get_issue", "list_issues", "search_issues"]
+"includeTools": ["issue_read", "list_issues", "search_issues"]
 ```
 
 ### Testing the MCP Gateway
@@ -240,7 +240,7 @@ npx @modelcontextprotocol/inspector@0.16.8 \
 ```
 
 :::note
-Tool names are automatically prefixed with the server name (e.g., `github__get_issue`, `context7__resolve-library-id`) to route calls to the correct backend.
+Tool names are automatically prefixed with the server name (e.g., `github__issue_read`, `context7__resolve-library-id`) to route calls to the correct backend.
 :::
 
 ### Advanced MCP Configuration

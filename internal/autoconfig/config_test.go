@@ -354,7 +354,7 @@ func TestWriteConfig(t *testing.T) {
 						BackendName:  "github",
 						Path:         "/mcp/x/issues/readonly",
 						APIKey:       "${GITHUB_MCP_TOKEN}",
-						IncludeTools: []string{"get_issue", "list_issues"},
+						IncludeTools: []string{"issue_read", "list_issues"},
 					},
 				},
 			},
