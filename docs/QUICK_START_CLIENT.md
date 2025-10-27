@@ -14,23 +14,23 @@ go get github.com/envoyproxy/ai-gateway
 
 ```go
 import (
-    "k8s.io/client-go/tools/clientcmd"
-    clientset "github.com/envoyproxy/ai-gateway/pkg/client/clientset/versioned"
+	"k8s.io/client-go/tools/clientcmd"
+	clientset "github.com/envoyproxy/ai-gateway/pkg/client/clientset/versioned"
 )
 
 func main() {
-    // Load kubeconfig
-    config, err := clientcmd.BuildConfigFromFlags("", 
-        clientcmd.NewDefaultClientConfigLoadingRules().GetDefaultFilename())
-    if err != nil {
-        panic(err)
-    }
-    
-    // Create client
-    client, err := clientset.NewForConfig(config)
-    if err != nil {
-        panic(err)
-    }
+	// Load kubeconfig
+	config, err := clientcmd.BuildConfigFromFlags("",
+		clientcmd.NewDefaultClientConfigLoadingRules().GetDefaultFilename())
+	if err != nil {
+		panic(err)
+	}
+
+	// Create client
+	client, err := clientset.NewForConfig(config)
+	if err != nil {
+		panic(err)
+	}
 }
 ```
 
@@ -38,8 +38,8 @@ func main() {
 
 ```go
 routes, err := client.AigatewayV1alpha1().AIGatewayRoutes("default").List(
-    context.Background(), 
-    metav1.ListOptions{},
+	context.Background(),
+	metav1.ListOptions{},
 )
 ```
 
@@ -102,5 +102,6 @@ make verify-codegen
 ## Support
 
 For issues and questions:
+
 - GitHub Issues: https://github.com/envoyproxy/ai-gateway/issues
 - Documentation: https://gateway.envoyproxy.io/ai-gateway

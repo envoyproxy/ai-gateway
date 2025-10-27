@@ -5,6 +5,7 @@ This package contains the generated Kubernetes client for AI Gateway custom reso
 ## Overview
 
 The client provides typed access to AI Gateway resources:
+
 - **AIGatewayRoute** - Routes for AI service traffic
 - **AIServiceBackend** - Backend service configurations for AI providers
 - **BackendSecurityPolicy** - Security policies for backend authentication
@@ -109,17 +110,18 @@ go test ./pkg/client/tests/... -v -short
 
 ## Performance
 
-| Operation | Method | Performance |
-|-----------|--------|-------------|
-| Single Get | Direct API call | ~10-50ms |
-| List All | Direct API call | ~50-200ms |
-| Get (cached) | Lister | <1ms |
-| List (cached) | Lister | <1ms |
-| Watch | Informer | Real-time events |
+| Operation     | Method          | Performance      |
+| ------------- | --------------- | ---------------- |
+| Single Get    | Direct API call | ~10-50ms         |
+| List All      | Direct API call | ~50-200ms        |
+| Get (cached)  | Lister          | <1ms             |
+| List (cached) | Lister          | <1ms             |
+| Watch         | Informer        | Real-time events |
 
 ## Integration with Other Tools
 
 This client can be used alongside:
+
 - `controller-runtime` dynamic clients
 - Standard Kubernetes clients
 - Custom controllers and operators
@@ -129,4 +131,3 @@ This client can be used alongside:
 
 Copyright Envoy AI Gateway Authors
 SPDX-License-Identifier: Apache-2.0
-
