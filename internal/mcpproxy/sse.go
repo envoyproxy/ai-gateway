@@ -6,8 +6,8 @@
 package mcpproxy
 
 import (
-	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,70 +27,52 @@ var (
 // handling the different line terminations: CR, LF, CRLF.
 type sseEventParser struct {
 	backend filterapi.MCPBackendName
-	r       *bufio.Reader
+	r       io.Reader
+	readBuf [4096]byte
+	buf     []byte
 }
 
 func newSSEEventParser(r io.Reader, backend filterapi.MCPBackendName) sseEventParser {
-	return sseEventParser{
-		r:       bufio.NewReader(r),
-		backend: backend,
-	}
+	return sseEventParser{r: r, backend: backend}
 }
 
 // next reads the next SSE event from the stream.
-func (p *sseEventParser) next() (*sseEvent, error) {
-	var (
-		buf            bytes.Buffer
-		prevWasNewline bool
-	)
-
+func (s *sseEventParser) next() (*sseEvent, error) {
 	for {
-		b, err := p.r.ReadByte()
+		// Search in remainder first for a separator
+		event, ok, err := s.extractEvent()
 		if err != nil {
-			var buffered *sseEvent
-			if err == io.EOF && buf.Len() > 0 {
-				// If we have accumulated content, return it as the last event, but still
-				// return the EOF error, as this may not be a desired state. If all events
-				// are properly formed, we shouldn't reach this point and should have returned
-				// after reading a double newline indicating the end of the event.
-				buffered, _ = p.parseEvent(buf.Bytes())
-			}
-			return buffered, err
+			return nil, err
+		}
+		if ok {
+			return event, nil
 		}
 
-		switch b {
-		case '\r':
-			peek, err := p.r.Peek(1)
-			// if we try to peek, but we get an EOF, it is OK. We're at the end of
-			// and event, and we just process the new line normally.
-			if err != nil && err != io.EOF {
-				return nil, err
+		// Read a new chunk
+		n, err := s.r.Read(s.readBuf[:])
+		if n > 0 {
+			normalized := normalizeNewlines(s.readBuf[:n])
+			s.buf = append(s.buf, normalized...)
+			continue
+		}
+
+		if err != nil {
+			// If we still have leftover data, parse the final event
+			if errors.Is(err, io.EOF) && len(s.buf) > 0 {
+				event, parseErr := s.parseEvent(s.buf)
+				s.buf = nil
+				return event, errors.Join(err, parseErr) // wil ignore parseErr if nil.
 			}
-			if len(peek) > 0 && peek[0] == '\n' {
-				// consume the '\n' that follows '\r' to normalize newlines.
-				if _, err = p.r.ReadByte(); err != nil {
-					return nil, err
-				}
-			}
-			fallthrough // process as a normal newline.
-		case '\n':
-			buf.WriteByte('\n')
-			if prevWasNewline { // double newline -> end of event.
-				return p.parseEvent(buf.Bytes())
-			}
-			prevWasNewline = true
-		default:
-			prevWasNewline = false
-			buf.WriteByte(b)
+			return nil, err
 		}
 	}
 }
 
-// parseEvent parses one normalized block into an sseEvent.
-func (p *sseEventParser) parseEvent(block []byte) (*sseEvent, error) {
-	ret := &sseEvent{backend: p.backend}
+// parseEvent parses one normalized chunk into an sseEvent.
+func (s *sseEventParser) parseEvent(chunk []byte) (*sseEvent, error) {
+	ret := &sseEvent{backend: s.backend}
 
-	for line := range bytes.SplitSeq(block, []byte{'\n'}) {
+	for line := range bytes.SplitSeq(chunk, []byte{'\n'}) {
 		switch {
 		case bytes.HasPrefix(line, sseEventPrefix):
 			ret.event = string(bytes.TrimSpace(line[7:]))
@@ -109,24 +91,43 @@ func (p *sseEventParser) parseEvent(block []byte) (*sseEvent, error) {
 	return ret, nil
 }
 
+// extractEvent tries to find a complete event (double newline) in remainder.
+func (s *sseEventParser) extractEvent() (*sseEvent, bool, error) {
+	// Search for double newline "\n\n"
+	if idx := bytes.Index(s.buf, []byte("\n\n")); idx >= 0 {
+		chunk := s.buf[:idx]
+		s.buf = s.buf[idx+2:] // retain after separator
+		event, err := s.parseEvent(chunk)
+		return event, true, err
+	}
+	return nil, false, nil
+}
+
+// normalizeNewlines converts all CR/LF variants to '\n'.
+func normalizeNewlines(b []byte) []byte {
+	b = bytes.ReplaceAll(b, []byte("\r\n"), []byte("\n"))
+	b = bytes.ReplaceAll(b, []byte("\r"), []byte("\n"))
+	return b
+}
+
 type sseEvent struct {
 	event, id string
 	messages  []jsonrpc.Message
 	backend   filterapi.MCPBackendName
 }
 
-func (e *sseEvent) writeAndMaybeFlush(w io.Writer) {
-	if e.event != "" {
+func (s *sseEvent) writeAndMaybeFlush(w io.Writer) {
+	if s.event != "" {
 		_, _ = w.Write(sseEventPrefix)
-		_, _ = w.Write([]byte(e.event))
+		_, _ = w.Write([]byte(s.event))
 		_, _ = w.Write([]byte{'\n'})
 	}
-	if e.id != "" {
+	if s.id != "" {
 		_, _ = w.Write(sseIDPrefix)
-		_, _ = w.Write([]byte(e.id))
+		_, _ = w.Write([]byte(s.id))
 		_, _ = w.Write([]byte{'\n'})
 	}
-	for _, msg := range e.messages {
+	for _, msg := range s.messages {
 		_, _ = w.Write(sseDataPrefix)
 		data, _ := jsonrpc.EncodeMessage(msg)
 		_, _ = w.Write(data)
