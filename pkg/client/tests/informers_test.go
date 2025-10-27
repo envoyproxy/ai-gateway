@@ -17,7 +17,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	"github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	fakeclientset "github.com/envoyproxy/ai-gateway/pkg/client/clientset/versioned/fake"
 	informers "github.com/envoyproxy/ai-gateway/pkg/client/informers/externalversions"
 )
@@ -37,34 +37,35 @@ func TestAIGatewayRouteInformer(t *testing.T) {
 	updatedCh := make(chan string, 10)
 	deletedCh := make(chan string, 10)
 
-	informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			route := obj.(*v1alpha1.AIGatewayRoute)
+			route := obj.(*aigv1a1.AIGatewayRoute)
 			addedCh <- route.Name
 		},
-		UpdateFunc: func(oldObj, newObj interface{}) {
-			route := newObj.(*v1alpha1.AIGatewayRoute)
+		UpdateFunc: func(_, newObj interface{}) {
+			route := newObj.(*aigv1a1.AIGatewayRoute)
 			updatedCh <- route.Name
 		},
 		DeleteFunc: func(obj interface{}) {
-			route := obj.(*v1alpha1.AIGatewayRoute)
+			route := obj.(*aigv1a1.AIGatewayRoute)
 			deletedCh <- route.Name
 		},
 	})
+	require.NoError(t, err)
 
 	// Start informers
 	factory.Start(ctx.Done())
 	factory.WaitForCacheSync(ctx.Done())
 
 	t.Run("Informer handles Add events", func(t *testing.T) {
-		route := &v1alpha1.AIGatewayRoute{
+		route := &aigv1a1.AIGatewayRoute{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-route-add",
 				Namespace: "default",
 			},
 		}
 
-		_, err := client.AigatewayV1alpha1().AIGatewayRoutes("default").Create(ctx, route, metav1.CreateOptions{})
+		_, err = client.AigatewayV1alpha1().AIGatewayRoutes("default").Create(ctx, route, metav1.CreateOptions{})
 		require.NoError(t, err)
 
 		select {
@@ -75,21 +76,21 @@ func TestAIGatewayRouteInformer(t *testing.T) {
 		}
 
 		// Verify lister can retrieve the route
-		fetched, err := lister.AIGatewayRoutes("default").Get("test-route-add")
-		require.NoError(t, err)
+		fetched, getErr := lister.AIGatewayRoutes("default").Get("test-route-add")
+		require.NoError(t, getErr)
 		assert.Equal(t, "test-route-add", fetched.Name)
 	})
 
 	t.Run("Lister lists routes", func(t *testing.T) {
 		// Create multiple routes
 		for i := 0; i < 3; i++ {
-			route := &v1alpha1.AIGatewayRoute{
+			route := &aigv1a1.AIGatewayRoute{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-route-list-" + string(rune('a'+i)),
 					Namespace: "default",
 				},
 			}
-			_, err := client.AigatewayV1alpha1().AIGatewayRoutes("default").Create(ctx, route, metav1.CreateOptions{})
+			_, err = client.AigatewayV1alpha1().AIGatewayRoutes("default").Create(ctx, route, metav1.CreateOptions{})
 			require.NoError(t, err)
 		}
 
@@ -117,14 +118,14 @@ func TestAIServiceBackendInformer(t *testing.T) {
 	factory.WaitForCacheSync(ctx.Done())
 
 	t.Run("Informer and Lister work together", func(t *testing.T) {
-		backend := &v1alpha1.AIServiceBackend{
+		backend := &aigv1a1.AIServiceBackend{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-backend-informer",
 				Namespace: "default",
 			},
-			Spec: v1alpha1.AIServiceBackendSpec{
-				APISchema: v1alpha1.VersionedAPISchema{
-					Name: v1alpha1.APISchemaOpenAI,
+			Spec: aigv1a1.AIServiceBackendSpec{
+				APISchema: aigv1a1.VersionedAPISchema{
+					Name: aigv1a1.APISchemaOpenAI,
 				},
 				BackendRef: gwapiv1.BackendObjectReference{
 					Name:  "test-service",
@@ -144,19 +145,19 @@ func TestAIServiceBackendInformer(t *testing.T) {
 		fetched, err := lister.AIServiceBackends("default").Get("test-backend-informer")
 		require.NoError(t, err)
 		assert.Equal(t, "test-backend-informer", fetched.Name)
-		assert.Equal(t, v1alpha1.APISchemaOpenAI, fetched.Spec.APISchema.Name)
+		assert.Equal(t, aigv1a1.APISchemaOpenAI, fetched.Spec.APISchema.Name)
 	})
 
 	t.Run("Lister handles namespace scoping", func(t *testing.T) {
 		// Create backend in different namespace
-		backend1 := &v1alpha1.AIServiceBackend{
+		backend1 := &aigv1a1.AIServiceBackend{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "backend-ns1",
 				Namespace: "namespace1",
 			},
-			Spec: v1alpha1.AIServiceBackendSpec{
-				APISchema: v1alpha1.VersionedAPISchema{
-					Name: v1alpha1.APISchemaOpenAI,
+			Spec: aigv1a1.AIServiceBackendSpec{
+				APISchema: aigv1a1.VersionedAPISchema{
+					Name: aigv1a1.APISchemaOpenAI,
 				},
 				BackendRef: gwapiv1.BackendObjectReference{
 					Name:  "test-service",
@@ -166,14 +167,14 @@ func TestAIServiceBackendInformer(t *testing.T) {
 			},
 		}
 
-		backend2 := &v1alpha1.AIServiceBackend{
+		backend2 := &aigv1a1.AIServiceBackend{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "backend-ns2",
 				Namespace: "namespace2",
 			},
-			Spec: v1alpha1.AIServiceBackendSpec{
-				APISchema: v1alpha1.VersionedAPISchema{
-					Name: v1alpha1.APISchemaOpenAI,
+			Spec: aigv1a1.AIServiceBackendSpec{
+				APISchema: aigv1a1.VersionedAPISchema{
+					Name: aigv1a1.APISchemaOpenAI,
 				},
 				BackendRef: gwapiv1.BackendObjectReference{
 					Name:  "test-service",
@@ -221,14 +222,14 @@ func TestBackendSecurityPolicyInformer(t *testing.T) {
 	factory.WaitForCacheSync(ctx.Done())
 
 	t.Run("BackendSecurityPolicy informer works", func(t *testing.T) {
-		policy := &v1alpha1.BackendSecurityPolicy{
+		policy := &aigv1a1.BackendSecurityPolicy{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-policy-informer",
 				Namespace: "default",
 			},
-			Spec: v1alpha1.BackendSecurityPolicySpec{
-				Type: v1alpha1.BackendSecurityPolicyTypeAPIKey,
-				APIKey: &v1alpha1.BackendSecurityPolicyAPIKey{
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
+				APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{
 					SecretRef: &gwapiv1.SecretObjectReference{
 						Name: "api-key-secret",
 					},
@@ -246,7 +247,7 @@ func TestBackendSecurityPolicyInformer(t *testing.T) {
 		fetched, err := lister.BackendSecurityPolicies("default").Get("test-policy-informer")
 		require.NoError(t, err)
 		assert.Equal(t, "test-policy-informer", fetched.Name)
-		assert.Equal(t, v1alpha1.BackendSecurityPolicyTypeAPIKey, fetched.Spec.Type)
+		assert.Equal(t, aigv1a1.BackendSecurityPolicyTypeAPIKey, fetched.Spec.Type)
 	})
 }
 
@@ -265,18 +266,18 @@ func TestMCPRouteInformer(t *testing.T) {
 	factory.WaitForCacheSync(ctx.Done())
 
 	t.Run("MCPRoute informer works", func(t *testing.T) {
-		route := &v1alpha1.MCPRoute{
+		route := &aigv1a1.MCPRoute{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-mcp-informer",
 				Namespace: "default",
 			},
-			Spec: v1alpha1.MCPRouteSpec{
+			Spec: aigv1a1.MCPRouteSpec{
 				ParentRefs: []gwapiv1.ParentReference{
 					{
 						Name: "test-gateway",
 					},
 				},
-				BackendRefs: []v1alpha1.MCPRouteBackendRef{
+				BackendRefs: []aigv1a1.MCPRouteBackendRef{
 					{
 						BackendObjectReference: gwapiv1.BackendObjectReference{
 							Name: "mcp-server",

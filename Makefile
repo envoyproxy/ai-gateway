@@ -145,35 +145,7 @@ test: ## Run the unit tests for the codebase. This doesn't run the integration t
 .PHONY: test-coverage
 test-coverage: ## Run the unit tests for the codebase with coverage check.
 	@mkdir -p $(OUTPUT_DIR)
-	@go test -coverprofile=$(OUTPUT_DIR)/go-test-coverage.out -covermode=atomic $(GO_TEST_ARGS) -count=1 \
-	  ./api/v1alpha1 \
-	  ./cmd/controller \
-	  ./cmd/extproc/mainlib \
-	  ./internal/apischema/anthropic \
-	  ./internal/apischema/openai \
-	  ./internal/autoconfig \
-	  ./internal/controller \
-	  ./internal/controller/rotators \
-	  ./internal/controller/tokenprovider \
-	  ./internal/extensionserver \
-	  ./internal/extproc \
-	  ./internal/extproc/backendauth \
-	  ./internal/extproc/headermutator \
-	  ./internal/extproc/translator \
-	  ./internal/filterapi \
-	  ./internal/internalapi \
-	  ./internal/llmcostcel \
-	  ./internal/mcpproxy \
-	  ./internal/metrics \
-	  ./internal/tracing \
-	  ./internal/tracing/api \
-	  ./internal/tracing/openinference \
-	  ./internal/tracing/openinference/openai \
-	  ./tests/internal/e2elib \
-	  ./tests/internal/testmcp/testmcpserver \
-	  ./tests/internal/testopenai \
-	  ./tests/internal/testopeninference \
-	  ./tests/internal/testupstreamlib/testupstream
+	@$(MAKE) test GO_TEST_ARGS="-coverprofile=$(OUTPUT_DIR)/go-test-coverage.out -covermode=atomic -coverpkg=github.com/envoyproxy/ai-gateway/... -count=1 $(GO_TEST_ARGS)"
 	@$(GO_TOOL) go-test-coverage --config=.testcoverage.yml
 
 ENVTEST_K8S_VERSIONS ?= 1.31.0 1.32.0 1.33.0

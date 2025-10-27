@@ -14,7 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	"github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	fakeclientset "github.com/envoyproxy/ai-gateway/pkg/client/clientset/versioned/fake"
 )
 
@@ -23,15 +23,15 @@ func TestAIGatewayRouteClient(t *testing.T) {
 	client := fakeclientset.NewSimpleClientset()
 
 	t.Run("Create AIGatewayRoute", func(t *testing.T) {
-		route := &v1alpha1.AIGatewayRoute{
+		route := &aigv1a1.AIGatewayRoute{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-route",
 				Namespace: "default",
 			},
-			Spec: v1alpha1.AIGatewayRouteSpec{
-				Rules: []v1alpha1.AIGatewayRouteRule{
+			Spec: aigv1a1.AIGatewayRouteSpec{
+				Rules: []aigv1a1.AIGatewayRouteRule{
 					{
-						BackendRefs: []v1alpha1.AIGatewayRouteRuleBackendRef{
+						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
 							{
 								Name: "test-backend",
 							},
@@ -48,7 +48,7 @@ func TestAIGatewayRouteClient(t *testing.T) {
 	})
 
 	t.Run("Get AIGatewayRoute", func(t *testing.T) {
-		route := &v1alpha1.AIGatewayRoute{
+		route := &aigv1a1.AIGatewayRoute{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-get-route",
 				Namespace: "default",
@@ -66,7 +66,7 @@ func TestAIGatewayRouteClient(t *testing.T) {
 	t.Run("List AIGatewayRoutes", func(t *testing.T) {
 		// Create multiple routes
 		for i := 0; i < 3; i++ {
-			route := &v1alpha1.AIGatewayRoute{
+			route := &aigv1a1.AIGatewayRoute{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-list-route-" + string(rune('a'+i)),
 					Namespace: "default",
@@ -82,7 +82,7 @@ func TestAIGatewayRouteClient(t *testing.T) {
 	})
 
 	t.Run("Update AIGatewayRoute", func(t *testing.T) {
-		route := &v1alpha1.AIGatewayRoute{
+		route := &aigv1a1.AIGatewayRoute{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-update-route",
 				Namespace: "default",
@@ -92,9 +92,9 @@ func TestAIGatewayRouteClient(t *testing.T) {
 		created, err := client.AigatewayV1alpha1().AIGatewayRoutes("default").Create(ctx, route, metav1.CreateOptions{})
 		require.NoError(t, err)
 
-		created.Spec.Rules = []v1alpha1.AIGatewayRouteRule{
+		created.Spec.Rules = []aigv1a1.AIGatewayRouteRule{
 			{
-				BackendRefs: []v1alpha1.AIGatewayRouteRuleBackendRef{
+				BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
 					{
 						Name: "updated-backend",
 					},
@@ -108,7 +108,7 @@ func TestAIGatewayRouteClient(t *testing.T) {
 	})
 
 	t.Run("Delete AIGatewayRoute", func(t *testing.T) {
-		route := &v1alpha1.AIGatewayRoute{
+		route := &aigv1a1.AIGatewayRoute{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-delete-route",
 				Namespace: "default",
@@ -131,14 +131,14 @@ func TestAIServiceBackendClient(t *testing.T) {
 	client := fakeclientset.NewSimpleClientset()
 
 	t.Run("Create AIServiceBackend", func(t *testing.T) {
-		backend := &v1alpha1.AIServiceBackend{
+		backend := &aigv1a1.AIServiceBackend{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-backend",
 				Namespace: "default",
 			},
-			Spec: v1alpha1.AIServiceBackendSpec{
-				APISchema: v1alpha1.VersionedAPISchema{
-					Name: v1alpha1.APISchemaOpenAI,
+			Spec: aigv1a1.AIServiceBackendSpec{
+				APISchema: aigv1a1.VersionedAPISchema{
+					Name: aigv1a1.APISchemaOpenAI,
 				},
 				BackendRef: gwapiv1.BackendObjectReference{
 					Name:  "test-service",
@@ -151,18 +151,18 @@ func TestAIServiceBackendClient(t *testing.T) {
 		created, err := client.AigatewayV1alpha1().AIServiceBackends("default").Create(ctx, backend, metav1.CreateOptions{})
 		require.NoError(t, err)
 		assert.Equal(t, "test-backend", created.Name)
-		assert.Equal(t, v1alpha1.APISchemaOpenAI, created.Spec.APISchema.Name)
+		assert.Equal(t, aigv1a1.APISchemaOpenAI, created.Spec.APISchema.Name)
 	})
 
 	t.Run("Get AIServiceBackend", func(t *testing.T) {
-		backend := &v1alpha1.AIServiceBackend{
+		backend := &aigv1a1.AIServiceBackend{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-get-backend",
 				Namespace: "default",
 			},
-			Spec: v1alpha1.AIServiceBackendSpec{
-				APISchema: v1alpha1.VersionedAPISchema{
-					Name: v1alpha1.APISchemaOpenAI,
+			Spec: aigv1a1.AIServiceBackendSpec{
+				APISchema: aigv1a1.VersionedAPISchema{
+					Name: aigv1a1.APISchemaOpenAI,
 				},
 				BackendRef: gwapiv1.BackendObjectReference{
 					Name:  "test-service",
@@ -182,14 +182,14 @@ func TestAIServiceBackendClient(t *testing.T) {
 
 	t.Run("List AIServiceBackends", func(t *testing.T) {
 		for i := 0; i < 2; i++ {
-			backend := &v1alpha1.AIServiceBackend{
+			backend := &aigv1a1.AIServiceBackend{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-list-backend-" + string(rune('a'+i)),
 					Namespace: "default",
 				},
-				Spec: v1alpha1.AIServiceBackendSpec{
-					APISchema: v1alpha1.VersionedAPISchema{
-						Name: v1alpha1.APISchemaOpenAI,
+				Spec: aigv1a1.AIServiceBackendSpec{
+					APISchema: aigv1a1.VersionedAPISchema{
+						Name: aigv1a1.APISchemaOpenAI,
 					},
 					BackendRef: gwapiv1.BackendObjectReference{
 						Name:  "test-service",
@@ -208,14 +208,14 @@ func TestAIServiceBackendClient(t *testing.T) {
 	})
 
 	t.Run("Delete AIServiceBackend", func(t *testing.T) {
-		backend := &v1alpha1.AIServiceBackend{
+		backend := &aigv1a1.AIServiceBackend{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-delete-backend",
 				Namespace: "default",
 			},
-			Spec: v1alpha1.AIServiceBackendSpec{
-				APISchema: v1alpha1.VersionedAPISchema{
-					Name: v1alpha1.APISchemaOpenAI,
+			Spec: aigv1a1.AIServiceBackendSpec{
+				APISchema: aigv1a1.VersionedAPISchema{
+					Name: aigv1a1.APISchemaOpenAI,
 				},
 				BackendRef: gwapiv1.BackendObjectReference{
 					Name:  "test-service",
@@ -238,14 +238,14 @@ func TestBackendSecurityPolicyClient(t *testing.T) {
 	client := fakeclientset.NewSimpleClientset()
 
 	t.Run("Create BackendSecurityPolicy", func(t *testing.T) {
-		policy := &v1alpha1.BackendSecurityPolicy{
+		policy := &aigv1a1.BackendSecurityPolicy{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-policy",
 				Namespace: "default",
 			},
-			Spec: v1alpha1.BackendSecurityPolicySpec{
-				Type: v1alpha1.BackendSecurityPolicyTypeAPIKey,
-				APIKey: &v1alpha1.BackendSecurityPolicyAPIKey{
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
+				APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{
 					SecretRef: &gwapiv1.SecretObjectReference{
 						Name: "api-key-secret",
 					},
@@ -256,18 +256,18 @@ func TestBackendSecurityPolicyClient(t *testing.T) {
 		created, err := client.AigatewayV1alpha1().BackendSecurityPolicies("default").Create(ctx, policy, metav1.CreateOptions{})
 		require.NoError(t, err)
 		assert.Equal(t, "test-policy", created.Name)
-		assert.Equal(t, v1alpha1.BackendSecurityPolicyTypeAPIKey, created.Spec.Type)
+		assert.Equal(t, aigv1a1.BackendSecurityPolicyTypeAPIKey, created.Spec.Type)
 	})
 
 	t.Run("Get BackendSecurityPolicy", func(t *testing.T) {
-		policy := &v1alpha1.BackendSecurityPolicy{
+		policy := &aigv1a1.BackendSecurityPolicy{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-get-policy",
 				Namespace: "default",
 			},
-			Spec: v1alpha1.BackendSecurityPolicySpec{
-				Type: v1alpha1.BackendSecurityPolicyTypeAPIKey,
-				APIKey: &v1alpha1.BackendSecurityPolicyAPIKey{
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
+				APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{
 					SecretRef: &gwapiv1.SecretObjectReference{
 						Name: "api-key-secret",
 					},
@@ -289,18 +289,18 @@ func TestMCPRouteClient(t *testing.T) {
 	client := fakeclientset.NewSimpleClientset()
 
 	t.Run("Create MCPRoute", func(t *testing.T) {
-		route := &v1alpha1.MCPRoute{
+		route := &aigv1a1.MCPRoute{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-mcp-route",
 				Namespace: "default",
 			},
-			Spec: v1alpha1.MCPRouteSpec{
+			Spec: aigv1a1.MCPRouteSpec{
 				ParentRefs: []gwapiv1.ParentReference{
 					{
 						Name: "test-gateway",
 					},
 				},
-				BackendRefs: []v1alpha1.MCPRouteBackendRef{
+				BackendRefs: []aigv1a1.MCPRouteBackendRef{
 					{
 						BackendObjectReference: gwapiv1.BackendObjectReference{
 							Name: "mcp-server",
@@ -317,18 +317,18 @@ func TestMCPRouteClient(t *testing.T) {
 	})
 
 	t.Run("Get MCPRoute", func(t *testing.T) {
-		route := &v1alpha1.MCPRoute{
+		route := &aigv1a1.MCPRoute{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-get-mcp-route",
 				Namespace: "default",
 			},
-			Spec: v1alpha1.MCPRouteSpec{
+			Spec: aigv1a1.MCPRouteSpec{
 				ParentRefs: []gwapiv1.ParentReference{
 					{
 						Name: "test-gateway",
 					},
 				},
-				BackendRefs: []v1alpha1.MCPRouteBackendRef{
+				BackendRefs: []aigv1a1.MCPRouteBackendRef{
 					{
 						BackendObjectReference: gwapiv1.BackendObjectReference{
 							Name: "mcp-server",
@@ -348,18 +348,18 @@ func TestMCPRouteClient(t *testing.T) {
 
 	t.Run("List MCPRoutes", func(t *testing.T) {
 		for i := 0; i < 2; i++ {
-			route := &v1alpha1.MCPRoute{
+			route := &aigv1a1.MCPRoute{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-list-mcp-route-" + string(rune('a'+i)),
 					Namespace: "default",
 				},
-				Spec: v1alpha1.MCPRouteSpec{
+				Spec: aigv1a1.MCPRouteSpec{
 					ParentRefs: []gwapiv1.ParentReference{
 						{
 							Name: "test-gateway",
 						},
 					},
-					BackendRefs: []v1alpha1.MCPRouteBackendRef{
+					BackendRefs: []aigv1a1.MCPRouteBackendRef{
 						{
 							BackendObjectReference: gwapiv1.BackendObjectReference{
 								Name: "mcp-server",

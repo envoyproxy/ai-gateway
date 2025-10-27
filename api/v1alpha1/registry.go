@@ -43,8 +43,8 @@ func Resource(resource string) schema.GroupResource {
 	return GroupVersion.WithResource(resource).GroupResource()
 }
 
-// addKnownTypes adds the list of known types to the given scheme for code generation.
-func addKnownTypes(scheme *runtime.Scheme) error {
+// AddKnownTypes adds the list of known types to the given scheme for code generation.
+func AddKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(GroupVersion,
 		&AIGatewayRoute{},
 		&AIGatewayRouteList{},
