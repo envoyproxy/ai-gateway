@@ -6,13 +6,10 @@
 package translator
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"maps"
 
-	"github.com/anthropics/anthropic-sdk-go"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
@@ -29,7 +26,7 @@ func NewAnthropicToGCPAnthropicTranslator(apiVersion string, modelNameOverride i
 }
 
 type anthropicToGCPAnthropicTranslator struct {
-	// TODO: reuse anthropicToAnthropicTranslator and embed it here to avoid code duplication.
+	anthropicToAnthropicTranslator
 	apiVersion        string
 	modelNameOverride internalapi.ModelNameOverride
 	requestModel      internalapi.RequestModel
@@ -79,98 +76,4 @@ func (a *anthropicToGCPAnthropicTranslator) RequestBody(_ []byte, body *anthropi
 
 	headerMutation, bodyMutation = buildRequestMutations(pathSuffix, mutatedBody)
 	return
-}
-
-// ResponseHeaders implements [AnthropicMessagesTranslator.ResponseHeaders] for Anthropic to GCP Anthropic.
-func (a *anthropicToGCPAnthropicTranslator) ResponseHeaders(_ map[string]string) (
-	headerMutation *extprocv3.HeaderMutation, err error,
-) {
-	// For Anthropic to GCP Anthropic, no header transformation is needed.
-	return nil, nil
-}
-
-// ResponseBody implements [AnthropicMessagesTranslator.ResponseBody] for Anthropic to GCP Anthropic.
-// This is essentially a passthrough since both use the same Anthropic response format.
-func (a *anthropicToGCPAnthropicTranslator) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel string, err error,
-) {
-	// Read the response body for both streaming and non-streaming.
-	bodyBytes, err := io.ReadAll(body)
-	if err != nil {
-		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	// For streaming chunks, parse SSE format to extract token usage.
-	if !endOfStream {
-		// Parse SSE format - split by lines and look for data: lines.
-		for line := range bytes.Lines(bodyBytes) {
-			line = bytes.TrimSpace(line)
-			if bytes.HasPrefix(line, dataPrefix) {
-				jsonData := bytes.TrimPrefix(line, dataPrefix)
-
-				var eventData map[string]any
-				if unmarshalErr := json.Unmarshal(jsonData, &eventData); unmarshalErr != nil {
-					// Skip lines with invalid JSON (like ping events or malformed data).
-					continue
-				}
-				if eventType, ok := eventData["type"].(string); ok {
-					switch eventType {
-					case "message_start":
-						// Extract input tokens from message.usage.
-						if messageData, ok := eventData["message"].(map[string]any); ok {
-							if usageData, ok := messageData["usage"].(map[string]any); ok {
-								if inputTokens, ok := usageData["input_tokens"].(float64); ok {
-									tokenUsage.InputTokens = uint32(inputTokens) //nolint:gosec
-								}
-								// Some message_start events may include initial output tokens.
-								if outputTokens, ok := usageData["output_tokens"].(float64); ok && outputTokens > 0 {
-									tokenUsage.OutputTokens = uint32(outputTokens) //nolint:gosec
-								}
-								tokenUsage.TotalTokens = tokenUsage.InputTokens + tokenUsage.OutputTokens
-							}
-						}
-
-					case "message_delta":
-						if usageData, ok := eventData["usage"].(map[string]any); ok {
-							if outputTokens, ok := usageData["output_tokens"].(float64); ok {
-								// Add to existing output tokens (in case message_start had some initial ones).
-								tokenUsage.OutputTokens += uint32(outputTokens) //nolint:gosec
-								tokenUsage.TotalTokens = tokenUsage.InputTokens + tokenUsage.OutputTokens
-							}
-						}
-					}
-				}
-			}
-		}
-
-		return nil, &extprocv3.BodyMutation{
-			Mutation: &extprocv3.BodyMutation_Body{Body: bodyBytes},
-		}, tokenUsage, a.requestModel, nil
-	}
-
-	// Parse the Anthropic response to extract token usage.
-	var anthropicResp anthropic.Message
-	if err = json.Unmarshal(bodyBytes, &anthropicResp); err != nil {
-		// If we can't parse as Anthropic format, pass through as-is.
-		return nil, &extprocv3.BodyMutation{
-			Mutation: &extprocv3.BodyMutation_Body{Body: bodyBytes},
-		}, LLMTokenUsage{}, a.requestModel, nil
-	}
-
-	// Extract token usage from the response.
-	tokenUsage = LLMTokenUsage{
-		InputTokens:       uint32(anthropicResp.Usage.InputTokens),                                    //nolint:gosec
-		OutputTokens:      uint32(anthropicResp.Usage.OutputTokens),                                   //nolint:gosec
-		TotalTokens:       uint32(anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens), //nolint:gosec
-		CachedInputTokens: uint32(anthropicResp.Usage.CacheReadInputTokens),                           //nolint:gosec
-	}
-
-	// Pass through the response body unchanged since both input and output are Anthropic format.
-	headerMutation = &extprocv3.HeaderMutation{}
-	setContentLength(headerMutation, bodyBytes)
-	bodyMutation = &extprocv3.BodyMutation{
-		Mutation: &extprocv3.BodyMutation_Body{Body: bodyBytes},
-	}
-
-	return headerMutation, bodyMutation, tokenUsage, a.requestModel, nil
 }
