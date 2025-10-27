@@ -68,8 +68,6 @@ jobs:
             ~/go/bin
           key: unittest-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}-${{ matrix.os }}
       - run: make test-coverage
-      - if: failure()
-        run: cat ollama.log || true
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest'
         uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24 # v5.4.3
@@ -337,7 +335,7 @@ jobs:
       - name: Download Envoy via func-e
         run: go tool -modfile=tools/go.mod func-e run --version
         env:
-          FUNC_E_HOME: /tmp/envoy-gateway # hard-coded directory in EG
+          FUNC_E_DATA_HOME: ~/.local/share/aigw
       - name: Install Goose
         env:
           GOOSE_VERSION: v1.10.0

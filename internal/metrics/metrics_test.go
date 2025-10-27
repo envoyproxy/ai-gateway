@@ -21,6 +21,14 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
+// clearEnv clears any OTEL configuration that could exist in the environment.
+func clearEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+	t.Setenv("OTEL_METRICS_EXPORTER", "")
+	t.Setenv("OTEL_SERVICE_NAME", "")
+}
+
 // TestNewMetricsFromEnv_ConsoleExporter tests console/none exporter configuration.
 // We use synctest here because console output relies on time.Sleep to wait for
 // the periodic exporter, and synctest makes these sleeps instant in wall-clock time.
@@ -95,6 +103,7 @@ func TestNewMetricsFromEnv_ConsoleExporter(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				t.Helper()
+				clearEnv(t)
 				t.Setenv("OTEL_METRIC_EXPORT_INTERVAL", "100")
 				for k, v := range tt.env {
 					t.Setenv(k, v)
@@ -166,6 +175,7 @@ func TestNewMetricsFromEnv_ConsoleExporter(t *testing.T) {
 func TestNewMetricsFromEnv_ConsoleExporter_NoMetrics(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		t.Helper()
+		clearEnv(t)
 		t.Setenv("OTEL_METRIC_EXPORT_INTERVAL", "100")
 		t.Setenv("OTEL_METRICS_EXPORTER", "console")
 
@@ -255,6 +265,7 @@ func TestNewMetricsFromEnv_NetworkExporters(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			clearEnv(t)
 			for k, v := range tt.env {
 				t.Setenv(k, v)
 			}
@@ -344,6 +355,7 @@ func TestNewMetricsFromEnv_PrometheusReader(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			clearEnv(t)
 			for k, v := range tt.env {
 				t.Setenv(k, v)
 			}
@@ -416,6 +428,7 @@ func TestNewMetricsFromEnv_ErrorHandling(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			clearEnv(t)
 			for k, v := range tt.env {
 				t.Setenv(k, v)
 			}
@@ -439,6 +452,7 @@ func TestNewMetricsFromEnv_OTLPHeaders(t *testing.T) {
 	}))
 	t.Cleanup(ts.Close)
 
+	clearEnv(t)
 	t.Setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization="+expectedAuthorization)
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", ts.URL)
 	t.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")

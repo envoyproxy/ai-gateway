@@ -44,7 +44,7 @@ func TestRun(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cleanupRun(t, cancel)
 
-	opts := runOpts{extProcLauncher: func(context.Context, []string, io.Writer) error { return nil }}
+	opts := testRunOpts(t, func(context.Context, []string, io.Writer) error { return nil })
 	require.NoError(t, run(ctx, cmdRun{Debug: true, AdminPort: adminPort}, opts, stdout, stderr))
 }
 
@@ -53,7 +53,9 @@ func cleanupRun(t testing.TB, cancel context.CancelFunc) {
 	if err := internaltesting.AwaitPortClosed(1975, 10*time.Second); err != nil {
 		t.Logf("Failed to close port 1975: %v", err)
 	}
-	// Delete the hard-coded path to certs defined in Envoy AI Gateway
+	// Delete the hard-coded path to certs defined in Envoy Gateway
+	// TODO: Remove once EG supports configurable cert directory
+	// https://github.com/envoyproxy/gateway/pull/7225
 	if err := os.RemoveAll("/tmp/envoy-gateway/certs"); err != nil {
 		t.Logf("Failed to delete envoy gateway certs: %v", err)
 	}
@@ -67,9 +69,8 @@ func TestRunExtprocStartFailure(t *testing.T) {
 	errChan := make(chan error)
 	mockErr := errors.New("mock extproc error")
 	go func() {
-		errChan <- run(ctx, cmdRun{}, runOpts{
-			extProcLauncher: func(context.Context, []string, io.Writer) error { return mockErr },
-		}, os.Stdout, io.Discard)
+		opts := testRunOpts(t, func(context.Context, []string, io.Writer) error { return mockErr })
+		errChan <- run(ctx, cmdRun{}, opts, os.Stdout, io.Discard)
 	}()
 
 	select {
@@ -241,15 +242,16 @@ func Test_newEnvoyMiddleware(t *testing.T) {
 			start := time.Now()
 			listenerPort := 1975
 
-			middleware := newEnvoyRunMiddleware(start, listenerPort, &stdout, &stderr)
+			dirs := newTempDirectories(t)
+			middleware := newEnvoyRunMiddleware(dirs, "test-run", start, listenerPort, &stdout, &stderr)
 			require.NotNil(t, middleware)
 
 			err := middleware(func(ctx context.Context, args []string, options ...api.RunOption) error {
 				require.Equal(t, t.Context(), ctx)
 				require.Equal(t, []string{"test"}, args)
 
-				// 3 = EnvoyOut, EnvoyErr, StartupHook
-				require.Len(t, options, 3+len(tt.inputOptions))
+				// 8 = EnvoyOut, EnvoyErr, ConfigHome, DataHome, StateHome, RuntimeDir, RunID, StartupHook
+				require.Len(t, options, 8+len(tt.inputOptions))
 				return nil
 			})(t.Context(), []string{"test"}, tt.inputOptions...)
 			require.NoError(t, err)
@@ -264,4 +266,14 @@ func readFileFromProjectRoot(t *testing.T, file string) string {
 	b, err := os.ReadFile(filepath.Join(filepath.Dir(filename), "..", "..", file))
 	require.NoError(t, err)
 	return string(b)
+}
+
+// testRunOpts creates runOpts for testing.
+// This ensures test isolation by using t.TempDir() for all XDG directories.
+func testRunOpts(t *testing.T, extProcLauncher func(context.Context, []string, io.Writer) error) *runOpts {
+	t.Helper()
+	dirs := newTempDirectories(t)
+	opts, err := newRunOpts(dirs, "test-run", "", extProcLauncher)
+	require.NoError(t, err)
+	return opts
 }
