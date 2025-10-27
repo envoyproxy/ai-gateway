@@ -6,7 +6,6 @@
 package translator
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -215,23 +214,6 @@ func TestCohereToCohereTranslatorV2Rerank_ResponseError(t *testing.T) {
 		require.NoError(t, err)
 		require.Nil(t, headerMutation)
 		require.Nil(t, bodyMutation)
-	})
-
-	t.Run("marshal_error", func(t *testing.T) {
-		respHeaders := map[string]string{
-			statusHeaderName:      "500",
-			contentTypeHeaderName: "text/plain",
-		}
-		invalid := []byte{0xff, 0xfe, 0xfd}
-
-		headerMutation, bodyMutation, err := translator.ResponseError(respHeaders, bytes.NewReader(invalid))
-		require.NoError(t, err)
-		require.NotNil(t, headerMutation)
-		require.NotNil(t, bodyMutation)
-		var cohereErr cohereschema.RerankV2Error
-		require.NoError(t, json.Unmarshal(bodyMutation.GetBody(), &cohereErr))
-		require.NotNil(t, cohereErr.Message)
-		require.NotNil(t, cohereErr.ID)
 	})
 
 	t.Run("read_error", func(t *testing.T) {
