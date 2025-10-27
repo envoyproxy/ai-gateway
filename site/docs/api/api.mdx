@@ -570,6 +570,11 @@ It can reference either an AIServiceBackend or an InferencePool resource.
   required="false"
   description="Name of the model in the backend. If provided this will override the name provided in the request.<br />This field is ignored when referencing InferencePool resources."
 /><ApiField
+  name="headerMutation"
+  type="[HTTPHeaderMutation](#httpheadermutation)"
+  required="false"
+  description="HeaderMutation defines the request header mutation to be applied to this backend.<br />When both route-level and backend-level HeaderMutation are defined,<br />route-level takes precedence over backend-level for conflicting operations.<br />This field is ignored when referencing InferencePool resources."
+/><ApiField
   name="weight"
   type="integer"
   required="false"
@@ -1315,6 +1320,7 @@ GCPCredentialsFile specifies the service account key json file to authenticate w
 
 
 **Appears in:**
+- [AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref)
 - [AIServiceBackendSpec](#aiservicebackendspec)
 
 HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to the request

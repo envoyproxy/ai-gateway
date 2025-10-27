@@ -317,6 +317,14 @@ type AIGatewayRouteRuleBackendRef struct {
 	// +optional
 	ModelNameOverride string `json:"modelNameOverride,omitempty"`
 
+	// HeaderMutation defines the request header mutation to be applied to this backend.
+	// When both route-level and backend-level HeaderMutation are defined,
+	// route-level takes precedence over backend-level for conflicting operations.
+	// This field is ignored when referencing InferencePool resources.
+	//
+	// +optional
+	HeaderMutation *HTTPHeaderMutation `json:"headerMutation,omitempty"`
+
 	// Weight is the weight of the backend. This is exactly the same as the weight in
 	// the BackendRef in the Gateway API. See for the details:
 	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef
