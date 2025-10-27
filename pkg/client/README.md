@@ -1,158 +1,63 @@
 # AI Gateway Kubernetes Client
 
-This package provides a typed Kubernetes client for AI Gateway custom resources.
+This package contains the generated Kubernetes client for AI Gateway custom resources.
 
 ## Overview
 
-The AI Gateway client allows you to programmatically interact with AI Gateway resources (AIGatewayRoutes, AIServiceBackends, BackendSecurityPolicies, and MCPRoutes) in your Kubernetes cluster.
-
-## Features
-
-- **Type-safe Clientset**: Strongly typed Go client for all AI Gateway CRDs
-- **Informers**: Efficient caching and watching of resources with event handlers
-- **Listers**: Fast in-memory queries using cached data
-- **Fake Clients**: Built-in testing support without requiring a real cluster
-- **Standard Kubernetes Patterns**: Follows established client-go conventions
-
-## Quick Start
-
-### Installation
-
-```go
-import (
-	"github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	clientset "github.com/envoyproxy/ai-gateway/pkg/client/clientset/versioned"
-)
-```
-
-### Basic Usage
-
-```go
-package main
-
-import (
-	"context"
-	"fmt"
-	"log"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/tools/clientcmd"
-
-	clientset "github.com/envoyproxy/ai-gateway/pkg/client/clientset/versioned"
-)
-
-func main() {
-	// Load kubeconfig
-	config, err := clientcmd.BuildConfigFromFlags("",
-		clientcmd.NewDefaultClientConfigLoadingRules().GetDefaultFilename())
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Create client
-	client, err := clientset.NewForConfig(config)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// List AIGatewayRoutes
-	routes, err := client.AigatewayV1alpha1().AIGatewayRoutes("default").List(
-		context.Background(),
-		metav1.ListOptions{},
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Printf("Found %d routes\n", len(routes.Items))
-}
-```
+The client provides typed access to AI Gateway resources:
+- **AIGatewayRoute** - Routes for AI service traffic
+- **AIServiceBackend** - Backend service configurations for AI providers
+- **BackendSecurityPolicy** - Security policies for backend authentication
+- **MCPRoute** - Model Context Protocol routing
 
 ## Package Structure
 
 ```
 pkg/client/
-├── clientset/versioned/          # Type-safe clients for AI Gateway resources
-│   ├── typed/api/v1alpha1/       # v1alpha1 typed clients
-│   │   ├── aigatewayroute.go
-│   │   ├── aiservicebackend.go
-│   │   ├── backendsecuritypolicy.go
-│   │   └── mcproute.go
-│   └── fake/                     # Fake clients for testing
-├── informers/externalversions/   # Informers for watching resources
-│   └── api/v1alpha1/
-├── listers/api/v1alpha1/         # Listers for querying cached data
-└── README.md                     # This file
+├── clientset/          # Typed clientset for direct API calls
+│   └── versioned/
+│       ├── typed/      # Type-safe resource clients
+│       └── fake/       # Fake clients for testing
+├── informers/          # Shared informer factories for caching
+├── listers/            # Cached lister interfaces
+├── tests/              # Comprehensive test suite
+│   ├── typed_client_test.go   # Tests for typed clients
+│   └── informers_test.go      # Tests for informers and listers
+└── README.md           # This file
 ```
 
-## Available Clients
+## Usage
 
-### AIGatewayRoute Client
+### Creating a Client
 
 ```go
-routeClient := client.AigatewayV1alpha1().AIGatewayRoutes(namespace)
+import (
+    "k8s.io/client-go/tools/clientcmd"
+    clientset "github.com/envoyproxy/ai-gateway/pkg/client/clientset/versioned"
+)
 
-// CRUD operations
-route, err := routeClient.Create(ctx, route, metav1.CreateOptions{})
-route, err := routeClient.Get(ctx, name, metav1.GetOptions{})
-routes, err := routeClient.List(ctx, metav1.ListOptions{})
-route, err := routeClient.Update(ctx, route, metav1.UpdateOptions{})
-err := routeClient.Delete(ctx, name, metav1.DeleteOptions{})
+config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+client, err := clientset.NewForConfig(config)
 ```
 
-### AIServiceBackend Client
+### Using Typed Clients
 
 ```go
-backendClient := client.AigatewayV1alpha1().AIServiceBackends(namespace)
+// List AIGatewayRoutes
+routes, err := client.AigatewayV1alpha1().AIGatewayRoutes("default").List(ctx, metav1.ListOptions{})
 
-// CRUD operations
-backend, err := backendClient.Create(ctx, backend, metav1.CreateOptions{})
-backend, err := backendClient.Get(ctx, name, metav1.GetOptions{})
-backends, err := backendClient.List(ctx, metav1.ListOptions{})
-backend, err := backendClient.Update(ctx, backend, metav1.UpdateOptions{})
-err := backendClient.Delete(ctx, name, metav1.DeleteOptions{})
+// Get a specific backend
+backend, err := client.AigatewayV1alpha1().AIServiceBackends("default").Get(ctx, "my-backend", metav1.GetOptions{})
 ```
 
-### BackendSecurityPolicy Client
-
-```go
-policyClient := client.AigatewayV1alpha1().BackendSecurityPolicies(namespace)
-
-// CRUD operations
-policy, err := policyClient.Create(ctx, policy, metav1.CreateOptions{})
-policy, err := policyClient.Get(ctx, name, metav1.GetOptions{})
-policies, err := policyClient.List(ctx, metav1.ListOptions{})
-policy, err := policyClient.Update(ctx, policy, metav1.UpdateOptions{})
-err := policyClient.Delete(ctx, name, metav1.DeleteOptions{})
-```
-
-### MCPRoute Client
-
-```go
-mcpClient := client.AigatewayV1alpha1().MCPRoutes(namespace)
-
-// CRUD operations
-mcpRoute, err := mcpClient.Create(ctx, mcpRoute, metav1.CreateOptions{})
-mcpRoute, err := mcpClient.Get(ctx, name, metav1.GetOptions{})
-mcpRoutes, err := mcpClient.List(ctx, metav1.ListOptions{})
-mcpRoute, err := mcpClient.Update(ctx, mcpRoute, metav1.UpdateOptions{})
-err := mcpClient.Delete(ctx, name, metav1.DeleteOptions{})
-```
-
-## Using Informers
-
-Informers provide efficient caching and watching capabilities:
+### Using Informers and Listers
 
 ```go
 import (
     informers "github.com/envoyproxy/ai-gateway/pkg/client/informers/externalversions"
-    "k8s.io/client-go/tools/cache"
 )
 
-// Create informer factory
 factory := informers.NewSharedInformerFactory(client, 10*time.Minute)
-
-// Get informer for AIGatewayRoutes
 routeInformer := factory.Aigateway().V1alpha1().AIGatewayRoutes()
 
 // Add event handler
@@ -161,117 +66,67 @@ routeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
         route := obj.(*v1alpha1.AIGatewayRoute)
         fmt.Printf("Route added: %s\n", route.Name)
     },
-    UpdateFunc: func(oldObj, newObj interface{}) {
-        route := newObj.(*v1alpha1.AIGatewayRoute)
-        fmt.Printf("Route updated: %s\n", route.Name)
-    },
-    DeleteFunc: func(obj interface{}) {
-        route := obj.(*v1alpha1.AIGatewayRoute)
-        fmt.Printf("Route deleted: %s\n", route.Name)
-    },
 })
 
 // Start informers
 factory.Start(ctx.Done())
 factory.WaitForCacheSync(ctx.Done())
-```
 
-## Using Listers
-
-Listers provide fast, cached access to resources:
-
-```go
-import (
-    "k8s.io/apimachinery/pkg/labels"
-)
-
-// Get lister from informer
+// Use lister (cached)
 lister := routeInformer.Lister()
-
-// Get a specific resource from cache
 route, err := lister.AIGatewayRoutes("default").Get("my-route")
-
-// List all resources in a namespace
-routes, err := lister.AIGatewayRoutes("default").List(labels.Everything())
-
-// List with label selector
-selector := labels.SelectorFromSet(labels.Set{"app": "my-app"})
-filteredRoutes, err := lister.AIGatewayRoutes("default").List(selector)
-```
-
-## Testing with Fake Clients
-
-The fake client is perfect for unit testing:
-
-```go
-import (
-	fakeclientset "github.com/envoyproxy/ai-gateway/pkg/client/clientset/versioned/fake"
-)
-
-func TestMyFunction(t *testing.T) {
-	// Create fake client
-	client := fakeclientset.NewSimpleClientset()
-
-	// Use it like a real client
-	route := &v1alpha1.AIGatewayRoute{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-route",
-			Namespace: "default",
-		},
-	}
-
-	created, err := client.AigatewayV1alpha1().AIGatewayRoutes("default").Create(
-		context.Background(),
-		route,
-		metav1.CreateOptions{},
-	)
-	// ... assertions
-}
 ```
 
 ## Documentation
 
-- **[Client Usage Guide](../../docs/client-usage.md)**: Comprehensive usage examples and patterns
-- **[Deployment Guide](../../docs/client-deployment-guide.md)**: Step-by-step deployment and testing instructions
-- **[API Reference](../../docs/api/api.mdx)**: Complete API documentation
+- **Usage Examples**: See [docs/client-usage.md](../../docs/client-usage.md)
+- **Deployment Guide**: See [docs/client-deployment-guide.md](../../docs/client-deployment-guide.md)
+- **Implementation Summary**: See [docs/CLIENT_IMPLEMENTATION_SUMMARY.md](../../docs/CLIENT_IMPLEMENTATION_SUMMARY.md)
 
-## Development
+## Code Generation
 
-### Generating the Client
-
-The client code is generated using Kubernetes code-generator:
+This client code is generated using Kubernetes code-generator tools. To regenerate:
 
 ```bash
-# Generate client code
 make codegen
-
-# Verify generation
-make verify-codegen
 ```
 
-### Running Tests
+The generation script is located at `hack/update-codegen.sh`.
+
+**Note**: The `tests/` directory and this `README.md` are preserved during code generation.
+
+## Testing
+
+Run the comprehensive test suite:
 
 ```bash
 # Run all client tests
-go test ./pkg/client/... -v
+go test ./pkg/client/tests/... -v
 
-# Run specific test package
-go test ./pkg/client/clientset/versioned/typed/api/v1alpha1/... -v
-
-# Run with coverage
-go test ./pkg/client/... -cover
+# Run with short mode (faster)
+go test ./pkg/client/tests/... -v -short
 ```
 
-## Requirements
+## Performance
 
-- Go 1.25+
-- Kubernetes 1.31+
-- AI Gateway CRDs installed in the cluster
+| Operation | Method | Performance |
+|-----------|--------|-------------|
+| Single Get | Direct API call | ~10-50ms |
+| List All | Direct API call | ~50-200ms |
+| Get (cached) | Lister | <1ms |
+| List (cached) | Lister | <1ms |
+| Watch | Informer | Real-time events |
 
-## Contributing
+## Integration with Other Tools
 
-Contributions are welcome! Please see the main [CONTRIBUTING.md](../../CONTRIBUTING.md) for guidelines.
+This client can be used alongside:
+- `controller-runtime` dynamic clients
+- Standard Kubernetes clients
+- Custom controllers and operators
+- CLI tools and scripts
 
 ## License
 
-Copyright Envoy AI Gateway Authors. Licensed under the Apache License, Version 2.0.
+Copyright Envoy AI Gateway Authors
+SPDX-License-Identifier: Apache-2.0
+

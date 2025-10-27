@@ -3,7 +3,7 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-package v1alpha1_test
+package tests
 
 import (
 	"context"
@@ -376,8 +376,4 @@ func TestMCPRouteClient(t *testing.T) {
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, len(list.Items), 2)
 	})
-}
-
-func ptrTo[T any](v T) *T {
-	return &v
 }

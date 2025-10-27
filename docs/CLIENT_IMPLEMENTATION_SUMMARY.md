@@ -45,19 +45,25 @@ pkg/client/
 │       ├── aiservicebackend.go
 │       ├── backendsecuritypolicy.go
 │       └── mcproute.go
-└── listers/api/v1alpha1/         # Listers for cached queries
-    ├── aigatewayroute.go
-    ├── aiservicebackend.go
-    ├── backendsecuritypolicy.go
-    └── mcproute.go
+├── listers/api/v1alpha1/         # Listers for cached queries
+│   ├── aigatewayroute.go
+│   ├── aiservicebackend.go
+│   ├── backendsecuritypolicy.go
+│   └── mcproute.go
+├── tests/                         # Test suite (preserved during codegen)
+│   ├── typed_client_test.go
+│   └── informers_test.go
+└── README.md                      # Documentation (preserved during codegen)
 ```
 
 ### 3. Comprehensive Test Suite
 
 **Test Files:**
 
-- `pkg/client/clientset/versioned/typed/api/v1alpha1/client_test.go` - Tests for typed clients (Create, Get, List, Update, Delete)
-- `pkg/client/informers_test.go` - Tests for informers and listers
+- `pkg/client/tests/typed_client_test.go` - Tests for typed clients (Create, Get, List, Update, Delete)
+- `pkg/client/tests/informers_test.go` - Tests for informers and listers
+
+**Note**: Tests are located in `pkg/client/tests/` which is preserved during code generation.
 
 **Test Coverage:**
 
