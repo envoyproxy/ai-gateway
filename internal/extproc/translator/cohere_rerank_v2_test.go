@@ -6,12 +6,14 @@
 package translator
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/sjson"
 
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 )
@@ -100,6 +102,23 @@ func TestCohereToCohereTranslatorV2Rerank_RequestBody_InvalidJSONCreatesBodyWith
 	require.Equal(t, ":path", headerMutation.SetHeaders[0].Header.Key)
 	require.Equal(t, "/v2/rerank", string(headerMutation.SetHeaders[0].Header.RawValue))
 	require.Equal(t, "content-length", headerMutation.SetHeaders[1].Header.Key)
+}
+
+func TestCohereToCohereTranslatorV2Rerank_RequestBody_SetModelNameError(t *testing.T) {
+	orig := sjsonOptions
+	sjsonOptions = &sjson.Options{Optimistic: false, ReplaceInPlace: false}
+	t.Cleanup(func() { sjsonOptions = orig })
+
+	translator := NewRerankCohereToCohereTranslator("v2", "override-model")
+	// Use an array root to make setting an object key fail with Optimistic=false.
+	originalBody := []byte("[]")
+	var req cohereschema.RerankV2Request
+
+	headerMutation, bodyMutation, err := translator.RequestBody(originalBody, &req, false)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "failed to set model name")
+	require.Nil(t, headerMutation)
+	require.Nil(t, bodyMutation)
 }
 
 func TestCohereToCohereTranslatorV2Rerank_ResponseHeaders(t *testing.T) {
@@ -196,6 +215,23 @@ func TestCohereToCohereTranslatorV2Rerank_ResponseError(t *testing.T) {
 		require.NoError(t, err)
 		require.Nil(t, headerMutation)
 		require.Nil(t, bodyMutation)
+	})
+
+	t.Run("marshal_error", func(t *testing.T) {
+		respHeaders := map[string]string{
+			statusHeaderName:      "500",
+			contentTypeHeaderName: "text/plain",
+		}
+		invalid := []byte{0xff, 0xfe, 0xfd}
+
+		headerMutation, bodyMutation, err := translator.ResponseError(respHeaders, bytes.NewReader(invalid))
+		require.NoError(t, err)
+		require.NotNil(t, headerMutation)
+		require.NotNil(t, bodyMutation)
+		var cohereErr cohereschema.RerankV2Error
+		require.NoError(t, json.Unmarshal(bodyMutation.GetBody(), &cohereErr))
+		require.NotNil(t, cohereErr.Message)
+		require.NotNil(t, cohereErr.ID)
 	})
 
 	t.Run("read_error", func(t *testing.T) {
