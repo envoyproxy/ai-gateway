@@ -18,7 +18,7 @@ require (
 	github.com/cncf/xds/go v0.0.0-20250501225837-2ac532fd4443
 	github.com/coreos/go-oidc/v3 v3.16.0
 	github.com/docker/docker v28.5.1+incompatible
-	github.com/envoyproxy/gateway v0.5.0-rc.1.0.20251020052851-16aa8100498d
+	github.com/envoyproxy/gateway v1.6.0-rc.0
 	github.com/envoyproxy/go-control-plane v0.13.5-0.20250929230642-07d3df27ff4f
 	github.com/envoyproxy/go-control-plane/envoy v1.35.1-0.20250929230642-07d3df27ff4f
 	github.com/go-logr/logr v1.4.3
@@ -171,7 +171,7 @@ require (
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kelseyhightower/envconfig v1.4.0 // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/klauspost/compress v1.18.1 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 // indirect
 	github.com/lyft/gostats v0.4.1 // indirect
