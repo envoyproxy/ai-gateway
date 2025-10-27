@@ -21,6 +21,11 @@ var (
 	sseEventPrefix = []byte("event: ")
 	sseIDPrefix    = []byte("id: ")
 	sseDataPrefix  = []byte("data: ")
+
+	sseCR   = []byte{'\r'}
+	sseLF   = []byte{'\n'}
+	sseCRLF = []byte{'\r', '\n'}
+	sseLFLF = []byte{'\n', '\n'}
 )
 
 // sseEventParser reads bytes from a reader and parses the SSE Events gracefully
@@ -72,7 +77,7 @@ func (s *sseEventParser) next() (*sseEvent, error) {
 func (s *sseEventParser) parseEvent(chunk []byte) (*sseEvent, error) {
 	ret := &sseEvent{backend: s.backend}
 
-	for line := range bytes.SplitSeq(chunk, []byte{'\n'}) {
+	for line := range bytes.SplitSeq(chunk, sseLF) {
 		switch {
 		case bytes.HasPrefix(line, sseEventPrefix):
 			ret.event = string(bytes.TrimSpace(line[7:]))
@@ -94,7 +99,7 @@ func (s *sseEventParser) parseEvent(chunk []byte) (*sseEvent, error) {
 // extractEvent tries to find a complete event (double newline) in remainder.
 func (s *sseEventParser) extractEvent() (*sseEvent, bool, error) {
 	// Search for double newline "\n\n"
-	if idx := bytes.Index(s.buf, []byte("\n\n")); idx >= 0 {
+	if idx := bytes.Index(s.buf, sseLFLF); idx >= 0 {
 		chunk := s.buf[:idx]
 		s.buf = s.buf[idx+2:] // retain after separator
 		event, err := s.parseEvent(chunk)
@@ -105,8 +110,8 @@ func (s *sseEventParser) extractEvent() (*sseEvent, bool, error) {
 
 // normalizeNewlines converts all CR/LF variants to '\n'.
 func normalizeNewlines(b []byte) []byte {
-	b = bytes.ReplaceAll(b, []byte("\r\n"), []byte("\n"))
-	b = bytes.ReplaceAll(b, []byte("\r"), []byte("\n"))
+	b = bytes.ReplaceAll(b, sseCRLF, sseLF)
+	b = bytes.ReplaceAll(b, sseCR, sseLF)
 	return b
 }
 
@@ -120,20 +125,20 @@ func (s *sseEvent) writeAndMaybeFlush(w io.Writer) {
 	if s.event != "" {
 		_, _ = w.Write(sseEventPrefix)
 		_, _ = w.Write([]byte(s.event))
-		_, _ = w.Write([]byte{'\n'})
+		_, _ = w.Write(sseLF)
 	}
 	if s.id != "" {
 		_, _ = w.Write(sseIDPrefix)
 		_, _ = w.Write([]byte(s.id))
-		_, _ = w.Write([]byte{'\n'})
+		_, _ = w.Write(sseLF)
 	}
 	for _, msg := range s.messages {
 		_, _ = w.Write(sseDataPrefix)
 		data, _ := jsonrpc.EncodeMessage(msg)
 		_, _ = w.Write(data)
-		_, _ = w.Write([]byte{'\n'})
+		_, _ = w.Write(sseLF)
 	}
-	_, _ = w.Write([]byte{'\n', '\n'})
+	_, _ = w.Write(sseLFLF)
 
 	// Flush the response writer to ensure the event is sent immediately.
 	if f, ok := w.(http.Flusher); ok {
