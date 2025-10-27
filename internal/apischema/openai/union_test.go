@@ -52,6 +52,16 @@ func TestUnmarshalJSONNestedUnion(t *testing.T) {
 			data:     []byte(" \t\n\r\"test\""),
 			expected: "test",
 		},
+		{
+			name:     "array of token arrays",
+			data:     []byte(`[[-1, -2, -3], [1, 2, 3]]`),
+			expected: [][]int64{{-1, -2, -3}, {1, 2, 3}},
+		},
+		{
+			name:     "array of strings",
+			data:     []byte(`[ "aa", "bb", "cc" ]`),
+			expected: []string{"aa", "bb", "cc"},
+		},
 	}
 
 	allCases := append(promptUnionBenchmarkCases, additionalSuccessCases...) //nolint:gocritic // intentionally creating new slice

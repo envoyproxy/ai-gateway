@@ -14,12 +14,14 @@ import (
 	"time"
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
+	"github.com/envoyproxy/ai-gateway/internal/pprof"
 )
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	signalsChan := make(chan os.Signal, 1)
 	signal.Notify(signalsChan, syscall.SIGINT, syscall.SIGTERM)
+	pprof.Run(ctx)
 	go func() {
 		<-signalsChan
 		log.Printf("signal received, shutting down...")

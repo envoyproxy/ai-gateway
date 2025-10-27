@@ -6,6 +6,7 @@
 package e2e
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -18,6 +19,7 @@ import (
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
@@ -27,12 +29,13 @@ func TestWithTestUpstream(t *testing.T) {
 	const manifest = "testdata/testupstream.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
 	t.Cleanup(func() {
-		_ = e2elib.KubectlDeleteManifest(t.Context(), manifest)
+		_ = e2elib.KubectlDeleteManifest(context.Background(), manifest)
 	})
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=translation-testupstream"
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
 
+	const dummyToken = "dummy-token"
 	t.Run("/chat/completions", func(t *testing.T) {
 		for _, tc := range []struct {
 			name      string
@@ -80,7 +83,7 @@ func TestWithTestUpstream(t *testing.T) {
 				name:            "openai",
 				modelName:       "non-existent-model",
 				expStatus:       404,
-				expResponseBody: `No matching route found. It is likely that the model specified your request is not configured in the Gateway.`,
+				expResponseBody: `No matching route found. It is likely because the model specified in your request is not configured in the Gateway.`,
 			},
 			{
 				name:               "openai-header-mutation",
@@ -111,9 +114,8 @@ func TestWithTestUpstream(t *testing.T) {
 						req.Header.Set(k, v)
 					}
 					if tc.modelName == "some-cool-model" {
-						// TODO: remove after 0.3.0 release since this is for backward compatibility testing.
 						req.Header.Set(testupstreamlib.ExpectedHeadersKey,
-							base64.StdEncoding.EncodeToString([]byte("Authorization:Bearer dummy-token")))
+							base64.StdEncoding.EncodeToString([]byte("Authorization:Bearer "+dummyToken)))
 					}
 
 					if len(tc.nonexpectedHeaders) > 0 {
@@ -250,4 +252,61 @@ func TestWithTestUpstream(t *testing.T) {
 		require.NoError(t, stream.Err())
 		require.True(t, asserted)
 	})
+
+	t.Run("secret update propagation", func(t *testing.T) {
+		const secretName = "translation-testupstream-default"
+		// Verify that the apiKey still exists in the filter-config.yaml secret with the existing value.
+		internaltesting.RequireEventuallyNoError(t, func() error {
+			secret, err := extractFilterConfigFromSecret(t.Context(), secretName)
+			if err != nil {
+				return err
+			}
+			if !strings.Contains(secret, dummyToken) {
+				return fmt.Errorf("filter-config.yaml does not contain %s", dummyToken)
+			}
+			return nil
+		}, 10*time.Second, 1*time.Second, "initial secret not found in filter-config.yaml")
+
+		// Update the secret used by the BackendSecurityPolicy to have a new apiKey value.
+		const updatedKey = "pikachu"
+		secretUpdated := fmt.Sprintf(`apiVersion: v1
+kind: Secret
+metadata:
+  name: translation-testupstream-cool-model-backend-api-key
+  namespace: default
+type: Opaque
+stringData:
+  apiKey: "%s"`, updatedKey)
+		require.NoError(t, e2elib.KubectlApplyManifestStdin(t.Context(), secretUpdated))
+
+		// Verify that the new apiKey is propagated to the filter-config.yaml secret.
+		internaltesting.RequireEventuallyNoError(t, func() error {
+			secret, err := extractFilterConfigFromSecret(t.Context(), secretName)
+			if err != nil {
+				return err
+			}
+			if !strings.Contains(secret, updatedKey) {
+				return fmt.Errorf("filter-config.yaml does not contain %s", updatedKey)
+			}
+			return nil
+		}, 20*time.Second, 1*time.Second, "updated secret not propagated to filter-config.yaml")
+	})
+}
+
+// extractFilterConfigFromSecret extracts the filter-config.yaml content from the given secret name.
+func extractFilterConfigFromSecret(ctx context.Context, name string) (string, error) {
+	ctrl := e2elib.Kubectl(ctx, "get", "secrets", "-n", e2elib.EnvoyGatewayNamespace,
+		name, "-o",
+		`jsonpath='{.data.filter-config\.yaml}'`)
+	ctrl.Stderr = nil
+	ctrl.Stdout = nil
+	output, err := ctrl.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get filter-config.yaml from secret: %w", err)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(strings.Trim(string(output), "'"))
+	if err != nil {
+		return "", fmt.Errorf("failed to base64 decode filter-config.yaml: %w", err)
+	}
+	return string(decoded), nil
 }

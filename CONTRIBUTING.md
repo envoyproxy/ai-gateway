@@ -43,12 +43,6 @@ For example,
 
 - The latest `kubectl` binary for running `make test-e2e`.
   - See: https://kubernetes.io/docs/tasks/tools/
-- The latest `envoy` binary for running `make test-extproc`. The current required version is v1.35 or later.
-  - On Linux, you can download the latest Envoy binary as described in https://www.envoyproxy.io/docs/envoy/latest/start/install.
-    Alternatively, you can use `func-e` on Linux as well like on macOS below.
-  - On macOS, since `brew envoy` tends to behind the latest version, it is recommended use `func-e` to run the latest Envoy. See https://func-e.io/.
-  - `alias envoy='func-e run'` is a convenient way to run the latest Envoy binary via `func-e` on both macOS and Linux.
-    For example, `func-e use 1.34` can be used to switch to a specific version of Envoy to be run with `func-e run`.
 
 Other than that, everything will be automatically managed and installed via `make` targets,
 and you should not need to worry about the dependencies (tell us if you do).
@@ -106,3 +100,4 @@ make sure that these automated checks pass after you open a PR by following the 
   as commit message by default. Maintainers may request contributors to
   edit the pull request title and description to ensure that it remains descriptive as a
   commit message. Alternatively, maintainers may change the commit message directly at the time of merge.
+- If you have any questions during the review, please feel free to ask the maintainers listed in [MAINTAINERS.md](./MAINTAINERS.md).

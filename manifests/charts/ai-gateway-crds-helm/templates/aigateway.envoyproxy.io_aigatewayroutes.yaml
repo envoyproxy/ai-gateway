@@ -435,7 +435,11 @@ spec:
                         BackendRefs is the list of backends that this rule will route the traffic to.
                         Each backend can have a weight that determines the traffic distribution.
 
-                        The namespace of each backend is "local", i.e. the same namespace as the AIGatewayRoute.
+                        The namespace of each backend defaults to the same namespace as the AIGatewayRoute when not specified.
+                        Cross-namespace references are supported by specifying the namespace field.
+                        When a namespace different than the AIGatewayRoute's namespace is specified,
+                        a ReferenceGrant object is required in the referent namespace to allow that
+                        namespace's owner to accept the reference.
 
                         BackendRefs can reference either AIServiceBackend resources (default) or InferencePool resources
                         from the Gateway API Inference Extension. When referencing InferencePool resources:
@@ -460,6 +464,88 @@ spec:
                             maxLength: 253
                             pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                             type: string
+                          headerMutation:
+                            description: |-
+                              HeaderMutation defines the request header mutation to be applied to this backend.
+                              When both route-level and backend-level HeaderMutation are defined,
+                              route-level takes precedence over backend-level for conflicting operations.
+                              This field is ignored when referencing InferencePool resources.
+                            properties:
+                              remove:
+                                description: |-
+                                  Remove the given header(s) from the HTTP request before the action. The
+                                  value of Remove is a list of HTTP header names. Note that the header
+                                  names are case-insensitive (see
+                                  https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
+
+                                  Input:
+                                    GET /foo HTTP/1.1
+                                    my-header1: foo
+                                    my-header2: bar
+                                    my-header3: baz
+
+                                  Config:
+                                    remove: ["my-header1", "my-header3"]
+
+                                  Output:
+                                    GET /foo HTTP/1.1
+                                    my-header2: bar
+                                items:
+                                  type: string
+                                maxItems: 16
+                                type: array
+                                x-kubernetes-list-type: set
+                              set:
+                                description: |-
+                                  Set overwrites/adds the request with the given header (name, value)
+                                  before the action.
+
+                                  Input:
+                                    GET /foo HTTP/1.1
+                                    my-header: foo
+
+                                  Config:
+                                    set:
+                                    - name: "my-header"
+                                      value: "bar"
+
+                                  Output:
+                                    GET /foo HTTP/1.1
+                                    my-header: bar
+                                items:
+                                  description: HTTPHeader represents an HTTP Header
+                                    name and value as defined by RFC 7230.
+                                  properties:
+                                    name:
+                                      description: |-
+                                        Name is the name of the HTTP Header to be matched. Name matching MUST be
+                                        case-insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+
+                                        If multiple entries specify equivalent header names, the first entry with
+                                        an equivalent name MUST be considered for a match. Subsequent entries
+                                        with an equivalent header name MUST be ignored. Due to the
+                                        case-insensitivity of header names, "foo" and "Foo" are considered
+                                        equivalent.
+                                      maxLength: 256
+                                      minLength: 1
+                                      pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
+                                      type: string
+                                    value:
+                                      description: Value is the value of HTTP Header
+                                        to be matched.
+                                      maxLength: 4096
+                                      minLength: 1
+                                      type: string
+                                  required:
+                                  - name
+                                  - value
+                                  type: object
+                                maxItems: 16
+                                type: array
+                                x-kubernetes-list-map-keys:
+                                - name
+                                x-kubernetes-list-type: map
+                            type: object
                           kind:
                             description: |-
                               Kind is the kind of the backend resource.
@@ -479,6 +565,19 @@ spec:
                               When Group and Kind are not specified, this refers to an AIServiceBackend.
                               When Group and Kind are specified, this refers to the resource of the specified type.
                             minLength: 1
+                            type: string
+                          namespace:
+                            description: |-
+                              Namespace is the namespace of the backend resource.
+                              When unspecified (or empty string), this refers to the local namespace of the AIGatewayRoute.
+
+                              Note that when a namespace different than the local namespace is specified,
+                              a ReferenceGrant object is required in the referent namespace to allow that
+                              namespace's owner to accept the reference. See the ReferenceGrant
+                              documentation for details.
+                            maxLength: 63
+                            minLength: 1
+                            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                             type: string
                           priority:
                             default: 0

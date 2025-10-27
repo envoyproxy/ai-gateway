@@ -61,10 +61,6 @@ func TestWithTestUpstream(t *testing.T) {
 			testUpstreamAzureBackend,
 			testUpstreamGCPVertexAIBackend,
 			testUpstreamGCPAnthropicAIBackend,
-			// TODO: this shouldn't be needed. The previous per-backend headers shouldn't affect the subsequent retries.
-			{Name: "testupstream-openai-always-200", Schema: openAISchema, HeaderMutation: &filterapi.HTTPHeaderMutation{
-				Set: []filterapi.HTTPHeader{{Name: testupstreamlib.ResponseStatusKey, Value: "200"}},
-			}},
 			{
 				Name: "testupstream-openai-5xx", Schema: openAISchema, HeaderMutation: &filterapi.HTTPHeaderMutation{
 					Set: []filterapi.HTTPHeader{{Name: testupstreamlib.ResponseStatusKey, Value: "500"}},
@@ -145,6 +141,30 @@ func TestWithTestUpstream(t *testing.T) {
 		// expResponseBodyFunc is a function to check the response body. This can be used instead of the expResponseBody field.
 		expResponseBodyFunc func(require.TestingT, []byte)
 	}{
+		{
+			name:            "openai - /v1/images/generations",
+			backend:         "openai",
+			path:            "/v1/images/generations",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"gpt-image-1-mini","prompt":"a cat wearing sunglasses","size":"1024x1024","quality":"low"}`,
+			expPath:         "/v1/images/generations",
+			responseBody:    `{"created":1736890000,"data":[{"url":"https://example.com/image1.png"}],"model":"gpt-image-1-mini","usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"created":1736890000,"data":[{"url":"https://example.com/image1.png"}],"model":"gpt-image-1-mini","usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}`,
+		},
+		{
+			name:            "openai - /v1/images/generations - non json upstream error mapped to OpenAI",
+			backend:         "openai",
+			path:            "/v1/images/generations",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"dall-e-3","prompt":"a scenic beach"}`,
+			expPath:         "/v1/images/generations",
+			responseHeaders: "content-type:text/plain",
+			responseStatus:  strconv.Itoa(http.StatusServiceUnavailable),
+			responseBody:    `backend timeout`,
+			expStatus:       http.StatusServiceUnavailable,
+			expResponseBody: `{"error":{"type":"OpenAIBackendError","message":"backend timeout","code":"503"}}`,
+		},
 		{
 			name:            "unknown path",
 			path:            "/unknown",
@@ -983,7 +1003,10 @@ data: {"type":"message_stop"       }
 				}
 				defer func() { _ = resp.Body.Close() }()
 
-				failIf5xx(t, resp, &was5xx)
+				// Only fail-fast on unexpected 5xx. Some test cases intentionally expect 5xx.
+				if tc.expStatus < http.StatusInternalServerError {
+					failIf5xx(t, resp, &was5xx)
+				}
 
 				lastBody, lastErr = io.ReadAll(resp.Body)
 				if lastErr != nil {

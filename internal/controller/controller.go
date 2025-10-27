@@ -203,6 +203,13 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 		return fmt.Errorf("failed to create controller for MCPRoute: %w", err)
 	}
 
+	// ReferenceGrant controller for cross-namespace access validation
+	referenceGrantC := NewReferenceGrantController(c, logger.WithName("reference-grant"), aiGatewayRouteEventChan)
+	if err = TypedControllerBuilderForCRD(mgr, &gwapiv1b1.ReferenceGrant{}).
+		Complete(referenceGrantC); err != nil {
+		return fmt.Errorf("failed to create controller for ReferenceGrant: %w", err)
+	}
+
 	if !options.DisableMutatingWebhook {
 		h := admission.WithCustomDefaulter(Scheme, &corev1.Pod{}, newGatewayMutator(c, kube,
 			logger.WithName("gateway-mutator"),
@@ -328,7 +335,9 @@ func aiGatewayRouteIndexFunc(o client.Object) []string {
 	var ret []string
 	for _, rule := range aiGatewayRoute.Spec.Rules {
 		for _, backend := range rule.BackendRefs {
-			key := fmt.Sprintf("%s.%s", backend.Name, aiGatewayRoute.Namespace)
+			// Use the namespace from the backend reference, or default to the route's namespace
+			backendNamespace := backend.GetNamespace(aiGatewayRoute.Namespace)
+			key := fmt.Sprintf("%s.%s", backend.Name, backendNamespace)
 			ret = append(ret, key)
 		}
 	}

@@ -11,7 +11,22 @@ This guide will walk you through installing Envoy AI Gateway and its required co
 
 ## Installing Envoy AI Gateway
 
-The easiest way to install Envoy AI Gateway is using the Helm chart. First, install the AI Gateway Helm chart; this will install the CRDs as well. Once completed, wait for the deployment to be ready.
+The easiest way to install Envoy AI Gateway is using the Helm charts. You need to install the CRDs first, followed by the AI Gateway controller.
+
+### Step 1: Install AI Gateway CRDs
+
+First, install the CRD Helm chart (`ai-gateway-crds-helm`) which manages all Custom Resource Definitions:
+
+```shell
+helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm \
+  --version v0.0.0-latest \
+  --namespace envoy-ai-gateway-system \
+  --create-namespace
+```
+
+### Step 2: Install AI Gateway Resources
+
+After the CRDs are installed, install the AI Gateway Helm chart:
 
 ```shell
 helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
@@ -28,45 +43,7 @@ We highly recommend you replace `v0.0.0-latest` with `v0.0.0-${commit hash of ht
 Otherwise, the controller will be installed with the latest version at the time of installation, which can be unstable over time due to ongoing development (the latest container tags are overwritten).
 :::
 
-> If you are experiencing network issues with `docker.io` , you can install the helm chart from the code repo [ai-gateway-helm](https://github.com/envoyproxy/ai-gateway/tree/main/manifests/charts/ai-gateway-helm) instead.
-
-### Installing CRDs separately
-
-If you want to manage the CRDs separately, install the CRD Helm chart (`ai-gateway-crds-helm`) which will install just the CRDs:
-
-```shell
-helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm \
-  --version v0.0.0-latest \
-  --namespace envoy-ai-gateway-system \
-  --create-namespace
-```
-
-After the CRDs are installed, you can install the AI Gateway Helm chart without re-installing the CRDs by using the `--skip-crds` flag.
-
-```shell
-helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
-  --version v0.0.0-latest \
-  --namespace envoy-ai-gateway-system \
-  --create-namespace \
-  --skip-crds
-```
-
-## Configuring Envoy Gateway
-
-After installing Envoy AI Gateway, apply the AI Gateway-specific configuration to Envoy Gateway, restart the deployment, and wait for it to be ready:
-
-```shell
-kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/manifests/envoy-gateway-config/redis.yaml
-kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/manifests/envoy-gateway-config/config.yaml
-kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/manifests/envoy-gateway-config/rbac.yaml
-
-kubectl rollout restart -n envoy-gateway-system deployment/envoy-gateway
-
-kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
-```
-
-Note that the redis configuration is only used for the rate limiting feature. If you don't need rate limiting, you can skip the redis configuration,
-but you need to remove the relevant configuration in the `config.yaml` file as well.
+> If you are experiencing network issues with `docker.io`, you can install the helm charts from the code repo [ai-gateway-crds-helm](https://github.com/envoyproxy/ai-gateway/tree/main/manifests/charts/ai-gateway-crds-helm) and [ai-gateway-helm](https://github.com/envoyproxy/ai-gateway/tree/main/manifests/charts/ai-gateway-helm) instead.
 
 :::tip Verify Installation
 
@@ -78,10 +55,15 @@ Check AI Gateway pods:
 kubectl get pods -n envoy-ai-gateway-system
 ```
 
-Check Envoy Gateway pods:
+:::
+
+:::note Upgrading from Previous Versions
+
+If you installed AI Gateway with only `ai-gateway-helm` previously, first install the CRD chart with `--take-ownership` to transfer CRD ownership, then upgrade the main chart:
 
 ```shell
-kubectl get pods -n envoy-gateway-system
+helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm --version v0.0.0-latest --namespace envoy-ai-gateway-system --take-ownership
+helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm --version v0.0.0-latest --namespace envoy-ai-gateway-system
 ```
 
 :::

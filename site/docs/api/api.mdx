@@ -505,7 +505,7 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
   name="backendRefs"
   type="[AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref) array"
   required="false"
-  description="BackendRefs is the list of backends that this rule will route the traffic to.<br />Each backend can have a weight that determines the traffic distribution.<br />The namespace of each backend is `local`, i.e. the same namespace as the AIGatewayRoute.<br />BackendRefs can reference either AIServiceBackend resources (default) or InferencePool resources<br />from the Gateway API Inference Extension. When referencing InferencePool resources:<br />- Only one InferencePool backend is allowed per rule<br />- Cannot mix InferencePool with AIServiceBackend references in the same rule<br />- Fallback behavior is handled by the InferencePool's endpoint picker<br />For AIServiceBackend references, you can achieve fallback behavior by configuring multiple backends<br />combined with the BackendTrafficPolicy of Envoy Gateway.<br />Please refer to https://gateway.envoyproxy.io/docs/tasks/traffic/failover/ as well as<br />https://gateway.envoyproxy.io/docs/tasks/traffic/retry/."
+  description="BackendRefs is the list of backends that this rule will route the traffic to.<br />Each backend can have a weight that determines the traffic distribution.<br />The namespace of each backend defaults to the same namespace as the AIGatewayRoute when not specified.<br />Cross-namespace references are supported by specifying the namespace field.<br />When a namespace different than the AIGatewayRoute's namespace is specified,<br />a ReferenceGrant object is required in the referent namespace to allow that<br />namespace's owner to accept the reference.<br />BackendRefs can reference either AIServiceBackend resources (default) or InferencePool resources<br />from the Gateway API Inference Extension. When referencing InferencePool resources:<br />- Only one InferencePool backend is allowed per rule<br />- Cannot mix InferencePool with AIServiceBackend references in the same rule<br />- Fallback behavior is handled by the InferencePool's endpoint picker<br />For AIServiceBackend references, you can achieve fallback behavior by configuring multiple backends<br />combined with the BackendTrafficPolicy of Envoy Gateway.<br />Please refer to https://gateway.envoyproxy.io/docs/tasks/traffic/failover/ as well as<br />https://gateway.envoyproxy.io/docs/tasks/traffic/retry/."
 /><ApiField
   name="matches"
   type="[AIGatewayRouteRuleMatch](#aigatewayrouterulematch) array"
@@ -550,6 +550,11 @@ It can reference either an AIServiceBackend or an InferencePool resource.
   required="true"
   description="Name is the name of the backend resource.<br />When Group and Kind are not specified, this refers to an AIServiceBackend.<br />When Group and Kind are specified, this refers to the resource of the specified type."
 /><ApiField
+  name="namespace"
+  type="[Namespace](#namespace)"
+  required="false"
+  description="Namespace is the namespace of the backend resource.<br />When unspecified (or empty string), this refers to the local namespace of the AIGatewayRoute.<br />Note that when a namespace different than the local namespace is specified,<br />a ReferenceGrant object is required in the referent namespace to allow that<br />namespace's owner to accept the reference. See the ReferenceGrant<br />documentation for details."
+/><ApiField
   name="group"
   type="string"
   required="false"
@@ -564,6 +569,11 @@ It can reference either an AIServiceBackend or an InferencePool resource.
   type="string"
   required="false"
   description="Name of the model in the backend. If provided this will override the name provided in the request.<br />This field is ignored when referencing InferencePool resources."
+/><ApiField
+  name="headerMutation"
+  type="[HTTPHeaderMutation](#httpheadermutation)"
+  required="false"
+  description="HeaderMutation defines the request header mutation to be applied to this backend.<br />When both route-level and backend-level HeaderMutation are defined,<br />route-level takes precedence over backend-level for conflicting operations.<br />This field is ignored when referencing InferencePool resources."
 /><ApiField
   name="weight"
   type="integer"
@@ -880,7 +890,19 @@ BackendSecurityPolicyAPIKey specifies the API key.
 **Appears in:**
 - [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
 
-BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access aws.
+BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access AWS.
+
+When neither CredentialsFile nor OIDCExchangeToken is specified, the AWS SDK's default credential chain
+will be used. This automatically supports various authentication methods in the following order:
+ 1. Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN)
+ 2. EKS Pod Identity - automatically rotates credentials for pods in EKS clusters
+ 3. IAM Roles for Service Accounts (IRSA) - injects credentials via mounted service account tokens
+ 4. EC2 instance metadata (IAM instance roles)
+ 5. ECS task roles
+
+The default credential chain is recommended for Kubernetes deployments as it supports automatic
+credential rotation without manual configuration. Credentials are refreshed automatically when
+they approach expiration (typically hourly for IRSA and Pod Identity).
 
 ##### Fields
 
@@ -895,12 +917,12 @@ BackendSecurityPolicyAWSCredentials contains the supported authentication mechan
   name="credentialsFile"
   type="[AWSCredentialsFile](#awscredentialsfile)"
   required="false"
-  description="CredentialsFile specifies the credentials file to use for the AWS provider."
+  description="CredentialsFile specifies the credentials file to use for the AWS provider.<br />When specified, this takes precedence over the default credential chain."
 /><ApiField
   name="oidcExchangeToken"
   type="[AWSOIDCExchangeToken](#awsoidcexchangetoken)"
   required="false"
-  description="OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be<br />used to obtain temporary credentials to access AWS."
+  description="OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be<br />used to obtain temporary credentials to access AWS.<br />When specified, this takes precedence over the default credential chain."
 />
 
 
@@ -1298,6 +1320,7 @@ GCPCredentialsFile specifies the service account key json file to authenticate w
 
 
 **Appears in:**
+- [AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref)
 - [AIServiceBackendSpec](#aiservicebackendspec)
 
 HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to the request
@@ -1574,7 +1597,12 @@ MCPRouteSecurityPolicy defines the security policy for a MCPRoute.
   name="oauth"
   type="[MCPRouteOAuth](#mcprouteoauth)"
   required="false"
-  description=""
+  description="OAuth defines the configuration for the MCP spec compatible OAuth authentication."
+/><ApiField
+  name="apiKeyAuth"
+  type="[APIKeyAuth](#apikeyauth)"
+  required="false"
+  description="APIKeyAuth defines the configuration for the API Key Authentication."
 />
 
 
