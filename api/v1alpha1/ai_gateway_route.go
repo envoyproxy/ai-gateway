@@ -29,6 +29,8 @@ import (
 // Gateway to patch the generated resources. For example, you can configure the retry fallback behavior by attaching
 // BackendTrafficPolicy API of Envoy Gateway to the generated HTTPRoute.
 //
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[-1:].type`
@@ -43,6 +45,7 @@ type AIGatewayRoute struct {
 
 // AIGatewayRouteList contains a list of AIGatewayRoute.
 //
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 type AIGatewayRouteList struct {
 	metav1.TypeMeta `json:",inline"`

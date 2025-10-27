@@ -16,6 +16,8 @@ import (
 // This serves as a way to define a "unified" AI API for a Gateway which allows downstream
 // clients to use a single schema API to interact with multiple MCP backends.
 //
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[-1:].type`
@@ -30,6 +32,7 @@ type MCPRoute struct {
 
 // MCPRouteList contains a list of MCPRoute.
 //
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 type MCPRouteList struct {
 	metav1.TypeMeta `json:",inline"`
