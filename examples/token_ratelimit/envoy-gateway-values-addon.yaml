@@ -1,0 +1,40 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# This addon file adds rate limiting configuration to Envoy Gateway.
+# Use this in combination with the base envoy-gateway-values.yaml:
+#
+#   helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \
+#     --version v0.0.0-latest \
+#     --namespace envoy-gateway-system \
+#     --create-namespace \
+#     -f ../../manifests/envoy-gateway-values.yaml \
+#     -f envoy-gateway-values-addon.yaml
+#
+# Prerequisites:
+# - Redis must be deployed (see redis.yaml in this directory)
+
+config:
+  envoyGateway:
+    provider:
+      kubernetes:
+        rateLimitDeployment:
+          patch:
+            type: StrategicMerge
+            value:
+              spec:
+                template:
+                  spec:
+                    containers:
+                      - imagePullPolicy: IfNotPresent
+                        name: envoy-ratelimit
+                        image: docker.io/envoyproxy/ratelimit:60d8e81b
+    rateLimit:
+      backend:
+        type: Redis
+        redis:
+          # Update this URL to match your Redis service location
+          # This assumes Redis is deployed using the redis.yaml in this directory
+          url: redis.redis-system.svc.cluster.local:6379

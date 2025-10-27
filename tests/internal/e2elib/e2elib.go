@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path"
 	"strings"
 	"sync"
 	"testing"
@@ -26,6 +27,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/singleflight"
 
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 )
 
@@ -346,44 +348,40 @@ func CleanupKindCluster(testsFailed bool, clusterName string) {
 	}
 }
 
-func installInferenceExtensionCRD(ctx context.Context) (err error) {
-	const infExtURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.0.1/manifests.yaml"
-	return KubectlApplyManifest(ctx, infExtURL)
-}
-
-func installVLLMDeployment(ctx context.Context) (err error) {
-	const vllmURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/main/config/manifests/vllm/sim-deployment.yaml"
-	return KubectlApplyManifest(ctx, vllmURL)
-}
-
-func installInferenceModel(ctx context.Context) (err error) {
-	const inferenceModelURL = "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api-inference-extension/refs/tags/v1.0.1/config/manifests/inferenceobjective.yaml"
-	return KubectlApplyManifest(ctx, inferenceModelURL)
-}
-
-func installInferencePoolResources(ctx context.Context) (err error) {
-	const inferencePoolURL = "https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/v1.0.1/config/manifests/inferencepool-resources.yaml"
-	return KubectlApplyManifest(ctx, inferencePoolURL)
+func inferenceExtensionVersion() string {
+	goMod := path.Join(internaltesting.FindProjectRoot(), "go.mod")
+	data, err := os.ReadFile(goMod)
+	if err != nil {
+		panic(fmt.Sprintf("failed to read go.mod: %v", err))
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		parts := strings.SplitN(line, " ", 2)
+		if len(parts) == 2 && parts[0] == "sigs.k8s.io/gateway-api-inference-extension" {
+			return strings.TrimSpace(parts[1])
+		}
+	}
+	panic("failed to find extension version in go.mod")
 }
 
 func installInferencePoolEnvironment(ctx context.Context) (err error) {
-	// Install all InferencePool related resources in sequence.
-	if err = installInferenceExtensionCRD(ctx); err != nil {
+	infExtVersion := inferenceExtensionVersion()
+	if err = KubectlApplyManifest(ctx,
+		fmt.Sprintf("https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/%s/manifests.yaml", infExtVersion),
+	); err != nil {
 		return fmt.Errorf("failed to install inference extension CRDs: %w", err)
 	}
-
-	if err = installVLLMDeployment(ctx); err != nil {
-		return fmt.Errorf("failed to install vLLM deployment: %w", err)
+	baseURL := fmt.Sprintf("https://github.com/kubernetes-sigs/gateway-api-inference-extension/raw/%s/config/manifests", infExtVersion)
+	for _, manifest := range []string{
+		"vllm/sim-deployment.yaml",
+		"inferencepool-resources.yaml",
+		"inferenceobjective.yaml",
+	} {
+		initLog(fmt.Sprintf("\tApplying InferencePool manifest: %s", manifest))
+		if err = KubectlApplyManifest(ctx, fmt.Sprintf("%s/%s", baseURL, manifest)); err != nil {
+			return fmt.Errorf("failed to apply InferencePool manifest %s: %w", manifest, err)
+		}
 	}
-
-	if err = installInferenceModel(ctx); err != nil {
-		return fmt.Errorf("failed to install inference model: %w", err)
-	}
-
-	if err = installInferencePoolResources(ctx); err != nil {
-		return fmt.Errorf("failed to install inference pool resources: %w", err)
-	}
-
 	return nil
 }
 
@@ -398,33 +396,24 @@ func initEnvoyGateway(ctx context.Context, inferenceExtension bool) (err error) 
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)", elapsed.Seconds()))
 	}()
 	initLog("\tHelm Install")
-	helm := testsinternal.GoToolCmdContext(ctx, "helm", "upgrade", "-i", "eg",
+	// Build helm command with base values + addons based on what features are needed
+	helmArgs := []string{
+		"upgrade", "-i", "eg",
 		"oci://docker.io/envoyproxy/gateway-helm", "--version", egVersion,
-		"-n", "envoy-gateway-system", "--create-namespace")
+		"-n", "envoy-gateway-system", "--create-namespace",
+		"-f", "../../manifests/envoy-gateway-values.yaml",
+		"-f", "../../examples/token_ratelimit/envoy-gateway-values-addon.yaml",
+	}
+	if inferenceExtension {
+		helmArgs = append(helmArgs, "-f", "../../examples/inference-pool/envoy-gateway-values-addon.yaml")
+	}
+	helm := testsinternal.GoToolCmdContext(ctx, "helm", helmArgs...)
 	helm.Stdout = os.Stdout
 	helm.Stderr = os.Stderr
 	if err = helm.Run(); err != nil {
 		return
 	}
 
-	initLog("\tApplying Patch for Envoy Gateway")
-	if err = KubectlApplyManifest(ctx, "../../manifests/envoy-gateway-config/"); err != nil {
-		return
-	}
-	if inferenceExtension {
-		initLog("\tApplying InferencePool Patch for Envoy Gateway")
-		if err = KubectlApplyManifest(ctx, "../../examples/inference-pool/config.yaml"); err != nil {
-			return
-		}
-	}
-	initLog("\tRestart Envoy Gateway deployment")
-	if err = kubectlRestartDeployment(ctx, "envoy-gateway-system", "envoy-gateway"); err != nil {
-		return
-	}
-	initLog("\tWaiting for Ratelimit deployment to be ready")
-	if err = kubectlWaitForDeploymentReady(ctx, "envoy-gateway-system", "envoy-ratelimit"); err != nil {
-		return
-	}
 	initLog("\tWaiting for Envoy Gateway deployment to be ready")
 	return kubectlWaitForDeploymentReady(ctx, "envoy-gateway-system", "envoy-gateway")
 }
@@ -556,7 +545,7 @@ func kubectlWaitForDaemonSetReady(ctx context.Context, namespace, daemonset stri
 // RequireWaitForGatewayPodReady waits for the Envoy Gateway pod with the given selector to be ready.
 func RequireWaitForGatewayPodReady(t *testing.T, selector string) {
 	requireWaitForGatewayPod(t, selector)
-	RequireWaitForPodReady(t, selector)
+	RequireWaitForPodReady(t, EnvoyGatewayNamespace, selector)
 }
 
 // RequireGatewayListenerAddressViaMetalLB gets the external IP address of the Gateway via MetalLB.
@@ -584,10 +573,10 @@ func requireWaitForGatewayPod(t *testing.T, selector string) {
 }
 
 // RequireWaitForPodReady waits for the pod with the given selector to be ready.
-func RequireWaitForPodReady(t *testing.T, selector string) {
+func RequireWaitForPodReady(t *testing.T, namespace, selector string) {
 	waitUntilKubectl(t, 3*time.Minute, 5*time.Second, func(_ string) error {
 		return nil // Success if the command exited 0, ignore output.
-	}, "wait", "--timeout=2s", "-n", EnvoyGatewayNamespace,
+	}, "wait", "--timeout=2s", "-n", namespace,
 		"pods", "--for=condition=Ready", "-l", selector)
 }
 

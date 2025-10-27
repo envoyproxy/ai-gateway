@@ -291,6 +291,7 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) {
 		ResponseHeaderMode: extprocv3.ProcessingMode_SKIP,
 		ResponseBodyMode:   extprocv3.ProcessingMode_NONE,
 	}
+	extProcConfig.MessageTimeout = durationpb.New(10 * time.Second)
 	extProcConfig.GrpcService = &corev3.GrpcService{
 		TargetSpecifier: &corev3.GrpcService_EnvoyGrpc_{
 			EnvoyGrpc: &corev3.GrpcService_EnvoyGrpc{

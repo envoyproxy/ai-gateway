@@ -200,7 +200,11 @@ type AIGatewayRouteRule struct {
 	// BackendRefs is the list of backends that this rule will route the traffic to.
 	// Each backend can have a weight that determines the traffic distribution.
 	//
-	// The namespace of each backend is "local", i.e. the same namespace as the AIGatewayRoute.
+	// The namespace of each backend defaults to the same namespace as the AIGatewayRoute when not specified.
+	// Cross-namespace references are supported by specifying the namespace field.
+	// When a namespace different than the AIGatewayRoute's namespace is specified,
+	// a ReferenceGrant object is required in the referent namespace to allow that
+	// namespace's owner to accept the reference.
 	//
 	// BackendRefs can reference either AIServiceBackend resources (default) or InferencePool resources
 	// from the Gateway API Inference Extension. When referencing InferencePool resources:
@@ -278,6 +282,17 @@ type AIGatewayRouteRuleBackendRef struct {
 	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
 
+	// Namespace is the namespace of the backend resource.
+	// When unspecified (or empty string), this refers to the local namespace of the AIGatewayRoute.
+	//
+	// Note that when a namespace different than the local namespace is specified,
+	// a ReferenceGrant object is required in the referent namespace to allow that
+	// namespace's owner to accept the reference. See the ReferenceGrant
+	// documentation for details.
+	//
+	// +optional
+	Namespace *gwapiv1.Namespace `json:"namespace,omitempty"`
+
 	// Group is the group of the backend resource.
 	// When not specified, defaults to aigateway.envoyproxy.io (AIServiceBackend).
 	// Currently, only "inference.networking.k8s.io" is supported for InferencePool resources.
@@ -301,6 +316,14 @@ type AIGatewayRouteRuleBackendRef struct {
 	//
 	// +optional
 	ModelNameOverride string `json:"modelNameOverride,omitempty"`
+
+	// HeaderMutation defines the request header mutation to be applied to this backend.
+	// When both route-level and backend-level HeaderMutation are defined,
+	// route-level takes precedence over backend-level for conflicting operations.
+	// This field is ignored when referencing InferencePool resources.
+	//
+	// +optional
+	HeaderMutation *HTTPHeaderMutation `json:"headerMutation,omitempty"`
 
 	// Weight is the weight of the backend. This is exactly the same as the weight in
 	// the BackendRef in the Gateway API. See for the details:

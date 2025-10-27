@@ -26,7 +26,7 @@ func TestNewCompletionMetrics(t *testing.T) {
 	var (
 		mr    = metric.NewManualReader()
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-		pm    = NewCompletion(meter, nil).(*completion)
+		pm    = NewCompletionFactory(meter, nil)().(*completion)
 	)
 
 	assert.NotNil(t, pm)
@@ -39,7 +39,7 @@ func TestCompletion_StartRequest(t *testing.T) {
 		var (
 			mr    = metric.NewManualReader()
 			meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-			pm    = NewCompletion(meter, nil).(*completion)
+			pm    = NewCompletionFactory(meter, nil)().(*completion)
 		)
 
 		before := time.Now()
@@ -60,7 +60,7 @@ func TestCompletion_RecordTokenUsage(t *testing.T) {
 	var (
 		mr    = metric.NewManualReader()
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-		pm    = NewCompletion(meter, nil).(*completion)
+		pm    = NewCompletionFactory(meter, nil)().(*completion)
 
 		attrs = []attribute.KeyValue{
 			// gen_ai.operation.name - https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#common-attributes
@@ -103,7 +103,7 @@ func testCompletionRecordTokenLatency(t *testing.T) {
 	var (
 		mr    = metric.NewManualReader()
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-		pm    = NewCompletion(meter, nil).(*completion)
+		pm    = NewCompletionFactory(meter, nil)().(*completion)
 		attrs = attribute.NewSet(
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationCompletion),
 			attribute.Key(genaiAttributeProviderName).String(genaiProviderAWSBedrock),
@@ -149,7 +149,7 @@ func testCompletionRecordRequestCompletion(t *testing.T) {
 	var (
 		mr    = metric.NewManualReader()
 		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-		pm    = NewCompletion(meter, nil).(*completion)
+		pm    = NewCompletionFactory(meter, nil)().(*completion)
 		attrs = []attribute.KeyValue{
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationCompletion),
 			attribute.Key(genaiAttributeProviderName).String("custom"),
@@ -199,7 +199,7 @@ func TestCompletion_HeaderLabelMapping(t *testing.T) {
 			"x-org-id":  "org_id",
 		}
 
-		pm = NewCompletion(meter, headerMapping).(*completion)
+		pm = NewCompletionFactory(meter, headerMapping)().(*completion)
 	)
 
 	// Test with headers that should be mapped.
@@ -241,7 +241,7 @@ func TestCompletion_ModelNameHeaderKey(t *testing.T) {
 	t.Parallel()
 	mr := metric.NewManualReader()
 	meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-	pm := NewCompletion(meter, nil).(*completion)
+	pm := NewCompletionFactory(meter, nil)().(*completion)
 
 	// Simulate headers with model override
 	headers := map[string]string{
@@ -277,7 +277,7 @@ func TestCompletion_ModelNameHeaderKey(t *testing.T) {
 func TestCompletion_Labels_SetModel_RequestAndResponseDiffer(t *testing.T) {
 	mr := metric.NewManualReader()
 	meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-	pm := NewCompletion(meter, nil).(*completion)
+	pm := NewCompletionFactory(meter, nil)().(*completion)
 
 	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 	pm.SetOriginalModel("orig-model")
@@ -316,7 +316,7 @@ func TestCompletion_RecordTokenLatency_MaxAcrossStream_EndHasNoUsage(t *testing.
 	synctest.Test(t, func(t *testing.T) {
 		mr := metric.NewManualReader()
 		meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-		pm := NewCompletion(meter, nil).(*completion)
+		pm := NewCompletionFactory(meter, nil)().(*completion)
 
 		attrs := attribute.NewSet(
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationCompletion),
@@ -357,7 +357,7 @@ func TestCompletion_RecordTokenLatency_OnlyFinalUsage(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		mr := metric.NewManualReader()
 		meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-		pm := NewCompletion(meter, nil).(*completion)
+		pm := NewCompletionFactory(meter, nil)().(*completion)
 
 		attrs := attribute.NewSet(
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationCompletion),
@@ -396,7 +396,7 @@ func TestCompletion_RecordTokenLatency_ZeroTokensFirst(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		mr := metric.NewManualReader()
 		meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-		pm := NewCompletion(meter, nil).(*completion)
+		pm := NewCompletionFactory(meter, nil)().(*completion)
 
 		attrs := attribute.NewSet(
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationCompletion),
@@ -441,7 +441,7 @@ func TestCompletion_RecordTokenLatency_SingleToken(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		mr := metric.NewManualReader()
 		meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-		pm := NewCompletion(meter, nil).(*completion)
+		pm := NewCompletionFactory(meter, nil)().(*completion)
 
 		attrs := attribute.NewSet(
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationCompletion),
@@ -485,7 +485,7 @@ func TestCompletion_RecordTokenLatency_MultipleChunksFormula(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		mr := metric.NewManualReader()
 		meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
-		pm := NewCompletion(meter, nil).(*completion)
+		pm := NewCompletionFactory(meter, nil)().(*completion)
 
 		attrs := attribute.NewSet(
 			attribute.Key(genaiAttributeOperationName).String(genaiOperationCompletion),

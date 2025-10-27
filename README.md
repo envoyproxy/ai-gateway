@@ -83,6 +83,12 @@ Envoy AI Gateway supports a wide range of AI providers, making it easy to integr
         <br><sub><b>Tetrate Agent Router Service</b></sub>
       </td>
     </tr>
+    <tr>
+      <td align="center" width="120">
+        <img src="site/static/img/providers/anthropic.svg" width="60" height="60" alt="Anthropic"/>
+        <br><sub><b>Anthropic</b></sub>
+      </td>
+    </tr>
   </table>
 </div>
 

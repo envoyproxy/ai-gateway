@@ -31,7 +31,7 @@ import (
 //
 // Requests: Only accepts Anthropic format requests.
 // Responses: Returns Anthropic format responses.
-func MessagesProcessorFactory(ccm metrics.MessagesMetrics) ProcessorFactory {
+func MessagesProcessorFactory(f metrics.MessagesMetricsFactory) ProcessorFactory {
 	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "anthropic-messages", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
@@ -45,7 +45,7 @@ func MessagesProcessorFactory(ccm metrics.MessagesMetrics) ProcessorFactory {
 			config:         config,
 			requestHeaders: requestHeaders,
 			logger:         logger,
-			metrics:        ccm,
+			metrics:        f(),
 		}, nil
 	}
 }

@@ -165,8 +165,9 @@ spec:
                   AWS specific logic will be applied.
                 properties:
                   credentialsFile:
-                    description: CredentialsFile specifies the credentials file to
-                      use for the AWS provider.
+                    description: |-
+                      CredentialsFile specifies the credentials file to use for the AWS provider.
+                      When specified, this takes precedence over the default credential chain.
                     properties:
                       profile:
                         default: default
@@ -225,6 +226,7 @@ spec:
                     description: |-
                       OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be
                       used to obtain temporary credentials to access AWS.
+                      When specified, this takes precedence over the default credential chain.
                     properties:
                       aud:
                         description: Aud defines the audience that this ID Token is
@@ -386,6 +388,16 @@ spec:
                                   If not specified, defaults to "IdToken-(randomly generated uid)"
                                 type: string
                             type: object
+                          csrfTokenTTL:
+                            description: |-
+                              CSRFTokenTTL defines how long the CSRF token generated during the OAuth2 authorization flow remains valid.
+
+                              This duration determines the lifetime of the CSRF cookie, which is validated against the CSRF token
+                              in the "state" parameter when the provider redirects back to the callback endpoint.
+
+                              If omitted, Envoy Gateway defaults the token expiration to 10 minutes.
+                            pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                            type: string
                           defaultRefreshTokenTTL:
                             description: |-
                               DefaultRefreshTokenTTL is the default lifetime of the refresh token.
@@ -1058,6 +1070,15 @@ spec:
                                               Parameter takes effect only when split_external_local_origin_errors is set to true.
                                             format: int32
                                             type: integer
+                                          failurePercentageThreshold:
+                                            description: |-
+                                              FailurePercentageThreshold sets the failure percentage threshold for outlier detection.
+                                              If the failure percentage of a given host is greater than or equal to this value, it will be ejected.
+                                              Defaults to 85.
+                                            format: int32
+                                            maximum: 100
+                                            minimum: 0
+                                            type: integer
                                           interval:
                                             default: 3s
                                             description: Interval defines the time
@@ -1292,6 +1313,16 @@ spec:
                                                   endpoints across all zones required
                                                   to enable zone-aware routing.
                                                 format: int64
+                                                type: integer
+                                              percentageEnabled:
+                                                description: Configures percentage
+                                                  of requests that will be considered
+                                                  for zone aware routing if zone aware
+                                                  routing is configured. If not specified,
+                                                  Envoy defaults to 100%.
+                                                format: int32
+                                                maximum: 100
+                                                minimum: 0
                                                 type: integer
                                             type: object
                                         type: object
@@ -1829,6 +1860,16 @@ spec:
                                   If not specified, defaults to "IdToken-(randomly generated uid)"
                                 type: string
                             type: object
+                          csrfTokenTTL:
+                            description: |-
+                              CSRFTokenTTL defines how long the CSRF token generated during the OAuth2 authorization flow remains valid.
+
+                              This duration determines the lifetime of the CSRF cookie, which is validated against the CSRF token
+                              in the "state" parameter when the provider redirects back to the callback endpoint.
+
+                              If omitted, Envoy Gateway defaults the token expiration to 10 minutes.
+                            pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                            type: string
                           defaultRefreshTokenTTL:
                             description: |-
                               DefaultRefreshTokenTTL is the default lifetime of the refresh token.
@@ -2501,6 +2542,15 @@ spec:
                                               Parameter takes effect only when split_external_local_origin_errors is set to true.
                                             format: int32
                                             type: integer
+                                          failurePercentageThreshold:
+                                            description: |-
+                                              FailurePercentageThreshold sets the failure percentage threshold for outlier detection.
+                                              If the failure percentage of a given host is greater than or equal to this value, it will be ejected.
+                                              Defaults to 85.
+                                            format: int32
+                                            maximum: 100
+                                            minimum: 0
+                                            type: integer
                                           interval:
                                             default: 3s
                                             description: Interval defines the time
@@ -2735,6 +2785,16 @@ spec:
                                                   endpoints across all zones required
                                                   to enable zone-aware routing.
                                                 format: int64
+                                                type: integer
+                                              percentageEnabled:
+                                                description: Configures percentage
+                                                  of requests that will be considered
+                                                  for zone aware routing if zone aware
+                                                  routing is configured. If not specified,
+                                                  Envoy defaults to 100%.
+                                                format: int32
+                                                maximum: 100
+                                                minimum: 0
                                                 type: integer
                                             type: object
                                         type: object
@@ -3242,6 +3302,16 @@ spec:
                                       If not specified, defaults to "IdToken-(randomly generated uid)"
                                     type: string
                                 type: object
+                              csrfTokenTTL:
+                                description: |-
+                                  CSRFTokenTTL defines how long the CSRF token generated during the OAuth2 authorization flow remains valid.
+
+                                  This duration determines the lifetime of the CSRF cookie, which is validated against the CSRF token
+                                  in the "state" parameter when the provider redirects back to the callback endpoint.
+
+                                  If omitted, Envoy Gateway defaults the token expiration to 10 minutes.
+                                pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                type: string
                               defaultRefreshTokenTTL:
                                 description: |-
                                   DefaultRefreshTokenTTL is the default lifetime of the refresh token.
@@ -3924,6 +3994,15 @@ spec:
                                                   Parameter takes effect only when split_external_local_origin_errors is set to true.
                                                 format: int32
                                                 type: integer
+                                              failurePercentageThreshold:
+                                                description: |-
+                                                  FailurePercentageThreshold sets the failure percentage threshold for outlier detection.
+                                                  If the failure percentage of a given host is greater than or equal to this value, it will be ejected.
+                                                  Defaults to 85.
+                                                format: int32
+                                                maximum: 100
+                                                minimum: 0
+                                                type: integer
                                               interval:
                                                 default: 3s
                                                 description: Interval defines the
@@ -4159,6 +4238,17 @@ spec:
                                                       zones required to enable zone-aware
                                                       routing.
                                                     format: int64
+                                                    type: integer
+                                                  percentageEnabled:
+                                                    description: Configures percentage
+                                                      of requests that will be considered
+                                                      for zone aware routing if zone
+                                                      aware routing is configured.
+                                                      If not specified, Envoy defaults
+                                                      to 100%.
+                                                    format: int32
+                                                    maximum: 100
+                                                    minimum: 0
                                                     type: integer
                                                 type: object
                                             type: object

@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -167,11 +168,61 @@ func headerMutationToFilterAPI(m *aigv1a1.HTTPHeaderMutation) *filterapi.HTTPHea
 		return nil
 	}
 	ret := &filterapi.HTTPHeaderMutation{}
-	ret.Remove = append(ret.Remove, m.Remove...)
+	ret.Remove = make([]string, 0, len(m.Remove))
+	for _, h := range m.Remove {
+		ret.Remove = append(ret.Remove, strings.ToLower(h))
+	}
 	for _, h := range m.Set {
-		ret.Set = append(ret.Set, filterapi.HTTPHeader{Name: string(h.Name), Value: h.Value})
+		ret.Set = append(ret.Set, filterapi.HTTPHeader{Name: strings.ToLower(string(h.Name)), Value: h.Value})
 	}
 	return ret
+}
+
+// mergeHeaderMutations merges route-level and backend-level HeaderMutation with route-level taking precedence.
+// Returns the merged HeaderMutation where route-level operations override backend-level operations for conflicting headers.
+func mergeHeaderMutations(routeLevel, backendLevel *aigv1a1.HTTPHeaderMutation) *aigv1a1.HTTPHeaderMutation {
+	if routeLevel == nil {
+		return backendLevel
+	}
+	if backendLevel == nil {
+		return routeLevel
+	}
+
+	result := &aigv1a1.HTTPHeaderMutation{}
+
+	// Merge Set operations (route-level wins conflicts)
+	headerMap := make(map[string]gwapiv1.HTTPHeader)
+
+	// Add backend-level headers first
+	for _, h := range backendLevel.Set {
+		headerMap[strings.ToLower(string(h.Name))] = h
+	}
+
+	// Override with route-level headers (route-level wins)
+	for _, h := range routeLevel.Set {
+		headerMap[strings.ToLower(string(h.Name))] = h
+	}
+
+	// Convert back to slice
+	for _, h := range headerMap {
+		result.Set = append(result.Set, h)
+	}
+
+	// Merge Remove operations (combine and deduplicate)
+	removeMap := make(map[string]struct{})
+
+	for _, h := range backendLevel.Remove {
+		removeMap[strings.ToLower(h)] = struct{}{}
+	}
+	for _, h := range routeLevel.Remove {
+		removeMap[strings.ToLower(h)] = struct{}{}
+	}
+
+	for h := range removeMap {
+		result.Remove = append(result.Remove, h)
+	}
+
+	return result
 }
 
 // reconcileFilterConfigSecret updates the filter config secret for the external processor.
@@ -226,14 +277,24 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				} else {
 					var backendObj *aigv1a1.AIServiceBackend
 					var bsp *aigv1a1.BackendSecurityPolicy
-					backendObj, bsp, err = c.backendWithMaybeBSP(ctx, aiGatewayRoute.Namespace, backendRef.Name)
+					backendNamespace := backendRef.GetNamespace(aiGatewayRoute.Namespace)
+					backendObj, bsp, err = c.backendWithMaybeBSP(ctx, backendNamespace, backendRef.Name)
 					if err != nil {
 						c.logger.Error(err, "failed to get backend or backend security policy. Skipping this backend.",
 							"backend_name", backendRef.Name, "aigatewayroute", aiGatewayRoute.Name,
-							"namespace", aiGatewayRoute.Namespace)
+							"namespace", backendNamespace)
 						continue
 					}
-					b.HeaderMutation = headerMutationToFilterAPI(backendObj.Spec.HeaderMutation)
+
+					// Extract HeaderMutation from both route and backend levels
+					routeHeaderMutation := backendRef.HeaderMutation
+					backendHeaderMutation := backendObj.Spec.HeaderMutation
+
+					// Merge with route-level taking precedence over backend-level
+					mergedHeaderMutation := mergeHeaderMutations(routeHeaderMutation, backendHeaderMutation)
+
+					// Convert to FilterAPI format
+					b.HeaderMutation = headerMutationToFilterAPI(mergedHeaderMutation)
 					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
 					if bsp != nil {
 						b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, bsp)
@@ -375,8 +436,21 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 		}
 		return &filterapi.BackendAuth{AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: apiKey}}, nil
 	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
+		awsCred := backendSecurityPolicy.Spec.AWSCredentials
+
+		// If no credentials file or OIDC token is configured, use default credential chain
+		// This allows IRSA/Pod Identity to work automatically
+		if awsCred.CredentialsFile == nil && awsCred.OIDCExchangeToken == nil {
+			return &filterapi.BackendAuth{
+				AWSAuth: &filterapi.AWSAuth{
+					Region: awsCred.Region,
+				},
+			}, nil
+		}
+
+		// Otherwise, fetch credentials from secret
 		var secretName string
-		if awsCred := backendSecurityPolicy.Spec.AWSCredentials; awsCred.CredentialsFile != nil {
+		if awsCred.CredentialsFile != nil {
 			secretName = string(awsCred.CredentialsFile.SecretRef.Name)
 		} else {
 			secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
@@ -388,7 +462,7 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 		return &filterapi.BackendAuth{
 			AWSAuth: &filterapi.AWSAuth{
 				CredentialFileLiteral: credentialsLiteral,
-				Region:                backendSecurityPolicy.Spec.AWSCredentials.Region,
+				Region:                awsCred.Region,
 			},
 		}, nil
 	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:

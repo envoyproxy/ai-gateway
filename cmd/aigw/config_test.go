@@ -24,6 +24,16 @@ var testMcpServers = &autoconfig.MCPServers{
 	},
 }
 
+// clearEnv clears any credential environment variable that can affect the autoconfig.
+func clearEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("AZURE_OPENAI_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("ANTHROPIC_BASE_URL", "")
+}
+
 // TestReadConfig is mainly for coverage as the autoconfig package is tested more thoroughly.
 func TestReadConfig(t *testing.T) {
 	tests := []struct {
@@ -77,14 +87,28 @@ func TestReadConfig(t *testing.T) {
 			expectHostnames: []string{"api.openai.com"},
 			expectPort:      "443",
 		},
+		{
+			name: "generates config from Anthropic env vars",
+			envVars: map[string]string{
+				"ANTHROPIC_API_KEY": "sk-ant-test123",
+			},
+			expectHostnames: []string{"api.anthropic.com"},
+			expectPort:      "443",
+		},
+		{
+			name: "OpenAI takes precedence when both are set",
+			envVars: map[string]string{
+				"OPENAI_API_KEY":    "test-key",
+				"ANTHROPIC_API_KEY": "sk-ant-test123",
+			},
+			expectHostnames: []string{"api.openai.com"},
+			expectPort:      "443",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Clear any existing env vars
-			t.Setenv("OPENAI_API_KEY", "")
-			t.Setenv("OPENAI_BASE_URL", "")
-
+			clearEnv(t)
 			for k, v := range tt.envVars {
 				t.Setenv(k, v)
 			}
@@ -104,15 +128,84 @@ func TestReadConfig(t *testing.T) {
 	}
 
 	t.Run("error when file and no OPENAI_API_KEY", func(t *testing.T) {
+		clearEnv(t)
 		_, err := readConfig("", nil, false)
 		require.Error(t, err)
-		require.EqualError(t, err, "you must supply at least OPENAI_API_KEY or AZURE_OPENAI_API_KEY or a config file path")
+		require.EqualError(t, err, "you must supply at least OPENAI_API_KEY, AZURE_OPENAI_API_KEY, ANTHROPIC_API_KEY, or a config file path")
 	})
 
 	t.Run("error when file does not exist", func(t *testing.T) {
 		_, err := readConfig("/non/existent/file.yaml", nil, false)
 		require.Error(t, err)
 		require.EqualError(t, err, "error reading config: open /non/existent/file.yaml: no such file or directory")
+	})
+}
+
+func TestExpandPath(t *testing.T) {
+	homeDir, err := os.UserHomeDir()
+	require.NoError(t, err)
+
+	tests := []struct {
+		name     string
+		path     string
+		envVars  map[string]string
+		expected string
+	}{
+		{
+			name:     "empty path returns empty",
+			path:     "",
+			expected: "",
+		},
+		{
+			name:     "tilde path",
+			path:     "~/test/file.txt",
+			expected: filepath.Join(homeDir, "test/file.txt"),
+		},
+		{
+			name:     "tilde slash returns HOME",
+			path:     "~/",
+			expected: homeDir,
+		},
+		{
+			name:     "absolute path unchanged",
+			path:     "/absolute/path/file.txt",
+			expected: "/absolute/path/file.txt",
+		},
+		{
+			name:     "env var expansion",
+			path:     "${HOME}/test",
+			expected: filepath.Join(homeDir, "test"),
+		},
+		{
+			name:     "custom env var",
+			path:     "${CUSTOM_DIR}/file.txt",
+			envVars:  map[string]string{"CUSTOM_DIR": "/custom"},
+			expected: "/custom/file.txt",
+		},
+		{
+			name:     "tilde with env var",
+			path:     "~/test/${USER}",
+			envVars:  map[string]string{"USER": "testuser"},
+			expected: filepath.Join(homeDir, "test/testuser"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearEnv(t)
+			for k, v := range tt.envVars {
+				t.Setenv(k, v)
+			}
+
+			actual := expandPath(tt.path)
+			require.Equal(t, tt.expected, actual)
+		})
+	}
+	t.Run("relative/path", func(t *testing.T) {
+		cwd, err := os.Getwd()
+		require.NoError(t, err)
+		expected := filepath.Join(cwd, "relative/path")
+		actual := expandPath("relative/path")
+		require.Equal(t, expected, actual)
 	})
 }
 
