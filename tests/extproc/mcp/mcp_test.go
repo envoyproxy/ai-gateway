@@ -699,6 +699,7 @@ func testNotificationCancelled(t *testing.T, m *mcpEnv) {
 			"mcp_method_name": "notifications/cancelled",
 		}, 0)
 	case <-doneCh:
+		cancel()
 		t.Fatal("CallTool returned before the delay")
 	}
 }
