@@ -177,5 +177,5 @@ func TestRerank_RecordRequestCompletion(t *testing.T) {
 	count, sum = testotel.GetHistogramValues(t, mr, genaiMetricServerRequestDuration, attrsFailure)
 	assert.Equal(t, uint64(2), count)
 	// Allow scheduling jitter in timing-based assertion.
-	assert.InDelta(t, (2 * 10 * time.Millisecond).Seconds(), sum, 0.005)
+	assert.InDelta(t, 2*10*time.Millisecond.Seconds(), sum, 0.005)
 }

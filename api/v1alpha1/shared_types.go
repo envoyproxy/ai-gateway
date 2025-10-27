@@ -15,7 +15,7 @@ package v1alpha1
 type VersionedAPISchema struct {
 	// Name is the name of the API schema of the AIGatewayRoute or AIServiceBackend.
 	//
-	// +kubebuilder:validation:Enum=OpenAI;AWSBedrock;AzureOpenAI;GCPVertexAI;GCPAnthropic;Anthropic
+	// +kubebuilder:validation:Enum=OpenAI;Cohere;AWSBedrock;AzureOpenAI;GCPVertexAI;GCPAnthropic;Anthropic
 	Name APISchema `json:"name"`
 
 	// Version is the version of the API schema.
@@ -43,6 +43,10 @@ const (
 	//
 	// https://github.com/openai/openai-openapi
 	APISchemaOpenAI APISchema = "OpenAI"
+	// APISchemaCohere is the Cohere schema.
+	//
+	// https://docs.cohere.com/v2
+	APISchemaCohere APISchema = "Cohere"
 	// APISchemaAWSBedrock is the AWS Bedrock schema.
 	//
 	// https://docs.aws.amazon.com/bedrock/latest/APIReference/API_Operations_Amazon_Bedrock_Runtime.html
