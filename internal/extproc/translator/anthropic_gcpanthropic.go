@@ -39,6 +39,7 @@ func (a *anthropicToGCPAnthropicTranslator) RequestBody(_ []byte, body *anthropi
 ) {
 	// Extract model name for GCP endpoint from the parsed request.
 	modelName := body.GetModel()
+	a.stream = body.GetStream()
 
 	// Work directly with the map since MessagesRequest is already map[string]interface{}.
 	anthropicReq := make(map[string]any)
