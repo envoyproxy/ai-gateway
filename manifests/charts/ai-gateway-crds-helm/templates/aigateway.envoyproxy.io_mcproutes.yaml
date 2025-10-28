@@ -139,8 +139,16 @@ spec:
                       properties:
                         apiKey:
                           description: APIKey is a mechanism to access a backend.
-                            The API key will be injected into the Authorization header.
+                            The API key will be injected into the request headers.
                           properties:
+                            header:
+                              description: |-
+                                Header is the HTTP header to inject the API key into. If not specified,
+                                defaults to "Authorization".
+                                When the header is "Authorization", the injected header value will be
+                                prefixed with "Bearer ".
+                              minLength: 1
+                              type: string
                             inline:
                               description: Inline contains the API key as an inline
                                 string.
