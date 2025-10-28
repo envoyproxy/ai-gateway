@@ -89,7 +89,7 @@ func run(ctx context.Context, c cmdRun, o *runOpts, stdout, stderr io.Writer) er
 	start := time.Now()
 
 	// First, we need to create the self-signed certificates used for communication between the EG and Envoy.
-	// Certificates will be placed at~/.config/envoy-gateway/certs, which is the default location used by Envoy Gateway.
+	// Certificates will be placed at ~/.config/envoy-gateway/certs, which is the default location used by Envoy Gateway.
 	certGenOut := &bytes.Buffer{}
 	certGen := root.GetRootCommand()
 	certGen.SetOut(certGenOut)
