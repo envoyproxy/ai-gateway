@@ -23,12 +23,12 @@ type azureManagedIdentityTokenProvider struct {
 	tokenOption policy.TokenRequestOptions
 }
 
-// NewAzureManagedIdentityTokenProvider creates a new TokenProvider using Azure DefaultAzureCredential.
+// NewAzureManagedIdentityTokenProvider creates a new TokenProvider using Azure credentials.
 // This supports:
+// - AKS Workload Identity (via AZURE_FEDERATED_TOKEN_FILE environment variable)
 // - Environment variables (AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_CLIENT_SECRET, AZURE_FEDERATED_TOKEN_FILE)
-// - AKS Workload Identity (via service account annotations and federated token file)
-// - System-assigned managed identity (when clientID is empty)
-// - User-assigned managed identity (when clientID is provided)
+// - System-assigned managed identity (when clientID is empty and no workload identity)
+// - User-assigned managed identity (when clientID is provided and no workload identity)
 // - Azure CLI credentials (for development scenarios).
 func NewAzureManagedIdentityTokenProvider(_ context.Context, clientID string, tokenOption policy.TokenRequestOptions) (TokenProvider, error) {
 	clientOptions := GetDefaultAzureCredentialOptions()
@@ -36,8 +36,30 @@ func NewAzureManagedIdentityTokenProvider(_ context.Context, clientID string, to
 	var credential azcore.TokenCredential
 	var err error
 
-	if clientID != "" {
+	// Check if running in AKS Workload Identity environment
+	federatedTokenFile := os.Getenv("AZURE_FEDERATED_TOKEN_FILE")
+	tenantID := os.Getenv("AZURE_TENANT_ID")
+	envClientID := os.Getenv("AZURE_CLIENT_ID")
+
+	if federatedTokenFile != "" && tenantID != "" {
+		// Use Workload Identity - this is the AKS Workload Identity pattern
+		// Use clientID from environment if not explicitly provided
+		if clientID == "" && envClientID != "" {
+			clientID = envClientID
+		}
+		
+		workloadIDOptions := &azidentity.WorkloadIdentityCredentialOptions{
+			ClientID:      clientID,
+			TenantID:      tenantID,
+			TokenFilePath: federatedTokenFile,
+		}
+		if clientOptions != nil {
+			workloadIDOptions.ClientOptions = clientOptions.ClientOptions
+		}
+		credential, err = azidentity.NewWorkloadIdentityCredential(workloadIDOptions)
+	} else if clientID != "" {
 		// User-assigned managed identity - specify the client ID.
+		// This uses Azure VM/VMSS Managed Identity via IMDS
 		managedIDOptions := &azidentity.ManagedIdentityCredentialOptions{
 			ID: azidentity.ClientID(clientID),
 		}
