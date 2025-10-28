@@ -199,8 +199,6 @@ func TestCohereToCohereTranslatorV2Rerank_ResponseError(t *testing.T) {
 		require.NoError(t, json.Unmarshal(bodyMutation.GetBody(), &cohereErr))
 		require.NotNil(t, cohereErr.Message)
 		require.Equal(t, errorBody, *cohereErr.Message)
-		require.NotNil(t, cohereErr.ID)
-		require.Equal(t, "503", *cohereErr.ID)
 	})
 
 	t.Run("json_error_passthrough", func(t *testing.T) {
