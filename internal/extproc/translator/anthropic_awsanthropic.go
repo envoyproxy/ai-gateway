@@ -7,7 +7,6 @@ package translator
 
 import (
 	"fmt"
-	"io"
 	"net/url"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -86,20 +85,4 @@ func (a *anthropicToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *an
 		},
 	})
 	return
-}
-
-// ResponseHeaders implements [AnthropicMessagesTranslator.ResponseHeaders] for Anthropic to AWS Bedrock Anthropic.
-func (a *anthropicToAWSAnthropicTranslator) ResponseHeaders(_ map[string]string) (
-	headerMutation *extprocv3.HeaderMutation, err error,
-) {
-	// For Anthropic to AWS Bedrock Anthropic, no header transformation is needed.
-	return nil, nil
-}
-
-// ResponseBody implements [AnthropicMessagesTranslator.ResponseBody] for Anthropic to AWS Bedrock Anthropic.
-// This is essentially a passthrough since AWS Bedrock returns the native Anthropic response format.
-func (a *anthropicToAWSAnthropicTranslator) ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel string, err error,
-) {
-	return a.anthropicToAnthropicTranslator.ResponseBody(respHeaders, body, endOfStream)
 }
