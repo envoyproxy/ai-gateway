@@ -120,14 +120,47 @@ apidoc: ## Generate API documentation for the API defined in the api directory.
 .PHONY: codegen
 codegen: ## Generate typed client, listers, and informers for the API.
 	@echo "codegen => generating kubernetes clients..."
-	@bash hack/update-codegen.sh
+	@if [ -d "./api/v1alpha1/client/tests" ]; then \
+		mv ./api/v1alpha1/client/tests /tmp/client-tests-backup; \
+	fi
+	@rm -rf ./api/v1alpha1/client
+	@mkdir -p ./api/v1alpha1/client
+	@if [ -d "/tmp/client-tests-backup" ]; then \
+		mv /tmp/client-tests-backup ./api/v1alpha1/client/tests; \
+	fi
+	@echo "codegen => generating clientset..."
+	@go run -modfile=tools/go.mod k8s.io/code-generator/cmd/client-gen \
+		--clientset-name="versioned" \
+		--input-base="" \
+		--input="github.com/envoyproxy/ai-gateway/api/v1alpha1" \
+		--go-header-file=/dev/null \
+		--output-dir="./api/v1alpha1/client/clientset" \
+		--output-pkg="github.com/envoyproxy/ai-gateway/api/v1alpha1/client/clientset" \
+		--plural-exceptions="BackendSecurityPolicy:BackendSecurityPolicies"
+	@echo "codegen => generating listers..."
+	@go run -modfile=tools/go.mod k8s.io/code-generator/cmd/lister-gen \
+		--go-header-file=/dev/null \
+		--output-dir="./api/v1alpha1/client/listers" \
+		--output-pkg="github.com/envoyproxy/ai-gateway/api/v1alpha1/client/listers" \
+		--plural-exceptions="BackendSecurityPolicy:BackendSecurityPolicies" \
+		"github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	@echo "codegen => generating informers..."
+	@go run -modfile=tools/go.mod k8s.io/code-generator/cmd/informer-gen \
+		--go-header-file=/dev/null \
+		--versioned-clientset-package="github.com/envoyproxy/ai-gateway/api/v1alpha1/client/clientset/versioned" \
+		--listers-package="github.com/envoyproxy/ai-gateway/api/v1alpha1/client/listers" \
+		--output-dir="./api/v1alpha1/client/informers" \
+		--output-pkg="github.com/envoyproxy/ai-gateway/api/v1alpha1/client/informers" \
+		--plural-exceptions="BackendSecurityPolicy:BackendSecurityPolicies" \
+		"github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	@echo "codegen => complete"
 
 # This verifies that the generated client code is up to date.
 .PHONY: verify-codegen
 verify-codegen: codegen ## Verify that generated client code is up to date.
-	@if [ ! -z "`git status -s pkg/client`" ]; then \
+	@if [ ! -z "`git status -s api/v1alpha1/client`" ]; then \
 		echo "Generated client code is out of date. Please run 'make codegen'"; \
-		git diff pkg/client; \
+		git diff api/v1alpha1/client; \
 		exit 1; \
 	fi
 
