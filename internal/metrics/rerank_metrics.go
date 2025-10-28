@@ -58,6 +58,10 @@ func NewRerankFactory(meter metric.Meter, requestHeaderAttributeMapping map[stri
 
 // RecordTokenUsage implements [RerankMetrics.RecordTokenUsage].
 func (r *rerank) RecordTokenUsage(ctx context.Context, inputTokens uint32, requestHeaders map[string]string) {
+	// Some rerank responses omit token usage information; skip recording when zero.
+	if inputTokens == 0 {
+		return
+	}
 	attrs := r.buildBaseAttributes(requestHeaders)
 
 	// Rerank only consumes input tokens to compute ranking scores.

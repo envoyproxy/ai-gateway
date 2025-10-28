@@ -106,7 +106,6 @@ func (t *cohereToCohereTranslatorV2Rerank) ResponseBody(_ map[string]string, bod
 func (t *cohereToCohereTranslatorV2Rerank) ResponseError(respHeaders map[string]string, body io.Reader) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
-	statusCode := respHeaders[statusHeaderName]
 	if v, ok := respHeaders[contentTypeHeaderName]; ok && v != jsonContentType {
 		buf, err := io.ReadAll(body)
 		if err != nil {
@@ -116,7 +115,6 @@ func (t *cohereToCohereTranslatorV2Rerank) ResponseError(respHeaders map[string]
 		// Wrap as a minimal Cohere v2 error JSON for consistency.
 		cohereErr := cohereschema.RerankV2Error{
 			Message: &message,
-			ID:      &statusCode,
 		}
 		mut := &extprocv3.BodyMutation_Body{}
 		mut.Body, err = json.Marshal(cohereErr)
