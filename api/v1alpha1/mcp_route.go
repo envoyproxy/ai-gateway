@@ -143,7 +143,7 @@ type MCPToolFilter struct {
 
 // MCPBackendSecurityPolicy defines the security policy for a sp
 type MCPBackendSecurityPolicy struct {
-	// APIKey is a mechanism to access a backend. The API key will be injected into the Authorization header.
+	// APIKey is a mechanism to access a backend. The API key will be injected into the request headers.
 	// +optional
 	APIKey *MCPBackendAPIKey `json:"apiKey,omitempty"`
 }
@@ -162,8 +162,10 @@ type MCPBackendAPIKey struct {
 	// +optional
 	Inline *string `json:"inline,omitempty"`
 
-	// Header is the HTTP header to inject the API key into.
-	// If not specified, the default is "Authorization".
+	// Header is the HTTP header to inject the API key into. If not specified,
+	// defaults to "Authorization".
+	// When the header is "Authorization", the injected header value will be
+	// prefixed with "Bearer ".
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MinLength=1
