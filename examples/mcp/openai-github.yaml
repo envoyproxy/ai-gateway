@@ -206,7 +206,7 @@ spec:
       path: "/mcp/x/issues/readonly"
       toolSelector:
         include:
-          - get_issue
+          - issue_read
           - list_issues
       securityPolicy:
         apiKey:

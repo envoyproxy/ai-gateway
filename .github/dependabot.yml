@@ -25,3 +25,5 @@ updates:
           - "*"
     ignore:
       - dependency-name: "github.com/envoyproxy/gateway"
+      # Usually, this requires manual changes to the codebase.
+      - dependency-name: "sigs.k8s.io/gateway-api-inference-extension"
