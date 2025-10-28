@@ -6,6 +6,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 
@@ -608,9 +609,9 @@ func (c *MCPRouteController) ensureMCPBackendRefHTTPFilter(ctx context.Context, 
 		if secretErr := c.ensureCredentialSecret(ctx, mcpRoute.Namespace, secretName, apiKey, mcpRoute); secretErr != nil {
 			return fmt.Errorf("failed to ensure credential secret: %w", secretErr)
 		}
-
+		header := cmp.Or(ptr.Deref(apiKey.Header, ""), "Authorization")
 		filter.Spec.CredentialInjection = &egv1a1.HTTPCredentialInjectionFilter{
-			Header:    ptr.To("Authorization"),
+			Header:    ptr.To(header),
 			Overwrite: ptr.To(true),
 			Credential: egv1a1.InjectedCredential{
 				ValueRef: gwapiv1.SecretObjectReference{
@@ -659,7 +660,13 @@ func (c *MCPRouteController) ensureCredentialSecret(ctx context.Context, namespa
 		}
 	}
 
-	credentialValue = fmt.Sprintf("Bearer %s", key)
+	// Only prepend the "Bearer " prefix if the header is not set or is set to "Authorization".
+	header := cmp.Or(ptr.Deref(apiKey.Header, ""), "Authorization")
+	if header == "Authorization" {
+		credentialValue = fmt.Sprintf("Bearer %s", key)
+	} else {
+		credentialValue = key
+	}
 
 	existingSecret, secretErr := c.kube.CoreV1().Secrets(namespace).Get(ctx, secretName, metav1.GetOptions{})
 	if secretErr != nil && !apierrors.IsNotFound(secretErr) {

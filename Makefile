@@ -32,7 +32,7 @@ HELM_CHART_VERSION ?= v0.0.0-latest
 # `GO_TEST_ARGS="-run TestName/foo/etc -v -race"`.
 GO_TEST_ARGS ?=
 # Arguments for go test in e2e tests in addition to GO_TEST_ARGS, applicable to test-e2e, test-extproc, and test-controller.
-GO_TEST_E2E_ARGS ?= -count=1
+GO_TEST_E2E_ARGS ?= -count=1 -timeout 30m
 
 ## help: Show this help info.
 .PHONY: help
@@ -238,7 +238,7 @@ test-e2e-namespaced: build-e2e
 .PHONY: test-e2e-aigw
 test-e2e-aigw: build.aigw ## Run the end-to-end tests for the aigw CLI.
 	@echo "Run aigw CLI E2E tests"
-	@go test -v ./tests/e2e-aigw/... -timeout 30m $(GO_TEST_E2E_ARGS)
+	@go test -v ./tests/e2e-aigw/... $(GO_TEST_E2E_ARGS)
 
 ##@ Common
 
