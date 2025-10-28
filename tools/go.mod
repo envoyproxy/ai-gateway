@@ -13,6 +13,9 @@ tool (
 	github.com/vladopajic/go-test-coverage/v2
 	github.com/wasilibs/go-prettier/v3/cmd/prettier
 	helm.sh/helm/v3/cmd/helm
+	k8s.io/code-generator/cmd/client-gen
+	k8s.io/code-generator/cmd/informer-gen
+	k8s.io/code-generator/cmd/lister-gen
 	sigs.k8s.io/controller-runtime/tools/setup-envtest
 	sigs.k8s.io/controller-tools/cmd/controller-gen
 	sigs.k8s.io/kind
@@ -363,7 +366,9 @@ require (
 	k8s.io/apiserver v0.33.4 // indirect
 	k8s.io/cli-runtime v0.33.3 // indirect
 	k8s.io/client-go v0.33.4 // indirect
+	k8s.io/code-generator v0.33.4 // indirect
 	k8s.io/component-base v0.33.4 // indirect
+	k8s.io/gengo/v2 v2.0.0-20250207200755-1244d31929d7 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20250626002932-679f732ef8b8 // indirect
 	k8s.io/kubectl v0.33.3 // indirect

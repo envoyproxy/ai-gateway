@@ -46,7 +46,7 @@ help:
 # This runs all necessary steps to prepare for a commit.
 .PHONY: precommit
 precommit: ## Run all necessary steps to prepare for a commit.
-precommit: tidy spellcheck apigen apidoc format lint editorconfig helm-test
+precommit: tidy spellcheck apigen codegen apidoc format lint editorconfig helm-test
 
 .PHONY: lint
 lint: ## This runs the linter on the codebase.
@@ -116,6 +116,36 @@ apidoc: ## Generate API documentation for the API defined in the api directory.
 		--output-path site/docs/api/api.mdx \
 		--renderer=markdown
 
+# This generates typed client, listers, and informers for the API.
+.PHONY: codegen
+codegen: ## Generate typed client, listers, and informers for the API.
+	@echo "codegen => generating kubernetes clients..."
+	@echo "codegen => generating clientset..."
+	@$(GO_TOOL) client-gen \
+		--clientset-name="versioned" \
+		--input-base="" \
+		--input="github.com/envoyproxy/ai-gateway/api/v1alpha1" \
+		--go-header-file=/dev/null \
+		--output-dir="./api/v1alpha1/client/clientset" \
+		--output-pkg="github.com/envoyproxy/ai-gateway/api/v1alpha1/client/clientset" \
+		--plural-exceptions="BackendSecurityPolicy:BackendSecurityPolicies"
+	@echo "codegen => generating listers..."
+	@$(GO_TOOL) lister-gen \
+		--go-header-file=/dev/null \
+		--output-dir="./api/v1alpha1/client/listers" \
+		--output-pkg="github.com/envoyproxy/ai-gateway/api/v1alpha1/client/listers" \
+		--plural-exceptions="BackendSecurityPolicy:BackendSecurityPolicies" \
+		"github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	@echo "codegen => generating informers..."
+	@$(GO_TOOL) informer-gen \
+		--go-header-file=/dev/null \
+		--versioned-clientset-package="github.com/envoyproxy/ai-gateway/api/v1alpha1/client/clientset/versioned" \
+		--listers-package="github.com/envoyproxy/ai-gateway/api/v1alpha1/client/listers" \
+		--output-dir="./api/v1alpha1/client/informers" \
+		--output-pkg="github.com/envoyproxy/ai-gateway/api/v1alpha1/client/informers" \
+		--plural-exceptions="BackendSecurityPolicy:BackendSecurityPolicies" \
+		"github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	@echo "codegen => complete"
 
 ##@ Testing
 

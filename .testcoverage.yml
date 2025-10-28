@@ -16,6 +16,8 @@ exclude:
     - cmd/
     # Generated code should not be tested.
     - zz_generated.deepcopy.go
+    # Generated Kubernetes client code.
+    - api/v1alpha1/client/
     # They are test-only libraries.
     - tests/internal/
     - internal/testing/
