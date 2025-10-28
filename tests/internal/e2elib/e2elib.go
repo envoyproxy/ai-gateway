@@ -458,7 +458,7 @@ func InstallOrUpgradeAIGateway(ctx context.Context, aigw AIGatewayHelmOption) (e
 	}
 	// Restart the controller to pick up the new changes in the AI Gateway.
 	initLog("\tRestart AI Gateway controller")
-	if err = kubectlRestartDeployment(ctx, "envoy-ai-gateway-system", "ai-gateway-controller"); err != nil {
+	if err = KubectlRestartDeployment(ctx, "envoy-ai-gateway-system", "ai-gateway-controller"); err != nil {
 		return
 	}
 	return kubectlWaitForDeploymentReady(ctx, "envoy-ai-gateway-system", "ai-gateway-controller")
@@ -505,7 +505,7 @@ func KubectlDeleteManifest(ctx context.Context, manifest string) (err error) {
 	return cmd.Run()
 }
 
-func kubectlRestartDeployment(ctx context.Context, namespace, deployment string) error {
+func KubectlRestartDeployment(ctx context.Context, namespace, deployment string) error {
 	cmd := Kubectl(ctx, "rollout", "restart", "deployment/"+deployment, "-n", namespace)
 	return cmd.Run()
 }
