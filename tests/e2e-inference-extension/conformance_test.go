@@ -41,8 +41,8 @@ func TestGatewayAPIInferenceExtension(t *testing.T) {
 	// Add test isolation delay to reduce load on the API server. The kind cluster's
 	// API server becomes slow/unresponsive under heavy load, causing "context deadline exceeded"
 	// errors when polling for InferencePool status updates. Adding delays between tests
-	// gives the API server time to recover.
-	inferenceTimeoutConfig.TestIsolation = 3 * time.Second
+	// gives the API server time to recover. Increased to 5s for sustained test runs.
+	inferenceTimeoutConfig.TestIsolation = 5 * time.Second
 	options.TimeoutConfig = inferenceTimeoutConfig.TimeoutConfig
 	options.GatewayClassName = "inference-pool"
 	options.SkipTests = []string{}
