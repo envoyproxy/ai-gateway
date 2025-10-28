@@ -9,12 +9,11 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	gie "sigs.k8s.io/gateway-api-inference-extension/conformance"
+	gieconfig "sigs.k8s.io/gateway-api-inference-extension/conformance/utils/config"
 	v1 "sigs.k8s.io/gateway-api/conformance/apis/v1"
-	"sigs.k8s.io/gateway-api/conformance/utils/config"
 
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 )
@@ -35,12 +34,11 @@ func TestGatewayAPIInferenceExtension(t *testing.T) {
 		Version:      "latest",
 	}
 	options.ConformanceProfiles.Insert(gie.GatewayLayerProfileName)
-	defaultTimeoutConfig := config.DefaultTimeoutConfig()
-	defaultTimeoutConfig.HTTPRouteMustHaveCondition = 10 * time.Second
-	defaultTimeoutConfig.HTTPRouteMustNotHaveParents = 10 * time.Second
-	defaultTimeoutConfig.GatewayMustHaveCondition = 10 * time.Second
-	config.SetupTimeoutConfig(&defaultTimeoutConfig)
-	options.TimeoutConfig = defaultTimeoutConfig
+	// Use the inference extension's default timeout config which has appropriate
+	// timeout values for InferencePool operations (e.g., 300s for conditions).
+	// The previous short timeouts (10s) were causing flaky test failures.
+	inferenceTimeoutConfig := gieconfig.DefaultInferenceExtensionTimeoutConfig()
+	options.TimeoutConfig = inferenceTimeoutConfig.TimeoutConfig
 	options.GatewayClassName = "inference-pool"
 	options.SkipTests = []string{}
 
