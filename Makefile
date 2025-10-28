@@ -9,7 +9,6 @@
 -include .makerc
 
 GO_TOOL := go tool -modfile=tools/go.mod
-GO_RUN := go run -modfile=tools/go.mod
 
 # The list of commands that can be built.
 COMMANDS := controller extproc
@@ -122,7 +121,7 @@ apidoc: ## Generate API documentation for the API defined in the api directory.
 codegen: ## Generate typed client, listers, and informers for the API.
 	@echo "codegen => generating kubernetes clients..."
 	@echo "codegen => generating clientset..."
-	@$(GO_RUN) k8s.io/code-generator/cmd/client-gen \
+	@$(GO_TOOL) client-gen \
 		--clientset-name="versioned" \
 		--input-base="" \
 		--input="github.com/envoyproxy/ai-gateway/api/v1alpha1" \
@@ -131,14 +130,14 @@ codegen: ## Generate typed client, listers, and informers for the API.
 		--output-pkg="github.com/envoyproxy/ai-gateway/api/v1alpha1/client/clientset" \
 		--plural-exceptions="BackendSecurityPolicy:BackendSecurityPolicies"
 	@echo "codegen => generating listers..."
-	@$(GO_RUN) k8s.io/code-generator/cmd/lister-gen \
+	@$(GO_TOOL) lister-gen \
 		--go-header-file=/dev/null \
 		--output-dir="./api/v1alpha1/client/listers" \
 		--output-pkg="github.com/envoyproxy/ai-gateway/api/v1alpha1/client/listers" \
 		--plural-exceptions="BackendSecurityPolicy:BackendSecurityPolicies" \
 		"github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	@echo "codegen => generating informers..."
-	@$(GO_RUN) k8s.io/code-generator/cmd/informer-gen \
+	@$(GO_TOOL) informer-gen \
 		--go-header-file=/dev/null \
 		--versioned-clientset-package="github.com/envoyproxy/ai-gateway/api/v1alpha1/client/clientset/versioned" \
 		--listers-package="github.com/envoyproxy/ai-gateway/api/v1alpha1/client/listers" \
