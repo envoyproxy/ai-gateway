@@ -573,7 +573,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				},
 				GCPVertexAIVendorFields: &openai.GCPVertexAIVendorFields{
 					GenerationConfig: &openai.GCPVertexAIGenerationConfig{
-						ThinkingConfig: &genai.GenerationConfigThinkingConfig{
+						ThinkingConfig: &genai.ThinkingConfig{
 							IncludeThoughts: true,
 							ThinkingBudget:  ptr.To(int32(1000)),
 						},
@@ -907,7 +907,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
     ],
     "object": "chat.completion",
     "usage": {
-        "completion_tokens": 15,
+        "completion_tokens": 25,
         "completion_tokens_details": {
             "reasoning_tokens": 10
         },
