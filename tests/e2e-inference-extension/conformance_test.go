@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	gie "sigs.k8s.io/gateway-api-inference-extension/conformance"
@@ -38,6 +39,8 @@ func TestGatewayAPIInferenceExtension(t *testing.T) {
 	// timeout values for InferencePool operations (e.g., 300s for conditions).
 	// The previous short timeouts (10s) were causing flaky test failures.
 	inferenceTimeoutConfig := gieconfig.DefaultInferenceExtensionTimeoutConfig()
+	// Increase GetTimeout to handle slow API server responses during load
+	inferenceTimeoutConfig.GetTimeout = 60 * time.Second
 	options.TimeoutConfig = inferenceTimeoutConfig.TimeoutConfig
 	options.GatewayClassName = "inference-pool"
 	options.SkipTests = []string{}
