@@ -59,7 +59,7 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 				},
 				GCPVertexAIVendorFields: &GCPVertexAIVendorFields{
 					GenerationConfig: &GCPVertexAIGenerationConfig{
-						ThinkingConfig: &genai.GenerationConfigThinkingConfig{
+						ThinkingConfig: &genai.ThinkingConfig{
 							IncludeThoughts: true,
 							ThinkingBudget:  ptr.To(int32(1000)),
 						},
@@ -114,7 +114,7 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 				},
 				GCPVertexAIVendorFields: &GCPVertexAIVendorFields{
 					GenerationConfig: &GCPVertexAIGenerationConfig{
-						ThinkingConfig: &genai.GenerationConfigThinkingConfig{
+						ThinkingConfig: &genai.ThinkingConfig{
 							IncludeThoughts: true,
 							ThinkingBudget:  ptr.To(int32(1000)),
 						},
