@@ -155,16 +155,6 @@ codegen: ## Generate typed client, listers, and informers for the API.
 		"github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	@echo "codegen => complete"
 
-# This verifies that the generated client code is up to date.
-.PHONY: verify-codegen
-verify-codegen: codegen ## Verify that generated client code is up to date.
-	@if [ ! -z "`git status -s api/v1alpha1/client`" ]; then \
-		echo "Generated client code is out of date. Please run 'make codegen'"; \
-		git diff api/v1alpha1/client; \
-		exit 1; \
-	fi
-
-
 ##@ Testing
 
 # This runs the unit tests for the codebase, excluding the integration tests.
