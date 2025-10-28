@@ -89,11 +89,7 @@ func run(ctx context.Context, c cmdRun, o *runOpts, stdout, stderr io.Writer) er
 	start := time.Now()
 
 	// First, we need to create the self-signed certificates used for communication between the EG and Envoy.
-	// Certificates will be placed at /tmp/envoy-gateway/certs, which is currently is not configurable:
-	// https://github.com/envoyproxy/gateway/blob/779c0a6bbdf7dacbf25a730140a112f99c239f0e/internal/infrastructure/host/infra.go#L22-L23
-	//
-	// TODO: Override Envoy Gateway cert directory to use $AIGW_RUNTIME_DIR once possible via
-	// https://github.com/envoyproxy/gateway/pull/7225
+	// Certificates will be placed at~/.config/envoy-gateway/certs, which is the default location used by Envoy Gateway.
 	certGenOut := &bytes.Buffer{}
 	certGen := root.GetRootCommand()
 	certGen.SetOut(certGenOut)
