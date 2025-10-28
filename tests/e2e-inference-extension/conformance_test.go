@@ -37,10 +37,12 @@ func TestGatewayAPIInferenceExtension(t *testing.T) {
 	options.ConformanceProfiles.Insert(gie.GatewayLayerProfileName)
 	// Use the inference extension's default timeout config which has appropriate
 	// timeout values for InferencePool operations (e.g., 300s for conditions).
-	// The previous short timeouts (10s) were causing flaky test failures.
 	inferenceTimeoutConfig := gieconfig.DefaultInferenceExtensionTimeoutConfig()
-	// Increase GetTimeout to handle slow API server responses during load
-	inferenceTimeoutConfig.GetTimeout = 60 * time.Second
+	// Add test isolation delay to reduce load on the API server. The kind cluster's
+	// API server becomes slow/unresponsive under heavy load, causing "context deadline exceeded"
+	// errors when polling for InferencePool status updates. Adding delays between tests
+	// gives the API server time to recover.
+	inferenceTimeoutConfig.TestIsolation = 3 * time.Second
 	options.TimeoutConfig = inferenceTimeoutConfig.TimeoutConfig
 	options.GatewayClassName = "inference-pool"
 	options.SkipTests = []string{}
