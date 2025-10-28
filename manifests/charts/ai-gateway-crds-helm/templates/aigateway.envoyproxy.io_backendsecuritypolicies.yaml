@@ -1729,8 +1729,9 @@ spec:
                   clientID:
                     description: |-
                       ClientID is a unique identifier for an application in Azure.
-                      This field is optional when using system-assigned managed identity,
-                      but required for user-assigned managed identity and other authentication methods.
+                      This field is optional when using managed identity or workload identity,
+                      as the value will be provided via environment variables (AZURE_CLIENT_ID).
+                      Required for other authentication methods.
                     minLength: 1
                     type: string
                   clientSecretRef:
@@ -3211,8 +3212,11 @@ spec:
                     - oidc
                     type: object
                   tenantID:
-                    description: TenantId is a unique identifier for an Azure Active
-                      Directory instance.
+                    description: |-
+                      TenantId is a unique identifier for an Azure Active Directory instance.
+                      This field is optional when using workload identity with service account annotations,
+                      as the value will be provided via environment variables (AZURE_TENANT_ID).
+                      Required for other authentication methods.
                     minLength: 1
                     type: string
                   useManagedIdentity:
@@ -3224,8 +3228,6 @@ spec:
                       - System-assigned managed identity (when clientID is not specified)
                       - User-assigned managed identity (when clientID is specified)
                     type: boolean
-                required:
-                - tenantID
                 type: object
                 x-kubernetes-validations:
                 - message: When useManagedIdentity is true, clientSecretRef and oidcExchangeToken
@@ -3235,10 +3237,6 @@ spec:
                     (!has(self.clientSecretRef) && !has(self.oidcExchangeToken)) :
                     ((has(self.clientSecretRef) && !has(self.oidcExchangeToken)) ||
                     (!has(self.clientSecretRef) && has(self.oidcExchangeToken)))'
-                - message: clientID is optional for system-assigned managed identity
-                    but required otherwise
-                  rule: 'has(self.useManagedIdentity) && self.useManagedIdentity &&
-                    !has(self.clientID) ? true : has(self.clientID)'
               gcpCredentials:
                 description: GCPCredentials is a mechanism to access a backend(s).
                   GCP specific logic will be applied.

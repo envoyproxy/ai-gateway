@@ -237,21 +237,24 @@ type BackendSecurityPolicyGCPCredentials struct {
 // Otherwise, exactly one of ClientSecretRef or OIDCExchangeToken must be specified.
 //
 // +kubebuilder:validation:XValidation:rule="has(self.useManagedIdentity) && self.useManagedIdentity ? (!has(self.clientSecretRef) && !has(self.oidcExchangeToken)) : ((has(self.clientSecretRef) && !has(self.oidcExchangeToken)) || (!has(self.clientSecretRef) && has(self.oidcExchangeToken)))",message="When useManagedIdentity is true, clientSecretRef and oidcExchangeToken must not be specified. Otherwise, exactly one of clientSecretRef or oidcExchangeToken must be specified"
-// +kubebuilder:validation:XValidation:rule="has(self.useManagedIdentity) && self.useManagedIdentity && !has(self.clientID) ? true : has(self.clientID)",message="clientID is optional for system-assigned managed identity but required otherwise"
 type BackendSecurityPolicyAzureCredentials struct {
 	// ClientID is a unique identifier for an application in Azure.
-	// This field is optional when using system-assigned managed identity,
-	// but required for user-assigned managed identity and other authentication methods.
+	// This field is optional when using managed identity or workload identity,
+	// as the value will be provided via environment variables (AZURE_CLIENT_ID).
+	// Required for other authentication methods.
 	//
 	// +optional
 	// +kubebuilder:validation:MinLength=1
-	ClientID string `json:"clientID"`
+	ClientID string `json:"clientID,omitempty"`
 
 	// TenantId is a unique identifier for an Azure Active Directory instance.
+	// This field is optional when using workload identity with service account annotations,
+	// as the value will be provided via environment variables (AZURE_TENANT_ID).
+	// Required for other authentication methods.
 	//
-	// +kubebuilder:validation:Required
+	// +optional
 	// +kubebuilder:validation:MinLength=1
-	TenantID string `json:"tenantID"`
+	TenantID string `json:"tenantID,omitempty"`
 
 	// ClientSecretRef is the reference to the secret containing the Azure client secret.
 	// ai-gateway must be given the permission to read this secret.
