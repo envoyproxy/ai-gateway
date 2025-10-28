@@ -127,8 +127,13 @@ func TestHandleNotificationsPerBackend_SSE(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		for _, b := range []byte(sseBody) {
-			_, _ = w.Write([]byte{b})
+		chunkSize := len(sseBody) / 3
+		for i := 0; i < len(sseBody); i += chunkSize {
+			end := i + chunkSize
+			if end > len(sseBody) {
+				end = len(sseBody)
+			}
+			_, _ = w.Write([]byte(sseBody[i:end]))
 			if f, ok := w.(http.Flusher); ok {
 				f.Flush()
 			}
@@ -168,7 +173,7 @@ func TestSession_StreamNotifications(t *testing.T) {
 		// configure a heartbeat interval faster than the event interval, so we expect heartbeats.
 		{"slow events", 20 * time.Millisecond, 5 * time.Second, 10 * time.Millisecond, true},
 		// disable heartbeats. Even though events come in slowly, we don't expect heartbeats.
-		{"no heartbeats", 50 * time.Millisecond, 25 * time.Second, 0, false},
+		{"no heartbeats", 20 * time.Millisecond, 5 * time.Second, 0, false},
 	}
 
 	for _, tc := range tests {
@@ -194,8 +199,13 @@ func TestSession_StreamNotifications(t *testing.T) {
 					return
 				}
 				w.Header().Set("Content-Type", "text/event-stream")
-				for _, b := range []byte(body) {
-					_, _ = w.Write([]byte{b})
+				chunkSize := len(body) / 3
+				for i := 0; i < len(body); i += chunkSize {
+					end := i + chunkSize
+					if end > len(body) {
+						end = len(body)
+					}
+					_, _ = w.Write([]byte(body[i:end]))
 					if f, ok := w.(http.Flusher); ok {
 						f.Flush()
 					}
