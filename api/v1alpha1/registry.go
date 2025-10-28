@@ -23,16 +23,10 @@ const GroupName = "aigateway.envoyproxy.io"
 
 var (
 	// schemeGroupVersion is group version used to register these objects.
-	schemeGroupVersion = schema.GroupVersion{Group: GroupName, Version: "v1alpha1"}
-
-	// GroupVersion is group version used to register these objects for client-gen
-	GroupVersion = schemeGroupVersion
-
-	// SchemeGroupVersion is group version used by the code generator
-	SchemeGroupVersion = schemeGroupVersion
+	SchemeGroupVersion = schema.GroupVersion{Group: GroupName, Version: "v1alpha1"}
 
 	// SchemeBuilder is used to add go types to the GroupVersionKind scheme.
-	SchemeBuilder = &scheme.Builder{GroupVersion: schemeGroupVersion}
+	SchemeBuilder = &scheme.Builder{GroupVersion: SchemeGroupVersion}
 
 	// AddToScheme adds the types in this group-version to the given scheme.
 	AddToScheme = SchemeBuilder.AddToScheme
@@ -40,12 +34,12 @@ var (
 
 // Resource takes an unqualified resource and returns a Group qualified GroupResource
 func Resource(resource string) schema.GroupResource {
-	return GroupVersion.WithResource(resource).GroupResource()
+	return SchemeGroupVersion.WithResource(resource).GroupResource()
 }
 
 // AddKnownTypes adds the list of known types to the given scheme for code generation.
 func AddKnownTypes(scheme *runtime.Scheme) error {
-	scheme.AddKnownTypes(GroupVersion,
+	scheme.AddKnownTypes(SchemeGroupVersion,
 		&AIGatewayRoute{},
 		&AIGatewayRouteList{},
 		&AIServiceBackend{},
@@ -55,6 +49,6 @@ func AddKnownTypes(scheme *runtime.Scheme) error {
 		&MCPRoute{},
 		&MCPRouteList{},
 	)
-	metav1.AddToGroupVersion(scheme, GroupVersion)
+	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil
 }

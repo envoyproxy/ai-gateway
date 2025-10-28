@@ -15,12 +15,8 @@ import (
 
 func TestGroupVersion(t *testing.T) {
 	t.Run("GroupVersion is correctly set", func(t *testing.T) {
-		assert.Equal(t, "aigateway.envoyproxy.io", GroupVersion.Group)
-		assert.Equal(t, "v1alpha1", GroupVersion.Version)
-	})
-
-	t.Run("SchemeGroupVersion matches GroupVersion", func(t *testing.T) {
-		assert.Equal(t, GroupVersion, SchemeGroupVersion)
+		assert.Equal(t, "aigateway.envoyproxy.io", SchemeGroupVersion.Group)
+		assert.Equal(t, "v1alpha1", SchemeGroupVersion.Version)
 	})
 }
 
@@ -73,7 +69,7 @@ func TestAddKnownTypes(t *testing.T) {
 		require.NoError(t, err)
 
 		// Get all registered types
-		types := scheme.KnownTypes(GroupVersion)
+		types := scheme.KnownTypes(SchemeGroupVersion)
 
 		// Verify all resource types are registered
 		expectedTypes := []string{
@@ -107,7 +103,7 @@ func TestAddKnownTypes(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify types are still registered
-		types := scheme.KnownTypes(GroupVersion)
+		types := scheme.KnownTypes(SchemeGroupVersion)
 		assert.Contains(t, types, "AIGatewayRoute")
 	})
 }
@@ -119,7 +115,7 @@ func TestAddToScheme(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify that types are registered via AddToScheme
-		types := scheme.KnownTypes(GroupVersion)
+		types := scheme.KnownTypes(SchemeGroupVersion)
 		assert.Contains(t, types, "AIGatewayRoute")
 		assert.Contains(t, types, "AIServiceBackend")
 		assert.Contains(t, types, "BackendSecurityPolicy")
@@ -133,6 +129,6 @@ func TestSchemeBuilder(t *testing.T) {
 	})
 
 	t.Run("SchemeBuilder has correct GroupVersion", func(t *testing.T) {
-		assert.Equal(t, GroupVersion, SchemeBuilder.GroupVersion)
+		assert.Equal(t, SchemeGroupVersion, SchemeBuilder.GroupVersion)
 	})
 }
