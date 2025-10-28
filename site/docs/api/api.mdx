@@ -1461,6 +1461,11 @@ MCPBackendAPIKey defines the configuration for the API Key Authentication to a b
   type="string"
   required="false"
   description="Inline contains the API key as an inline string."
+/><ApiField
+  name="header"
+  type="string"
+  required="false"
+  description="Header is the HTTP header to inject the API key into.<br />If not specified, the default is `Authorization`."
 />
 
 

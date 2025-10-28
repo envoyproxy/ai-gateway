@@ -161,6 +161,14 @@ type MCPBackendAPIKey struct {
 	//
 	// +optional
 	Inline *string `json:"inline,omitempty"`
+
+	// Header is the HTTP header to inject the API key into.
+	// If not specified, the default is "Authorization".
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=1
+	// +optional
+	Header *string `json:"header,omitempty"`
 }
 
 // MCPRouteSecurityPolicy defines the security policy for a MCPRoute.
