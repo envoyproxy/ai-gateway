@@ -43,6 +43,8 @@ func TestGatewayAPIInferenceExtension(t *testing.T) {
 	// errors when polling for InferencePool status updates. Adding delays between tests
 	// gives the API server time to recover. Increased to 5s for sustained test runs.
 	inferenceTimeoutConfig.TestIsolation = 5 * time.Second
+	// Increase polling intervals to reduce API server pressure
+	inferenceTimeoutConfig.InferencePoolMustHaveConditionInterval = 15 * time.Second
 	options.TimeoutConfig = inferenceTimeoutConfig.TimeoutConfig
 	options.GatewayClassName = "inference-pool"
 	options.SkipTests = []string{}
