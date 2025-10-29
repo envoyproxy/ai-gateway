@@ -40,8 +40,8 @@ type anthropicToAWSAnthropicTranslator struct {
 func (a *anthropicToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *anthropicschema.MessagesRequest, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
-	a.stream = body.GetStream()
-	a.requestModel = cmp.Or(a.modelNameOverride, body.GetModel())
+	a.stream = body.Stream
+	a.requestModel = cmp.Or(a.modelNameOverride, body.Model)
 
 	var mutatedBody []byte
 	mutatedBody, err = sjson.SetBytes(rawBody, anthropicVersionKey, a.apiVersion)
@@ -54,7 +54,7 @@ func (a *anthropicToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *an
 
 	// Determine the AWS Bedrock path based on whether streaming is requested.
 	var pathTemplate string
-	if body.GetStream() {
+	if body.Stream {
 		pathTemplate = "/model/%s/invoke-stream"
 	} else {
 		pathTemplate = "/model/%s/invoke"
