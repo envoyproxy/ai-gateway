@@ -38,12 +38,13 @@ func TestGatewayAPIInferenceExtension(t *testing.T) {
 	// Use the inference extension's default timeout config which has appropriate
 	// timeout values for InferencePool operations (e.g., 300s for conditions).
 	inferenceTimeoutConfig := gieconfig.DefaultInferenceExtensionTimeoutConfig()
-	// Add test isolation delay to reduce load on the API server. The kind cluster's
-	// API server becomes slow/unresponsive under heavy load, causing "context deadline exceeded"
-	// errors when polling for InferencePool status updates. Adding delays between tests
-	// gives the API server time to recover. Increased to 5s for sustained test runs.
+	// Add test isolation delay to mitigate accumulated state across test runs.
+	// Root cause: Resources/state accumulate in the kind cluster across consecutive tests,
+	// causing API server slowness and "context deadline exceeded" errors. Delays between
+	// tests help but don't fully solve it - proper fix requires cluster recreation or
+	// improved cleanup between test runs.
 	inferenceTimeoutConfig.TestIsolation = 5 * time.Second
-	// Increase polling intervals to reduce API server pressure
+	// Increase polling interval to reduce API call frequency and pressure on API server
 	inferenceTimeoutConfig.InferencePoolMustHaveConditionInterval = 15 * time.Second
 	options.TimeoutConfig = inferenceTimeoutConfig.TimeoutConfig
 	options.GatewayClassName = "inference-pool"
