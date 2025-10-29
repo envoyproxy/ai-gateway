@@ -1954,6 +1954,40 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_Cache(t *testing.T) {
 		require.Equal(t, "tool_use", result.Get("messages.0.content.1.type").String())
 		require.Equal(t, "call_789", result.Get("messages.0.content.1.id").String())
 	})
+	t.Run("assistant text content caching", func(t *testing.T) {
+		// This test verifies that a cache_control field on an
+		// assistant's text content part is correctly translated.
+		openAIReq := &openai.ChatCompletionRequest{
+			Model: "gcp.claude-3.5-haiku",
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{OfAssistant: &openai.ChatCompletionAssistantMessageParam{
+					Role: openai.ChatMessageRoleAssistant,
+					Content: openai.StringOrAssistantRoleContentUnion{
+						Value: openai.ChatCompletionAssistantMessageParamContent{
+							Type: openai.ChatCompletionAssistantMessageParamContentTypeText,
+							Text: ptr.To("This is a cached assistant text response."),
+							AnthropicContentFields: &openai.AnthropicContentFields{
+								CacheControl: anthropic.CacheControlEphemeralParam{Type: constant.ValueOf[constant.Ephemeral]()},
+							},
+						},
+					},
+				}},
+			},
+			MaxTokens: ptr.To(int64(100)),
+		}
+
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
+		_, bm, err := translator.RequestBody(nil, openAIReq, false)
+		require.NoError(t, err)
+
+		body := bm.GetBody()
+		result := gjson.ParseBytes(body)
+
+		// Check the assistant message's text content (index 0).
+		require.Equal(t, string(constant.ValueOf[constant.Ephemeral]()), result.Get("messages.0.content.0.cache_control.type").String(), "assistant text block should be cached")
+		require.Equal(t, "text", result.Get("messages.0.content.0.type").String())
+		require.Equal(t, "This is a cached assistant text response.", result.Get("messages.0.content.0.text").String())
+	})
 	t.Run("aggregated tool messages with granular caching", func(t *testing.T) {
 		// This test validates the logic in the 'case msg.OfTool != nil:' block.
 		// It checks that caching is applied on a per-tool-message basis,

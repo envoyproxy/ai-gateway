@@ -27,8 +27,6 @@ import (
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
-// TODO: check for cache header?
-
 // currently a requirement for GCP Vertex / Anthropic API https://docs.anthropic.com/en/api/claude-on-vertex-ai
 const (
 	anthropicVersionKey   = "anthropic_version"
@@ -241,17 +239,17 @@ func convertImageContentToAnthropic(imageURL string, fields *openai.AnthropicCon
 		}
 		if isAnthropicSupportedImageMediaType(contentType) {
 			imgBlock := anthropic.NewImageBlockBase64(contentType, base64Data)
-			imgBlock.OfImage.CacheControl = cacheControlParam // Apply cache
+			imgBlock.OfImage.CacheControl = cacheControlParam
 			return imgBlock, nil
 		}
 		return anthropic.ContentBlockParamUnion{}, fmt.Errorf("invalid media_type for image '%s'", contentType)
 	case strings.HasSuffix(strings.ToLower(imageURL), ".pdf"):
 		docBlock := anthropic.NewDocumentBlock(anthropic.URLPDFSourceParam{URL: imageURL})
-		docBlock.OfDocument.CacheControl = cacheControlParam // Apply cache
+		docBlock.OfDocument.CacheControl = cacheControlParam
 		return docBlock, nil
 	default:
 		imgBlock := anthropic.NewImageBlock(anthropic.URLImageSourceParam{URL: imageURL})
-		imgBlock.OfImage.CacheControl = cacheControlParam // Apply cache
+		imgBlock.OfImage.CacheControl = cacheControlParam
 		return imgBlock, nil
 	}
 }
@@ -380,7 +378,11 @@ func openAIMessageToAnthropicMessageRoleAssistant(openAiMessage *openai.ChatComp
 			}
 		case openai.ChatCompletionAssistantMessageParamContentTypeText:
 			if content.Text != nil {
-				contentBlocks = append(contentBlocks, anthropic.NewTextBlock(*content.Text))
+				textBlock := anthropic.NewTextBlock(*content.Text)
+				if isCacheEnabled(content.AnthropicContentFields) {
+					textBlock.OfText.CacheControl = content.CacheControl
+				}
+				contentBlocks = append(contentBlocks, textBlock)
 			}
 		default:
 			err = fmt.Errorf("content type not supported: %v", content.Type)
@@ -592,6 +594,28 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest) (params *anth
 	return params, nil
 }
 
+// anthropicToolUseToOpenAICalls converts Anthropic tool_use content blocks to OpenAI tool calls.
+func anthropicToolUseToOpenAICalls(block *anthropic.ContentBlockUnion) ([]openai.ChatCompletionMessageToolCallParam, error) {
+	var toolCalls []openai.ChatCompletionMessageToolCallParam
+	if block.Type != string(constant.ValueOf[constant.ToolUse]()) {
+		return toolCalls, nil
+	}
+	argsBytes, err := json.Marshal(block.Input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal tool_use input: %w", err)
+	}
+	toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
+		ID:   &block.ID,
+		Type: openai.ChatCompletionMessageToolCallTypeFunction,
+		Function: openai.ChatCompletionMessageToolCallFunctionParam{
+			Name:      block.Name,
+			Arguments: string(argsBytes),
+		},
+	})
+
+	return toolCalls, nil
+}
+
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody] for GCP.
 func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
@@ -691,28 +715,6 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseError(respHeade
 	bodyMutation = &extprocv3.BodyMutation{Mutation: mut}
 
 	return headerMutation, bodyMutation, nil
-}
-
-// anthropicToolUseToOpenAICalls converts Anthropic tool_use content blocks to OpenAI tool calls.
-func anthropicToolUseToOpenAICalls(block *anthropic.ContentBlockUnion) ([]openai.ChatCompletionMessageToolCallParam, error) {
-	var toolCalls []openai.ChatCompletionMessageToolCallParam
-	if block.Type != string(constant.ValueOf[constant.ToolUse]()) {
-		return toolCalls, nil
-	}
-	argsBytes, err := json.Marshal(block.Input)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal tool_use input: %w", err)
-	}
-	toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
-		ID:   &block.ID,
-		Type: openai.ChatCompletionMessageToolCallTypeFunction,
-		Function: openai.ChatCompletionMessageToolCallFunctionParam{
-			Name:      block.Name,
-			Arguments: string(argsBytes),
-		},
-	})
-
-	return toolCalls, nil
 }
 
 // ResponseHeaders implements [OpenAIChatCompletionTranslator.ResponseHeaders].
