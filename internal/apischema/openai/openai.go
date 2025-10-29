@@ -513,8 +513,9 @@ type ChatCompletionAssistantMessageParamContent struct {
 	Text *string `json:"text,omitempty"`
 
 	// The signature for a thinking block.
-	Signature       *string `json:"signature,omitempty"`
-	RedactedContent []byte  `json:"redactedContent,omitempty"`
+	Signature               *string `json:"signature,omitempty"`
+	RedactedContent         []byte  `json:"redactedContent,omitempty"`
+	*AnthropicContentFields `json:",inline,omitempty"`
 }
 
 // ChatCompletionAssistantMessageParam Messages sent by the model in response to user messages.
