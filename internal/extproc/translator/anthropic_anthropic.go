@@ -43,9 +43,9 @@ type anthropicToAnthropicTranslator struct {
 func (a *anthropicToAnthropicTranslator) RequestBody(original []byte, body *anthropicschema.MessagesRequest, forceBodyMutation bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
-	a.stream = body.GetStream()
+	a.stream = body.Stream
 	// Store the request model to use as fallback for response model
-	a.requestModel = body.GetModel()
+	a.requestModel = body.Model
 	var newBody []byte
 	if a.modelNameOverride != "" {
 		// If modelName is set we override the model to be used for the request.
