@@ -69,14 +69,16 @@ func TestHeaderMutator_Mutate(t *testing.T) {
 
 		require.NotNil(t, mutation)
 		require.ElementsMatch(t, []string{"authorization", "only-set-previously"}, mutation.RemoveHeaders)
-		require.Len(t, mutation.SetHeaders, 5)
+		require.Len(t, mutation.SetHeaders, 4)
 		setHeadersMap := make(map[string]string)
 		for _, h := range mutation.SetHeaders {
 			setHeadersMap[h.Header.Key] = string(h.Header.RawValue)
 		}
 		require.Equal(t, "key123", setHeadersMap["x-api-key"])
 		require.Equal(t, "value", setHeadersMap["other"])
-		require.Equal(t, "secret", setHeadersMap["authorization"])
+		// Removed header should not be added back via SetHeaders on retry
+		_, ok := setHeadersMap["authorization"]
+		require.False(t, ok)
 		require.Equal(t, "original", setHeadersMap["only-in-original"])
 		require.Equal(t, "pikachu", setHeadersMap["in-original-too-but-previous-attempt-set"])
 		// Check the final headers map too.
