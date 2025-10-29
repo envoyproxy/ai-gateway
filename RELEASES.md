@@ -5,8 +5,8 @@
 Since Envoy AI Gateway depends on the Envoy Gateway and Envoy Proxy, we will normally follow the release cycle of the Envoy Gateway.
 In other words, we aim to cut the release of the Envoy AI Gateway a few days or a week after the new version of the Envoy Gateway is released. Therefore, the release cycle of the Envoy AI Gateway will be approximately every 2-3 months.
 
-However, we might release the Envoy AI Gateway out of the regular release cycle if the community requests it, depending on the significance of the change.
-Usually, the main branch of Envoy AI Gateway is tested against both the latest stable version of Envoy Gateway and its main branch, so we can release the Envoy AI Gateway anytime if needed.
+However, given the rapidly changing nature of the AI ecosystem, we aim to release frequently, as soon as features are available.
+The main branch of Envoy AI Gateway is tested against both the latest stable version of Envoy Gateway and its main branch, allowing us to confidently release the Envoy AI Gateway at any time if needed.
 
 ## Versioning
 
