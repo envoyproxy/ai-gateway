@@ -29,6 +29,8 @@ import (
 // Gateway to patch the generated resources. For example, you can configure the retry fallback behavior by attaching
 // BackendTrafficPolicy API of Envoy Gateway to the generated HTTPRoute.
 //
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[-1:].type`
@@ -43,6 +45,7 @@ type AIGatewayRoute struct {
 
 // AIGatewayRouteList contains a list of AIGatewayRoute.
 //
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 type AIGatewayRouteList struct {
 	metav1.TypeMeta `json:",inline"`
@@ -316,6 +319,14 @@ type AIGatewayRouteRuleBackendRef struct {
 	//
 	// +optional
 	ModelNameOverride string `json:"modelNameOverride,omitempty"`
+
+	// HeaderMutation defines the request header mutation to be applied to this backend.
+	// When both route-level and backend-level HeaderMutation are defined,
+	// route-level takes precedence over backend-level for conflicting operations.
+	// This field is ignored when referencing InferencePool resources.
+	//
+	// +optional
+	HeaderMutation *HTTPHeaderMutation `json:"headerMutation,omitempty"`
 
 	// Weight is the weight of the backend. This is exactly the same as the weight in
 	// the BackendRef in the Gateway API. See for the details:

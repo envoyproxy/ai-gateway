@@ -2,12 +2,15 @@
 
 ## Release Cycles
 
-Since Envoy AI Gateway depends on the Envoy Gateway and Envoy Proxy, we will follow the release cycle of the Envoy Gateway.
-
+Since Envoy AI Gateway depends on the Envoy Gateway and Envoy Proxy, we will normally follow the release cycle of the Envoy Gateway.
 In other words, we aim to cut the release of the Envoy AI Gateway a few days or a week after the new version of the Envoy Gateway is released. Therefore, the release cycle of the Envoy AI Gateway will be approximately every 2-3 months.
 
-We increment the major version number when we have a major architectural change or a major feature addition.
+However, given the rapidly changing nature of the AI ecosystem, we aim to release frequently, as soon as features are available.
+The main branch of Envoy AI Gateway is tested against both the latest stable version of Envoy Gateway and its main branch, allowing us to confidently release the Envoy AI Gateway at any time if needed.
 
+## Versioning
+
+We increment the major version number when we have a major architectural change or a major feature addition.
 Especially when we have a first stable control plane API, we will cut the major v1.0.0 release. Until then, we will use the version number v0.3.x, v0.4.y, etc. See the [support policy](#Support-Policy) for more details.
 
 The patch version will be incremented when we have a bug fix or a security fix. The end of life for the version will be 2 releases after the release of the version. For example, if we release the version v0.1.0, the end of life for the version will be when we release the version v0.3.0.
@@ -28,11 +31,12 @@ First of all, there are four areas of compatibility that we are concerned with:
 
 ### Public Go package
 
-Since we do not envision this repository ends up as a transitive dependency, i.e. only used as a direct dependency such as in a custom control plane, etc., we assume that any consumer of the project should have the full control over the source code depending on the project. This allows us to declare deprecation and introduce the breaking changes in the version after the next one since they can migrate the code at their discretion. For example, any public API that is marked as deprecated in the version N will be removed in the version N+2. We document how users should migrate to the new API will be documented in the release notes if applicable, but we do not guarantee that the migration path will be provided.
+We do not guarantee any compatibility at Go level except for the api package as described below.
+Any other public Go package is solely intended for the internal use, e.g. for testing purpose.
 
-### Custom Resource Definitions
+### Custom Resource Definitions (CRDs) / `api` package
 
-The Custom Resource Definitions (CRDs) are defined in api/${version}/\*.go files. The CRDs are versioned as v1alpha1, v1alpha2, etc.
+The Custom Resource Definitions (CRDs) are defined in `api/${version}/*.go` files. The CRDs are versioned as v1alpha1, v1alpha2, etc.
 
 **For alpha versions**, we simply employ the same deprecation policy as the Go package. In other words, the APIs will be marked as deprecated in the version N and will be removed in the version N+2 but without any guarantee of migration path.
 

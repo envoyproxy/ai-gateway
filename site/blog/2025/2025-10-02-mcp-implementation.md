@@ -107,7 +107,7 @@ You can also use some features, like Tool Filtering, with the existing server fi
       "headers": {
         "Authorization": "Bearer ${GITHUB_ACCESS_TOKEN}"
       },
-      "tools": ["get_issue", "list_issues"]
+      "tools": ["issue_read", "list_issues"]
     }
   }
 }

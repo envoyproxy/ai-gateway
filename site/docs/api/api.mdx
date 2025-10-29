@@ -570,6 +570,11 @@ It can reference either an AIServiceBackend or an InferencePool resource.
   required="false"
   description="Name of the model in the backend. If provided this will override the name provided in the request.<br />This field is ignored when referencing InferencePool resources."
 /><ApiField
+  name="headerMutation"
+  type="[HTTPHeaderMutation](#httpheadermutation)"
+  required="false"
+  description="HeaderMutation defines the request header mutation to be applied to this backend.<br />When both route-level and backend-level HeaderMutation are defined,<br />route-level takes precedence over backend-level for conflicting operations.<br />This field is ignored when referencing InferencePool resources."
+/><ApiField
   name="weight"
   type="integer"
   required="false"
@@ -1320,6 +1325,7 @@ GCPCredentialsFile specifies the service account key json file to authenticate w
 
 
 **Appears in:**
+- [AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref)
 - [AIServiceBackendSpec](#aiservicebackendspec)
 
 HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to the request
@@ -1460,6 +1466,11 @@ MCPBackendAPIKey defines the configuration for the API Key Authentication to a b
   type="string"
   required="false"
   description="Inline contains the API key as an inline string."
+/><ApiField
+  name="header"
+  type="string"
+  required="false"
+  description="Header is the HTTP header to inject the API key into. If not specified,<br />defaults to `Authorization`.<br />When the header is `Authorization`, the injected header value will be<br />prefixed with `Bearer `."
 />
 
 
@@ -1480,7 +1491,7 @@ MCPBackendSecurityPolicy defines the security policy for a sp
   name="apiKey"
   type="[MCPBackendAPIKey](#mcpbackendapikey)"
   required="false"
-  description="APIKey is a mechanism to access a backend. The API key will be injected into the Authorization header."
+  description="APIKey is a mechanism to access a backend. The API key will be injected into the request headers."
 />
 
 

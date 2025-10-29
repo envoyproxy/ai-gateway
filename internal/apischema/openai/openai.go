@@ -1559,7 +1559,7 @@ type GCPVertexAIGenerationConfig struct {
 	// ThinkingConfig holds Gemini thinking configuration options.
 	//
 	// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/GenerationConfig#ThinkingConfig
-	ThinkingConfig *genai.GenerationConfigThinkingConfig `json:"thinkingConfig,omitzero"`
+	ThinkingConfig *genai.ThinkingConfig `json:"thinkingConfig,omitzero"`
 }
 
 // AnthropicVendorFields contains Anthropic vendor-specific fields.

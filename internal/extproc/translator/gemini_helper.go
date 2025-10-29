@@ -18,6 +18,7 @@ import (
 	"google.golang.org/genai"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 const (
@@ -392,8 +393,13 @@ func openAIToolChoiceToGeminiToolConfig(toolChoice *openai.ChatCompletionToolCho
 	}
 }
 
+// it only works with gemini2.5 according to https://ai.google.dev/gemini-api/docs/structured-output#json-schema, separate it as a small function to make it easier to maintain
+func responseJSONSchemaAvailable(requestModel internalapi.RequestModel) bool {
+	return strings.Contains(requestModel, "gemini") && strings.Contains(requestModel, "2.5")
+}
+
 // openAIReqToGeminiGenerationConfig converts OpenAI request to Gemini GenerationConfig.
-func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) (*genai.GenerationConfig, geminiResponseMode, error) {
+func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest, requestModel internalapi.RequestModel) (*genai.GenerationConfig, geminiResponseMode, error) {
 	responseMode := responseModeNone
 	gc := &genai.GenerationConfig{}
 	if openAIReq.Temperature != nil {
@@ -431,6 +437,7 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) 
 			responseMode = responseModeJSON
 			gc.ResponseMIMEType = mimeTypeApplicationJSON
 		case openAIReq.ResponseFormat.OfJSONSchema != nil:
+			gc.ResponseMIMEType = mimeTypeApplicationJSON
 			var schemaMap map[string]any
 			if err := json.Unmarshal([]byte(openAIReq.ResponseFormat.OfJSONSchema.JSONSchema.Schema), &schemaMap); err != nil {
 				return nil, responseMode, fmt.Errorf("invalid JSON schema: %w", err)
@@ -438,8 +445,16 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest) 
 
 			responseMode = responseModeJSON
 
-			gc.ResponseMIMEType = mimeTypeApplicationJSON
-			gc.ResponseJsonSchema = schemaMap
+			if responseJSONSchemaAvailable(requestModel) {
+				gc.ResponseJsonSchema = schemaMap
+			} else {
+				convertedSchema, err := jsonSchemaToGemini(schemaMap)
+				if err != nil {
+					return nil, responseMode, fmt.Errorf("invalid JSON schema: %w", err)
+				}
+				gc.ResponseSchema = convertedSchema
+
+			}
 		}
 	}
 
@@ -639,7 +654,7 @@ func geminiUsageToOpenAIUsage(metadata *genai.GenerateContentResponseUsageMetada
 	}
 
 	return openai.Usage{
-		CompletionTokens: int(metadata.CandidatesTokenCount),
+		CompletionTokens: int(metadata.CandidatesTokenCount) + int(metadata.ThoughtsTokenCount),
 		PromptTokens:     int(metadata.PromptTokenCount),
 		TotalTokens:      int(metadata.TotalTokenCount),
 		PromptTokensDetails: &openai.PromptTokensDetails{
