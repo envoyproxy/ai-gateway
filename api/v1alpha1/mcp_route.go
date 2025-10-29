@@ -16,6 +16,8 @@ import (
 // This serves as a way to define a "unified" AI API for a Gateway which allows downstream
 // clients to use a single schema API to interact with multiple MCP backends.
 //
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[-1:].type`
@@ -30,6 +32,7 @@ type MCPRoute struct {
 
 // MCPRouteList contains a list of MCPRoute.
 //
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 type MCPRouteList struct {
 	metav1.TypeMeta `json:",inline"`
@@ -143,7 +146,7 @@ type MCPToolFilter struct {
 
 // MCPBackendSecurityPolicy defines the security policy for a sp
 type MCPBackendSecurityPolicy struct {
-	// APIKey is a mechanism to access a backend. The API key will be injected into the Authorization header.
+	// APIKey is a mechanism to access a backend. The API key will be injected into the request headers.
 	// +optional
 	APIKey *MCPBackendAPIKey `json:"apiKey,omitempty"`
 }
@@ -161,6 +164,16 @@ type MCPBackendAPIKey struct {
 	//
 	// +optional
 	Inline *string `json:"inline,omitempty"`
+
+	// Header is the HTTP header to inject the API key into. If not specified,
+	// defaults to "Authorization".
+	// When the header is "Authorization", the injected header value will be
+	// prefixed with "Bearer ".
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=1
+	// +optional
+	Header *string `json:"header,omitempty"`
 }
 
 // MCPRouteSecurityPolicy defines the security policy for a MCPRoute.

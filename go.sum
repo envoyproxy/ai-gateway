@@ -146,8 +146,8 @@ github.com/ebitengine/purego v0.9.0 h1:mh0zpKBIXDceC63hpvPuGLiJ8ZAa3DfrFTudmfi8A
 github.com/ebitengine/purego v0.9.0/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
 github.com/emicklei/go-restful/v3 v3.13.0 h1:C4Bl2xDndpU6nJ4bc1jXd+uTmYPVUwkD6bFY/oTyCes=
 github.com/emicklei/go-restful/v3 v3.13.0/go.mod h1:6n3XBCmQQb25CM2LCACGz8ukIrRry+4bhvbpWn3mrbc=
-github.com/envoyproxy/gateway v0.5.0-rc.1.0.20251020052851-16aa8100498d h1:DQBoUq5J+jR4HUS5QENkbguHWd6T7FjSF2rNuolxwB0=
-github.com/envoyproxy/gateway v0.5.0-rc.1.0.20251020052851-16aa8100498d/go.mod h1:p0y6QylqVCZUXR7Z/B4ykUV5/zGau0wFOznzKjR+Xpg=
+github.com/envoyproxy/gateway v1.6.0-rc.0.0.20251028174200-282c916a47e1 h1:dURO/Y340xX2sek0N+FZVbZsKc7WMfMbgKfRjQIJqWw=
+github.com/envoyproxy/gateway v1.6.0-rc.0.0.20251028174200-282c916a47e1/go.mod h1:Jgft9B/Jjd1JDFwadtCav/auMLW1ocQ1lLuj/AkyNyY=
 github.com/envoyproxy/go-control-plane v0.13.5-0.20250929230642-07d3df27ff4f h1:36vvJBe/wXWfD7qrTb1WnbPVPMxNFDfEygztH8wgebw=
 github.com/envoyproxy/go-control-plane v0.13.5-0.20250929230642-07d3df27ff4f/go.mod h1:PTY7yDlLxB4bW7rEOO7e79uTDr9yXzpuI1QGIDfxEzc=
 github.com/envoyproxy/go-control-plane/contrib v1.32.5-0.20250430092421-68a532e11403 h1:5wPocL1bGYhA4TtKZwcdVI5fsXo1JatkbcxPBcFQswc=
@@ -291,8 +291,8 @@ github.com/keybase/go-keychain v0.0.1 h1:way+bWYa6lDppZoZcgMbYsvC7GxljxrskdNInRt
 github.com/keybase/go-keychain v0.0.1/go.mod h1:PdEILRW3i9D8JcdM+FmY6RwkHGnhHxXwkPPMeUgOK1k=
 github.com/kisielk/errcheck v1.5.0/go.mod h1:pFxgyoBC7bSaBwPgfKdkLd5X25qrDl4LWUI2bnpBCr8=
 github.com/kisielk/gotool v1.0.0/go.mod h1:XhKaO+MFFWcvkIS/tQcRk01m1F5IRFswLeQ+oQHNcck=
-github.com/klauspost/compress v1.18.0 h1:c/Cqfb0r+Yi+JtIEq73FWXVkRonBlf0CRNYc8Zttxdo=
-github.com/klauspost/compress v1.18.0/go.mod h1:2Pp+KzxcywXVXMr50+X0Q/Lsb43OQHYWRCY2AiWywWQ=
+github.com/klauspost/compress v1.18.1 h1:bcSGx7UbpBqMChDtsF28Lw6v/G94LPrrbMbdC3JH2co=
+github.com/klauspost/compress v1.18.1/go.mod h1:ZQFFVG+MdnR0P+l6wpXgIL4NTtwiKIdBnrBd8Nrxr+0=
 github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
 github.com/kr/pretty v0.3.1/go.mod h1:hoEshYVHaxMs3cyo3Yncou5ZscifuDolrwPKZanG3xk=
 github.com/kr/text v0.2.0 h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=

@@ -77,12 +77,16 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) *extproc
 			_, isRemoved := removedHeadersSet[key]
 			_, isSet := setHeadersSet[key]
 			_, exists := headers[key]
-			if !isRemoved && !exists && !isSet {
+			if !exists && !isSet {
+				// Restore the original header value irrespective of whether it was removed or not in the headers map if it doesn't exist in the set headers
+				// so that metrics can still read it.
 				headers[key] = v
-				setHeadersSet[key] = struct{}{}
-				headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
-					Header: &corev3.HeaderValue{Key: key, RawValue: []byte(v)},
-				})
+				if !isRemoved {
+					setHeadersSet[key] = struct{}{}
+					headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+						Header: &corev3.HeaderValue{Key: key, RawValue: []byte(v)},
+					})
+				}
 			}
 		}
 		// 1. Remove any headers that were added in the previous attempt (not part of original headers and not being set now).
@@ -91,7 +95,9 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) *extproc
 			if shouldIgnoreHeader(key) {
 				continue
 			}
-			if _, isSet := setHeadersSet[key]; isSet {
+			_, isSet := setHeadersSet[key]
+			_, isRemoved := removedHeadersSet[key]
+			if isRemoved || isSet {
 				continue
 			}
 			originalValue, exists := h.originalHeaders[key]
