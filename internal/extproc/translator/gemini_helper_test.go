@@ -19,6 +19,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 func TestOpenAIMessagesToGeminiContents(t *testing.T) {
@@ -727,6 +728,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 		expectedGenerationConfig *genai.GenerationConfig
 		expectedResponseMode     geminiResponseMode
 		expectedErrMsg           string
+		requestModel             internalapi.RequestModel
 	}{
 		{
 			name: "all fields set",
@@ -757,6 +759,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				StopSequences:    []string{"stop1", "stop2"},
 			},
 			expectedResponseMode: responseModeNone,
+			requestModel:         "gemini-2.5-flash",
 		},
 		{
 			name:                     "minimal fields",
@@ -775,6 +778,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				StopSequences: []string{"stop1"},
 			},
 			expectedResponseMode: responseModeNone,
+			requestModel:         "gemini-2.5-flash",
 		},
 		{
 			name: "text",
@@ -787,6 +791,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 			},
 			expectedGenerationConfig: &genai.GenerationConfig{ResponseMIMEType: "text/plain"},
 			expectedResponseMode:     responseModeText,
+			requestModel:             "gemini-2.5-flash",
 		},
 		{
 			name: "json object",
@@ -799,6 +804,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 			},
 			expectedGenerationConfig: &genai.GenerationConfig{ResponseMIMEType: "application/json"},
 			expectedResponseMode:     responseModeJSON,
+			requestModel:             "gemini-2.5-flash",
 		},
 		{
 			name: "json schema (map)",
@@ -817,10 +823,12 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				ResponseJsonSchema: map[string]any{"type": "string"},
 			},
 			expectedResponseMode: responseModeJSON,
+			requestModel:         "gemini-2.5-flash",
 		},
 		{
 			name: "json schema (string)",
 			input: &openai.ChatCompletionRequest{
+				Model: "gemini-2.5",
 				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
 					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
 						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
@@ -835,10 +843,12 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				ResponseJsonSchema: map[string]any{"type": "string"},
 			},
 			expectedResponseMode: responseModeJSON,
+			requestModel:         "gemini-2.5-flash",
 		},
 		{
 			name: "json schema (invalid string)",
 			input: &openai.ChatCompletionRequest{
+				Model: "gemini-2.5",
 				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
 					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
 						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
@@ -849,6 +859,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				},
 			},
 			expectedErrMsg: "invalid JSON schema",
+			requestModel:   "gemini-2.5-flash",
 		},
 		{
 			name: "guided choice",
@@ -860,6 +871,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				ResponseSchema:   &genai.Schema{Type: "STRING", Enum: []string{"Positive", "Negative"}},
 			},
 			expectedResponseMode: responseModeEnum,
+			requestModel:         "gemini-2.5-flash",
 		},
 		{
 			name: "guided regex",
@@ -871,6 +883,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				ResponseSchema:   &genai.Schema{Type: "STRING", Pattern: "\\w+@\\w+\\.com\\n"},
 			},
 			expectedResponseMode: responseModeRegex,
+			requestModel:         "gemini-2.5-flash",
 		},
 		{
 			name: "guided json",
@@ -894,12 +907,13 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				GuidedChoice: []string{"A", "B"},
 			},
 			expectedErrMsg: "multiple format specifiers specified",
+			requestModel:   "gemini-2.5-flash",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, responseMode, err := openAIReqToGeminiGenerationConfig(tc.input)
+			got, responseMode, err := openAIReqToGeminiGenerationConfig(tc.input, tc.requestModel)
 			if tc.expectedErrMsg != "" {
 				require.ErrorContains(t, err, tc.expectedErrMsg)
 			} else {
@@ -1485,6 +1499,343 @@ func TestExtractTextFromGeminiParts(t *testing.T) {
 			result := extractTextFromGeminiParts(tc.parts, tc.responseMode)
 			if result != tc.expected {
 				t.Errorf("extractTextFromGeminiParts() = %q, want %q", result, tc.expected)
+			}
+		})
+	}
+}
+
+func TestOpenAIReqToGeminiGenerationConfigWithJsonSchemaToGemini(t *testing.T) {
+	tests := []struct {
+		name                     string
+		input                    *openai.ChatCompletionRequest
+		requestModel             internalapi.RequestModel
+		expectedGenerationConfig *genai.GenerationConfig
+		expectedResponseMode     geminiResponseMode
+		expectedErrMsg           string
+	}{
+		{
+			name: "json schema for older gemini model (uses jsonSchemaToGemini)",
+			input: &openai.ChatCompletionRequest{
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
+							Schema: json.RawMessage(`{
+								"type": "object",
+								"properties": {
+									"name": {"type": "string"},
+									"age": {"type": "number"}
+								},
+								"required": ["name", "age"]
+							}`),
+						},
+					},
+				},
+			},
+			requestModel: "gemini-2.0-flash", // older model that doesn't support native JSON schema
+			expectedGenerationConfig: &genai.GenerationConfig{
+				ResponseMIMEType: "application/json",
+				ResponseSchema: &genai.Schema{
+					Type: "object",
+					Properties: map[string]*genai.Schema{
+						"name": {Type: "string"},
+						"age":  {Type: "number"},
+					},
+					Required: []string{"name", "age"},
+				},
+			},
+			expectedResponseMode: responseModeJSON,
+		},
+		{
+			name: "complex json schema with nested objects (uses jsonSchemaToGemini)",
+			input: &openai.ChatCompletionRequest{
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
+							Schema: json.RawMessage(`{
+								"type": "object",
+								"properties": {
+									"user": {
+										"type": "object",
+										"properties": {
+											"name": {"type": "string"},
+											"contact": {
+												"type": "object",
+												"properties": {
+													"email": {"type": "string"},
+													"phone": {"type": "string"}
+												}
+											}
+										}
+									},
+									"items": {
+										"type": "array",
+										"items": {
+											"type": "object",
+											"properties": {
+												"id": {"type": "number"},
+												"description": {"type": "string"}
+											}
+										}
+									}
+								},
+								"required": ["user", "items"]
+							}`),
+						},
+					},
+				},
+			},
+			requestModel: "gemini-2.0-flash", // older model
+			expectedGenerationConfig: &genai.GenerationConfig{
+				ResponseMIMEType: "application/json",
+				ResponseSchema: &genai.Schema{
+					Type: "object",
+					Properties: map[string]*genai.Schema{
+						"user": {
+							Type: "object",
+							Properties: map[string]*genai.Schema{
+								"name": {Type: "string"},
+								"contact": {
+									Type: "object",
+									Properties: map[string]*genai.Schema{
+										"email": {Type: "string"},
+										"phone": {Type: "string"},
+									},
+								},
+							},
+						},
+						"items": {
+							Type: "array",
+							Items: &genai.Schema{
+								Type: "object",
+								Properties: map[string]*genai.Schema{
+									"id":          {Type: "number"},
+									"description": {Type: "string"},
+								},
+							},
+						},
+					},
+					Required: []string{"user", "items"},
+				},
+			},
+			expectedResponseMode: responseModeJSON,
+		},
+		{
+			name: "json schema with anyOf (uses jsonSchemaToGemini)",
+			input: &openai.ChatCompletionRequest{
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
+							Schema: json.RawMessage(`{
+								"type": "object",
+								"properties": {
+									"value": {
+										"anyOf": [
+											{"type": "string"},
+											{"type": "number"}
+										]
+									}
+								}
+							}`),
+						},
+					},
+				},
+			},
+			requestModel: "gemini-2.0-flash",
+			expectedGenerationConfig: &genai.GenerationConfig{
+				ResponseMIMEType: "application/json",
+				ResponseSchema: &genai.Schema{
+					Type: "object",
+					Properties: map[string]*genai.Schema{
+						"value": {
+							AnyOf: []*genai.Schema{
+								{Type: "string"},
+								{Type: "number"},
+							},
+						},
+					},
+				},
+			},
+			expectedResponseMode: responseModeJSON,
+		},
+		{
+			name: "json schema with nullable type (uses jsonSchemaToGemini)",
+			input: &openai.ChatCompletionRequest{
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
+							Schema: json.RawMessage(`{
+								"type": "object",
+								"properties": {
+									"optional_field": {
+										"anyOf": [
+											{"type": "string"},
+											{"type": "null"}
+										]
+									}
+								}
+							}`),
+						},
+					},
+				},
+			},
+			requestModel: "gemini-2.0-flash",
+			expectedGenerationConfig: &genai.GenerationConfig{
+				ResponseMIMEType: "application/json",
+				ResponseSchema: &genai.Schema{
+					Type: "object",
+					Properties: map[string]*genai.Schema{
+						"optional_field": {
+							AnyOf: []*genai.Schema{
+								{Type: "string"},
+							},
+							Nullable: ptr.To(true),
+						},
+					},
+				},
+			},
+			expectedResponseMode: responseModeJSON,
+		},
+		{
+			name: "json schema with $ref (uses jsonSchemaToGemini)",
+			input: &openai.ChatCompletionRequest{
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
+							Schema: json.RawMessage(`{
+								"type": "object",
+								"properties": {
+									"user": {"$ref": "#/$defs/User"}
+								},
+								"$defs": {
+									"User": {
+										"type": "object",
+										"properties": {
+											"name": {"type": "string"},
+											"age": {"type": "number"}
+										}
+									}
+								}
+							}`),
+						},
+					},
+				},
+			},
+			requestModel: "gemini-2.0-flash",
+			expectedGenerationConfig: &genai.GenerationConfig{
+				ResponseMIMEType: "application/json",
+				ResponseSchema: &genai.Schema{
+					Type: "object",
+					Properties: map[string]*genai.Schema{
+						"user": {
+							Type: "object",
+							Properties: map[string]*genai.Schema{
+								"name": {Type: "string"},
+								"age":  {Type: "number"},
+							},
+						},
+					},
+				},
+			},
+			expectedResponseMode: responseModeJSON,
+		},
+		{
+			name: "invalid json schema causes jsonSchemaToGemini error",
+			input: &openai.ChatCompletionRequest{
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
+							Schema: json.RawMessage(`{
+								"type": "object",
+								"properties": {
+									"invalid_ref": {"$ref": "#/nonexistent/path"}
+								}
+							}`),
+						},
+					},
+				},
+			},
+			requestModel:   "gemini-2.0-flash",
+			expectedErrMsg: "invalid JSON schema",
+		},
+		{
+			name: "complex nested schema with arrays and refs (uses jsonSchemaToGemini)",
+			input: &openai.ChatCompletionRequest{
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+						Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
+							Schema: json.RawMessage(`{
+								"type": "object",
+								"properties": {
+									"steps": {
+										"type": "array",
+										"items": {"$ref": "#/$defs/Step"}
+									},
+									"final_answer": {"type": "string"}
+								},
+								"required": ["steps", "final_answer"],
+								"$defs": {
+									"Step": {
+										"type": "object",
+										"properties": {
+											"explanation": {"type": "string"},
+											"output": {"type": "string"}
+										},
+										"required": ["explanation", "output"]
+									}
+								}
+							}`),
+						},
+					},
+				},
+			},
+			requestModel: "gemini-2.0-flash",
+			expectedGenerationConfig: &genai.GenerationConfig{
+				ResponseMIMEType: "application/json",
+				ResponseSchema: &genai.Schema{
+					Type: "object",
+					Properties: map[string]*genai.Schema{
+						"steps": {
+							Type: "array",
+							Items: &genai.Schema{
+								Type: "object",
+								Properties: map[string]*genai.Schema{
+									"explanation": {Type: "string"},
+									"output":      {Type: "string"},
+								},
+								Required: []string{"explanation", "output"},
+							},
+						},
+						"final_answer": {Type: "string"},
+					},
+					Required: []string{"steps", "final_answer"},
+				},
+			},
+			expectedResponseMode: responseModeJSON,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, responseMode, err := openAIReqToGeminiGenerationConfig(tc.input, tc.requestModel)
+			if tc.expectedErrMsg != "" {
+				require.ErrorContains(t, err, tc.expectedErrMsg)
+			} else {
+				require.NoError(t, err)
+
+				if diff := cmp.Diff(tc.expectedGenerationConfig, got, cmpopts.IgnoreUnexported(genai.GenerationConfig{}, genai.Schema{})); diff != "" {
+					t.Errorf("GenerationConfig mismatch (-want +got):\n%s", diff)
+				}
+
+				if responseMode != tc.expectedResponseMode {
+					t.Errorf("geminiResponseMode mismatch: got %v, want %v", responseMode, tc.expectedResponseMode)
+				}
 			}
 		})
 	}
