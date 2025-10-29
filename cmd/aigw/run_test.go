@@ -23,28 +23,21 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 // TestRun verifies that the main run function starts up correctly without making any actual requests.
 //
 // The real e2e tests are in tests/e2e-aigw.
 func TestRun(t *testing.T) {
-	ports := internaltesting.RequireRandomPorts(t, 1)
-	// TODO: parameterize the main listen port 1975
-	adminPort := ports[0]
-
 	// Note: we do not make any real requests here!
 	t.Setenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 	t.Setenv("OPENAI_API_KEY", "unused")
 
-	buffers := internaltesting.DumpLogsOnFail(t, "aigw Stdout", "aigw Stderr")
-	stdout, stderr := buffers[0], buffers[1]
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	opts := testRunOpts(t, func(context.Context, []string, io.Writer) error { return nil })
-	require.NoError(t, run(ctx, cmdRun{Debug: true, AdminPort: adminPort}, opts, stdout, stderr))
+	require.NoError(t, run(ctx, cmdRun{Debug: true}, opts, os.Stdout, os.Stderr))
 }
 
 func TestRunExtprocStartFailure(t *testing.T) {
@@ -77,9 +70,6 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 		stderrLogger:             slog.New(slog.DiscardHandler),
 		stderr:                   io.Discard,
 		tmpdir:                   t.TempDir(),
-		// UNIX doesn't like a long UDS path, so we use a short one.
-		// https://unix.stackexchange.com/questions/367008/why-is-socket-path-length-limited-to-a-hundred-chars
-		udsPath: filepath.Join("/tmp", "run.sock"),
 		extProcLauncher: func(ctx context.Context, _ []string, _ io.Writer) error {
 			<-ctx.Done()
 			return nil
@@ -98,7 +88,6 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 var gatewayNoListenersConfig string
 
 func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc_noListeners(t *testing.T) {
-
 	runCtx := &runCmdContext{
 		envoyGatewayResourcesOut: &bytes.Buffer{},
 		stderrLogger:             slog.New(slog.DiscardHandler),
