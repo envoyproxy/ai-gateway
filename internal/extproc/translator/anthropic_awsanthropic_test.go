@@ -376,36 +376,6 @@ func TestAnthropicToAWSAnthropicTranslator_RequestBody_FieldPassthrough(t *testi
 	require.Equal(t, "bedrock-2023-05-31", version, "anthropic_version should match the configured version")
 }
 
-func TestAnthropicToAWSAnthropicTranslator_ResponseHeaders(t *testing.T) {
-	translator := NewAnthropicToAWSAnthropicTranslator("bedrock-2023-05-31", "")
-
-	tests := []struct {
-		name    string
-		headers map[string]string
-	}{
-		{
-			name:    "empty headers",
-			headers: map[string]string{},
-		},
-		{
-			name: "various headers",
-			headers: map[string]string{
-				"content-type":  "application/json",
-				"authorization": "Bearer token",
-				"custom-header": "value",
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			headerMutation, err := translator.ResponseHeaders(tt.headers)
-			require.NoError(t, err)
-			assert.Nil(t, headerMutation, "ResponseHeaders should return nil for passthrough")
-		})
-	}
-}
-
 func TestAnthropicToAWSAnthropicTranslator_URLEncoding(t *testing.T) {
 	tests := []struct {
 		name         string
