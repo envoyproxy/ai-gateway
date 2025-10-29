@@ -746,6 +746,11 @@ static_resources:
                   filter_metadata:
                     aigateway.envoy.io:
                       per_route_rule_backend_name: "aws-bedrock"
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          auto_host_sni: true
     - name: anthropic_aws_bedrock
       connect_timeout: 30s
       type: STRICT_DNS
