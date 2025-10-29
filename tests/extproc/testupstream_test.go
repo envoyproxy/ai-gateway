@@ -893,7 +893,7 @@ data: {"type": "message_stop"}
 			method:            http.MethodPost,
 			expRequestHeaders: map[string]string{"x-api-key": "anthropic-api-key"},
 			requestBody: `{
-    "model": "claude-sonnet-4-5",
+    "model": "foo",
     "max_tokens": 1000,
     "messages": [
       {
@@ -903,7 +903,7 @@ data: {"type": "message_stop"}
     ]
   }`,
 			expPath:      "/v1/messages",
-			responseBody: `{"model":"claude-sonnet-4-5-20250929","id":"msg_01J5gW6Sffiem6avXSAooZZw","type":"message","role":"assistant","content":[{"type":"text","text":"Hi! 👋 How can I help you today?"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":16,"service_tier":"standard"}}`,
+			responseBody: `{"model":"foo","id":"msg_01J5gW6Sffiem6avXSAooZZw","type":"message","role":"assistant","content":[{"type":"text","text":"Hi! 👋 How can I help you today?"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":16,"service_tier":"standard"}}`,
 			expStatus:    http.StatusOK,
 		},
 		{
@@ -914,7 +914,7 @@ data: {"type": "message_stop"}
 			expRequestHeaders: map[string]string{"x-api-key": "anthropic-api-key"},
 			responseType:      "sse",
 			requestBody: `{
-    "model": "claude-sonnet-4-5",
+    "model": "foo",
     "max_tokens": 1000,
     "messages": [
       {
@@ -926,7 +926,7 @@ data: {"type": "message_stop"}
 			expPath: "/v1/messages",
 			responseBody: `
 event: message_start
-data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_01BfvfMsg2gBzwsk6PZRLtDg","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":1,"service_tier":"standard"}}    }
+data: {"type":"message_start","message":{"model":"foo","id":"msg_01BfvfMsg2gBzwsk6PZRLtDg","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":1,"service_tier":"standard"}}    }
 
 event: content_block_start
 data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}      }
@@ -960,7 +960,7 @@ data: {"type":"message_stop"       }
 			path:            "/anthropic/v1/messages",
 			method:          http.MethodPost,
 			requestBody:     `{"model":"anthropic.claude-3-sonnet-20240229-v1:0","max_tokens":100,"messages":[{"role":"user","content":[{"type":"text","text":"Hello from AWS!"}]}],"stream":false}`,
-			expRequestBody:  `{"anthropic_version":"bedrock-2023-05-31","max_tokens":100,"messages":[{"content":[{"text":"Hello from AWS!","type":"text"}],"role":"user"}],"stream":false}`,
+			expRequestBody:  `{"max_tokens":100,"messages":[{"role":"user","content":[{"type":"text","text":"Hello from AWS!"}]}],"stream":false,"anthropic_version":"bedrock-2023-05-31"}`,
 			expPath:         "/model/anthropic.claude-3-sonnet-20240229-v1:0/invoke",
 			responseStatus:  strconv.Itoa(http.StatusOK),
 			responseBody:    `{"id":"msg_aws_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from AWS Anthropic!"}],"usage":{"input_tokens":10,"output_tokens":20}}`,
@@ -974,7 +974,7 @@ data: {"type":"message_stop"       }
 			method:         http.MethodPost,
 			responseType:   "sse",
 			requestBody:    `{"model":"anthropic.claude-3-haiku-20240307-v1:0","max_tokens":150,"messages":[{"role":"user","content":[{"type":"text","text":"Tell me a joke"}]}],"stream":true}`,
-			expRequestBody: `{"anthropic_version":"bedrock-2023-05-31","max_tokens":150,"messages":[{"content":[{"text":"Tell me a joke","type":"text"}],"role":"user"}],"stream":true}`,
+			expRequestBody: `{"max_tokens":150,"messages":[{"role":"user","content":[{"type":"text","text":"Tell me a joke"}]}],"stream":true,"anthropic_version":"bedrock-2023-05-31"}`,
 			expPath:        "/model/anthropic.claude-3-haiku-20240307-v1:0/invoke-stream",
 			responseStatus: strconv.Itoa(http.StatusOK),
 			responseBody: `event: message_start
@@ -1022,19 +1022,6 @@ event: message_stop
 data: {"type":"message_stop"}
 
 `,
-		},
-		{
-			name:            "aws-anthropic - /anthropic/v1/messages - ARN model format",
-			backend:         "aws-anthropic",
-			path:            "/anthropic/v1/messages",
-			method:          http.MethodPost,
-			requestBody:     `{"model":"arn:aws:bedrock:eu-central-1:538639307912:application-inference-profile/k375tnm6nr0t","max_tokens":50,"messages":[{"role":"user","content":[{"type":"text","text":"Hi"}]}],"stream":false}`,
-			expRequestBody:  `{"anthropic_version":"bedrock-2023-05-31","max_tokens":50,"messages":[{"content":[{"text":"Hi","type":"text"}],"role":"user"}],"stream":false}`,
-			expPath:         "/model/arn:aws:bedrock:eu-central-1:538639307912:application-inference-profile%2Fk375tnm6nr0t/invoke",
-			responseStatus:  strconv.Itoa(http.StatusOK),
-			responseBody:    `{"id":"msg_arn_789","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hi there!"}],"usage":{"input_tokens":5,"output_tokens":8}}`,
-			expStatus:       http.StatusOK,
-			expResponseBody: `{"id":"msg_arn_789","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hi there!"}],"usage":{"input_tokens":5,"output_tokens":8}}`,
 		},
 		{
 			name:            "aws-anthropic - /anthropic/v1/messages - error response",

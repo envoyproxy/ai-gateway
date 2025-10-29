@@ -6,6 +6,7 @@
 package translator
 
 import (
+	"cmp"
 	"fmt"
 	"net/url"
 
@@ -39,26 +40,17 @@ type anthropicToAWSAnthropicTranslator struct {
 func (a *anthropicToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *anthropicschema.MessagesRequest, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
-	// AWS Bedrock always needs a body mutation because we must add anthropic_version and remove model field
-	headerMutation, bodyMutation, err = a.anthropicToAnthropicTranslator.RequestBody(rawBody, body, true)
-	if err != nil {
-		return
-	}
+	a.stream = body.GetStream()
+	a.requestModel = cmp.Or(a.modelNameOverride, body.GetModel())
 
-	// add anthropic_version field
-	preparedBody, err := sjson.SetBytes(bodyMutation.GetBody(), anthropicVersionKey, a.apiVersion)
+	var mutatedBody []byte
+	mutatedBody, err = sjson.SetBytes(rawBody, anthropicVersionKey, a.apiVersion)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to set anthropic_version field: %w", err)
 	}
-	// delete model field as AWS Bedrock expects model in the path, not in the body
-	preparedBody, err = sjson.DeleteBytes(preparedBody, "model")
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to delete model field: %w", err)
-	}
-
-	bodyMutation = &extprocv3.BodyMutation{
-		Mutation: &extprocv3.BodyMutation_Body{Body: preparedBody},
-	}
+	// Remove the model field from the body as AWS Bedrock expects the model to be specified in the path.
+	// Otherwise, AWS complains "extra inputs are not permitted".
+	mutatedBody, _ = sjson.DeleteBytes(mutatedBody, "model")
 
 	// Determine the AWS Bedrock path based on whether streaming is requested.
 	var pathTemplate string
@@ -72,22 +64,15 @@ func (a *anthropicToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *an
 	// AWS Bedrock model IDs can be simple names (e.g., "anthropic.claude-3-5-sonnet-20241022-v2:0")
 	// or full ARNs which may contain special characters.
 	encodedModelID := url.PathEscape(a.requestModel)
-	pathSuffix := fmt.Sprintf(pathTemplate, encodedModelID)
+	path := fmt.Sprintf(pathTemplate, encodedModelID)
 
-	// Overwriting path of the Anthropic to Anthropic translator
-	headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
-		AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS,
-		Header: &corev3.HeaderValue{
-			Key:      ":path",
-			RawValue: []byte(pathSuffix),
+	headerMutation = &extprocv3.HeaderMutation{
+		SetHeaders: []*corev3.HeaderValueOption{
+			// Overwriting path of the Anthropic to Anthropic translator
+			{Header: &corev3.HeaderValue{Key: ":path", RawValue: []byte(path)}},
 		},
-	},
-		&corev3.HeaderValueOption{
-			AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS,
-			Header: &corev3.HeaderValue{
-				Key:      "content-length",
-				RawValue: fmt.Appendf(nil, "%d", len(preparedBody)),
-			},
-		})
+	}
+	bodyMutation = &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: mutatedBody}}
+	setContentLength(headerMutation, mutatedBody)
 	return
 }
