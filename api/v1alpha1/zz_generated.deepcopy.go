@@ -13,7 +13,7 @@ import (
 	apiv1alpha1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	runtime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
@@ -177,6 +177,11 @@ func (in *AIGatewayRouteRuleBackendRef) DeepCopyInto(out *AIGatewayRouteRuleBack
 		in, out := &in.Kind, &out.Kind
 		*out = new(string)
 		**out = **in
+	}
+	if in.HeaderMutation != nil {
+		in, out := &in.HeaderMutation, &out.HeaderMutation
+		*out = new(HTTPHeaderMutation)
+		(*in).DeepCopyInto(*out)
 	}
 	if in.Weight != nil {
 		in, out := &in.Weight, &out.Weight
@@ -890,6 +895,11 @@ func (in *MCPBackendAPIKey) DeepCopyInto(out *MCPBackendAPIKey) {
 	}
 	if in.Inline != nil {
 		in, out := &in.Inline, &out.Inline
+		*out = new(string)
+		**out = **in
+	}
+	if in.Header != nil {
+		in, out := &in.Header, &out.Header
 		*out = new(string)
 		**out = **in
 	}

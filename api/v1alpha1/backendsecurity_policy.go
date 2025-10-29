@@ -27,6 +27,8 @@ const (
 // BackendSecurityPolicy specifies configuration for authentication and authorization rules on the traffic
 // exiting the gateway to the backend.
 //
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[-1:].type`
@@ -99,6 +101,7 @@ type BackendSecurityPolicySpec struct {
 
 // BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 //
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 type BackendSecurityPolicyList struct {
 	metav1.TypeMeta `json:",inline"`
@@ -268,7 +271,19 @@ type AzureOIDCExchangeToken struct {
 	BackendSecurityPolicyOIDC `json:",inline"`
 }
 
-// BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access aws.
+// BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access AWS.
+//
+// When neither CredentialsFile nor OIDCExchangeToken is specified, the AWS SDK's default credential chain
+// will be used. This automatically supports various authentication methods in the following order:
+//  1. Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN)
+//  2. EKS Pod Identity - automatically rotates credentials for pods in EKS clusters
+//  3. IAM Roles for Service Accounts (IRSA) - injects credentials via mounted service account tokens
+//  4. EC2 instance metadata (IAM instance roles)
+//  5. ECS task roles
+//
+// The default credential chain is recommended for Kubernetes deployments as it supports automatic
+// credential rotation without manual configuration. Credentials are refreshed automatically when
+// they approach expiration (typically hourly for IRSA and Pod Identity).
 type BackendSecurityPolicyAWSCredentials struct {
 	// Region specifies the AWS region associated with the policy.
 	//
@@ -276,12 +291,14 @@ type BackendSecurityPolicyAWSCredentials struct {
 	Region string `json:"region"`
 
 	// CredentialsFile specifies the credentials file to use for the AWS provider.
+	// When specified, this takes precedence over the default credential chain.
 	//
 	// +optional
 	CredentialsFile *AWSCredentialsFile `json:"credentialsFile,omitempty"`
 
 	// OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be
 	// used to obtain temporary credentials to access AWS.
+	// When specified, this takes precedence over the default credential chain.
 	//
 	// +optional
 	OIDCExchangeToken *AWSOIDCExchangeToken `json:"oidcExchangeToken,omitempty"`

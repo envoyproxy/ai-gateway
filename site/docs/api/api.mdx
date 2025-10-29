@@ -570,6 +570,11 @@ It can reference either an AIServiceBackend or an InferencePool resource.
   required="false"
   description="Name of the model in the backend. If provided this will override the name provided in the request.<br />This field is ignored when referencing InferencePool resources."
 /><ApiField
+  name="headerMutation"
+  type="[HTTPHeaderMutation](#httpheadermutation)"
+  required="false"
+  description="HeaderMutation defines the request header mutation to be applied to this backend.<br />When both route-level and backend-level HeaderMutation are defined,<br />route-level takes precedence over backend-level for conflicting operations.<br />This field is ignored when referencing InferencePool resources."
+/><ApiField
   name="weight"
   type="integer"
   required="false"
@@ -885,7 +890,19 @@ BackendSecurityPolicyAPIKey specifies the API key.
 **Appears in:**
 - [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
 
-BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access aws.
+BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access AWS.
+
+When neither CredentialsFile nor OIDCExchangeToken is specified, the AWS SDK's default credential chain
+will be used. This automatically supports various authentication methods in the following order:
+ 1. Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN)
+ 2. EKS Pod Identity - automatically rotates credentials for pods in EKS clusters
+ 3. IAM Roles for Service Accounts (IRSA) - injects credentials via mounted service account tokens
+ 4. EC2 instance metadata (IAM instance roles)
+ 5. ECS task roles
+
+The default credential chain is recommended for Kubernetes deployments as it supports automatic
+credential rotation without manual configuration. Credentials are refreshed automatically when
+they approach expiration (typically hourly for IRSA and Pod Identity).
 
 ##### Fields
 
@@ -900,12 +917,12 @@ BackendSecurityPolicyAWSCredentials contains the supported authentication mechan
   name="credentialsFile"
   type="[AWSCredentialsFile](#awscredentialsfile)"
   required="false"
-  description="CredentialsFile specifies the credentials file to use for the AWS provider."
+  description="CredentialsFile specifies the credentials file to use for the AWS provider.<br />When specified, this takes precedence over the default credential chain."
 /><ApiField
   name="oidcExchangeToken"
   type="[AWSOIDCExchangeToken](#awsoidcexchangetoken)"
   required="false"
-  description="OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be<br />used to obtain temporary credentials to access AWS."
+  description="OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be<br />used to obtain temporary credentials to access AWS.<br />When specified, this takes precedence over the default credential chain."
 />
 
 
@@ -1303,6 +1320,7 @@ GCPCredentialsFile specifies the service account key json file to authenticate w
 
 
 **Appears in:**
+- [AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref)
 - [AIServiceBackendSpec](#aiservicebackendspec)
 
 HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to the request
@@ -1443,6 +1461,11 @@ MCPBackendAPIKey defines the configuration for the API Key Authentication to a b
   type="string"
   required="false"
   description="Inline contains the API key as an inline string."
+/><ApiField
+  name="header"
+  type="string"
+  required="false"
+  description="Header is the HTTP header to inject the API key into. If not specified,<br />defaults to `Authorization`.<br />When the header is `Authorization`, the injected header value will be<br />prefixed with `Bearer `."
 />
 
 
@@ -1463,7 +1486,7 @@ MCPBackendSecurityPolicy defines the security policy for a sp
   name="apiKey"
   type="[MCPBackendAPIKey](#mcpbackendapikey)"
   required="false"
-  description="APIKey is a mechanism to access a backend. The API key will be injected into the Authorization header."
+  description="APIKey is a mechanism to access a backend. The API key will be injected into the request headers."
 />
 
 

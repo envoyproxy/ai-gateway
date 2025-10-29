@@ -66,6 +66,9 @@ var (
 
 	//go:embed testdata/openai-github.yaml
 	openaiGithubYAML string
+
+	//go:embed testdata/anthropic.yaml
+	anthropicYAML string
 )
 
 func TestWriteConfig(t *testing.T) {
@@ -354,11 +357,31 @@ func TestWriteConfig(t *testing.T) {
 						BackendName:  "github",
 						Path:         "/mcp/x/issues/readonly",
 						APIKey:       "${GITHUB_MCP_TOKEN}",
-						IncludeTools: []string{"get_issue", "list_issues"},
+						IncludeTools: []string{"issue_read", "list_issues"},
 					},
 				},
 			},
 			expected: openaiGithubYAML,
+		},
+		{
+			name: "default (Anthropic)",
+			input: ConfigData{
+				Backends: []Backend{
+					{
+						Name:             "anthropic",
+						Hostname:         "api.anthropic.com",
+						OriginalHostname: "api.anthropic.com",
+						Port:             443,
+						NeedsTLS:         true,
+					},
+				},
+				Anthropic: &AnthropicConfig{
+					BackendName: "anthropic",
+					SchemaName:  "Anthropic",
+					Version:     "",
+				},
+			},
+			expected: anthropicYAML,
 		},
 	}
 
@@ -458,17 +481,17 @@ func TestParseURL(t *testing.T) {
 		{
 			name:          "invalid URL",
 			baseURL:       ":::invalid",
-			expectedError: fmt.Errorf("invalid OPENAI_BASE_URL: parse \":::invalid\": missing protocol scheme"),
+			expectedError: fmt.Errorf("invalid base URL: parse \":::invalid\": missing protocol scheme"),
 		},
 		{
 			name:          "missing hostname",
 			baseURL:       "http:///path",
-			expectedError: fmt.Errorf("invalid OPENAI_BASE_URL: missing hostname"),
+			expectedError: fmt.Errorf("invalid base URL: missing hostname"),
 		},
 		{
 			name:          "unsupported scheme",
 			baseURL:       "ftp://example.com",
-			expectedError: fmt.Errorf("invalid OPENAI_BASE_URL: unsupported scheme \"ftp\""),
+			expectedError: fmt.Errorf("invalid base URL: unsupported scheme \"ftp\""),
 		},
 	}
 

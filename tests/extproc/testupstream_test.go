@@ -142,6 +142,30 @@ func TestWithTestUpstream(t *testing.T) {
 		expResponseBodyFunc func(require.TestingT, []byte)
 	}{
 		{
+			name:            "openai - /v1/images/generations",
+			backend:         "openai",
+			path:            "/v1/images/generations",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"gpt-image-1-mini","prompt":"a cat wearing sunglasses","size":"1024x1024","quality":"low"}`,
+			expPath:         "/v1/images/generations",
+			responseBody:    `{"created":1736890000,"data":[{"url":"https://example.com/image1.png"}],"model":"gpt-image-1-mini","usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"created":1736890000,"data":[{"url":"https://example.com/image1.png"}],"model":"gpt-image-1-mini","usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}`,
+		},
+		{
+			name:            "openai - /v1/images/generations - non json upstream error mapped to OpenAI",
+			backend:         "openai",
+			path:            "/v1/images/generations",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"dall-e-3","prompt":"a scenic beach"}`,
+			expPath:         "/v1/images/generations",
+			responseHeaders: "content-type:text/plain",
+			responseStatus:  strconv.Itoa(http.StatusServiceUnavailable),
+			responseBody:    `backend timeout`,
+			expStatus:       http.StatusServiceUnavailable,
+			expResponseBody: `{"error":{"type":"OpenAIBackendError","message":"backend timeout","code":"503"}}`,
+		},
+		{
 			name:            "unknown path",
 			path:            "/unknown",
 			requestBody:     `{"prompt": "hello"}`,
@@ -240,9 +264,9 @@ func TestWithTestUpstream(t *testing.T) {
 			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/gemini-1.5-pro:generateContent",
 			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
 			responseStatus:    strconv.Itoa(http.StatusOK),
-			responseBody:      `{"candidates":[{"content":{"parts":[{"text":"This is a test response from Gemini."}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":15,"candidatesTokenCount":10,"totalTokenCount":25,"cachedContentTokenCount":10,"thoughtsTokenCount":10}}`,
+			responseBody:      `{"candidates":[{"content":{"parts":[{"text":"This is a test response from Gemini."}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":15,"candidatesTokenCount":10,"totalTokenCount":35,"cachedContentTokenCount":10,"thoughtsTokenCount":10}}`,
 			expStatus:         http.StatusOK,
-			expResponseBody:   `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"This is a test response from Gemini.","role":"assistant"}}],"model":"gemini-1.5-pro","object":"chat.completion","usage":{"completion_tokens":10,"completion_tokens_details":{"reasoning_tokens":10},"prompt_tokens":15,"prompt_tokens_details":{"cached_tokens":10},"total_tokens":25}}`,
+			expResponseBody:   `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"This is a test response from Gemini.","role":"assistant"}}],"model":"gemini-1.5-pro","object":"chat.completion","usage":{"completion_tokens":20,"completion_tokens_details":{"reasoning_tokens":10},"prompt_tokens":15,"prompt_tokens_details":{"cached_tokens":10},"total_tokens":35}}`,
 		},
 		{
 			name:              "gcp-vertexai - /v1/chat/completions",
@@ -994,7 +1018,10 @@ data: {"type":"message_stop"       }
 				}
 				defer func() { _ = resp.Body.Close() }()
 
-				failIf5xx(t, resp, &was5xx)
+				// Only fail-fast on unexpected 5xx. Some test cases intentionally expect 5xx.
+				if tc.expStatus < http.StatusInternalServerError {
+					failIf5xx(t, resp, &was5xx)
+				}
 
 				lastBody, lastErr = io.ReadAll(resp.Body)
 				if lastErr != nil {

@@ -57,6 +57,10 @@ const (
 
 	// ModelTextEmbedding3Small is the cheapest model usable with /embeddings.
 	ModelTextEmbedding3Small = "text-embedding-3-small"
+
+	// ModelGPTImage1Mini is the smallest/cheapest Images model usable with
+	// /v1/images/generations. Use with size "1024x1024" and quality "low".
+	ModelGPTImage1Mini = "gpt-image-1-mini"
 )
 
 // ChatCompletionContentPartRefusalType The type of the content part.
@@ -1566,7 +1570,7 @@ type GCPVertexAIGenerationConfig struct {
 	// ThinkingConfig holds Gemini thinking configuration options.
 	//
 	// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/GenerationConfig#ThinkingConfig
-	ThinkingConfig *genai.GenerationConfigThinkingConfig `json:"thinkingConfig,omitzero"`
+	ThinkingConfig *genai.ThinkingConfig `json:"thinkingConfig,omitzero"`
 }
 
 // AnthropicVendorFields contains Anthropic vendor-specific fields.

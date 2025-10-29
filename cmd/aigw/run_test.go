@@ -22,41 +22,22 @@ import (
 	"github.com/tetratelabs/func-e/api"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 // TestRun verifies that the main run function starts up correctly without making any actual requests.
 //
 // The real e2e tests are in tests/e2e-aigw.
 func TestRun(t *testing.T) {
-	ports := internaltesting.RequireRandomPorts(t, 1)
-	// TODO: parameterize the main listen port 1975
-	adminPort := ports[0]
-
 	// Note: we do not make any real requests here!
 	t.Setenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 	t.Setenv("OPENAI_API_KEY", "unused")
 
-	buffers := internaltesting.DumpLogsOnFail(t, "aigw Stdout", "aigw Stderr")
-	stdout, stderr := buffers[0], buffers[1]
 	ctx, cancel := context.WithCancel(t.Context())
-	defer cleanupRun(t, cancel)
+	defer cancel()
 
-	opts := runOpts{extProcLauncher: func(context.Context, []string, io.Writer) error { return nil }}
-	require.NoError(t, run(ctx, cmdRun{Debug: true, AdminPort: adminPort}, opts, stdout, stderr))
-}
-
-func cleanupRun(t testing.TB, cancel context.CancelFunc) {
-	cancel()
-	if err := internaltesting.AwaitPortClosed(1975, 10*time.Second); err != nil {
-		t.Logf("Failed to close port 1975: %v", err)
-	}
-	// Delete the hard-coded path to certs defined in Envoy AI Gateway
-	if err := os.RemoveAll("/tmp/envoy-gateway/certs"); err != nil {
-		t.Logf("Failed to delete envoy gateway certs: %v", err)
-	}
+	opts := testRunOpts(t, func(context.Context, []string, io.Writer) error { return nil })
+	require.NoError(t, run(ctx, cmdRun{Debug: true}, opts, os.Stdout, os.Stderr))
 }
 
 func TestRunExtprocStartFailure(t *testing.T) {
@@ -67,9 +48,8 @@ func TestRunExtprocStartFailure(t *testing.T) {
 	errChan := make(chan error)
 	mockErr := errors.New("mock extproc error")
 	go func() {
-		errChan <- run(ctx, cmdRun{}, runOpts{
-			extProcLauncher: func(context.Context, []string, io.Writer) error { return mockErr },
-		}, os.Stdout, io.Discard)
+		opts := testRunOpts(t, func(context.Context, []string, io.Writer) error { return mockErr })
+		errChan <- run(ctx, cmdRun{}, opts, os.Stdout, io.Discard)
 	}()
 
 	select {
@@ -82,10 +62,6 @@ func TestRunExtprocStartFailure(t *testing.T) {
 }
 
 func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
-	ports := internaltesting.RequireRandomPorts(t, 1)
-	// TODO: parameterize the main listen port 1975
-	adminPort := ports[0]
-
 	t.Setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
 	t.Setenv("OPENAI_API_KEY", "unused")
 
@@ -94,17 +70,15 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 		stderrLogger:             slog.New(slog.DiscardHandler),
 		stderr:                   io.Discard,
 		tmpdir:                   t.TempDir(),
-		// UNIX doesn't like a long UDS path, so we use a short one.
-		// https://unix.stackexchange.com/questions/367008/why-is-socket-path-length-limited-to-a-hundred-chars
-		udsPath:         filepath.Join("/tmp", "run.sock"),
-		adminPort:       adminPort,
-		extProcLauncher: mainlib.Main,
+		extProcLauncher: func(ctx context.Context, _ []string, _ io.Writer) error {
+			<-ctx.Done()
+			return nil
+		},
 	}
 	config := readFileFromProjectRoot(t, "examples/aigw/ollama.yaml")
 	ctx, cancel := context.WithCancel(t.Context())
 	_, done, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(ctx, config)
 	require.NoError(t, err)
-	time.Sleep(time.Second)
 	cancel()
 	// Wait for the external processor to stop.
 	require.NoError(t, <-done)
@@ -114,17 +88,12 @@ func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
 var gatewayNoListenersConfig string
 
 func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc_noListeners(t *testing.T) {
-	ports := internaltesting.RequireRandomPorts(t, 1)
-	// TODO: parameterize the main listen port 1975
-	adminPort := ports[0]
-
 	runCtx := &runCmdContext{
 		envoyGatewayResourcesOut: &bytes.Buffer{},
 		stderrLogger:             slog.New(slog.DiscardHandler),
 		stderr:                   io.Discard,
 		tmpdir:                   t.TempDir(),
 		udsPath:                  filepath.Join("/tmp", "run-test.sock"),
-		adminPort:                adminPort,
 	}
 
 	_, _, _, err := runCtx.writeEnvoyResourcesAndRunExtProc(t.Context(), gatewayNoListenersConfig)
@@ -241,15 +210,16 @@ func Test_newEnvoyMiddleware(t *testing.T) {
 			start := time.Now()
 			listenerPort := 1975
 
-			middleware := newEnvoyRunMiddleware(start, listenerPort, &stdout, &stderr)
+			dirs := newTempDirectories(t)
+			middleware := newEnvoyRunMiddleware(dirs, "test-run", start, listenerPort, &stdout, &stderr)
 			require.NotNil(t, middleware)
 
 			err := middleware(func(ctx context.Context, args []string, options ...api.RunOption) error {
 				require.Equal(t, t.Context(), ctx)
 				require.Equal(t, []string{"test"}, args)
 
-				// 3 = EnvoyOut, EnvoyErr, StartupHook
-				require.Len(t, options, 3+len(tt.inputOptions))
+				// 8 = EnvoyOut, EnvoyErr, ConfigHome, DataHome, StateHome, RuntimeDir, RunID, StartupHook
+				require.Len(t, options, 8+len(tt.inputOptions))
 				return nil
 			})(t.Context(), []string{"test"}, tt.inputOptions...)
 			require.NoError(t, err)
@@ -264,4 +234,14 @@ func readFileFromProjectRoot(t *testing.T, file string) string {
 	b, err := os.ReadFile(filepath.Join(filepath.Dir(filename), "..", "..", file))
 	require.NoError(t, err)
 	return string(b)
+}
+
+// testRunOpts creates runOpts for testing.
+// This ensures test isolation by using t.TempDir() for all XDG directories.
+func testRunOpts(t *testing.T, extProcLauncher func(context.Context, []string, io.Writer) error) *runOpts {
+	t.Helper()
+	dirs := newTempDirectories(t)
+	opts, err := newRunOpts(dirs, "test-run", "", extProcLauncher)
+	require.NoError(t, err)
+	return opts
 }

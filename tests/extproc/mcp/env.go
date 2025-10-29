@@ -70,6 +70,11 @@ const (
 )
 
 func requireNewMCPEnv(t *testing.T, forceJSONResponse bool, writeTimeout time.Duration, path string) *mcpEnv {
+	// clear env vars before starting the tests
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+	t.Setenv("OTEL_METRICS_EXPORTER", "")
+	t.Setenv("OTEL_SERVICE_NAME", "")
+
 	collector := testotel.StartOTLPCollector()
 	t.Cleanup(collector.Close)
 	mcpConfig := &filterapi.MCPConfig{

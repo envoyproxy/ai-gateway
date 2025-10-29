@@ -6,6 +6,7 @@
 package testmcp
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -72,9 +74,14 @@ func NewServer(opts *Options) *http.Server {
 	)
 
 	if apiKey := os.Getenv("TEST_API_KEY"); apiKey != "" {
+		header := strings.ToLower(cmp.Or(os.Getenv("TEST_API_KEY_HEADER"), "Authorization"))
+		expectedValue := apiKey
+		if header == "authorization" {
+			expectedValue = "Bearer " + apiKey
+		}
 		s.AddReceivingMiddleware(func(handler mcp.MethodHandler) mcp.MethodHandler {
 			return func(ctx context.Context, method string, req mcp.Request) (result mcp.Result, err error) {
-				if req.GetExtra().Header.Get("authorization") != "Bearer "+apiKey {
+				if req.GetExtra().Header.Get(header) != expectedValue {
 					return nil, fmt.Errorf("invalid API key")
 				}
 				return handler(ctx, method, req)
