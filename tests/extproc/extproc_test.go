@@ -61,10 +61,8 @@ var (
 		Region:      "gcp-region",
 		ProjectName: "gcp-project-name",
 	}}}
-	testUpstreamAWSAnthropicBackend = filterapi.Backend{Name: "testupstream-aws-anthropic", Schema: awsAnthropicSchema, Auth: &filterapi.BackendAuth{AWSAuth: &filterapi.AWSAuth{
-		Region: "us-east-1",
-	}}}
-	alwaysFailingBackend = filterapi.Backend{Name: "always-failing-backend", Schema: openAISchema}
+	testUpstreamAWSAnthropicBackend = filterapi.Backend{Name: "testupstream-aws-anthropic", Schema: awsAnthropicSchema}
+	alwaysFailingBackend            = filterapi.Backend{Name: "always-failing-backend", Schema: openAISchema}
 
 	// envoyConfig is the embedded Envoy configuration template.
 	//
