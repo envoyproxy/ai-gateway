@@ -237,6 +237,10 @@ const (
 
 // Usage represents token usage information for the Anthropic Messages API response.
 // https://docs.claude.com/en/api/messages#response-usage
+//
+// NOTE: all of them are float64 in the API, although they are always integers in practice.
+// However, the documentation doesn't explicitly state that they are integers in its format,
+// so we use float64 to be able to unmarshal both 1234 and 1234.0 without errors.
 type Usage struct {
 	// The number of input tokens used to create the cache entry.
 	CacheCreationInputTokens float64 `json:"cache_creation_input_tokens"`
