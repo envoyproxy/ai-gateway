@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -274,6 +275,14 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseBody(ctx context.Contex
 			c.metrics.RecordRequestCompletion(ctx, true, c.requestHeaders)
 		}
 	}()
+	if code, _ := strconv.Atoi(c.responseHeaders[":status"]); !isGoodStatusCode(code) {
+		// For now, simply pass through error responses without modification.
+		// TODO: do the error conversion like other processors, to be able to capture any error in the proper
+		// format expected by the client.
+		return &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_ResponseBody{ResponseBody: &extprocv3.BodyResponse{}},
+		}, nil
+	}
 
 	// Decompress the body if needed using common utility.
 	decodingResult, err := decodeContentIfNeeded(body.Body, c.responseEncoding)
