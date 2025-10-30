@@ -6,7 +6,7 @@ sidebar_position: 3
 
 # Connect AWS Bedrock
 
-This guide will help you configure Envoy AI Gateway to work with AWS Bedrock's foundation models.
+This guide will help you configure Envoy AI Gateway to work with AWS Bedrock's foundation models, including Llama, Anthropic Claude, and other models available on AWS Bedrock.
 
 ## Prerequisites
 
@@ -47,7 +47,8 @@ Your IAM policy needs these permissions:
       "Action": [
         "bedrock:InvokeModel",
         "bedrock:InvokeModelWithResponseStream",
-        "bedrock:ListFoundationModels"
+        "bedrock:ListFoundationModels",
+        "aws-marketplace:ViewSubscriptions"
       ],
       "Resource": "*"
     }
@@ -165,7 +166,44 @@ curl -H "Content-Type: application/json" -d '{
 }' http://$GATEWAY_URL/v1/chat/completions
 ```
 
----
+You can also access an Anthropic model with native Anthropic messages endpoint:
+
+```shell
+curl -H "Content-Type: application/json" \
+  -d '{
+    "model": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What is capital of France?"
+      }
+    ],
+    "max_tokens": 100
+  }' \
+  $GATEWAY_URL/anthropic/v1/messages
+```
+
+Expected output:
+
+```json
+{
+  "id": "msg_01XFDUDYJgAACzvnptvVoYEL",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "text",
+      "text": "The capital of France is Paris."
+    }
+  ],
+  "model": "claude-3-5-sonnet-20241022",
+  "stop_reason": "end_turn",
+  "usage": {
+    "input_tokens": 13,
+    "output_tokens": 8
+  }
+}
+```
 
 ## Troubleshooting
 
@@ -228,6 +266,115 @@ spec:
               value: anthropic.claude-3-sonnet-20240229-v1:0
       backendRefs:
         - name: envoy-ai-gateway-basic-aws
+```
+
+## Using Anthropic Native API
+
+When using Anthropic models on AWS Bedrock, you have two options:
+
+1. **OpenAI-compatible format** (`/v1/chat/completions`) - Works with most models but may not support all Anthropic-specific features
+2. **Native Anthropic API** (`/anthropic/v1/messages`) - Provides full access to Anthropic-specific features (only for Anthropic models)
+
+### Streaming with Native Anthropic API
+
+The native Anthropic API also supports streaming responses:
+
+```shell
+curl -H "Content-Type: application/json" \
+  -d '{
+    "model": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Count from 1 to 5."
+      }
+    ],
+    "max_tokens": 100,
+    "stream": true
+  }' \
+  $GATEWAY_URL/anthropic/v1/messages
+```
+
+## Advanced Features with Anthropic Models
+
+Since the gateway supports the native Anthropic API, you have full access to Anthropic-specific features:
+
+### Extended Thinking
+
+```shell
+curl -H "Content-Type: application/json" \
+  -d '{
+    "model": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Solve this puzzle: A farmer needs to cross a river with a fox, chicken, and bag of grain. The boat can only hold the farmer and one item. How does the farmer get everything across safely?"
+      }
+    ],
+    "max_tokens": 1000,
+    "thinking": {
+      "type": "enabled",
+      "budget_tokens": 5000
+    }
+  }' \
+  $GATEWAY_URL/anthropic/v1/messages
+```
+
+### Prompt Caching
+
+```shell
+curl -H "Content-Type: application/json" \
+  -d '{
+    "model": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+    "system": [
+      {
+        "type": "text",
+        "text": "You are an AI assistant specialized in Python programming. You help users write clean, efficient Python code.",
+        "cache_control": {"type": "ephemeral"}
+      }
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "content": "Write a function to calculate fibonacci numbers."
+      }
+    ],
+    "max_tokens": 500
+  }' \
+  $GATEWAY_URL/anthropic/v1/messages
+```
+
+### Tool Use (Function Calling)
+
+```shell
+curl -H "Content-Type: application/json" \
+  -d '{
+    "model": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What is the weather in San Francisco?"
+      }
+    ],
+    "max_tokens": 500,
+    "tools": [
+      {
+        "name": "get_weather",
+        "description": "Get the current weather in a given location",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "location": {
+              "type": "string",
+              "description": "The city and state, e.g. San Francisco, CA"
+            }
+          },
+          "required": ["location"]
+        }
+      }
+    ]
+  }' \
+  $GATEWAY_URL/anthropic/v1/messages
 ```
 
 [AIGatewayRouteRule]: ../../api/api.mdx#aigatewayrouterule
