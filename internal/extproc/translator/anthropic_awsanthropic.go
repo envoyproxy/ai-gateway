@@ -44,7 +44,7 @@ func (a *anthropicToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *an
 	a.requestModel = cmp.Or(a.modelNameOverride, body.Model)
 
 	var mutatedBody []byte
-	mutatedBody, err = sjson.SetBytes(rawBody, anthropicVersionKey, a.apiVersion)
+	mutatedBody, err = sjson.SetBytesOptions(rawBody, anthropicVersionKey, a.apiVersion, sjsonOptions)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to set anthropic_version field: %w", err)
 	}

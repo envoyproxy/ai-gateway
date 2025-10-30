@@ -42,20 +42,20 @@ func (a *anthropicToGCPAnthropicTranslator) RequestBody(raw []byte, req *anthrop
 	// Apply model name override if configured.
 	a.requestModel = cmp.Or(a.modelNameOverride, req.Model)
 
+	mutatedBody, _ := sjson.SetBytesOptions(raw, anthropicVersionKey, a.apiVersion, sjsonOptions)
+
 	// Remove the model field since GCP doesn't want it in the body.
 	//
 	// TODO: no idea if this comment "GCP doesn't want it in the body" is accurate.
 	// 	at least it's not documented in https://docs.claude.com/en/api/claude-on-vertex-ai.
 	// 	Either delete this line or confirm the behavior in the documentation.
-	mutatedBody, _ := sjson.DeleteBytes(raw, "model")
+	mutatedBody, _ = sjson.DeleteBytes(mutatedBody, "model")
 
 	// Add GCP-specific anthropic_version field (required by GCP Vertex AI).
 	// Uses backend config version (e.g., "vertex-2023-10-16" for GCP Vertex AI).
 	if a.apiVersion == "" {
 		return nil, nil, fmt.Errorf("anthropic_version is required for GCP Vertex AI but not provided in backend configuration")
 	}
-
-	mutatedBody, _ = sjson.SetBytes(mutatedBody, anthropicVersionKey, a.apiVersion)
 
 	// Determine the GCP path based on whether streaming is requested.
 	specifier := "rawPredict"
