@@ -45,6 +45,8 @@ func (a *anthropicToGCPAnthropicTranslator) RequestBody(raw []byte, req *anthrop
 	mutatedBody, _ := sjson.SetBytesOptions(raw, anthropicVersionKey, a.apiVersion, sjsonOptions)
 
 	// Remove the model field since GCP doesn't want it in the body.
+	// Note: Do not operate on raw here, as that would mutate the original request body.
+	// Hence, we do the SetBytesOptions above to create mutatedBody first.
 	//
 	// TODO: no idea if this comment "GCP doesn't want it in the body" is accurate.
 	// 	at least it's not documented in https://docs.claude.com/en/api/claude-on-vertex-ai.
