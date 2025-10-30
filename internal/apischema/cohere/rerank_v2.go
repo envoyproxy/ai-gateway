@@ -26,9 +26,9 @@ type RerankV2Request struct {
 // Docs: https://docs.cohere.com/reference/rerank
 type RerankV2Response struct {
 	// Ordered list of ranked documents with scores.
-	Results []RerankV2Result `json:"results"`
+	Results []*RerankV2Result `json:"results"`
 	// Unique request ID.
-	ID string `json:"id,omitempty"`
+	ID *string `json:"id,omitempty"`
 	// Additional metadata including API version and billing.
 	Meta *RerankV2Meta `json:"meta,omitempty"`
 }
