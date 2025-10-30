@@ -101,3 +101,30 @@ func (s *completionSpan) EndSpanOnError(statusCode int, body []byte) {
 	s.recorder.RecordResponseOnError(s.span, statusCode, body)
 	s.span.End()
 }
+
+type responsesSpan struct {
+	span                   trace.Span
+	recorder               tracing.ResponsesRecorder
+	responseCompletedChunk *openai.ResponseCompletedEvent
+}
+
+// RecordResponse implements [tracing.ResponsesSpan.RecordResponse].
+func (s *responsesSpan) RecordResponse(resp *openai.ResponseResponse) {
+	s.recorder.RecordResponse(s.span, resp)
+}
+
+// RecordResponseChunk implements [tracing.ResponsesSpan.RecordResponseChunk].
+func (s *responsesSpan) RecordResponseChunk(resp *openai.ResponseCompletedEvent) {
+	s.responseCompletedChunk = resp
+}
+
+// EndSpanOnError implements [tracing.ResponsesSpan.EndSpanOnError].
+func (s *responsesSpan) EndSpanOnError(statusCode int, body []byte) {
+	s.recorder.RecordResponseOnError(s.span, statusCode, body)
+	s.span.End()
+}
+
+// EndSpan implements [tracing.ResponsesSpan.EndSpan].
+func (s *responsesSpan) EndSpan() {
+	s.span.End()
+}

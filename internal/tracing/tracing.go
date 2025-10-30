@@ -29,6 +29,7 @@ type tracingImpl struct {
 	completionTracer      tracing.CompletionTracer
 	imageGenerationTracer tracing.ImageGenerationTracer
 	embeddingsTracer      tracing.EmbeddingsTracer
+	responsesTracer      tracing.ResponsesTracer
 	mcpTracer             tracing.MCPTracer
 	// shutdown is nil when we didn't create tp.
 	shutdown func(context.Context) error
@@ -52,6 +53,11 @@ func (t *tracingImpl) EmbeddingsTracer() tracing.EmbeddingsTracer {
 // ImageGenerationTracer implements the same method as documented on api.Tracing.
 func (t *tracingImpl) ImageGenerationTracer() tracing.ImageGenerationTracer {
 	return t.imageGenerationTracer
+}
+
+// ResponsesTracer implements the same method as documented on api.Tracing.
+func (t *tracingImpl) ResponsesTracer() tracing.ResponsesTracer {
+	return t.responsesTracer
 }
 
 func (t *tracingImpl) MCPTracer() tracing.MCPTracer {
@@ -165,6 +171,7 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 	imageRecorder := openai.NewImageGenerationRecorderFromEnv()
 	completionRecorder := openai.NewCompletionRecorderFromEnv()
 	embeddingsRecorder := openai.NewEmbeddingsRecorderFromEnv()
+	responsesRecorder := openai.NewResponsesRecorderFromEnv()
 
 	tracer := tp.Tracer("envoyproxy/ai-gateway")
 	return &tracingImpl{
@@ -189,6 +196,12 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 			tracer,
 			propagator,
 			embeddingsRecorder,
+			headerAttrs,
+		),
+		responsesTracer: newResponsesTracer(
+			tracer,
+			propagator,
+			responsesRecorder,
 			headerAttrs,
 		),
 		mcpTracer: newMCPTracer(tracer, propagator, headerAttrs),
