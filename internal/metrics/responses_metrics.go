@@ -60,9 +60,8 @@ type ResponsesMetrics interface {
 
 // NewResponses creates a new ResponsesMetrics instance.
 func NewResponses(meter metric.Meter, requestHeaderLabelMapping map[string]string) ResponsesMetrics {
-	return &responses{
-		baseMetrics: newBaseMetrics(meter, genaiOperationResponses, requestHeaderLabelMapping),
-	}
+	b := baseMetricsFactory{metrics: newGenAI(meter), requestHeaderAttributeMapping: requestHeaderLabelMapping}
+	return &responses{baseMetrics: b.newBaseMetrics(genaiOperationResponses)}
 }
 
 // StartRequest initializes timing for a new request.

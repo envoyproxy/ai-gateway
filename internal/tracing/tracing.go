@@ -29,7 +29,7 @@ type tracingImpl struct {
 	completionTracer      tracing.CompletionTracer
 	imageGenerationTracer tracing.ImageGenerationTracer
 	embeddingsTracer      tracing.EmbeddingsTracer
-	responsesTracer      tracing.ResponsesTracer
+	responsesTracer       tracing.ResponsesTracer
 	mcpTracer             tracing.MCPTracer
 	// shutdown is nil when we didn't create tp.
 	shutdown func(context.Context) error
