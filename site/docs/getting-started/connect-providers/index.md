@@ -44,3 +44,4 @@ Choose your provider to get started:
 - [Connect OpenAI](./openai.md)
 - [Connect AWS Bedrock](./aws-bedrock.md)
 - [Connect Azure OpenAI](./azure-openai.md)
+- [Connect GCP VertexAI](./gcp-vertexai.md)

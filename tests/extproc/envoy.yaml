@@ -63,6 +63,24 @@ static_resources:
                             headers:
                               - name: x-ai-eg-model
                                 string_match:
+                                  exact: claude-sonnet-4-5
+                          route:
+                            auto_host_rewrite: true
+                            cluster: anthropic
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-ai-eg-model
+                                string_match:
+                                  exact: global.anthropic.claude-sonnet-4-5-20250929-v1:0
+                          route:
+                            auto_host_rewrite: true
+                            cluster: anthropic_aws_bedrock
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-ai-eg-model
+                                string_match:
                                   exact: us.anthropic.claude-3-5-sonnet-20240620-v1:0
                           route:
                             auto_host_rewrite: true
@@ -222,6 +240,14 @@ static_resources:
                                   exact: gcp-anthropicai
                           route:
                             cluster: testupstream-gcp-anthropicai
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-test-backend
+                                string_match:
+                                  exact: aws-anthropic
+                          route:
+                            cluster: testupstream-aws-anthropic
                         - match:
                             prefix: "/"
                             headers:
@@ -725,6 +751,70 @@ static_resources:
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
           auto_host_sni: true
+    - name: anthropic_aws_bedrock
+      connect_timeout: 30s
+      type: STRICT_DNS
+      outlier_detection:
+        consecutive_5xx: 1
+        interval: 1s
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        max_ejection_percent: 100
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http_protocol_options: {}
+          http_filters:
+            - name: upstream_extproc
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                allow_mode_override: true
+                request_attributes:
+                  - xds.upstream_host_metadata
+                processing_mode:
+                  request_header_mode: "SEND"
+                  request_body_mode: "NONE"
+                  response_header_mode: "SKIP"
+                  response_body_mode: "NONE"
+                grpc_service:
+                  envoy_grpc:
+                    cluster_name: extproc_cluster
+                metadataOptions:
+                  receivingNamespaces:
+                    untyped:
+                      - io.envoy.ai_gateway
+            - name: envoy.filters.http.header_mutation
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                mutations:
+                  request_mutations:
+                    - append:
+                        append_action: ADD_IF_ABSENT
+                        header:
+                          key: content-length
+                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
+            - name: envoy.filters.http.upstream_codec
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
+      load_assignment:
+        cluster_name: anthropic_aws_bedrock
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  hostname: bedrock-runtime.us-east-1.amazonaws.com
+                  address:
+                    socket_address:
+                      address: bedrock-runtime.us-east-1.amazonaws.com
+                      port_value: 443
+                metadata:
+                  filter_metadata:
+                    aigateway.envoy.io:
+                      per_route_rule_backend_name: "anthropic-aws-bedrock"
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          auto_host_sni: true
     - name: testupstream-gcp-vertexai
       connect_timeout: 0.25s
       type: STATIC
@@ -843,6 +933,65 @@ static_resources:
                   filter_metadata:
                     aigateway.envoy.io:
                       per_route_rule_backend_name: "testupstream-gcp-anthropicai"
+    - name: testupstream-aws-anthropic
+      connect_timeout: 0.25s
+      type: STATIC
+      lb_policy: ROUND_ROBIN
+      outlier_detection:
+        consecutive_5xx: 1
+        interval: 1s
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        max_ejection_percent: 100
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http_protocol_options: {}
+          http_filters:
+            - name: upstream_extproc
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                request_attributes:
+                  - xds.upstream_host_metadata
+                processing_mode:
+                  request_header_mode: "SEND"
+                  request_body_mode: "NONE"
+                  response_header_mode: "SKIP"
+                  response_body_mode: "NONE"
+                grpc_service:
+                  envoy_grpc:
+                    cluster_name: extproc_cluster
+                metadataOptions:
+                  receivingNamespaces:
+                    untyped:
+                      - io.envoy.ai_gateway
+            - name: envoy.filters.http.header_mutation
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                mutations:
+                  request_mutations:
+                    - append:
+                        append_action: ADD_IF_ABSENT
+                        header:
+                          key: content-length
+                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
+            - name: envoy.filters.http.upstream_codec
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
+      load_assignment:
+        cluster_name: testupstream-aws-anthropic
+        endpoints:
+          - priority: 0
+            lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: 127.0.0.1
+                      port_value: 8080
+                metadata:
+                  filter_metadata:
+                    aigateway.envoy.io:
+                      per_route_rule_backend_name: "testupstream-aws-anthropic"
     - name: openai
       connect_timeout: 30s
       type: STRICT_DNS
@@ -913,6 +1062,69 @@ static_resources:
                   filter_metadata:
                     aigateway.envoy.io:
                       per_route_rule_backend_name: "openai"
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          auto_host_sni: true
+    - name: anthropic
+      connect_timeout: 30s
+      type: STRICT_DNS
+      outlier_detection:
+        consecutive_5xx: 1
+        interval: 1s
+        base_ejection_time: 2s # Must be smaller than the require.Eventually's interval. Otherwise, the tests may pass without going through the fallback since the always-failing backend could be ejected by the time when require.Eventually retries due to the previous request IF the retry is not configured.
+        max_ejection_percent: 100
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http_protocol_options: {}
+          http_filters:
+            - name: upstream_extproc
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                request_attributes:
+                  - xds.upstream_host_metadata
+                processing_mode:
+                  request_header_mode: "SEND"
+                  request_body_mode: "NONE"
+                  response_header_mode: "SKIP"
+                  response_body_mode: "NONE"
+                grpc_service:
+                  envoy_grpc:
+                    cluster_name: extproc_cluster
+                metadataOptions:
+                  receivingNamespaces:
+                    untyped:
+                      - io.envoy.ai_gateway
+            - name: envoy.filters.http.header_mutation
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                mutations:
+                  request_mutations:
+                    - append:
+                        append_action: ADD_IF_ABSENT
+                        header:
+                          key: content-length
+                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
+            - name: envoy.filters.http.upstream_codec
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
+      load_assignment:
+        cluster_name: anthropic
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  hostname: api.anthropic.com
+                  address:
+                    socket_address:
+                      address: api.anthropic.com
+                      port_value: 443
+                metadata:
+                  filter_metadata:
+                    aigateway.envoy.io:
+                      per_route_rule_backend_name: "anthropic"
       transport_socket:
         name: envoy.transport_sockets.tls
         typed_config:

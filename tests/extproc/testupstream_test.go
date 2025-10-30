@@ -61,6 +61,7 @@ func TestWithTestUpstream(t *testing.T) {
 			testUpstreamAzureBackend,
 			testUpstreamGCPVertexAIBackend,
 			testUpstreamGCPAnthropicAIBackend,
+			testUpstreamAWSAnthropicBackend,
 			{
 				Name: "testupstream-openai-5xx", Schema: openAISchema, HeaderMutation: &filterapi.HTTPHeaderMutation{
 					Set: []filterapi.HTTPHeader{{Name: testupstreamlib.ResponseStatusKey, Value: "500"}},
@@ -652,7 +653,7 @@ data: {"type": "message_delta", "delta": {"stop_reason": "tool_use"}, "usage": {
 event: message_stop
 data: {"type": "message_stop"}`,
 			expStatus: http.StatusOK,
-			expResponseBody: `data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"toolu_abc123","function":{"arguments":"{}","name":"get_weather"},"type":"function"}]}}],"object":"chat.completion.chunk"}
+			expResponseBody: `data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"toolu_abc123","function":{"arguments":"","name":"get_weather"},"type":"function"}]}}],"object":"chat.completion.chunk"}
 
 data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":null,"function":{"arguments":"{\"location\":\"Bosto","name":""}}]}}],"object":"chat.completion.chunk"}
 
@@ -892,7 +893,7 @@ data: {"type": "message_stop"}
 			method:            http.MethodPost,
 			expRequestHeaders: map[string]string{"x-api-key": "anthropic-api-key"},
 			requestBody: `{
-    "model": "claude-sonnet-4-5",
+    "model": "foo",
     "max_tokens": 1000,
     "messages": [
       {
@@ -902,7 +903,7 @@ data: {"type": "message_stop"}
     ]
   }`,
 			expPath:      "/v1/messages",
-			responseBody: `{"model":"claude-sonnet-4-5-20250929","id":"msg_01J5gW6Sffiem6avXSAooZZw","type":"message","role":"assistant","content":[{"type":"text","text":"Hi! 👋 How can I help you today?"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":16,"service_tier":"standard"}}`,
+			responseBody: `{"model":"foo","id":"msg_01J5gW6Sffiem6avXSAooZZw","type":"message","role":"assistant","content":[{"type":"text","text":"Hi! 👋 How can I help you today?"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":16,"service_tier":"standard"}}`,
 			expStatus:    http.StatusOK,
 		},
 		{
@@ -913,7 +914,7 @@ data: {"type": "message_stop"}
 			expRequestHeaders: map[string]string{"x-api-key": "anthropic-api-key"},
 			responseType:      "sse",
 			requestBody: `{
-    "model": "claude-sonnet-4-5",
+    "model": "foo",
     "max_tokens": 1000,
     "messages": [
       {
@@ -925,7 +926,7 @@ data: {"type": "message_stop"}
 			expPath: "/v1/messages",
 			responseBody: `
 event: message_start
-data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_01BfvfMsg2gBzwsk6PZRLtDg","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":1,"service_tier":"standard"}}    }
+data: {"type":"message_start","message":{"model":"foo","id":"msg_01BfvfMsg2gBzwsk6PZRLtDg","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":1,"service_tier":"standard"}}    }
 
 event: content_block_start
 data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}      }
@@ -952,6 +953,87 @@ event: message_stop
 data: {"type":"message_stop"       }
 `,
 			expStatus: http.StatusOK,
+		},
+		{
+			name:            "aws-anthropic - /anthropic/v1/messages",
+			backend:         "aws-anthropic",
+			path:            "/anthropic/v1/messages",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"anthropic.claude-3-sonnet-20240229-v1:0","max_tokens":100,"messages":[{"role":"user","content":[{"type":"text","text":"Hello from AWS!"}]}],"stream":false}`,
+			expRequestBody:  `{"max_tokens":100,"messages":[{"role":"user","content":[{"type":"text","text":"Hello from AWS!"}]}],"stream":false,"anthropic_version":"bedrock-2023-05-31"}`,
+			expPath:         "/model/anthropic.claude-3-sonnet-20240229-v1:0/invoke",
+			responseStatus:  strconv.Itoa(http.StatusOK),
+			responseBody:    `{"id":"msg_aws_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from AWS Anthropic!"}],"usage":{"input_tokens":10,"output_tokens":20}}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"id":"msg_aws_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from AWS Anthropic!"}],"usage":{"input_tokens":10,"output_tokens":20}}`,
+		},
+		{
+			name:           "aws-anthropic - /anthropic/v1/messages - streaming",
+			backend:        "aws-anthropic",
+			path:           "/anthropic/v1/messages",
+			method:         http.MethodPost,
+			responseType:   "sse",
+			requestBody:    `{"model":"anthropic.claude-3-haiku-20240307-v1:0","max_tokens":150,"messages":[{"role":"user","content":[{"type":"text","text":"Tell me a joke"}]}],"stream":true}`,
+			expRequestBody: `{"max_tokens":150,"messages":[{"role":"user","content":[{"type":"text","text":"Tell me a joke"}]}],"stream":true,"anthropic_version":"bedrock-2023-05-31"}`,
+			expPath:        "/model/anthropic.claude-3-haiku-20240307-v1:0/invoke-stream",
+			responseStatus: strconv.Itoa(http.StatusOK),
+			responseBody: `event: message_start
+data: {"type":"message_start","message":{"id":"msg_aws_456","usage":{"input_tokens":12}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Why did the"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" chicken cross the road?"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":18}}
+
+event: message_stop
+data: {"type":"message_stop"}
+
+`,
+			expStatus: http.StatusOK,
+			expResponseBody: `event: message_start
+data: {"type":"message_start","message":{"id":"msg_aws_456","usage":{"input_tokens":12}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Why did the"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" chicken cross the road?"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":18}}
+
+event: message_stop
+data: {"type":"message_stop"}
+
+`,
+		},
+		{
+			name:            "aws-anthropic - /anthropic/v1/messages - error response",
+			backend:         "aws-anthropic",
+			path:            "/anthropic/v1/messages",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"anthropic.claude-3-sonnet-20240229-v1:0","max_tokens":100,"messages":[{"role":"user","content":[{"type":"text","text":"Test error"}]}]}`,
+			expPath:         "/model/anthropic.claude-3-sonnet-20240229-v1:0/invoke",
+			responseStatus:  strconv.Itoa(http.StatusBadRequest),
+			responseBody:    `{"type":"error","error":{"type":"validation_error","message":"Invalid request format"}}`,
+			expStatus:       http.StatusBadRequest,
+			expResponseBody: `{"type":"error","error":{"type":"validation_error","message":"Invalid request format"}}`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

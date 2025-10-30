@@ -15,7 +15,7 @@ package v1alpha1
 type VersionedAPISchema struct {
 	// Name is the name of the API schema of the AIGatewayRoute or AIServiceBackend.
 	//
-	// +kubebuilder:validation:Enum=OpenAI;Cohere;AWSBedrock;AzureOpenAI;GCPVertexAI;GCPAnthropic;Anthropic
+	// +kubebuilder:validation:Enum=OpenAI;Cohere;AWSBedrock;AzureOpenAI;GCPVertexAI;GCPAnthropic;Anthropic;AWSAnthropic
 	Name APISchema `json:"name"`
 
 	// Version is the version of the API schema.
@@ -69,6 +69,12 @@ const (
 	// APISchemaAnthropic is the native Anthropic API schema.
 	// https://docs.claude.com/en/home
 	APISchemaAnthropic APISchema = "Anthropic"
+	// APISchemaAWSAnthropic is the schema for Anthropic models hosted on AWS Bedrock.
+	// Uses the native Anthropic Messages API format for requests and responses.
+	//
+	// https://aws.amazon.com/bedrock/anthropic/
+	// https://docs.claude.com/en/api/claude-on-amazon-bedrock
+	APISchemaAWSAnthropic APISchema = "AWSAnthropic"
 )
 
 const (

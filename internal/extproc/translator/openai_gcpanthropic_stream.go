@@ -208,11 +208,22 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			var argsJSON string
 			// Check if the input field is provided directly in the start event.
 			if event.ContentBlock.Input != nil {
-				argsBytes, err := json.Marshal(event.ContentBlock.Input)
-				if err != nil {
-					return nil, fmt.Errorf("failed to marshal tool use input: %w", err)
+				switch input := event.ContentBlock.Input.(type) {
+				case map[string]any:
+					// for case where "input":{}, skip adding it to arguments.
+					if len(input) > 0 {
+						argsBytes, err := json.Marshal(input)
+						if err != nil {
+							return nil, fmt.Errorf("failed to marshal tool use input: %w", err)
+						}
+						argsJSON = string(argsBytes)
+					}
+				default:
+					// although golang sdk defines type of Input to be any,
+					// python sdk requires the type of Input to be Dict[str, object]:
+					// https://github.com/anthropics/anthropic-sdk-python/blob/main/src/anthropic/types/tool_use_block.py#L14.
+					return nil, fmt.Errorf("unexpected tool use input type: %T", input)
 				}
-				argsJSON = string(argsBytes)
 			}
 
 			// Store the complete input JSON in our state.

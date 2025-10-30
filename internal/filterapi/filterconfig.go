@@ -119,6 +119,9 @@ const (
 	APISchemaGCPAnthropic APISchemaName = "GCPAnthropic"
 	// APISchemaAnthropic represents the standard Anthropic API schema.
 	APISchemaAnthropic APISchemaName = "Anthropic"
+	// APISchemaAWSAnthropic represents the AWS Bedrock Anthropic API schema.
+	// Used for Claude models hosted on AWS Bedrock using the native Anthropic Messages API.
+	APISchemaAWSAnthropic APISchemaName = "AWSAnthropic"
 )
 
 // RouteRuleName is the name of the route rule.
