@@ -16,6 +16,9 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	anthropicoption "github.com/anthropics/anthropic-sdk-go/option"
+	cohere "github.com/cohere-ai/cohere-go/v2"
+	cohereoption "github.com/cohere-ai/cohere-go/v2/option"
+	coherev2client "github.com/cohere-ai/cohere-go/v2/v2"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
@@ -63,6 +66,11 @@ func Test_Examples_Basic(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, e2elib.KubectlApplyManifestStdin(t.Context(), strings.ReplaceAll(string(anthropicManifest), "ANTHROPIC_API_KEY", cc.AnthropicAPIKey)))
 
+		// Apply Cohere resources if credentials are set
+		cohereManifest, err := os.ReadFile(manifestDir + "/cohere.yaml")
+		require.NoError(t, err)
+		require.NoError(t, e2elib.KubectlApplyManifestStdin(t.Context(), strings.ReplaceAll(string(cohereManifest), "COHERE_API_KEY", cc.CohereAPIKey)))
+
 		time.Sleep(5 * time.Second) // At least 5 seconds for the updated secret to be propagated.
 
 		for _, tc := range []examplesBasicChatCompletionsTestCase{
@@ -71,6 +79,39 @@ func Test_Examples_Basic(t *testing.T) {
 		} {
 			tc.run(t, egSelector)
 		}
+
+		// Cohere v2 rerank test using Cohere SDK routed via gateway
+		t.Run("cohere_v2_rerank", func(t *testing.T) {
+			cc.MaybeSkip(t, internaltesting.RequiredCredentialCohere)
+			internaltesting.RequireEventuallyNoError(t, func() error {
+				fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+				defer fwd.Kill()
+
+				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+				defer cancel()
+
+				client := coherev2client.NewClient(cohereoption.WithBaseURL(fwd.Address()), cohereoption.WithToken("dummy"))
+				topN := 2
+				req := &cohere.V2RerankRequest{
+					Model: "rerank-english-v3.0",
+					Query: "reset password",
+					Documents: []string{
+						"How to reset my password?",
+						"This is unrelated content",
+					},
+					TopN: &topN,
+				}
+
+				resp, err := client.Rerank(ctx, req)
+				if err != nil {
+					return fmt.Errorf("cohere rerank error: %w", err)
+				}
+				if len(resp.Results) == 0 {
+					return errors.New("no rerank results returned")
+				}
+				return nil
+			}, 20*time.Second, 3*time.Second)
+		})
 
 		t.Run("anthropic", func(t *testing.T) {
 			cc.MaybeSkip(t, internaltesting.RequiredCredentialAnthropic)
