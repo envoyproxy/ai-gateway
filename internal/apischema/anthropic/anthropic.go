@@ -8,6 +8,9 @@ package anthropic
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+
+	"github.com/tidwall/gjson"
 )
 
 // MessagesRequest represents a request to the Anthropic Messages API.
@@ -175,6 +178,49 @@ type MCPServer struct{} // TODO when we need it for observability, etc.
 // https://docs.claude.com/en/api/messages#body-context-management
 type ContextManagement struct{} // TODO when we need it for observability, etc.
 
+// MessagesResponse represents a response from the Anthropic Messages API.
+// https://docs.claude.com/en/api/messages
+type MessagesResponse struct {
+	// ID is the unique identifier for the response.
+	// https://docs.claude.com/en/api/messages#response-id
+	ID string `json:"id"`
+	// Type is the type of the response.
+	// This is always "messages".
+	//
+	// https://docs.claude.com/en/api/messages#response-type
+	Type ConstantMessagesResponseTypeMessages `json:"type"`
+	// Role is the role of the message in the response.
+	// This is always "assistant".
+	//
+	// https://docs.claude.com/en/api/messages#response-role
+	Role ConstantMessagesResponseRoleAssistant `json:"role"`
+	// Content is the content of the message in the response.
+	// https://docs.claude.com/en/api/messages#response-content
+	Content []MessagesContentBlock `json:"content"`
+	// Model is the model used for the response.
+	// https://docs.claude.com/en/api/messages#response-model
+	Model string `json:"model"`
+	// StopReason is the reason for stopping the generation.
+	// https://docs.claude.com/en/api/messages#response-stop-reason
+	StopReason *StopReason `json:"stop_reason,omitempty"`
+	// StopSequence is the stop sequence that was encountered.
+	// https://docs.claude.com/en/api/messages#response-stop-sequence
+	StopSequence *string `json:"stop_sequence,omitempty"`
+	// Usage contains token usage information for the response.
+	// https://docs.claude.com/en/api/messages#response-usage
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+// ConstantMessagesResponseTypeMessages is the constant type for MessagesResponse, which is always "messages".
+type ConstantMessagesResponseTypeMessages string
+
+// ConstantMessagesResponseRoleAssistant is the constant role for MessagesResponse, which is always "assistant".
+type ConstantMessagesResponseRoleAssistant string
+
+// MessagesContentBlock represents a block of content in the Anthropic Messages API response.
+// https://docs.claude.com/en/api/messages#response-content
+type MessagesContentBlock struct{} // TODO when we need it for observability, etc.
+
 // StopReason represents the reason for stopping the generation.
 // https://docs.claude.com/en/api/messages#response-stop-reason
 type StopReason string
@@ -188,3 +234,90 @@ const (
 	StopReasonRefusal                    StopReason = "refusal"
 	StopReasonModelContextWindowExceeded StopReason = "model_context_window_exceeded"
 )
+
+// Usage represents token usage information for the Anthropic Messages API response.
+// https://docs.claude.com/en/api/messages#response-usage
+type Usage struct {
+	// The number of input tokens used to create the cache entry.
+	CacheCreationInputTokens float64 `json:"cache_creation_input_tokens"`
+	// The number of input tokens read from the cache.
+	CacheReadInputTokens float64 `json:"cache_read_input_tokens"`
+	// The number of input tokens which were used.
+	InputTokens float64 `json:"input_tokens"`
+	// The number of output tokens which were used.
+	OutputTokens float64 `json:"output_tokens"`
+
+	// TODO: there are other fields that are currently not used in the project.
+}
+
+// MessagesStreamEvent represents a single event in the streaming response from the Anthropic Messages API.
+// https://docs.claude.com/en/docs/build-with-claude/streaming
+type MessagesStreamEvent struct {
+	// The type of the streaming event.
+	Type MessagesStreamEventType `json:"type"`
+	// MessageStart is present if the event type is "message_start" or "message_delta".
+	MessageStart *MessagesStreamEventMessageStart
+	// MessageDelta is present if the event type is "message_delta".
+	MessageDelta *MessagesStreamEventMessageDelta
+}
+
+// MessagesStreamEventType represents the type of a streaming event in the Anthropic Messages API.
+// https://docs.claude.com/en/docs/build-with-claude/streaming#event-types
+type MessagesStreamEventType string
+
+const (
+	MessagesStreamEventTypeMessageStart      MessagesStreamEventType = "message_start"
+	MessagesStreamEventTypeMessageDelta      MessagesStreamEventType = "message_delta"
+	MessagesStreamEventTypeMessageStop       MessagesStreamEventType = "message_stop"
+	MessagesStreamEventTypeContentBlockStart MessagesStreamEventType = "content_block_start"
+	MessagesStreamEventTypeContentBlockDelta MessagesStreamEventType = "content_block_delta"
+	MessagesStreamEventTypeContentBlockStop  MessagesStreamEventType = "content_block_stop"
+)
+
+// MessagesStreamEventMessageStart represents the message content in a "message_start".
+type MessagesStreamEventMessageStart MessagesResponse
+
+// MessagesStreamEventMessageDelta represents the message content in a "message_delta".
+//
+// Note: the definition of this event is vague in the Anthropic documentation.
+// This follows the same code from their official SDK.
+// https://github.com/anthropics/anthropic-sdk-go/blob/3a0275d6034e4eda9fbc8366d8a5d8b3a462b4cc/message.go#L2424-L2451
+type MessagesStreamEventMessageDelta struct {
+	// Delta contains the delta information for the message.
+	// This is cumulative per documentation.
+	Usage Usage                                `json:"usage"`
+	Delta MessagesStreamEventMessageDeltaDelta `json:"delta"`
+}
+
+type MessagesStreamEventMessageDeltaDelta struct {
+	StopReason   StopReason `json:"stop_reason"`
+	StopSequence *string    `json:"stop_sequence,omitempty"`
+}
+
+func (m *MessagesStreamEvent) UnmarshalJSON(data []byte) error {
+	eventType := gjson.GetBytes(data, "type")
+	if !eventType.Exists() {
+		return fmt.Errorf("missing type field in stream event")
+	}
+	m.Type = MessagesStreamEventType(eventType.String())
+	switch m.Type {
+	case MessagesStreamEventTypeMessageStart:
+		messageBytes := gjson.GetBytes(data, "message")
+		r := strings.NewReader(messageBytes.Raw)
+		decoder := json.NewDecoder(r)
+		var message MessagesStreamEventMessageStart
+		if err := decoder.Decode(&message); err != nil {
+			return fmt.Errorf("failed to unmarshal message in stream event: %w", err)
+		}
+		m.MessageStart = &message
+	case MessagesStreamEventTypeMessageDelta:
+		var messageDelta MessagesStreamEventMessageDelta
+		if err := json.Unmarshal(data, &messageDelta); err != nil {
+			return fmt.Errorf("failed to unmarshal message delta in stream event: %w", err)
+		}
+		m.MessageDelta = &messageDelta
+	default:
+		// TODO: handle other event types if needed.
+	}
+	return nil
+}
