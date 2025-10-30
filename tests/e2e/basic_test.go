@@ -90,7 +90,7 @@ func Test_Examples_Basic(t *testing.T) {
 				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 				defer cancel()
 
-				client := coherev2client.NewClient(cohereoption.WithBaseURL(fwd.Address()), cohereoption.WithToken("dummy"))
+				client := coherev2client.NewClient(cohereoption.WithBaseURL(fwd.Address()+"/cohere"), cohereoption.WithToken("dummy"))
 				topN := 2
 				req := &cohere.V2RerankRequest{
 					Model: "rerank-english-v3.0",

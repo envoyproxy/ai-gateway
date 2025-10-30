@@ -59,7 +59,7 @@ func Test_rerankProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		headers := map[string]string{":path": "/v2/rerank"}
+		headers := map[string]string{":path": "/cohere/v2/rerank"}
 		p := &rerankProcessorRouterFilter{
 			config:         &processorConfig{},
 			requestHeaders: headers,
@@ -74,13 +74,13 @@ func Test_rerankProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 		require.Equal(t, internalapi.ModelNameHeaderKeyDefault, setHeaders[0].Header.Key)
 		require.Equal(t, "rerank-english-v3", string(setHeaders[0].Header.RawValue))
 		require.Equal(t, originalPathHeader, setHeaders[1].Header.Key)
-		require.Equal(t, "/v2/rerank", string(setHeaders[1].Header.RawValue))
+		require.Equal(t, "/cohere/v2/rerank", string(setHeaders[1].Header.RawValue))
 	})
 }
 
 func Test_rerankProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
 	t.Run("translator error", func(t *testing.T) {
-		headers := map[string]string{":path": "/v2/rerank", internalapi.ModelNameHeaderKeyDefault: "rerank-english-v3"}
+		headers := map[string]string{":path": "/cohere/v2/rerank", internalapi.ModelNameHeaderKeyDefault: "rerank-english-v3"}
 		raw := rerankBodyFromModel("rerank-english-v3")
 		var body cohere.RerankV2Request
 		require.NoError(t, json.Unmarshal(raw, &body))
@@ -109,7 +109,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
 		raw := rerankBodyFromModel("rerank-english-v3")
 		var body cohere.RerankV2Request
 		require.NoError(t, json.Unmarshal(raw, &body))
-		headers := map[string]string{":path": "/v2/rerank", internalapi.ModelNameHeaderKeyDefault: "rerank-english-v3"}
+		headers := map[string]string{":path": "/cohere/v2/rerank", internalapi.ModelNameHeaderKeyDefault: "rerank-english-v3"}
 		headerMut := &extprocv3.HeaderMutation{SetHeaders: []*corev3.HeaderValueOption{{Header: &corev3.HeaderValue{Key: "foo", RawValue: []byte("bar")}}}}
 		bodyMut := &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: []byte("patched")}}
 		mt := &mockRerankTranslator{t: t, expRequestBody: &body, retHeaderMutation: headerMut, retBodyMutation: bodyMut}
@@ -142,7 +142,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessRequestHeaders_HeaderMutatorMerge
 	raw := rerankBodyFromModel("rerank-english-v3")
 	var body cohere.RerankV2Request
 	require.NoError(t, json.Unmarshal(raw, &body))
-	headers := map[string]string{":path": "/v2/rerank", "authorization": "Bearer xyz"}
+	headers := map[string]string{":path": "/cohere/v2/rerank", "authorization": "Bearer xyz"}
 	mt := &mockRerankTranslator{t: t, expRequestBody: &body}
 	mm := &mockRerankMetrics{}
 	mutCfg := &filterapi.HTTPHeaderMutation{
@@ -181,7 +181,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessRequestHeaders_AuthError(t *testi
 	raw := rerankBodyFromModel("rerank-english-v3")
 	var body cohere.RerankV2Request
 	require.NoError(t, json.Unmarshal(raw, &body))
-	headers := map[string]string{":path": "/v2/rerank", internalapi.ModelNameHeaderKeyDefault: "rerank-english-v3"}
+	headers := map[string]string{":path": "/cohere/v2/rerank", internalapi.ModelNameHeaderKeyDefault: "rerank-english-v3"}
 	mt := &mockRerankTranslator{t: t, expRequestBody: &body}
 	mm := &mockRerankMetrics{}
 	p := &rerankProcessorUpstreamFilter{
@@ -302,7 +302,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_MetadataError(t *tes
 }
 
 func Test_rerankProcessorUpstreamFilter_SetBackend_SupportedWithOverride(t *testing.T) {
-	headers := map[string]string{":path": "/v2/rerank"}
+	headers := map[string]string{":path": "/cohere/v2/rerank"}
 	mm := &mockRerankMetrics{}
 	p := &rerankProcessorUpstreamFilter{config: &processorConfig{}, requestHeaders: headers, logger: slog.Default(), metrics: mm}
 	rp := &rerankProcessorRouterFilter{requestHeaders: headers}
@@ -428,7 +428,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 }
 
 func Test_rerankProcessorUpstreamFilter_SetBackend(t *testing.T) {
-	headers := map[string]string{":path": "/v2/rerank"}
+	headers := map[string]string{":path": "/cohere/v2/rerank"}
 	mm := &mockRerankMetrics{}
 	p := &rerankProcessorUpstreamFilter{config: &processorConfig{}, requestHeaders: headers, logger: slog.Default(), metrics: mm}
 	err := p.SetBackend(t.Context(), &filterapi.Backend{Name: "some-backend", Schema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "vX"}}, nil, &rerankProcessorRouterFilter{})

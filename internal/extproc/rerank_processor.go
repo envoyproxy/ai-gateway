@@ -47,7 +47,7 @@ func RerankProcessorFactory(f metrics.RerankMetricsFactory) ProcessorFactory {
 	}
 }
 
-// rerankProcessorRouterFilter implements [Processor] for the Cohere `/v2/rerank` endpoint.
+// rerankProcessorRouterFilter implements [Processor] for the Cohere `/cohere/v2/rerank` endpoint.
 //
 // This is primarily used to select the route for the request based on the model name.
 type rerankProcessorRouterFilter struct {

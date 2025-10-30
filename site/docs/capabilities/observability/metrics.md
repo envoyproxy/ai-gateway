@@ -20,7 +20,7 @@ Metrics are collected for the following LLM endpoints:
 - **`/v1/chat/completions`** - Chat completions (streaming and non-streaming)
 - **`/v1/completions`** - Legacy text completions (streaming and non-streaming)
 - **`/v1/embeddings`** - Text embeddings
-- **`/v2/rerank`** - Rerank
+- **`/cohere/v2/rerank`** - Rerank
 - **`/anthropic/v1/messages`** - Anthropic messages (streaming and non-streaming)
 
 For example, the Envoy AI Gateway collects metrics such as:
@@ -36,7 +36,7 @@ Each metric comes with some default attributes such as:
   - `chat`: For `/v1/chat/completions` endpoint.
   - `completion`: For `/v1/completions` endpoint.
   - `embedding`: For `/v1/embeddings` endpoint.
-  - `rerank`: For `/v2/rerank` endpoint.
+  - `rerank`: For `/cohere/v2/rerank` endpoint.
   - `image_generation`: For `/v1/images/generations` endpoint.
   - `messages`: For `/anthropic/v1/messages` endpoint.
 - `gen_ai.original.model` - The original model name from the request body

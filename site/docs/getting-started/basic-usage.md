@@ -156,7 +156,7 @@ curl -H "Content-Type: application/json" \
             "Berlin is the capital of Germany."
         ]
     }' \
-  $GATEWAY_URL/v2/rerank
+  $GATEWAY_URL/cohere/v2/rerank
 ```
 
 :::tip
