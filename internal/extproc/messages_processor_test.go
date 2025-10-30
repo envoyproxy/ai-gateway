@@ -390,11 +390,11 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_ErrorRecordsFailure
 
 	mm := &mockChatCompletionMetrics{}
 	processor := &messagesProcessorUpstreamFilter{
-		config:         &processorConfig{},
-		requestHeaders: make(map[string]string),
-		logger:         slog.Default(),
-		metrics:        mm,
-		translator:     mockTranslator,
+		config:          &processorConfig{},
+		responseHeaders: map[string]string{":status": "200"},
+		logger:          slog.Default(),
+		metrics:         mm,
+		translator:      mockTranslator,
 	}
 
 	ctx := context.Background()
