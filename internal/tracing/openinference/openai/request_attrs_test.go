@@ -727,6 +727,77 @@ func TestBuildRequestAttributes(t *testing.T) {
 	}
 }
 
+func TestBuildResponsesRequestAttributes(t *testing.T) {
+	tests := []struct {
+		name          string
+		req           *openai.ResponseRequest
+		body          []byte
+		config        *openinference.TraceConfig
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name:   "model and inputs visible",
+			req:    &openai.ResponseRequest{Model: "gpt-test"},
+			body:   []byte(`{"prompt":"hello"}`),
+			config: &openinference.TraceConfig{HideInputs: false},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, "gpt-test"),
+				attribute.String(openinference.InputValue, `{"prompt":"hello"}`),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+			},
+		},
+		{
+			name:   "model present inputs hidden",
+			req:    &openai.ResponseRequest{Model: "gpt-test"},
+			body:   []byte(`{"prompt":"secret"}`),
+			config: &openinference.TraceConfig{HideInputs: true},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, "gpt-test"),
+				attribute.String(openinference.InputValue, openinference.RedactedValue),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+			},
+		},
+		{
+			name:   "no model inputs visible empty body",
+			req:    &openai.ResponseRequest{},
+			body:   []byte{},
+			config: &openinference.TraceConfig{HideInputs: false},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.InputValue, ""),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+			},
+		},
+		{
+			name:   "no model inputs hidden",
+			req:    &openai.ResponseRequest{},
+			body:   []byte(`ignored`),
+			config: &openinference.TraceConfig{HideInputs: true},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.InputValue, openinference.RedactedValue),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.config == nil {
+				tt.config = openinference.NewTraceConfig()
+			}
+			attrs := buildResponsesRequestAttributes(tt.req, tt.body, tt.config)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
+		})
+	}
+}
+
 func TestIsBase64URL(t *testing.T) {
 	tests := []struct {
 		name     string

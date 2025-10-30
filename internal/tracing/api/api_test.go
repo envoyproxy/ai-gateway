@@ -51,3 +51,29 @@ func TestNoopChatCompletionTracer(t *testing.T) {
 	require.Equal(t, &openai.ChatCompletionRequest{}, req)
 	require.Equal(t, []byte{'{', '}'}, reqBody)
 }
+
+func TestNoopResponsesTracer(t *testing.T) {
+	tracer := NoopResponsesTracer{}
+
+	readHeaders := map[string]string{}
+	writeHeaders := &extprocv3.HeaderMutation{}
+	req := &openai.ResponseRequest{}
+	reqBody := []byte{'{', '}'}
+
+	span := tracer.StartSpanAndInjectHeaders(
+		t.Context(),
+		readHeaders,
+		writeHeaders,
+		req,
+		reqBody,
+	)
+
+	// Noop tracer should return nil span.
+	require.Nil(t, span)
+
+	// No side effects expected.
+	require.Equal(t, map[string]string{}, readHeaders)
+	require.Equal(t, &extprocv3.HeaderMutation{}, writeHeaders)
+	require.Equal(t, &openai.ResponseRequest{}, req)
+	require.Equal(t, []byte{'{', '}'}, reqBody)
+}

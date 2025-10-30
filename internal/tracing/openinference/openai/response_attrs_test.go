@@ -446,3 +446,54 @@ func TestBuildCompletionResponseAttributes(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildResponsesResponseAttributes(t *testing.T) {
+	tests := []struct {
+		name          string
+		resp          *openai.ResponseResponse
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name:          "empty response",
+			resp:          &openai.ResponseResponse{},
+			expectedAttrs: []attribute.KeyValue{},
+		},
+		{
+			name: "model only",
+			resp: &openai.ResponseResponse{Model: "gpt-test"},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.LLMModelName, "gpt-test"),
+			},
+		},
+		{
+			name:          "usage all zero",
+			resp:          &openai.ResponseResponse{Usage: &openai.ResponseUsage{InputTokens: 0, OutputTokens: 0, TotalTokens: 0}},
+			expectedAttrs: []attribute.KeyValue{},
+		},
+		{
+			name: "usage partial",
+			resp: &openai.ResponseResponse{Usage: &openai.ResponseUsage{InputTokens: 5, OutputTokens: 0, TotalTokens: 7}},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.Int(openinference.LLMTokenCountPrompt, 5),
+				attribute.Int(openinference.LLMTokenCountTotal, 7),
+			},
+		},
+		{
+			name: "full fields",
+			resp: &openai.ResponseResponse{Model: "gpt-full", Usage: &openai.ResponseUsage{InputTokens: 3, OutputTokens: 4, TotalTokens: 7}},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.LLMModelName, "gpt-full"),
+				attribute.Int(openinference.LLMTokenCountPrompt, 3),
+				attribute.Int(openinference.LLMTokenCountCompletion, 4),
+				attribute.Int(openinference.LLMTokenCountTotal, 7),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs := buildResponsesResponseAttributes(tt.resp, openinference.NewTraceConfig())
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
+		})
+	}
+}
