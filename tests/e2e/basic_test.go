@@ -102,9 +102,9 @@ func Test_Examples_Basic(t *testing.T) {
 					TopN: &topN,
 				}
 
-				resp, err := client.Rerank(ctx, req)
-				if err != nil {
-					return fmt.Errorf("cohere rerank error: %w", err)
+				resp, callErr := client.Rerank(ctx, req)
+				if callErr != nil {
+					return fmt.Errorf("cohere rerank error: %w", callErr)
 				}
 				if len(resp.Results) == 0 {
 					return errors.New("no rerank results returned")
