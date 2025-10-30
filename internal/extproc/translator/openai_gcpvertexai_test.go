@@ -907,7 +907,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
     ],
     "object": "chat.completion",
     "usage": {
-        "completion_tokens": 15,
+        "completion_tokens": 25,
         "completion_tokens_details": {
             "reasoning_tokens": 10
         },
