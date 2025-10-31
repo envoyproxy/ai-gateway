@@ -1552,6 +1552,14 @@ spec:
                                               Default: unlimited.
                                             pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
                                             type: string
+                                          maxStreamDuration:
+                                            description: |-
+                                              MaxStreamDuration is the maximum duration for a stream to complete. This timeout measures the time
+                                              from when the request is sent until the response stream is fully consumed and does not apply to
+                                              non-streaming requests.
+                                              When set to "0s", no max duration is applied and streams can run indefinitely.
+                                            pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                            type: string
                                           requestTimeout:
                                             description: RequestTimeout is the time
                                               until which entire response is received
@@ -1618,13 +1626,14 @@ spec:
                               If not specified, uses the default redirect URI "%REQ(x-forwarded-proto)%://%REQ(:authority)%/oauth2/callback"
                             type: string
                           refreshToken:
+                            default: true
                             description: |-
                               RefreshToken indicates whether the Envoy should automatically refresh the
                               id token and access token when they expire.
                               When set to true, the Envoy will use the refresh token to get a new id token
                               and access token when they expire.
 
-                              If not specified, defaults to false.
+                              If not specified, defaults to true.
                             type: boolean
                           resources:
                             description: |-
@@ -3089,6 +3098,14 @@ spec:
                                               Default: unlimited.
                                             pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
                                             type: string
+                                          maxStreamDuration:
+                                            description: |-
+                                              MaxStreamDuration is the maximum duration for a stream to complete. This timeout measures the time
+                                              from when the request is sent until the response stream is fully consumed and does not apply to
+                                              non-streaming requests.
+                                              When set to "0s", no max duration is applied and streams can run indefinitely.
+                                            pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                            type: string
                                           requestTimeout:
                                             description: RequestTimeout is the time
                                               until which entire response is received
@@ -3155,13 +3172,14 @@ spec:
                               If not specified, uses the default redirect URI "%REQ(x-forwarded-proto)%://%REQ(:authority)%/oauth2/callback"
                             type: string
                           refreshToken:
+                            default: true
                             description: |-
                               RefreshToken indicates whether the Envoy should automatically refresh the
                               id token and access token when they expire.
                               When set to true, the Envoy will use the refresh token to get a new id token
                               and access token when they expire.
 
-                              If not specified, defaults to false.
+                              If not specified, defaults to true.
                             type: boolean
                           resources:
                             description: |-
@@ -4611,6 +4629,14 @@ spec:
                                                   Default: unlimited.
                                                 pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
                                                 type: string
+                                              maxStreamDuration:
+                                                description: |-
+                                                  MaxStreamDuration is the maximum duration for a stream to complete. This timeout measures the time
+                                                  from when the request is sent until the response stream is fully consumed and does not apply to
+                                                  non-streaming requests.
+                                                  When set to "0s", no max duration is applied and streams can run indefinitely.
+                                                pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                                type: string
                                               requestTimeout:
                                                 description: RequestTimeout is the
                                                   time until which entire response
@@ -4679,13 +4705,14 @@ spec:
                                   If not specified, uses the default redirect URI "%REQ(x-forwarded-proto)%://%REQ(:authority)%/oauth2/callback"
                                 type: string
                               refreshToken:
+                                default: true
                                 description: |-
                                   RefreshToken indicates whether the Envoy should automatically refresh the
                                   id token and access token when they expire.
                                   When set to true, the Envoy will use the refresh token to get a new id token
                                   and access token when they expire.
 
-                                  If not specified, defaults to false.
+                                  If not specified, defaults to true.
                                 type: boolean
                               resources:
                                 description: |-
