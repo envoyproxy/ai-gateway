@@ -2305,3 +2305,585 @@ func TestChatCompletionToolChoiceUnion_MarshalUnmarshal(t *testing.T) {
 	require.Equal(t, unionObj.Value, namedChoice)
 	require.Equal(t, "my_func", namedChoice.Function.Name)
 }
+
+func TestResponseInputUnionUnmarshal(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		in     []byte
+		out    *ResponseInputUnion
+		expErr string
+	}{
+		{
+			name: "string input",
+			in:   []byte(`"This is a test"`),
+			out: &ResponseInputUnion{
+				Value: "This is a test",
+			},
+		},
+		{
+			name: "array of input items - simple message",
+			in: []byte(`[
+				{
+					"type": "message",
+					"role": "user",
+					"content": "Hello, how are you?"
+				}
+			]`),
+			out: &ResponseInputUnion{
+				Value: []ResponseInputItem{
+					{
+						Type:    "message",
+						Role:    "user",
+						Content: "Hello, how are you?",
+					},
+				},
+			},
+		},
+		{
+			name: "array of input items - function call output",
+			in: []byte(`[
+				{
+					"type": "function_call_output",
+					"call_id": "call_abc123",
+					"output": "The weather is sunny"
+				}
+			]`),
+			out: &ResponseInputUnion{
+				Value: []ResponseInputItem{
+					{
+						Type:   "function_call_output",
+						CallID: "call_abc123",
+						Output: "The weather is sunny",
+					},
+				},
+			},
+		},
+		{
+			name:   "invalid type",
+			in:     []byte(`123`),
+			expErr: "invalid input type",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var input ResponseInputUnion
+			err := json.Unmarshal(tc.in, &input)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			if !cmp.Equal(&input, tc.out) {
+				t.Errorf("ResponseInputUnion unmarshal, diff(got, expected) = %s\n", cmp.Diff(&input, tc.out))
+			}
+		})
+	}
+}
+
+func TestResponseInputUnionMarshal(t *testing.T) {
+	t.Run("string input", func(t *testing.T) {
+		input := ResponseInputUnion{
+			Value: "This is a test",
+		}
+		data, err := json.Marshal(input)
+		require.NoError(t, err)
+		require.JSONEq(t, `"This is a test"`, string(data))
+	})
+
+	t.Run("array input", func(t *testing.T) {
+		input := ResponseInputUnion{
+			Value: []ResponseInputItem{
+				{
+					Type:    "message",
+					Role:    "user",
+					Content: "Hello",
+				},
+			},
+		}
+		data, err := json.Marshal(input)
+		require.NoError(t, err)
+		require.Contains(t, string(data), `"type":"message"`)
+		require.Contains(t, string(data), `"role":"user"`)
+	})
+}
+
+func TestResponseRequestUnmarshal(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		in     []byte
+		out    *ResponseRequest
+		expErr string
+	}{
+		{
+			name: "basic request with string input",
+			in: []byte(`{
+				"model": "gpt-4o",
+				"input": "This is a test"
+			}`),
+			out: &ResponseRequest{
+				Model: "gpt-4o",
+				Input: ResponseInputUnion{
+					Value: "This is a test",
+				},
+			},
+		},
+		{
+			name: "request with array input and tools",
+			in: []byte(`{
+				"model": "gpt-4o",
+				"input": [
+					{
+						"type": "message",
+						"role": "user",
+						"content": "What's the weather?"
+					}
+				],
+				"tools": [
+					{
+						"type": "function",
+						"function": {
+							"name": "get_weather",
+							"description": "Get weather for a location"
+						}
+					}
+				]
+			}`),
+			out: &ResponseRequest{
+				Model: "gpt-4o",
+				Input: ResponseInputUnion{
+					Value: []ResponseInputItem{
+						{
+							Type:    "message",
+							Role:    "user",
+							Content: "What's the weather?",
+						},
+					},
+				},
+				Tools: []ResponseTool{
+					{
+						Type: "function",
+						Function: &ResponseToolFunction{
+							Name:        "get_weather",
+							Description: "Get weather for a location",
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "request with instructions and temperature",
+			in: []byte(`{
+				"model": "gpt-4o",
+				"input": "Explain quantum computing",
+				"instructions": "You are a helpful physics tutor",
+				"temperature": 0.7
+			}`),
+			out: &ResponseRequest{
+				Model: "gpt-4o",
+				Input: ResponseInputUnion{
+					Value: "Explain quantum computing",
+				},
+				Instructions: "You are a helpful physics tutor",
+				Temperature:  ptr.To(0.7),
+			},
+		},
+		{
+			name: "request with previous_response_id",
+			in: []byte(`{
+				"previous_response_id": "resp_abc123",
+				"input": "Continue the conversation"
+			}`),
+			out: &ResponseRequest{
+				PreviousResponseID: "resp_abc123",
+				Input: ResponseInputUnion{
+					Value: "Continue the conversation",
+				},
+			},
+		},
+		{
+			name: "request with reasoning configuration",
+			in: []byte(`{
+				"model": "o3-mini",
+				"input": "Solve this complex problem",
+				"reasoning": {
+					"effort": "high"
+				}
+			}`),
+			out: &ResponseRequest{
+				Model: "o3-mini",
+				Input: ResponseInputUnion{
+					Value: "Solve this complex problem",
+				},
+				Reasoning: &ResponseReasoning{
+					Effort: "high",
+				},
+			},
+		},
+		{
+			name: "request with code_interpreter tool",
+			in: []byte(`{
+				"model": "gpt-4.1",
+				"input": "Solve 3x + 11 = 14",
+				"tools": [
+					{
+						"type": "code_interpreter",
+						"container": {
+							"type": "auto"
+						}
+					}
+				]
+			}`),
+			out: &ResponseRequest{
+				Model: "gpt-4.1",
+				Input: ResponseInputUnion{
+					Value: "Solve 3x + 11 = 14",
+				},
+				Tools: []ResponseTool{
+					{
+						Type: "code_interpreter",
+						Container: &ResponseToolContainer{
+							Type: "auto",
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "request with MCP tool",
+			in: []byte(`{
+				"model": "gpt-4.1",
+				"input": "What is this repo?",
+				"tools": [
+					{
+						"type": "mcp",
+						"server_label": "github",
+						"server_url": "https://example.com/mcp",
+						"require_approval": "never"
+					}
+				]
+			}`),
+			out: &ResponseRequest{
+				Model: "gpt-4.1",
+				Input: ResponseInputUnion{
+					Value: "What is this repo?",
+				},
+				Tools: []ResponseTool{
+					{
+						Type:            "mcp",
+						ServerLabel:     "github",
+						ServerURL:       "https://example.com/mcp",
+						RequireApproval: "never",
+					},
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var req ResponseRequest
+			err := json.Unmarshal(tc.in, &req)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			if !cmp.Equal(&req, tc.out) {
+				t.Errorf("ResponseRequest unmarshal, diff(got, expected) = %s\n", cmp.Diff(&req, tc.out))
+			}
+		})
+	}
+}
+
+func TestResponseResponseUnmarshal(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		in     []byte
+		out    *ResponseResponse
+		expErr string
+	}{
+		{
+			name: "completed response with text output",
+			in: []byte(`{
+				"id": "resp_abc123",
+				"object": "response",
+				"created_at": 1741408624,
+				"model": "gpt-4o",
+				"status": "completed",
+				"output": [
+					{
+						"id": "msg_xyz789",
+						"type": "message",
+						"role": "assistant",
+						"content": "Hello! How can I help you today?"
+					}
+				],
+				"output_text": "Hello! How can I help you today?",
+				"usage": {
+					"input_tokens": 10,
+					"output_tokens": 20,
+					"total_tokens": 30
+				}
+			}`),
+			out: &ResponseResponse{
+				ID:        "resp_abc123",
+				Object:    "response",
+				CreatedAt: 1741408624,
+				Model:     "gpt-4o",
+				Status:    "completed",
+				Output: []ResponseOutputItem{
+					{
+						ID:      "msg_xyz789",
+						Type:    "message",
+						Role:    "assistant",
+						Content: "Hello! How can I help you today?",
+					},
+				},
+				OutputText: "Hello! How can I help you today?",
+				Usage: &ResponseUsage{
+					InputTokens:  10,
+					OutputTokens: 20,
+					TotalTokens:  30,
+				},
+			},
+		},
+		{
+			name: "response with function call",
+			in: []byte(`{
+				"id": "resp_def456",
+				"object": "response",
+				"created_at": 1741408625,
+				"model": "gpt-4o",
+				"status": "completed",
+				"output": [
+					{
+						"id": "call_123",
+						"type": "function_call",
+						"name": "get_weather",
+						"arguments": "{\"location\": \"San Francisco\"}",
+						"call_id": "call_123"
+					}
+				],
+				"usage": {
+					"input_tokens": 50,
+					"output_tokens": 15,
+					"total_tokens": 65
+				}
+			}`),
+			out: &ResponseResponse{
+				ID:        "resp_def456",
+				Object:    "response",
+				CreatedAt: 1741408625,
+				Model:     "gpt-4o",
+				Status:    "completed",
+				Output: []ResponseOutputItem{
+					{
+						ID:        "call_123",
+						Type:      "function_call",
+						Name:      "get_weather",
+						Arguments: "{\"location\": \"San Francisco\"}",
+						CallID:    "call_123",
+					},
+				},
+				Usage: &ResponseUsage{
+					InputTokens:  50,
+					OutputTokens: 15,
+					TotalTokens:  65,
+				},
+			},
+		},
+		{
+			name: "response with reasoning tokens",
+			in: []byte(`{
+				"id": "resp_ghi789",
+				"object": "response",
+				"created_at": 1741408626,
+				"model": "o3-mini",
+				"status": "completed",
+				"output": [
+					{
+						"type": "message",
+						"role": "assistant",
+						"content": "The answer is 42"
+					}
+				],
+				"usage": {
+					"input_tokens": 100,
+					"output_tokens": 50,
+					"total_tokens": 150,
+					"output_tokens_details": {
+						"reasoning_tokens": 30
+					}
+				},
+				"reasoning": {
+					"effort": "medium"
+				}
+			}`),
+			out: &ResponseResponse{
+				ID:        "resp_ghi789",
+				Object:    "response",
+				CreatedAt: 1741408626,
+				Model:     "o3-mini",
+				Status:    "completed",
+				Output: []ResponseOutputItem{
+					{
+						Type:    "message",
+						Role:    "assistant",
+						Content: "The answer is 42",
+					},
+				},
+				Usage: &ResponseUsage{
+					InputTokens:  100,
+					OutputTokens: 50,
+					TotalTokens:  150,
+					OutputTokensDetails: &ResponseTokensDetails{
+						ReasoningTokens: 30,
+					},
+				},
+				Reasoning: &ResponseReasoning{
+					Effort: "medium",
+				},
+			},
+		},
+		{
+			name: "failed response with error",
+			in: []byte(`{
+				"id": "resp_jkl012",
+				"object": "response",
+				"created_at": 1741408627,
+				"model": "gpt-4o",
+				"status": "failed",
+				"error": {
+					"code": "invalid_request",
+					"message": "The request was invalid"
+				}
+			}`),
+			out: &ResponseResponse{
+				ID:        "resp_jkl012",
+				Object:    "response",
+				CreatedAt: 1741408627,
+				Model:     "gpt-4o",
+				Status:    "failed",
+				Error: &ResponseError{
+					Code:    "invalid_request",
+					Message: "The request was invalid",
+				},
+			},
+		},
+		{
+			name: "incomplete response",
+			in: []byte(`{
+				"id": "resp_mno345",
+				"object": "response",
+				"created_at": 1741408628,
+				"model": "gpt-4o",
+				"status": "incomplete",
+				"output": [
+					{
+						"type": "message",
+						"role": "assistant",
+						"content": "Partial response..."
+					}
+				],
+				"incomplete_details": {
+					"reason": "max_output_tokens"
+				}
+			}`),
+			out: &ResponseResponse{
+				ID:        "resp_mno345",
+				Object:    "response",
+				CreatedAt: 1741408628,
+				Model:     "gpt-4o",
+				Status:    "incomplete",
+				Output: []ResponseOutputItem{
+					{
+						Type:    "message",
+						Role:    "assistant",
+						Content: "Partial response...",
+					},
+				},
+				IncompleteDetails: &ResponseIncompleteDetails{
+					Reason: "max_output_tokens",
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var resp ResponseResponse
+			err := json.Unmarshal(tc.in, &resp)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			if !cmp.Equal(&resp, tc.out) {
+				t.Errorf("ResponseResponse unmarshal, diff(got, expected) = %s\n", cmp.Diff(&resp, tc.out))
+			}
+		})
+	}
+}
+
+func TestResponseRequestMarshal(t *testing.T) {
+	t.Run("basic request", func(t *testing.T) {
+		req := ResponseRequest{
+			Model: "gpt-4o",
+			Input: ResponseInputUnion{
+				Value: "Hello, world!",
+			},
+			Temperature: ptr.To(0.7),
+		}
+		data, err := json.Marshal(req)
+		require.NoError(t, err)
+		require.Contains(t, string(data), `"model":"gpt-4o"`)
+		require.Contains(t, string(data), `"input":"Hello, world!"`)
+		require.Contains(t, string(data), `"temperature":0.7`)
+	})
+
+	t.Run("request with tools", func(t *testing.T) {
+		req := ResponseRequest{
+			Model: "gpt-4o",
+			Input: ResponseInputUnion{
+				Value: "What's the weather?",
+			},
+			Tools: []ResponseTool{
+				{
+					Type: "function",
+					Function: &ResponseToolFunction{
+						Name:        "get_weather",
+						Description: "Get current weather",
+					},
+				},
+			},
+		}
+		data, err := json.Marshal(req)
+		require.NoError(t, err)
+		require.Contains(t, string(data), `"type":"function"`)
+		require.Contains(t, string(data), `"name":"get_weather"`)
+	})
+}
+
+func TestResponseResponseMarshal(t *testing.T) {
+	t.Run("basic response", func(t *testing.T) {
+		resp := ResponseResponse{
+			ID:        "resp_123",
+			Object:    "response",
+			CreatedAt: 1741408624,
+			Model:     "gpt-4o",
+			Status:    "completed",
+			Output: []ResponseOutputItem{
+				{
+					Type:    "message",
+					Role:    "assistant",
+					Content: "Hello!",
+				},
+			},
+			Usage: &ResponseUsage{
+				InputTokens:  10,
+				OutputTokens: 5,
+				TotalTokens:  15,
+			},
+		}
+		data, err := json.Marshal(resp)
+		require.NoError(t, err)
+		require.Contains(t, string(data), `"id":"resp_123"`)
+		require.Contains(t, string(data), `"status":"completed"`)
+		require.Contains(t, string(data), `"input_tokens":10`)
+	})
+}

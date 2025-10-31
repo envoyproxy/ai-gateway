@@ -311,6 +311,37 @@ func TestNewTracingFromEnv_Exporter(t *testing.T) {
 	}
 }
 
+// TestResponsesTracer_Exporter verifies that the Responses tracer is wired up
+// and honors the same exporter behavior as other tracers.
+func TestResponsesTracer_Exporter(t *testing.T) {
+	// Just test 2 exporters to prove the SDK is wired up correctly for responses tracer.
+	for _, exporter := range []string{"console", "otlp"} {
+		t.Run(exporter, func(t *testing.T) {
+			t.Setenv("OTEL_TRACES_EXPORTER", exporter)
+
+			var stdout bytes.Buffer
+			collector, tracing := newTracingFromEnvForTest(t, &stdout)
+
+			// Create a test responses request to start a span.
+			req := &openai.ResponseRequest{Model: openai.ModelGPT5Nano}
+			span := tracing.ResponsesTracer().StartSpanAndInjectHeaders(t.Context(), nil, &extprocv3.HeaderMutation{}, req, nil)
+			require.NotNil(t, span, "expected responses span to be created")
+			span.EndSpan()
+
+			// Now, verify the actual ENV were honored.
+			v1Span := collector.TakeSpan()
+			switch exporter {
+			case "otlp":
+				require.NotNil(t, v1Span)
+				require.Empty(t, stdout)
+			case "console":
+				require.Nil(t, v1Span)
+				require.Contains(t, stdout.String(), "TraceID")
+			}
+		})
+	}
+}
+
 // TestNewTracingFromEnv_TracesSampler tests that the OTEL_TRACES_SAMPLER env
 // variable works.
 // See: https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_traces_sampler

@@ -31,6 +31,8 @@ type Tracing interface {
 	CompletionTracer() CompletionTracer
 	// EmbeddingsTracer creates spans for OpenAI embeddings requests on /embeddings endpoint.
 	EmbeddingsTracer() EmbeddingsTracer
+	// ResponsesTracer creates spans for OpenAI responses requests on /v1/responses endpoint.
+	ResponsesTracer() ResponsesTracer
 	// MCPTracer creates spans for MCP requests.
 	MCPTracer() MCPTracer
 	// Shutdown shuts down the tracer, flushing any buffered spans.
@@ -74,6 +76,11 @@ func (NoopTracing) EmbeddingsTracer() EmbeddingsTracer {
 // ImageGenerationTracer implements Tracing.ImageGenerationTracer.
 func (NoopTracing) ImageGenerationTracer() ImageGenerationTracer {
 	return NoopImageGenerationTracer{}
+}
+
+// ResponsesTracer implements Tracing.ResponsesTracer.
+func (NoopTracing) ResponsesTracer() ResponsesTracer {
+	return NoopResponsesTracer{}
 }
 
 // Shutdown implements Tracing.Shutdown.
@@ -348,5 +355,75 @@ type NoopEmbeddingsTracer struct{}
 
 // StartSpanAndInjectHeaders implements EmbeddingsTracer.StartSpanAndInjectHeaders.
 func (NoopEmbeddingsTracer) StartSpanAndInjectHeaders(context.Context, map[string]string, *extprocv3.HeaderMutation, *openai.EmbeddingRequest, []byte) EmbeddingsSpan {
+	return nil
+}
+
+// ResponsesTracer creates spans for OpenAI responses requests.
+type ResponsesTracer interface {
+	// StartSpanAndInjectHeaders starts a span and injects trace context into
+	// the header mutation.
+	//
+	// Parameters:
+	//   - ctx: might include a parent span context.
+	//   - headers: Incoming HTTP headers used to extract parent trace context.
+	//   - headerMutation: The new Responses Span will have its context
+	//     written to these headers unless NoopTracing is used.
+	//   - req: The OpenAI responses request. Used to record request attributes.
+	//   - body: contains the original raw request body as a byte slice.
+	//
+	// Returns nil unless the span is sampled.
+	StartSpanAndInjectHeaders(ctx context.Context, headers map[string]string, headerMutation *extprocv3.HeaderMutation, req *openai.ResponseRequest, body []byte) ResponsesSpan
+}
+
+// ResponsesSpan represents an OpenAI responses request.
+type ResponsesSpan interface {
+	// RecordResponse records the response attributes to the span.
+	RecordResponse(resp *openai.ResponseResponse)
+
+	// EndSpanOnError finalizes and ends the span with an error status.
+	EndSpanOnError(statusCode int, body []byte)
+
+	// RecordResponseChunk records a response.completed chunk to the span for streaming response.
+	RecordResponseChunk(resp *openai.ResponseCompletedEvent)
+
+	// EndSpan finalizes and ends the span.
+	EndSpan()
+}
+
+// ResponsesRecorder records attributes to a span according to a semantic
+// convention.
+type ResponsesRecorder interface {
+	// StartParams returns the name and options to start the span with.
+	//
+	// Parameters:
+	//   - req: contains the responses request
+	//   - body: contains the complete request body.
+	//
+	// Note: Do not do any expensive data conversions as the span might not be
+	// sampled.
+	StartParams(req *openai.ResponseRequest, body []byte) (spanName string, opts []trace.SpanStartOption)
+
+	// RecordRequest records request attributes to the span.
+	//
+	// Parameters:
+	//   - req: contains the responses request
+	//   - body: contains the complete request body.
+	RecordRequest(span trace.Span, req *openai.ResponseRequest, body []byte)
+
+	// RecordResponse records response attributes to the span.
+	RecordResponse(span trace.Span, resp *openai.ResponseResponse)
+
+	// RecordResponseChunk records response.completed chunk attributes to the span for streaming response.
+	RecordResponseChunk(span trace.Span, chunk *openai.ResponseCompletedEvent)
+
+	// RecordResponseOnError ends recording the span with an error status.
+	RecordResponseOnError(span trace.Span, statusCode int, body []byte)
+}
+
+// NoopResponsesTracer is a ResponsesTracer that doesn't do anything.
+type NoopResponsesTracer struct{}
+
+// StartSpanAndInjectHeaders implements ResponsesTracer.StartSpanAndInjectHeaders.
+func (NoopResponsesTracer) StartSpanAndInjectHeaders(context.Context, map[string]string, *extprocv3.HeaderMutation, *openai.ResponseRequest, []byte) ResponsesSpan {
 	return nil
 }

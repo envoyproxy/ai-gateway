@@ -168,6 +168,56 @@ type OpenAICompletionTranslator interface {
 	ResponseError(respHeaders map[string]string, body io.Reader) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error)
 }
 
+// OpenAIResponsesTranslator translates the request and response messages between the client and the backend API schemas
+// for /v1/responses endpoint of OpenAI.
+//
+// This is created per request and is not thread-safe.
+type OpenAIResponsesTranslator interface {
+	// RequestBody translates the request body.
+	// 	- `raw` is the raw request body.
+	// 	- `body` is the request body parsed into the [openai.ResponseRequest].
+	//	- `forceBodyMutation` is true if the translator should always mutate the body, even if no changes are made.
+	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
+	RequestBody(raw []byte, body *openai.ResponseRequest, forceBodyMutation bool) (
+		headerMutation *extprocv3.HeaderMutation,
+		bodyMutation *extprocv3.BodyMutation,
+		err error,
+	)
+
+	// ResponseHeaders translates the response headers.
+	// 	- `headers` is the response headers.
+	//	- This returns `headerMutation` that can be nil to indicate no mutation.
+	ResponseHeaders(headers map[string]string) (
+		headerMutation *extprocv3.HeaderMutation,
+		err error,
+	)
+
+	// ResponseBody translates the response body. When stream=true, this is called for each chunk of the response body.
+	// 	- `headers` is the response headers.
+	// 	- `body` is the response body either chunk or the entire body, depending on the context..
+	// 	- `endOfStream` is true if this is the last chunk of the response body.
+	//  - `span` is the tracing span for responses.
+	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation,
+	//	  along with token usage information and the response model name (may differ from request model).
+	ResponseBody(headers map[string]string, body io.Reader, endOfStream bool, span tracing.ResponsesSpan) (
+		headerMutation *extprocv3.HeaderMutation,
+		bodyMutation *extprocv3.BodyMutation,
+		tokenUsage LLMTokenUsage,
+		responseModel internalapi.ResponseModel,
+		err error,
+	)
+
+	// ResponseError translates the response error.
+	// 	- `respHeaders` is the response headers.
+	// 	- `body` is the response body.
+	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
+	ResponseError(respHeaders map[string]string, body io.Reader) (
+		headerMutation *extprocv3.HeaderMutation,
+		bodyMutation *extprocv3.BodyMutation,
+		err error,
+	)
+}
+
 // AnthropicMessagesTranslator translates the request and response messages between the client and the backend API schemas
 // for /v1/messages endpoint of Anthropic.
 //

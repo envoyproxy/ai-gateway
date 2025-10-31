@@ -169,3 +169,27 @@ func buildCompletionResponseAttributes(resp *openai.CompletionResponse, config *
 
 	return attrs
 }
+
+// buildResponsesResponseAttributes builds OpenTelemetry attributes for responses responses.
+func buildResponsesResponseAttributes(resp *openai.ResponseResponse, _ *openinference.TraceConfig) []attribute.KeyValue {
+	var attrs []attribute.KeyValue
+
+	if resp.Model != "" {
+		attrs = append(attrs, attribute.String(openinference.LLMModelName, resp.Model))
+	}
+
+	// Add token usage if available
+	if resp.Usage != nil {
+		if resp.Usage.InputTokens > 0 {
+			attrs = append(attrs, attribute.Int(openinference.LLMTokenCountPrompt, resp.Usage.InputTokens))
+		}
+		if resp.Usage.OutputTokens > 0 {
+			attrs = append(attrs, attribute.Int(openinference.LLMTokenCountCompletion, resp.Usage.OutputTokens))
+		}
+		if resp.Usage.TotalTokens > 0 {
+			attrs = append(attrs, attribute.Int(openinference.LLMTokenCountTotal, resp.Usage.TotalTokens))
+		}
+	}
+
+	return attrs
+}

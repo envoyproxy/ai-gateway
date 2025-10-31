@@ -1817,3 +1817,419 @@ type Usage struct {
 	// Only populated for /v1/chat/completions endpoint, not for /v1/completions.
 	PromptTokensDetails *PromptTokensDetails `json:"prompt_tokens_details,omitempty"` //nolint:tagliatelle //follow openai api
 }
+
+// ResponseRequest represents a request to the /v1/responses endpoint.
+// The Responses API is a stateful API that combines capabilities from chat completions and assistants.
+// Docs: https://platform.openai.com/docs/api-reference/responses/create
+type ResponseRequest struct {
+	// Input: The input to the model. Can be a string or an array of input items.
+	// Input items can be messages, files, images, function call outputs, etc.
+	// Either input or (input and model) or previous_response_id must be provided.
+	Input ResponseInputUnion `json:"input,omitempty"`
+
+	// Model: ID of the model to use.
+	// Required if not using previous_response_id.
+	Model string `json:"model,omitempty"`
+
+	// Instructions: System instructions for the model.
+	// These are prepended to the conversation and guide the model's behavior.
+	Instructions string `json:"instructions,omitzero"`
+
+	// Tools: A list of tools the model may call.
+	// Can include function, code_interpreter, web_search_preview, mcp, and image_generation tools.
+	Tools []ResponseTool `json:"tools,omitempty"`
+
+	// ToolChoice: Controls which (if any) tool is called by the model.
+	// Can be "none", "auto", "required", or a specific tool.
+	ToolChoice any `json:"tool_choice,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// ParallelToolCalls: Whether to enable parallel function calling during tool use.
+	ParallelToolCalls *bool `json:"parallel_tool_calls,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// Temperature: What sampling temperature to use, between 0 and 2.
+	// Higher values like 0.8 will make the output more random,
+	// while lower values like 0.2 will make it more focused and deterministic.
+	Temperature *float64 `json:"temperature,omitempty"`
+
+	// TopP: An alternative to sampling with temperature, called nucleus sampling.
+	TopP *float64 `json:"top_p,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// MaxOutputTokens: The maximum number of tokens to generate in the response.
+	MaxOutputTokens *int `json:"max_output_tokens,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// Store: Whether to store the response.
+	// If true, the response can be retrieved later via GET /v1/responses/{response_id}.
+	// Default: true
+	Store *bool `json:"store,omitempty"`
+
+	// Metadata: Set of 16 key-value pairs that can be attached to the response.
+	// This can be useful for storing additional information about the response.
+	Metadata map[string]string `json:"metadata,omitempty"`
+
+	// PreviousResponseID: The ID of a previous response to continue from.
+	// When provided, the conversation context is automatically maintained.
+	PreviousResponseID string `json:"previous_response_id,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// Stream: If set, the response will be streamed back as server-sent events.
+	Stream bool `json:"stream,omitempty"`
+
+	// Background: If true, the response will be processed asynchronously.
+	// This is useful for long-running tasks with models like o3 and o1-pro.
+	Background bool `json:"background,omitempty"`
+
+	// Reasoning: Configuration for reasoning models.
+	Reasoning *ResponseReasoning `json:"reasoning,omitempty"`
+
+	// Truncation: Controls how the conversation is truncated if it exceeds the model's context window.
+	// Can be "disabled", "auto", or a custom truncation strategy.
+	Truncation string `json:"truncation,omitzero"`
+
+	// User: A unique identifier representing your end-user.
+	// This can help OpenAI to monitor and detect abuse.
+	User string `json:"user,omitzero"`
+
+	// ResponseFormat: An object specifying the format that the model must output.
+	// Similar to chat completions, but used in the context of responses.
+	ResponseFormat *ChatCompletionResponseFormatUnion `json:"response_format,omitempty"` //nolint:tagliatelle //follow openai api
+}
+
+// ResponseInputUnion represents the input field which can be:
+// - string: a simple text input
+// - []ResponseInputItem: an array of input items (messages, files, etc.)
+type ResponseInputUnion struct {
+	Value any
+}
+
+func (r *ResponseInputUnion) UnmarshalJSON(data []byte) error {
+	// Skip leading whitespace
+	idx, err := skipLeadingWhitespace("input", data, 0)
+	if err != nil {
+		return err
+	}
+
+	switch data[idx] {
+	case '"':
+		var str string
+		if err := json.Unmarshal(data, &str); err != nil {
+			return fmt.Errorf("cannot unmarshal input as string: %w", err)
+		}
+		r.Value = str
+		return nil
+	case '[':
+		var arr []ResponseInputItem
+		if err := json.Unmarshal(data, &arr); err != nil {
+			return fmt.Errorf("cannot unmarshal input as []ResponseInputItem: %w", err)
+		}
+		r.Value = arr
+		return nil
+	default:
+		return fmt.Errorf("invalid input type (must be string or array)")
+	}
+}
+
+func (r ResponseInputUnion) MarshalJSON() ([]byte, error) {
+	return json.Marshal(r.Value)
+}
+
+// ResponseInputItem represents a single input item in a response request.
+// Can be a message, file, image, function call output, etc.
+type ResponseInputItem struct {
+	// Type: The type of the input item.
+	// Can be "message", "function_call_output", "mcp_approval_response", etc.
+	Type string `json:"type"`
+
+	// Role: The role of the message (for message type).
+	// Can be "user", "assistant", "system", etc.
+	Role string `json:"role,omitzero"`
+
+	// Content: The content of the message (for message type).
+	// Can be a string or an array of content parts.
+	Content any `json:"content,omitempty"`
+
+	// CallID: The ID of the function call this output corresponds to (for function_call_output type).
+	CallID string `json:"call_id,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// Output: The output of the function call (for function_call_output type).
+	Output string `json:"output,omitzero"`
+
+	// ApprovalRequestID: The ID of the approval request (for mcp_approval_response type).
+	ApprovalRequestID string `json:"approval_request_id,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// Approve: Whether to approve the request (for mcp_approval_response type).
+	Approve bool `json:"approve,omitzero"`
+
+	// Additional fields for other input item types can be added as needed.
+}
+
+// ResponseTool represents a tool that can be used by the model.
+type ResponseTool struct {
+	// Type: The type of the tool.
+	// Can be "function", "code_interpreter", "web_search_preview", "mcp", "image_generation".
+	Type string `json:"type"`
+
+	// Function: The function definition (for function type).
+	Function *ResponseToolFunction `json:"function,omitempty"`
+
+	// Container: Container configuration (for code_interpreter type).
+	Container *ResponseToolContainer `json:"container,omitempty"`
+
+	// ServerLabel: Label for the MCP server (for mcp type).
+	ServerLabel string `json:"server_label,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// ServerURL: URL of the MCP server (for mcp type).
+	ServerURL string `json:"server_url,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// RequireApproval: Whether to require approval before calling the MCP server (for mcp type).
+	// Can be "always", "never", or "auto".
+	RequireApproval string `json:"require_approval,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// Headers: Custom headers for MCP server authentication (for mcp type).
+	Headers map[string]string `json:"headers,omitempty"`
+
+	// Additional fields for other tool types can be added as needed.
+}
+
+// ResponseToolFunction represents a function tool definition.
+type ResponseToolFunction struct {
+	// Name: The name of the function.
+	Name string `json:"name"`
+
+	// Description: A description of what the function does.
+	Description string `json:"description,omitzero"`
+
+	// Parameters: The parameters the function accepts, described as a JSON Schema object.
+	Parameters any `json:"parameters,omitempty"`
+
+	// Strict: Whether to enable strict schema adherence.
+	Strict *bool `json:"strict,omitempty"`
+}
+
+// ResponseToolContainer represents container configuration for code_interpreter.
+type ResponseToolContainer struct {
+	// Type: The type of container. Can be "auto" or specific container ID.
+	Type string `json:"type,omitzero"`
+
+	// FileIDs: List of file IDs to make available in the container.
+	FileIDs []string `json:"file_ids,omitempty"` //nolint:tagliatelle //follow openai api
+}
+
+// ResponseReasoning represents reasoning configuration for reasoning models.
+type ResponseReasoning struct {
+	// Effort: The reasoning effort level.
+	// Can be "minimal", "low", "medium", "high".
+	Effort string `json:"effort,omitzero"`
+
+	// Summary: Controls reasoning summary generation.
+	Summary string `json:"summary,omitzero"`
+}
+
+// ResponseResponse represents a response from the /v1/responses endpoint.
+// Docs: https://platform.openai.com/docs/api-reference/responses/object
+type ResponseResponse struct {
+	// ID: A unique identifier for the response.
+	ID string `json:"id,omitempty"`
+
+	// Object: The object type, which is always "response".
+	Object string `json:"object,omitempty"`
+
+	// CreatedAt: The Unix timestamp (in seconds) of when the response was created.
+	CreatedAt int64 `json:"created_at,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// Model: The model used for the response.
+	Model string `json:"model,omitempty"`
+
+	// Status: The status of the response.
+	// Can be "completed", "in_progress", "queued", "failed", "cancelled", "incomplete".
+	Status string `json:"status,omitempty"`
+
+	// Output: The output items generated by the model.
+	// Can include messages, function calls, code interpreter calls, etc.
+	Output []ResponseOutputItem `json:"output,omitempty"`
+
+	// OutputText: A convenience field containing just the text output from the response.
+	// This is a concatenation of all text output items.
+	OutputText string `json:"output_text,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// Usage: Token usage information for the response.
+	Usage *ResponseUsage `json:"usage,omitempty"`
+
+	// Metadata: The metadata provided in the request.
+	Metadata map[string]string `json:"metadata,omitempty"`
+
+	// PreviousResponseID: The ID of the previous response if this is a continuation.
+	PreviousResponseID string `json:"previous_response_id,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// Instructions: The instructions provided in the request.
+	Instructions string `json:"instructions,omitempty"`
+
+	// Temperature: The temperature used for generation.
+	Temperature *float64 `json:"temperature,omitempty"`
+
+	// TopP: The top_p value used for generation.
+	TopP *float64 `json:"top_p,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// MaxOutputTokens: The max_output_tokens limit used.
+	MaxOutputTokens *int `json:"max_output_tokens,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// Tools: The tools that were available to the model.
+	Tools []ResponseTool `json:"tools,omitempty"`
+
+	// ToolChoice: The tool_choice setting used.
+	ToolChoice any `json:"tool_choice,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// ParallelToolCalls: Whether parallel tool calls were enabled.
+	ParallelToolCalls *bool `json:"parallel_tool_calls,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// Reasoning: Reasoning configuration if applicable.
+	Reasoning *ResponseReasoning `json:"reasoning,omitempty"`
+
+	// Truncation: The truncation strategy used.
+	Truncation string `json:"truncation,omitempty"`
+
+	// User: The user identifier from the request.
+	User string `json:"user,omitempty"`
+
+	// Error: Error information if the response failed.
+	Error *ResponseError `json:"error,omitempty"`
+
+	// IncompleteDetails: Details about why the response is incomplete (if status is "incomplete").
+	IncompleteDetails *ResponseIncompleteDetails `json:"incomplete_details,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// ServiceTier: The service tier used for processing the request.
+	ServiceTier string `json:"service_tier,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// Obfuscation: Random characters for payload size normalization (security feature).
+	Obfuscation string `json:"obfuscation,omitempty"`
+}
+
+// ResponseOutputItem represents a single output item from a response.
+type ResponseOutputItem struct {
+	// ID: Unique identifier for the output item.
+	ID string `json:"id,omitempty"`
+
+	// Type: The type of the output item.
+	// Can be "message", "function_call", "code_interpreter_call", "mcp_approval_request",
+	// "image_generation_call", etc.
+	Type string `json:"type"`
+
+	// Role: The role (for message type).
+	Role string `json:"role,omitzero"`
+
+	// Content: The content (for message type).
+	// Can be an array of content parts or a string.
+	Content any `json:"content,omitempty"`
+
+	// Status: The status of the output item.
+	Status string `json:"status,omitzero"`
+
+	// Name: The name of the function (for function_call type).
+	Name string `json:"name,omitzero"`
+
+	// Arguments: The arguments (for function_call type).
+	Arguments string `json:"arguments,omitzero"`
+
+	// CallID: The call ID (for function_call type).
+	CallID string `json:"call_id,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// Code: The code executed (for code_interpreter_call type).
+	Code string `json:"code,omitzero"`
+
+	// Outputs: The outputs from code execution (for code_interpreter_call type).
+	Outputs []ResponseCodeInterpreterOutput `json:"outputs,omitempty"`
+
+	// ContainerID: The container ID (for code_interpreter_call type).
+	ContainerID string `json:"container_id,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// ServerLabel: The MCP server label (for mcp_approval_request type).
+	ServerLabel string `json:"server_label,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// Result: The result (for image_generation_call type).
+	Result string `json:"result,omitzero"`
+
+	// Additional fields for other output types can be added as needed.
+}
+
+// ResponseCodeInterpreterOutput represents output from code interpreter execution.
+type ResponseCodeInterpreterOutput struct {
+	// Type: The type of output. Can be "logs", "image", "file", etc.
+	Type string `json:"type"`
+
+	// Logs: Log output (for logs type).
+	Logs string `json:"logs,omitzero"`
+
+	// Image: Image output (for image type).
+	Image *ResponseCodeInterpreterImage `json:"image,omitempty"`
+
+	// File: File output (for file type).
+	File *ResponseCodeInterpreterFile `json:"file,omitempty"`
+}
+
+// ResponseCodeInterpreterImage represents an image output from code interpreter.
+type ResponseCodeInterpreterImage struct {
+	// FileID: The file ID of the image.
+	FileID string `json:"file_id,omitempty"` //nolint:tagliatelle //follow openai api
+}
+
+// ResponseCodeInterpreterFile represents a file output from code interpreter.
+type ResponseCodeInterpreterFile struct {
+	// FileID: The file ID.
+	FileID string `json:"file_id,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// Filename: The filename.
+	Filename string `json:"filename,omitzero"`
+}
+
+// ResponseUsage represents token usage information for a response.
+type ResponseUsage struct {
+	// InputTokens: Number of tokens in the input.
+	InputTokens int `json:"input_tokens,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// OutputTokens: Number of tokens in the output.
+	OutputTokens int `json:"output_tokens,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// TotalTokens: Total number of tokens used.
+	TotalTokens int `json:"total_tokens,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// InputTokensDetails: Breakdown of input tokens.
+	InputTokensDetails *ResponseTokensDetails `json:"input_tokens_details,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// OutputTokensDetails: Breakdown of output tokens.
+	OutputTokensDetails *ResponseTokensDetails `json:"output_tokens_details,omitempty"` //nolint:tagliatelle //follow openai api
+}
+
+// ResponseTokensDetails represents detailed token usage breakdown.
+type ResponseTokensDetails struct {
+	// CachedTokens: Number of cached tokens.
+	CachedTokens int `json:"cached_tokens,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// ReasoningTokens: Number of reasoning tokens (for reasoning models).
+	ReasoningTokens int `json:"reasoning_tokens,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// AudioTokens: Number of audio tokens.
+	AudioTokens int `json:"audio_tokens,omitempty"` //nolint:tagliatelle //follow openai api
+}
+
+// ResponseError represents error information for a failed response.
+type ResponseError struct {
+	// Code: Error code.
+	Code string `json:"code,omitempty"`
+
+	// Message: Error message.
+	Message string `json:"message,omitempty"`
+}
+
+// ResponseIncompleteDetails represents details about an incomplete response.
+type ResponseIncompleteDetails struct {
+	// Reason: The reason the response is incomplete.
+	// Can be "max_output_tokens", "content_filter", etc.
+	Reason string `json:"reason,omitempty"`
+}
+
+// ResponseCompletedEvent represents a streaming chunk from the /v1/responses endpoint.
+type ResponseCompletedEvent struct {
+	// Properties of the completed response.
+	Response ResponseResponse `json:"response"`
+
+	// The type of the event. Always `response.completed`.
+	Type string `json:"type"`
+}
