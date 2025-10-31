@@ -30,14 +30,18 @@ func NewRerankCohereToCohereTranslator(apiVersion string, modelNameOverride inte
 // https://docs.cohere.com/reference/rerank
 type cohereToCohereTranslatorV2Rerank struct {
 	modelNameOverride internalapi.ModelNameOverride
+	// requestModel stores the effective model for this request (override or provided)
+	requestModel internalapi.RequestModel
 	// The path of the rerank endpoint to be used for the request. It is prefixed with the API path prefix.
 	path string
 }
 
 // RequestBody implements [CohereRerankTranslator.RequestBody].
-func (t *cohereToCohereTranslatorV2Rerank) RequestBody(original []byte, _ *cohereschema.RerankV2Request, onRetry bool) (
+func (t *cohereToCohereTranslatorV2Rerank) RequestBody(original []byte, req *cohereschema.RerankV2Request, onRetry bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
+	// Store the request model to use as fallback for response model
+	t.requestModel = req.Model
 	var newBody []byte
 	if t.modelNameOverride != "" {
 		// Override the model if configured.
@@ -45,6 +49,8 @@ func (t *cohereToCohereTranslatorV2Rerank) RequestBody(original []byte, _ *coher
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to set model name: %w", err)
 		}
+		// Make everything coherent.
+		t.requestModel = t.modelNameOverride
 	}
 
 	// Always set the path header to the rerank endpoint so that the request is routed correctly.
@@ -80,7 +86,7 @@ func (t *cohereToCohereTranslatorV2Rerank) ResponseBody(_ map[string]string, bod
 ) {
 	var resp cohereschema.RerankV2Response
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
-		return nil, nil, tokenUsage, "", fmt.Errorf("failed to unmarshal body: %w", err)
+		return nil, nil, tokenUsage, t.requestModel, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 
 	// Token accounting: rerank only has input tokens; output tokens do not apply.
@@ -96,8 +102,8 @@ func (t *cohereToCohereTranslatorV2Rerank) ResponseBody(_ map[string]string, bod
 		}
 	}
 
-	// Cohere rerank responses do not echo model; report empty responseModel.
-	responseModel = ""
+	// Cohere rerank responses do not echo model; report the effective request model if known.
+	responseModel = t.requestModel
 	return
 }
 

@@ -209,6 +209,7 @@ curl -H "Content-Type: application/json" \
 **Supported Providers:**
 
 - Cohere
+- Any Cohere-compatible provider that supports rerank, including vLLM.
 
 **Example:**
 

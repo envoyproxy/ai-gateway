@@ -160,6 +160,7 @@ func TestCohereToCohereTranslatorV2Rerank_ResponseBody(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			translator := NewRerankCohereToCohereTranslator("v2", "")
+			translator.(*cohereToCohereTranslatorV2Rerank).requestModel = "rerank-english-v3"
 			headerMutation, bodyMutation, tokenUsage, responseModel, err := translator.ResponseBody(
 				map[string]string{contentTypeHeaderName: jsonContentType},
 				strings.NewReader(tc.responseBody),
@@ -173,7 +174,7 @@ func TestCohereToCohereTranslatorV2Rerank_ResponseBody(t *testing.T) {
 
 			require.NoError(t, err)
 			require.Equal(t, tc.expTokenUsage, tokenUsage)
-			require.Empty(t, responseModel)
+			require.Equal(t, "rerank-english-v3", responseModel)
 			require.Nil(t, headerMutation)
 			require.Nil(t, bodyMutation)
 		})

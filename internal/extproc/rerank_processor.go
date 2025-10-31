@@ -317,9 +317,8 @@ func (r *rerankProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context,
 	r.costs.OutputTokens += tokenUsage.OutputTokens
 	r.costs.TotalTokens += tokenUsage.TotalTokens
 
-	// Set the response model for metrics from the model in response body or model name from request headers.
-	resModel := cmp.Or(responseModel, r.requestHeaders[internalapi.ModelNameHeaderKeyDefault])
-	r.metrics.SetResponseModel(resModel)
+	// Set the response model for metrics
+	r.metrics.SetResponseModel(responseModel)
 
 	// Update metrics with token usage (rerank records only input tokens in metrics package).
 	r.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, r.requestHeaders)
