@@ -86,7 +86,7 @@ func TestAIServiceBackends(t *testing.T) {
 		{name: "basic-eg-backend-azure.yaml"},
 		{
 			name:   "unknown_schema.yaml",
-			expErr: "spec.schema.name: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"AWSBedrock\"",
+			expErr: "spec.schema.name: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"Cohere\", \"AWSBedrock\", \"AzureOpenAI\", \"GCPVertexAI\", \"GCPAnthropic\", \"Anthropic\"",
 		},
 		{name: "k8s-svc.yaml", expErr: "BackendRef must be a Backend resource of Envoy Gateway"},
 	} {

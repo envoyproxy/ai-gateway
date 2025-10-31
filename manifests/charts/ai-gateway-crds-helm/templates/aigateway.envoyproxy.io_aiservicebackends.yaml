@@ -230,6 +230,7 @@ spec:
                       or AIServiceBackend.
                     enum:
                     - OpenAI
+                    - Cohere
                     - AWSBedrock
                     - AzureOpenAI
                     - GCPVertexAI
