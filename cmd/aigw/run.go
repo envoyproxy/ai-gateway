@@ -88,17 +88,6 @@ type runCmdContext struct {
 func run(ctx context.Context, c cmdRun, o *runOpts, stdout, stderr io.Writer) error {
 	start := time.Now()
 
-	// First, we need to create the self-signed certificates used for communication between the EG and Envoy.
-	// Certificates will be placed at ~/.config/envoy-gateway/certs, which is the default location used by Envoy Gateway.
-	certGenOut := &bytes.Buffer{}
-	certGen := root.GetRootCommand()
-	certGen.SetOut(certGenOut)
-	certGen.SetErr(certGenOut)
-	certGen.SetArgs([]string{"certgen", "--local"})
-	if err := certGen.ExecuteContext(ctx); err != nil {
-		return fmt.Errorf("failed to execute certgen: %w: %s", err, certGenOut.String())
-	}
-
 	// Create aigw log file in run directory
 	aigwLogFile, err := os.Create(o.logPath)
 	if err != nil {

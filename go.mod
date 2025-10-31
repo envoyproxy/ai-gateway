@@ -18,9 +18,9 @@ require (
 	github.com/cncf/xds/go v0.0.0-20250501225837-2ac532fd4443
 	github.com/coreos/go-oidc/v3 v3.16.0
 	github.com/docker/docker v28.5.1+incompatible
-	github.com/envoyproxy/gateway v1.6.0-rc.0.0.20251028174200-282c916a47e1
-	github.com/envoyproxy/go-control-plane v0.13.5-0.20250929230642-07d3df27ff4f
-	github.com/envoyproxy/go-control-plane/envoy v1.35.1-0.20250929230642-07d3df27ff4f
+	github.com/envoyproxy/gateway v1.6.0-rc.0.0.20251031112148-b10f1a288b45
+	github.com/envoyproxy/go-control-plane v0.13.5-0.20251029084203-42a4a9261f66
+	github.com/envoyproxy/go-control-plane/envoy v1.35.1-0.20251029084203-42a4a9261f66
 	github.com/go-logr/logr v1.4.3
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/google/cel-go v0.26.1
@@ -121,8 +121,8 @@ require (
 	github.com/dominikbraun/graph v0.23.0 // indirect
 	github.com/ebitengine/purego v0.9.0 // indirect
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
-	github.com/envoyproxy/go-control-plane/contrib v1.32.5-0.20250430092421-68a532e11403 // indirect
-	github.com/envoyproxy/go-control-plane/ratelimit v0.1.1-0.20250805143705-d51f8590a549 // indirect
+	github.com/envoyproxy/go-control-plane/contrib v1.32.5-0.20251029084203-42a4a9261f66 // indirect
+	github.com/envoyproxy/go-control-plane/ratelimit v0.1.1-0.20251029084203-42a4a9261f66 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.2.1 // indirect
 	github.com/envoyproxy/ratelimit v1.4.1-0.20230427142404-e2a87f41d3a7 // indirect
 	github.com/evanphx/json-patch v5.9.11+incompatible // indirect

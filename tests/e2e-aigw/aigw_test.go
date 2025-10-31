@@ -110,11 +110,6 @@ func startAIGWCLI(t *testing.T, aigwBin string, env []string, arg ...string) (ad
 		if _, err := cmd.Process.Wait(); err != nil {
 			t.Logf("Failed to wait for aigw process to exit: %v", err)
 		}
-
-		// Delete the hard-coded path to certs defined in Envoy AI Gateway
-		if err := os.RemoveAll("/tmp/envoy-gateway/certs"); err != nil {
-			t.Logf("Failed to delete envoy gateway certs: %v", err)
-		}
 	})
 
 	t.Logf("aigw process started with PID %d", cmd.Process.Pid)
