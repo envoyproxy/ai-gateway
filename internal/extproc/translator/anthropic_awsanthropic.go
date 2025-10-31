@@ -40,21 +40,24 @@ type anthropicToAWSAnthropicTranslator struct {
 func (a *anthropicToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *anthropicschema.MessagesRequest, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
-	a.stream = body.GetStream()
-	a.requestModel = cmp.Or(a.modelNameOverride, body.GetModel())
+	a.stream = body.Stream
+	a.requestModel = cmp.Or(a.modelNameOverride, body.Model)
 
 	var mutatedBody []byte
-	mutatedBody, err = sjson.SetBytes(rawBody, anthropicVersionKey, a.apiVersion)
+	mutatedBody, err = sjson.SetBytesOptions(rawBody, anthropicVersionKey, a.apiVersion, sjsonOptions)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to set anthropic_version field: %w", err)
 	}
 	// Remove the model field from the body as AWS Bedrock expects the model to be specified in the path.
 	// Otherwise, AWS complains "extra inputs are not permitted".
+	//
+	// Note: Do not operate on raw here, as that would mutate the original request body.
+	// Hence, we do the SetBytesOptions above to create mutatedBody first.
 	mutatedBody, _ = sjson.DeleteBytes(mutatedBody, "model")
 
 	// Determine the AWS Bedrock path based on whether streaming is requested.
 	var pathTemplate string
-	if body.GetStream() {
+	if body.Stream {
 		pathTemplate = "/model/%s/invoke-stream"
 	} else {
 		pathTemplate = "/model/%s/invoke"

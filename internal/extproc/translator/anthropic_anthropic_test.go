@@ -32,7 +32,7 @@ func TestAnthropicToAnthropic_RequestBody(t *testing.T) {
 		{
 			name:              "no mutation",
 			original:          []byte(`{"model":"claude-2","messages":[{"role":"user","content":"Hello!"}]}`),
-			body:              anthropicschema.MessagesRequest{"stream": false, "model": "claude-2"},
+			body:              anthropicschema.MessagesRequest{Stream: false, Model: "claude-2"},
 			forceBodyMutation: false,
 			modelNameOverride: "",
 			expRequestModel:   "claude-2",
@@ -41,7 +41,7 @@ func TestAnthropicToAnthropic_RequestBody(t *testing.T) {
 		{
 			name:              "model override",
 			original:          []byte(`{"model":"claude-2","messages":[{"role":"user","content":"Hello!"}], "stream": true}`),
-			body:              anthropicschema.MessagesRequest{"stream": true, "model": "claude-2"},
+			body:              anthropicschema.MessagesRequest{Stream: true, Model: "claude-2"},
 			forceBodyMutation: false,
 			modelNameOverride: "claude-100.1",
 			expRequestModel:   "claude-100.1",
@@ -54,7 +54,7 @@ func TestAnthropicToAnthropic_RequestBody(t *testing.T) {
 		{
 			name:              "force mutation",
 			original:          []byte(`{"model":"claude-2","messages":[{"role":"user","content":"Hello!"}]}`),
-			body:              anthropicschema.MessagesRequest{"stream": false, "model": "claude-2"},
+			body:              anthropicschema.MessagesRequest{Stream: false, Model: "claude-2"},
 			forceBodyMutation: true,
 			modelNameOverride: "",
 			expRequestModel:   "claude-2",
@@ -91,7 +91,7 @@ func TestAnthropicToAnthropic_RequestBody(t *testing.T) {
 			require.Equal(t, tc.expBodyMutation, bodyMutation)
 
 			require.Equal(t, tc.expRequestModel, translator.(*anthropicToAnthropicTranslator).requestModel)
-			require.Equal(t, tc.body.GetStream(), translator.(*anthropicToAnthropicTranslator).stream)
+			require.Equal(t, tc.body.Stream, translator.(*anthropicToAnthropicTranslator).stream)
 		})
 	}
 }
