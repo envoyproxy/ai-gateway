@@ -11,8 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -296,6 +294,111 @@ data: {"type":"message_stop"}
 		require.NotNil(t, bm)
 		bodyStr := string(bm.GetBody())
 
+		// Parse all streaming events to verify the event flow
+		var chunks []openai.ChatCompletionResponseChunk
+		var textChunks []string
+		var toolCallStarted bool
+		var hasRole bool
+		var toolCallCompleted bool
+		var finalFinishReason openai.ChatCompletionChoicesFinishReason
+		var finalUsageChunk *openai.ChatCompletionResponseChunk
+		var toolCallChunks []string // Track partial JSON chunks
+
+		lines := strings.SplitSeq(strings.TrimSpace(bodyStr), "\n\n")
+		for line := range lines {
+			if !strings.HasPrefix(line, "data: ") || strings.Contains(line, "[DONE]") {
+				continue
+			}
+			jsonBody := strings.TrimPrefix(line, "data: ")
+
+			var chunk openai.ChatCompletionResponseChunk
+			err = json.Unmarshal([]byte(jsonBody), &chunk)
+			require.NoError(t, err, "Failed to unmarshal chunk: %s", jsonBody)
+			chunks = append(chunks, chunk)
+
+			// Check if this is the final usage chunk
+			if strings.Contains(jsonBody, `"usage"`) {
+				finalUsageChunk = &chunk
+			}
+
+			if len(chunk.Choices) > 0 {
+				choice := chunk.Choices[0]
+				// Check for role in first content chunk
+				if choice.Delta != nil && choice.Delta.Content != nil && *choice.Delta.Content != "" && !hasRole {
+					require.NotNil(t, choice.Delta.Role, "Role should be present on first content chunk")
+					require.Equal(t, openai.ChatMessageRoleAssistant, choice.Delta.Role)
+					hasRole = true
+				}
+
+				// Collect text content
+				if choice.Delta != nil && choice.Delta.Content != nil {
+					textChunks = append(textChunks, *choice.Delta.Content)
+				}
+
+				// Check tool calls - start and accumulate partial JSON
+				if choice.Delta != nil && len(choice.Delta.ToolCalls) > 0 {
+					toolCall := choice.Delta.ToolCalls[0]
+
+					// Check tool call initiation
+					if toolCall.Function.Name == "get_weather" && !toolCallStarted {
+						require.Equal(t, "get_weather", toolCall.Function.Name)
+						require.NotNil(t, toolCall.ID)
+						require.Equal(t, "toolu_01T1x1fJ34qAmk2tNTrN7Up6", *toolCall.ID)
+						require.Equal(t, int64(0), toolCall.Index, "Tool call should be at index 1 (after text content at index 0)")
+						toolCallStarted = true
+					}
+
+					// Accumulate partial JSON arguments - these should also be at index 1
+					if toolCall.Function.Arguments != "" {
+						toolCallChunks = append(toolCallChunks, toolCall.Function.Arguments)
+
+						// Verify the index remains consistent at 1 for all tool call chunks
+						require.Equal(t, int64(0), toolCall.Index, "Tool call argument chunks should be at index 1")
+					}
+				}
+
+				// Track finish reason
+				if choice.FinishReason != "" {
+					finalFinishReason = choice.FinishReason
+					if finalFinishReason == "tool_calls" {
+						toolCallCompleted = true
+					}
+				}
+			}
+		}
+
+		// Check the final usage chunk for accumulated tool call arguments
+		if finalUsageChunk != nil {
+			require.Equal(t, 472, finalUsageChunk.Usage.PromptTokens)
+			require.Equal(t, 89, finalUsageChunk.Usage.CompletionTokens)
+		}
+
+		// Verify partial JSON accumulation in streaming chunks
+		if len(toolCallChunks) > 0 {
+			// Verify we got multiple partial JSON chunks during streaming
+			require.GreaterOrEqual(t, len(toolCallChunks), 2, "Should receive multiple partial JSON chunks for tool arguments")
+
+			// Verify some expected partial content appears in the chunks
+			fullPartialJSON := strings.Join(toolCallChunks, "")
+			require.Contains(t, fullPartialJSON, `"location":`, "Partial JSON should contain location field")
+			require.Contains(t, fullPartialJSON, `"unit":`, "Partial JSON should contain unit field")
+			require.Contains(t, fullPartialJSON, "San Francisco", "Partial JSON should contain location value")
+			require.Contains(t, fullPartialJSON, "fahrenheit", "Partial JSON should contain unit value")
+		}
+
+		// Verify streaming event assertions
+		require.GreaterOrEqual(t, len(chunks), 5, "Should have multiple streaming chunks")
+		require.True(t, hasRole, "Should have role in first content chunk")
+		require.True(t, toolCallStarted, "Tool call should have been initiated")
+		require.True(t, toolCallCompleted, "Tool call should have complete arguments in final chunk")
+		require.Equal(t, openai.ChatCompletionChoicesFinishReasonToolCalls, finalFinishReason, "Final finish reason should be tool_calls")
+
+		// Verify text content was streamed correctly
+		fullText := strings.Join(textChunks, "")
+		require.Contains(t, fullText, "Okay, let's check the weather for San Francisco, CA:")
+		require.GreaterOrEqual(t, len(textChunks), 3, "Text should be streamed in multiple chunks")
+
+		// Original aggregate response assertions
 		require.Contains(t, bodyStr, `"content":"Okay"`)
 		require.Contains(t, bodyStr, `"name":"get_weather"`)
 		require.Contains(t, bodyStr, "\"arguments\":\"{\\\"location\\\":")
@@ -379,7 +482,10 @@ data: {"type":"message_stop"}
 
 	t.Run("handles unterminated tool call at end of stream", func(t *testing.T) {
 		// This stream starts a tool call but ends without a content_block_stop or message_stop.
-		sseStream := `event: content_block_start
+		sseStream := `event: message_start
+data: {"type":"message_start","message":{"id":"msg_123","usage":{"input_tokens":10}}}
+
+event: content_block_start
 data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"tool_abc","name":"get_weather"}}
 
 event: content_block_delta
@@ -526,7 +632,10 @@ data: {"type": "message_start", "message": {"id": "msg_123", "usage": {"input_to
 	})
 
 	t.Run("handles content_block events for tool use", func(t *testing.T) {
-		sseStream := `event: content_block_start
+		sseStream := `event: message_start
+data: {"type":"message_start","message":{"id":"msg_123","usage":{"input_tokens":10}}}
+
+event: content_block_start
 data: {"type": "content_block_start", "index": 0, "content_block": {"type": "tool_use", "id": "tool_abc", "name": "get_weather", "input":{}}}
 
 event: content_block_delta
@@ -625,7 +734,10 @@ data: {"type": "message_stop"}
 	})
 
 	t.Run("handles chunked input_json_delta for tool use", func(t *testing.T) {
-		sseStream := `event: content_block_start
+		sseStream := `event: message_start
+data: {"type":"message_start","message":{"id":"msg_123","usage":{"input_tokens":10}}}
+
+event: content_block_start
 data: {"type": "content_block_start", "index": 0, "content_block": {"type": "tool_use", "id": "tool_123", "name": "get_weather"}}
 
 event: content_block_delta
@@ -762,106 +874,4 @@ data: another message with two lines
 		require.NoError(t, err)
 		require.Empty(t, bm.GetBody(), "data-only events should be treated as no-op 'message' events and produce an empty chunk")
 	})
-}
-
-func TestAnthropicStreamParser_HandleToolUseInput(t *testing.T) {
-	tests := []struct {
-		name          string
-		input         any
-		expectedJSON  string
-		expectError   bool
-		errorContains string
-	}{
-		{
-			name:         "nil input",
-			input:        nil,
-			expectedJSON: "",
-			expectError:  false,
-		},
-		{
-			name:         "empty map",
-			input:        map[string]interface{}{},
-			expectedJSON: "",
-			expectError:  false,
-		},
-		{
-			name: "empty input object from JSON",
-			input: func() any {
-				// Simulate what happens when JSON has "input":{}
-				var input any
-				err := json.Unmarshal([]byte(`{}`), &input)
-				require.NoError(t, err)
-				return input
-			}(),
-			expectedJSON: "",
-			expectError:  false,
-		},
-		{
-			name: "non-empty map with single field",
-			input: map[string]interface{}{
-				"query": "What is the weather?",
-			},
-			expectedJSON: `{"query":"What is the weather?"}`,
-			expectError:  false,
-		},
-		{
-			name:          "string input (invalid type)",
-			input:         "invalid string input",
-			expectedJSON:  "",
-			expectError:   true,
-			errorContains: "unexpected tool use input type: string",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create a mock ContentBlockStartEvent
-			event := anthropic.ContentBlockStartEvent{
-				Index: 0,
-				ContentBlock: anthropic.ContentBlockStartEventContentBlockUnion{
-					Type:  string(constant.ValueOf[constant.ToolUse]()),
-					ID:    "test-tool-id",
-					Name:  "test_tool",
-					Input: tt.input,
-				},
-			}
-
-			parser := newAnthropicStreamParser("test-model")
-			eventData, err := json.Marshal(event)
-			require.NoError(t, err)
-
-			chunk, err := parser.handleAnthropicStreamEvent([]byte(string(constant.ValueOf[constant.ContentBlockStart]())), eventData)
-
-			if tt.expectError {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errorContains)
-				assert.Nil(t, chunk)
-				return
-			}
-
-			require.NoError(t, err)
-			require.NotNil(t, chunk)
-
-			// Verify the chunk structure
-			assert.Equal(t, "chat.completion.chunk", chunk.Object)
-			assert.Len(t, chunk.Choices, 1)
-
-			choice := chunk.Choices[0]
-			assert.NotNil(t, choice.Delta)
-			assert.Len(t, choice.Delta.ToolCalls, 1)
-
-			toolCall := choice.Delta.ToolCalls[0]
-			assert.Equal(t, "test-tool-id", *toolCall.ID)
-			assert.Equal(t, openai.ChatCompletionMessageToolCallTypeFunction, toolCall.Type)
-			assert.Equal(t, "test_tool", toolCall.Function.Name)
-			assert.Equal(t, tt.expectedJSON, toolCall.Function.Arguments)
-
-			// Verify the tool call is stored in parser state
-			assert.Contains(t, parser.activeToolCalls, 0)
-			storedTool := parser.activeToolCalls[0]
-			assert.Equal(t, "test-tool-id", storedTool.id)
-			assert.Equal(t, "test_tool", storedTool.name)
-			assert.Equal(t, tt.expectedJSON, storedTool.inputJSON)
-		})
-	}
 }

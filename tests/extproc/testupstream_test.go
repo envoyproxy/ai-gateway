@@ -359,7 +359,7 @@ func TestWithTestUpstream(t *testing.T) {
 			expStatus: http.StatusOK,
 			expResponseBody: `data: {"choices":[{"index":0,"delta":{"content":"","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function"}]}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function"}]}}],"object":"chat.completion.chunk"}
 
 data: {"choices":[{"index":0,"delta":{"content":"Don","role":"assistant"}}],"object":"chat.completion.chunk"}
 
