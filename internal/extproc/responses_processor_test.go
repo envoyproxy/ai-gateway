@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -315,4 +316,152 @@ func Test_responsesProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	require.Equal(t, "ai_gateway_llm", p2.requestHeaders[internalapi.ModelNameHeaderKeyDefault])
 	require.True(t, p2.stream)
 	require.NotNil(t, p2.translator)
+}
+
+func Test_responsesProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
+	t.Run("ok sets header/body mutation and metrics", func(t *testing.T) {
+		// prepare translator to expect raw body and return header/body mutation
+		mt := &mockResponsesTranslator{t: t, expBody: []byte(`{"model":"m1"}`)}
+		expHeadMut := &extprocv3.HeaderMutation{
+			SetHeaders: []*corev3.HeaderValueOption{{Header: &corev3.HeaderValue{Key: "x-test", Value: "v"}}},
+		}
+		expBodyMut := &extprocv3.BodyMutation{}
+		mt.retHeaderMutation = expHeadMut
+		mt.retBodyMutation = expBodyMut
+
+		mm := &mockResponsesMetrics{}
+
+		// build upstream filter with original request body present (as router would set)
+		headers := map[string]string{":path": "/foo"}
+		p := &responsesProcessorUpstreamFilter{translator: mt, metrics: mm, requestHeaders: headers, config: &processorConfig{}}
+		p.originalRequestBodyRaw = []byte(`{"model":"m1"}`)
+		p.originalRequestBody = &openai.ResponseRequest{Model: "m1"}
+
+		res, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotNil(t, res)
+		rh := res.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response
+		require.Equal(t, expHeadMut, rh.HeaderMutation)
+		require.Equal(t, expBodyMut, rh.BodyMutation)
+		// metrics should have been started and models set
+		require.True(t, mm.started)
+		require.Equal(t, internalapi.OriginalModel("m1"), mm.originalModel)
+		require.Equal(t, internalapi.RequestModel("m1"), mm.requestModel)
+	})
+
+	t.Run("translator error records failure", func(t *testing.T) {
+		mt := &mockResponsesTranslator{t: t}
+		mt.retErr = errors.New("translate fail")
+		mm := &mockResponsesMetrics{}
+		// Ensure logger is non-nil so deferred error logging doesn't panic
+		p := &responsesProcessorUpstreamFilter{translator: mt, metrics: mm, requestHeaders: map[string]string{}, config: &processorConfig{}, logger: slog.Default()}
+		p.originalRequestBodyRaw = []byte(`{"model":"m1"}`)
+		p.originalRequestBody = &openai.ResponseRequest{Model: "m1"}
+
+		_, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.Error(t, err)
+		mm.RequireRequestFailure(t)
+	})
+}
+
+func Test_responsesProcessorUpstreamFilter_ProcessRequestBody_panics(t *testing.T) {
+	p := &responsesProcessorUpstreamFilter{}
+	require.Panics(t, func() {
+		_, _ = p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
+	})
+}
+
+// processorFunc is a lightweight test helper implementing Processor via function fields.
+type processorFunc struct {
+	processRequestHeadersFunc  func(context.Context, *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error)
+	processRequestBodyFunc     func(context.Context, *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error)
+	processResponseHeadersFunc func(context.Context, *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error)
+	processResponseBodyFunc    func(context.Context, *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error)
+	setBackendFunc             func(context.Context, *filterapi.Backend, backendauth.Handler, Processor) error
+}
+
+func (p processorFunc) ProcessRequestHeaders(ctx context.Context, h *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
+	if p.processRequestHeadersFunc != nil {
+		return p.processRequestHeadersFunc(ctx, h)
+	}
+	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}, nil
+}
+
+func (p processorFunc) ProcessRequestBody(ctx context.Context, b *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+	if p.processRequestBodyFunc != nil {
+		return p.processRequestBodyFunc(ctx, b)
+	}
+	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestBody{}}, nil
+}
+
+func (p processorFunc) ProcessResponseHeaders(ctx context.Context, h *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
+	if p.processResponseHeadersFunc != nil {
+		return p.processResponseHeadersFunc(ctx, h)
+	}
+	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{}}, nil
+}
+
+func (p processorFunc) ProcessResponseBody(ctx context.Context, b *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+	if p.processResponseBodyFunc != nil {
+		return p.processResponseBodyFunc(ctx, b)
+	}
+	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseBody{}}, nil
+}
+
+func (p processorFunc) SetBackend(ctx context.Context, be *filterapi.Backend, h backendauth.Handler, rp Processor) error {
+	if p.setBackendFunc != nil {
+		return p.setBackendFunc(ctx, be, h, rp)
+	}
+	return nil
+}
+
+func Test_responsesProcessorRouterFilter_ResponseDelegation(t *testing.T) {
+	t.Run("passThrough when upstreamFilter nil", func(t *testing.T) {
+		// router filter with nil upstreamFilter should delegate to passThroughProcessor
+		r := &responsesProcessorRouterFilter{}
+
+		// ProcessResponseHeaders should return a ResponseHeaders-type ProcessingResponse
+		hdrResp, err := r.ProcessResponseHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotNil(t, hdrResp)
+		_, ok := hdrResp.Response.(*extprocv3.ProcessingResponse_ResponseHeaders)
+		require.True(t, ok)
+
+		// ProcessResponseBody should return a ResponseBody-type ProcessingResponse
+		bodyResp, err := r.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{})
+		require.NoError(t, err)
+		require.NotNil(t, bodyResp)
+		_, ok = bodyResp.Response.(*extprocv3.ProcessingResponse_ResponseBody)
+		require.True(t, ok)
+	})
+
+	t.Run("delegates to upstreamFilter when set", func(t *testing.T) {
+		// Create a spy upstream filter that records calls and returns distinct responses
+		called := struct{ hdr, body bool }{}
+		// Replace methods via function values by wrapping an implementation of Processor
+		var upstream Processor = processorFunc{
+			processResponseHeadersFunc: func(context.Context, *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
+				called.hdr = true
+				return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{}}, nil
+			},
+			processResponseBodyFunc: func(context.Context, *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+				called.body = true
+				return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseBody{}}, nil
+			},
+		}
+
+		r := &responsesProcessorRouterFilter{upstreamFilter: upstream}
+
+		hdrResp, err := r.ProcessResponseHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.True(t, called.hdr)
+		_, ok := hdrResp.Response.(*extprocv3.ProcessingResponse_ResponseHeaders)
+		require.True(t, ok)
+
+		bodyResp, err := r.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{})
+		require.NoError(t, err)
+		require.True(t, called.body)
+		_, ok = bodyResp.Response.(*extprocv3.ProcessingResponse_ResponseBody)
+		require.True(t, ok)
+	})
 }
