@@ -184,6 +184,8 @@ jobs:
         include:
           - name: latest
             envoy_gateway_version: v0.0.0-latest
+          - name: v1.6.0-rc.1
+            envoy_gateway_version: v1.6.0-rc.1
           - name: v1.5.0
             envoy_gateway_version: v1.5.0
     steps:
@@ -244,7 +246,7 @@ jobs:
       - run: make test-e2e-upgrade
         env:
           # We only need to test the upgrade from the latest stable version of EG.
-          EG_VERSION: v1.5.0
+          EG_VERSION: v1.6.0.rc.1
           K8S_VERSION: ${{ matrix.k8s-version }}
 
   test_e2e_inference_extension:
@@ -272,6 +274,8 @@ jobs:
           key: e2e-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
       - uses: docker/setup-buildx-action@v3
       - run: make test-e2e-inference-extension
+        env:
+          EG_VERSION: v1.6.0.rc.1
 
   test_e2e_namespaced:
     needs: changes
@@ -301,7 +305,7 @@ jobs:
         env:
           # We only need to test with the latest stable version of EG, since these e2e tests
           # do not depend on the EG version.
-          EG_VERSION: v1.5.0
+          EG_VERSION: v1.6.0.rc.1
 
   test_e2e_aigw:
     needs: changes
