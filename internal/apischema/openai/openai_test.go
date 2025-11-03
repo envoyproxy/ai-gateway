@@ -1288,7 +1288,7 @@ func TestChatCompletionResponseChunkChoice(t *testing.T) {
 				Index: 0,
 				Delta: &ChatCompletionResponseChunkChoiceDelta{
 					Role: "assistant",
-					ToolCalls: []ChatCompletionMessageToolCallParam{
+					ToolCalls: []ChatCompletionChunkChoiceDeltaToolCall{
 						{
 							ID:   ptr.To("tooluse_QklrEHKjRu6Oc4BQUfy7ZQ"),
 							Type: "function",
@@ -1296,11 +1296,12 @@ func TestChatCompletionResponseChunkChoice(t *testing.T) {
 								Name:      "cosine",
 								Arguments: "",
 							},
+							Index: 0,
 						},
 					},
 				},
 			},
-			expected: `{"index":0,"delta":{"role":"assistant","tool_calls":[{"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function"}]}}`,
+			expected: `{"index":0,"delta":{"role":"assistant","tool_calls":[{"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function", "index": 0}]}}`,
 		},
 		{
 			name: "streaming chunk with annotations",

@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -65,18 +64,7 @@ func TestAnthropicToAWSAnthropicTranslator_RequestBody_ModelNameOverride(t *test
 		t.Run(tt.name, func(t *testing.T) {
 			translator := NewAnthropicToAWSAnthropicTranslator("bedrock-2023-05-31", tt.override)
 
-			// Create the request using map structure.
-			originalReq := &anthropicschema.MessagesRequest{
-				"model": tt.inputModel,
-				"messages": []anthropic.MessageParam{
-					{
-						Role: anthropic.MessageParamRoleUser,
-						Content: []anthropic.ContentBlockParamUnion{
-							anthropic.NewTextBlock("Hello"),
-						},
-					},
-				},
-			}
+			originalReq := &anthropicschema.MessagesRequest{Model: tt.inputModel}
 
 			rawBody, err := json.Marshal(originalReq)
 			require.NoError(t, err)
@@ -140,20 +128,10 @@ func TestAnthropicToAWSAnthropicTranslator_RequestBody_StreamingPaths(t *testing
 		t.Run(tt.name, func(t *testing.T) {
 			translator := NewAnthropicToAWSAnthropicTranslator("bedrock-2023-05-31", "")
 
-			parsedReq := &anthropicschema.MessagesRequest{
-				"model": "anthropic.claude-3-sonnet-20240229-v1:0",
-				"messages": []anthropic.MessageParam{
-					{
-						Role: anthropic.MessageParamRoleUser,
-						Content: []anthropic.ContentBlockParamUnion{
-							anthropic.NewTextBlock("Test"),
-						},
-					},
-				},
-			}
+			parsedReq := &anthropicschema.MessagesRequest{Model: "anthropic.claude-3-sonnet-20240229-v1:0"}
 			if tt.stream != nil {
 				if streamVal, ok := tt.stream.(bool); ok {
-					(*parsedReq)["stream"] = streamVal
+					parsedReq.Stream = streamVal
 				}
 			}
 
@@ -200,17 +178,7 @@ func TestAnthropicToAWSAnthropicTranslator_URLEncoding(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			translator := NewAnthropicToAWSAnthropicTranslator("bedrock-2023-05-31", "")
 
-			originalReq := &anthropicschema.MessagesRequest{
-				"model": tt.modelID,
-				"messages": []anthropic.MessageParam{
-					{
-						Role: anthropic.MessageParamRoleUser,
-						Content: []anthropic.ContentBlockParamUnion{
-							anthropic.NewTextBlock("Test"),
-						},
-					},
-				},
-			}
+			originalReq := &anthropicschema.MessagesRequest{Model: tt.modelID}
 
 			rawBody, err := json.Marshal(originalReq)
 			require.NoError(t, err)
