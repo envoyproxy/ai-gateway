@@ -7,7 +7,6 @@ package extensionserver
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	egextension "github.com/envoyproxy/gateway/proto/extension"
@@ -17,11 +16,9 @@ import (
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	listenerv3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
-	custom_responsev3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/custom_response/v3"
 	htomv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/header_to_metadata/v3"
 	routerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
 	httpconnectionmanagerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
-	local_response_policyv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/http/custom_response/local_response_policy/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -58,12 +55,6 @@ func (s *Server) maybeGenerateResourcesForMCPGateway(req *egextension.PostTransl
 
 	// Modify routes with mcp-gateway-generated annotation to use mcpproxy-cluster.
 	s.modifyMCPGatewayGeneratedCluster(req.Clusters)
-
-	// Modify OAuth custom response filters to add WWW-Authenticate headers.
-	// TODO: remove this step once Envoy Gateway supports this natively in the BackendTrafficPolicy ResponseOverride.
-	// https://github.com/envoyproxy/gateway/pull/6308
-	s.modifyMCPOAuthCustomResponseFilters(req.Listeners)
-
 	// TODO: remove this step once Envoy Gateway supports this natively in the BackendTrafficPolicy ResponseOverride.
 	// https://github.com/envoyproxy/gateway/pull/6308
 	s.modifyMCPOAuthCustomResponseRoute(req.Routes)
@@ -366,163 +357,6 @@ func (s *Server) isMCPOAuthCustomResponseFilter(filter *httpconnectionmanagerv3.
 	return strings.HasPrefix(filter.Name, "envoy.filters.http.custom_response/") &&
 		strings.Contains(filter.Name, internalapi.MCPGeneratedResourceCommonPrefix) &&
 		strings.HasSuffix(filter.Name, "-oauth-protected-resource-metadata")
-}
-
-// modifyMCPOAuthCustomResponseFilter modifies a CustomResponse filter to add WWW-Authenticate header
-// to the response_headers_to_add field in the LocalResponsePolicy.
-func (s *Server) modifyMCPOAuthCustomResponseFilter(filter *httpconnectionmanagerv3.HttpFilter) error {
-	// Unmarshal the CustomResponse configuration.
-	if filter.ConfigType == nil {
-		return fmt.Errorf("CustomResponse filter has no configuration")
-	}
-
-	typedConfig, ok := filter.ConfigType.(*httpconnectionmanagerv3.HttpFilter_TypedConfig)
-	if !ok {
-		return fmt.Errorf("CustomResponse filter configuration is not a TypedConfig")
-	}
-
-	var customResponse custom_responsev3.CustomResponse
-	if err := typedConfig.TypedConfig.UnmarshalTo(&customResponse); err != nil {
-		return fmt.Errorf("failed to unmarshal CustomResponse configuration: %w", err)
-	}
-
-	// Navigate to the LocalResponsePolicy within the matcher.
-	if customResponse.CustomResponseMatcher == nil {
-		return fmt.Errorf("CustomResponse filter has no matcher")
-	}
-
-	matcherList := customResponse.CustomResponseMatcher.GetMatcherList()
-	if matcherList == nil || len(matcherList.Matchers) == 0 {
-		return fmt.Errorf("CustomResponse filter has no matchers")
-	}
-
-	for _, matcher := range matcherList.Matchers {
-		if matcher.OnMatch == nil {
-			continue
-		}
-
-		action := matcher.OnMatch.GetAction()
-		if action == nil {
-			continue
-		}
-
-		// Check if this is a LocalResponsePolicy.
-		var localResponsePolicy local_response_policyv3.LocalResponsePolicy
-		if err := action.TypedConfig.UnmarshalTo(&localResponsePolicy); err != nil {
-			s.log.Info("Skipping non-LocalResponsePolicy action", "error", err.Error())
-			continue
-		}
-
-		// Extract WWW-Authenticate header value from the existing body.
-		// The current implementation stores the header value in the body field.
-		wwwAuthenticateValue := ""
-		if localResponsePolicy.BodyFormat != nil {
-			switch bodyFormat := localResponsePolicy.BodyFormat.Format.(type) {
-			case *corev3.SubstitutionFormatString_TextFormat:
-				wwwAuthenticateValue = bodyFormat.TextFormat
-			case *corev3.SubstitutionFormatString_TextFormatSource:
-				if source := bodyFormat.TextFormatSource; source != nil {
-					switch {
-					case source.GetFilename() != "":
-						content, err := os.ReadFile(source.GetFilename())
-						if err != nil {
-							s.log.Error(err, "reading WWW-Authenticate header value from CustomResponse bod")
-						}
-						wwwAuthenticateValue = string(content)
-					case source.GetEnvironmentVariable() != "":
-						wwwAuthenticateValue = os.Getenv(source.GetEnvironmentVariable())
-					case source.GetInlineBytes() != nil:
-						wwwAuthenticateValue = string(source.GetInlineBytes())
-					case source.GetInlineString() != "":
-						wwwAuthenticateValue = source.GetInlineString()
-					}
-				}
-			}
-		}
-
-		if wwwAuthenticateValue == "" {
-			s.log.Info("No WWW-Authenticate header value found in CustomResponse body")
-			continue
-		}
-
-		// Add the WWW-Authenticate header to response_headers_to_add.
-		wwwAuthHeader := &corev3.HeaderValueOption{
-			Header: &corev3.HeaderValue{
-				Key:   "WWW-Authenticate",
-				Value: wwwAuthenticateValue,
-			},
-			AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
-		}
-
-		// Check if header already exists to avoid duplicates.
-		headerExists := false
-		for _, existingHeader := range localResponsePolicy.ResponseHeadersToAdd {
-			if existingHeader.Header != nil && existingHeader.Header.Key == "WWW-Authenticate" {
-				headerExists = true
-				break
-			}
-		}
-
-		if !headerExists {
-			localResponsePolicy.ResponseHeadersToAdd = append(localResponsePolicy.ResponseHeadersToAdd, wwwAuthHeader)
-			localResponsePolicy.BodyFormat = nil // Clear body format as it's no longer needed.
-			s.log.Info("Added WWW-Authenticate header to CustomResponse filter", "filterName", filter.Name)
-		}
-
-		// Marshal the modified LocalResponsePolicy back.
-		action.TypedConfig = mustToAny(&localResponsePolicy)
-	}
-
-	// Marshal the modified CustomResponse configuration back.
-	typedConfig.TypedConfig = mustToAny(&customResponse)
-
-	return nil
-}
-
-// modifyMCPOAuthCustomResponseFilters finds and modifies OAuth custom response filters
-// in the original listeners to add WWW-Authenticate headers.
-func (s *Server) modifyMCPOAuthCustomResponseFilters(listeners []*listenerv3.Listener) {
-	for _, listener := range listeners {
-		// Skip the backend MCP listener if it already exists.
-		if listener.Name == mcpBackendListenerName {
-			continue
-		}
-
-		// Get filter chains from the listener.
-		filterChains := listener.GetFilterChains()
-		defaultFC := listener.DefaultFilterChain
-		if defaultFC != nil {
-			filterChains = append(filterChains, defaultFC)
-		}
-
-		// Go through all filter chains to find HTTP Connection Managers.
-		for _, chain := range filterChains {
-			httpConManager, hcmIndex, err := findHCM(chain)
-			if err != nil {
-				continue // Skip chains without HCM.
-			}
-
-			// Look for OAuth custom response filters and modify them in place.
-			modified := false
-			for _, filter := range httpConManager.HttpFilters {
-				if s.isMCPOAuthCustomResponseFilter(filter) {
-					s.log.Info("Found MCP OAuth CustomResponse filter, modifying in place", "filterName", filter.Name, "listener", listener.Name)
-					if err := s.modifyMCPOAuthCustomResponseFilter(filter); err != nil {
-						s.log.Error(err, "failed to modify MCP OAuth CustomResponse filter", "filterName", filter.Name)
-					} else {
-						modified = true
-					}
-				}
-			}
-
-			// If we modified any filters, update the HCM in the filter chain.
-			if modified {
-				chain.Filters[hcmIndex].ConfigType = &listenerv3.Filter_TypedConfig{
-					TypedConfig: mustToAny(httpConManager),
-				}
-			}
-		}
-	}
 }
 
 func (s *Server) modifyMCPOAuthCustomResponseRoute(routes []*routev3.RouteConfiguration) {

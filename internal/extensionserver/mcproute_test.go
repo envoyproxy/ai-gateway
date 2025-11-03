@@ -8,17 +8,13 @@ package extensionserver
 import (
 	"testing"
 
-	xdscorev3 "github.com/cncf/xds/go/xds/core/v3"
-	matcherv3 "github.com/cncf/xds/go/xds/type/matcher/v3"
 	accesslogv3 "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	listenerv3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
-	custom_responsev3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/custom_response/v3"
 	httpconnectionmanagerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
-	local_response_policyv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/http/custom_response/local_response_policy/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"github.com/go-logr/logr/testr"
 	"github.com/google/go-cmp/cmp"
@@ -509,132 +505,6 @@ func TestServer_extractMCPBackendFiltersFromMCPProxyListener(t *testing.T) {
 			filters, accessLogConfigs := s.extractMCPBackendFiltersFromMCPProxyListener(tt.listeners)
 			require.Empty(t, cmp.Diff(tt.expectedFilters, filters, protocmp.Transform()))
 			require.Empty(t, cmp.Diff(tt.expectedAccessLogs, accessLogConfigs, protocmp.Transform()))
-		})
-	}
-}
-
-func TestServer_modifyMCPOAuthCustomResponseFilters(t *testing.T) {
-	tests := []struct {
-		name              string
-		listeners         []*listenerv3.Listener
-		expectedListeners []*listenerv3.Listener
-	}{
-		{
-			name: "modifies OAuth filters",
-			listeners: []*listenerv3.Listener{
-				{
-					Name: "test-listener",
-					FilterChains: []*listenerv3.FilterChain{
-						{
-							Filters: []*listenerv3.Filter{
-								{
-									Name: wellknown.HTTPConnectionManager,
-									ConfigType: &listenerv3.Filter_TypedConfig{
-										TypedConfig: mustToAny(&httpconnectionmanagerv3.HttpConnectionManager{
-											StatPrefix: "http",
-											HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
-												{
-													Name: "envoy.filters.http.custom_response/" + internalapi.MCPGeneratedResourceCommonPrefix + "test-oauth-protected-resource-metadata",
-													ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
-														TypedConfig: mustToAny(&custom_responsev3.CustomResponse{
-															CustomResponseMatcher: &matcherv3.Matcher{
-																MatcherType: &matcherv3.Matcher_MatcherList_{
-																	MatcherList: &matcherv3.Matcher_MatcherList{
-																		Matchers: []*matcherv3.Matcher_MatcherList_FieldMatcher{
-																			{
-																				OnMatch: &matcherv3.Matcher_OnMatch{
-																					OnMatch: &matcherv3.Matcher_OnMatch_Action{
-																						Action: &xdscorev3.TypedExtensionConfig{
-																							TypedConfig: mustToAny(&local_response_policyv3.LocalResponsePolicy{
-																								BodyFormat: &corev3.SubstitutionFormatString{
-																									Format: &corev3.SubstitutionFormatString_TextFormat{
-																										TextFormat: "Bearer realm=\"test\"",
-																									},
-																								},
-																							}),
-																						},
-																					},
-																				},
-																			},
-																		},
-																	},
-																},
-															},
-														}),
-													},
-												},
-											},
-										}),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			expectedListeners: []*listenerv3.Listener{
-				{
-					Name: "test-listener",
-					FilterChains: []*listenerv3.FilterChain{
-						{
-							Filters: []*listenerv3.Filter{
-								{
-									Name: wellknown.HTTPConnectionManager,
-									ConfigType: &listenerv3.Filter_TypedConfig{
-										TypedConfig: mustToAny(&httpconnectionmanagerv3.HttpConnectionManager{
-											StatPrefix: "http",
-											HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
-												{
-													Name: "envoy.filters.http.custom_response/" + internalapi.MCPGeneratedResourceCommonPrefix + "test-oauth-protected-resource-metadata",
-													ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
-														TypedConfig: mustToAny(&custom_responsev3.CustomResponse{
-															CustomResponseMatcher: &matcherv3.Matcher{
-																MatcherType: &matcherv3.Matcher_MatcherList_{
-																	MatcherList: &matcherv3.Matcher_MatcherList{
-																		Matchers: []*matcherv3.Matcher_MatcherList_FieldMatcher{
-																			{
-																				OnMatch: &matcherv3.Matcher_OnMatch{
-																					OnMatch: &matcherv3.Matcher_OnMatch_Action{
-																						Action: &xdscorev3.TypedExtensionConfig{
-																							TypedConfig: mustToAny(&local_response_policyv3.LocalResponsePolicy{
-																								ResponseHeadersToAdd: []*corev3.HeaderValueOption{
-																									{
-																										Header: &corev3.HeaderValue{
-																											Key:   "WWW-Authenticate",
-																											Value: "Bearer realm=\"test\"",
-																										},
-																										AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
-																									},
-																								},
-																							}),
-																						},
-																					},
-																				},
-																			},
-																		},
-																	},
-																},
-															},
-														}),
-													},
-												},
-											},
-										}),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			s := &Server{log: testr.New(t)}
-			s.modifyMCPOAuthCustomResponseFilters(tt.listeners)
-			require.Empty(t, cmp.Diff(tt.expectedListeners, tt.listeners, protocmp.Transform()))
 		})
 	}
 }
