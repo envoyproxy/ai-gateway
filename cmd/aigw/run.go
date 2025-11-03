@@ -145,6 +145,10 @@ func run(ctx context.Context, c cmdRun, o *runOpts, stdout, stderr io.Writer) er
 		adminPort:                c.AdminPort,
 		extProcLauncher:          o.extProcLauncher,
 	}
+	// If any of the configured MCP servers is using stdio, set up the streamable HTTP proxies for them
+	if err = proxyStdioMCPServers(ctx, debugLogger, c.mcpConfig); err != nil {
+		return fmt.Errorf("failed to proxy stdio for MCP servers: %w", err)
+	}
 	aiGatewayResourcesYaml, err := readConfig(o.configPath, c.mcpConfig, c.Debug)
 	if err != nil {
 		return err
