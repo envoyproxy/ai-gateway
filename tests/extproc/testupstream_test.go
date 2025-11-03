@@ -340,7 +340,7 @@ func TestWithTestUpstream(t *testing.T) {
 			},
 		},
 		{
-			name:           "aws - /v1/chat/completions - streaming",
+			name:           "aws - /v1/chat/completions - streaming with tool use",
 			backend:        "aws-bedrock",
 			path:           "/v1/chat/completions",
 			responseType:   "aws-event-stream",
@@ -349,23 +349,35 @@ func TestWithTestUpstream(t *testing.T) {
 			expRequestBody: `{"inferenceConfig":{},"messages":[],"system":[{"text":"You are a chatbot."}]}`,
 			expPath:        "/model/something/converse-stream",
 			responseBody: `{"role":"assistant"}
+{"contentBlockIndex": 0, "delta":{"text":"Don"}}
+{"contentBlockIndex": 0, "delta":{"text":"'t worry,  I'm here to help. It"}}
+{"contentBlockIndex": 0, "delta":{"text":" seems like you're testing my ability to respond appropriately"}}
+{"contentBlockIndex": 0}
 {"start":{"toolUse":{"name":"cosine","toolUseId":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ"}}}
-{"delta":{"text":"Don"}}
-{"delta":{"text":"'t worry,  I'm here to help. It"}}
-{"delta":{"text":" seems like you're testing my ability to respond appropriately"}}
+{"contentBlockIndex": 1, "delta":{"toolUse": {"input": "{\"x\": \"17\"}"}}}
+{"contentBlockIndex": 1}
+{"start":{"toolUse":{"name":"sine","toolUseId":"tooluse_stream2"}}}
+{"contentBlockIndex": 2, "delta":{"toolUse": {"input": "{\"x\": \"17\"}"}}}
+{"contentBlockIndex": 2}
 {"stopReason":"tool_use"}
 {"usage":{"inputTokens":41, "outputTokens":36, "totalTokens":77}}
 `,
 			expStatus: http.StatusOK,
 			expResponseBody: `data: {"choices":[{"index":0,"delta":{"content":"","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function"}]}}],"object":"chat.completion.chunk"}
-
 data: {"choices":[{"index":0,"delta":{"content":"Don","role":"assistant"}}],"object":"chat.completion.chunk"}
 
 data: {"choices":[{"index":0,"delta":{"content":"'t worry,  I'm here to help. It","role":"assistant"}}],"object":"chat.completion.chunk"}
 
 data: {"choices":[{"index":0,"delta":{"content":" seems like you're testing my ability to respond appropriately","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function"}]}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":null,"function":{"arguments":"{\"x\": \"17\"}","name":""},"type":"function"}]}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":1,"id":"tooluse_stream2","function":{"arguments":"","name":"sine"},"type":"function"}]}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":1,"id":null,"function":{"arguments":"{\"x\": \"17\"}","name":""},"type":"function"}]}}],"object":"chat.completion.chunk"}
 
 data: {"choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls"}],"object":"chat.completion.chunk"}
 
