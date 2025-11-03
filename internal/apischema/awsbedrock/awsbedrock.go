@@ -403,9 +403,44 @@ type TokenUsage struct {
 	CacheWriteInputTokens *int `json:"cacheWriteInputTokens,omitempty"`
 }
 
+// ConverseStreamEventType represents a distinct event type received from the Bedrock ConverseStream API.
+// Using a string type provides a clear, human-readable value, which is often helpful
+// when logging or debugging stream events.
+type ConverseStreamEventType string
+
+const (
+	// ConverseStreamEventTypeUnknown is the zero value and represents an uninitialized or unknown event type.
+	// This is a Go best practice to ensure the zero value is not a valid constant.
+	ConverseStreamEventTypeUnknown ConverseStreamEventType = ""
+
+	// ConverseStreamEventTypeMessageStart signals the start of the assistant's message.
+	ConverseStreamEventTypeMessageStart ConverseStreamEventType = "messageStart"
+
+	// ConverseStreamEventTypeContentBlockStart signals the start of a content block within the message (e.g., text or tool use).
+	ConverseStreamEventTypeContentBlockStart ConverseStreamEventType = "contentBlockStart"
+
+	// ConverseStreamEventTypeContentBlockDelta contains a chunk of content (e.g., text or tool input).
+	ConverseStreamEventTypeContentBlockDelta ConverseStreamEventType = "contentBlockDelta"
+
+	// ConverseStreamEventTypeContentBlockStop signals the end of a content block.
+	ConverseStreamEventTypeContentBlockStop ConverseStreamEventType = "contentBlockStop"
+
+	// ConverseStreamEventTypeMessageStop signals the end of the entire message.
+	ConverseStreamEventTypeMessageStop ConverseStreamEventType = "messageStop"
+
+	// ConverseStreamEventTypeMetadata contains usage and latency information.
+	ConverseStreamEventTypeMetadata ConverseStreamEventType = "metadata"
+)
+
+// String implements the fmt.Stringer interface for better logging/printing.
+func (c ConverseStreamEventType) String() string {
+	return string(c)
+}
+
 // ConverseStreamEvent is the union of all possible event types in the AWS Bedrock API:
 // https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ConverseStream.html
 type ConverseStreamEvent struct {
+	EventType         string                                `json:"eventType"`
 	ContentBlockIndex int                                   `json:"contentBlockIndex,omitempty"`
 	Delta             *ConverseStreamEventContentBlockDelta `json:"delta,omitempty"`
 	Role              *string                               `json:"role,omitempty"`

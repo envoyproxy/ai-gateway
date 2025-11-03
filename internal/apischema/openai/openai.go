@@ -556,8 +556,6 @@ type ChatCompletionMessageToolCallFunctionParam struct {
 }
 
 type ChatCompletionMessageToolCallParam struct {
-	// Add this Index field. It is required for streaming.
-	Index *int `json:"index,omitempty"`
 	// The ID of the tool call.
 	ID *string `json:"id"`
 	// The function that the model called.
@@ -1362,14 +1360,24 @@ type ChatCompletionResponseChunkChoice struct {
 	FinishReason ChatCompletionChoicesFinishReason       `json:"finish_reason,omitempty"`
 }
 
+type ChatCompletionChunkChoiceDeltaToolCall struct {
+	Index int64 `json:"index"`
+	// The ID of the tool call.
+	ID *string `json:"id"`
+	// The function that the model called.
+	Function ChatCompletionMessageToolCallFunctionParam `json:"function"`
+	// The type of the tool. Currently, only `function` is supported.
+	Type ChatCompletionMessageToolCallType `json:"type,omitempty"`
+}
+
 // ChatCompletionResponseChunkChoiceDelta is described in the OpenAI API documentation:
 // https://platform.openai.com/docs/api-reference/chat/streaming#chat/streaming-choices
 type ChatCompletionResponseChunkChoiceDelta struct {
-	Content          *string                              `json:"content,omitempty"`
-	Role             string                               `json:"role,omitempty"`
-	ToolCalls        []ChatCompletionMessageToolCallParam `json:"tool_calls,omitempty"`
-	Annotations      *[]Annotation                        `json:"annotations,omitempty"`
-	ReasoningContent *AWSBedrockStreamReasoningContent    `json:"reasoning_content,omitempty"`
+	Content          *string                                  `json:"content,omitempty"`
+	Role             string                                   `json:"role,omitempty"`
+	ToolCalls        []ChatCompletionChunkChoiceDeltaToolCall `json:"tool_calls,omitempty"`
+	Annotations      *[]Annotation                            `json:"annotations,omitempty"`
+	ReasoningContent *AWSBedrockStreamReasoningContent        `json:"reasoning_content,omitempty"`
 }
 
 // Error is described in the OpenAI API documentation

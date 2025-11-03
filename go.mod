@@ -9,19 +9,19 @@ require (
 	github.com/a8m/envsubst v1.4.3
 	github.com/alecthomas/kong v1.12.1
 	github.com/andybalholm/brotli v1.2.0
-	github.com/anthropics/anthropic-sdk-go v1.14.0
-	github.com/aws/aws-sdk-go-v2 v1.39.4
+	github.com/anthropics/anthropic-sdk-go v1.16.0
+	github.com/aws/aws-sdk-go-v2 v1.39.5
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.2
-	github.com/aws/aws-sdk-go-v2/config v1.31.15
-	github.com/aws/aws-sdk-go-v2/service/sts v1.38.9
+	github.com/aws/aws-sdk-go-v2/config v1.31.16
+	github.com/aws/aws-sdk-go-v2/service/sts v1.39.0
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cncf/xds/go v0.0.0-20250501225837-2ac532fd4443
 	github.com/cohere-ai/cohere-go/v2 v2.15.3
 	github.com/coreos/go-oidc/v3 v3.16.0
 	github.com/docker/docker v28.5.1+incompatible
-	github.com/envoyproxy/gateway v1.6.0-rc.0.0.20251028174200-282c916a47e1
-	github.com/envoyproxy/go-control-plane v0.13.5-0.20250929230642-07d3df27ff4f
-	github.com/envoyproxy/go-control-plane/envoy v1.35.1-0.20250929230642-07d3df27ff4f
+	github.com/envoyproxy/gateway v1.6.0-rc.1
+	github.com/envoyproxy/go-control-plane v0.13.5-0.20251029084203-42a4a9261f66
+	github.com/envoyproxy/go-control-plane/envoy v1.35.1-0.20251029084203-42a4a9261f66
 	github.com/go-logr/logr v1.4.3
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/google/cel-go v0.26.1
@@ -33,7 +33,7 @@ require (
 	github.com/openai/openai-go/v2 v2.7.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
-	github.com/prometheus/common v0.67.1
+	github.com/prometheus/common v0.67.2
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.39.0
 	github.com/tetratelabs/func-e v1.3.0
@@ -56,8 +56,8 @@ require (
 	golang.org/x/oauth2 v0.32.0
 	golang.org/x/sync v0.17.0
 	golang.org/x/tools v0.38.0
-	google.golang.org/api v0.253.0
-	google.golang.org/genai v1.32.0
+	google.golang.org/api v0.254.0
+	google.golang.org/genai v1.33.0
 	google.golang.org/grpc v1.76.0
 	google.golang.org/protobuf v1.36.10
 	gopkg.in/dnaeon/go-vcr.v4 v4.0.5
@@ -88,15 +88,15 @@ require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/avast/retry-go v3.0.0+incompatible // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.18.19 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.11 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.11 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.11 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.18.20 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.12 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.12 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.12 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.2 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.11 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.29.8 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.3 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.12 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.30.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.4 // indirect
 	github.com/aws/smithy-go v1.23.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
@@ -122,8 +122,8 @@ require (
 	github.com/dominikbraun/graph v0.23.0 // indirect
 	github.com/ebitengine/purego v0.9.0 // indirect
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
-	github.com/envoyproxy/go-control-plane/contrib v1.32.5-0.20250430092421-68a532e11403 // indirect
-	github.com/envoyproxy/go-control-plane/ratelimit v0.1.1-0.20250805143705-d51f8590a549 // indirect
+	github.com/envoyproxy/go-control-plane/contrib v1.32.5-0.20251029084203-42a4a9261f66 // indirect
+	github.com/envoyproxy/go-control-plane/ratelimit v0.1.1-0.20251029084203-42a4a9261f66 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.2.1 // indirect
 	github.com/envoyproxy/ratelimit v1.4.1-0.20230427142404-e2a87f41d3a7 // indirect
 	github.com/evanphx/json-patch v5.9.11+incompatible // indirect
@@ -257,7 +257,7 @@ require (
 	golang.org/x/time v0.14.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.5.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250929231259-57b25ae835d4 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20251014184007-4626949a642f // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20251022142026-3a174f9686a8 // indirect
 	google.golang.org/grpc/security/advancedtls v1.0.0 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
