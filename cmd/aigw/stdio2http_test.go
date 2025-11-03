@@ -30,7 +30,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestStdio2HTTP(t *testing.T) {
-	// create a command to fork and exec the test binary as an
+	// create a command to fork and exec the test binary as an MCP server.
 	t.Setenv(runMCPTestServer, "true")
 	cmd, err := os.Executable()
 	require.NoError(t, err)
