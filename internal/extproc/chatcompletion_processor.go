@@ -21,6 +21,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -182,6 +183,7 @@ type chatCompletionProcessorUpstreamFilter struct {
 	backendName            string
 	handler                backendauth.Handler
 	headerMutator          *headermutator.HeaderMutator
+	bodyMutator            *bodymutator.BodyMutator
 	originalRequestBodyRaw []byte
 	originalRequestBody    *openai.ChatCompletionRequest
 	translator             translator.OpenAIChatCompletionTranslator
@@ -258,6 +260,21 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 		if hm := c.headerMutator.Mutate(c.requestHeaders, c.onRetry); hm != nil {
 			headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, hm.RemoveHeaders...)
 			headerMutation.SetHeaders = append(headerMutation.SetHeaders, hm.SetHeaders...)
+		}
+	}
+
+	// Apply body mutations from the route and also restore original body on retry.
+	if b := c.bodyMutator; b != nil {
+		if bodyMutation != nil && bodyMutation.GetBody() != nil && len(bodyMutation.GetBody()) > 0 {
+			// Apply body mutation to the already translated body
+			mutatedBody, err := c.bodyMutator.Mutate(bodyMutation.GetBody(), c.onRetry)
+			if err != nil {
+				c.logger.Warn("failed to apply body mutation", "error", err)
+				// Continue with original body on error
+			} else {
+				// Update the body mutation with the mutated body
+				bodyMutation.Mutation = &extprocv3.BodyMutation_Body{Body: mutatedBody}
+			}
 		}
 	}
 
@@ -458,6 +475,7 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	}
 	c.handler = backendHandler
 	c.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
+	c.bodyMutator = bodymutator.NewBodyMutator(b.BodyMutation, rp.originalRequestBodyRaw)
 	// Header-derived labels/CEL must be able to see the overridden request model.
 	if c.modelNameOverride != "" {
 		c.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = c.modelNameOverride

@@ -7,6 +7,7 @@ package extproc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -846,5 +847,152 @@ func TestMessagesProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *testi
 		require.Equal(t, "original-value", testHeaders["x-custom"])
 		// x-existing should be equal to existing-value from original headers.
 		require.Equal(t, "existing-value", testHeaders["x-existing"])
+	})
+}
+
+func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutations(t *testing.T) {
+	t.Run("body mutations applied correctly", func(t *testing.T) {
+		headers := map[string]string{
+			":path":         "/anthropic/v1/messages",
+			"x-ai-eg-model": "claude-3-sonnet",
+		}
+
+		// Create request body.
+		requestBody := &anthropicschema.MessagesRequest{
+			Model: "claude-3-sonnet",
+		}
+		requestBodyRaw := []byte(`{"model": "claude-3-sonnet", "service_tier": "default", "max_tokens": 1000, "messages": [{"role": "user", "content": [{"type": "text", "text": "Hello"}]}]}`)
+
+		// Create body mutations.
+		bodyMutations := &filterapi.HTTPBodyMutation{
+			Remove: []string{"internal_flag"},
+			Set: []filterapi.HTTPBodyField{
+				{Path: "service_tier", Value: "\"scale\""},
+				{Path: "max_tokens", Value: "2000"},
+			},
+		}
+
+		// Create mock translator that returns the original body (simulating no translation).
+		mockTranslator := mockAnthropicTranslator{
+			t:                           t,
+			expRequestBody:              requestBody,
+			expForceRequestBodyMutation: false,
+			retHeaderMutation:           &extprocv3.HeaderMutation{},
+			retBodyMutation:             &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: requestBodyRaw}}, // Return original body for mutation
+			retErr:                      nil,
+		}
+
+		// Create mock metrics.
+		chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
+
+		// Create processor.
+		p := &messagesProcessorUpstreamFilter{
+			config:              &processorConfig{},
+			requestHeaders:      headers,
+			logger:              slog.Default(),
+			metrics:             chatMetrics,
+			originalRequestBody: requestBody,
+			translator:          &mockTranslator,
+			handler:             &mockBackendAuthHandler{},
+		}
+
+		// Create backend with body mutations.
+		backend := &filterapi.Backend{
+			Name:         "test-backend",
+			Schema:       filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic},
+			BodyMutation: bodyMutations,
+		}
+
+		rp := &messagesProcessorRouterFilter{
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: requestBodyRaw,
+			requestHeaders:         headers,
+		}
+
+		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		require.NoError(t, err)
+
+		// Verify body mutator was created.
+		require.NotNil(t, p.bodyMutator)
+
+		// Test ProcessRequestHeaders which should apply body mutations.
+		ctx := context.Background()
+		response, err := p.ProcessRequestHeaders(ctx, nil)
+		require.NoError(t, err)
+		require.NotNil(t, response)
+
+		// Since the body mutation is applied within ProcessRequestHeaders via translator.RequestBody,
+		// we can't directly inspect the mutated body here. But we can verify that the mutator was set up correctly
+		// and test the mutator directly.
+		testBodyMutation := []byte(`{"model": "claude-3-sonnet", "service_tier": "default", "internal_flag": true, "max_tokens": 1000}`)
+		mutatedBody, err := p.bodyMutator.Mutate(testBodyMutation, false)
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(mutatedBody, &result)
+		require.NoError(t, err)
+
+		// Verify mutations were applied.
+		require.Equal(t, "scale", result["service_tier"])
+		require.Equal(t, float64(2000), result["max_tokens"])
+		require.NotContains(t, result, "internal_flag")
+		require.Equal(t, "claude-3-sonnet", result["model"])
+	})
+
+	t.Run("body mutator with retry", func(t *testing.T) {
+		headers := map[string]string{":path": "/anthropic/v1/messages"}
+		chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
+
+		originalRequestBodyRaw := []byte(`{"model": "claude-3-sonnet", "service_tier": "default"}`)
+		requestBody := &anthropicschema.MessagesRequest{Model: "claude-3-sonnet"}
+
+		p := &messagesProcessorUpstreamFilter{
+			config:              &processorConfig{},
+			requestHeaders:      headers,
+			logger:              slog.Default(),
+			metrics:             chatMetrics,
+			originalRequestBody: requestBody,
+		}
+
+		// Create backend with body mutations.
+		bodyMutations := &filterapi.HTTPBodyMutation{
+			Set: []filterapi.HTTPBodyField{
+				{Path: "service_tier", Value: "\"premium\""},
+			},
+		}
+
+		backend := &filterapi.Backend{
+			Name:         "test-backend",
+			Schema:       filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic},
+			BodyMutation: bodyMutations,
+		}
+
+		rp := &messagesProcessorRouterFilter{
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: originalRequestBodyRaw,
+			requestHeaders:         headers,
+			upstreamFilterCount:    2, // Simulate retry scenario
+		}
+
+		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		require.NoError(t, err)
+
+		// Verify body mutator was created.
+		require.NotNil(t, p.bodyMutator)
+		require.True(t, p.onRetry) // Should be set due to upstreamFilterCount > 1
+
+		// Test body mutation on retry - should restore original body first.
+		modifiedBody := []byte(`{"model": "claude-3-sonnet", "service_tier": "modified", "extra": "field"}`)
+		mutatedBody, err := p.bodyMutator.Mutate(modifiedBody, true)
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(mutatedBody, &result)
+		require.NoError(t, err)
+
+		// Should have mutation applied to original body, not the modified body.
+		require.Equal(t, "premium", result["service_tier"])
+		require.Equal(t, "claude-3-sonnet", result["model"])
+		require.NotContains(t, result, "extra") // Should not have extra field from modified body
 	})
 }

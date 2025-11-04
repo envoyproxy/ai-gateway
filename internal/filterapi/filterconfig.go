@@ -139,6 +139,8 @@ type Backend struct {
 	Auth *BackendAuth `json:"auth,omitempty"`
 	// Sensitive Headers to be removed from the request before sending to the backend. Optional.
 	HeaderMutation *HTTPHeaderMutation `json:"httpHeaderMutation,omitempty"`
+	// Body mutations to be applied to the request before sending to the backend. Optional.
+	BodyMutation *HTTPBodyMutation `json:"httpBodyMutation,omitempty"`
 }
 
 // BackendAuth corresponds partially to BackendSecurityPolicy in api/v1alpha1/api.go.
@@ -222,6 +224,27 @@ type HTTPHeader struct {
 	// This is always ensured to be lower-cased like Envoy does internally.
 	Name string `json:"name"`
 	// Value is the value of HTTP Header to be matched.
+	Value string `json:"value"`
+}
+
+// HTTPBodyMutation defines the mutation of HTTP request body JSON fields that will be applied to the request
+type HTTPBodyMutation struct {
+	// Set overwrites/adds the request body with the given JSON field (name, value)
+	// before sending to the backend. Only top-level fields are currently supported.
+	Set []HTTPBodyField `json:"set,omitempty"`
+	// Remove the given JSON field(s) from the HTTP request body before sending to the backend.
+	// The value of Remove is a list of top-level field names to remove.
+	Remove []string `json:"remove,omitempty"`
+}
+
+// HTTPBodyField represents a JSON field name and value for body mutation
+type HTTPBodyField struct {
+	// Path is the top-level field name to set in the request body.
+	// Examples: "service_tier", "max_tokens", "temperature"
+	Path string `json:"path"`
+	// Value is the JSON value to set at the specified field. This can be any valid JSON value:
+	// string, number, boolean, object, array, or null.
+	// The value will be parsed as JSON and inserted at the specified field.
 	Value string `json:"value"`
 }
 
