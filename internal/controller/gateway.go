@@ -178,6 +178,11 @@ func headerMutationToFilterAPI(m *aigv1a1.HTTPHeaderMutation) *filterapi.HTTPHea
 	return ret
 }
 
+// TODO
+func bodyMutationToFilterAPI(m *aigv1a1.HTTPBodyMutation) *filterapi.HTTPBodyMutation {
+	return nil
+}
+
 // mergeHeaderMutations merges route-level and backend-level HeaderMutation with route-level taking precedence.
 // Returns the merged HeaderMutation where route-level operations override backend-level operations for conflicting headers.
 func mergeHeaderMutations(routeLevel, backendLevel *aigv1a1.HTTPHeaderMutation) *aigv1a1.HTTPHeaderMutation {
