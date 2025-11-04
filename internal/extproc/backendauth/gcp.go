@@ -8,6 +8,7 @@ package backendauth
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -49,7 +50,12 @@ func (g *gcpHandler) Do(_ context.Context, _ map[string]string, headerMut *extpr
 	var pathHeaderFound bool
 
 	// Build the GCP URL prefix using the configured region and project name.
-	prefixPath := fmt.Sprintf("https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s", g.region, g.projectName, g.region)
+	var prefixPath string
+	if strings.EqualFold(g.region, "global") {
+		prefixPath = fmt.Sprintf("https://aiplatform.googleapis.com/v1/projects/%s/locations/global", g.projectName)
+	} else {
+		prefixPath = fmt.Sprintf("https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s", g.region, g.projectName, g.region)
+	}
 
 	// Find and update the ":path" header by prepending the prefix.
 	for _, hdr := range headerMut.SetHeaders {
