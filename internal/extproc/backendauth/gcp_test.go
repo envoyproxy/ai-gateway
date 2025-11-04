@@ -111,7 +111,7 @@ func TestGCPHandler_Do(t *testing.T) {
 				},
 			},
 			bodyMut:       &extprocv3.BodyMutation{},
-			wantPathValue: "https://us-central1-aiplatform.googleapis.com/v1/projects/test-project/locations/us-central1/publishers/google/models/gemini-pro:generateContent",
+			wantPathValue: "/v1/projects/test-project/locations/us-central1/publishers/google/models/gemini-pro:generateContent",
 		},
 		{
 			name:    "basic headers update with raw value",
@@ -127,7 +127,7 @@ func TestGCPHandler_Do(t *testing.T) {
 				},
 			},
 			bodyMut:          &extprocv3.BodyMutation{},
-			wantPathRawValue: []byte("https://us-central1-aiplatform.googleapis.com/v1/projects/test-project/locations/us-central1/publishers/google/models/gemini-pro:generateContent"),
+			wantPathRawValue: []byte("/v1/projects/test-project/locations/us-central1/publishers/google/models/gemini-pro:generateContent"),
 		},
 		{
 			name:    "global region with string value",
@@ -143,7 +143,7 @@ func TestGCPHandler_Do(t *testing.T) {
 				},
 			},
 			bodyMut:       &extprocv3.BodyMutation{},
-			wantPathValue: "https://aiplatform.googleapis.com/v1/projects/test-project/locations/global/publishers/google/models/gemini-pro:generateContent",
+			wantPathValue: "/v1/projects/test-project/locations/global/publishers/google/models/gemini-pro:generateContent",
 		},
 		{
 			name:    "global region with raw value",
@@ -159,7 +159,7 @@ func TestGCPHandler_Do(t *testing.T) {
 				},
 			},
 			bodyMut:          &extprocv3.BodyMutation{},
-			wantPathRawValue: []byte("https://aiplatform.googleapis.com/v1/projects/test-project/locations/global/publishers/google/models/gemini-pro:generateContent"),
+			wantPathRawValue: []byte("/v1/projects/test-project/locations/global/publishers/google/models/gemini-pro:generateContent"),
 		},
 		{
 			name:    "no path header",

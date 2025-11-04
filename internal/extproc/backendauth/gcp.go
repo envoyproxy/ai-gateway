@@ -52,9 +52,9 @@ func (g *gcpHandler) Do(_ context.Context, _ map[string]string, headerMut *extpr
 	// Build the GCP URL prefix using the configured region and project name.
 	var prefixPath string
 	if strings.EqualFold(g.region, "global") {
-		prefixPath = fmt.Sprintf("https://aiplatform.googleapis.com/v1/projects/%s/locations/global", g.projectName)
+		prefixPath = fmt.Sprintf("/v1/projects/%s/locations/global", g.projectName)
 	} else {
-		prefixPath = fmt.Sprintf("https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s", g.region, g.projectName, g.region)
+		prefixPath = fmt.Sprintf("/v1/projects/%s/locations/%s", g.projectName, g.region)
 	}
 
 	// Find and update the ":path" header by prepending the prefix.
