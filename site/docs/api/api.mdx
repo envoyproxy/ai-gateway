@@ -408,6 +408,8 @@ MCPRouteList contains a list of MCPRoute.
 - [LLMRequestCostType](#llmrequestcosttype)
 - [MCPBackendAPIKey](#mcpbackendapikey)
 - [MCPBackendSecurityPolicy](#mcpbackendsecuritypolicy)
+- [MCPRouteAuthorization](#mcprouteauthorization)
+- [MCPRouteAuthorizationRule](#mcprouteauthorizationrule)
 - [MCPRouteBackendRef](#mcproutebackendref)
 - [MCPRouteOAuth](#mcprouteoauth)
 - [MCPRouteSecurityPolicy](#mcproutesecuritypolicy)
@@ -1565,6 +1567,59 @@ MCPBackendSecurityPolicy defines the security policy for a sp
 />
 
 
+#### MCPRouteAuthorization
+
+
+
+**Appears in:**
+- [MCPRouteSecurityPolicy](#mcproutesecuritypolicy)
+
+MCPRouteAuthorization defines the authorization configuration for a MCPRoute.
+
+##### Fields
+
+
+
+<ApiField
+  name="rules"
+  type="[MCPRouteAuthorizationRule](#mcprouteauthorizationrule) array"
+  required="false"
+  description="Rules defines a list of authorization rules.<br />These rules are evaluated in order, the first matching rule will be applied,<br />and the rest will be skipped."
+/><ApiField
+  name="defaultAction"
+  type="[AuthorizationAction](#authorizationaction)"
+  required="false"
+  description="DefaultAction defines the default action to be taken if no rules match.<br />If not specified, the default action is Deny."
+/>
+
+
+#### MCPRouteAuthorizationRule
+
+
+
+**Appears in:**
+- [MCPRouteAuthorization](#mcprouteauthorization)
+
+MCPRouteAuthorizationRule defines an authorization rule for MCPRoute based on the MCP authorization spec.
+Reference: https://modelcontextprotocol.io/specification/draft/basic/authorization#scope-challenge-handling
+
+##### Fields
+
+
+
+<ApiField
+  name="tools"
+  type="string array"
+  required="true"
+  description="Tools defines the list of tool names this rule applies to. The name must be a fully qualified tool name including the backend name.<br />For example, `mcp-backend-name__tool-name`.<br />If a request calls a tool in this list, this rule is considered a match.<br />If this request has a valid JWT token that contains all the required scopes defined in this rule,<br />the request will be allowed. If not, the request will be denied."
+/><ApiField
+  name="scopes"
+  type="JWTScope array"
+  required="true"
+  description="Scopes defines the list of JWT scopes required for the rule.<br />If multiple scopes are specified, all scopes must be present in the JWT for the rule to match."
+/>
+
+
 #### MCPRouteBackendRef
 
 
@@ -1688,6 +1743,11 @@ MCPRouteSecurityPolicy defines the security policy for a MCPRoute.
   type="[ExtAuth](#extauth)"
   required="false"
   description="ExtAuth defines the configuration for External Authorization."
+/><ApiField
+  name="authorization"
+  type="[MCPRouteAuthorization](#mcprouteauthorization)"
+  required="false"
+  description="Authorization defines the configuration for the MCP spec compatible authorization."
 />
 
 

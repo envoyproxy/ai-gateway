@@ -581,6 +581,58 @@ spec:
                     - credentialRefs
                     - extractFrom
                     type: object
+                  authorization:
+                    description: Authorization defines the configuration for the MCP
+                      spec compatible authorization.
+                    properties:
+                      defaultAction:
+                        description: |-
+                          DefaultAction defines the default action to be taken if no rules match.
+                          If not specified, the default action is Deny.
+                        enum:
+                        - Allow
+                        - Deny
+                        type: string
+                      rules:
+                        description: |-
+                          Rules defines a list of authorization rules.
+                          These rules are evaluated in order, the first matching rule will be applied,
+                          and the rest will be skipped.
+                        items:
+                          description: |-
+                            MCPRouteAuthorizationRule defines an authorization rule for MCPRoute based on the MCP authorization spec.
+                            Reference: https://modelcontextprotocol.io/specification/draft/basic/authorization#scope-challenge-handling
+                          properties:
+                            scopes:
+                              description: |-
+                                Scopes defines the list of JWT scopes required for the rule.
+                                If multiple scopes are specified, all scopes must be present in the JWT for the rule to match.
+                              items:
+                                maxLength: 253
+                                minLength: 1
+                                type: string
+                              maxItems: 16
+                              minItems: 1
+                              type: array
+                            tools:
+                              description: |-
+                                Tools defines the list of tool names this rule applies to. The name must be a fully qualified tool name including the backend name.
+                                For example, "mcp-backend-name__tool-name".
+
+                                If a request calls a tool in this list, this rule is considered a match.
+                                If this request has a valid JWT token that contains all the required scopes defined in this rule,
+                                the request will be allowed. If not, the request will be denied.
+                              items:
+                                type: string
+                              maxItems: 16
+                              minItems: 1
+                              type: array
+                          required:
+                          - scopes
+                          - tools
+                          type: object
+                        type: array
+                    type: object
                   extAuth:
                     description: ExtAuth defines the configuration for External Authorization.
                     properties:
