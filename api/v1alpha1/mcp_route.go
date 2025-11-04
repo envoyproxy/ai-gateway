@@ -192,6 +192,11 @@ type MCPRouteSecurityPolicy struct {
 	//
 	// +optional
 	ExtAuth *egv1a1.ExtAuth `json:"extAuth,omitempty"`
+
+	// Authorization defines the configuration for the MCP spec compatible authorization.
+	//
+	// +optional
+	Authorization *MCPRouteAuthorization `json:"authorization,omitempty"`
 }
 
 // MCPRouteOAuth defines a MCP spec compatible OAuth authentication configuration for a MCPRoute.
@@ -225,6 +230,43 @@ type MCPRouteOAuth struct {
 	//
 	// +kubebuilder:validation:Required
 	ProtectedResourceMetadata ProtectedResourceMetadata `json:"protectedResourceMetadata"`
+}
+
+// MCPRouteAuthorization defines the authorization configuration for a MCPRoute.
+type MCPRouteAuthorization struct {
+	// Rules defines a list of authorization rules.
+	// These rules are evaluated in order, the first matching rule will be applied,
+	// and the rest will be skipped.
+	//
+	// +optional
+	Rules []MCPRouteAuthorizationRule `json:"rules,omitempty"`
+
+	// DefaultAction defines the default action to be taken if no rules match.
+	// If not specified, the default action is Deny.
+	// +optional
+	DefaultAction *egv1a1.AuthorizationAction `json:"defaultAction"`
+}
+
+// MCPRouteAuthorizationRule defines an authorization rule for MCPRoute based on the MCP authorization spec.
+// Reference: https://modelcontextprotocol.io/specification/draft/basic/authorization#scope-challenge-handling
+type MCPRouteAuthorizationRule struct {
+	// Tools defines the list of tool names this rule applies to. The name must be a fully qualified tool name including the backend name.
+	// For example, "mcp-backend-name__tool-name".
+	//
+	// If a request calls a tool in this list, this rule is considered a match.
+	// If this request has a valid JWT token that contains all the required scopes defined in this rule,
+	// the request will be allowed. If not, the request will be denied.
+	//
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=16
+	Tools []string `json:"tools"`
+
+	// Scopes defines the list of JWT scopes required for the rule.
+	// If multiple scopes are specified, all scopes must be present in the JWT for the rule to match.
+	//
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=16
+	Scopes []egv1a1.JWTScope `json:"scopes"`
 }
 
 // JWKS defines how to obtain JSON Web Key Sets (JWKS) either from a remote HTTP/HTTPS endpoint or from a local source.
