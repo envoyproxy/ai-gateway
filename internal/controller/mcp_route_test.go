@@ -389,20 +389,17 @@ func TestMCPRouteController_syncGateways_NamespaceCrossReference(t *testing.T) {
 	err = c.Create(t.Context(), gateway2)
 	require.NoError(t, err)
 
-	//Create Controller
 	ctrlr := NewMCPRouteController(c, fakekube.NewClientset(), logr.Discard(), eventCh.Ch)
 
-	//Create MCPRoute
 	mcpRoute := &aigv1a1.MCPRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
 		Spec: aigv1a1.MCPRouteSpec{
 			ParentRefs: []gwapiv1.ParentReference{
-				{Name: gwapiv1.ObjectName("gateway1"), Namespace: ptr.To(gwapiv1.Namespace("other-ns"))},
-				{Name: gwapiv1.ObjectName("gateway2"), Namespace: ptr.To(gwapiv1.Namespace("default"))},
+				{Name: gwapiv1.ObjectName("gateway1"), Namespace: ptr.To(gwapiv1.Namespace("default"))},
+				{Name: gwapiv1.ObjectName("gateway2"), Namespace: ptr.To(gwapiv1.Namespace("other-ns"))},
 			},
 		},
 	}
-	//Sync Gateways
 	err = ctrlr.syncGateways(t.Context(), mcpRoute)
 	require.NoError(t, err)
 
@@ -411,11 +408,8 @@ func TestMCPRouteController_syncGateways_NamespaceCrossReference(t *testing.T) {
 	gateways := eventCh.RequireItemsEventually(t, 2)
 	require.Len(t, gateways, 2)
 
-	// Verify first gateway: gateway1 in other-ns (explicitly specified).
 	require.Equal(t, "gateway1", gateways[0].Name)
 	require.Equal(t, "default", gateways[0].Namespace)
-
-	// Verify second gateway: gateway2 in default namespace (inherited from route).
 	require.Equal(t, "gateway2", gateways[1].Name)
 	require.Equal(t, "other-ns", gateways[1].Namespace)
 }
