@@ -656,9 +656,11 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 		// Check that header mutations were applied.
 		require.NotNil(t, commonRes.HeaderMutation)
 		require.ElementsMatch(t, []string{"authorization", "x-api-key"}, commonRes.HeaderMutation.RemoveHeaders)
-		require.Len(t, commonRes.HeaderMutation.SetHeaders, 1)
+		require.Len(t, commonRes.HeaderMutation.SetHeaders, 2)
 		require.Equal(t, "x-new-header", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
 		require.Equal(t, []byte("new-value"), commonRes.HeaderMutation.SetHeaders[0].Header.RawValue)
+		require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[1].Header.Key)
+		require.Equal(t, []byte("mock-auth-handler"), commonRes.HeaderMutation.SetHeaders[1].Header.RawValue)
 
 		// Check that headers were modified in the request headers.
 		require.Equal(t, "new-value", headers["x-new-header"])
@@ -717,7 +719,9 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 		// Check that no header mutations were applied.
 		require.NotNil(t, commonRes.HeaderMutation)
 		require.Empty(t, commonRes.HeaderMutation.RemoveHeaders)
-		require.Empty(t, commonRes.HeaderMutation.SetHeaders)
+		require.Len(t, commonRes.HeaderMutation.SetHeaders, 1)
+		require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
+		require.Equal(t, []byte("mock-auth-handler"), commonRes.HeaderMutation.SetHeaders[0].Header.RawValue)
 
 		// Check that original headers remain unchanged.
 		require.Equal(t, "bearer token123", headers["authorization"])

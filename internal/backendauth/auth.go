@@ -9,8 +9,6 @@ import (
 	"context"
 	"errors"
 
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
@@ -18,8 +16,9 @@ import (
 //
 // TODO: maybe this can be just "post-transformation" handler, as it is not really only about auth.
 type Handler interface {
-	// Do performs the backend auth, and make changes to the request headers and body mutations.
-	Do(ctx context.Context, requestHeaders map[string]string, headerMut *extprocv3.HeaderMutation, bodyMut *extprocv3.BodyMutation) error
+	// Do performs the backend auth, and make changes to the request headers passed in as `requestHeaders`.
+	// It also returns a list of headers that were added or modified as a slice of key-value pairs.
+	Do(ctx context.Context, requestHeaders map[string]string, mutatedBody []byte) ([][2]string, error)
 }
 
 // NewHandler returns a new implementation of [Handler] based on the configuration.

@@ -18,7 +18,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
+	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -203,8 +203,17 @@ func (r *rerankProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Contex
 		r.requestHeaders[h.Header.Key] = string(h.Header.RawValue)
 	}
 	if h := r.handler; h != nil {
-		if err = h.Do(ctx, r.requestHeaders, headerMutation, bodyMutation); err != nil {
+		var hdrs [][2]string
+		hdrs, err = h.Do(ctx, r.requestHeaders, bodyMutation.GetBody())
+		if err != nil {
 			return nil, fmt.Errorf("failed to do auth request: %w", err)
+		}
+		for _, pair := range hdrs {
+			k, v := pair[0], pair[1]
+			headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+				AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
+				Header:       &corev3.HeaderValue{Key: k, RawValue: []byte(v)},
+			})
 		}
 	}
 

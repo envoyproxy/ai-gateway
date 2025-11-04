@@ -10,9 +10,6 @@ import (
 	"fmt"
 	"strings"
 
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
@@ -27,10 +24,7 @@ func newAzureHandler(auth *filterapi.AzureAuth) (Handler, error) {
 // Do implements [Handler.Do].
 //
 // Extracts the azure access token from the local file and set it as an authorization header.
-func (a *azureHandler) Do(_ context.Context, requestHeaders map[string]string, headerMut *extprocv3.HeaderMutation, _ *extprocv3.BodyMutation) error {
+func (a *azureHandler) Do(_ context.Context, requestHeaders map[string]string, _ []byte) ([][2]string, error) {
 	requestHeaders["Authorization"] = fmt.Sprintf("Bearer %s", a.azureAccessToken)
-	headerMut.SetHeaders = append(headerMut.SetHeaders, &corev3.HeaderValueOption{
-		Header: &corev3.HeaderValue{Key: "Authorization", RawValue: []byte(requestHeaders["Authorization"])},
-	})
-	return nil
+	return [][2]string{{"Authorization", fmt.Sprintf("Bearer %s", a.azureAccessToken)}}, nil
 }

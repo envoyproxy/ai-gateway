@@ -18,7 +18,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
+	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -508,15 +508,15 @@ var _ metrics.CompletionMetrics = &mockCompletionMetrics{}
 type mockBackendAuthHandler struct{}
 
 // Do implements [backendauth.Handler.Do].
-func (m *mockBackendAuthHandler) Do(context.Context, map[string]string, *extprocv3.HeaderMutation, *extprocv3.BodyMutation) error {
-	return nil
+func (m *mockBackendAuthHandler) Do(context.Context, map[string]string, []byte) ([][2]string, error) {
+	return [][2]string{{"foo", "mock-auth-handler"}}, nil
 }
 
 // mockBackendAuthHandlerError returns error on Do.
 type mockBackendAuthHandlerError struct{}
 
-func (m *mockBackendAuthHandlerError) Do(context.Context, map[string]string, *extprocv3.HeaderMutation, *extprocv3.BodyMutation) error {
-	return io.EOF
+func (m *mockBackendAuthHandlerError) Do(context.Context, map[string]string, []byte) ([][2]string, error) {
+	return nil, io.EOF
 }
 
 // mockImageGenerationMetrics implements [metrics.ImageGenerationMetrics] for testing.
