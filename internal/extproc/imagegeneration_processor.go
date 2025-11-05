@@ -221,12 +221,12 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessRequestHeaders(ctx conte
 	if h := i.headerMutator; h != nil {
 		sets, removes := i.headerMutator.Mutate(i.requestHeaders, i.onRetry)
 		headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, removes...)
-		for _, pair := range sets {
+		for _, hdr := range sets {
 			headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
 				AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
 				Header: &corev3.HeaderValue{
-					Key:      pair[0],
-					RawValue: []byte(pair[1]),
+					Key:      hdr.Key(),
+					RawValue: []byte(hdr.Value()),
 				},
 			})
 		}

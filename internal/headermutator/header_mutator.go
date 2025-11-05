@@ -28,7 +28,7 @@ func NewHeaderMutator(headerMutations *filterapi.HTTPHeaderMutation, originalHea
 }
 
 // Mutate mutates the headers based on the header mutations and restores original headers if mutated previously.
-func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) (sets [][2]string, removes []string) {
+func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) (sets []internalapi.Header, removes []string) {
 	skipRemove := h.headerMutations == nil || len(h.headerMutations.Remove) == 0
 	skipSet := h.headerMutations == nil || len(h.headerMutations.Set) == 0
 
