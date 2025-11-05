@@ -7,9 +7,11 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
@@ -72,11 +74,7 @@ func TestCrossNamespace(t *testing.T) {
 
 // TestCrossNamespaceMCPRoute tests MCPRoute with cross-namespace references.
 // This test validates that:
-//  1. A Gateway in one namespace (gateway-ns) can be referenced by an MCPRoute in another namespace (mcp-route-ns)
-//  2. An MCP Backend in one namespace (mcp-backend-ns) can be referenced by an MCPRoute in another namespace (mcp-route-ns)
-//     when a valid ReferenceGrant exists
-//  3. The generated HTTPRoutes and other resources work correctly across namespaces
-//  4. Traffic routing works end-to-end through the cross-namespace MCP setup.
+//  1. A Gateway in one namespace (mcp-gw) can be referenced by an MCPRoute in another namespace (mcp-tenant)
 func TestCrossNamespaceMCPRoute(t *testing.T) {
 	const manifest = "testdata/cross_namespace_mcproute.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
@@ -84,29 +82,29 @@ func TestCrossNamespaceMCPRoute(t *testing.T) {
 		_ = e2elib.KubectlDeleteManifest(t.Context(), manifest)
 	})
 
-	// Wait for the Gateway pod to be ready with the correct selector.
-	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=cross-namespace-mcp-gateway"
+	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=mcp-gateway"
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
-
-	t.Run("mcp-cross-namespace-backend-with-referencegrant", func(t *testing.T) {
-		// Test that the MCPRoute in mcp-route-ns can successfully route traffic
-		// to MCP Backends in mcp-backend-ns (different namespace) via ReferenceGrant.
+	fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+	defer fwd.Kill()
+	client := mcp.NewClient(&mcp.Implementation{Name: "demo-http-client", Version: "0.1.0"}, nil)
+	t.Run("mcp-request-succeeds with cross-namespace gateway", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		var err error
+		var sess *mcp.ClientSession
+		defer cancel()
 		require.Eventually(t, func() bool {
-			fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
-			defer fwd.Kill()
-
-			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-			defer cancel()
-
-			// Make a request to the MCP endpoint
-			// The MCPRoute should route it to the Backend in a different namespace
-			_, err := fwd.Post(ctx, "/mcp", `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`)
+			sess, err = client.Connect(
+				ctx,
+				&mcp.StreamableClientTransport{
+					Endpoint:   fmt.Sprintf("%s%s", fwd.Address(), "/mcp/cross-namespace-tenant"),
+					HTTPClient: nil,
+				}, nil)
 			if err != nil {
-				t.Logf("error making MCP request: %v", err)
+				t.Logf("failed to connect to MCP server: %v", err)
 				return false
 			}
-
 			return true
-		}, 40*time.Second, 3*time.Second)
+		}, 40*time.Second, 3*time.Second, "failed to connect to MCP server")
+		t.Cleanup(func() { _ = sess.Close() })
 	})
 }

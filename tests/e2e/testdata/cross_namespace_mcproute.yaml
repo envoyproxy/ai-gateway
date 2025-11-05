@@ -3,33 +3,34 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
-# Create namespaces for the MCP cross-namespace Gateway test
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: mcp-gateway-ns
+# This test uses ONLY ONE MCPRoute to ensure there are no side effects from the reconciliation
+# of other routes. This keeps the test future-proof and ensures we're testing the cross-namespace
+# reference functionality in isolation.
 ---
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: mcp-route-ns
+  name: mcp-tenant
 ---
-# GatewayClass (cluster-scoped resource)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mcp-gw
+---
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
-  name: cross-namespace-mcp-gatewayclass
+  name: mcp-gateway-class
 spec:
   controllerName: gateway.envoyproxy.io/gatewayclass-controller
 ---
-# Gateway in mcp-gateway-ns namespace
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: cross-namespace-mcp-gateway
-  namespace: mcp-gateway-ns
+  name: mcp-gateway
+  namespace: mcp-gw
 spec:
-  gatewayClassName: cross-namespace-mcp-gatewayclass
+  gatewayClassName: mcp-gateway-class
   listeners:
     - name: http
       protocol: HTTP
@@ -41,99 +42,72 @@ spec:
     parametersRef:
       group: gateway.envoyproxy.io
       kind: EnvoyProxy
-      name: cross-namespace-mcp-gateway
+      name: mcp-envoyproxy
+---
+# This is the ONLY MCPRoute in this test to avoid side effects from reconciliation of other routes.
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: MCPRoute
+metadata:
+  name: mcp-tenant-route
+  namespace: mcp-tenant
+spec:
+  path: "/mcp/cross-namespace-tenant"
+  parentRefs:
+    - name: mcp-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io
+      namespace: mcp-gw
+  backendRefs:
+    - name: mcp-backend-tenant
+      kind: Backend
+      namespace: mcp-tenant
+      port: 1063
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-backend-tenant
+  namespace: mcp-tenant
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-backend-tenant
+  template:
+    metadata:
+      labels:
+        app: mcp-backend-tenant
+    spec:
+      containers:
+        - name: mcp-backend-tenant
+          image: docker.io/hritikraj003/ai-gateway-testmcpserver:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 1063
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-backend-tenant
+  namespace: mcp-tenant
+spec:
+  selector:
+    app: mcp-backend-tenant
+  ports:
+    - name: http
+      port: 1063
+      targetPort: 1063
+  type: ClusterIP
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyProxy
 metadata:
-  name: cross-namespace-mcp-gateway
-  namespace: mcp-gateway-ns
+  name: mcp-envoyproxy
+  namespace: mcp-gw
 spec:
   provider:
     type: Kubernetes
     kubernetes:
       envoyDeployment:
         container:
-          # Clear the default memory/cpu requirements for local tests.
           resources: {}
----
-# MCPRoute in mcp-route-ns namespace referencing Gateway in mcp-gateway-ns (CROSS-NAMESPACE)
-# Backend is in same namespace as MCPRoute (no cross-namespace backend reference)
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: MCPRoute
-metadata:
-  name: cross-namespace-mcp-route
-  namespace: mcp-route-ns
-spec:
-  parentRefs:
-    - name: cross-namespace-mcp-gateway
-      namespace: mcp-gateway-ns
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  path: "/mcp"
-  backendRefs:
-    - name: cross-namespace-mcp-backend
-      kind: Backend
-      group: gateway.envoyproxy.io
-      port: 1063
-      securityPolicy:
-        apiKey:
-          inline: "test-api-key"
----
-# Envoy Gateway Backend resource in mcp-route-ns (same namespace as MCPRoute)
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: Backend
-metadata:
-  name: cross-namespace-mcp-backend
-  namespace: mcp-route-ns
-spec:
-  endpoints:
-    - fqdn:
-        hostname: cross-namespace-mcp-backend.mcp-route-ns.svc.cluster.local
-        port: 1063
----
-# Test MCP server deployment in mcp-route-ns
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: cross-namespace-mcp-backend
-  namespace: mcp-route-ns
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: cross-namespace-mcp-backend
-  template:
-    metadata:
-      labels:
-        app: cross-namespace-mcp-backend
-    spec:
-      containers:
-        - name: mcp-server
-          image: docker.io/envoyproxy/ai-gateway-testmcpserver:latest
-          imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: 1063
-          env:
-            - name: TEST_API_KEY
-              value: "test-api-key"
-          readinessProbe:
-            tcpSocket:
-              port: 1063
-            initialDelaySeconds: 2
-            periodSeconds: 2
----
-# Service for the test MCP server in mcp-route-ns
-apiVersion: v1
-kind: Service
-metadata:
-  name: cross-namespace-mcp-backend
-  namespace: mcp-route-ns
-spec:
-  selector:
-    app: cross-namespace-mcp-backend
-  ports:
-    - protocol: TCP
-      port: 1063
-      targetPort: 1063
-  type: ClusterIP
