@@ -973,7 +973,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 			},
 			expectedTools: anthropicTestTool,
 			expectedToolChoice: anthropic.ToolChoiceUnionParam{
-				OfTool: &anthropic.ToolChoiceToolParam{Type: "function", Name: "my_func"},
+				OfTool: &anthropic.ToolChoiceToolParam{Type: "tool", Name: "my_func"},
 			},
 		},
 		{
