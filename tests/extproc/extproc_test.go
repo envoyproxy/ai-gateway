@@ -64,6 +64,32 @@ var (
 	testUpstreamAWSAnthropicBackend = filterapi.Backend{Name: "testupstream-aws-anthropic", Schema: awsAnthropicSchema}
 	alwaysFailingBackend            = filterapi.Backend{Name: "always-failing-backend", Schema: openAISchema}
 
+	// Backend with body mutations to test bodyMutation == nil logic
+	testUpstreamBodyMutationBackend = filterapi.Backend{
+		Name:   "testupstream-body-mutation",
+		Schema: openAISchema,
+		BodyMutation: &filterapi.HTTPBodyMutation{
+			Set: []filterapi.HTTPBodyField{
+				{Path: "temperature", Value: "0.5"},
+				{Path: "max_tokens", Value: "150"},
+				{Path: "custom_field", Value: "\"route-level-value\""},
+			},
+			Remove: []string{"stream_options"},
+		},
+	}
+
+	// Backend with body mutations for messages processor testing
+	testUpstreamBodyMutationAnthropicBackend = filterapi.Backend{
+		Name:   "testupstream-body-mutation-anthropic",
+		Schema: anthropicSchema,
+		BodyMutation: &filterapi.HTTPBodyMutation{
+			Set: []filterapi.HTTPBodyField{
+				{Path: "temperature", Value: "0.7"},
+				{Path: "max_tokens", Value: "200"},
+			},
+		},
+	}
+
 	// envoyConfig is the embedded Envoy configuration template.
 	//
 	//go:embed envoy.yaml

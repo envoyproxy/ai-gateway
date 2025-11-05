@@ -265,14 +265,30 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 
 	// Apply body mutations from the route and also restore original body on retry.
 	if b := c.bodyMutator; b != nil {
+		if bodyMutation == nil {
+			mutatedBody, mutationErr := c.bodyMutator.Mutate(c.originalRequestBodyRaw, c.onRetry)
+			if mutationErr != nil {
+				c.logger.Error("failed to apply body mutation on original request body", "error", mutationErr)
+			} else {
+				bodyMutation = &extprocv3.BodyMutation{
+					Mutation: &extprocv3.BodyMutation_Body{Body: mutatedBody},
+				}
+			}
+		}
+
 		if bodyMutation != nil && bodyMutation.GetBody() != nil && len(bodyMutation.GetBody()) > 0 {
 			mutatedBody, mutationErr := c.bodyMutator.Mutate(bodyMutation.GetBody(), c.onRetry)
 			if mutationErr != nil {
-				c.logger.Warn("failed to apply body mutation", "error", mutationErr)
+				c.logger.Error("failed to apply body mutation", "error", mutationErr)
 			} else {
 				bodyMutation.Mutation = &extprocv3.BodyMutation_Body{Body: mutatedBody}
 			}
 		}
+	}
+
+	// Ensure bodyMutation is not nil for subsequent processing
+	if bodyMutation == nil {
+		bodyMutation = &extprocv3.BodyMutation{}
 	}
 
 	for _, h := range headerMutation.SetHeaders {
