@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 type azureAPIKeyHandler struct {
@@ -26,7 +27,7 @@ func newAzureAPIKeyHandler(auth *filterapi.AzureAPIKeyAuth) (Handler, error) {
 
 // Do sets the api-key header for Azure OpenAI authentication.
 // Azure OpenAI uses "api-key" header instead of "Authorization: Bearer".
-func (a *azureAPIKeyHandler) Do(_ context.Context, requestHeaders map[string]string, _ []byte) ([][2]string, error) {
+func (a *azureAPIKeyHandler) Do(_ context.Context, requestHeaders map[string]string, _ []byte) ([]internalapi.Header, error) {
 	requestHeaders["api-key"] = a.apiKey
-	return [][2]string{{"api-key", a.apiKey}}, nil
+	return []internalapi.Header{{"api-key", a.apiKey}}, nil
 }

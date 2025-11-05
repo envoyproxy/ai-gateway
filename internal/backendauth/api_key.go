@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 // apiKeyHandler implements [Handler] for api key authz.
@@ -25,7 +26,7 @@ func newAPIKeyHandler(auth *filterapi.APIKeyAuth) (Handler, error) {
 // Do implements [Handler.Do].
 //
 // Extracts the api key from the local file and set it as an authorization header.
-func (a *apiKeyHandler) Do(_ context.Context, requestHeaders map[string]string, _ []byte) ([][2]string, error) {
+func (a *apiKeyHandler) Do(_ context.Context, requestHeaders map[string]string, _ []byte) ([]internalapi.Header, error) {
 	requestHeaders["Authorization"] = fmt.Sprintf("Bearer %s", a.apiKey)
-	return [][2]string{{"Authorization", fmt.Sprintf("Bearer %s", a.apiKey)}}, nil
+	return []internalapi.Header{{"Authorization", fmt.Sprintf("Bearer %s", a.apiKey)}}, nil
 }

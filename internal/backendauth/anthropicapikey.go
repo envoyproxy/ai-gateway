@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 type anthropicAPIKeyHandler struct {
@@ -24,7 +25,7 @@ func newAnthropicAPIKeyHandler(auth *filterapi.AnthropicAPIKeyAuth) (Handler, er
 // Anthropic uses "x-api-key" header instead of "Authorization: Bearer".
 //
 // https://docs.claude.com/en/api/overview#authentication
-func (a *anthropicAPIKeyHandler) Do(_ context.Context, requestHeaders map[string]string, _ []byte) ([][2]string, error) {
+func (a *anthropicAPIKeyHandler) Do(_ context.Context, requestHeaders map[string]string, _ []byte) ([]internalapi.Header, error) {
 	requestHeaders["x-api-key"] = a.apiKey
-	return [][2]string{{"x-api-key", a.apiKey}}, nil
+	return []internalapi.Header{{"x-api-key", a.apiKey}}, nil
 }

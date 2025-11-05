@@ -508,14 +508,14 @@ var _ metrics.CompletionMetrics = &mockCompletionMetrics{}
 type mockBackendAuthHandler struct{}
 
 // Do implements [backendauth.Handler.Do].
-func (m *mockBackendAuthHandler) Do(context.Context, map[string]string, []byte) ([][2]string, error) {
-	return [][2]string{{"foo", "mock-auth-handler"}}, nil
+func (m *mockBackendAuthHandler) Do(context.Context, map[string]string, []byte) ([]internalapi.Header, error) {
+	return []internalapi.Header{{"foo", "mock-auth-handler"}}, nil
 }
 
 // mockBackendAuthHandlerError returns error on Do.
 type mockBackendAuthHandlerError struct{}
 
-func (m *mockBackendAuthHandlerError) Do(context.Context, map[string]string, []byte) ([][2]string, error) {
+func (m *mockBackendAuthHandlerError) Do(context.Context, map[string]string, []byte) ([]internalapi.Header, error) {
 	return nil, io.EOF
 }
 

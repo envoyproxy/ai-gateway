@@ -10,6 +10,7 @@ import (
 	"errors"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 // Handler is the interface that deals with the backend auth for a specific backend.
@@ -18,7 +19,7 @@ import (
 type Handler interface {
 	// Do performs the backend auth, and make changes to the request headers passed in as `requestHeaders`.
 	// It also returns a list of headers that were added or modified as a slice of key-value pairs.
-	Do(ctx context.Context, requestHeaders map[string]string, mutatedBody []byte) ([][2]string, error)
+	Do(ctx context.Context, requestHeaders map[string]string, mutatedBody []byte) ([]internalapi.Header, error)
 }
 
 // NewHandler returns a new implementation of [Handler] based on the configuration.

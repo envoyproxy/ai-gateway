@@ -21,6 +21,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 // awsHandler implements [Handler] for AWS Bedrock authz.
@@ -81,7 +82,7 @@ func newAWSHandler(ctx context.Context, awsAuth *filterapi.AWSAuth) (Handler, er
 //
 // This assumes that during the transformation, the path is set in the header mutation as well as
 // the body in the body mutation.
-func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, mutatedBody []byte) ([][2]string, error) {
+func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, mutatedBody []byte) ([]internalapi.Header, error) {
 	method := requestHeaders[":method"]
 	path := requestHeaders[":path"]
 
@@ -117,10 +118,10 @@ func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, m
 		return nil, fmt.Errorf("cannot sign request: %w", err)
 	}
 
-	var headers [][2]string
+	var headers []internalapi.Header
 	for key, hdr := range req.Header {
 		if key == "Authorization" || strings.HasPrefix(key, "X-Amz-") {
-			headers = append(headers, [2]string{key, hdr[0]})
+			headers = append(headers, internalapi.Header{key, hdr[0]})
 			requestHeaders[key] = hdr[0]
 		}
 	}

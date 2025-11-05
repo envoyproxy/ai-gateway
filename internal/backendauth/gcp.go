@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 type gcpHandler struct {
@@ -42,7 +43,7 @@ func newGCPHandler(gcpAuth *filterapi.GCPAuth) (Handler, error) {
 //
 // The ":path" header is expected to contain the API-specific suffix, which is injected by translator.requestBody.
 // The suffix is combined with the generated prefix to form the complete path for the GCP API call.
-func (g *gcpHandler) Do(_ context.Context, requestHeaders map[string]string, _ []byte) ([][2]string, error) {
+func (g *gcpHandler) Do(_ context.Context, requestHeaders map[string]string, _ []byte) ([]internalapi.Header, error) {
 	// Build the GCP URL prefix using the configured region and project name.
 	prefixPath := fmt.Sprintf("https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s", g.region, g.projectName, g.region)
 
@@ -58,5 +59,5 @@ func (g *gcpHandler) Do(_ context.Context, requestHeaders map[string]string, _ [
 	// Add the Authorization header with the GCP access token.
 	requestHeaders[":path"] = newPath
 	requestHeaders["Authorization"] = fmt.Sprintf("Bearer %s", g.gcpAccessToken)
-	return [][2]string{{":path", newPath}, {"Authorization", fmt.Sprintf("Bearer %s", g.gcpAccessToken)}}, nil
+	return []internalapi.Header{{":path", newPath}, {"Authorization", fmt.Sprintf("Bearer %s", g.gcpAccessToken)}}, nil
 }

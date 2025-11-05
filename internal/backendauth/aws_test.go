@@ -12,12 +12,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
-func stringPairsToMap(pairs [][2]string) map[string]string {
+func stringPairsToMap(pairs []internalapi.Header) map[string]string {
 	result := make(map[string]string)
-	for _, pair := range pairs {
-		result[pair[0]] = pair[1]
+	for _, h := range pairs {
+		result[h.Key()] = h.Value()
 	}
 	return result
 }

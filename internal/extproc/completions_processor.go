@@ -254,16 +254,15 @@ func (c *completionsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.C
 		c.requestHeaders[h.Header.Key] = string(h.Header.RawValue)
 	}
 	if h := c.handler; h != nil {
-		var hdrs [][2]string
+		var hdrs []internalapi.Header
 		hdrs, err = h.Do(ctx, c.requestHeaders, bodyMutation.GetBody())
 		if err != nil {
 			return nil, fmt.Errorf("failed to do auth request: %w", err)
 		}
-		for _, pair := range hdrs {
-			k, v := pair[0], pair[1]
+		for _, h := range hdrs {
 			headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
 				AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
-				Header:       &corev3.HeaderValue{Key: k, RawValue: []byte(v)},
+				Header:       &corev3.HeaderValue{Key: h.Key(), RawValue: []byte(h.Value())},
 			})
 		}
 	}

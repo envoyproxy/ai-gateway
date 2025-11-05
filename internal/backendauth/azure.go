@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 type azureHandler struct {
@@ -24,7 +25,7 @@ func newAzureHandler(auth *filterapi.AzureAuth) (Handler, error) {
 // Do implements [Handler.Do].
 //
 // Extracts the azure access token from the local file and set it as an authorization header.
-func (a *azureHandler) Do(_ context.Context, requestHeaders map[string]string, _ []byte) ([][2]string, error) {
+func (a *azureHandler) Do(_ context.Context, requestHeaders map[string]string, _ []byte) ([]internalapi.Header, error) {
 	requestHeaders["Authorization"] = fmt.Sprintf("Bearer %s", a.azureAccessToken)
-	return [][2]string{{"Authorization", fmt.Sprintf("Bearer %s", a.azureAccessToken)}}, nil
+	return []internalapi.Header{{"Authorization", fmt.Sprintf("Bearer %s", a.azureAccessToken)}}, nil
 }
