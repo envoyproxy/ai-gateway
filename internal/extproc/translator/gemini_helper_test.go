@@ -1271,6 +1271,7 @@ func TestGeminiLogprobsToOpenAILogprobs(t *testing.T) {
 }
 
 func TestExtractToolCallsFromGeminiParts(t *testing.T) {
+	toolCalls := []openai.ChatCompletionMessageToolCallParam{}
 	tests := []struct {
 		name     string
 		input    []*genai.Part
@@ -1360,7 +1361,7 @@ func TestExtractToolCallsFromGeminiParts(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			calls, err := extractToolCallsFromGeminiParts(tt.input)
+			calls, err := extractToolCallsFromGeminiParts(toolCalls, tt.input)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -1381,56 +1382,80 @@ func TestExtractToolCallsFromGeminiParts(t *testing.T) {
 
 func TestGeminiFinishReasonToOpenAI(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    genai.FinishReason
-		expected openai.ChatCompletionChoicesFinishReason
+		name      string
+		input     genai.FinishReason
+		toolCalls []openai.ChatCompletionMessageToolCallParam
+		expected  openai.ChatCompletionChoicesFinishReason
 	}{
 		{
-			name:     "stop reason",
-			input:    genai.FinishReasonStop,
-			expected: openai.ChatCompletionChoicesFinishReasonStop,
+			name:      "stop reason",
+			input:     genai.FinishReasonStop,
+			toolCalls: []openai.ChatCompletionMessageToolCallParam{},
+			expected:  openai.ChatCompletionChoicesFinishReasonStop,
 		},
 		{
-			name:     "max tokens reason",
-			input:    genai.FinishReasonMaxTokens,
-			expected: openai.ChatCompletionChoicesFinishReasonLength,
+			name:  "tool calls reason",
+			input: genai.FinishReasonStop,
+			toolCalls: []openai.ChatCompletionMessageToolCallParam{
+				{
+					ID: ptr.To("tool_call_1"),
+					Function: openai.ChatCompletionMessageToolCallFunctionParam{
+						Name:      "example_tool",
+						Arguments: "{\"param1\":\"value1\"}",
+					},
+					Type: openai.ChatCompletionMessageToolCallTypeFunction,
+				},
+			},
+			expected: openai.ChatCompletionChoicesFinishReasonToolCalls,
 		},
 		{
-			name:     "empty reason for streaming",
-			input:    "",
-			expected: "",
+			name:      "max tokens reason",
+			input:     genai.FinishReasonMaxTokens,
+			toolCalls: []openai.ChatCompletionMessageToolCallParam{},
+			expected:  openai.ChatCompletionChoicesFinishReasonLength,
 		},
 		{
-			name:     "safety reason",
-			input:    genai.FinishReasonSafety,
-			expected: openai.ChatCompletionChoicesFinishReasonContentFilter,
+			name:      "empty reason for streaming",
+			input:     "",
+			toolCalls: []openai.ChatCompletionMessageToolCallParam{},
+			expected:  "",
 		},
 		{
-			name:     "recitation reason",
-			input:    genai.FinishReasonRecitation,
-			expected: openai.ChatCompletionChoicesFinishReasonContentFilter,
+			name:      "safety reason",
+			input:     genai.FinishReasonSafety,
+			toolCalls: []openai.ChatCompletionMessageToolCallParam{},
+			expected:  openai.ChatCompletionChoicesFinishReasonContentFilter,
 		},
 		{
-			name:     "other reason",
-			input:    genai.FinishReasonOther,
-			expected: openai.ChatCompletionChoicesFinishReasonContentFilter,
+			name:      "recitation reason",
+			input:     genai.FinishReasonRecitation,
+			toolCalls: []openai.ChatCompletionMessageToolCallParam{},
+			expected:  openai.ChatCompletionChoicesFinishReasonContentFilter,
 		},
 		{
-			name:     "unknown reason",
-			input:    genai.FinishReason("unknown_reason"),
-			expected: openai.ChatCompletionChoicesFinishReasonContentFilter,
+			name:      "other reason",
+			input:     genai.FinishReasonOther,
+			toolCalls: []openai.ChatCompletionMessageToolCallParam{},
+			expected:  openai.ChatCompletionChoicesFinishReasonContentFilter,
+		},
+		{
+			name:      "unknown reason",
+			input:     genai.FinishReason("unknown_reason"),
+			toolCalls: []openai.ChatCompletionMessageToolCallParam{},
+			expected:  openai.ChatCompletionChoicesFinishReasonContentFilter,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := geminiFinishReasonToOpenAI(tt.input)
+			result := geminiFinishReasonToOpenAI(tt.input, tt.toolCalls)
 			require.Equal(t, tt.expected, result)
 		})
 	}
 }
 
 func TestExtractToolCallsFromGeminiPartsStream(t *testing.T) {
+	toolCalls := []openai.ChatCompletionChunkChoiceDeltaToolCall{}
 	tests := []struct {
 		name     string
 		input    []*genai.Part
@@ -1675,7 +1700,7 @@ func TestExtractToolCallsFromGeminiPartsStream(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			calls, err := extractToolCallsFromGeminiPartsStream(tt.input)
+			calls, err := extractToolCallsFromGeminiPartsStream(toolCalls, tt.input)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -1696,6 +1721,8 @@ func TestExtractToolCallsFromGeminiPartsStream(t *testing.T) {
 
 // TestExtractToolCallsStreamVsNonStream tests the differences between streaming and non-streaming extraction
 func TestExtractToolCallsStreamVsNonStream(t *testing.T) {
+	toolCalls := []openai.ChatCompletionMessageToolCallParam{}
+	toolCallsStream := []openai.ChatCompletionChunkChoiceDeltaToolCall{}
 	parts := []*genai.Part{
 		{
 			FunctionCall: &genai.FunctionCall{
@@ -1709,11 +1736,11 @@ func TestExtractToolCallsStreamVsNonStream(t *testing.T) {
 	}
 
 	// Get results from both functions
-	streamCalls, err := extractToolCallsFromGeminiPartsStream(parts)
+	streamCalls, err := extractToolCallsFromGeminiPartsStream(toolCallsStream, parts)
 	require.NoError(t, err)
 	require.Len(t, streamCalls, 1)
 
-	nonStreamCalls, err := extractToolCallsFromGeminiParts(parts)
+	nonStreamCalls, err := extractToolCallsFromGeminiParts(toolCalls, parts)
 	require.NoError(t, err)
 	require.Len(t, nonStreamCalls, 1)
 
@@ -1749,6 +1776,7 @@ func TestExtractToolCallsStreamVsNonStream(t *testing.T) {
 
 // TestExtractToolCallsStreamIndexing specifically tests that multiple tool calls get correct indices
 func TestExtractToolCallsStreamIndexing(t *testing.T) {
+	toolCalls := []openai.ChatCompletionChunkChoiceDeltaToolCall{}
 	parts := []*genai.Part{
 		{
 			FunctionCall: &genai.FunctionCall{
@@ -1771,7 +1799,7 @@ func TestExtractToolCallsStreamIndexing(t *testing.T) {
 		},
 	}
 
-	calls, err := extractToolCallsFromGeminiPartsStream(parts)
+	calls, err := extractToolCallsFromGeminiPartsStream(toolCalls, parts)
 	require.NoError(t, err)
 	require.Len(t, calls, 3)
 
