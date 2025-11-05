@@ -79,7 +79,7 @@ func TestCrossNamespaceMCPRoute(t *testing.T) {
 	const manifest = "testdata/cross_namespace_mcproute.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
 	t.Cleanup(func() {
-		_ = e2elib.KubectlDeleteManifest(t.Context(), manifest)
+		_ = e2elib.KubectlDeleteManifest(context.Background(), manifest)
 	})
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=mcp-gateway"
@@ -87,24 +87,23 @@ func TestCrossNamespaceMCPRoute(t *testing.T) {
 	fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
 	defer fwd.Kill()
 	client := mcp.NewClient(&mcp.Implementation{Name: "demo-http-client", Version: "0.1.0"}, nil)
-	t.Run("mcp-request-succeeds with cross-namespace gateway", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-		var err error
-		var sess *mcp.ClientSession
-		defer cancel()
-		require.Eventually(t, func() bool {
-			sess, err = client.Connect(
-				ctx,
-				&mcp.StreamableClientTransport{
-					Endpoint:   fmt.Sprintf("%s%s", fwd.Address(), "/mcp/cross-namespace-tenant"),
-					HTTPClient: nil,
-				}, nil)
-			if err != nil {
-				t.Logf("failed to connect to MCP server: %v", err)
-				return false
-			}
-			return true
-		}, 40*time.Second, 3*time.Second, "failed to connect to MCP server")
-		t.Cleanup(func() { _ = sess.Close() })
-	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	var err error
+	var sess *mcp.ClientSession
+	defer cancel()
+	require.Eventually(t, func() bool {
+		sess, err = client.Connect(
+			ctx,
+			&mcp.StreamableClientTransport{
+				Endpoint:   fmt.Sprintf("%s%s", fwd.Address(), "/mcp/cross-namespace-tenant"),
+				HTTPClient: nil,
+			}, nil)
+		if err != nil {
+			t.Logf("failed to connect to MCP server: %v", err)
+			return false
+		}
+		return true
+	}, 40*time.Second, 3*time.Second, "failed to connect to MCP server")
+	t.Cleanup(func() { _ = sess.Close() })
 }
