@@ -43,6 +43,9 @@ var (
 	//go:embed testdata/llamastack.yaml
 	llamastackYAML string
 
+	//go:embed testdata/llamastack-ip-address.yaml
+	llamastackIPAddressYAML string
+
 	//go:embed testdata/azure-openai.yaml
 	azureOpenAIYAML string
 
@@ -196,6 +199,26 @@ func TestWriteConfig(t *testing.T) {
 				},
 			},
 			expected: llamastackYAML,
+		},
+		{
+			name: "LlamaStack (local IP address)",
+			input: ConfigData{
+				Backends: []Backend{
+					{
+						Name:             "openai",
+						IPAddress:        "192.168.0.10",
+						OriginalHostname: "192.168.0.10",
+						Port:             8321,
+						NeedsTLS:         false,
+					},
+				},
+				OpenAI: &OpenAIConfig{
+					BackendName: "openai",
+					SchemaName:  "OpenAI",
+					Version:     "v1/openai/v1",
+				},
+			},
+			expected: llamastackIPAddressYAML,
 		},
 		{
 			name: "OpenAI with organization ID",
@@ -408,6 +431,7 @@ func TestParseURL(t *testing.T) {
 				hostname:         "api.openai.com",
 				originalHostname: "api.openai.com",
 				port:             443,
+				path:             "/v1",
 				version:          "", // v1 is omitted for cleaner output
 				needsTLS:         true,
 			},
@@ -419,6 +443,7 @@ func TestParseURL(t *testing.T) {
 				hostname:         "127.0.0.1.nip.io",
 				originalHostname: "localhost",
 				port:             11434,
+				path:             "/v1",
 				version:          "", // v1 is omitted
 				needsTLS:         false,
 			},
@@ -430,6 +455,19 @@ func TestParseURL(t *testing.T) {
 				hostname:         "127.0.0.1.nip.io",
 				originalHostname: "127.0.0.1",
 				port:             8080,
+				path:             "/v1",
+				version:          "", // v1 is omitted
+				needsTLS:         false,
+			},
+		},
+		{
+			name:    "IP address URL",
+			baseURL: "http://192.168.0.10:8080/v1",
+			expected: parsedURL{
+				ipAddress:        "192.168.0.10",
+				originalHostname: "192.168.0.10",
+				port:             8080,
+				path:             "/v1",
 				version:          "", // v1 is omitted
 				needsTLS:         false,
 			},
@@ -441,6 +479,7 @@ func TestParseURL(t *testing.T) {
 				hostname:         "custom.ai",
 				originalHostname: "custom.ai",
 				port:             443,
+				path:             "/v1beta/openai",
 				version:          "v1beta/openai",
 				needsTLS:         true,
 			},
@@ -452,6 +491,7 @@ func TestParseURL(t *testing.T) {
 				hostname:         "example.com",
 				originalHostname: "example.com",
 				port:             80,
+				path:             "/v1",
 				version:          "", // v1 is omitted
 				needsTLS:         false,
 			},
@@ -463,6 +503,7 @@ func TestParseURL(t *testing.T) {
 				hostname:         "api.example.com",
 				originalHostname: "api.example.com",
 				port:             443,
+				path:             "/",
 				version:          "",
 				needsTLS:         true,
 			},
@@ -474,6 +515,7 @@ func TestParseURL(t *testing.T) {
 				hostname:         "api.example.com",
 				originalHostname: "api.example.com",
 				port:             443,
+				path:             "/",
 				version:          "",
 				needsTLS:         true,
 			},

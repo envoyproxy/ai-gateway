@@ -7,9 +7,7 @@ package autoconfig
 
 import (
 	"fmt"
-	"net/url"
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -90,24 +88,9 @@ func AddMCPServers(data *ConfigData, input *MCPServers) error {
 			continue
 		}
 
-		serverURL, err := url.Parse(settings.URL)
+		parsed, err := parseURL(settings.URL)
 		if err != nil {
 			return fmt.Errorf("failed to parse MCP server URL %s: %w", settings.URL, err)
-		}
-
-		// Determine port
-		port := 0
-		if serverURL.Port() != "" {
-			port, _ = strconv.Atoi(serverURL.Port())
-		}
-		if serverURL.Scheme == "https" && port == 0 {
-			port = 443
-		}
-
-		// Extract path (default to "/" if empty)
-		path := serverURL.Path
-		if path == "" {
-			path = "/"
 		}
 
 		// Parse headers intelligently
@@ -127,16 +110,17 @@ func AddMCPServers(data *ConfigData, input *MCPServers) error {
 		// Create Backend for this MCP server
 		backend := Backend{
 			Name:             name,
-			Hostname:         serverURL.Hostname(),
-			OriginalHostname: serverURL.Hostname(),
-			Port:             port,
-			NeedsTLS:         serverURL.Scheme == "https",
+			Hostname:         parsed.hostname,
+			IPAddress:        parsed.ipAddress,
+			OriginalHostname: parsed.originalHostname,
+			Port:             parsed.port,
+			NeedsTLS:         parsed.needsTLS,
 		}
 
 		// Create MCPBackendRef referencing the backend
 		backendRef := MCPBackendRef{
 			BackendName:  name,
-			Path:         path,
+			Path:         parsed.path,
 			IncludeTools: settings.IncludeTools,
 			APIKey:       apiKey,
 			Headers:      headers,

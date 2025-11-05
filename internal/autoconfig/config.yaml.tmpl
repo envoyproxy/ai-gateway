@@ -204,9 +204,15 @@ metadata:
   namespace: default
 spec:
   endpoints:
+    {{- if .Hostname }}
     - fqdn:
         hostname: {{ .Hostname }}
         port: {{ .Port }}
+    {{- else }}
+    - ip:
+        address: {{ .IPAddress }}
+        port: {{ .Port }}
+    {{- end }}
 ---
 {{- end }}
 {{- if .OpenAI }}

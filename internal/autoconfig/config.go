@@ -9,6 +9,7 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ var configTemplate string
 type Backend struct {
 	Name             string // Backend resource name (e.g., "openai", "github")
 	Hostname         string // Hostname for Backend endpoint (modified from "localhost"/"127.0.0.1" to "127.0.0.1.nip.io" for Docker/K8s compatibility)
+	IPAddress        string // IPAddress is the IP address for Backend endpoint (if it was not a hostname)
 	OriginalHostname string // Original unmodified hostname for TLS certificate validation (e.g., "localhost" when Hostname is "127.0.0.1.nip.io")
 	Port             int    // Port number
 	NeedsTLS         bool   // Whether to generate BackendTLSPolicy resource
@@ -86,8 +88,10 @@ func WriteConfig(data *ConfigData) (string, error) {
 // parsedURL holds parsed URL components for creating Backend, OpenAIConfig, and AnthropicConfig.
 type parsedURL struct {
 	hostname         string
+	ipAddress        string
 	originalHostname string
 	port             int
+	path             string
 	version          string
 	needsTLS         bool
 }
@@ -109,6 +113,12 @@ func parseURL(baseURL string) (*parsedURL, error) {
 	// Convert localhost/127.0.0.1 to nip.io for Docker/K8s compatibility
 	if hostname == "localhost" || hostname == "127.0.0.1" {
 		hostname = "127.0.0.1.nip.io"
+	}
+
+	var ipAddress string
+	if net.ParseIP(hostname) != nil {
+		ipAddress = hostname
+		hostname = ""
 	}
 
 	// Determine port
@@ -139,10 +149,18 @@ func parseURL(baseURL string) (*parsedURL, error) {
 		version = ""
 	}
 
+	// Extract path (default to "/" if empty)
+	path := u.Path
+	if path == "" {
+		path = "/"
+	}
+
 	return &parsedURL{
 		hostname:         hostname,
+		ipAddress:        ipAddress,
 		originalHostname: originalHostname,
 		port:             port,
+		path:             path,
 		version:          version,
 		needsTLS:         u.Scheme == "https",
 	}, nil
