@@ -26,13 +26,12 @@ func TestHeaderMutator_Mutate(t *testing.T) {
 			Set:    []filterapi.HTTPHeader{{Name: "x-new-header", Value: "newval"}},
 		}
 		mutator := NewHeaderMutator(mutations, nil)
-		mutation := mutator.Mutate(headers, false)
+		sets, removes := mutator.Mutate(headers, false)
 
-		require.NotNil(t, mutation)
-		require.ElementsMatch(t, []string{"authorization", "x-api-key"}, mutation.RemoveHeaders)
-		require.Len(t, mutation.SetHeaders, 1)
-		require.Equal(t, "x-new-header", mutation.SetHeaders[0].Header.Key)
-		require.Equal(t, []byte("newval"), mutation.SetHeaders[0].Header.RawValue)
+		require.ElementsMatch(t, []string{"authorization", "x-api-key"}, removes)
+		require.Len(t, sets, 1)
+		require.Equal(t, "x-new-header", sets[0][0])
+		require.Equal(t, "newval", sets[0][1])
 		// Sensitive headers remain locally for metrics, but will be stripped upstream by Envoy.
 		require.Equal(t, "secret", headers["authorization"])
 		require.Equal(t, "key123", headers["x-api-key"])
@@ -65,14 +64,14 @@ func TestHeaderMutator_Mutate(t *testing.T) {
 			Set:    []filterapi.HTTPHeader{},
 		}
 		mutator := NewHeaderMutator(mutations, originalHeaders)
-		mutation := mutator.Mutate(headers, true)
+		sets, removes := mutator.Mutate(headers, true)
 
-		require.NotNil(t, mutation)
-		require.ElementsMatch(t, []string{"authorization", "only-set-previously"}, mutation.RemoveHeaders)
-		require.Len(t, mutation.SetHeaders, 4)
+		require.ElementsMatch(t, []string{"authorization", "only-set-previously"}, removes)
+		require.Len(t, sets, 4)
 		setHeadersMap := make(map[string]string)
-		for _, h := range mutation.SetHeaders {
-			setHeadersMap[h.Header.Key] = string(h.Header.RawValue)
+		for _, h := range sets {
+			key, value := h[0], h[1]
+			setHeadersMap[key] = value
 		}
 		require.Equal(t, "key123", setHeadersMap["x-api-key"])
 		require.Equal(t, "value", setHeadersMap["other"])

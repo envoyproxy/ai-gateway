@@ -19,11 +19,11 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
+	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/bodymutator"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
@@ -201,9 +201,16 @@ func (c *messagesProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Cont
 
 	// Apply header mutations from the route and also restore original headers on retry.
 	if h := c.headerMutator; h != nil {
-		if hm := c.headerMutator.Mutate(c.requestHeaders, c.onRetry); hm != nil {
-			headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, hm.RemoveHeaders...)
-			headerMutation.SetHeaders = append(headerMutation.SetHeaders, hm.SetHeaders...)
+		sets, removes := c.headerMutator.Mutate(c.requestHeaders, c.onRetry)
+		headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, removes...)
+		for _, hdr := range sets {
+			headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+				AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
+				Header: &corev3.HeaderValue{
+					Key:      hdr.Key(),
+					RawValue: []byte(hdr.Value()),
+				},
+			})
 		}
 	}
 
@@ -239,8 +246,16 @@ func (c *messagesProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Cont
 		c.requestHeaders[h.Header.Key] = string(h.Header.RawValue)
 	}
 	if h := c.handler; h != nil {
-		if err = h.Do(ctx, c.requestHeaders, headerMutation, bodyMutation); err != nil {
+		var hdrs []internalapi.Header
+		hdrs, err = h.Do(ctx, c.requestHeaders, bodyMutation.GetBody())
+		if err != nil {
 			return nil, fmt.Errorf("failed to do auth request: %w", err)
+		}
+		for _, h := range hdrs {
+			headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+				AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
+				Header:       &corev3.HeaderValue{Key: h.Key(), RawValue: []byte(h.Value())},
+			})
 		}
 	}
 
