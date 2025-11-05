@@ -80,7 +80,7 @@ spec:
     spec:
       containers:
         - name: mcp-backend-tenant
-          image: docker.io/hritikraj003/ai-gateway-testmcpserver:latest
+          image: docker.io/envoyproxy/ai-gateway-testmcpserver:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 1063

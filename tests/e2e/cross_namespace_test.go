@@ -88,12 +88,11 @@ func TestCrossNamespaceMCPRoute(t *testing.T) {
 	defer fwd.Kill()
 	client := mcp.NewClient(&mcp.Implementation{Name: "demo-http-client", Version: "0.1.0"}, nil)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	var err error
-	var sess *mcp.ClientSession
-	defer cancel()
 	require.Eventually(t, func() bool {
-		sess, err = client.Connect(
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer cancel()
+		var err error
+		sess, err := client.Connect(
 			ctx,
 			&mcp.StreamableClientTransport{
 				Endpoint:   fmt.Sprintf("%s%s", fwd.Address(), "/mcp/cross-namespace-tenant"),
@@ -103,7 +102,7 @@ func TestCrossNamespaceMCPRoute(t *testing.T) {
 			t.Logf("failed to connect to MCP server: %v", err)
 			return false
 		}
+		defer sess.Close()
 		return true
 	}, 40*time.Second, 3*time.Second, "failed to connect to MCP server")
-	t.Cleanup(func() { _ = sess.Close() })
 }
