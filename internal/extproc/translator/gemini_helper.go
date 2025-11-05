@@ -529,9 +529,11 @@ func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate, responseMode
 
 		// Create the choice.
 		choice := openai.ChatCompletionResponseChoice{
-			Index:        int64(idx),
-			FinishReason: geminiFinishReasonToOpenAI(candidate.FinishReason),
+			Index: int64(idx),
 		}
+
+		toolCalls := []openai.ChatCompletionMessageToolCallParam{}
+		var err error
 
 		if candidate.Content != nil {
 			message := openai.ChatCompletionResponseChoiceMessage{
@@ -542,7 +544,7 @@ func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate, responseMode
 			message.Content = &content
 
 			// Extract tool calls if any.
-			toolCalls, err := extractToolCallsFromGeminiParts(candidate.Content.Parts)
+			toolCalls, err = extractToolCallsFromGeminiParts(toolCalls, candidate.Content.Parts)
 			if err != nil {
 				return nil, fmt.Errorf("error extracting tool calls: %w", err)
 			}
@@ -569,16 +571,26 @@ func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate, responseMode
 			choice.Logprobs = geminiLogprobsToOpenAILogprobs(*candidate.LogprobsResult)
 		}
 
+		choice.FinishReason = geminiFinishReasonToOpenAI(candidate.FinishReason, toolCalls)
+
 		choices = append(choices, choice)
 	}
 
 	return choices, nil
 }
 
+// Define a type constraint that includes both stream and non-stream tool call slice types.
+type toolCallSlice interface {
+	[]openai.ChatCompletionMessageToolCallParam | []openai.ChatCompletionChunkChoiceDeltaToolCall
+}
+
 // geminiFinishReasonToOpenAI converts Gemini finish reason to OpenAI finish reason.
-func geminiFinishReasonToOpenAI(reason genai.FinishReason) openai.ChatCompletionChoicesFinishReason {
+func geminiFinishReasonToOpenAI[T toolCallSlice](reason genai.FinishReason, toolCalls T) openai.ChatCompletionChoicesFinishReason {
 	switch reason {
 	case genai.FinishReasonStop:
+		if len(toolCalls) > 0 {
+			return openai.ChatCompletionChoicesFinishReasonToolCalls
+		}
 		return openai.ChatCompletionChoicesFinishReasonStop
 	case genai.FinishReasonMaxTokens:
 		return openai.ChatCompletionChoicesFinishReasonLength
@@ -611,9 +623,7 @@ func extractTextFromGeminiParts(parts []*genai.Part, responseMode geminiResponse
 }
 
 // extractToolCallsFromGeminiParts extracts tool calls from Gemini parts.
-func extractToolCallsFromGeminiParts(parts []*genai.Part) ([]openai.ChatCompletionMessageToolCallParam, error) {
-	var toolCalls []openai.ChatCompletionMessageToolCallParam
-
+func extractToolCallsFromGeminiParts(toolCalls []openai.ChatCompletionMessageToolCallParam, parts []*genai.Part) ([]openai.ChatCompletionMessageToolCallParam, error) {
 	for _, part := range parts {
 		if part == nil || part.FunctionCall == nil {
 			continue
@@ -650,8 +660,7 @@ func extractToolCallsFromGeminiParts(parts []*genai.Part) ([]openai.ChatCompleti
 // extractToolCallsFromGeminiPartsStream extracts tool calls from Gemini parts for streaming responses.
 // Each tool call is assigned an incremental index starting from 0, matching OpenAI's streaming protocol.
 // Returns ChatCompletionChunkChoiceDeltaToolCall types suitable for streaming responses, or nil if no tool calls are found.
-func extractToolCallsFromGeminiPartsStream(parts []*genai.Part) ([]openai.ChatCompletionChunkChoiceDeltaToolCall, error) {
-	var toolCalls []openai.ChatCompletionChunkChoiceDeltaToolCall
+func extractToolCallsFromGeminiPartsStream(toolCalls []openai.ChatCompletionChunkChoiceDeltaToolCall, parts []*genai.Part) ([]openai.ChatCompletionChunkChoiceDeltaToolCall, error) {
 	toolCallIndex := int64(0)
 
 	for _, part := range parts {
@@ -772,10 +781,11 @@ func geminiCandidatesToOpenAIStreamingChoices(candidates []*genai.Candidate, res
 
 		// Create the streaming choice.
 		choice := openai.ChatCompletionResponseChunkChoice{
-			Index:        0,
-			FinishReason: geminiFinishReasonToOpenAI(candidate.FinishReason),
+			Index: 0,
 		}
 
+		toolCalls := []openai.ChatCompletionChunkChoiceDeltaToolCall{}
+		var err error
 		if candidate.Content != nil {
 			delta := &openai.ChatCompletionResponseChunkChoiceDelta{
 				Role: openai.ChatMessageRoleAssistant,
@@ -788,7 +798,7 @@ func geminiCandidatesToOpenAIStreamingChoices(candidates []*genai.Candidate, res
 			}
 
 			// Extract tool calls if any.
-			toolCalls, err := extractToolCallsFromGeminiPartsStream(candidate.Content.Parts)
+			toolCalls, err = extractToolCallsFromGeminiPartsStream(toolCalls, candidate.Content.Parts)
 			if err != nil {
 				return nil, fmt.Errorf("error extracting tool calls: %w", err)
 			}
@@ -796,7 +806,7 @@ func geminiCandidatesToOpenAIStreamingChoices(candidates []*genai.Candidate, res
 
 			choice.Delta = delta
 		}
-
+		choice.FinishReason = geminiFinishReasonToOpenAI(candidate.FinishReason, toolCalls)
 		choices = append(choices, choice)
 	}
 

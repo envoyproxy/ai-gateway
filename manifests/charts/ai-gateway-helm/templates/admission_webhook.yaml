@@ -30,7 +30,7 @@ webhooks:
     sideEffects: None
     admissionReviewVersions: ["v1"]
     timeoutSeconds: 10
-    failurePolicy: Ignore
+    failurePolicy: Fail
 ---
 {{- if .Values.controller.mutatingWebhook.certManager.enable }}
 apiVersion: cert-manager.io/v1
