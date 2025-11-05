@@ -125,7 +125,7 @@ func translateAnthropicToolChoice(openAIToolChoice *openai.ChatCompletionToolCho
 		if choice.Type == openai.ToolTypeFunction && choice.Function.Name != "" {
 			toolChoice = anthropic.ToolChoiceUnionParam{
 				OfTool: &anthropic.ToolChoiceToolParam{
-					Type:                   constant.Tool(choice.Type),
+					Type:                   constant.Tool("tool"),
 					Name:                   choice.Function.Name,
 					DisableParallelToolUse: disableParallelToolUse,
 				},
