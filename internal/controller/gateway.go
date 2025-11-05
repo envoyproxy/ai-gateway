@@ -178,9 +178,67 @@ func headerMutationToFilterAPI(m *aigv1a1.HTTPHeaderMutation) *filterapi.HTTPHea
 	return ret
 }
 
-// TODO
+// bodyMutationToFilterAPI converts an aigv1a1.HTTPBodyMutation to filterapi.HTTPBodyMutation.
 func bodyMutationToFilterAPI(m *aigv1a1.HTTPBodyMutation) *filterapi.HTTPBodyMutation {
-	return nil
+	if m == nil {
+		return nil
+	}
+	ret := &filterapi.HTTPBodyMutation{}
+	ret.Remove = make([]string, 0, len(m.Remove))
+	for _, field := range m.Remove {
+		ret.Remove = append(ret.Remove, field)
+	}
+	for _, field := range m.Set {
+		ret.Set = append(ret.Set, filterapi.HTTPBodyField{Path: field.Path, Value: field.Value})
+	}
+	return ret
+}
+
+// mergeBodyMutations merges route-level and backend-level BodyMutation with route-level taking precedence.
+// Returns the merged BodyMutation where route-level operations override backend-level operations for conflicting body fields.
+func mergeBodyMutations(routeLevel, backendLevel *aigv1a1.HTTPBodyMutation) *aigv1a1.HTTPBodyMutation {
+	if routeLevel == nil {
+		return backendLevel
+	}
+	if backendLevel == nil {
+		return routeLevel
+	}
+
+	result := &aigv1a1.HTTPBodyMutation{}
+
+	// Merge Set operations (route-level wins conflicts)
+	fieldMap := make(map[string]aigv1a1.HTTPBodyField)
+
+	// Add backend-level fields first
+	for _, f := range backendLevel.Set {
+		fieldMap[f.Path] = f
+	}
+
+	// Override with route-level fields (route-level wins)
+	for _, f := range routeLevel.Set {
+		fieldMap[f.Path] = f
+	}
+
+	// Convert back to slice
+	for _, f := range fieldMap {
+		result.Set = append(result.Set, f)
+	}
+
+	// Merge Remove operations (combine and deduplicate)
+	removeMap := make(map[string]struct{})
+
+	for _, f := range backendLevel.Remove {
+		removeMap[f] = struct{}{}
+	}
+	for _, f := range routeLevel.Remove {
+		removeMap[f] = struct{}{}
+	}
+
+	for f := range removeMap {
+		result.Remove = append(result.Remove, f)
+	}
+
+	return result
 }
 
 // mergeHeaderMutations merges route-level and backend-level HeaderMutation with route-level taking precedence.
@@ -300,6 +358,13 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 
 					// Convert to FilterAPI format
 					b.HeaderMutation = headerMutationToFilterAPI(mergedHeaderMutation)
+
+					routeBodyMutation := backendRef.BodyMutation
+					backendBodyMutation := backendObj.Spec.BodyMutation
+					// Merge with route-level taking precedence over backend-level
+					mergedBodyMutation := mergeBodyMutations(routeBodyMutation, backendBodyMutation)
+					b.BodyMutation = bodyMutationToFilterAPI(mergedBodyMutation)
+
 					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
 					if bsp != nil {
 						b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, bsp)
