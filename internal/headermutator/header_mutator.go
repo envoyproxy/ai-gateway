@@ -58,7 +58,7 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) (sets []
 			}
 			setHeadersSet[key] = struct{}{}
 			headers[key] = h.Value
-			sets = append(sets, [2]string{key, h.Value})
+			sets = append(sets, internalapi.Header{key, h.Value})
 		}
 	}
 
@@ -77,7 +77,7 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) (sets []
 				headers[key] = v
 				if !isRemoved {
 					setHeadersSet[key] = struct{}{}
-					sets = append(sets, [2]string{key, v})
+					sets = append(sets, internalapi.Header{key, v})
 				}
 			}
 		}
@@ -99,7 +99,7 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) (sets []
 			} else {
 				// Restore original value.
 				headers[key] = originalValue
-				sets = append(sets, [2]string{key, originalValue})
+				sets = append(sets, internalapi.Header{key, originalValue})
 			}
 		}
 	}
