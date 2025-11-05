@@ -210,13 +210,10 @@ func (c *messagesProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Cont
 	// Apply body mutations from the route and also restore original body on retry.
 	if b := c.bodyMutator; b != nil {
 		if bodyMutation != nil && bodyMutation.GetBody() != nil && len(bodyMutation.GetBody()) > 0 {
-			// Apply body mutation to the already translated body
-			mutatedBody, err := c.bodyMutator.Mutate(bodyMutation.GetBody(), c.onRetry)
-			if err != nil {
-				c.logger.Warn("failed to apply body mutation", "error", err)
-				// Continue with original body on error
+			mutatedBody, mutationErr := c.bodyMutator.Mutate(bodyMutation.GetBody(), c.onRetry)
+			if mutationErr != nil {
+				c.logger.Warn("failed to apply body mutation", "error", mutationErr)
 			} else {
-				// Update the body mutation with the mutated body
 				bodyMutation.Mutation = &extprocv3.BodyMutation_Body{Body: mutatedBody}
 			}
 		}
