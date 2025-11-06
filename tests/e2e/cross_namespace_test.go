@@ -7,9 +7,11 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
@@ -68,4 +70,38 @@ func TestCrossNamespace(t *testing.T) {
 			return choiceNonEmpty
 		}, 40*time.Second, 3*time.Second)
 	})
+}
+
+// TestCrossNamespaceMCPRoute tests MCPRoute with cross-namespace references.
+// This test validates that:
+//  1. A Gateway in one namespace (mcp-gw) can be referenced by an MCPRoute in another namespace (mcp-tenant)
+func TestCrossNamespaceMCPRoute(t *testing.T) {
+	const manifest = "testdata/cross_namespace_mcproute.yaml"
+	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
+	t.Cleanup(func() {
+		_ = e2elib.KubectlDeleteManifest(context.Background(), manifest)
+	})
+
+	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=mcp-gateway"
+	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
+	fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+	defer fwd.Kill()
+	client := mcp.NewClient(&mcp.Implementation{Name: "demo-http-client", Version: "0.1.0"}, nil)
+
+	require.Eventually(t, func() bool {
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer cancel()
+		var err error
+		sess, err := client.Connect(
+			ctx,
+			&mcp.StreamableClientTransport{
+				Endpoint: fmt.Sprintf("%s/mcp/cross-ns", fwd.Address()),
+			}, nil)
+		if err != nil {
+			t.Logf("failed to connect to MCP server: %v", err)
+			return false
+		}
+		defer sess.Close()
+		return true
+	}, 40*time.Second, 3*time.Second, "failed to connect to MCP server")
 }
