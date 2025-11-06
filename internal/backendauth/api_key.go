@@ -10,10 +10,8 @@ import (
 	"fmt"
 	"strings"
 
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 // apiKeyHandler implements [Handler] for api key authz.
@@ -28,10 +26,7 @@ func newAPIKeyHandler(auth *filterapi.APIKeyAuth) (Handler, error) {
 // Do implements [Handler.Do].
 //
 // Extracts the api key from the local file and set it as an authorization header.
-func (a *apiKeyHandler) Do(_ context.Context, requestHeaders map[string]string, headerMut *extprocv3.HeaderMutation, _ *extprocv3.BodyMutation) error {
+func (a *apiKeyHandler) Do(_ context.Context, requestHeaders map[string]string, _ []byte) ([]internalapi.Header, error) {
 	requestHeaders["Authorization"] = fmt.Sprintf("Bearer %s", a.apiKey)
-	headerMut.SetHeaders = append(headerMut.SetHeaders, &corev3.HeaderValueOption{
-		Header: &corev3.HeaderValue{Key: "Authorization", RawValue: []byte(requestHeaders["Authorization"])},
-	})
-	return nil
+	return []internalapi.Header{{"Authorization", fmt.Sprintf("Bearer %s", a.apiKey)}}, nil
 }
