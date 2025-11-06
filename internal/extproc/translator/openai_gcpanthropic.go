@@ -659,6 +659,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 		return
 	}
 
+	//headerMutation.RemoveHeaders = []string{"Cache-Control"}
 	headerMutation, bodyMutation = buildRequestMutations(pathSuffix, body)
 	return
 }
@@ -760,19 +761,23 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 		Object:  string(openAIconstant.ValueOf[openAIconstant.ChatCompletion]()),
 		Choices: make([]openai.ChatCompletionResponseChoice, 0),
 	}
+	promptTokens := anthropicResp.Usage.InputTokens + anthropicResp.Usage.CacheReadInputTokens + anthropicResp.Usage.CacheCreationInputTokens
 	tokenUsage = LLMTokenUsage{
-		InputTokens:       uint32(anthropicResp.Usage.InputTokens),                                    //nolint:gosec
-		OutputTokens:      uint32(anthropicResp.Usage.OutputTokens),                                   //nolint:gosec
-		TotalTokens:       uint32(anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens), //nolint:gosec
-		CachedInputTokens: uint32(anthropicResp.Usage.CacheReadInputTokens),                           //nolint:gosec
+		InputTokens:       uint32(promptTokens),                                                                            //nolint:gosec
+		OutputTokens:      uint32(anthropicResp.Usage.OutputTokens),                                                        //nolint:gosec
+		TotalTokens:       uint32(promptTokens + anthropicResp.Usage.OutputTokens),                                         //nolint:gosec
+		CachedInputTokens: uint32(anthropicResp.Usage.CacheReadInputTokens + anthropicResp.Usage.CacheCreationInputTokens), //nolint:gosec
 	}
+	fmt.Printf("cache creation input tokens: %d\n", anthropicResp.Usage.CacheCreationInputTokens)
+	fmt.Printf("cache creation tokens: %d\n", anthropicResp.Usage.CacheCreation)
+	fmt.Printf("cache tokens: %d\n", anthropicResp.Usage.CacheReadInputTokens)
+
 	openAIResp.Usage = openai.Usage{
 		CompletionTokens: int(anthropicResp.Usage.OutputTokens),
-		PromptTokens:     int(anthropicResp.Usage.InputTokens),
-		TotalTokens:      int(anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens),
+		PromptTokens:     int(promptTokens),
+		TotalTokens:      int(promptTokens + anthropicResp.Usage.OutputTokens),
 		PromptTokensDetails: &openai.PromptTokensDetails{
-			CachedTokens: int(anthropicResp.Usage.CacheReadInputTokens),
-		},
+			CachedTokens: int(anthropicResp.Usage.CacheReadInputTokens + anthropicResp.Usage.CacheCreationInputTokens)},
 	}
 
 	finishReason, err := anthropicToOpenAIFinishReason(anthropicResp.StopReason)
