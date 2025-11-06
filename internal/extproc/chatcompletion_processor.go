@@ -291,7 +291,6 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessRequestHeaders(ctx contex
 				}
 			}
 		}
-
 	}
 
 	// Ensure bodyMutation is not nil for subsequent processing
