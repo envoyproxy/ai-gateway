@@ -199,8 +199,8 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			return nil, fmt.Errorf("unmarshal message_start: %w", err)
 		}
 		p.activeMessageID = event.Message.ID
-		p.tokenUsage.InputTokens = uint32(event.Message.Usage.InputTokens)                 //nolint:gosec
-		p.tokenUsage.CachedInputTokens += uint32(event.Message.Usage.CacheReadInputTokens) //nolint:gosec
+		p.tokenUsage.InputTokens += uint32(event.Message.Usage.InputTokens + event.Message.Usage.InputTokens + event.Message.Usage.InputTokens) //nolint:gosec
+		p.tokenUsage.CachedInputTokens += uint32(event.Message.Usage.CacheReadInputTokens + event.Message.Usage.CacheCreationInputTokens)       //nolint:gosec
 
 		// reset the toolIndex for each message
 		p.toolIndex = -1
