@@ -21,6 +21,7 @@ import (
 
 func TestMain(m *testing.M) {
 	e2elib.TestMain(m, e2elib.AIGatewayHelmOption{
+		Namespace: "envoy-ai-gateway-e2e", // Also install AI Gateway on a different namespace
 		AdditionalArgs: []string{
 			// Configure the controller to only watch certain namespaces
 			// By skipping the "route1-ns" the models defined in that namespace routes

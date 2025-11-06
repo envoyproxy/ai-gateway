@@ -372,3 +372,44 @@ func TestMCPRouteController_ensureMCPBackendRefHTTPFilter(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, httpFilter.Spec.CredentialInjection)
 }
+
+func TestMCPRouteController_syncGateways_NamespaceCrossReference(t *testing.T) {
+	c := requireNewFakeClientWithIndexesForMCP(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+
+	gateway1 := &gwapiv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{Name: "gateway1", Namespace: "default"},
+	}
+	gateway2 := &gwapiv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{Name: "gateway2", Namespace: "other-ns"},
+	}
+
+	err := c.Create(t.Context(), gateway1)
+	require.NoError(t, err)
+	err = c.Create(t.Context(), gateway2)
+	require.NoError(t, err)
+
+	ctrlr := NewMCPRouteController(c, fakekube.NewClientset(), logr.Discard(), eventCh.Ch)
+
+	mcpRoute := &aigv1a1.MCPRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
+		Spec: aigv1a1.MCPRouteSpec{
+			ParentRefs: []gwapiv1.ParentReference{
+				{Name: gwapiv1.ObjectName("gateway1"), Namespace: ptr.To(gwapiv1.Namespace("default"))},
+				{Name: gwapiv1.ObjectName("gateway2"), Namespace: ptr.To(gwapiv1.Namespace("other-ns"))},
+			},
+		},
+	}
+	err = ctrlr.syncGateways(t.Context(), mcpRoute)
+	require.NoError(t, err)
+
+	// Verify that events were sent for both gateways.
+	// We should receive 2 events (one for each parent reference).
+	gateways := eventCh.RequireItemsEventually(t, 2)
+	require.Len(t, gateways, 2)
+
+	require.Equal(t, "gateway1", gateways[0].Name)
+	require.Equal(t, "default", gateways[0].Namespace)
+	require.Equal(t, "gateway2", gateways[1].Name)
+	require.Equal(t, "other-ns", gateways[1].Namespace)
+}

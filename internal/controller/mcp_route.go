@@ -432,7 +432,11 @@ func (c *MCPRouteController) newPerBackendRefHTTPRoute(ctx context.Context, dst 
 // syncGateways synchronizes the gateways referenced by the MCPRoute by sending events to the gateway controller.
 func (c *MCPRouteController) syncGateways(ctx context.Context, mcpRoute *aigv1a1.MCPRoute) error {
 	for _, p := range mcpRoute.Spec.ParentRefs {
-		c.syncGateway(ctx, mcpRoute.Namespace, string(p.Name))
+		gwNamespace := mcpRoute.Namespace
+		if p.Namespace != nil {
+			gwNamespace = string(*p.Namespace)
+		}
+		c.syncGateway(ctx, gwNamespace, string(p.Name))
 	}
 	return nil
 }
