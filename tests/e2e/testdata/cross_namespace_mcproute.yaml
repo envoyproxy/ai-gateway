@@ -60,6 +60,7 @@ metadata:
   name: mcp-tenant-route
   namespace: mcp-tenant
 spec:
+  path: "/mcp/cross-ns"
   parentRefs:
     - name: mcp-gateway
       kind: Gateway
@@ -67,7 +68,6 @@ spec:
       namespace: mcp-gw
   backendRefs:
     - name: mcp-backend-tenant
-      kind: Backend
       namespace: mcp-tenant
       port: 1063
 ---
@@ -89,7 +89,7 @@ spec:
       containers:
         - name: mcp-backend-tenant
           image: docker.io/envoyproxy/ai-gateway-testmcpserver:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 1063
 ---
@@ -102,18 +102,7 @@ spec:
   selector:
     app: mcp-backend-tenant
   ports:
-    - name: http
+    - protocol: TCP
       port: 1063
       targetPort: 1063
   type: ClusterIP
----
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: Backend
-metadata:
-  name: mcp-backend-tenant
-  namespace: mcp-tenant
-spec:
-  endpoints:
-    - fqdn:
-        hostname: mcp-backend-tenant.mcp-tenant.svc.cluster.local
-        port: 1063

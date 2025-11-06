@@ -84,7 +84,7 @@ func TestCrossNamespaceMCPRoute(t *testing.T) {
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=mcp-gateway"
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
-	fwd := e2elib.RequireNewHTTPPortForwarder(t, "mcp-gw", egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+	fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
 	defer fwd.Kill()
 	client := mcp.NewClient(&mcp.Implementation{Name: "demo-http-client", Version: "0.1.0"}, nil)
 
@@ -95,7 +95,7 @@ func TestCrossNamespaceMCPRoute(t *testing.T) {
 		sess, err := client.Connect(
 			ctx,
 			&mcp.StreamableClientTransport{
-				Endpoint: fmt.Sprintf("%s/mcp", fwd.Address()),
+				Endpoint: fmt.Sprintf("%s/mcp/cross-ns", fwd.Address()),
 			}, nil)
 		if err != nil {
 			t.Logf("failed to connect to MCP server: %v", err)
