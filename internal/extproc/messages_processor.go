@@ -225,14 +225,14 @@ func (c *messagesProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Cont
 					Mutation: &extprocv3.BodyMutation_Body{Body: mutatedBody},
 				}
 			}
-		}
-
-		if bodyMutation != nil && bodyMutation.GetBody() != nil && len(bodyMutation.GetBody()) > 0 {
-			mutatedBody, mutationErr := c.bodyMutator.Mutate(bodyMutation.GetBody(), c.onRetry)
-			if mutationErr != nil {
-				c.logger.Error("failed to apply body mutation", "error", mutationErr)
-			} else {
-				bodyMutation.Mutation = &extprocv3.BodyMutation_Body{Body: mutatedBody}
+		} else {
+			if bodyMutation.GetBody() != nil && len(bodyMutation.GetBody()) > 0 {
+				mutatedBody, mutationErr := c.bodyMutator.Mutate(bodyMutation.GetBody(), c.onRetry)
+				if mutationErr != nil {
+					c.logger.Error("failed to apply body mutation", "error", mutationErr)
+				} else {
+					bodyMutation.Mutation = &extprocv3.BodyMutation_Body{Body: mutatedBody}
+				}
 			}
 		}
 	}
