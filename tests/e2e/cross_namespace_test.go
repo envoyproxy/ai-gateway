@@ -95,8 +95,7 @@ func TestCrossNamespaceMCPRoute(t *testing.T) {
 		sess, err := client.Connect(
 			ctx,
 			&mcp.StreamableClientTransport{
-				Endpoint:   fmt.Sprintf("%s%s", fwd.Address(), "/mcp/cross-namespace-tenant"),
-				HTTPClient: nil,
+				Endpoint: fmt.Sprintf("%s%s", fwd.Address(), "/mcp"),
 			}, nil)
 		if err != nil {
 			t.Logf("failed to connect to MCP server: %v", err)

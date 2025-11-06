@@ -2,10 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
-
-# This test uses ONLY ONE MCPRoute to ensure there are no side effects from the reconciliation
-# of other routes. This keeps the test future-proof and ensures we're testing the cross-namespace
-# reference functionality in isolation.
 ---
 apiVersion: v1
 kind: Namespace
@@ -44,6 +40,19 @@ spec:
       kind: EnvoyProxy
       name: mcp-envoyproxy
 ---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: mcp-envoyproxy
+  namespace: mcp-gw
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        container:
+          resources: {}
+---
 # This is the ONLY MCPRoute in this test to avoid side effects from reconciliation of other routes.
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: MCPRoute
@@ -51,7 +60,6 @@ metadata:
   name: mcp-tenant-route
   namespace: mcp-tenant
 spec:
-  path: "/mcp/cross-namespace-tenant"
   parentRefs:
     - name: mcp-gateway
       kind: Gateway
@@ -100,14 +108,12 @@ spec:
   type: ClusterIP
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: EnvoyProxy
+kind: Backend
 metadata:
-  name: mcp-envoyproxy
-  namespace: mcp-gw
+  name: mcp-backend-tenant
+  namespace: mcp-tenant
 spec:
-  provider:
-    type: Kubernetes
-    kubernetes:
-      envoyDeployment:
-        container:
-          resources: {}
+  endpoints:
+    - fqdn:
+        hostname: mcp-backend-tenant.mcp-tenant.svc.cluster.local
+        port: 1063
