@@ -9,7 +9,6 @@ import (
 	"context"
 	"testing"
 
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -21,18 +20,17 @@ func TestAnthropicAPIKeyHandler(t *testing.T) {
 		require.NoError(t, err)
 
 		headers := make(map[string]string)
-		headerMut := &extprocv3.HeaderMutation{}
 
-		err = handler.Do(context.Background(), headers, headerMut, nil)
+		hders, err := handler.Do(context.Background(), headers, nil)
 		require.NoError(t, err)
 
 		// Verify header in map
 		require.Equal(t, "test-azure-key", headers["x-api-key"])
 
 		// Verify header in mutation
-		require.Len(t, headerMut.SetHeaders, 1)
-		require.Equal(t, "x-api-key", headerMut.SetHeaders[0].Header.Key)
-		require.Equal(t, "test-azure-key", string(headerMut.SetHeaders[0].Header.RawValue))
+		require.Len(t, hders, 1)
+		require.Equal(t, "x-api-key", hders[0][0])
+		require.Equal(t, "test-azure-key", hders[0][1])
 	})
 
 	t.Run("trims whitespace", func(t *testing.T) {
@@ -40,11 +38,13 @@ func TestAnthropicAPIKeyHandler(t *testing.T) {
 		require.NoError(t, err)
 
 		headers := make(map[string]string)
-		headerMut := &extprocv3.HeaderMutation{}
 
-		err = handler.Do(context.Background(), headers, headerMut, nil)
+		hdrs, err := handler.Do(context.Background(), headers, nil)
 		require.NoError(t, err)
 
 		require.Equal(t, "key-with-spaces", headers["x-api-key"])
+		require.Len(t, hdrs, 1)
+		require.Equal(t, "x-api-key", hdrs[0][0])
+		require.Equal(t, "key-with-spaces", hdrs[0][1])
 	})
 }
