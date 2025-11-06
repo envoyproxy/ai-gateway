@@ -59,7 +59,7 @@ type MessagesRequest struct {
 
 	// System is the system prompt to guide the model's behavior.
 	// https://docs.claude.com/en/api/messages#body-system
-	System *SystemPrompt `json:"system,omitempty"`
+	System []*SystemPrompt `json:"system,omitempty"`
 
 	// Temperature controls the randomness of the output.
 	Temperature *float64 `json:"temperature,omitempty"`
