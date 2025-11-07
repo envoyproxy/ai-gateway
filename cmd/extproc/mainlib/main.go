@@ -268,12 +268,12 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		return fmt.Errorf("failed to create external processor server: %w", err)
 	}
 	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAIPrefix, "/v1/chat/completions"), extproc.ChatCompletionProcessorFactory(chatCompletionMetrics))
-	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAIPrefix, "v1/completions"), extproc.CompletionsProcessorFactory(completionMetrics))
-	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAIPrefix, "v1/embeddings"), extproc.EmbeddingsProcessorFactory(embeddingsMetrics))
-	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAIPrefix, "v1/images/generations"), extproc.ImageGenerationProcessorFactory(imageGenerationMetrics))
-	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.CoherePrefix, "v2/rerank"), extproc.RerankProcessorFactory(rerankMetrics))
-	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAIPrefix, "v1/models"), extproc.NewModelsProcessor)
-	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.AnthropicPrefix, "v1/messages"), extproc.MessagesProcessorFactory(messagesMetrics))
+	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAIPrefix, "/v1/completions"), extproc.CompletionsProcessorFactory(completionMetrics))
+	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAIPrefix, "/v1/embeddings"), extproc.EmbeddingsProcessorFactory(embeddingsMetrics))
+	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAIPrefix, "/v1/images/generations"), extproc.ImageGenerationProcessorFactory(imageGenerationMetrics))
+	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.CoherePrefix, "/v2/rerank"), extproc.RerankProcessorFactory(rerankMetrics))
+	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAIPrefix, "/v1/models"), extproc.NewModelsProcessor)
+	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.AnthropicPrefix, "/v1/messages"), extproc.MessagesProcessorFactory(messagesMetrics))
 
 	if watchErr := extproc.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); watchErr != nil {
 		return fmt.Errorf("failed to start config watcher: %w", watchErr)
