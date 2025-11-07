@@ -165,6 +165,12 @@ controller:
       issuerName: self-signed-issuer-for-mutating-webhook
       # The name of the certificate.
       certificateName: self-signed-cert-for-mutating-webhook
+    # The object selector for the mutating webhook. default selects envoy-gateway managed objects
+    objectSelector:
+      matchLabels:
+        app.kubernetes.io/managed-by: envoy-gateway
+    # The namespace selector for the mutating webhook. default is empty
+    namespaceSelector:
 
   resources: {}
   nodeSelector: {}
