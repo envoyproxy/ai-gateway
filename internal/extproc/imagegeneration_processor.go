@@ -19,10 +19,10 @@ import (
 	openaisdk "github.com/openai/openai-go/v2"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/headermutator"
+	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
@@ -219,9 +219,16 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessRequestHeaders(ctx conte
 
 	// Apply header mutations from the route and also restore original headers on retry.
 	if h := i.headerMutator; h != nil {
-		if hm := i.headerMutator.Mutate(i.requestHeaders, i.onRetry); hm != nil {
-			headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, hm.RemoveHeaders...)
-			headerMutation.SetHeaders = append(headerMutation.SetHeaders, hm.SetHeaders...)
+		sets, removes := i.headerMutator.Mutate(i.requestHeaders, i.onRetry)
+		headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, removes...)
+		for _, hdr := range sets {
+			headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+				AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
+				Header: &corev3.HeaderValue{
+					Key:      hdr.Key(),
+					RawValue: []byte(hdr.Value()),
+				},
+			})
 		}
 	}
 
@@ -230,8 +237,16 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessRequestHeaders(ctx conte
 	}
 
 	if h := i.handler; h != nil {
-		if err = h.Do(ctx, i.requestHeaders, headerMutation, bodyMutation); err != nil {
+		var hdrs []internalapi.Header
+		hdrs, err = h.Do(ctx, i.requestHeaders, bodyMutation.GetBody())
+		if err != nil {
 			return nil, fmt.Errorf("failed to do auth request: %w", err)
+		}
+		for _, h := range hdrs {
+			headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+				AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
+				Header:       &corev3.HeaderValue{Key: h.Key(), RawValue: []byte(h.Value())},
+			})
 		}
 	}
 
