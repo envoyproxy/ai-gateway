@@ -153,7 +153,7 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 			}
 
 			if isCacheEnabled(openAITool.Function.AnthropicContentFields) {
-				toolParam.CacheControl = openAITool.Function.CacheControl
+				toolParam.CacheControl = anthropic.NewCacheControlEphemeralParam()
 			}
 
 			// The parameters for the function are expected to be a JSON Schema object.
@@ -768,10 +768,6 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 		TotalTokens:       uint32(promptTokens + anthropicResp.Usage.OutputTokens),                                         //nolint:gosec
 		CachedInputTokens: uint32(anthropicResp.Usage.CacheReadInputTokens + anthropicResp.Usage.CacheCreationInputTokens), //nolint:gosec
 	}
-	fmt.Printf("cache creation input tokens: %d\n", anthropicResp.Usage.CacheCreationInputTokens)
-	fmt.Printf("cache creation tokens: %d\n", anthropicResp.Usage.CacheCreation)
-	fmt.Printf("cache tokens: %d\n", anthropicResp.Usage.CacheReadInputTokens)
-
 	openAIResp.Usage = openai.Usage{
 		CompletionTokens: int(anthropicResp.Usage.OutputTokens),
 		PromptTokens:     int(promptTokens),
