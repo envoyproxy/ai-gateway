@@ -30,7 +30,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
-	gwapiv1a3 "sigs.k8s.io/gateway-api/apis/v1alpha3"
 	kyaml "sigs.k8s.io/yaml"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
@@ -110,7 +109,7 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 	mcpRoutes []*aigv1a1.MCPRoute,
 	aigwBackends []*aigv1a1.AIServiceBackend,
 	backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy,
-	backendTLSConfigs []*gwapiv1a3.BackendTLSPolicy,
+	backendTLSConfigs []*gwapiv1.BackendTLSPolicy,
 	gws []*gwapiv1.Gateway,
 	secrets []*corev1.Secret,
 	envoyProxies []*egv1a1.EnvoyProxy,
@@ -184,7 +183,7 @@ func translateCustomResourceObjects(
 	mcpRoutes []*aigv1a1.MCPRoute,
 	aigwBackends []*aigv1a1.AIServiceBackend,
 	backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy,
-	backendTLSPolicies []*gwapiv1a3.BackendTLSPolicy,
+	backendTLSPolicies []*gwapiv1.BackendTLSPolicy,
 	gws []*gwapiv1.Gateway,
 	usedDefinedSecrets []*corev1.Secret,
 	logger *slog.Logger,
