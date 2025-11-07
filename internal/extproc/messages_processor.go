@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strconv"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -73,11 +72,10 @@ func (c *messagesProcessorRouterFilter) ProcessRequestHeaders(_ context.Context,
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
 func (c *messagesProcessorRouterFilter) ProcessRequestBody(_ context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	// Parse Anthropic request - natural validation.
-	body, err := parseAnthropicMessagesBody(rawBody)
+	originalModel, body, err := parseAnthropicMessagesBody(rawBody)
 	if err != nil {
 		return nil, fmt.Errorf("/v1/messages endpoint requires Anthropic format: %w", err)
 	}
-	originalModel := body.Model
 
 	c.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = originalModel
 	c.originalRequestBody = body
@@ -181,9 +179,9 @@ func (c *messagesProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Cont
 	// Start tracking metrics for this request.
 	c.metrics.StartRequest(c.requestHeaders)
 	// Set the original model from the request body before any overrides
-	c.metrics.SetOriginalModel(c.originalRequestBody.Model)
+	c.metrics.SetOriginalModel(c.originalRequestBody.GetModel())
 	// Set the request model for metrics from the original model or override if applied.
-	reqModel := cmp.Or(c.requestHeaders[internalapi.ModelNameHeaderKeyDefault], c.originalRequestBody.Model)
+	reqModel := cmp.Or(c.requestHeaders[internalapi.ModelNameHeaderKeyDefault], c.originalRequestBody.GetModel())
 	c.metrics.SetRequestModel(reqModel)
 
 	// Force body mutation for retry requests as the body mutation might have happened in previous iteration.
@@ -290,14 +288,6 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseBody(ctx context.Contex
 			c.metrics.RecordRequestCompletion(ctx, true, c.requestHeaders)
 		}
 	}()
-	if code, _ := strconv.Atoi(c.responseHeaders[":status"]); !isGoodStatusCode(code) {
-		// For now, simply pass through error responses without modification.
-		// TODO: do the error conversion like other processors, to be able to capture any error in the proper
-		// format expected by the client.
-		return &extprocv3.ProcessingResponse{
-			Response: &extprocv3.ProcessingResponse_ResponseBody{ResponseBody: &extprocv3.BodyResponse{}},
-		}, nil
-	}
 
 	// Decompress the body if needed using common utility.
 	decodingResult, err := decodeContentIfNeeded(body.Body, c.responseEncoding)
@@ -327,11 +317,9 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseBody(ctx context.Contex
 		},
 	}
 
-	// Token usages are cumulative for streaming responses, so we update the stored costs.
-	c.costs.InputTokens = tokenUsage.InputTokens
-	c.costs.OutputTokens = tokenUsage.OutputTokens
-	c.costs.TotalTokens = tokenUsage.TotalTokens
-	c.costs.CachedInputTokens = tokenUsage.CachedInputTokens
+	c.costs.InputTokens += tokenUsage.InputTokens
+	c.costs.OutputTokens += tokenUsage.OutputTokens
+	c.costs.TotalTokens += tokenUsage.TotalTokens
 
 	// Update metrics with token usage.
 	c.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.CachedInputTokens, tokenUsage.OutputTokens, c.requestHeaders)
@@ -386,7 +374,7 @@ func (c *messagesProcessorUpstreamFilter) SetBackend(ctx context.Context, b *fil
 	c.onRetry = rp.upstreamFilterCount > 1
 
 	// Determine if this is a streaming request from the parsed body.
-	c.stream = rp.originalRequestBody.Stream
+	c.stream = rp.originalRequestBody.GetStream()
 	if isEndpointPicker {
 		if c.logger.Enabled(ctx, slog.LevelDebug) {
 			c.logger.Debug("selected backend", slog.String("picked_endpoint", pickedEndpoint), slog.String("backendName", b.Name), slog.String("modelNameOverride", c.modelNameOverride))
@@ -409,10 +397,16 @@ func (c *messagesProcessorUpstreamFilter) mergeWithTokenLatencyMetadata(metadata
 }
 
 // parseAnthropicMessagesBody parses the Anthropic Messages API request body.
-func parseAnthropicMessagesBody(body *extprocv3.HttpBody) (req *anthropic.MessagesRequest, err error) {
+func parseAnthropicMessagesBody(body *extprocv3.HttpBody) (modelName string, req *anthropic.MessagesRequest, err error) {
 	var anthropicReq anthropic.MessagesRequest
 	if err := json.Unmarshal(body.Body, &anthropicReq); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal Anthropic Messages body: %w", err)
+		return "", nil, fmt.Errorf("failed to unmarshal Anthropic Messages body: %w", err)
 	}
-	return &anthropicReq, nil
+
+	model := anthropicReq.GetModel()
+	if model == "" {
+		return "", nil, fmt.Errorf("model field is required in Anthropic request")
+	}
+
+	return model, &anthropicReq, nil
 }
