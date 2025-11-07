@@ -6,8 +6,10 @@
 package anthropic
 
 import (
+	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -146,6 +148,80 @@ func TestMessageContent_MessagesStreamEvent(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Equal(t, tt.exp, mse)
+		})
+	}
+}
+
+func TestMessagesRequest_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name     string
+		jsonData string
+		want     *MessagesRequest
+		wantErr  bool
+	}{
+		{
+			name: "system as string",
+			jsonData: `{
+				"model": "claude-3-5-sonnet-20241022",
+				"messages": [{"role": "user", "content": "Hello"}],
+				"max_tokens": 1024,
+				"system": "You are a helpful assistant."
+			}`,
+			want: &MessagesRequest{
+				Model:     "claude-3-5-sonnet-20241022",
+				Messages:  []Message{{Role: MessageRoleUser, Content: MessageContent{Text: "Hello"}}},
+				MaxTokens: 1024,
+			},
+			wantErr: false,
+		},
+		{
+			name: "system as object array",
+			jsonData: `{
+				"model": "claude-3-5-sonnet-20241022",
+				"messages": [{"role": "user", "content": "Hello"}],
+				"max_tokens": 1024,
+				"system": [
+					{
+						"text": "Today's date is 2024-06-01.",
+						"type": "text"
+					}
+				]
+			}`,
+			want: &MessagesRequest{
+				Model:     "claude-3-5-sonnet-20241022",
+				Messages:  []Message{{Role: MessageRoleUser, Content: MessageContent{Text: "Hello"}}},
+				MaxTokens: 1024,
+			},
+			wantErr: false,
+		},
+		{
+			name: "system omitted",
+			jsonData: `{
+				"model": "claude-3-5-sonnet-20241022",
+				"messages": [{"role": "user", "content": "Hello"}],
+				"max_tokens": 1024
+			}`,
+			want: &MessagesRequest{
+				Model:     "claude-3-5-sonnet-20241022",
+				Messages:  []Message{{Role: MessageRoleUser, Content: MessageContent{Text: "Hello"}}},
+				MaxTokens: 1024,
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got MessagesRequest
+			err := json.Unmarshal([]byte(tt.jsonData), &got)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want.Model, got.Model)
+			assert.Equal(t, tt.want.Messages, got.Messages)
+			assert.Equal(t, tt.want.MaxTokens, got.MaxTokens)
 		})
 	}
 }
