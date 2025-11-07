@@ -152,7 +152,7 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 			}
 
 			if isCacheEnabled(openAITool.Function.AnthropicContentFields) {
-				toolParam.CacheControl = openAITool.Function.CacheControl
+				toolParam.CacheControl = anthropic.NewCacheControlEphemeralParam()
 			}
 
 			// The parameters for the function are expected to be a JSON Schema object.
