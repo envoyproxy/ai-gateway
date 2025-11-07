@@ -378,9 +378,9 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 			expectedOpenAIResponse: openai.ChatCompletionResponse{
 				Object: "chat.completion",
 				Usage: openai.Usage{
-					PromptTokens:     10,
+					PromptTokens:     15,
 					CompletionTokens: 20,
-					TotalTokens:      30,
+					TotalTokens:      35,
 					PromptTokensDetails: &openai.PromptTokensDetails{
 						CachedTokens: 5,
 					},
@@ -409,7 +409,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 			expectedOpenAIResponse: openai.ChatCompletionResponse{
 				Object: "chat.completion",
 				Usage: openai.Usage{
-					PromptTokens: 25, CompletionTokens: 15, TotalTokens: 40,
+					PromptTokens: 35, CompletionTokens: 15, TotalTokens: 50,
 					PromptTokensDetails: &openai.PromptTokensDetails{
 						CachedTokens: 10,
 					},
@@ -451,9 +451,9 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 				Model:  "claude-3-5-sonnet-20241022",
 				Object: "chat.completion",
 				Usage: openai.Usage{
-					PromptTokens:     8,
+					PromptTokens:     10,
 					CompletionTokens: 12,
-					TotalTokens:      20,
+					TotalTokens:      22,
 					PromptTokensDetails: &openai.PromptTokensDetails{
 						CachedTokens: 2,
 					},

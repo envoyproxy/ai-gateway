@@ -659,7 +659,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 		return
 	}
 
-	//headerMutation.RemoveHeaders = []string{"Cache-Control"}
+	// headerMutation.RemoveHeaders = []string{"Cache-Control"}
 	headerMutation, bodyMutation = buildRequestMutations(pathSuffix, body)
 	return
 }
@@ -773,7 +773,8 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 		PromptTokens:     int(promptTokens),
 		TotalTokens:      int(promptTokens + anthropicResp.Usage.OutputTokens),
 		PromptTokensDetails: &openai.PromptTokensDetails{
-			CachedTokens: int(anthropicResp.Usage.CacheReadInputTokens + anthropicResp.Usage.CacheCreationInputTokens)},
+			CachedTokens: int(anthropicResp.Usage.CacheReadInputTokens + anthropicResp.Usage.CacheCreationInputTokens),
+		},
 	}
 
 	finishReason, err := anthropicToOpenAIFinishReason(anthropicResp.StopReason)
