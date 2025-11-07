@@ -128,26 +128,29 @@ func ParseRequestHeaderAttributeMapping(s string) (map[string]string, error) {
 // EndpointPrefixes represents well-known endpoint prefixes that AI Gateway supports.
 // Only these keys are recognized when parsing the endpointPrefixes flag/value.
 type EndpointPrefixes struct {
-	OpenAIPrefix    string
-	CoherePrefix    string
-	AnthropicPrefix string
+	OpenAIPrefix    *string
+	CoherePrefix    *string
+	AnthropicPrefix *string
 }
 
-// SetDefaults populates empty fields with default prefixes.
+// SetDefaults populates empty fields with default provider prefixes (without version components).
 // Defaults:
 //
-//	openaiPrefix -> /v1
-//	coherePrefix -> /cohere/v2
-//	anthropicPrefix -> /anthropic/v1
+//	openaiPrefix -> /
+//	coherePrefix -> /cohere
+//	anthropicPrefix -> /anthropic
 func (e *EndpointPrefixes) SetDefaults() {
-	if e.OpenAIPrefix == "" {
-		e.OpenAIPrefix = "/v1"
+	if e.OpenAIPrefix == nil {
+		prefix := "/"
+		e.OpenAIPrefix = &prefix
 	}
-	if e.CoherePrefix == "" {
-		e.CoherePrefix = "/cohere/v2"
+	if e.CoherePrefix == nil {
+		prefix := "/cohere"
+		e.CoherePrefix = &prefix
 	}
-	if e.AnthropicPrefix == "" {
-		e.AnthropicPrefix = "/anthropic/v1"
+	if e.AnthropicPrefix == nil {
+		prefix := "/anthropic"
+		e.AnthropicPrefix = &prefix
 	}
 }
 
@@ -160,7 +163,7 @@ func (e *EndpointPrefixes) SetDefaults() {
 //
 // Format example:
 //
-//	"openaiPrefix:/v1,coherePrefix:/cohere/v2,anthropicPrefix:/anthropic/v1"
+//	"openaiPrefix:/,coherePrefix:/cohere,anthropicPrefix:/anthropic"
 //
 // Unknown keys cause an error; values must be non-empty.
 func ParseEndpointPrefixes(s string) (EndpointPrefixes, error) {
@@ -183,17 +186,14 @@ func ParseEndpointPrefixes(s string) (EndpointPrefixes, error) {
 
 		key := strings.TrimSpace(parts[0])
 		value := strings.TrimSpace(parts[1])
-		if value == "" {
-			return EndpointPrefixes{}, fmt.Errorf("empty value for endpointPrefixes key %q at position %d", key, i+1)
-		}
 
 		switch key {
 		case "openaiPrefix":
-			out.OpenAIPrefix = value
+			out.OpenAIPrefix = &value
 		case "coherePrefix":
-			out.CoherePrefix = value
+			out.CoherePrefix = &value
 		case "anthropicPrefix":
-			out.AnthropicPrefix = value
+			out.AnthropicPrefix = &value
 		default:
 			return EndpointPrefixes{}, fmt.Errorf("unknown endpointPrefixes key %q at position %d (allowed: openaiPrefix, coherePrefix, anthropicPrefix)", key, i+1)
 		}

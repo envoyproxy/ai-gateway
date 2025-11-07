@@ -16,7 +16,7 @@ endpointConfig:
   rootPrefix: "/"
   # Comma-separated key-value pairs for endpoint prefixes.
   # Format: "openaiPrefix:/prefix1,anthropicPrefix:/prefix2"
-  # Example: "openaiPrefix:/v1,coherePrefix:/cohere/v2,anthropicPrefix:/anthropic/v1"
+  # Example: "openaiPrefix:/,coherePrefix:/cohere,anthropicPrefix:/anthropic"
   endpointPrefixes: ""
 
 extProc:

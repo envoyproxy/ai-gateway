@@ -304,7 +304,7 @@ You can override them via Helm using `endpointConfig.endpointPrefixes`:
 ```yaml
 # values.yaml
 endpointConfig:
-  endpointPrefixes: "openaiPrefix:/v1,coherePrefix:/cohere/v2,anthropicPrefix:/anthropic/v1"
+  endpointPrefixes: "openaiPrefix:/,coherePrefix:/cohere,anthropicPrefix:/anthropic"
   # rootPrefix applies to all routes; final paths are <rootPrefix><providerPrefix>/...
   # endpointConfig:
   #   rootPrefix: "/"
@@ -315,7 +315,7 @@ Or with helm CLI:
 ```bash
 helm upgrade --install ai-gateway envoyproxy/ai-gateway-helm \
   -n envoy-ai-gateway-system --create-namespace \
-  --set 'endpointConfig.endpointPrefixes=openaiPrefix:/v1,coherePrefix:/cohere/v2,anthropicPrefix:/anthropic/v1'
+  --set 'endpointConfig.endpointPrefixes=openaiPrefix:/,coherePrefix:/cohere,anthropicPrefix:/anthropic'
 ```
 
 Notes:

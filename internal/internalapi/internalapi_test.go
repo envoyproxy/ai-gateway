@@ -13,20 +13,23 @@ import (
 )
 
 func TestParseEndpointPrefixes_Success(t *testing.T) {
-	in := "openaiPrefix:/v1,coherePrefix:/cohere/v2,anthropicPrefix:/anthropic/v1"
+	in := "openaiPrefix:/,coherePrefix:/cohere,anthropicPrefix:/anthropic"
 	ep, err := ParseEndpointPrefixes(in)
 	require.NoError(t, err)
-	require.Equal(t, "/v1", ep.OpenAIPrefix)
-	require.Equal(t, "/cohere/v2", ep.CoherePrefix)
-	require.Equal(t, "/anthropic/v1", ep.AnthropicPrefix)
+	require.NotNil(t, ep.OpenAIPrefix)
+	require.NotNil(t, ep.CoherePrefix)
+	require.NotNil(t, ep.AnthropicPrefix)
+	require.Equal(t, "/", *ep.OpenAIPrefix)
+	require.Equal(t, "/cohere", *ep.CoherePrefix)
+	require.Equal(t, "/anthropic", *ep.AnthropicPrefix)
 }
 
 func TestParseEndpointPrefixes_EmptyInput(t *testing.T) {
 	ep, err := ParseEndpointPrefixes("")
 	require.NoError(t, err)
-	require.Empty(t, ep.OpenAIPrefix)
-	require.Empty(t, ep.CoherePrefix)
-	require.Empty(t, ep.AnthropicPrefix)
+	require.Nil(t, ep.OpenAIPrefix)
+	require.Nil(t, ep.CoherePrefix)
+	require.Nil(t, ep.AnthropicPrefix)
 }
 
 func TestParseEndpointPrefixes_UnknownKey(t *testing.T) {
@@ -36,9 +39,10 @@ func TestParseEndpointPrefixes_UnknownKey(t *testing.T) {
 }
 
 func TestParseEndpointPrefixes_EmptyValue(t *testing.T) {
-	_, err := ParseEndpointPrefixes("openaiPrefix:")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "empty value for endpointPrefixes key")
+	ep, err := ParseEndpointPrefixes("openaiPrefix:")
+	require.NoError(t, err)
+	require.NotNil(t, ep.OpenAIPrefix)
+	require.Empty(t, *ep.OpenAIPrefix)
 }
 
 func TestParseEndpointPrefixes_MissingColon(t *testing.T) {
@@ -48,19 +52,23 @@ func TestParseEndpointPrefixes_MissingColon(t *testing.T) {
 }
 
 func TestParseEndpointPrefixes_EmptyPair(t *testing.T) {
-	_, err := ParseEndpointPrefixes("openaiPrefix:/v1,,coherePrefix:/cohere/v2")
+	_, err := ParseEndpointPrefixes("openaiPrefix:/,,coherePrefix:/cohere")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "empty endpointPrefixes pair at position 2")
 }
 
 func TestEndpointPrefixes_SetDefaults(t *testing.T) {
-	ep := EndpointPrefixes{OpenAIPrefix: "/custom/openai"}
+	openai := "/custom/openai"
+	ep := EndpointPrefixes{OpenAIPrefix: &openai}
 	ep.SetDefaults()
 	// Provided field is preserved
-	require.Equal(t, "/custom/openai", ep.OpenAIPrefix)
+	require.NotNil(t, ep.OpenAIPrefix)
+	require.Equal(t, "/custom/openai", *ep.OpenAIPrefix)
 	// Missing fields defaulted
-	require.Equal(t, "/cohere/v2", ep.CoherePrefix)
-	require.Equal(t, "/anthropic/v1", ep.AnthropicPrefix)
+	require.NotNil(t, ep.CoherePrefix)
+	require.NotNil(t, ep.AnthropicPrefix)
+	require.Equal(t, "/cohere", *ep.CoherePrefix)
+	require.Equal(t, "/anthropic", *ep.AnthropicPrefix)
 }
 
 func TestPerRouteRuleRefBackendName(t *testing.T) {

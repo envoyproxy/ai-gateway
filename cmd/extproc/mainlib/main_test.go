@@ -84,7 +84,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 			},
 			{
 				name:       "with endpoint prefixes",
-				args:       []string{"-configPath", "/path/to/config.yaml", "-endpointPrefixes", "openaiPrefix:/v1,coherePrefix:/cohere/v2,anthropicPrefix:/anthropic/v1"},
+				args:       []string{"-configPath", "/path/to/config.yaml", "-endpointPrefixes", "openaiPrefix:/,coherePrefix:/cohere,anthropicPrefix:/anthropic"},
 				configPath: "/path/to/config.yaml",
 				addr:       ":1063",
 				rootPrefix: "/",
