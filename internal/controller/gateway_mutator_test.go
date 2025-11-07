@@ -28,7 +28,7 @@ import (
 func TestGatewayMutator_Default(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	fakeKube := fake2.NewClientset()
-	g := newTestGatewayMutator(fakeClient, fakeKube, "", "", "", "", false)
+	g := newTestGatewayMutator(fakeClient, fakeKube, "", "", "", "", "", false)
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-pod", Namespace: "test-namespace"},
 		Spec: corev1.PodSpec{
@@ -49,6 +49,7 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 		name                           string
 		metricsRequestHeaderAttributes string
 		spanRequestHeaderAttributes    string
+		endpointPrefixes               string
 		extProcExtraEnvVars            string
 		extProcImagePullSecrets        string
 		extprocTest                    func(t *testing.T, container corev1.Container)
@@ -81,6 +82,17 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 				}
 				require.True(t, foundMCPAddr)
 				require.True(t, foundMCPSeed)
+			},
+		},
+		{
+			name:             "with endpoint prefixes",
+			endpointPrefixes: "openaiPrefix:/v1,coherePrefix:/cohere/v2,anthropicPrefix:/anthropic/v1",
+			extprocTest: func(t *testing.T, container corev1.Container) {
+				require.Contains(t, container.Args, "-endpointPrefixes")
+				require.Contains(t, container.Args, "openaiPrefix:/v1,coherePrefix:/cohere/v2,anthropicPrefix:/anthropic/v1")
+			},
+			podTest: func(t *testing.T, pod corev1.Pod) {
+				require.Empty(t, pod.Spec.ImagePullSecrets)
 			},
 		},
 		{
@@ -191,7 +203,7 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 				t.Run(fmt.Sprintf("sidecar=%v", sidecar), func(t *testing.T) {
 					fakeClient := requireNewFakeClientWithIndexes(t)
 					fakeKube := fake2.NewClientset()
-					g := newTestGatewayMutator(fakeClient, fakeKube, tt.metricsRequestHeaderAttributes, tt.spanRequestHeaderAttributes, tt.extProcExtraEnvVars, tt.extProcImagePullSecrets, sidecar)
+					g := newTestGatewayMutator(fakeClient, fakeKube, tt.metricsRequestHeaderAttributes, tt.spanRequestHeaderAttributes, tt.endpointPrefixes, tt.extProcExtraEnvVars, tt.extProcImagePullSecrets, sidecar)
 
 					const gwName, gwNamespace = "test-gateway", "test-namespace"
 					err := fakeClient.Create(t.Context(), &aigv1a1.AIGatewayRoute{
@@ -274,11 +286,11 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 	}
 }
 
-func newTestGatewayMutator(fakeClient client.Client, fakeKube *fake2.Clientset, metricsRequestHeaderAttributes, spanRequestHeaderAttributes, extProcExtraEnvVars, extProcImagePullSecrets string, sidecar bool) *gatewayMutator {
+func newTestGatewayMutator(fakeClient client.Client, fakeKube *fake2.Clientset, metricsRequestHeaderAttributes, spanRequestHeaderAttributes, endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets string, sidecar bool) *gatewayMutator {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	return newGatewayMutator(
 		fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
-		"info", "/tmp/extproc.sock", metricsRequestHeaderAttributes, spanRequestHeaderAttributes, "/v1", "", extProcExtraEnvVars, extProcImagePullSecrets, 512*1024*1024,
+		"info", "/tmp/extproc.sock", metricsRequestHeaderAttributes, spanRequestHeaderAttributes, "/v1", endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets, 512*1024*1024,
 		sidecar, "seed",
 	)
 }

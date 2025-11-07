@@ -47,6 +47,12 @@ func TestParseEndpointPrefixes_MissingColon(t *testing.T) {
 	require.Contains(t, err.Error(), "expected format: key:value")
 }
 
+func TestParseEndpointPrefixes_EmptyPair(t *testing.T) {
+	_, err := ParseEndpointPrefixes("openaiPrefix:/v1,,coherePrefix:/cohere/v2")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "empty endpointPrefixes pair at position 2")
+}
+
 func TestEndpointPrefixes_SetDefaults(t *testing.T) {
 	ep := EndpointPrefixes{OpenAIPrefix: "/custom/openai"}
 	ep.SetDefaults()
