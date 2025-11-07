@@ -1,0 +1,108 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mcp-tenant
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mcp-gw
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: mcp-gateway-class
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: mcp-gateway
+  namespace: mcp-gw
+spec:
+  gatewayClassName: mcp-gateway-class
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: mcp-envoyproxy
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: mcp-envoyproxy
+  namespace: mcp-gw
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        container:
+          resources: {}
+---
+# This is the ONLY MCPRoute in this test to avoid side effects from reconciliation of other routes.
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: MCPRoute
+metadata:
+  name: mcp-tenant-route
+  namespace: mcp-tenant
+spec:
+  path: "/mcp/cross-ns"
+  parentRefs:
+    - name: mcp-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io
+      namespace: mcp-gw
+  backendRefs:
+    - name: mcp-backend-tenant
+      namespace: mcp-tenant
+      port: 1063
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-backend-tenant
+  namespace: mcp-tenant
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-backend-tenant
+  template:
+    metadata:
+      labels:
+        app: mcp-backend-tenant
+    spec:
+      containers:
+        - name: mcp-backend-tenant
+          image: docker.io/envoyproxy/ai-gateway-testmcpserver:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 1063
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-backend-tenant
+  namespace: mcp-tenant
+spec:
+  selector:
+    app: mcp-backend-tenant
+  ports:
+    - protocol: TCP
+      port: 1063
+      targetPort: 1063
+  type: ClusterIP
