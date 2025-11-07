@@ -9,39 +9,18 @@ import (
 	"sync"
 	"testing"
 
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
-// Test helper to extract headers from HeaderMutation
-func extractHeaders(headerMut *extprocv3.HeaderMutation) map[string]string {
-	headers := map[string]string{}
-	for _, h := range headerMut.SetHeaders {
-		value := h.Header.Value
-		if value == "" && len(h.Header.RawValue) > 0 {
-			value = string(h.Header.RawValue)
-		}
-		headers[h.Header.Key] = value
+func stringPairsToMap(pairs []internalapi.Header) map[string]string {
+	result := make(map[string]string)
+	for _, h := range pairs {
+		result[h.Key()] = h.Value()
 	}
-	return headers
-}
-
-// Test helper to create a test request
-func createTestRequest(method, path string, body []byte) (map[string]string, *extprocv3.HeaderMutation, *extprocv3.BodyMutation) {
-	requestHeaders := map[string]string{":method": method}
-	headerMut := &extprocv3.HeaderMutation{
-		SetHeaders: []*corev3.HeaderValueOption{
-			{Header: &corev3.HeaderValue{Key: ":path", Value: path}},
-		},
-	}
-	bodyMut := &extprocv3.BodyMutation{}
-	if len(body) > 0 {
-		bodyMut.Mutation = &extprocv3.BodyMutation_Body{Body: body}
-	}
-	return requestHeaders, headerMut, bodyMut
+	return result
 }
 
 func TestNewAWSHandler(t *testing.T) {
@@ -111,8 +90,7 @@ func TestNewAWSHandler(t *testing.T) {
 		require.NotNil(t, handler)
 
 		// But calling Do() should fail when no credentials are available
-		reqHeaders, headerMut, bodyMut := createTestRequest("POST", "/model/test/converse", []byte(`{"test": "data"}`))
-		err = handler.Do(t.Context(), reqHeaders, headerMut, bodyMut)
+		_, err = handler.Do(t.Context(), map[string]string{":method": "POST", ":path": "/model/test/converse"}, []byte(`{"test": "data"}`))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "cannot retrieve AWS credentials")
 	})
@@ -140,15 +118,10 @@ func TestAWSHandler_Do(t *testing.T) {
 		for range 100 {
 			go func() {
 				defer wg.Done()
-				reqHeaders, headerMut, bodyMut := createTestRequest(
-					"POST",
-					"/model/some-random-model/converse",
-					[]byte(`{"messages": [{"role": "user", "content": [{"text": "Say this is a test!"}]}]}`),
-				)
-				err := handler.Do(t.Context(), reqHeaders, headerMut, bodyMut)
+				hdrs, err := handler.Do(t.Context(), map[string]string{":method": "POST", ":path": "/model/some-random-model/converse"}, []byte(`{"messages": [{"role": "user", "content": [{"text": "Say this is a test!"}]}]}`))
 				require.NoError(t, err)
 
-				headers := extractHeaders(headerMut)
+				headers := stringPairsToMap(hdrs)
 				require.Contains(t, headers, "X-Amz-Date")
 				require.Contains(t, headers, "Authorization")
 			}()
@@ -167,16 +140,12 @@ func TestAWSHandler_Do(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		reqHeaders, headerMut, bodyMut := createTestRequest(
-			"POST",
-			"/model/amazon.titan-text-express-v1/invoke",
-			[]byte(`{"inputText": "Hello from default chain"}`),
-		)
-
-		err = handler.Do(t.Context(), reqHeaders, headerMut, bodyMut)
+		hdrs, err := handler.Do(t.Context(), map[string]string{
+			":method": "POST", ":path": "/model/amazon.titan-text-express-v1/invoke",
+		}, []byte(`{"inputText": "Hello from default chain"}`))
 		require.NoError(t, err)
 
-		headers := extractHeaders(headerMut)
+		headers := stringPairsToMap(hdrs)
 		require.Contains(t, headers, "X-Amz-Date")
 		require.Contains(t, headers, "Authorization")
 		// Verify the authorization header contains the access key ID
@@ -194,16 +163,12 @@ func TestAWSHandler_Do(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		reqHeaders, headerMut, bodyMut := createTestRequest(
-			"POST",
-			"/model/anthropic.claude-v2/converse",
-			[]byte(`{"messages": []}`),
-		)
-
-		err = handler.Do(t.Context(), reqHeaders, headerMut, bodyMut)
+		hdrs, err := handler.Do(t.Context(), map[string]string{
+			":method": "POST", ":path": "/model/anthropic.claude-v2/converse",
+		}, []byte(`{"inputText": "Hello from default chain"}`))
 		require.NoError(t, err)
 
-		headers := extractHeaders(headerMut)
+		headers := stringPairsToMap(hdrs)
 		require.Contains(t, headers, "X-Amz-Date")
 		require.Contains(t, headers, "Authorization")
 		require.Contains(t, headers, "X-Amz-Security-Token")
@@ -220,15 +185,12 @@ func TestAWSHandler_Do(t *testing.T) {
 
 		methods := []string{"POST", "GET", "PUT"}
 		for _, method := range methods {
-			reqHeaders, headerMut, bodyMut := createTestRequest(
-				method,
-				"/model/test-model/invoke",
-				[]byte(`{"test": "data"}`),
-			)
-			err := handler.Do(t.Context(), reqHeaders, headerMut, bodyMut)
-			require.NoError(t, err, "Failed for method: %s", method)
+			hdrs, err := handler.Do(t.Context(), map[string]string{
+				":method": method, ":path": "/model/test-model/invoke",
+			}, []byte(`{"test": "data"}`))
+			require.NoError(t, err)
 
-			headers := extractHeaders(headerMut)
+			headers := stringPairsToMap(hdrs)
 			require.Contains(t, headers, "Authorization", "Missing Authorization for method: %s", method)
 		}
 	})
@@ -241,11 +203,12 @@ func TestAWSHandler_Do(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		reqHeaders, headerMut, bodyMut := createTestRequest("GET", "/models", nil)
-		err = handler.Do(t.Context(), reqHeaders, headerMut, bodyMut)
+		hdrs, err := handler.Do(t.Context(), map[string]string{
+			":method": "GET", ":path": "/model/test-model/invoke",
+		}, nil)
 		require.NoError(t, err)
 
-		headers := extractHeaders(headerMut)
+		headers := stringPairsToMap(hdrs)
 		require.Contains(t, headers, "Authorization")
 		require.Contains(t, headers, "X-Amz-Date")
 	})
@@ -261,12 +224,9 @@ func TestAWSHandler_Do(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			reqHeaders, headerMut, bodyMut := createTestRequest(
-				"POST",
-				"/model/test/converse",
-				[]byte(`{"test": "data"}`),
-			)
-			err = handler.Do(t.Context(), reqHeaders, headerMut, bodyMut)
+			_, err = handler.Do(t.Context(), map[string]string{
+				":method": "POST", ":path": "/model/test/converse",
+			}, nil)
 			require.NoError(t, err, "Failed for region: %s", region)
 		}
 	})
