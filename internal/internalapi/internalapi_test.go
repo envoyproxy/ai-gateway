@@ -12,6 +12,51 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestParseEndpointPrefixes_Success(t *testing.T) {
+	in := "openaiPrefix:/v1,coherePrefix:/cohere/v2,anthropicPrefix:/anthropic/v1"
+	ep, err := ParseEndpointPrefixes(in)
+	require.NoError(t, err)
+	require.Equal(t, "/v1", ep.OpenAIPrefix)
+	require.Equal(t, "/cohere/v2", ep.CoherePrefix)
+	require.Equal(t, "/anthropic/v1", ep.AnthropicPrefix)
+}
+
+func TestParseEndpointPrefixes_EmptyInput(t *testing.T) {
+	ep, err := ParseEndpointPrefixes("")
+	require.NoError(t, err)
+	require.Empty(t, ep.OpenAIPrefix)
+	require.Empty(t, ep.CoherePrefix)
+	require.Empty(t, ep.AnthropicPrefix)
+}
+
+func TestParseEndpointPrefixes_UnknownKey(t *testing.T) {
+	_, err := ParseEndpointPrefixes("unknown:/x")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unknown endpointPrefixes key")
+}
+
+func TestParseEndpointPrefixes_EmptyValue(t *testing.T) {
+	_, err := ParseEndpointPrefixes("openaiPrefix:")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "empty value for endpointPrefixes key")
+}
+
+func TestParseEndpointPrefixes_MissingColon(t *testing.T) {
+	_, err := ParseEndpointPrefixes("openaiPrefix")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "expected format: key:value")
+}
+
+func TestEndpointPrefixes_SetDefaults(t *testing.T) {
+	ep := EndpointPrefixes{OpenAIPrefix: "/custom/openai"}
+	ep.SetDefaults()
+	// Provided field is preserved
+	require.Equal(t, "/custom/openai", ep.OpenAIPrefix)
+	// Missing fields defaulted
+	require.Equal(t, "/cohere/v2", ep.CoherePrefix)
+	require.Equal(t, "/anthropic/v1", ep.AnthropicPrefix)
+}
+
 func TestPerRouteRuleRefBackendName(t *testing.T) {
 	tests := []struct {
 		name           string

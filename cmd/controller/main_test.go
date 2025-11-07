@@ -52,6 +52,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 					tc.dash + "port=:8080",
 					tc.dash + "extProcExtraEnvVars=OTEL_SERVICE_NAME=test;OTEL_TRACES_EXPORTER=console",
 					tc.dash + "spanRequestHeaderAttributes=x-session-id:session.id",
+					tc.dash + "endpointPrefixes=openaiPrefix:/v1,coherePrefix:/cohere/v2,anthropicPrefix:/anthropic/v1",
 					tc.dash + "maxRecvMsgSize=33554432",
 					tc.dash + "watchNamespaces=default,envoy-ai-gateway-system",
 					tc.dash + "cacheSyncTimeout=5m",
@@ -65,6 +66,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				require.Equal(t, ":8080", f.extensionServerPort)
 				require.Equal(t, "OTEL_SERVICE_NAME=test;OTEL_TRACES_EXPORTER=console", f.extProcExtraEnvVars)
 				require.Equal(t, "x-session-id:session.id", f.spanRequestHeaderAttributes)
+				require.Equal(t, "openaiPrefix:/v1,coherePrefix:/cohere/v2,anthropicPrefix:/anthropic/v1", f.endpointPrefixes)
 				require.Equal(t, 32*1024*1024, f.maxRecvMsgSize)
 				require.Equal(t, []string{"default", "envoy-ai-gateway-system"}, f.watchNamespaces)
 				require.Equal(t, 5*time.Minute, f.cacheSyncTimeout)
@@ -135,6 +137,16 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				name:   "invalid spanRequestHeaderAttributes - empty header",
 				flags:  []string{"--spanRequestHeaderAttributes=:session.id"},
 				expErr: "invalid tracing header attributes",
+			},
+			{
+				name:   "invalid endpointPrefixes - unknown key",
+				flags:  []string{"--endpointPrefixes=foo:/x"},
+				expErr: "invalid endpoint prefixes",
+			},
+			{
+				name:   "invalid endpointPrefixes - missing colon",
+				flags:  []string{"--endpointPrefixes=openaiPrefix"},
+				expErr: "invalid endpoint prefixes",
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {

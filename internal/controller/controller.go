@@ -87,6 +87,8 @@ type Options struct {
 	ExtProcMaxRecvMsgSize int
 	// MCPSessionEncryptionSeed is the seed used to derive the encryption key for MCP session encryption.
 	MCPSessionEncryptionSeed string
+	// EndpointPrefixes is the comma-separated key-value pairs for endpoint prefixes.
+	EndpointPrefixes string
 }
 
 // StartControllers starts the controllers for the AI Gateway.
@@ -220,6 +222,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.MetricsRequestHeaderAttributes,
 			options.TracingRequestHeaderAttributes,
 			options.RootPrefix,
+			options.EndpointPrefixes,
 			options.ExtProcExtraEnvVars,
 			options.ExtProcImagePullSecrets,
 			options.ExtProcMaxRecvMsgSize,

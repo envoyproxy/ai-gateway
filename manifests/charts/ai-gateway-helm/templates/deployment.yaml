@@ -55,6 +55,9 @@ spec:
             {{- if .Values.controller.spanRequestHeaderAttributes }}
             - --spanRequestHeaderAttributes={{ .Values.controller.spanRequestHeaderAttributes }}
             {{- end }}
+            {{- if .Values.controller.endpointPrefixes }}
+            - --endpointPrefixes={{ .Values.controller.endpointPrefixes }}
+            {{- end }}
             {{- if .Values.extProc.extraEnvVars }}
             - --extProcExtraEnvVars={{ include "ai-gateway-helm.extProc.envVarsString" . }}
             {{- end }}

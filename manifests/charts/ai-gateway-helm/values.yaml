@@ -57,6 +57,11 @@ controller:
   # Example: "x-session-id:session.id,x-user-id:user.id"
   spanRequestHeaderAttributes: ""
 
+  # Comma-separated key-value pairs for endpoint prefixes.
+  # Format: "openaiPrefix:/prefix1,anthropicPrefix:/prefix2"
+  # Example: "openaiPrefix:/v1,coherePrefix:/cohere/v2,anthropicPrefix:/anthropic/v1"
+  endpointPrefixes: ""
+
   # -- Service Account --
   serviceAccount:
     # Specifies whether a service account should be created
