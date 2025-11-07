@@ -67,6 +67,11 @@ controller:
     # If not set and create is true, a name is generated using the fullname template
     name: ""
 
+  # -- ClusterRole --
+  clusterRole:
+    # Whether to add a suffix to clusterRole and clusterRoleBinding.
+    suffixClusterRole: false
+
   # Enable leader election mechanism for protecting against split brain if multiple operator pods/replicas are started.
   leaderElection:
     enabled: true

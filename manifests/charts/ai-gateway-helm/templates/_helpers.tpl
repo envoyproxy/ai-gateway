@@ -69,6 +69,33 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
+Create the name of the cluster role to use
+*/}}
+{{- define "ai-gateway-helm.controller.clusterRoleName" -}}
+{{- if .Values.controller.clusterRole.suffixClusterRole }}
+{{- printf "%s:%s" (default (include "ai-gateway-helm.controller.fullname" .) .Values.controller.serviceAccount.name) .Release.Namespace }}
+{{- else }}
+{{- default (include "ai-gateway-helm.controller.fullname" .) .Values.controller.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+{{- define "ai-gateway-helm.inference-pool.clusterRoleName" -}}
+{{- if .Values.controller.clusterRole.suffixClusterRole }}
+{{- printf "%s:%s" "envoy-ai-gateway-inference-pool-reader" .Release.Namespace}}
+{{- else }}
+{{- "envoy-ai-gateway-inference-pool-reader" }}
+{{- end}}
+{{- end -}}
+
+{{- define "ai-gateway-helm.inference-pool.clusterRoleBindingName" -}}
+{{- if .Values.controller.clusterRole.suffixClusterRole }}
+{{- printf "%s:%s" "envoy-ai-gateway-inference-pool-reader-binding" .Release.Namespace}}
+{{- else }}
+{{- "envoy-ai-gateway-inference-pool-reader-binding" }}
+{{- end}}
+{{- end -}}
+
+{{/*
 Convert extraEnvVars array to semicolon-separated string for extProc
 */}}
 {{- define "ai-gateway-helm.extProc.envVarsString" -}}
