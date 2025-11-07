@@ -13,7 +13,6 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -79,22 +78,23 @@ func (p *anthropicStreamParser) writeChunk(eventBlock []byte, buf *[]byte) error
 // Process reads from the Anthropic SSE stream, translates events to OpenAI chunks,
 // and returns the mutations for Envoy.
 func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
-	*extprocv3.HeaderMutation, *extprocv3.BodyMutation, LLMTokenUsage, string, error,
+	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel string, err error,
 ) {
 	_ = span // TODO: add support for streaming chunks in tracing.
-	if _, err := p.buffer.ReadFrom(body); err != nil {
-		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to read from stream body: %w", err)
+	responseModel = p.requestModel
+	if _, err = p.buffer.ReadFrom(body); err != nil {
+		err = fmt.Errorf("failed to read from stream body: %w", err)
+		return
 	}
 
-	mut := &extprocv3.BodyMutation_Body{Body: nil}
 	for {
 		eventBlock, remaining, found := bytes.Cut(p.buffer.Bytes(), []byte("\n\n"))
 		if !found {
 			break
 		}
 
-		if err := p.writeChunk(eventBlock, &mut.Body); err != nil {
-			return nil, nil, LLMTokenUsage{}, "", err
+		if err = p.writeChunk(eventBlock, &newBody); err != nil {
+			return
 		}
 
 		p.buffer.Reset()
@@ -105,8 +105,8 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 		finalEventBlock := p.buffer.Bytes()
 		p.buffer.Reset()
 
-		if err := p.writeChunk(finalEventBlock, &mut.Body); err != nil {
-			return nil, nil, LLMTokenUsage{}, "", err
+		if err = p.writeChunk(finalEventBlock, &newBody); err != nil {
+			return
 		}
 	}
 
@@ -154,17 +154,17 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 				return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to marshal final stream chunk: %w", err)
 			}
 			// Write the final chunk to the response body.
-			mut.Body = append(mut.Body, sseDataPrefix...)
-			mut.Body = append(mut.Body, chunkBytes...)
-			mut.Body = append(mut.Body, '\n', '\n')
+			newBody = append(newBody, sseDataPrefix...)
+			newBody = append(newBody, chunkBytes...)
+			newBody = append(newBody, '\n', '\n')
 		}
 		// Add the final [DONE] message to indicate the end of the stream.
-		mut.Body = append(mut.Body, sseDataPrefix...)
-		mut.Body = append(mut.Body, sseDoneMessage...)
-		mut.Body = append(mut.Body, '\n', '\n')
+		newBody = append(newBody, sseDataPrefix...)
+		newBody = append(newBody, sseDoneMessage...)
+		newBody = append(newBody, '\n', '\n')
 	}
-
-	return &extprocv3.HeaderMutation{}, &extprocv3.BodyMutation{Mutation: mut}, p.tokenUsage, p.requestModel, nil
+	tokenUsage = p.tokenUsage
+	return
 }
 
 func (p *anthropicStreamParser) parseAndHandleEvent(eventBlock []byte) (*openai.ChatCompletionResponseChunk, error) {

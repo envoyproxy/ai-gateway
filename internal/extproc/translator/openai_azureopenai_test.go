@@ -29,8 +29,8 @@ func TestOpenAIToAzureOpenAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				require.Equal(t, stream, o.stream)
 				require.NotNil(t, hm)
 
-				require.Equal(t, ":path", hm.SetHeaders[0].Header.Key)
-				require.Equal(t, "/openai/deployments/foo-bar-ai/chat/completions?api-version=some-version", string(hm.SetHeaders[0].Header.RawValue))
+				require.Equal(t, pathHeaderName, hm[0].Key())
+				require.Equal(t, "/openai/deployments/foo-bar-ai/chat/completions?api-version=some-version", hm[0].Value())
 			})
 		}
 	})
@@ -47,9 +47,9 @@ func TestOpenAIToAzureOpenAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 		require.Nil(t, bm)
 		require.NoError(t, err)
 		require.NotNil(t, hm)
-		require.Len(t, hm.SetHeaders, 1)
-		require.Equal(t, ":path", hm.SetHeaders[0].Header.Key)
-		require.Equal(t, "/openai/deployments/"+modelName+"/chat/completions?api-version=some-version", string(hm.SetHeaders[0].Header.RawValue))
+		require.Len(t, hm, 1)
+		require.Equal(t, pathHeaderName, hm[0].Key())
+		require.Equal(t, "/openai/deployments/"+modelName+"/chat/completions?api-version=some-version", hm[0].Value())
 	})
 }
 

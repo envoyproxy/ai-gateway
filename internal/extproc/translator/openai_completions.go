@@ -13,8 +13,6 @@ import (
 	"path"
 	"strconv"
 
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/tidwall/sjson"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -44,12 +42,11 @@ type openAIToOpenAITranslatorV1Completion struct {
 
 // RequestBody implements [OpenAICompletionTranslator.RequestBody].
 func (o *openAIToOpenAITranslatorV1Completion) RequestBody(original []byte, req *openai.CompletionRequest, onRetry bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	// Track if this is a streaming request.
 	o.stream = req.Stream
 
-	var newBody []byte
 	if o.modelNameOverride != "" {
 		// If modelName is set we override the model to be used for the request.
 		newBody, err = sjson.SetBytesOptions(original, "model", o.modelNameOverride, sjsonOptions)
@@ -59,33 +56,19 @@ func (o *openAIToOpenAITranslatorV1Completion) RequestBody(original []byte, req 
 	}
 
 	// Always set the path header to the completions endpoint so that the request is routed correctly.
-	headerMutation = &extprocv3.HeaderMutation{
-		SetHeaders: []*corev3.HeaderValueOption{
-			{Header: &corev3.HeaderValue{
-				Key:      ":path",
-				RawValue: []byte(o.path),
-			}},
-		},
-	}
-
 	if onRetry && len(newBody) == 0 {
 		newBody = original
 	}
+	newHeaders = []internalapi.Header{{pathHeaderName, o.path}}
 
 	if len(newBody) > 0 {
-		bodyMutation = &extprocv3.BodyMutation{
-			Mutation: &extprocv3.BodyMutation_Body{Body: newBody},
-		}
-		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{Header: &corev3.HeaderValue{
-			Key:      "content-length",
-			RawValue: []byte(strconv.Itoa(len(newBody))),
-		}})
+		newHeaders = append(newHeaders, internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(newBody))})
 	}
 	return
 }
 
 // ResponseHeaders implements [OpenAICompletionTranslator.ResponseHeaders].
-func (o *openAIToOpenAITranslatorV1Completion) ResponseHeaders(map[string]string) (headerMutation *extprocv3.HeaderMutation, err error) {
+func (o *openAIToOpenAITranslatorV1Completion) ResponseHeaders(map[string]string) (newHeaders []internalapi.Header, err error) {
 	return nil, nil
 }
 
@@ -93,7 +76,7 @@ func (o *openAIToOpenAITranslatorV1Completion) ResponseHeaders(map[string]string
 // OpenAI completions support model virtualization through automatic routing and resolution,
 // so we return the actual model from the response body which may differ from the requested model.
 func (o *openAIToOpenAITranslatorV1Completion) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracing.CompletionSpan) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel internalapi.ResponseModel, err error,
+	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
 	// For streaming, just pass through and extract metadata from SSE chunks
 	if o.stream {
@@ -143,15 +126,6 @@ func (o *openAIToOpenAITranslatorV1Completion) ResponseBody(_ map[string]string,
 	}
 
 	// Pass through the original body without re-encoding to preserve formatting
-	bodyMutation = &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: bodyBytes}}
-
-	// Update content-length header for the body.
-	headerMutation = &extprocv3.HeaderMutation{
-		SetHeaders: []*corev3.HeaderValueOption{{Header: &corev3.HeaderValue{
-			Key:      "content-length",
-			RawValue: []byte(strconv.Itoa(len(bodyBytes))),
-		}}},
-	}
 	return
 }
 
@@ -204,24 +178,8 @@ func (o *openAIToOpenAITranslatorV1Completion) extractUsageFromBufferEvent(span 
 }
 
 // ResponseError implements [OpenAICompletionTranslator.ResponseError].
-func (o *openAIToOpenAITranslatorV1Completion) ResponseError(_ map[string]string, body io.Reader) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+func (o *openAIToOpenAITranslatorV1Completion) ResponseError(map[string]string, io.Reader) (
+	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
-	// For passthrough, we don't need to transform error responses.
-	errorBody, err := io.ReadAll(body)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read error body: %w", err)
-	}
-
-	// Pass through the error as-is.
-	bodyMutation = &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: errorBody}}
-
-	// Update content-length for the body.
-	headerMutation = &extprocv3.HeaderMutation{
-		SetHeaders: []*corev3.HeaderValueOption{{Header: &corev3.HeaderValue{
-			Key:      "content-length",
-			RawValue: []byte(strconv.Itoa(len(errorBody))),
-		}}},
-	}
 	return
 }

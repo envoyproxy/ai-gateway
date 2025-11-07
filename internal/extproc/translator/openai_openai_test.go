@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"testing"
 
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
@@ -169,9 +168,9 @@ func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, stream, o.stream)
 				require.NotNil(t, hm)
-				require.Len(t, hm.SetHeaders, 1)
-				require.Equal(t, ":path", hm.SetHeaders[0].Header.Key)
-				require.Equal(t, "/foo/v1/chat/completions", string(hm.SetHeaders[0].Header.RawValue))
+				require.Len(t, hm, 1)
+				require.Equal(t, pathHeaderName, hm[0].Key())
+				require.Equal(t, "/foo/v1/chat/completions", hm[0].Value())
 			})
 		}
 	})
@@ -182,36 +181,35 @@ func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
 			require.NoError(t, err)
 			modelName := "gpt-4o-mini-2024-07-18" // Example model name override.
 			o := &openAIToOpenAITranslatorV1ChatCompletion{modelNameOverride: modelName, path: "/v1/chat/completions"}
-			hm, bm, err := o.RequestBody(rawReq, originalReq, forcedMutation)
+			hm, body, err := o.RequestBody(rawReq, originalReq, forcedMutation)
 			require.NoError(t, err)
-			require.NotNil(t, bm)
+			require.NotNil(t, body)
 			var newReq openai.ChatCompletionRequest
-			err = json.Unmarshal(bm.Mutation.(*extprocv3.BodyMutation_Body).Body, &newReq)
+			err = json.Unmarshal(body, &newReq)
 			require.NoError(t, err)
 			require.Equal(t, modelName, newReq.Model)
 			require.NotNil(t, hm)
-			require.Len(t, hm.SetHeaders, 2)
-			require.Equal(t, ":path", hm.SetHeaders[0].Header.Key)
-			require.Equal(t, o.path, string(hm.SetHeaders[0].Header.RawValue))
-			require.Equal(t, "content-length", hm.SetHeaders[1].Header.Key)
-			require.Equal(t, strconv.Itoa(len(bm.Mutation.(*extprocv3.BodyMutation_Body).Body)), string(hm.SetHeaders[1].Header.RawValue))
+			require.Len(t, hm, 2)
+			require.Equal(t, pathHeaderName, hm[0].Key())
+			require.Equal(t, o.path, hm[0].Value())
+			require.Equal(t, contentLengthHeaderName, hm[1].Key())
+			require.Equal(t, strconv.Itoa(len(body)), hm[1].Value())
 		}
 	})
 	t.Run("forced mutation", func(t *testing.T) {
 		originalReq := &openai.ChatCompletionRequest{Model: "foo-bar-ai", Stream: true}
 		original := []byte("whatever")
 		o := NewChatCompletionOpenAIToOpenAITranslator("foo/v1", "").(*openAIToOpenAITranslatorV1ChatCompletion)
-		hm, bm, err := o.RequestBody(original, originalReq, true)
+		hm, body, err := o.RequestBody(original, originalReq, true)
 		require.NoError(t, err)
 		require.True(t, o.stream)
-		require.NotNil(t, bm)
+		require.NotNil(t, body)
 		require.NotNil(t, hm)
-		require.Len(t, hm.SetHeaders, 2)
-		require.Equal(t, ":path", hm.SetHeaders[0].Header.Key)
-		require.Equal(t, o.path, string(hm.SetHeaders[0].Header.RawValue))
-		require.Equal(t, "content-length", hm.SetHeaders[1].Header.Key)
-		require.Equal(t, strconv.Itoa(len(bm.Mutation.(*extprocv3.BodyMutation_Body).Body)), string(hm.SetHeaders[1].Header.RawValue))
-		require.Len(t, bm.Mutation.(*extprocv3.BodyMutation_Body).Body, len(original))
+		require.Len(t, hm, 2)
+		require.Equal(t, pathHeaderName, hm[0].Key())
+		require.Equal(t, o.path, hm[0].Value())
+		require.Equal(t, contentLengthHeaderName, hm[1].Key())
+		require.Equal(t, strconv.Itoa(len(body)), hm[1].Value())
 	})
 }
 
@@ -259,32 +257,29 @@ func TestOpenAIToOpenAITranslator_ResponseError(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			body, err := json.Marshal(tt.input)
-			require.NoError(t, err)
-			fmt.Println(string(body))
-
 			o := &openAIToOpenAITranslatorV1ChatCompletion{}
-			hm, bm, err := o.ResponseError(tt.responseHeaders, tt.input)
+			hm, newBody, err := o.ResponseError(tt.responseHeaders, tt.input)
 			require.NoError(t, err)
-			var newBody []byte
 			if tt.contentType == jsonContentType {
-				newBody = tt.input.(*bytes.Buffer).Bytes()
-			} else {
-				require.NotNil(t, bm)
-				require.NotNil(t, bm.Mutation)
-				require.NotNil(t, bm.Mutation.(*extprocv3.BodyMutation_Body))
-				newBody = bm.Mutation.(*extprocv3.BodyMutation_Body).Body
-				require.NotNil(t, newBody)
-				require.NotNil(t, hm)
-				require.NotNil(t, hm.SetHeaders)
-				require.Len(t, hm.SetHeaders, 1)
-				require.Equal(t, "content-length", hm.SetHeaders[0].Header.Key)
-				require.Equal(t, strconv.Itoa(len(newBody)), string(hm.SetHeaders[0].Header.RawValue))
+				require.Nil(t, hm)
+				require.Nil(t, newBody)
+				var openAIError openai.Error
+				require.NoError(t, json.Unmarshal(tt.input.(*bytes.Buffer).Bytes(), &openAIError))
+				if !cmp.Equal(openAIError, tt.output) {
+					t.Errorf("ConvertOpenAIErrorResp(), diff(got, expected) = %s\n", cmp.Diff(openAIError, tt.output))
+				}
+				return
 			}
 
+			require.NotNil(t, hm)
+			require.Len(t, hm, 2)
+			require.Equal(t, contentTypeHeaderName, hm[0].Key())
+			require.Equal(t, jsonContentType, hm[0].Value())
+			require.Equal(t, contentLengthHeaderName, hm[1].Key())
+			require.Equal(t, strconv.Itoa(len(newBody)), hm[1].Value())
+
 			var openAIError openai.Error
-			err = json.Unmarshal(newBody, &openAIError)
-			require.NoError(t, err)
+			require.NoError(t, json.Unmarshal(newBody, &openAIError))
 			if !cmp.Equal(openAIError, tt.output) {
 				t.Errorf("ConvertOpenAIErrorResp(), diff(got, expected) = %s\n", cmp.Diff(openAIError, tt.output))
 			}

@@ -6,11 +6,8 @@
 package translator
 
 import (
-	"fmt"
 	"io"
 
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	openaisdk "github.com/openai/openai-go/v2"
 	"github.com/tidwall/sjson"
 
@@ -22,13 +19,15 @@ import (
 )
 
 const (
-	statusHeaderName       = ":status"
-	contentTypeHeaderName  = "content-type"
-	awsErrorTypeHeaderName = "x-amzn-errortype"
-	jsonContentType        = "application/json"
-	eventStreamContentType = "text/event-stream"
-	openAIBackendError     = "OpenAIBackendError"
-	awsBedrockBackendError = "AWSBedrockBackendError"
+	pathHeaderName          = ":path"
+	statusHeaderName        = ":status"
+	contentTypeHeaderName   = "content-type"
+	contentLengthHeaderName = "content-length"
+	awsErrorTypeHeaderName  = "x-amzn-errortype"
+	jsonContentType         = "application/json"
+	eventStreamContentType  = "text/event-stream"
+	openAIBackendError      = "OpenAIBackendError"
+	awsBedrockBackendError  = "AWSBedrockBackendError"
 )
 
 // OpenAIChatCompletionTranslator translates the request and response messages between the client and the backend API schemas
@@ -42,8 +41,8 @@ type OpenAIChatCompletionTranslator interface {
 	//	- `forceBodyMutation` is true if the translator should always mutate the body, even if no changes are made.
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
 	RequestBody(raw []byte, body *openai.ChatCompletionRequest, forceBodyMutation bool) (
-		headerMutation *extprocv3.HeaderMutation,
-		bodyMutation *extprocv3.BodyMutation,
+		newHeaders []internalapi.Header,
+		mutatedBody []byte,
 		err error,
 	)
 
@@ -51,7 +50,7 @@ type OpenAIChatCompletionTranslator interface {
 	// 	- `headers` is the response headers.
 	//	- This returns `headerMutation` that can be nil to indicate no mutation.
 	ResponseHeaders(headers map[string]string) (
-		headerMutation *extprocv3.HeaderMutation,
+		newHeaders []internalapi.Header,
 		err error,
 	)
 
@@ -61,8 +60,8 @@ type OpenAIChatCompletionTranslator interface {
 	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
 	//  - This returns `responseModel` that is the model name from the response (may differ from request model).
 	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
-		headerMutation *extprocv3.HeaderMutation,
-		bodyMutation *extprocv3.BodyMutation,
+		newHeaders []internalapi.Header,
+		mutatedBody []byte,
 		tokenUsage LLMTokenUsage,
 		responseModel internalapi.ResponseModel,
 		err error,
@@ -71,16 +70,7 @@ type OpenAIChatCompletionTranslator interface {
 	// ResponseError translates the response error. This is called when the upstream response status code is not successful (2xx).
 	// 	- `respHeaders` is the response headers.
 	// 	- `body` is the response body that contains the error message.
-	ResponseError(respHeaders map[string]string, body io.Reader) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error)
-}
-
-func setContentLength(headers *extprocv3.HeaderMutation, body []byte) {
-	headers.SetHeaders = append(headers.SetHeaders, &corev3.HeaderValueOption{
-		Header: &corev3.HeaderValue{
-			Key:      "content-length",
-			RawValue: fmt.Appendf(nil, "%d", len(body)),
-		},
-	})
+	ResponseError(respHeaders map[string]string, body io.Reader) (newHeaders []internalapi.Header, mutatedBody []byte, err error)
 }
 
 // OpenAIEmbeddingTranslator translates the request and response messages between the client and the backend API schemas
@@ -94,8 +84,8 @@ type OpenAIEmbeddingTranslator interface {
 	//	- `onRetry` is true if this is a retry request.
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
 	RequestBody(raw []byte, body *openai.EmbeddingRequest, onRetry bool) (
-		headerMutation *extprocv3.HeaderMutation,
-		bodyMutation *extprocv3.BodyMutation,
+		newHeaders []internalapi.Header,
+		mutatedBody []byte,
 		err error,
 	)
 
@@ -103,7 +93,7 @@ type OpenAIEmbeddingTranslator interface {
 	// 	- `headers` is the response headers.
 	//	- This returns `headerMutation` that can be nil to indicate no mutation.
 	ResponseHeaders(headers map[string]string) (
-		headerMutation *extprocv3.HeaderMutation,
+		newHeaders []internalapi.Header,
 		err error,
 	)
 
@@ -113,8 +103,8 @@ type OpenAIEmbeddingTranslator interface {
 	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
 	//  - This returns `responseModel` that is the model name from the response (may differ from request model).
 	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
-		headerMutation *extprocv3.HeaderMutation,
-		bodyMutation *extprocv3.BodyMutation,
+		newHeaders []internalapi.Header,
+		mutatedBody []byte,
 		tokenUsage LLMTokenUsage,
 		responseModel internalapi.ResponseModel,
 		err error,
@@ -123,7 +113,7 @@ type OpenAIEmbeddingTranslator interface {
 	// ResponseError translates the response error. This is called when the upstream response status code is not successful (2xx).
 	// 	- `respHeaders` is the response headers.
 	// 	- `body` is the response body that contains the error message.
-	ResponseError(respHeaders map[string]string, body io.Reader) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error)
+	ResponseError(respHeaders map[string]string, body io.Reader) (newHeaders []internalapi.Header, mutatedBody []byte, err error)
 }
 
 // CohereRerankTranslator translates the request and response messages between the client and the backend API schemas
@@ -137,8 +127,8 @@ type CohereRerankTranslator interface {
 	//	- `onRetry` is true if this is a retry request.
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
 	RequestBody(raw []byte, body *cohereschema.RerankV2Request, onRetry bool) (
-		headerMutation *extprocv3.HeaderMutation,
-		bodyMutation *extprocv3.BodyMutation,
+		newHeaders []internalapi.Header,
+		mutatedBody []byte,
 		err error,
 	)
 
@@ -146,7 +136,7 @@ type CohereRerankTranslator interface {
 	// 	- `headers` is the response headers.
 	//	- This returns `headerMutation` that can be nil to indicate no mutation.
 	ResponseHeaders(headers map[string]string) (
-		headerMutation *extprocv3.HeaderMutation,
+		newHeaders []internalapi.Header,
 		err error,
 	)
 
@@ -156,8 +146,8 @@ type CohereRerankTranslator interface {
 	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
 	//  - This returns `responseModel` that is the model name from the response (may differ from request model).
 	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
-		headerMutation *extprocv3.HeaderMutation,
-		bodyMutation *extprocv3.BodyMutation,
+		newHeaders []internalapi.Header,
+		mutatedBody []byte,
 		tokenUsage LLMTokenUsage,
 		responseModel internalapi.ResponseModel,
 		err error,
@@ -166,7 +156,7 @@ type CohereRerankTranslator interface {
 	// ResponseError translates the response error. This is called when the upstream response status code is not successful (2xx).
 	// 	- `respHeaders` is the response headers.
 	// 	- `body` is the response body that contains the error message.
-	ResponseError(respHeaders map[string]string, body io.Reader) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error)
+	ResponseError(respHeaders map[string]string, body io.Reader) (newHeaders []internalapi.Header, mutatedBody []byte, err error)
 }
 
 // OpenAICompletionTranslator translates the request and response messages between the client and the backend API schemas
@@ -180,8 +170,8 @@ type OpenAICompletionTranslator interface {
 	//	- `onRetry` is true if this is a retry request.
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
 	RequestBody(raw []byte, body *openai.CompletionRequest, onRetry bool) (
-		headerMutation *extprocv3.HeaderMutation,
-		bodyMutation *extprocv3.BodyMutation,
+		newHeaders []internalapi.Header,
+		mutatedBody []byte,
 		err error,
 	)
 
@@ -189,7 +179,7 @@ type OpenAICompletionTranslator interface {
 	// 	- `headers` is the response headers.
 	//	- This returns `headerMutation` that can be nil to indicate no mutation.
 	ResponseHeaders(headers map[string]string) (
-		headerMutation *extprocv3.HeaderMutation,
+		newHeaders []internalapi.Header,
 		err error,
 	)
 
@@ -199,8 +189,8 @@ type OpenAICompletionTranslator interface {
 	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
 	//  - This returns `responseModel` that is the model name from the response (may differ from request model).
 	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool, span tracing.CompletionSpan) (
-		headerMutation *extprocv3.HeaderMutation,
-		bodyMutation *extprocv3.BodyMutation,
+		newHeaders []internalapi.Header,
+		mutatedBody []byte,
 		tokenUsage LLMTokenUsage,
 		responseModel internalapi.ResponseModel,
 		err error,
@@ -209,7 +199,7 @@ type OpenAICompletionTranslator interface {
 	// ResponseError translates the response error. This is called when the upstream response status code is not successful (2xx).
 	// 	- `respHeaders` is the response headers.
 	// 	- `body` is the response body that contains the error message.
-	ResponseError(respHeaders map[string]string, body io.Reader) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error)
+	ResponseError(respHeaders map[string]string, body io.Reader) (newHeaders []internalapi.Header, mutatedBody []byte, err error)
 }
 
 // AnthropicMessagesTranslator translates the request and response messages between the client and the backend API schemas
@@ -223,8 +213,8 @@ type AnthropicMessagesTranslator interface {
 	//	- `forceBodyMutation` is true if the translator should always mutate the body, even if no changes are made.
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
 	RequestBody(raw []byte, body *anthropicschema.MessagesRequest, forceBodyMutation bool) (
-		headerMutation *extprocv3.HeaderMutation,
-		bodyMutation *extprocv3.BodyMutation,
+		newHeaders []internalapi.Header,
+		mutatedBody []byte,
 		err error,
 	)
 
@@ -232,7 +222,7 @@ type AnthropicMessagesTranslator interface {
 	// 	- `headers` is the response headers.
 	//	- This returns `headerMutation` that can be nil to indicate no mutation.
 	ResponseHeaders(headers map[string]string) (
-		headerMutation *extprocv3.HeaderMutation,
+		newHeaders []internalapi.Header,
 		err error,
 	)
 
@@ -242,8 +232,8 @@ type AnthropicMessagesTranslator interface {
 	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
 	//  - This returns `responseModel` that is the model name from the response (may differ from request model).
 	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
-		headerMutation *extprocv3.HeaderMutation,
-		bodyMutation *extprocv3.BodyMutation,
+		newHeaders []internalapi.Header,
+		mutatedBody []byte,
 		tokenUsage LLMTokenUsage,
 		responseModel internalapi.ResponseModel,
 		err error,
@@ -281,8 +271,8 @@ type ImageGenerationTranslator interface {
 	//	- forceBodyMutation is true if the translator should always mutate the body, even if no changes are made.
 	//	- This returns headerMutation and bodyMutation that can be nil to indicate no mutation.
 	RequestBody(raw []byte, body *openaisdk.ImageGenerateParams, forceBodyMutation bool) (
-		headerMutation *extprocv3.HeaderMutation,
-		bodyMutation *extprocv3.BodyMutation,
+		newHeaders []internalapi.Header,
+		mutatedBody []byte,
 		err error,
 	)
 
@@ -290,7 +280,7 @@ type ImageGenerationTranslator interface {
 	// 	- headers is the response headers.
 	//	- This returns headerMutation that can be nil to indicate no mutation.
 	ResponseHeaders(headers map[string]string) (
-		headerMutation *extprocv3.HeaderMutation,
+		newHeaders []internalapi.Header,
 		err error,
 	)
 
@@ -299,8 +289,8 @@ type ImageGenerationTranslator interface {
 	//	- This returns headerMutation and bodyMutation that can be nil to indicate no mutation.
 	//  - This returns responseModel that is the model name from the response (may differ from request model).
 	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
-		headerMutation *extprocv3.HeaderMutation,
-		bodyMutation *extprocv3.BodyMutation,
+		newHeaders []internalapi.Header,
+		mutatedBody []byte,
 		tokenUsage LLMTokenUsage,
 		responseModel internalapi.ResponseModel,
 		err error,
@@ -309,5 +299,5 @@ type ImageGenerationTranslator interface {
 	// ResponseError translates the response error. This is called when the upstream response status code is not successful (2xx).
 	// 	- respHeaders is the response headers.
 	// 	- body is the response body that contains the error message.
-	ResponseError(respHeaders map[string]string, body io.Reader) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error)
+	ResponseError(respHeaders map[string]string, body io.Reader) (newHeaders []internalapi.Header, mutatedBody []byte, err error)
 }

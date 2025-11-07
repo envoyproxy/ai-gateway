@@ -12,8 +12,6 @@ import (
 	"path"
 	"strconv"
 
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/tidwall/sjson"
 
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
@@ -38,11 +36,10 @@ type cohereToCohereTranslatorV2Rerank struct {
 
 // RequestBody implements [CohereRerankTranslator.RequestBody].
 func (t *cohereToCohereTranslatorV2Rerank) RequestBody(original []byte, req *cohereschema.RerankV2Request, onRetry bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	// Store the request model to use as fallback for response model
 	t.requestModel = req.Model
-	var newBody []byte
 	if t.modelNameOverride != "" {
 		// Override the model if configured.
 		newBody, err = sjson.SetBytesOptions(original, "model", t.modelNameOverride, sjsonOptions)
@@ -54,35 +51,26 @@ func (t *cohereToCohereTranslatorV2Rerank) RequestBody(original []byte, req *coh
 	}
 
 	// Always set the path header to the rerank endpoint so that the request is routed correctly.
-	headerMutation = &extprocv3.HeaderMutation{
-		SetHeaders: []*corev3.HeaderValueOption{
-			{Header: &corev3.HeaderValue{Key: ":path", RawValue: []byte(t.path)}},
-		},
-	}
-
 	if onRetry && len(newBody) == 0 {
 		newBody = original
 	}
 
+	newHeaders = []internalapi.Header{{pathHeaderName, t.path}}
 	if len(newBody) > 0 {
-		bodyMutation = &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: newBody}}
-		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{Header: &corev3.HeaderValue{
-			Key:      "content-length",
-			RawValue: []byte(strconv.Itoa(len(newBody))),
-		}})
+		newHeaders = append(newHeaders, internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(newBody))})
 	}
 	return
 }
 
 // ResponseHeaders implements [CohereRerankTranslator.ResponseHeaders].
-func (t *cohereToCohereTranslatorV2Rerank) ResponseHeaders(map[string]string) (headerMutation *extprocv3.HeaderMutation, err error) {
+func (t *cohereToCohereTranslatorV2Rerank) ResponseHeaders(map[string]string) (newHeaders []internalapi.Header, err error) {
 	return nil, nil
 }
 
 // ResponseBody implements [CohereRerankTranslator.ResponseBody].
 // For rerank, token usage is provided via meta.tokens.input_tokens when available.
 func (t *cohereToCohereTranslatorV2Rerank) ResponseBody(_ map[string]string, body io.Reader, _ bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel internalapi.ResponseModel, err error,
+	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
 	var resp cohereschema.RerankV2Response
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
@@ -110,7 +98,7 @@ func (t *cohereToCohereTranslatorV2Rerank) ResponseBody(_ map[string]string, bod
 // ResponseError implements [CohereRerankTranslator.ResponseError].
 // If connection fails or a non-JSON error is returned, wrap it into a JSON error body.
 func (t *cohereToCohereTranslatorV2Rerank) ResponseError(respHeaders map[string]string, body io.Reader) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	if v, ok := respHeaders[contentTypeHeaderName]; ok && v != jsonContentType {
 		buf, err := io.ReadAll(body)
@@ -122,14 +110,14 @@ func (t *cohereToCohereTranslatorV2Rerank) ResponseError(respHeaders map[string]
 		cohereErr := cohereschema.RerankV2Error{
 			Message: &message,
 		}
-		mut := &extprocv3.BodyMutation_Body{}
-		mut.Body, err = json.Marshal(cohereErr)
+		newBody, err = json.Marshal(cohereErr)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to marshal error body: %w", err)
 		}
-		headerMutation = &extprocv3.HeaderMutation{}
-		setContentLength(headerMutation, mut.Body)
-		return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, nil
+		newHeaders = []internalapi.Header{
+			{pathHeaderName, t.path},
+			{contentTypeHeaderName, jsonContentType},
+		}
 	}
-	return nil, nil, nil
+	return
 }

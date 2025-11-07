@@ -183,13 +183,11 @@ func (r *rerankProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Contex
 	reqModel := cmp.Or(r.requestHeaders[internalapi.ModelNameHeaderKeyDefault], r.originalRequestBody.Model)
 	r.metrics.SetRequestModel(reqModel)
 
-	headerMutation, bodyMutation, err := r.translator.RequestBody(r.originalRequestBodyRaw, r.originalRequestBody, r.onRetry)
+	newHeaders, newBody, err := r.translator.RequestBody(r.originalRequestBodyRaw, r.originalRequestBody, r.onRetry)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
-	if headerMutation == nil {
-		headerMutation = &extprocv3.HeaderMutation{}
-	}
+	headerMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
 
 	// Apply header mutations from the route and also restore original headers on retry.
 	if h := r.headerMutator; h != nil {
@@ -257,10 +255,11 @@ func (r *rerankProcessorUpstreamFilter) ProcessResponseHeaders(ctx context.Conte
 	if enc := r.responseHeaders["content-encoding"]; enc != "" {
 		r.responseEncoding = enc
 	}
-	headerMutation, err := r.translator.ResponseHeaders(r.responseHeaders)
+	newHeaders, err := r.translator.ResponseHeaders(r.responseHeaders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response headers: %w", err)
 	}
+	headerMutation, _ := mutationsFromTranslationResult(newHeaders, nil)
 	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{
 		ResponseHeaders: &extprocv3.HeadersResponse{
 			Response: &extprocv3.CommonResponse{HeaderMutation: headerMutation},
@@ -289,12 +288,13 @@ func (r *rerankProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context,
 
 	// Assume all responses have a valid status code header.
 	if code, _ := strconv.Atoi(r.responseHeaders[":status"]); !isGoodStatusCode(code) {
-		var headerMutation *extprocv3.HeaderMutation
-		var bodyMutation *extprocv3.BodyMutation
-		headerMutation, bodyMutation, err = r.translator.ResponseError(r.responseHeaders, decodingResult.reader)
+		var newHeaders []internalapi.Header
+		var newBody []byte
+		newHeaders, newBody, err = r.translator.ResponseError(r.responseHeaders, decodingResult.reader)
 		if err != nil {
 			return nil, fmt.Errorf("failed to transform response error: %w", err)
 		}
+		headerMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
 		recordRequestCompletionErr = true
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_ResponseBody{
@@ -308,12 +308,13 @@ func (r *rerankProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context,
 		}, nil
 	}
 
-	headerMutation, bodyMutation, tokenUsage, responseModel, err := r.translator.ResponseBody(r.responseHeaders, decodingResult.reader, body.EndOfStream)
+	newHeaders, newBody, tokenUsage, responseModel, err := r.translator.ResponseBody(r.responseHeaders, decodingResult.reader, body.EndOfStream)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}
 
 	// Remove content-encoding header if original body encoded but was mutated in the processor.
+	headerMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
 	headerMutation = removeContentEncodingIfNeeded(headerMutation, bodyMutation, decodingResult.isEncoded)
 
 	resp := &extprocv3.ProcessingResponse{

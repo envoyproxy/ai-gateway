@@ -12,7 +12,10 @@ import (
 	"io"
 
 	"github.com/andybalholm/brotli"
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 // contentDecodingResult contains the result of content decoding operation.
@@ -71,4 +74,24 @@ func removeContentEncodingIfNeeded(headerMutation *extprocv3.HeaderMutation, bod
 // https://developer.mozilla.org/en-US/docs/Web/HTTP/Status#successful_responses
 func isGoodStatusCode(code int) bool {
 	return code >= 200 && code < 300
+}
+
+func mutationsFromTranslationResult(newHeaders []internalapi.Header, newBody []byte) (
+	header *extprocv3.HeaderMutation,
+	body *extprocv3.BodyMutation,
+) {
+	header = &extprocv3.HeaderMutation{}
+	for _, h := range newHeaders {
+		header.SetHeaders = append(header.SetHeaders, &corev3.HeaderValueOption{
+			AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
+			Header: &corev3.HeaderValue{
+				Key:      h.Key(),
+				RawValue: []byte(h.Value()),
+			},
+		})
+	}
+	if len(newBody) > 0 {
+		body = &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: newBody}}
+	}
+	return
 }

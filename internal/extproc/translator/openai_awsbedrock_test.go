@@ -18,7 +18,6 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/google/go-cmp/cmp"
 	openaigo "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/require"
@@ -1218,7 +1217,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 		t.Run(tt.name, func(t *testing.T) {
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
 			originalReq := tt.input
-			hm, bm, err := o.RequestBody(nil, &originalReq, false)
+			hm, newBody, err := o.RequestBody(nil, &originalReq, false)
 			var expPath string
 			require.Equal(t, tt.input.Stream, o.stream)
 			encodedModel := url.PathEscape(tt.input.Model)
@@ -1229,13 +1228,12 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 			}
 			require.NoError(t, err)
 			require.NotNil(t, hm)
-			require.NotNil(t, hm.SetHeaders)
-			require.Len(t, hm.SetHeaders, 2)
-			require.Equal(t, ":path", hm.SetHeaders[0].Header.Key)
-			require.Equal(t, expPath, string(hm.SetHeaders[0].Header.RawValue))
-			require.Equal(t, "content-length", hm.SetHeaders[1].Header.Key)
-			newBody := bm.Mutation.(*extprocv3.BodyMutation_Body).Body
-			require.Equal(t, strconv.Itoa(len(newBody)), string(hm.SetHeaders[1].Header.RawValue))
+			require.NotNil(t, hm)
+			require.Len(t, hm, 2)
+			require.Equal(t, pathHeaderName, hm[0].Key())
+			require.Equal(t, expPath, hm[0].Value())
+			require.Equal(t, contentLengthHeaderName, hm[1].Key())
+			require.Equal(t, strconv.Itoa(len(newBody)), hm[1].Value())
 
 			var awsReq awsbedrock.ConverseInput
 			err = json.Unmarshal(newBody, &awsReq)
@@ -1256,10 +1254,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 		hm, _, err := o.RequestBody(nil, &originalReq, false)
 		require.NoError(t, err)
 		require.NotNil(t, hm)
-		require.NotNil(t, hm.SetHeaders)
-		require.Len(t, hm.SetHeaders, 2)
-		require.Equal(t, ":path", hm.SetHeaders[0].Header.Key)
-		require.Equal(t, "/model/"+url.PathEscape(modelNameOverride)+"/converse", string(hm.SetHeaders[0].Header.RawValue))
+		require.NotNil(t, hm)
+		require.Len(t, hm, 2)
+		require.Equal(t, pathHeaderName, hm[0].Key())
+		require.Equal(t, "/model/"+url.PathEscape(modelNameOverride)+"/converse", hm[0].Value())
 	})
 }
 
@@ -1271,10 +1269,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseHeaders(t *testing
 		})
 		require.NoError(t, err)
 		require.NotNil(t, hm)
-		require.NotNil(t, hm.SetHeaders)
-		require.Len(t, hm.SetHeaders, 1)
-		require.Equal(t, "content-type", hm.SetHeaders[0].Header.Key)
-		require.Equal(t, "text/event-stream", hm.SetHeaders[0].Header.Value)
+		require.NotNil(t, hm)
+		require.Len(t, hm, 1)
+		require.Equal(t, "content-type", hm[0].Key())
+		require.Equal(t, "text/event-stream", hm[0].Value())
 	})
 	t.Run("non-streaming", func(t *testing.T) {
 		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
@@ -1292,12 +1290,9 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_ResponseBody(t *
 
 		var results []string
 		for i := range buf {
-			hm, bm, tokenUsage, _, err := o.ResponseBody(nil, bytes.NewBuffer([]byte{buf[i]}), i == len(buf)-1, nil)
+			hm, newBody, tokenUsage, _, err := o.ResponseBody(nil, bytes.NewBuffer([]byte{buf[i]}), i == len(buf)-1, nil)
 			require.NoError(t, err)
 			require.Nil(t, hm)
-			require.NotNil(t, bm)
-			require.NotNil(t, bm.Mutation)
-			newBody := bm.Mutation.(*extprocv3.BodyMutation_Body).Body
 			if len(newBody) > 0 {
 				results = append(results, string(newBody))
 			}
@@ -1407,18 +1402,15 @@ func TestOpenAIToAWSBedrockTranslator_ResponseError(t *testing.T) {
 			require.NoError(t, err)
 
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
-			hm, bm, err := o.ResponseError(tt.responseHeaders, tt.input)
+			hm, newBody, err := o.ResponseError(tt.responseHeaders, tt.input)
 			require.NoError(t, err)
-			require.NotNil(t, bm)
-			require.NotNil(t, bm.Mutation)
-			require.NotNil(t, bm.Mutation.(*extprocv3.BodyMutation_Body))
-			newBody := bm.Mutation.(*extprocv3.BodyMutation_Body).Body
 			require.NotNil(t, newBody)
 			require.NotNil(t, hm)
-			require.NotNil(t, hm.SetHeaders)
-			require.Len(t, hm.SetHeaders, 1)
-			require.Equal(t, "content-length", hm.SetHeaders[0].Header.Key)
-			require.Equal(t, strconv.Itoa(len(newBody)), string(hm.SetHeaders[0].Header.RawValue))
+			require.Len(t, hm, 2)
+			require.Equal(t, contentTypeHeaderName, hm[0].Key())
+			require.Equal(t, jsonContentType, hm[0].Value())
+			require.Equal(t, contentLengthHeaderName, hm[1].Key())
+			require.Equal(t, strconv.Itoa(len(newBody)), hm[1].Value())
 
 			var openAIError openai.Error
 			err = json.Unmarshal(newBody, &openAIError)
@@ -1671,18 +1663,13 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			require.NoError(t, err)
 
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
-			hm, bm, usedToken, _, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, nil)
+			hm, newBody, usedToken, _, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, nil)
 			require.NoError(t, err)
-			require.NotNil(t, bm)
-			require.NotNil(t, bm.Mutation)
-			require.NotNil(t, bm.Mutation.(*extprocv3.BodyMutation_Body))
-			newBody := bm.Mutation.(*extprocv3.BodyMutation_Body).Body
 			require.NotNil(t, newBody)
 			require.NotNil(t, hm)
-			require.NotNil(t, hm.SetHeaders)
-			require.Len(t, hm.SetHeaders, 1)
-			require.Equal(t, "content-length", hm.SetHeaders[0].Header.Key)
-			require.Equal(t, strconv.Itoa(len(newBody)), string(hm.SetHeaders[0].Header.RawValue))
+			require.Len(t, hm, 1)
+			require.Equal(t, contentLengthHeaderName, hm[0].Key())
+			require.Equal(t, strconv.Itoa(len(newBody)), hm[0].Value())
 
 			expectedBody, err := json.Marshal(tt.output)
 			require.NoError(t, err)
@@ -1737,10 +1724,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBodyURLEncoding(t *
 			hm, _, err := o.RequestBody(nil, &req, false)
 			require.NoError(t, err)
 			require.NotNil(t, hm)
-			require.NotNil(t, hm.SetHeaders)
-			require.Len(t, hm.SetHeaders, 2)
-			require.Equal(t, ":path", hm.SetHeaders[0].Header.Key)
-			require.Equal(t, tt.expectedPath, string(hm.SetHeaders[0].Header.RawValue))
+			require.NotNil(t, hm)
+			require.Len(t, hm, 2)
+			require.Equal(t, pathHeaderName, hm[0].Key())
+			require.Equal(t, tt.expectedPath, hm[0].Value())
 		})
 	}
 }
@@ -2027,12 +2014,11 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_WithReasoning(t 
 	}
 	// Process the entire encoded stream through the translator.
 	o := &openAIToAWSBedrockTranslatorV1ChatCompletion{stream: true}
-	_, bm, _, _, err := o.ResponseBody(nil, buf, true, nil)
+	_, outputBody, _, _, err := o.ResponseBody(nil, buf, true, nil)
 	require.NoError(t, err)
-	require.NotNil(t, bm)
+	require.NotNil(t, outputBody)
 
 	// Parse the translated SSE (Server-Sent Events) output.
-	outputBody := bm.Mutation.(*extprocv3.BodyMutation_Body).Body
 	lines := strings.Split(string(outputBody), "\n")
 
 	var generationChunks []string
@@ -2113,11 +2099,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody_WithReasoning
 	require.NoError(t, err)
 
 	o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
-	_, bm, _, _, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, nil)
+	_, outputBody, _, _, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, nil)
 	require.NoError(t, err)
-	require.NotNil(t, bm)
+	require.NotNil(t, outputBody)
 
-	outputBody := bm.Mutation.(*extprocv3.BodyMutation_Body).Body
 	var openAIResponse openai.ChatCompletionResponse
 	err = json.Unmarshal(outputBody, &openAIResponse)
 	require.NoError(t, err)
@@ -2196,10 +2181,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_WithRedactedCont
 	}
 
 	o := &openAIToAWSBedrockTranslatorV1ChatCompletion{stream: true}
-	_, bm, _, _, err := o.ResponseBody(nil, buf, true, nil)
+	_, outputBody, _, _, err := o.ResponseBody(nil, buf, true, nil)
 	require.NoError(t, err)
 
-	lines := strings.Split(string(bm.Mutation.(*extprocv3.BodyMutation_Body).Body), "\n")
+	lines := strings.Split(string(outputBody), "\n")
 	var foundReasoningChunk bool
 	for _, line := range lines {
 		if strings.HasPrefix(line, "data: ") {
@@ -2265,7 +2250,7 @@ func TestResponseModel_AWSBedrock(t *testing.T) {
 	_, bm, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader([]byte(bedrockResponse)), true, nil)
 	require.NoError(t, err)
 	require.Equal(t, modelName, responseModel) // Returns the request model since no virtualization
-	respBodyModel := gjson.GetBytes(bm.GetBody(), "model").Value()
+	respBodyModel := gjson.GetBytes(bm, "model").Value()
 	require.Equal(t, modelName, respBodyModel)
 	require.Equal(t, uint32(10), tokenUsage.InputTokens)
 	require.Equal(t, uint32(5), tokenUsage.OutputTokens)

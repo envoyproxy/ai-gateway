@@ -131,11 +131,7 @@ func Test_completionsProcessorUpstreamFilter_ProcessResponseHeaders(t *testing.T
 		const headerName = ":test-header:"
 		const headerValue = ":test-header-value:"
 		mt.expHeaders[headerName] = headerValue
-		mt.resHeaderMutation = &extprocv3.HeaderMutation{
-			SetHeaders: []*corev3.HeaderValueOption{
-				{Header: &corev3.HeaderValue{Key: headerName, RawValue: []byte(headerValue)}},
-			},
-		}
+		mt.resHeaderMutation = []internalapi.Header{{headerName, headerValue}}
 
 		resp, err := p.ProcessResponseHeaders(t.Context(), &corev3.HeaderMap{
 			Headers: []*corev3.HeaderValue{
@@ -165,14 +161,8 @@ func Test_completionsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 			metrics:         mm,
 		}
 
-		mt.resErrorHeaderMutation = &extprocv3.HeaderMutation{
-			SetHeaders: []*corev3.HeaderValueOption{
-				{Header: &corev3.HeaderValue{Key: "test", RawValue: []byte("error")}},
-			},
-		}
-		mt.resErrorBodyMutation = &extprocv3.BodyMutation{
-			Mutation: &extprocv3.BodyMutation_Body{Body: []byte("error body")},
-		}
+		mt.resErrorHeaderMutation = []internalapi.Header{{"test", "error"}}
+		mt.resErrorBodyMutation = []byte("test error")
 
 		resp, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{Body: []byte("test error")})
 		require.NoError(t, err)
@@ -182,8 +172,10 @@ func Test_completionsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 		require.True(t, ok)
 		require.NotNil(t, re)
 		require.NotNil(t, re.ResponseBody)
-		require.Equal(t, mt.resErrorHeaderMutation, re.ResponseBody.GetResponse().GetHeaderMutation())
-		require.Equal(t, mt.resErrorBodyMutation, re.ResponseBody.GetResponse().GetBodyMutation())
+		require.Len(t, re.ResponseBody.GetResponse().GetHeaderMutation().SetHeaders, 1)
+		require.Equal(t, "test", re.ResponseBody.GetResponse().GetHeaderMutation().SetHeaders[0].Header.Key)
+		require.Equal(t, "error", string(re.ResponseBody.GetResponse().GetHeaderMutation().SetHeaders[0].Header.RawValue))
+		require.Equal(t, "test error", string(re.ResponseBody.GetResponse().GetBodyMutation().GetBody()))
 	})
 
 	t.Run("successful response with token usage", func(t *testing.T) {
@@ -197,14 +189,8 @@ func Test_completionsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 			metrics:         mm,
 		}
 
-		mt.resHeaderMutation = &extprocv3.HeaderMutation{
-			SetHeaders: []*corev3.HeaderValueOption{
-				{Header: &corev3.HeaderValue{Key: "test", RawValue: []byte("success")}},
-			},
-		}
-		mt.resBodyMutation = &extprocv3.BodyMutation{
-			Mutation: &extprocv3.BodyMutation_Body{Body: []byte("response body")},
-		}
+		mt.resHeaderMutation = []internalapi.Header{{"test", "success"}}
+		mt.resBodyMutation = []byte("response body")
 		mt.resTokenUsage = translator.LLMTokenUsage{
 			InputTokens:  10,
 			OutputTokens: 20,
@@ -220,8 +206,10 @@ func Test_completionsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 		require.True(t, ok)
 		require.NotNil(t, re)
 		require.NotNil(t, re.ResponseBody)
-		require.Equal(t, mt.resHeaderMutation, re.ResponseBody.GetResponse().GetHeaderMutation())
-		require.Equal(t, mt.resBodyMutation, re.ResponseBody.GetResponse().GetBodyMutation())
+		require.Len(t, re.ResponseBody.GetResponse().GetHeaderMutation().SetHeaders, 1)
+		require.Equal(t, "test", re.ResponseBody.GetResponse().GetHeaderMutation().SetHeaders[0].Header.Key)
+		require.Equal(t, "success", string(re.ResponseBody.GetResponse().GetHeaderMutation().SetHeaders[0].Header.RawValue))
+		require.Equal(t, "response body", string(re.ResponseBody.GetResponse().GetBodyMutation().GetBody()))
 
 		// Check that costs were accumulated
 		require.Equal(t, uint32(10), p.costs.InputTokens)
@@ -404,31 +392,31 @@ func completionBodyFromModel(t *testing.T, model string) []byte {
 type mockCompletionTranslator struct {
 	t                      *testing.T
 	expHeaders             map[string]string
-	resHeaderMutation      *extprocv3.HeaderMutation
-	resBodyMutation        *extprocv3.BodyMutation
-	resErrorHeaderMutation *extprocv3.HeaderMutation
-	resErrorBodyMutation   *extprocv3.BodyMutation
+	resHeaderMutation      []internalapi.Header
+	resBodyMutation        []byte
+	resErrorHeaderMutation []internalapi.Header
+	resErrorBodyMutation   []byte
 	resTokenUsage          translator.LLMTokenUsage
 	resModel               internalapi.ResponseModel
 	err                    error
 }
 
-func (m *mockCompletionTranslator) RequestBody([]byte, *openai.CompletionRequest, bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
+func (m *mockCompletionTranslator) RequestBody([]byte, *openai.CompletionRequest, bool) ([]internalapi.Header, []byte, error) {
 	return nil, nil, m.err
 }
 
-func (m *mockCompletionTranslator) ResponseHeaders(headers map[string]string) (*extprocv3.HeaderMutation, error) {
+func (m *mockCompletionTranslator) ResponseHeaders(headers map[string]string) ([]internalapi.Header, error) {
 	for k, v := range m.expHeaders {
 		require.Equal(m.t, v, headers[k])
 	}
 	return m.resHeaderMutation, m.err
 }
 
-func (m *mockCompletionTranslator) ResponseBody(map[string]string, io.Reader, bool, tracing.CompletionSpan) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, translator.LLMTokenUsage, internalapi.ResponseModel, error) {
+func (m *mockCompletionTranslator) ResponseBody(map[string]string, io.Reader, bool, tracing.CompletionSpan) ([]internalapi.Header, []byte, translator.LLMTokenUsage, internalapi.ResponseModel, error) {
 	return m.resHeaderMutation, m.resBodyMutation, m.resTokenUsage, m.resModel, m.err
 }
 
-func (m *mockCompletionTranslator) ResponseError(map[string]string, io.Reader) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
+func (m *mockCompletionTranslator) ResponseError(map[string]string, io.Reader) ([]internalapi.Header, []byte, error) {
 	return m.resErrorHeaderMutation, m.resErrorBodyMutation, m.err
 }
 
@@ -580,7 +568,7 @@ func Test_completionsProcessorUpstreamFilter_ProcessResponseHeaders_Streaming(t 
 		res, err := p.ProcessResponseHeaders(t.Context(), inHeaders)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseHeaders).ResponseHeaders.Response
-		require.Equal(t, mt.resHeaderMutation, commonRes.HeaderMutation)
+		require.Empty(t, commonRes.HeaderMutation.SetHeaders)
 		require.Nil(t, res.ModeOverride)
 	})
 
@@ -594,7 +582,7 @@ func Test_completionsProcessorUpstreamFilter_ProcessResponseHeaders_Streaming(t 
 		res, err := p.ProcessResponseHeaders(t.Context(), inHeaders)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseHeaders).ResponseHeaders.Response
-		require.Equal(t, mt.resHeaderMutation, commonRes.HeaderMutation)
+		require.Empty(t, commonRes.HeaderMutation.SetHeaders)
 		require.Equal(t, &extprocv3http.ProcessingMode{ResponseBodyMode: extprocv3http.ProcessingMode_STREAMED}, res.ModeOverride)
 	})
 
@@ -608,7 +596,7 @@ func Test_completionsProcessorUpstreamFilter_ProcessResponseHeaders_Streaming(t 
 		res, err := p.ProcessResponseHeaders(t.Context(), inHeaders)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseHeaders).ResponseHeaders.Response
-		require.Equal(t, mt.resHeaderMutation, commonRes.HeaderMutation)
+		require.Empty(t, commonRes.HeaderMutation.SetHeaders)
 		require.Nil(t, res.ModeOverride)
 	})
 }
@@ -649,10 +637,10 @@ func Test_completionsProcessorUpstreamFilter_ProcessResponseBody_NonSuccess(t *t
 	// Verify we record failure for non-2xx responses and do it exactly once (defer suppressed).
 	t.Run("non-2xx status failure once", func(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("error-body"), EndOfStream: true}
-		expHeadMut := &extprocv3.HeaderMutation{}
-		expBodyMut := &extprocv3.BodyMutation{}
 		mm := &mockCompletionMetrics{}
-		mt := &mockCompletionTranslator{t: t, resErrorHeaderMutation: expHeadMut, resErrorBodyMutation: expBodyMut}
+		mt := &mockCompletionTranslator{t: t, resErrorHeaderMutation: []internalapi.Header{
+			{"foo", "bar"},
+		}, resErrorBodyMutation: []byte("abcd")}
 		p := &completionsProcessorUpstreamFilter{
 			translator:      mt,
 			metrics:         mm,
@@ -661,8 +649,10 @@ func Test_completionsProcessorUpstreamFilter_ProcessResponseBody_NonSuccess(t *t
 		res, err := p.ProcessResponseBody(t.Context(), inBody)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
-		require.Equal(t, expBodyMut, commonRes.BodyMutation)
-		require.Equal(t, expHeadMut, commonRes.HeaderMutation)
+		require.Equal(t, "abcd", string(commonRes.BodyMutation.GetBody()))
+		require.Len(t, commonRes.HeaderMutation.SetHeaders, 1)
+		require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
+		require.Equal(t, "bar", string(commonRes.HeaderMutation.SetHeaders[0].Header.RawValue))
 		mm.RequireRequestFailure(t)
 	})
 }
@@ -767,13 +757,12 @@ func Test_completionsProcessorUpstreamFilter_CELCostEvaluation(t *testing.T) {
 	// Using exactly the same test data as chat completion CEL test
 	t.Run("CEL expressions with token usage", func(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("response-body"), EndOfStream: true}
-		expBodyMut := &extprocv3.BodyMutation{}
-		expHeadMut := &extprocv3.HeaderMutation{}
+		expBody := []byte("response-body")
 		mm := &mockCompletionMetrics{}
 		mt := &mockCompletionTranslator{
 			t:                 t,
-			resBodyMutation:   expBodyMut,
-			resHeaderMutation: expHeadMut,
+			resBodyMutation:   expBody,
+			resHeaderMutation: []internalapi.Header{{"foo", "bar"}},
 			resTokenUsage: translator.LLMTokenUsage{
 				OutputTokens: 123,
 				InputTokens:  1,
@@ -813,8 +802,10 @@ func Test_completionsProcessorUpstreamFilter_CELCostEvaluation(t *testing.T) {
 		res, err := p.ProcessResponseBody(t.Context(), inBody)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
-		require.Equal(t, expBodyMut, commonRes.BodyMutation)
-		require.Equal(t, expHeadMut, commonRes.HeaderMutation)
+		require.Equal(t, string(expBody), string(commonRes.BodyMutation.GetBody()))
+		require.Len(t, commonRes.HeaderMutation.SetHeaders, 1)
+		require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
+		require.Equal(t, "bar", string(commonRes.HeaderMutation.SetHeaders[0].Header.RawValue))
 		mm.RequireRequestSuccess(t)
 		require.Equal(t, 124, mm.tokenUsageCount) // 1 input + 123 output
 		md := res.DynamicMetadata

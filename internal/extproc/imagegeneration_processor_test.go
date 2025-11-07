@@ -216,7 +216,7 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseHeaders(t *testi
 		res, err := p.ProcessResponseHeaders(t.Context(), inHeaders)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseHeaders).ResponseHeaders.Response
-		require.Equal(t, mt.retHeaderMutation, commonRes.HeaderMutation)
+		require.Empty(t, commonRes.HeaderMutation.SetHeaders)
 		mm.RequireRequestNotCompleted(t)
 	})
 }
@@ -238,12 +238,9 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseBody(t *testing.
 	})
 	t.Run("ok", func(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("some-body"), EndOfStream: true}
-		expBodyMut := &extprocv3.BodyMutation{}
-		expHeadMut := &extprocv3.HeaderMutation{}
 		mm := &mockImageGenerationMetrics{}
 		mt := &mockImageGenerationTranslator{
 			t: t, expResponseBody: inBody,
-			retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut,
 			retUsedToken: translator.LLMTokenUsage{OutputTokens: 123, InputTokens: 1},
 		}
 
@@ -277,8 +274,8 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseBody(t *testing.
 		res, err := p.ProcessResponseBody(t.Context(), inBody)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
-		require.Equal(t, expBodyMut, commonRes.BodyMutation)
-		require.Equal(t, expHeadMut, commonRes.HeaderMutation)
+		require.Nil(t, commonRes.BodyMutation)
+		require.Equal(t, &extprocv3.HeaderMutation{}, commonRes.HeaderMutation)
 		mm.RequireRequestSuccess(t)
 		require.Equal(t, 124, mm.tokenUsageCount) // 1 input + 123 output
 
@@ -299,10 +296,11 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseBody(t *testing.
 	// Verify we record failure for non-2xx responses and do it exactly once (defer suppressed), and span records error.
 	t.Run("non-2xx status failure once", func(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("error-body"), EndOfStream: true}
-		expHeadMut := &extprocv3.HeaderMutation{}
-		expBodyMut := &extprocv3.BodyMutation{}
+		expBody := []byte("error-body")
 		mm := &mockImageGenerationMetrics{}
-		mt := &mockImageGenerationTranslator{t: t, expResponseBody: inBody, retHeaderMutation: expHeadMut, retBodyMutation: expBodyMut}
+		mt := &mockImageGenerationTranslator{t: t, expResponseBody: inBody, retHeaderMutation: []internalapi.Header{
+			{"foo", "bar"},
+		}, retBodyMutation: expBody}
 		p := &imageGenerationProcessorUpstreamFilter{
 			translator:      mt,
 			metrics:         mm,
@@ -313,8 +311,10 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseBody(t *testing.
 		res, err := p.ProcessResponseBody(t.Context(), inBody)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
-		require.Equal(t, expBodyMut, commonRes.BodyMutation)
-		require.Equal(t, expHeadMut, commonRes.HeaderMutation)
+		require.Equal(t, string(expBody), string(commonRes.BodyMutation.GetBody()))
+		require.Len(t, commonRes.HeaderMutation.SetHeaders, 1)
+		require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
+		require.Equal(t, "bar", string(commonRes.HeaderMutation.SetHeaders[0].Header.RawValue))
 		mm.RequireRequestFailure(t)
 		// assert span error recorded
 		s := p.span.(*mockImageGenerationSpan)
@@ -333,8 +333,8 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseBody(t *testing.
 		mm := &mockImageGenerationMetrics{}
 		mt := &mockImageGenerationTranslator{
 			// translator returns a non-nil body mutation indicating processor changed body
-			retBodyMutation:   &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: []byte("changed")}},
-			retHeaderMutation: &extprocv3.HeaderMutation{},
+			retBodyMutation:   []byte("changed"),
+			retHeaderMutation: []internalapi.Header{{"foo", "bar"}},
 		}
 		p := &imageGenerationProcessorUpstreamFilter{
 			translator:       mt,
@@ -349,6 +349,10 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseBody(t *testing.
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
 		reqHM := commonRes.HeaderMutation
 		require.Contains(t, reqHM.RemoveHeaders, "content-encoding")
+		require.Len(t, reqHM.SetHeaders, 1)
+		require.Equal(t, "foo", reqHM.SetHeaders[0].Header.Key)
+		require.Equal(t, "bar", string(reqHM.SetHeaders[0].Header.RawValue))
+		require.Equal(t, "changed", string(commonRes.BodyMutation.GetBody()))
 		mm.RequireRequestSuccess(t)
 	})
 }
@@ -470,13 +474,13 @@ type mockImageGenerationTranslator struct {
 	expHeaders                  map[string]string
 	expForceRequestBodyMutation bool
 	retErr                      error
-	retHeaderMutation           *extprocv3.HeaderMutation
-	retBodyMutation             *extprocv3.BodyMutation
+	retHeaderMutation           []internalapi.Header
+	retBodyMutation             []byte
 	retUsedToken                translator.LLMTokenUsage
 	retResponseModel            internalapi.ResponseModel
 }
 
-func (m *mockImageGenerationTranslator) RequestBody(_ []byte, req *openaisdk.ImageGenerateParams, forceBodyMutation bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
+func (m *mockImageGenerationTranslator) RequestBody(_ []byte, req *openaisdk.ImageGenerateParams, forceBodyMutation bool) ([]internalapi.Header, []byte, error) {
 	if m.expRequestBody != nil {
 		require.Equal(m.t, m.expRequestBody, req)
 	}
@@ -486,7 +490,7 @@ func (m *mockImageGenerationTranslator) RequestBody(_ []byte, req *openaisdk.Ima
 	return m.retHeaderMutation, m.retBodyMutation, m.retErr
 }
 
-func (m *mockImageGenerationTranslator) ResponseHeaders(headers map[string]string) (*extprocv3.HeaderMutation, error) {
+func (m *mockImageGenerationTranslator) ResponseHeaders(headers map[string]string) ([]internalapi.Header, error) {
 	if m.expHeaders != nil {
 		for k, v := range m.expHeaders {
 			require.Equal(m.t, v, headers[k])
@@ -495,7 +499,7 @@ func (m *mockImageGenerationTranslator) ResponseHeaders(headers map[string]strin
 	return m.retHeaderMutation, m.retErr
 }
 
-func (m *mockImageGenerationTranslator) ResponseBody(headers map[string]string, body io.Reader, endOfStream bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, translator.LLMTokenUsage, internalapi.ResponseModel, error) {
+func (m *mockImageGenerationTranslator) ResponseBody(headers map[string]string, body io.Reader, endOfStream bool) ([]internalapi.Header, []byte, translator.LLMTokenUsage, internalapi.ResponseModel, error) {
 	_ = headers
 	if m.expResponseBody != nil {
 		bodyBytes, _ := io.ReadAll(body)
@@ -505,7 +509,7 @@ func (m *mockImageGenerationTranslator) ResponseBody(headers map[string]string, 
 	return m.retHeaderMutation, m.retBodyMutation, m.retUsedToken, m.retResponseModel, m.retErr
 }
 
-func (m *mockImageGenerationTranslator) ResponseError(headers map[string]string, body io.Reader) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
+func (m *mockImageGenerationTranslator) ResponseError(headers map[string]string, body io.Reader) ([]internalapi.Header, []byte, error) {
 	_ = headers
 	_ = body
 	return m.retHeaderMutation, m.retBodyMutation, m.retErr

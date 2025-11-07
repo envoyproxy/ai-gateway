@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -184,7 +183,7 @@ data: {"type": "message_stop"}
 		require.NoError(t, err)
 		require.NotNil(t, bm)
 
-		bodyStr := string(bm.GetBody())
+		bodyStr := string(bm)
 		require.Contains(t, bodyStr, `"content":"Hello"`)
 		require.Contains(t, bodyStr, `"finish_reason":"stop"`)
 		require.Contains(t, bodyStr, `"prompt_tokens":25`)
@@ -292,7 +291,7 @@ data: {"type":"message_stop"}
 		_, bm, _, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bm)
-		bodyStr := string(bm.GetBody())
+		bodyStr := string(bm)
 
 		// Parse all streaming events to verify the event flow
 		var chunks []openai.ChatCompletionResponseChunk
@@ -468,7 +467,7 @@ data: {"type":"message_stop"}
 		_, bm, _, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bm)
-		bodyStr := string(bm.GetBody())
+		bodyStr := string(bm)
 
 		require.Contains(t, bodyStr, `"content":"I'll check"`)
 		require.Contains(t, bodyStr, `"content":" the current weather in New York City for you"`)
@@ -499,7 +498,7 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta"
 		_, bm, _, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bm)
-		bodyStr := string(bm.GetBody())
+		bodyStr := string(bm)
 
 		var finalToolCallChunk openai.ChatCompletionResponseChunk
 
@@ -557,7 +556,7 @@ data: {"type": "message_stop"}
 		_, bm, _, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
 		require.NoError(t, err)
 		require.NotNil(t, bm)
-		bodyStr := string(bm.GetBody())
+		bodyStr := string(bm)
 
 		var contentDeltas []string
 		var foundToolCallWithArgs bool
@@ -611,7 +610,7 @@ data: {"type": "message_stop"}
 }
 
 func TestAnthropicStreamParser_EventTypes(t *testing.T) {
-	runStreamTest := func(t *testing.T, sseStream string, endOfStream bool) (*extprocv3.BodyMutation, LLMTokenUsage, error) {
+	runStreamTest := func(t *testing.T, sseStream string, endOfStream bool) ([]byte, LLMTokenUsage, error) {
 		openAIReq := &openai.ChatCompletionRequest{Stream: true, Model: "test-model", MaxTokens: new(int64)}
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
 		_, _, err := translator.RequestBody(nil, openAIReq, false)
@@ -628,7 +627,7 @@ data: {"type": "message_start", "message": {"id": "msg_123", "usage": {"input_to
 `
 		bm, _, err := runStreamTest(t, sseStream, false)
 		require.NoError(t, err)
-		assert.Empty(t, string(bm.GetBody()), "message_start should produce an empty chunk")
+		assert.Empty(t, string(bm), "message_start should produce an empty chunk")
 	})
 
 	t.Run("handles content_block events for tool use", func(t *testing.T) {
@@ -648,7 +647,7 @@ data: {"type": "content_block_stop", "index": 0}
 		bm, _, err := runStreamTest(t, sseStream, false)
 		require.NoError(t, err)
 		require.NotNil(t, bm)
-		bodyStr := string(bm.GetBody())
+		bodyStr := string(bm)
 
 		// 1. Split the stream into individual data chunks
 		//    and remove the "data: " prefix.
@@ -696,7 +695,7 @@ data: {"type": "ping"}
 `
 		bm, _, err := runStreamTest(t, sseStream, false)
 		require.NoError(t, err)
-		require.Empty(t, bm.GetBody(), "ping should produce an empty chunk")
+		require.Empty(t, bm, "ping should produce an empty chunk")
 	})
 
 	t.Run("handles error event", func(t *testing.T) {
@@ -716,7 +715,7 @@ data: {"some_new_data": "value"}
 `
 		bm, _, err := runStreamTest(t, sseStream, false)
 		require.NoError(t, err)
-		require.Empty(t, bm.GetBody(), "unknown events should be ignored and produce an empty chunk")
+		require.Empty(t, bm, "unknown events should be ignored and produce an empty chunk")
 	})
 
 	t.Run("handles message_stop event", func(t *testing.T) {
@@ -730,7 +729,7 @@ data: {"type": "message_stop"}
 		bm, _, err := runStreamTest(t, sseStream, false)
 		require.NoError(t, err)
 		require.NotNil(t, bm)
-		require.Contains(t, string(bm.GetBody()), `"finish_reason":"length"`)
+		require.Contains(t, string(bm), `"finish_reason":"length"`)
 	})
 
 	t.Run("handles chunked input_json_delta for tool use", func(t *testing.T) {
@@ -752,7 +751,7 @@ data: {"type": "content_block_stop", "index": 0}
 		bm, _, err := runStreamTest(t, sseStream, false)
 		require.NoError(t, err)
 		require.NotNil(t, bm)
-		bodyStr := string(bm.GetBody())
+		bodyStr := string(bm)
 
 		// 1. Unmarshal all the chunks from the stream response.
 		var chunks []openai.ChatCompletionResponseChunk
@@ -798,7 +797,7 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text
 		bm, _, err := runStreamTest(t, sseStream, true)
 		require.NoError(t, err)
 		require.NotNil(t, bm)
-		bodyStr := string(bm.GetBody())
+		bodyStr := string(bm)
 
 		var contentChunk openai.ChatCompletionResponseChunk
 		foundChunk := false
@@ -840,7 +839,7 @@ data: {"type":"message_stop"}
 		bm, _, err := runStreamTest(t, sseStream, true)
 		require.NoError(t, err)
 		require.NotNil(t, bm)
-		bodyStr := string(bm.GetBody())
+		bodyStr := string(bm)
 
 		// The final usage chunk should sum the tokens from all message_delta events.
 		require.Contains(t, bodyStr, `"completion_tokens":15`)
@@ -860,7 +859,7 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text
 		bm, _, err := runStreamTest(t, sseStream, true)
 		require.NoError(t, err)
 		require.NotNil(t, bm)
-		bodyStr := string(bm.GetBody())
+		bodyStr := string(bm)
 
 		require.Contains(t, bodyStr, `"content":"Hello"`)
 		require.NotContains(t, bodyStr, "this is a comment")
@@ -872,6 +871,6 @@ data: another message with two lines
 `
 		bm, _, err := runStreamTest(t, sseStream, false)
 		require.NoError(t, err)
-		require.Empty(t, bm.GetBody(), "data-only events should be treated as no-op 'message' events and produce an empty chunk")
+		require.Empty(t, bm, "data-only events should be treated as no-op 'message' events and produce an empty chunk")
 	})
 }

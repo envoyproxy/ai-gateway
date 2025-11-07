@@ -110,8 +110,8 @@ func Test_rerankProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
 		var body cohere.RerankV2Request
 		require.NoError(t, json.Unmarshal(raw, &body))
 		headers := map[string]string{":path": "/cohere/v2/rerank", internalapi.ModelNameHeaderKeyDefault: "rerank-english-v3"}
-		headerMut := &extprocv3.HeaderMutation{SetHeaders: []*corev3.HeaderValueOption{{Header: &corev3.HeaderValue{Key: "foo", RawValue: []byte("bar")}}}}
-		bodyMut := &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: []byte("patched")}}
+		headerMut := []internalapi.Header{{"foo", "bar"}}
+		bodyMut := []byte("patched")
 		mt := &mockRerankTranslator{t: t, expRequestBody: &body, retHeaderMutation: headerMut, retBodyMutation: bodyMut}
 		mm := &mockRerankMetrics{}
 		p := &rerankProcessorUpstreamFilter{
@@ -128,8 +128,12 @@ func Test_rerankProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
 		require.NoError(t, err)
 		req := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
 		common := req.RequestHeaders.Response
-		require.Equal(t, headerMut, common.HeaderMutation)
-		require.Equal(t, bodyMut, common.BodyMutation)
+		require.Len(t, common.HeaderMutation.SetHeaders, 2)
+		require.Equal(t, "foo", common.HeaderMutation.SetHeaders[0].Header.Key)
+		require.Equal(t, "bar", string(common.HeaderMutation.SetHeaders[0].Header.RawValue))
+		require.Equal(t, "foo", common.HeaderMutation.SetHeaders[1].Header.Key)
+		require.Equal(t, "mock-auth-handler", string(common.HeaderMutation.SetHeaders[1].Header.RawValue))
+		require.Equal(t, "patched", string(common.BodyMutation.GetBody()))
 		// Not completed yet
 		mm.RequireRequestNotCompleted(t)
 		require.Equal(t, "rerank-english-v3", mm.originalModel)
@@ -230,7 +234,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_DecodeAndRemoveConte
 	mt := &mockRerankTranslator{
 		t:               t,
 		expResponseBody: &extprocv3.HttpBody{Body: plain},
-		retBodyMutation: &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: []byte("mut")}},
+		retBodyMutation: []byte("mut"),
 	}
 	p := &rerankProcessorUpstreamFilter{
 		translator:       mt,
@@ -286,10 +290,8 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_ResponseTransformErr
 func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_MetadataError(t *testing.T) {
 	mm := &mockRerankMetrics{}
 	mt := &mockRerankTranslator{
-		t:                 t,
-		expResponseBody:   &extprocv3.HttpBody{Body: []byte("ok")},
-		retHeaderMutation: &extprocv3.HeaderMutation{},
-		retBodyMutation:   &extprocv3.BodyMutation{},
+		t:               t,
+		expResponseBody: &extprocv3.HttpBody{Body: []byte("ok")},
 	}
 	p := &rerankProcessorUpstreamFilter{
 		translator:      mt,
@@ -331,7 +333,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseHeaders(t *testing.T) {
 	res, err := p.ProcessResponseHeaders(t.Context(), inHeaders)
 	require.NoError(t, err)
 	common := res.Response.(*extprocv3.ProcessingResponse_ResponseHeaders).ResponseHeaders.Response
-	require.Equal(t, mt.retHeaderMutation, common.HeaderMutation)
+	require.Empty(t, common.HeaderMutation.SetHeaders)
 	mm.RequireRequestNotCompleted(t)
 }
 
@@ -358,10 +360,8 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("ok"), EndOfStream: true}
 		mm := &mockRerankMetrics{}
 		mt := &mockRerankTranslator{
-			t:                 t,
-			expResponseBody:   inBody,
-			retHeaderMutation: &extprocv3.HeaderMutation{},
-			retBodyMutation:   &extprocv3.BodyMutation{},
+			t:               t,
+			expResponseBody: inBody,
 			retUsedToken: translator.LLMTokenUsage{
 				InputTokens: 10,
 				TotalTokens: 10,
@@ -387,7 +387,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 		require.NoError(t, err)
 		common := resp.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
 		require.NotNil(t, common.HeaderMutation)
-		require.NotNil(t, common.BodyMutation)
+		require.Nil(t, common.BodyMutation)
 		mm.RequireTokenUsage(t, 10)
 		mm.RequireRequestSuccess(t)
 		// Response model chosen is retResponseModel
@@ -475,15 +475,15 @@ type mockRerankTranslator struct {
 	expHeaders          map[string]string
 	expRequestBody      *cohere.RerankV2Request
 	expResponseBody     *extprocv3.HttpBody
-	retHeaderMutation   *extprocv3.HeaderMutation
-	retBodyMutation     *extprocv3.BodyMutation
+	retHeaderMutation   []internalapi.Header
+	retBodyMutation     []byte
 	retUsedToken        translator.LLMTokenUsage
 	retResponseModel    internalapi.ResponseModel
 	retErr              error
 	responseErrorCalled bool
 }
 
-func (m *mockRerankTranslator) RequestBody(raw []byte, body *cohere.RerankV2Request, onRetry bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
+func (m *mockRerankTranslator) RequestBody(raw []byte, body *cohere.RerankV2Request, onRetry bool) ([]internalapi.Header, []byte, error) {
 	if m.expRequestBody != nil {
 		require.Equal(m.t, m.expRequestBody.Model, body.Model)
 	}
@@ -492,14 +492,14 @@ func (m *mockRerankTranslator) RequestBody(raw []byte, body *cohere.RerankV2Requ
 	return m.retHeaderMutation, m.retBodyMutation, m.retErr
 }
 
-func (m *mockRerankTranslator) ResponseHeaders(headers map[string]string) (*extprocv3.HeaderMutation, error) {
+func (m *mockRerankTranslator) ResponseHeaders(headers map[string]string) ([]internalapi.Header, error) {
 	for k, v := range m.expHeaders {
 		require.Equal(m.t, v, headers[k])
 	}
 	return m.retHeaderMutation, m.retErr
 }
 
-func (m *mockRerankTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, translator.LLMTokenUsage, internalapi.ResponseModel, error) {
+func (m *mockRerankTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool) ([]internalapi.Header, []byte, translator.LLMTokenUsage, internalapi.ResponseModel, error) {
 	if m.expResponseBody != nil {
 		got, _ := io.ReadAll(body)
 		require.True(m.t, bytes.Equal(m.expResponseBody.Body, got))
@@ -507,7 +507,7 @@ func (m *mockRerankTranslator) ResponseBody(_ map[string]string, body io.Reader,
 	return m.retHeaderMutation, m.retBodyMutation, m.retUsedToken, m.retResponseModel, m.retErr
 }
 
-func (m *mockRerankTranslator) ResponseError(_ map[string]string, _ io.Reader) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
+func (m *mockRerankTranslator) ResponseError(_ map[string]string, _ io.Reader) ([]internalapi.Header, []byte, error) {
 	m.responseErrorCalled = true
 	return m.retHeaderMutation, m.retBodyMutation, m.retErr
 }

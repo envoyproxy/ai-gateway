@@ -331,15 +331,15 @@ type mockAnthropicTranslator struct {
 	t                           *testing.T
 	expRequestBody              *anthropicschema.MessagesRequest
 	expForceRequestBodyMutation bool
-	retHeaderMutation           *extprocv3.HeaderMutation
-	retBodyMutation             *extprocv3.BodyMutation
+	retHeaderMutation           []internalapi.Header
+	retBodyMutation             []byte
 	retTokenUsage               translator.LLMTokenUsage
 	retResponseModel            internalapi.ResponseModel
 	retErr                      error
 }
 
 // RequestBody implements [translator.AnthropicMessagesTranslator].
-func (m mockAnthropicTranslator) RequestBody(_ []byte, body *anthropicschema.MessagesRequest, forceRequestBodyMutation bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
+func (m mockAnthropicTranslator) RequestBody(_ []byte, body *anthropicschema.MessagesRequest, forceRequestBodyMutation bool) ([]internalapi.Header, []byte, error) {
 	if m.expRequestBody != nil {
 		require.Equal(m.t, m.expRequestBody, body)
 	}
@@ -348,12 +348,12 @@ func (m mockAnthropicTranslator) RequestBody(_ []byte, body *anthropicschema.Mes
 }
 
 // ResponseHeaders implements [translator.AnthropicMessagesTranslator].
-func (m mockAnthropicTranslator) ResponseHeaders(_ map[string]string) (*extprocv3.HeaderMutation, error) {
+func (m mockAnthropicTranslator) ResponseHeaders(_ map[string]string) ([]internalapi.Header, error) {
 	return m.retHeaderMutation, m.retErr
 }
 
 // ResponseBody implements [translator.AnthropicMessagesTranslator].
-func (m mockAnthropicTranslator) ResponseBody(_ map[string]string, _ io.Reader, _ bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, translator.LLMTokenUsage, string, error) {
+func (m mockAnthropicTranslator) ResponseBody(_ map[string]string, _ io.Reader, _ bool) ([]internalapi.Header, []byte, translator.LLMTokenUsage, string, error) {
 	return m.retHeaderMutation, m.retBodyMutation, m.retTokenUsage, m.retResponseModel, m.retErr
 }
 
@@ -395,8 +395,6 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithMocks(t *test
 				t:                           t,
 				expRequestBody:              requestBody,
 				expForceRequestBodyMutation: tt.forcedIncludeUsage,
-				retHeaderMutation:           &extprocv3.HeaderMutation{},
-				retBodyMutation:             &extprocv3.BodyMutation{},
 				retErr:                      tt.translatorErr,
 			}
 
@@ -431,9 +429,8 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithMocks(t *test
 
 func TestMessagesProcessorUpstreamFilter_ProcessResponseHeaders_WithMocks(t *testing.T) {
 	mockTranslator := mockAnthropicTranslator{
-		t:                 t,
-		retHeaderMutation: &extprocv3.HeaderMutation{},
-		retErr:            nil,
+		t:      t,
+		retErr: nil,
 	}
 
 	chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
@@ -454,11 +451,9 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseHeaders_WithMocks(t *tes
 func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_WithMocks(t *testing.T) {
 	// Create a simple test for the method that passes through.
 	mockTranslator := mockAnthropicTranslator{
-		t:                 t,
-		retHeaderMutation: &extprocv3.HeaderMutation{},
-		retBodyMutation:   &extprocv3.BodyMutation{},
-		retResponseModel:  "test-model",
-		retErr:            nil,
+		t:                t,
+		retResponseModel: "test-model",
+		retErr:           nil,
 	}
 
 	chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
@@ -503,10 +498,8 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_CompletionOnlyAtEnd
 	// Verify success is recorded only at EndOfStream by checking that no error occurs mid-stream
 	// and the call completes successfully at end.
 	mockTranslator := mockAnthropicTranslator{
-		t:                 t,
-		retHeaderMutation: &extprocv3.HeaderMutation{},
-		retBodyMutation:   &extprocv3.BodyMutation{},
-		retErr:            nil,
+		t:      t,
+		retErr: nil,
 	}
 
 	mm := &mockChatCompletionMetrics{}
@@ -718,8 +711,6 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 			t:                           t,
 			expRequestBody:              requestBody,
 			expForceRequestBodyMutation: false,
-			retHeaderMutation:           &extprocv3.HeaderMutation{},
-			retBodyMutation:             &extprocv3.BodyMutation{},
 			retErr:                      nil,
 		}
 
@@ -791,8 +782,6 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 			t:                           t,
 			expRequestBody:              requestBody,
 			expForceRequestBodyMutation: false,
-			retHeaderMutation:           &extprocv3.HeaderMutation{},
-			retBodyMutation:             &extprocv3.BodyMutation{},
 			retErr:                      nil,
 		}
 

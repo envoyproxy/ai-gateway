@@ -25,15 +25,14 @@ func TestOpenAIToOpenAIImageTranslator_RequestBody_ModelOverrideAndPath(t *testi
 	hm, bm, err := tr.RequestBody(original, req, false)
 	require.NoError(t, err)
 	require.NotNil(t, hm)
-	require.Len(t, hm.SetHeaders, 2) // path and content-length headers
-	require.Equal(t, ":path", hm.SetHeaders[0].Header.Key)
-	require.Equal(t, "/v1/images/generations", string(hm.SetHeaders[0].Header.RawValue))
-	require.Equal(t, "content-length", hm.SetHeaders[1].Header.Key)
+	require.Len(t, hm, 2) // path and content-length headers
+	require.Equal(t, pathHeaderName, hm[0].Key())
+	require.Equal(t, "/v1/images/generations", hm[0].Value())
+	require.Equal(t, contentLengthHeaderName, hm[1].Key())
 
 	require.NotNil(t, bm)
-	mutated := bm.GetBody()
 	var got openaisdk.ImageGenerateParams
-	require.NoError(t, json.Unmarshal(mutated, &got))
+	require.NoError(t, json.Unmarshal(bm, &got))
 	require.Equal(t, "gpt-image-1", got.Model)
 }
 
@@ -47,15 +46,15 @@ func TestOpenAIToOpenAIImageTranslator_RequestBody_ForceMutation(t *testing.T) {
 	require.NotNil(t, hm)
 	// Content-Length is set only when body mutated; with force it should be mutated to original.
 	foundCL := false
-	for _, h := range hm.SetHeaders {
-		if h.Header.Key == "content-length" {
+	for _, h := range hm {
+		if h.Key() == contentLengthHeaderName {
 			foundCL = true
 			break
 		}
 	}
 	require.True(t, foundCL)
 	require.NotNil(t, bm)
-	require.Equal(t, original, bm.GetBody())
+	require.Equal(t, original, bm)
 }
 
 func TestOpenAIToOpenAIImageTranslator_ResponseError_NonJSON(t *testing.T) {
@@ -70,7 +69,7 @@ func TestOpenAIToOpenAIImageTranslator_ResponseError_NonJSON(t *testing.T) {
 	var got struct {
 		Error openai.ErrorType `json:"error"`
 	}
-	require.NoError(t, json.Unmarshal(bm.GetBody(), &got))
+	require.NoError(t, json.Unmarshal(bm, &got))
 	require.Equal(t, openAIBackendError, got.Error.Type)
 }
 
@@ -96,8 +95,8 @@ func TestOpenAIToOpenAIImageTranslator_RequestBody_NoOverrideNoForce(t *testing.
 	require.NoError(t, err)
 	require.NotNil(t, hm)
 	// Only path header present; content-length should not be set when no mutation
-	require.Len(t, hm.SetHeaders, 1)
-	require.Equal(t, ":path", hm.SetHeaders[0].Header.Key)
+	require.Len(t, hm, 1)
+	require.Equal(t, pathHeaderName, hm[0].Key())
 	require.Nil(t, bm)
 }
 

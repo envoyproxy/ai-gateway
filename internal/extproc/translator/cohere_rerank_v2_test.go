@@ -62,24 +62,24 @@ func TestCohereToCohereTranslatorV2Rerank_RequestBody(t *testing.T) {
 			headerMutation, bodyMutation, err := translator.RequestBody([]byte(originalBody), &req, tc.onRetry)
 			require.NoError(t, err)
 			require.NotNil(t, headerMutation)
-			require.GreaterOrEqual(t, len(headerMutation.SetHeaders), 1)
-			require.Equal(t, ":path", headerMutation.SetHeaders[0].Header.Key)
-			require.Equal(t, tc.expPath, string(headerMutation.SetHeaders[0].Header.RawValue))
+			require.GreaterOrEqual(t, len(headerMutation), 1)
+			require.Equal(t, pathHeaderName, headerMutation[0].Key())
+			require.Equal(t, tc.expPath, headerMutation[0].Value())
 
 			switch {
 			case tc.expBodyContains != "":
 				require.NotNil(t, bodyMutation)
-				require.Contains(t, string(bodyMutation.GetBody()), tc.expBodyContains)
+				require.Contains(t, string(bodyMutation), tc.expBodyContains)
 				// Verify content-length header is set.
-				require.Len(t, headerMutation.SetHeaders, 2)
-				require.Equal(t, "content-length", headerMutation.SetHeaders[1].Header.Key)
+				require.Len(t, headerMutation, 2)
+				require.Equal(t, contentLengthHeaderName, headerMutation[1].Key())
 			case bodyMutation != nil:
 				// If there's a body mutation (like on retry), content-length header should be set.
-				require.Len(t, headerMutation.SetHeaders, 2)
-				require.Equal(t, "content-length", headerMutation.SetHeaders[1].Header.Key)
+				require.Len(t, headerMutation, 2)
+				require.Equal(t, contentLengthHeaderName, headerMutation[1].Key())
 			default:
 				// No body mutation, only path header.
-				require.Len(t, headerMutation.SetHeaders, 1)
+				require.Len(t, headerMutation, 1)
 			}
 		})
 	}
@@ -95,12 +95,12 @@ func TestCohereToCohereTranslatorV2Rerank_RequestBody_InvalidJSONCreatesBodyWith
 	require.NotNil(t, headerMutation)
 	require.NotNil(t, bodyMutation)
 	// Body should contain the override model
-	require.Contains(t, string(bodyMutation.GetBody()), `"model":"override-model"`)
+	require.Contains(t, string(bodyMutation), `"model":"override-model"`)
 	// Verify content-length header is set alongside :path
-	require.GreaterOrEqual(t, len(headerMutation.SetHeaders), 2)
-	require.Equal(t, ":path", headerMutation.SetHeaders[0].Header.Key)
-	require.Equal(t, "/v2/rerank", string(headerMutation.SetHeaders[0].Header.RawValue))
-	require.Equal(t, "content-length", headerMutation.SetHeaders[1].Header.Key)
+	require.GreaterOrEqual(t, len(headerMutation), 2)
+	require.Equal(t, pathHeaderName, headerMutation[0].Key())
+	require.Equal(t, "/v2/rerank", headerMutation[0].Value())
+	require.Equal(t, contentLengthHeaderName, headerMutation[1].Key())
 }
 
 func TestCohereToCohereTranslatorV2Rerank_RequestBody_SetModelNameError(t *testing.T) {
@@ -197,7 +197,7 @@ func TestCohereToCohereTranslatorV2Rerank_ResponseError(t *testing.T) {
 		require.NotNil(t, bodyMutation)
 
 		var cohereErr cohereschema.RerankV2Error
-		require.NoError(t, json.Unmarshal(bodyMutation.GetBody(), &cohereErr))
+		require.NoError(t, json.Unmarshal(bodyMutation, &cohereErr))
 		require.NotNil(t, cohereErr.Message)
 		require.Equal(t, errorBody, *cohereErr.Message)
 	})

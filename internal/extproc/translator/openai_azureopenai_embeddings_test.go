@@ -55,24 +55,24 @@ func TestOpenAIToAzureOpenAITranslatorV1EmbeddingRequestBody(t *testing.T) {
 			headerMutation, bodyMutation, err := translator.RequestBody([]byte(originalBody), &req, tc.onRetry)
 			require.NoError(t, err)
 			require.NotNil(t, headerMutation)
-			require.GreaterOrEqual(t, len(headerMutation.SetHeaders), 1)
-			require.Equal(t, ":path", headerMutation.SetHeaders[0].Header.Key)
-			require.Equal(t, tc.expPath, string(headerMutation.SetHeaders[0].Header.RawValue))
+			require.GreaterOrEqual(t, len(headerMutation), 1)
+			require.Equal(t, pathHeaderName, headerMutation[0].Key())
+			require.Equal(t, tc.expPath, headerMutation[0].Value())
 
 			switch {
 			case tc.expBodyContains != "":
 				require.NotNil(t, bodyMutation)
-				require.Contains(t, string(bodyMutation.GetBody()), tc.expBodyContains)
+				require.Contains(t, string(bodyMutation), tc.expBodyContains)
 				// Verify content-length header is set.
-				require.Len(t, headerMutation.SetHeaders, 2)
-				require.Equal(t, "content-length", headerMutation.SetHeaders[1].Header.Key)
+				require.Len(t, headerMutation, 2)
+				require.Equal(t, contentLengthHeaderName, headerMutation[1].Key())
 			case bodyMutation != nil:
 				// If there's a body mutation (like on retry), content-length header should be set.
-				require.Len(t, headerMutation.SetHeaders, 2)
-				require.Equal(t, "content-length", headerMutation.SetHeaders[1].Header.Key)
+				require.Len(t, headerMutation, 2)
+				require.Equal(t, contentLengthHeaderName, headerMutation[1].Key())
 			default:
 				// No body mutation, only path header.
-				require.Len(t, headerMutation.SetHeaders, 1)
+				require.Len(t, headerMutation, 1)
 			}
 		})
 	}
@@ -178,7 +178,7 @@ func TestOpenAIToAzureOpenAITranslatorV1EmbeddingResponseError(t *testing.T) {
 
 		// Should convert to OpenAI error format.
 		var openaiError openai.Error
-		require.NoError(t, json.Unmarshal(bodyMutation.GetBody(), &openaiError))
+		require.NoError(t, json.Unmarshal(bodyMutation, &openaiError))
 		require.Equal(t, "error", openaiError.Type)
 		require.Equal(t, openAIBackendError, openaiError.Error.Type)
 		require.Equal(t, errorBody, openaiError.Error.Message)
