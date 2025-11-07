@@ -14,10 +14,16 @@ endpointConfig:
   #
   # This can be used for providing a separation between AIGatewayRoutes and normal HTTPRoutes when the top level "/v1/" is not desired.
   rootPrefix: "/"
-  # Comma-separated key-value pairs for endpoint prefixes.
-  # Format: "openaiPrefix:/prefix1,anthropicPrefix:/prefix2"
-  # Example: "openaiPrefix:/,coherePrefix:/cohere,anthropicPrefix:/anthropic"
-  endpointPrefixes: ""
+  # Explicit provider prefixes.
+  # Defaults align with the gateway's built-in provider prefixes.
+  # and can be set to empty string to remove the extra provider root segment.
+  # Examples:
+  #   openai: ""           # results in /v1/...
+  #   cohere: "/cohere"   # results in /cohere/v2/...
+  #   anthropic: "/anthropic" # results in /anthropic/v1/...
+  openai: ""
+  cohere: "/cohere"
+  anthropic: "/anthropic"
 
 extProc:
   image:

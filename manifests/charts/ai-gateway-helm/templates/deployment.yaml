@@ -55,8 +55,21 @@ spec:
             {{- if .Values.controller.spanRequestHeaderAttributes }}
             - --spanRequestHeaderAttributes={{ .Values.controller.spanRequestHeaderAttributes }}
             {{- end }}
-            {{- if .Values.endpointConfig.endpointPrefixes }}
-            - --endpointPrefixes={{ .Values.endpointConfig.endpointPrefixes }}
+            {{- $endpointPrefixes := list -}}
+            {{- if hasKey .Values.endpointConfig "openai" -}}
+              {{- $openai := .Values.endpointConfig.openai -}}
+              {{- $endpointPrefixes = append $endpointPrefixes (printf "openaiPrefix:%s" $openai) -}}
+            {{- end -}}
+            {{- if hasKey .Values.endpointConfig "cohere" -}}
+              {{- $cohere := .Values.endpointConfig.cohere -}}
+              {{- $endpointPrefixes = append $endpointPrefixes (printf "coherePrefix:%s" $cohere) -}}
+            {{- end -}}
+            {{- if hasKey .Values.endpointConfig "anthropic" -}}
+              {{- $anthropic := .Values.endpointConfig.anthropic -}}
+              {{- $endpointPrefixes = append $endpointPrefixes (printf "anthropicPrefix:%s" $anthropic) -}}
+            {{- end -}}
+            {{- if $endpointPrefixes }}
+            - --endpointPrefixes={{ join "," $endpointPrefixes }}
             {{- end }}
             {{- if .Values.extProc.extraEnvVars }}
             - --extProcExtraEnvVars={{ include "ai-gateway-helm.extProc.envVarsString" . }}

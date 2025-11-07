@@ -295,16 +295,19 @@ The following table summarizes which providers support which endpoints:
 
 By default, the gateway registers provider endpoints under these prefixes:
 
-- OpenAI: `/v1`
-- Cohere: `/cohere/v2`
-- Anthropic: `/anthropic/v1`
+- OpenAI: `/`
+- Cohere: `/cohere`
+- Anthropic: `/anthropic`
 
-You can override them via Helm using `endpointConfig.endpointPrefixes`:
+You can override them via Helm using values under `endpointConfig`:
 
 ```yaml
 # values.yaml
 endpointConfig:
-  endpointPrefixes: "openaiPrefix:/,coherePrefix:/cohere,anthropicPrefix:/anthropic"
+  # Explicit provider roots
+  openai: ""
+  cohere: "/cohere"
+  anthropic: "/anthropic"
   # rootPrefix applies to all routes; final paths are <rootPrefix><providerPrefix>/...
   # endpointConfig:
   #   rootPrefix: "/"
@@ -315,7 +318,9 @@ Or with helm CLI:
 ```bash
 helm upgrade --install ai-gateway envoyproxy/ai-gateway-helm \
   -n envoy-ai-gateway-system --create-namespace \
-  --set 'endpointConfig.endpointPrefixes=openaiPrefix:/,coherePrefix:/cohere,anthropicPrefix:/anthropic'
+  --set 'endpointConfig.openai=/' \
+  --set 'endpointConfig.cohere=/cohere' \
+  --set 'endpointConfig.anthropic=/anthropic'
 ```
 
 Notes:
