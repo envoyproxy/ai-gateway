@@ -796,10 +796,10 @@ func buildGCPModelPathSuffix(publisher, model, gcpMethod string, queryParams ...
 func geminiCandidatesToOpenAIStreamingChoices(candidates []*genai.Candidate, responseMode geminiResponseMode) ([]openai.ChatCompletionResponseChunkChoice, error) {
 	choices := make([]openai.ChatCompletionResponseChunkChoice, 0, len(candidates))
 
-	for _, candidate := range candidates {
-		if candidate == nil {
-			continue
-		}
+	// candidateCount is only supported in non-stream mode
+	// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/inference#sample-requests-text-stream-response
+	if len(candidates) == 1 && candidates[0] != nil {
+		candidate := candidates[0]
 
 		// Create the streaming choice.
 		choice := openai.ChatCompletionResponseChunkChoice{
@@ -831,6 +831,5 @@ func geminiCandidatesToOpenAIStreamingChoices(candidates []*genai.Candidate, res
 		choice.FinishReason = geminiFinishReasonToOpenAI(candidate.FinishReason, toolCalls)
 		choices = append(choices, choice)
 	}
-
 	return choices, nil
 }

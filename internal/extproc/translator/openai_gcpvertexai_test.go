@@ -1115,7 +1115,7 @@ data: [DONE]
             }
         }
     ],
-    "model": "gemini-1.5-pro-002",
+	"model": "gemini-1.5-pro-002",
     "object": "chat.completion",
     "usage": {
         "completion_tokens": 8,
@@ -1131,6 +1131,87 @@ data: [DONE]
 				InputTokens:  6,
 				OutputTokens: 8,
 				TotalTokens:  14,
+			},
+		},
+
+		{
+			name: "response with multiple candidates",
+			respHeaders: map[string]string{
+				"content-type": "application/json",
+			},
+			body: `{
+    "candidates": [
+        {
+            "content": {
+                "parts": [
+                    {
+                        "text": "This is a safe response from the AI assistant."
+                    }
+                ]
+            },
+            "finishReason": "STOP"
+        },
+        {
+            "content": {
+                "parts": [
+                    {
+                        "text": "This is a safer response from the AI assistant."
+                    }
+                ]
+            },
+            "finishReason": "STOP"
+        }
+    ],
+	"model": "gemini-1.5-pro-002",
+    "usageMetadata": {
+        "promptTokenCount": 8,
+        "candidatesTokenCount": 12,
+        "totalTokenCount": 20
+    }
+}`,
+			endOfStream: true,
+			wantError:   false,
+			wantHeaderMut: &extprocv3.HeaderMutation{
+				SetHeaders: []*corev3.HeaderValueOption{{
+					Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("418")},
+				}},
+			},
+			wantBodyMut: &extprocv3.BodyMutation{
+				Mutation: &extprocv3.BodyMutation_Body{
+					Body: []byte(`{
+    "choices": [
+        {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+                "content": "This is a safe response from the AI assistant.",
+                "role": "assistant"
+            }
+        },
+		{
+            "finish_reason": "stop",
+            "index": 1,
+            "message": {
+                "content": "This is a safer response from the AI assistant.",
+                "role": "assistant"
+            }
+        }
+    ],
+    "object": "chat.completion",
+    "usage": {
+        "completion_tokens": 12,
+        "completion_tokens_details": {},
+        "prompt_tokens": 8,
+        "prompt_tokens_details": {},
+        "total_tokens": 20
+    }
+}`),
+				},
+			},
+			wantTokenUsage: LLMTokenUsage{
+				InputTokens:  8,
+				OutputTokens: 12,
+				TotalTokens:  20,
 			},
 		},
 	}
@@ -1233,26 +1314,37 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody(t *
 		stream: true,
 	}
 
-	// Mock GCP streaming response.
-	gcpChunk := `{"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"},"finishReason":"STOP"}]}`
+	tests := []struct {
+		name     string
+		gcpChunk string
+	}{
+		{
+			name:     "single candidate in streaming response",
+			gcpChunk: `{"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"},"finishReason":"STOP"}]}`,
+		},
+	}
 
-	headerMut, bodyMut, tokenUsage, _, err := translator.handleStreamingResponse(
-		bytes.NewReader([]byte(gcpChunk)),
-		false,
-		nil,
-	)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			headerMut, bodyMut, tokenUsage, _, err := translator.handleStreamingResponse(
+				bytes.NewReader([]byte(tt.gcpChunk)),
+				false,
+				nil,
+			)
 
-	require.Nil(t, headerMut)
-	require.NoError(t, err)
-	require.NotNil(t, bodyMut)
-	require.NotNil(t, bodyMut.Mutation)
+			require.Nil(t, headerMut)
+			require.NoError(t, err)
+			require.NotNil(t, bodyMut)
+			require.NotNil(t, bodyMut.Mutation)
 
-	// Check that the response is in SSE format.
-	body := bodyMut.Mutation.(*extprocv3.BodyMutation_Body).Body
-	bodyStr := string(body)
-	require.Contains(t, bodyStr, "data: ")
-	require.Contains(t, bodyStr, "chat.completion.chunk")
-	require.Equal(t, LLMTokenUsage{}, tokenUsage) // No usage in this test chunk.
+			// Check that the response is in SSE format.
+			body := bodyMut.Mutation.(*extprocv3.BodyMutation_Body).Body
+			bodyStr := string(body)
+			require.Contains(t, bodyStr, "data: ")
+			require.Contains(t, bodyStr, "chat.completion.chunk")
+			require.Equal(t, LLMTokenUsage{}, tokenUsage) // No usage in this test chunk.
+		})
+	}
 }
 
 func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingEndOfStream(t *testing.T) {
