@@ -80,6 +80,7 @@ func (p *anthropicStreamParser) writeChunk(eventBlock []byte, buf *[]byte) error
 func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel string, err error,
 ) {
+	newBody = make([]byte, 0)
 	_ = span // TODO: add support for streaming chunks in tracing.
 	responseModel = p.requestModel
 	if _, err = p.buffer.ReadFrom(body); err != nil {

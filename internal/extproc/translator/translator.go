@@ -59,6 +59,9 @@ type OpenAIChatCompletionTranslator interface {
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
 	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
 	//  - This returns `responseModel` that is the model name from the response (may differ from request model).
+	// 	- The return value `mutatedBody` is the new request body that will be sent to the backend API. If `mutatedBody` is nil, the original request body will be used.
+	//		If `mutatedBody` is not nil, it will be used as the new request body. Most notably, the empty slice (not nil) will be used to clear the request body.
+	//		Empty slice is useful when translating the stream response.
 	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
 		newHeaders []internalapi.Header,
 		mutatedBody []byte,
@@ -102,6 +105,9 @@ type OpenAIEmbeddingTranslator interface {
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
 	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
 	//  - This returns `responseModel` that is the model name from the response (may differ from request model).
+	// 	- The return value `mutatedBody` is the new request body that will be sent to the backend API. If `mutatedBody` is nil, the original request body will be used.
+	//		If `mutatedBody` is not nil, it will be used as the new request body. Most notably, the empty slice (not nil) will be used to clear the request body.
+	//		Empty slice is useful when translating the stream response.
 	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
 		newHeaders []internalapi.Header,
 		mutatedBody []byte,
@@ -145,6 +151,9 @@ type CohereRerankTranslator interface {
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
 	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
 	//  - This returns `responseModel` that is the model name from the response (may differ from request model).
+	// 	- The return value `mutatedBody` is the new request body that will be sent to the backend API. If `mutatedBody` is nil, the original request body will be used.
+	//		If `mutatedBody` is not nil, it will be used as the new request body. Most notably, the empty slice (not nil) will be used to clear the request body.
+	//		Empty slice is useful when translating the stream response.
 	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
 		newHeaders []internalapi.Header,
 		mutatedBody []byte,
@@ -188,6 +197,9 @@ type OpenAICompletionTranslator interface {
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
 	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
 	//  - This returns `responseModel` that is the model name from the response (may differ from request model).
+	// 	- The return value `mutatedBody` is the new request body that will be sent to the backend API. If `mutatedBody` is nil, the original request body will be used.
+	//		If `mutatedBody` is not nil, it will be used as the new request body. Most notably, the empty slice (not nil) will be used to clear the request body.
+	//		Empty slice is useful when translating the stream response.
 	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool, span tracing.CompletionSpan) (
 		newHeaders []internalapi.Header,
 		mutatedBody []byte,
@@ -231,6 +243,9 @@ type AnthropicMessagesTranslator interface {
 	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
 	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
 	//  - This returns `responseModel` that is the model name from the response (may differ from request model).
+	// 	- The return value `mutatedBody` is the new request body that will be sent to the backend API. If `mutatedBody` is nil, the original request body will be used.
+	//		If `mutatedBody` is not nil, it will be used as the new request body. Most notably, the empty slice (not nil) will be used to clear the request body.
+	//		Empty slice is useful when translating the stream response.
 	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
 		newHeaders []internalapi.Header,
 		mutatedBody []byte,

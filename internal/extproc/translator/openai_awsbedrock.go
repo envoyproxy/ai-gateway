@@ -583,6 +583,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 ) {
 	responseModel = o.requestModel
 	if o.stream {
+		newBody = make([]byte, 0)
 		var buf []byte
 		buf, err = io.ReadAll(body)
 		if err != nil {

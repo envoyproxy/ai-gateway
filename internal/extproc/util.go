@@ -76,6 +76,10 @@ func isGoodStatusCode(code int) bool {
 	return code >= 200 && code < 300
 }
 
+// mutationsFromTranslationResult creates header and body mutations based on the results of the translation.
+//
+// Note that newBody is nil-sensitive, so if it is nil, no body mutation will be created. If it is the empty
+// slice, not nil, then a body mutation will be created with an empty body, which can be used to clear the body of the response.
 func mutationsFromTranslationResult(newHeaders []internalapi.Header, newBody []byte) (
 	header *extprocv3.HeaderMutation,
 	body *extprocv3.BodyMutation,
@@ -90,7 +94,7 @@ func mutationsFromTranslationResult(newHeaders []internalapi.Header, newBody []b
 			},
 		})
 	}
-	if len(newBody) > 0 {
+	if newBody != nil {
 		body = &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: newBody}}
 	}
 	return
