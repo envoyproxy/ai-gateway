@@ -1408,7 +1408,7 @@ func TestOpenAIToAWSBedrockTranslator_ResponseError(t *testing.T) {
 			require.NotNil(t, hm)
 			require.Len(t, hm, 2)
 			require.Equal(t, contentTypeHeaderName, hm[0].Key())
-			require.Equal(t, jsonContentType, hm[0].Value())
+			require.Equal(t, jsonContentType, hm[0].Value()) //nolint:testifylint
 			require.Equal(t, contentLengthHeaderName, hm[1].Key())
 			require.Equal(t, strconv.Itoa(len(newBody)), hm[1].Value())
 
