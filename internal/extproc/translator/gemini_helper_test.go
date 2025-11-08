@@ -941,18 +941,26 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 		"required": []any{"a", "b"},
 	}
 	tests := []struct {
-		name          string
-		openaiTools   []openai.Tool
-		expected      []genai.Tool
-		expectedError string
+		name                          string
+		openaiTools                   []openai.Tool
+		parametersJSONSchemaAvailable bool
+		expected                      []genai.Tool
+		expectedError                 string
 	}{
 		{
-			name:        "empty tools",
-			openaiTools: nil,
-			expected:    nil,
+			name:                          "empty tools with parametersJSONSchemaAvailable=false",
+			openaiTools:                   nil,
+			parametersJSONSchemaAvailable: false,
+			expected:                      nil,
 		},
 		{
-			name: "single function tool with parameters",
+			name:                          "empty tools with parametersJSONSchemaAvailable=true",
+			openaiTools:                   nil,
+			parametersJSONSchemaAvailable: true,
+			expected:                      nil,
+		},
+		{
+			name: "single function tool with parameters - parametersJSONSchemaAvailable=false",
 			openaiTools: []openai.Tool{
 				{
 					Type: openai.ToolTypeFunction,
@@ -963,6 +971,39 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 					},
 				},
 			},
+			parametersJSONSchemaAvailable: false,
+			expected: []genai.Tool{
+				{
+					FunctionDeclarations: []*genai.FunctionDeclaration{
+						{
+							Name:        "add",
+							Description: "Add two numbers",
+							Parameters: &genai.Schema{
+								Type: "object",
+								Properties: map[string]*genai.Schema{
+									"a": {Type: "integer"},
+									"b": {Type: "integer"},
+								},
+								Required: []string{"a", "b"},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "single function tool with parameters - parametersJSONSchemaAvailable=true",
+			openaiTools: []openai.Tool{
+				{
+					Type: openai.ToolTypeFunction,
+					Function: &openai.FunctionDefinition{
+						Name:        "add",
+						Description: "Add two numbers",
+						Parameters:  funcParams,
+					},
+				},
+			},
+			parametersJSONSchemaAvailable: true,
 			expected: []genai.Tool{
 				{
 					FunctionDeclarations: []*genai.FunctionDeclaration{
@@ -976,7 +1017,45 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 			},
 		},
 		{
-			name: "multiple function tools",
+			name: "multiple function tools with nil/empty parameters - parametersJSONSchemaAvailable=false",
+			openaiTools: []openai.Tool{
+				{
+					Type: openai.ToolTypeFunction,
+					Function: &openai.FunctionDefinition{
+						Name:        "foo",
+						Description: "Foo function",
+						Parameters:  map[string]any{}, // empty parameters
+					},
+				},
+				{
+					Type: openai.ToolTypeFunction,
+					Function: &openai.FunctionDefinition{
+						Name:        "bar",
+						Description: "Bar function",
+						Parameters:  nil, // nil parameters
+					},
+				},
+			},
+			parametersJSONSchemaAvailable: false,
+			expected: []genai.Tool{
+				{
+					FunctionDeclarations: []*genai.FunctionDeclaration{
+						{
+							Name:        "foo",
+							Description: "Foo function",
+							Parameters:  nil,
+						},
+						{
+							Name:        "bar",
+							Description: "Bar function",
+							Parameters:  nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "multiple function tools with nil/empty parameters - parametersJSONSchemaAvailable=true",
 			openaiTools: []openai.Tool{
 				{
 					Type: openai.ToolTypeFunction,
@@ -993,27 +1072,26 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 					},
 				},
 			},
+			parametersJSONSchemaAvailable: true,
 			expected: []genai.Tool{
 				{
 					FunctionDeclarations: []*genai.FunctionDeclaration{
 						{
-							Name:                 "foo",
-							Description:          "Foo function",
-							Parameters:           nil,
-							ParametersJsonSchema: nil,
+							Name:               "foo",
+							Description:        "Foo function",
+							ResponseJsonSchema: nil,
 						},
 						{
-							Name:                 "bar",
-							Description:          "Bar function",
-							Parameters:           nil,
-							ParametersJsonSchema: nil,
+							Name:               "bar",
+							Description:        "Bar function",
+							ResponseJsonSchema: nil,
 						},
 					},
 				},
 			},
 		},
 		{
-			name: "tool with invalid parameters schema",
+			name: "tool with invalid parameters schema - parametersJSONSchemaAvailable=false",
 			openaiTools: []openai.Tool{
 				{
 					Type: openai.ToolTypeFunction,
@@ -1024,12 +1102,29 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 					},
 				},
 			},
+			parametersJSONSchemaAvailable: false,
+			expectedError:                 "invalid JSON schema for parameters in tool bad: expected map[string]any",
+		},
+		{
+			name: "tool with invalid parameters schema - parametersJSONSchemaAvailable=true",
+			openaiTools: []openai.Tool{
+				{
+					Type: openai.ToolTypeFunction,
+					Function: &openai.FunctionDefinition{
+						Name:        "bad",
+						Description: "Bad function",
+						Parameters:  "invalid-json",
+					},
+				},
+			},
+			parametersJSONSchemaAvailable: true,
 			expected: []genai.Tool{
 				{
 					FunctionDeclarations: []*genai.FunctionDeclaration{
 						{
-							Description:          "Bad function",
-							Name:                 "bad",
+							Description: "Bad function",
+							Name:        "bad",
+							// ai-gateway does not validate schema, upstream will be expected to validate the bad json param
 							ParametersJsonSchema: "invalid-json",
 						},
 					},
@@ -1037,19 +1132,125 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 			},
 		},
 		{
-			name: "non-function tool is ignored",
+			name: "complex nested schema - parametersJSONSchemaAvailable=false",
+			openaiTools: []openai.Tool{
+				{
+					Type: openai.ToolTypeFunction,
+					Function: &openai.FunctionDefinition{
+						Name:        "complex_tool",
+						Description: "Complex tool with nested parameters",
+						Parameters: map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"user": map[string]any{
+									"type": "object",
+									"properties": map[string]any{
+										"name": map[string]any{"type": "string"},
+										"age":  map[string]any{"type": "integer"},
+									},
+									"required": []any{"name"},
+								},
+								"items": map[string]any{
+									"type": "array",
+									"items": map[string]any{
+										"type": "object",
+										"properties": map[string]any{
+											"id":   map[string]any{"type": "integer"},
+											"name": map[string]any{"type": "string"},
+										},
+									},
+								},
+							},
+							"required": []any{"user"},
+						},
+					},
+				},
+			},
+			parametersJSONSchemaAvailable: false,
+			expected: []genai.Tool{
+				{
+					FunctionDeclarations: []*genai.FunctionDeclaration{
+						{
+							Name:        "complex_tool",
+							Description: "Complex tool with nested parameters",
+							Parameters: &genai.Schema{
+								Type: "object",
+								Properties: map[string]*genai.Schema{
+									"user": {
+										Type: "object",
+										Properties: map[string]*genai.Schema{
+											"name": {Type: "string"},
+											"age":  {Type: "integer"},
+										},
+										Required: []string{"name"},
+									},
+									"items": {
+										Type: "array",
+										Items: &genai.Schema{
+											Type: "object",
+											Properties: map[string]*genai.Schema{
+												"id":   {Type: "integer"},
+												"name": {Type: "string"},
+											},
+										},
+									},
+								},
+								Required: []string{"user"},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "non-function tool is ignored - both modes",
 			openaiTools: []openai.Tool{
 				{
 					Type: "retrieval",
 				},
 			},
-			expected: nil,
+			parametersJSONSchemaAvailable: false,
+			expectedError:                 "unsupported tool type: retrieval",
+		},
+		{
+			name: "mixed valid and invalid tools - parametersJSONSchemaAvailable=false",
+			openaiTools: []openai.Tool{
+				{
+					Type: "retrieval", // Should be ignored
+				},
+				{
+					Type: openai.ToolTypeFunction,
+					Function: &openai.FunctionDefinition{
+						Name:        "valid_tool",
+						Description: "Valid function tool",
+						Parameters: map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"param": map[string]any{"type": "string"},
+							},
+						},
+					},
+				},
+			},
+			parametersJSONSchemaAvailable: false,
+			expectedError:                 "unsupported tool type: retrieval",
+		},
+		{
+			name: "tool with nil function - should not panic",
+			openaiTools: []openai.Tool{
+				{
+					Type:     openai.ToolTypeFunction,
+					Function: nil,
+				},
+			},
+			parametersJSONSchemaAvailable: false,
+			expected:                      nil,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := openAIToolsToGeminiTools(tc.openaiTools)
+			result, err := openAIToolsToGeminiTools(tc.openaiTools, tc.parametersJSONSchemaAvailable)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {

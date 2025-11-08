@@ -106,7 +106,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
                 {
                     "name": "get_weather",
                     "description": "Get the current weather in a given location",
-                    "parametersJsonSchema": {
+                    "parameters": {
                         "type": "object",
                         "properties": {
                             "location": {
@@ -152,7 +152,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
                 {
                     "name": "test_function",
                     "description": "A test function",
-                    "parametersJsonSchema": {
+                    "parameters": {
                         "type": "object",
                         "properties": {
                             "param1": {
@@ -192,7 +192,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
                 {
                     "name": "test_function",
                     "description": "A test function",
-                    "parametersJsonSchema": {
+                    "parameters": {
                         "type": "object",
                         "properties": {
                             "param1": {
@@ -228,7 +228,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
         {
           "name": "test_function",
           "description": "A test function",
-          "parametersJsonSchema": {
+          "parameters": {
             "type": "object",
             "properties": {
               "param1": {
@@ -271,7 +271,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
         {
           "name": "test_function",
           "description": "A test function",
-          "parametersJsonSchema": {
+          "parameters": {
             "type": "object",
             "properties": {
               "param1": {
@@ -526,7 +526,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 					{
 						Header: &corev3.HeaderValue{
 							Key:      "Content-Length",
-							RawValue: []byte("528"),
+							RawValue: []byte("518"),
 						},
 					},
 				},
@@ -593,7 +593,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 					{
 						Header: &corev3.HeaderValue{
 							Key:      "Content-Length",
-							RawValue: []byte("406"),
+							RawValue: []byte("396"),
 						},
 					},
 				},
@@ -657,7 +657,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 					{
 						Header: &corev3.HeaderValue{
 							Key:      "Content-Length",
-							RawValue: []byte("405"),
+							RawValue: []byte("395"),
 						},
 					},
 				},
@@ -714,7 +714,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 					{
 						Header: &corev3.HeaderValue{
 							Key:      "Content-Length",
-							RawValue: []byte("414"),
+							RawValue: []byte("404"),
 						},
 					},
 				},
@@ -771,7 +771,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 					{
 						Header: &corev3.HeaderValue{
 							Key:      "Content-Length",
-							RawValue: []byte("418"),
+							RawValue: []byte("408"),
 						},
 					},
 				},
