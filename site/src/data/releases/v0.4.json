@@ -266,6 +266,8 @@
           "description": "Added CRD validation to <code>AIServiceBackend</code> explicitly requiring Envoy Gateway <code>Backend</code> resources (Kubernetes Service is not supported)."
         }
       ],
+      "deprecations": [],
+      "bugFixes": [],
       "dependencies": [
         { "title": "Go 1.25.3", "description": "Updated to Go 1.25.3 for improved performance and security." },
         { "title": "Envoy Gateway v1.5+", "description": "Built on Envoy Gateway v1.5+ for proven data plane capabilities and enhanced features. This version is also fully compatible with the upcoming v1.6" },
