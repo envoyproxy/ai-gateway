@@ -1,72 +1,66 @@
 {
-  "flags": 256,
-  "name": "CreateEmbeddings",
-  "kind": "SPAN_KIND_INTERNAL",
-  "attributes": [
+  "flags":  256,
+  "name":  "CreateEmbeddings",
+  "kind":  "SPAN_KIND_INTERNAL",
+  "attributes":  [
     {
-      "key": "llm.system",
-      "value": {
-        "stringValue": "openai"
+      "key":  "input.value",
+      "value":  {
+        "stringValue":  "{\"input\": [102257], \"model\": \"text-embedding-3-small\", \"dimensions\": -1, \"encoding_format\": \"invalid_format\"}"
       }
     },
     {
-      "key": "input.value",
-      "value": {
-        "stringValue": "{\"input\": [102257], \"model\": \"text-embedding-3-small\", \"dimensions\": -1, \"encoding_format\": \"invalid_format\"}"
+      "key":  "input.mime_type",
+      "value":  {
+        "stringValue":  "application/json"
       }
     },
     {
-      "key": "input.mime_type",
-      "value": {
-        "stringValue": "application/json"
+      "key":  "embedding.invocation_parameters",
+      "value":  {
+        "stringValue":  "{\"model\": \"text-embedding-3-small\", \"dimensions\": -1, \"encoding_format\": \"invalid_format\"}"
       }
     },
     {
-      "key": "embedding.invocation_parameters",
-      "value": {
-        "stringValue": "{\"model\": \"text-embedding-3-small\", \"dimensions\": -1, \"encoding_format\": \"invalid_format\"}"
-      }
-    },
-    {
-      "key": "openinference.span.kind",
-      "value": {
-        "stringValue": "EMBEDDING"
+      "key":  "openinference.span.kind",
+      "value":  {
+        "stringValue":  "EMBEDDING"
       }
     }
   ],
-  "events": [
+  "events":  [
     {
-      "name": "exception",
-      "attributes": [
+      "name":  "exception",
+      "attributes":  [
         {
-          "key": "exception.type",
-          "value": {
-            "stringValue": "openai.BadRequestError"
+          "key":  "exception.type",
+          "value":  {
+            "stringValue":  "openai.BadRequestError"
           }
         },
         {
-          "key": "exception.message",
-          "value": {
-            "stringValue": "Error code: 400 - {'error': {'code': None, 'message': \"-1 is less than the minimum of 1 - 'dimensions'\", 'param': None, 'type': 'invalid_request_error'}}"
+          "key":  "exception.message",
+          "value":  {
+            "stringValue":  "Error code: 400 - {'error': {'code': None, 'message': \"-1 is less than the minimum of 1 - 'dimensions'\", 'param': None, 'type': 'invalid_request_error'}}"
           }
         },
         {
-          "key": "exception.stacktrace",
-          "value": {
-            "stringValue": "Traceback (most recent call last):\n  File \"/usr/local/lib/python3.13/site-packages/openinference/instrumentation/openai/_request.py\", line 391, in __call__\n    response = await wrapped(*args, **kwargs)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.13/site-packages/openai/_base_client.py\", line 1594, in request\n    raise self._make_status_error_from_response(err.response) from None\nopenai.BadRequestError: Error code: 400 - {'error': {'code': None, 'message': \"-1 is less than the minimum of 1 - 'dimensions'\", 'param': None, 'type': 'invalid_request_error'}}\n"
+          "key":  "exception.stacktrace",
+          "value":  {
+            "stringValue":  "Traceback (most recent call last):\n  File \"/usr/local/lib/python3.13/site-packages/openinference/instrumentation/openai/_request.py\", line 398, in __call__\n    response = await wrapped(*args, **kwargs)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.13/site-packages/openai/_base_client.py\", line 1594, in request\n    raise self._make_status_error_from_response(err.response) from None\nopenai.BadRequestError: Error code: 400 - {'error': {'code': None, 'message': \"-1 is less than the minimum of 1 - 'dimensions'\", 'param': None, 'type': 'invalid_request_error'}}\n"
           }
         },
         {
-          "key": "exception.escaped",
-          "value": {
-            "stringValue": "False"
+          "key":  "exception.escaped",
+          "value":  {
+            "stringValue":  "False"
           }
         }
       ]
     }
   ],
-  "status": {
-    "message": "BadRequestError: Error code: 400 - {'error': {'code': None, 'message': \"-1 is less than the minimum of 1 - 'dimensions'\", 'param': None, 'type': 'invalid_request_error'}}",
-    "code": "STATUS_CODE_ERROR"
+  "status":  {
+    "message":  "BadRequestError: Error code: 400 - {'error': {'code': None, 'message': \"-1 is less than the minimum of 1 - 'dimensions'\", 'param': None, 'type': 'invalid_request_error'}}",
+    "code":  "STATUS_CODE_ERROR"
   }
 }
