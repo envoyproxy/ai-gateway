@@ -36,7 +36,6 @@ func TestEmbeddingsRecorder_WithConfig_HideInputs(t *testing.T) {
 			req:     basicEmbeddingReq,
 			reqBody: basicEmbeddingReqBody,
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
 				attribute.String(openinference.SpanKind, openinference.SpanKindEmbedding),
 				attribute.String(openinference.InputValue, openinference.RedactedValue),
 				attribute.String(openinference.EmbeddingInvocationParameters, `{"model":"text-embedding-3-small"}`),
@@ -50,7 +49,6 @@ func TestEmbeddingsRecorder_WithConfig_HideInputs(t *testing.T) {
 			req:     basicEmbeddingReq,
 			reqBody: basicEmbeddingReqBody,
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
 				attribute.String(openinference.SpanKind, openinference.SpanKindEmbedding),
 				attribute.String(openinference.InputValue, string(basicEmbeddingReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
@@ -65,7 +63,6 @@ func TestEmbeddingsRecorder_WithConfig_HideInputs(t *testing.T) {
 			req:     basicEmbeddingReq,
 			reqBody: basicEmbeddingReqBody,
 			expectedAttrs: []attribute.KeyValue{
-				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
 				attribute.String(openinference.SpanKind, openinference.SpanKindEmbedding),
 				attribute.String(openinference.InputValue, string(basicEmbeddingReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
@@ -145,8 +142,7 @@ func TestEmbeddingsRecorder_WithConfig_HideOutputs(t *testing.T) {
 			var responseAttrs []attribute.KeyValue
 			for _, attr := range actualSpan.Attributes {
 				key := string(attr.Key)
-				if key == openinference.LLMSystem ||
-					key == openinference.SpanKind ||
+				if key == openinference.SpanKind ||
 					key == openinference.InputValue ||
 					key == openinference.InputMimeType ||
 					key == openinference.EmbeddingInvocationParameters ||
