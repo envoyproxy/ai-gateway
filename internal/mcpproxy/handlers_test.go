@@ -41,8 +41,13 @@ func newTestMCPProxy() *MCPProxy {
 }
 
 func newTestMCPProxyWithTracer(t tracingapi.MCPTracer) *MCPProxy {
+	sessionCrypto := DefaultSessionCrypto("test", "")
+	// reduce the iterations for faster tests. The default is a good tradeoff between security
+	// and performance, but for the tests we can use fewer iterations to make tests faster.
+	sessionCrypto.(*pbkdf2AesGcm).iterations = 100
+
 	return &MCPProxy{
-		sessionCrypto: DefaultSessionCrypto("test", ""),
+		sessionCrypto: sessionCrypto,
 		mcpProxyConfig: &mcpProxyConfig{
 			backendListenerAddr: "http://test-backend",
 			routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
@@ -483,8 +488,7 @@ func TestServePOST_JSONRPCRequest(t *testing.T) {
 			}))
 			t.Cleanup(backendServer.Close)
 
-			mr := sdkmetric.NewManualReader()
-			proxy := newTestMCPProxyWithOTEL(mr, noopTracer)
+			proxy := newTestMCPProxy()
 			proxy.backendListenerAddr = backendServer.URL
 
 			// Create a session with the test tool route.

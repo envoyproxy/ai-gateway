@@ -317,7 +317,13 @@ func Test_main(t *testing.T) {
 		require.NoError(t, err)
 		request.Header.Set(testupstreamlib.ResponseTypeKey, "aws-event-stream")
 		request.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
-			base64.StdEncoding.EncodeToString([]byte(strings.Join([]string{"1", "2", "3", "4", "5"}, "\n"))))
+			base64.StdEncoding.EncodeToString([]byte(strings.Join([]string{
+				"{\"contentBlockIndex\": 0, \"delta\":{\"text\":\"1\"}}",
+				"{\"contentBlockIndex\": 0, \"delta\":{\"text\":\"2\"}}",
+				"{\"contentBlockIndex\": 0, \"delta\":{\"text\":\"3\"}}",
+				"{\"contentBlockIndex\": 0, \"delta\":{\"text\":\"4\"}}",
+				"{\"contentBlockIndex\": 0, \"delta\":{\"text\":\"5\"}}",
+			}, "\n"))))
 
 		now := time.Now()
 		response, err := http.DefaultClient.Do(request)
@@ -332,8 +338,8 @@ func Test_main(t *testing.T) {
 			var message eventstream.Message
 			message, err = decoder.Decode(response.Body, nil)
 			require.NoError(t, err)
-			require.Equal(t, "content", message.Headers.Get("event-type").String())
-			require.Equal(t, fmt.Sprintf("%d", i+1), string(message.Payload))
+			require.Equal(t, "contentBlockDelta", message.Headers.Get(":event-type").String())
+			require.JSONEq(t, fmt.Sprintf("{\"contentBlockIndex\": 0, \"delta\":{\"text\":\"%d\"}}", i+1), string(message.Payload))
 
 			// Ensure that the server sends the response line every second.
 			require.Greater(t, time.Since(now), 100*time.Millisecond, time.Since(now).String())

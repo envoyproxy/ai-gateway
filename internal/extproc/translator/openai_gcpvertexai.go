@@ -77,7 +77,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) RequestBody(_ []byte, op
 	} else {
 		pathSuffix = buildGCPModelPathSuffix(gcpModelPublisherGoogle, o.requestModel, gcpMethodGenerateContent)
 	}
-	gcpReq, err := o.openAIMessageToGeminiMessage(openAIReq)
+	gcpReq, err := o.openAIMessageToGeminiMessage(openAIReq, o.requestModel)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error converting OpenAI request to Gemini request: %w", err)
 	}
@@ -265,15 +265,17 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) convertGCPChunkToOpenAI(
 }
 
 // openAIMessageToGeminiMessage converts an OpenAI ChatCompletionRequest to a GCP Gemini GenerateContentRequest.
-func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) openAIMessageToGeminiMessage(openAIReq *openai.ChatCompletionRequest) (*gcp.GenerateContentRequest, error) {
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) openAIMessageToGeminiMessage(openAIReq *openai.ChatCompletionRequest, requestModel internalapi.RequestModel) (*gcp.GenerateContentRequest, error) {
 	// Convert OpenAI messages to Gemini Contents and SystemInstruction.
 	contents, systemInstruction, err := openAIMessagesToGeminiContents(openAIReq.Messages)
 	if err != nil {
 		return nil, err
 	}
 
+	// Some models support only partialJSONSchema.
+	parametersJSONSchemaAvailable := responseJSONSchemaAvailable(requestModel)
 	// Convert OpenAI tools to Gemini tools.
-	tools, err := openAIToolsToGeminiTools(openAIReq.Tools)
+	tools, err := openAIToolsToGeminiTools(openAIReq.Tools, parametersJSONSchemaAvailable)
 	if err != nil {
 		return nil, fmt.Errorf("error converting tools: %w", err)
 	}
@@ -285,7 +287,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) openAIMessageToGeminiMes
 	}
 
 	// Convert generation config.
-	generationConfig, responseMode, err := openAIReqToGeminiGenerationConfig(openAIReq)
+	generationConfig, responseMode, err := openAIReqToGeminiGenerationConfig(openAIReq, requestModel)
 	if err != nil {
 		return nil, fmt.Errorf("error converting generation config: %w", err)
 	}

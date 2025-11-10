@@ -61,6 +61,7 @@ func TestWithTestUpstream(t *testing.T) {
 			testUpstreamAzureBackend,
 			testUpstreamGCPVertexAIBackend,
 			testUpstreamGCPAnthropicAIBackend,
+			testUpstreamAWSAnthropicBackend,
 			{
 				Name: "testupstream-openai-5xx", Schema: openAISchema, HeaderMutation: &filterapi.HTTPHeaderMutation{
 					Set: []filterapi.HTTPHeader{{Name: testupstreamlib.ResponseStatusKey, Value: "500"}},
@@ -264,9 +265,9 @@ func TestWithTestUpstream(t *testing.T) {
 			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/gemini-1.5-pro:generateContent",
 			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
 			responseStatus:    strconv.Itoa(http.StatusOK),
-			responseBody:      `{"candidates":[{"content":{"parts":[{"text":"This is a test response from Gemini."}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":15,"candidatesTokenCount":10,"totalTokenCount":25,"cachedContentTokenCount":10,"thoughtsTokenCount":10}}`,
+			responseBody:      `{"candidates":[{"content":{"parts":[{"text":"This is a test response from Gemini."}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":15,"candidatesTokenCount":10,"totalTokenCount":35,"cachedContentTokenCount":10,"thoughtsTokenCount":10}}`,
 			expStatus:         http.StatusOK,
-			expResponseBody:   `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"This is a test response from Gemini.","role":"assistant"}}],"model":"gemini-1.5-pro","object":"chat.completion","usage":{"completion_tokens":10,"completion_tokens_details":{"reasoning_tokens":10},"prompt_tokens":15,"prompt_tokens_details":{"cached_tokens":10},"total_tokens":25}}`,
+			expResponseBody:   `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"This is a test response from Gemini.","role":"assistant"}}],"model":"gemini-1.5-pro","object":"chat.completion","usage":{"completion_tokens":20,"completion_tokens_details":{"reasoning_tokens":10},"prompt_tokens":15,"prompt_tokens_details":{"cached_tokens":10},"total_tokens":35}}`,
 		},
 		{
 			name:              "gcp-vertexai - /v1/chat/completions",
@@ -289,14 +290,14 @@ func TestWithTestUpstream(t *testing.T) {
 			path:              "/v1/chat/completions",
 			method:            http.MethodPost,
 			requestBody:       `{"model":"gemini-1.5-pro","messages":[{"role":"user","content":"tell me the delivery date for order 123"}],"tools":[{"type":"function","function":{"name":"get_delivery_date","description":"Get the delivery date for a customer's order. Call this whenever you need to know the delivery date, for example when a customer asks 'Where is my package'","parameters":{"type":"object","properties":{"order_id":{"type":"string","description":"The customer's order ID."}},"required":["order_id"]}}}]}`,
-			expRequestBody:    `{"contents":[{"parts":[{"text":"tell me the delivery date for order 123"}],"role":"user"}],"tools":[{"functionDeclarations":[{"description":"Get the delivery date for a customer's order. Call this whenever you need to know the delivery date, for example when a customer asks 'Where is my package'","name":"get_delivery_date","parametersJsonSchema":{"properties":{"order_id":{"description":"The customer's order ID.","type":"string"}},"required":["order_id"],"type":"object"}}]}],"generation_config":{}}`,
+			expRequestBody:    `{"contents":[{"parts":[{"text":"tell me the delivery date for order 123"}],"role":"user"}],"tools":[{"functionDeclarations":[{"description":"Get the delivery date for a customer's order. Call this whenever you need to know the delivery date, for example when a customer asks 'Where is my package'","name":"get_delivery_date","parameters":{"properties":{"order_id":{"description":"The customer's order ID.","type":"string"}},"required":["order_id"],"type":"object"}}]}],"generation_config":{}}`,
 			expHost:           "gcp-region-aiplatform.googleapis.com",
 			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/gemini-1.5-pro:generateContent",
 			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
 			responseStatus:    strconv.Itoa(http.StatusOK),
 			responseBody:      `{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"get_delivery_date","args":{"order_id":"123"}}}]},"finishReason":"STOP","avgLogprobs":0.000001220789272338152}],"usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":11,"totalTokenCount":61,"trafficType":"ON_DEMAND","promptTokensDetails":[{"modality":"TEXT","tokenCount":50}],"candidatesTokensDetails":[{"modality":"TEXT","tokenCount":11}]},"modelVersion":"gemini-2.0-flash-001","createTime":"2025-07-11T22:15:44.956335Z","responseId":"EI5xaK-vOtqJm22IPmuCR14AI"}`,
 			expStatus:         http.StatusOK,
-			expResponseBody:   `{"choices":[{"finish_reason":"stop","index":0,"message":{"role":"assistant","tool_calls":[{"id":"703482f8-2e5b-4dcc-a872-d74bd66c3866","function":{"arguments":"{\"order_id\":\"123\"}","name":"get_delivery_date"},"type":"function"}]}}],"model":"gemini-2.0-flash-001","object":"chat.completion","usage":{"completion_tokens":11,"completion_tokens_details":{},"prompt_tokens":50,"total_tokens":61,"prompt_tokens_details":{}}}`,
+			expResponseBody:   `{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"role":"assistant","tool_calls":[{"id":"703482f8-2e5b-4dcc-a872-d74bd66c3866","function":{"arguments":"{\"order_id\":\"123\"}","name":"get_delivery_date"},"type":"function"}]}}],"model":"gemini-2.0-flash-001","object":"chat.completion","usage":{"completion_tokens":11,"completion_tokens_details":{},"prompt_tokens":50,"total_tokens":61,"prompt_tokens_details":{}}}`,
 		},
 		{
 			name:              "gcp-anthropicai - /v1/chat/completions",
@@ -339,7 +340,7 @@ func TestWithTestUpstream(t *testing.T) {
 			},
 		},
 		{
-			name:           "aws - /v1/chat/completions - streaming",
+			name:           "aws - /v1/chat/completions - streaming with tool use",
 			backend:        "aws-bedrock",
 			path:           "/v1/chat/completions",
 			responseType:   "aws-event-stream",
@@ -348,23 +349,35 @@ func TestWithTestUpstream(t *testing.T) {
 			expRequestBody: `{"inferenceConfig":{},"messages":[],"system":[{"text":"You are a chatbot."}]}`,
 			expPath:        "/model/something/converse-stream",
 			responseBody: `{"role":"assistant"}
+{"contentBlockIndex": 0, "delta":{"text":"Don"}}
+{"contentBlockIndex": 0, "delta":{"text":"'t worry,  I'm here to help. It"}}
+{"contentBlockIndex": 0, "delta":{"text":" seems like you're testing my ability to respond appropriately"}}
+{"contentBlockIndex": 0}
 {"start":{"toolUse":{"name":"cosine","toolUseId":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ"}}}
-{"delta":{"text":"Don"}}
-{"delta":{"text":"'t worry,  I'm here to help. It"}}
-{"delta":{"text":" seems like you're testing my ability to respond appropriately"}}
+{"contentBlockIndex": 1, "delta":{"toolUse": {"input": "{\"x\": \"17\"}"}}}
+{"contentBlockIndex": 1}
+{"start":{"toolUse":{"name":"sine","toolUseId":"tooluse_stream2"}}}
+{"contentBlockIndex": 2, "delta":{"toolUse": {"input": "{\"x\": \"17\"}"}}}
+{"contentBlockIndex": 2}
 {"stopReason":"tool_use"}
 {"usage":{"inputTokens":41, "outputTokens":36, "totalTokens":77}}
 `,
 			expStatus: http.StatusOK,
 			expResponseBody: `data: {"choices":[{"index":0,"delta":{"content":"","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function"}]}}],"object":"chat.completion.chunk"}
-
 data: {"choices":[{"index":0,"delta":{"content":"Don","role":"assistant"}}],"object":"chat.completion.chunk"}
 
 data: {"choices":[{"index":0,"delta":{"content":"'t worry,  I'm here to help. It","role":"assistant"}}],"object":"chat.completion.chunk"}
 
 data: {"choices":[{"index":0,"delta":{"content":" seems like you're testing my ability to respond appropriately","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function"}]}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":null,"function":{"arguments":"{\"x\": \"17\"}","name":""},"type":"function"}]}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":1,"id":"tooluse_stream2","function":{"arguments":"","name":"sine"},"type":"function"}]}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":1,"id":null,"function":{"arguments":"{\"x\": \"17\"}","name":""},"type":"function"}]}}],"object":"chat.completion.chunk"}
 
 data: {"choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls"}],"object":"chat.completion.chunk"}
 
@@ -652,7 +665,7 @@ data: {"type": "message_delta", "delta": {"stop_reason": "tool_use"}, "usage": {
 event: message_stop
 data: {"type": "message_stop"}`,
 			expStatus: http.StatusOK,
-			expResponseBody: `data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"toolu_abc123","function":{"arguments":"{}","name":"get_weather"},"type":"function"}]}}],"object":"chat.completion.chunk"}
+			expResponseBody: `data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"toolu_abc123","function":{"arguments":"","name":"get_weather"},"type":"function"}]}}],"object":"chat.completion.chunk"}
 
 data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":null,"function":{"arguments":"{\"location\":\"Bosto","name":""}}]}}],"object":"chat.completion.chunk"}
 
@@ -892,7 +905,7 @@ data: {"type": "message_stop"}
 			method:            http.MethodPost,
 			expRequestHeaders: map[string]string{"x-api-key": "anthropic-api-key"},
 			requestBody: `{
-    "model": "claude-sonnet-4-5",
+    "model": "foo",
     "max_tokens": 1000,
     "messages": [
       {
@@ -902,7 +915,7 @@ data: {"type": "message_stop"}
     ]
   }`,
 			expPath:      "/v1/messages",
-			responseBody: `{"model":"claude-sonnet-4-5-20250929","id":"msg_01J5gW6Sffiem6avXSAooZZw","type":"message","role":"assistant","content":[{"type":"text","text":"Hi! 👋 How can I help you today?"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":16,"service_tier":"standard"}}`,
+			responseBody: `{"model":"foo","id":"msg_01J5gW6Sffiem6avXSAooZZw","type":"message","role":"assistant","content":[{"type":"text","text":"Hi! 👋 How can I help you today?"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":16,"service_tier":"standard"}}`,
 			expStatus:    http.StatusOK,
 		},
 		{
@@ -913,7 +926,7 @@ data: {"type": "message_stop"}
 			expRequestHeaders: map[string]string{"x-api-key": "anthropic-api-key"},
 			responseType:      "sse",
 			requestBody: `{
-    "model": "claude-sonnet-4-5",
+    "model": "foo",
     "max_tokens": 1000,
     "messages": [
       {
@@ -925,7 +938,7 @@ data: {"type": "message_stop"}
 			expPath: "/v1/messages",
 			responseBody: `
 event: message_start
-data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_01BfvfMsg2gBzwsk6PZRLtDg","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":1,"service_tier":"standard"}}    }
+data: {"type":"message_start","message":{"model":"foo","id":"msg_01BfvfMsg2gBzwsk6PZRLtDg","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":1,"service_tier":"standard"}}    }
 
 event: content_block_start
 data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}      }
@@ -952,6 +965,87 @@ event: message_stop
 data: {"type":"message_stop"       }
 `,
 			expStatus: http.StatusOK,
+		},
+		{
+			name:            "aws-anthropic - /anthropic/v1/messages",
+			backend:         "aws-anthropic",
+			path:            "/anthropic/v1/messages",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"anthropic.claude-3-sonnet-20240229-v1:0","max_tokens":100,"messages":[{"role":"user","content":[{"type":"text","text":"Hello from AWS!"}]}],"stream":false}`,
+			expRequestBody:  `{"max_tokens":100,"messages":[{"role":"user","content":[{"type":"text","text":"Hello from AWS!"}]}],"stream":false,"anthropic_version":"bedrock-2023-05-31"}`,
+			expPath:         "/model/anthropic.claude-3-sonnet-20240229-v1:0/invoke",
+			responseStatus:  strconv.Itoa(http.StatusOK),
+			responseBody:    `{"id":"msg_aws_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from AWS Anthropic!"}],"usage":{"input_tokens":10,"output_tokens":20}}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"id":"msg_aws_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from AWS Anthropic!"}],"usage":{"input_tokens":10,"output_tokens":20}}`,
+		},
+		{
+			name:           "aws-anthropic - /anthropic/v1/messages - streaming",
+			backend:        "aws-anthropic",
+			path:           "/anthropic/v1/messages",
+			method:         http.MethodPost,
+			responseType:   "sse",
+			requestBody:    `{"model":"anthropic.claude-3-haiku-20240307-v1:0","max_tokens":150,"messages":[{"role":"user","content":[{"type":"text","text":"Tell me a joke"}]}],"stream":true}`,
+			expRequestBody: `{"max_tokens":150,"messages":[{"role":"user","content":[{"type":"text","text":"Tell me a joke"}]}],"stream":true,"anthropic_version":"bedrock-2023-05-31"}`,
+			expPath:        "/model/anthropic.claude-3-haiku-20240307-v1:0/invoke-stream",
+			responseStatus: strconv.Itoa(http.StatusOK),
+			responseBody: `event: message_start
+data: {"type":"message_start","message":{"id":"msg_aws_456","usage":{"input_tokens":12}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Why did the"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" chicken cross the road?"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":18}}
+
+event: message_stop
+data: {"type":"message_stop"}
+
+`,
+			expStatus: http.StatusOK,
+			expResponseBody: `event: message_start
+data: {"type":"message_start","message":{"id":"msg_aws_456","usage":{"input_tokens":12}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Why did the"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" chicken cross the road?"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":18}}
+
+event: message_stop
+data: {"type":"message_stop"}
+
+`,
+		},
+		{
+			name:            "aws-anthropic - /anthropic/v1/messages - error response",
+			backend:         "aws-anthropic",
+			path:            "/anthropic/v1/messages",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"anthropic.claude-3-sonnet-20240229-v1:0","max_tokens":100,"messages":[{"role":"user","content":[{"type":"text","text":"Test error"}]}]}`,
+			expPath:         "/model/anthropic.claude-3-sonnet-20240229-v1:0/invoke",
+			responseStatus:  strconv.Itoa(http.StatusBadRequest),
+			responseBody:    `{"type":"error","error":{"type":"validation_error","message":"Invalid request format"}}`,
+			expStatus:       http.StatusBadRequest,
+			expResponseBody: `{"type":"error","error":{"type":"validation_error","message":"Invalid request format"}}`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

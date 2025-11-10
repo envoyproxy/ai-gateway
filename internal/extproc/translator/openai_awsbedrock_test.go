@@ -1345,11 +1345,11 @@ data: {"choices":[{"index":0,"delta":{"content":" the result","role":"assistant"
 
 data: {"choices":[{"index":0,"delta":{"content":".","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function"}]}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function"}]}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"id":null,"function":{"arguments":"","name":""},"type":"function"}]}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":null,"function":{"arguments":"","name":""},"type":"function"}]}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"id":null,"function":{"arguments":"{\"x\": 7}","name":""},"type":"function"}]}}],"object":"chat.completion.chunk"}
+data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":null,"function":{"arguments":"{\"x\": 7}","name":""},"type":"function"}]}}],"object":"chat.completion.chunk"}
 
 data: {"choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls"}],"object":"chat.completion.chunk"}
 
@@ -1881,6 +1881,7 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 		{
 			name: "usage",
 			in: awsbedrock.ConverseStreamEvent{
+				EventType: awsbedrock.ConverseStreamEventTypeMetadata.String(),
 				Usage: &awsbedrock.TokenUsage{
 					InputTokens:          10,
 					OutputTokens:         20,
@@ -1903,7 +1904,8 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 		{
 			name: "role",
 			in: awsbedrock.ConverseStreamEvent{
-				Role: ptrOf(awsbedrock.ConversationRoleAssistant),
+				EventType: awsbedrock.ConverseStreamEventTypeMessageStart.String(),
+				Role:      ptrOf(awsbedrock.ConversationRoleAssistant),
 			},
 			out: &openai.ChatCompletionResponseChunk{
 				Object: "chat.completion.chunk",
@@ -1920,7 +1922,8 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 		{
 			name: "delta",
 			in: awsbedrock.ConverseStreamEvent{
-				Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{Text: ptr.To("response")},
+				EventType: awsbedrock.ConverseStreamEventTypeContentBlockDelta.String(),
+				Delta:     &awsbedrock.ConverseStreamEventContentBlockDelta{Text: ptr.To("response")},
 			},
 			out: &openai.ChatCompletionResponseChunk{
 				Object: "chat.completion.chunk",
@@ -1936,6 +1939,7 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 		{
 			name: "reasoning delta",
 			in: awsbedrock.ConverseStreamEvent{
+				EventType: awsbedrock.ConverseStreamEventTypeContentBlockDelta.String(),
 				Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
 					ReasoningContent: &awsbedrock.ReasoningContentBlockDelta{
 						Text: "thinking...",
@@ -1973,6 +1977,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_WithReasoning(t 
 		{Role: ptr.To(awsbedrock.ConversationRoleAssistant)},
 		{
 			ContentBlockIndex: 0,
+			EventType:         awsbedrock.ConverseStreamEventTypeContentBlockDelta.String(),
 			Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
 				ReasoningContent: &awsbedrock.ReasoningContentBlockDelta{
 					Text: "Okay, 27 * 453. ",
@@ -1981,6 +1986,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_WithReasoning(t 
 		},
 		{
 			ContentBlockIndex: 0,
+			EventType:         awsbedrock.ConverseStreamEventTypeContentBlockDelta.String(),
 			Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
 				ReasoningContent: &awsbedrock.ReasoningContentBlockDelta{
 					Text: "Let's do the math...",
@@ -1989,12 +1995,14 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_WithReasoning(t 
 		},
 		{
 			ContentBlockIndex: 0,
+			EventType:         awsbedrock.ConverseStreamEventTypeContentBlockDelta.String(),
 			Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
 				Text: ptr.To("The result of 27 multiplied by 453 is "),
 			},
 		},
 		{
 			ContentBlockIndex: 0,
+			EventType:         awsbedrock.ConverseStreamEventTypeContentBlockDelta.String(),
 			Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
 				Text: ptr.To("12231."),
 			},
@@ -2151,16 +2159,28 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody_WithReasoning
 func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_WithRedactedContent(t *testing.T) {
 	redactedBytes := []byte("a redacted thought")
 	inputEvents := []awsbedrock.ConverseStreamEvent{
-		{Role: ptr.To(awsbedrock.ConversationRoleAssistant)},
-		{Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
-			ReasoningContent: &awsbedrock.ReasoningContentBlockDelta{
-				RedactedContent: redactedBytes,
+		{
+			EventType: awsbedrock.ConverseStreamEventTypeMessageStart.String(),
+			Role:      ptr.To(awsbedrock.ConversationRoleAssistant),
+		},
+		{
+			EventType: awsbedrock.ConverseStreamEventTypeContentBlockDelta.String(),
+			Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
+				ReasoningContent: &awsbedrock.ReasoningContentBlockDelta{
+					RedactedContent: redactedBytes,
+				},
 			},
-		}},
-		{Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
-			Text: ptr.To("This is the final answer."),
-		}},
-		{StopReason: ptr.To(awsbedrock.StopReasonEndTurn)},
+		},
+		{
+			EventType: awsbedrock.ConverseStreamEventTypeContentBlockDelta.String(),
+			Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
+				Text: ptr.To("This is the final answer."),
+			},
+		},
+		{
+			EventType:  awsbedrock.ConverseStreamEventTypeMessageStop.String(),
+			StopReason: ptr.To(awsbedrock.StopReasonEndTurn),
+		},
 	}
 
 	buf := bytes.NewBuffer(nil)

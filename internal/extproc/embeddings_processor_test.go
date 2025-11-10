@@ -18,9 +18,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
@@ -543,9 +543,11 @@ func TestEmbeddingsProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutat
 		// Check that header mutations were applied.
 		require.NotNil(t, commonRes.HeaderMutation)
 		require.ElementsMatch(t, []string{"authorization", "x-api-key"}, commonRes.HeaderMutation.RemoveHeaders)
-		require.Len(t, commonRes.HeaderMutation.SetHeaders, 1)
+		require.Len(t, commonRes.HeaderMutation.SetHeaders, 2)
 		require.Equal(t, "x-new-header", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
 		require.Equal(t, []byte("new-value"), commonRes.HeaderMutation.SetHeaders[0].Header.RawValue)
+		require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[1].Header.Key)
+		require.Equal(t, []byte("mock-auth-handler"), commonRes.HeaderMutation.SetHeaders[1].Header.RawValue)
 
 		// Check that headers were modified in the request headers.
 		require.Equal(t, "new-value", headers["x-new-header"])
@@ -589,7 +591,9 @@ func TestEmbeddingsProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutat
 		// Check that no header mutations were applied.
 		require.NotNil(t, commonRes.HeaderMutation)
 		require.Empty(t, commonRes.HeaderMutation.RemoveHeaders)
-		require.Empty(t, commonRes.HeaderMutation.SetHeaders)
+		require.Len(t, commonRes.HeaderMutation.SetHeaders, 1)
+		require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
+		require.Equal(t, []byte("mock-auth-handler"), commonRes.HeaderMutation.SetHeaders[0].Header.RawValue)
 
 		// Check that original headers remain unchanged.
 		require.Equal(t, "bearer token123", headers["authorization"])
@@ -626,19 +630,6 @@ func TestEmbeddingsProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *tes
 
 		// Verify header mutator was created.
 		require.NotNil(t, p.headerMutator)
-
-		// Test that the header mutator works correctly.
-		testHeaders := map[string]string{
-			"x-sensitive": "secret",
-			"x-existing":  "value",
-		}
-		mutation := p.headerMutator.Mutate(testHeaders, false) // onRetry = false.
-
-		require.NotNil(t, mutation)
-		require.ElementsMatch(t, []string{"x-sensitive"}, mutation.RemoveHeaders)
-		require.Len(t, mutation.SetHeaders, 1)
-		require.Equal(t, "x-backend", mutation.SetHeaders[0].Header.Key)
-		require.Equal(t, []byte("backend-value"), mutation.SetHeaders[0].Header.RawValue)
 	})
 
 	t.Run("header mutator with original headers", func(t *testing.T) {
@@ -674,32 +665,5 @@ func TestEmbeddingsProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *tes
 			HeaderMutation: headerMutations,
 		}, nil, rp)
 		require.NoError(t, err)
-
-		// Verify header mutator was created with original headers.
-		require.NotNil(t, p.headerMutator)
-
-		// Test retry scenario - original headers should be restored.
-		testHeaders := map[string]string{
-			"x-existing": "previously-set-value",
-		}
-		mutation := p.headerMutator.Mutate(testHeaders, true) // onRetry = true.
-
-		require.NotNil(t, mutation)
-		// RemoveHeaders should be empty because authorization doesn't exist in testHeaders.
-		require.Empty(t, mutation.RemoveHeaders)
-
-		// Should restore x-custom header (not being removed and not already present).
-		var restoredHeader *corev3.HeaderValueOption
-		for _, h := range mutation.SetHeaders {
-			if h.Header.Key == "x-custom" {
-				restoredHeader = h
-				break
-			}
-		}
-		require.NotNil(t, restoredHeader)
-		require.Equal(t, []byte("original-value"), restoredHeader.Header.RawValue)
-		require.Equal(t, "original-value", testHeaders["x-custom"])
-		// x-existing should be equal to existing-value from original headers.
-		require.Equal(t, "existing-value", testHeaders["x-existing"])
 	})
 }

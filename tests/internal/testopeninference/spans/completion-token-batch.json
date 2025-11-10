@@ -1,100 +1,100 @@
 {
-  "flags":  256,
-  "name":  "Completion",
-  "kind":  "SPAN_KIND_INTERNAL",
-  "attributes":  [
+  "flags": 256,
+  "name": "Completion",
+  "kind": "SPAN_KIND_INTERNAL",
+  "attributes": [
     {
-      "key":  "llm.system",
-      "value":  {
-        "stringValue":  "openai"
+      "key": "llm.system",
+      "value": {
+        "stringValue": "openai"
       }
     },
     {
-      "key":  "input.value",
-      "value":  {
-        "stringValue":  "{\"model\": \"babbage-002\", \"prompt\": [[755, 16178, 1471, 997, 262, 422, 308, 2717, 220, 16, 512, 286, 471, 308, 198, 262, 775, 512, 286, 471, 16178, 1471, 12, 16, 8, 489, 16178, 1471, 12, 17, 8], [755, 16178, 1471, 997, 262, 422, 308, 2717, 220, 16, 512, 286, 471, 308, 198, 262, 775, 25]], \"max_tokens\": 25, \"n\": 2, \"stop\": [\"\\n\\n\"], \"temperature\": 0.5, \"top_p\": 0.9}"
+      "key": "input.value",
+      "value": {
+        "stringValue": "{\"model\": \"babbage-002\", \"prompt\": [[755, 16178, 1471, 997, 262, 422, 308, 2717, 220, 16, 512, 286, 471, 308, 198, 262, 775, 512, 286, 471, 16178, 1471, 12, 16, 8, 489, 16178, 1471, 12, 17, 8], [755, 16178, 1471, 997, 262, 422, 308, 2717, 220, 16, 512, 286, 471, 308, 198, 262, 775, 25]], \"max_tokens\": 25, \"n\": 2, \"stop\": [\"\\n\\n\"], \"temperature\": 0.5, \"top_p\": 0.9}"
       }
     },
     {
-      "key":  "input.mime_type",
-      "value":  {
-        "stringValue":  "application/json"
+      "key": "input.mime_type",
+      "value": {
+        "stringValue": "application/json"
       }
     },
     {
-      "key":  "output.value",
-      "value":  {
-        "stringValue":  "{\"id\":\"cmpl-CKz4x3v77qgUtu5gy9OOFmdn6QDne\",\"choices\":[{\"finish_reason\":\"length\",\"index\":0,\"logprobs\":null,\"text\":\" + fib(n-3) + fib(n-4)\\n```\\nThis is a recursive algorithm, so it will run forever\"},{\"finish_reason\":\"stop\",\"index\":1,\"logprobs\":null,\"text\":\" + fib(n-3)\"},{\"finish_reason\":\"stop\",\"index\":2,\"logprobs\":null,\"text\":\" return fib(n-1) + fib(n-2)\"},{\"finish_reason\":\"stop\",\"index\":3,\"logprobs\":null,\"text\":\" return fib(n - 1) + fib(n - 2)\"}],\"created\":1759117383,\"model\":\"babbage:2023-07-21-v2\",\"object\":\"text_completion\",\"usage\":{\"completion_tokens\":57,\"prompt_tokens\":49,\"total_tokens\":106}}"
+      "key": "output.value",
+      "value": {
+        "stringValue": "{\"id\":\"cmpl-CKz4x3v77qgUtu5gy9OOFmdn6QDne\",\"choices\":[{\"finish_reason\":\"length\",\"index\":0,\"logprobs\":null,\"text\":\" + fib(n-3) + fib(n-4)\\n```\\nThis is a recursive algorithm, so it will run forever\"},{\"finish_reason\":\"stop\",\"index\":1,\"logprobs\":null,\"text\":\" + fib(n-3)\"},{\"finish_reason\":\"stop\",\"index\":2,\"logprobs\":null,\"text\":\" return fib(n-1) + fib(n-2)\"},{\"finish_reason\":\"stop\",\"index\":3,\"logprobs\":null,\"text\":\" return fib(n - 1) + fib(n - 2)\"}],\"created\":1759117383,\"model\":\"babbage:2023-07-21-v2\",\"object\":\"text_completion\",\"usage\":{\"completion_tokens\":57,\"prompt_tokens\":49,\"total_tokens\":106}}"
       }
     },
     {
-      "key":  "output.mime_type",
-      "value":  {
-        "stringValue":  "application/json"
+      "key": "output.mime_type",
+      "value": {
+        "stringValue": "application/json"
       }
     },
     {
-      "key":  "llm.invocation_parameters",
-      "value":  {
-        "stringValue":  "{\"model\": \"babbage-002\", \"max_tokens\": 25, \"n\": 2, \"stop\": [\"\\n\\n\"], \"temperature\": 0.5, \"top_p\": 0.9}"
+      "key": "llm.invocation_parameters",
+      "value": {
+        "stringValue": "{\"model\": \"babbage-002\", \"max_tokens\": 25, \"n\": 2, \"stop\": [\"\\n\\n\"], \"temperature\": 0.5, \"top_p\": 0.9}"
       }
     },
     {
-      "key":  "llm.model_name",
-      "value":  {
-        "stringValue":  "babbage:2023-07-21-v2"
+      "key": "llm.model_name",
+      "value": {
+        "stringValue": "babbage:2023-07-21-v2"
       }
     },
     {
-      "key":  "llm.token_count.total",
-      "value":  {
-        "intValue":  "106"
+      "key": "llm.token_count.total",
+      "value": {
+        "intValue": "106"
       }
     },
     {
-      "key":  "llm.token_count.prompt",
-      "value":  {
-        "intValue":  "49"
+      "key": "llm.token_count.prompt",
+      "value": {
+        "intValue": "49"
       }
     },
     {
-      "key":  "llm.token_count.completion",
-      "value":  {
-        "intValue":  "57"
+      "key": "llm.token_count.completion",
+      "value": {
+        "intValue": "57"
       }
     },
     {
-      "key":  "llm.choices.0.completion.text",
-      "value":  {
-        "stringValue":  " + fib(n-3) + fib(n-4)\n```\nThis is a recursive algorithm, so it will run forever"
+      "key": "llm.choices.0.completion.text",
+      "value": {
+        "stringValue": " + fib(n-3) + fib(n-4)\n```\nThis is a recursive algorithm, so it will run forever"
       }
     },
     {
-      "key":  "llm.choices.1.completion.text",
-      "value":  {
-        "stringValue":  " + fib(n-3)"
+      "key": "llm.choices.1.completion.text",
+      "value": {
+        "stringValue": " + fib(n-3)"
       }
     },
     {
-      "key":  "llm.choices.2.completion.text",
-      "value":  {
-        "stringValue":  " return fib(n-1) + fib(n-2)"
+      "key": "llm.choices.2.completion.text",
+      "value": {
+        "stringValue": " return fib(n-1) + fib(n-2)"
       }
     },
     {
-      "key":  "llm.choices.3.completion.text",
-      "value":  {
-        "stringValue":  " return fib(n - 1) + fib(n - 2)"
+      "key": "llm.choices.3.completion.text",
+      "value": {
+        "stringValue": " return fib(n - 1) + fib(n - 2)"
       }
     },
     {
-      "key":  "openinference.span.kind",
-      "value":  {
-        "stringValue":  "LLM"
+      "key": "openinference.span.kind",
+      "value": {
+        "stringValue": "LLM"
       }
     }
   ],
-  "status":  {
-    "code":  "STATUS_CODE_OK"
+  "status": {
+    "code": "STATUS_CODE_OK"
   }
 }

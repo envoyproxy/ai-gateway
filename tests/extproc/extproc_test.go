@@ -36,6 +36,7 @@ const (
 var (
 	openAISchema         = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}
 	awsBedrockSchema     = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}
+	awsAnthropicSchema   = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSAnthropic, Version: "bedrock-2023-05-31"}
 	azureOpenAISchema    = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2025-01-01-preview"}
 	gcpVertexAISchema    = filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPVertexAI}
 	gcpAnthropicAISchema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPAnthropic, Version: "vertex-2023-10-16"}
@@ -44,6 +45,7 @@ var (
 	grokSchema           = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}
 	sambaNovaSchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}
 	deepInfraSchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1/openai"}
+	anthropicSchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic}
 
 	testUpstreamOpenAIBackend      = filterapi.Backend{Name: "testupstream-openai", Schema: openAISchema}
 	testUpstreamModelNameOverride  = filterapi.Backend{Name: "testupstream-modelname-override", ModelNameOverride: "override-model", Schema: openAISchema}
@@ -59,7 +61,8 @@ var (
 		Region:      "gcp-region",
 		ProjectName: "gcp-project-name",
 	}}}
-	alwaysFailingBackend = filterapi.Backend{Name: "always-failing-backend", Schema: openAISchema}
+	testUpstreamAWSAnthropicBackend = filterapi.Backend{Name: "testupstream-aws-anthropic", Schema: awsAnthropicSchema}
+	alwaysFailingBackend            = filterapi.Backend{Name: "always-failing-backend", Schema: openAISchema}
 
 	// envoyConfig is the embedded Envoy configuration template.
 	//

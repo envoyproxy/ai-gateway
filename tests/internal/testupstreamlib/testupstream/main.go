@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -333,8 +334,27 @@ func handler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			time.Sleep(streamingInterval)
+			var bedrockStreamEvent map[string]any
+			err = json.Unmarshal(line, &bedrockStreamEvent)
+			if err != nil {
+				logger.Println("failed to decode the response body")
+			}
+			var eventType string
+			if _, ok := bedrockStreamEvent["role"]; ok {
+				eventType = "messageStart"
+			} else if _, ok = bedrockStreamEvent["start"]; ok {
+				eventType = "contentBlockStart"
+			} else if _, ok = bedrockStreamEvent["delta"]; ok {
+				eventType = "contentBlockDelta"
+			} else if _, ok = bedrockStreamEvent["stopReason"]; ok {
+				eventType = "messageStop"
+			} else if _, ok = bedrockStreamEvent["usage"]; ok {
+				eventType = "metadata"
+			} else if _, ok = bedrockStreamEvent["contentBlockIndex"]; ok {
+				eventType = "contentBlockStop"
+			}
 			if err = e.Encode(w, eventstream.Message{
-				Headers: eventstream.Headers{{Name: "event-type", Value: eventstream.StringValue("content")}},
+				Headers: eventstream.Headers{{Name: ":event-type", Value: eventstream.StringValue(eventType)}},
 				Payload: line,
 			}); err != nil {
 				logger.Println("failed to encode the response body")

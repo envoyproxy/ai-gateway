@@ -115,6 +115,7 @@ spec:
       securityPolicy:
         apiKey:
           inline: "another-test-api-key-in-different-namespace"
+          header: "X-Api-Key"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -140,6 +141,8 @@ spec:
           env:
             - name: TEST_API_KEY
               value: "another-test-api-key-in-different-namespace"
+            - name: TEST_API_KEY_HEADER
+              value: "X-Api-Key"
 ---
 apiVersion: v1
 kind: Service

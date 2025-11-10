@@ -7,6 +7,7 @@ package mcpproxy
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +17,19 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
+var (
+	sseEventPrefix = []byte("event: ")
+	sseIDPrefix    = []byte("id: ")
+	sseDataPrefix  = []byte("data: ")
+
+	sseCR   = []byte{'\r'}
+	sseLF   = []byte{'\n'}
+	sseCRLF = []byte{'\r', '\n'}
+	sseLFLF = []byte{'\n', '\n'}
+)
+
+// sseEventParser reads bytes from a reader and parses the SSE Events gracefully
+// handling the different line terminations: CR, LF, CRLF.
 type sseEventParser struct {
 	backend filterapi.MCPBackendName
 	r       io.Reader
@@ -27,37 +41,43 @@ func newSSEEventParser(r io.Reader, backend filterapi.MCPBackendName) sseEventPa
 	return sseEventParser{r: r, backend: backend}
 }
 
-type sseEvent struct {
-	event, id string
-	messages  []jsonrpc.Message
-	backend   filterapi.MCPBackendName
-}
+// next reads the next SSE event from the stream.
+func (s *sseEventParser) next() (*sseEvent, error) {
+	for {
+		// Search in remainder first for a separator
+		event, ok, err := s.extractEvent()
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			return event, nil
+		}
 
-var (
-	sseEventSeparator = []byte{'\n', '\n'}
-	sseEventPrefix    = []byte("event: ")
-	sseIDPrefix       = []byte("id: ")
-	sseDataPrefix     = []byte("data: ")
-	sseFieldSeparator = []byte{'\n'}
-)
+		// Read a new chunk
+		n, err := s.r.Read(s.readBuf[:])
+		if n > 0 {
+			normalized := normalizeNewlines(s.readBuf[:n])
+			s.buf = append(s.buf, normalized...)
+			continue
+		}
 
-func (p *sseEventParser) next() (*sseEvent, error) {
-	idx := -1
-	for idx == -1 {
-		idx = bytes.Index(p.buf, sseEventSeparator)
-		if idx < 0 {
-			n, err := p.r.Read(p.readBuf[:])
-			if n > 0 {
-				p.buf = append(p.buf, p.readBuf[:n]...)
-			} else {
-				return nil, err
+		if err != nil {
+			// If we still have leftover data, parse the final event
+			if errors.Is(err, io.EOF) && len(s.buf) > 0 {
+				event, parseErr := s.parseEvent(s.buf)
+				s.buf = nil
+				return event, errors.Join(err, parseErr) // wil ignore parseErr if nil.
 			}
+			return nil, err
 		}
 	}
+}
 
-	event := p.buf[:idx+2]
-	ret := &sseEvent{backend: p.backend}
-	for _, line := range bytes.Split(event, sseFieldSeparator) {
+// parseEvent parses one normalized chunk into an sseEvent.
+func (s *sseEventParser) parseEvent(chunk []byte) (*sseEvent, error) {
+	ret := &sseEvent{backend: s.backend}
+
+	for line := range bytes.SplitSeq(chunk, sseLF) {
 		switch {
 		case bytes.HasPrefix(line, sseEventPrefix):
 			ret.event = string(bytes.TrimSpace(line[7:]))
@@ -72,28 +92,53 @@ func (p *sseEventParser) next() (*sseEvent, error) {
 			ret.messages = append(ret.messages, msg)
 		}
 	}
-	p.buf = p.buf[idx+2:]
+
 	return ret, nil
 }
 
-func (e *sseEvent) writeAndMaybeFlush(w io.Writer) {
-	if e.event != "" {
+// extractEvent tries to find a complete event (double newline) in remainder.
+func (s *sseEventParser) extractEvent() (*sseEvent, bool, error) {
+	// Search for double newline "\n\n"
+	if idx := bytes.Index(s.buf, sseLFLF); idx >= 0 {
+		chunk := s.buf[:idx]
+		s.buf = s.buf[idx+2:] // retain after separator
+		event, err := s.parseEvent(chunk)
+		return event, true, err
+	}
+	return nil, false, nil
+}
+
+// normalizeNewlines converts all CR/LF variants to '\n'.
+func normalizeNewlines(b []byte) []byte {
+	b = bytes.ReplaceAll(b, sseCRLF, sseLF)
+	b = bytes.ReplaceAll(b, sseCR, sseLF)
+	return b
+}
+
+type sseEvent struct {
+	event, id string
+	messages  []jsonrpc.Message
+	backend   filterapi.MCPBackendName
+}
+
+func (s *sseEvent) writeAndMaybeFlush(w io.Writer) {
+	if s.event != "" {
 		_, _ = w.Write(sseEventPrefix)
-		_, _ = w.Write([]byte(e.event))
-		_, _ = w.Write(sseFieldSeparator)
+		_, _ = w.Write([]byte(s.event))
+		_, _ = w.Write(sseLF)
 	}
-	if e.id != "" {
+	if s.id != "" {
 		_, _ = w.Write(sseIDPrefix)
-		_, _ = w.Write([]byte(e.id))
-		_, _ = w.Write(sseFieldSeparator)
+		_, _ = w.Write([]byte(s.id))
+		_, _ = w.Write(sseLF)
 	}
-	for _, msg := range e.messages {
+	for _, msg := range s.messages {
 		_, _ = w.Write(sseDataPrefix)
 		data, _ := jsonrpc.EncodeMessage(msg)
 		_, _ = w.Write(data)
-		_, _ = w.Write(sseFieldSeparator)
+		_, _ = w.Write(sseLF)
 	}
-	_, _ = w.Write(sseEventSeparator)
+	_, _ = w.Write(sseLFLF)
 
 	// Flush the response writer to ensure the event is sent immediately.
 	if f, ok := w.(http.Flusher); ok {

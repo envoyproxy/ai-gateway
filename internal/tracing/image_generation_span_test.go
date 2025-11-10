@@ -23,7 +23,7 @@ import (
 type testImageGenerationRecorder struct{}
 
 func (r testImageGenerationRecorder) StartParams(_ *openaisdk.ImageGenerateParams, _ []byte) (string, []oteltrace.SpanStartOption) {
-	return "ImageGeneration", nil
+	return "ImagesResponse", nil
 }
 
 func (r testImageGenerationRecorder) RecordRequest(span oteltrace.Span, req *openaisdk.ImageGenerateParams, _ []byte) {

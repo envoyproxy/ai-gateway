@@ -27,6 +27,8 @@ const (
 // BackendSecurityPolicy specifies configuration for authentication and authorization rules on the traffic
 // exiting the gateway to the backend.
 //
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[-1:].type`
@@ -99,6 +101,7 @@ type BackendSecurityPolicySpec struct {
 
 // BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 //
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 type BackendSecurityPolicyList struct {
 	metav1.TypeMeta `json:",inline"`

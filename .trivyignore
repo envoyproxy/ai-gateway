@@ -1,4 +1,0 @@
-# Ignore Envoy Gateway CVEs. We are using the latest EG main branch, which appears as a weird "0.5.0-rc1.0-*" convention in go.mod.
-# So, these CVEs are false positives.
-CVE-2025-24030
-CVE-2025-25294

@@ -44,12 +44,10 @@ var (
 	filteredAllTools = []string{
 		"context7__get-library-docs",
 		"context7__resolve-library-id",
-		"github__get_issue",
-		"github__get_issue_comments",
+		"github__issue_read",
 		"github__list_issue_types",
 		"github__list_issues",
 		"github__list_pull_requests",
-		"github__list_sub_issues",
 		"github__pull_request_read",
 		"github__search_issues",
 		"github__search_pull_requests",

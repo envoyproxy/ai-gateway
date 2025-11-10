@@ -40,8 +40,10 @@ type openAIToAWSBedrockTranslatorV1ChatCompletion struct {
 	events            []awsbedrock.ConverseStreamEvent
 	// role is from MessageStartEvent in chunked messages, and used for all openai chat completion chunk choices.
 	// Translator is created for each request/response stream inside external processor, accordingly the role is not reused by multiple streams.
-	role         string
-	requestModel internalapi.RequestModel
+	role             string
+	requestModel     internalapi.RequestModel
+	toolIndex        int64
+	activeToolStream bool
 }
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody].
@@ -724,6 +726,10 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) extractAmazonEventStreamE
 			return
 		}
 		var event awsbedrock.ConverseStreamEvent
+		eventType := msg.Headers.Get(":event-type")
+		if eventType != nil {
+			event.EventType = eventType.String()
+		}
 		if err := json.Unmarshal(msg.Payload, &event); err == nil {
 			o.events = append(o.events, event)
 		}
@@ -739,8 +745,12 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 	const object = "chat.completion.chunk"
 	chunk := &openai.ChatCompletionResponseChunk{Object: object}
 
-	switch {
-	case event.Usage != nil:
+	switch event.EventType {
+	// Usage event.
+	case awsbedrock.ConverseStreamEventTypeMetadata.String():
+		if event.Usage == nil {
+			return chunk, false
+		}
 		chunk.Usage = &openai.Usage{
 			TotalTokens:      event.Usage.TotalTokens,
 			PromptTokens:     event.Usage.InputTokens,
@@ -751,7 +761,11 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 				CachedTokens: *event.Usage.CacheReadInputTokens,
 			}
 		}
-	case event.Role != nil:
+	// messageStart event.
+	case awsbedrock.ConverseStreamEventTypeMessageStart.String():
+		if event.Role == nil {
+			return chunk, false
+		}
 		chunk.Choices = append(chunk.Choices, openai.ChatCompletionResponseChunkChoice{
 			Index: 0,
 			Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
@@ -760,7 +774,11 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 			},
 		})
 		o.role = *event.Role
-	case event.Delta != nil:
+	// contentBlockDelta event.
+	case awsbedrock.ConverseStreamEventTypeContentBlockDelta.String():
+		if event.Delta == nil {
+			return chunk, false
+		}
 		switch {
 		case event.Delta.Text != nil:
 			chunk.Choices = append(chunk.Choices, openai.ChatCompletionResponseChunkChoice{
@@ -775,12 +793,13 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 				Index: 0,
 				Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
 					Role: o.role,
-					ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+					ToolCalls: []openai.ChatCompletionChunkChoiceDeltaToolCall{
 						{
 							Function: openai.ChatCompletionMessageToolCallFunctionParam{
 								Arguments: event.Delta.ToolUse.Input,
 							},
-							Type: openai.ChatCompletionMessageToolCallTypeFunction,
+							Type:  openai.ChatCompletionMessageToolCallTypeFunction,
+							Index: o.toolIndex,
 						},
 					},
 				},
@@ -805,25 +824,35 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 				},
 			})
 		}
-	case event.Start != nil:
+	// contentBlockStart event.
+	case awsbedrock.ConverseStreamEventTypeContentBlockStart.String():
+		if event.Start == nil {
+			return chunk, false
+		}
 		if event.Start.ToolUse != nil {
+			o.activeToolStream = true
 			chunk.Choices = append(chunk.Choices, openai.ChatCompletionResponseChunkChoice{
 				Index: 0,
 				Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
 					Role: o.role,
-					ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+					ToolCalls: []openai.ChatCompletionChunkChoiceDeltaToolCall{
 						{
 							ID: &event.Start.ToolUse.ToolUseID,
 							Function: openai.ChatCompletionMessageToolCallFunctionParam{
 								Name: event.Start.ToolUse.Name,
 							},
-							Type: openai.ChatCompletionMessageToolCallTypeFunction,
+							Type:  openai.ChatCompletionMessageToolCallTypeFunction,
+							Index: o.toolIndex,
 						},
 					},
 				},
 			})
 		}
-	case event.StopReason != nil:
+	// MessageStop event.
+	case awsbedrock.ConverseStreamEventTypeMessageStop.String():
+		if event.StopReason == nil {
+			return chunk, false
+		}
 		chunk.Choices = append(chunk.Choices, openai.ChatCompletionResponseChunkChoice{
 			Index: 0,
 			Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
@@ -832,6 +861,13 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 			},
 			FinishReason: o.bedrockStopReasonToOpenAIStopReason(event.StopReason),
 		})
+	case awsbedrock.ConverseStreamEventTypeContentBlockStop.String():
+		// this is the content stop event if none of the above is set.
+		if o.activeToolStream {
+			o.toolIndex++
+			o.activeToolStream = false
+		}
+		return chunk, false
 	default:
 		return chunk, false
 	}

@@ -1,13 +1,52 @@
 {
-  "flags": 256,
-  "name": "ImageGeneration",
-  "kind": "SPAN_KIND_INTERNAL",
-  "attributes": [
-    {"key": "llm.system", "value": {"stringValue": "openai"}},
-    {"key": "llm.model_name", "value": {"stringValue": "gpt-image-1-mini"}},
-    {"key": "openinference.span.kind", "value": {"stringValue": "LLM"}},
-    {"key": "input.mime_type", "value": {"stringValue": "application/json"}},
-    {"key": "input.value", "value": {"stringValue": "{\"model\":\"gpt-image-1-mini\",\"prompt\":\"A simple black-and-white line drawing of a cat playing with yarn\",\"quality\":\"low\",\"size\":\"1024x1024\"}"}}
+  "flags":  256,
+  "name":  "ImagesResponse",
+  "kind":  "SPAN_KIND_INTERNAL",
+  "attributes":  [
+    {
+      "key":  "llm.system",
+      "value":  {
+        "stringValue":  "openai"
+      }
+    },
+    {
+      "key":  "input.value",
+      "value":  {
+        "stringValue":  "{\"prompt\": \"A simple black-and-white line drawing of a cat playing with yarn\", \"model\": \"gpt-image-1-mini\", \"quality\": \"low\", \"size\": \"1024x1024\"}"
+      }
+    },
+    {
+      "key":  "input.mime_type",
+      "value":  {
+        "stringValue":  "application/json"
+      }
+    },
+    {
+      "key":  "output.value",
+      "value":  {
+        "stringValue":  "{\"created\":1760092079,\"data\":[{\"url\":\"https://oaidalleapiprodscus.blob.core.windows.net/private/org-lKxIBdltrjcFbzboW0t1hthB/user-EdKNxj0PjYS29CfjUcR77ybc/img-3Ah2ERYmeJLYrRlxnuWPFpXG.png?st=2025-10-10T09%3A27%3A58Z&se=2025-10-10T11%3A27%3A58Z&sp=r&sv=2024-08-04&sr=b&rscd=inline&rsct=image/png&skoid=475fd488-6c59-44a5-9aa9-31c4db451bea&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2025-10-10T10%3A27%3A58Z&ske=2025-10-11T10%3A27%3A58Z&sks=b&skv=2024-08-04&sig=IlzMauzcIHqE5/JLQsiMglI0mqbGlrpQC/mvJz4TYuc%3D\"}]}"
+      }
+    },
+    {
+      "key":  "output.mime_type",
+      "value":  {
+        "stringValue":  "application/json"
+      }
+    },
+    {
+      "key":  "llm.invocation_parameters",
+      "value":  {
+        "stringValue":  "{\"prompt\": \"A simple black-and-white line drawing of a cat playing with yarn\", \"model\": \"gpt-image-1-mini\", \"quality\": \"low\", \"size\": \"1024x1024\"}"
+      }
+    },
+    {
+      "key":  "openinference.span.kind",
+      "value":  {
+        "stringValue":  "LLM"
+      }
+    }
   ],
-  "status": {}
+  "status":  {
+    "code":  "STATUS_CODE_OK"
+  }
 }

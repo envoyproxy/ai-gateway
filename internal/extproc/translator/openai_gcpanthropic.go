@@ -125,7 +125,7 @@ func translateAnthropicToolChoice(openAIToolChoice *openai.ChatCompletionToolCho
 		if choice.Type == openai.ToolTypeFunction && choice.Function.Name != "" {
 			toolChoice = anthropic.ToolChoiceUnionParam{
 				OfTool: &anthropic.ToolChoiceToolParam{
-					Type:                   constant.Tool(choice.Type),
+					Type:                   constant.Tool("tool"),
 					Name:                   choice.Function.Name,
 					DisableParallelToolUse: disableParallelToolUse,
 				},
@@ -162,6 +162,16 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 				}
 
 				inputSchema := anthropic.ToolInputSchemaParam{}
+
+				// Dereference json schema
+				// If the paramsMap contains $refs we need to dereference them
+				var dereferencedParamsMap any
+				if dereferencedParamsMap, err = jsonSchemaDereference(paramsMap); err != nil {
+					return nil, anthropic.ToolChoiceUnionParam{}, fmt.Errorf("failed to dereference tool parameters: %w", err)
+				}
+				if paramsMap, ok = dereferencedParamsMap.(map[string]any); !ok {
+					return nil, anthropic.ToolChoiceUnionParam{}, fmt.Errorf("failed to cast dereferenced tool parameters to map[string]interface{}")
+				}
 
 				var typeVal string
 				if typeVal, ok = paramsMap["type"].(string); ok {

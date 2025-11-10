@@ -38,16 +38,20 @@ const (
 	RequiredCredentialDeepInfra
 	// RequiredCredentialAnthropic is the bit flag for the Anthropic API key.
 	RequiredCredentialAnthropic
+	// RequiredCredentialCohere is the bit flag for the Cohere API key.
+	RequiredCredentialCohere
 )
 
 // CredentialsContext holds the context for the credentials used in the tests.
 type CredentialsContext struct {
 	// OpenAIValid, AWSValid, AzureValid, etc. are true if the credentials are set and ready to use the real services.
-	OpenAIValid, AWSValid, AzureValid, GeminiValid, GroqValid, GrokValid, SambaNovaValid, DeepInfraValid, AnthropicValid bool
+	OpenAIValid, AWSValid, AzureValid, GeminiValid, GroqValid, GrokValid, SambaNovaValid, DeepInfraValid, AnthropicValid, CohereValid bool
 	// OpenAIAPIKey is the OpenAI API key. This defaults to "dummy-openai-api-key" if not set.
 	OpenAIAPIKey string
 	// AnthropicAPIKey is the Anthropic API key. This defaults to "dummy-anthropic-api-key" if not set.
 	AnthropicAPIKey string
+	// CohereAPIKey is the Cohere API key. This defaults to "dummy-cohere-api-key" if not set.
+	CohereAPIKey string
 	// AWSFileLiteral contains the AWS credentials in the format of a file literal.
 	AWSFileLiteral     string
 	AWSAccessKeyID     string
@@ -94,6 +98,9 @@ func (c CredentialsContext) MaybeSkip(t testing.TB, required RequiredCredential)
 	}
 	if required&RequiredCredentialAnthropic != 0 && !c.AnthropicValid {
 		t.Skip("skipping test as Anthropic API key is not set in TEST_ANTHROPIC_API_KEY")
+	}
+	if required&RequiredCredentialCohere != 0 && !c.CohereValid {
+		t.Skip("skipping test as Cohere API key is not set in TEST_COHERE_API_KEY")
 	}
 }
 
@@ -156,5 +163,9 @@ func RequireNewCredentialsContext() (ctx CredentialsContext) {
 	anthropicAPIKeyEnv := os.Getenv("TEST_ANTHROPIC_API_KEY")
 	ctx.AnthropicValid = anthropicAPIKeyEnv != ""
 	ctx.AnthropicAPIKey = cmp.Or(anthropicAPIKeyEnv, "dummy-anthropic-api-key")
+	// Set up credential for Cohere.
+	cohereAPIKeyEnv := os.Getenv("TEST_COHERE_API_KEY")
+	ctx.CohereValid = cohereAPIKeyEnv != ""
+	ctx.CohereAPIKey = cmp.Or(cohereAPIKeyEnv, "dummy-cohere-api-key")
 	return
 }

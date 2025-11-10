@@ -738,6 +738,11 @@ APISchema defines the API schema.
   required="false"
   description="APISchemaOpenAI is the OpenAI schema.<br />https://github.com/openai/openai-openapi<br />"
 /><ApiField
+  name="Cohere"
+  type="enum"
+  required="false"
+  description="APISchemaCohere is the Cohere schema.<br />https://docs.cohere.com/v2<br />"
+/><ApiField
   name="AWSBedrock"
   type="enum"
   required="false"
@@ -762,6 +767,11 @@ APISchema defines the API schema.
   type="enum"
   required="false"
   description="APISchemaAnthropic is the native Anthropic API schema.<br />https://docs.claude.com/en/home<br />"
+/><ApiField
+  name="AWSAnthropic"
+  type="enum"
+  required="false"
+  description="APISchemaAWSAnthropic is the schema for Anthropic models hosted on AWS Bedrock.<br />Uses the native Anthropic Messages API format for requests and responses.<br />https://aws.amazon.com/bedrock/anthropic/<br />https://docs.claude.com/en/api/claude-on-amazon-bedrock<br />"
 />
 #### AWSCredentialsFile
 
@@ -1467,6 +1477,11 @@ MCPBackendAPIKey defines the configuration for the API Key Authentication to a b
   type="string"
   required="false"
   description="Inline contains the API key as an inline string."
+/><ApiField
+  name="header"
+  type="string"
+  required="false"
+  description="Header is the HTTP header to inject the API key into. If not specified,<br />defaults to `Authorization`.<br />When the header is `Authorization`, the injected header value will be<br />prefixed with `Bearer `."
 />
 
 
@@ -1487,7 +1502,7 @@ MCPBackendSecurityPolicy defines the security policy for a sp
   name="apiKey"
   type="[MCPBackendAPIKey](#mcpbackendapikey)"
   required="false"
-  description="APIKey is a mechanism to access a backend. The API key will be injected into the Authorization header."
+  description="APIKey is a mechanism to access a backend. The API key will be injected into the request headers."
 />
 
 

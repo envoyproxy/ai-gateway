@@ -26,7 +26,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/prototext"
 
-	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
+	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"

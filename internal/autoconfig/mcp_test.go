@@ -27,7 +27,7 @@ func TestAddMCPServersConfig(t *testing.T) {
 						Headers: map[string]string{
 							"Authorization": "Bearer ${GITHUB_MCP_TOKEN}",
 						},
-						IncludeTools: []string{"list_issues", "get_issue"},
+						IncludeTools: []string{"list_issues", "issue_read"},
 					},
 				},
 			},
@@ -45,7 +45,7 @@ func TestAddMCPServersConfig(t *testing.T) {
 					{
 						BackendName:  "github",
 						Path:         "/mcp/x/issues/readonly",
-						IncludeTools: []string{"list_issues", "get_issue"},
+						IncludeTools: []string{"list_issues", "issue_read"},
 						APIKey:       "${GITHUB_MCP_TOKEN}",
 						Headers:      map[string]string{},
 					},
@@ -104,7 +104,7 @@ func TestAddMCPServersConfig(t *testing.T) {
 						Headers: map[string]string{
 							"Authorization": "Bearer ${GITHUB_MCP_TOKEN}",
 						},
-						IncludeTools: []string{"list_issues", "get_issue"},
+						IncludeTools: []string{"list_issues", "issue_read"},
 					},
 				},
 			},
@@ -129,7 +129,7 @@ func TestAddMCPServersConfig(t *testing.T) {
 					{
 						BackendName:  "github",
 						Path:         "/mcp/x/issues/readonly",
-						IncludeTools: []string{"list_issues", "get_issue"},
+						IncludeTools: []string{"list_issues", "issue_read"},
 						APIKey:       "${GITHUB_MCP_TOKEN}",
 						Headers:      map[string]string{},
 					},

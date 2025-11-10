@@ -144,6 +144,21 @@ curl -H "Content-Type: application/json" \
   $GATEWAY_URL/v1/embeddings
 ```
 
+#### Test Rerank
+
+```shell
+curl -H "Content-Type: application/json" \
+  -d '{
+        "model": "some-cool-self-hosted-model",
+        "query": "What is the capital of France?",
+        "documents": [
+            "Paris is the capital of France.",
+            "Berlin is the capital of Germany."
+        ]
+    }' \
+  $GATEWAY_URL/cohere/v2/rerank
+```
+
 :::tip
 
 If you're opening a new terminal, you'll need to set the `GATEWAY_URL` variable again.
@@ -206,6 +221,19 @@ For embeddings requests, you should receive a response like:
 }
 ```
 
+#### Rerank Response
+
+You should receive a response like:
+
+```json
+{
+  "results": [
+    { "index": 0, "relevance_score": 0.98 },
+    { "index": 1, "relevance_score": 0.12 }
+  ]
+}
+```
+
 :::note
 
 These responses come from a mock backend. The model `some-cool-self-hosted-model` is configured to return test responses.
@@ -227,6 +255,12 @@ The basic setup includes a mock backend that demonstrates the API structure but 
 - A `data` array containing embedding objects
 - Each embedding having a vector array and index
 - Usage information showing token consumption
+
+**Rerank:**
+
+- A `results` array containing ranked results for the provided documents
+- Each result includes the original document `index` and a `relevance_score`
+- Higher `relevance_score` indicates higher relevance to the query
 
 ## Next Steps
 

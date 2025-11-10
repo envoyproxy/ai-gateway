@@ -8,7 +8,6 @@ package translator
 import (
 	"bytes"
 	"encoding/json"
-	"io"
 	"testing"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -445,25 +444,6 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseHeaders(t *testing.T) {
 	}
 }
 
-func TestAnthropicToGCPAnthropicTranslator_ResponseBody_ReadError(t *testing.T) {
-	translator := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "")
-
-	// Create a reader that will fail.
-	errorReader := &errorReader{}
-	respHeaders := map[string]string{"content-type": "application/json"}
-
-	_, _, _, _, err := translator.ResponseBody(respHeaders, errorReader, true)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to read response body")
-}
-
-// errorReader implements io.Reader but always returns an error.
-type errorReader struct{}
-
-func (e *errorReader) Read(_ []byte) (n int, err error) {
-	return 0, io.ErrUnexpectedEOF
-}
-
 func TestAnthropicToGCPAnthropicTranslator_ResponseBody_ZeroTokenUsage(t *testing.T) {
 	translator := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "")
 
@@ -499,13 +479,13 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_ZeroTokenUsage(t *testin
 
 func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingTokenUsage(t *testing.T) {
 	translator := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "")
+	translator.(*anthropicToGCPAnthropicTranslator).stream = true
 
 	tests := []struct {
 		name          string
 		chunk         string
 		endOfStream   bool
 		expectedUsage LLMTokenUsage
-		expectedBody  string
 	}{
 		{
 			name:        "regular streaming chunk without usage",
@@ -516,7 +496,6 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingTokenUsage(t *t
 				OutputTokens: 0,
 				TotalTokens:  0,
 			},
-			expectedBody: "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" to me.\"}}\n\n",
 		},
 		{
 			name:        "message_delta chunk with token usage",
@@ -527,7 +506,6 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingTokenUsage(t *t
 				OutputTokens: 84,
 				TotalTokens:  84,
 			},
-			expectedBody: "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":84}}\n\n",
 		},
 		{
 			name:        "message_stop chunk without usage",
@@ -538,7 +516,6 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingTokenUsage(t *t
 				OutputTokens: 0,
 				TotalTokens:  0,
 			},
-			expectedBody: "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
 		},
 		{
 			name:        "invalid json chunk",
@@ -549,7 +526,6 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingTokenUsage(t *t
 				OutputTokens: 0,
 				TotalTokens:  0,
 			},
-			expectedBody: "event: invalid\ndata: {\"invalid\": \"json\"}\n\n",
 		},
 		{
 			name:        "message_delta with decimal output_tokens",
@@ -560,7 +536,6 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingTokenUsage(t *t
 				OutputTokens: 42,
 				TotalTokens:  42,
 			},
-			expectedBody: "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":42.0}}\n\n",
 		},
 	}
 
@@ -573,8 +548,7 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingTokenUsage(t *t
 
 			require.NoError(t, err)
 			require.Nil(t, headerMutation)
-			require.NotNil(t, bodyMutation)
-			require.Equal(t, tt.expectedBody, string(bodyMutation.GetBody()))
+			require.Nil(t, bodyMutation)
 			require.Equal(t, tt.expectedUsage, tokenUsage)
 		})
 	}
@@ -582,6 +556,7 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingTokenUsage(t *t
 
 func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases(t *testing.T) {
 	translator := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "")
+	translator.(*anthropicToGCPAnthropicTranslator).stream = true
 
 	tests := []struct {
 		name          string
@@ -604,24 +579,6 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases(t *te
 				InputTokens:  0,
 				OutputTokens: 0,
 				TotalTokens:  0,
-			},
-		},
-		{
-			name:  "message_start with output_tokens = 0",
-			chunk: "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":20,\"output_tokens\":0}}}\n\n",
-			expectedUsage: LLMTokenUsage{
-				InputTokens:  20,
-				OutputTokens: 0,
-				TotalTokens:  20,
-			},
-		},
-		{
-			name:  "message_start with output_tokens > 0",
-			chunk: "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":15,\"output_tokens\":5}}}\n\n",
-			expectedUsage: LLMTokenUsage{
-				InputTokens:  15,
-				OutputTokens: 5,
-				TotalTokens:  20,
 			},
 		},
 		{
@@ -653,8 +610,7 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases(t *te
 
 			require.NoError(t, err)
 			require.Nil(t, headerMutation)
-			require.NotNil(t, bodyMutation)
-			require.Equal(t, tt.chunk, string(bodyMutation.GetBody()))
+			require.Nil(t, bodyMutation)
 			require.Equal(t, tt.expectedUsage, tokenUsage)
 		})
 	}

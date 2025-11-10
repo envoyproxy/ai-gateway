@@ -20,6 +20,7 @@ import (
 	openaisdk "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/require"
 
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -449,9 +450,9 @@ func TestImageGeneration_ParseBody(t *testing.T) {
 		jsonBody := `{"model":"gpt-image-1-mini","prompt":"a cat","size":"1024x1024","quality":"low"}`
 		modelName, rb, err := parseOpenAIImageGenerationBody(&extprocv3.HttpBody{Body: []byte(jsonBody)})
 		require.NoError(t, err)
-		require.Equal(t, "gpt-image-1-mini", modelName)
+		require.Equal(t, openai.ModelGPTImage1Mini, modelName)
 		require.NotNil(t, rb)
-		require.Equal(t, "gpt-image-1-mini", rb.Model)
+		require.Equal(t, openai.ModelGPTImage1Mini, rb.Model)
 		require.Equal(t, "a cat", rb.Prompt)
 	})
 	t.Run("error", func(t *testing.T) {

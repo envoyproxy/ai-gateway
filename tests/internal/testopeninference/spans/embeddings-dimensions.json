@@ -1,853 +1,847 @@
 {
-  "flags": 256,
-  "name": "CreateEmbeddings",
-  "kind": "SPAN_KIND_INTERNAL",
-  "attributes": [
+  "flags":  256,
+  "name":  "CreateEmbeddings",
+  "kind":  "SPAN_KIND_INTERNAL",
+  "attributes":  [
     {
-      "key": "llm.system",
-      "value": {
-        "stringValue": "openai"
+      "key":  "input.value",
+      "value":  {
+        "stringValue":  "{\"input\": \"Generate embeddings with specific dimensions\", \"model\": \"text-embedding-3-small\", \"dimensions\": 256, \"encoding_format\": \"base64\"}"
       }
     },
     {
-      "key": "input.value",
-      "value": {
-        "stringValue": "{\"input\": \"Generate embeddings with specific dimensions\", \"model\": \"text-embedding-3-small\", \"dimensions\": 256, \"encoding_format\": \"base64\"}"
+      "key":  "input.mime_type",
+      "value":  {
+        "stringValue":  "application/json"
       }
     },
     {
-      "key": "input.mime_type",
-      "value": {
-        "stringValue": "application/json"
+      "key":  "output.value",
+      "value":  {
+        "stringValue":  "{\"data\":[{\"embedding\":\"UlenPPk5k71fcBc+teZvvbQqhL0uzYq95kX3PCxVlTw5EIi9am8PvDiyir0Q2va9SnfROjfHSb1XkEG90nt3vdnOGLxx8di8IIVUPXfMBD3OzyC93b50vRil/jzTNwE9YUYKvYAkwT3H2os9ZsMpPbUVNj66wRs8ETiDvJOlEb1ZCLe8OLIKvo7KZbwuWj+9WHvzu63X4j3Mtai9yyjlPZV7BD4Iy2m82XCbvZpWIT2Kq8O83b70Pb5Tib3Mtai8xnx/vLkFIT4TymG9bQHuuyuZmr3b6BA9mICuvb31izvRYY691MS1vXKt07ph6Iw8fU5OPZyf0L2AUwc9/G2DPf5D5zw5nTw7h0gcvgKSTz0pfyI8PF5hPQ8e/DxOlgI8uQWhOsubsLwG9QU+AmOYPG6OsTzbdUU9qCt9vapFBDtqERI8UShhPex+oL3Fkc28fJJTvfw+vbyoK4w9RuVjvS+Jhb2a+KO9QMEXvdzTwr2vT9i9I1vHvXPcGb05bvY9QduPPSlQXL2RLRy9MhtkPd1gBjyEFKw9sz/DvDkQCLz+ci28o1BgvU70cL1n3aE81mtivc/pmD3y5gC+Jo+3vdPZgzxipIc98SoGPQjL6bz8bYO9Ls2KPeKZIDug7bi7bOeEvfS8ZL07t7Q9fKchPdWv57zTewY8abMUvbQqBL7YEp69NyVHvCkhpbpyIB+8jsrlPUguIj1psxS+gsvtvRh2R71eEpo9FIbcPMsoZbynnsi7h6aZPWpvjz3z0TK9dVQPvQWX+T2N37O9NX4aPZMDD724GmA9gsttvf2H7L11g0a9SzPMvB4NX72ahdi9hrtYur7gPT3jJtU9HVHkvRB8CL1hdUE9vYJAPK6TXbxDJL87C9Ciu7z1fLwwo+68HzylvcLQKL4gJ9c81YCwveaJfL1oO5+8WEy8O3AGpzyTpZG9kVzTvZQdeLzY49e9dhCKvSAn1z3cpIu96XnnPF1Wn72IM849Dx6LvP5DZzk96yQ9GmGIPdZr4r2NDus81/glPdtG/zxNOHa8wFgzvdKqvT36U/y8L+dzPT2NJ73BFC69AXhXPTFfab2k3aM8br1oPTGOL712zHW9xQSZvYGxBL2AUwe98uaAPPIVuLwss5I9LZ7EOG3SNr1nrts9tPs9vQjL6bz2pyW9kosZvTFf6bwcCLU9qkWEPZdR6Lz3Y6C9TTh2vUHbjzsrJs+92c6YPBtMuj0qatS7tPs9vNoslrzbdcW8kBOku5fEMz20WTs9TjgFO7H2E7t0mBS9z7pSvZmapr1tdDk9h3dTPUP1h7zPGFA99euqO4gzzr3Eppu86KMDvRod9Lw/ktG8pxGUO2CKj7qh2Oo8fU5OPQ==\",\"index\":0,\"object\":\"embedding\"}],\"model\":\"text-embedding-3-small\",\"object\":\"list\",\"usage\":{\"prompt_tokens\":5,\"total_tokens\":5}}"
       }
     },
     {
-      "key": "output.value",
-      "value": {
-        "stringValue": "{\"data\":[{\"embedding\":\"UlenPPk5k71fcBc+teZvvbQqhL0uzYq95kX3PCxVlTw5EIi9am8PvDiyir0Q2va9SnfROjfHSb1XkEG90nt3vdnOGLxx8di8IIVUPXfMBD3OzyC93b50vRil/jzTNwE9YUYKvYAkwT3H2os9ZsMpPbUVNj66wRs8ETiDvJOlEb1ZCLe8OLIKvo7KZbwuWj+9WHvzu63X4j3Mtai9yyjlPZV7BD4Iy2m82XCbvZpWIT2Kq8O83b70Pb5Tib3Mtai8xnx/vLkFIT4TymG9bQHuuyuZmr3b6BA9mICuvb31izvRYY691MS1vXKt07ph6Iw8fU5OPZyf0L2AUwc9/G2DPf5D5zw5nTw7h0gcvgKSTz0pfyI8PF5hPQ8e/DxOlgI8uQWhOsubsLwG9QU+AmOYPG6OsTzbdUU9qCt9vapFBDtqERI8UShhPex+oL3Fkc28fJJTvfw+vbyoK4w9RuVjvS+Jhb2a+KO9QMEXvdzTwr2vT9i9I1vHvXPcGb05bvY9QduPPSlQXL2RLRy9MhtkPd1gBjyEFKw9sz/DvDkQCLz+ci28o1BgvU70cL1n3aE81mtivc/pmD3y5gC+Jo+3vdPZgzxipIc98SoGPQjL6bz8bYO9Ls2KPeKZIDug7bi7bOeEvfS8ZL07t7Q9fKchPdWv57zTewY8abMUvbQqBL7YEp69NyVHvCkhpbpyIB+8jsrlPUguIj1psxS+gsvtvRh2R71eEpo9FIbcPMsoZbynnsi7h6aZPWpvjz3z0TK9dVQPvQWX+T2N37O9NX4aPZMDD724GmA9gsttvf2H7L11g0a9SzPMvB4NX72ahdi9hrtYur7gPT3jJtU9HVHkvRB8CL1hdUE9vYJAPK6TXbxDJL87C9Ciu7z1fLwwo+68HzylvcLQKL4gJ9c81YCwveaJfL1oO5+8WEy8O3AGpzyTpZG9kVzTvZQdeLzY49e9dhCKvSAn1z3cpIu96XnnPF1Wn72IM849Dx6LvP5DZzk96yQ9GmGIPdZr4r2NDus81/glPdtG/zxNOHa8wFgzvdKqvT36U/y8L+dzPT2NJ73BFC69AXhXPTFfab2k3aM8br1oPTGOL712zHW9xQSZvYGxBL2AUwe98uaAPPIVuLwss5I9LZ7EOG3SNr1nrts9tPs9vQjL6bz2pyW9kosZvTFf6bwcCLU9qkWEPZdR6Lz3Y6C9TTh2vUHbjzsrJs+92c6YPBtMuj0qatS7tPs9vNoslrzbdcW8kBOku5fEMz20WTs9TjgFO7H2E7t0mBS9z7pSvZmapr1tdDk9h3dTPUP1h7zPGFA99euqO4gzzr3Eppu86KMDvRod9Lw/ktG8pxGUO2CKj7qh2Oo8fU5OPQ==\",\"index\":0,\"object\":\"embedding\"}],\"model\":\"text-embedding-3-small\",\"object\":\"list\",\"usage\":{\"prompt_tokens\":5,\"total_tokens\":5}}"
+      "key":  "output.mime_type",
+      "value":  {
+        "stringValue":  "application/json"
       }
     },
     {
-      "key": "output.mime_type",
-      "value": {
-        "stringValue": "application/json"
+      "key":  "embedding.invocation_parameters",
+      "value":  {
+        "stringValue":  "{\"model\": \"text-embedding-3-small\", \"dimensions\": 256, \"encoding_format\": \"base64\"}"
       }
     },
     {
-      "key": "embedding.invocation_parameters",
-      "value": {
-        "stringValue": "{\"model\": \"text-embedding-3-small\", \"dimensions\": 256, \"encoding_format\": \"base64\"}"
+      "key":  "embedding.embeddings.0.embedding.text",
+      "value":  {
+        "stringValue":  "Generate embeddings with specific dimensions"
       }
     },
     {
-      "key": "embedding.embeddings.0.embedding.text",
-      "value": {
-        "stringValue": "Generate embeddings with specific dimensions"
+      "key":  "llm.token_count.total",
+      "value":  {
+        "intValue":  "5"
       }
     },
     {
-      "key": "llm.token_count.total",
-      "value": {
-        "intValue": "5"
+      "key":  "llm.token_count.prompt",
+      "value":  {
+        "intValue":  "5"
       }
     },
     {
-      "key": "llm.token_count.prompt",
-      "value": {
-        "intValue": "5"
+      "key":  "embedding.model_name",
+      "value":  {
+        "stringValue":  "text-embedding-3-small"
       }
     },
     {
-      "key": "embedding.model_name",
-      "value": {
-        "stringValue": "text-embedding-3-small"
-      }
-    },
-    {
-      "key": "embedding.embeddings.0.embedding.vector",
-      "value": {
-        "arrayValue": {
-          "values": [
+      "key":  "embedding.embeddings.0.embedding.vector",
+      "value":  {
+        "arrayValue":  {
+          "values":  [
             {
-              "doubleValue": 0.02042737975716591
+              "doubleValue":  0.02042737975716591
             },
             {
-              "doubleValue": -0.07188791781663895
+              "doubleValue":  -0.07188791781663895
             },
             {
-              "doubleValue": 0.14788959920406342
+              "doubleValue":  0.14788959920406342
             },
             {
-              "doubleValue": -0.05856962874531746
+              "doubleValue":  -0.05856962874531746
             },
             {
-              "doubleValue": -0.06453457474708557
+              "doubleValue":  -0.06453457474708557
             },
             {
-              "doubleValue": -0.06777416169643402
+              "doubleValue":  -0.06777416169643402
             },
             {
-              "doubleValue": 0.03018469735980034
+              "doubleValue":  0.03018469735980034
             },
             {
-              "doubleValue": 0.018229089677333832
+              "doubleValue":  0.018229089677333832
             },
             {
-              "doubleValue": -0.06643719226121902
+              "doubleValue":  -0.06643719226121902
             },
             {
-              "doubleValue": -0.008754590526223183
+              "doubleValue":  -0.008754590526223183
             },
             {
-              "doubleValue": -0.06772273778915405
+              "doubleValue":  -0.06772273778915405
             },
             {
-              "doubleValue": -0.12053310871124268
+              "doubleValue":  -0.12053310871124268
             },
             {
-              "doubleValue": 0.001598098548129201
+              "doubleValue":  0.001598098548129201
             },
             {
-              "doubleValue": -0.04926225170493126
+              "doubleValue":  -0.04926225170493126
             },
             {
-              "doubleValue": -0.047256793826818466
+              "doubleValue":  -0.047256793826818466
             },
             {
-              "doubleValue": -0.060420818626880646
+              "doubleValue":  -0.060420818626880646
             },
             {
-              "doubleValue": -0.009326660074293613
+              "doubleValue":  -0.009326660074293613
             },
             {
-              "doubleValue": -0.026482315734028816
+              "doubleValue":  -0.026482315734028816
             },
             {
-              "doubleValue": 0.05188477039337158
+              "doubleValue":  0.05188477039337158
             },
             {
-              "doubleValue": 0.03242155537009239
+              "doubleValue":  0.03242155537009239
             },
             {
-              "doubleValue": -0.03926067799329758
+              "doubleValue":  -0.03926067799329758
             },
             {
-              "doubleValue": -0.05975233390927315
+              "doubleValue":  -0.05975233390927315
             },
             {
-              "doubleValue": 0.031084582209587097
+              "doubleValue":  0.031084582209587097
             },
             {
-              "doubleValue": 0.03154737874865532
+              "doubleValue":  0.03154737874865532
             },
             {
-              "doubleValue": -0.03375852480530739
+              "doubleValue":  -0.03375852480530739
             },
             {
-              "doubleValue": 0.09430789947509766
+              "doubleValue":  0.09430789947509766
             },
             {
-              "doubleValue": 0.06828837841749191
+              "doubleValue":  0.06828837841749191
             },
             {
-              "doubleValue": 0.04144611209630966
+              "doubleValue":  0.04144611209630966
             },
             {
-              "doubleValue": 0.1778171807527542
+              "doubleValue":  0.1778171807527542
             },
             {
-              "doubleValue": 0.00950663723051548
+              "doubleValue":  0.00950663723051548
             },
             {
-              "doubleValue": -0.016017945483326912
+              "doubleValue":  -0.016017945483326912
             },
             {
-              "doubleValue": -0.035558294504880905
+              "doubleValue":  -0.035558294504880905
             },
             {
-              "doubleValue": -0.022342847660183907
+              "doubleValue":  -0.022342847660183907
             },
             {
-              "doubleValue": -0.1354454755783081
+              "doubleValue":  -0.1354454755783081
             },
             {
-              "doubleValue": -0.014025343582034111
+              "doubleValue":  -0.014025343582034111
             },
             {
-              "doubleValue": -0.04671686142683029
+              "doubleValue":  -0.04671686142683029
             },
             {
-              "doubleValue": -0.007430475205183029
+              "doubleValue":  -0.007430475205183029
             },
             {
-              "doubleValue": 0.11076293140649796
+              "doubleValue":  0.11076293140649796
             },
             {
-              "doubleValue": -0.08237800002098083
+              "doubleValue":  -0.08237800002098083
             },
             {
-              "doubleValue": 0.11189421266317368
+              "doubleValue":  0.11189421266317368
             },
             {
-              "doubleValue": 0.12937767803668976
+              "doubleValue":  0.12937767803668976
             },
             {
-              "doubleValue": -0.014269597828388214
+              "doubleValue":  -0.014269597828388214
             },
             {
-              "doubleValue": -0.07589883357286453
+              "doubleValue":  -0.07589883357286453
             },
             {
-              "doubleValue": 0.0393892303109169
+              "doubleValue":  0.0393892303109169
             },
             {
-              "doubleValue": -0.023885507136583328
+              "doubleValue":  -0.023885507136583328
             },
             {
-              "doubleValue": 0.1195046678185463
+              "doubleValue":  0.1195046678185463
             },
             {
-              "doubleValue": -0.06705425679683685
+              "doubleValue":  -0.06705425679683685
             },
             {
-              "doubleValue": -0.02059450000524521
+              "doubleValue":  -0.02059450000524521
             },
             {
-              "doubleValue": -0.015593713149428368
+              "doubleValue":  -0.015593713149428368
             },
             {
-              "doubleValue": 0.157248392701149
+              "doubleValue":  0.157248392701149
             },
             {
-              "doubleValue": -0.05512435361742973
+              "doubleValue":  -0.05512435361742973
             },
             {
-              "doubleValue": -0.007263353560119867
+              "doubleValue":  -0.007263353560119867
             },
             {
-              "doubleValue": -0.07548745721578598
+              "doubleValue":  -0.07548745721578598
             },
             {
-              "doubleValue": 0.03537831827998161
+              "doubleValue":  0.03537831827998161
             },
             {
-              "doubleValue": -0.08520621061325073
+              "doubleValue":  -0.08520621061325073
             },
             {
-              "doubleValue": 0.004271237645298243
+              "doubleValue":  0.004271237645298243
             },
             {
-              "doubleValue": -0.06952250748872757
+              "doubleValue":  -0.06952250748872757
             },
             {
-              "doubleValue": -0.0887543261051178
+              "doubleValue":  -0.0887543261051178
             },
             {
-              "doubleValue": -0.0016149713192135096
+              "doubleValue":  -0.0016149713192135096
             },
             {
-              "doubleValue": 0.0172006506472826
+              "doubleValue":  0.0172006506472826
             },
             {
-              "doubleValue": 0.050367821007966995
+              "doubleValue":  0.050367821007966995
             },
             {
-              "doubleValue": -0.10186693072319031
+              "doubleValue":  -0.10186693072319031
             },
             {
-              "doubleValue": 0.03303861618041992
+              "doubleValue":  0.03303861618041992
             },
             {
-              "doubleValue": 0.06417462229728699
+              "doubleValue":  0.06417462229728699
             },
             {
-              "doubleValue": 0.028230663388967514
+              "doubleValue":  0.028230663388967514
             },
             {
-              "doubleValue": 0.0028780235443264246
+              "doubleValue":  0.0028780235443264246
             },
             {
-              "doubleValue": -0.15262041985988617
+              "doubleValue":  -0.15262041985988617
             },
             {
-              "doubleValue": 0.05067635327577591
+              "doubleValue":  0.05067635327577591
             },
             {
-              "doubleValue": 0.009918012656271458
+              "doubleValue":  0.009918012656271458
             },
             {
-              "doubleValue": 0.055021509528160095
+              "doubleValue":  0.055021509528160095
             },
             {
-              "doubleValue": 0.030776051804423332
+              "doubleValue":  0.030776051804423332
             },
             {
-              "doubleValue": 0.007970405742526054
+              "doubleValue":  0.007970405742526054
             },
             {
-              "doubleValue": 0.0012285030679777265
+              "doubleValue":  0.0012285030679777265
             },
             {
-              "doubleValue": -0.021558662876486778
+              "doubleValue":  -0.021558662876486778
             },
             {
-              "doubleValue": 0.1308175027370453
+              "doubleValue":  0.1308175027370453
             },
             {
-              "doubleValue": 0.018601898103952408
+              "doubleValue":  0.018601898103952408
             },
             {
-              "doubleValue": 0.02167436107993126
+              "doubleValue":  0.02167436107993126
             },
             {
-              "doubleValue": 0.048208098858594894
+              "doubleValue":  0.048208098858594894
             },
             {
-              "doubleValue": -0.06180921196937561
+              "doubleValue":  -0.06180921196937561
             },
             {
-              "doubleValue": 0.002018312457948923
+              "doubleValue":  0.002018312457948923
             },
             {
-              "doubleValue": 0.008915284648537636
+              "doubleValue":  0.008915284648537636
             },
             {
-              "doubleValue": 0.054970089346170425
+              "doubleValue":  0.054970089346170425
             },
             {
-              "doubleValue": -0.07836708426475525
+              "doubleValue":  -0.07836708426475525
             },
             {
-              "doubleValue": -0.02509392239153385
+              "doubleValue":  -0.02509392239153385
             },
             {
-              "doubleValue": -0.05165337026119232
+              "doubleValue":  -0.05165337026119232
             },
             {
-              "doubleValue": -0.0231013223528862
+              "doubleValue":  -0.0231013223528862
             },
             {
-              "doubleValue": 0.06844264268875122
+              "doubleValue":  0.06844264268875122
             },
             {
-              "doubleValue": -0.055638574063777924
+              "doubleValue":  -0.055638574063777924
             },
             {
-              "doubleValue": -0.06520306318998337
+              "doubleValue":  -0.06520306318998337
             },
             {
-              "doubleValue": -0.08006401360034943
+              "doubleValue":  -0.08006401360034943
             },
             {
-              "doubleValue": -0.03704953193664551
+              "doubleValue":  -0.03704953193664551
             },
             {
-              "doubleValue": -0.09513065218925476
+              "doubleValue":  -0.09513065218925476
             },
             {
-              "doubleValue": -0.10562073439359665
+              "doubleValue":  -0.10562073439359665
             },
             {
-              "doubleValue": -0.09734179824590683
+              "doubleValue":  -0.09734179824590683
             },
             {
-              "doubleValue": -0.0375637523829937
+              "doubleValue":  -0.0375637523829937
             },
             {
-              "doubleValue": 0.1203274205327034
+              "doubleValue":  0.1203274205327034
             },
             {
-              "doubleValue": 0.07024241238832474
+              "doubleValue":  0.07024241238832474
             },
             {
-              "doubleValue": -0.05378738418221474
+              "doubleValue":  -0.05378738418221474
             },
             {
-              "doubleValue": -0.03812939301133156
+              "doubleValue":  -0.03812939301133156
             },
             {
-              "doubleValue": 0.05568999797105789
+              "doubleValue":  0.05568999797105789
             },
             {
-              "doubleValue": 0.00820180494338274
+              "doubleValue":  0.00820180494338274
             },
             {
-              "doubleValue": 0.08402350544929504
+              "doubleValue":  0.08402350544929504
             },
             {
-              "doubleValue": -0.02383408509194851
+              "doubleValue":  -0.02383408509194851
             },
             {
-              "doubleValue": -0.008304649032652378
+              "doubleValue":  -0.008304649032652378
             },
             {
-              "doubleValue": -0.01058649830520153
+              "doubleValue":  -0.01058649830520153
             },
             {
-              "doubleValue": -0.05476440116763115
+              "doubleValue":  -0.05476440116763115
             },
             {
-              "doubleValue": -0.058826737105846405
+              "doubleValue":  -0.058826737105846405
             },
             {
-              "doubleValue": 0.01975889317691326
+              "doubleValue":  0.01975889317691326
             },
             {
-              "doubleValue": -0.05527862161397934
+              "doubleValue":  -0.05527862161397934
             },
             {
-              "doubleValue": 0.07466470450162888
+              "doubleValue":  0.07466470450162888
             },
             {
-              "doubleValue": -0.12588098645210266
+              "doubleValue":  -0.12588098645210266
             },
             {
-              "doubleValue": -0.08962850272655487
+              "doubleValue":  -0.08962850272655487
             },
             {
-              "doubleValue": 0.016095077618956566
+              "doubleValue":  0.016095077618956566
             },
             {
-              "doubleValue": 0.06623150408267975
+              "doubleValue":  0.06623150408267975
             },
             {
-              "doubleValue": 0.03275579586625099
+              "doubleValue":  0.03275579586625099
             },
             {
-              "doubleValue": -0.028539195656776428
+              "doubleValue":  -0.028539195656776428
             },
             {
-              "doubleValue": -0.06417462229728699
+              "doubleValue":  -0.06417462229728699
             },
             {
-              "doubleValue": 0.06777416169643402
+              "doubleValue":  0.06777416169643402
             },
             {
-              "doubleValue": 0.0024505783803761005
+              "doubleValue":  0.0024505783803761005
             },
             {
-              "doubleValue": -0.005643561482429504
+              "doubleValue":  -0.005643561482429504
             },
             {
-              "doubleValue": -0.06489452719688416
+              "doubleValue":  -0.06489452719688416
             },
             {
-              "doubleValue": -0.0558442622423172
+              "doubleValue":  -0.0558442622423172
             },
             {
-              "doubleValue": 0.0882401093840599
+              "doubleValue":  0.0882401093840599
             },
             {
-              "doubleValue": 0.03946636617183685
+              "doubleValue":  0.03946636617183685
             },
             {
-              "doubleValue": -0.028282085433602333
+              "doubleValue":  -0.028282085433602333
             },
             {
-              "doubleValue": 0.008208232931792736
+              "doubleValue":  0.008208232931792736
             },
             {
-              "doubleValue": -0.03630391135811806
+              "doubleValue":  -0.03630391135811806
             },
             {
-              "doubleValue": -0.12906914949417114
+              "doubleValue":  -0.12906914949417114
             },
             {
-              "doubleValue": -0.07718437910079956
+              "doubleValue":  -0.07718437910079956
             },
             {
-              "doubleValue": -0.012154868803918362
+              "doubleValue":  -0.012154868803918362
             },
             {
-              "doubleValue": -0.0012598383473232388
+              "doubleValue":  -0.0012598383473232388
             },
             {
-              "doubleValue": -0.009712325409054756
+              "doubleValue":  -0.009712325409054756
             },
             {
-              "doubleValue": 0.11220274865627289
+              "doubleValue":  0.11220274865627289
             },
             {
-              "doubleValue": 0.03959491848945618
+              "doubleValue":  0.03959491848945618
             },
             {
-              "doubleValue": -0.14521564543247223
+              "doubleValue":  -0.14521564543247223
             },
             {
-              "doubleValue": -0.11611081659793854
+              "doubleValue":  -0.11611081659793854
             },
             {
-              "doubleValue": -0.0486966073513031
+              "doubleValue":  -0.0486966073513031
             },
             {
-              "doubleValue": 0.07523034512996674
+              "doubleValue":  0.07523034512996674
             },
             {
-              "doubleValue": 0.026919402182102203
+              "doubleValue":  0.026919402182102203
             },
             {
-              "doubleValue": -0.01398677658289671
+              "doubleValue":  -0.01398677658289671
             },
             {
-              "doubleValue": -0.006122428458184004
+              "doubleValue":  -0.006122428458184004
             },
             {
-              "doubleValue": 0.07502465695142746
+              "doubleValue":  0.07502465695142746
             },
             {
-              "doubleValue": 0.07003672420978546
+              "doubleValue":  0.07003672420978546
             },
             {
-              "doubleValue": -0.04365725442767143
+              "doubleValue":  -0.04365725442767143
             },
             {
-              "doubleValue": -0.034992653876543045
+              "doubleValue":  -0.034992653876543045
             },
             {
-              "doubleValue": 0.12187007814645767
+              "doubleValue":  0.12187007814645767
             },
             {
-              "doubleValue": -0.08782873302698135
+              "doubleValue":  -0.08782873302698135
             },
             {
-              "doubleValue": 0.037718016654253006
+              "doubleValue":  0.037718016654253006
             },
             {
-              "doubleValue": -0.03491551801562309
+              "doubleValue":  -0.03491551801562309
             },
             {
-              "doubleValue": 0.05471298098564148
+              "doubleValue":  0.05471298098564148
             },
             {
-              "doubleValue": -0.05805540829896927
+              "doubleValue":  -0.05805540829896927
             },
             {
-              "doubleValue": -0.11549375206232071
+              "doubleValue":  -0.11549375206232071
             },
             {
-              "doubleValue": -0.04846521094441414
+              "doubleValue":  -0.04846521094441414
             },
             {
-              "doubleValue": -0.02492680214345455
+              "doubleValue":  -0.02492680214345455
             },
             {
-              "doubleValue": -0.054455868899822235
+              "doubleValue":  -0.054455868899822235
             },
             {
-              "doubleValue": -0.10572357475757599
+              "doubleValue":  -0.10572357475757599
             },
             {
-              "doubleValue": -0.0008267689263448119
+              "doubleValue":  -0.0008267689263448119
             },
             {
-              "doubleValue": 0.04635690897703171
+              "doubleValue":  0.04635690897703171
             },
             {
-              "doubleValue": 0.10407807677984238
+              "doubleValue":  0.10407807677984238
             },
             {
-              "doubleValue": -0.11148283630609512
+              "doubleValue":  -0.11148283630609512
             },
             {
-              "doubleValue": -0.03332144021987915
+              "doubleValue":  -0.03332144021987915
             },
             {
-              "doubleValue": 0.04723108187317848
+              "doubleValue":  0.04723108187317848
             },
             {
-              "doubleValue": 0.011749920435249805
+              "doubleValue":  0.011749920435249805
             },
             {
-              "doubleValue": -0.013523979112505913
+              "doubleValue":  -0.013523979112505913
             },
             {
-              "doubleValue": 0.005833180155605078
+              "doubleValue":  0.005833180155605078
             },
             {
-              "doubleValue": -0.004968648310750723
+              "doubleValue":  -0.004968648310750723
             },
             {
-              "doubleValue": -0.01543944701552391
+              "doubleValue":  -0.01543944701552391
             },
             {
-              "doubleValue": -0.029130548238754272
+              "doubleValue":  -0.029130548238754272
             },
             {
-              "doubleValue": -0.08068107813596725
+              "doubleValue":  -0.08068107813596725
             },
             {
-              "doubleValue": -0.1648588478565216
+              "doubleValue":  -0.1648588478565216
             },
             {
-              "doubleValue": 0.026263773441314697
+              "doubleValue":  0.026263773441314697
             },
             {
-              "doubleValue": -0.08618322759866714
+              "doubleValue":  -0.08618322759866714
             },
             {
-              "doubleValue": -0.0616549476981163
+              "doubleValue":  -0.0616549476981163
             },
             {
-              "doubleValue": -0.019437506794929504
+              "doubleValue":  -0.019437506794929504
             },
             {
-              "doubleValue": 0.0057464055716991425
+              "doubleValue":  0.0057464055716991425
             },
             {
-              "doubleValue": 0.020388811826705933
+              "doubleValue":  0.020388811826705933
             },
             {
-              "doubleValue": -0.07111658900976181
+              "doubleValue":  -0.07111658900976181
             },
             {
-              "doubleValue": -0.1032039001584053
+              "doubleValue":  -0.1032039001584053
             },
             {
-              "doubleValue": -0.015143770724534988
+              "doubleValue":  -0.015143770724534988
             },
             {
-              "doubleValue": -0.10541504621505737
+              "doubleValue":  -0.10541504621505737
             },
             {
-              "doubleValue": -0.06741420924663544
+              "doubleValue":  -0.06741420924663544
             },
             {
-              "doubleValue": 0.10505509376525879
+              "doubleValue":  0.10505509376525879
             },
             {
-              "doubleValue": -0.06818553805351257
+              "doubleValue":  -0.06818553805351257
             },
             {
-              "doubleValue": 0.02825637347996235
+              "doubleValue":  0.02825637347996235
             },
             {
-              "doubleValue": -0.07780144363641739
+              "doubleValue":  -0.07780144363641739
             },
             {
-              "doubleValue": 0.10068422555923462
+              "doubleValue":  0.10068422555923462
             },
             {
-              "doubleValue": -0.016982106491923332
+              "doubleValue":  -0.016982106491923332
             },
             {
-              "doubleValue": 0.0002205520577263087
+              "doubleValue":  0.0002205520577263087
             },
             {
-              "doubleValue": 0.040263403207063675
+              "doubleValue":  0.040263403207063675
             },
             {
-              "doubleValue": 0.06659145653247833
+              "doubleValue":  0.06659145653247833
             },
             {
-              "doubleValue": -0.11055724322795868
+              "doubleValue":  -0.11055724322795868
             },
             {
-              "doubleValue": 0.028693461790680885
+              "doubleValue":  0.028693461790680885
             },
             {
-              "doubleValue": 0.04052051529288292
+              "doubleValue":  0.04052051529288292
             },
             {
-              "doubleValue": 0.0311617162078619
+              "doubleValue":  0.0311617162078619
             },
             {
-              "doubleValue": -0.015028071589767933
+              "doubleValue":  -0.015028071589767933
             },
             {
-              "doubleValue": -0.043785810470581055
+              "doubleValue":  -0.043785810470581055
             },
             {
-              "doubleValue": 0.09261097013950348
+              "doubleValue":  0.09261097013950348
             },
             {
-              "doubleValue": -0.030801761895418167
+              "doubleValue":  -0.030801761895418167
             },
             {
-              "doubleValue": 0.05954664573073387
+              "doubleValue":  0.05954664573073387
             },
             {
-              "doubleValue": -0.04090617969632149
+              "doubleValue":  -0.04090617969632149
             },
             {
-              "doubleValue": -0.04250026121735573
+              "doubleValue":  -0.04250026121735573
             },
             {
-              "doubleValue": 0.05260467901825905
+              "doubleValue":  0.05260467901825905
             },
             {
-              "doubleValue": -0.05697554722428322
+              "doubleValue":  -0.05697554722428322
             },
             {
-              "doubleValue": 0.020003147423267365
+              "doubleValue":  0.020003147423267365
             },
             {
-              "doubleValue": 0.05682127922773361
+              "doubleValue":  0.05682127922773361
             },
             {
-              "doubleValue": -0.04286021366715431
+              "doubleValue":  -0.04286021366715431
             },
             {
-              "doubleValue": -0.060009442269802094
+              "doubleValue":  -0.060009442269802094
             },
             {
-              "doubleValue": -0.07471612840890884
+              "doubleValue":  -0.07471612840890884
             },
             {
-              "doubleValue": -0.03239584341645241
+              "doubleValue":  -0.03239584341645241
             },
             {
-              "doubleValue": -0.03303861618041992
+              "doubleValue":  -0.03303861618041992
             },
             {
-              "doubleValue": 0.015735123306512833
+              "doubleValue":  0.015735123306512833
             },
             {
-              "doubleValue": -0.02247140184044838
+              "doubleValue":  -0.02247140184044838
             },
             {
-              "doubleValue": 0.0716308057308197
+              "doubleValue":  0.0716308057308197
             },
             {
-              "doubleValue": 0.00009375470835948363
+              "doubleValue":  0.00009375470835948363
             },
             {
-              "doubleValue": -0.044634271413087845
+              "doubleValue":  -0.044634271413087845
             },
             {
-              "doubleValue": 0.10726623982191086
+              "doubleValue":  0.10726623982191086
             },
             {
-              "doubleValue": -0.04638262093067169
+              "doubleValue":  -0.04638262093067169
             },
             {
-              "doubleValue": -0.028539195656776428
+              "doubleValue":  -0.028539195656776428
             },
             {
-              "doubleValue": -0.040443383157253265
+              "doubleValue":  -0.040443383157253265
             },
             {
-              "doubleValue": -0.037486620247364044
+              "doubleValue":  -0.037486620247364044
             },
             {
-              "doubleValue": -0.02848777361214161
+              "doubleValue":  -0.02848777361214161
             },
             {
-              "doubleValue": 0.08839437365531921
+              "doubleValue":  0.08839437365531921
             },
             {
-              "doubleValue": 0.06458599865436554
+              "doubleValue":  0.06458599865436554
             },
             {
-              "doubleValue": -0.028359217569231987
+              "doubleValue":  -0.028359217569231987
             },
             {
-              "doubleValue": -0.07831566780805588
+              "doubleValue":  -0.07831566780805588
             },
             {
-              "doubleValue": -0.06011228635907173
+              "doubleValue":  -0.06011228635907173
             },
             {
-              "doubleValue": 0.004390150774270296
+              "doubleValue":  0.004390150774270296
             },
             {
-              "doubleValue": -0.10114701837301254
+              "doubleValue":  -0.10114701837301254
             },
             {
-              "doubleValue": 0.018653320148587227
+              "doubleValue":  0.018653320148587227
             },
             {
-              "doubleValue": 0.09096547216176987
+              "doubleValue":  0.09096547216176987
             },
             {
-              "doubleValue": -0.00648238230496645
+              "doubleValue":  -0.00648238230496645
             },
             {
-              "doubleValue": -0.011595655232667923
+              "doubleValue":  -0.011595655232667923
             },
             {
-              "doubleValue": -0.01833193376660347
+              "doubleValue":  -0.01833193376660347
             },
             {
-              "doubleValue": -0.024104049429297447
+              "doubleValue":  -0.024104049429297447
             },
             {
-              "doubleValue": -0.005007214844226837
+              "doubleValue":  -0.005007214844226837
             },
             {
-              "doubleValue": 0.04388865455985069
+              "doubleValue":  0.04388865455985069
             },
             {
-              "doubleValue": 0.04573984444141388
+              "doubleValue":  0.04573984444141388
             },
             {
-              "doubleValue": 0.002032774966210127
+              "doubleValue":  0.002032774966210127
             },
             {
-              "doubleValue": -0.002257745945826173
+              "doubleValue":  -0.002257745945826173
             },
             {
-              "doubleValue": -0.03627820312976837
+              "doubleValue":  -0.03627820312976837
             },
             {
-              "doubleValue": -0.051447685807943344
+              "doubleValue":  -0.051447685807943344
             },
             {
-              "doubleValue": -0.08134955912828445
+              "doubleValue":  -0.08134955912828445
             },
             {
-              "doubleValue": 0.04527704790234566
+              "doubleValue":  0.04527704790234566
             },
             {
-              "doubleValue": 0.051627662032842636
+              "doubleValue":  0.051627662032842636
             },
             {
-              "doubleValue": -0.016596442088484764
+              "doubleValue":  -0.016596442088484764
             },
             {
-              "doubleValue": 0.05080490931868553
+              "doubleValue":  0.05080490931868553
             },
             {
-              "doubleValue": 0.005216116551309824
+              "doubleValue":  0.005216116551309824
             },
             {
-              "doubleValue": -0.10068422555923462
+              "doubleValue":  -0.10068422555923462
             },
             {
-              "doubleValue": -0.019000418484210968
+              "doubleValue":  -0.019000418484210968
             },
             {
-              "doubleValue": -0.03213873505592346
+              "doubleValue":  -0.03213873505592346
             },
             {
-              "doubleValue": -0.02979903295636177
+              "doubleValue":  -0.02979903295636177
             },
             {
-              "doubleValue": -0.025582430884242058
+              "doubleValue":  -0.025582430884242058
             },
             {
-              "doubleValue": 0.004518705885857344
+              "doubleValue":  0.004518705885857344
             },
             {
-              "doubleValue": -0.0010951273143291473
+              "doubleValue":  -0.0010951273143291473
             },
             {
-              "doubleValue": 0.0286677498370409
+              "doubleValue":  0.0286677498370409
             },
             {
-              "doubleValue": 0.050367821007966995
+              "doubleValue":  0.050367821007966995
             }
           ]
         }
       }
     },
     {
-      "key": "openinference.span.kind",
-      "value": {
-        "stringValue": "EMBEDDING"
+      "key":  "openinference.span.kind",
+      "value":  {
+        "stringValue":  "EMBEDDING"
       }
     }
   ],
-  "status": {
-    "code": "STATUS_CODE_OK"
+  "status":  {
+    "code":  "STATUS_CODE_OK"
   }
 }

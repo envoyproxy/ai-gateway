@@ -1,124 +1,124 @@
 {
-  "flags":  256,
-  "name":  "ChatCompletion",
-  "kind":  "SPAN_KIND_INTERNAL",
-  "attributes":  [
+  "flags": 256,
+  "name": "ChatCompletion",
+  "kind": "SPAN_KIND_INTERNAL",
+  "attributes": [
     {
-      "key":  "llm.system",
-      "value":  {
-        "stringValue":  "openai"
+      "key": "llm.system",
+      "value": {
+        "stringValue": "openai"
       }
     },
     {
-      "key":  "input.value",
-      "value":  {
-        "stringValue":  "{\"messages\": [{\"content\": \"Hello!\", \"role\": \"user\"}], \"model\": \"gpt-5-nano\"}"
+      "key": "input.value",
+      "value": {
+        "stringValue": "{\"messages\": [{\"content\": \"Hello!\", \"role\": \"user\"}], \"model\": \"gpt-5-nano\"}"
       }
     },
     {
-      "key":  "input.mime_type",
-      "value":  {
-        "stringValue":  "application/json"
+      "key": "input.mime_type",
+      "value": {
+        "stringValue": "application/json"
       }
     },
     {
-      "key":  "output.value",
-      "value":  {
-        "stringValue":  "{\"id\":\"chatcmpl-CM9n9OhFOl4lSSFwarLEIMnPrNWSP\",\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"logprobs\":null,\"message\":{\"content\":\"Hi there! How can I help today? I can answer questions, brainstorm ideas, write or edit text, explain concepts, help with coding, plan projects, translate languages, or just chat. What would you like to do? If you’re not sure, tell me a topic you’re curious about and I’ll give you a quick rundown.\",\"refusal\":null,\"role\":\"assistant\",\"annotations\":[]},\"content_filter_results\":{}}],\"created\":1759396891,\"model\":\"gpt-5-nano-2025-08-07\",\"object\":\"chat.completion\",\"system_fingerprint\":null,\"usage\":{\"completion_tokens\":271,\"prompt_tokens\":8,\"total_tokens\":279,\"completion_tokens_details\":{\"accepted_prediction_tokens\":0,\"audio_tokens\":0,\"reasoning_tokens\":192,\"rejected_prediction_tokens\":0},\"prompt_tokens_details\":{\"audio_tokens\":0,\"cached_tokens\":0}},\"prompt_filter_results\":[{\"content_filter_results\":{},\"prompt_index\":0}]}"
+      "key": "output.value",
+      "value": {
+        "stringValue": "{\"id\":\"chatcmpl-CM9n9OhFOl4lSSFwarLEIMnPrNWSP\",\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"logprobs\":null,\"message\":{\"content\":\"Hi there! How can I help today? I can answer questions, brainstorm ideas, write or edit text, explain concepts, help with coding, plan projects, translate languages, or just chat. What would you like to do? If you’re not sure, tell me a topic you’re curious about and I’ll give you a quick rundown.\",\"refusal\":null,\"role\":\"assistant\",\"annotations\":[]},\"content_filter_results\":{}}],\"created\":1759396891,\"model\":\"gpt-5-nano-2025-08-07\",\"object\":\"chat.completion\",\"system_fingerprint\":null,\"usage\":{\"completion_tokens\":271,\"prompt_tokens\":8,\"total_tokens\":279,\"completion_tokens_details\":{\"accepted_prediction_tokens\":0,\"audio_tokens\":0,\"reasoning_tokens\":192,\"rejected_prediction_tokens\":0},\"prompt_tokens_details\":{\"audio_tokens\":0,\"cached_tokens\":0}},\"prompt_filter_results\":[{\"content_filter_results\":{},\"prompt_index\":0}]}"
       }
     },
     {
-      "key":  "output.mime_type",
-      "value":  {
-        "stringValue":  "application/json"
+      "key": "output.mime_type",
+      "value": {
+        "stringValue": "application/json"
       }
     },
     {
-      "key":  "llm.invocation_parameters",
-      "value":  {
-        "stringValue":  "{\"model\": \"gpt-5-nano\"}"
+      "key": "llm.invocation_parameters",
+      "value": {
+        "stringValue": "{\"model\": \"gpt-5-nano\"}"
       }
     },
     {
-      "key":  "llm.input_messages.0.message.role",
-      "value":  {
-        "stringValue":  "user"
+      "key": "llm.input_messages.0.message.role",
+      "value": {
+        "stringValue": "user"
       }
     },
     {
-      "key":  "llm.input_messages.0.message.content",
-      "value":  {
-        "stringValue":  "Hello!"
+      "key": "llm.input_messages.0.message.content",
+      "value": {
+        "stringValue": "Hello!"
       }
     },
     {
-      "key":  "llm.model_name",
-      "value":  {
-        "stringValue":  "gpt-5-nano-2025-08-07"
+      "key": "llm.model_name",
+      "value": {
+        "stringValue": "gpt-5-nano-2025-08-07"
       }
     },
     {
-      "key":  "llm.token_count.total",
-      "value":  {
-        "intValue":  "279"
+      "key": "llm.token_count.total",
+      "value": {
+        "intValue": "279"
       }
     },
     {
-      "key":  "llm.token_count.prompt",
-      "value":  {
-        "intValue":  "8"
+      "key": "llm.token_count.prompt",
+      "value": {
+        "intValue": "8"
       }
     },
     {
-      "key":  "llm.token_count.completion",
-      "value":  {
-        "intValue":  "271"
+      "key": "llm.token_count.completion",
+      "value": {
+        "intValue": "271"
       }
     },
     {
-      "key":  "llm.token_count.prompt_details.cache_read",
-      "value":  {
-        "intValue":  "0"
+      "key": "llm.token_count.prompt_details.cache_read",
+      "value": {
+        "intValue": "0"
       }
     },
     {
-      "key":  "llm.token_count.prompt_details.audio",
-      "value":  {
-        "intValue":  "0"
+      "key": "llm.token_count.prompt_details.audio",
+      "value": {
+        "intValue": "0"
       }
     },
     {
-      "key":  "llm.token_count.completion_details.reasoning",
-      "value":  {
-        "intValue":  "192"
+      "key": "llm.token_count.completion_details.reasoning",
+      "value": {
+        "intValue": "192"
       }
     },
     {
-      "key":  "llm.token_count.completion_details.audio",
-      "value":  {
-        "intValue":  "0"
+      "key": "llm.token_count.completion_details.audio",
+      "value": {
+        "intValue": "0"
       }
     },
     {
-      "key":  "llm.output_messages.0.message.role",
-      "value":  {
-        "stringValue":  "assistant"
+      "key": "llm.output_messages.0.message.role",
+      "value": {
+        "stringValue": "assistant"
       }
     },
     {
-      "key":  "llm.output_messages.0.message.content",
-      "value":  {
-        "stringValue":  "Hi there! How can I help today? I can answer questions, brainstorm ideas, write or edit text, explain concepts, help with coding, plan projects, translate languages, or just chat. What would you like to do? If you’re not sure, tell me a topic you’re curious about and I’ll give you a quick rundown."
+      "key": "llm.output_messages.0.message.content",
+      "value": {
+        "stringValue": "Hi there! How can I help today? I can answer questions, brainstorm ideas, write or edit text, explain concepts, help with coding, plan projects, translate languages, or just chat. What would you like to do? If you’re not sure, tell me a topic you’re curious about and I’ll give you a quick rundown."
       }
     },
     {
-      "key":  "openinference.span.kind",
-      "value":  {
-        "stringValue":  "LLM"
+      "key": "openinference.span.kind",
+      "value": {
+        "stringValue": "LLM"
       }
     }
   ],
-  "status":  {
-    "code":  "STATUS_CODE_OK"
+  "status": {
+    "code": "STATUS_CODE_OK"
   }
 }

@@ -230,11 +230,13 @@ spec:
                       or AIServiceBackend.
                     enum:
                     - OpenAI
+                    - Cohere
                     - AWSBedrock
                     - AzureOpenAI
                     - GCPVertexAI
                     - GCPAnthropic
                     - Anthropic
+                    - AWSAnthropic
                     type: string
                   version:
                     description: |-

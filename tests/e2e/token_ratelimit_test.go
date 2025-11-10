@@ -55,6 +55,9 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
 
 	// Wait for the redis pod to be ready so that the rate limit can be performed correctly.
+	// Until the redis pod is ready, envoy-ratelimit deployment will be in CrashLoopBackOff, so restart it so
+	// we can have it up and running faster in a clean state.
+	require.NoError(t, e2elib.KubectlRestartDeployment(t.Context(), e2elib.EnvoyGatewayNamespace, "envoy-ratelimit"))
 	e2elib.RequireWaitForPodReady(t, e2elib.EnvoyGatewayNamespace, "app.kubernetes.io/component=ratelimit")
 	e2elib.RequireWaitForPodReady(t, "redis-system", "app=redis")
 

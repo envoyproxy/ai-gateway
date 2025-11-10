@@ -29,6 +29,7 @@ const (
 	genaiOperationEmbedding       = "embeddings"
 	genaiOperationMessages        = "messages"
 	genaiOperationImageGeneration = "image_generation"
+	genaiOperationRerank          = "rerank"
 	genaiProviderOpenAI           = "openai"
 	genaiProviderAWSBedrock       = "aws.bedrock"
 	genaiTokenTypeInput           = "input"

@@ -259,59 +259,74 @@ func TestMCPRouteController_syncGateway_notFound(t *testing.T) { // coverage for
 func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 	c := requireNewFakeClientWithIndexesForMCP(t)
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
-	ctrlr := NewMCPRouteController(c, fakekube.NewClientset(
-		&corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "some-secret", Namespace: "default"},
-			Data:       map[string][]byte{"apiKey": []byte("secretvalue")},
-		},
-	), logr.Discard(), eventCh.Ch)
+	kubeClient := fakekube.NewClientset(&corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "some-secret", Namespace: "default"},
+		Data:       map[string][]byte{"apiKey": []byte("secretvalue")},
+	})
+	ctrlr := NewMCPRouteController(c, kubeClient, logr.Discard(), eventCh.Ch)
 
-	httpRule, err := ctrlr.mcpBackendRefToHTTPRouteRule(t.Context(),
-		&aigv1a1.MCPRoute{ObjectMeta: metav1.ObjectMeta{Name: "route-a", Namespace: "default"}},
-		&aigv1a1.MCPRouteBackendRef{
-			BackendObjectReference: gwapiv1.BackendObjectReference{
-				Name:      "svc-a",
-				Namespace: ptr.To(gwapiv1.Namespace("default")),
-			},
-			SecurityPolicy: &aigv1a1.MCPBackendSecurityPolicy{
-				APIKey: &aigv1a1.MCPBackendAPIKey{
-					SecretRef: &gwapiv1.SecretObjectReference{
-						Name: "some-secret",
+	tests := []struct {
+		name           string
+		header         *string
+		wantHeader     string
+		wantCredential []byte
+	}{
+		{"default header", nil, "Authorization", []byte("Bearer secretvalue")},
+		{"custom header", ptr.To("X-Api-Key"), "X-Api-Key", []byte("secretvalue")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			httpRule, err := ctrlr.mcpBackendRefToHTTPRouteRule(t.Context(),
+				&aigv1a1.MCPRoute{ObjectMeta: metav1.ObjectMeta{Name: "route-a", Namespace: "default"}},
+				&aigv1a1.MCPRouteBackendRef{
+					BackendObjectReference: gwapiv1.BackendObjectReference{
+						Name:      "svc-a",
+						Namespace: ptr.To(gwapiv1.Namespace("default")),
+					},
+					SecurityPolicy: &aigv1a1.MCPBackendSecurityPolicy{
+						APIKey: &aigv1a1.MCPBackendAPIKey{
+							Header: tt.header,
+							SecretRef: &gwapiv1.SecretObjectReference{
+								Name: "some-secret",
+							},
+						},
 					},
 				},
-			},
-		},
-	)
-	require.NoError(t, err)
-	require.Len(t, httpRule.Matches, 1)
-	require.Equal(t, "/", *httpRule.Matches[0].Path.Value)
-	headers := httpRule.Matches[0].Headers
-	require.Len(t, headers, 2)
-	require.Equal(t, internalapi.MCPBackendHeader, string(headers[0].Name))
-	require.Equal(t, "svc-a", headers[0].Value)
-	require.Equal(t, internalapi.MCPRouteHeader, string(headers[1].Name))
-	require.Contains(t, headers[1].Value, "route-a")
-	require.Len(t, httpRule.Filters, 1)
-	require.Equal(t, gwapiv1.HTTPRouteFilterExtensionRef, httpRule.Filters[0].Type)
-	require.NotNil(t, httpRule.Filters[0].ExtensionRef)
-	require.Equal(t, gwapiv1.Group("gateway.envoyproxy.io"), httpRule.Filters[0].ExtensionRef.Group)
-	require.Equal(t, gwapiv1.Kind("HTTPRouteFilter"), httpRule.Filters[0].ExtensionRef.Kind)
-	require.Contains(t, string(httpRule.Filters[0].ExtensionRef.Name), internalapi.MCPPerBackendHTTPRouteFilterPrefix)
+			)
+			require.NoError(t, err)
+			require.Len(t, httpRule.Matches, 1)
+			require.Equal(t, "/", *httpRule.Matches[0].Path.Value)
+			headers := httpRule.Matches[0].Headers
+			require.Len(t, headers, 2)
+			require.Equal(t, internalapi.MCPBackendHeader, string(headers[0].Name))
+			require.Equal(t, "svc-a", headers[0].Value)
+			require.Equal(t, internalapi.MCPRouteHeader, string(headers[1].Name))
+			require.Contains(t, headers[1].Value, "route-a")
+			require.Len(t, httpRule.Filters, 1)
+			require.Equal(t, gwapiv1.HTTPRouteFilterExtensionRef, httpRule.Filters[0].Type)
+			require.NotNil(t, httpRule.Filters[0].ExtensionRef)
+			require.Equal(t, gwapiv1.Group("gateway.envoyproxy.io"), httpRule.Filters[0].ExtensionRef.Group)
+			require.Equal(t, gwapiv1.Kind("HTTPRouteFilter"), httpRule.Filters[0].ExtensionRef.Kind)
+			require.Contains(t, string(httpRule.Filters[0].ExtensionRef.Name), internalapi.MCPPerBackendHTTPRouteFilterPrefix)
 
-	var httpFilter egv1a1.HTTPRouteFilter
-	err = c.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: string(httpRule.Filters[0].ExtensionRef.Name)}, &httpFilter)
-	require.NoError(t, err)
+			var httpFilter egv1a1.HTTPRouteFilter
+			err = c.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: string(httpRule.Filters[0].ExtensionRef.Name)}, &httpFilter)
+			require.NoError(t, err)
+			require.NotNil(t, httpFilter.Spec.CredentialInjection)
+			require.Equal(t, tt.wantHeader, ptr.Deref(httpFilter.Spec.CredentialInjection.Header, ""))
+			require.Equal(t, httpFilter.Name+"-credential", string(httpFilter.Spec.CredentialInjection.Credential.ValueRef.Name))
 
-	require.NotNil(t, httpFilter.Spec.CredentialInjection)
-	require.Equal(t, "Authorization", ptr.Deref(httpFilter.Spec.CredentialInjection.Header, ""))
-	require.Equal(t,
-		httpFilter.Name+"-credential",
-		string(httpFilter.Spec.CredentialInjection.Credential.ValueRef.Name),
-	)
+			secret, err := kubeClient.CoreV1().Secrets("default").Get(t.Context(),
+				string(httpFilter.Spec.CredentialInjection.Credential.ValueRef.Name), metav1.GetOptions{})
+			require.NoError(t, err)
+			require.Equal(t, tt.wantCredential, secret.Data[egv1a1.InjectedCredentialKey])
 
-	require.NotNil(t, httpFilter.Spec.URLRewrite)
-	require.NotNil(t, httpFilter.Spec.URLRewrite.Hostname)
-	require.Equal(t, egv1a1.BackendHTTPHostnameModifier, httpFilter.Spec.URLRewrite.Hostname.Type)
+			require.NotNil(t, httpFilter.Spec.URLRewrite)
+			require.NotNil(t, httpFilter.Spec.URLRewrite.Hostname)
+			require.Equal(t, egv1a1.BackendHTTPHostnameModifier, httpFilter.Spec.URLRewrite.Hostname.Type)
+		})
+	}
 }
 
 func TestMCPRouteController_ensureMCPBackendRefHTTPFilter(t *testing.T) {
@@ -356,4 +371,45 @@ func TestMCPRouteController_ensureMCPBackendRefHTTPFilter(t *testing.T) {
 	err = c.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: filterName}, &httpFilter)
 	require.NoError(t, err)
 	require.Nil(t, httpFilter.Spec.CredentialInjection)
+}
+
+func TestMCPRouteController_syncGateways_NamespaceCrossReference(t *testing.T) {
+	c := requireNewFakeClientWithIndexesForMCP(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+
+	gateway1 := &gwapiv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{Name: "gateway1", Namespace: "default"},
+	}
+	gateway2 := &gwapiv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{Name: "gateway2", Namespace: "other-ns"},
+	}
+
+	err := c.Create(t.Context(), gateway1)
+	require.NoError(t, err)
+	err = c.Create(t.Context(), gateway2)
+	require.NoError(t, err)
+
+	ctrlr := NewMCPRouteController(c, fakekube.NewClientset(), logr.Discard(), eventCh.Ch)
+
+	mcpRoute := &aigv1a1.MCPRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
+		Spec: aigv1a1.MCPRouteSpec{
+			ParentRefs: []gwapiv1.ParentReference{
+				{Name: gwapiv1.ObjectName("gateway1"), Namespace: ptr.To(gwapiv1.Namespace("default"))},
+				{Name: gwapiv1.ObjectName("gateway2"), Namespace: ptr.To(gwapiv1.Namespace("other-ns"))},
+			},
+		},
+	}
+	err = ctrlr.syncGateways(t.Context(), mcpRoute)
+	require.NoError(t, err)
+
+	// Verify that events were sent for both gateways.
+	// We should receive 2 events (one for each parent reference).
+	gateways := eventCh.RequireItemsEventually(t, 2)
+	require.Len(t, gateways, 2)
+
+	require.Equal(t, "gateway1", gateways[0].Name)
+	require.Equal(t, "default", gateways[0].Namespace)
+	require.Equal(t, "gateway2", gateways[1].Name)
+	require.Equal(t, "other-ns", gateways[1].Namespace)
 }

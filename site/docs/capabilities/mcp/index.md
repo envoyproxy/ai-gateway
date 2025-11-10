@@ -65,7 +65,7 @@ sequenceDiagram
 
 - **Session Management**: The gateway creates unified sessions by encoding multiple backend session IDs, handling reconnection with `Last-Event-ID` support for SSE streams.
 - **Notification Handling**: Long-lived SSE streams from multiple MCP servers are merged into a single stream for clients, with proper event ID reconstruction.
-- **Request Routing**: Tool names are automatically prefixed with the backend name (e.g., `github__get_issue`) to route calls to the correct upstream server.
+- **Request Routing**: Tool names are automatically prefixed with the backend name (e.g., `github__issue_read`) to route calls to the correct upstream server.
 
 For detailed architecture and design decisions, see the [MCP Gateway proposal](https://github.com/envoyproxy/ai-gateway/tree/main/docs/proposals/006-mcp-gateway).
 
@@ -151,7 +151,7 @@ spec:
       path: "/mcp/x/issues/readonly"
       toolSelector:
         includeRegex:
-          - .*_issues?.* # Matches get_issue, list_issues, etc.
+          - .*issues?.* # Matches issue_read, list_issues, etc.
       securityPolicy:
         apiKey:
           secretRef:
@@ -205,7 +205,7 @@ spec:
 
 Clients will see all tools with prefixed names:
 
-- `github__get_issue`
+- `github__issue_read`
 - `github__list_issues`
 - `context7__resolve-library-id`
 - `context7__get-library-docs`

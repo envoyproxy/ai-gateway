@@ -18,7 +18,7 @@ import (
 )
 
 func TestOpenAIToOpenAIImageTranslator_RequestBody_ModelOverrideAndPath(t *testing.T) {
-	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "gpt-image-1", nil)
+	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", openai.ModelGPTImage1Mini, nil)
 	req := &openaisdk.ImageGenerateParams{Model: openaisdk.ImageModelDallE3, Prompt: "a cat"}
 	original, _ := json.Marshal(req)
 
@@ -32,9 +32,9 @@ func TestOpenAIToOpenAIImageTranslator_RequestBody_ModelOverrideAndPath(t *testi
 
 	require.NotNil(t, bm)
 	mutated := bm.GetBody()
-	var got openaisdk.ImageGenerateParams
-	require.NoError(t, json.Unmarshal(mutated, &got))
-	require.Equal(t, "gpt-image-1", got.Model)
+	var actual openaisdk.ImageGenerateParams
+	require.NoError(t, json.Unmarshal(mutated, &actual))
+	require.Equal(t, openai.ModelGPTImage1Mini, actual.Model)
 }
 
 func TestOpenAIToOpenAIImageTranslator_RequestBody_ForceMutation(t *testing.T) {
@@ -67,11 +67,11 @@ func TestOpenAIToOpenAIImageTranslator_ResponseError_NonJSON(t *testing.T) {
 	require.NotNil(t, bm)
 
 	// Body should be OpenAI error JSON
-	var got struct {
+	var actual struct {
 		Error openai.ErrorType `json:"error"`
 	}
-	require.NoError(t, json.Unmarshal(bm.GetBody(), &got))
-	require.Equal(t, openAIBackendError, got.Error.Type)
+	require.NoError(t, json.Unmarshal(bm.GetBody(), &actual))
+	require.Equal(t, openAIBackendError, actual.Error.Type)
 }
 
 func TestOpenAIToOpenAIImageTranslator_ResponseBody_OK(t *testing.T) {
@@ -127,7 +127,7 @@ func TestOpenAIToOpenAIImageTranslator_ResponseError_ReadError(t *testing.T) {
 
 func TestOpenAIToOpenAIImageTranslator_ResponseBody_ModelPropagatesFromRequest(t *testing.T) {
 	// Use override so effective model differs from original
-	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "gpt-image-1", nil)
+	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", openai.ModelGPTImage1Mini, nil)
 	req := &openaisdk.ImageGenerateParams{Model: openaisdk.ImageModelDallE3, Prompt: "a cat"}
 	original, _ := json.Marshal(req)
 	// Call RequestBody first to set requestModel inside translator
@@ -142,7 +142,7 @@ func TestOpenAIToOpenAIImageTranslator_ResponseBody_ModelPropagatesFromRequest(t
 	buf, _ := json.Marshal(resp)
 	_, _, _, respModel, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true)
 	require.NoError(t, err)
-	require.Equal(t, "gpt-image-1", respModel)
+	require.Equal(t, openai.ModelGPTImage1Mini, respModel)
 }
 
 func TestOpenAIToOpenAIImageTranslator_ResponseHeaders_NoOp(t *testing.T) {
@@ -158,3 +158,28 @@ func TestOpenAIToOpenAIImageTranslator_ResponseBody_DecodeError(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to decode response body")
 }
+
+func TestOpenAIToOpenAIImageTranslator_ResponseBody_RecordsSpan(t *testing.T) {
+	mockSpan := &mockImageGenerationSpan{}
+	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "", mockSpan)
+
+	resp := &openaisdk.ImagesResponse{
+		Data: []openaisdk.Image{{URL: "https://example.com/img.png"}},
+		Size: openaisdk.ImagesResponseSize1024x1024,
+	}
+	buf, _ := json.Marshal(resp)
+	_, _, _, _, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true)
+	require.NoError(t, err)
+	require.NotNil(t, mockSpan.recordedResponse)
+}
+
+type mockImageGenerationSpan struct {
+	recordedResponse *openaisdk.ImagesResponse
+}
+
+func (m *mockImageGenerationSpan) RecordResponse(resp *openaisdk.ImagesResponse) {
+	m.recordedResponse = resp
+}
+
+func (m *mockImageGenerationSpan) EndSpanOnError(int, []byte) {}
+func (m *mockImageGenerationSpan) EndSpan()                   {}

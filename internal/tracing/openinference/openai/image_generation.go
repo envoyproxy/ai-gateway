@@ -52,7 +52,7 @@ var imageGenStartOpts = []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKin
 
 // StartParams implements the same method as defined in tracing.ImageGenerationRecorder.
 func (r *ImageGenerationRecorder) StartParams(*openaisdk.ImageGenerateParams, []byte) (spanName string, opts []trace.SpanStartOption) {
-	return "ImageGeneration", imageGenStartOpts
+	return "ImagesResponse", imageGenStartOpts
 }
 
 // RecordRequest implements the same method as defined in tracing.ImageGenerationRecorder.
@@ -86,11 +86,10 @@ func (r *ImageGenerationRecorder) RecordResponseOnError(span trace.Span, statusC
 }
 
 // buildImageGenerationRequestAttributes builds OpenInference attributes from the image generation request.
-func buildImageGenerationRequestAttributes(req *openaisdk.ImageGenerateParams, body string, config *openinference.TraceConfig) []attribute.KeyValue {
+func buildImageGenerationRequestAttributes(_ *openaisdk.ImageGenerateParams, body string, config *openinference.TraceConfig) []attribute.KeyValue {
 	attrs := []attribute.KeyValue{
 		attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 		attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-		attribute.String(openinference.LLMModelName, req.Model),
 	}
 
 	if config.HideInputs {
@@ -98,6 +97,10 @@ func buildImageGenerationRequestAttributes(req *openaisdk.ImageGenerateParams, b
 	} else {
 		attrs = append(attrs, attribute.String(openinference.InputValue, body))
 		attrs = append(attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
+	}
+
+	if !config.HideLLMInvocationParameters {
+		attrs = append(attrs, attribute.String(openinference.LLMInvocationParameters, body))
 	}
 
 	return attrs

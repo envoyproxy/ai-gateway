@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/anthropics/anthropic-sdk-go"
+	anthropicoption "github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/assert"
@@ -46,7 +48,14 @@ func TestWithRealProviders(t *testing.T) {
 			{Name: "openai", Schema: openAISchema, Auth: &filterapi.BackendAuth{
 				APIKey: &filterapi.APIKeyAuth{Key: cc.OpenAIAPIKey},
 			}},
+			{Name: "anthropic", Schema: anthropicSchema, Auth: &filterapi.BackendAuth{
+				AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: cc.AnthropicAPIKey},
+			}},
 			{Name: "aws-bedrock", Schema: awsBedrockSchema, Auth: &filterapi.BackendAuth{AWSAuth: &filterapi.AWSAuth{
+				CredentialFileLiteral: cc.AWSFileLiteral,
+				Region:                "us-east-1",
+			}}},
+			{Name: "anthropic-aws-bedrock", Schema: awsAnthropicSchema, Auth: &filterapi.BackendAuth{AWSAuth: &filterapi.AWSAuth{
 				CredentialFileLiteral: cc.AWSFileLiteral,
 				Region:                "us-east-1",
 			}}},
@@ -116,6 +125,17 @@ func TestWithRealProviders(t *testing.T) {
 				t.Run(tc.name, func(t *testing.T) {
 					cc.MaybeSkip(t, tc.required)
 					requireEventuallyEmbeddingsRequestOK(t, listenerAddress, tc.modelName)
+				})
+			}
+		})
+		t.Run("messages", func(t *testing.T) {
+			for _, tc := range []realProvidersTestCase{
+				{name: "anthropic", modelName: "claude-sonnet-4-5", required: internaltesting.RequiredCredentialAnthropic},
+				{name: "anthropic-aws-bedrock", modelName: "global.anthropic.claude-sonnet-4-5-20250929-v1:0", required: internaltesting.RequiredCredentialAWS},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					cc.MaybeSkip(t, tc.required)
+					requireEventuallyMessagesNonStreamingRequestOK(t, listenerAddress, tc.modelName)
 				})
 			}
 		})
@@ -359,6 +379,33 @@ func requireEventuallyChatCompletionNonStreamingRequestOK(t *testing.T, listener
 			}
 		}
 		return nonEmptyCompletion
+	}, realProvidersEventuallyTimeout, realProvidersEventuallyInterval)
+}
+
+func requireEventuallyMessagesNonStreamingRequestOK(t *testing.T, listenerAddress, modelName string) {
+	client := anthropic.NewClient(
+		anthropicoption.WithAPIKey("dummy"),
+		anthropicoption.WithBaseURL(listenerAddress+"/anthropic/"),
+	)
+	internaltesting.RequireEventuallyNoError(t, func() error {
+		message, err := client.Messages.New(t.Context(), anthropic.MessageNewParams{
+			MaxTokens: 1024,
+			Messages: []anthropic.MessageParam{
+				anthropic.NewUserMessage(anthropic.NewTextBlock("Say hi!")),
+			},
+			Model: anthropic.Model(modelName),
+		})
+		if err != nil {
+			t.Logf("messages error: %v", err)
+			return fmt.Errorf("messages error: %w", err)
+		}
+
+		if len(message.Content) == 0 {
+			return fmt.Errorf("empty message content in response")
+		}
+
+		t.Logf("response: %+v", message.Content)
+		return nil
 	}, realProvidersEventuallyTimeout, realProvidersEventuallyInterval)
 }
 

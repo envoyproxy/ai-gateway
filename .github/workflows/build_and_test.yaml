@@ -67,7 +67,7 @@ jobs:
             ~/go/pkg/mod
             ~/go/bin
           key: unittest-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}-${{ matrix.os }}
-      - run: make test-coverage
+      - run: make test-coverage GO_TEST_ARGS='-race'
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest'
         uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24 # v5.4.3
@@ -160,6 +160,7 @@ jobs:
           TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
           TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
           TEST_GEMINI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_GEMINI_API_KEY }}
+          TEST_COHERE_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_COHERE_API_KEY }}
           TEST_GROQ_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_GROQ_API_KEY }}
           TEST_GROK_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_GROK_API_KEY }}
           TEST_SAMBANOVA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_SAMBANOVA_API_KEY }}
@@ -183,6 +184,8 @@ jobs:
         include:
           - name: latest
             envoy_gateway_version: v0.0.0-latest
+          - name: v1.6.0-rc.1
+            envoy_gateway_version: v1.6.0-rc.1
           - name: v1.5.0
             envoy_gateway_version: v1.5.0
     steps:
@@ -207,6 +210,7 @@ jobs:
           TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
           TEST_ANTHROPIC_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_ANTHROPIC_API_KEY }}
           TEST_GEMINI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_GEMINI_API_KEY }}
+          TEST_COHERE_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_COHERE_API_KEY }}
         run: make test-e2e
 
   test_e2e_upgrade:
@@ -242,7 +246,7 @@ jobs:
       - run: make test-e2e-upgrade
         env:
           # We only need to test the upgrade from the latest stable version of EG.
-          EG_VERSION: v1.5.0
+          EG_VERSION: v1.6.0-rc.1
           K8S_VERSION: ${{ matrix.k8s-version }}
 
   test_e2e_inference_extension:
@@ -270,6 +274,8 @@ jobs:
           key: e2e-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
       - uses: docker/setup-buildx-action@v3
       - run: make test-e2e-inference-extension
+        env:
+          EG_VERSION: v1.6.0-rc.1
 
   test_e2e_namespaced:
     needs: changes
@@ -299,7 +305,7 @@ jobs:
         env:
           # We only need to test with the latest stable version of EG, since these e2e tests
           # do not depend on the EG version.
-          EG_VERSION: v1.5.0
+          EG_VERSION: v1.6.0-rc.1
 
   test_e2e_aigw:
     needs: changes
