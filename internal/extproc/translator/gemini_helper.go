@@ -321,21 +321,43 @@ func assistantMsgToGeminiParts(msg openai.ChatCompletionAssistantMessageParam) (
 //	}
 //
 // ].
-func openAIToolsToGeminiTools(openaiTools []openai.Tool) ([]genai.Tool, error) {
+func openAIToolsToGeminiTools(openaiTools []openai.Tool, parametersJSONSchemaAvailable bool) ([]genai.Tool, error) {
 	if len(openaiTools) == 0 {
 		return nil, nil
 	}
 	var functionDecls []*genai.FunctionDeclaration
+
 	for _, tool := range openaiTools {
-		if tool.Type == openai.ToolTypeFunction {
+		switch tool.Type {
+		case openai.ToolTypeFunction:
 			if tool.Function != nil {
+
 				functionDecl := &genai.FunctionDeclaration{
-					Name:                 tool.Function.Name,
-					Description:          tool.Function.Description,
-					ParametersJsonSchema: tool.Function.Parameters,
+					Name:        tool.Function.Name,
+					Description: tool.Function.Description,
+				}
+
+				if parametersJSONSchemaAvailable {
+					functionDecl.ParametersJsonSchema = tool.Function.Parameters
+				} else if tool.Function.Parameters != nil {
+					paramsMap, ok := tool.Function.Parameters.(map[string]any)
+					if !ok {
+						return nil, fmt.Errorf("invalid JSON schema for parameters in tool %s: expected map[string]any, got %T", tool.Function.Name, tool.Function.Parameters)
+					}
+
+					if len(paramsMap) > 0 {
+						var err error
+						if functionDecl.Parameters, err = jsonSchemaToGemini(paramsMap); err != nil {
+							return nil, fmt.Errorf("invalid JSON schema for parameters in tool %s: %w", tool.Function.Name, err)
+						}
+					}
 				}
 				functionDecls = append(functionDecls, functionDecl)
 			}
+		case openai.ToolTypeImageGeneration:
+			return nil, fmt.Errorf("tool-type image generation not supported yet when translating OpenAI req to Gemini")
+		default:
+			return nil, fmt.Errorf("unsupported tool type: %s", tool.Type)
 		}
 	}
 	if len(functionDecls) == 0 {

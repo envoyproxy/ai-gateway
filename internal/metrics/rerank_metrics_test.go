@@ -7,6 +7,7 @@ package metrics
 
 import (
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -145,6 +146,11 @@ func TestRerank_Labels_SetModel_RequestAndResponseDiffer(t *testing.T) {
 }
 
 func TestRerank_RecordRequestCompletion(t *testing.T) {
+	// Virtualize time.Sleep to avoid any flaky test behavior.
+	synctest.Test(t, testRerankRecordRequestCompletion)
+}
+
+func testRerankRecordRequestCompletion(t *testing.T) {
 	mr := sdkmetric.NewManualReader()
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
 	rr := NewRerankFactory(meter, nil)().(*rerank)

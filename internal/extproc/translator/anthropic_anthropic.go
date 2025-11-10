@@ -13,11 +13,12 @@ import (
 	"io"
 	"strconv"
 
+	"github.com/anthropics/anthropic-sdk-go"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/tidwall/sjson"
 
-	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
+	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
@@ -39,12 +40,12 @@ type anthropicToAnthropicTranslator struct {
 }
 
 // RequestBody implements [AnthropicMessagesTranslator.RequestBody].
-func (a *anthropicToAnthropicTranslator) RequestBody(original []byte, body *anthropic.MessagesRequest, forceBodyMutation bool) (
+func (a *anthropicToAnthropicTranslator) RequestBody(original []byte, body *anthropicschema.MessagesRequest, forceBodyMutation bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
 ) {
-	a.stream = body.Stream
+	a.stream = body.GetStream()
 	// Store the request model to use as fallback for response model
-	a.requestModel = body.Model
+	a.requestModel = body.GetModel()
 	var newBody []byte
 	if a.modelNameOverride != "" {
 		// If modelName is set we override the model to be used for the request.
@@ -106,7 +107,7 @@ func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body 
 	}
 
 	// Parse the Anthropic response to extract token usage.
-	anthropicResp := &anthropic.MessagesResponse{}
+	anthropicResp := &anthropic.Message{}
 	if err := json.NewDecoder(body).Decode(anthropicResp); err != nil {
 		return nil, nil, tokenUsage, responseModel, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
@@ -116,7 +117,7 @@ func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body 
 		TotalTokens:       uint32(anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens), //nolint:gosec
 		CachedInputTokens: uint32(anthropicResp.Usage.CacheReadInputTokens),                           //nolint:gosec
 	}
-	responseModel = cmp.Or(anthropicResp.Model, a.requestModel)
+	responseModel = cmp.Or(internalapi.ResponseModel(anthropicResp.Model), a.requestModel)
 	return nil, nil, tokenUsage, responseModel, nil
 }
 
@@ -133,7 +134,7 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent() (tokenUsa
 		if !bytes.HasPrefix(line, dataPrefix) {
 			continue
 		}
-		eventUnion := &anthropic.MessagesStreamEvent{}
+		eventUnion := &anthropic.MessageStreamEventUnion{}
 		if err := json.Unmarshal(bytes.TrimPrefix(line, dataPrefix), eventUnion); err != nil {
 			continue
 		}
@@ -142,13 +143,13 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent() (tokenUsa
 		switch eventUnion.Type {
 		case "message_start":
 			// Message only valid in message_start events.
-			if m := eventUnion.MessageStart.Model; m != "" {
+			if eventUnion.Message.Model != "" {
 				// Store the response model for future batches
-				a.streamingResponseModel = m
+				a.streamingResponseModel = internalapi.ResponseModel(eventUnion.Message.Model)
 			}
 		case "message_delta":
 			// Usage only valid in message_delta events.
-			usage := eventUnion.MessageDelta.Usage
+			usage := &eventUnion.Usage
 			tokenUsage.InputTokens = uint32(usage.InputTokens)                      //nolint:gosec
 			tokenUsage.OutputTokens = uint32(usage.OutputTokens)                    //nolint:gosec
 			tokenUsage.TotalTokens = uint32(usage.InputTokens + usage.OutputTokens) //nolint:gosec

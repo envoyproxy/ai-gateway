@@ -416,6 +416,7 @@ func (i *imageGenerationProcessorUpstreamFilter) SetBackend(ctx context.Context,
 	i.metrics.SetBackend(b)
 	i.modelNameOverride = b.ModelNameOverride
 	i.backendName = b.Name
+	i.span = rp.span
 	if err = i.selectTranslator(b.Schema); err != nil {
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
@@ -442,7 +443,6 @@ func (i *imageGenerationProcessorUpstreamFilter) SetBackend(ctx context.Context,
 		}
 	}
 	rp.upstreamFilter = i
-	i.span = rp.span
 	return
 }
 

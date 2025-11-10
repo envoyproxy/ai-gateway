@@ -4,12 +4,6 @@
   "kind":  "SPAN_KIND_INTERNAL",
   "attributes":  [
     {
-      "key":  "llm.system",
-      "value":  {
-        "stringValue":  "openai"
-      }
-    },
-    {
       "key":  "input.value",
       "value":  {
         "stringValue":  "{\"input\": [\"Hello 世界! 🌍\", \"Здравствуй мир\", \"مرحبا بالعالم\", \"This is a much longer piece of text that contains multiple sentences. It tests how the embedding model handles varying input lengths within the same batch. The embeddings should capture the semantic meaning despite the length differences.\", \"🚀 Space emoji and symbols ✨ § ¶ †\"], \"model\": \"text-embedding-3-small\", \"encoding_format\": \"base64\"}"

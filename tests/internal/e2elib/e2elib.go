@@ -65,6 +65,15 @@ type AIGatewayHelmOption struct {
 	ChartVersion string
 	// AdditionalArgs are additional arguments to pass to the Helm install/upgrade command.
 	AdditionalArgs []string
+	// Namespace where the AI Gateway will be installed. Default is "envoy-ai-gateway-system".
+	Namespace string
+}
+
+func (a *AIGatewayHelmOption) GetNamespace() string {
+	if a.Namespace == "" {
+		return "envoy-ai-gateway-system"
+	}
+	return a.Namespace
 }
 
 // TestMain is the entry point for the e2e tests. It sets up the kind cluster, installs the Envoy Gateway,
@@ -104,7 +113,7 @@ func SetupAll(ctx context.Context, clusterName string, aigwOpts AIGatewayHelmOpt
 			return fmt.Errorf("failed to install inference pool environment: %w", err)
 		}
 	}
-	if err := initEnvoyGateway(ctx, inferenceExtension); err != nil {
+	if err := initEnvoyGateway(ctx, aigwOpts.GetNamespace(), inferenceExtension); err != nil {
 		return fmt.Errorf("failed to initialize Envoy Gateway: %w", err)
 	}
 
@@ -387,7 +396,7 @@ func installInferencePoolEnvironment(ctx context.Context) (err error) {
 
 // initEnvoyGateway initializes the Envoy Gateway in the kind cluster following the quickstart guide:
 // https://gateway.envoyproxy.io/latest/tasks/quickstart/
-func initEnvoyGateway(ctx context.Context, inferenceExtension bool) (err error) {
+func initEnvoyGateway(ctx context.Context, namespace string, inferenceExtension bool) (err error) {
 	egVersion := cmp.Or(os.Getenv("EG_VERSION"), "v0.0.0-latest")
 	initLog("Installing Envoy Gateway")
 	start := time.Now()
@@ -403,6 +412,7 @@ func initEnvoyGateway(ctx context.Context, inferenceExtension bool) (err error) 
 		"-n", "envoy-gateway-system", "--create-namespace",
 		"-f", "../../manifests/envoy-gateway-values.yaml",
 		"-f", "../../examples/token_ratelimit/envoy-gateway-values-addon.yaml",
+		"--set", fmt.Sprintf("config.envoyGateway.extensionManager.service.fqdn.hostname=ai-gateway-controller.%s.svc.cluster.local", namespace),
 	}
 	if inferenceExtension {
 		helmArgs = append(helmArgs, "-f", "../../examples/inference-pool/envoy-gateway-values-addon.yaml")
@@ -433,7 +443,7 @@ func InstallOrUpgradeAIGateway(ctx context.Context, aigw AIGatewayHelmOption) (e
 	} else {
 		cdrChartArgs = append(cdrChartArgs, "../../manifests/charts/ai-gateway-crds-helm")
 	}
-	cdrChartArgs = append(cdrChartArgs, "-n", "envoy-ai-gateway-system", "--create-namespace")
+	cdrChartArgs = append(cdrChartArgs, "-n", aigw.GetNamespace(), "--create-namespace")
 	crdChart := testsinternal.GoToolCmdContext(ctx, "helm", cdrChartArgs...)
 	crdChart.Stdout = os.Stdout
 	crdChart.Stderr = os.Stderr
@@ -447,7 +457,7 @@ func InstallOrUpgradeAIGateway(ctx context.Context, aigw AIGatewayHelmOption) (e
 	} else {
 		mainChartArgs = append(mainChartArgs, "../../manifests/charts/ai-gateway-helm")
 	}
-	mainChartArgs = append(mainChartArgs, "-n", "envoy-ai-gateway-system", "--create-namespace")
+	mainChartArgs = append(mainChartArgs, "-n", aigw.GetNamespace(), "--create-namespace")
 	mainChartArgs = append(mainChartArgs, aigw.AdditionalArgs...)
 
 	helm := testsinternal.GoToolCmdContext(ctx, "helm", mainChartArgs...)
@@ -458,10 +468,10 @@ func InstallOrUpgradeAIGateway(ctx context.Context, aigw AIGatewayHelmOption) (e
 	}
 	// Restart the controller to pick up the new changes in the AI Gateway.
 	initLog("\tRestart AI Gateway controller")
-	if err = KubectlRestartDeployment(ctx, "envoy-ai-gateway-system", "ai-gateway-controller"); err != nil {
+	if err = KubectlRestartDeployment(ctx, aigw.GetNamespace(), "ai-gateway-controller"); err != nil {
 		return
 	}
-	return kubectlWaitForDeploymentReady(ctx, "envoy-ai-gateway-system", "ai-gateway-controller")
+	return kubectlWaitForDeploymentReady(ctx, aigw.GetNamespace(), "ai-gateway-controller")
 }
 
 func initPrometheus(ctx context.Context) (err error) {

@@ -145,8 +145,13 @@ func (o *openAIToOpenAIImageGenerationTranslator) ResponseBody(_ map[string]stri
 		tokenUsage.TotalTokens = uint32(resp.Usage.TotalTokens)   //nolint:gosec
 	}
 
-	// Provide response model for metrics
+	// There is no response model field, so use the request one.
 	responseModel = o.requestModel
+
+	// Record the response in the span if tracing is enabled.
+	if o.span != nil {
+		o.span.RecordResponse(resp)
+	}
 
 	return
 }
