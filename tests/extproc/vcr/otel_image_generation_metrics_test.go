@@ -68,11 +68,10 @@ func TestOtelOpenAIImageGeneration_metrics(t *testing.T) {
 			allMetrics := env.collector.TakeMetrics(2)
 			metrics := requireScopeMetrics(t, allMetrics)
 
-			// For image generation spans, we record llm.model_name on request; no response model attribute exists.
-			// In non-override cases, original = request = response.
-			requestModel := getSpanAttributeString(span.Attributes, "llm.model_name")
-			originalModel := requestModel
-			responseModel := requestModel
+			// Get expected model names from span
+			originalModel := getInvocationModel(span.Attributes, "llm.invocation_parameters")
+			requestModel := originalModel // in non-override cases, these are the same
+			responseModel := requestModel // there is no response model field for image generation
 
 			// Verify metrics.
 			verifyTokenUsageMetricsWithOriginal(t, "image_generation", metrics, span, originalModel, requestModel, responseModel, tc.isError)
