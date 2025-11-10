@@ -6,12 +6,17 @@
 package extproc
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"mime"
+	"mime/multipart"
 	"strconv"
+	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -72,7 +77,8 @@ func (a *audioTranscriptionProcessorRouterFilter) ProcessResponseBody(ctx contex
 }
 
 func (a *audioTranscriptionProcessorRouterFilter) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
-	model, body, err := parseAudioTranscriptionBody(rawBody)
+	contentType := a.requestHeaders["content-type"]
+	model, body, err := parseAudioTranscriptionBody(rawBody, contentType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
@@ -326,7 +332,78 @@ func (a *audioTranscriptionProcessorUpstreamFilter) SetBackend(ctx context.Conte
 	return
 }
 
-func parseAudioTranscriptionBody(body *extprocv3.HttpBody) (modelName string, rb *openai.AudioTranscriptionRequest, err error) {
+func parseAudioTranscriptionBody(body *extprocv3.HttpBody, contentType string) (modelName string, rb *openai.AudioTranscriptionRequest, err error) {
+	mediaType, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to parse content-type: %w", err)
+	}
+
+	if strings.HasPrefix(mediaType, "multipart/") {
+		boundary, ok := params["boundary"]
+		if !ok {
+			return "", nil, fmt.Errorf("multipart content-type missing boundary")
+		}
+
+		req := &openai.AudioTranscriptionRequest{}
+		reader := multipart.NewReader(bytes.NewReader(body.Body), boundary)
+		
+		for {
+			part, err := reader.NextPart()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to read multipart part: %w", err)
+			}
+
+			formName := part.FormName()
+			switch formName {
+			case "model":
+				modelBytes, err := io.ReadAll(part)
+				if err != nil {
+					return "", nil, fmt.Errorf("failed to read model field: %w", err)
+				}
+				req.Model = string(modelBytes)
+			case "language":
+				langBytes, err := io.ReadAll(part)
+				if err != nil {
+					return "", nil, fmt.Errorf("failed to read language field: %w", err)
+				}
+				req.Language = string(langBytes)
+			case "prompt":
+				promptBytes, err := io.ReadAll(part)
+				if err != nil {
+					return "", nil, fmt.Errorf("failed to read prompt field: %w", err)
+				}
+				req.Prompt = string(promptBytes)
+			case "response_format":
+				formatBytes, err := io.ReadAll(part)
+				if err != nil {
+					return "", nil, fmt.Errorf("failed to read response_format field: %w", err)
+				}
+				req.ResponseFormat = string(formatBytes)
+			case "temperature":
+				tempBytes, err := io.ReadAll(part)
+				if err != nil {
+					return "", nil, fmt.Errorf("failed to read temperature field: %w", err)
+				}
+				var temp float64
+				if err := json.Unmarshal(tempBytes, &temp); err == nil {
+					req.Temperature = &temp
+				}
+			case "file":
+			default:
+			}
+			part.Close()
+		}
+
+		if req.Model == "" {
+			req.Model = "whisper-1"
+		}
+
+		return req.Model, req, nil
+	}
+
 	var req openai.AudioTranscriptionRequest
 	if err := json.Unmarshal(body.Body, &req); err != nil {
 		return "", nil, fmt.Errorf("failed to unmarshal body: %w", err)
