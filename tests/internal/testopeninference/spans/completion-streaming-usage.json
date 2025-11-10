@@ -1,93 +1,93 @@
 {
-  "flags":  256,
-  "name":  "Completion",
-  "kind":  "SPAN_KIND_INTERNAL",
-  "attributes":  [
+  "flags": 256,
+  "name": "Completion",
+  "kind": "SPAN_KIND_INTERNAL",
+  "attributes": [
     {
-      "key":  "llm.system",
-      "value":  {
-        "stringValue":  "openai"
+      "key": "llm.system",
+      "value": {
+        "stringValue": "openai"
       }
     },
     {
-      "key":  "input.value",
-      "value":  {
-        "stringValue":  "{\"model\": \"babbage-002\", \"prompt\": \"def fib(n):\\n    if n <= 1:\\n        return n\\n    else:\\n        return fib(n-1) + fib(n-2)\", \"max_tokens\": 25, \"stream\": true, \"stream_options\": {\"include_usage\": true}, \"temperature\": 0.4, \"top_p\": 0.9}"
+      "key": "input.value",
+      "value": {
+        "stringValue": "{\"model\": \"babbage-002\", \"prompt\": \"def fib(n):\\n    if n <= 1:\\n        return n\\n    else:\\n        return fib(n-1) + fib(n-2)\", \"max_tokens\": 25, \"stream\": true, \"stream_options\": {\"include_usage\": true}, \"temperature\": 0.4, \"top_p\": 0.9}"
       }
     },
     {
-      "key":  "input.mime_type",
-      "value":  {
-        "stringValue":  "application/json"
+      "key": "input.mime_type",
+      "value": {
+        "stringValue": "application/json"
       }
     },
     {
-      "key":  "output.value",
-      "value":  {
-        "stringValue":  "{\"choices\": [{\"text\": \" + fib(n-3) + fib(n-4)\\n\\ndef fibn(n):\\n    if n <= 1:\\n       \", \"index\": 0, \"finish_reason\": \"length\"}], \"id\": \"cmpl-CKzHhit4D82m3cp2zRTC2fpTNlJCX\", \"created\": 1759118173, \"model\": \"babbage:2023-07-21-v2\", \"object\": \"text_completion\", \"usage\": {\"completion_tokens\": 25, \"prompt_tokens\": 31, \"total_tokens\": 56}}"
+      "key": "output.value",
+      "value": {
+        "stringValue": "{\"choices\": [{\"text\": \" + fib(n-3) + fib(n-4)\\n\\ndef fibn(n):\\n    if n <= 1:\\n       \", \"index\": 0, \"finish_reason\": \"length\"}], \"id\": \"cmpl-CKzHhit4D82m3cp2zRTC2fpTNlJCX\", \"created\": 1759118173, \"model\": \"babbage:2023-07-21-v2\", \"object\": \"text_completion\", \"usage\": {\"completion_tokens\": 25, \"prompt_tokens\": 31, \"total_tokens\": 56}}"
       }
     },
     {
-      "key":  "output.mime_type",
-      "value":  {
-        "stringValue":  "application/json"
+      "key": "output.mime_type",
+      "value": {
+        "stringValue": "application/json"
       }
     },
     {
-      "key":  "llm.invocation_parameters",
-      "value":  {
-        "stringValue":  "{\"model\": \"babbage-002\", \"max_tokens\": 25, \"stream\": true, \"stream_options\": {\"include_usage\": true}, \"temperature\": 0.4, \"top_p\": 0.9}"
+      "key": "llm.invocation_parameters",
+      "value": {
+        "stringValue": "{\"model\": \"babbage-002\", \"max_tokens\": 25, \"stream\": true, \"stream_options\": {\"include_usage\": true}, \"temperature\": 0.4, \"top_p\": 0.9}"
       }
     },
     {
-      "key":  "llm.prompts.0.prompt.text",
-      "value":  {
-        "stringValue":  "def fib(n):\n    if n <= 1:\n        return n\n    else:\n        return fib(n-1) + fib(n-2)"
+      "key": "llm.prompts.0.prompt.text",
+      "value": {
+        "stringValue": "def fib(n):\n    if n <= 1:\n        return n\n    else:\n        return fib(n-1) + fib(n-2)"
       }
     },
     {
-      "key":  "llm.model_name",
-      "value":  {
-        "stringValue":  "babbage:2023-07-21-v2"
+      "key": "llm.model_name",
+      "value": {
+        "stringValue": "babbage:2023-07-21-v2"
       }
     },
     {
-      "key":  "llm.token_count.total",
-      "value":  {
-        "intValue":  "56"
+      "key": "llm.token_count.total",
+      "value": {
+        "intValue": "56"
       }
     },
     {
-      "key":  "llm.token_count.prompt",
-      "value":  {
-        "intValue":  "31"
+      "key": "llm.token_count.prompt",
+      "value": {
+        "intValue": "31"
       }
     },
     {
-      "key":  "llm.token_count.completion",
-      "value":  {
-        "intValue":  "25"
+      "key": "llm.token_count.completion",
+      "value": {
+        "intValue": "25"
       }
     },
     {
-      "key":  "llm.choices.0.completion.text",
-      "value":  {
-        "stringValue":  " + fib(n-3) + fib(n-4)\n\ndef fibn(n):\n    if n <= 1:\n       "
+      "key": "llm.choices.0.completion.text",
+      "value": {
+        "stringValue": " + fib(n-3) + fib(n-4)\n\ndef fibn(n):\n    if n <= 1:\n       "
       }
     },
     {
-      "key":  "openinference.span.kind",
-      "value":  {
-        "stringValue":  "LLM"
+      "key": "openinference.span.kind",
+      "value": {
+        "stringValue": "LLM"
       }
     }
   ],
-  "events":  [
+  "events": [
     {
-      "name":  "First Token Stream Event"
+      "name": "First Token Stream Event"
     }
   ],
-  "status":  {
-    "code":  "STATUS_CODE_OK"
+  "status": {
+    "code": "STATUS_CODE_OK"
   }
 }

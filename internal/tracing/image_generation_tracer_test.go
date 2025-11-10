@@ -71,7 +71,7 @@ func TestImageGenerationTracer_StartSpanAndInjectHeaders(t *testing.T) {
 			name:             "basic image generation request",
 			req:              imageGenReq,
 			existingHeaders:  map[string]string{},
-			expectedSpanName: "ImageGeneration",
+			expectedSpanName: "ImagesResponse",
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String("model", imageGenReq.Model),
 				attribute.String("prompt", imageGenReq.Prompt),
@@ -90,7 +90,7 @@ func TestImageGenerationTracer_StartSpanAndInjectHeaders(t *testing.T) {
 			existingHeaders: map[string]string{
 				"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
 			},
-			expectedSpanName: "ImageGeneration",
+			expectedSpanName: "ImagesResponse",
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String("model", imageGenReq.Model),
 				attribute.String("prompt", imageGenReq.Prompt),
@@ -115,7 +115,7 @@ func TestImageGenerationTracer_StartSpanAndInjectHeaders(t *testing.T) {
 				N:              openaiparam.NewOpt[int64](2),
 			},
 			existingHeaders:  map[string]string{},
-			expectedSpanName: "ImageGeneration",
+			expectedSpanName: "ImagesResponse",
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String("model", openaisdk.ImageModelGPTImage1),
 				attribute.String("prompt", "a cat and a dog"),
@@ -366,7 +366,7 @@ var _ tracing.ImageGenerationRecorder = testImageGenTracerRecorder{}
 type testImageGenTracerRecorder struct{}
 
 func (r testImageGenTracerRecorder) StartParams(_ *openaisdk.ImageGenerateParams, _ []byte) (spanName string, opts []oteltrace.SpanStartOption) {
-	return "ImageGeneration", imageGenStartOpts
+	return "ImagesResponse", imageGenStartOpts
 }
 
 func (r testImageGenTracerRecorder) RecordRequest(span oteltrace.Span, req *openaisdk.ImageGenerateParams, body []byte) {
