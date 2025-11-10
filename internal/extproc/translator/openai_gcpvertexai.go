@@ -272,8 +272,10 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) openAIMessageToGeminiMes
 		return nil, err
 	}
 
+	// Some models support only partialJSONSchema.
+	parametersJSONSchemaAvailable := responseJSONSchemaAvailable(requestModel)
 	// Convert OpenAI tools to Gemini tools.
-	tools, err := openAIToolsToGeminiTools(openAIReq.Tools)
+	tools, err := openAIToolsToGeminiTools(openAIReq.Tools, parametersJSONSchemaAvailable)
 	if err != nil {
 		return nil, fmt.Errorf("error converting tools: %w", err)
 	}

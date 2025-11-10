@@ -1,0 +1,68 @@
+---
+title: Envoy AI Gateway v0.4.x Release Series
+description: Major release introducing Model Context Protocol (MCP) Gateway, OpenAI Image Generation, first-party Anthropic support, guided output decoding for GCP Vertex AI/Gemini, cross-namespace references, enhanced authentication, standalone mode improvements, and comprehensive observability improvements
+toc_min_heading_level: 2
+toc_max_heading_level: 4
+---
+
+import Link from '@docusaurus/Link';
+import {
+  ReleaseSeriesLayout,
+  ReleaseHeader,
+  FeatureSectionCard,
+  PatchRelease,
+  ItemList,
+  Dependencies
+} from '../../components/ReleaseNotes';
+import releaseData from '../../data/releases/v0.4.json';
+import React from 'react';
+
+export const { series, releases, navigation } = releaseData;
+export const mainRelease = releases[0]; // v0.4.0
+export const patchReleases = releases.slice(1).reverse(); // Future patch releases (newest first)
+
+<ReleaseSeriesLayout
+  title={series.title}
+  subtitle={series.subtitle}
+  seriesVersion={series.version}
+  badgeText={series.badge}
+  badgeType={series.badgeType}
+  previousSeries={navigation.previous}
+>
+
+<ReleaseHeader
+  version={mainRelease.version}
+  date={mainRelease.date}
+  type={mainRelease.type}
+  tags={mainRelease.tags}
+>
+
+{mainRelease.overview}
+
+</ReleaseHeader>
+
+## ✨ New Features
+
+{mainRelease.features.map((featureSection, index) => (
+  <FeatureSectionCard key={index} section={featureSection} />
+))}
+
+## 🔗 API Updates
+
+{mainRelease.apiChanges.length > 0 && (
+  <ItemList items={mainRelease.apiChanges} />
+)}
+
+## 📦 Dependencies Versions
+
+<Dependencies dependencies={mainRelease.dependencies} />
+
+## 🔮 What's Next (beyond v0.4)
+
+We're already working on exciting features for future releases:
+
+- **Advanced MCP features** - Further enhancements to the MCP protocol support
+- **Additional LLM provider integrations** - Expanding the ecosystem of supported LLM providers
+- **Enhanced Performance** - Improving the runtime performance of the gateway
+
+</ReleaseSeriesLayout>
