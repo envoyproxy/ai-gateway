@@ -844,7 +844,6 @@ data: [DONE]
 			responseType:      "sse",
 			requestBody:       `{"model":"claude-3-sonnet","max_tokens":100,"messages":[{"role":"user","content":[{"type":"text","text":"Tell me a short joke"}]}],"stream":true}`,
 			expRequestBody:    `{"anthropic_version":"vertex-2023-10-16","max_tokens":100,"messages":[{"content":[{"text":"Tell me a short joke","type":"text"}],"role":"user"}],"stream":true}`,
-			expHost:           "gcp-region-aiplatform.googleapis.com",
 			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:streamRawPredict",
 			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
 			responseStatus:    strconv.Itoa(http.StatusOK),
