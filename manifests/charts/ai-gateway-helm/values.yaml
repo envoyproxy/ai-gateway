@@ -67,11 +67,6 @@ controller:
     # If not set and create is true, a name is generated using the fullname template
     name: ""
 
-  # -- ClusterRole --
-  clusterRole:
-    # Whether to add a suffix to clusterRole and clusterRoleBinding.
-    suffixClusterRole: false
-
   # Enable leader election mechanism for protecting against split brain if multiple operator pods/replicas are started.
   leaderElection:
     enabled: true
@@ -170,12 +165,17 @@ controller:
       issuerName: self-signed-issuer-for-mutating-webhook
       # The name of the certificate.
       certificateName: self-signed-cert-for-mutating-webhook
-    # The object selector for the mutating webhook. default selects envoy-gateway managed objects
+    # The object selector for the mutating webhook. By default it selects envoy-gateway managed objects.
     objectSelector:
       matchLabels:
         app.kubernetes.io/managed-by: envoy-gateway
-    # The namespace selector for the mutating webhook. default is empty
-    namespaceSelector:
+    # Example of namespaceSelector to select the webhook target based on namespaces.
+    # See: https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#matching-requests-namespaceselector
+    #   namespaceSelector:
+    #     matchExpressions:
+    #     - key: environment
+    #       operator: In
+    #       values: ["prod","staging"]
 
   resources: {}
   nodeSelector: {}
