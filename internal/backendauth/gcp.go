@@ -45,8 +45,7 @@ func newGCPHandler(gcpAuth *filterapi.GCPAuth) (Handler, error) {
 // The suffix is combined with the generated prefix to form the complete path for the GCP API call.
 func (g *gcpHandler) Do(_ context.Context, requestHeaders map[string]string, _ []byte) ([]internalapi.Header, error) {
 	// Build the GCP URL prefix using the configured region and project name.
-	prefixPath := fmt.Sprintf("https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s", g.region, g.projectName, g.region)
-
+	prefixPath := fmt.Sprintf("/v1/projects/%s/locations/%s", g.projectName, g.region)
 	// Find and update the ":path" header by prepending the prefix.
 	path := requestHeaders[":path"]
 	// Update the raw byte value if present.
