@@ -930,7 +930,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutations
 
 		// Create request body.
 		requestBody := &anthropicschema.MessagesRequest{
-			Model: "claude-3-sonnet",
+			"model": "claude-3-sonnet",
 		}
 		requestBodyRaw := []byte(`{"model": "claude-3-sonnet", "service_tier": "default", "max_tokens": 1000, "messages": [{"role": "user", "content": [{"type": "text", "text": "Hello"}]}]}`)
 
@@ -1015,7 +1015,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutations
 		chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 
 		originalRequestBodyRaw := []byte(`{"model": "claude-3-sonnet", "service_tier": "default"}`)
-		requestBody := &anthropicschema.MessagesRequest{Model: "claude-3-sonnet"}
+		requestBody := &anthropicschema.MessagesRequest{"model": "claude-3-sonnet"}
 
 		p := &messagesProcessorUpstreamFilter{
 			config:              &processorConfig{},

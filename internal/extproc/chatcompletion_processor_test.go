@@ -857,3 +857,148 @@ func Test_ProcessResponseBody_UsesActualResponseModel(t *testing.T) {
 	require.Equal(t, 30, mm.tokenUsageCount)
 	mm.RequireRequestSuccess(t)
 }
+
+func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutations(t *testing.T) {
+	t.Run("body mutations applied correctly", func(t *testing.T) {
+		headers := map[string]string{
+			":path":         "/v1/chat/completions",
+			"x-ai-eg-model": "gpt-4",
+		}
+
+		requestBody := &openai.ChatCompletionRequest{
+			Model: "gpt-4",
+		}
+		requestBodyRaw := []byte(`{"model": "gpt-4", "messages": [{"role": "user", "content": "Hello"}], "service_tier": "default", "max_tokens": 1000}`)
+
+		bodyMutations := &filterapi.HTTPBodyMutation{
+			Remove: []string{"internal_flag"},
+			Set: []filterapi.HTTPBodyField{
+				{Path: "service_tier", Value: "\"scale\""},
+				{Path: "max_tokens", Value: "2000"},
+				{Path: "temperature", Value: "0.8"},
+			},
+		}
+
+		translator := mockTranslator{
+			t:                           t,
+			expRequestBody:              requestBody,
+			expForceRequestBodyMutation: false,
+			retHeaderMutation:           &extprocv3.HeaderMutation{},
+			retBodyMutation:             &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: requestBodyRaw}},
+			retErr:                      nil,
+		}
+
+		chatMetrics := &mockChatCompletionMetrics{}
+		p := &chatCompletionProcessorUpstreamFilter{
+			config:                 &processorConfig{},
+			requestHeaders:         headers,
+			logger:                 slog.Default(),
+			metrics:                chatMetrics,
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: requestBodyRaw,
+			translator:             &translator,
+			handler:                &mockBackendAuthHandler{},
+		}
+
+		backend := &filterapi.Backend{
+			Name:         "test-backend",
+			Schema:       filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+			BodyMutation: bodyMutations,
+		}
+
+		rp := &chatCompletionProcessorRouterFilter{
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: requestBodyRaw,
+			requestHeaders:         headers,
+		}
+
+		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		require.NoError(t, err)
+
+		require.NotNil(t, p.bodyMutator)
+
+		ctx := context.Background()
+		response, err := p.ProcessRequestHeaders(ctx, nil)
+		require.NoError(t, err)
+		require.NotNil(t, response)
+
+		testBodyMutation := []byte(`{"model": "gpt-4", "messages": [{"role": "user", "content": "Hello"}], "service_tier": "default", "internal_flag": true, "max_tokens": 1000}`)
+		mutatedBody, err := p.bodyMutator.Mutate(testBodyMutation, false)
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(mutatedBody, &result)
+		require.NoError(t, err)
+
+		require.Equal(t, "scale", result["service_tier"])
+		require.Equal(t, float64(2000), result["max_tokens"])
+		require.Equal(t, 0.8, result["temperature"])
+		require.NotContains(t, result, "internal_flag")
+		require.Equal(t, "gpt-4", result["model"])
+	})
+
+	t.Run("body mutator with retry", func(t *testing.T) {
+		headers := map[string]string{":path": "/v1/chat/completions"}
+		chatMetrics := &mockChatCompletionMetrics{}
+
+		originalRequestBodyRaw := []byte(`{"model": "gpt-4", "service_tier": "default", "messages": [{"role": "user", "content": "Hello"}]}`)
+		requestBody := &openai.ChatCompletionRequest{
+			Model: "gpt-4",
+		}
+
+		p := &chatCompletionProcessorUpstreamFilter{
+			config:                 &processorConfig{},
+			requestHeaders:         headers,
+			logger:                 slog.Default(),
+			metrics:                chatMetrics,
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: originalRequestBodyRaw,
+		}
+
+		bodyMutations := &filterapi.HTTPBodyMutation{
+			Set: []filterapi.HTTPBodyField{
+				{Path: "service_tier", Value: "\"premium\""},
+				{Path: "temperature", Value: "0.7"},
+			},
+		}
+
+		backend := &filterapi.Backend{
+			Name:         "test-backend",
+			Schema:       filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+			BodyMutation: bodyMutations,
+		}
+
+		rp := &chatCompletionProcessorRouterFilter{
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: originalRequestBodyRaw,
+			requestHeaders:         headers,
+			upstreamFilterCount:    2,
+		}
+
+		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		require.NoError(t, err)
+
+		require.NotNil(t, p.bodyMutator)
+		require.True(t, p.onRetry)
+
+		modifiedBody := []byte(`{"model": "gpt-4", "service_tier": "modified", "extra": "field", "messages": [{"role": "user", "content": "Modified"}]}`)
+		mutatedBody, err := p.bodyMutator.Mutate(modifiedBody, true)
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(mutatedBody, &result)
+		require.NoError(t, err)
+
+		require.Equal(t, "premium", result["service_tier"])
+		require.Equal(t, 0.7, result["temperature"])
+		require.Equal(t, "gpt-4", result["model"])
+		require.NotContains(t, result, "extra")
+
+		messages, ok := result["messages"].([]interface{})
+		require.True(t, ok)
+		require.Len(t, messages, 1)
+		firstMessage, ok := messages[0].(map[string]interface{})
+		require.True(t, ok)
+		require.Equal(t, "Hello", firstMessage["content"])
+	})
+}
