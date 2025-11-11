@@ -110,7 +110,7 @@ metadata:
 spec:
   endpoints:
     - fqdn:
-        hostname: 127.0.0.1.nip.io
+        hostname: localhost
         port: 8321
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1

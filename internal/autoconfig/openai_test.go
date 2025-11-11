@@ -28,11 +28,10 @@ func TestPopulateOpenAIEnvConfig(t *testing.T) {
 			expected: ConfigData{
 				Backends: []Backend{
 					{
-						Name:             "openai",
-						Hostname:         "api.openai.com",
-						OriginalHostname: "api.openai.com",
-						Port:             443,
-						NeedsTLS:         true,
+						Name:     "openai",
+						Hostname: "api.openai.com",
+						Port:     443,
+						NeedsTLS: true,
 					},
 				},
 				OpenAI: &OpenAIConfig{
@@ -52,11 +51,10 @@ func TestPopulateOpenAIEnvConfig(t *testing.T) {
 			expected: ConfigData{
 				Backends: []Backend{
 					{
-						Name:             "openai",
-						Hostname:         "my-resource.openai.azure.com",
-						OriginalHostname: "my-resource.openai.azure.com",
-						Port:             443,
-						NeedsTLS:         true,
+						Name:     "openai",
+						Hostname: "my-resource.openai.azure.com",
+						Port:     443,
+						NeedsTLS: true,
 					},
 				},
 				OpenAI: &OpenAIConfig{
@@ -78,11 +76,10 @@ func TestPopulateOpenAIEnvConfig(t *testing.T) {
 			expected: ConfigData{
 				Backends: []Backend{
 					{
-						Name:             "openai",
-						Hostname:         "my-resource.openai.azure.com",
-						OriginalHostname: "my-resource.openai.azure.com",
-						Port:             443,
-						NeedsTLS:         true,
+						Name:     "openai",
+						Hostname: "my-resource.openai.azure.com",
+						Port:     443,
+						NeedsTLS: true,
 					},
 				},
 				OpenAI: &OpenAIConfig{
@@ -101,11 +98,10 @@ func TestPopulateOpenAIEnvConfig(t *testing.T) {
 			expected: ConfigData{
 				Backends: []Backend{
 					{
-						Name:             "openai",
-						Hostname:         "127.0.0.1.nip.io",
-						OriginalHostname: "localhost",
-						Port:             11434,
-						NeedsTLS:         false,
+						Name:     "openai",
+						Hostname: "localhost",
+						Port:     11434,
+						NeedsTLS: false,
 					},
 				},
 				OpenAI: &OpenAIConfig{
@@ -124,11 +120,10 @@ func TestPopulateOpenAIEnvConfig(t *testing.T) {
 			expected: ConfigData{
 				Backends: []Backend{
 					{
-						Name:             "openai",
-						Hostname:         "api.openai.com",
-						OriginalHostname: "api.openai.com",
-						Port:             443,
-						NeedsTLS:         true,
+						Name:     "openai",
+						Hostname: "api.openai.com",
+						Port:     443,
+						NeedsTLS: true,
 					},
 				},
 				OpenAI: &OpenAIConfig{
@@ -148,11 +143,10 @@ func TestPopulateOpenAIEnvConfig(t *testing.T) {
 			expected: ConfigData{
 				Backends: []Backend{
 					{
-						Name:             "openai",
-						Hostname:         "api.openai.com",
-						OriginalHostname: "api.openai.com",
-						Port:             443,
-						NeedsTLS:         true,
+						Name:     "openai",
+						Hostname: "api.openai.com",
+						Port:     443,
+						NeedsTLS: true,
 					},
 				},
 				OpenAI: &OpenAIConfig{
@@ -173,11 +167,10 @@ func TestPopulateOpenAIEnvConfig(t *testing.T) {
 			expected: ConfigData{
 				Backends: []Backend{
 					{
-						Name:             "openai",
-						Hostname:         "api.openai.com",
-						OriginalHostname: "api.openai.com",
-						Port:             443,
-						NeedsTLS:         true,
+						Name:     "openai",
+						Hostname: "api.openai.com",
+						Port:     443,
+						NeedsTLS: true,
 					},
 				},
 				OpenAI: &OpenAIConfig{

@@ -4,6 +4,9 @@ title: Connect AWS Bedrock
 sidebar_position: 3
 ---
 
+import CodeBlock from '@theme/CodeBlock';
+import vars from '../../\_vars.json';
+
 # Connect AWS Bedrock
 
 This guide will help you configure Envoy AI Gateway to work with AWS Bedrock's foundation models, including Llama, Anthropic Claude, and other models available on AWS Bedrock.
@@ -63,13 +66,13 @@ The Pod Identity association should reference:
 
 **Step 2: Apply AI Gateway configuration**
 
-```shell
-kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/aws-pod-identity.yaml
+<CodeBlock language="shell">
+{`kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/examples/basic/aws-pod-identity.yaml
 
-kubectl wait pods --timeout=2m \
-  -l gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic \
-  -n envoy-gateway-system --for=condition=Ready
-```
+kubectl wait pods --timeout=2m \\
+-l gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic \\
+-n envoy-gateway-system --for=condition=Ready`}
+</CodeBlock>
 
 **Step 3: Test**
 
@@ -101,9 +104,9 @@ The trust policy should allow the ServiceAccount `system:serviceaccount:envoy-ga
 
 **Step 2: Download and configure**
 
-```shell
-curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/aws-irsa.yaml
-```
+<CodeBlock language="shell">
+{`curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/examples/basic/aws-irsa.yaml`}
+</CodeBlock>
 
 Edit `aws-irsa.yaml` and replace `ACCOUNT_ID` with your AWS account ID in the ServiceAccount annotation:
 
@@ -141,7 +144,7 @@ Static credentials are not recommended for production. Use EKS Pod Identity or I
 **Step 1: Download and configure**
 
 ```shell
-curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/aws.yaml
+curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/{vars.aigwGitRef}/examples/basic/aws.yaml
 ```
 
 Edit `aws.yaml` and replace the credential placeholders:
