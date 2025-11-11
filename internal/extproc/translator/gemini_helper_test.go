@@ -941,18 +941,26 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 		"required": []any{"a", "b"},
 	}
 	tests := []struct {
-		name          string
-		openaiTools   []openai.Tool
-		expected      []genai.Tool
-		expectedError string
+		name                          string
+		openaiTools                   []openai.Tool
+		parametersJSONSchemaAvailable bool
+		expected                      []genai.Tool
+		expectedError                 string
 	}{
 		{
-			name:        "empty tools",
-			openaiTools: nil,
-			expected:    nil,
+			name:                          "empty tools with parametersJSONSchemaAvailable=false",
+			openaiTools:                   nil,
+			parametersJSONSchemaAvailable: false,
+			expected:                      nil,
 		},
 		{
-			name: "single function tool with parameters",
+			name:                          "empty tools with parametersJSONSchemaAvailable=true",
+			openaiTools:                   nil,
+			parametersJSONSchemaAvailable: true,
+			expected:                      nil,
+		},
+		{
+			name: "single function tool with parameters - parametersJSONSchemaAvailable=false",
 			openaiTools: []openai.Tool{
 				{
 					Type: openai.ToolTypeFunction,
@@ -963,6 +971,39 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 					},
 				},
 			},
+			parametersJSONSchemaAvailable: false,
+			expected: []genai.Tool{
+				{
+					FunctionDeclarations: []*genai.FunctionDeclaration{
+						{
+							Name:        "add",
+							Description: "Add two numbers",
+							Parameters: &genai.Schema{
+								Type: "object",
+								Properties: map[string]*genai.Schema{
+									"a": {Type: "integer"},
+									"b": {Type: "integer"},
+								},
+								Required: []string{"a", "b"},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "single function tool with parameters - parametersJSONSchemaAvailable=true",
+			openaiTools: []openai.Tool{
+				{
+					Type: openai.ToolTypeFunction,
+					Function: &openai.FunctionDefinition{
+						Name:        "add",
+						Description: "Add two numbers",
+						Parameters:  funcParams,
+					},
+				},
+			},
+			parametersJSONSchemaAvailable: true,
 			expected: []genai.Tool{
 				{
 					FunctionDeclarations: []*genai.FunctionDeclaration{
@@ -976,7 +1017,45 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 			},
 		},
 		{
-			name: "multiple function tools",
+			name: "multiple function tools with nil/empty parameters - parametersJSONSchemaAvailable=false",
+			openaiTools: []openai.Tool{
+				{
+					Type: openai.ToolTypeFunction,
+					Function: &openai.FunctionDefinition{
+						Name:        "foo",
+						Description: "Foo function",
+						Parameters:  map[string]any{}, // empty parameters
+					},
+				},
+				{
+					Type: openai.ToolTypeFunction,
+					Function: &openai.FunctionDefinition{
+						Name:        "bar",
+						Description: "Bar function",
+						Parameters:  nil, // nil parameters
+					},
+				},
+			},
+			parametersJSONSchemaAvailable: false,
+			expected: []genai.Tool{
+				{
+					FunctionDeclarations: []*genai.FunctionDeclaration{
+						{
+							Name:        "foo",
+							Description: "Foo function",
+							Parameters:  nil,
+						},
+						{
+							Name:        "bar",
+							Description: "Bar function",
+							Parameters:  nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "multiple function tools with nil/empty parameters - parametersJSONSchemaAvailable=true",
 			openaiTools: []openai.Tool{
 				{
 					Type: openai.ToolTypeFunction,
@@ -993,27 +1072,26 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 					},
 				},
 			},
+			parametersJSONSchemaAvailable: true,
 			expected: []genai.Tool{
 				{
 					FunctionDeclarations: []*genai.FunctionDeclaration{
 						{
-							Name:                 "foo",
-							Description:          "Foo function",
-							Parameters:           nil,
-							ParametersJsonSchema: nil,
+							Name:               "foo",
+							Description:        "Foo function",
+							ResponseJsonSchema: nil,
 						},
 						{
-							Name:                 "bar",
-							Description:          "Bar function",
-							Parameters:           nil,
-							ParametersJsonSchema: nil,
+							Name:               "bar",
+							Description:        "Bar function",
+							ResponseJsonSchema: nil,
 						},
 					},
 				},
 			},
 		},
 		{
-			name: "tool with invalid parameters schema",
+			name: "tool with invalid parameters schema - parametersJSONSchemaAvailable=false",
 			openaiTools: []openai.Tool{
 				{
 					Type: openai.ToolTypeFunction,
@@ -1024,12 +1102,29 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 					},
 				},
 			},
+			parametersJSONSchemaAvailable: false,
+			expectedError:                 "invalid JSON schema for parameters in tool bad: expected map[string]any",
+		},
+		{
+			name: "tool with invalid parameters schema - parametersJSONSchemaAvailable=true",
+			openaiTools: []openai.Tool{
+				{
+					Type: openai.ToolTypeFunction,
+					Function: &openai.FunctionDefinition{
+						Name:        "bad",
+						Description: "Bad function",
+						Parameters:  "invalid-json",
+					},
+				},
+			},
+			parametersJSONSchemaAvailable: true,
 			expected: []genai.Tool{
 				{
 					FunctionDeclarations: []*genai.FunctionDeclaration{
 						{
-							Description:          "Bad function",
-							Name:                 "bad",
+							Description: "Bad function",
+							Name:        "bad",
+							// ai-gateway does not validate schema, upstream will be expected to validate the bad json param
 							ParametersJsonSchema: "invalid-json",
 						},
 					},
@@ -1037,19 +1132,125 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 			},
 		},
 		{
-			name: "non-function tool is ignored",
+			name: "complex nested schema - parametersJSONSchemaAvailable=false",
+			openaiTools: []openai.Tool{
+				{
+					Type: openai.ToolTypeFunction,
+					Function: &openai.FunctionDefinition{
+						Name:        "complex_tool",
+						Description: "Complex tool with nested parameters",
+						Parameters: map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"user": map[string]any{
+									"type": "object",
+									"properties": map[string]any{
+										"name": map[string]any{"type": "string"},
+										"age":  map[string]any{"type": "integer"},
+									},
+									"required": []any{"name"},
+								},
+								"items": map[string]any{
+									"type": "array",
+									"items": map[string]any{
+										"type": "object",
+										"properties": map[string]any{
+											"id":   map[string]any{"type": "integer"},
+											"name": map[string]any{"type": "string"},
+										},
+									},
+								},
+							},
+							"required": []any{"user"},
+						},
+					},
+				},
+			},
+			parametersJSONSchemaAvailable: false,
+			expected: []genai.Tool{
+				{
+					FunctionDeclarations: []*genai.FunctionDeclaration{
+						{
+							Name:        "complex_tool",
+							Description: "Complex tool with nested parameters",
+							Parameters: &genai.Schema{
+								Type: "object",
+								Properties: map[string]*genai.Schema{
+									"user": {
+										Type: "object",
+										Properties: map[string]*genai.Schema{
+											"name": {Type: "string"},
+											"age":  {Type: "integer"},
+										},
+										Required: []string{"name"},
+									},
+									"items": {
+										Type: "array",
+										Items: &genai.Schema{
+											Type: "object",
+											Properties: map[string]*genai.Schema{
+												"id":   {Type: "integer"},
+												"name": {Type: "string"},
+											},
+										},
+									},
+								},
+								Required: []string{"user"},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "non-function tool is ignored - both modes",
 			openaiTools: []openai.Tool{
 				{
 					Type: "retrieval",
 				},
 			},
-			expected: nil,
+			parametersJSONSchemaAvailable: false,
+			expectedError:                 "unsupported tool type: retrieval",
+		},
+		{
+			name: "mixed valid and invalid tools - parametersJSONSchemaAvailable=false",
+			openaiTools: []openai.Tool{
+				{
+					Type: "retrieval", // Should be ignored
+				},
+				{
+					Type: openai.ToolTypeFunction,
+					Function: &openai.FunctionDefinition{
+						Name:        "valid_tool",
+						Description: "Valid function tool",
+						Parameters: map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"param": map[string]any{"type": "string"},
+							},
+						},
+					},
+				},
+			},
+			parametersJSONSchemaAvailable: false,
+			expectedError:                 "unsupported tool type: retrieval",
+		},
+		{
+			name: "tool with nil function - should not panic",
+			openaiTools: []openai.Tool{
+				{
+					Type:     openai.ToolTypeFunction,
+					Function: nil,
+				},
+			},
+			parametersJSONSchemaAvailable: false,
+			expected:                      nil,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := openAIToolsToGeminiTools(tc.openaiTools)
+			result, err := openAIToolsToGeminiTools(tc.openaiTools, tc.parametersJSONSchemaAvailable)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {
@@ -1451,381 +1652,6 @@ func TestGeminiFinishReasonToOpenAI(t *testing.T) {
 			result := geminiFinishReasonToOpenAI(tt.input, tt.toolCalls)
 			require.Equal(t, tt.expected, result)
 		})
-	}
-}
-
-func TestExtractToolCallsFromGeminiPartsStream(t *testing.T) {
-	toolCalls := []openai.ChatCompletionChunkChoiceDeltaToolCall{}
-	tests := []struct {
-		name     string
-		input    []*genai.Part
-		expected func([]openai.ChatCompletionChunkChoiceDeltaToolCall) bool // validator function since UUIDs are random
-		wantErr  bool
-		errMsg   string
-	}{
-		{
-			name:  "nil parts",
-			input: nil,
-			expected: func(calls []openai.ChatCompletionChunkChoiceDeltaToolCall) bool {
-				return calls == nil
-			},
-		},
-		{
-			name:  "empty parts",
-			input: []*genai.Part{},
-			expected: func(calls []openai.ChatCompletionChunkChoiceDeltaToolCall) bool {
-				return calls == nil
-			},
-		},
-		{
-			name: "parts without function calls",
-			input: []*genai.Part{
-				{Text: "some text"},
-				nil,
-				{Text: "more text"},
-			},
-			expected: func(calls []openai.ChatCompletionChunkChoiceDeltaToolCall) bool {
-				return calls == nil
-			},
-		},
-		{
-			name: "single function call",
-			input: []*genai.Part{
-				{
-					FunctionCall: &genai.FunctionCall{
-						Name: "get_weather",
-						Args: map[string]any{
-							"location": "San Francisco",
-							"unit":     "celsius",
-						},
-					},
-				},
-			},
-			expected: func(calls []openai.ChatCompletionChunkChoiceDeltaToolCall) bool {
-				if len(calls) != 1 {
-					return false
-				}
-				call := calls[0]
-				return call.ID != nil && *call.ID != "" && // UUID should be non-empty
-					call.Type == openai.ChatCompletionMessageToolCallTypeFunction &&
-					call.Function.Name == "get_weather" &&
-					call.Function.Arguments == `{"location":"San Francisco","unit":"celsius"}` &&
-					call.Index == 0 // First tool call should have index 0
-			},
-		},
-		{
-			name: "multiple function calls",
-			input: []*genai.Part{
-				{
-					FunctionCall: &genai.FunctionCall{
-						Name: "function1",
-						Args: map[string]any{"param1": "value1"},
-					},
-				},
-				{Text: "some text between"},
-				{
-					FunctionCall: &genai.FunctionCall{
-						Name: "function2",
-						Args: map[string]any{"param2": float64(42)},
-					},
-				},
-			},
-			expected: func(calls []openai.ChatCompletionChunkChoiceDeltaToolCall) bool {
-				if len(calls) != 2 {
-					return false
-				}
-				// Verify first call
-				call1 := calls[0]
-				if call1.ID == nil || *call1.ID == "" ||
-					call1.Type != openai.ChatCompletionMessageToolCallTypeFunction ||
-					call1.Function.Name != "function1" ||
-					call1.Function.Arguments != `{"param1":"value1"}` ||
-					call1.Index != 0 { // First tool call should have index 0
-					return false
-				}
-				// Verify second call
-				call2 := calls[1]
-				if call2.ID == nil || *call2.ID == "" ||
-					call2.Type != openai.ChatCompletionMessageToolCallTypeFunction ||
-					call2.Function.Name != "function2" ||
-					call2.Function.Arguments != `{"param2":42}` ||
-					call2.Index != 1 { // Second tool call should have index 1
-					return false
-				}
-				// Verify IDs are different (UUIDs should be unique)
-				return *call1.ID != *call2.ID
-			},
-		},
-		{
-			name: "function call with nil part",
-			input: []*genai.Part{
-				{
-					FunctionCall: &genai.FunctionCall{
-						Name: "test_func",
-						Args: map[string]any{"test": "value"},
-					},
-				},
-				nil, // nil part should be skipped
-			},
-			expected: func(calls []openai.ChatCompletionChunkChoiceDeltaToolCall) bool {
-				if len(calls) != 1 {
-					return false
-				}
-				call := calls[0]
-				return call.ID != nil && *call.ID != "" &&
-					call.Function.Name == "test_func" &&
-					call.Index == 0 // Single tool call should have index 0
-			},
-		},
-		{
-			name: "function call with empty args",
-			input: []*genai.Part{
-				{
-					FunctionCall: &genai.FunctionCall{
-						Name: "no_args_func",
-						Args: map[string]any{},
-					},
-				},
-			},
-			expected: func(calls []openai.ChatCompletionChunkChoiceDeltaToolCall) bool {
-				if len(calls) != 1 {
-					return false
-				}
-				call := calls[0]
-				return call.ID != nil && *call.ID != "" &&
-					call.Function.Name == "no_args_func" &&
-					call.Function.Arguments == `{}` &&
-					call.Index == 0 // Single tool call should have index 0
-			},
-		},
-		{
-			name: "function call with nil args",
-			input: []*genai.Part{
-				{
-					FunctionCall: &genai.FunctionCall{
-						Name: "nil_args_func",
-						Args: nil,
-					},
-				},
-			},
-			expected: func(calls []openai.ChatCompletionChunkChoiceDeltaToolCall) bool {
-				if len(calls) != 1 {
-					return false
-				}
-				call := calls[0]
-				return call.ID != nil && *call.ID != "" &&
-					call.Function.Name == "nil_args_func" &&
-					call.Function.Arguments == `null` &&
-					call.Index == 0 // Single tool call should have index 0
-			},
-		},
-		{
-			name: "function call with complex nested args",
-			input: []*genai.Part{
-				{
-					FunctionCall: &genai.FunctionCall{
-						Name: "complex_func",
-						Args: map[string]any{
-							"user": map[string]any{
-								"name": "John",
-								"age":  30,
-							},
-							"items": []any{
-								map[string]any{"id": 1, "name": "item1"},
-								map[string]any{"id": 2, "name": "item2"},
-							},
-							"active": true,
-						},
-					},
-				},
-			},
-			expected: func(calls []openai.ChatCompletionChunkChoiceDeltaToolCall) bool {
-				if len(calls) != 1 {
-					return false
-				}
-				call := calls[0]
-				// Parse the JSON to verify structure since order might vary
-				var args map[string]any
-				if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
-					return false
-				}
-				user, ok := args["user"].(map[string]any)
-				if !ok || user["name"] != "John" || user["age"] != float64(30) {
-					return false
-				}
-				items, ok := args["items"].([]any)
-				if !ok || len(items) != 2 {
-					return false
-				}
-				active, ok := args["active"].(bool)
-				if !ok || !active {
-					return false
-				}
-				return call.ID != nil && *call.ID != "" &&
-					call.Function.Name == "complex_func" &&
-					call.Index == 0 // Single tool call should have index 0
-			},
-		},
-		{
-			name: "part with nil function call",
-			input: []*genai.Part{
-				{
-					FunctionCall: nil,
-					Text:         "some text",
-				},
-			},
-			expected: func(calls []openai.ChatCompletionChunkChoiceDeltaToolCall) bool {
-				return calls == nil
-			},
-		},
-		{
-			name: "function call with unmarshalable args",
-			input: []*genai.Part{
-				{
-					FunctionCall: &genai.FunctionCall{
-						Name: "test_func",
-						Args: map[string]any{
-							"channel": make(chan int), // channels cannot be marshaled to JSON
-						},
-					},
-				},
-			},
-			wantErr: true,
-			errMsg:  "failed to marshal function arguments",
-			expected: func(calls []openai.ChatCompletionChunkChoiceDeltaToolCall) bool {
-				return calls == nil
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			calls, err := extractToolCallsFromGeminiPartsStream(toolCalls, tt.input)
-
-			if tt.wantErr {
-				require.Error(t, err)
-				if tt.errMsg != "" {
-					assert.Contains(t, err.Error(), tt.errMsg)
-				}
-				return
-			}
-
-			require.NoError(t, err)
-
-			if !tt.expected(calls) {
-				t.Errorf("extractToolCallsFromGeminiPartsStream() result validation failed. Got: %+v", calls)
-			}
-		})
-	}
-}
-
-// TestExtractToolCallsStreamVsNonStream tests the differences between streaming and non-streaming extraction
-func TestExtractToolCallsStreamVsNonStream(t *testing.T) {
-	toolCalls := []openai.ChatCompletionMessageToolCallParam{}
-	toolCallsStream := []openai.ChatCompletionChunkChoiceDeltaToolCall{}
-	parts := []*genai.Part{
-		{
-			FunctionCall: &genai.FunctionCall{
-				Name: "test_function",
-				Args: map[string]any{
-					"param1": "value1",
-					"param2": 42,
-				},
-			},
-		},
-	}
-
-	// Get results from both functions
-	streamCalls, err := extractToolCallsFromGeminiPartsStream(toolCallsStream, parts)
-	require.NoError(t, err)
-	require.Len(t, streamCalls, 1)
-
-	nonStreamCalls, err := extractToolCallsFromGeminiParts(toolCalls, parts)
-	require.NoError(t, err)
-	require.Len(t, nonStreamCalls, 1)
-
-	streamCall := streamCalls[0]
-	nonStreamCall := nonStreamCalls[0]
-
-	// Verify function name and arguments are the same
-	assert.Equal(t, nonStreamCall.Function.Name, streamCall.Function.Name)
-	assert.Equal(t, nonStreamCall.Function.Arguments, streamCall.Function.Arguments)
-	assert.Equal(t, openai.ChatCompletionMessageToolCallTypeFunction, streamCall.Type)
-
-	// Verify differences:
-	// 1. Stream version should have Index field set to 0 for the first tool call
-	assert.Equal(t, int64(0), streamCall.Index)
-
-	// 2. Stream version should have a UUID (non-empty string) as ID
-	assert.NotNil(t, streamCall.ID)
-	assert.NotEmpty(t, *streamCall.ID)
-	// UUID should be longer than a simple sequential ID
-	assert.Greater(t, len(*streamCall.ID), 10, "Stream ID should be a UUID, got: %s", *streamCall.ID)
-
-	// 3. Non-stream version should have a UUID as well (both generate UUIDs now)
-	assert.NotNil(t, nonStreamCall.ID)
-	assert.NotEmpty(t, *nonStreamCall.ID)
-
-	// 4. IDs should be different between the two calls (different UUIDs)
-	assert.NotEqual(t, *streamCall.ID, *nonStreamCall.ID)
-
-	// Type checking: ensure we get the right types back
-	assert.IsType(t, []openai.ChatCompletionChunkChoiceDeltaToolCall{}, streamCalls)
-	assert.IsType(t, []openai.ChatCompletionMessageToolCallParam{}, nonStreamCalls)
-}
-
-// TestExtractToolCallsStreamIndexing specifically tests that multiple tool calls get correct indices
-func TestExtractToolCallsStreamIndexing(t *testing.T) {
-	toolCalls := []openai.ChatCompletionChunkChoiceDeltaToolCall{}
-	parts := []*genai.Part{
-		{
-			FunctionCall: &genai.FunctionCall{
-				Name: "first_function",
-				Args: map[string]any{"param": "value1"},
-			},
-		},
-		{Text: "some text"}, // non-function part should be skipped
-		{
-			FunctionCall: &genai.FunctionCall{
-				Name: "second_function",
-				Args: map[string]any{"param": "value2"},
-			},
-		},
-		{
-			FunctionCall: &genai.FunctionCall{
-				Name: "third_function",
-				Args: map[string]any{"param": "value3"},
-			},
-		},
-	}
-
-	calls, err := extractToolCallsFromGeminiPartsStream(toolCalls, parts)
-	require.NoError(t, err)
-	require.Len(t, calls, 3)
-
-	// Verify each tool call has the correct index
-	for i, call := range calls {
-		assert.Equal(t, int64(i), call.Index, "Tool call %d should have index %d", i, i)
-		assert.NotNil(t, call.ID)
-		assert.NotEmpty(t, *call.ID)
-		assert.Equal(t, openai.ChatCompletionMessageToolCallTypeFunction, call.Type)
-	}
-
-	// Verify specific function names and arguments
-	assert.Equal(t, "first_function", calls[0].Function.Name)
-	assert.JSONEq(t, `{"param":"value1"}`, calls[0].Function.Arguments)
-
-	assert.Equal(t, "second_function", calls[1].Function.Name)
-	assert.JSONEq(t, `{"param":"value2"}`, calls[1].Function.Arguments)
-
-	assert.Equal(t, "third_function", calls[2].Function.Name)
-	assert.JSONEq(t, `{"param":"value3"}`, calls[2].Function.Arguments)
-
-	// Verify all IDs are unique
-	ids := make(map[string]bool)
-	for _, call := range calls {
-		assert.False(t, ids[*call.ID], "Tool call ID should be unique: %s", *call.ID)
-		ids[*call.ID] = true
 	}
 }
 

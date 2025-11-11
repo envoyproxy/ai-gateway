@@ -6,7 +6,6 @@
 package openai
 
 import (
-	"encoding/json"
 	"testing"
 
 	openaisdk "github.com/openai/openai-go/v2"
@@ -21,12 +20,11 @@ import (
 )
 
 func TestImageGenerationRecorder_WithConfig_HideInputs(t *testing.T) {
-	req := basicImageReq
-	reqBody := basicImageReqBody
-
 	tests := []struct {
 		name          string
 		config        *openinference.TraceConfig
+		req           *openaisdk.ImageGenerateParams
+		reqBody       []byte
 		expectedAttrs []attribute.KeyValue
 	}{
 		{
@@ -34,22 +32,26 @@ func TestImageGenerationRecorder_WithConfig_HideInputs(t *testing.T) {
 			config: &openinference.TraceConfig{
 				HideInputs: true,
 			},
+			req:     basicImageReq,
+			reqBody: basicImageReqBody,
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, req.Model),
 				attribute.String(openinference.InputValue, openinference.RedactedValue),
-				// No InputMimeType when input is hidden.
+				attribute.String(openinference.LLMInvocationParameters, string(basicImageReqBody)),
 			},
 		},
 		{
-			name:   "show input value by default",
-			config: &openinference.TraceConfig{},
+			name: "hide invocation parameters",
+			config: &openinference.TraceConfig{
+				HideLLMInvocationParameters: true,
+			},
+			req:     basicImageReq,
+			reqBody: basicImageReqBody,
 			expectedAttrs: []attribute.KeyValue{
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-				attribute.String(openinference.LLMModelName, req.Model),
-				attribute.String(openinference.InputValue, string(reqBody)),
+				attribute.String(openinference.InputValue, string(basicImageReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
 			},
 		},
@@ -60,73 +62,88 @@ func TestImageGenerationRecorder_WithConfig_HideInputs(t *testing.T) {
 			recorder := NewImageGenerationRecorder(tt.config)
 
 			actualSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
-				recorder.RecordRequest(span, req, reqBody)
+				recorder.RecordRequest(span, tt.req, tt.reqBody)
 				return false
 			})
 
-			attrs := attributesToMap(actualSpan.Attributes)
-			// Required base attrs
-			_, hasKind := attrs[openinference.SpanKind]
-			_, hasSystem := attrs[openinference.LLMSystem]
-			_, hasModel := attrs[openinference.LLMModelName]
-			require.True(t, hasKind && hasSystem && hasModel)
-
-			if tt.config.HideInputs {
-				require.Equal(t, openinference.RedactedValue, attrs[openinference.InputValue])
-				_, hasMime := attrs[openinference.InputMimeType]
-				require.False(t, hasMime)
-			} else {
-				require.Equal(t, string(reqBody), attrs[openinference.InputValue])
-				require.Equal(t, openinference.MimeTypeJSON, attrs[openinference.InputMimeType])
-			}
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, actualSpan.Attributes)
 		})
 	}
 }
 
 func TestImageGenerationRecorder_WithConfig_HideOutputs(t *testing.T) {
-	resp := &openaisdk.ImagesResponse{Data: []openaisdk.Image{{URL: "https://example.com/img.png"}}}
-	respBody, err := json.Marshal(resp)
-	require.NoError(t, err)
+	recorder := NewImageGenerationRecorder(&openinference.TraceConfig{
+		HideInputs:  true,
+		HideOutputs: true,
+	})
 
 	tests := []struct {
 		name           string
-		config         *openinference.TraceConfig
+		fn             func(oteltrace.Span) bool
+		expectedAttrs  []attribute.KeyValue
 		expectedStatus trace.Status
 	}{
 		{
-			name: "hide output value",
-			config: &openinference.TraceConfig{
-				HideOutputs: true,
+			name: "RecordRequest redacts InputValue",
+			fn: func(span oteltrace.Span) bool {
+				recorder.RecordRequest(span, basicImageReq, basicImageReqBody)
+				return false
 			},
-			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.InputValue, openinference.RedactedValue),
+				attribute.String(openinference.LLMInvocationParameters, string(basicImageReqBody)),
+			},
 		},
 		{
-			name:           "show output value",
-			config:         &openinference.TraceConfig{},
+			name: "RecordResponse redacts OutputValue",
+			fn: func(span oteltrace.Span) bool {
+				recorder.RecordResponse(span, basicImageResp)
+				return false
+			},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.OutputValue, openinference.RedactedValue),
+			},
 			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			recorder := NewImageGenerationRecorder(tt.config)
-
-			actualSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
-				var r openaisdk.ImagesResponse
-				require.NoError(t, json.Unmarshal(respBody, &r))
-				recorder.RecordResponse(span, &r)
-				return false
-			})
-
-			attrs := attributesToMap(actualSpan.Attributes)
-			// Output MIME type should be set regardless
-			require.Equal(t, openinference.MimeTypeJSON, attrs[openinference.OutputMimeType])
-			if tt.config.HideOutputs {
-				require.Equal(t, openinference.RedactedValue, attrs[openinference.OutputValue])
-			} else {
-				require.Equal(t, string(respBody), attrs[openinference.OutputValue])
-			}
+			actualSpan := testotel.RecordWithSpan(t, tt.fn)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, actualSpan.Attributes)
 			require.Equal(t, tt.expectedStatus, actualSpan.Status)
 		})
 	}
+}
+
+func TestImageGenerationRecorder_ConfigFromEnvironment(t *testing.T) {
+	t.Setenv(openinference.EnvHideInputs, "true")
+	t.Setenv(openinference.EnvHideOutputs, "true")
+
+	recorder := NewImageGenerationRecorderFromEnv()
+
+	reqSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+		recorder.RecordRequest(span, basicImageReq, basicImageReqBody)
+		return false
+	})
+
+	attrs := make(map[string]attribute.Value)
+	for _, kv := range reqSpan.Attributes {
+		attrs[string(kv.Key)] = kv.Value
+	}
+	require.Equal(t, openinference.RedactedValue, attrs[openinference.InputValue].AsString())
+
+	respSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+		recorder.RecordResponse(span, basicImageResp)
+		return false
+	})
+
+	attrs = make(map[string]attribute.Value)
+	for _, kv := range respSpan.Attributes {
+		attrs[string(kv.Key)] = kv.Value
+	}
+	require.Equal(t, openinference.RedactedValue, attrs[openinference.OutputValue].AsString())
 }

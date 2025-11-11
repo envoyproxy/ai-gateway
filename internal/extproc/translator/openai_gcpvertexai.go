@@ -13,6 +13,7 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"github.com/google/uuid"
 	"google.golang.org/genai"
 	"k8s.io/utils/ptr"
 
@@ -41,7 +42,7 @@ type gcpVertexAIErrorDetails struct {
 // NewChatCompletionOpenAIToGCPVertexAITranslator implements [Factory] for OpenAI to GCP Gemini translation.
 // This translator converts OpenAI ChatCompletion API requests to GCP Gemini API format.
 func NewChatCompletionOpenAIToGCPVertexAITranslator(modelNameOverride internalapi.ModelNameOverride) OpenAIChatCompletionTranslator {
-	return &openAIToGCPVertexAITranslatorV1ChatCompletion{modelNameOverride: modelNameOverride}
+	return &openAIToGCPVertexAITranslatorV1ChatCompletion{modelNameOverride: modelNameOverride, toolCallIndex: int64(0)}
 }
 
 // openAIToGCPVertexAITranslatorV1ChatCompletion translates OpenAI Chat Completions API to GCP Vertex AI Gemini API.
@@ -53,6 +54,7 @@ type openAIToGCPVertexAITranslatorV1ChatCompletion struct {
 	stream            bool   // Track if this is a streaming request.
 	bufferedBody      []byte // Buffer for incomplete JSON chunks.
 	requestModel      internalapi.RequestModel
+	toolCallIndex     int64
 }
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody] for GCP Gemini.
@@ -242,10 +244,94 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) parseGCPStreamingChunks(
 	return chunks, nil
 }
 
+// extractToolCallsFromGeminiPartsStream extracts tool calls from Gemini parts for streaming responses.
+// Each tool call is assigned an incremental index starting from 0, matching OpenAI's streaming protocol.
+// Returns ChatCompletionChunkChoiceDeltaToolCall types suitable for streaming responses, or nil if no tool calls are found.
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) extractToolCallsFromGeminiPartsStream(toolCalls []openai.ChatCompletionChunkChoiceDeltaToolCall, parts []*genai.Part) ([]openai.ChatCompletionChunkChoiceDeltaToolCall, error) {
+	for _, part := range parts {
+		if part == nil || part.FunctionCall == nil {
+			continue
+		}
+
+		// Convert function call arguments to JSON string.
+		args, err := json.Marshal(part.FunctionCall.Args)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal function arguments: %w", err)
+		}
+
+		// Generate a random ID for the tool call.
+		toolCallID := uuid.New().String()
+
+		toolCall := openai.ChatCompletionChunkChoiceDeltaToolCall{
+			ID:   &toolCallID,
+			Type: openai.ChatCompletionMessageToolCallTypeFunction,
+			Function: openai.ChatCompletionMessageToolCallFunctionParam{
+				Name:      part.FunctionCall.Name,
+				Arguments: string(args),
+			},
+			Index: o.toolCallIndex,
+		}
+		// a new toolCall
+		o.toolCallIndex++
+
+		toolCalls = append(toolCalls, toolCall)
+	}
+
+	if len(toolCalls) == 0 {
+		return nil, nil
+	}
+
+	return toolCalls, nil
+}
+
+// geminiCandidatesToOpenAIStreamingChoices converts Gemini candidates to OpenAI streaming choices.
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiCandidatesToOpenAIStreamingChoices(candidates []*genai.Candidate) ([]openai.ChatCompletionResponseChunkChoice, error) {
+	responseMode := o.responseMode
+	choices := make([]openai.ChatCompletionResponseChunkChoice, 0, len(candidates))
+
+	for _, candidate := range candidates {
+		if candidate == nil {
+			continue
+		}
+
+		// Create the streaming choice.
+		choice := openai.ChatCompletionResponseChunkChoice{
+			Index: 0,
+		}
+
+		toolCalls := []openai.ChatCompletionChunkChoiceDeltaToolCall{}
+		var err error
+		if candidate.Content != nil {
+			delta := &openai.ChatCompletionResponseChunkChoiceDelta{
+				Role: openai.ChatMessageRoleAssistant,
+			}
+
+			// Extract text from parts for streaming (delta).
+			content := extractTextFromGeminiParts(candidate.Content.Parts, responseMode)
+			if content != "" {
+				delta.Content = &content
+			}
+
+			// Extract tool calls if any.
+			toolCalls, err = o.extractToolCallsFromGeminiPartsStream(toolCalls, candidate.Content.Parts)
+			if err != nil {
+				return nil, fmt.Errorf("error extracting tool calls: %w", err)
+			}
+			delta.ToolCalls = toolCalls
+
+			choice.Delta = delta
+		}
+		choice.FinishReason = geminiFinishReasonToOpenAI(candidate.FinishReason, toolCalls)
+		choices = append(choices, choice)
+	}
+
+	return choices, nil
+}
+
 // convertGCPChunkToOpenAI converts a GCP streaming chunk to OpenAI streaming format.
 func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) convertGCPChunkToOpenAI(chunk genai.GenerateContentResponse) *openai.ChatCompletionResponseChunk {
 	// Convert candidates to OpenAI choices for streaming.
-	choices, err := geminiCandidatesToOpenAIStreamingChoices(chunk.Candidates, o.responseMode)
+	choices, err := o.geminiCandidatesToOpenAIStreamingChoices(chunk.Candidates)
 	if err != nil {
 		// For now, create empty choices on error to prevent breaking the stream.
 		choices = []openai.ChatCompletionResponseChunkChoice{}
@@ -272,8 +358,10 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) openAIMessageToGeminiMes
 		return nil, err
 	}
 
+	// Some models support only partialJSONSchema.
+	parametersJSONSchemaAvailable := responseJSONSchemaAvailable(requestModel)
 	// Convert OpenAI tools to Gemini tools.
-	tools, err := openAIToolsToGeminiTools(openAIReq.Tools)
+	tools, err := openAIToolsToGeminiTools(openAIReq.Tools, parametersJSONSchemaAvailable)
 	if err != nil {
 		return nil, fmt.Errorf("error converting tools: %w", err)
 	}

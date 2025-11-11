@@ -145,7 +145,7 @@ Ensure you're using a clean Envoy Gateway deployment. If you have an existing En
 
 :::info Version Requirements
 
-Envoy AI Gateway requires Envoy Gateway version 1.3.0 or higher. For the best experience while trying out AI Gateway, we recommend using the latest version as shown in the commands below.
+Envoy AI Gateway requires Envoy Gateway version 1.5.0 or higher. For the best experience while trying out AI Gateway, we recommend using the latest version as shown in the commands below.
 
 :::
 
@@ -153,7 +153,7 @@ Envoy AI Gateway is built on top of Envoy Gateway. Install it using Helm and wai
 
 ```shell
 helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \
-  --version v0.3.0 \
+  --version v1.5.0 \
   --namespace envoy-gateway-system \
   --create-namespace
 

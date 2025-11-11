@@ -1,75 +1,75 @@
 {
-  "flags":  256,
-  "name":  "Completion",
-  "kind":  "SPAN_KIND_INTERNAL",
-  "attributes":  [
+  "flags": 256,
+  "name": "Completion",
+  "kind": "SPAN_KIND_INTERNAL",
+  "attributes": [
     {
-      "key":  "llm.system",
-      "value":  {
-        "stringValue":  "openai"
+      "key": "llm.system",
+      "value": {
+        "stringValue": "openai"
       }
     },
     {
-      "key":  "input.value",
-      "value":  {
-        "stringValue":  "{\"model\": \"babbage-002\", \"prompt\": \"def fib(n):\\n    if n <= 1:\\n        return n\\n    else:\\n        return fib(n-1) + fib(n-2)\", \"max_tokens\": 25, \"stream\": true, \"temperature\": 0.4, \"top_p\": 0.9}"
+      "key": "input.value",
+      "value": {
+        "stringValue": "{\"model\": \"babbage-002\", \"prompt\": \"def fib(n):\\n    if n <= 1:\\n        return n\\n    else:\\n        return fib(n-1) + fib(n-2)\", \"max_tokens\": 25, \"stream\": true, \"temperature\": 0.4, \"top_p\": 0.9}"
       }
     },
     {
-      "key":  "input.mime_type",
-      "value":  {
-        "stringValue":  "application/json"
+      "key": "input.mime_type",
+      "value": {
+        "stringValue": "application/json"
       }
     },
     {
-      "key":  "output.value",
-      "value":  {
-        "stringValue":  "{\"choices\": [{\"text\": \" + fib(n-3)\\n\\ndef fib2(n):\\n    if n <= 1:\\n        return n\\n    else:\\n\", \"index\": 0, \"finish_reason\": \"length\"}], \"id\": \"cmpl-CKz4pmtksE5Tg3sqmeOXcZtoQEw7O\", \"created\": 1759117375, \"model\": \"babbage:2023-07-21-v2\", \"object\": \"text_completion\"}"
+      "key": "output.value",
+      "value": {
+        "stringValue": "{\"choices\": [{\"text\": \" + fib(n-3)\\n\\ndef fib2(n):\\n    if n <= 1:\\n        return n\\n    else:\\n\", \"index\": 0, \"finish_reason\": \"length\"}], \"id\": \"cmpl-CKz4pmtksE5Tg3sqmeOXcZtoQEw7O\", \"created\": 1759117375, \"model\": \"babbage:2023-07-21-v2\", \"object\": \"text_completion\"}"
       }
     },
     {
-      "key":  "output.mime_type",
-      "value":  {
-        "stringValue":  "application/json"
+      "key": "output.mime_type",
+      "value": {
+        "stringValue": "application/json"
       }
     },
     {
-      "key":  "llm.invocation_parameters",
-      "value":  {
-        "stringValue":  "{\"model\": \"babbage-002\", \"max_tokens\": 25, \"stream\": true, \"temperature\": 0.4, \"top_p\": 0.9}"
+      "key": "llm.invocation_parameters",
+      "value": {
+        "stringValue": "{\"model\": \"babbage-002\", \"max_tokens\": 25, \"stream\": true, \"temperature\": 0.4, \"top_p\": 0.9}"
       }
     },
     {
-      "key":  "llm.prompts.0.prompt.text",
-      "value":  {
-        "stringValue":  "def fib(n):\n    if n <= 1:\n        return n\n    else:\n        return fib(n-1) + fib(n-2)"
+      "key": "llm.prompts.0.prompt.text",
+      "value": {
+        "stringValue": "def fib(n):\n    if n <= 1:\n        return n\n    else:\n        return fib(n-1) + fib(n-2)"
       }
     },
     {
-      "key":  "llm.model_name",
-      "value":  {
-        "stringValue":  "babbage:2023-07-21-v2"
+      "key": "llm.model_name",
+      "value": {
+        "stringValue": "babbage:2023-07-21-v2"
       }
     },
     {
-      "key":  "llm.choices.0.completion.text",
-      "value":  {
-        "stringValue":  " + fib(n-3)\n\ndef fib2(n):\n    if n <= 1:\n        return n\n    else:\n"
+      "key": "llm.choices.0.completion.text",
+      "value": {
+        "stringValue": " + fib(n-3)\n\ndef fib2(n):\n    if n <= 1:\n        return n\n    else:\n"
       }
     },
     {
-      "key":  "openinference.span.kind",
-      "value":  {
-        "stringValue":  "LLM"
+      "key": "openinference.span.kind",
+      "value": {
+        "stringValue": "LLM"
       }
     }
   ],
-  "events":  [
+  "events": [
     {
-      "name":  "First Token Stream Event"
+      "name": "First Token Stream Event"
     }
   ],
-  "status":  {
-    "code":  "STATUS_CODE_OK"
+  "status": {
+    "code": "STATUS_CODE_OK"
   }
 }
