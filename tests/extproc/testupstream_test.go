@@ -1059,6 +1059,7 @@ data: {"type":"message_stop"}
 						[]byte(strings.Join(expRequestHeaders, ","))),
 				)
 			}
+
 			if tc.expRawQuery != "" {
 				req.Header.Set(testupstreamlib.ExpectedRawQueryHeaderKey, tc.expRawQuery)
 			}
@@ -1071,7 +1072,6 @@ data: {"type":"message_stop"}
 			if tc.responseHeaders != "" {
 				req.Header.Set(testupstreamlib.ResponseHeadersKey, base64.StdEncoding.EncodeToString([]byte(tc.responseHeaders)))
 			}
-
 			if tc.expRequestBody != "" {
 				req.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expRequestBody)))
 			}
