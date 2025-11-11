@@ -4,6 +4,9 @@ title: AI/LLM Metrics
 sidebar_position: 6
 ---
 
+import CodeBlock from '@theme/CodeBlock';
+import vars from '../../_vars.json';
+
 When using the Envoy AI Gateway, it will collect AI specific metrics and expose them to Prometheus for monitoring by default.
 This guide provides an overview of the metrics collected by the AI Gateway and how to monitor them using Prometheus.
 
@@ -56,9 +59,9 @@ Before you begin, you'll need to complete the basic setup from the [Basic Usage]
 
 Then, you can install the prometheus using the following commands:
 
-```shell
-kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/monitoring/monitoring.yaml
-```
+<CodeBlock language="shell">
+{`kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/examples/monitoring/monitoring.yaml`}
+</CodeBlock>
 
 Let's wait for a while until the Prometheus is up and running.
 

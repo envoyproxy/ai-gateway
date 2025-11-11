@@ -4,6 +4,9 @@ title: Connect GCP VertexAI
 sidebar_position: 3
 ---
 
+import CodeBlock from '@theme/CodeBlock';
+import vars from '../../_vars.json';
+
 # Connect GCP VertexAI
 
 This guide will help you configure Envoy AI Gateway to work with GCP VertexAI's Gemini and Anthropic models.
@@ -32,9 +35,9 @@ Consider using GCP Workload Identity (Federation)/IAM roles and limited-scope cr
 
 ### 1. Download configuration template
 
-```shell
-curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/gcp_vertex.yaml
-```
+<CodeBlock language="shell">
+{`curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/examples/basic/gcp_vertex.yaml`}
+</CodeBlock>
 
 ### 2. Configure GCP Credentials
 

@@ -6,6 +6,8 @@ sidebar_position: 4
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
+import CodeBlock from '@theme/CodeBlock';
+import vars from '../_vars.json';
 
 This guide will help you set up a basic AI Gateway configuration and make your first request.
 
@@ -17,9 +19,9 @@ For Windows users, note that you are able to use Windows Subsystem for Linux (WS
 
 Let's start by deploying a basic AI Gateway setup that includes a test backend:
 
-```shell
-kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/basic.yaml
-```
+<CodeBlock language="shell">
+{`kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/examples/basic/basic.yaml`}
+</CodeBlock>
 
 Wait for the Gateway pod to be ready:
 
