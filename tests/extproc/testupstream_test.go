@@ -1072,6 +1072,11 @@ data: {"type":"message_stop"}
 			if tc.responseHeaders != "" {
 				req.Header.Set(testupstreamlib.ResponseHeadersKey, base64.StdEncoding.EncodeToString([]byte(tc.responseHeaders)))
 			}
+
+			if tc.expHost != "" {
+				req.Header.Set(testupstreamlib.ExpectedHostKey, tc.expHost)
+			}
+
 			if tc.expRequestBody != "" {
 				req.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expRequestBody)))
 			}
