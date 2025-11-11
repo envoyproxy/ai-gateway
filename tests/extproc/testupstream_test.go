@@ -123,6 +123,8 @@ func TestWithTestUpstream(t *testing.T) {
 		expRawQuery string
 		// expPath is the expected path to be sent to the test upstream.
 		expPath string
+		// expHost is the expected host to be sent to the test upstream.
+		expHost string
 		// expRequestHeaders are the expected request headers to be sent to the test upstream.
 		// The value is a base64 encoded string of comma separated key-value pairs.
 		// E.g. "key1:value1,key2:value2".
@@ -1056,6 +1058,9 @@ data: {"type":"message_stop"}
 					base64.StdEncoding.EncodeToString(
 						[]byte(strings.Join(expRequestHeaders, ","))),
 				)
+			}
+			if tc.expHost != "" {
+				req.Header.Set(testupstreamlib.ExpectedHostKey, tc.expHost)
 			}
 
 			if tc.expRawQuery != "" {
