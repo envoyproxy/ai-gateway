@@ -80,7 +80,7 @@ func runStdio2HTTPProxy(ctx context.Context, logger *slog.Logger, name, command 
 	// where everything runs in the same process and the threat model is different.
 	// Until that is implemented, we need to use a different DNS name that resolves to localhost to be
 	// able to proxy locally running MCP servers.
-	mcpAddress := fmt.Sprintf("http://127.0.0.1.nip.io:%d/mcp", listener.Addr().(*net.TCPAddr).Port)
+	mcpAddress := fmt.Sprintf("http://localhost:%d/mcp", listener.Addr().(*net.TCPAddr).Port)
 
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpServer }, nil)
 	server := &http.Server{
