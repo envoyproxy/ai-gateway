@@ -382,7 +382,7 @@ func (m *MCPProxy) handleInitializeRequest(ctx context.Context, w http.ResponseW
 
 	result := mcp.InitializeResult{ProtocolVersion: protocolVersion20250618, ServerInfo: &mcp.Implementation{}}
 	result.ServerInfo.Name = "envoy-ai-gateway"
-	result.ServerInfo.Version = version.Version
+	result.ServerInfo.Version = version.Parse()
 	result.Capabilities = &mcp.ServerCapabilities{
 		Tools:       &mcp.ToolCapabilities{ListChanged: true},
 		Prompts:     &mcp.PromptCapabilities{ListChanged: true},
