@@ -5,7 +5,7 @@ sidebar_position: 4
 ---
 
 import CodeBlock from '@theme/CodeBlock';
-import vars from '../../_vars.json';
+import vars from '../../\_vars.json';
 
 # Connect Tetrate Agent Router Service (TARS)
 

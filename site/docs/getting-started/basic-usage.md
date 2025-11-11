@@ -7,7 +7,7 @@ sidebar_position: 4
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import CodeBlock from '@theme/CodeBlock';
-import vars from '../_vars.json';
+import vars from '../\_vars.json';
 
 This guide will help you set up a basic AI Gateway configuration and make your first request.
 

@@ -7,7 +7,7 @@ sidebar_position: 3
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import CodeBlock from '@theme/CodeBlock';
-import vars from '../_vars.json';
+import vars from '../\_vars.json';
 
 This guide will walk you through installing Envoy AI Gateway and its required components.
 

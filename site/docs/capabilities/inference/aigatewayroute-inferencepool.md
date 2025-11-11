@@ -5,7 +5,7 @@ sidebar_position: 3
 ---
 
 import CodeBlock from '@theme/CodeBlock';
-import vars from '../../_vars.json';
+import vars from '../../\_vars.json';
 
 # AIGatewayRoute + InferencePool Guide
 

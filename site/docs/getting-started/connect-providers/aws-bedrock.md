@@ -5,7 +5,7 @@ sidebar_position: 3
 ---
 
 import CodeBlock from '@theme/CodeBlock';
-import vars from '../../_vars.json';
+import vars from '../../\_vars.json';
 
 # Connect AWS Bedrock
 
@@ -70,8 +70,8 @@ The Pod Identity association should reference:
 {`kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/examples/basic/aws-pod-identity.yaml
 
 kubectl wait pods --timeout=2m \\
-    -l gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic \\
-    -n envoy-gateway-system --for=condition=Ready`}
+-l gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-basic \\
+-n envoy-gateway-system --for=condition=Ready`}
 </CodeBlock>
 
 **Step 3: Test**

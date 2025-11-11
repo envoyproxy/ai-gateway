@@ -5,7 +5,7 @@ sidebar_position: 7
 ---
 
 import CodeBlock from '@theme/CodeBlock';
-import vars from '../../_vars.json';
+import vars from '../../\_vars.json';
 
 Envoy AI Gateway's router joins and records distributed traces when supplied
 with an [OpenTelemetry](https://opentelemetry.io/) collector endpoint.
@@ -184,11 +184,12 @@ To remove Phoenix and disable tracing:
 helm uninstall phoenix -n envoy-ai-gateway-system
 
 # Disable tracing in AI Gateway
+
 helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \\
-    --version v${vars.aigwVersion} \\
-    --namespace envoy-ai-gateway-system \\
-    --reuse-values \\
-    --unset extProc.extraEnvVars`}
+--version v${vars.aigwVersion} \\
+--namespace envoy-ai-gateway-system \\
+--reuse-values \\
+--unset extProc.extraEnvVars`}
 </CodeBlock>
 
 ## See Also

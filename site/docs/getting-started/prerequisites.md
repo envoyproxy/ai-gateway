@@ -8,7 +8,7 @@ import Link from '@docusaurus/Link';
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import CodeBlock from '@theme/CodeBlock';
-import vars from '../_vars.json';
+import vars from '../\_vars.json';
 
 Before you begin using Envoy AI Gateway, you'll need to ensure you have the following prerequisites in place:
 

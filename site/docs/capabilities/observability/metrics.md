@@ -5,7 +5,7 @@ sidebar_position: 6
 ---
 
 import CodeBlock from '@theme/CodeBlock';
-import vars from '../../_vars.json';
+import vars from '../../\_vars.json';
 
 When using the Envoy AI Gateway, it will collect AI specific metrics and expose them to Prometheus for monitoring by default.
 This guide provides an overview of the metrics collected by the AI Gateway and how to monitor them using Prometheus.
