@@ -145,7 +145,7 @@ Ensure you're using a clean Envoy Gateway deployment. If you have an existing En
 
 :::info Version Requirements
 
-Envoy AI Gateway requires Envoy Gateway version 1.3.0 or higher. For the best experience while trying out AI Gateway, we recommend using the latest version as shown in the commands below.
+Envoy AI Gateway requires Envoy Gateway version 1.5.0 or higher. For the best experience while trying out AI Gateway, we recommend using the latest version as shown in the commands below.
 
 :::
 
