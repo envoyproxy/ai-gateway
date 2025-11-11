@@ -1059,7 +1059,6 @@ data: {"type":"message_stop"}
 						[]byte(strings.Join(expRequestHeaders, ","))),
 				)
 			}
-
 			if tc.expRawQuery != "" {
 				req.Header.Set(testupstreamlib.ExpectedRawQueryHeaderKey, tc.expRawQuery)
 			}
