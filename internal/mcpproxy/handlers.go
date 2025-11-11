@@ -650,6 +650,10 @@ func (m *MCPProxy) proxyResponseBody(ctx context.Context, s *session, w http.Res
 				case *jsonrpc.Response:
 					// Correct the ID to match the original request if possible.
 					if req != nil {
+						if err = m.maybeResponseModify(ctx, req, msg, backend.Name); err != nil {
+							m.l.Error("failed to modify response", slog.String("error", err.Error()))
+							continue
+						}
 						msg.ID = req.ID
 					}
 					m.recordResponse(ctx, msg)

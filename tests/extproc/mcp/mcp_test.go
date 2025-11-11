@@ -411,7 +411,7 @@ func testReadResource(t *testing.T, m *mcpEnv) {
 	})
 	require.NoError(t, err)
 	require.Len(t, r.Contents, 1)
-	require.Equal(t, testmcp.DummyResource.URI, r.Contents[0].URI)
+	require.Equal(t, defaultMCPBackendResourceURIPrefix+testmcp.DummyResource.URI, r.Contents[0].URI)
 	require.Equal(t, testmcp.DummyResource.MIMEType, r.Contents[0].MIMEType)
 	require.Equal(t, "dummy", string(r.Contents[0].Blob))
 	requireMCPSpan(t, m.collector.TakeSpan(), "ReadResource", map[string]string{
@@ -718,23 +718,47 @@ func testNotificationCancelled(t *testing.T, m *mcpEnv) {
 
 func testComplete(t *testing.T, m *mcpEnv) {
 	s := m.newSession(t)
-	result, err := s.session.Complete(t.Context(), &mcp.CompleteParams{
-		Argument: mcp.CompleteParamsArgument{
-			Name:  "language",
-			Value: "py",
-		},
-		Ref: &mcp.CompleteReference{
-			Type: "ref/prompt",
-			Name: defaultMCPBackendResourcePrefix + "code_review",
-		},
+
+	t.Run("prompt", func(t *testing.T) {
+		result, err := s.session.Complete(t.Context(), &mcp.CompleteParams{
+			Argument: mcp.CompleteParamsArgument{
+				Name:  "language",
+				Value: "py",
+			},
+			Ref: &mcp.CompleteReference{
+				Type: "ref/prompt",
+				Name: defaultMCPBackendResourcePrefix + "code_review",
+			},
+		})
+		require.NoError(t, err)
+		completionValues := []string{"python", "pytorch", "pyside"}
+		require.Equal(t, completionValues, result.Completion.Values)
+		requireMCPSpan(t, m.collector.TakeSpan(), "Complete", map[string]string{
+			"mcp.method.name":             "completion/complete",
+			"mcp.complete.argument.name":  "language",
+			"mcp.complete.argument.value": "py",
+		})
 	})
-	require.NoError(t, err)
-	completionValues := []string{"python", "pytorch", "pyside"}
-	require.Equal(t, completionValues, result.Completion.Values)
-	requireMCPSpan(t, m.collector.TakeSpan(), "Complete", map[string]string{
-		"mcp.method.name":             "completion/complete",
-		"mcp.complete.argument.name":  "language",
-		"mcp.complete.argument.value": "py",
+
+	t.Run("resource", func(t *testing.T) {
+		result, err := s.session.Complete(t.Context(), &mcp.CompleteParams{
+			Argument: mcp.CompleteParamsArgument{
+				Name:  "id",
+				Value: "23",
+			},
+			Ref: &mcp.CompleteReference{
+				Type: "ref/resource",
+				URI:  defaultMCPBackendResourceURIPrefix + "file://results-{id}.txt",
+			},
+		})
+		require.NoError(t, err)
+		completionValues := []string{"file://results-23.txt"}
+		require.Equal(t, completionValues, result.Completion.Values)
+		requireMCPSpan(t, m.collector.TakeSpan(), "Complete", map[string]string{
+			"mcp.method.name":             "completion/complete",
+			"mcp.complete.argument.name":  "id",
+			"mcp.complete.argument.value": "23",
+		})
 	})
 }
 
