@@ -64,7 +64,6 @@ var (
 	testUpstreamAWSAnthropicBackend = filterapi.Backend{Name: "testupstream-aws-anthropic", Schema: awsAnthropicSchema}
 	alwaysFailingBackend            = filterapi.Backend{Name: "always-failing-backend", Schema: openAISchema}
 
-	// Backend with body mutations to test bodyMutation == nil logic
 	testUpstreamBodyMutationBackend = filterapi.Backend{
 		Name:   "testupstream-body-mutation",
 		Schema: openAISchema,
@@ -78,7 +77,6 @@ var (
 		},
 	}
 
-	// Backend with body mutations for messages processor testing
 	testUpstreamBodyMutationAnthropicBackend = filterapi.Backend{
 		Name:   "testupstream-body-mutation-anthropic",
 		Schema: anthropicSchema,
