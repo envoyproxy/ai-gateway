@@ -551,7 +551,7 @@ It can reference either an AIServiceBackend or an InferencePool resource.
   description="Name is the name of the backend resource.<br />When Group and Kind are not specified, this refers to an AIServiceBackend.<br />When Group and Kind are specified, this refers to the resource of the specified type."
 /><ApiField
   name="namespace"
-  type="[Namespace](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#namespace)"
+  type="[Namespace](#namespace)"
   required="false"
   description="Namespace is the namespace of the backend resource.<br />When unspecified (or empty string), this refers to the local namespace of the AIGatewayRoute.<br />Note that when a namespace different than the local namespace is specified,<br />a ReferenceGrant object is required in the referent namespace to allow that<br />namespace's owner to accept the reference. See the ReferenceGrant<br />documentation for details."
 /><ApiField
@@ -604,7 +604,7 @@ It can reference either an AIServiceBackend or an InferencePool resource.
 
 <ApiField
   name="headers"
-  type="[HTTPHeaderMatch](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#httpheadermatch) array"
+  type="HTTPHeaderMatch array"
   required="false"
   description="Headers specifies HTTP request header matchers. See HeaderMatch in the Gateway API for the details:<br />https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPHeaderMatch"
 />
@@ -625,7 +625,7 @@ AIGatewayRouteSpec details the AIGatewayRoute configuration.
 
 <ApiField
   name="parentRefs"
-  type="[ParentReference](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#parentreference) array"
+  type="ParentReference array"
   required="false"
   description="ParentRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.<br />Currently, each reference's Kind must be Gateway."
 /><ApiField
@@ -1341,7 +1341,7 @@ HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to 
 
 <ApiField
   name="set"
-  type="[HTTPHeader](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#httpheader) array"
+  type="HTTPHeader array"
   required="false"
   description="Set overwrites/adds the request with the given header (name, value)<br />before the action.<br />Input:<br />  GET /foo HTTP/1.1<br />  my-header: foo<br />Config:<br />  set:<br />  - name: `my-header`<br />    value: `bar`<br />Output:<br />  GET /foo HTTP/1.1<br />  my-header: bar"
 /><ApiField
@@ -1367,12 +1367,12 @@ JWKS defines how to obtain JSON Web Key Sets (JWKS) either from a remote HTTP/HT
 
 <ApiField
   name="remoteJWKS"
-  type="[RemoteJWKS](https://gateway.envoyproxy.io/docs/api/extension_types/#remotejwks)"
+  type="[RemoteJWKS](#remotejwks)"
   required="false"
   description="RemoteJWKS defines how to fetch and cache JSON Web Key Sets (JWKS) from a remote<br />HTTP/HTTPS endpoint."
 /><ApiField
   name="localJWKS"
-  type="[LocalJWKS](https://gateway.envoyproxy.io/docs/api/extension_types/#localjwks)"
+  type="[LocalJWKS](#localjwks)"
   required="false"
   description="LocalJWKS defines how to get the JSON Web Key Sets (JWKS) from a local source."
 />
@@ -1531,7 +1531,7 @@ MCPRouteBackendRef wraps a EG's BackendObjectReference to reference an MCP serve
   description="Name is the name of the referent."
 /><ApiField
   name="namespace"
-  type="[Namespace](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#namespace)"
+  type="[Namespace](#namespace)"
   required="false"
   description="Namespace is the namespace of the backend. When unspecified, the local<br />namespace is inferred.<br />Note that when a namespace different than the local namespace is specified,<br />a ReferenceGrant object is required in the referent namespace to allow that<br />namespace's owner to accept the reference. See the ReferenceGrant<br />documentation for details.<br />Support: Core"
 /><ApiField
@@ -1615,7 +1615,7 @@ MCPRouteSecurityPolicy defines the security policy for a MCPRoute.
   description="OAuth defines the configuration for the MCP spec compatible OAuth authentication."
 /><ApiField
   name="apiKeyAuth"
-  type="[APIKeyAuth](https://gateway.envoyproxy.io/docs/api/extension_types/#apikeyauth)"
+  type="[APIKeyAuth](#apikeyauth)"
   required="false"
   description="APIKeyAuth defines the configuration for the API Key Authentication."
 />
@@ -1636,7 +1636,7 @@ MCPRouteSpec details the MCPRoute configuration.
 
 <ApiField
   name="parentRefs"
-  type="[ParentReference](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#parentreference) array"
+  type="ParentReference array"
   required="true"
   description="ParentRefs are the names of the Gateway resources this MCPRoute is being attached to.<br />Cross namespace references are not supported. In other words, the Gateway resources must be in the<br />same namespace as the MCPRoute. Currently, each reference's Kind must be Gateway."
 /><ApiField
@@ -1647,7 +1647,7 @@ MCPRouteSpec details the MCPRoute configuration.
   description="Path is the HTTP endpoint path that serves MCP requests over the Streamable HTTP transport.<br />If not specified, the default is `/mcp`."
 /><ApiField
   name="headers"
-  type="[HTTPHeaderMatch](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#httpheadermatch) array"
+  type="HTTPHeaderMatch array"
   required="false"
   description="Headers are HTTP headers that must match for this route to be selected.<br />Multiple match values are ANDed together, meaning, a request must match all the specified headers to select the route."
 /><ApiField
