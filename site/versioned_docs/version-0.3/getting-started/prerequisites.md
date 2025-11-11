@@ -153,7 +153,7 @@ Envoy AI Gateway is built on top of Envoy Gateway. Install it using Helm and wai
 
 ```shell
 helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \
-  --version v0.3.0 \
+  --version v1.3.0 \
   --namespace envoy-gateway-system \
   --create-namespace
 
