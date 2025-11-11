@@ -1059,22 +1059,18 @@ data: {"type":"message_stop"}
 						[]byte(strings.Join(expRequestHeaders, ","))),
 				)
 			}
-			if tc.expHost != "" {
-				req.Header.Set(testupstreamlib.ExpectedHostKey, tc.expHost)
-			}
 
 			if tc.expRawQuery != "" {
 				req.Header.Set(testupstreamlib.ExpectedRawQueryHeaderKey, tc.expRawQuery)
+			}
+			if tc.expHost != "" {
+				req.Header.Set(testupstreamlib.ExpectedHostKey, tc.expHost)
 			}
 			if tc.responseType != "" {
 				req.Header.Set(testupstreamlib.ResponseTypeKey, tc.responseType)
 			}
 			if tc.responseHeaders != "" {
 				req.Header.Set(testupstreamlib.ResponseHeadersKey, base64.StdEncoding.EncodeToString([]byte(tc.responseHeaders)))
-			}
-
-			if tc.expHost != "" {
-				req.Header.Set(testupstreamlib.ExpectedHostKey, tc.expHost)
 			}
 
 			if tc.expRequestBody != "" {
