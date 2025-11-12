@@ -559,3 +559,144 @@ func (m *mockRerankMetrics) RequireTokenUsage(t *testing.T, input uint32) {
 func (m *mockRerankMetrics) RequireSelectedBackend(t *testing.T, backend string) {
 	require.Equal(t, backend, m.backend)
 }
+
+func TestRerankProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutations(t *testing.T) {
+	t.Run("body mutations applied correctly", func(t *testing.T) {
+		headers := map[string]string{
+			":path":         "/cohere/v2/rerank",
+			"x-ai-eg-model": "rerank-english-v3",
+		}
+
+		requestBody := &cohere.RerankV2Request{
+			Model: "rerank-english-v3",
+		}
+		requestBodyRaw := []byte(`{"model": "rerank-english-v3", "query": "What is AI?", "documents": ["doc1", "doc2"], "return_documents": false, "top_k": 10}`)
+
+		bodyMutations := &filterapi.HTTPBodyMutation{
+			Remove: []string{"internal_flag"},
+			Set: []filterapi.HTTPBodyField{
+				{Path: "top_k", Value: "20"},
+				{Path: "return_documents", Value: "true"},
+				{Path: "max_chunks_per_doc", Value: "5"},
+			},
+		}
+
+		mockTranslator := mockRerankTranslator{
+			t:                 t,
+			expRequestBody:    requestBody,
+			retHeaderMutation: &extprocv3.HeaderMutation{},
+			retBodyMutation:   &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: requestBodyRaw}},
+			retErr:            nil,
+		}
+
+		rerankMetrics := &mockRerankMetrics{}
+
+		p := &rerankProcessorUpstreamFilter{
+			config:                 &processorConfig{},
+			requestHeaders:         headers,
+			logger:                 slog.Default(),
+			metrics:                rerankMetrics,
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: requestBodyRaw,
+			translator:             &mockTranslator,
+			handler:                &mockBackendAuthHandler{},
+		}
+
+		backend := &filterapi.Backend{
+			Name:         "test-backend",
+			Schema:       filterapi.VersionedAPISchema{Name: filterapi.APISchemaCohere},
+			BodyMutation: bodyMutations,
+		}
+
+		rp := &rerankProcessorRouterFilter{
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: requestBodyRaw,
+			requestHeaders:         headers,
+		}
+
+		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		require.NoError(t, err)
+
+		require.NotNil(t, p.bodyMutator)
+
+		ctx := context.Background()
+		response, err := p.ProcessRequestHeaders(ctx, nil)
+		require.NoError(t, err)
+		require.NotNil(t, response)
+
+		testBodyMutation := []byte(`{"model": "rerank-english-v3", "query": "What is AI?", "documents": ["doc1", "doc2"], "return_documents": false, "top_k": 10, "internal_flag": true}`)
+		mutatedBody, err := p.bodyMutator.Mutate(testBodyMutation, false)
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(mutatedBody, &result)
+		require.NoError(t, err)
+
+		require.Equal(t, float64(20), result["top_k"])
+		require.Equal(t, true, result["return_documents"])
+		require.Equal(t, float64(5), result["max_chunks_per_doc"])
+		require.NotContains(t, result, "internal_flag")
+		require.Equal(t, "rerank-english-v3", result["model"])
+		require.Equal(t, "What is AI?", result["query"])
+	})
+
+	t.Run("body mutator with retry", func(t *testing.T) {
+		headers := map[string]string{":path": "/cohere/v2/rerank"}
+		rerankMetrics := &mockRerankMetrics{}
+
+		originalRequestBodyRaw := []byte(`{"model": "rerank-english-v3", "query": "Original query", "return_documents": false}`)
+		requestBody := &cohere.RerankV2Request{
+			Model: "rerank-english-v3",
+		}
+
+		p := &rerankProcessorUpstreamFilter{
+			config:                 &processorConfig{},
+			requestHeaders:         headers,
+			logger:                 slog.Default(),
+			metrics:                rerankMetrics,
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: originalRequestBodyRaw,
+		}
+
+		bodyMutations := &filterapi.HTTPBodyMutation{
+			Set: []filterapi.HTTPBodyField{
+				{Path: "return_documents", Value: "true"},
+				{Path: "top_k", Value: "15"},
+			},
+		}
+
+		backend := &filterapi.Backend{
+			Name:         "test-backend",
+			Schema:       filterapi.VersionedAPISchema{Name: filterapi.APISchemaCohere},
+			BodyMutation: bodyMutations,
+		}
+
+		rp := &rerankProcessorRouterFilter{
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: originalRequestBodyRaw,
+			requestHeaders:         headers,
+			upstreamFilterCount:    2,
+		}
+
+		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		require.NoError(t, err)
+
+		require.NotNil(t, p.bodyMutator)
+		require.True(t, p.onRetry)
+
+		modifiedBody := []byte(`{"model": "rerank-english-v3", "query": "Modified query", "return_documents": false, "extra": "field"}`)
+		mutatedBody, err := p.bodyMutator.Mutate(modifiedBody, true)
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(mutatedBody, &result)
+		require.NoError(t, err)
+
+		require.Equal(t, true, result["return_documents"])
+		require.Equal(t, float64(15), result["top_k"])
+		require.Equal(t, "rerank-english-v3", result["model"])
+		require.NotContains(t, result, "extra")
+
+		require.Equal(t, "Original query", result["query"])
+	})
+}

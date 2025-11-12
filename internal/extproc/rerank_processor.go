@@ -19,6 +19,7 @@ import (
 
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/backendauth"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
@@ -140,6 +141,7 @@ type rerankProcessorUpstreamFilter struct {
 	backendName            string
 	handler                backendauth.Handler
 	headerMutator          *headermutator.HeaderMutator
+	bodyMutator            *bodymutator.BodyMutator
 	originalRequestBodyRaw []byte
 	originalRequestBody    *cohereschema.RerankV2Request
 	translator             translator.CohereRerankTranslator
@@ -371,6 +373,7 @@ func (r *rerankProcessorUpstreamFilter) SetBackend(ctx context.Context, b *filte
 	}
 	r.handler = backendHandler
 	r.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
+	r.bodyMutator = bodymutator.NewBodyMutator(b.BodyMutation, rp.originalRequestBodyRaw)
 	// Header-derived labels/CEL must be able to see the overridden request model.
 	if r.modelNameOverride != "" {
 		r.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = r.modelNameOverride

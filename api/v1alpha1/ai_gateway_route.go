@@ -328,6 +328,15 @@ type AIGatewayRouteRuleBackendRef struct {
 	// +optional
 	HeaderMutation *HTTPHeaderMutation `json:"headerMutation,omitempty"`
 
+	// BodyMutation defines the request body mutation to be applied to this backend.
+	// This allows modification of JSON fields in the request body before sending to the backend.
+	// When both route-level and backend-level BodyMutation are defined,
+	// route-level takes precedence over backend-level for conflicting operations.
+	// This field is ignored when referencing InferencePool resources.
+	//
+	// +optional
+	BodyMutation *HTTPBodyMutation `json:"bodyMutation,omitempty"`
+
 	// Weight is the weight of the backend. This is exactly the same as the weight in
 	// the BackendRef in the Gateway API. See for the details:
 	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef
@@ -397,4 +406,81 @@ type AIGatewayFilterConfigExternalProcessor struct {
 	//
 	// +optional
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+}
+
+// HTTPBodyMutation defines the mutation of HTTP request body JSON fields that will be applied to the request
+type HTTPBodyMutation struct {
+	// Set overwrites/adds the request body with the given JSON field (name, value)
+	// before sending to the backend. Only top-level fields are currently supported.
+	//
+	// Input:
+	//   {
+	//     "model": "gpt-4",
+	//     "service_tier": "default"
+	//   }
+	//
+	// Config:
+	//   set:
+	//   - path: "service_tier"
+	//     value: "scale"
+	//
+	// Output:
+	//   {
+	//     "model": "gpt-4",
+	//     "service_tier": "scale"
+	//   }
+	//
+	// +optional
+	// +listType=map
+	// +listMapKey=path
+	// +kubebuilder:validation:MaxItems=16
+	Set []HTTPBodyField `json:"set,omitempty"`
+
+	// Remove the given JSON field(s) from the HTTP request body before sending to the backend.
+	// The value of Remove is a list of top-level field names to remove.
+	//
+	// Input:
+	//   {
+	//     "model": "gpt-4",
+	//     "service_tier": "default",
+	//     "internal_flag": true
+	//   }
+	//
+	// Config:
+	//   remove: ["service_tier", "internal_flag"]
+	//
+	// Output:
+	//   {
+	//     "model": "gpt-4"
+	//   }
+	//
+	// +optional
+	// +listType=set
+	// +kubebuilder:validation:MaxItems=16
+	Remove []string `json:"remove,omitempty"`
+}
+
+// HTTPBodyField represents a JSON field name and value for body mutation
+type HTTPBodyField struct {
+	// Path is the top-level field name to set in the request body.
+	// Examples: "service_tier", "max_tokens", "temperature"
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Path string `json:"path"`
+
+	// Value is the JSON value to set at the specified field. This can be any valid JSON value:
+	// string, number, boolean, object, array, or null.
+	// The value will be parsed as JSON and inserted at the specified field.
+	//
+	// Examples:
+	//   - "\"scale\"" (string)
+	//   - "42" (number)
+	//   - "true" (boolean)
+	//   - "{\"key\": \"value\"}" (object)
+	//   - "[1, 2, 3]" (array)
+	//   - "null" (null)
+	//
+	// +kubebuilder:validation:Required
+	Value string `json:"value"`
 }
