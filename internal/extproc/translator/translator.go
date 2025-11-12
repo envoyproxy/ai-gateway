@@ -311,3 +311,49 @@ type ImageGenerationTranslator interface {
 	// 	- body is the response body that contains the error message.
 	ResponseError(respHeaders map[string]string, body io.Reader) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error)
 }
+
+func New(inputSchema, outputSchema filterapi.VersionedAPISchema) (Translator, error) {
+	switch inputSchema.Name {
+	case filterapi.APISchemaOpenAI:
+		switch outputSchema.Name {
+		case filterapi.APISchemaOpenAI:
+			return &openAIToOpenAITranslator{}, nil
+		case filterapi.APISchemaCohere:
+			return &openAIToCohereTranslator{}, nil
+		case filterapi.APISchemaAWSBedrock:
+			return &openAIToAWSBedrockTranslator{}, nil
+		case filterapi.APISchemaAzureOpenAI:
+			return &openAIToAzureOpenAITranslator{}, nil
+		case filterapi.APISchemaGCPVertexAI:
+			switch outputSchema.Name {
+			case filterapi.APISchemaOpenAI:
+				return &openAIToGCPVertexAITranslator{}, nil
+			default:
+				return nil, fmt.Errorf("unsupported output API schema: %s", outputSchema.Name)
+			}
+		case filterapi.APISchemaGemini:
+			// Gemini uses the same translator as GCPVertexAI
+			switch outputSchema.Name {
+			case filterapi.APISchemaOpenAI:
+				return &openAIToGCPVertexAITranslator{}, nil
+			default:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+}	}		return nil, fmt.Errorf("unsupported input API schema: %s", inputSchema.Name)	default:		}			return nil, fmt.Errorf("unsupported output API schema: %s", outputSchema.Name)		default:			return &openAIToAWSAnthropicTranslator{}, nil		case filterapi.APISchemaAWSAnthropic:			return &openAIToAnthropicTranslator{}, nil		case filterapi.APISchemaAnthropic:			return &openAIToGCPAnthropicTranslator{}, nil		case filterapi.APISchemaGCPAnthropic:			}				return nil, fmt.Errorf("unsupported output API schema: %s", outputSchema.Name)		}
+	default:
+		return nil, fmt.Errorf("unsupported input API schema: %s", inputSchema.Name)
+	}
+}
