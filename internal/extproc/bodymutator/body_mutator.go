@@ -100,16 +100,17 @@ func (b *BodyMutator) Mutate(requestBody []byte, onRetry bool) ([]byte, error) {
 	}
 
 	// Apply sets
+	replaceInPlace := onRetry
 	if len(b.bodyMutations.Set) > 0 {
 		for _, field := range b.bodyMutations.Set {
 			if field.Path != "" {
 				// Check value type to determine appropriate sjson method
 				if isJSONValue(field.Value) {
 					// Use SetRawBytes for JSON values (quoted strings, numbers, booleans, objects, arrays)
-					mutatedBody, err = sjson.SetRawBytes(mutatedBody, field.Path, []byte(field.Value))
+					mutatedBody, err = sjson.SetRawBytesOptions(mutatedBody, field.Path, []byte(field.Value), &sjson.Options{ReplaceInPlace: replaceInPlace})
 				} else {
 					// Use SetBytes for plain string values
-					mutatedBody, err = sjson.SetBytes(mutatedBody, field.Path, field.Value)
+					mutatedBody, err = sjson.SetBytesOptions(mutatedBody, field.Path, field.Value, &sjson.Options{ReplaceInPlace: replaceInPlace})
 				}
 				if err != nil {
 					return nil, fmt.Errorf("failed to set field %s: %w", field.Path, err)
