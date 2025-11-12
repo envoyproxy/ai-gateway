@@ -33,7 +33,7 @@ func TestOpenAIToOpenAIImageTranslator_RequestBody_ModelOverrideAndPath(t *testi
 	require.NotNil(t, bm)
 	var got openaisdk.ImageGenerateParams
 	require.NoError(t, json.Unmarshal(bm, &got))
-	require.Equal(t, "gpt-image-1", got.Model)
+	require.Equal(t, "gpt-image-1-mini", got.Model)
 }
 
 func TestOpenAIToOpenAIImageTranslator_RequestBody_ForceMutation(t *testing.T) {

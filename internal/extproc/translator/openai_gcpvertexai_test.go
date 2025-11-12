@@ -1504,7 +1504,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingParallelToolInde
                 "role": "model"
             }
         }
-    ],
+    ]
 }`
 
 	expectedChatCompletionChunks := []openai.ChatCompletionResponseChunk{
@@ -1519,7 +1519,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingParallelToolInde
 								Index: int64(0),
 								ID:    ptr.To("123"),
 								Function: openai.ChatCompletionMessageToolCallFunctionParam{
-									Arguments: `{"location": "New York City"}`,
+									Arguments: `{"location":"Shang Hai"}`,
 									Name:      "get_weather",
 								},
 								Type: "function",
@@ -1541,7 +1541,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingParallelToolInde
 								Index: int64(1),
 								ID:    ptr.To("123"),
 								Function: openai.ChatCompletionMessageToolCallFunctionParam{
-									Arguments: `{"location": "Shang Hai}`,
+									Arguments: `{"location":"New York City"}`,
 									Name:      "get_weather",
 								},
 								Type: "function",
@@ -1554,7 +1554,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingParallelToolInde
 		},
 	}
 
-	headerMut, bodyMut, _, _, err := translator.handleStreamingResponse(
+	headerMut, body, _, _, err := translator.handleStreamingResponse(
 		bytes.NewReader([]byte(gcpToolCallsChunk)),
 		false,
 		nil,
@@ -1562,10 +1562,8 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingParallelToolInde
 
 	require.Nil(t, headerMut)
 	require.NoError(t, err)
-	require.NotNil(t, bodyMut)
-	require.NotNil(t, bodyMut.Mutation)
+	require.NotNil(t, body)
 
-	body := bodyMut.Mutation.(*extprocv3.BodyMutation_Body).Body
 	chatCompletionChunks := getChatCompletionResponseChunk(body)
 
 	for idx, chunk := range chatCompletionChunks {
