@@ -184,7 +184,7 @@ func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn
 
 	switch parsed.Command() {
 	case "version":
-		_, _ = fmt.Fprintf(stdout, "Envoy AI Gateway CLI: %s\n", version.Version)
+		_, _ = fmt.Fprintf(stdout, "Envoy AI Gateway CLI: %s\n", version.Parse())
 	case "run", "run <path>":
 		err = rf(ctx, c.Run, c.Run.runOpts, stdout, stderr)
 		if err != nil {

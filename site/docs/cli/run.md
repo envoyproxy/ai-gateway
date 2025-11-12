@@ -95,7 +95,7 @@ The best way to start customizing the configuration is to start with an [example
 First, download an example configuration to use as a starting point:
 
 ```shell
-curl -o ollama.yaml https://raw.githubusercontent.com/envoyproxy/ai-gateway/refs/heads/main/examples/aigw/ollama.yaml
+curl -o ollama.yaml https://raw.githubusercontent.com/envoyproxy/ai-gateway/refs/heads/{vars.aigwGitRef}/examples/aigw/ollama.yaml
 ```
 
 Next, let's say change the model matcher from `.*` (match all) to specifically match `deepseek-r1:1.5b` and save the configuration to `custom.yaml`:
