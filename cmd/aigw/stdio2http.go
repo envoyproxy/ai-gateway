@@ -74,12 +74,6 @@ func runStdio2HTTPProxy(ctx context.Context, logger *slog.Logger, name, command 
 	if err != nil {
 		return "", fmt.Errorf("getting a free port for the %s stdio2http proxy: %w", name, err)
 	}
-	// TODO(nacx): For security reasons, Envoy Gateway does not allow defining Backend objects for
-	// "localhost (see: https://gateway.envoyproxy.io/docs/tasks/traffic/backend/#warning).
-	// This restriction, however, could be relaxed in standalone mode, as it is a single persona mode
-	// where everything runs in the same process and the threat model is different.
-	// Until that is implemented, we need to use a different DNS name that resolves to localhost to be
-	// able to proxy locally running MCP servers.
 	mcpAddress := fmt.Sprintf("http://localhost:%d/mcp", listener.Addr().(*net.TCPAddr).Port)
 
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpServer }, nil)
