@@ -311,3 +311,39 @@ type ImageGenerationTranslator interface {
 	// 	- body is the response body that contains the error message.
 	ResponseError(respHeaders map[string]string, body io.Reader) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error)
 }
+
+// TODO: This function is not yet implemented. The translator types referenced don't exist.
+// Each translator type needs specific constructors and different interfaces (OpenAIChatCompletionTranslator, etc.)
+// See NewChatCompletionOpenAIToOpenAITranslator and similar functions for the actual implementation pattern.
+/*
+func New(inputSchema, outputSchema filterapi.VersionedAPISchema) (interface{}, error) {
+	switch inputSchema.Name {
+	case filterapi.APISchemaOpenAI:
+		switch outputSchema.Name {
+		case filterapi.APISchemaOpenAI:
+			return &openAIToOpenAITranslator{}, nil
+		case filterapi.APISchemaCohere:
+			return &openAIToCohereTranslator{}, nil
+		case filterapi.APISchemaAWSBedrock:
+			return &openAIToAWSBedrockTranslator{}, nil
+		case filterapi.APISchemaAzureOpenAI:
+			return &openAIToAzureOpenAITranslator{}, nil
+		case filterapi.APISchemaGCPVertexAI:
+			return &openAIToGCPVertexAITranslator{}, nil
+		case filterapi.APISchemaGemini:
+			// Gemini uses the same translator as GCPVertexAI
+			return &openAIToGCPVertexAITranslator{}, nil
+		case filterapi.APISchemaAnthropic:
+			return &openAIToAnthropicTranslator{}, nil
+		case filterapi.APISchemaAWSAnthropic:
+			return &openAIToAWSAnthropicTranslator{}, nil
+		case filterapi.APISchemaGCPAnthropic:
+			return &openAIToGCPAnthropicTranslator{}, nil
+		default:
+			return nil, fmt.Errorf("unsupported output API schema: %s", outputSchema.Name)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported input API schema: %s", inputSchema.Name)
+	}
+}
+*/

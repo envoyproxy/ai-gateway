@@ -125,7 +125,7 @@ func (a *audioSpeechProcessorUpstreamFilter) selectTranslator(out filterapi.Vers
 	switch out.Name {
 	case filterapi.APISchemaOpenAI:
 		a.translator = translator.NewAudioSpeechOpenAIToOpenAITranslator(out.Version, a.modelNameOverride)
-	case filterapi.APISchemaGCPVertexAI:
+	case filterapi.APISchemaGCPVertexAI, filterapi.APISchemaGemini:
 		a.translator = translator.NewAudioSpeechOpenAIToGCPVertexAITranslator(a.modelNameOverride)
 	default:
 		return fmt.Errorf("unsupported API schema: backend=%s", out)
