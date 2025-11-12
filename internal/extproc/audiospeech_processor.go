@@ -328,10 +328,22 @@ func (a *audioSpeechProcessorUpstreamFilter) SetBackend(ctx context.Context, b *
 	if err = a.selectTranslator(b.Schema); err != nil {
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
-	if configurator, ok := any(a.translator).(interface{ SetPublisherPathEnabled(bool) }); ok {
-		usePublisherPath := b.Auth != nil && b.Auth.GCPAuth != nil
-		configurator.SetPublisherPathEnabled(usePublisherPath)
+	
+	// Configure translator for Gemini API key vs GCP Vertex AI OAuth2 authentication
+	if b.Schema.Name == filterapi.APISchemaGemini || b.Schema.Name == filterapi.APISchemaGCPVertexAI {
+		// Check if using Gemini API key authentication (which uses /v1beta path)
+		// vs GCP OAuth2 authentication (which uses /publishers path)
+		useGeminiPath := b.Auth != nil && b.Auth.GeminiAPIKey != nil
+		
+		// Configure the translator to use the appropriate path
+		type geminiPathSetter interface {
+			SetUseGeminiDirectPath(bool)
+		}
+		if setter, ok := a.translator.(geminiPathSetter); ok {
+			setter.SetUseGeminiDirectPath(useGeminiPath)
+		}
 	}
+	
 	a.handler = backendHandler
 	a.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
 	if a.modelNameOverride != "" {

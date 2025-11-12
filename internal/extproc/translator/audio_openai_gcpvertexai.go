@@ -23,6 +23,7 @@ import (
 
 // NewAudioSpeechOpenAIToGCPVertexAITranslator creates a translator for OpenAI audio/speech to GCP Vertex AI Gemini.
 func NewAudioSpeechOpenAIToGCPVertexAITranslator(modelNameOverride internalapi.ModelNameOverride) AudioSpeechTranslator {
+	// Default to using publisher path (GCP Vertex AI with OAuth2)
 	return &audioSpeechOpenAIToGCPVertexAITranslator{modelNameOverride: modelNameOverride, usePublisherPath: true}
 }
 
@@ -33,8 +34,15 @@ type audioSpeechOpenAIToGCPVertexAITranslator struct {
 	requestModel      internalapi.RequestModel
 	stream            bool
 	bufferedBody      []byte // Buffer for incomplete JSON chunks in streaming responses
-	usePublisherPath  bool
+	usePublisherPath  bool   // If true, use /publishers path (Vertex AI), else use /v1beta path (Gemini API)
 }
+
+// SetUseGeminiDirectPath sets whether to use Gemini direct API path (/v1beta/models) or GCP Vertex AI path (/publishers).
+// This should be set to true when using Gemini API key authentication, false for GCP OAuth2.
+func (a *audioSpeechOpenAIToGCPVertexAITranslator) SetUseGeminiDirectPath(use bool) {
+	a.usePublisherPath = !use // Note: inverted logic - usePublisherPath=false means use Gemini path
+}
+
 
 // RequestBody implements [AudioSpeechTranslator.RequestBody] for GCP Gemini.
 // This method translates an OpenAI AudioSpeech request to a GCP Gemini API request with audio response modalities.
@@ -278,10 +286,6 @@ func mapOpenAIVoiceToGemini(openAIVoice string) string {
 
 	// Default to Zephyr if unknown voice
 	return "Zephyr"
-}
-
-func (a *audioSpeechOpenAIToGCPVertexAITranslator) SetPublisherPathEnabled(enabled bool) {
-	a.usePublisherPath = enabled
 }
 
 // floatPtr returns a pointer to a float32

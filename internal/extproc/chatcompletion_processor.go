@@ -471,6 +471,22 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	if err = c.selectTranslator(b.Schema); err != nil {
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
+	
+	// Configure translator for Gemini API key vs GCP Vertex AI OAuth2 authentication
+	if b.Schema.Name == filterapi.APISchemaGemini || b.Schema.Name == filterapi.APISchemaGCPVertexAI {
+		// Check if using Gemini API key authentication (which uses /v1beta path)
+		// vs GCP OAuth2 authentication (which uses /publishers path)
+		useGeminiPath := b.Auth != nil && b.Auth.GeminiAPIKey != nil
+		
+		// Configure the translator to use the appropriate path
+		type geminiPathSetter interface {
+			SetUseGeminiDirectPath(bool)
+		}
+		if setter, ok := c.translator.(geminiPathSetter); ok {
+			setter.SetUseGeminiDirectPath(useGeminiPath)
+		}
+	}
+	
 	c.handler = backendHandler
 	c.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
 	// Header-derived labels/CEL must be able to see the overridden request model.
