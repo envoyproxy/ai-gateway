@@ -4,6 +4,9 @@ title: AIGatewayRoute + InferencePool Guide
 sidebar_position: 3
 ---
 
+import CodeBlock from '@theme/CodeBlock';
+import vars from '../../\_vars.json';
+
 # AIGatewayRoute + InferencePool Guide
 
 This guide demonstrates how to use InferencePool with AIGatewayRoute for advanced AI-specific inference routing. This approach provides enhanced features like model-based routing, token rate limiting, and advanced observability.
@@ -25,13 +28,13 @@ kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extens
 
 After installing InferencePool CRD, enable InferencePool support in Envoy Gateway, restart the deployment, and wait for it to be ready:
 
-```shell
-kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/inference-pool/config.yaml
+<CodeBlock language="shell">
+{`kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/examples/inference-pool/config.yaml
 
 kubectl rollout restart -n envoy-gateway-system deployment/envoy-gateway
 
-kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
-```
+kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available`}
+</CodeBlock>
 
 ## Step 2: Ensure Envoy Gateway is configured for InferencePool
 

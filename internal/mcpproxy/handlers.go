@@ -382,7 +382,7 @@ func (m *MCPProxy) handleInitializeRequest(ctx context.Context, w http.ResponseW
 
 	result := mcp.InitializeResult{ProtocolVersion: protocolVersion20250618, ServerInfo: &mcp.Implementation{}}
 	result.ServerInfo.Name = "envoy-ai-gateway"
-	result.ServerInfo.Version = version.Version
+	result.ServerInfo.Version = version.Parse()
 	result.Capabilities = &mcp.ServerCapabilities{
 		Tools:       &mcp.ToolCapabilities{ListChanged: true},
 		Prompts:     &mcp.PromptCapabilities{ListChanged: true},
@@ -601,6 +601,10 @@ func (m *MCPProxy) proxyResponseBody(ctx context.Context, s *session, w http.Res
 			body, _ = jsonrpc.EncodeMessage(msg)
 		case *jsonrpc.Response:
 			if req != nil {
+				if err := m.maybeResponseModify(ctx, req, msg, backend.Name); err != nil {
+					m.l.Error("failed to modify response", slog.String("error", err.Error()))
+					return
+				}
 				msg.ID = req.ID
 				body, _ = jsonrpc.EncodeMessage(msg)
 			}
@@ -646,6 +650,10 @@ func (m *MCPProxy) proxyResponseBody(ctx context.Context, s *session, w http.Res
 				case *jsonrpc.Response:
 					// Correct the ID to match the original request if possible.
 					if req != nil {
+						if err = m.maybeResponseModify(ctx, req, msg, backend.Name); err != nil {
+							m.l.Error("failed to modify response", slog.String("error", err.Error()))
+							continue
+						}
 						msg.ID = req.ID
 					}
 					m.recordResponse(ctx, msg)
@@ -699,6 +707,24 @@ func (m *MCPProxy) maybeUpdateProgressTokenMetadata(ctx context.Context, meta mc
 	return true
 }
 
+// maybeResponseModify modifies the client->server response to include the backend name where needed.
+func (m *MCPProxy) maybeResponseModify(_ context.Context, req *jsonrpc.Request, msg *jsonrpc.Response, backend filterapi.MCPBackendName) error {
+	if req.Method != "resources/read" || msg.Result == nil {
+		return nil
+	}
+
+	result := &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{}}
+	if err := json.Unmarshal(msg.Result, result); err != nil {
+		return fmt.Errorf("failed to unmarshal resources/read result: %w", err)
+	}
+	for _, res := range result.Contents {
+		res.URI = downstreamResourceURI(res.URI, backend)
+	}
+	msg.Result, _ = json.Marshal(result) // Already decoded result, so ignore error.
+
+	return nil
+}
+
 // maybeServerToClientRequestModify modifies the server->client request ID to include the backend name and path prefix
 // so that we can route the client->server response back to the correct backend.
 //
@@ -734,6 +760,15 @@ func (m *MCPProxy) maybeServerToClientRequestModify(ctx context.Context, msg *js
 			if m.maybeUpdateProgressTokenMetadata(ctx, params.Meta, backend) {
 				msg.Params, _ = json.Marshal(params) // Already decoded params, so ignore error.
 			}
+		}
+	case "notifications/resources/updated":
+		if msg.Params != nil {
+			params := &mcp.ResourceUpdatedNotificationParams{}
+			if err := json.Unmarshal(msg.Params, params); err != nil {
+				return fmt.Errorf("failed to unmarshal elicitation/create params: %w", err)
+			}
+			params.URI = downstreamResourceURI(params.URI, backend)
+			msg.Params, _ = json.Marshal(params) // Already decoded params, so ignore error.
 		}
 	default:
 		// Others are not server->client requests that we care about.
@@ -817,7 +852,7 @@ func (m *MCPProxy) mcpEndpointForBackend(backend filterapi.MCPBackend) string {
 }
 
 func (m *MCPProxy) handleResourceReadRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ReadResourceParams) error {
-	backendName, resourceName, err := upstreamResourceName(p.URI)
+	backendName, resourceName, err := upstreamResourceURI(p.URI)
 	if err != nil {
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid resource name %s: %v", p.URI, err))
 		return err
@@ -867,7 +902,7 @@ func (m *MCPProxy) handleResourcesSubscriptionRequest(ctx context.Context, s *se
 	default:
 		return fmt.Errorf("invalid params type")
 	}
-	backendName, resourceName, err := upstreamResourceName(uri)
+	backendName, resourceName, err := upstreamResourceURI(uri)
 	if err != nil {
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid resource name %s: %v", uri, err))
 		return err
@@ -943,6 +978,24 @@ func upstreamResourceName(fullName string) (backendName, name string, err error)
 	return fullName[:index], fullName[index+len(nameSeparator):], nil
 }
 
+// downstreamResourceURI converts the upstream resource URI to the downstream resource URI by
+// encoding the URL. The URL will be in the form: <backend>+<scheme>://<path>
+// We need to encode URLs in a way that the "path" part remains unchanged so that the Resource Templates
+// can still match the resource URIs.
+func downstreamResourceURI(uri string, backendName string) string {
+	return fmt.Sprintf("%s+%s", backendName, uri)
+}
+
+// upstreamResourceURI converts the downstream resource URI to the upstream resource URI by
+// decoding the URL. The URL will be in the form: <backend>+<scheme>://<path>
+func upstreamResourceURI(fullURI string) (backendName, uri string, err error) {
+	parts := strings.SplitN(fullURI, "+", 2)
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("invalid resource URI: %s", fullURI)
+	}
+	return parts[0], parts[1], nil
+}
+
 // extractSubject extracts the "sub" claim from the JWT in the Authorization header.
 // This method will not validate the token as it assumes if the token is present it has already been
 // validated and authenticated.
@@ -991,26 +1044,30 @@ func (m *MCPProxy) handlePromptGetRequest(ctx context.Context, s *session, w htt
 }
 
 func (m *MCPProxy) handleCompletionComplete(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, param *mcp.CompleteParams, span tracing.MCPSpan) error {
-	backendName, resourceName, err := upstreamResourceName(cmp.Or(param.Ref.Name, param.Ref.URI))
-	if err != nil {
-		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid resource name %s: %v", param.Ref.Name, err))
-		return err
-	}
 	// Either one of Name or URI is non-empty, depending on the Ref.Type.
 	// https://modelcontextprotocol.io/specification/2025-06-18/server/utilities/completion#reference-types
+	var (
+		err         error
+		backendName string
+	)
 	switch param.Ref.Type {
 	case "ref/prompt":
-		param.Ref.Name = resourceName
+		backendName, param.Ref.Name, err = upstreamResourceName(param.Ref.Name)
 	case "ref/resource":
-		param.Ref.URI = resourceName
+		backendName, param.Ref.URI, err = upstreamResourceURI(param.Ref.URI)
 	}
+	if err != nil {
+		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid resource name %s: %v", cmp.Or(param.Ref.Name, param.Ref.URI), err))
+		return err
+	}
+
 	encodedParam, _ := json.Marshal(param)
 	req.Params = encodedParam
 
 	backend, err := m.getBackendForRoute(s.route, backendName)
 	if err != nil {
 		onErrorResponse(w, http.StatusNotFound, fmt.Sprintf("unknown backend %s", backendName))
-		return fmt.Errorf("%w: unknown backend %s in resource name %s", errBackendNotFound, backendName, resourceName)
+		return fmt.Errorf("%w: unknown backend %s in resource name %s", errBackendNotFound, backendName, cmp.Or(param.Ref.Name, param.Ref.URI))
 	}
 
 	// Send the request to the MCP backend listener.
@@ -1312,6 +1369,7 @@ func (m *MCPProxy) mergeResourceList(_ *session, responses []broadCastResponse[m
 	for _, r := range responses {
 		for _, res := range r.res.Resources {
 			res.Name = downstreamResourceName(res.Name, r.backendName)
+			res.URI = downstreamResourceURI(res.URI, r.backendName)
 			resp.Resources = append(resp.Resources, res)
 		}
 	}
@@ -1324,6 +1382,7 @@ func (m *MCPProxy) mergeResourcesTemplateList(_ *session, responses []broadCastR
 	for _, r := range responses {
 		for _, res := range r.res.ResourceTemplates {
 			res.Name = downstreamResourceName(res.Name, r.backendName)
+			res.URITemplate = downstreamResourceURI(res.URITemplate, r.backendName)
 			resp.ResourceTemplates = append(resp.ResourceTemplates, res)
 		}
 	}

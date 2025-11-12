@@ -17,6 +17,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
@@ -433,48 +434,46 @@ func TestServePOST_JSONRPCRequest(t *testing.T) {
 			method:           "resources/subscribe",
 			expStatusCode:    200,
 			upstreamResponse: `{"jsonrpc":"2.0","id":"1","result":{"subscriptionId":"sub-1234"}}`,
-			params:           &mcp.SubscribeParams{URI: "backend1__my-resource"},
+			params:           &mcp.SubscribeParams{URI: "backend1+file://my-resource"},
 		},
 		{
 			name:                 "resources/subscribe invalid param",
 			method:               "resources/subscribe",
 			expStatusCode:        400,
-			params:               "invalid-param",
-			expBodyOnNonOKStatus: `invalid params`,
+			params:               &mcp.SubscribeParams{URI: "file://my-resource"},
+			expBodyOnNonOKStatus: `invalid resource URI: file://my-resource`,
 		},
 		{
 			method:           "resources/unsubscribe",
 			expStatusCode:    200,
 			upstreamResponse: `{"jsonrpc":"2.0","id":"1","result":{"subscriptionId":"sub-1234"}}`,
-			params:           &mcp.UnsubscribeParams{URI: "backend1__my-resource"},
+			params:           &mcp.UnsubscribeParams{URI: "backend1+file://my-resource"},
 		},
 		{
 			name:                 "resources/unsubscribe invalid param",
 			method:               "resources/unsubscribe",
 			expStatusCode:        400,
-			params:               "invalid-param",
-			expBodyOnNonOKStatus: `invalid params`,
+			params:               &mcp.UnsubscribeParams{URI: "file://my-resource"},
+			expBodyOnNonOKStatus: `invalid resource URI: file://my-resource`,
 		},
 		{
-			method: "resources/read",
-			params: &mcp.ReadResourceParams{
-				URI: "backend1__my-resource",
-			},
-			upstreamResponse: `{"jsonrpc":"2.0","id":"1","result":{"contents":[{"uri":"my-resource"}]}}`,
+			method:           "resources/read",
+			params:           &mcp.ReadResourceParams{URI: "backend1+file://my-resource"},
+			upstreamResponse: `{"jsonrpc":"2.0","id":"1","result":{"contents":[{"uri":"file://my-resource"}]}}`,
 			expStatusCode:    200,
 			validate: func(t *testing.T, raw json.RawMessage) {
 				var result mcp.ReadResourceResult
 				require.NoError(t, json.Unmarshal(raw, &result))
 				require.Len(t, result.Contents, 1)
-				require.Equal(t, "my-resource", result.Contents[0].URI)
+				require.Equal(t, "backend1+file://my-resource", result.Contents[0].URI)
 			},
 		},
 		{
 			name:                 "resources/read invalid param",
 			method:               "resources/read",
 			expStatusCode:        400,
-			params:               "invalid-param",
-			expBodyOnNonOKStatus: `invalid params`,
+			params:               &mcp.ReadResourceParams{URI: "file://my-resource"},
+			expBodyOnNonOKStatus: `invalid resource URI: file://my-resource`,
 		},
 	}
 
@@ -961,14 +960,80 @@ func Test_upstreamResourceName(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		backend, tool, err := upstreamResourceName(tc.input)
-		if tc.expectedErr != "" {
-			require.ErrorContains(t, err, tc.expectedErr)
-		} else {
-			require.NoError(t, err)
-			require.Equal(t, tc.expectedTool, tool)
-			require.Equal(t, tc.expectedBackend, backend)
-		}
+		t.Run(tc.input, func(t *testing.T) {
+			backend, tool, err := upstreamResourceName(tc.input)
+			if tc.expectedErr != "" {
+				require.ErrorContains(t, err, tc.expectedErr)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedTool, tool)
+				require.Equal(t, tc.expectedBackend, backend)
+			}
+		})
+	}
+}
+
+func Test_downstreamResourceURI(t *testing.T) {
+	t.Run("downstream resource", func(t *testing.T) {
+		downstream := downstreamResourceURI("file:///tmp/file.txt", "local")
+		require.Equal(t, "local+file:///tmp/file.txt", downstream)
+		// Verify it is a valid URI
+		parsed, err := url.Parse(downstream)
+		require.NoError(t, err)
+		require.Equal(t, "local+file", parsed.Scheme)
+		require.Equal(t, "/tmp/file.txt", parsed.Path)
+	})
+
+	t.Run("downstream resource template", func(t *testing.T) {
+		downstream := downstreamResourceURI("file:///tmp/{file}", "local")
+		require.Equal(t, "local+file:///tmp/{file}", downstream)
+		// Verify it is a valid URI
+		parsed, err := url.Parse(downstream)
+		require.NoError(t, err)
+		require.Equal(t, "local+file", parsed.Scheme)
+		require.Equal(t, "/tmp/{file}", parsed.Path)
+	})
+}
+
+func Test_upstreamResourceURI(t *testing.T) {
+	cases := []struct {
+		input           string
+		expectedURI     string
+		expectedBackend string
+		expectedErr     string
+	}{
+		{
+			input:           "local+file:///tmp/file.txt",
+			expectedBackend: "local",
+			expectedURI:     "file:///tmp/file.txt",
+		},
+		{
+			input:           "local+file+test:///tmp/file.txt",
+			expectedBackend: "local",
+			expectedURI:     "file+test:///tmp/file.txt",
+		},
+		{
+			input:           "local+file:///tmp/{file}", // Verify we can decode resource templates
+			expectedBackend: "local",
+			expectedURI:     "file:///tmp/{file}",
+		},
+		{
+			input:       "file:///tmp/file.txt",
+			expectedErr: "invalid resource URI: file:///tmp/file.txt",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.input, func(t *testing.T) {
+			backend, uri, err := upstreamResourceURI(tc.input)
+			if tc.expectedErr != "" {
+				require.ErrorContains(t, err, tc.expectedErr)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedURI, uri)
+				require.Equal(t, tc.expectedBackend, backend)
+			}
+		})
 	}
 }
 
@@ -1045,7 +1110,7 @@ func TestMCPProxy_handleCompletionComplete(t *testing.T) {
 		if params.Ref.Name != "" {
 			require.Equal(t, "my-prompt", params.Ref.Name)
 		} else {
-			require.Equal(t, "my-uri", params.Ref.URI)
+			require.Equal(t, "file://my-uri", params.Ref.URI)
 		}
 		// Respond with a valid completion response.
 		resp := &jsonrpc.Response{ID: reqID}
@@ -1075,7 +1140,7 @@ func TestMCPProxy_handleCompletionComplete(t *testing.T) {
 			param: &mcp.CompleteParams{
 				Ref: &mcp.CompleteReference{
 					Type: "ref/resource",
-					URI:  "backend1__my-uri",
+					URI:  "backend1+file://my-uri",
 				},
 			},
 		},
@@ -1142,14 +1207,14 @@ func TestMCPPRoxy_handleResourceReadRequest(t *testing.T) {
 				URI: "invalid-form",
 			},
 		)
-		require.ErrorContains(t, err, "invalid resource name: invalid-form")
+		require.ErrorContains(t, err, "invalid resource URI: invalid-form")
 	})
 
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "backend1", r.Header.Get(internalapi.MCPBackendHeader))
 		body, err := io.ReadAll(r.Body)
 		require.NoError(t, err)
-		require.Contains(t, string(body), "foo-resource")
+		require.Contains(t, string(body), `"uri":"file://foo-resource"`)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":"id","result":{}}`))
@@ -1167,12 +1232,12 @@ func TestMCPPRoxy_handleResourceReadRequest(t *testing.T) {
 		route:              "test-route",
 	}
 	err := proxy.handleResourceReadRequest(t.Context(), s, rr, &jsonrpc.Request{ID: reqID, Method: "resources/read"}, &mcp.ReadResourceParams{
-		URI: downstreamResourceName("foo-resource", "backend1"),
+		URI: downstreamResourceURI("file://foo-resource", "backend1"),
 	})
 	require.NoError(t, err)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	require.Contains(t, rr.Body.String(), `{"jsonrpc":"2.0","id":"id","result":{}}`)
+	require.Contains(t, rr.Body.String(), `{"jsonrpc":"2.0","id":"id","result":{"contents":[]}}`)
 }
 
 func TestMCPProxy_maybeUpdateProgressTokenMetadata(t *testing.T) {
@@ -1490,8 +1555,8 @@ func TestMCPServer_handleResourcesSubscriptionRequest(t *testing.T) {
 		p    any
 		name string
 	}{
-		{p: &mcp.SubscribeParams{URI: "backend1__foo"}, name: "resources/subscribe"},
-		{p: &mcp.UnsubscribeParams{URI: "backend1__bar"}, name: "resources/unsubscribe"},
+		{p: &mcp.SubscribeParams{URI: "backend1+file://foo"}, name: "resources/subscribe"},
+		{p: &mcp.UnsubscribeParams{URI: "backend1+file://bar"}, name: "resources/unsubscribe"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			proxy := newTestMCPProxy()
@@ -1509,11 +1574,11 @@ func TestMCPServer_handleResourcesSubscriptionRequest(t *testing.T) {
 				case *mcp.SubscribeParams:
 					var params mcp.SubscribeParams
 					require.NoError(t, json.Unmarshal(req.Params, &params))
-					require.Equal(t, "foo", params.URI)
+					require.Equal(t, "file://foo", params.URI)
 				case *mcp.UnsubscribeParams:
 					var params mcp.UnsubscribeParams
 					require.NoError(t, json.Unmarshal(req.Params, &params))
-					require.Equal(t, "bar", params.URI)
+					require.Equal(t, "file://bar", params.URI)
 				default:
 					t.Fatalf("unexpected params type: %T", tc.p)
 				}
