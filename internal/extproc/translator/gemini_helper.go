@@ -770,6 +770,14 @@ func buildGCPModelPathSuffix(publisher, model, gcpMethod string, queryParams ...
 	return pathSuffix
 }
 
+func buildGeminiModelPath(model string, gcpMethod string, queryParams ...string) string {
+	path := fmt.Sprintf("/v1beta/models/%s:%s", model, gcpMethod)
+	if len(queryParams) > 0 {
+		path += "?" + strings.Join(queryParams, "&")
+	}
+	return path
+}
+
 // geminiCandidatesToOpenAIStreamingChoices converts Gemini candidates to OpenAI streaming choices.
 func geminiCandidatesToOpenAIStreamingChoices(candidates []*genai.Candidate, responseMode geminiResponseMode) ([]openai.ChatCompletionResponseChunkChoice, error) {
 	choices := make([]openai.ChatCompletionResponseChunkChoice, 0, len(candidates))

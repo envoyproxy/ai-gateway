@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -87,6 +88,13 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) RequestBody(_ []byte, op
 	}
 
 	headerMutation, bodyMutation = buildRequestMutations(pathSuffix, gcpReqBody)
+
+	slog.Info("translated chat/completions request to Gemini",
+		"path", pathSuffix,
+		"model", o.requestModel,
+		"stream", o.stream,
+		"body_length", len(gcpReqBody))
+
 	return headerMutation, bodyMutation, nil
 }
 

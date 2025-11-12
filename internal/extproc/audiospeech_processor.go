@@ -125,6 +125,8 @@ func (a *audioSpeechProcessorUpstreamFilter) selectTranslator(out filterapi.Vers
 	switch out.Name {
 	case filterapi.APISchemaOpenAI:
 		a.translator = translator.NewAudioSpeechOpenAIToOpenAITranslator(out.Version, a.modelNameOverride)
+	case filterapi.APISchemaGCPVertexAI:
+		a.translator = translator.NewAudioSpeechOpenAIToGCPVertexAITranslator(a.modelNameOverride)
 	default:
 		return fmt.Errorf("unsupported API schema: backend=%s", out)
 	}
@@ -147,6 +149,16 @@ func (a *audioSpeechProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.C
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
+
+	// Log the translated request body if body mutation occurred
+	if bodyMutation != nil && bodyMutation.GetBody() != nil {
+		a.logger.Info("translated request body",
+			slog.String("backend", a.backendName),
+			slog.String("original_model", a.originalRequestBody.Model),
+			slog.String("translated_body", string(bodyMutation.GetBody())),
+		)
+	}
+
 	if headerMutation == nil {
 		headerMutation = &extprocv3.HeaderMutation{}
 	}
@@ -316,6 +328,10 @@ func (a *audioSpeechProcessorUpstreamFilter) SetBackend(ctx context.Context, b *
 	if err = a.selectTranslator(b.Schema); err != nil {
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
+	if configurator, ok := any(a.translator).(interface{ SetPublisherPathEnabled(bool) }); ok {
+		usePublisherPath := b.Auth != nil && b.Auth.GCPAuth != nil
+		configurator.SetPublisherPathEnabled(usePublisherPath)
+	}
 	a.handler = backendHandler
 	a.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
 	if a.modelNameOverride != "" {
@@ -333,4 +349,3 @@ func parseAudioSpeechBody(body *extprocv3.HttpBody) (modelName string, rb *opena
 	}
 	return req.Model, &req, nil
 }
-

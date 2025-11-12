@@ -153,6 +153,16 @@ func (a *audioTranscriptionProcessorUpstreamFilter) ProcessRequestHeaders(ctx co
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
+
+	// Log the translated request body if body mutation occurred
+	if bodyMutation != nil && bodyMutation.GetBody() != nil {
+		a.logger.Info("translated request body",
+			slog.String("backend", a.backendName),
+			slog.String("original_model", a.originalRequestBody.Model),
+			slog.String("translated_body", string(bodyMutation.GetBody())),
+		)
+	}
+
 	if headerMutation == nil {
 		headerMutation = &extprocv3.HeaderMutation{}
 	}
