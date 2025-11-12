@@ -6,6 +6,7 @@
 package translator
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -26,6 +27,36 @@ import (
 const (
 	gcpVertexAIBackendError = "GCPVertexAIBackendError"
 )
+
+const (
+	LineFeedSSEDelimiter               = "\n\n"
+	CarriageReturnSSEDelimiter         = "\r\r"
+	CarriageReturnLineFeedSSEDelimiter = "\r\n\r\n"
+)
+
+func sseSplitFunc(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	// Check for \r\n\r\n (longest delimiter first)
+	if i := bytes.Index(data, []byte(CarriageReturnLineFeedSSEDelimiter)); i >= 0 {
+		return i + len(CarriageReturnLineFeedSSEDelimiter), data[0:i], nil
+	}
+	// Check for \n\n
+	if i := bytes.Index(data, []byte(LineFeedSSEDelimiter)); i >= 0 {
+		return i + len(LineFeedSSEDelimiter), data[0:i], nil
+	}
+	// Check for \r\r
+	if i := bytes.Index(data, []byte(CarriageReturnSSEDelimiter)); i >= 0 {
+		return i + len(CarriageReturnSSEDelimiter), data[0:i], nil
+	}
+	// If at EOF, return remaining data
+	if atEOF {
+		return len(data), data, nil
+	}
+	// Request more data
+	return 0, nil, nil
+}
 
 // gcpVertexAIError represents the structure of GCP Vertex AI error responses.
 type gcpVertexAIError struct {
@@ -195,7 +226,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(
 		}
 		sseChunkBuf.WriteString("data: ")
 		sseChunkBuf.Write(chunkBytes)
-		sseChunkBuf.WriteString("\n\n")
+		sseChunkBuf.WriteString(LineFeedSSEDelimiter)
 
 		if span != nil {
 			span.RecordResponseChunk(openAIChunk)
@@ -218,27 +249,22 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) parseGCPStreamingChunks(
 	var chunks []genai.GenerateContentResponse
 
 	// Read buffered body and new input, then split into individual chunks.
-	bodyBytes, err := io.ReadAll(io.MultiReader(bytes.NewReader(o.bufferedBody), body))
-	if err != nil {
-		return nil, err
-	}
-	lines := bytes.Split(bodyBytes, []byte("\n\n"))
+	bodyReader := io.MultiReader(bytes.NewReader(o.bufferedBody), body)
+	scanner := bufio.NewScanner(bodyReader)
+	scanner.Split(sseSplitFunc)
 
-	for idx, line := range lines {
+	for scanner.Scan() {
 		// Remove "data: " prefix from SSE format if present.
-		line = bytes.TrimPrefix(line, []byte("data: "))
+		line := bytes.TrimPrefix(scanner.Bytes(), []byte("data: "))
 
 		// Try to parse as JSON.
 		var chunk genai.GenerateContentResponse
-		if err = json.Unmarshal(line, &chunk); err == nil {
+		if err := json.Unmarshal(line, &chunk); err == nil {
 			chunks = append(chunks, chunk)
-		} else if idx == len(lines)-1 {
-			// If we reach the last line, and it can't be parsed, keep it in the buffer
-			// for the next call to handle incomplete JSON chunks.
+			o.bufferedBody = nil
+		} else {
 			o.bufferedBody = line
 		}
-		// If this is not the last line and json unmarshal fails, we assume it's an invalid chunk and ignore it.
-		//	TODO: Log this as a warning or error once logger is available in this context.
 	}
 
 	return chunks, nil
