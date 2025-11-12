@@ -24,9 +24,14 @@ webhooks:
         apiVersions: ["v1"]
         operations: ["CREATE"]
         resources: ["pods"]
+    {{- if .Values.controller.mutatingWebhook.objectSelector }}
     objectSelector:
-      matchLabels:
-        app.kubernetes.io/managed-by: envoy-gateway
+      {{- toYaml .Values.controller.mutatingWebhook.objectSelector | nindent 6 }}
+    {{- end}}
+    {{- if .Values.controller.mutatingWebhook.namespaceSelector }}
+    namespaceSelector:
+      {{- toYaml .Values.controller.mutatingWebhook.namespaceSelector | nindent 6 }}
+    {{- end}}
     sideEffects: None
     admissionReviewVersions: ["v1"]
     timeoutSeconds: 10
