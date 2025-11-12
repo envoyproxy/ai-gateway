@@ -4,6 +4,9 @@ title: GenAI Distributed Tracing
 sidebar_position: 7
 ---
 
+import CodeBlock from '@theme/CodeBlock';
+import vars from '../../\_vars.json';
+
 Envoy AI Gateway's router joins and records distributed traces when supplied
 with an [OpenTelemetry](https://opentelemetry.io/) collector endpoint.
 
@@ -50,17 +53,17 @@ helm install phoenix oci://registry-1.docker.io/arizephoenix/phoenix-helm \
 
 Upgrade your AI Gateway installation with [OpenTelemetry configuration][otel-config]:
 
-```shell
-helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \
-  --version v0.0.0-latest \
-  --namespace envoy-ai-gateway-system \
-  --set "extProc.extraEnvVars[0].name=OTEL_EXPORTER_OTLP_ENDPOINT" \
-  --set "extProc.extraEnvVars[0].value=http://phoenix-svc:6006" \
-  --set "extProc.extraEnvVars[1].name=OTEL_METRICS_EXPORTER" \
-  --set "extProc.extraEnvVars[1].value=none"
+<CodeBlock language="shell">
+{`helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \\
+    --version v${vars.aigwVersion} \\
+    --namespace envoy-ai-gateway-system \\
+    --set "extProc.extraEnvVars[0].name=OTEL_EXPORTER_OTLP_ENDPOINT" \\
+    --set "extProc.extraEnvVars[0].value=http://phoenix-svc:6006" \\
+    --set "extProc.extraEnvVars[1].name=OTEL_METRICS_EXPORTER" \\
+    --set "extProc.extraEnvVars[1].value=none"
 # OTEL_SERVICE_NAME defaults to "ai-gateway" if not set
-# OTEL_METRICS_EXPORTER=none because Phoenix only supports traces, not metrics
-```
+# OTEL_METRICS_EXPORTER=none because Phoenix only supports traces, not metrics`}
+</CodeBlock>
 
 Wait for the gateway pod to be ready:
 
@@ -163,30 +166,31 @@ is `x-session-id`, you can map it to the standard OpenTelemetry attribute
 Some metrics systems will be able to do fine-grained aggregation, but not all.
 Here's an example of setting the session ID header for spans, but not metrics:
 
-```shell
-helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \
-  --version v0.0.0-latest \
-  --namespace envoy-ai-gateway-system \
-  --reuse-values \
-  --set "controller.metricsRequestHeaderAttributes=x-user-id:user.id" \
-  --set "controller.spanRequestHeaderAttributes=x-session-id:session.id,x-user-id:user.id"
-```
+<CodeBlock language="shell">
+{`helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \\
+    --version v${vars.aigwVersion} \\
+    --namespace envoy-ai-gateway-system \\
+    --reuse-values \\
+    --set "controller.metricsRequestHeaderAttributes=x-user-id:user.id" \\
+    --set "controller.spanRequestHeaderAttributes=x-session-id:session.id,x-user-id:user.id"`}
+</CodeBlock>
 
 ## Cleanup
 
 To remove Phoenix and disable tracing:
 
-```shell
-# Uninstall Phoenix
+<CodeBlock language="shell">
+{`# Uninstall Phoenix
 helm uninstall phoenix -n envoy-ai-gateway-system
 
 # Disable tracing in AI Gateway
-helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \
-  --version v0.0.0-latest \
-  --namespace envoy-ai-gateway-system \
-  --reuse-values \
-  --unset extProc.extraEnvVars
-```
+
+helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \\
+--version v${vars.aigwVersion} \\
+--namespace envoy-ai-gateway-system \\
+--reuse-values \\
+--unset extProc.extraEnvVars`}
+</CodeBlock>
 
 ## See Also
 

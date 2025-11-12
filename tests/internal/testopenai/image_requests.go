@@ -5,6 +5,8 @@
 
 package testopenai
 
+import "github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+
 // ImageCassettes returns a slice of all cassettes for image generation.
 func ImageCassettes() []Cassette {
 	return cassettes(imageRequests)
@@ -23,7 +25,7 @@ type imageGenerationRequest struct {
 // imageRequests contains the actual request body for each image generation cassette.
 var imageRequests = map[Cassette]*imageGenerationRequest{
 	CassetteImageGenerationBasic: {
-		Model:   "gpt-image-1-mini",
+		Model:   openai.ModelGPTImage1Mini,
 		Prompt:  "A simple black-and-white line drawing of a cat playing with yarn",
 		Size:    "1024x1024",
 		Quality: "low",

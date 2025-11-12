@@ -90,7 +90,7 @@ func TestGCPHandler_Do(t *testing.T) {
 			requestHeaders: map[string]string{
 				":path": "publishers/google/models/gemini-pro:generateContent",
 			},
-			wantPathValue: "https://us-central1-aiplatform.googleapis.com/v1/projects/test-project/locations/us-central1/publishers/google/models/gemini-pro:generateContent",
+			wantPathValue: "/v1/projects/test-project/locations/us-central1/publishers/google/models/gemini-pro:generateContent",
 		},
 	}
 

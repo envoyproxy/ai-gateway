@@ -1,78 +1,72 @@
 {
-  "flags": 256,
-  "name": "CreateEmbeddings",
-  "kind": "SPAN_KIND_INTERNAL",
-  "attributes": [
+  "flags":  256,
+  "name":  "CreateEmbeddings",
+  "kind":  "SPAN_KIND_INTERNAL",
+  "attributes":  [
     {
-      "key": "llm.system",
-      "value": {
-        "stringValue": "openai"
+      "key":  "input.value",
+      "value":  {
+        "stringValue":  "{\"input\": \"Test with unknown model\", \"model\": \"text-embedding-4-ultra\", \"encoding_format\": \"base64\"}"
       }
     },
     {
-      "key": "input.value",
-      "value": {
-        "stringValue": "{\"input\": \"Test with unknown model\", \"model\": \"text-embedding-4-ultra\", \"encoding_format\": \"base64\"}"
+      "key":  "input.mime_type",
+      "value":  {
+        "stringValue":  "application/json"
       }
     },
     {
-      "key": "input.mime_type",
-      "value": {
-        "stringValue": "application/json"
+      "key":  "embedding.invocation_parameters",
+      "value":  {
+        "stringValue":  "{\"model\": \"text-embedding-4-ultra\", \"encoding_format\": \"base64\"}"
       }
     },
     {
-      "key": "embedding.invocation_parameters",
-      "value": {
-        "stringValue": "{\"model\": \"text-embedding-4-ultra\", \"encoding_format\": \"base64\"}"
+      "key":  "embedding.embeddings.0.embedding.text",
+      "value":  {
+        "stringValue":  "Test with unknown model"
       }
     },
     {
-      "key": "embedding.embeddings.0.embedding.text",
-      "value": {
-        "stringValue": "Test with unknown model"
-      }
-    },
-    {
-      "key": "openinference.span.kind",
-      "value": {
-        "stringValue": "EMBEDDING"
+      "key":  "openinference.span.kind",
+      "value":  {
+        "stringValue":  "EMBEDDING"
       }
     }
   ],
-  "events": [
+  "events":  [
     {
-      "name": "exception",
-      "attributes": [
+      "name":  "exception",
+      "attributes":  [
         {
-          "key": "exception.type",
-          "value": {
-            "stringValue": "openai.NotFoundError"
+          "key":  "exception.type",
+          "value":  {
+            "stringValue":  "openai.NotFoundError"
           }
         },
         {
-          "key": "exception.message",
-          "value": {
-            "stringValue": "Error code: 404 - {'error': {'message': 'The model `text-embedding-4-ultra` does not exist or you do not have access to it.', 'type': 'invalid_request_error', 'param': None, 'code': 'model_not_found'}}"
+          "key":  "exception.message",
+          "value":  {
+            "stringValue":  "Error code: 404 - {'error': {'message': 'The model `text-embedding-4-ultra` does not exist or you do not have access to it.', 'type': 'invalid_request_error', 'param': None, 'code': 'model_not_found'}}"
           }
         },
         {
-          "key": "exception.stacktrace",
-          "value": {
-            "stringValue": "Traceback (most recent call last):\n  File \"/usr/local/lib/python3.13/site-packages/openinference/instrumentation/openai/_request.py\", line 391, in __call__\n    response = await wrapped(*args, **kwargs)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.13/site-packages/openai/_base_client.py\", line 1594, in request\n    raise self._make_status_error_from_response(err.response) from None\nopenai.NotFoundError: Error code: 404 - {'error': {'message': 'The model `text-embedding-4-ultra` does not exist or you do not have access to it.', 'type': 'invalid_request_error', 'param': None, 'code': 'model_not_found'}}\n"
+          "key":  "exception.stacktrace",
+          "value":  {
+            "stringValue":  "Traceback (most recent call last):\n  File \"/usr/local/lib/python3.13/site-packages/openinference/instrumentation/openai/_request.py\", line 398, in __call__\n    response = await wrapped(*args, **kwargs)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.13/site-packages/openai/_base_client.py\", line 1594, in request\n    raise self._make_status_error_from_response(err.response) from None\nopenai.NotFoundError: Error code: 404 - {'error': {'message': 'The model `text-embedding-4-ultra` does not exist or you do not have access to it.', 'type': 'invalid_request_error', 'param': None, 'code': 'model_not_found'}}\n"
           }
         },
         {
-          "key": "exception.escaped",
-          "value": {
-            "stringValue": "False"
+          "key":  "exception.escaped",
+          "value":  {
+            "stringValue":  "False"
           }
         }
       ]
     }
   ],
-  "status": {
-    "message": "NotFoundError: Error code: 404 - {'error': {'message': 'The model `text-embedding-4-ultra` does not exist or you do not have access to it.', 'type': 'invalid_request_error', 'param': None, 'code': 'model_not_found'}}",
-    "code": "STATUS_CODE_ERROR"
+  "status":  {
+    "message":  "NotFoundError: Error code: 404 - {'error': {'message': 'The model `text-embedding-4-ultra` does not exist or you do not have access to it.', 'type': 'invalid_request_error', 'param': None, 'code': 'model_not_found'}}",
+    "code":  "STATUS_CODE_ERROR"
   }
 }

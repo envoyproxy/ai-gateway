@@ -217,8 +217,9 @@ type embeddingsInvocationParameters struct {
 
 // buildEmbeddingsRequestAttributes builds OpenInference attributes from the embeddings request.
 func buildEmbeddingsRequestAttributes(embRequest *openai.EmbeddingRequest, body []byte, config *openinference.TraceConfig) []attribute.KeyValue {
+	// Note: llm.system and llm.provider are not used in embedding spans per spec.
+	// See: https://github.com/Arize-ai/openinference/blob/main/spec/embedding_spans.md#attributes-not-used-in-embedding-spans
 	attrs := []attribute.KeyValue{
-		attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
 		attribute.String(openinference.SpanKind, openinference.SpanKindEmbedding),
 	}
 

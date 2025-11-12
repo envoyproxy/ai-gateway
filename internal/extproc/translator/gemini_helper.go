@@ -678,47 +678,6 @@ func extractToolCallsFromGeminiParts(toolCalls []openai.ChatCompletionMessageToo
 	return toolCalls, nil
 }
 
-// extractToolCallsFromGeminiPartsStream extracts tool calls from Gemini parts for streaming responses.
-// Each tool call is assigned an incremental index starting from 0, matching OpenAI's streaming protocol.
-// Returns ChatCompletionChunkChoiceDeltaToolCall types suitable for streaming responses, or nil if no tool calls are found.
-func extractToolCallsFromGeminiPartsStream(toolCalls []openai.ChatCompletionChunkChoiceDeltaToolCall, parts []*genai.Part) ([]openai.ChatCompletionChunkChoiceDeltaToolCall, error) {
-	toolCallIndex := int64(0)
-
-	for _, part := range parts {
-		if part == nil || part.FunctionCall == nil {
-			continue
-		}
-
-		// Convert function call arguments to JSON string.
-		args, err := json.Marshal(part.FunctionCall.Args)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal function arguments: %w", err)
-		}
-
-		// Generate a random ID for the tool call.
-		toolCallID := uuid.New().String()
-
-		toolCall := openai.ChatCompletionChunkChoiceDeltaToolCall{
-			ID:   &toolCallID,
-			Type: openai.ChatCompletionMessageToolCallTypeFunction,
-			Function: openai.ChatCompletionMessageToolCallFunctionParam{
-				Name:      part.FunctionCall.Name,
-				Arguments: string(args),
-			},
-			Index: toolCallIndex,
-		}
-
-		toolCalls = append(toolCalls, toolCall)
-		toolCallIndex++
-	}
-
-	if len(toolCalls) == 0 {
-		return nil, nil
-	}
-
-	return toolCalls, nil
-}
-
 // geminiUsageToOpenAIUsage converts Gemini usage metadata to OpenAI usage.
 func geminiUsageToOpenAIUsage(metadata *genai.GenerateContentResponseUsageMetadata) openai.Usage {
 	if metadata == nil {
@@ -789,47 +748,4 @@ func buildGCPModelPathSuffix(publisher, model, gcpMethod string, queryParams ...
 		pathSuffix += "?" + strings.Join(queryParams, "&")
 	}
 	return pathSuffix
-}
-
-// geminiCandidatesToOpenAIStreamingChoices converts Gemini candidates to OpenAI streaming choices.
-func geminiCandidatesToOpenAIStreamingChoices(candidates []*genai.Candidate, responseMode geminiResponseMode) ([]openai.ChatCompletionResponseChunkChoice, error) {
-	choices := make([]openai.ChatCompletionResponseChunkChoice, 0, len(candidates))
-
-	for _, candidate := range candidates {
-		if candidate == nil {
-			continue
-		}
-
-		// Create the streaming choice.
-		choice := openai.ChatCompletionResponseChunkChoice{
-			Index: 0,
-		}
-
-		toolCalls := []openai.ChatCompletionChunkChoiceDeltaToolCall{}
-		var err error
-		if candidate.Content != nil {
-			delta := &openai.ChatCompletionResponseChunkChoiceDelta{
-				Role: openai.ChatMessageRoleAssistant,
-			}
-
-			// Extract text from parts for streaming (delta).
-			content := extractTextFromGeminiParts(candidate.Content.Parts, responseMode)
-			if content != "" {
-				delta.Content = &content
-			}
-
-			// Extract tool calls if any.
-			toolCalls, err = extractToolCallsFromGeminiPartsStream(toolCalls, candidate.Content.Parts)
-			if err != nil {
-				return nil, fmt.Errorf("error extracting tool calls: %w", err)
-			}
-			delta.ToolCalls = toolCalls
-
-			choice.Delta = delta
-		}
-		choice.FinishReason = geminiFinishReasonToOpenAI(candidate.FinishReason, toolCalls)
-		choices = append(choices, choice)
-	}
-
-	return choices, nil
 }

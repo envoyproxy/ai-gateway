@@ -1072,10 +1072,510 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody(t *
 	require.Equal(t, LLMTokenUsage{}, tokenUsage) // No usage in this test chunk.
 }
 
-func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingEndOfStream(t *testing.T) {
-	translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{
-		stream: true,
+func TestExtractToolCallsFromGeminiPartsStream(t *testing.T) {
+	toolCalls := []openai.ChatCompletionChunkChoiceDeltaToolCall{}
+	tests := []struct {
+		name     string
+		input    []*genai.Part
+		expected func([]openai.ChatCompletionChunkChoiceDeltaToolCall) bool // validator function since UUIDs are random
+		wantErr  bool
+		errMsg   string
+	}{
+		{
+			name:  "nil parts",
+			input: nil,
+			expected: func(calls []openai.ChatCompletionChunkChoiceDeltaToolCall) bool {
+				return calls == nil
+			},
+		},
+		{
+			name:  "empty parts",
+			input: []*genai.Part{},
+			expected: func(calls []openai.ChatCompletionChunkChoiceDeltaToolCall) bool {
+				return calls == nil
+			},
+		},
+		{
+			name: "parts without function calls",
+			input: []*genai.Part{
+				{Text: "some text"},
+				nil,
+				{Text: "more text"},
+			},
+			expected: func(calls []openai.ChatCompletionChunkChoiceDeltaToolCall) bool {
+				return calls == nil
+			},
+		},
+		{
+			name: "single function call",
+			input: []*genai.Part{
+				{
+					FunctionCall: &genai.FunctionCall{
+						Name: "get_weather",
+						Args: map[string]any{
+							"location": "San Francisco",
+							"unit":     "celsius",
+						},
+					},
+				},
+			},
+			expected: func(calls []openai.ChatCompletionChunkChoiceDeltaToolCall) bool {
+				if len(calls) != 1 {
+					return false
+				}
+				call := calls[0]
+				return call.ID != nil && *call.ID != "" && // UUID should be non-empty
+					call.Type == openai.ChatCompletionMessageToolCallTypeFunction &&
+					call.Function.Name == "get_weather" &&
+					call.Function.Arguments == `{"location":"San Francisco","unit":"celsius"}` &&
+					call.Index == 0 // First tool call should have index 0
+			},
+		},
+		{
+			name: "multiple function calls",
+			input: []*genai.Part{
+				{
+					FunctionCall: &genai.FunctionCall{
+						Name: "function1",
+						Args: map[string]any{"param1": "value1"},
+					},
+				},
+				{Text: "some text between"},
+				{
+					FunctionCall: &genai.FunctionCall{
+						Name: "function2",
+						Args: map[string]any{"param2": float64(42)},
+					},
+				},
+			},
+			expected: func(calls []openai.ChatCompletionChunkChoiceDeltaToolCall) bool {
+				if len(calls) != 2 {
+					return false
+				}
+				// Verify first call
+				call1 := calls[0]
+				if call1.ID == nil || *call1.ID == "" ||
+					call1.Type != openai.ChatCompletionMessageToolCallTypeFunction ||
+					call1.Function.Name != "function1" ||
+					call1.Function.Arguments != `{"param1":"value1"}` ||
+					call1.Index != 0 { // First tool call should have index 0
+					return false
+				}
+				// Verify second call
+				call2 := calls[1]
+				if call2.ID == nil || *call2.ID == "" ||
+					call2.Type != openai.ChatCompletionMessageToolCallTypeFunction ||
+					call2.Function.Name != "function2" ||
+					call2.Function.Arguments != `{"param2":42}` ||
+					call2.Index != 1 { // Second tool call should have index 1
+					return false
+				}
+				// Verify IDs are different (UUIDs should be unique)
+				return *call1.ID != *call2.ID
+			},
+		},
+		{
+			name: "function call with nil part",
+			input: []*genai.Part{
+				{
+					FunctionCall: &genai.FunctionCall{
+						Name: "test_func",
+						Args: map[string]any{"test": "value"},
+					},
+				},
+				nil, // nil part should be skipped
+			},
+			expected: func(calls []openai.ChatCompletionChunkChoiceDeltaToolCall) bool {
+				if len(calls) != 1 {
+					return false
+				}
+				call := calls[0]
+				return call.ID != nil && *call.ID != "" &&
+					call.Function.Name == "test_func" &&
+					call.Index == 0 // Single tool call should have index 0
+			},
+		},
+		{
+			name: "function call with empty args",
+			input: []*genai.Part{
+				{
+					FunctionCall: &genai.FunctionCall{
+						Name: "no_args_func",
+						Args: map[string]any{},
+					},
+				},
+			},
+			expected: func(calls []openai.ChatCompletionChunkChoiceDeltaToolCall) bool {
+				if len(calls) != 1 {
+					return false
+				}
+				call := calls[0]
+				return call.ID != nil && *call.ID != "" &&
+					call.Function.Name == "no_args_func" &&
+					call.Function.Arguments == `{}` &&
+					call.Index == 0 // Single tool call should have index 0
+			},
+		},
+		{
+			name: "function call with nil args",
+			input: []*genai.Part{
+				{
+					FunctionCall: &genai.FunctionCall{
+						Name: "nil_args_func",
+						Args: nil,
+					},
+				},
+			},
+			expected: func(calls []openai.ChatCompletionChunkChoiceDeltaToolCall) bool {
+				if len(calls) != 1 {
+					return false
+				}
+				call := calls[0]
+				return call.ID != nil && *call.ID != "" &&
+					call.Function.Name == "nil_args_func" &&
+					call.Function.Arguments == `null` &&
+					call.Index == 0 // Single tool call should have index 0
+			},
+		},
+		{
+			name: "function call with complex nested args",
+			input: []*genai.Part{
+				{
+					FunctionCall: &genai.FunctionCall{
+						Name: "complex_func",
+						Args: map[string]any{
+							"user": map[string]any{
+								"name": "John",
+								"age":  30,
+							},
+							"items": []any{
+								map[string]any{"id": 1, "name": "item1"},
+								map[string]any{"id": 2, "name": "item2"},
+							},
+							"active": true,
+						},
+					},
+				},
+			},
+			expected: func(calls []openai.ChatCompletionChunkChoiceDeltaToolCall) bool {
+				if len(calls) != 1 {
+					return false
+				}
+				call := calls[0]
+				// Parse the JSON to verify structure since order might vary
+				var args map[string]any
+				if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
+					return false
+				}
+				user, ok := args["user"].(map[string]any)
+				if !ok || user["name"] != "John" || user["age"] != float64(30) {
+					return false
+				}
+				items, ok := args["items"].([]any)
+				if !ok || len(items) != 2 {
+					return false
+				}
+				active, ok := args["active"].(bool)
+				if !ok || !active {
+					return false
+				}
+				return call.ID != nil && *call.ID != "" &&
+					call.Function.Name == "complex_func" &&
+					call.Index == 0 // Single tool call should have index 0
+			},
+		},
+		{
+			name: "part with nil function call",
+			input: []*genai.Part{
+				{
+					FunctionCall: nil,
+					Text:         "some text",
+				},
+			},
+			expected: func(calls []openai.ChatCompletionChunkChoiceDeltaToolCall) bool {
+				return calls == nil
+			},
+		},
+		{
+			name: "function call with unmarshalable args",
+			input: []*genai.Part{
+				{
+					FunctionCall: &genai.FunctionCall{
+						Name: "test_func",
+						Args: map[string]any{
+							"channel": make(chan int), // channels cannot be marshaled to JSON
+						},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "failed to marshal function arguments",
+			expected: func(calls []openai.ChatCompletionChunkChoiceDeltaToolCall) bool {
+				return calls == nil
+			},
+		},
 	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
+			calls, err := o.extractToolCallsFromGeminiPartsStream(toolCalls, tt.input)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+				return
+			}
+
+			require.NoError(t, err)
+
+			if !tt.expected(calls) {
+				t.Errorf("extractToolCallsFromGeminiPartsStream() result validation failed. Got: %+v", calls)
+			}
+		})
+	}
+}
+
+// TestExtractToolCallsStreamVsNonStream tests the differences between streaming and non-streaming extraction
+func TestExtractToolCallsStreamVsNonStream(t *testing.T) {
+	toolCalls := []openai.ChatCompletionMessageToolCallParam{}
+	toolCallsStream := []openai.ChatCompletionChunkChoiceDeltaToolCall{}
+	parts := []*genai.Part{
+		{
+			FunctionCall: &genai.FunctionCall{
+				Name: "test_function",
+				Args: map[string]any{
+					"param1": "value1",
+					"param2": 42,
+				},
+			},
+		},
+	}
+	o := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
+
+	// Get results from both functions
+	streamCalls, err := o.extractToolCallsFromGeminiPartsStream(toolCallsStream, parts)
+	require.NoError(t, err)
+	require.Len(t, streamCalls, 1)
+
+	nonStreamCalls, err := extractToolCallsFromGeminiParts(toolCalls, parts)
+	require.NoError(t, err)
+	require.Len(t, nonStreamCalls, 1)
+
+	streamCall := streamCalls[0]
+	nonStreamCall := nonStreamCalls[0]
+
+	// Verify function name and arguments are the same
+	assert.Equal(t, nonStreamCall.Function.Name, streamCall.Function.Name)
+	assert.Equal(t, nonStreamCall.Function.Arguments, streamCall.Function.Arguments)
+	assert.Equal(t, openai.ChatCompletionMessageToolCallTypeFunction, streamCall.Type)
+
+	// Verify differences:
+	// 1. Stream version should have Index field set to 0 for the first tool call
+	assert.Equal(t, int64(0), streamCall.Index)
+
+	// 2. Stream version should have a UUID (non-empty string) as ID
+	assert.NotNil(t, streamCall.ID)
+	assert.NotEmpty(t, *streamCall.ID)
+	// UUID should be longer than a simple sequential ID
+	assert.Greater(t, len(*streamCall.ID), 10, "Stream ID should be a UUID, got: %s", *streamCall.ID)
+
+	// 3. Non-stream version should have a UUID as well (both generate UUIDs now)
+	assert.NotNil(t, nonStreamCall.ID)
+	assert.NotEmpty(t, *nonStreamCall.ID)
+
+	// 4. IDs should be different between the two calls (different UUIDs)
+	assert.NotEqual(t, *streamCall.ID, *nonStreamCall.ID)
+
+	// Type checking: ensure we get the right types back
+	assert.IsType(t, []openai.ChatCompletionChunkChoiceDeltaToolCall{}, streamCalls)
+	assert.IsType(t, []openai.ChatCompletionMessageToolCallParam{}, nonStreamCalls)
+}
+
+// TestExtractToolCallsStreamIndexing specifically tests that multiple tool calls get correct indices
+func TestExtractToolCallsStreamIndexing(t *testing.T) {
+	toolCalls := []openai.ChatCompletionChunkChoiceDeltaToolCall{}
+	parts := []*genai.Part{
+		{
+			FunctionCall: &genai.FunctionCall{
+				Name: "first_function",
+				Args: map[string]any{"param": "value1"},
+			},
+		},
+		{Text: "some text"}, // non-function part should be skipped
+		{
+			FunctionCall: &genai.FunctionCall{
+				Name: "second_function",
+				Args: map[string]any{"param": "value2"},
+			},
+		},
+		{
+			FunctionCall: &genai.FunctionCall{
+				Name: "third_function",
+				Args: map[string]any{"param": "value3"},
+			},
+		},
+	}
+	o := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
+
+	calls, err := o.extractToolCallsFromGeminiPartsStream(toolCalls, parts)
+	require.NoError(t, err)
+	require.Len(t, calls, 3)
+
+	// Verify each tool call has the correct index
+	for i, call := range calls {
+		assert.Equal(t, int64(i), call.Index, "Tool call %d should have index %d", i, i)
+		assert.NotNil(t, call.ID)
+		assert.NotEmpty(t, *call.ID)
+		assert.Equal(t, openai.ChatCompletionMessageToolCallTypeFunction, call.Type)
+	}
+
+	// Verify specific function names and arguments
+	assert.Equal(t, "first_function", calls[0].Function.Name)
+	assert.JSONEq(t, `{"param":"value1"}`, calls[0].Function.Arguments)
+
+	assert.Equal(t, "second_function", calls[1].Function.Name)
+	assert.JSONEq(t, `{"param":"value2"}`, calls[1].Function.Arguments)
+
+	assert.Equal(t, "third_function", calls[2].Function.Name)
+	assert.JSONEq(t, `{"param":"value3"}`, calls[2].Function.Arguments)
+
+	// Verify all IDs are unique
+	ids := make(map[string]bool)
+	for _, call := range calls {
+		assert.False(t, ids[*call.ID], "Tool call ID should be unique: %s", *call.ID)
+		ids[*call.ID] = true
+	}
+}
+
+func getChatCompletionResponseChunk(body []byte) []openai.ChatCompletionResponseChunk {
+	lines := bytes.Split(body, []byte("\n\n"))
+
+	chunks := []openai.ChatCompletionResponseChunk{}
+	for _, line := range lines {
+		// Remove "data: " prefix from SSE format if present.
+		line = bytes.TrimPrefix(line, []byte("data: "))
+
+		// Try to parse as JSON.
+		var chunk openai.ChatCompletionResponseChunk
+		if err := json.Unmarshal(line, &chunk); err == nil {
+			chunks = append(chunks, chunk)
+		}
+	}
+	return chunks
+}
+
+func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingParallelToolIndex(t *testing.T) {
+	translator := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
+	// Mock multiple GCP streaming response with parallel tool calls
+	gcpToolCallsChunk := `{
+    "candidates": [
+        {
+            "content": {
+                "parts": [
+                    {
+                        "functionCall": {
+                            "name": "get_weather",
+                            "args": {
+                                "location": "New York City"
+                            }
+                        }
+                    }
+                ],
+                "role": "model"
+            }
+        }
+    ],
+	"candidates": [
+        {
+            "content": {
+                "parts": [
+                    {
+                        "functionCall": {
+                            "name": "get_weather",
+                            "args": {
+                                "location": "Shang Hai"
+                            }
+                        }
+                    }
+                ],
+                "role": "model"
+            }
+        }
+    ],
+}`
+
+	expectedChatCompletionChunks := []openai.ChatCompletionResponseChunk{
+		{
+			Choices: []openai.ChatCompletionResponseChunkChoice{
+				{
+					Index: int64(0),
+					Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
+						Role: "assistant",
+						ToolCalls: []openai.ChatCompletionChunkChoiceDeltaToolCall{
+							{
+								Index: int64(0),
+								ID:    ptr.To("123"),
+								Function: openai.ChatCompletionMessageToolCallFunctionParam{
+									Arguments: `{"location": "New York City"}`,
+									Name:      "get_weather",
+								},
+								Type: "function",
+							},
+						},
+					},
+				},
+			},
+			Object: "chat.completion.chunk",
+		},
+		{
+			Choices: []openai.ChatCompletionResponseChunkChoice{
+				{
+					Index: int64(0),
+					Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
+						Role: "assistant",
+						ToolCalls: []openai.ChatCompletionChunkChoiceDeltaToolCall{
+							{
+								Index: int64(1),
+								ID:    ptr.To("123"),
+								Function: openai.ChatCompletionMessageToolCallFunctionParam{
+									Arguments: `{"location": "Shang Hai}`,
+									Name:      "get_weather",
+								},
+								Type: "function",
+							},
+						},
+					},
+				},
+			},
+			Object: "chat.completion.chunk",
+		},
+	}
+
+	headerMut, bodyMut, _, _, err := translator.handleStreamingResponse(
+		bytes.NewReader([]byte(gcpToolCallsChunk)),
+		false,
+		nil,
+	)
+
+	require.Nil(t, headerMut)
+	require.NoError(t, err)
+	require.NotNil(t, bodyMut)
+	require.NotNil(t, bodyMut.Mutation)
+
+	body := bodyMut.Mutation.(*extprocv3.BodyMutation_Body).Body
+	chatCompletionChunks := getChatCompletionResponseChunk(body)
+
+	for idx, chunk := range chatCompletionChunks {
+		chunk.Choices[0].Delta.ToolCalls[0].ID = ptr.To("123")
+		require.Equal(t, chunk, expectedChatCompletionChunks[idx])
+	}
+}
+
+func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingEndOfStream(t *testing.T) {
+	translator := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
 
 	// Test end of stream marker.
 	_, body, _, _, err := translator.handleStreamingResponse(
@@ -1410,7 +1910,7 @@ Details: [
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{}
+			translator := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
 
 			body := strings.NewReader(tt.body)
 

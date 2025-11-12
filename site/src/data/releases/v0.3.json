@@ -3,7 +3,7 @@
     "version": "v0.3",
     "title": "Envoy AI Gateway v0.3.x",
     "subtitle": "Release version introducing intelligent inference routing with Endpoint Picker Provider,enhanced observability features, Google Vertex AI support, and enhanced provider integrations.",
-    "badge": "Latest",
+    "badge": "Stable",
     "badgeType": "milestone"
   },
   "releases": [
@@ -151,6 +151,7 @@
     }
   ],
   "navigation": {
-    "previous": { "version": "v0.2.x Series", "path": "/release-notes/v0.2" }
+    "previous": { "version": "v0.2.x Series", "path": "/release-notes/v0.2" },
+    "next": { "version": "v0.4.x Series", "path": "/release-notes/v0.4" }
   }
 }
