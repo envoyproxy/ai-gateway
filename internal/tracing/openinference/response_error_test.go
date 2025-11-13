@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
 
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
@@ -22,14 +22,14 @@ func TestRecordResponseError(t *testing.T) {
 		name                string
 		statusCode          int
 		body                string
-		expectedEvents      []sdktrace.Event
+		expectedEvents      []trace.Event
 		expectedDescription string
 	}{
 		{
 			name:       "400 bad request",
 			statusCode: 400,
 			body:       `{"error": {"message": "Invalid request"}}`,
-			expectedEvents: []sdktrace.Event{
+			expectedEvents: []trace.Event{
 				{
 					Name: "exception",
 					Attributes: []attribute.KeyValue{
@@ -45,7 +45,7 @@ func TestRecordResponseError(t *testing.T) {
 			name:       "401 unauthorized",
 			statusCode: 401,
 			body:       `{"error": {"message": "Unauthorized"}}`,
-			expectedEvents: []sdktrace.Event{
+			expectedEvents: []trace.Event{
 				{
 					Name: "exception",
 					Attributes: []attribute.KeyValue{
@@ -60,7 +60,7 @@ func TestRecordResponseError(t *testing.T) {
 		{
 			name:       "403 forbidden",
 			statusCode: 403,
-			expectedEvents: []sdktrace.Event{
+			expectedEvents: []trace.Event{
 				{
 					Name: "exception",
 					Attributes: []attribute.KeyValue{
@@ -76,7 +76,7 @@ func TestRecordResponseError(t *testing.T) {
 			name:       "404 not found",
 			statusCode: 404,
 			body:       `{"error": {"message": "Model not found"}}`,
-			expectedEvents: []sdktrace.Event{
+			expectedEvents: []trace.Event{
 				{
 					Name: "exception",
 					Attributes: []attribute.KeyValue{
@@ -92,7 +92,7 @@ func TestRecordResponseError(t *testing.T) {
 			name:       "429 rate limit",
 			statusCode: 429,
 			body:       `{"error": {"message": "Rate limit exceeded"}}`,
-			expectedEvents: []sdktrace.Event{
+			expectedEvents: []trace.Event{
 				{
 					Name: "exception",
 					Attributes: []attribute.KeyValue{
@@ -108,7 +108,7 @@ func TestRecordResponseError(t *testing.T) {
 			name:       "500 internal server error",
 			statusCode: 500,
 			body:       `{"error": {"message": "Internal error"}}`,
-			expectedEvents: []sdktrace.Event{
+			expectedEvents: []trace.Event{
 				{
 					Name: "exception",
 					Attributes: []attribute.KeyValue{
@@ -124,7 +124,7 @@ func TestRecordResponseError(t *testing.T) {
 			name:       "unknown error code",
 			statusCode: 599,
 			body:       `{"error": {"message": "Unknown error"}}`,
-			expectedEvents: []sdktrace.Event{
+			expectedEvents: []trace.Event{
 				{
 					Name: "exception",
 					Attributes: []attribute.KeyValue{
@@ -139,7 +139,7 @@ func TestRecordResponseError(t *testing.T) {
 		{
 			name:       "error without body",
 			statusCode: 500,
-			expectedEvents: []sdktrace.Event{
+			expectedEvents: []trace.Event{
 				{
 					Name: "exception",
 					Attributes: []attribute.KeyValue{

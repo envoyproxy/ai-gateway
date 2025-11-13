@@ -14,9 +14,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// RecordResponseError emits an "exception" event and sets error status on the span
-// based on the provided HTTP status code and optional body message.
+// recordResponseError processes error responses and updates span accordingly.
 func RecordResponseError(span trace.Span, statusCode int, body string) {
+	// Determine error type based on status code.
 	var errorType string
 	switch statusCode {
 	case 400:
@@ -35,14 +35,19 @@ func RecordResponseError(span trace.Span, statusCode int, body string) {
 		errorType = "Error"
 	}
 
+	// Format error message following Go conventions.
 	errorMsg := fmt.Sprintf("Error code: %d", statusCode)
 	if len(body) > 0 {
 		errorMsg = fmt.Sprintf("Error code: %d - %s", statusCode, body)
 	}
 
+	// Add exception event following OpenTelemetry semantic conventions.
+	// The event name MUST be "exception" per the spec.
 	span.AddEvent("exception", trace.WithAttributes(
 		attribute.String("exception.type", errorType),
 		attribute.String("exception.message", errorMsg),
 	))
+
+	// Set span status to error with the message.
 	span.SetStatus(codes.Error, errorMsg)
 }
