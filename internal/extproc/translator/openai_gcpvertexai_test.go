@@ -1653,7 +1653,7 @@ func getChatCompletionResponseChunk(body []byte) []openai.ChatCompletionResponse
 func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingParallelToolIndex(t *testing.T) {
 	translator := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
 	// Mock multiple GCP streaming response with parallel tool calls
-	gcpToolCallsChunk := `{
+	gcpToolCallsChunk := `data: {
     "candidates": [
         {
             "content": {
@@ -1670,8 +1670,9 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingParallelToolInde
                 "role": "model"
             }
         }
-    ],
-	"candidates": [
+]}
+
+data: {"candidates": [
         {
             "content": {
                 "parts": [
@@ -1687,8 +1688,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingParallelToolInde
                 "role": "model"
             }
         }
-    ],
-}`
+]}`
 
 	expectedChatCompletionChunks := []openai.ChatCompletionResponseChunk{
 		{
@@ -1702,7 +1702,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingParallelToolInde
 								Index: int64(0),
 								ID:    ptr.To("123"),
 								Function: openai.ChatCompletionMessageToolCallFunctionParam{
-									Arguments: `{"location": "New York City"}`,
+									Arguments: `{"location":"New York City"}`,
 									Name:      "get_weather",
 								},
 								Type: "function",
@@ -1724,7 +1724,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingParallelToolInde
 								Index: int64(1),
 								ID:    ptr.To("123"),
 								Function: openai.ChatCompletionMessageToolCallFunctionParam{
-									Arguments: `{"location": "Shang Hai}`,
+									Arguments: `{"location":"Shang Hai"}`,
 									Name:      "get_weather",
 								},
 								Type: "function",
@@ -1750,6 +1750,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingParallelToolInde
 
 	body := bodyMut.Mutation.(*extprocv3.BodyMutation_Body).Body
 	chatCompletionChunks := getChatCompletionResponseChunk(body)
+	require.Len(t, chatCompletionChunks, 2)
 
 	for idx, chunk := range chatCompletionChunks {
 		chunk.Choices[0].Delta.ToolCalls[0].ID = ptr.To("123")
