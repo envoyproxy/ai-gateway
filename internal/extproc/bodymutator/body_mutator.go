@@ -91,6 +91,7 @@ func (b *BodyMutator) Mutate(requestBody []byte, onRetry bool) ([]byte, error) {
 	if len(b.bodyMutations.Remove) > 0 {
 		for _, fieldName := range b.bodyMutations.Remove {
 			if fieldName != "" {
+				// TODO optimize by using SetBytesOption to avoid underlying sjson copy.
 				mutatedBody, err = sjson.DeleteBytes(mutatedBody, fieldName)
 				if err != nil {
 					return nil, fmt.Errorf("failed to remove field %s: %w", fieldName, err)
@@ -105,6 +106,7 @@ func (b *BodyMutator) Mutate(requestBody []byte, onRetry bool) ([]byte, error) {
 		for _, field := range b.bodyMutations.Set {
 			if field.Path != "" {
 				// Check value type to determine appropriate sjson method
+				// TODO handle JSON value check in configuration load time too.
 				if isJSONValue(field.Value) {
 					// Use SetRawBytes for JSON values (quoted strings, numbers, booleans, objects, arrays)
 					mutatedBody, err = sjson.SetRawBytesOptions(mutatedBody, field.Path, []byte(field.Value), &sjson.Options{ReplaceInPlace: replaceInPlace})
