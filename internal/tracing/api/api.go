@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
@@ -31,6 +32,8 @@ type Tracing interface {
 	CompletionTracer() CompletionTracer
 	// EmbeddingsTracer creates spans for OpenAI embeddings requests on /embeddings endpoint.
 	EmbeddingsTracer() EmbeddingsTracer
+	// RerankTracer creates spans for rerank requests.
+	RerankTracer() RerankTracer
 	// MCPTracer creates spans for MCP requests.
 	MCPTracer() MCPTracer
 	// Shutdown shuts down the tracer, flushing any buffered spans.
@@ -47,6 +50,7 @@ type TracingConfig struct {
 	CompletionRecorder      CompletionRecorder
 	ImageGenerationRecorder ImageGenerationRecorder
 	EmbeddingsRecorder      EmbeddingsRecorder
+	RerankRecorder          RerankRecorder
 }
 
 // NoopTracing is a Tracing that doesn't do anything.
@@ -74,6 +78,11 @@ func (NoopTracing) EmbeddingsTracer() EmbeddingsTracer {
 // ImageGenerationTracer implements Tracing.ImageGenerationTracer.
 func (NoopTracing) ImageGenerationTracer() ImageGenerationTracer {
 	return NoopImageGenerationTracer{}
+}
+
+// RerankTracer implements Tracing.RerankTracer.
+func (NoopTracing) RerankTracer() RerankTracer {
+	return NoopRerankTracer{}
 }
 
 // Shutdown implements Tracing.Shutdown.
@@ -348,5 +357,69 @@ type NoopEmbeddingsTracer struct{}
 
 // StartSpanAndInjectHeaders implements EmbeddingsTracer.StartSpanAndInjectHeaders.
 func (NoopEmbeddingsTracer) StartSpanAndInjectHeaders(context.Context, map[string]string, *extprocv3.HeaderMutation, *openai.EmbeddingRequest, []byte) EmbeddingsSpan {
+	return nil
+}
+
+// RerankTracer creates spans for rerank requests.
+type RerankTracer interface {
+	// StartSpanAndInjectHeaders starts a span and injects trace context into
+	// the header mutation.
+	//
+	// Parameters:
+	//   - ctx: might include a parent span context.
+	//   - headers: Incoming HTTP headers used to extract parent trace context.
+	//   - headerMutation: The new Rerank Span will have its context
+	//     written to these headers unless NoopTracing is used.
+	//   - req: The Cohere rerank request. Used to record request attributes.
+	//   - body: contains the original raw request body as a byte slice.
+	//
+	// Returns nil unless the span is sampled.
+	StartSpanAndInjectHeaders(ctx context.Context, headers map[string]string, headerMutation *extprocv3.HeaderMutation, req *cohere.RerankV2Request, body []byte) RerankSpan
+}
+
+// RerankSpan represents a rerank request span.
+type RerankSpan interface {
+	// RecordResponse records the response attributes to the span.
+	RecordResponse(resp *cohere.RerankV2Response)
+
+	// EndSpanOnError finalizes and ends the span with an error status.
+	EndSpanOnError(statusCode int, body []byte)
+
+	// EndSpan finalizes and ends the span.
+	EndSpan()
+}
+
+// RerankRecorder records attributes to a span according to a semantic
+// convention.
+type RerankRecorder interface {
+	// StartParams returns the name and options to start the span with.
+	//
+	// Parameters:
+	//   - req: contains the rerank request
+	//   - body: contains the complete request body.
+	//
+	// Note: Do not do any expensive data conversions as the span might not be
+	// sampled.
+	StartParams(req *cohere.RerankV2Request, body []byte) (spanName string, opts []trace.SpanStartOption)
+
+	// RecordRequest records request attributes to the span.
+	//
+	// Parameters:
+	//   - req: contains the rerank request
+	//   - body: contains the complete request body.
+	RecordRequest(span trace.Span, req *cohere.RerankV2Request, body []byte)
+
+	// RecordResponse records response attributes to the span.
+	RecordResponse(span trace.Span, resp *cohere.RerankV2Response)
+
+	// RecordResponseOnError ends recording the span with an error status.
+	RecordResponseOnError(span trace.Span, statusCode int, body []byte)
+}
+
+// NoopRerankTracer is a RerankTracer that doesn't do anything.
+type NoopRerankTracer struct{}
+
+// StartSpanAndInjectHeaders implements RerankTracer.StartSpanAndInjectHeaders.
+func (NoopRerankTracer) StartSpanAndInjectHeaders(context.Context, map[string]string, *extprocv3.HeaderMutation, *cohere.RerankV2Request, []byte) RerankSpan {
 	return nil
 }

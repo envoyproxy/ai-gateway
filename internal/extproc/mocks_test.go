@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
 
+	cohere "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
@@ -589,3 +590,23 @@ func (m *mockImageGenerationMetrics) RequireTokensRecorded(t *testing.T, count i
 
 // Ensure mock implements the interface at compile-time.
 var _ metrics.ImageGenerationMetrics = &mockImageGenerationMetrics{}
+
+type mockRerankSpan struct {
+	endCalled    bool
+	endErrStatus int
+	endErrBody   string
+	recordCalled bool
+}
+
+func (m *mockRerankSpan) EndSpan() {
+	m.endCalled = true
+}
+
+func (m *mockRerankSpan) EndSpanOnError(status int, body []byte) {
+	m.endErrStatus = status
+	m.endErrBody = string(body)
+}
+
+func (m *mockRerankSpan) RecordResponse(_ *cohere.RerankV2Response) {
+	m.recordCalled = true
+}

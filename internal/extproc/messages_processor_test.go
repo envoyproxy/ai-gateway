@@ -7,6 +7,7 @@ package extproc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -382,7 +383,6 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithMocks(t *test
 		t.Run(tt.name, func(t *testing.T) {
 			headers := map[string]string{":path": "/anthropic/v1/messages", "x-ai-eg-model": "claude-3-sonnet"}
 
-			// Create request body.
 			requestBody := &anthropicschema.MessagesRequest{
 				"model":      "claude-3-sonnet",
 				"max_tokens": 1000,
@@ -390,7 +390,6 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithMocks(t *test
 			}
 			requestBodyRaw := []byte(`{"model": "claude-3-sonnet", "max_tokens": 1000, "messages": [{"role": "user", "content": "Hello"}]}`)
 
-			// Create mock translator.
 			mockTranslator := mockAnthropicTranslator{
 				t:                           t,
 				expRequestBody:              requestBody,
@@ -398,10 +397,8 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithMocks(t *test
 				retErr:                      tt.translatorErr,
 			}
 
-			// Create mock metrics.
 			chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 
-			// Create processor.
 			processor := &messagesProcessorUpstreamFilter{
 				config:                 &processorConfig{},
 				requestHeaders:         headers,
@@ -906,5 +903,136 @@ func TestMessagesProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *testi
 
 		// Verify header mutator was created with original headers.
 		require.NotNil(t, p.headerMutator)
+	})
+}
+
+func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutations(t *testing.T) {
+	t.Run("body mutations applied correctly", func(t *testing.T) {
+		headers := map[string]string{
+			":path":         "/anthropic/v1/messages",
+			"x-ai-eg-model": "claude-3-sonnet",
+		}
+
+		// Create request body.
+		requestBody := &anthropicschema.MessagesRequest{
+			"model": "claude-3-sonnet",
+		}
+		requestBodyRaw := []byte(`{"model": "claude-3-sonnet", "service_tier": "default", "max_tokens": 1000, "messages": [{"role": "user", "content": [{"type": "text", "text": "Hello"}]}]}`)
+
+		bodyMutations := &filterapi.HTTPBodyMutation{
+			Remove: []string{"internal_flag"},
+			Set: []filterapi.HTTPBodyField{
+				{Path: "service_tier", Value: "\"scale\""},
+				{Path: "max_tokens", Value: "2000"},
+			},
+		}
+
+		mockTranslator := mockAnthropicTranslator{
+			t:                           t,
+			expRequestBody:              requestBody,
+			expForceRequestBodyMutation: false,
+			retBodyMutation:             requestBodyRaw,
+			retErr:                      nil,
+		}
+
+		chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
+
+		p := &messagesProcessorUpstreamFilter{
+			config:              &processorConfig{},
+			requestHeaders:      headers,
+			logger:              slog.Default(),
+			metrics:             chatMetrics,
+			originalRequestBody: requestBody,
+			translator:          &mockTranslator,
+			handler:             &mockBackendAuthHandler{},
+		}
+
+		backend := &filterapi.Backend{
+			Name:         "test-backend",
+			Schema:       filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic},
+			BodyMutation: bodyMutations,
+		}
+
+		rp := &messagesProcessorRouterFilter{
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: requestBodyRaw,
+			requestHeaders:         headers,
+		}
+
+		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		require.NoError(t, err)
+
+		require.NotNil(t, p.bodyMutator)
+
+		ctx := context.Background()
+		response, err := p.ProcessRequestHeaders(ctx, nil)
+		require.NoError(t, err)
+		require.NotNil(t, response)
+
+		testBodyMutation := []byte(`{"model": "claude-3-sonnet", "service_tier": "default", "internal_flag": true, "max_tokens": 1000}`)
+		mutatedBody, err := p.bodyMutator.Mutate(testBodyMutation, false)
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(mutatedBody, &result)
+		require.NoError(t, err)
+
+		require.Equal(t, "scale", result["service_tier"])
+		require.Equal(t, float64(2000), result["max_tokens"])
+		require.NotContains(t, result, "internal_flag")
+		require.Equal(t, "claude-3-sonnet", result["model"])
+	})
+
+	t.Run("body mutator with retry", func(t *testing.T) {
+		headers := map[string]string{":path": "/anthropic/v1/messages"}
+		chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
+
+		originalRequestBodyRaw := []byte(`{"model": "claude-3-sonnet", "service_tier": "default"}`)
+		requestBody := &anthropicschema.MessagesRequest{"model": "claude-3-sonnet"}
+
+		p := &messagesProcessorUpstreamFilter{
+			config:              &processorConfig{},
+			requestHeaders:      headers,
+			logger:              slog.Default(),
+			metrics:             chatMetrics,
+			originalRequestBody: requestBody,
+		}
+
+		bodyMutations := &filterapi.HTTPBodyMutation{
+			Set: []filterapi.HTTPBodyField{
+				{Path: "service_tier", Value: "\"premium\""},
+			},
+		}
+
+		backend := &filterapi.Backend{
+			Name:         "test-backend",
+			Schema:       filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic},
+			BodyMutation: bodyMutations,
+		}
+
+		rp := &messagesProcessorRouterFilter{
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: originalRequestBodyRaw,
+			requestHeaders:         headers,
+			upstreamFilterCount:    2,
+		}
+
+		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		require.NoError(t, err)
+
+		require.NotNil(t, p.bodyMutator)
+		require.True(t, p.onRetry)
+
+		modifiedBody := []byte(`{"model": "claude-3-sonnet", "service_tier": "modified", "extra": "field"}`)
+		mutatedBody, err := p.bodyMutator.Mutate(modifiedBody, true)
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(mutatedBody, &result)
+		require.NoError(t, err)
+
+		require.Equal(t, "premium", result["service_tier"])
+		require.Equal(t, "claude-3-sonnet", result["model"])
+		require.NotContains(t, result, "extra")
 	})
 }

@@ -19,6 +19,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/backendauth"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
@@ -140,6 +141,7 @@ type messagesProcessorUpstreamFilter struct {
 	backendName            string
 	handler                backendauth.Handler
 	headerMutator          *headermutator.HeaderMutator
+	bodyMutator            *bodymutator.BodyMutator
 	originalRequestBody    *anthropic.MessagesRequest
 	originalRequestBodyRaw []byte
 	translator             translator.AnthropicMessagesTranslator
@@ -206,6 +208,14 @@ func (c *messagesProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Cont
 				},
 			})
 		}
+	}
+
+	// Apply body mutations from the route and also restore original body on retry.
+	bodyMutation = applyBodyMutation(c.bodyMutator, bodyMutation, c.originalRequestBodyRaw, c.onRetry, c.logger)
+
+	// Ensure bodyMutation is not nil for subsequent processing
+	if bodyMutation == nil {
+		bodyMutation = &extprocv3.BodyMutation{}
 	}
 
 	for _, h := range headerMutation.SetHeaders {
@@ -363,6 +373,7 @@ func (c *messagesProcessorUpstreamFilter) SetBackend(ctx context.Context, b *fil
 	}
 	c.handler = backendHandler
 	c.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
+	c.bodyMutator = bodymutator.NewBodyMutator(b.BodyMutation, rp.originalRequestBodyRaw)
 	// Header-derived labels/CEL must be able to see the overridden request model.
 	if c.modelNameOverride != "" {
 		c.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = c.modelNameOverride

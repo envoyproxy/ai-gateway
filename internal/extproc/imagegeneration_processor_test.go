@@ -523,3 +523,150 @@ func imageGenerationBodyFromModel(t *testing.T, model string) []byte {
 	require.NoError(t, err)
 	return b
 }
+
+func TestImageGenerationProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutations(t *testing.T) {
+	t.Run("body mutations applied correctly", func(t *testing.T) {
+		headers := map[string]string{
+			":path":         "/v1/images/generations",
+			"x-ai-eg-model": "dall-e-3",
+		}
+
+		requestBody := &openaisdk.ImageGenerateParams{
+			Model:  "dall-e-3",
+			Prompt: "A beautiful sunset over mountains",
+		}
+		requestBodyRaw := []byte(`{"model": "dall-e-3", "prompt": "A beautiful sunset over mountains", "size": "1024x1024", "quality": "standard", "n": 1}`)
+
+		bodyMutations := &filterapi.HTTPBodyMutation{
+			Remove: []string{"internal_flag"},
+			Set: []filterapi.HTTPBodyField{
+				{Path: "quality", Value: "\"hd\""},
+				{Path: "size", Value: "\"1792x1024\""},
+				{Path: "style", Value: "\"vivid\""},
+				{Path: "response_format", Value: "\"b64_json\""},
+			},
+		}
+
+		mockTranslator := mockImageGenerationTranslator{
+			t:               t,
+			expRequestBody:  requestBody,
+			retBodyMutation: requestBodyRaw,
+			retErr:          nil,
+		}
+
+		imageMetrics := &mockImageGenerationMetrics{}
+
+		p := &imageGenerationProcessorUpstreamFilter{
+			config:                 &processorConfig{},
+			requestHeaders:         headers,
+			logger:                 slog.Default(),
+			metrics:                imageMetrics,
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: requestBodyRaw,
+			translator:             &mockTranslator,
+			handler:                &mockBackendAuthHandler{},
+		}
+
+		backend := &filterapi.Backend{
+			Name:         "test-backend",
+			Schema:       filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+			BodyMutation: bodyMutations,
+		}
+
+		rp := &imageGenerationProcessorRouterFilter{
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: requestBodyRaw,
+			requestHeaders:         headers,
+		}
+
+		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		require.NoError(t, err)
+
+		require.NotNil(t, p.bodyMutator)
+
+		ctx := context.Background()
+		response, err := p.ProcessRequestHeaders(ctx, nil)
+		require.NoError(t, err)
+		require.NotNil(t, response)
+
+		testBodyMutation := []byte(`{"model": "dall-e-3", "prompt": "A beautiful sunset over mountains", "size": "1024x1024", "quality": "standard", "n": 1, "internal_flag": true}`)
+		mutatedBody, err := p.bodyMutator.Mutate(testBodyMutation, false)
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(mutatedBody, &result)
+		require.NoError(t, err)
+
+		require.Equal(t, "hd", result["quality"])
+		require.Equal(t, "1792x1024", result["size"])
+		require.Equal(t, "vivid", result["style"])
+		require.Equal(t, "b64_json", result["response_format"])
+		require.NotContains(t, result, "internal_flag")
+		require.Equal(t, "dall-e-3", result["model"])
+		require.Equal(t, "A beautiful sunset over mountains", result["prompt"])
+		require.Equal(t, float64(1), result["n"])
+	})
+
+	t.Run("body mutator with retry", func(t *testing.T) {
+		headers := map[string]string{":path": "/v1/images/generations"}
+		imageMetrics := &mockImageGenerationMetrics{}
+
+		originalRequestBodyRaw := []byte(`{"model": "dall-e-3", "prompt": "Original prompt", "size": "1024x1024", "quality": "standard"}`)
+		requestBody := &openaisdk.ImageGenerateParams{
+			Model:  "dall-e-3",
+			Prompt: "Original prompt",
+		}
+
+		p := &imageGenerationProcessorUpstreamFilter{
+			config:                 &processorConfig{},
+			requestHeaders:         headers,
+			logger:                 slog.Default(),
+			metrics:                imageMetrics,
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: originalRequestBodyRaw,
+		}
+
+		bodyMutations := &filterapi.HTTPBodyMutation{
+			Set: []filterapi.HTTPBodyField{
+				{Path: "quality", Value: "\"hd\""},
+				{Path: "size", Value: "\"1792x1024\""},
+				{Path: "n", Value: "2"},
+			},
+		}
+
+		backend := &filterapi.Backend{
+			Name:         "test-backend",
+			Schema:       filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+			BodyMutation: bodyMutations,
+		}
+
+		rp := &imageGenerationProcessorRouterFilter{
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: originalRequestBodyRaw,
+			requestHeaders:         headers,
+			upstreamFilterCount:    2,
+		}
+
+		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		require.NoError(t, err)
+
+		require.NotNil(t, p.bodyMutator)
+		require.True(t, p.onRetry)
+
+		modifiedBody := []byte(`{"model": "dall-e-3", "prompt": "Modified prompt", "size": "512x512", "quality": "low", "extra": "field"}`)
+		mutatedBody, err := p.bodyMutator.Mutate(modifiedBody, true)
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(mutatedBody, &result)
+		require.NoError(t, err)
+
+		require.Equal(t, "hd", result["quality"])
+		require.Equal(t, "1792x1024", result["size"])
+		require.Equal(t, float64(2), result["n"])
+		require.Equal(t, "dall-e-3", result["model"])
+		require.NotContains(t, result, "extra")
+
+		require.Equal(t, "Original prompt", result["prompt"])
+	})
+}

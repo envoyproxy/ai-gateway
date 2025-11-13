@@ -62,6 +62,8 @@ func TestWithTestUpstream(t *testing.T) {
 			testUpstreamGCPVertexAIBackend,
 			testUpstreamGCPAnthropicAIBackend,
 			testUpstreamAWSAnthropicBackend,
+			testUpstreamBodyMutationBackend,
+			testUpstreamBodyMutationAnthropicBackend,
 			{
 				Name: "testupstream-openai-5xx", Schema: openAISchema, HeaderMutation: &filterapi.HTTPHeaderMutation{
 					Set: []filterapi.HTTPHeader{{Name: testupstreamlib.ResponseStatusKey, Value: "500"}},
@@ -1037,6 +1039,30 @@ data: {"type":"message_stop"}
 			responseBody:    `{"type":"error","error":{"type":"validation_error","message":"Invalid request format"}}`,
 			expStatus:       http.StatusBadRequest,
 			expResponseBody: `{"type":"error","error":{"type":"validation_error","message":"Invalid request format"}}`,
+		},
+		{
+			name:            "body-mutation - /v1/chat/completions - OpenAI backend with route-level body mutations",
+			backend:         "body-mutation",
+			path:            "/v1/chat/completions",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"gpt-4","messages":[{"role":"user","content":"Hello"}],"temperature":0.9,"stream_options":{"include_usage":true}}`,
+			expPath:         "/v1/chat/completions",
+			expRequestBody:  `{"model":"gpt-4","messages":[{"role":"user","content":"Hello"}],"temperature":0.5,"max_tokens":150,"custom_field":"route-level-value"}`,
+			responseBody:    `{"choices":[{"message":{"content":"Hello! How can I help you?"}}]}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"choices":[{"message":{"content":"Hello! How can I help you?"}}]}`,
+		},
+		{
+			name:            "body-mutation-anthropic - /anthropic/v1/messages - Anthropic backend with route-level body mutations",
+			backend:         "body-mutation-anthropic",
+			path:            "/anthropic/v1/messages",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"claude-3-sonnet","max_tokens":50,"messages":[{"role":"user","content":"Hello"}],"temperature":0.1}`,
+			expPath:         "/v1/messages",
+			expRequestBody:  `{"model":"claude-3-sonnet","max_tokens":200,"messages":[{"role":"user","content":"Hello"}],"temperature":0.7}`,
+			responseBody:    `{"id":"msg_123","type":"message","role":"assistant","content":[{"type":"text","text":"Hello! How can I assist you?"}],"usage":{"input_tokens":5,"output_tokens":10}}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"id":"msg_123","type":"message","role":"assistant","content":[{"type":"text","text":"Hello! How can I assist you?"}],"usage":{"input_tokens":5,"output_tokens":10}}`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

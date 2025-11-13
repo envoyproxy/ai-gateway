@@ -400,6 +400,8 @@ MCPRouteList contains a list of MCPRoute.
 - [GCPServiceAccountImpersonationConfig](#gcpserviceaccountimpersonationconfig)
 - [GCPWorkloadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)
 - [GCPWorkloadIdentityProvider](#gcpworkloadidentityprovider)
+- [HTTPBodyField](#httpbodyfield)
+- [HTTPBodyMutation](#httpbodymutation)
 - [HTTPHeaderMutation](#httpheadermutation)
 - [JWKS](#jwks)
 - [LLMRequestCost](#llmrequestcost)
@@ -575,6 +577,11 @@ It can reference either an AIServiceBackend or an InferencePool resource.
   required="false"
   description="HeaderMutation defines the request header mutation to be applied to this backend.<br />When both route-level and backend-level HeaderMutation are defined,<br />route-level takes precedence over backend-level for conflicting operations.<br />This field is ignored when referencing InferencePool resources."
 /><ApiField
+  name="bodyMutation"
+  type="[HTTPBodyMutation](#httpbodymutation)"
+  required="false"
+  description="BodyMutation defines the request body mutation to be applied to this backend.<br />This allows modification of JSON fields in the request body before sending to the backend.<br />When both route-level and backend-level BodyMutation are defined,<br />route-level takes precedence over backend-level for conflicting operations.<br />This field is ignored when referencing InferencePool resources."
+/><ApiField
   name="weight"
   type="integer"
   required="false"
@@ -695,6 +702,11 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   type="[HTTPHeaderMutation](#httpheadermutation)"
   required="false"
   description="HeaderMutation defines the mutation of HTTP headers that will be applied to the request<br />before sending it to the backend."
+/><ApiField
+  name="bodyMutation"
+  type="[HTTPBodyMutation](#httpbodymutation)"
+  required="false"
+  description="BodyMutation defines the mutation of HTTP request body JSON fields that will be applied to the request<br />before sending it to the backend."
 />
 
 
@@ -1323,6 +1335,59 @@ GCPCredentialsFile specifies the service account key json file to authenticate w
   description="ServiceAccountImpersonation is the service account impersonation configuration.<br />This is used to impersonate a service account when getting access token."
 />
 
+
+
+#### HTTPBodyField
+
+
+
+**Appears in:**
+- [HTTPBodyMutation](#httpbodymutation)
+
+HTTPBodyField represents a JSON field name and value for body mutation
+
+##### Fields
+
+
+
+<ApiField
+  name="path"
+  type="string"
+  required="true"
+  description="Path is the top-level field name to set in the request body.<br />Examples: `service_tier`, `max_tokens`, `temperature`"
+/><ApiField
+  name="value"
+  type="string"
+  required="true"
+  description="Value is the JSON value to set at the specified field. This can be any valid JSON value:<br />string, number, boolean, object, array, or null.<br />The value will be parsed as JSON and inserted at the specified field.<br />Examples:<br />  - `\`scale\`` (string)<br />  - `42` (number)<br />  - `true` (boolean)<br />  - `\{\`key\`: \`value\`\}` (object)<br />  - `[1, 2, 3]` (array)<br />  - `null` (null)"
+/>
+
+
+#### HTTPBodyMutation
+
+
+
+**Appears in:**
+- [AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref)
+- [AIServiceBackendSpec](#aiservicebackendspec)
+
+HTTPBodyMutation defines the mutation of HTTP request body JSON fields that will be applied to the request
+
+##### Fields
+
+
+
+<ApiField
+  name="set"
+  type="[HTTPBodyField](#httpbodyfield) array"
+  required="false"
+  description="Set overwrites/adds the request body with the given JSON field (name, value)<br />before sending to the backend. Only top-level fields are currently supported.<br />Input:<br />  \{<br />    `model`: `gpt-4`,<br />    `service_tier`: `default`<br />  \}<br />Config:<br />  set:<br />  - path: `service_tier`<br />    value: `scale`<br />Output:<br />  \{<br />    `model`: `gpt-4`,<br />    `service_tier`: `scale`<br />  \}"
+/><ApiField
+  name="remove"
+  type="string array"
+  required="false"
+  description="Remove the given JSON field(s) from the HTTP request body before sending to the backend.<br />The value of Remove is a list of top-level field names to remove.<br />Input:<br />  \{<br />    `model`: `gpt-4`,<br />    `service_tier`: `default`,<br />    `internal_flag`: true<br />  \}<br />Config:<br />  remove: [`service_tier`, `internal_flag`]<br />Output:<br />  \{<br />    `model`: `gpt-4`<br />  \}"
+/>
 
 
 #### HTTPHeaderMutation
