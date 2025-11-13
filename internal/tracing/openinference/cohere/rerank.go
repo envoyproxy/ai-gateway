@@ -9,7 +9,6 @@ package cohere
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -58,7 +57,7 @@ func (r *RerankRecorder) RecordRequest(span trace.Span, req *cohereschema.Rerank
 
 // RecordResponseOnError implements the same method as defined in tracing.RerankRecorder.
 func (r *RerankRecorder) RecordResponseOnError(span trace.Span, statusCode int, body []byte) {
-	recordResponseError(span, statusCode, string(body))
+	openinference.RecordResponseError(span, statusCode, string(body))
 }
 
 // RecordResponse implements the same method as defined in tracing.RerankRecorder.
@@ -150,36 +149,4 @@ func buildRerankResponseAttributes(resp *cohereschema.RerankV2Response, config *
 	}
 
 	return attrs
-}
-
-// recordResponseError emits exception event and error status on the span.
-func recordResponseError(span trace.Span, statusCode int, body string) {
-	var errorType string
-	switch statusCode {
-	case 400:
-		errorType = "BadRequestError"
-	case 401:
-		errorType = "AuthenticationError"
-	case 403:
-		errorType = "PermissionDeniedError"
-	case 404:
-		errorType = "NotFoundError"
-	case 429:
-		errorType = "RateLimitError"
-	case 500, 502, 503:
-		errorType = "InternalServerError"
-	default:
-		errorType = "Error"
-	}
-
-	errorMsg := fmt.Sprintf("Error code: %d", statusCode)
-	if len(body) > 0 {
-		errorMsg = fmt.Sprintf("Error code: %d - %s", statusCode, body)
-	}
-
-	span.AddEvent("exception", trace.WithAttributes(
-		attribute.String("exception.type", errorType),
-		attribute.String("exception.message", errorMsg),
-	))
-	span.SetStatus(codes.Error, errorMsg)
 }

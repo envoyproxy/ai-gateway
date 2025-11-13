@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
-
-package openai
+package openinference
 
 import (
 	"testing"
@@ -12,11 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/sdk/trace"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
 
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
-	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 )
 
 func TestRecordResponseError(t *testing.T) {
@@ -24,14 +22,14 @@ func TestRecordResponseError(t *testing.T) {
 		name                string
 		statusCode          int
 		body                string
-		expectedEvents      []trace.Event
+		expectedEvents      []sdktrace.Event
 		expectedDescription string
 	}{
 		{
 			name:       "400 bad request",
 			statusCode: 400,
 			body:       `{"error": {"message": "Invalid request"}}`,
-			expectedEvents: []trace.Event{
+			expectedEvents: []sdktrace.Event{
 				{
 					Name: "exception",
 					Attributes: []attribute.KeyValue{
@@ -47,7 +45,7 @@ func TestRecordResponseError(t *testing.T) {
 			name:       "401 unauthorized",
 			statusCode: 401,
 			body:       `{"error": {"message": "Unauthorized"}}`,
-			expectedEvents: []trace.Event{
+			expectedEvents: []sdktrace.Event{
 				{
 					Name: "exception",
 					Attributes: []attribute.KeyValue{
@@ -62,7 +60,7 @@ func TestRecordResponseError(t *testing.T) {
 		{
 			name:       "403 forbidden",
 			statusCode: 403,
-			expectedEvents: []trace.Event{
+			expectedEvents: []sdktrace.Event{
 				{
 					Name: "exception",
 					Attributes: []attribute.KeyValue{
@@ -78,7 +76,7 @@ func TestRecordResponseError(t *testing.T) {
 			name:       "404 not found",
 			statusCode: 404,
 			body:       `{"error": {"message": "Model not found"}}`,
-			expectedEvents: []trace.Event{
+			expectedEvents: []sdktrace.Event{
 				{
 					Name: "exception",
 					Attributes: []attribute.KeyValue{
@@ -94,7 +92,7 @@ func TestRecordResponseError(t *testing.T) {
 			name:       "429 rate limit",
 			statusCode: 429,
 			body:       `{"error": {"message": "Rate limit exceeded"}}`,
-			expectedEvents: []trace.Event{
+			expectedEvents: []sdktrace.Event{
 				{
 					Name: "exception",
 					Attributes: []attribute.KeyValue{
@@ -110,7 +108,7 @@ func TestRecordResponseError(t *testing.T) {
 			name:       "500 internal server error",
 			statusCode: 500,
 			body:       `{"error": {"message": "Internal error"}}`,
-			expectedEvents: []trace.Event{
+			expectedEvents: []sdktrace.Event{
 				{
 					Name: "exception",
 					Attributes: []attribute.KeyValue{
@@ -126,7 +124,7 @@ func TestRecordResponseError(t *testing.T) {
 			name:       "unknown error code",
 			statusCode: 599,
 			body:       `{"error": {"message": "Unknown error"}}`,
-			expectedEvents: []trace.Event{
+			expectedEvents: []sdktrace.Event{
 				{
 					Name: "exception",
 					Attributes: []attribute.KeyValue{
@@ -141,7 +139,7 @@ func TestRecordResponseError(t *testing.T) {
 		{
 			name:       "error without body",
 			statusCode: 500,
-			expectedEvents: []trace.Event{
+			expectedEvents: []sdktrace.Event{
 				{
 					Name: "exception",
 					Attributes: []attribute.KeyValue{
@@ -158,10 +156,10 @@ func TestRecordResponseError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			actualSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
-				recordResponseError(span, tt.statusCode, tt.body)
+				RecordResponseError(span, tt.statusCode, tt.body)
 				return false // Recording of error shouldn't end the span.
 			})
-			openinference.RequireEventsEqual(t, tt.expectedEvents, actualSpan.Events)
+			RequireEventsEqual(t, tt.expectedEvents, actualSpan.Events)
 			require.Equal(t, codes.Error, actualSpan.Status.Code)
 			require.Equal(t, tt.expectedDescription, actualSpan.Status.Description)
 		})
