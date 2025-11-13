@@ -730,3 +730,16 @@ func startCompletionsSpan(t *testing.T, tracing tracing.Tracing, headerMutation 
 	req := &openai.ChatCompletionRequest{Model: openai.ModelGPT5Nano}
 	return tracer.StartSpanAndInjectHeaders(t.Context(), nil, headerMutation, req, nil)
 }
+
+func TestTracingImpl_Getters_ImageGenerationAndRerank(t *testing.T) {
+	ig := tracing.NoopImageGenerationTracer{}
+	rr := tracing.NoopRerankTracer{}
+
+	ti := &tracingImpl{
+		imageGenerationTracer: ig,
+		rerankTracer:          rr,
+	}
+
+	require.Equal(t, ig, ti.ImageGenerationTracer())
+	require.Equal(t, rr, ti.RerankTracer())
+}

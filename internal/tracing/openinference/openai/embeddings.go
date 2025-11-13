@@ -60,7 +60,7 @@ func (r *EmbeddingsRecorder) RecordRequest(span trace.Span, embReq *openai.Embed
 
 // RecordResponseOnError implements the same method as defined in tracing.EmbeddingsRecorder.
 func (r *EmbeddingsRecorder) RecordResponseOnError(span trace.Span, statusCode int, body []byte) {
-	recordResponseError(span, statusCode, string(body))
+	openinference.RecordResponseError(span, statusCode, string(body))
 }
 
 // RecordResponse implements the same method as defined in tracing.EmbeddingsRecorder.
