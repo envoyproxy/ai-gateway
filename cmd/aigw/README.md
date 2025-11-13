@@ -2,7 +2,7 @@
 
 ## Quick Start
 
-[docker-compose.yml](docker-compose.yaml) builds and runs `aigw`, targeting
+[docker-compose.yaml](docker-compose.yaml) builds and runs `aigw`, targeting
 [Ollama][ollama] for OpenAI chat completion requests on port 1975.
 
 - **aigw** (port 1975): Envoy AI Gateway CLI (standalone mode)

@@ -4,8 +4,11 @@ title: Prerequisites
 sidebar_position: 2
 ---
 
+import Link from '@docusaurus/Link';
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
+import CodeBlock from '@theme/CodeBlock';
+import vars from '../\_vars.json';
 
 Before you begin using Envoy AI Gateway, you'll need to ensure you have the following prerequisites in place:
 
@@ -43,7 +46,7 @@ curl --version
 ## Kubernetes Cluster
 
 :::info Version Requirements
-Envoy AI Gateway requires Kubernetes version 1.29 or higher. We recommend using a recent stable version of Kubernetes for the best experience.
+Envoy AI Gateway requires Kubernetes version {vars.k8sMinVersion} or higher. We recommend using a recent stable version of Kubernetes for the best experience.
 :::
 
 You need a running Kubernetes cluster with your kubeconfig properly configured. You have several options:
@@ -59,7 +62,7 @@ Verify your cluster meets the version requirements by running:
 kubectl version --output=json
 ```
 
-The server version in the output should show version 1.29 or higher:
+The server version in the output should show version {vars.k8sMinVersion} or higher:
 
 ```json
 {
@@ -73,7 +76,7 @@ The server version in the output should show version 1.29 or higher:
 
 :::caution
 
-If your cluster is running a version lower than 1.29, you'll need to upgrade it before proceeding with the installation.
+If your cluster is running a version lower than {vars.k8sMinVersion}, you'll need to upgrade it before proceeding with the installation.
 
 :::
 
@@ -145,21 +148,21 @@ Ensure you're using a clean Envoy Gateway deployment. If you have an existing En
 
 :::info Version Requirements
 
-Envoy AI Gateway requires Envoy Gateway version 1.5.0 or higher. For the best experience while trying out AI Gateway, we recommend using the latest version as shown in the commands below.
+Envoy AI Gateway requires Envoy Gateway version {vars.egMinVersion} or higher. For the best experience while trying out AI Gateway, we recommend using the latest version as shown in the commands below.
 
 :::
 
 Envoy AI Gateway is built on top of Envoy Gateway. Install it using Helm and wait for the deployment to be ready.
 
-```shell
-helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \
-  --version v0.0.0-latest \
-  --namespace envoy-gateway-system \
-  --create-namespace \
-  -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/manifests/envoy-gateway-values.yaml
+<CodeBlock language="shell">
+{`helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \\
+    --version v${vars.egVersion} \\
+    --namespace envoy-gateway-system \\
+    --create-namespace \\
+    -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/manifests/envoy-gateway-values.yaml
 
-kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
-```
+kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available`}
+</CodeBlock>
 
 > If you are experiencing network issues with `docker.io` , you can follow the [Install from Source Code](https://github.com/envoyproxy/gateway/tree/main/charts/gateway-helm#install-from-source-code) instructions.
 
@@ -170,17 +173,23 @@ Note that we have included the AI Gateway-specific helm values file via the `-f`
 Depending on the additional features you want (like rate limiting or InferencePool), you need to pass additional addon values files to modify the Envoy Gateway installation.
 Currently, supported addons are:
 
-- [**Rate Limiting**](../capabilities/traffic/usage-based-ratelimiting.md): https://github.com/envoyproxy/ai-gateway/blob/main/examples/token_ratelimit/envoy-gateway-values-addon.yaml
-- [**InferencePool**](../capabilities/inference/index.md): https://github.com/envoyproxy/ai-gateway/blob/main/examples/inference-pool/envoy-gateway-values-addon.yaml
+- [**Rate Limiting**](../capabilities/traffic/usage-based-ratelimiting.md):
+  <Link href={`https://github.com/envoyproxy/ai-gateway/blob/${vars.aigwGitRef}/examples/token_ratelimit/envoy-gateway-values-addon.yaml`}>
+  {`https://github.com/envoyproxy/ai-gateway/blob/${vars.aigwGitRef}/examples/token_ratelimit/envoy-gateway-values-addon.yaml`}
+  </Link>
+- [**InferencePool**](../capabilities/inference/index.md):
+  <Link href={`https://github.com/envoyproxy/ai-gateway/blob/${vars.aigwGitRef}/examples/inference-pool/envoy-gateway-values-addon.yaml`}>
+  {`https://github.com/envoyproxy/ai-gateway/blob/${vars.aigwGitRef}/examples/inference-pool/envoy-gateway-values-addon.yaml`}
+  </Link>
 
 For example, to install with all addons enabled, run:
 
-```shell
-helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \
-  --version v0.0.0-latest \
-  --namespace envoy-gateway-system \
-  --create-namespace \
-  -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/manifests/envoy-gateway-values.yaml \
-  -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/token_ratelimit/envoy-gateway-values-addon.yaml \
-  -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/inference-pool/envoy-gateway-values-addon.yaml
-```
+<CodeBlock language="shell">
+{`helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \\
+    --version v${vars.egVersion} \\
+    --namespace envoy-gateway-system \\
+    --create-namespace \\
+    -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/manifests/envoy-gateway-values.yaml \\
+    -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/examples/token_ratelimit/envoy-gateway-values-addon.yaml \\
+    -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/examples/inference-pool/envoy-gateway-values-addon.yaml`}
+</CodeBlock>

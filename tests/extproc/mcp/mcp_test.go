@@ -30,8 +30,10 @@ import (
 )
 
 const (
-	defaultMCPBackendResourcePrefix = "default-mcp-backend__"
-	defaultMCPPath                  = "/mcp"
+	defaultMCPBackend                  = "default-mcp-backend"
+	defaultMCPBackendResourcePrefix    = defaultMCPBackend + "__"
+	defaultMCPBackendResourceURIPrefix = defaultMCPBackend + "+"
+	defaultMCPPath                     = "/mcp"
 )
 
 var tests = []struct {
@@ -105,18 +107,18 @@ func testListTools(t *testing.T, m *mcpEnv) {
 	// tools are created dynamically (e.g. add_prompt).
 	require.ElementsMatch(t, names, []string{
 		"dumb-mcp-backend__" + testmcp.ToolDumbEcho.Tool.Name,
-		"default-mcp-backend__" + testmcp.ToolEcho.Tool.Name,
-		"default-mcp-backend__" + testmcp.ToolSum.Tool.Name,
-		"default-mcp-backend__" + testmcp.ToolError.Tool.Name,
-		"default-mcp-backend__" + testmcp.ToolCountDown.Tool.Name,
-		"default-mcp-backend__" + testmcp.ToolContainsRootTool.Tool.Name,
-		"default-mcp-backend__" + testmcp.ToolDelay.Tool.Name,
-		"default-mcp-backend__" + testmcp.ToolAddPromptName,
-		"default-mcp-backend__" + testmcp.ToolResourceUpdateNotificationName,
-		"default-mcp-backend__" + testmcp.ToolAddOrDeleteDummyResourceName,
-		"default-mcp-backend__" + testmcp.ToolNotificationCountsName,
-		"default-mcp-backend__" + testmcp.ToolElicitEmail.Tool.Name,
-		"default-mcp-backend__" + testmcp.ToolCreateMessage.Tool.Name,
+		defaultMCPBackendResourcePrefix + testmcp.ToolEcho.Tool.Name,
+		defaultMCPBackendResourcePrefix + testmcp.ToolSum.Tool.Name,
+		defaultMCPBackendResourcePrefix + testmcp.ToolError.Tool.Name,
+		defaultMCPBackendResourcePrefix + testmcp.ToolCountDown.Tool.Name,
+		defaultMCPBackendResourcePrefix + testmcp.ToolContainsRootTool.Tool.Name,
+		defaultMCPBackendResourcePrefix + testmcp.ToolDelay.Tool.Name,
+		defaultMCPBackendResourcePrefix + testmcp.ToolAddPromptName,
+		defaultMCPBackendResourcePrefix + testmcp.ToolResourceUpdateNotificationName,
+		defaultMCPBackendResourcePrefix + testmcp.ToolAddOrDeleteDummyResourceName,
+		defaultMCPBackendResourcePrefix + testmcp.ToolNotificationCountsName,
+		defaultMCPBackendResourcePrefix + testmcp.ToolElicitEmail.Tool.Name,
+		defaultMCPBackendResourcePrefix + testmcp.ToolCreateMessage.Tool.Name,
 	})
 }
 
@@ -138,7 +140,7 @@ func testToolCall(t *testing.T, m *mcpEnv) {
 
 	const helloText = "hello MCP over HTTP 👋"
 	res, err := s.session.CallTool(t.Context(), &mcp.CallToolParams{
-		Name:      "default-mcp-backend__" + testmcp.ToolEcho.Tool.Name,
+		Name:      defaultMCPBackendResourcePrefix + testmcp.ToolEcho.Tool.Name,
 		Arguments: testmcp.ToolEchoArgs{Text: helloText},
 	})
 	require.NoError(t, err)
@@ -149,7 +151,7 @@ func testToolCall(t *testing.T, m *mcpEnv) {
 	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolEcho.Tool.Name, false, "")
 
 	res, err = s.session.CallTool(t.Context(), &mcp.CallToolParams{
-		Name:      "default-mcp-backend__" + testmcp.ToolSum.Tool.Name,
+		Name:      defaultMCPBackendResourcePrefix + testmcp.ToolSum.Tool.Name,
 		Arguments: testmcp.ToolSumArgs{A: 41, B: 1},
 	})
 	require.NoError(t, err)
@@ -183,7 +185,7 @@ func testToolCallError(t *testing.T, m *mcpEnv) {
 	t.Run("tool error", func(t *testing.T) {
 		const errTool = "tool error"
 		res, err := s.session.CallTool(t.Context(), &mcp.CallToolParams{
-			Name:      "default-mcp-backend__" + testmcp.ToolError.Tool.Name,
+			Name:      defaultMCPBackendResourcePrefix + testmcp.ToolError.Tool.Name,
 			Arguments: testmcp.ToolErrorArgs{Error: errTool},
 		})
 		require.NoError(t, err)
@@ -198,7 +200,7 @@ func testToolCallError(t *testing.T, m *mcpEnv) {
 	// returned as errors.
 	t.Run("validation error", func(t *testing.T) {
 		res, err := s.session.CallTool(t.Context(), &mcp.CallToolParams{
-			Name:      "default-mcp-backend__" + testmcp.ToolError.Tool.Name,
+			Name:      defaultMCPBackendResourcePrefix + testmcp.ToolError.Tool.Name,
 			Arguments: testmcp.ToolErrorArgs{Error: "a"},
 		})
 		require.Error(t, err)
@@ -236,7 +238,7 @@ func testToolCountDown(t *testing.T, m *mcpEnv) {
 	var doneBool atomic.Bool
 	go func() {
 		res, err = s.session.CallTool(t.Context(), &mcp.CallToolParams{
-			Name:      "default-mcp-backend__" + testmcp.ToolCountDown.Tool.Name,
+			Name:      defaultMCPBackendResourcePrefix + testmcp.ToolCountDown.Tool.Name,
 			Arguments: testmcp.ToolCountDownArgs{From: count, Interval: interval.String()},
 		})
 		callErrorCh <- err
@@ -363,7 +365,7 @@ func testPromptChangeNotifications(t *testing.T, m *mcpEnv) {
 	})
 
 	res, err := s.session.CallTool(t.Context(), &mcp.CallToolParams{
-		Name: "default-mcp-backend__" + testmcp.ToolAddPromptName,
+		Name: defaultMCPBackendResourcePrefix + testmcp.ToolAddPromptName,
 	})
 	require.NoError(t, err)
 	require.False(t, res.IsError)
@@ -395,6 +397,7 @@ func testListResources(t *testing.T, m *mcpEnv) {
 	require.NoError(t, err)
 	require.Len(t, list.Resources, 1)
 	require.Equal(t, defaultMCPBackendResourcePrefix+testmcp.DummyResource.Name, list.Resources[0].Name)
+	require.Equal(t, defaultMCPBackendResourceURIPrefix+testmcp.DummyResource.URI, list.Resources[0].URI)
 	require.Equal(t, testmcp.DummyResource.Description, list.Resources[0].Description)
 	requireMCPSpan(t, m.collector.TakeSpan(), "ListResources", map[string]string{
 		"mcp.method.name": "resources/list",
@@ -404,30 +407,30 @@ func testListResources(t *testing.T, m *mcpEnv) {
 func testReadResource(t *testing.T, m *mcpEnv) {
 	s := m.newSession(t)
 	r, err := s.session.ReadResource(t.Context(), &mcp.ReadResourceParams{
-		URI: defaultMCPBackendResourcePrefix + "file:///dummy.txt",
+		URI: defaultMCPBackendResourceURIPrefix + "file:///dummy.txt",
 	})
 	require.NoError(t, err)
 	require.Len(t, r.Contents, 1)
-	require.Equal(t, testmcp.DummyResource.URI, r.Contents[0].URI)
+	require.Equal(t, defaultMCPBackendResourceURIPrefix+testmcp.DummyResource.URI, r.Contents[0].URI)
 	require.Equal(t, testmcp.DummyResource.MIMEType, r.Contents[0].MIMEType)
 	require.Equal(t, "dummy", string(r.Contents[0].Blob))
 	requireMCPSpan(t, m.collector.TakeSpan(), "ReadResource", map[string]string{
 		"mcp.method.name":  "resources/read",
-		"mcp.resource.uri": defaultMCPBackendResourcePrefix + "file:///dummy.txt",
+		"mcp.resource.uri": defaultMCPBackendResourceURIPrefix + "file:///dummy.txt",
 	})
 }
 
 func testReadResourceNotFound(t *testing.T, m *mcpEnv) {
 	s := m.newSession(t)
 	r, err := s.session.ReadResource(t.Context(), &mcp.ReadResourceParams{
-		URI: defaultMCPBackendResourcePrefix + "file:///notfound.txt",
+		URI: defaultMCPBackendResourceURIPrefix + "file:///notfound.txt",
 	})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "Resource not found")
 	require.Nil(t, r)
 	requireMCPSpan(t, m.collector.TakeSpan(), "ReadResource", map[string]string{
 		"mcp.method.name":  "resources/read",
-		"mcp.resource.uri": defaultMCPBackendResourcePrefix + "file:///notfound.txt",
+		"mcp.resource.uri": defaultMCPBackendResourceURIPrefix + "file:///notfound.txt",
 	})
 }
 
@@ -437,6 +440,7 @@ func testListResourceTemplates(t *testing.T, m *mcpEnv) {
 	require.NoError(t, err)
 	require.Len(t, list.ResourceTemplates, 1)
 	require.Equal(t, defaultMCPBackendResourcePrefix+testmcp.DummyResourceTemplate.Name, list.ResourceTemplates[0].Name)
+	require.Equal(t, defaultMCPBackendResourceURIPrefix+testmcp.DummyResourceTemplate.URITemplate, list.ResourceTemplates[0].URITemplate)
 	require.Equal(t, testmcp.DummyResourceTemplate.Description, list.ResourceTemplates[0].Description)
 	requireMCPSpan(t, m.collector.TakeSpan(), "ListResourceTemplates", map[string]string{
 		"mcp.method.name": "resources/templates/list",
@@ -449,24 +453,29 @@ func testResourceSubscribe(t *testing.T, m *mcpEnv) {
 	require.NoError(t, err)
 	require.Len(t, list.Resources, 1)
 	require.Equal(t, defaultMCPBackendResourcePrefix+testmcp.DummyResource.Name, list.Resources[0].Name)
+	require.Equal(t, defaultMCPBackendResourceURIPrefix+testmcp.DummyResource.URI, list.Resources[0].URI)
 	require.Equal(t, testmcp.DummyResource.Description, list.Resources[0].Description)
 	requireMCPSpan(t, m.collector.TakeSpan(), "ListResources", map[string]string{
 		"mcp.method.name": "resources/list",
 	})
 
+	// It is important to be able to use the resource URI returned by the List method *as-is*, because this is what real MCP
+	// clients will do.
 	err = s.session.Subscribe(t.Context(), &mcp.SubscribeParams{
-		URI: defaultMCPBackendResourcePrefix + list.Resources[0].URI,
+		URI: list.Resources[0].URI,
 	})
 	require.NoError(t, err)
 	requireMCPSpan(t, m.collector.TakeSpan(), "Subscribe", map[string]string{
 		"mcp.method.name":  "resources/subscribe",
-		"mcp.resource.uri": defaultMCPBackendResourcePrefix + list.Resources[0].URI,
+		"mcp.resource.uri": list.Resources[0].URI,
 	})
 
 	// Update the resource.
 	res, err := s.session.CallTool(t.Context(), &mcp.CallToolParams{
-		Name:      "default-mcp-backend__" + testmcp.ToolResourceUpdateNotificationName,
-		Arguments: map[string]any{"uri": list.Resources[0].URI},
+		Name: defaultMCPBackendResourcePrefix + testmcp.ToolResourceUpdateNotificationName,
+		// Use the original URI to properly simulate the serve behaviour. The backend MCP server should never see the prefixes
+		// and encodings added by the MCP proxy.
+		Arguments: map[string]any{"uri": testmcp.DummyResource.URI},
 	})
 	require.NoError(t, err)
 	require.False(t, res.IsError)
@@ -484,21 +493,25 @@ func testResourceSubscribe(t *testing.T, m *mcpEnv) {
 	require.NotNil(t, req)
 	require.NotNil(t, req.Params)
 	require.IsTypef(t, &mcp.ResourceUpdatedNotificationParams{}, req.Params, "expected ResourceUpdatedNotificationRequest, got %T", req.Params)
+	// Expect the notification to have the prefixed URI, which is what the MCP client always sees as the resource URI.
+	require.Equal(t, req.Params.URI, defaultMCPBackendResourceURIPrefix+testmcp.DummyResource.URI)
 
 	err = s.session.Unsubscribe(t.Context(), &mcp.UnsubscribeParams{
-		URI: defaultMCPBackendResourcePrefix + list.Resources[0].URI,
+		URI: list.Resources[0].URI,
 	})
 	require.NoError(t, err)
 	requireMCPSpan(t, m.collector.TakeSpan(), "Unsubscribe", map[string]string{
 		"mcp.method.name":  "resources/unsubscribe",
-		"mcp.resource.uri": defaultMCPBackendResourcePrefix + list.Resources[0].URI,
+		"mcp.resource.uri": list.Resources[0].URI,
 	})
 	// Wait for the unsubscribe notification.
 	requireEventuallyNotificationCountMessages(t, s, m, "unsubscribe: 1")
 
 	res, err = s.session.CallTool(t.Context(), &mcp.CallToolParams{
-		Name:      "default-mcp-backend__" + testmcp.ToolResourceUpdateNotificationName,
-		Arguments: map[string]any{"uri": list.Resources[0].URI},
+		Name: defaultMCPBackendResourcePrefix + testmcp.ToolResourceUpdateNotificationName,
+		// Use the original URI to properly simulate the serve behaviour. The backend MCP server should never see the prefixes
+		// and encodings added by the MCP proxy.
+		Arguments: map[string]any{"uri": testmcp.DummyResource.URI},
 	})
 	require.NoError(t, err)
 	require.False(t, res.IsError)
@@ -509,7 +522,6 @@ func testResourceSubscribe(t *testing.T, m *mcpEnv) {
 	case req = <-s.resourceUpdatedNotifications:
 		t.Fatal("received unexpected resource updated notification after unsubscribe: ", req)
 	case <-time.After(2 * time.Second):
-
 	}
 }
 
@@ -523,7 +535,7 @@ func testResourceListChangeNotifications(t *testing.T, m *mcpEnv) {
 	})
 
 	res, err := s.session.CallTool(t.Context(), &mcp.CallToolParams{
-		Name:      "default-mcp-backend__" + testmcp.ToolAddOrDeleteDummyResourceName,
+		Name:      defaultMCPBackendResourcePrefix + testmcp.ToolAddOrDeleteDummyResourceName,
 		Arguments: map[string]any{"delete": false},
 	})
 	require.NoError(t, err)
@@ -533,7 +545,7 @@ func testResourceListChangeNotifications(t *testing.T, m *mcpEnv) {
 	// Clean up, otherwise it will affect ListResources in other tests.
 	t.Cleanup(func() {
 		res, err = s.session.CallTool(context.Background(), &mcp.CallToolParams{
-			Name:      "default-mcp-backend__" + testmcp.ToolAddOrDeleteDummyResourceName,
+			Name:      defaultMCPBackendResourcePrefix + testmcp.ToolAddOrDeleteDummyResourceName,
 			Arguments: map[string]any{"delete": true},
 		})
 		require.NoError(t, err)
@@ -553,7 +565,7 @@ func testResourceListChangeNotifications(t *testing.T, m *mcpEnv) {
 	require.NotNil(t, req.Params)
 	require.IsTypef(t, &mcp.ResourceListChangedParams{}, req.Params, "expected ResourceListChangedParams, got %T", req.Params)
 
-	// Verify the resource was updated.
+	// Verify the resource was added.
 	list, err = s.session.ListResources(t.Context(), &mcp.ListResourcesParams{})
 	require.NoError(t, err)
 	require.Len(t, list.Resources, 2)
@@ -565,7 +577,7 @@ func testResourceListChangeNotifications(t *testing.T, m *mcpEnv) {
 func testListRootsAndChangeRoots(t *testing.T, m *mcpEnv) {
 	s := m.newSession(t)
 	res, err := s.session.CallTool(t.Context(), &mcp.CallToolParams{
-		Name:      "default-mcp-backend__" + testmcp.ToolContainsRootTool.Tool.Name,
+		Name:      defaultMCPBackendResourcePrefix + testmcp.ToolContainsRootTool.Tool.Name,
 		Arguments: testmcp.ToolContainsRootToolArgs{ExpectedRootName: mcpDefaultRootName},
 	})
 	require.NoError(t, err)
@@ -577,7 +589,7 @@ func testListRootsAndChangeRoots(t *testing.T, m *mcpEnv) {
 
 	m.mux.Lock()
 	defer m.mux.Unlock()
-	// This will trigger a notifications/roots/list_changed notification from client to server.
+	// Roots are client resources, so we don't need to use any prefix, etc.
 	m.client.RemoveRoots(mcpDefaultRootURI)
 	// Assert the span from the client-to-server notification
 	requireMCPSpan(t, m.collector.TakeSpan(), "notifications/roots/list_changed", map[string]string{
@@ -588,7 +600,7 @@ func testListRootsAndChangeRoots(t *testing.T, m *mcpEnv) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	res, err = s.session.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "default-mcp-backend__" + testmcp.ToolContainsRootTool.Tool.Name,
+		Name:      defaultMCPBackendResourcePrefix + testmcp.ToolContainsRootTool.Tool.Name,
 		Arguments: testmcp.ToolContainsRootToolArgs{ExpectedRootName: mcpDefaultRootName},
 	})
 	require.NoError(t, err)
@@ -616,7 +628,7 @@ func testListRootsAndChangeRoots(t *testing.T, m *mcpEnv) {
 func testSamplingCreateMessage(t *testing.T, m *mcpEnv) {
 	s := m.newSession(t)
 	res, err := s.session.CallTool(t.Context(), &mcp.CallToolParams{
-		Name: "default-mcp-backend__" + testmcp.ToolCreateMessage.Tool.Name,
+		Name: defaultMCPBackendResourcePrefix + testmcp.ToolCreateMessage.Tool.Name,
 	})
 	require.NoError(t, err)
 	require.False(t, res.IsError)
@@ -651,7 +663,7 @@ func testSamplingCreateMessage(t *testing.T, m *mcpEnv) {
 func testElicit(t *testing.T, m *mcpEnv) {
 	s := m.newSession(t)
 	res, err := s.session.CallTool(t.Context(), &mcp.CallToolParams{
-		Name: "default-mcp-backend__" + testmcp.ToolElicitEmail.Tool.Name,
+		Name: defaultMCPBackendResourcePrefix + testmcp.ToolElicitEmail.Tool.Name,
 	})
 	require.NoError(t, err)
 	require.False(t, res.IsError)
@@ -678,7 +690,7 @@ func testNotificationCancelled(t *testing.T, m *mcpEnv) {
 	doneCh := make(chan any)
 	go func() {
 		_, _ = s.session.CallTool(ctx, &mcp.CallToolParams{
-			Name:      "default-mcp-backend__" + testmcp.ToolDelay.Tool.Name,
+			Name:      defaultMCPBackendResourcePrefix + testmcp.ToolDelay.Tool.Name,
 			Arguments: testmcp.ToolDelayArgs{Duration: "1s"},
 		})
 		doneCh <- struct{}{}
@@ -706,23 +718,47 @@ func testNotificationCancelled(t *testing.T, m *mcpEnv) {
 
 func testComplete(t *testing.T, m *mcpEnv) {
 	s := m.newSession(t)
-	result, err := s.session.Complete(t.Context(), &mcp.CompleteParams{
-		Argument: mcp.CompleteParamsArgument{
-			Name:  "language",
-			Value: "py",
-		},
-		Ref: &mcp.CompleteReference{
-			Type: "ref/prompt",
-			Name: defaultMCPBackendResourcePrefix + "code_review",
-		},
+
+	t.Run("prompt", func(t *testing.T) {
+		result, err := s.session.Complete(t.Context(), &mcp.CompleteParams{
+			Argument: mcp.CompleteParamsArgument{
+				Name:  "language",
+				Value: "py",
+			},
+			Ref: &mcp.CompleteReference{
+				Type: "ref/prompt",
+				Name: defaultMCPBackendResourcePrefix + "code_review",
+			},
+		})
+		require.NoError(t, err)
+		completionValues := []string{"python", "pytorch", "pyside"}
+		require.Equal(t, completionValues, result.Completion.Values)
+		requireMCPSpan(t, m.collector.TakeSpan(), "Complete", map[string]string{
+			"mcp.method.name":             "completion/complete",
+			"mcp.complete.argument.name":  "language",
+			"mcp.complete.argument.value": "py",
+		})
 	})
-	require.NoError(t, err)
-	completionValues := []string{"python", "pytorch", "pyside"}
-	require.Equal(t, completionValues, result.Completion.Values)
-	requireMCPSpan(t, m.collector.TakeSpan(), "Complete", map[string]string{
-		"mcp.method.name":             "completion/complete",
-		"mcp.complete.argument.name":  "language",
-		"mcp.complete.argument.value": "py",
+
+	t.Run("resource", func(t *testing.T) {
+		result, err := s.session.Complete(t.Context(), &mcp.CompleteParams{
+			Argument: mcp.CompleteParamsArgument{
+				Name:  "id",
+				Value: "23",
+			},
+			Ref: &mcp.CompleteReference{
+				Type: "ref/resource",
+				URI:  defaultMCPBackendResourceURIPrefix + "file://results-{id}.txt",
+			},
+		})
+		require.NoError(t, err)
+		completionValues := []string{"file://results-23.txt"}
+		require.Equal(t, completionValues, result.Completion.Values)
+		requireMCPSpan(t, m.collector.TakeSpan(), "Complete", map[string]string{
+			"mcp.method.name":             "completion/complete",
+			"mcp.complete.argument.name":  "id",
+			"mcp.complete.argument.value": "23",
+		})
 	})
 }
 
@@ -809,7 +845,7 @@ func requireMetricGreaterThan(t *testing.T, m *mcpEnv, metricName string, metric
 func requireEventuallyNotificationCountMessages(t *testing.T, s *mcpSession, m *mcpEnv, expected string) {
 	require.Eventually(t, func() bool {
 		res, err := s.session.CallTool(t.Context(), &mcp.CallToolParams{
-			Name: "default-mcp-backend__" + testmcp.ToolNotificationCountsName,
+			Name: defaultMCPBackendResourcePrefix + testmcp.ToolNotificationCountsName,
 		})
 		if err != nil {
 			t.Log("error calling tool: ", err)

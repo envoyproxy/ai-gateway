@@ -34,11 +34,10 @@ func TestAddMCPServersConfig(t *testing.T) {
 			expected: ConfigData{
 				Backends: []Backend{
 					{
-						Name:             "github",
-						Hostname:         "api.githubcopilot.com",
-						OriginalHostname: "api.githubcopilot.com",
-						Port:             443,
-						NeedsTLS:         true,
+						Name:     "github",
+						Hostname: "api.githubcopilot.com",
+						Port:     443,
+						NeedsTLS: true,
 					},
 				},
 				MCPBackendRefs: []MCPBackendRef{
@@ -70,11 +69,10 @@ func TestAddMCPServersConfig(t *testing.T) {
 			expected: ConfigData{
 				Backends: []Backend{
 					{
-						Name:             "custom",
-						Hostname:         "mcp.example.com",
-						OriginalHostname: "mcp.example.com",
-						Port:             443,
-						NeedsTLS:         true,
+						Name:     "custom",
+						Hostname: "mcp.example.com",
+						Port:     443,
+						NeedsTLS: true,
 					},
 				},
 				MCPBackendRefs: []MCPBackendRef{
@@ -111,18 +109,16 @@ func TestAddMCPServersConfig(t *testing.T) {
 			expected: ConfigData{
 				Backends: []Backend{
 					{
-						Name:             "github",
-						Hostname:         "api.githubcopilot.com",
-						OriginalHostname: "api.githubcopilot.com",
-						Port:             443,
-						NeedsTLS:         true,
+						Name:     "github",
+						Hostname: "api.githubcopilot.com",
+						Port:     443,
+						NeedsTLS: true,
 					},
 					{
-						Name:             "kiwi",
-						Hostname:         "mcp.kiwi.com",
-						OriginalHostname: "mcp.kiwi.com",
-						Port:             443,
-						NeedsTLS:         true,
+						Name:     "kiwi",
+						Hostname: "mcp.kiwi.com",
+						Port:     443,
+						NeedsTLS: true,
 					},
 				},
 				MCPBackendRefs: []MCPBackendRef{
@@ -168,11 +164,10 @@ func TestAddMCPServersConfig(t *testing.T) {
 			expected: ConfigData{
 				Backends: []Backend{
 					{
-						Name:             "github",
-						Hostname:         "api.githubcopilot.com",
-						OriginalHostname: "api.githubcopilot.com",
-						Port:             443,
-						NeedsTLS:         true,
+						Name:     "github",
+						Hostname: "api.githubcopilot.com",
+						Port:     443,
+						NeedsTLS: true,
 					},
 				},
 				MCPBackendRefs: []MCPBackendRef{

@@ -14,9 +14,9 @@ GO_TOOL := go tool -modfile=tools/go.mod
 COMMANDS := controller extproc
 
 # This is the package that contains the version information for the build.
-GIT_COMMIT:=$(shell git rev-parse HEAD)
+VERSION_STRING:=$(shell git describe --tags --long)
 VERSION_PACKAGE := github.com/envoyproxy/ai-gateway/internal/version
-GO_LDFLAGS += -X $(VERSION_PACKAGE).Version=$(GIT_COMMIT)
+GO_LDFLAGS += -X $(VERSION_PACKAGE).version=$(VERSION_STRING)
 
 # This is the directory where the built artifacts will be placed.
 OUTPUT_DIR ?= out
