@@ -18,11 +18,12 @@ import (
 
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 // NewRerankCohereToCohereTranslator implements [Factory] for Cohere Rerank v2 translation.
-func NewRerankCohereToCohereTranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride) CohereRerankTranslator {
-	return &cohereToCohereTranslatorV2Rerank{modelNameOverride: modelNameOverride, path: path.Join("/", apiVersion, "rerank")} // e.g., /v2/rerank
+func NewRerankCohereToCohereTranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride, span tracing.RerankSpan) CohereRerankTranslator {
+	return &cohereToCohereTranslatorV2Rerank{modelNameOverride: modelNameOverride, path: path.Join("/", apiVersion, "rerank"), span: span} // e.g., /v2/rerank
 }
 
 // cohereToCohereTranslatorV2Rerank is a passthrough translator for Cohere Rerank API v2.
@@ -34,6 +35,8 @@ type cohereToCohereTranslatorV2Rerank struct {
 	requestModel internalapi.RequestModel
 	// The path of the rerank endpoint to be used for the request. It is prefixed with the API path prefix.
 	path string
+	// span is the tracing span for this request, inherited from the router filter.
+	span tracing.RerankSpan
 }
 
 // RequestBody implements [CohereRerankTranslator.RequestBody].
@@ -87,6 +90,11 @@ func (t *cohereToCohereTranslatorV2Rerank) ResponseBody(_ map[string]string, bod
 	var resp cohereschema.RerankV2Response
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
 		return nil, nil, tokenUsage, t.requestModel, fmt.Errorf("failed to unmarshal body: %w", err)
+	}
+
+	// Record the response in the span if successful.
+	if t.span != nil {
+		t.span.RecordResponse(&resp)
 	}
 
 	// Token accounting: rerank only has input tokens; output tokens do not apply.
