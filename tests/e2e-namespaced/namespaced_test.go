@@ -98,8 +98,8 @@ func TestNamespaced(t *testing.T) {
 			t.Log("expected -endpointPrefixes flag in extProc container args")
 			return false
 		}
-		if !strings.Contains(containerArgs, "openaiPrefix:/openai") {
-			t.Log("expected openaiPrefix:/openai mapping in extProc container args")
+		if !strings.Contains(containerArgs, "openai:/openai") {
+			t.Log("expected openai:/openai mapping in extProc container args")
 			return false
 		}
 		return true

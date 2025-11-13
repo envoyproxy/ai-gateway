@@ -158,7 +158,7 @@ func parseAndValidateFlags(args []string) (flags, error) {
 	endpointPrefixes := fs.String(
 		"endpointPrefixes",
 		"",
-		"Comma-separated key-value pairs for endpoint prefixes. Format: openaiPrefix:/,coherePrefix:/cohere,anthropicPrefix:/anthropic.",
+		"Comma-separated key-value pairs for endpoint prefixes. Format: openai:/,cohere:/cohere,anthropic:/anthropic.",
 	)
 	rootPrefix := fs.String(
 		"rootPrefix",

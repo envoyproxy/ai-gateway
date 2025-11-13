@@ -58,15 +58,15 @@ spec:
             {{- $endpointPrefixes := list -}}
             {{- if hasKey .Values.endpointConfig "openai" -}}
               {{- $openai := .Values.endpointConfig.openai -}}
-              {{- $endpointPrefixes = append $endpointPrefixes (printf "openaiPrefix:%s" $openai) -}}
+              {{- $endpointPrefixes = append $endpointPrefixes (printf "openai:%s" $openai) -}}
             {{- end -}}
             {{- if hasKey .Values.endpointConfig "cohere" -}}
               {{- $cohere := .Values.endpointConfig.cohere -}}
-              {{- $endpointPrefixes = append $endpointPrefixes (printf "coherePrefix:%s" $cohere) -}}
+              {{- $endpointPrefixes = append $endpointPrefixes (printf "cohere:%s" $cohere) -}}
             {{- end -}}
             {{- if hasKey .Values.endpointConfig "anthropic" -}}
               {{- $anthropic := .Values.endpointConfig.anthropic -}}
-              {{- $endpointPrefixes = append $endpointPrefixes (printf "anthropicPrefix:%s" $anthropic) -}}
+              {{- $endpointPrefixes = append $endpointPrefixes (printf "anthropic:%s" $anthropic) -}}
             {{- end -}}
             {{- if $endpointPrefixes }}
             - --endpointPrefixes={{ join "," $endpointPrefixes }}

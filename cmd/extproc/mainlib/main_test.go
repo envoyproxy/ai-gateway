@@ -84,7 +84,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 			},
 			{
 				name:       "with endpoint prefixes",
-				args:       []string{"-configPath", "/path/to/config.yaml", "-endpointPrefixes", "openaiPrefix:/,coherePrefix:/cohere,anthropicPrefix:/anthropic"},
+				args:       []string{"-configPath", "/path/to/config.yaml", "-endpointPrefixes", "openai:/,cohere:/cohere,anthropic:/anthropic"},
 				configPath: "/path/to/config.yaml",
 				addr:       ":1063",
 				rootPrefix: "/",
@@ -161,12 +161,12 @@ func Test_parseAndValidateFlags(t *testing.T) {
 			{
 				name:          "invalid endpoint prefixes - unknown key",
 				args:          []string{"-configPath", "/path/to/config.yaml", "-endpointPrefixes", "foo:/x"},
-				expectedError: "failed to parse endpoint prefixes: unknown endpointPrefixes key \"foo\" at position 1 (allowed: openaiPrefix, coherePrefix, anthropicPrefix)",
+				expectedError: "failed to parse endpoint prefixes: unknown endpointPrefixes key \"foo\" at position 1 (allowed: openai, cohere, anthropic)",
 			},
 			{
 				name:          "invalid endpoint prefixes - missing colon",
-				args:          []string{"-configPath", "/path/to/config.yaml", "-endpointPrefixes", "openaiPrefix"},
-				expectedError: "failed to parse endpoint prefixes: invalid endpointPrefixes pair at position 1: \"openaiPrefix\" (expected format: key:value)",
+				args:          []string{"-configPath", "/path/to/config.yaml", "-endpointPrefixes", "openai"},
+				expectedError: "failed to parse endpoint prefixes: invalid endpointPrefixes pair at position 1: \"openai\" (expected format: key:value)",
 			},
 			{
 				name:          "invalid tracing header attributes - missing colon",

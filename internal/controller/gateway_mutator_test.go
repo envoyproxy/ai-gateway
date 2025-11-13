@@ -86,10 +86,10 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 		},
 		{
 			name:             "with endpoint prefixes",
-			endpointPrefixes: "openaiPrefix:/v1,coherePrefix:/cohere/v2,anthropicPrefix:/anthropic/v1",
+			endpointPrefixes: "openai:/v1,cohere:/cohere/v2,anthropic:/anthropic/v1",
 			extprocTest: func(t *testing.T, container corev1.Container) {
 				require.Contains(t, container.Args, "-endpointPrefixes")
-				require.Contains(t, container.Args, "openaiPrefix:/v1,coherePrefix:/cohere/v2,anthropicPrefix:/anthropic/v1")
+				require.Contains(t, container.Args, "openai:/v1,cohere:/cohere/v2,anthropic:/anthropic/v1")
 			},
 			podTest: func(t *testing.T, pod corev1.Pod) {
 				require.Empty(t, pod.Spec.ImagePullSecrets)
