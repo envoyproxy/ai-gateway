@@ -26,18 +26,19 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 func TestRerank_Schema(t *testing.T) {
 	t.Run("on route", func(t *testing.T) {
 		cfg := &processorConfig{}
-		p, err := RerankProcessorFactory(nil)(cfg, nil, slog.Default(), nil, false)
+		p, err := RerankProcessorFactory(nil)(cfg, nil, slog.Default(), tracing.NoopTracing{}, false)
 		require.NoError(t, err)
 		require.IsType(t, &rerankProcessorRouterFilter{}, p)
 	})
 	t.Run("on upstream", func(t *testing.T) {
 		cfg := &processorConfig{}
-		p, err := RerankProcessorFactory(func() metrics.RerankMetrics { return &mockRerankMetrics{} })(cfg, nil, slog.Default(), nil, true)
+		p, err := RerankProcessorFactory(func() metrics.RerankMetrics { return &mockRerankMetrics{} })(cfg, nil, slog.Default(), tracing.NoopTracing{}, true)
 		require.NoError(t, err)
 		require.IsType(t, &rerankProcessorUpstreamFilter{}, p)
 	})
@@ -53,7 +54,9 @@ func Test_rerankProcessorUpstreamFilter_SelectTranslator(t *testing.T) {
 
 func Test_rerankProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 	t.Run("body parser error", func(t *testing.T) {
-		p := &rerankProcessorRouterFilter{}
+		p := &rerankProcessorRouterFilter{
+			tracer: tracing.NoopRerankTracer{},
+		}
 		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: []byte("nonjson")})
 		require.ErrorContains(t, err, "invalid character 'o' in literal null")
 	})
@@ -64,6 +67,7 @@ func Test_rerankProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 			config:         &processorConfig{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
+			tracer:         tracing.NoopRerankTracer{},
 		}
 		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: rerankBodyFromModel("rerank-english-v3")})
 		require.NoError(t, err)
