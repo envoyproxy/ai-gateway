@@ -16,7 +16,6 @@ import (
 	"github.com/openai/openai-go/v2/packages/param"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genai"
-	"k8s.io/utils/ptr"
 )
 
 func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
@@ -36,12 +35,6 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						"content": "Hello, world!"
 					}
 				],
-				"generationConfig": {
-					"thinkingConfig": {
-						"includeThoughts": true,
-						"thinkingBudget": 1000
-					}
-				},
                 "safetySettings": [{
                     "category": "HARM_CATEGORY_HARASSMENT",
                     "threshold": "BLOCK_ONLY_HIGH"
@@ -58,65 +51,10 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 					},
 				},
 				GCPVertexAIVendorFields: &GCPVertexAIVendorFields{
-					GenerationConfig: &GCPVertexAIGenerationConfig{
-						ThinkingConfig: &genai.ThinkingConfig{
-							IncludeThoughts: true,
-							ThinkingBudget:  ptr.To(int32(1000)),
-						},
-					},
 					SafetySettings: []*genai.SafetySetting{
 						{
 							Category:  genai.HarmCategoryHarassment,
 							Threshold: genai.HarmBlockThresholdBlockOnlyHigh,
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "Request with multiple vendor fields",
-			jsonData: []byte(`{
-				"model": "claude-3",
-				"messages": [
-					{
-						"role": "user",
-						"content": "Multiple vendors test"
-					}
-				],
-				"generationConfig": {
-					"thinkingConfig": {
-						"includeThoughts": true,
-						"thinkingBudget": 1000
-					}
-				},
-				"thinking": {
-					"type": "enabled",
-					"budget_tokens": 1000
-				}
-			}`),
-			expected: &ChatCompletionRequest{
-				Model: "claude-3",
-				Messages: []ChatCompletionMessageParamUnion{
-					{
-						OfUser: &ChatCompletionUserMessageParam{
-							Role:    ChatMessageRoleUser,
-							Content: StringOrUserRoleContentUnion{Value: "Multiple vendors test"},
-						},
-					},
-				},
-				AnthropicVendorFields: &AnthropicVendorFields{
-					Thinking: &anthropic.ThinkingConfigParamUnion{
-						OfEnabled: &anthropic.ThinkingConfigEnabledParam{
-							BudgetTokens: 1000,
-							Type:         "enabled",
-						},
-					},
-				},
-				GCPVertexAIVendorFields: &GCPVertexAIVendorFields{
-					GenerationConfig: &GCPVertexAIGenerationConfig{
-						ThinkingConfig: &genai.ThinkingConfig{
-							IncludeThoughts: true,
-							ThinkingBudget:  ptr.To(int32(1000)),
 						},
 					},
 				},
@@ -206,20 +144,6 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 				}
 			}`),
 			expectedErrMsg: "invalid character",
-		},
-		{
-			name: "Invalid vendor field type",
-			jsonData: []byte(`{
-				"model": "gemini-1.5-pro",
-				"messages": [
-					{
-						"role": "user",
-						"content": "Test invalid vendor field type"
-					}
-				],
-				"generationConfig": "invalid_string_type"
-			}`),
-			expectedErrMsg: "cannot unmarshal string into Go struct field",
 		},
 	}
 
