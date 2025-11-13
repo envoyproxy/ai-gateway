@@ -171,7 +171,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(
 		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("error parsing GCP streaming chunks: %w", err)
 	}
 
-	sseChunkBuf := bytes.Buffer{}
+	mut := &extprocv3.BodyMutation_Body{Body: nil}
 
 	for _, chunk := range chunks {
 		// Convert GCP chunk to OpenAI chunk.
@@ -188,21 +188,14 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(
 		}
 
 		// Serialize to SSE format as expected by OpenAI API.
-		var chunkBytes []byte
-		chunkBytes, err = json.Marshal(openAIChunk)
+		err := serializeOpenAIChatCompletionChunk(*openAIChunk, &mut.Body)
 		if err != nil {
 			return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("error marshaling OpenAI chunk: %w", err)
 		}
-		sseChunkBuf.WriteString("data: ")
-		sseChunkBuf.Write(chunkBytes)
-		sseChunkBuf.WriteString("\n\n")
 
 		if span != nil {
 			span.RecordResponseChunk(openAIChunk)
 		}
-	}
-	mut := &extprocv3.BodyMutation_Body{
-		Body: sseChunkBuf.Bytes(),
 	}
 
 	if endOfStream {
@@ -344,9 +337,12 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) convertGCPChunkToOpenAI(
 	}
 
 	return &openai.ChatCompletionResponseChunk{
+		ID:      chunk.ResponseID,
+		Created: openai.JSONUNIXTime(chunk.CreateTime),
 		Object:  "chat.completion.chunk",
 		Choices: choices,
 		Usage:   usage,
+		Model:   o.requestModel,
 	}
 }
 
@@ -427,9 +423,11 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMe
 
 	// Set up the OpenAI response.
 	openaiResp := &openai.ChatCompletionResponse{
+		ID:      gcr.ResponseID,
 		Model:   responseModel,
 		Choices: choices,
 		Object:  "chat.completion",
+		Created: openai.JSONUNIXTime(gcr.CreateTime),
 		Usage:   geminiUsageToOpenAIUsage(gcr.UsageMetadata),
 	}
 

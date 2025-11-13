@@ -1633,23 +1633,6 @@ func TestExtractToolCallsStreamIndexing(t *testing.T) {
 	}
 }
 
-func getChatCompletionResponseChunk(body []byte) []openai.ChatCompletionResponseChunk {
-	lines := bytes.Split(body, []byte("\n\n"))
-
-	chunks := []openai.ChatCompletionResponseChunk{}
-	for _, line := range lines {
-		// Remove "data: " prefix from SSE format if present.
-		line = bytes.TrimPrefix(line, []byte("data: "))
-
-		// Try to parse as JSON.
-		var chunk openai.ChatCompletionResponseChunk
-		if err := json.Unmarshal(line, &chunk); err == nil {
-			chunks = append(chunks, chunk)
-		}
-	}
-	return chunks
-}
-
 func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingParallelToolIndex(t *testing.T) {
 	translator := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
 	// Mock multiple GCP streaming response with parallel tool calls

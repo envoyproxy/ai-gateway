@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	anthropicParam "github.com/anthropics/anthropic-sdk-go/packages/param"
@@ -696,9 +697,11 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 	}
 
 	openAIResp := &openai.ChatCompletionResponse{
+		ID:      anthropicResp.ID,
 		Model:   responseModel,
 		Object:  string(openAIconstant.ValueOf[openAIconstant.ChatCompletion]()),
 		Choices: make([]openai.ChatCompletionResponseChoice, 0),
+		Created: openai.JSONUNIXTime(time.Now()),
 	}
 	tokenUsage = LLMTokenUsage{
 		InputTokens:       uint32(anthropicResp.Usage.InputTokens),                                    //nolint:gosec
