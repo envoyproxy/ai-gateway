@@ -1235,6 +1235,9 @@ type ChatCompletionResponseChoiceMessage struct {
 	// List of ratings for the safety of a response candidate. There is at most one rating per category.
 	// https://cloud.google.com/vertex-ai/generative-ai/docs/reference/rest/v1/GenerateContentResponse#SafetyRating
 	SafetyRatings []*genai.SafetyRating `json:"safety_ratings,omitempty"`
+
+	// GroundingMetadata specifies sources used to ground generated content.
+	GroundingMetadata *genai.GroundingMetadata `json:"grounding_metadata,omitempty"`
 }
 
 // URLCitation contains citation information for web search results.
@@ -1560,6 +1563,10 @@ type GCPVertexAIVendorFields struct {
 	//
 	// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/SafetySetting
 	SafetySettings []*genai.SafetySetting `json:"safetySettings,omitzero"`
+
+	//EnterpriseWebSearch controls whether to use Web Grounding for Enterprise
+	// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/grounding/web-grounding-enterprise
+	EnterpriseWebSearch bool `json:"enterprise_search,omitzero"`
 }
 
 // GCPVertexAIGenerationConfig represents Gemini generation configuration options.
