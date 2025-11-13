@@ -19,6 +19,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/backendauth"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
@@ -154,6 +155,7 @@ type embeddingsProcessorUpstreamFilter struct {
 	backendName            string
 	handler                backendauth.Handler
 	headerMutator          *headermutator.HeaderMutator
+	bodyMutator            *bodymutator.BodyMutator
 	originalRequestBodyRaw []byte
 	originalRequestBody    *openai.EmbeddingRequest
 	translator             translator.OpenAIEmbeddingTranslator
@@ -201,13 +203,11 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Co
 	reqModel := cmp.Or(e.requestHeaders[internalapi.ModelNameHeaderKeyDefault], e.originalRequestBody.Model)
 	e.metrics.SetRequestModel(reqModel)
 
-	headerMutation, bodyMutation, err := e.translator.RequestBody(e.originalRequestBodyRaw, e.originalRequestBody, e.onRetry)
+	newHeaders, newBody, err := e.translator.RequestBody(e.originalRequestBodyRaw, e.originalRequestBody, e.onRetry)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
-	if headerMutation == nil {
-		headerMutation = &extprocv3.HeaderMutation{}
-	}
+	headerMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
 
 	// Apply header mutations from the route and also restore original headers on retry.
 	if h := e.headerMutator; h != nil {
@@ -222,6 +222,13 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Co
 				},
 			})
 		}
+	}
+
+	// Apply body mutations.
+	bodyMutation = applyBodyMutation(e.bodyMutator, bodyMutation, e.originalRequestBodyRaw, e.onRetry, e.logger)
+
+	if bodyMutation == nil {
+		bodyMutation = &extprocv3.BodyMutation{}
 	}
 
 	for _, h := range headerMutation.SetHeaders {
@@ -275,10 +282,11 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseHeaders(ctx context.C
 	if enc := e.responseHeaders["content-encoding"]; enc != "" {
 		e.responseEncoding = enc
 	}
-	headerMutation, err := e.translator.ResponseHeaders(e.responseHeaders)
+	newHeaders, err := e.translator.ResponseHeaders(e.responseHeaders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response headers: %w", err)
 	}
+	headerMutation, _ := mutationsFromTranslationResult(newHeaders, nil)
 	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{
 		ResponseHeaders: &extprocv3.HeadersResponse{
 			Response: &extprocv3.CommonResponse{HeaderMutation: headerMutation},
@@ -307,12 +315,13 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 
 	// Assume all responses have a valid status code header.
 	if code, _ := strconv.Atoi(e.responseHeaders[":status"]); !isGoodStatusCode(code) {
-		var headerMutation *extprocv3.HeaderMutation
-		var bodyMutation *extprocv3.BodyMutation
-		headerMutation, bodyMutation, err = e.translator.ResponseError(e.responseHeaders, decodingResult.reader)
+		var newHeaders []internalapi.Header
+		var newBody []byte
+		newHeaders, newBody, err = e.translator.ResponseError(e.responseHeaders, decodingResult.reader)
 		if err != nil {
 			return nil, fmt.Errorf("failed to transform response error: %w", err)
 		}
+		headerMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
 		if e.span != nil {
 			b := bodyMutation.GetBody()
 			if b == nil {
@@ -334,12 +343,13 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 		}, nil
 	}
 
-	headerMutation, bodyMutation, tokenUsage, responseModel, err := e.translator.ResponseBody(e.responseHeaders, decodingResult.reader, body.EndOfStream)
+	newHeaders, newBody, tokenUsage, responseModel, err := e.translator.ResponseBody(e.responseHeaders, decodingResult.reader, body.EndOfStream)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}
 
 	// Remove content-encoding header if original body encoded but was mutated in the processor.
+	headerMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
 	headerMutation = removeContentEncodingIfNeeded(headerMutation, bodyMutation, decodingResult.isEncoded)
 
 	resp := &extprocv3.ProcessingResponse{
@@ -399,6 +409,7 @@ func (e *embeddingsProcessorUpstreamFilter) SetBackend(ctx context.Context, b *f
 	}
 	e.handler = backendHandler
 	e.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
+	e.bodyMutator = bodymutator.NewBodyMutator(b.BodyMutation, rp.originalRequestBodyRaw)
 	// Header-derived labels/CEL must be able to see the overridden request model.
 	if e.modelNameOverride != "" {
 		e.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = e.modelNameOverride

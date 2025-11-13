@@ -14,8 +14,6 @@ import (
 	"path"
 	"strconv"
 
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/tidwall/sjson"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -46,14 +44,13 @@ type openAIToOpenAITranslatorV1ChatCompletion struct {
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody].
 func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(original []byte, req *openai.ChatCompletionRequest, forceBodyMutation bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	if req.Stream {
 		o.stream = true
 	}
 	// Store the request model to use as fallback for response model
 	o.requestModel = req.Model
-	var newBody []byte
 	if o.modelNameOverride != "" {
 		// If modelName is set we override the model to be used for the request.
 		newBody, err = sjson.SetBytesOptions(original, "model", o.modelNameOverride, sjsonOptions)
@@ -65,27 +62,14 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(original []byte, 
 	}
 
 	// Always set the path header to the chat completions endpoint so that the request is routed correctly.
-	headerMutation = &extprocv3.HeaderMutation{
-		SetHeaders: []*corev3.HeaderValueOption{
-			{Header: &corev3.HeaderValue{
-				Key:      ":path",
-				RawValue: []byte(o.path),
-			}},
-		},
-	}
+	newHeaders = []internalapi.Header{{pathHeaderName, o.path}}
 
 	if forceBodyMutation && len(newBody) == 0 {
 		newBody = original
 	}
 
 	if len(newBody) > 0 {
-		bodyMutation = &extprocv3.BodyMutation{
-			Mutation: &extprocv3.BodyMutation_Body{Body: newBody},
-		}
-		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{Header: &corev3.HeaderValue{
-			Key:      "content-length",
-			RawValue: []byte(strconv.Itoa(len(newBody))),
-		}})
+		newHeaders = append(newHeaders, internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(newBody))})
 	}
 	return
 }
@@ -94,7 +78,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(original []byte, 
 // For OpenAI based backend we return the OpenAI error type as is.
 // If connection fails the error body is translated to OpenAI error type for events such as HTTP 503 or 504.
 func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseError(respHeaders map[string]string, body io.Reader) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	statusCode := respHeaders[statusHeaderName]
 	if v, ok := respHeaders[contentTypeHeaderName]; ok && v != jsonContentType {
@@ -111,20 +95,20 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseError(respHeaders map
 				Code:    &statusCode,
 			},
 		}
-		mut := &extprocv3.BodyMutation_Body{}
-		mut.Body, err = json.Marshal(openaiError)
+		newBody, err = json.Marshal(openaiError)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to marshal error body: %w", err)
 		}
-		headerMutation = &extprocv3.HeaderMutation{}
-		setContentLength(headerMutation, mut.Body)
-		return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, nil
+		newHeaders = append(newHeaders,
+			internalapi.Header{contentTypeHeaderName, jsonContentType},
+			internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(newBody))},
+		)
 	}
-	return nil, nil, nil
+	return
 }
 
 // ResponseHeaders implements [OpenAIChatCompletionTranslator.ResponseHeaders].
-func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseHeaders(map[string]string) (headerMutation *extprocv3.HeaderMutation, err error) {
+func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseHeaders(map[string]string) (newHeaders []internalapi.Header, err error) {
 	return nil, nil
 }
 
@@ -133,7 +117,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseHeaders(map[string]st
 // so we return the actual model from the response body which may differ from the requested model
 // (e.g., request "gpt-4o" → response "gpt-4o-2024-08-06").
 func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracing.ChatCompletionSpan) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel string, err error,
+	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel string, err error,
 ) {
 	if o.stream {
 		var buf []byte

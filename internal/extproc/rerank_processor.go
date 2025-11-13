@@ -19,6 +19,7 @@ import (
 
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/backendauth"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
@@ -154,6 +155,7 @@ type rerankProcessorUpstreamFilter struct {
 	backendName            string
 	handler                backendauth.Handler
 	headerMutator          *headermutator.HeaderMutator
+	bodyMutator            *bodymutator.BodyMutator
 	originalRequestBodyRaw []byte
 	originalRequestBody    *cohereschema.RerankV2Request
 	translator             translator.CohereRerankTranslator
@@ -199,13 +201,11 @@ func (r *rerankProcessorUpstreamFilter) ProcessRequestHeaders(ctx context.Contex
 	reqModel := cmp.Or(r.requestHeaders[internalapi.ModelNameHeaderKeyDefault], r.originalRequestBody.Model)
 	r.metrics.SetRequestModel(reqModel)
 
-	headerMutation, bodyMutation, err := r.translator.RequestBody(r.originalRequestBodyRaw, r.originalRequestBody, r.onRetry)
+	newHeaders, newBody, err := r.translator.RequestBody(r.originalRequestBodyRaw, r.originalRequestBody, r.onRetry)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
-	if headerMutation == nil {
-		headerMutation = &extprocv3.HeaderMutation{}
-	}
+	headerMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
 
 	// Apply header mutations from the route and also restore original headers on retry.
 	if h := r.headerMutator; h != nil {
@@ -273,10 +273,11 @@ func (r *rerankProcessorUpstreamFilter) ProcessResponseHeaders(ctx context.Conte
 	if enc := r.responseHeaders["content-encoding"]; enc != "" {
 		r.responseEncoding = enc
 	}
-	headerMutation, err := r.translator.ResponseHeaders(r.responseHeaders)
+	newHeaders, err := r.translator.ResponseHeaders(r.responseHeaders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response headers: %w", err)
 	}
+	headerMutation, _ := mutationsFromTranslationResult(newHeaders, nil)
 	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{
 		ResponseHeaders: &extprocv3.HeadersResponse{
 			Response: &extprocv3.CommonResponse{HeaderMutation: headerMutation},
@@ -305,12 +306,13 @@ func (r *rerankProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context,
 
 	// Assume all responses have a valid status code header.
 	if code, _ := strconv.Atoi(r.responseHeaders[":status"]); !isGoodStatusCode(code) {
-		var headerMutation *extprocv3.HeaderMutation
-		var bodyMutation *extprocv3.BodyMutation
-		headerMutation, bodyMutation, err = r.translator.ResponseError(r.responseHeaders, decodingResult.reader)
+		var newHeaders []internalapi.Header
+		var newBody []byte
+		newHeaders, newBody, err = r.translator.ResponseError(r.responseHeaders, decodingResult.reader)
 		if err != nil {
 			return nil, fmt.Errorf("failed to transform response error: %w", err)
 		}
+		headerMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
 		if r.span != nil {
 			b := bodyMutation.GetBody()
 			if b == nil {
@@ -331,12 +333,13 @@ func (r *rerankProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context,
 		}, nil
 	}
 
-	headerMutation, bodyMutation, tokenUsage, responseModel, err := r.translator.ResponseBody(r.responseHeaders, decodingResult.reader, body.EndOfStream)
+	newHeaders, newBody, tokenUsage, responseModel, err := r.translator.ResponseBody(r.responseHeaders, decodingResult.reader, body.EndOfStream)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}
 
 	// Remove content-encoding header if original body encoded but was mutated in the processor.
+	headerMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
 	headerMutation = removeContentEncodingIfNeeded(headerMutation, bodyMutation, decodingResult.isEncoded)
 
 	resp := &extprocv3.ProcessingResponse{
@@ -398,6 +401,7 @@ func (r *rerankProcessorUpstreamFilter) SetBackend(ctx context.Context, b *filte
 	}
 	r.handler = backendHandler
 	r.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
+	r.bodyMutator = bodymutator.NewBodyMutator(b.BodyMutation, rp.originalRequestBodyRaw)
 	// Header-derived labels/CEL must be able to see the overridden request model.
 	if r.modelNameOverride != "" {
 		r.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = r.modelNameOverride

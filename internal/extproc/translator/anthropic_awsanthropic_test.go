@@ -88,14 +88,14 @@ func TestAnthropicToAWSAnthropicTranslator_RequestBody_ModelNameOverride(t *test
 
 			// Check path header contains expected model (URL encoded).
 			// Use the last element as it takes precedence when multiple headers are set.
-			pathHeader := headerMutation.SetHeaders[len(headerMutation.SetHeaders)-2]
-			require.Equal(t, ":path", pathHeader.Header.Key)
+			pathHeader := headerMutation[len(headerMutation)-2]
+			require.Equal(t, pathHeaderName, pathHeader.Key())
 			expectedPath := "/model/" + tt.expectedInPath + "/invoke"
-			assert.Equal(t, expectedPath, string(pathHeader.Header.RawValue))
+			assert.Equal(t, expectedPath, pathHeader.Value())
 
 			// Check that model field is removed from body (since it's in the path).
 			var modifiedReq map[string]any
-			err = json.Unmarshal(bodyMutation.GetBody(), &modifiedReq)
+			err = json.Unmarshal(bodyMutation, &modifiedReq)
 			require.NoError(t, err)
 			_, hasModel := modifiedReq["model"]
 			assert.False(t, hasModel, "model field should be removed from request body")
@@ -166,9 +166,9 @@ func TestAnthropicToAWSAnthropicTranslator_RequestBody_StreamingPaths(t *testing
 
 			// Check path contains expected suffix.
 			// Use the last element as it takes precedence when multiple headers are set.
-			pathHeader := headerMutation.SetHeaders[len(headerMutation.SetHeaders)-2]
+			pathHeader := headerMutation[len(headerMutation)-2]
 			expectedPath := "/model/anthropic.claude-3-sonnet-20240229-v1:0" + tt.expectedPathSuffix
-			assert.Equal(t, expectedPath, string(pathHeader.Header.RawValue))
+			assert.Equal(t, expectedPath, pathHeader.Value())
 		})
 	}
 }
@@ -220,8 +220,9 @@ func TestAnthropicToAWSAnthropicTranslator_URLEncoding(t *testing.T) {
 			require.NotNil(t, headerMutation)
 
 			// Use the last element as it takes precedence when multiple headers are set.
-			pathHeader := headerMutation.SetHeaders[len(headerMutation.SetHeaders)-2]
-			assert.Equal(t, tt.expectedPath, string(pathHeader.Header.RawValue))
+			pathHeader := headerMutation[len(headerMutation)-2]
+			assert.Equal(t, pathHeaderName, pathHeader.Key())
+			assert.Equal(t, tt.expectedPath, pathHeader.Value())
 		})
 	}
 }

@@ -6,6 +6,7 @@
 package extproc
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -119,7 +120,7 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseHeaders(t *testing.T)
 		res, err := p.ProcessResponseHeaders(t.Context(), inHeaders)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseHeaders).ResponseHeaders.Response
-		require.Equal(t, mt.retHeaderMutation, commonRes.HeaderMutation)
+		require.Empty(t, commonRes.HeaderMutation.SetHeaders)
 		mm.RequireRequestNotCompleted(t)
 	})
 }
@@ -145,8 +146,8 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 	})
 	t.Run("ok", func(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("some-body"), EndOfStream: true}
-		expBodyMut := &extprocv3.BodyMutation{}
-		expHeadMut := &extprocv3.HeaderMutation{}
+		expBodyMut := []byte("some body")
+		expHeadMut := []internalapi.Header{{"foo", "bar"}}
 		mm := &mockEmbeddingsMetrics{}
 		mt := &mockEmbeddingTranslator{
 			t: t, expResponseBody: inBody,
@@ -184,8 +185,10 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 		res, err := p.ProcessResponseBody(t.Context(), inBody)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
-		require.Equal(t, expBodyMut, commonRes.BodyMutation)
-		require.Equal(t, expHeadMut, commonRes.HeaderMutation)
+		require.Equal(t, string(expBodyMut), string(commonRes.BodyMutation.GetBody()))
+		require.Len(t, commonRes.HeaderMutation.SetHeaders, 1)
+		require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
+		require.Equal(t, []byte("bar"), commonRes.HeaderMutation.SetHeaders[0].Header.RawValue)
 		mm.RequireRequestSuccess(t)
 		mm.RequireTokenUsage(t, 123)
 
@@ -327,10 +330,8 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) 
 	t.Run("ok", func(t *testing.T) {
 		someBody := embeddingBodyFromModel(t, "some-model")
 		headers := map[string]string{":path": "/foo", internalapi.ModelNameHeaderKeyDefault: "some-model"}
-		headerMut := &extprocv3.HeaderMutation{
-			SetHeaders: []*corev3.HeaderValueOption{{Header: &corev3.HeaderValue{Key: "foo", RawValue: []byte("bar")}}},
-		}
-		bodyMut := &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: []byte("some body")}}
+		headerMut := []internalapi.Header{{"a", "b"}}
+		bodyMut := []byte("some body")
 
 		var expBody openai.EmbeddingRequest
 		require.NoError(t, json.Unmarshal(someBody, &expBody))
@@ -351,8 +352,12 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) 
 		require.Equal(t, mt, p.translator)
 		require.NotNil(t, resp)
 		commonRes := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response
-		require.Equal(t, headerMut, commonRes.HeaderMutation)
-		require.Equal(t, bodyMut, commonRes.BodyMutation)
+		require.Len(t, commonRes.HeaderMutation.SetHeaders, 2)
+		require.Equal(t, "a", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
+		require.Equal(t, []byte("b"), commonRes.HeaderMutation.SetHeaders[0].Header.RawValue)
+		require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[1].Header.Key)
+		require.Equal(t, []byte("mock-auth-handler"), commonRes.HeaderMutation.SetHeaders[1].Header.RawValue)
+		require.Equal(t, string(bodyMut), string(commonRes.BodyMutation.GetBody()))
 
 		mm.RequireRequestNotCompleted(t)
 		// Verify models were set
@@ -665,5 +670,145 @@ func TestEmbeddingsProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *tes
 			HeaderMutation: headerMutations,
 		}, nil, rp)
 		require.NoError(t, err)
+	})
+}
+
+func TestEmbeddingsProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutations(t *testing.T) {
+	t.Run("body mutations applied correctly", func(t *testing.T) {
+		headers := map[string]string{
+			":path":         "/v1/embeddings",
+			"x-ai-eg-model": "text-embedding-ada-002",
+		}
+
+		requestBody := &openai.EmbeddingRequest{
+			Model: "text-embedding-ada-002",
+		}
+		requestBodyRaw := []byte(`{"model": "text-embedding-ada-002", "input": "Hello world", "encoding_format": "float", "dimensions": 1536}`)
+
+		bodyMutations := &filterapi.HTTPBodyMutation{
+			Remove: []string{"internal_flag"},
+			Set: []filterapi.HTTPBodyField{
+				{Path: "encoding_format", Value: "\"base64\""},
+				{Path: "dimensions", Value: "512"},
+				{Path: "user", Value: "\"ai-gateway-user\""},
+			},
+		}
+
+		mockTranslator := mockEmbeddingTranslator{
+			t:               t,
+			expRequestBody:  requestBody,
+			retBodyMutation: requestBodyRaw,
+			retErr:          nil,
+		}
+
+		embeddingMetrics := &mockEmbeddingsMetrics{}
+
+		p := &embeddingsProcessorUpstreamFilter{
+			config:                 &processorConfig{},
+			requestHeaders:         headers,
+			logger:                 slog.Default(),
+			metrics:                embeddingMetrics,
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: requestBodyRaw,
+			translator:             &mockTranslator,
+			handler:                &mockBackendAuthHandler{},
+		}
+
+		backend := &filterapi.Backend{
+			Name:         "test-backend",
+			Schema:       filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+			BodyMutation: bodyMutations,
+		}
+
+		rp := &embeddingsProcessorRouterFilter{
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: requestBodyRaw,
+			requestHeaders:         headers,
+		}
+
+		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		require.NoError(t, err)
+
+		require.NotNil(t, p.bodyMutator)
+
+		ctx := context.Background()
+		response, err := p.ProcessRequestHeaders(ctx, nil)
+		require.NoError(t, err)
+		require.NotNil(t, response)
+
+		testBodyMutation := []byte(`{"model": "text-embedding-ada-002", "input": "Hello world", "encoding_format": "float", "dimensions": 1536, "internal_flag": true}`)
+		mutatedBody, err := p.bodyMutator.Mutate(testBodyMutation, false)
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(mutatedBody, &result)
+		require.NoError(t, err)
+
+		require.Equal(t, "base64", result["encoding_format"])
+		require.Equal(t, float64(512), result["dimensions"])
+		require.Equal(t, "ai-gateway-user", result["user"])
+		require.NotContains(t, result, "internal_flag")
+		require.Equal(t, "text-embedding-ada-002", result["model"])
+		require.Equal(t, "Hello world", result["input"])
+	})
+
+	t.Run("body mutator with retry", func(t *testing.T) {
+		headers := map[string]string{":path": "/v1/embeddings"}
+		embeddingMetrics := &mockEmbeddingsMetrics{}
+
+		originalRequestBodyRaw := []byte(`{"model": "text-embedding-ada-002", "input": "Original input", "encoding_format": "float"}`)
+		requestBody := &openai.EmbeddingRequest{
+			Model: "text-embedding-ada-002",
+		}
+
+		p := &embeddingsProcessorUpstreamFilter{
+			config:                 &processorConfig{},
+			requestHeaders:         headers,
+			logger:                 slog.Default(),
+			metrics:                embeddingMetrics,
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: originalRequestBodyRaw,
+		}
+
+		bodyMutations := &filterapi.HTTPBodyMutation{
+			Set: []filterapi.HTTPBodyField{
+				{Path: "encoding_format", Value: "\"base64\""},
+				{Path: "dimensions", Value: "256"},
+			},
+		}
+
+		backend := &filterapi.Backend{
+			Name:         "test-backend",
+			Schema:       filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+			BodyMutation: bodyMutations,
+		}
+
+		rp := &embeddingsProcessorRouterFilter{
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: originalRequestBodyRaw,
+			requestHeaders:         headers,
+			upstreamFilterCount:    2,
+		}
+
+		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		require.NoError(t, err)
+
+		require.NotNil(t, p.bodyMutator)
+		require.True(t, p.onRetry)
+
+		modifiedBody := []byte(`{"model": "text-embedding-ada-002", "input": "Modified input", "encoding_format": "raw", "extra": "field"}`)
+		mutatedBody, err := p.bodyMutator.Mutate(modifiedBody, true)
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(mutatedBody, &result)
+		require.NoError(t, err)
+
+		require.Equal(t, "base64", result["encoding_format"])
+		require.Equal(t, float64(256), result["dimensions"])
+		require.Equal(t, "text-embedding-ada-002", result["model"])
+		require.NotContains(t, result, "extra")
+
+		require.Equal(t, "Original input", result["input"])
 	})
 }

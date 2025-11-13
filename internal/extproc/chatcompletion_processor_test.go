@@ -206,7 +206,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseHeaders(t *testin
 		res, err := p.ProcessResponseHeaders(t.Context(), inHeaders)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseHeaders).ResponseHeaders.Response
-		require.Equal(t, mt.retHeaderMutation, commonRes.HeaderMutation)
+		require.Empty(t, commonRes.HeaderMutation.SetHeaders)
 		mm.RequireRequestNotCompleted(t)
 		require.Nil(t, res.ModeOverride)
 	})
@@ -221,7 +221,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseHeaders(t *testin
 		res, err := p.ProcessResponseHeaders(t.Context(), inHeaders)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseHeaders).ResponseHeaders.Response
-		require.Equal(t, mt.retHeaderMutation, commonRes.HeaderMutation)
+		require.Empty(t, commonRes.HeaderMutation)
 		require.Equal(t, &extprocv3http.ProcessingMode{ResponseBodyMode: extprocv3http.ProcessingMode_STREAMED}, res.ModeOverride)
 	})
 	t.Run("error/streaming", func(t *testing.T) {
@@ -235,7 +235,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseHeaders(t *testin
 		res, err := p.ProcessResponseHeaders(t.Context(), inHeaders)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseHeaders).ResponseHeaders.Response
-		require.Equal(t, mt.retHeaderMutation, commonRes.HeaderMutation)
+		require.Empty(t, commonRes.HeaderMutation)
 		require.Nil(t, res.ModeOverride)
 	})
 }
@@ -256,13 +256,11 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 	})
 	t.Run("ok", func(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("some-body"), EndOfStream: true}
-		expBodyMut := &extprocv3.BodyMutation{}
-		expHeadMut := &extprocv3.HeaderMutation{}
 		mm := &mockChatCompletionMetrics{}
 		mt := &mockTranslator{
 			t: t, expResponseBody: inBody,
-			retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut,
-			retUsedToken: translator.LLMTokenUsage{OutputTokens: 123, InputTokens: 1, CachedInputTokens: 1},
+			retHeaderMutation: []internalapi.Header{{"foo", "bar"}},
+			retUsedToken:      translator.LLMTokenUsage{OutputTokens: 123, InputTokens: 1, CachedInputTokens: 1},
 		}
 
 		celProgInt, err := llmcostcel.NewProgram("54321")
@@ -297,8 +295,10 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		res, err := p.ProcessResponseBody(t.Context(), inBody)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
-		require.Equal(t, expBodyMut, commonRes.BodyMutation)
-		require.Equal(t, expHeadMut, commonRes.HeaderMutation)
+		require.Nil(t, commonRes.BodyMutation)
+		require.Len(t, commonRes.HeaderMutation.SetHeaders, 1)
+		require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
+		require.Equal(t, "bar", string(commonRes.HeaderMutation.SetHeaders[0].Header.RawValue))
 		mm.RequireRequestSuccess(t)
 		require.Equal(t, 124, mm.tokenUsageCount) // 1 input + 123 output
 
@@ -321,8 +321,8 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 	// Verify we record failure for non-2xx responses and do it exactly once (defer suppressed).
 	t.Run("non-2xx status failure once", func(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("error-body"), EndOfStream: true}
-		expHeadMut := &extprocv3.HeaderMutation{}
-		expBodyMut := &extprocv3.BodyMutation{}
+		expHeadMut := []internalapi.Header{{"foo", "bar"}}
+		expBodyMut := []byte("error-body")
 		mm := &mockChatCompletionMetrics{}
 		mt := &mockTranslator{t: t, expResponseBody: inBody, retHeaderMutation: expHeadMut, retBodyMutation: expBodyMut}
 		p := &chatCompletionProcessorUpstreamFilter{
@@ -333,8 +333,13 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		res, err := p.ProcessResponseBody(t.Context(), inBody)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
-		require.Equal(t, expBodyMut, commonRes.BodyMutation)
-		require.Equal(t, expHeadMut, commonRes.HeaderMutation)
+		require.Equal(t, "error-body", string(commonRes.BodyMutation.GetBody()))
+		require.Len(t, commonRes.HeaderMutation.SetHeaders, 1)
+		require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
+		require.Equal(t, []byte("bar"), commonRes.HeaderMutation.SetHeaders[0].Header.RawValue)
+		require.Len(t, commonRes.HeaderMutation.SetHeaders, 1)
+		require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
+		require.Equal(t, []byte("bar"), commonRes.HeaderMutation.SetHeaders[0].Header.RawValue)
 		mm.RequireRequestFailure(t)
 	})
 
@@ -469,16 +474,15 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 			t.Run("ok", func(t *testing.T) {
 				someBody := bodyFromModel(t, "some-model", tc.stream, nil)
 				headers := map[string]string{":path": "/foo", internalapi.ModelNameHeaderKeyDefault: "some-model"}
-				headerMut := &extprocv3.HeaderMutation{
-					SetHeaders: []*corev3.HeaderValueOption{{Header: &corev3.HeaderValue{Key: "foo", RawValue: []byte("bar")}}},
-				}
-				bodyMut := &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: []byte("some body")}}
+				headerMut := []internalapi.Header{{"a", "b"}}
+				bodyMut := []byte("some body")
 
 				var expBody openai.ChatCompletionRequest
 				require.NoError(t, json.Unmarshal(someBody, &expBody))
 				if tc.stream && tc.forcedIncludeUsage {
 					expBody.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
 				}
+
 				mt := mockTranslator{
 					t: t, expRequestBody: &expBody, retHeaderMutation: headerMut,
 					retBodyMutation: bodyMut, expForceRequestBodyMutation: tc.forcedIncludeUsage,
@@ -501,8 +505,12 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				require.Equal(t, mt, p.translator)
 				require.NotNil(t, resp)
 				commonRes := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response
-				require.Equal(t, headerMut, commonRes.HeaderMutation)
-				require.Equal(t, bodyMut, commonRes.BodyMutation)
+				require.Equal(t, string(bodyMut), string(commonRes.BodyMutation.GetBody()))
+				require.Len(t, commonRes.HeaderMutation.SetHeaders, 2)
+				require.Equal(t, "a", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
+				require.Equal(t, []byte("b"), commonRes.HeaderMutation.SetHeaders[0].Header.RawValue)
+				require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[1].Header.Key)
+				require.Equal(t, "mock-auth-handler", string(commonRes.HeaderMutation.SetHeaders[1].Header.RawValue))
 
 				mm.RequireRequestNotCompleted(t)
 				// Verify models were set
@@ -856,4 +864,148 @@ func Test_ProcessResponseBody_UsesActualResponseModel(t *testing.T) {
 	mm.RequireSelectedModel(t, "gpt-5-nano", "gpt-5-nano", "gpt-5-nano-2025-08-07")
 	require.Equal(t, 30, mm.tokenUsageCount)
 	mm.RequireRequestSuccess(t)
+}
+
+func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutations(t *testing.T) {
+	t.Run("body mutations applied correctly", func(t *testing.T) {
+		headers := map[string]string{
+			":path":         "/v1/chat/completions",
+			"x-ai-eg-model": "gpt-4",
+		}
+
+		requestBody := &openai.ChatCompletionRequest{
+			Model: "gpt-4",
+		}
+		requestBodyRaw := []byte(`{"model": "gpt-4", "messages": [{"role": "user", "content": "Hello"}], "service_tier": "default", "max_tokens": 1000}`)
+
+		bodyMutations := &filterapi.HTTPBodyMutation{
+			Remove: []string{"internal_flag"},
+			Set: []filterapi.HTTPBodyField{
+				{Path: "service_tier", Value: "\"scale\""},
+				{Path: "max_tokens", Value: "2000"},
+				{Path: "temperature", Value: "0.8"},
+			},
+		}
+
+		translator := mockTranslator{
+			t:                           t,
+			expRequestBody:              requestBody,
+			expForceRequestBodyMutation: false,
+			retBodyMutation:             requestBodyRaw,
+			retErr:                      nil,
+		}
+
+		chatMetrics := &mockChatCompletionMetrics{}
+		p := &chatCompletionProcessorUpstreamFilter{
+			config:                 &processorConfig{},
+			requestHeaders:         headers,
+			logger:                 slog.Default(),
+			metrics:                chatMetrics,
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: requestBodyRaw,
+			translator:             &translator,
+			handler:                &mockBackendAuthHandler{},
+		}
+
+		backend := &filterapi.Backend{
+			Name:         "test-backend",
+			Schema:       filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+			BodyMutation: bodyMutations,
+		}
+
+		rp := &chatCompletionProcessorRouterFilter{
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: requestBodyRaw,
+			requestHeaders:         headers,
+		}
+
+		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		require.NoError(t, err)
+
+		require.NotNil(t, p.bodyMutator)
+
+		ctx := context.Background()
+		response, err := p.ProcessRequestHeaders(ctx, nil)
+		require.NoError(t, err)
+		require.NotNil(t, response)
+
+		testBodyMutation := []byte(`{"model": "gpt-4", "messages": [{"role": "user", "content": "Hello"}], "service_tier": "default", "internal_flag": true, "max_tokens": 1000}`)
+		mutatedBody, err := p.bodyMutator.Mutate(testBodyMutation, false)
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(mutatedBody, &result)
+		require.NoError(t, err)
+
+		require.Equal(t, "scale", result["service_tier"])
+		require.Equal(t, float64(2000), result["max_tokens"])
+		require.Equal(t, 0.8, result["temperature"])
+		require.NotContains(t, result, "internal_flag")
+		require.Equal(t, "gpt-4", result["model"])
+	})
+
+	t.Run("body mutator with retry", func(t *testing.T) {
+		headers := map[string]string{":path": "/v1/chat/completions"}
+		chatMetrics := &mockChatCompletionMetrics{}
+
+		originalRequestBodyRaw := []byte(`{"model": "gpt-4", "service_tier": "default", "messages": [{"role": "user", "content": "Hello"}]}`)
+		requestBody := &openai.ChatCompletionRequest{
+			Model: "gpt-4",
+		}
+
+		p := &chatCompletionProcessorUpstreamFilter{
+			config:                 &processorConfig{},
+			requestHeaders:         headers,
+			logger:                 slog.Default(),
+			metrics:                chatMetrics,
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: originalRequestBodyRaw,
+		}
+
+		bodyMutations := &filterapi.HTTPBodyMutation{
+			Set: []filterapi.HTTPBodyField{
+				{Path: "service_tier", Value: "\"premium\""},
+				{Path: "temperature", Value: "0.7"},
+			},
+		}
+
+		backend := &filterapi.Backend{
+			Name:         "test-backend",
+			Schema:       filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+			BodyMutation: bodyMutations,
+		}
+
+		rp := &chatCompletionProcessorRouterFilter{
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: originalRequestBodyRaw,
+			requestHeaders:         headers,
+			upstreamFilterCount:    2,
+		}
+
+		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		require.NoError(t, err)
+
+		require.NotNil(t, p.bodyMutator)
+		require.True(t, p.onRetry)
+
+		modifiedBody := []byte(`{"model": "gpt-4", "service_tier": "modified", "extra": "field", "messages": [{"role": "user", "content": "Modified"}]}`)
+		mutatedBody, err := p.bodyMutator.Mutate(modifiedBody, true)
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(mutatedBody, &result)
+		require.NoError(t, err)
+
+		require.Equal(t, "premium", result["service_tier"])
+		require.Equal(t, 0.7, result["temperature"])
+		require.Equal(t, "gpt-4", result["model"])
+		require.NotContains(t, result, "extra")
+
+		messages, ok := result["messages"].([]interface{})
+		require.True(t, ok)
+		require.Len(t, messages, 1)
+		firstMessage, ok := messages[0].(map[string]interface{})
+		require.True(t, ok)
+		require.Equal(t, "Hello", firstMessage["content"])
+	})
 }

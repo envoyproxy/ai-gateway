@@ -57,24 +57,24 @@ func TestOpenAIToOpenAITranslatorV1CompletionRequestBody(t *testing.T) {
 			headerMutation, bodyMutation, err := translator.RequestBody([]byte(originalBody), &req, tc.onRetry)
 			require.NoError(t, err)
 			require.NotNil(t, headerMutation)
-			require.GreaterOrEqual(t, len(headerMutation.SetHeaders), 1)
-			require.Equal(t, ":path", headerMutation.SetHeaders[0].Header.Key)
-			require.Equal(t, tc.expPath, string(headerMutation.SetHeaders[0].Header.RawValue))
+			require.GreaterOrEqual(t, len(headerMutation), 1)
+			require.Equal(t, pathHeaderName, headerMutation[0].Key())
+			require.Equal(t, tc.expPath, headerMutation[0].Value())
 
 			switch {
 			case tc.expBodyContains != "":
 				require.NotNil(t, bodyMutation)
-				require.Contains(t, string(bodyMutation.GetBody()), tc.expBodyContains)
+				require.Contains(t, string(bodyMutation), tc.expBodyContains)
 				// Verify content-length header is set.
-				require.Len(t, headerMutation.SetHeaders, 2)
-				require.Equal(t, "content-length", headerMutation.SetHeaders[1].Header.Key)
+				require.Len(t, headerMutation, 2)
+				require.Equal(t, contentLengthHeaderName, headerMutation[1].Key())
 			case bodyMutation != nil:
 				// If there's a body mutation (like on retry), content-length header should be set.
-				require.Len(t, headerMutation.SetHeaders, 2)
-				require.Equal(t, "content-length", headerMutation.SetHeaders[1].Header.Key)
+				require.Len(t, headerMutation, 2)
+				require.Equal(t, contentLengthHeaderName, headerMutation[1].Key())
 			default:
 				// No body mutation, only path header.
-				require.Len(t, headerMutation.SetHeaders, 1)
+				require.Len(t, headerMutation, 1)
 			}
 		})
 	}
@@ -190,11 +190,8 @@ func TestOpenAIToOpenAITranslatorV1CompletionResponseBody(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.expTokenUsage, tokenUsage)
 			require.Equal(t, tc.expModel, responseModel)
-
-			// For non-streaming responses, body should be passed through.
-			require.NotNil(t, bodyMutation)
-			require.NotNil(t, headerMutation)
-			require.Equal(t, "content-length", headerMutation.SetHeaders[0].Header.Key)
+			require.Nil(t, bodyMutation)
+			require.Nil(t, headerMutation)
 		})
 	}
 }
@@ -277,11 +274,8 @@ func TestOpenAIToOpenAITranslatorV1CompletionResponseError(t *testing.T) {
 
 		headerMutation, bodyMutation, err := translator.ResponseError(respHeaders, strings.NewReader(errorBody))
 		require.NoError(t, err)
-
-		// For passthrough, errors should be returned as-is.
-		require.NotNil(t, bodyMutation)
-		require.NotNil(t, headerMutation)
-		require.Equal(t, errorBody, string(bodyMutation.GetBody()))
+		require.Nil(t, bodyMutation)
+		require.Nil(t, headerMutation)
 	})
 
 	t.Run("non_json_error", func(t *testing.T) {
@@ -293,10 +287,7 @@ func TestOpenAIToOpenAITranslatorV1CompletionResponseError(t *testing.T) {
 
 		headerMutation, bodyMutation, err := translator.ResponseError(respHeaders, strings.NewReader(errorBody))
 		require.NoError(t, err)
-		require.NotNil(t, headerMutation)
-		require.NotNil(t, bodyMutation)
-
-		// Should still pass through the error.
-		require.Equal(t, errorBody, string(bodyMutation.GetBody()))
+		require.Nil(t, headerMutation)
+		require.Nil(t, bodyMutation)
 	})
 }

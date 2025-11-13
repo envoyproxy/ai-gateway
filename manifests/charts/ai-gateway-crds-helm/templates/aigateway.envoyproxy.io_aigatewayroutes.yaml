@@ -456,6 +456,93 @@ spec:
                           AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.
                           It can reference either an AIServiceBackend or an InferencePool resource.
                         properties:
+                          bodyMutation:
+                            description: |-
+                              BodyMutation defines the request body mutation to be applied to this backend.
+                              This allows modification of JSON fields in the request body before sending to the backend.
+                              When both route-level and backend-level BodyMutation are defined,
+                              route-level takes precedence over backend-level for conflicting operations.
+                              This field is ignored when referencing InferencePool resources.
+                            properties:
+                              remove:
+                                description: |-
+                                  Remove the given JSON field(s) from the HTTP request body before sending to the backend.
+                                  The value of Remove is a list of top-level field names to remove.
+
+                                  Input:
+                                    {
+                                      "model": "gpt-4",
+                                      "service_tier": "default",
+                                      "internal_flag": true
+                                    }
+
+                                  Config:
+                                    remove: ["service_tier", "internal_flag"]
+
+                                  Output:
+                                    {
+                                      "model": "gpt-4"
+                                    }
+                                items:
+                                  type: string
+                                maxItems: 16
+                                type: array
+                                x-kubernetes-list-type: set
+                              set:
+                                description: |-
+                                  Set overwrites/adds the request body with the given JSON field (name, value)
+                                  before sending to the backend. Only top-level fields are currently supported.
+
+                                  Input:
+                                    {
+                                      "model": "gpt-4",
+                                      "service_tier": "default"
+                                    }
+
+                                  Config:
+                                    set:
+                                    - path: "service_tier"
+                                      value: "scale"
+
+                                  Output:
+                                    {
+                                      "model": "gpt-4",
+                                      "service_tier": "scale"
+                                    }
+                                items:
+                                  description: HTTPBodyField represents a JSON field
+                                    name and value for body mutation
+                                  properties:
+                                    path:
+                                      description: |-
+                                        Path is the top-level field name to set in the request body.
+                                        Examples: "service_tier", "max_tokens", "temperature"
+                                      minLength: 1
+                                      type: string
+                                    value:
+                                      description: |-
+                                        Value is the JSON value to set at the specified field. This can be any valid JSON value:
+                                        string, number, boolean, object, array, or null.
+                                        The value will be parsed as JSON and inserted at the specified field.
+
+                                        Examples:
+                                          - "\"scale\"" (string)
+                                          - "42" (number)
+                                          - "true" (boolean)
+                                          - "{\"key\": \"value\"}" (object)
+                                          - "[1, 2, 3]" (array)
+                                          - "null" (null)
+                                      type: string
+                                  required:
+                                  - path
+                                  - value
+                                  type: object
+                                maxItems: 16
+                                type: array
+                                x-kubernetes-list-map-keys:
+                                - path
+                                x-kubernetes-list-type: map
+                            type: object
                           group:
                             description: |-
                               Group is the group of the backend resource.

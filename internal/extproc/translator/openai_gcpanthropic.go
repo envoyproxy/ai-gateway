@@ -11,14 +11,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	anthropicParam "github.com/anthropics/anthropic-sdk-go/packages/param"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	anthropicVertex "github.com/anthropics/anthropic-sdk-go/vertex"
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	openAIconstant "github.com/openai/openai-go/shared/constant"
 	"github.com/tidwall/sjson"
 
@@ -536,7 +535,7 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest) (params *anth
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody] for GCP.
 func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	params, err := buildAnthropicParams(openAIReq)
 	if err != nil {
@@ -565,7 +564,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 		o.streamParser = newAnthropicStreamParser(o.requestModel)
 	}
 
-	pathSuffix := buildGCPModelPathSuffix(gcpModelPublisherAnthropic, o.requestModel, specifier)
+	path := buildGCPModelPathSuffix(gcpModelPublisherAnthropic, o.requestModel, specifier)
 	// b. Set the "anthropic_version" key in the JSON body
 	// Using same logic as anthropic go SDK: https://github.com/anthropics/anthropic-sdk-go/blob/e252e284244755b2b2f6eef292b09d6d1e6cd989/bedrock/bedrock.go#L167
 	anthropicVersion := anthropicVertex.DefaultVersion
@@ -576,14 +575,14 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 	if err != nil {
 		return
 	}
-
-	headerMutation, bodyMutation = buildRequestMutations(pathSuffix, body)
+	newBody = body
+	newHeaders = []internalapi.Header{{pathHeaderName, path}, {contentLengthHeaderName, strconv.Itoa(len(newBody))}}
 	return
 }
 
 // ResponseError implements [OpenAIChatCompletionTranslator.ResponseError].
 func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseError(respHeaders map[string]string, body io.Reader) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	statusCode := respHeaders[statusHeaderName]
 	var openaiError openai.Error
@@ -622,17 +621,16 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseError(respHeade
 	}
 
 	// Marshal the translated OpenAI error.
-	mut := &extprocv3.BodyMutation_Body{}
-	mut.Body, err = json.Marshal(openaiError)
+	newBody, err = json.Marshal(openaiError)
 	if err != nil {
 		// This is an internal failure to create the response.
 		return nil, nil, fmt.Errorf("failed to marshal OpenAI error body: %w", err)
 	}
-	headerMutation = &extprocv3.HeaderMutation{}
-	setContentLength(headerMutation, mut.Body)
-	bodyMutation = &extprocv3.BodyMutation{Mutation: mut}
-
-	return headerMutation, bodyMutation, nil
+	newHeaders = []internalapi.Header{
+		{contentTypeHeaderName, jsonContentType},
+		{contentLengthHeaderName, strconv.Itoa(len(newBody))},
+	}
+	return
 }
 
 // anthropicToolUseToOpenAICalls converts Anthropic tool_use content blocks to OpenAI tool calls.
@@ -659,15 +657,10 @@ func anthropicToolUseToOpenAICalls(block *anthropic.ContentBlockUnion) ([]openai
 
 // ResponseHeaders implements [OpenAIChatCompletionTranslator.ResponseHeaders].
 func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseHeaders(_ map[string]string) (
-	headerMutation *extprocv3.HeaderMutation, err error,
+	newHeaders []internalapi.Header, err error,
 ) {
 	if o.streamParser != nil {
-		// For streaming responses, set content-type to text/event-stream to match OpenAI API.
-		headerMutation = &extprocv3.HeaderMutation{
-			SetHeaders: []*corev3.HeaderValueOption{
-				{Header: &corev3.HeaderValue{Key: contentTypeHeaderName, Value: eventStreamContentType}},
-			},
-		}
+		newHeaders = []internalapi.Header{{contentTypeHeaderName, eventStreamContentType}}
 	}
 	return
 }
@@ -677,14 +670,13 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseHeaders(_ map[s
 // is exactly what gets executed. The response does not contain a model field, so we return
 // the request model that was originally sent.
 func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel string, err error,
+	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel string, err error,
 ) {
 	// If a stream parser was initialized, this is a streaming request.
 	if o.streamParser != nil {
 		return o.streamParser.Process(body, endOfStream, span)
 	}
 
-	mut := &extprocv3.BodyMutation_Body{}
 	var anthropicResp anthropic.Message
 	if err = json.NewDecoder(body).Decode(&anthropicResp); err != nil {
 		return nil, nil, tokenUsage, "", fmt.Errorf("failed to unmarshal body: %w", err)
@@ -747,15 +739,14 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 	}
 	openAIResp.Choices = append(openAIResp.Choices, choice)
 
-	mut.Body, err = json.Marshal(openAIResp)
+	newBody, err = json.Marshal(openAIResp)
 	if err != nil {
 		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to marshal body: %w", err)
 	}
 
-	headerMutation = &extprocv3.HeaderMutation{}
-	setContentLength(headerMutation, mut.Body)
 	if span != nil {
 		span.RecordResponse(openAIResp)
 	}
-	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, tokenUsage, responseModel, nil
+	newHeaders = []internalapi.Header{{contentLengthHeaderName, strconv.Itoa(len(newBody))}}
+	return
 }

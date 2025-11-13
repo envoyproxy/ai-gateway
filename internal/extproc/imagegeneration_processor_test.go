@@ -217,7 +217,7 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseHeaders(t *testi
 		res, err := p.ProcessResponseHeaders(t.Context(), inHeaders)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseHeaders).ResponseHeaders.Response
-		require.Equal(t, mt.retHeaderMutation, commonRes.HeaderMutation)
+		require.Empty(t, commonRes.HeaderMutation.SetHeaders)
 		mm.RequireRequestNotCompleted(t)
 	})
 }
@@ -239,12 +239,9 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseBody(t *testing.
 	})
 	t.Run("ok", func(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("some-body"), EndOfStream: true}
-		expBodyMut := &extprocv3.BodyMutation{}
-		expHeadMut := &extprocv3.HeaderMutation{}
 		mm := &mockImageGenerationMetrics{}
 		mt := &mockImageGenerationTranslator{
 			t: t, expResponseBody: inBody,
-			retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut,
 			retUsedToken: translator.LLMTokenUsage{OutputTokens: 123, InputTokens: 1},
 		}
 
@@ -278,8 +275,8 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseBody(t *testing.
 		res, err := p.ProcessResponseBody(t.Context(), inBody)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
-		require.Equal(t, expBodyMut, commonRes.BodyMutation)
-		require.Equal(t, expHeadMut, commonRes.HeaderMutation)
+		require.Nil(t, commonRes.BodyMutation)
+		require.Equal(t, &extprocv3.HeaderMutation{}, commonRes.HeaderMutation)
 		mm.RequireRequestSuccess(t)
 		require.Equal(t, 124, mm.tokenUsageCount) // 1 input + 123 output
 
@@ -300,10 +297,11 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseBody(t *testing.
 	// Verify we record failure for non-2xx responses and do it exactly once (defer suppressed), and span records error.
 	t.Run("non-2xx status failure once", func(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("error-body"), EndOfStream: true}
-		expHeadMut := &extprocv3.HeaderMutation{}
-		expBodyMut := &extprocv3.BodyMutation{}
+		expBody := []byte("error-body")
 		mm := &mockImageGenerationMetrics{}
-		mt := &mockImageGenerationTranslator{t: t, expResponseBody: inBody, retHeaderMutation: expHeadMut, retBodyMutation: expBodyMut}
+		mt := &mockImageGenerationTranslator{t: t, expResponseBody: inBody, retHeaderMutation: []internalapi.Header{
+			{"foo", "bar"},
+		}, retBodyMutation: expBody}
 		p := &imageGenerationProcessorUpstreamFilter{
 			translator:      mt,
 			metrics:         mm,
@@ -314,8 +312,10 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseBody(t *testing.
 		res, err := p.ProcessResponseBody(t.Context(), inBody)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
-		require.Equal(t, expBodyMut, commonRes.BodyMutation)
-		require.Equal(t, expHeadMut, commonRes.HeaderMutation)
+		require.Equal(t, string(expBody), string(commonRes.BodyMutation.GetBody()))
+		require.Len(t, commonRes.HeaderMutation.SetHeaders, 1)
+		require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
+		require.Equal(t, "bar", string(commonRes.HeaderMutation.SetHeaders[0].Header.RawValue))
 		mm.RequireRequestFailure(t)
 		// assert span error recorded
 		s := p.span.(*mockImageGenerationSpan)
@@ -334,8 +334,8 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseBody(t *testing.
 		mm := &mockImageGenerationMetrics{}
 		mt := &mockImageGenerationTranslator{
 			// translator returns a non-nil body mutation indicating processor changed body
-			retBodyMutation:   &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: []byte("changed")}},
-			retHeaderMutation: &extprocv3.HeaderMutation{},
+			retBodyMutation:   []byte("changed"),
+			retHeaderMutation: []internalapi.Header{{"foo", "bar"}},
 		}
 		p := &imageGenerationProcessorUpstreamFilter{
 			translator:       mt,
@@ -350,6 +350,10 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseBody(t *testing.
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
 		reqHM := commonRes.HeaderMutation
 		require.Contains(t, reqHM.RemoveHeaders, "content-encoding")
+		require.Len(t, reqHM.SetHeaders, 1)
+		require.Equal(t, "foo", reqHM.SetHeaders[0].Header.Key)
+		require.Equal(t, "bar", string(reqHM.SetHeaders[0].Header.RawValue))
+		require.Equal(t, "changed", string(commonRes.BodyMutation.GetBody()))
 		mm.RequireRequestSuccess(t)
 	})
 }
@@ -471,13 +475,13 @@ type mockImageGenerationTranslator struct {
 	expHeaders                  map[string]string
 	expForceRequestBodyMutation bool
 	retErr                      error
-	retHeaderMutation           *extprocv3.HeaderMutation
-	retBodyMutation             *extprocv3.BodyMutation
+	retHeaderMutation           []internalapi.Header
+	retBodyMutation             []byte
 	retUsedToken                translator.LLMTokenUsage
 	retResponseModel            internalapi.ResponseModel
 }
 
-func (m *mockImageGenerationTranslator) RequestBody(_ []byte, req *openaisdk.ImageGenerateParams, forceBodyMutation bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
+func (m *mockImageGenerationTranslator) RequestBody(_ []byte, req *openaisdk.ImageGenerateParams, forceBodyMutation bool) ([]internalapi.Header, []byte, error) {
 	if m.expRequestBody != nil {
 		require.Equal(m.t, m.expRequestBody, req)
 	}
@@ -487,7 +491,7 @@ func (m *mockImageGenerationTranslator) RequestBody(_ []byte, req *openaisdk.Ima
 	return m.retHeaderMutation, m.retBodyMutation, m.retErr
 }
 
-func (m *mockImageGenerationTranslator) ResponseHeaders(headers map[string]string) (*extprocv3.HeaderMutation, error) {
+func (m *mockImageGenerationTranslator) ResponseHeaders(headers map[string]string) ([]internalapi.Header, error) {
 	if m.expHeaders != nil {
 		for k, v := range m.expHeaders {
 			require.Equal(m.t, v, headers[k])
@@ -496,7 +500,7 @@ func (m *mockImageGenerationTranslator) ResponseHeaders(headers map[string]strin
 	return m.retHeaderMutation, m.retErr
 }
 
-func (m *mockImageGenerationTranslator) ResponseBody(headers map[string]string, body io.Reader, endOfStream bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, translator.LLMTokenUsage, internalapi.ResponseModel, error) {
+func (m *mockImageGenerationTranslator) ResponseBody(headers map[string]string, body io.Reader, endOfStream bool) ([]internalapi.Header, []byte, translator.LLMTokenUsage, internalapi.ResponseModel, error) {
 	_ = headers
 	if m.expResponseBody != nil {
 		bodyBytes, _ := io.ReadAll(body)
@@ -506,7 +510,7 @@ func (m *mockImageGenerationTranslator) ResponseBody(headers map[string]string, 
 	return m.retHeaderMutation, m.retBodyMutation, m.retUsedToken, m.retResponseModel, m.retErr
 }
 
-func (m *mockImageGenerationTranslator) ResponseError(headers map[string]string, body io.Reader) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
+func (m *mockImageGenerationTranslator) ResponseError(headers map[string]string, body io.Reader) ([]internalapi.Header, []byte, error) {
 	_ = headers
 	_ = body
 	return m.retHeaderMutation, m.retBodyMutation, m.retErr
@@ -518,4 +522,151 @@ func imageGenerationBodyFromModel(t *testing.T, model string) []byte {
 	b, err := json.Marshal(&openaisdk.ImageGenerateParams{Model: model, Prompt: "a cat"})
 	require.NoError(t, err)
 	return b
+}
+
+func TestImageGenerationProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutations(t *testing.T) {
+	t.Run("body mutations applied correctly", func(t *testing.T) {
+		headers := map[string]string{
+			":path":         "/v1/images/generations",
+			"x-ai-eg-model": "dall-e-3",
+		}
+
+		requestBody := &openaisdk.ImageGenerateParams{
+			Model:  "dall-e-3",
+			Prompt: "A beautiful sunset over mountains",
+		}
+		requestBodyRaw := []byte(`{"model": "dall-e-3", "prompt": "A beautiful sunset over mountains", "size": "1024x1024", "quality": "standard", "n": 1}`)
+
+		bodyMutations := &filterapi.HTTPBodyMutation{
+			Remove: []string{"internal_flag"},
+			Set: []filterapi.HTTPBodyField{
+				{Path: "quality", Value: "\"hd\""},
+				{Path: "size", Value: "\"1792x1024\""},
+				{Path: "style", Value: "\"vivid\""},
+				{Path: "response_format", Value: "\"b64_json\""},
+			},
+		}
+
+		mockTranslator := mockImageGenerationTranslator{
+			t:               t,
+			expRequestBody:  requestBody,
+			retBodyMutation: requestBodyRaw,
+			retErr:          nil,
+		}
+
+		imageMetrics := &mockImageGenerationMetrics{}
+
+		p := &imageGenerationProcessorUpstreamFilter{
+			config:                 &processorConfig{},
+			requestHeaders:         headers,
+			logger:                 slog.Default(),
+			metrics:                imageMetrics,
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: requestBodyRaw,
+			translator:             &mockTranslator,
+			handler:                &mockBackendAuthHandler{},
+		}
+
+		backend := &filterapi.Backend{
+			Name:         "test-backend",
+			Schema:       filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+			BodyMutation: bodyMutations,
+		}
+
+		rp := &imageGenerationProcessorRouterFilter{
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: requestBodyRaw,
+			requestHeaders:         headers,
+		}
+
+		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		require.NoError(t, err)
+
+		require.NotNil(t, p.bodyMutator)
+
+		ctx := context.Background()
+		response, err := p.ProcessRequestHeaders(ctx, nil)
+		require.NoError(t, err)
+		require.NotNil(t, response)
+
+		testBodyMutation := []byte(`{"model": "dall-e-3", "prompt": "A beautiful sunset over mountains", "size": "1024x1024", "quality": "standard", "n": 1, "internal_flag": true}`)
+		mutatedBody, err := p.bodyMutator.Mutate(testBodyMutation, false)
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(mutatedBody, &result)
+		require.NoError(t, err)
+
+		require.Equal(t, "hd", result["quality"])
+		require.Equal(t, "1792x1024", result["size"])
+		require.Equal(t, "vivid", result["style"])
+		require.Equal(t, "b64_json", result["response_format"])
+		require.NotContains(t, result, "internal_flag")
+		require.Equal(t, "dall-e-3", result["model"])
+		require.Equal(t, "A beautiful sunset over mountains", result["prompt"])
+		require.Equal(t, float64(1), result["n"])
+	})
+
+	t.Run("body mutator with retry", func(t *testing.T) {
+		headers := map[string]string{":path": "/v1/images/generations"}
+		imageMetrics := &mockImageGenerationMetrics{}
+
+		originalRequestBodyRaw := []byte(`{"model": "dall-e-3", "prompt": "Original prompt", "size": "1024x1024", "quality": "standard"}`)
+		requestBody := &openaisdk.ImageGenerateParams{
+			Model:  "dall-e-3",
+			Prompt: "Original prompt",
+		}
+
+		p := &imageGenerationProcessorUpstreamFilter{
+			config:                 &processorConfig{},
+			requestHeaders:         headers,
+			logger:                 slog.Default(),
+			metrics:                imageMetrics,
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: originalRequestBodyRaw,
+		}
+
+		bodyMutations := &filterapi.HTTPBodyMutation{
+			Set: []filterapi.HTTPBodyField{
+				{Path: "quality", Value: "\"hd\""},
+				{Path: "size", Value: "\"1792x1024\""},
+				{Path: "n", Value: "2"},
+			},
+		}
+
+		backend := &filterapi.Backend{
+			Name:         "test-backend",
+			Schema:       filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+			BodyMutation: bodyMutations,
+		}
+
+		rp := &imageGenerationProcessorRouterFilter{
+			originalRequestBody:    requestBody,
+			originalRequestBodyRaw: originalRequestBodyRaw,
+			requestHeaders:         headers,
+			upstreamFilterCount:    2,
+		}
+
+		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		require.NoError(t, err)
+
+		require.NotNil(t, p.bodyMutator)
+		require.True(t, p.onRetry)
+
+		modifiedBody := []byte(`{"model": "dall-e-3", "prompt": "Modified prompt", "size": "512x512", "quality": "low", "extra": "field"}`)
+		mutatedBody, err := p.bodyMutator.Mutate(modifiedBody, true)
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(mutatedBody, &result)
+		require.NoError(t, err)
+
+		require.Equal(t, "hd", result["quality"])
+		require.Equal(t, "1792x1024", result["size"])
+		require.Equal(t, float64(2), result["n"])
+		require.Equal(t, "dall-e-3", result["model"])
+		require.NotContains(t, result, "extra")
+
+		require.Equal(t, "Original prompt", result["prompt"])
+	})
 }
