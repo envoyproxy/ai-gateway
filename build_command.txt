@@ -1,0 +1,231 @@
+# ================================
+# 🏷️ Define variables
+# ================================
+$VPS_IP = "51.79.250.11"
+$VPS_USER = "ubuntu"
+$PROJECT_DIR = "E:\openSourceContribute\ai-gateway"
+
+$CONTROLLER_IMAGE = "envoyproxy/ai-gateway-controller:custom-v3"
+$EXTPROC_IMAGE    = "envoyproxy/ai-gateway-extproc:custom-v3"
+
+$CONTROLLER_TAR = "ai-gateway-controller-custom.tar"
+$EXTPROC_TAR    = "ai-gateway-extproc-custom.tar"
+
+$TARGETOS = "linux"
+$TARGETARCH = "amd64"
+
+Write-Host "=====================================" -ForegroundColor Cyan
+Write-Host "🚀 AI Gateway Build Script (Windows)" -ForegroundColor Cyan
+Write-Host "=====================================" -ForegroundColor Cyan
+
+# ================================
+# 1️⃣ Change to project directory
+# ================================
+Write-Host "`n📂 Changing to project directory..." -ForegroundColor Yellow
+Set-Location $PROJECT_DIR
+
+# Clean old binaries
+if (Test-Path "out/controller-$TARGETOS-$TARGETARCH") {
+    Remove-Item "out/controller-$TARGETOS-$TARGETARCH" -Force
+}
+if (Test-Path "out/extproc-$TARGETOS-$TARGETARCH") {
+    Remove-Item "out/extproc-$TARGETOS-$TARGETARCH" -Force
+}
+
+# ================================
+# 2️⃣ Build Linux binaries with CGO_ENABLED=0
+# ================================
+Write-Host "`n🔨 Building Linux binaries..." -ForegroundColor Yellow
+
+Write-Host "  Building controller binary..." -ForegroundColor Gray
+docker run --rm `
+  -v ${PWD}:/workspace `
+  -w /workspace `
+  golang:1.25 `
+  bash -c "CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags '-w -s' -o out/controller-$TARGETOS-$TARGETARCH ./cmd/controller"
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "❌ Controller build failed!" -ForegroundColor Red
+    Write-Host "Press any key to exit..." -ForegroundColor Yellow
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    exit 1
+}
+
+Write-Host "  Building extproc binary..." -ForegroundColor Gray
+docker run --rm `
+  -v ${PWD}:/workspace `
+  -w /workspace `
+  golang:1.25 `
+  bash -c "CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags '-w -s' -o out/extproc-$TARGETOS-$TARGETARCH ./cmd/extproc"
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "❌ ExtProc build failed!" -ForegroundColor Red
+    Write-Host "Press any key to exit..." -ForegroundColor Yellow
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    exit 1
+}
+
+# Verify binaries exist and are Linux binaries
+Write-Host "`n✅ Verifying binaries..." -ForegroundColor Yellow
+if (-not (Test-Path "out/controller-$TARGETOS-$TARGETARCH")) {
+    Write-Host "❌ Controller binary not found!" -ForegroundColor Red
+    Write-Host "Press any key to exit..." -ForegroundColor Yellow
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    exit 1
+}
+if (-not (Test-Path "out/extproc-$TARGETOS-$TARGETARCH")) {
+    Write-Host "❌ ExtProc binary not found!" -ForegroundColor Red
+    Write-Host "Press any key to exit..." -ForegroundColor Yellow
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    exit 1
+}
+
+Get-ChildItem -Path out | Where-Object { $_.Name -match "(controller|extproc)-$TARGETOS-$TARGETARCH" } | Format-Table Name, @{Label="Size(MB)"; Expression={[math]::Round($_.Length/1MB, 2)}}
+
+# Verify they are ELF binaries (Linux)
+Write-Host "  Checking binary format..." -ForegroundColor Gray
+docker run --rm -v ${PWD}/out:/data alpine file /data/controller-$TARGETOS-$TARGETARCH
+docker run --rm -v ${PWD}/out:/data alpine file /data/extproc-$TARGETOS-$TARGETARCH
+
+# ================================
+# 3️⃣ Build Docker images
+# ================================
+Write-Host "`n🐳 Building Docker images..." -ForegroundColor Yellow
+
+Write-Host "  Building controller image..." -ForegroundColor Gray
+docker build `
+  --build-arg COMMAND_NAME=controller `
+  --build-arg TARGETOS=$TARGETOS `
+  --build-arg TARGETARCH=$TARGETARCH `
+  --build-arg VARIANT=static `
+  -t $CONTROLLER_IMAGE `
+  -f Dockerfile `
+  .
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "❌ Controller image build failed!" -ForegroundColor Red
+    Write-Host "Press any key to exit..." -ForegroundColor Yellow
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    exit 1
+}
+
+Write-Host "  Building extproc image..." -ForegroundColor Gray
+docker build `
+  --build-arg COMMAND_NAME=extproc `
+  --build-arg TARGETOS=$TARGETOS `
+  --build-arg TARGETARCH=$TARGETARCH `
+  --build-arg VARIANT=static `
+  -t $EXTPROC_IMAGE `
+  -f Dockerfile `
+  .
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "❌ ExtProc image build failed!" -ForegroundColor Red
+    Write-Host "Press any key to exit..." -ForegroundColor Yellow
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    exit 1
+}
+
+Write-Host "`n✅ Docker images built" -ForegroundColor Green
+docker images | Select-String "ai-gateway.*custom-v3"
+
+# ================================
+# 4️⃣ Verify images contain /app binary
+# ================================
+Write-Host "`n🔍 Verifying images..." -ForegroundColor Yellow
+
+Write-Host "  Inspecting controller image layers..." -ForegroundColor Gray
+$controllerInspect = docker inspect $CONTROLLER_IMAGE | ConvertFrom-Json
+if ($controllerInspect.length -eq 0) {
+    Write-Host "❌ Controller image not found!" -ForegroundColor Red
+    Write-Host "Press any key to exit..." -ForegroundColor Yellow
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    exit 1
+}
+
+Write-Host "  Inspecting extproc image layers..." -ForegroundColor Gray
+$extprocInspect = docker inspect $EXTPROC_IMAGE | ConvertFrom-Json
+if ($extprocInspect.length -eq 0) {
+    Write-Host "❌ ExtProc image not found!" -ForegroundColor Red
+    Write-Host "Press any key to exit..." -ForegroundColor Yellow
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    exit 1
+}
+
+Write-Host "✅ Images verified" -ForegroundColor Green
+Write-Host "  Controller image: $($controllerInspect[0].Id.Substring(7,12))" -ForegroundColor Gray
+Write-Host "  ExtProc image: $($extprocInspect[0].Id.Substring(7,12))" -ForegroundColor Gray
+
+# ================================
+# 5️⃣ Save Docker images to tar files
+# ================================
+Write-Host "`n💾 Saving Docker images to tar files..." -ForegroundColor Yellow
+
+if (Test-Path $CONTROLLER_TAR) {
+    Remove-Item $CONTROLLER_TAR -Force
+}
+if (Test-Path $EXTPROC_TAR) {
+    Remove-Item $EXTPROC_TAR -Force
+}
+
+Write-Host "  Saving controller image..." -ForegroundColor Gray
+docker save -o $CONTROLLER_TAR $CONTROLLER_IMAGE
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "❌ Failed to save controller image!" -ForegroundColor Red
+    Write-Host "Press any key to exit..." -ForegroundColor Yellow
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    exit 1
+}
+
+Write-Host "  Saving extproc image..." -ForegroundColor Gray
+docker save -o $EXTPROC_TAR $EXTPROC_IMAGE
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "❌ Failed to save extproc image!" -ForegroundColor Red
+    Write-Host "Press any key to exit..." -ForegroundColor Yellow
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    exit 1
+}
+
+Write-Host "`n✅ Tar files created" -ForegroundColor Green
+Get-ChildItem $CONTROLLER_TAR, $EXTPROC_TAR | Format-Table Name, @{Label="Size(MB)"; Expression={[math]::Round($_.Length/1MB, 2)}}
+
+# ================================
+# 6️⃣ Transfer tar files to VPS
+# ================================
+Write-Host "`n📤 Transferring tar files to VPS..." -ForegroundColor Yellow
+
+Write-Host "  Transferring controller tar..." -ForegroundColor Gray
+scp -C $CONTROLLER_TAR "${VPS_USER}@${VPS_IP}:/tmp/"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "❌ Failed to transfer controller tar!" -ForegroundColor Red
+    Write-Host "Press any key to exit..." -ForegroundColor Yellow
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    exit 1
+}
+
+Write-Host "  Transferring extproc tar..." -ForegroundColor Gray
+scp -C $EXTPROC_TAR "${VPS_USER}@${VPS_IP}:/tmp/"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "❌ Failed to transfer extproc tar!" -ForegroundColor Red
+    Write-Host "Press any key to exit..." -ForegroundColor Yellow
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    exit 1
+}
+
+Write-Host "`n✅ Transfer completed!" -ForegroundColor Green
+
+# ================================
+# 7️⃣ Verify on VPS
+# ================================
+Write-Host "`n🔍 Verifying files on VPS..." -ForegroundColor Yellow
+ssh "${VPS_USER}@${VPS_IP}" "ls -lh /tmp/*.tar | grep ai-gateway"
+
+Write-Host "`n=====================================" -ForegroundColor Cyan
+Write-Host "✨ Build and transfer completed!" -ForegroundColor Cyan
+Write-Host "=====================================" -ForegroundColor Cyan
+Write-Host "`nNext steps on VPS:" -ForegroundColor Yellow
+Write-Host "  cd /tmp" -ForegroundColor Gray
+Write-Host "  chmod +x deploy-on-vps.sh" -ForegroundColor Gray
+Write-Host "  ./deploy-on-vps.sh" -ForegroundColor Gray
+Write-Host "`nPress any key to exit..." -ForegroundColor Yellow
+$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")

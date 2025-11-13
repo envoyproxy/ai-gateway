@@ -54,7 +54,15 @@ type openAIToGCPVertexAITranslatorV1ChatCompletion struct {
 	stream            bool   // Track if this is a streaming request.
 	bufferedBody      []byte // Buffer for incomplete JSON chunks.
 	requestModel      internalapi.RequestModel
+	useGeminiPath     bool   // If true, use /v1beta/models path (Gemini API), else use /publishers path (Vertex AI)
 }
+
+// SetUseGeminiDirectPath sets whether to use Gemini direct API path (/v1beta/models) or GCP Vertex AI path (/publishers).
+// This should be set to true when using Gemini API key authentication, false for GCP OAuth2.
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) SetUseGeminiDirectPath(use bool) {
+	o.useGeminiPath = use
+}
+
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody] for GCP Gemini.
 // This method translates an OpenAI ChatCompletion request to a GCP Gemini API request.
@@ -70,13 +78,23 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) RequestBody(_ []byte, op
 	// Set streaming flag.
 	o.stream = openAIReq.Stream
 
-	// Choose the correct endpoint based on streaming.
+	// Choose the correct endpoint based on streaming and authentication type.
 	var pathSuffix string
-	if o.stream {
-		// For streaming requests, use the streamGenerateContent endpoint with SSE format.
-		pathSuffix = buildGCPModelPathSuffix(gcpModelPublisherGoogle, o.requestModel, gcpMethodStreamGenerateContent, "alt=sse")
+	if o.useGeminiPath {
+		// Using Gemini API key authentication - use direct Gemini API path
+		if o.stream {
+			pathSuffix = buildGeminiModelPath(o.requestModel, gcpMethodStreamGenerateContent, "alt=sse")
+		} else {
+			pathSuffix = buildGeminiModelPath(o.requestModel, gcpMethodGenerateContent)
+		}
 	} else {
-		pathSuffix = buildGCPModelPathSuffix(gcpModelPublisherGoogle, o.requestModel, gcpMethodGenerateContent)
+		// Using GCP OAuth2 authentication - use Vertex AI publisher path
+		if o.stream {
+			// For streaming requests, use the streamGenerateContent endpoint with SSE format.
+			pathSuffix = buildGCPModelPathSuffix(gcpModelPublisherGoogle, o.requestModel, gcpMethodStreamGenerateContent, "alt=sse")
+		} else {
+			pathSuffix = buildGCPModelPathSuffix(gcpModelPublisherGoogle, o.requestModel, gcpMethodGenerateContent)
+		}
 	}
 	gcpReq, err := o.openAIMessageToGeminiMessage(openAIReq, o.requestModel)
 	if err != nil {
@@ -93,6 +111,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) RequestBody(_ []byte, op
 		"path", pathSuffix,
 		"model", o.requestModel,
 		"stream", o.stream,
+		"use_gemini_path", o.useGeminiPath,
 		"body_length", len(gcpReqBody))
 
 	return headerMutation, bodyMutation, nil
@@ -228,11 +247,21 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) parseGCPStreamingChunks(
 	if err != nil {
 		return nil, err
 	}
+	
+	// Normalize line endings: replace \r\n with \n to handle both Windows and Unix line endings
+	// Gemini API uses \r\n\r\n as separator
+	bodyBytes = bytes.ReplaceAll(bodyBytes, []byte("\r\n"), []byte("\n"))
 	lines := bytes.Split(bodyBytes, []byte("\n\n"))
 
 	for idx, line := range lines {
 		// Remove "data: " prefix from SSE format if present.
 		line = bytes.TrimPrefix(line, []byte("data: "))
+		line = bytes.TrimSpace(line)
+		
+		// Skip empty lines
+		if len(line) == 0 {
+			continue
+		}
 
 		// Try to parse as JSON.
 		var chunk genai.GenerateContentResponse
