@@ -69,6 +69,36 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
+Create the name of the cluster role to use
+*/}}
+{{- define "ai-gateway-helm.controller.clusterRoleName" -}}
+{{- $existing := lookup "rbac.authorization.k8s.io/v1" "ClusterRole" "" (include "ai-gateway-helm.controller.serviceAccountName" .) }}
+{{- if $existing }}
+{{- (include "ai-gateway-helm.controller.serviceAccountName" .) }}
+{{- else }}
+{{- printf "%s:%s" (include "ai-gateway-helm.controller.serviceAccountName" .) .Release.Namespace }}
+{{- end }}
+{{- end }}
+
+{{- define "ai-gateway-helm.inference-pool.clusterRoleName" -}}
+{{- $existing := lookup "rbac.authorization.k8s.io/v1" "ClusterRole" "" "envoy-ai-gateway-inference-pool-reader" }}
+{{- if $existing }}
+{{- "envoy-ai-gateway-inference-pool-reader" }}
+{{- else }}
+{{- printf "%s:%s" "envoy-ai-gateway-inference-pool-reader" .Release.Namespace}}
+{{- end}}
+{{- end -}}
+
+{{- define "ai-gateway-helm.inference-pool.clusterRoleBindingName" -}}
+{{- $existing := lookup "rbac.authorization.k8s.io/v1" "ClusterRoleBinding" "" "envoy-ai-gateway-inference-pool-reader-binding" }}
+{{- if $existing }}
+{{- "envoy-ai-gateway-inference-pool-reader-binding" }}
+{{- else }}
+{{- printf "%s:%s" "envoy-ai-gateway-inference-pool-reader-binding" .Release.Namespace}}
+{{- end}}
+{{- end -}}
+
+{{/*
 Convert extraEnvVars array to semicolon-separated string for extProc
 */}}
 {{- define "ai-gateway-helm.extProc.envVarsString" -}}

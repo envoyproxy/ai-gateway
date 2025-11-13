@@ -165,7 +165,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	}
 
 	l.Info("starting external processor",
-		slog.String("version", version.Version),
+		slog.String("version", version.Parse()),
 		slog.String("address", flags.extProcAddr),
 		slog.String("configPath", flags.configPath),
 	)

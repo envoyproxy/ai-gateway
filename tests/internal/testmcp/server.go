@@ -64,9 +64,18 @@ func NewServer(opts *Options) *http.Server {
 			},
 			CompletionHandler: func(_ context.Context, request *mcp.CompleteRequest) (*mcp.CompleteResult, error) {
 				logger.Printf("Complete request: %+v", request)
+				if request.Params.Ref.Name != "" {
+					return &mcp.CompleteResult{
+						Completion: mcp.CompletionResultDetails{
+							Values: []string{"python", "pytorch", "pyside"},
+						},
+					}, nil
+				}
+
+				updatedURI := strings.Replace(request.Params.Ref.URI, "{id}", request.Params.Argument.Value, 1)
 				return &mcp.CompleteResult{
 					Completion: mcp.CompletionResultDetails{
-						Values: []string{"python", "pytorch", "pyside"},
+						Values: []string{updatedURI},
 					},
 				}, nil
 			},

@@ -54,6 +54,17 @@ type MCPServer struct {
 
 	// IncludeTools specifies which tools will be available from the server.
 	IncludeTools []string `json:"includeTools,omitempty"`
+
+	// Command and Args are used for stdio MCP servers.
+	// These values are only used during configuration parsing and are never used to render
+	// the final configuration.
+	// When stdio MCP servers are configured, we will run local Streamable HTTP proxies for
+	// each command and update this MCP configuration to point to the local HTTP proxies.
+
+	// Command is the executable to run.
+	Command string `json:"command,omitempty"`
+	// Args are the command-line arguments.
+	Args []string `json:"args,omitempty"`
 }
 
 // AddMCPServers adds MCP server configurations to the ConfigData.
@@ -126,11 +137,10 @@ func AddMCPServers(data *ConfigData, input *MCPServers) error {
 
 		// Create Backend for this MCP server
 		backend := Backend{
-			Name:             name,
-			Hostname:         serverURL.Hostname(),
-			OriginalHostname: serverURL.Hostname(),
-			Port:             port,
-			NeedsTLS:         serverURL.Scheme == "https",
+			Name:     name,
+			Hostname: serverURL.Hostname(),
+			Port:     port,
+			NeedsTLS: serverURL.Scheme == "https",
 		}
 
 		// Create MCPBackendRef referencing the backend
