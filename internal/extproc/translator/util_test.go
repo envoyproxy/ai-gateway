@@ -8,7 +8,6 @@ package translator
 import (
 	"testing"
 
-	"github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -72,93 +71,6 @@ func TestParseDataURI(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, tc.wantType, contentType)
 				require.Equal(t, tc.wantData, data)
-			}
-		})
-	}
-}
-
-// TestBuildRequestMutations tests the buildRequestMutations function.
-func TestBuildRequestMutations(t *testing.T) {
-	tests := []struct {
-		name        string
-		path        string
-		reqBody     []byte
-		wantHeaders []*corev3.HeaderValueOption
-		wantBody    []byte
-	}{
-		{
-			name:    "Path and Body provided",
-			path:    "/v1/test",
-			reqBody: []byte(`{"key":"value"}`),
-			wantHeaders: []*corev3.HeaderValueOption{
-				{
-					Header: &corev3.HeaderValue{
-						Key:      ":path",
-						RawValue: []byte("/v1/test"),
-					},
-				},
-				{
-					Header: &corev3.HeaderValue{
-						Key:      httpHeaderKeyContentLength,
-						RawValue: []byte("15"),
-					},
-				},
-			},
-			wantBody: []byte(`{"key":"value"}`),
-		},
-		{
-			name:    "Only Path provided",
-			path:    "/v1/another-test",
-			reqBody: []byte{},
-			wantHeaders: []*corev3.HeaderValueOption{
-				{
-					Header: &corev3.HeaderValue{
-						Key:      ":path",
-						RawValue: []byte("/v1/another-test"),
-					},
-				},
-			},
-			wantBody: nil,
-		},
-		{
-			name:    "Only Body provided",
-			path:    "",
-			reqBody: []byte("some body"),
-			wantHeaders: []*corev3.HeaderValueOption{
-				{
-					Header: &corev3.HeaderValue{
-						Key:      httpHeaderKeyContentLength,
-						RawValue: []byte("9"),
-					},
-				},
-			},
-			wantBody: []byte("some body"),
-		},
-		{
-			name:        "Neither Path nor Body provided",
-			path:        "",
-			reqBody:     []byte{},
-			wantHeaders: nil,
-			wantBody:    nil,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			headerMutation, bodyMutation := buildRequestMutations(tc.path, tc.reqBody)
-
-			if tc.wantHeaders == nil {
-				require.Nil(t, headerMutation)
-			} else {
-				require.NotNil(t, headerMutation)
-				require.ElementsMatch(t, tc.wantHeaders, headerMutation.SetHeaders)
-			}
-
-			if tc.wantBody == nil {
-				require.Nil(t, bodyMutation)
-			} else {
-				require.NotNil(t, bodyMutation)
-				require.Equal(t, tc.wantBody, bodyMutation.GetBody())
 			}
 		})
 	}

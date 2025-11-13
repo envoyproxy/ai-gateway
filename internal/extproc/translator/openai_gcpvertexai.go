@@ -11,9 +11,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/google/uuid"
 	"google.golang.org/genai"
 	"k8s.io/utils/ptr"
@@ -91,7 +90,7 @@ type openAIToGCPVertexAITranslatorV1ChatCompletion struct {
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody] for GCP Gemini.
 // This method translates an OpenAI ChatCompletion request to a GCP Gemini API request.
 func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	o.requestModel = openAIReq.Model
 	if o.modelNameOverride != "" {
@@ -103,37 +102,35 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) RequestBody(_ []byte, op
 	o.stream = openAIReq.Stream
 
 	// Choose the correct endpoint based on streaming.
-	var pathSuffix string
+	var path string
 	if o.stream {
 		// For streaming requests, use the streamGenerateContent endpoint with SSE format.
-		pathSuffix = buildGCPModelPathSuffix(gcpModelPublisherGoogle, o.requestModel, gcpMethodStreamGenerateContent, "alt=sse")
+		path = buildGCPModelPathSuffix(gcpModelPublisherGoogle, o.requestModel, gcpMethodStreamGenerateContent, "alt=sse")
 	} else {
-		pathSuffix = buildGCPModelPathSuffix(gcpModelPublisherGoogle, o.requestModel, gcpMethodGenerateContent)
+		path = buildGCPModelPathSuffix(gcpModelPublisherGoogle, o.requestModel, gcpMethodGenerateContent)
 	}
 	gcpReq, err := o.openAIMessageToGeminiMessage(openAIReq, o.requestModel)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error converting OpenAI request to Gemini request: %w", err)
 	}
-	gcpReqBody, err := json.Marshal(gcpReq)
+	newBody, err = json.Marshal(gcpReq)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error marshaling Gemini request: %w", err)
 	}
-
-	headerMutation, bodyMutation = buildRequestMutations(pathSuffix, gcpReqBody)
-	return headerMutation, bodyMutation, nil
+	newHeaders = []internalapi.Header{
+		{pathHeaderName, path},
+		{contentLengthHeaderName, strconv.Itoa(len(newBody))},
+	}
+	return
 }
 
 // ResponseHeaders implements [OpenAIChatCompletionTranslator.ResponseHeaders].
 func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseHeaders(_ map[string]string) (
-	headerMutation *extprocv3.HeaderMutation, err error,
+	newHeaders []internalapi.Header, err error,
 ) {
 	if o.stream {
 		// For streaming responses, set content-type to text/event-stream to match OpenAI API.
-		headerMutation = &extprocv3.HeaderMutation{
-			SetHeaders: []*corev3.HeaderValueOption{
-				{Header: &corev3.HeaderValue{Key: contentTypeHeaderName, Value: eventStreamContentType}},
-			},
-		}
+		newHeaders = []internalapi.Header{{contentTypeHeaderName, eventStreamContentType}}
 	}
 	return
 }
@@ -144,7 +141,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseHeaders(_ map[st
 // is exactly what gets executed. The response does not contain a model field, so we return
 // the request model that was originally sent.
 func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel string, err error,
+	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel string, err error,
 ) {
 	if o.stream {
 		return o.handleStreamingResponse(body, endOfStream, span)
@@ -162,7 +159,6 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(_ map[strin
 		responseModel = gcpResp.ModelVersion
 	}
 
-	var openAIRespBytes []byte
 	// Convert to OpenAI format.
 	openAIResp, err := o.geminiResponseToOpenAIMessage(gcpResp, responseModel)
 	if err != nil {
@@ -170,32 +166,32 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(_ map[strin
 	}
 
 	// Marshal the OpenAI response.
-	openAIRespBytes, err = json.Marshal(openAIResp)
+	newBody, err = json.Marshal(openAIResp)
 	if err != nil {
 		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("error marshaling OpenAI response: %w", err)
 	}
 
 	// Update token usage if available.
-	var usage LLMTokenUsage
 	if gcpResp.UsageMetadata != nil {
-		usage = LLMTokenUsage{
+		tokenUsage = LLMTokenUsage{
 			InputTokens:  uint32(gcpResp.UsageMetadata.PromptTokenCount),     // nolint:gosec
 			OutputTokens: uint32(gcpResp.UsageMetadata.CandidatesTokenCount), // nolint:gosec
 			TotalTokens:  uint32(gcpResp.UsageMetadata.TotalTokenCount),      // nolint:gosec
 		}
 	}
 
-	headerMutation, bodyMutation = buildRequestMutations("", openAIRespBytes)
 	if span != nil {
 		span.RecordResponse(openAIResp)
 	}
-	return headerMutation, bodyMutation, usage, responseModel, nil
+	newHeaders = []internalapi.Header{{contentLengthHeaderName, strconv.Itoa(len(newBody))}}
+	return
 }
 
 // handleStreamingResponse handles streaming responses from GCP Gemini API.
 func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel string, err error,
+	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel string, err error,
 ) {
+	responseModel = o.requestModel
 	// Parse GCP streaming chunks from buffered body and current input.
 	chunks, err := o.parseGCPStreamingChunks(body)
 	if err != nil {
@@ -232,16 +228,13 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(
 			span.RecordResponseChunk(openAIChunk)
 		}
 	}
-	mut := &extprocv3.BodyMutation_Body{
-		Body: sseChunkBuf.Bytes(),
-	}
+	newBody = sseChunkBuf.Bytes()
 
 	if endOfStream {
 		// Add the [DONE] marker to indicate end of stream as per OpenAI API specification.
-		mut.Body = append(mut.Body, []byte("data: [DONE]\n")...)
+		newBody = append(newBody, []byte("data: [DONE]\n")...)
 	}
-
-	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, tokenUsage, o.requestModel, nil
+	return
 }
 
 // parseGCPStreamingChunks parses the buffered body to extract complete JSON chunks.
@@ -466,7 +459,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMe
 // Translate GCP Vertex AI exceptions to OpenAI error type.
 // GCP error responses typically contain JSON with error details or plain text error messages.
 func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseError(respHeaders map[string]string, body io.Reader) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	var buf []byte
 	buf, err = io.ReadAll(body)
@@ -500,10 +493,13 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseError(respHeader
 		openaiError.Error.Message = string(buf)
 	}
 
-	errBdy, err := json.Marshal(openaiError)
+	newBody, err = json.Marshal(openaiError)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to marshal error body: %w", err)
 	}
-	headerMutation, bodyMutation = buildRequestMutations("", errBdy)
-	return headerMutation, bodyMutation, nil
+	newHeaders = []internalapi.Header{
+		{contentTypeHeaderName, jsonContentType},
+		{contentLengthHeaderName, strconv.Itoa(len(newBody))},
+	}
+	return
 }

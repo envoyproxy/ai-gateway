@@ -105,13 +105,13 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.NotNil(t, bm)
 
 		// Check the path header.
-		pathHeader := hm.SetHeaders[0]
-		require.Equal(t, ":path", pathHeader.Header.Key)
+		pathHeader := hm[0]
+		require.Equal(t, pathHeaderName, pathHeader.Key())
 		expectedPath := fmt.Sprintf("publishers/anthropic/models/%s:rawPredict", openAIReq.Model)
-		require.Equal(t, expectedPath, string(pathHeader.Header.RawValue))
+		require.Equal(t, expectedPath, pathHeader.Value())
 
 		// Check the body content.
-		body := bm.GetBody()
+		body := bm
 		require.NotNil(t, body)
 		// Model should NOT be present in the body for GCP Vertex.
 		require.False(t, gjson.GetBytes(body, "model").Exists())
@@ -130,10 +130,10 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.NotNil(t, hm)
 
 		// Check that the :path header uses the override model name.
-		pathHeader := hm.SetHeaders[0]
-		require.Equal(t, ":path", pathHeader.Header.Key)
+		pathHeader := hm[0]
+		require.Equal(t, pathHeaderName, pathHeader.Key())
 		expectedPath := fmt.Sprintf("publishers/anthropic/models/%s:rawPredict", overrideModelName)
-		require.Equal(t, expectedPath, string(pathHeader.Header.RawValue))
+		require.Equal(t, expectedPath, pathHeader.Value())
 	})
 
 	t.Run("Image Content Request", func(t *testing.T) {
@@ -161,7 +161,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
 		_, bm, err := translator.RequestBody(nil, imageReq, false)
 		require.NoError(t, err)
-		body := bm.GetBody()
+		body := bm
 		imageBlock := gjson.GetBytes(body, "messages.0.content.1")
 		require.Equal(t, "image", imageBlock.Get("type").String())
 		require.Equal(t, "base64", imageBlock.Get("source.type").String())
@@ -185,7 +185,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
 		_, bm, err := translator.RequestBody(nil, multiSystemReq, false)
 		require.NoError(t, err)
-		body := bm.GetBody()
+		body := bm
 		require.Equal(t, firstMsg, gjson.GetBytes(body, "system.0.text").String())
 		require.Equal(t, secondMsg, gjson.GetBytes(body, "system.1.text").String())
 		require.Equal(t, thirdMsg, gjson.GetBytes(body, "messages.0.content.0.text").String())
@@ -204,12 +204,12 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.NotNil(t, hm)
 
 		// Check that the :path header uses the streamRawPredict specifier.
-		pathHeader := hm.SetHeaders
-		require.Equal(t, ":path", pathHeader[0].Header.Key)
+		pathHeader := hm
+		require.Equal(t, pathHeaderName, pathHeader[0].Key())
 		expectedPath := fmt.Sprintf("publishers/anthropic/models/%s:streamRawPredict", streamReq.Model)
-		require.Equal(t, expectedPath, string(pathHeader[0].Header.RawValue))
+		require.Equal(t, expectedPath, pathHeader[0].Value())
 
-		body := bm.GetBody()
+		body := bm
 		require.True(t, gjson.GetBytes(body, "stream").Bool(), `body should contain "stream": true`)
 	})
 
@@ -299,7 +299,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.NotNil(t, bm)
 
 		// Check that the anthropic_version in the body uses the custom version.
-		body := bm.GetBody()
+		body := bm
 		require.Equal(t, customAPIVersion, gjson.GetBytes(body, "anthropic_version").String())
 	})
 	t.Run("Request with Thinking enabled", func(t *testing.T) {
@@ -318,7 +318,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.NoError(t, err)
 		require.NotNil(t, bm)
 
-		body := bm.GetBody()
+		body := bm
 		require.NotNil(t, body)
 
 		thinkingBlock := gjson.GetBytes(body, "thinking")
@@ -342,7 +342,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.NoError(t, err)
 		require.NotNil(t, bm)
 
-		body := bm.GetBody()
+		body := bm
 		require.NotNil(t, body)
 
 		thinkingBlock := gjson.GetBytes(body, "thinking")
@@ -481,11 +481,11 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 			require.NotNil(t, hm)
 			require.NotNil(t, bm)
 
-			newBody := bm.GetBody()
+			newBody := bm
 			require.NotNil(t, newBody)
-			require.Len(t, hm.SetHeaders, 1)
-			require.Equal(t, "content-length", hm.SetHeaders[0].Header.Key)
-			require.Equal(t, strconv.Itoa(len(newBody)), string(hm.SetHeaders[0].Header.RawValue))
+			require.Len(t, hm, 1)
+			require.Equal(t, contentLengthHeaderName, hm[0].Key())
+			require.Equal(t, strconv.Itoa(len(newBody)), hm[0].Value())
 
 			var gotResp openai.ChatCompletionResponse
 			err = json.Unmarshal(newBody, &gotResp)
@@ -894,15 +894,14 @@ func TestOpenAIToGCPAnthropicTranslator_ResponseError(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, bm)
 			require.NotNil(t, hm)
-
-			newBody := bm.GetBody()
-			require.NotNil(t, newBody)
-			require.Len(t, hm.SetHeaders, 1)
-			require.Equal(t, "content-length", hm.SetHeaders[0].Header.Key)
-			require.Equal(t, strconv.Itoa(len(newBody)), string(hm.SetHeaders[0].Header.RawValue))
+			require.Len(t, hm, 2)
+			require.Equal(t, contentTypeHeaderName, hm[0].Key())
+			require.Equal(t, jsonContentType, hm[0].Value()) //nolint:testifylint
+			require.Equal(t, contentLengthHeaderName, hm[1].Key())
+			require.Equal(t, strconv.Itoa(len(bm)), hm[1].Value())
 
 			var gotError openai.Error
-			err = json.Unmarshal(newBody, &gotError)
+			err = json.Unmarshal(bm, &gotError)
 			require.NoError(t, err)
 
 			if diff := cmp.Diff(tt.expectedOutput, gotError); diff != "" {

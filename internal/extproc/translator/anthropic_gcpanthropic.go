@@ -9,8 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
-
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"strconv"
 
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -35,7 +34,7 @@ type anthropicToGCPAnthropicTranslator struct {
 // RequestBody implements [AnthropicMessagesTranslator.RequestBody] for Anthropic to GCP Anthropic translation.
 // This handles the transformation from native Anthropic format to GCP Anthropic format.
 func (a *anthropicToGCPAnthropicTranslator) RequestBody(_ []byte, body *anthropicschema.MessagesRequest, _ bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	// Extract model name for GCP endpoint from the parsed request.
 	modelName := body.GetModel()
@@ -62,7 +61,7 @@ func (a *anthropicToGCPAnthropicTranslator) RequestBody(_ []byte, body *anthropi
 	anthropicReq[anthropicVersionKey] = a.apiVersion
 
 	// Marshal the modified request.
-	mutatedBody, err := json.Marshal(anthropicReq)
+	newBody, err = json.Marshal(anthropicReq)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to marshal modified request: %w", err)
 	}
@@ -73,8 +72,7 @@ func (a *anthropicToGCPAnthropicTranslator) RequestBody(_ []byte, body *anthropi
 		specifier = "streamRawPredict"
 	}
 
-	pathSuffix := buildGCPModelPathSuffix(gcpModelPublisherAnthropic, a.requestModel, specifier)
-
-	headerMutation, bodyMutation = buildRequestMutations(pathSuffix, mutatedBody)
+	path := buildGCPModelPathSuffix(gcpModelPublisherAnthropic, a.requestModel, specifier)
+	newHeaders = []internalapi.Header{{pathHeaderName, path}, {contentLengthHeaderName, strconv.Itoa(len(newBody))}}
 	return
 }

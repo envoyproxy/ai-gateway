@@ -120,7 +120,7 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseHeaders(t *testing.T)
 		res, err := p.ProcessResponseHeaders(t.Context(), inHeaders)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseHeaders).ResponseHeaders.Response
-		require.Equal(t, mt.retHeaderMutation, commonRes.HeaderMutation)
+		require.Empty(t, commonRes.HeaderMutation.SetHeaders)
 		mm.RequireRequestNotCompleted(t)
 	})
 }
@@ -146,8 +146,8 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 	})
 	t.Run("ok", func(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("some-body"), EndOfStream: true}
-		expBodyMut := &extprocv3.BodyMutation{}
-		expHeadMut := &extprocv3.HeaderMutation{}
+		expBodyMut := []byte("some body")
+		expHeadMut := []internalapi.Header{{"foo", "bar"}}
 		mm := &mockEmbeddingsMetrics{}
 		mt := &mockEmbeddingTranslator{
 			t: t, expResponseBody: inBody,
@@ -185,8 +185,10 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 		res, err := p.ProcessResponseBody(t.Context(), inBody)
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
-		require.Equal(t, expBodyMut, commonRes.BodyMutation)
-		require.Equal(t, expHeadMut, commonRes.HeaderMutation)
+		require.Equal(t, string(expBodyMut), string(commonRes.BodyMutation.GetBody()))
+		require.Len(t, commonRes.HeaderMutation.SetHeaders, 1)
+		require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
+		require.Equal(t, []byte("bar"), commonRes.HeaderMutation.SetHeaders[0].Header.RawValue)
 		mm.RequireRequestSuccess(t)
 		mm.RequireTokenUsage(t, 123)
 
@@ -328,10 +330,8 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) 
 	t.Run("ok", func(t *testing.T) {
 		someBody := embeddingBodyFromModel(t, "some-model")
 		headers := map[string]string{":path": "/foo", internalapi.ModelNameHeaderKeyDefault: "some-model"}
-		headerMut := &extprocv3.HeaderMutation{
-			SetHeaders: []*corev3.HeaderValueOption{{Header: &corev3.HeaderValue{Key: "foo", RawValue: []byte("bar")}}},
-		}
-		bodyMut := &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: []byte("some body")}}
+		headerMut := []internalapi.Header{{"a", "b"}}
+		bodyMut := []byte("some body")
 
 		var expBody openai.EmbeddingRequest
 		require.NoError(t, json.Unmarshal(someBody, &expBody))
@@ -352,8 +352,12 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) 
 		require.Equal(t, mt, p.translator)
 		require.NotNil(t, resp)
 		commonRes := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response
-		require.Equal(t, headerMut, commonRes.HeaderMutation)
-		require.Equal(t, bodyMut, commonRes.BodyMutation)
+		require.Len(t, commonRes.HeaderMutation.SetHeaders, 2)
+		require.Equal(t, "a", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
+		require.Equal(t, []byte("b"), commonRes.HeaderMutation.SetHeaders[0].Header.RawValue)
+		require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[1].Header.Key)
+		require.Equal(t, []byte("mock-auth-handler"), commonRes.HeaderMutation.SetHeaders[1].Header.RawValue)
+		require.Equal(t, string(bodyMut), string(commonRes.BodyMutation.GetBody()))
 
 		mm.RequireRequestNotCompleted(t)
 		// Verify models were set
@@ -691,11 +695,10 @@ func TestEmbeddingsProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutatio
 		}
 
 		mockTranslator := mockEmbeddingTranslator{
-			t:                 t,
-			expRequestBody:    requestBody,
-			retHeaderMutation: &extprocv3.HeaderMutation{},
-			retBodyMutation:   &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: requestBodyRaw}},
-			retErr:            nil,
+			t:               t,
+			expRequestBody:  requestBody,
+			retBodyMutation: requestBodyRaw,
+			retErr:          nil,
 		}
 
 		embeddingMetrics := &mockEmbeddingsMetrics{}

@@ -301,8 +301,8 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 		input             openai.ChatCompletionRequest
 		onRetry           bool
 		wantError         bool
-		wantHeaderMut     *extprocv3.HeaderMutation
-		wantBody          *extprocv3.BodyMutation
+		wantHeaderMut     []internalapi.Header
+		wantBody          []byte
 	}{
 		{
 			name: "basic request",
@@ -336,27 +336,11 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			onRetry:   false,
 			wantError: false,
 			// Since these are stub implementations, we expect nil mutations.
-			wantHeaderMut: &extprocv3.HeaderMutation{
-				SetHeaders: []*corev3.HeaderValueOption{
-					{
-						Header: &corev3.HeaderValue{
-							Key:      ":path",
-							RawValue: []byte("publishers/google/models/gemini-pro:generateContent"),
-						},
-					},
-					{
-						Header: &corev3.HeaderValue{
-							Key:      "Content-Length",
-							RawValue: []byte("258"),
-						},
-					},
-				},
+			wantHeaderMut: []internalapi.Header{
+				{":path", "publishers/google/models/gemini-pro:generateContent"},
+				{"content-length", "258"},
 			},
-			wantBody: &extprocv3.BodyMutation{
-				Mutation: &extprocv3.BodyMutation_Body{
-					Body: wantBdy,
-				},
-			},
+			wantBody: wantBdy,
 		},
 		{
 			name: "basic request with streaming",
@@ -390,27 +374,11 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			onRetry:   false,
 			wantError: false,
 			// Since these are stub implementations, we expect nil mutations.
-			wantHeaderMut: &extprocv3.HeaderMutation{
-				SetHeaders: []*corev3.HeaderValueOption{
-					{
-						Header: &corev3.HeaderValue{
-							Key:      ":path",
-							RawValue: []byte("publishers/google/models/gemini-pro:streamGenerateContent?alt=sse"),
-						},
-					},
-					{
-						Header: &corev3.HeaderValue{
-							Key:      "Content-Length",
-							RawValue: []byte("258"),
-						},
-					},
-				},
+			wantHeaderMut: []internalapi.Header{
+				{":path", "publishers/google/models/gemini-pro:streamGenerateContent?alt=sse"},
+				{"content-length", "258"},
 			},
-			wantBody: &extprocv3.BodyMutation{
-				Mutation: &extprocv3.BodyMutation_Body{
-					Body: wantBdy,
-				},
-			},
+			wantBody: wantBdy,
 		},
 		{
 			name:              "model name override",
@@ -445,27 +413,11 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			onRetry:   false,
 			wantError: false,
 			// Since these are stub implementations, we expect nil mutations.
-			wantHeaderMut: &extprocv3.HeaderMutation{
-				SetHeaders: []*corev3.HeaderValueOption{
-					{
-						Header: &corev3.HeaderValue{
-							Key:      ":path",
-							RawValue: []byte("publishers/google/models/gemini-flash:generateContent"),
-						},
-					},
-					{
-						Header: &corev3.HeaderValue{
-							Key:      "Content-Length",
-							RawValue: []byte("258"),
-						},
-					},
-				},
+			wantHeaderMut: []internalapi.Header{
+				{":path", "publishers/google/models/gemini-flash:generateContent"},
+				{"content-length", "258"},
 			},
-			wantBody: &extprocv3.BodyMutation{
-				Mutation: &extprocv3.BodyMutation_Body{
-					Body: wantBdy,
-				},
-			},
+			wantBody: wantBdy,
 		},
 		{
 			name: "request with tools",
@@ -516,27 +468,11 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			},
 			onRetry:   false,
 			wantError: false,
-			wantHeaderMut: &extprocv3.HeaderMutation{
-				SetHeaders: []*corev3.HeaderValueOption{
-					{
-						Header: &corev3.HeaderValue{
-							Key:      ":path",
-							RawValue: []byte("publishers/google/models/gemini-pro:generateContent"),
-						},
-					},
-					{
-						Header: &corev3.HeaderValue{
-							Key:      "Content-Length",
-							RawValue: []byte("518"),
-						},
-					},
-				},
+			wantHeaderMut: []internalapi.Header{
+				{":path", "publishers/google/models/gemini-pro:generateContent"},
+				{"content-length", "518"},
 			},
-			wantBody: &extprocv3.BodyMutation{
-				Mutation: &extprocv3.BodyMutation_Body{
-					Body: wantBdyWithTools,
-				},
-			},
+			wantBody: wantBdyWithTools,
 		},
 		{
 			name: "Request with gcp thinking fields",
@@ -583,27 +519,11 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			},
 			onRetry:   false,
 			wantError: false,
-			wantHeaderMut: &extprocv3.HeaderMutation{
-				SetHeaders: []*corev3.HeaderValueOption{
-					{
-						Header: &corev3.HeaderValue{
-							Key:      ":path",
-							RawValue: []byte("publishers/google/models/gemini-1.5-pro:generateContent"),
-						},
-					},
-					{
-						Header: &corev3.HeaderValue{
-							Key:      "Content-Length",
-							RawValue: []byte("396"),
-						},
-					},
-				},
+			wantHeaderMut: []internalapi.Header{
+				{":path", "publishers/google/models/gemini-1.5-pro:generateContent"},
+				{"content-length", "396"},
 			},
-			wantBody: &extprocv3.BodyMutation{
-				Mutation: &extprocv3.BodyMutation_Body{
-					Body: wantBdyWithVendorFields,
-				},
-			},
+			wantBody: wantBdyWithVendorFields,
 		},
 		{
 			name: "Request with gcp safety setting fields",
@@ -647,27 +567,11 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			},
 			onRetry:   false,
 			wantError: false,
-			wantHeaderMut: &extprocv3.HeaderMutation{
-				SetHeaders: []*corev3.HeaderValueOption{
-					{
-						Header: &corev3.HeaderValue{
-							Key:      ":path",
-							RawValue: []byte("publishers/google/models/gemini-1.5-pro:generateContent"),
-						},
-					},
-					{
-						Header: &corev3.HeaderValue{
-							Key:      "Content-Length",
-							RawValue: []byte("395"),
-						},
-					},
-				},
+			wantHeaderMut: []internalapi.Header{
+				{":path", "publishers/google/models/gemini-1.5-pro:generateContent"},
+				{"content-length", "395"},
 			},
-			wantBody: &extprocv3.BodyMutation{
-				Mutation: &extprocv3.BodyMutation_Body{
-					Body: wantBdyWithSafetySettingFields,
-				},
-			},
+			wantBody: wantBdyWithSafetySettingFields,
 		},
 		{
 			name: "Request with guided choice fields",
@@ -704,27 +608,11 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			},
 			onRetry:   false,
 			wantError: false,
-			wantHeaderMut: &extprocv3.HeaderMutation{
-				SetHeaders: []*corev3.HeaderValueOption{
-					{
-						Header: &corev3.HeaderValue{
-							Key:      ":path",
-							RawValue: []byte("publishers/google/models/gemini-1.5-pro:generateContent"),
-						},
-					},
-					{
-						Header: &corev3.HeaderValue{
-							Key:      "Content-Length",
-							RawValue: []byte("404"),
-						},
-					},
-				},
+			wantHeaderMut: []internalapi.Header{
+				{":path", "publishers/google/models/gemini-1.5-pro:generateContent"},
+				{"content-length", "404"},
 			},
-			wantBody: &extprocv3.BodyMutation{
-				Mutation: &extprocv3.BodyMutation_Body{
-					Body: wantBdyWithGuidedChoice,
-				},
-			},
+			wantBody: wantBdyWithGuidedChoice,
 		},
 		{
 			name: "Request with guided regex fields",
@@ -761,27 +649,11 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			},
 			onRetry:   false,
 			wantError: false,
-			wantHeaderMut: &extprocv3.HeaderMutation{
-				SetHeaders: []*corev3.HeaderValueOption{
-					{
-						Header: &corev3.HeaderValue{
-							Key:      ":path",
-							RawValue: []byte("publishers/google/models/gemini-1.5-pro:generateContent"),
-						},
-					},
-					{
-						Header: &corev3.HeaderValue{
-							Key:      "Content-Length",
-							RawValue: []byte("408"),
-						},
-					},
-				},
+			wantHeaderMut: []internalapi.Header{
+				{":path", "publishers/google/models/gemini-1.5-pro:generateContent"},
+				{"content-length", "408"},
 			},
-			wantBody: &extprocv3.BodyMutation{
-				Mutation: &extprocv3.BodyMutation_Body{
-					Body: wantBdyWithGuidedRegex,
-				},
-			},
+			wantBody: wantBdyWithGuidedRegex,
 		},
 	}
 
@@ -795,7 +667,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			}
 			require.NoError(t, err)
 
-			if diff := cmp.Diff(tc.wantHeaderMut, headerMut, cmpopts.IgnoreUnexported(extprocv3.HeaderMutation{}, corev3.HeaderValueOption{}, corev3.HeaderValue{})); diff != "" {
+			if diff := cmp.Diff(tc.wantHeaderMut, headerMut); diff != "" {
 				t.Errorf("HeaderMutation mismatch (-want +got):\n%s", diff)
 			}
 
@@ -808,11 +680,10 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 
 func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseHeaders(t *testing.T) {
 	tests := []struct {
-		name          string
-		modelName     string
-		headers       map[string]string
-		wantError     bool
-		wantHeaderMut *extprocv3.HeaderMutation
+		name      string
+		modelName string
+		headers   map[string]string
+		wantError bool
 	}{
 		{
 			name:      "basic headers",
@@ -820,8 +691,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseHeaders(t *testin
 			headers: map[string]string{
 				"content-type": "application/json",
 			},
-			wantError:     false,
-			wantHeaderMut: nil,
+			wantError: false,
 		},
 		// TODO: Add more test cases when implementation is ready.
 	}
@@ -829,16 +699,12 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseHeaders(t *testin
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			translator := NewChatCompletionOpenAIToGCPVertexAITranslator(tc.modelName)
-			headerMut, err := translator.ResponseHeaders(tc.headers)
+			_, err := translator.ResponseHeaders(tc.headers)
 			if tc.wantError {
 				assert.Error(t, err)
 				return
 			}
 			require.NoError(t, err)
-
-			if diff := cmp.Diff(tc.wantHeaderMut, headerMut, cmpopts.IgnoreUnexported(extprocv3.HeaderMutation{}, corev3.HeaderValueOption{}, corev3.HeaderValue{})); diff != "" {
-				t.Errorf("HeaderMutation mismatch (-want +got):\n%s", diff)
-			}
 		})
 	}
 }
@@ -852,8 +718,8 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 		stream            bool
 		endOfStream       bool
 		wantError         bool
-		wantHeaderMut     *extprocv3.HeaderMutation
-		wantBodyMut       *extprocv3.BodyMutation
+		wantHeaderMut     []internalapi.Header
+		wantBodyMut       []byte
 		wantTokenUsage    LLMTokenUsage
 	}{
 		{
@@ -886,16 +752,10 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
                     "thoughtsTokenCount": 10
 				}
 			}`,
-			endOfStream: true,
-			wantError:   false,
-			wantHeaderMut: &extprocv3.HeaderMutation{
-				SetHeaders: []*corev3.HeaderValueOption{{
-					Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("353")},
-				}},
-			},
-			wantBodyMut: &extprocv3.BodyMutation{
-				Mutation: &extprocv3.BodyMutation_Body{
-					Body: []byte(`{
+			endOfStream:   true,
+			wantError:     false,
+			wantHeaderMut: []internalapi.Header{{contentLengthHeaderName, "353"}},
+			wantBodyMut: []byte(`{
     "choices": [
         {
             "finish_reason": "stop",
@@ -919,8 +779,6 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
         "total_tokens": 25
     }
 }`),
-				},
-			},
 			wantTokenUsage: LLMTokenUsage{
 				InputTokens:  10,
 				OutputTokens: 15,
@@ -968,16 +826,10 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 					"totalTokenCount": 20
 				}
 			}`,
-			endOfStream: true,
-			wantError:   false,
-			wantHeaderMut: &extprocv3.HeaderMutation{
-				SetHeaders: []*corev3.HeaderValueOption{{
-					Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("515")},
-				}},
-			},
-			wantBodyMut: &extprocv3.BodyMutation{
-				Mutation: &extprocv3.BodyMutation_Body{
-					Body: []byte(`{
+			endOfStream:   true,
+			wantError:     false,
+			wantHeaderMut: []internalapi.Header{{contentLengthHeaderName, "515"}},
+			wantBodyMut: []byte(`{
     "choices": [
         {
             "finish_reason": "stop",
@@ -1011,8 +863,6 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
         "total_tokens": 20
     }
 }`),
-				},
-			},
 			wantTokenUsage: LLMTokenUsage{
 				InputTokens:  8,
 				OutputTokens: 12,
@@ -1024,21 +874,11 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			respHeaders: map[string]string{
 				"content-type": "application/json",
 			},
-			body:        `{}`,
-			endOfStream: true,
-			wantError:   false,
-			wantHeaderMut: &extprocv3.HeaderMutation{
-				SetHeaders: []*corev3.HeaderValueOption{
-					{
-						Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("28")},
-					},
-				},
-			},
-			wantBodyMut: &extprocv3.BodyMutation{
-				Mutation: &extprocv3.BodyMutation_Body{
-					Body: []byte(`{"object":"chat.completion"}`),
-				},
-			},
+			body:           `{}`,
+			endOfStream:    true,
+			wantError:      false,
+			wantHeaderMut:  []internalapi.Header{{contentLengthHeaderName, "28"}},
+			wantBodyMut:    []byte(`{"object":"chat.completion"}`),
 			wantTokenUsage: LLMTokenUsage{},
 		},
 		{
@@ -1053,14 +893,10 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			endOfStream:   true,
 			wantError:     false,
 			wantHeaderMut: nil,
-			wantBodyMut: &extprocv3.BodyMutation{
-				Mutation: &extprocv3.BodyMutation_Body{
-					Body: []byte(`data: {"choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{},"prompt_tokens_details":{}}}
+			wantBodyMut: []byte(`data: {"choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{},"prompt_tokens_details":{}}}
 
 data: [DONE]
 `),
-				},
-			},
 			wantTokenUsage: LLMTokenUsage{
 				InputTokens:  5,
 				OutputTokens: 3,
@@ -1096,16 +932,10 @@ data: [DONE]
 					"totalTokenCount": 14
 				}
 			}`,
-			endOfStream: true,
-			wantError:   false,
-			wantHeaderMut: &extprocv3.HeaderMutation{
-				SetHeaders: []*corev3.HeaderValueOption{{
-					Header: &corev3.HeaderValue{Key: "Content-Length", RawValue: []byte("306")},
-				}},
-			},
-			wantBodyMut: &extprocv3.BodyMutation{
-				Mutation: &extprocv3.BodyMutation_Body{
-					Body: []byte(`{
+			endOfStream:   true,
+			wantError:     false,
+			wantHeaderMut: []internalapi.Header{{contentLengthHeaderName, "306"}},
+			wantBodyMut: []byte(`{
     "choices": [
         {
             "finish_reason": "stop",
@@ -1126,8 +956,6 @@ data: [DONE]
         "total_tokens": 14
     }
 }`),
-				},
-			},
 			wantTokenUsage: LLMTokenUsage{
 				InputTokens:  6,
 				OutputTokens: 8,
@@ -1166,22 +994,13 @@ data: [DONE]
 }
 
 func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseHeaders(t *testing.T) {
-	eventStreamHeaderMutation := &extprocv3.HeaderMutation{
-		SetHeaders: []*corev3.HeaderValueOption{
-			{
-				Header: &corev3.HeaderValue{
-					Key:   "content-type",
-					Value: "text/event-stream",
-				},
-			},
-		},
-	}
+	eventStreamHeaderMutation := []internalapi.Header{{"content-type", "text/event-stream"}}
 
 	tests := []struct {
 		name            string
 		stream          bool
 		headers         map[string]string
-		wantMutation    *extprocv3.HeaderMutation
+		wantMutation    []internalapi.Header
 		wantContentType string
 	}{
 		{
@@ -1221,7 +1040,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseHeaders(
 			headerMut, err := translator.ResponseHeaders(tt.headers)
 			require.NoError(t, err)
 
-			if diff := cmp.Diff(tt.wantMutation, headerMut, cmpopts.IgnoreUnexported(extprocv3.HeaderMutation{}, corev3.HeaderValueOption{}, corev3.HeaderValue{})); diff != "" {
+			if diff := cmp.Diff(tt.wantMutation, headerMut); diff != "" {
 				t.Errorf("HeaderMutation mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -1237,7 +1056,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody(t *
 	// Mock GCP streaming response.
 	gcpChunk := `{"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"},"finishReason":"STOP"}]}`
 
-	headerMut, bodyMut, tokenUsage, _, err := translator.handleStreamingResponse(
+	headerMut, body, tokenUsage, _, err := translator.handleStreamingResponse(
 		bytes.NewReader([]byte(gcpChunk)),
 		false,
 		nil,
@@ -1245,11 +1064,9 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody(t *
 
 	require.Nil(t, headerMut)
 	require.NoError(t, err)
-	require.NotNil(t, bodyMut)
-	require.NotNil(t, bodyMut.Mutation)
+	require.NotNil(t, body)
 
 	// Check that the response is in SSE format.
-	body := bodyMut.Mutation.(*extprocv3.BodyMutation_Body).Body
 	bodyStr := string(body)
 	require.Contains(t, bodyStr, "data: ")
 	require.Contains(t, bodyStr, "chat.completion.chunk")
@@ -1738,7 +1555,7 @@ data: {"candidates": [
 		},
 	}
 
-	headerMut, bodyMut, _, _, err := translator.handleStreamingResponse(
+	headerMut, body, _, _, err := translator.handleStreamingResponse(
 		bytes.NewReader([]byte(gcpToolCallsChunk)),
 		false,
 		nil,
@@ -1746,10 +1563,8 @@ data: {"candidates": [
 
 	require.Nil(t, headerMut)
 	require.NoError(t, err)
-	require.NotNil(t, bodyMut)
-	require.NotNil(t, bodyMut.Mutation)
+	require.NotNil(t, body)
 
-	body := bodyMut.Mutation.(*extprocv3.BodyMutation_Body).Body
 	chatCompletionChunks := getChatCompletionResponseChunk(body)
 	require.Len(t, chatCompletionChunks, 2)
 
@@ -1763,18 +1578,16 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingEndOfStream(t *t
 	translator := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
 
 	// Test end of stream marker.
-	_, bodyMut, _, _, err := translator.handleStreamingResponse(
+	_, body, _, _, err := translator.handleStreamingResponse(
 		bytes.NewReader([]byte("")),
 		true,
 		nil,
 	)
 
 	require.NoError(t, err)
-	require.NotNil(t, bodyMut)
-	require.NotNil(t, bodyMut.Mutation)
+	require.NotNil(t, body)
 
 	// Check that [DONE] marker is present.
-	body := bodyMut.Mutation.(*extprocv3.BodyMutation_Body).Body
 	bodyStr := string(body)
 	require.Contains(t, bodyStr, "data: [DONE]")
 }
@@ -2278,7 +2091,7 @@ Details: [
 
 			body := strings.NewReader(tt.body)
 
-			headerMutation, bodyMutation, err := translator.ResponseError(tt.headers, body)
+			headerMutation, bodyBytes, err := translator.ResponseError(tt.headers, body)
 
 			if tt.expectedErrMsg != "" {
 				require.Error(t, err)
@@ -2290,12 +2103,11 @@ Details: [
 			if tt.description != "" {
 				require.NoError(t, err, tt.description)
 			}
-			require.NotNil(t, bodyMutation)
+			require.NotNil(t, bodyBytes)
 			require.NotNil(t, headerMutation)
 
 			// Verify that the body mutation contains a valid OpenAI error response.
 			var openaiError openai.Error
-			bodyBytes := bodyMutation.GetBody()
 			err = json.Unmarshal(bodyBytes, &openaiError)
 			require.NoError(t, err)
 
@@ -2305,8 +2117,8 @@ Details: [
 
 			// Verify header mutation contains content-length header.
 			foundContentLength := slices.ContainsFunc(
-				headerMutation.SetHeaders,
-				func(header *corev3.HeaderValueOption) bool { return header.Header.Key == httpHeaderKeyContentLength },
+				headerMutation,
+				func(header internalapi.Header) bool { return header.Key() == contentLengthHeaderName },
 			)
 			assert.True(t, foundContentLength, "content-length header should be set")
 		})
@@ -2314,22 +2126,19 @@ Details: [
 }
 
 func bodyMutTransformer(_ *testing.T) cmp.Option {
-	return cmp.Transformer("BodyMutationsToBodyBytes", func(bm *extprocv3.BodyMutation) map[string]any {
-		if bm == nil {
+	return cmp.Transformer("BodyMutationsToBodyBytes", func(raw []byte) map[string]any {
+		if raw == nil {
 			return nil
 		}
 
 		var bdy map[string]any
-		if body, ok := bm.Mutation.(*extprocv3.BodyMutation_Body); ok {
-			if err := json.Unmarshal(body.Body, &bdy); err != nil {
-				// The response body may not be valid JSON for streaming requests.
-				return map[string]any{
-					"BodyMutation": string(body.Body),
-				}
+		if err := json.Unmarshal(raw, &bdy); err != nil {
+			// The response body may not be valid JSON for streaming requests.
+			return map[string]any{
+				"BodyMutation": string(raw),
 			}
-			return bdy
 		}
-		return nil
+		return bdy
 	})
 }
 

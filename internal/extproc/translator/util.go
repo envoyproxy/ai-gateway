@@ -9,10 +9,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"regexp"
-	"strconv"
-
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	ext_procv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
@@ -44,48 +40,6 @@ func parseDataURI(uri string) (string, []byte, error) {
 		return "", nil, err
 	}
 	return contentType, bin, nil
-}
-
-// buildRequestMutations creates header and body mutations for GCP requests
-// It sets the ":path" header, the "content-length" header and the request body.
-func buildRequestMutations(path string, reqBody []byte) (*ext_procv3.HeaderMutation, *ext_procv3.BodyMutation) {
-	var bodyMutation *ext_procv3.BodyMutation
-	var headerMutation *ext_procv3.HeaderMutation
-
-	// Create header mutation.
-	if len(path) != 0 {
-		headerMutation = &ext_procv3.HeaderMutation{
-			SetHeaders: []*corev3.HeaderValueOption{
-				{
-					Header: &corev3.HeaderValue{
-						Key:      ":path",
-						RawValue: []byte(path),
-					},
-				},
-			},
-		}
-	}
-
-	// If the request body is not empty, we set the content-length header and create a body mutation.
-	if len(reqBody) != 0 {
-		if headerMutation == nil {
-			headerMutation = &ext_procv3.HeaderMutation{}
-		}
-		// Set the "content-length" header.
-		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
-			Header: &corev3.HeaderValue{
-				Key:      httpHeaderKeyContentLength,
-				RawValue: []byte(strconv.Itoa(len(reqBody))),
-			},
-		})
-
-		// Create body mutation.
-		bodyMutation = &ext_procv3.BodyMutation{
-			Mutation: &ext_procv3.BodyMutation_Body{Body: reqBody},
-		}
-	}
-
-	return headerMutation, bodyMutation
 }
 
 // systemMsgToDeveloperMsg converts OpenAI system message to developer message.

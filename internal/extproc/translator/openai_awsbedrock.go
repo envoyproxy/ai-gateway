@@ -12,11 +12,10 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
@@ -48,7 +47,7 @@ type openAIToAWSBedrockTranslatorV1ChatCompletion struct {
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody].
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	var pathTemplate string
 	if openAIReq.Stream {
@@ -66,15 +65,6 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, ope
 
 	// URL encode the model name for the path to handle ARNs with special characters
 	encodedModelName := url.PathEscape(o.requestModel)
-
-	headerMutation = &extprocv3.HeaderMutation{
-		SetHeaders: []*corev3.HeaderValueOption{
-			{Header: &corev3.HeaderValue{
-				Key:      ":path",
-				RawValue: fmt.Appendf(nil, pathTemplate, encodedModelName),
-			}},
-		},
-	}
 
 	var bedrockReq awsbedrock.ConverseInput
 	// Convert InferenceConfiguration.
@@ -111,12 +101,15 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, ope
 		}
 	}
 
-	mut := &extprocv3.BodyMutation_Body{}
-	if mut.Body, err = json.Marshal(bedrockReq); err != nil {
+	newBody, err = json.Marshal(bedrockReq)
+	if err != nil {
 		return nil, nil, fmt.Errorf("failed to marshal body: %w", err)
 	}
-	setContentLength(headerMutation, mut.Body)
-	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, nil
+	newHeaders = []internalapi.Header{
+		{pathHeaderName, fmt.Sprintf(pathTemplate, encodedModelName)},
+		{contentLengthHeaderName, strconv.Itoa(len(newBody))},
+	}
+	return
 }
 
 // openAIToolsToBedrockToolConfiguration converts openai ChatCompletion tools to aws bedrock tool configurations.
@@ -480,20 +473,16 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 
 // ResponseHeaders implements [OpenAIChatCompletionTranslator.ResponseHeaders].
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseHeaders(headers map[string]string) (
-	headerMutation *extprocv3.HeaderMutation, err error,
+	newHeaders []internalapi.Header, err error,
 ) {
 	if o.stream {
 		contentType := headers["content-type"]
 		if contentType == "application/vnd.amazon.eventstream" {
 			// We need to change the content-type to text/event-stream for streaming responses.
-			return &extprocv3.HeaderMutation{
-				SetHeaders: []*corev3.HeaderValueOption{
-					{Header: &corev3.HeaderValue{Key: "content-type", Value: "text/event-stream"}},
-				},
-			}, nil
+			newHeaders = []internalapi.Header{{contentTypeHeaderName, "text/event-stream"}}
 		}
 	}
-	return nil, nil
+	return
 }
 
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) bedrockStopReasonToOpenAIStopReason(
@@ -542,7 +531,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) bedrockToolUseToOpenAICal
 // The error type is stored in the "x-amzn-errortype" HTTP header for AWS error responses.
 // If AWS Bedrock connection fails the error body is translated to OpenAI error type for events such as HTTP 503 or 504.
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseError(respHeaders map[string]string, body io.Reader) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	statusCode := respHeaders[statusHeaderName]
 	var openaiError openai.Error
@@ -574,14 +563,15 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseError(respHeaders
 			},
 		}
 	}
-	mut := &extprocv3.BodyMutation_Body{}
-	mut.Body, err = json.Marshal(openaiError)
+	newBody, err = json.Marshal(openaiError)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to marshal error body: %w", err)
 	}
-	headerMutation = &extprocv3.HeaderMutation{}
-	setContentLength(headerMutation, mut.Body)
-	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, nil
+	newHeaders = []internalapi.Header{
+		{contentTypeHeaderName, jsonContentType},
+		{contentLengthHeaderName, strconv.Itoa(len(newBody))},
+	}
+	return
 }
 
 // ResponseBody implements [OpenAIChatCompletionTranslator.ResponseBody].
@@ -589,10 +579,11 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseError(respHeaders
 // is exactly what gets executed. The response does not contain a model field, so we return
 // the request model that was originally sent.
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel string, err error,
+	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel string, err error,
 ) {
-	mut := &extprocv3.BodyMutation_Body{}
+	responseModel = o.requestModel
 	if o.stream {
+		newBody = make([]byte, 0)
 		var buf []byte
 		buf, err = io.ReadAll(body)
 		if err != nil {
@@ -625,15 +616,15 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 			if span != nil {
 				span.RecordResponseChunk(oaiEvent)
 			}
-			mut.Body = append(mut.Body, []byte("data: ")...)
-			mut.Body = append(mut.Body, oaiEventBytes...)
-			mut.Body = append(mut.Body, []byte("\n\n")...)
+			newBody = append(newBody, []byte("data: ")...)
+			newBody = append(newBody, oaiEventBytes...)
+			newBody = append(newBody, []byte("\n\n")...)
 		}
 
 		if endOfStream {
-			mut.Body = append(mut.Body, []byte("data: [DONE]\n")...)
+			newBody = append(newBody, []byte("data: [DONE]\n")...)
 		}
-		return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, tokenUsage, o.requestModel, nil
+		return
 	}
 
 	var bedrockResp awsbedrock.ConverseResponse
@@ -698,16 +689,15 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 	}
 	openAIResp.Choices = append(openAIResp.Choices, choice)
 
-	mut.Body, err = json.Marshal(openAIResp)
+	newBody, err = json.Marshal(openAIResp)
 	if err != nil {
 		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to marshal body: %w", err)
 	}
-	headerMutation = &extprocv3.HeaderMutation{}
-	setContentLength(headerMutation, mut.Body)
 	if span != nil {
 		span.RecordResponse(openAIResp)
 	}
-	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, tokenUsage, o.requestModel, nil
+	newHeaders = []internalapi.Header{{contentLengthHeaderName, strconv.Itoa(len(newBody))}}
+	return
 }
 
 // extractAmazonEventStreamEvents extracts [awsbedrock.ConverseStreamEvent] from the buffered body.

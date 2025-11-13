@@ -10,8 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
 
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
@@ -27,7 +25,7 @@ func TestAnthropicToAnthropic_RequestBody(t *testing.T) {
 		modelNameOverride string
 
 		expRequestModel internalapi.RequestModel
-		expBodyMutation *extprocv3.BodyMutation
+		expNewBody      []byte
 	}{
 		{
 			name:              "no mutation",
@@ -36,7 +34,7 @@ func TestAnthropicToAnthropic_RequestBody(t *testing.T) {
 			forceBodyMutation: false,
 			modelNameOverride: "",
 			expRequestModel:   "claude-2",
-			expBodyMutation:   nil,
+			expNewBody:        nil,
 		},
 		{
 			name:              "model override",
@@ -45,11 +43,7 @@ func TestAnthropicToAnthropic_RequestBody(t *testing.T) {
 			forceBodyMutation: false,
 			modelNameOverride: "claude-100.1",
 			expRequestModel:   "claude-100.1",
-			expBodyMutation: &extprocv3.BodyMutation{
-				Mutation: &extprocv3.BodyMutation_Body{
-					Body: []byte(`{"model":"claude-100.1","messages":[{"role":"user","content":"Hello!"}], "stream": true}`),
-				},
-			},
+			expNewBody:        []byte(`{"model":"claude-100.1","messages":[{"role":"user","content":"Hello!"}], "stream": true}`),
 		},
 		{
 			name:              "force mutation",
@@ -58,11 +52,7 @@ func TestAnthropicToAnthropic_RequestBody(t *testing.T) {
 			forceBodyMutation: true,
 			modelNameOverride: "",
 			expRequestModel:   "claude-2",
-			expBodyMutation: &extprocv3.BodyMutation{
-				Mutation: &extprocv3.BodyMutation_Body{
-					Body: []byte(`{"model":"claude-2","messages":[{"role":"user","content":"Hello!"}]}`),
-				},
-			},
+			expNewBody:        []byte(`{"model":"claude-2","messages":[{"role":"user","content":"Hello!"}]}`),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -71,24 +61,14 @@ func TestAnthropicToAnthropic_RequestBody(t *testing.T) {
 
 			headerMutation, bodyMutation, err := translator.RequestBody(tc.original, &tc.body, tc.forceBodyMutation)
 			require.NoError(t, err)
-			expHeaderMutation := &extprocv3.HeaderMutation{
-				SetHeaders: []*corev3.HeaderValueOption{
-					{
-						Header: &corev3.HeaderValue{
-							Key:      ":path",
-							RawValue: []byte("/v1/messages"),
-						},
-					},
-				},
+			expHeaders := []internalapi.Header{
+				{pathHeaderName, "/v1/messages"},
 			}
 			if bodyMutation != nil {
-				expHeaderMutation.SetHeaders = append(expHeaderMutation.SetHeaders, &corev3.HeaderValueOption{Header: &corev3.HeaderValue{
-					Key:      "content-length",
-					RawValue: []byte(strconv.Itoa(len(bodyMutation.GetBody()))),
-				}})
+				expHeaders = append(expHeaders, internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(bodyMutation))})
 			}
-			require.Equal(t, expHeaderMutation, headerMutation)
-			require.Equal(t, tc.expBodyMutation, bodyMutation)
+			require.Equal(t, expHeaders, headerMutation)
+			require.Equal(t, tc.expNewBody, bodyMutation)
 
 			require.Equal(t, tc.expRequestModel, translator.(*anthropicToAnthropicTranslator).requestModel)
 			require.Equal(t, tc.body.GetStream(), translator.(*anthropicToAnthropicTranslator).stream)

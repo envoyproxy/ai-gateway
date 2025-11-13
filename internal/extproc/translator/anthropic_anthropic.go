@@ -14,8 +14,6 @@ import (
 	"strconv"
 
 	"github.com/anthropics/anthropic-sdk-go"
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/tidwall/sjson"
 
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
@@ -41,12 +39,11 @@ type anthropicToAnthropicTranslator struct {
 
 // RequestBody implements [AnthropicMessagesTranslator.RequestBody].
 func (a *anthropicToAnthropicTranslator) RequestBody(original []byte, body *anthropicschema.MessagesRequest, forceBodyMutation bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	a.stream = body.GetStream()
 	// Store the request model to use as fallback for response model
 	a.requestModel = body.GetModel()
-	var newBody []byte
 	if a.modelNameOverride != "" {
 		// If modelName is set we override the model to be used for the request.
 		newBody, err = sjson.SetBytesOptions(original, "model", a.modelNameOverride, sjsonOptions)
@@ -61,37 +58,23 @@ func (a *anthropicToAnthropicTranslator) RequestBody(original []byte, body *anth
 		newBody = original
 	}
 
-	headerMutation = &extprocv3.HeaderMutation{
-		SetHeaders: []*corev3.HeaderValueOption{
-			{Header: &corev3.HeaderValue{
-				Key:      ":path",
-				RawValue: []byte("/v1/messages"),
-			}},
-		},
-	}
-
+	newHeaders = []internalapi.Header{{pathHeaderName, "/v1/messages"}}
 	if len(newBody) > 0 {
-		bodyMutation = &extprocv3.BodyMutation{
-			Mutation: &extprocv3.BodyMutation_Body{Body: newBody},
-		}
-		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{Header: &corev3.HeaderValue{
-			Key:      "content-length",
-			RawValue: []byte(strconv.Itoa(len(newBody))),
-		}})
+		newHeaders = append(newHeaders, internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(newBody))})
 	}
 	return
 }
 
 // ResponseHeaders implements [AnthropicMessagesTranslator.ResponseHeaders].
 func (a *anthropicToAnthropicTranslator) ResponseHeaders(_ map[string]string) (
-	headerMutation *extprocv3.HeaderMutation, err error,
+	newHeaders []internalapi.Header, err error,
 ) {
 	return nil, nil
 }
 
 // ResponseBody implements [AnthropicMessagesTranslator.ResponseBody].
 func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel string, err error,
+	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel string, err error,
 ) {
 	if a.stream {
 		var buf []byte

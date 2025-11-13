@@ -13,8 +13,6 @@ import (
 	"path"
 	"strconv"
 
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	openaisdk "github.com/openai/openai-go/v2"
 	"github.com/tidwall/sjson"
 
@@ -42,9 +40,8 @@ type openAIToOpenAIImageGenerationTranslator struct {
 
 // RequestBody implements [ImageGenerationTranslator.RequestBody].
 func (o *openAIToOpenAIImageGenerationTranslator) RequestBody(original []byte, p *openaisdk.ImageGenerateParams, forceBodyMutation bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
-	var newBody []byte
 	if o.modelNameOverride != "" {
 		// If modelName is set we override the model to be used for the request.
 		newBody, err = sjson.SetBytesOptions(original, "model", o.modelNameOverride, sjsonOptions)
@@ -57,27 +54,13 @@ func (o *openAIToOpenAIImageGenerationTranslator) RequestBody(original []byte, p
 	o.requestModel = cmp.Or(o.modelNameOverride, p.Model)
 
 	// Always set the path header to the images generations endpoint so that the request is routed correctly.
-	headerMutation = &extprocv3.HeaderMutation{
-		SetHeaders: []*corev3.HeaderValueOption{
-			{Header: &corev3.HeaderValue{
-				Key:      ":path",
-				RawValue: []byte(o.path),
-			}},
-		},
-	}
-
 	if forceBodyMutation && len(newBody) == 0 {
 		newBody = original
 	}
+	newHeaders = []internalapi.Header{{pathHeaderName, o.path}}
 
 	if len(newBody) > 0 {
-		bodyMutation = &extprocv3.BodyMutation{
-			Mutation: &extprocv3.BodyMutation_Body{Body: newBody},
-		}
-		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{Header: &corev3.HeaderValue{
-			Key:      "content-length",
-			RawValue: []byte(strconv.Itoa(len(newBody))),
-		}})
+		newHeaders = append(newHeaders, internalapi.Header{contentLengthHeaderName, fmt.Sprintf("%d", len(newBody))})
 	}
 	return
 }
@@ -86,7 +69,7 @@ func (o *openAIToOpenAIImageGenerationTranslator) RequestBody(original []byte, p
 // For OpenAI based backend we return the OpenAI error type as is.
 // If connection fails the error body is translated to OpenAI error type for events such as HTTP 503 or 504.
 func (o *openAIToOpenAIImageGenerationTranslator) ResponseError(respHeaders map[string]string, body io.Reader) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	statusCode := respHeaders[statusHeaderName]
 	// Read the upstream error body regardless of content-type. Some backends may mislabel it.
@@ -108,29 +91,26 @@ func (o *openAIToOpenAIImageGenerationTranslator) ResponseError(respHeaders map[
 			Code:    &statusCode,
 		},
 	}
-	mut := &extprocv3.BodyMutation_Body{}
-	mut.Body, err = json.Marshal(openaiError)
+	newBody, err = json.Marshal(openaiError)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to marshal error body: %w", err)
 	}
-	headerMutation = &extprocv3.HeaderMutation{}
 	// Ensure downstream sees a JSON error payload
-	headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{Header: &corev3.HeaderValue{
-		Key:      contentTypeHeaderName,
-		RawValue: []byte(jsonContentType),
-	}})
-	setContentLength(headerMutation, mut.Body)
-	return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, nil
+	newHeaders = []internalapi.Header{
+		{contentTypeHeaderName, jsonContentType},
+		{contentLengthHeaderName, strconv.Itoa(len(newBody))},
+	}
+	return
 }
 
 // ResponseHeaders implements [ImageGenerationTranslator.ResponseHeaders].
-func (o *openAIToOpenAIImageGenerationTranslator) ResponseHeaders(map[string]string) (headerMutation *extprocv3.HeaderMutation, err error) {
+func (o *openAIToOpenAIImageGenerationTranslator) ResponseHeaders(map[string]string) (newHeaders []internalapi.Header, err error) {
 	return nil, nil
 }
 
 // ResponseBody implements [ImageGenerationTranslator.ResponseBody].
 func (o *openAIToOpenAIImageGenerationTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel internalapi.ResponseModel, err error,
+	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
 	// Decode using OpenAI SDK v2 schema to avoid drift.
 	resp := &openaisdk.ImagesResponse{}

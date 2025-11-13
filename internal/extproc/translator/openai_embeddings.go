@@ -12,8 +12,6 @@ import (
 	"path"
 	"strconv"
 
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/tidwall/sjson"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -39,9 +37,8 @@ type openAIToOpenAITranslatorV1Embedding struct {
 
 // RequestBody implements [OpenAIEmbeddingTranslator.RequestBody].
 func (o *openAIToOpenAITranslatorV1Embedding) RequestBody(original []byte, _ *openai.EmbeddingRequest, onRetry bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
-	var newBody []byte
 	if o.modelNameOverride != "" {
 		// If modelName is set we override the model to be used for the request.
 		newBody, err = sjson.SetBytesOptions(original, "model", o.modelNameOverride, sjsonOptions)
@@ -51,33 +48,19 @@ func (o *openAIToOpenAITranslatorV1Embedding) RequestBody(original []byte, _ *op
 	}
 
 	// Always set the path header to the embeddings endpoint so that the request is routed correctly.
-	headerMutation = &extprocv3.HeaderMutation{
-		SetHeaders: []*corev3.HeaderValueOption{
-			{Header: &corev3.HeaderValue{
-				Key:      ":path",
-				RawValue: []byte(o.path),
-			}},
-		},
-	}
-
 	if onRetry && len(newBody) == 0 {
 		newBody = original
 	}
+	newHeaders = []internalapi.Header{{pathHeaderName, o.path}}
 
 	if len(newBody) > 0 {
-		bodyMutation = &extprocv3.BodyMutation{
-			Mutation: &extprocv3.BodyMutation_Body{Body: newBody},
-		}
-		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{Header: &corev3.HeaderValue{
-			Key:      "content-length",
-			RawValue: []byte(strconv.Itoa(len(newBody))),
-		}})
+		newHeaders = append(newHeaders, internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(newBody))})
 	}
 	return
 }
 
 // ResponseHeaders implements [OpenAIEmbeddingTranslator.ResponseHeaders].
-func (o *openAIToOpenAITranslatorV1Embedding) ResponseHeaders(map[string]string) (headerMutation *extprocv3.HeaderMutation, err error) {
+func (o *openAIToOpenAITranslatorV1Embedding) ResponseHeaders(map[string]string) (newHeaders []internalapi.Header, err error) {
 	return nil, nil
 }
 
@@ -86,7 +69,7 @@ func (o *openAIToOpenAITranslatorV1Embedding) ResponseHeaders(map[string]string)
 // so we return the actual model from the response body which may differ from the requested model
 // (e.g., request "text-embedding-3-small" → response with specific version).
 func (o *openAIToOpenAITranslatorV1Embedding) ResponseBody(_ map[string]string, body io.Reader, _ bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel internalapi.ResponseModel, err error,
+	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
 	var resp openai.EmbeddingResponse
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
@@ -112,7 +95,7 @@ func (o *openAIToOpenAITranslatorV1Embedding) ResponseBody(_ map[string]string, 
 // For OpenAI based backend we return the OpenAI error type as is.
 // If connection fails the error body is translated to OpenAI error type for events such as HTTP 503 or 504.
 func (o *openAIToOpenAITranslatorV1Embedding) ResponseError(respHeaders map[string]string, body io.Reader) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	statusCode := respHeaders[statusHeaderName]
 	if v, ok := respHeaders[contentTypeHeaderName]; ok && v != jsonContentType {
@@ -129,14 +112,14 @@ func (o *openAIToOpenAITranslatorV1Embedding) ResponseError(respHeaders map[stri
 				Code:    &statusCode,
 			},
 		}
-		mut := &extprocv3.BodyMutation_Body{}
-		mut.Body, err = json.Marshal(openaiError)
+		newBody, err = json.Marshal(openaiError)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to marshal error body: %w", err)
 		}
-		headerMutation = &extprocv3.HeaderMutation{}
-		setContentLength(headerMutation, mut.Body)
-		return headerMutation, &extprocv3.BodyMutation{Mutation: mut}, nil
+		newHeaders = []internalapi.Header{
+			{contentTypeHeaderName, jsonContentType},
+			{contentLengthHeaderName, strconv.Itoa(len(newBody))},
+		}
 	}
-	return nil, nil, nil
+	return
 }

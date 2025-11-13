@@ -71,14 +71,14 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_ModelNameOverride(t *test
 			require.NotNil(t, bodyMutation)
 
 			// Check path header contains expected model.
-			pathHeader := headerMutation.SetHeaders[0]
-			require.Equal(t, ":path", pathHeader.Header.Key)
+			pathHeader := headerMutation[0]
+			require.Equal(t, pathHeaderName, pathHeader.Key())
 			expectedPath := "publishers/anthropic/models/" + tt.expectedInPath + ":rawPredict"
-			assert.Equal(t, expectedPath, string(pathHeader.Header.RawValue))
+			assert.Equal(t, expectedPath, pathHeader.Value())
 
 			// Check that model field is removed from body (since it's in the path).
 			var modifiedReq map[string]any
-			err = json.Unmarshal(bodyMutation.GetBody(), &modifiedReq)
+			err = json.Unmarshal(bodyMutation, &modifiedReq)
 			require.NoError(t, err)
 			_, hasModel := modifiedReq["model"]
 			assert.False(t, hasModel, "model field should be removed from request body")
@@ -145,7 +145,7 @@ func TestAnthropicToGCPAnthropicTranslator_ComprehensiveMarshalling(t *testing.T
 	require.NotNil(t, bodyMutation)
 
 	var outputReq map[string]any
-	err = json.Unmarshal(bodyMutation.GetBody(), &outputReq)
+	err = json.Unmarshal(bodyMutation, &outputReq)
 	require.NoError(t, err)
 
 	require.NotContains(t, outputReq, "model", "model field should be removed for GCP")
@@ -179,10 +179,10 @@ func TestAnthropicToGCPAnthropicTranslator_ComprehensiveMarshalling(t *testing.T
 
 	require.NotEmpty(t, toolChoice)
 
-	pathHeader := headerMutation.SetHeaders[0]
-	require.Equal(t, ":path", pathHeader.Header.Key)
+	pathHeader := headerMutation[0]
+	require.Equal(t, ":path", pathHeader.Key())
 	expectedPath := "publishers/anthropic/models/claude-3-opus-20240229:rawPredict"
-	require.Equal(t, expectedPath, string(pathHeader.Header.RawValue))
+	require.Equal(t, expectedPath, pathHeader.Value())
 }
 
 func TestAnthropicToGCPAnthropicTranslator_BackendVersionHandling(t *testing.T) {
@@ -241,7 +241,7 @@ func TestAnthropicToGCPAnthropicTranslator_BackendVersionHandling(t *testing.T) 
 			require.NotNil(t, bodyMutation)
 
 			var outputReq map[string]any
-			err = json.Unmarshal(bodyMutation.GetBody(), &outputReq)
+			err = json.Unmarshal(bodyMutation, &outputReq)
 			require.NoError(t, err)
 
 			require.Contains(t, outputReq, "anthropic_version")
@@ -313,9 +313,10 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_StreamingPaths(t *testing
 			require.NotNil(t, headerMutation)
 
 			// Check path contains expected specifier.
-			pathHeader := headerMutation.SetHeaders[0]
+			pathHeader := headerMutation[0]
 			expectedPath := "publishers/anthropic/models/claude-3-sonnet-20240229:" + tt.expectedSpecifier
-			assert.Equal(t, expectedPath, string(pathHeader.Header.RawValue))
+			assert.Equal(t, pathHeaderName, pathHeader.Key())
+			assert.Equal(t, expectedPath, pathHeader.Value())
 		})
 	}
 }
@@ -376,7 +377,7 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_FieldPassthrough(t *testi
 	require.NotNil(t, bodyMutation)
 
 	var modifiedReq map[string]any
-	err = json.Unmarshal(bodyMutation.GetBody(), &modifiedReq)
+	err = json.Unmarshal(bodyMutation, &modifiedReq)
 	require.NoError(t, err)
 
 	// Messages should be preserved.

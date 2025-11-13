@@ -9,9 +9,6 @@ import (
 	"fmt"
 	"strconv"
 
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
@@ -38,7 +35,7 @@ type openAIToAzureOpenAITranslatorV1ChatCompletion struct {
 }
 
 func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *openai.ChatCompletionRequest, forceBodyMutation bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	modelName := req.Model
 	if o.modelNameOverride != "" {
@@ -52,27 +49,14 @@ func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, 
 	// Azure OpenAI uses a {deployment-id} that may match the deployed model's name.
 	// We use the routed model as the deployment, stored in the path.
 	pathTemplate := "/openai/deployments/%s/chat/completions?api-version=%s"
-	headerMutation = &extprocv3.HeaderMutation{
-		SetHeaders: []*corev3.HeaderValueOption{
-			{Header: &corev3.HeaderValue{
-				Key:      ":path",
-				RawValue: fmt.Appendf(nil, pathTemplate, modelName, o.apiVersion),
-			}},
-		},
-	}
+	newHeaders = []internalapi.Header{{pathHeaderName, fmt.Sprintf(pathTemplate, modelName, o.apiVersion)}}
 	if req.Stream {
 		o.stream = true
 	}
 
-	// On retry, the path might have changed to a different provider. So, this will ensure that the path is always set to OpenAI.
+	// On retry, the path might have changed to a different provider. So, this will enesure that the path is always set to OpenAI.
 	if forceBodyMutation {
-		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{Header: &corev3.HeaderValue{
-			Key:      "content-length",
-			RawValue: []byte(strconv.Itoa(len(raw))),
-		}})
-		bodyMutation = &extprocv3.BodyMutation{
-			Mutation: &extprocv3.BodyMutation_Body{Body: raw},
-		}
+		newHeaders = append(newHeaders, internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(raw))})
 	}
 	return
 }
