@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
-
-package openai
+//
+// Package openinference provides shared OpenInference helpers.
+package openinference
 
 import (
 	"fmt"
@@ -14,7 +15,7 @@ import (
 )
 
 // recordResponseError processes error responses and updates span accordingly.
-func recordResponseError(span trace.Span, statusCode int, body string) {
+func RecordResponseError(span trace.Span, statusCode int, body string) {
 	// Determine error type based on status code.
 	var errorType string
 	switch statusCode {

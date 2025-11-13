@@ -1170,3 +1170,280 @@ func Test_mergeHeaderMutations(t *testing.T) {
 		})
 	}
 }
+
+func Test_bodyMutationToFilterAPI(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    *aigv1a1.HTTPBodyMutation
+		expected *filterapi.HTTPBodyMutation
+	}{
+		{
+			name:     "nil input",
+			input:    nil,
+			expected: nil,
+		},
+		{
+			name: "empty mutation",
+			input: &aigv1a1.HTTPBodyMutation{
+				Set:    []aigv1a1.HTTPBodyField{},
+				Remove: []string{},
+			},
+			expected: &filterapi.HTTPBodyMutation{
+				Set:    nil,
+				Remove: []string{},
+			},
+		},
+		{
+			name: "only set operations",
+			input: &aigv1a1.HTTPBodyMutation{
+				Set: []aigv1a1.HTTPBodyField{
+					{Path: "model", Value: "\"gpt-4\""},
+					{Path: "temperature", Value: "0.7"},
+					{Path: "max_tokens", Value: "100"},
+				},
+			},
+			expected: &filterapi.HTTPBodyMutation{
+				Set: []filterapi.HTTPBodyField{
+					{Path: "model", Value: "\"gpt-4\""},
+					{Path: "temperature", Value: "0.7"},
+					{Path: "max_tokens", Value: "100"},
+				},
+				Remove: []string{},
+			},
+		},
+		{
+			name: "only remove operations",
+			input: &aigv1a1.HTTPBodyMutation{
+				Remove: []string{"internal_flag", "debug_mode", "temp_field"},
+			},
+			expected: &filterapi.HTTPBodyMutation{
+				Set:    nil,
+				Remove: []string{"internal_flag", "debug_mode", "temp_field"},
+			},
+		},
+		{
+			name: "both set and remove operations",
+			input: &aigv1a1.HTTPBodyMutation{
+				Set: []aigv1a1.HTTPBodyField{
+					{Path: "service_tier", Value: "\"scale\""},
+					{Path: "stream", Value: "true"},
+					{Path: "metadata", Value: "{\"key\": \"value\"}"},
+				},
+				Remove: []string{"internal_flag", "debug"},
+			},
+			expected: &filterapi.HTTPBodyMutation{
+				Set: []filterapi.HTTPBodyField{
+					{Path: "service_tier", Value: "\"scale\""},
+					{Path: "stream", Value: "true"},
+					{Path: "metadata", Value: "{\"key\": \"value\"}"},
+				},
+				Remove: []string{"internal_flag", "debug"},
+			},
+		},
+		{
+			name: "complex json values",
+			input: &aigv1a1.HTTPBodyMutation{
+				Set: []aigv1a1.HTTPBodyField{
+					{Path: "array_field", Value: "[1, 2, 3]"},
+					{Path: "null_field", Value: "null"},
+					{Path: "bool_field", Value: "false"},
+					{Path: "nested_object", Value: "{\"nested\": {\"key\": \"value\"}}"},
+				},
+			},
+			expected: &filterapi.HTTPBodyMutation{
+				Set: []filterapi.HTTPBodyField{
+					{Path: "array_field", Value: "[1, 2, 3]"},
+					{Path: "null_field", Value: "null"},
+					{Path: "bool_field", Value: "false"},
+					{Path: "nested_object", Value: "{\"nested\": {\"key\": \"value\"}}"},
+				},
+				Remove: []string{},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := bodyMutationToFilterAPI(tt.input)
+			if tt.expected == nil {
+				require.Nil(t, result)
+				return
+			}
+			require.NotNil(t, result)
+			if d := cmp.Diff(tt.expected, result); d != "" {
+				t.Errorf("bodyMutationToFilterAPI() mismatch (-expected +got):\n%s", d)
+			}
+		})
+	}
+}
+
+func Test_mergeBodyMutations(t *testing.T) {
+	tests := []struct {
+		name         string
+		routeLevel   *aigv1a1.HTTPBodyMutation
+		backendLevel *aigv1a1.HTTPBodyMutation
+		expected     *aigv1a1.HTTPBodyMutation
+	}{
+		{
+			name:         "both nil",
+			routeLevel:   nil,
+			backendLevel: nil,
+			expected:     nil,
+		},
+		{
+			name:       "route nil, backend has values",
+			routeLevel: nil,
+			backendLevel: &aigv1a1.HTTPBodyMutation{
+				Set:    []aigv1a1.HTTPBodyField{{Path: "backend_field", Value: "\"backend-value\""}},
+				Remove: []string{"backend_remove"},
+			},
+			expected: &aigv1a1.HTTPBodyMutation{
+				Set:    []aigv1a1.HTTPBodyField{{Path: "backend_field", Value: "\"backend-value\""}},
+				Remove: []string{"backend_remove"},
+			},
+		},
+		{
+			name: "route has values, backend nil",
+			routeLevel: &aigv1a1.HTTPBodyMutation{
+				Set:    []aigv1a1.HTTPBodyField{{Path: "route_field", Value: "\"route-value\""}},
+				Remove: []string{"route_remove"},
+			},
+			backendLevel: nil,
+			expected: &aigv1a1.HTTPBodyMutation{
+				Set:    []aigv1a1.HTTPBodyField{{Path: "route_field", Value: "\"route-value\""}},
+				Remove: []string{"route_remove"},
+			},
+		},
+		{
+			name: "no conflicts - different fields",
+			routeLevel: &aigv1a1.HTTPBodyMutation{
+				Set:    []aigv1a1.HTTPBodyField{{Path: "route_field", Value: "\"route-value\""}},
+				Remove: []string{"route_remove"},
+			},
+			backendLevel: &aigv1a1.HTTPBodyMutation{
+				Set:    []aigv1a1.HTTPBodyField{{Path: "backend_field", Value: "\"backend-value\""}},
+				Remove: []string{"backend_remove"},
+			},
+			expected: &aigv1a1.HTTPBodyMutation{
+				Set: []aigv1a1.HTTPBodyField{
+					{Path: "backend_field", Value: "\"backend-value\""},
+					{Path: "route_field", Value: "\"route-value\""},
+				},
+				Remove: []string{"backend_remove", "route_remove"},
+			},
+		},
+		{
+			name: "route overrides backend for same field path",
+			routeLevel: &aigv1a1.HTTPBodyMutation{
+				Set: []aigv1a1.HTTPBodyField{{Path: "service_tier", Value: "\"route-value\""}},
+			},
+			backendLevel: &aigv1a1.HTTPBodyMutation{
+				Set: []aigv1a1.HTTPBodyField{{Path: "service_tier", Value: "\"backend-value\""}},
+			},
+			expected: &aigv1a1.HTTPBodyMutation{
+				Set: []aigv1a1.HTTPBodyField{{Path: "service_tier", Value: "\"route-value\""}},
+			},
+		},
+		{
+			name: "remove operations are combined and deduplicated",
+			routeLevel: &aigv1a1.HTTPBodyMutation{
+				Remove: []string{"field1", "shared_field"},
+			},
+			backendLevel: &aigv1a1.HTTPBodyMutation{
+				Remove: []string{"field2", "shared_field"},
+			},
+			expected: &aigv1a1.HTTPBodyMutation{
+				Remove: []string{"field1", "field2", "shared_field"},
+			},
+		},
+		{
+			name: "complex merge scenario",
+			routeLevel: &aigv1a1.HTTPBodyMutation{
+				Set: []aigv1a1.HTTPBodyField{
+					{Path: "route_only", Value: "\"route-only\""},
+					{Path: "override_field", Value: "\"route-wins\""},
+					{Path: "temperature", Value: "0.8"},
+				},
+				Remove: []string{"route_remove", "shared_remove"},
+			},
+			backendLevel: &aigv1a1.HTTPBodyMutation{
+				Set: []aigv1a1.HTTPBodyField{
+					{Path: "backend_only", Value: "\"backend-only\""},
+					{Path: "override_field", Value: "\"backend-loses\""},
+					{Path: "max_tokens", Value: "100"},
+				},
+				Remove: []string{"backend_remove", "shared_remove"},
+			},
+			expected: &aigv1a1.HTTPBodyMutation{
+				Set: []aigv1a1.HTTPBodyField{
+					{Path: "backend_only", Value: "\"backend-only\""},
+					{Path: "max_tokens", Value: "100"},
+					{Path: "override_field", Value: "\"route-wins\""},
+					{Path: "route_only", Value: "\"route-only\""},
+					{Path: "temperature", Value: "0.8"},
+				},
+				Remove: []string{"backend_remove", "route_remove", "shared_remove"},
+			},
+		},
+		{
+			name: "empty mutations",
+			routeLevel: &aigv1a1.HTTPBodyMutation{
+				Set:    []aigv1a1.HTTPBodyField{},
+				Remove: []string{},
+			},
+			backendLevel: &aigv1a1.HTTPBodyMutation{
+				Set:    []aigv1a1.HTTPBodyField{},
+				Remove: []string{},
+			},
+			expected: &aigv1a1.HTTPBodyMutation{
+				Set:    nil,
+				Remove: nil,
+			},
+		},
+		{
+			name: "different json value types",
+			routeLevel: &aigv1a1.HTTPBodyMutation{
+				Set: []aigv1a1.HTTPBodyField{
+					{Path: "string_field", Value: "\"string-value\""},
+					{Path: "number_field", Value: "42"},
+				},
+			},
+			backendLevel: &aigv1a1.HTTPBodyMutation{
+				Set: []aigv1a1.HTTPBodyField{
+					{Path: "bool_field", Value: "true"},
+					{Path: "object_field", Value: "{\"key\": \"value\"}"},
+					{Path: "array_field", Value: "[1, 2, 3]"},
+					{Path: "null_field", Value: "null"},
+				},
+			},
+			expected: &aigv1a1.HTTPBodyMutation{
+				Set: []aigv1a1.HTTPBodyField{
+					{Path: "array_field", Value: "[1, 2, 3]"},
+					{Path: "bool_field", Value: "true"},
+					{Path: "null_field", Value: "null"},
+					{Path: "number_field", Value: "42"},
+					{Path: "object_field", Value: "{\"key\": \"value\"}"},
+					{Path: "string_field", Value: "\"string-value\""},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := mergeBodyMutations(tt.routeLevel, tt.backendLevel)
+			if tt.expected == nil {
+				require.Nil(t, result)
+				return
+			}
+			require.NotNil(t, result)
+			if d := cmp.Diff(tt.expected, result, cmpopts.SortSlices(func(a, b aigv1a1.HTTPBodyField) bool {
+				return a.Path < b.Path
+			}), cmpopts.SortSlices(func(a, b string) bool {
+				return a < b
+			})); d != "" {
+				t.Errorf("mergeBodyMutations() mismatch (-expected +got):\n%s", d)
+			}
+		})
+	}
+}

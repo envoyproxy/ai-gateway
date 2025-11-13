@@ -10,9 +10,12 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
+	"log/slog"
 
 	"github.com/andybalholm/brotli"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+
+	"github.com/envoyproxy/ai-gateway/internal/extproc/bodymutator"
 )
 
 // contentDecodingResult contains the result of content decoding operation.
@@ -71,4 +74,32 @@ func removeContentEncodingIfNeeded(headerMutation *extprocv3.HeaderMutation, bod
 // https://developer.mozilla.org/en-US/docs/Web/HTTP/Status#successful_responses
 func isGoodStatusCode(code int) bool {
 	return code >= 200 && code < 300
+}
+
+// applyBodyMutation applies body mutations from the route and also restores original body on retry.
+// This utility function handles both creating new mutations and modifying existing ones.
+func applyBodyMutation(bodyMutator *bodymutator.BodyMutator, bodyMutation *extprocv3.BodyMutation, originalRequestBodyRaw []byte, onRetry bool, logger *slog.Logger) *extprocv3.BodyMutation {
+	if bodyMutator == nil {
+		return bodyMutation
+	}
+
+	if bodyMutation == nil {
+		mutatedBody, mutationErr := bodyMutator.Mutate(originalRequestBodyRaw, onRetry)
+		if mutationErr != nil {
+			logger.Error("failed to apply body mutation on original request body", "error", mutationErr)
+		} else {
+			bodyMutation = &extprocv3.BodyMutation{
+				Mutation: &extprocv3.BodyMutation_Body{Body: mutatedBody},
+			}
+		}
+	} else if bodyMutation.GetBody() != nil && len(bodyMutation.GetBody()) > 0 {
+		mutatedBody, mutationErr := bodyMutator.Mutate(bodyMutation.GetBody(), onRetry)
+		if mutationErr != nil {
+			logger.Error("failed to apply body mutation", "error", mutationErr)
+		} else {
+			bodyMutation.Mutation = &extprocv3.BodyMutation_Body{Body: mutatedBody}
+		}
+	}
+
+	return bodyMutation
 }

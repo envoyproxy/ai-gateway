@@ -20,6 +20,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/internal/backendauth"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
@@ -158,6 +159,7 @@ type imageGenerationProcessorUpstreamFilter struct {
 	backendName            string
 	handler                backendauth.Handler
 	headerMutator          *headermutator.HeaderMutator
+	bodyMutator            *bodymutator.BodyMutator
 	originalRequestBodyRaw []byte
 	originalRequestBody    *openaisdk.ImageGenerateParams
 	translator             translator.ImageGenerationTranslator
@@ -230,6 +232,13 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessRequestHeaders(ctx conte
 				},
 			})
 		}
+	}
+
+	// Apply body mutations.
+	bodyMutation = applyBodyMutation(i.bodyMutator, bodyMutation, i.originalRequestBodyRaw, i.onRetry, i.logger)
+
+	if bodyMutation == nil {
+		bodyMutation = &extprocv3.BodyMutation{}
 	}
 
 	for _, h := range headerMutation.SetHeaders {
@@ -423,6 +432,7 @@ func (i *imageGenerationProcessorUpstreamFilter) SetBackend(ctx context.Context,
 
 	i.handler = backendHandler
 	i.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
+	i.bodyMutator = bodymutator.NewBodyMutator(b.BodyMutation, rp.originalRequestBodyRaw)
 	// Sync header with backend model so header-derived labels/CEL use the actual model.
 	if i.modelNameOverride != "" {
 		i.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = i.modelNameOverride

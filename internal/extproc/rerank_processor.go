@@ -19,6 +19,7 @@ import (
 
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/backendauth"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
@@ -29,11 +30,12 @@ import (
 
 // RerankProcessorFactory returns a factory method to instantiate the rerank processor.
 func RerankProcessorFactory(f metrics.RerankMetricsFactory) ProcessorFactory {
-	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
+	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "rerank", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &rerankProcessorRouterFilter{
 				config:         config,
+				tracer:         tracing.RerankTracer(),
 				requestHeaders: requestHeaders,
 				logger:         logger,
 			}, nil
@@ -71,6 +73,10 @@ type rerankProcessorRouterFilter struct {
 	// upstreamFilterCount is the number of upstream filters that have been processed.
 	// This is used to determine if the request is a retry request.
 	upstreamFilterCount int
+	// tracer is the tracer used for requests.
+	tracer tracing.RerankTracer
+	// span is the tracing span for this request, created in ProcessRequestBody.
+	span tracing.RerankSpan
 }
 
 // ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
@@ -94,7 +100,7 @@ func (r *rerankProcessorRouterFilter) ProcessResponseBody(ctx context.Context, b
 }
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
-func (r *rerankProcessorRouterFilter) ProcessRequestBody(_ context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+func (r *rerankProcessorRouterFilter) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	originalModel, body, err := parseCohereRerankV2Body(rawBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
@@ -112,8 +118,17 @@ func (r *rerankProcessorRouterFilter) ProcessRequestBody(_ context.Context, rawB
 	r.originalRequestBody = body
 	r.originalRequestBodyRaw = rawBody.Body
 
-	// Create a header mutation without tracing.
-	headerMutation := &extprocv3.HeaderMutation{SetHeaders: additionalHeaders}
+	// Tracing may need to inject headers, so create a header mutation here.
+	headerMutation := &extprocv3.HeaderMutation{
+		SetHeaders: additionalHeaders,
+	}
+	r.span = r.tracer.StartSpanAndInjectHeaders(
+		ctx,
+		r.requestHeaders,
+		headerMutation,
+		body,
+		rawBody.Body,
+	)
 
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{
@@ -140,6 +155,7 @@ type rerankProcessorUpstreamFilter struct {
 	backendName            string
 	handler                backendauth.Handler
 	headerMutator          *headermutator.HeaderMutator
+	bodyMutator            *bodymutator.BodyMutator
 	originalRequestBodyRaw []byte
 	originalRequestBody    *cohereschema.RerankV2Request
 	translator             translator.CohereRerankTranslator
@@ -149,13 +165,15 @@ type rerankProcessorUpstreamFilter struct {
 	costs translator.LLMTokenUsage
 	// metrics tracking.
 	metrics metrics.RerankMetrics
+	// span is the tracing span for this request, inherited from the router filter.
+	span tracing.RerankSpan
 }
 
 // selectTranslator selects the translator based on the output schema.
 func (r *rerankProcessorUpstreamFilter) selectTranslator(out filterapi.VersionedAPISchema) error {
 	switch out.Name {
 	case filterapi.APISchemaCohere:
-		r.translator = translator.NewRerankCohereToCohereTranslator(out.Version, r.modelNameOverride)
+		r.translator = translator.NewRerankCohereToCohereTranslator(out.Version, r.modelNameOverride, r.span)
 	default:
 		return fmt.Errorf("unsupported API schema: backend=%s", out)
 	}
@@ -295,6 +313,13 @@ func (r *rerankProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context,
 		if err != nil {
 			return nil, fmt.Errorf("failed to transform response error: %w", err)
 		}
+		if r.span != nil {
+			b := bodyMutation.GetBody()
+			if b == nil {
+				b = body.Body
+			}
+			r.span.EndSpanOnError(code, b)
+		}
 		recordRequestCompletionErr = true
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_ResponseBody{
@@ -345,6 +370,9 @@ func (r *rerankProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context,
 		}
 	}
 
+	if body.EndOfStream && r.span != nil {
+		r.span.EndSpan()
+	}
 	return resp, nil
 }
 
@@ -366,11 +394,13 @@ func (r *rerankProcessorUpstreamFilter) SetBackend(ctx context.Context, b *filte
 	r.originalRequestBody = rp.originalRequestBody
 	r.originalRequestBodyRaw = rp.originalRequestBodyRaw
 	r.onRetry = rp.upstreamFilterCount > 1
+	r.span = rp.span
 	if err = r.selectTranslator(b.Schema); err != nil {
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
 	r.handler = backendHandler
 	r.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
+	r.bodyMutator = bodymutator.NewBodyMutator(b.BodyMutation, rp.originalRequestBodyRaw)
 	// Header-derived labels/CEL must be able to see the overridden request model.
 	if r.modelNameOverride != "" {
 		r.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = r.modelNameOverride
