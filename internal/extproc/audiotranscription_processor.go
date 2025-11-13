@@ -131,6 +131,8 @@ func (a *audioTranscriptionProcessorUpstreamFilter) selectTranslator(out filtera
 	switch out.Name {
 	case filterapi.APISchemaOpenAI:
 		a.translator = translator.NewAudioTranscriptionOpenAIToOpenAITranslator(out.Version, a.modelNameOverride)
+	case filterapi.APISchemaGCPVertexAI, filterapi.APISchemaGemini:
+		a.translator = translator.NewAudioTranscriptionOpenAIToGCPVertexAITranslator(a.modelNameOverride)
 	default:
 		return fmt.Errorf("unsupported API schema: backend=%s", out)
 	}
@@ -148,6 +150,11 @@ func (a *audioTranscriptionProcessorUpstreamFilter) ProcessRequestHeaders(ctx co
 	a.metrics.SetOriginalModel(a.originalRequestBody.Model)
 	reqModel := cmp.Or(a.requestHeaders[internalapi.ModelNameHeaderKeyDefault], a.originalRequestBody.Model)
 	a.metrics.SetRequestModel(reqModel)
+
+	// Set content-type header for GCP Vertex AI translator if needed
+	if gcpTranslator, ok := a.translator.(interface{ SetContentType(string) }); ok {
+		gcpTranslator.SetContentType(a.requestHeaders["content-type"])
+	}
 
 	headerMutation, bodyMutation, err := a.translator.RequestBody(a.originalRequestBodyRaw, a.originalRequestBody, a.onRetry)
 	if err != nil {
@@ -332,6 +339,22 @@ func (a *audioTranscriptionProcessorUpstreamFilter) SetBackend(ctx context.Conte
 	if err = a.selectTranslator(b.Schema); err != nil {
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
+	
+	// Configure translator for Gemini API key vs GCP Vertex AI OAuth2 authentication
+	if b.Schema.Name == filterapi.APISchemaGemini || b.Schema.Name == filterapi.APISchemaGCPVertexAI {
+		// Check if using Gemini API key authentication (which uses /v1beta path)
+		// vs GCP Vertex AI OAuth2 (which uses /v1/projects/.../publishers path)
+		useGeminiPath := b.Auth != nil && b.Auth.GeminiAPIKey != nil
+
+		// Set the path mode on the translator if it supports it
+		type geminiPathSetter interface {
+			SetUseGeminiDirectPath(bool)
+		}
+		if setter, ok := a.translator.(geminiPathSetter); ok {
+			setter.SetUseGeminiDirectPath(useGeminiPath)
+		}
+	}
+	
 	a.handler = backendHandler
 	a.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
 	if a.modelNameOverride != "" {
@@ -402,6 +425,7 @@ func parseAudioTranscriptionBody(body *extprocv3.HttpBody, contentType string) (
 					req.Temperature = &temp
 				}
 			case "file":
+				// Just skip the file part - the translator will extract it from rawBody
 			default:
 			}
 			part.Close()

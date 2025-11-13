@@ -312,6 +312,20 @@ type ImageGenerationTranslator interface {
 	ResponseError(respHeaders map[string]string, body io.Reader) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error)
 }
 
+type RealtimeClientSecretsTranslator interface {
+	RequestBody(req *openai.RealtimeClientSecretRequest) (
+		headerMutation *extprocv3.HeaderMutation,
+		bodyMutation *extprocv3.BodyMutation,
+		err error,
+	)
+
+	ResponseBody(body []byte) (
+		headerMutation *extprocv3.HeaderMutation,
+		bodyMutation *extprocv3.BodyMutation,
+		err error,
+	)
+}
+
 // TODO: This function is not yet implemented. The translator types referenced don't exist.
 // Each translator type needs specific constructors and different interfaces (OpenAIChatCompletionTranslator, etc.)
 // See NewChatCompletionOpenAIToOpenAITranslator and similar functions for the actual implementation pattern.
