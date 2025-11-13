@@ -227,3 +227,26 @@ func TestCohereToCohereTranslatorV2Rerank_ResponseError(t *testing.T) {
 		require.Nil(t, bodyMutation)
 	})
 }
+
+type mockRerankSpanTranslator struct{ recordCalled bool }
+
+func (m *mockRerankSpanTranslator) EndSpan()                   {}
+func (m *mockRerankSpanTranslator) EndSpanOnError(int, []byte) {}
+func (m *mockRerankSpanTranslator) RecordResponse(_ *cohereschema.RerankV2Response) {
+	m.recordCalled = true
+}
+
+func TestCohereToCohereTranslatorV2Rerank_ResponseBody_RecordsResponseInSpan(t *testing.T) {
+	mspan := &mockRerankSpanTranslator{}
+	tr := NewRerankCohereToCohereTranslator("v2", "", mspan)
+	tr.(*cohereToCohereTranslatorV2Rerank).requestModel = "rerank-english-v3"
+
+	body := `{"results":[{"index":0,"relevance_score":0.9}],"id":"rr-1"}`
+	_, _, _, _, err := tr.ResponseBody(
+		map[string]string{contentTypeHeaderName: jsonContentType},
+		strings.NewReader(body),
+		true,
+	)
+	require.NoError(t, err)
+	require.True(t, mspan.recordCalled)
+}

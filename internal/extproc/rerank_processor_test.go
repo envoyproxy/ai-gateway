@@ -468,6 +468,48 @@ func Test_rerankProcessorRouterFilter_PassthroughResponses(t *testing.T) {
 	})
 }
 
+func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_Tracing_EndSpanOnError(t *testing.T) {
+	inBody := &extprocv3.HttpBody{Body: []byte("err"), EndOfStream: true}
+	mm := &mockRerankMetrics{}
+	mt := &mockRerankTranslator{t: t, expResponseBody: inBody}
+	span := &mockRerankSpan{}
+	p := &rerankProcessorUpstreamFilter{
+		translator:      mt,
+		metrics:         mm,
+		responseHeaders: map[string]string{":status": "500"},
+		span:            span,
+	}
+	res, err := p.ProcessResponseBody(t.Context(), inBody)
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	require.True(t, mt.responseErrorCalled)
+	require.Equal(t, 500, span.endErrStatus)
+	require.Equal(t, "err", span.endErrBody)
+}
+
+func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_Tracing_EndSpanOnSuccess(t *testing.T) {
+	inBody := &extprocv3.HttpBody{Body: []byte("ok"), EndOfStream: true}
+	mm := &mockRerankMetrics{}
+	mt := &mockRerankTranslator{
+		t:                 t,
+		expResponseBody:   inBody,
+		retHeaderMutation: &extprocv3.HeaderMutation{},
+		retBodyMutation:   &extprocv3.BodyMutation{},
+	}
+	span := &mockRerankSpan{}
+	p := &rerankProcessorUpstreamFilter{
+		translator:      mt,
+		logger:          slog.Default(),
+		metrics:         mm,
+		config:          &processorConfig{},
+		responseHeaders: map[string]string{":status": "200"},
+		span:            span,
+	}
+	_, err := p.ProcessResponseBody(t.Context(), inBody)
+	require.NoError(t, err)
+	require.True(t, span.endCalled)
+}
+
 // Helpers and mocks
 
 func rerankBodyFromModel(model string) []byte {
