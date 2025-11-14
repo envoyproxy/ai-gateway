@@ -33,6 +33,8 @@ type RuntimeConfig struct {
 	RequestCosts []RuntimeRequestCost
 	// DeclaredModels is the list of declared models.
 	DeclaredModels []Model
+	// ModelsByHost maps hostnames to their specific model lists for per-host filtering.
+	ModelsByHost map[string][]Model
 	// Backends is the map of backends by name.
 	Backends map[string]*RuntimeBackend
 }
@@ -87,5 +89,6 @@ func NewRuntimeConfig(ctx context.Context, config *Config, fn NewBackendAuthHand
 		Backends:       backends,
 		RequestCosts:   costs,
 		DeclaredModels: config.Models,
+		ModelsByHost:   config.ModelsByHost,
 	}, nil
 }
