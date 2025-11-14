@@ -445,7 +445,7 @@ func Test_filterSensitiveHeadersForLogging(t *testing.T) {
 }
 
 func Test_filterSensitiveBodyForLogging(t *testing.T) {
-	logger, buf := newTestLoggerWithBuffer()
+	logger, buf := filterapi.newTestLoggerWithBuffer()
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{
 			RequestBody: &extprocv3.BodyResponse{

@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
@@ -275,12 +276,12 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/models"), extproc.NewModelsProcessor)
 	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.Anthropic, "/v1/messages"), extproc.MessagesProcessorFactory(messagesMetrics))
 
-	if watchErr := extproc.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); watchErr != nil {
+	if watchErr := filterapi.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); watchErr != nil {
 		return fmt.Errorf("failed to start config watcher: %w", watchErr)
 	}
 
 	// Create and register gRPC server with ExternalProcessorServer (the service Envoy calls).
-	if err = extproc.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {
+	if err = filterapi.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {
 		return fmt.Errorf("failed to start config watcher: %w", err)
 	}
 
@@ -295,7 +296,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		if err != nil {
 			return fmt.Errorf("failed to create MCP proxy: %w", err)
 		}
-		if err = extproc.StartConfigWatcher(ctx, flags.configPath, mcpProxyConfig, l, time.Second*5); err != nil {
+		if err = filterapi.StartConfigWatcher(ctx, flags.configPath, mcpProxyConfig, l, time.Second*5); err != nil {
 			return fmt.Errorf("failed to start config watcher: %w", err)
 		}
 
