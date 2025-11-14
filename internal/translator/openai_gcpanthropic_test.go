@@ -99,10 +99,10 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 	}
 	t.Run("Vertex Values Configured Correctly", func(t *testing.T) {
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		hm, bm, err := translator.RequestBody(nil, openAIReq, false)
+		hm, body, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 		require.NotNil(t, hm)
-		require.NotNil(t, bm)
+		require.NotNil(t, body)
 
 		// Check the path header.
 		pathHeader := hm[0]
@@ -111,7 +111,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.Equal(t, expectedPath, pathHeader.Value())
 
 		// Check the body content.
-		body := bm
+
 		require.NotNil(t, body)
 		// Model should NOT be present in the body for GCP Vertex.
 		require.False(t, gjson.GetBytes(body, "model").Exists())
@@ -159,9 +159,9 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 			},
 		}
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		_, bm, err := translator.RequestBody(nil, imageReq, false)
+		_, body, err := translator.RequestBody(nil, imageReq, false)
 		require.NoError(t, err)
-		body := bm
+
 		imageBlock := gjson.GetBytes(body, "messages.0.content.1")
 		require.Equal(t, "image", imageBlock.Get("type").String())
 		require.Equal(t, "base64", imageBlock.Get("source.type").String())
@@ -183,9 +183,9 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 			MaxTokens: ptr.To(int64(100)),
 		}
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		_, bm, err := translator.RequestBody(nil, multiSystemReq, false)
+		_, body, err := translator.RequestBody(nil, multiSystemReq, false)
 		require.NoError(t, err)
-		body := bm
+
 		require.Equal(t, firstMsg, gjson.GetBytes(body, "system.0.text").String())
 		require.Equal(t, secondMsg, gjson.GetBytes(body, "system.1.text").String())
 		require.Equal(t, thirdMsg, gjson.GetBytes(body, "messages.0.content.0.text").String())
@@ -199,7 +199,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 			Stream:    true,
 		}
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		hm, bm, err := translator.RequestBody(nil, streamReq, false)
+		hm, body, err := translator.RequestBody(nil, streamReq, false)
 		require.NoError(t, err)
 		require.NotNil(t, hm)
 
@@ -209,7 +209,6 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		expectedPath := fmt.Sprintf("publishers/anthropic/models/%s:streamRawPredict", streamReq.Model)
 		require.Equal(t, expectedPath, pathHeader[0].Value())
 
-		body := bm
 		require.True(t, gjson.GetBytes(body, "stream").Bool(), `body should contain "stream": true`)
 	})
 
@@ -294,12 +293,12 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator(customAPIVersion, "")
 
 		// Call RequestBody with a standard request.
-		_, bm, err := translator.RequestBody(nil, openAIReq, false)
+		_, body, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
-		require.NotNil(t, bm)
+		require.NotNil(t, body)
 
 		// Check that the anthropic_version in the body uses the custom version.
-		body := bm
+
 		require.Equal(t, customAPIVersion, gjson.GetBytes(body, "anthropic_version").String())
 	})
 	t.Run("Request with Thinking enabled", func(t *testing.T) {
@@ -314,11 +313,10 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 			},
 		}
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		_, bm, err := translator.RequestBody(nil, thinkingReq, false)
+		_, body, err := translator.RequestBody(nil, thinkingReq, false)
 		require.NoError(t, err)
-		require.NotNil(t, bm)
+		require.NotNil(t, body)
 
-		body := bm
 		require.NotNil(t, body)
 
 		thinkingBlock := gjson.GetBytes(body, "thinking")
@@ -338,11 +336,10 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 			},
 		}
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		_, bm, err := translator.RequestBody(nil, thinkingReq, false)
+		_, body, err := translator.RequestBody(nil, thinkingReq, false)
 		require.NoError(t, err)
-		require.NotNil(t, bm)
+		require.NotNil(t, body)
 
-		body := bm
 		require.NotNil(t, body)
 
 		thinkingBlock := gjson.GetBytes(body, "thinking")
@@ -475,13 +472,13 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 			require.NoError(t, err, "Test setup failed: could not marshal input struct")
 
 			translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-			hm, bm, usedToken, _, err := translator.ResponseBody(tt.respHeaders, bytes.NewBuffer(body), true, nil)
+			hm, body, usedToken, _, err := translator.ResponseBody(tt.respHeaders, bytes.NewBuffer(body), true, nil)
 
 			require.NoError(t, err, "Translator returned an unexpected internal error")
 			require.NotNil(t, hm)
-			require.NotNil(t, bm)
+			require.NotNil(t, body)
 
-			newBody := bm
+			newBody := body
 			require.NotNil(t, newBody)
 			require.Len(t, hm, 1)
 			require.Equal(t, contentLengthHeaderName, hm[0].Key())
@@ -889,19 +886,19 @@ func TestOpenAIToGCPAnthropicTranslator_ResponseError(t *testing.T) {
 			}
 
 			o := &openAIToGCPAnthropicTranslatorV1ChatCompletion{}
-			hm, bm, err := o.ResponseError(tt.responseHeaders, reader)
+			hm, body, err := o.ResponseError(tt.responseHeaders, reader)
 
 			require.NoError(t, err)
-			require.NotNil(t, bm)
+			require.NotNil(t, body)
 			require.NotNil(t, hm)
 			require.Len(t, hm, 2)
 			require.Equal(t, contentTypeHeaderName, hm[0].Key())
 			require.Equal(t, jsonContentType, hm[0].Value()) //nolint:testifylint
 			require.Equal(t, contentLengthHeaderName, hm[1].Key())
-			require.Equal(t, strconv.Itoa(len(bm)), hm[1].Value())
+			require.Equal(t, strconv.Itoa(len(body)), hm[1].Value())
 
 			var gotError openai.Error
-			err = json.Unmarshal(bm, &gotError)
+			err = json.Unmarshal(body, &gotError)
 			require.NoError(t, err)
 
 			if diff := cmp.Diff(tt.expectedOutput, gotError); diff != "" {
@@ -1852,10 +1849,9 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_Cache(t *testing.T) {
 		}
 
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		_, bm, err := translator.RequestBody(nil, openAIReq, false)
+		_, body, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		body := bm.GetBody()
 		result := gjson.ParseBytes(body)
 
 		// Check system message (cache enabled).
@@ -1950,10 +1946,10 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_Cache(t *testing.T) {
 				}
 
 				translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-				_, bm, err := translator.RequestBody(nil, req, false)
+				_, body, err := translator.RequestBody(nil, req, false)
 				require.NoError(t, err)
 
-				result := gjson.ParseBytes(bm.GetBody())
+				result := gjson.ParseBytes(body)
 				cacheControl := result.Get("messages.0.content.0.cache_control")
 
 				if tc.expectCache {
@@ -1996,10 +1992,10 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_Cache(t *testing.T) {
 		}
 
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		_, bm, err := translator.RequestBody(nil, req, false)
+		_, body, err := translator.RequestBody(nil, req, false)
 		require.NoError(t, err)
 
-		result := gjson.ParseBytes(bm.GetBody())
+		result := gjson.ParseBytes(body)
 
 		// Check that both the text part and the image part have cache_control.
 		require.True(t, result.Get("messages.0.content.0.cache_control").Exists(), "cache should exist for text part")
@@ -2040,10 +2036,10 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_Cache(t *testing.T) {
 		}
 
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		_, bm, err := translator.RequestBody(nil, req, false)
+		_, body, err := translator.RequestBody(nil, req, false)
 		require.NoError(t, err)
 
-		result := gjson.ParseBytes(bm.GetBody())
+		result := gjson.ParseBytes(body)
 
 		// Check text part (index 0) - should NOT be cached.
 		require.False(t, result.Get("messages.0.content.0.cache_control").Exists(), "text part should not be cached")
@@ -2074,10 +2070,9 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_Cache(t *testing.T) {
 		}
 
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		_, bm, err := translator.RequestBody(nil, openAIReq, false)
+		_, body, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		body := bm.GetBody()
 		result := gjson.ParseBytes(body)
 
 		// Check that the developer message, which becomes part of the 'system' prompt, is cached.
@@ -2115,10 +2110,9 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_Cache(t *testing.T) {
 		}
 
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		_, bm, err := translator.RequestBody(nil, openAIReq, false)
+		_, body, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		body := bm.GetBody()
 		result := gjson.ParseBytes(body)
 
 		// Check that the tool definition in the 'tools' array is cached.
@@ -2162,10 +2156,9 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_Cache(t *testing.T) {
 		}
 
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		_, bm, err := translator.RequestBody(nil, openAIReq, false)
+		_, body, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		body := bm.GetBody()
 		result := gjson.ParseBytes(body)
 
 		// The translator creates a single user message with three tool_result blocks.
@@ -2205,10 +2198,9 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_Cache(t *testing.T) {
 		}
 
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		_, bm, err := translator.RequestBody(nil, openAIReq, false)
+		_, body, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		body := bm.GetBody()
 		result := gjson.ParseBytes(body)
 
 		// The assistant message has two content parts: text and tool_use.
@@ -2243,10 +2235,9 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_Cache(t *testing.T) {
 		}
 
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		_, bm, err := translator.RequestBody(nil, openAIReq, false)
+		_, body, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		body := bm.GetBody()
 		result := gjson.ParseBytes(body)
 
 		// Check the assistant message's text content (index 0).
@@ -2298,10 +2289,9 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_Cache(t *testing.T) {
 		}
 
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		_, bm, err := translator.RequestBody(nil, openAIReq, false)
+		_, body, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		body := bm.GetBody()
 		result := gjson.ParseBytes(body)
 
 		require.Equal(t, "call_001", result.Get("messages.0.content.0.tool_use_id").String())

@@ -627,7 +627,7 @@ func anthropicToolUseToOpenAICalls(block *anthropic.ContentBlockUnion) ([]openai
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody] for GCP.
 func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
-	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, err error,
+	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	params, err := buildAnthropicParams(openAIReq)
 	if err != nil {
@@ -774,7 +774,8 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 		PromptTokens:     int(promptTokens),
 		TotalTokens:      int(promptTokens + anthropicResp.Usage.OutputTokens),
 		PromptTokensDetails: &openai.PromptTokensDetails{
-			CachedTokens: int(anthropicResp.Usage.CacheReadInputTokens + anthropicResp.Usage.CacheCreationInputTokens)},
+			CachedTokens: int(anthropicResp.Usage.CacheReadInputTokens + anthropicResp.Usage.CacheCreationInputTokens),
+		},
 	}
 
 	finishReason, err := anthropicToOpenAIFinishReason(anthropicResp.StopReason)

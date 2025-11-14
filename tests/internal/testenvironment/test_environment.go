@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -23,7 +24,9 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
+	"github.com/envoyproxy/ai-gateway/internal/pprof"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
+	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 )
 
 // TestEnvironment holds all the services needed for tests.
