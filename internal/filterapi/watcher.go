@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// ConfigReceiver is an interface that can receive *filterapi.Config updates.
+// ConfigReceiver is an interface that can receive *Config updates.
 // This is mostly for decoupling and testing purposes.
 type ConfigReceiver interface {
 	// LoadConfig updates the configuration.
