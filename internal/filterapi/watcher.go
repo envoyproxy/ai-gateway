@@ -87,6 +87,7 @@ func (cw *configWatcher) loadConfig(ctx context.Context) error {
 		if stat.ModTime().Sub(cw.lastMod) <= 0 {
 			return nil
 		}
+		cw.l.Info("loading a new config", slog.String("path", cw.path))
 		cw.lastMod = stat.ModTime()
 		cfg, err = UnmarshalConfigYaml(cw.path)
 		if err != nil {
