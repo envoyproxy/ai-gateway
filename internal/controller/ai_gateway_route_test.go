@@ -555,6 +555,95 @@ func Test_newHTTPRoute_LabelAndAnnotationPropagation(t *testing.T) {
 	require.Equal(t, "ann-value-2", httpRoute.Annotations["custom-annotation-2"])
 }
 
+func Test_newHTTPRoute_HostnamesAnnotation_NotSet(t *testing.T) {
+	c := requireNewFakeClientWithIndexes(t)
+
+	// Minimal backend to satisfy newHTTPRoute validation.
+	backend := &aigv1a1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-backend", Namespace: "test-ns"},
+		Spec: aigv1a1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To(gwapiv1.Namespace("test-ns"))},
+		},
+	}
+	require.NoError(t, c.Create(context.Background(), backend))
+
+	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-route",
+			Namespace: "test-ns",
+		},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{Name: "test-backend", Weight: ptr.To[int32](100)},
+					},
+				},
+			},
+		},
+	}
+
+	controller := &AIGatewayRouteController{client: c}
+	httpRoute := &gwapiv1.HTTPRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-route",
+			Namespace: "test-ns",
+		},
+	}
+
+	err := controller.newHTTPRoute(context.Background(), httpRoute, aiGatewayRoute)
+	require.NoError(t, err)
+
+	// Without annotation, Hostnames should remain empty.
+	require.Empty(t, httpRoute.Spec.Hostnames)
+}
+
+func Test_newHTTPRoute_HostnamesAnnotation_Set(t *testing.T) {
+	c := requireNewFakeClientWithIndexes(t)
+
+	// Minimal backend to satisfy newHTTPRoute validation.
+	backend := &aigv1a1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-backend", Namespace: "test-ns"},
+		Spec: aigv1a1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To(gwapiv1.Namespace("test-ns"))},
+		},
+	}
+	require.NoError(t, c.Create(context.Background(), backend))
+
+	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-route",
+			Namespace: "test-ns",
+			Annotations: map[string]string{
+				aigatewayHTTPRouteHostnamesAnnotation: "api.example.com, *.example.net , sub.example.com ,",
+			},
+		},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{Name: "test-backend", Weight: ptr.To[int32](100)},
+					},
+				},
+			},
+		},
+	}
+
+	controller := &AIGatewayRouteController{client: c, logger: logr.Discard()}
+	httpRoute := &gwapiv1.HTTPRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-route",
+			Namespace: "test-ns",
+		},
+	}
+
+	err := controller.newHTTPRoute(context.Background(), httpRoute, aiGatewayRoute)
+	require.NoError(t, err)
+
+	expected := []gwapiv1.Hostname{"api.example.com", "*.example.net", "sub.example.com"}
+	require.Equal(t, expected, httpRoute.Spec.Hostnames)
+}
+
 func TestAIGatewayRouteController_syncGateways_NamespaceDetermination(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()

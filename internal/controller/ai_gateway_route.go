@@ -41,6 +41,8 @@ const (
 	httpRouteAnnotationForAIGatewayGeneratedIndication = egAnnotationPrefix + internalapi.AIGatewayGeneratedHTTPRouteAnnotation
 	egOwningGatewayNameLabel                           = egAnnotationPrefix + "owning-gateway-name"
 	egOwningGatewayNamespaceLabel                      = egAnnotationPrefix + "owning-gateway-namespace"
+	// Annotation on AIGatewayRoute to set generated HTTPRoute.Spec.Hostnames (comma-separated list).
+	aigatewayHTTPRouteHostnamesAnnotation = "aigateway.envoyproxy.io/http-route-hostnames"
 	// apiKeyInSecret is the key to store OpenAI API key.
 	apiKeyInSecret = "apiKey"
 )
@@ -352,6 +354,25 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 	dst.Annotations[httpRouteAnnotationForAIGatewayGeneratedIndication] = "true"
 
 	dst.Spec.ParentRefs = aiGatewayRoute.Spec.ParentRefs
+
+	// Apply hostnames from annotation if provided.
+	if aiGatewayRoute.Annotations != nil {
+		if v, ok := aiGatewayRoute.Annotations[aigatewayHTTPRouteHostnamesAnnotation]; ok {
+			parts := strings.Split(v, ",")
+			hostnames := make([]gwapiv1.Hostname, 0, len(parts))
+			for _, p := range parts {
+				h := strings.TrimSpace(p)
+				if h == "" {
+					continue
+				}
+				hostnames = append(hostnames, gwapiv1.Hostname(h))
+			}
+			if len(hostnames) > 0 {
+				c.logger.Info("Applying hostnames from annotation to HTTPRoute", "hostnames", hostnames)
+				dst.Spec.Hostnames = hostnames
+			}
+		}
+	}
 	return nil
 }
 
