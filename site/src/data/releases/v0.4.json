@@ -269,9 +269,8 @@
       "dependencies": [
         { "title": "Go 1.25.3", "description": "Updated to Go 1.25.3 for improved performance and security." },
         { "title": "Envoy Gateway v1.5+", "description": "Built on Envoy Gateway v1.5+ for proven data plane capabilities and enhanced features. This version is also fully compatible with the upcoming v1.6" },
-        { "title": "Envoy v1.36", "description": "Leveraging Envoy Proxy v1.36's battle-tested networking capabilities." },
         { "title": "Gateway API v1.4.0", "description": "Support for Gateway API v1.4.0 specifications." },
-        { "title": "Gateway API Inference Extension v1.0.2", "description": "Integration with Gateway API Inference Extension v1.0.2 for stable intelligent endpoint selection." }
+        { "title": "Gateway API Inference Extension v1.0", "description": "Integration with Gateway API Inference Extension v1.0 for stable intelligent endpoint selection." }
       ]
     }
   ],
