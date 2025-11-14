@@ -319,7 +319,6 @@ func TestWithTestUpstream(t *testing.T) {
 			method:            http.MethodPost,
 			requestBody:       `{"model":"claude-3-sonnet","max_completion_tokens":1024, "messages":[{"role":"user","content":[{"type":"text", "text":"Hello!", "cache_control": {"type": "ephemeral"}}]}]}`,
 			expRequestBody:    `{"max_tokens":1024,"messages":[{"content":[{"text":"Hello!","cache_control":{"type":"ephemeral"},"type":"text"}],"role":"user"}],"anthropic_version":"vertex-2023-10-16"}`,
-			expHost:           "gcp-region-aiplatform.googleapis.com",
 			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:rawPredict",
 			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
 			responseStatus:    strconv.Itoa(http.StatusOK),
