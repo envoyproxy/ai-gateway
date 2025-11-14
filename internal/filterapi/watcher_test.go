@@ -6,9 +6,7 @@
 package filterapi
 
 import (
-	"bytes"
 	"context"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -21,6 +19,8 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 // mockReceiver is a mock implementation of Receiver.
@@ -43,30 +43,9 @@ func (m *mockReceiver) getConfig() *Config {
 	return m.cfg
 }
 
-var _ io.Writer = (*syncBuffer)(nil)
-
-// syncBuffer is a bytes.Buffer that is safe for concurrent read/write access.
-// used just in the tests to safely read the logs in assertions without data races.
-type syncBuffer struct {
-	mu sync.RWMutex
-	b  *bytes.Buffer
-}
-
-func (s *syncBuffer) Write(p []byte) (n int, err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.b.Write(p)
-}
-
-func (s *syncBuffer) String() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.b.String()
-}
-
 // newTestLoggerWithBuffer creates a new logger with a buffer for testing and asserting the output.
-func newTestLoggerWithBuffer() (*slog.Logger, *syncBuffer) {
-	buf := &syncBuffer{b: &bytes.Buffer{}}
+func newTestLoggerWithBuffer() (*slog.Logger, internaltesting.OutBuffer) {
+	buf := internaltesting.CaptureOutput("test")[0]
 	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	}))
