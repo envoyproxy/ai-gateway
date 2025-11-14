@@ -107,11 +107,7 @@ func TestUpgrade(t *testing.T) {
 		{
 			name: "control-plane upgrade",
 			initFunc: func(ctx context.Context) string {
-				// This is the commit hash of the oldest helm chart that we have a proper graceful shutdown logic.
-				// https://github.com/envoyproxy/ai-gateway/commit/bb2a476eeb7fe14495a64ced1396c65a07ea2cd3
-				//
-				// TODO: after the release of v0.4.x, pin to the v0.4.x chart instead.
-				const previousEnvoyAIGatewayVersion = "v0.0.0-bb2a476eeb7fe14495a64ced1396c65a07ea2cd3"
+				const previousEnvoyAIGatewayVersion = "v0.4.0"
 				const kindClusterName = "envoy-ai-gateway-cp-upgrade"
 				require.NoError(t, e2elib.SetupAll(ctx, kindClusterName, e2elib.AIGatewayHelmOption{
 					ChartVersion: previousEnvoyAIGatewayVersion,
