@@ -27,7 +27,7 @@ func TestServer_LoadConfig(t *testing.T) {
 			Backends: []filterapi.Backend{
 				{Name: "kserve", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
 				{Name: "awsbedrock", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}},
-				{Name: "openai", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
+				{Name: "openai", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, Auth: &filterapi.BackendAuth{APIKey: &filterapi.APIKeyAuth{Key: ""}}},
 			},
 			Models: []filterapi.Model{
 				{
