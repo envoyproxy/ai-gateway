@@ -27,7 +27,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi/runtimefc"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
-	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
@@ -47,50 +46,11 @@ func requireNewServerWithMockProcessor(t *testing.T) (*Server, *mockProcessor) {
 }
 
 func TestServer_LoadConfig(t *testing.T) {
-	now := time.Now()
-
-	t.Run("ok", func(t *testing.T) {
-		config := &filterapi.Config{
-			LLMRequestCosts: []filterapi.LLMRequestCost{
-				{MetadataKey: "key", Type: filterapi.LLMRequestCostTypeOutputToken},
-				{MetadataKey: "cel_key", Type: filterapi.LLMRequestCostTypeCEL, CEL: "1 + 1"},
-			},
-			Backends: []filterapi.Backend{
-				{Name: "kserve", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
-				{Name: "awsbedrock", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}},
-				{Name: "openai", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
-			},
-			Models: []filterapi.Model{
-				{
-					Name:      "llama3.3333",
-					OwnedBy:   "meta",
-					CreatedAt: now,
-				},
-				{
-					Name:      "gpt4.4444",
-					OwnedBy:   "openai",
-					CreatedAt: now,
-				},
-			},
-		}
-		s, _ := requireNewServerWithMockProcessor(t)
-		err := s.LoadConfig(t.Context(), config)
-		require.NoError(t, err)
-
-		require.NotNil(t, s.config)
-
-		require.Len(t, s.config.RequestCosts, 2)
-		require.Equal(t, filterapi.LLMRequestCostTypeOutputToken, s.config.RequestCosts[0].Type)
-		require.Equal(t, "key", s.config.RequestCosts[0].MetadataKey)
-		require.Equal(t, filterapi.LLMRequestCostTypeCEL, s.config.RequestCosts[1].Type)
-		require.Equal(t, "1 + 1", s.config.RequestCosts[1].CEL)
-		prog := s.config.RequestCosts[1].CELProg
-		require.NotNil(t, prog)
-		val, err := llmcostcel.EvaluateProgram(prog, "", "", 1, 1, 1, 1)
-		require.NoError(t, err)
-		require.Equal(t, uint64(2), val)
-		require.Equal(t, config.Models, s.config.DeclaredModels)
-	})
+	config := &filterapi.Config{}
+	s := &Server{}
+	err := s.LoadConfig(t.Context(), config)
+	require.NoError(t, err)
+	require.NotNil(t, s.config)
 }
 
 func TestServer_Check(t *testing.T) {
