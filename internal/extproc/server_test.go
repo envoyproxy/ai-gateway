@@ -25,6 +25,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi/runtimefc"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
@@ -35,10 +36,10 @@ func requireNewServerWithMockProcessor(t *testing.T) (*Server, *mockProcessor) {
 	s, err := NewServer(slog.Default(), tracing.NoopTracing{})
 	require.NoError(t, err)
 	require.NotNil(t, s)
-	s.config = &processorConfig{}
+	s.config = &runtimefc.Config{}
 
 	m := newMockProcessor(s.config, s.logger)
-	s.Register("/", func(*processorConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+	s.Register("/", func(*runtimefc.Config, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
 		return m, nil
 	})
 
@@ -78,17 +79,17 @@ func TestServer_LoadConfig(t *testing.T) {
 
 		require.NotNil(t, s.config)
 
-		require.Len(t, s.config.requestCosts, 2)
-		require.Equal(t, filterapi.LLMRequestCostTypeOutputToken, s.config.requestCosts[0].Type)
-		require.Equal(t, "key", s.config.requestCosts[0].MetadataKey)
-		require.Equal(t, filterapi.LLMRequestCostTypeCEL, s.config.requestCosts[1].Type)
-		require.Equal(t, "1 + 1", s.config.requestCosts[1].CEL)
-		prog := s.config.requestCosts[1].celProg
+		require.Len(t, s.config.RequestCosts, 2)
+		require.Equal(t, filterapi.LLMRequestCostTypeOutputToken, s.config.RequestCosts[0].Type)
+		require.Equal(t, "key", s.config.RequestCosts[0].MetadataKey)
+		require.Equal(t, filterapi.LLMRequestCostTypeCEL, s.config.RequestCosts[1].Type)
+		require.Equal(t, "1 + 1", s.config.RequestCosts[1].CEL)
+		prog := s.config.RequestCosts[1].CELProg
 		require.NotNil(t, prog)
 		val, err := llmcostcel.EvaluateProgram(prog, "", "", 1, 1, 1, 1)
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), val)
-		require.Equal(t, config.Models, s.config.declaredModels)
+		require.Equal(t, config.Models, s.config.DeclaredModels)
 	})
 }
 
@@ -316,7 +317,7 @@ func TestServer_setBackend(t *testing.T) {
 				str, err := prototext.Marshal(tc.md)
 				require.NoError(t, err)
 				s, _ := requireNewServerWithMockProcessor(t)
-				s.config.backends = map[string]*processorConfigBackend{"openai": {b: &filterapi.Backend{Name: "openai", HeaderMutation: &filterapi.HTTPHeaderMutation{Set: []filterapi.HTTPHeader{{Name: "x-foo", Value: "foo"}}}}}}
+				s.config.Backends = map[string]*runtimefc.Backend{"openai": {Backend: &filterapi.Backend{Name: "openai", HeaderMutation: &filterapi.HTTPHeaderMutation{Set: []filterapi.HTTPHeader{{Name: "x-foo", Value: "foo"}}}}}}
 				mockProc := &mockProcessor{}
 
 				// Use the correct metadata field key based on isEndpointPicker.
@@ -344,12 +345,12 @@ func TestServer_ProcessorSelection(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, s)
 
-	s.config = &processorConfig{}
-	s.Register("/one", func(*processorConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+	s.config = &runtimefc.Config{}
+	s.Register("/one", func(*runtimefc.Config, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
 		// Returning nil guarantees that the test will fail if this processor is selected.
 		return nil, nil
 	})
-	s.Register("/two", func(*processorConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+	s.Register("/two", func(*runtimefc.Config, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
 		return &mockProcessor{
 			t:                     t,
 			expHeaderMap:          &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/two"}, {Key: "x-request-id", Value: "original-req-id"}}},
@@ -517,14 +518,14 @@ func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, s)
 
-	s.config = &processorConfig{}
+	s.config = &runtimefc.Config{}
 
 	// Register processors for different base paths.
 	mockProc := &mockProcessor{}
-	s.Register("/v1/messages", func(*processorConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+	s.Register("/v1/messages", func(*runtimefc.Config, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
 		return mockProc, nil
 	})
-	s.Register("/anthropic/v1/messages", func(*processorConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+	s.Register("/anthropic/v1/messages", func(*runtimefc.Config, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
 		return mockProc, nil
 	})
 

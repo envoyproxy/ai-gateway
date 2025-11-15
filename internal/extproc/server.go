@@ -19,17 +19,15 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
-	"github.com/google/cel-go/cel"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/prototext"
 
-	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi/runtimefc"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
-	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -42,7 +40,7 @@ var (
 type Server struct {
 	logger                        *slog.Logger
 	tracing                       tracing.Tracing
-	config                        *processorConfig
+	config                        *runtimefc.Config
 	processorFactories            map[string]ProcessorFactory
 	routerProcessorsPerReqID      map[string]Processor
 	routerProcessorsPerReqIDMutex sync.RWMutex
@@ -63,39 +61,9 @@ func NewServer(logger *slog.Logger, tracing tracing.Tracing) (*Server, error) {
 
 // LoadConfig updates the configuration of the external processor.
 func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error {
-	backends := make(map[string]*processorConfigBackend, len(config.Backends))
-	for _, backend := range config.Backends {
-		b := backend
-		var h backendauth.Handler
-		if b.Auth != nil {
-			var err error
-			h, err = backendauth.NewHandler(ctx, b.Auth)
-			if err != nil {
-				return fmt.Errorf("cannot create backend auth handler: %w", err)
-			}
-		}
-		backends[b.Name] = &processorConfigBackend{b: &b, handler: h}
-	}
-
-	costs := make([]processorConfigRequestCost, 0, len(config.LLMRequestCosts))
-	for i := range config.LLMRequestCosts {
-		c := &config.LLMRequestCosts[i]
-		var prog cel.Program
-		if c.CEL != "" {
-			var err error
-			prog, err = llmcostcel.NewProgram(c.CEL)
-			if err != nil {
-				return fmt.Errorf("cannot create CEL program for cost: %w", err)
-			}
-		}
-		costs = append(costs, processorConfigRequestCost{LLMRequestCost: c, celProg: prog})
-	}
-
-	newConfig := &processorConfig{
-		uuid:           config.UUID,
-		backends:       backends,
-		requestCosts:   costs,
-		declaredModels: config.Models,
+	newConfig, err := runtimefc.NewRuntimeFilterConfig(ctx, config)
+	if err != nil {
+		return fmt.Errorf("cannot create runtime filter config: %w", err)
 	}
 	s.config = newConfig // This is racey, but we don't care.
 	return nil
@@ -140,7 +108,7 @@ const internalReqIDHeader = internalapi.EnvoyAIGatewayHeaderPrefix + "internal-r
 
 // Process implements [extprocv3.ExternalProcessorServer].
 func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error {
-	s.logger.Debug("handling a new stream", slog.Any("config_uuid", s.config.uuid))
+	s.logger.Debug("handling a new stream", slog.Any("config_uuid", s.config.UUID))
 	ctx := stream.Context()
 
 	// The processor will be instantiated when the first message containing the request headers is received.
@@ -359,7 +327,7 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 	if !ok {
 		return status.Errorf(codes.Internal, "missing %s in endpoint metadata", internalapi.InternalMetadataBackendNameKey)
 	}
-	backend, ok := s.config.backends[backendName.GetStringValue()]
+	backend, ok := s.config.Backends[backendName.GetStringValue()]
 	if !ok {
 		return status.Errorf(codes.Internal, "unknown backend: %s", backendName.GetStringValue())
 	}
@@ -372,7 +340,7 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 			internalReqID, backendName.GetStringValue())
 	}
 
-	if err := p.SetBackend(ctx, backend.b, backend.handler, routerProcessor); err != nil {
+	if err := p.SetBackend(ctx, backend.Backend, backend.Handler, routerProcessor); err != nil {
 		return status.Errorf(codes.Internal, "cannot set backend: %v", err)
 	}
 	return nil
