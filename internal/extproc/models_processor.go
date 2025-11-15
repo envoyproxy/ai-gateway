@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/codes"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi/runtimefc"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -35,15 +36,15 @@ type modelsProcessor struct {
 var _ Processor = (*modelsProcessor)(nil)
 
 // NewModelsProcessor creates a new processor that returns the list of declared models.
-func NewModelsProcessor(config *processorConfig, _ map[string]string, logger *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
+func NewModelsProcessor(config *runtimefc.Config, _ map[string]string, logger *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 	if isUpstreamFilter {
 		return passThroughProcessor{}, nil
 	}
 	models := openai.ModelList{
 		Object: "list",
-		Data:   make([]openai.Model, 0, len(config.declaredModels)),
+		Data:   make([]openai.Model, 0, len(config.DeclaredModels)),
 	}
-	for _, m := range config.declaredModels {
+	for _, m := range config.DeclaredModels {
 		models.Data = append(models.Data, openai.Model{
 			ID:      m.Name,
 			Object:  "model",

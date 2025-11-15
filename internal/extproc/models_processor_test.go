@@ -18,12 +18,13 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi/runtimefc"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 func TestModels_ProcessRequestHeaders(t *testing.T) {
 	now := time.Now()
-	cfg := &processorConfig{declaredModels: []filterapi.Model{
+	cfg := &runtimefc.Config{DeclaredModels: []filterapi.Model{
 		{
 			Name:      "openai",
 			OwnedBy:   "openai",
@@ -53,8 +54,8 @@ func TestModels_ProcessRequestHeaders(t *testing.T) {
 	var models openai.ModelList
 	require.NoError(t, json.Unmarshal(ir.ImmediateResponse.Body, &models))
 	require.Equal(t, "list", models.Object)
-	require.Len(t, models.Data, len(cfg.declaredModels))
-	for i, m := range cfg.declaredModels {
+	require.Len(t, models.Data, len(cfg.DeclaredModels))
+	for i, m := range cfg.DeclaredModels {
 		require.Equal(t, "model", models.Data[i].Object)
 		require.Equal(t, m.Name, models.Data[i].ID)
 		require.Equal(t, now.Unix(), time.Time(models.Data[i].Created).Unix())

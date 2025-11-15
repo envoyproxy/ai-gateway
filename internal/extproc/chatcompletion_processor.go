@@ -23,6 +23,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi/runtimefc"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
@@ -33,7 +34,7 @@ import (
 
 // ChatCompletionProcessorFactory returns a factory method to instantiate the chat completion processor.
 func ChatCompletionProcessorFactory(f metrics.ChatCompletionMetricsFactory) ProcessorFactory {
-	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
+	return func(config *runtimefc.Config, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "chat-completion", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &chatCompletionProcessorRouterFilter{
@@ -66,7 +67,7 @@ type chatCompletionProcessorRouterFilter struct {
 	// TODO: this is a bit of a hack and dirty workaround, so revert this to a cleaner design later.
 	upstreamFilter Processor
 	logger         *slog.Logger
-	config         *processorConfig
+	config         *runtimefc.Config
 	requestHeaders map[string]string
 	// originalRequestBody is the original request body that is passed to the upstream filter.
 	// This is used to perform the transformation of the request body on the original input
@@ -113,7 +114,7 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(ctx context.Con
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
-	if body.Stream && (body.StreamOptions == nil || !body.StreamOptions.IncludeUsage) && len(c.config.requestCosts) > 0 {
+	if body.Stream && (body.StreamOptions == nil || !body.StreamOptions.IncludeUsage) && len(c.config.RequestCosts) > 0 {
 		// If the request is a streaming request and cost metrics are configured, we need to include usage in the response
 		// to avoid the bypassing of the token usage calculation.
 		body.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
@@ -175,7 +176,7 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(ctx context.Con
 // This is created per retry and handles the translation as well as the authentication of the request.
 type chatCompletionProcessorUpstreamFilter struct {
 	logger                 *slog.Logger
-	config                 *processorConfig
+	config                 *runtimefc.Config
 	requestHeaders         map[string]string
 	responseHeaders        map[string]string
 	responseEncoding       string
@@ -445,7 +446,7 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 		c.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.CachedInputTokens, tokenUsage.OutputTokens, c.requestHeaders)
 	}
 
-	if body.EndOfStream && len(c.config.requestCosts) > 0 {
+	if body.EndOfStream && len(c.config.RequestCosts) > 0 {
 		metadata, err := buildDynamicMetadata(c.config, &c.costs, c.requestHeaders, c.backendName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
@@ -555,10 +556,10 @@ func buildContentLengthDynamicMetadataOnRequest(contentLength int) *structpb.Str
 // This function is called by the upstream filter only at the end of the stream (body.EndOfStream=true)
 // when the response is successfully completed. It is not called for failed requests or partial responses.
 // The metadata includes token usage costs and model information for downstream processing.
-func buildDynamicMetadata(config *processorConfig, costs *translator.LLMTokenUsage, requestHeaders map[string]string, backendName string) (*structpb.Struct, error) {
-	metadata := make(map[string]*structpb.Value, len(config.requestCosts)+2)
-	for i := range config.requestCosts {
-		rc := &config.requestCosts[i]
+func buildDynamicMetadata(config *runtimefc.Config, costs *translator.LLMTokenUsage, requestHeaders map[string]string, backendName string) (*structpb.Struct, error) {
+	metadata := make(map[string]*structpb.Value, len(config.RequestCosts)+2)
+	for i := range config.RequestCosts {
+		rc := &config.RequestCosts[i]
 		var cost uint32
 		switch rc.Type {
 		case filterapi.LLMRequestCostTypeInputToken:
@@ -571,7 +572,7 @@ func buildDynamicMetadata(config *processorConfig, costs *translator.LLMTokenUsa
 			cost = costs.TotalTokens
 		case filterapi.LLMRequestCostTypeCEL:
 			costU64, err := llmcostcel.EvaluateProgram(
-				rc.celProg,
+				rc.CELProg,
 				requestHeaders[internalapi.ModelNameHeaderKeyDefault],
 				backendName,
 				costs.InputTokens,

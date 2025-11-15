@@ -22,6 +22,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi/runtimefc"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
@@ -31,7 +32,7 @@ import (
 
 // CompletionsProcessorFactory returns a factory method to instantiate the completions processor.
 func CompletionsProcessorFactory(f metrics.CompletionMetricsFactory) ProcessorFactory {
-	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
+	return func(config *runtimefc.Config, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "completions", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &completionsProcessorRouterFilter{
@@ -64,7 +65,7 @@ type completionsProcessorRouterFilter struct {
 	// TODO: this is a bit of a hack and dirty workaround, so revert this to a cleaner design later.
 	upstreamFilter Processor
 	logger         *slog.Logger
-	config         *processorConfig
+	config         *runtimefc.Config
 	requestHeaders map[string]string
 	// originalRequestBody is the original request body that is passed to the upstream filter.
 	// This is used to perform the transformation of the request body on the original input
@@ -110,7 +111,7 @@ func (c *completionsProcessorRouterFilter) ProcessRequestBody(ctx context.Contex
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
 
-	if body.Stream && (body.StreamOptions == nil || !body.StreamOptions.IncludeUsage) && len(c.config.requestCosts) > 0 {
+	if body.Stream && (body.StreamOptions == nil || !body.StreamOptions.IncludeUsage) && len(c.config.RequestCosts) > 0 {
 		// If the request is a streaming request and cost metrics are configured, we need to include usage in the response
 		// to avoid the bypassing of the token usage calculation.
 		body.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
@@ -169,7 +170,7 @@ func (c *completionsProcessorRouterFilter) ProcessRequestBody(ctx context.Contex
 // This is created per retry and handles the translation as well as the authentication of the request.
 type completionsProcessorUpstreamFilter struct {
 	logger                 *slog.Logger
-	config                 *processorConfig
+	config                 *runtimefc.Config
 	requestHeaders         map[string]string
 	responseHeaders        map[string]string
 	responseEncoding       string
@@ -418,7 +419,7 @@ func (c *completionsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Con
 		c.logger.Debug("completion response model", "model", responseModel)
 	}
 
-	if body.EndOfStream && len(c.config.requestCosts) > 0 {
+	if body.EndOfStream && len(c.config.RequestCosts) > 0 {
 		resp.DynamicMetadata, err = buildDynamicMetadata(c.config, &c.costs, c.requestHeaders, c.backendName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
