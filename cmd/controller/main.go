@@ -50,6 +50,7 @@ type flags struct {
 	metricsRequestHeaderAttributes string
 	metricsRequestHeaderLabels     string // DEPRECATED: use metricsRequestHeaderAttributes instead.
 	spanRequestHeaderAttributes    string
+	endpointPrefixes               string
 	rootPrefix                     string
 	extProcExtraEnvVars            string
 	extProcImagePullSecrets        string
@@ -154,6 +155,11 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		"",
 		"Comma-separated key-value pairs for mapping HTTP request headers to otel span attributes. Format: x-session-id:session.id,x-user-id:user.id.",
 	)
+	endpointPrefixes := fs.String(
+		"endpointPrefixes",
+		"",
+		"Comma-separated key-value pairs for endpoint prefixes. Format: openai:/,cohere:/cohere,anthropic:/anthropic.",
+	)
 	rootPrefix := fs.String(
 		"rootPrefix",
 		"/",
@@ -240,6 +246,13 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		}
 	}
 
+	// Validate endpoint prefixes if provided.
+	if *endpointPrefixes != "" {
+		if _, err := internalapi.ParseEndpointPrefixes(*endpointPrefixes); err != nil {
+			return flags{}, fmt.Errorf("invalid endpoint prefixes: %w", err)
+		}
+	}
+
 	// Validate extProc extra env vars if provided.
 	if *extProcExtraEnvVars != "" {
 		_, err := controller.ParseExtraEnvVars(*extProcExtraEnvVars)
@@ -270,6 +283,7 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		metricsRequestHeaderAttributes: *metricsRequestHeaderAttributes,
 		metricsRequestHeaderLabels:     *metricsRequestHeaderLabels,
 		spanRequestHeaderAttributes:    *spanRequestHeaderAttributes,
+		endpointPrefixes:               *endpointPrefixes,
 		rootPrefix:                     *rootPrefix,
 		extProcExtraEnvVars:            *extProcExtraEnvVars,
 		extProcImagePullSecrets:        *extProcImagePullSecrets,
@@ -362,6 +376,7 @@ func main() {
 		UDSPath:                        extProcUDSPath,
 		MetricsRequestHeaderAttributes: parsedFlags.metricsRequestHeaderAttributes,
 		TracingRequestHeaderAttributes: parsedFlags.spanRequestHeaderAttributes,
+		EndpointPrefixes:               parsedFlags.endpointPrefixes,
 		RootPrefix:                     parsedFlags.rootPrefix,
 		ExtProcExtraEnvVars:            parsedFlags.extProcExtraEnvVars,
 		ExtProcImagePullSecrets:        parsedFlags.extProcImagePullSecrets,

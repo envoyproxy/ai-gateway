@@ -48,6 +48,7 @@ func TestWithTestUpstream(t *testing.T) {
 	// Substitute any dynamically generated UUIDs in the response body with a placeholder
 	// example generated UUID 703482f8-2e5b-4dcc-a872-d74bd66c386.
 	m := regexp.MustCompile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+	createdReg := regexp.MustCompile(`"created":\d+`)
 
 	config := &filterapi.Config{
 		LLMRequestCosts: []filterapi.LLMRequestCost{
@@ -184,7 +185,8 @@ func TestWithTestUpstream(t *testing.T) {
 			responseBody:    `{"output":{"message":{"content":[{"text":"response"},{"text":"from"},{"text":"assistant"}],"role":"assistant"}},"stopReason":null,"usage":{"inputTokens":10,"outputTokens":20,"totalTokens":30}}`,
 			expRequestBody:  `{"inferenceConfig":{},"messages":[],"system":[{"text":"You are a chatbot."}]}`,
 			expStatus:       http.StatusOK,
-			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"response","role":"assistant"}}],"model":"something","object":"chat.completion","usage":{"completion_tokens":20,"prompt_tokens":10,"total_tokens":30}}`,
+			responseHeaders: "x-amzn-requestid:2bc5b090-a26c-4007-9467-ce5adc4ffa1d",
+			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"response","role":"assistant"}}],"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","created":123,"model":"something","object":"chat.completion","usage":{"completion_tokens":20,"prompt_tokens":10,"total_tokens":30}}`,
 		},
 		{
 			name:            "openai - /v1/chat/completions",
@@ -230,7 +232,8 @@ func TestWithTestUpstream(t *testing.T) {
 			requestBody:     toolCallResultsRequestBody,
 			expRequestBody:  `{"inferenceConfig":{"maxTokens":1024},"messages":[{"content":[{"text":"List the files in the /tmp directory"}],"role":"user"},{"content":[{"toolUse":{"name":"list_files","input":{"path":"/tmp"},"toolUseId":"call_abc123"}}],"role":"assistant"},{"content":[{"toolResult":{"content":[{"text":"[\"foo.txt\", \"bar.log\", \"data.csv\"]"}],"status":null,"toolUseId":"call_abc123"}}],"role":"user"}]}`,
 			responseBody:    `{"output":{"message":{"content":[{"text":"response"},{"text":"from"},{"text":"assistant"}],"role":"assistant"}},"stopReason":null,"usage":{"inputTokens":10,"outputTokens":20,"totalTokens":30}}`,
-			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"response","role":"assistant"}}],"model":"gpt-4-0613","object":"chat.completion","usage":{"completion_tokens":20,"prompt_tokens":10,"total_tokens":30}}`,
+			responseHeaders: "x-amzn-requestid:2bc5b090-a26c-4007-9467-ce5adc4ffa1d",
+			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"response","role":"assistant"}}],"created":123, "id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","model":"gpt-4-0613","object":"chat.completion","usage":{"completion_tokens":20,"prompt_tokens":10,"total_tokens":30}}`,
 			expStatus:       http.StatusOK,
 		},
 		{
@@ -242,7 +245,7 @@ func TestWithTestUpstream(t *testing.T) {
 			requestBody:     toolCallResultsRequestBody,
 			expRequestBody:  `{"max_tokens":1024,"messages":[{"content":[{"text":"List the files in the /tmp directory","type":"text"}],"role":"user"},{"content":[{"id":"call_abc123","input":{"path":"/tmp"},"name":"list_files","type":"tool_use"}],"role":"assistant"},{"content":[{"tool_use_id":"call_abc123","is_error":false,"content":[{"text":"[\"foo.txt\", \"bar.log\", \"data.csv\"]","type":"text"}],"type":"tool_result"}],"role":"user"}],"anthropic_version":"vertex-2023-10-16"}`,
 			responseBody:    `{"id":"msg_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from Anthropic!"}],"usage":{"input_tokens":10,"output_tokens":25,"cache_read_input_tokens":10}}`,
-			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello from Anthropic!","role":"assistant"}}],"model":"gpt-4-0613","object":"chat.completion","usage":{"completion_tokens":25,"prompt_tokens":10,"total_tokens":35,"prompt_tokens_details":{"cached_tokens":10}}}`,
+			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello from Anthropic!","role":"assistant"}}],"created":123, "id":"msg_123","model":"gpt-4-0613","object":"chat.completion","usage":{"completion_tokens":25,"prompt_tokens":20,"total_tokens":45,"prompt_tokens_details":{"cached_tokens":10}}}`,
 			expStatus:       http.StatusOK,
 		},
 		{
@@ -296,7 +299,7 @@ func TestWithTestUpstream(t *testing.T) {
 			responseStatus:    strconv.Itoa(http.StatusOK),
 			responseBody:      `{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"get_delivery_date","args":{"order_id":"123"}}}]},"finishReason":"STOP","avgLogprobs":0.000001220789272338152}],"usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":11,"totalTokenCount":61,"trafficType":"ON_DEMAND","promptTokensDetails":[{"modality":"TEXT","tokenCount":50}],"candidatesTokensDetails":[{"modality":"TEXT","tokenCount":11}]},"modelVersion":"gemini-2.0-flash-001","createTime":"2025-07-11T22:15:44.956335Z","responseId":"EI5xaK-vOtqJm22IPmuCR14AI"}`,
 			expStatus:         http.StatusOK,
-			expResponseBody:   `{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"role":"assistant","tool_calls":[{"id":"703482f8-2e5b-4dcc-a872-d74bd66c3866","function":{"arguments":"{\"order_id\":\"123\"}","name":"get_delivery_date"},"type":"function"}]}}],"model":"gemini-2.0-flash-001","object":"chat.completion","usage":{"completion_tokens":11,"completion_tokens_details":{},"prompt_tokens":50,"total_tokens":61,"prompt_tokens_details":{}}}`,
+			expResponseBody:   `{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"role":"assistant","tool_calls":[{"id":"703482f8-2e5b-4dcc-a872-d74bd66c3866","function":{"arguments":"{\"order_id\":\"123\"}","name":"get_delivery_date"},"type":"function"}]}}],"created":123, "id":"EI5xaK-vOtqJm22IPmuCR14AI","model":"gemini-2.0-flash-001","object":"chat.completion","usage":{"completion_tokens":11,"completion_tokens_details":{},"prompt_tokens":50,"total_tokens":61,"prompt_tokens_details":{}}}`,
 		},
 		{
 			name:              "gcp-anthropicai - /v1/chat/completions",
@@ -310,7 +313,21 @@ func TestWithTestUpstream(t *testing.T) {
 			responseStatus:    strconv.Itoa(http.StatusOK),
 			responseBody:      `{"id":"msg_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from Anthropic!"}],"usage":{"input_tokens":10,"output_tokens":25}}`,
 			expStatus:         http.StatusOK,
-			expResponseBody:   `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello from Anthropic!","role":"assistant"}}],"model":"claude-3-sonnet","object":"chat.completion","usage":{"completion_tokens":25,"prompt_tokens":10,"total_tokens":35,"prompt_tokens_details":{}}}`,
+			expResponseBody:   `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello from Anthropic!","role":"assistant"}}],"created":123, "id":"msg_123","model":"claude-3-sonnet","object":"chat.completion","usage":{"completion_tokens":25,"prompt_tokens":10,"total_tokens":35,"prompt_tokens_details":{}}}`,
+		},
+		{
+			name:              "gcp-anthropicai - /v1/chat/completions - with cache",
+			backend:           "gcp-anthropicai",
+			path:              "/v1/chat/completions",
+			method:            http.MethodPost,
+			requestBody:       `{"model":"claude-3-sonnet","max_completion_tokens":1024, "messages":[{"role":"user","content":[{"type":"text", "text":"Hello!", "cache_control": {"type": "ephemeral"}}]}]}`,
+			expRequestBody:    `{"max_tokens":1024,"messages":[{"content":[{"text":"Hello!","cache_control":{"type":"ephemeral"},"type":"text"}],"role":"user"}],"anthropic_version":"vertex-2023-10-16"}`,
+			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:rawPredict",
+			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus:    strconv.Itoa(http.StatusOK),
+			responseBody:      `{"id":"msg_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from cached Anthropic!"}],"usage":{"input_tokens":10,"output_tokens":25, "cache_read_input_tokens": 8}}`,
+			expStatus:         http.StatusOK,
+			expResponseBody:   `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello from cached Anthropic!","role":"assistant"}}], "created":123, "id":"msg_123", "model":"claude-3-sonnet","object":"chat.completion","usage":{"completion_tokens":25,"prompt_tokens":18,"total_tokens":43,"prompt_tokens_details":{"cached_tokens":8}}}`,
 		},
 		{
 			name:            "modelname-override - /v1/chat/completions",
@@ -338,14 +355,15 @@ func TestWithTestUpstream(t *testing.T) {
 			},
 		},
 		{
-			name:           "aws - /v1/chat/completions - streaming with tool use",
-			backend:        "aws-bedrock",
-			path:           "/v1/chat/completions",
-			responseType:   "aws-event-stream",
-			method:         http.MethodPost,
-			requestBody:    `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true}`,
-			expRequestBody: `{"inferenceConfig":{},"messages":[],"system":[{"text":"You are a chatbot."}]}`,
-			expPath:        "/model/something/converse-stream",
+			name:            "aws - /v1/chat/completions - streaming with tool use",
+			backend:         "aws-bedrock",
+			path:            "/v1/chat/completions",
+			responseType:    "aws-event-stream",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true}`,
+			expRequestBody:  `{"inferenceConfig":{},"messages":[],"system":[{"text":"You are a chatbot."}]}`,
+			expPath:         "/model/something/converse-stream",
+			responseHeaders: "x-amzn-requestid:2bc5b090-a26c-4007-9467-ce5adc4ffa1d",
 			responseBody: `{"role":"assistant"}
 {"contentBlockIndex": 0, "delta":{"text":"Don"}}
 {"contentBlockIndex": 0, "delta":{"text":"'t worry,  I'm here to help. It"}}
@@ -361,25 +379,25 @@ func TestWithTestUpstream(t *testing.T) {
 {"usage":{"inputTokens":41, "outputTokens":36, "totalTokens":77}}
 `,
 			expStatus: http.StatusOK,
-			expResponseBody: `data: {"choices":[{"index":0,"delta":{"content":"","role":"assistant"}}],"object":"chat.completion.chunk"}
+			expResponseBody: `data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta":{"content":"","role":"assistant"}}],"created":123,"model":"something","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":"Don","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta":{"content":"Don","role":"assistant"}}],"created":123,"model":"something","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":"'t worry,  I'm here to help. It","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta":{"content":"'t worry,  I'm here to help. It","role":"assistant"}}],"created":123,"model":"something","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":" seems like you're testing my ability to respond appropriately","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta":{"content":" seems like you're testing my ability to respond appropriately","role":"assistant"}}],"created":123,"model":"something","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function"}]}}],"object":"chat.completion.chunk"}
+data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function"}]}}],"created":123,"model":"something","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":null,"function":{"arguments":"{\"x\": \"17\"}","name":""},"type":"function"}]}}],"object":"chat.completion.chunk"}
+data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":null,"function":{"arguments":"{\"x\": \"17\"}","name":""},"type":"function"}]}}],"created":123,"model":"something","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":1,"id":"tooluse_stream2","function":{"arguments":"","name":"sine"},"type":"function"}]}}],"object":"chat.completion.chunk"}
+data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":1,"id":"tooluse_stream2","function":{"arguments":"","name":"sine"},"type":"function"}]}}],"created":123,"model":"something","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":1,"id":null,"function":{"arguments":"{\"x\": \"17\"}","name":""},"type":"function"}]}}],"object":"chat.completion.chunk"}
+data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":1,"id":null,"function":{"arguments":"{\"x\": \"17\"}","name":""},"type":"function"}]}}],"created":123,"model":"something","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls"}],"object":"chat.completion.chunk"}
+data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls"}],"created":123,"model":"something","object":"chat.completion.chunk"}
 
-data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":41,"completion_tokens":36,"total_tokens":77}}
+data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","created":123,"model":"something","object":"chat.completion.chunk","usage":{"prompt_tokens":41,"completion_tokens":36,"total_tokens":77}}
 
 data: [DONE]
 `,
@@ -402,14 +420,15 @@ data: [DONE]
 	{"delta":{"reasoningContent":{"text":"First, I'll start by acknowledging the user..."}}}
 	{"delta":{"text":"Hello!"}}
 	{"stopReason":"end_turn"}`,
-			expStatus: http.StatusOK,
-			expResponseBody: `data: {"choices":[{"index":0,"delta":{"content":"","role":"assistant"}}],"object":"chat.completion.chunk"}
+			expStatus:       http.StatusOK,
+			responseHeaders: "x-amzn-requestid:2bc5b090-a26c-4007-9467-ce5adc4ffa1d",
+			expResponseBody: `data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta":{"content":"","role":"assistant"}}],"created":123,"model":"something","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":{"text":"First, I'll start by acknowledging the user..."}}}],"object":"chat.completion.chunk"}
+data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":{"text":"First, I'll start by acknowledging the user..."}}}],"created":123,"model":"something","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":"Hello!","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta":{"content":"Hello!","role":"assistant"}}],"created":123,"model":"something","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"stop"}],"object":"chat.completion.chunk"}
+data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"stop"}],"created":123,"model":"something","object":"chat.completion.chunk"}
 
 data: [DONE]
 `,
@@ -540,27 +559,27 @@ data: [DONE]
 			expRawQuery:       "alt=sse",
 			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
 			responseStatus:    strconv.Itoa(http.StatusOK),
-			responseBody: `{"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"}}]}
-{"candidates":[{"content":{"parts":[{"text":"! How"}],"role":"model"}}]}
-{"candidates":[{"content":{"parts":[{"text":" can I"}],"role":"model"}}]}
-{"candidates":[{"content":{"parts":[{"text":" help"}],"role":"model"}}]}
-{"candidates":[{"content":{"parts":[{"text":" you"}],"role":"model"}}]}
-{"candidates":[{"content":{"parts":[{"text":" today"}],"role":"model"}}]}
-{"candidates":[{"content":{"parts":[{"text":"?"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":7,"totalTokenCount":17}}`,
+			responseBody: `{"responseId":"msg_123","createTime":"2024-11-15T09:00:00Z","candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"}}]}
+{"responseId":"msg_123","createTime":"2024-11-15T09:00:00Z","candidates":[{"content":{"parts":[{"text":"! How"}],"role":"model"}}]}
+{"responseId":"msg_123","createTime":"2024-11-15T09:00:00Z","candidates":[{"content":{"parts":[{"text":" can I"}],"role":"model"}}]}
+{"responseId":"msg_123","createTime":"2024-11-15T09:00:00Z","candidates":[{"content":{"parts":[{"text":" help"}],"role":"model"}}]}
+{"responseId":"msg_123","createTime":"2024-11-15T09:00:00Z","candidates":[{"content":{"parts":[{"text":" you"}],"role":"model"}}]}
+{"responseId":"msg_123","createTime":"2024-11-15T09:00:00Z","candidates":[{"content":{"parts":[{"text":" today"}],"role":"model"}}]}
+{"responseId":"msg_123","createTime":"2024-11-15T09:00:00Z","candidates":[{"content":{"parts":[{"text":"?"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":7,"totalTokenCount":17}}`,
 			expStatus: http.StatusOK,
-			expResponseBody: `data: {"choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk"}
+			expResponseBody: `data: {"id":"msg_123","choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"created":123,"model":"gemini-1.5-pro","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":"! How","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"msg_123","choices":[{"index":0,"delta":{"content":"! How","role":"assistant"}}],"created":123,"model":"gemini-1.5-pro","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":" can I","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"msg_123","choices":[{"index":0,"delta":{"content":" can I","role":"assistant"}}],"created":123,"model":"gemini-1.5-pro","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":" help","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"msg_123","choices":[{"index":0,"delta":{"content":" help","role":"assistant"}}],"created":123,"model":"gemini-1.5-pro","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":" you","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"msg_123","choices":[{"index":0,"delta":{"content":" you","role":"assistant"}}],"created":123,"model":"gemini-1.5-pro","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":" today","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"msg_123","choices":[{"index":0,"delta":{"content":" today","role":"assistant"}}],"created":123,"model":"gemini-1.5-pro","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":"?","role":"assistant"},"finish_reason":"stop"}],"object":"chat.completion.chunk","usage":{"prompt_tokens":10,"completion_tokens":7,"total_tokens":17,"completion_tokens_details":{},"prompt_tokens_details":{}}}
+data: {"id":"msg_123","choices":[{"index":0,"delta":{"content":"?","role":"assistant"},"finish_reason":"stop"}],"created":123,"model":"gemini-1.5-pro","object":"chat.completion.chunk","usage":{"prompt_tokens":10,"completion_tokens":7,"total_tokens":17,"completion_tokens_details":{},"prompt_tokens_details":{}}}
 
 data: [DONE]
 `,
@@ -598,13 +617,13 @@ event: message_stop
 data: {"type": "message_stop"}
 `,
 			expStatus: http.StatusOK,
-			expResponseBody: `data: {"choices":[{"index":0,"delta":{"content":"The sky appears blue","role":"assistant"}}],"object":"chat.completion.chunk"}
+			expResponseBody: `data: {"id":"msg_123","choices":[{"index":0,"delta":{"content":"The sky appears blue","role":"assistant"}}],"created":123,"model":"claude-3-sonnet","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":" due to Rayleigh scattering."}}],"object":"chat.completion.chunk"}
+data: {"id":"msg_123","choices":[{"index":0,"delta":{"content":" due to Rayleigh scattering."}}],"created":123,"model":"claude-3-sonnet","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"object":"chat.completion.chunk"}
+data: {"id":"msg_123","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"created":123,"model":"claude-3-sonnet","object":"chat.completion.chunk"}
 
-data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":15,"completion_tokens":12,"total_tokens":27,"prompt_tokens_details":{"cached_tokens":10}}}
+data: {"id":"msg_123","created":123,"model":"claude-3-sonnet","object":"chat.completion.chunk","usage":{"prompt_tokens":15,"completion_tokens":12,"total_tokens":27,"prompt_tokens_details":{"cached_tokens":10}}}
 
 data: [DONE]
 
@@ -660,15 +679,15 @@ data: {"type": "message_delta", "delta": {"stop_reason": "tool_use"}, "usage": {
 event: message_stop
 data: {"type": "message_stop"}`,
 			expStatus: http.StatusOK,
-			expResponseBody: `data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"toolu_abc123","function":{"arguments":"","name":"get_weather"},"type":"function"}]}}],"object":"chat.completion.chunk"}
+			expResponseBody: `data: {"id":"msg_123","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"toolu_abc123","function":{"arguments":"","name":"get_weather"},"type":"function"}]}}],"created":123,"model":"claude-3-sonnet","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":null,"function":{"arguments":"{\"location\":\"Bosto","name":""}}]}}],"object":"chat.completion.chunk"}
+data: {"id":"msg_123","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":null,"function":{"arguments":"{\"location\":\"Bosto","name":""}}]}}],"created":123,"model":"claude-3-sonnet","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":null,"function":{"arguments":"n, MA\"}","name":""}}]}}],"object":"chat.completion.chunk"}
+data: {"id":"msg_123","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":null,"function":{"arguments":"n, MA\"}","name":""}}]}}],"created":123,"model":"claude-3-sonnet","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"object":"chat.completion.chunk"}
+data: {"id":"msg_123","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"created":123,"model":"claude-3-sonnet","object":"chat.completion.chunk"}
 
-data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":50,"completion_tokens":20,"total_tokens":70,"prompt_tokens_details":{}}}
+data: {"id":"msg_123","created":123,"model":"claude-3-sonnet","object":"chat.completion.chunk","usage":{"prompt_tokens":50,"completion_tokens":20,"total_tokens":70,"prompt_tokens_details":{}}}
 
 data: [DONE]
 
@@ -1140,13 +1159,24 @@ data: {"type":"message_stop"}
 				tc.expResponseBodyFunc(t, lastBody)
 			case tc.responseType != "" || tc.expStatus == http.StatusNotFound:
 				expResponseBody := cmp.Or(tc.expResponseBody, tc.responseBody)
+
+				bodyStr := m.ReplaceAllString(string(lastBody), "<UUID4-replaced>")
+				bodyStr = createdReg.ReplaceAllString(bodyStr, `"created":123`)
+
+				expectedResponseBody := m.ReplaceAllString(expResponseBody, "<UUID4-replaced>")
+				expectedResponseBody = createdReg.ReplaceAllString(expectedResponseBody, `"created":123`)
+
 				// Use plain-text comparison for streaming or 404 responses.
-				require.Equal(t, strings.TrimSpace(expResponseBody), strings.TrimSpace(string(lastBody)), "Response body mismatch")
+				require.Equal(t, strings.TrimSpace(expectedResponseBody), strings.TrimSpace(bodyStr), "Response body mismatch")
 			default:
 				expResponseBody := cmp.Or(tc.expResponseBody, tc.responseBody)
 				// Use JSON comparison for regular responses.
 				bodyStr := m.ReplaceAllString(string(lastBody), "<UUID4-replaced>")
+				bodyStr = createdReg.ReplaceAllString(bodyStr, `"created":123`)
+
 				expectedResponseBody := m.ReplaceAllString(expResponseBody, "<UUID4-replaced>")
+				expectedResponseBody = createdReg.ReplaceAllString(expectedResponseBody, `"created":123`)
+
 				require.JSONEq(t, expectedResponseBody, bodyStr, "Response body mismatch")
 			}
 

@@ -3,7 +3,7 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-package extproc
+package filterapi
 
 import (
 	"context"
@@ -11,15 +11,13 @@ import (
 	"log/slog"
 	"os"
 	"time"
-
-	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
-// ConfigReceiver is an interface that can receive *filterapi.Config updates.
+// ConfigReceiver is an interface that can receive *Config updates.
 // This is mostly for decoupling and testing purposes.
 type ConfigReceiver interface {
 	// LoadConfig updates the configuration.
-	LoadConfig(ctx context.Context, config *filterapi.Config) error
+	LoadConfig(ctx context.Context, config *Config) error
 }
 
 type configWatcher struct {
@@ -66,13 +64,13 @@ func (cw *configWatcher) watch(ctx context.Context, tick time.Duration) {
 // loadConfig loads a new config from the given path and updates the Receiver by
 // calling the [Receiver.Load].
 func (cw *configWatcher) loadConfig(ctx context.Context) error {
-	var cfg *filterapi.Config
+	var cfg *Config
 	stat, err := os.Stat(cw.path)
 	switch {
 	case err != nil && os.IsNotExist(err):
 		// If the file does not exist, do not fail (which could lead to the extproc process to terminate).
 		// Instead, load the default configuration and keep running unconfigured.
-		cfg = filterapi.MustLoadDefaultConfig()
+		cfg = MustLoadDefaultConfig()
 	case err != nil:
 		return err
 	}
@@ -91,7 +89,7 @@ func (cw *configWatcher) loadConfig(ctx context.Context) error {
 		}
 		cw.l.Info("loading a new config", slog.String("path", cw.path))
 		cw.lastMod = stat.ModTime()
-		cfg, err = filterapi.UnmarshalConfigYaml(cw.path)
+		cfg, err = UnmarshalConfigYaml(cw.path)
 		if err != nil {
 			return err
 		}

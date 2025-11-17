@@ -41,6 +41,7 @@ type gatewayMutator struct {
 	metricsRequestHeaderAttributes string
 	spanRequestHeaderAttributes    string
 	rootPrefix                     string
+	endpointPrefixes               string
 	extProcExtraEnvVars            []corev1.EnvVar
 	extProcImagePullSecrets        []corev1.LocalObjectReference
 	extProcMaxRecvMsgSize          int
@@ -55,7 +56,7 @@ type gatewayMutator struct {
 
 func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.Logger,
 	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel,
-	udsPath, metricsRequestHeaderAttributes, spanRequestHeaderAttributes, rootPrefix, extProcExtraEnvVars, extProcImagePullSecrets string, extProcMaxRecvMsgSize int,
+	udsPath, metricsRequestHeaderAttributes, spanRequestHeaderAttributes, rootPrefix, endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets string, extProcMaxRecvMsgSize int,
 	extProcAsSideCar bool,
 	mcpSessionEncryptionSeed string,
 ) *gatewayMutator {
@@ -90,6 +91,7 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 		metricsRequestHeaderAttributes: metricsRequestHeaderAttributes,
 		spanRequestHeaderAttributes:    spanRequestHeaderAttributes,
 		rootPrefix:                     rootPrefix,
+		endpointPrefixes:               endpointPrefixes,
 		extProcExtraEnvVars:            parsedEnvVars,
 		extProcImagePullSecrets:        parsedImagePullSecrets,
 		extProcMaxRecvMsgSize:          extProcMaxRecvMsgSize,
@@ -140,6 +142,11 @@ func (g *gatewayMutator) buildExtProcArgs(filterConfigFullPath string, extProcAd
 	// Add tracing header attribute mapping if configured.
 	if g.spanRequestHeaderAttributes != "" {
 		args = append(args, "-spanRequestHeaderAttributes", g.spanRequestHeaderAttributes)
+	}
+
+	// Add endpoint prefixes mapping if configured.
+	if g.endpointPrefixes != "" {
+		args = append(args, "-endpointPrefixes", g.endpointPrefixes)
 	}
 
 	return args

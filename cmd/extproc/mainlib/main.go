@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/envoyproxy/ai-gateway/internal/extproc"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/mcpproxy"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
@@ -49,6 +50,8 @@ type extProcFlags struct {
 	rootPrefix string
 	// maxRecvMsgSize is the maximum message size in bytes that the gRPC server can receive.
 	maxRecvMsgSize int
+	// endpointPrefixes is the comma-separated key-value pairs for endpoint prefixes.
+	endpointPrefixes string
 }
 
 // parseAndValidateFlags parses and validates the flags passed to the external processor.
@@ -96,6 +99,11 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		"/",
 		"The root path prefix for all the processors.",
 	)
+	fs.StringVar(&flags.endpointPrefixes,
+		"endpointPrefixes",
+		"",
+		"Comma-separated key-value pairs for endpoint prefixes. Format: openai:/,cohere:/cohere,anthropic:/anthropic.",
+	)
 	fs.IntVar(&flags.maxRecvMsgSize,
 		"maxRecvMsgSize",
 		4*1024*1024,
@@ -130,6 +138,11 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 	if flags.spanRequestHeaderAttributes != "" {
 		if _, err := internalapi.ParseRequestHeaderAttributeMapping(flags.spanRequestHeaderAttributes); err != nil {
 			errs = append(errs, fmt.Errorf("failed to parse tracing header mapping: %w", err))
+		}
+	}
+	if flags.endpointPrefixes != "" {
+		if _, err := internalapi.ParseEndpointPrefixes(flags.endpointPrefixes); err != nil {
+			errs = append(errs, fmt.Errorf("failed to parse endpoint prefixes: %w", err))
 		}
 	}
 
@@ -217,6 +230,14 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		return fmt.Errorf("failed to parse tracing header mapping: %w", err)
 	}
 
+	// Parse endpoint prefixes and apply defaults for any missing values.
+	endpointPrefixes, err := internalapi.ParseEndpointPrefixes(flags.endpointPrefixes)
+	if err != nil {
+		return fmt.Errorf("failed to parse endpoint prefixes: %w", err)
+	}
+	// Set defaults for any missing endpoint prefixes.
+	endpointPrefixes.SetDefaults()
+
 	// Create Prometheus registry and reader which automatically converts
 	// attribute to Prometheus-compatible format (e.g. dots to underscores).
 	promRegistry := prometheus.NewRegistry()
@@ -247,20 +268,20 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to create external processor server: %w", err)
 	}
-	server.Register(path.Join(flags.rootPrefix, "/v1/chat/completions"), extproc.ChatCompletionProcessorFactory(chatCompletionMetrics))
-	server.Register(path.Join(flags.rootPrefix, "/v1/completions"), extproc.CompletionsProcessorFactory(completionMetrics))
-	server.Register(path.Join(flags.rootPrefix, "/v1/embeddings"), extproc.EmbeddingsProcessorFactory(embeddingsMetrics))
-	server.Register(path.Join(flags.rootPrefix, "/v1/images/generations"), extproc.ImageGenerationProcessorFactory(imageGenerationMetrics))
-	server.Register(path.Join(flags.rootPrefix, "/cohere/v2/rerank"), extproc.RerankProcessorFactory(rerankMetrics))
-	server.Register(path.Join(flags.rootPrefix, "/v1/models"), extproc.NewModelsProcessor)
-	server.Register(path.Join(flags.rootPrefix, "/anthropic/v1/messages"), extproc.MessagesProcessorFactory(messagesMetrics))
+	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/chat/completions"), extproc.ChatCompletionProcessorFactory(chatCompletionMetrics))
+	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/completions"), extproc.CompletionsProcessorFactory(completionMetrics))
+	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/embeddings"), extproc.EmbeddingsProcessorFactory(embeddingsMetrics))
+	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/images/generations"), extproc.ImageGenerationProcessorFactory(imageGenerationMetrics))
+	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.Cohere, "/v2/rerank"), extproc.RerankProcessorFactory(rerankMetrics))
+	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/models"), extproc.NewModelsProcessor)
+	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.Anthropic, "/v1/messages"), extproc.MessagesProcessorFactory(messagesMetrics))
 
-	if watchErr := extproc.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); watchErr != nil {
+	if watchErr := filterapi.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); watchErr != nil {
 		return fmt.Errorf("failed to start config watcher: %w", watchErr)
 	}
 
 	// Create and register gRPC server with ExternalProcessorServer (the service Envoy calls).
-	if err = extproc.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {
+	if err = filterapi.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {
 		return fmt.Errorf("failed to start config watcher: %w", err)
 	}
 
@@ -275,7 +296,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		if err != nil {
 			return fmt.Errorf("failed to create MCP proxy: %w", err)
 		}
-		if err = extproc.StartConfigWatcher(ctx, flags.configPath, mcpProxyConfig, l, time.Second*5); err != nil {
+		if err = filterapi.StartConfigWatcher(ctx, flags.configPath, mcpProxyConfig, l, time.Second*5); err != nil {
 			return fmt.Errorf("failed to start config watcher: %w", err)
 		}
 

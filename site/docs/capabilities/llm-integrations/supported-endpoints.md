@@ -291,6 +291,44 @@ The following table summarizes which providers support which endpoints:
 - ❌ - Not supported according to provider documentation.
 - 🚧 - Unimplemented, or under active development but planned for future releases
 
+## Custom endpoint prefixes
+
+By default, the gateway registers provider endpoints under these prefixes:
+
+- OpenAI: `/`
+- Cohere: `/cohere`
+- Anthropic: `/anthropic`
+
+You can override them via Helm using values under `endpointConfig`:
+
+```yaml
+# values.yaml
+endpointConfig:
+  # Explicit provider roots
+  openai: ""
+  cohere: "/cohere"
+  anthropic: "/anthropic"
+  # rootPrefix applies to all routes; final paths are <rootPrefix><providerPrefix>/...
+  # endpointConfig:
+  #   rootPrefix: "/"
+```
+
+Or with helm CLI:
+
+```bash
+helm upgrade --install ai-gateway envoyproxy/ai-gateway-helm \
+  -n envoy-ai-gateway-system --create-namespace \
+  --set 'endpointConfig.openai=/' \
+  --set 'endpointConfig.cohere=/cohere' \
+  --set 'endpointConfig.anthropic=/anthropic'
+```
+
+Notes:
+
+- `endpointConfig.rootPrefix` (default `/`) is prepended to all provider prefixes.
+- Only these keys are accepted: `openaiPrefix`, `coherePrefix`, `anthropicPrefix`.
+- If any key is omitted or empty, defaults are applied as listed above.
+
 ## What's Next
 
 To learn more about configuring and using the Envoy AI Gateway with these endpoints:

@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -543,6 +544,115 @@ func Test_buildWWWAuthenticateHeaderValue(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := buildWWWAuthenticateHeaderValue(tt.metadata)
 			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func Test_fetchOAuthServerMetadata(t *testing.T) {
+	tests := []struct {
+		name           string
+		issuerPath     string
+		authSeverURL   string
+		forcedFailures int
+		wantStatusCode int
+	}{
+		{
+			name:           "root path empty",
+			issuerPath:     "",
+			authSeverURL:   "/.well-known/oauth-authorization-server",
+			forcedFailures: 0,
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "root path trailing slash",
+			issuerPath:     "/",
+			authSeverURL:   "/.well-known/oauth-authorization-server",
+			forcedFailures: 0,
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "well-known at the end",
+			issuerPath:     "/some/path",
+			authSeverURL:   "/some/path/.well-known/oauth-authorization-server",
+			forcedFailures: 0,
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "well-known after issuer",
+			issuerPath:     "/some/path",
+			authSeverURL:   "/.well-known/oauth-authorization-server/some/path",
+			forcedFailures: 0,
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "unknown failure",
+			issuerPath:     "/",
+			authSeverURL:   "/.well-known/oauth-authorization-server",
+			forcedFailures: 1, // Allow to self-heal before the backoff retries are exhausted.
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "unknown failure",
+			issuerPath:     "/",
+			authSeverURL:   "/.well-known/oauth-authorization-server",
+			forcedFailures: 20, // Do not allow to self-heal before the backoff retries are exhausted.
+			wantStatusCode: http.StatusInternalServerError,
+		},
+		{
+			name:           "no valid URL found",
+			issuerPath:     "/",
+			authSeverURL:   "/not-a-well-known",
+			forcedFailures: 0,
+			wantStatusCode: http.StatusNotFound,
+		},
+	}
+
+	handler := func(failCount int) http.HandlerFunc {
+		failures := 0
+		return func(w http.ResponseWriter, r *http.Request) {
+			if failures < failCount {
+				w.WriteHeader(http.StatusInternalServerError)
+				failures++
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			w.Header().Set("Content-Type", "application/json")
+			metadata := map[string]interface{}{
+				"issuer":                 "http://" + r.Host,
+				"authorization_endpoint": "http://" + r.Host + "/auth",
+				"token_endpoint":         "http://" + r.Host + "/token",
+				// Use HTTP to force the backend TLS Policy discovery.
+				"jwks_uri": "https://" + r.Host + "/.well-known/jwks.json",
+			}
+			_ = json.NewEncoder(w).Encode(metadata)
+		}
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mux := http.NewServeMux()
+			mux.HandleFunc(tt.authSeverURL, handler(tt.forcedFailures))
+
+			server := httptest.NewServer(mux)
+			t.Cleanup(server.Close)
+			addr := server.Listener.Addr().String()
+
+			// Use a small backoff timeout that allows the test to configure a number of attempts
+			// to force failures or self-healing.
+			metadata, err := fetchOAuthAuthServerMetadata(server.URL+tt.issuerPath, 1*time.Second)
+
+			if tt.wantStatusCode != http.StatusOK {
+				var httpError *httpError
+				require.ErrorAs(t, err, &httpError)
+				require.Equal(t, tt.wantStatusCode, httpError.statusCode)
+				require.Nil(t, metadata)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, "http://"+addr, metadata.Issuer)
+				require.Equal(t, "http://"+addr+"/auth", metadata.AuthorizationEndpoint)
+				require.Equal(t, "http://"+addr+"/token", metadata.TokenEndpoint)
+				require.Equal(t, "https://"+addr+"/.well-known/jwks.json", metadata.JwksURI)
+			}
 		})
 	}
 }

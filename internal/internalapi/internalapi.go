@@ -125,6 +125,82 @@ func ParseRequestHeaderAttributeMapping(s string) (map[string]string, error) {
 	return result, nil
 }
 
+// EndpointPrefixes represents well-known endpoint prefixes that AI Gateway supports.
+// Only these keys are recognized when parsing the endpointPrefixes flag/value.
+type EndpointPrefixes struct {
+	OpenAI    *string
+	Cohere    *string
+	Anthropic *string
+}
+
+// SetDefaults populates empty fields with default provider prefixes (without version components).
+// Defaults:
+//
+//	openai -> /
+//	cohere -> /cohere
+//	anthropic -> /anthropic
+func (e *EndpointPrefixes) SetDefaults() {
+	if e.OpenAI == nil {
+		prefix := "/"
+		e.OpenAI = &prefix
+	}
+	if e.Cohere == nil {
+		prefix := "/cohere"
+		e.Cohere = &prefix
+	}
+	if e.Anthropic == nil {
+		prefix := "/anthropic"
+		e.Anthropic = &prefix
+	}
+}
+
+// ParseEndpointPrefixes parses a comma-separated list of key:value pairs to populate EndpointPrefixes.
+//
+// Recognized keys (case-sensitive):
+//   - openai
+//   - cohere
+//   - anthropic
+//
+// Format example:
+//
+//	"openai:/,cohere:/cohere,anthropic:/anthropic"
+//
+// Unknown keys cause an error; values must be non-empty.
+func ParseEndpointPrefixes(s string) (EndpointPrefixes, error) {
+	var out EndpointPrefixes
+	if s == "" {
+		return out, nil
+	}
+
+	pairs := strings.Split(s, ",")
+	for i, pair := range pairs {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			return EndpointPrefixes{}, fmt.Errorf("empty endpointPrefixes pair at position %d", i+1)
+		}
+
+		parts := strings.SplitN(pair, ":", 2)
+		if len(parts) != 2 {
+			return EndpointPrefixes{}, fmt.Errorf("invalid endpointPrefixes pair at position %d: %q (expected format: key:value)", i+1, pair)
+		}
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		switch key {
+		case "openai":
+			out.OpenAI = &value
+		case "cohere":
+			out.Cohere = &value
+		case "anthropic":
+			out.Anthropic = &value
+		default:
+			return EndpointPrefixes{}, fmt.Errorf("unknown endpointPrefixes key %q at position %d (allowed: openai, cohere, anthropic)", key, i+1)
+		}
+	}
+	return out, nil
+}
+
 // ModelNameHeaderKeyDefault is the default header key for the model name.
 const ModelNameHeaderKeyDefault = aigv1a1.AIModelHeaderKey
 

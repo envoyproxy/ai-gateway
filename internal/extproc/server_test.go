@@ -27,6 +27,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -445,7 +446,10 @@ func Test_filterSensitiveHeadersForLogging(t *testing.T) {
 }
 
 func Test_filterSensitiveBodyForLogging(t *testing.T) {
-	logger, buf := newTestLoggerWithBuffer()
+	buf := internaltesting.CaptureOutput("test")[0]
+	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{
 			RequestBody: &extprocv3.BodyResponse{

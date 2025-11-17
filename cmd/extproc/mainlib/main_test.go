@@ -83,6 +83,14 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				logLevel:   slog.LevelDebug,
 			},
 			{
+				name:       "with endpoint prefixes",
+				args:       []string{"-configPath", "/path/to/config.yaml", "-endpointPrefixes", "openai:/,cohere:/cohere,anthropic:/anthropic"},
+				configPath: "/path/to/config.yaml",
+				addr:       ":1063",
+				rootPrefix: "/",
+				logLevel:   slog.LevelInfo,
+			},
+			{
 				name: "with header mapping",
 				args: []string{
 					"-configPath", "/path/to/config.yaml",
@@ -149,6 +157,16 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				name:          "invalid log level",
 				args:          []string{"-logLevel", "invalid"},
 				expectedError: "configPath must be provided\nfailed to unmarshal log level: slog: level string \"invalid\": unknown name",
+			},
+			{
+				name:          "invalid endpoint prefixes - unknown key",
+				args:          []string{"-configPath", "/path/to/config.yaml", "-endpointPrefixes", "foo:/x"},
+				expectedError: "failed to parse endpoint prefixes: unknown endpointPrefixes key \"foo\" at position 1 (allowed: openai, cohere, anthropic)",
+			},
+			{
+				name:          "invalid endpoint prefixes - missing colon",
+				args:          []string{"-configPath", "/path/to/config.yaml", "-endpointPrefixes", "openai"},
+				expectedError: "failed to parse endpoint prefixes: invalid endpointPrefixes pair at position 1: \"openai\" (expected format: key:value)",
 			},
 			{
 				name:          "invalid tracing header attributes - missing colon",

@@ -19,13 +19,13 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/backendauth"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/bodymutator"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/translator"
+	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
 // MessagesProcessorFactory returns a factory for the Anthropic /v1/messages endpoint.
@@ -330,6 +330,7 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseBody(ctx context.Contex
 	c.costs.InputTokens += tokenUsage.InputTokens
 	c.costs.OutputTokens += tokenUsage.OutputTokens
 	c.costs.TotalTokens += tokenUsage.TotalTokens
+	c.costs.CachedInputTokens += tokenUsage.CachedInputTokens
 
 	// Update metrics with token usage.
 	c.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.CachedInputTokens, tokenUsage.OutputTokens, c.requestHeaders)

@@ -14,6 +14,16 @@ endpointConfig:
   #
   # This can be used for providing a separation between AIGatewayRoutes and normal HTTPRoutes when the top level "/v1/" is not desired.
   rootPrefix: "/"
+  # Explicit provider prefixes.
+  # Defaults align with the gateway's built-in provider prefixes.
+  # and can be set to empty string to remove the extra provider root segment.
+  # Examples:
+  #   openai: ""           # results in /v1/...
+  #   cohere: "/cohere"   # results in /cohere/v2/...
+  #   anthropic: "/anthropic" # results in /anthropic/v1/...
+  openai: ""
+  cohere: "/cohere"
+  anthropic: "/anthropic"
 
 extProc:
   image:
@@ -56,6 +66,7 @@ controller:
   # Format: "header1:attribute1,header2:attribute2"
   # Example: "x-session-id:session.id,x-user-id:user.id"
   spanRequestHeaderAttributes: ""
+
 
   # -- Service Account --
   serviceAccount:
