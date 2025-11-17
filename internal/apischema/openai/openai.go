@@ -1825,3 +1825,56 @@ type Usage struct {
 	// Only populated for /v1/chat/completions endpoint, not for /v1/completions.
 	PromptTokensDetails *PromptTokensDetails `json:"prompt_tokens_details,omitempty"` //nolint:tagliatelle //follow openai api
 }
+
+// RealtimeClientSecretRequest represents a request to create an ephemeral client secret for the Realtime API.
+// Reference: https://platform.openai.com/docs/api-reference/realtime-client-secret/create
+type RealtimeClientSecretRequest struct {
+	// ExpiresAfter configures when the ephemeral token expires
+	ExpiresAfter *RealtimeClientSecretExpiresAfter `json:"expires_after,omitempty"`
+	// Session configuration for the realtime session
+	Session *RealtimeClientSecretSession `json:"session,omitempty"`
+}
+
+// RealtimeClientSecretExpiresAfter specifies when the ephemeral token should expire
+type RealtimeClientSecretExpiresAfter struct {
+	// Anchor point for expiration calculation (e.g., "created_at")
+	Anchor string `json:"anchor"`
+	// Seconds from the anchor point until expiration
+	Seconds int `json:"seconds"`
+}
+
+// RealtimeClientSecretSession configures the realtime session
+type RealtimeClientSecretSession struct {
+	// Type of session (e.g., "realtime")
+	Type string `json:"type"`
+	// Model to use for the session (e.g., "gpt-realtime")
+	Model string `json:"model"`
+	// Instructions for the model
+	Instructions string `json:"instructions,omitempty"`
+}
+
+// RealtimeClientSecretResponse represents the response from creating a client secret
+// Reference: https://platform.openai.com/docs/api-reference/realtime-client-secret/create
+type RealtimeClientSecretResponse struct {
+	// Value is the ephemeral token (ephemeral key format: ek_*)
+	Value string `json:"value"`
+	// ExpiresAt is the Unix timestamp when the token expires
+	ExpiresAt int64 `json:"expires_at"`
+	// Session contains the full session configuration
+	Session *RealtimeClientSecretSessionResponse `json:"session,omitempty"`
+}
+
+// RealtimeClientSecretSessionResponse represents the session object in the response
+type RealtimeClientSecretSessionResponse struct {
+	Type             string                 `json:"type"`
+	Object           string                 `json:"object"`
+	ID               string                 `json:"id"`
+	Model            string                 `json:"model"`
+	OutputModalities []string               `json:"output_modalities,omitempty"`
+	Instructions     string                 `json:"instructions,omitempty"`
+	Tools            []interface{}          `json:"tools,omitempty"`
+	ToolChoice       string                 `json:"tool_choice,omitempty"`
+	MaxOutputTokens  interface{}            `json:"max_output_tokens,omitempty"` // Can be "inf" or number
+	Truncation       string                 `json:"truncation,omitempty"`
+	Audio            map[string]interface{} `json:"audio,omitempty"`
+}

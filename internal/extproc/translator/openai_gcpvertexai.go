@@ -42,7 +42,10 @@ type gcpVertexAIErrorDetails struct {
 // NewChatCompletionOpenAIToGCPVertexAITranslator implements [Factory] for OpenAI to GCP Gemini translation.
 // This translator converts OpenAI ChatCompletion API requests to GCP Gemini API format.
 func NewChatCompletionOpenAIToGCPVertexAITranslator(modelNameOverride internalapi.ModelNameOverride) OpenAIChatCompletionTranslator {
-	return &openAIToGCPVertexAITranslatorV1ChatCompletion{modelNameOverride: modelNameOverride}
+	return &openAIToGCPVertexAITranslatorV1ChatCompletion{
+		modelNameOverride: modelNameOverride,
+		sentToolCalls:     make(map[string]bool),
+	}
 }
 
 // openAIToGCPVertexAITranslatorV1ChatCompletion translates OpenAI Chat Completions API to GCP Vertex AI Gemini API.
@@ -55,6 +58,7 @@ type openAIToGCPVertexAITranslatorV1ChatCompletion struct {
 	bufferedBody      []byte // Buffer for incomplete JSON chunks.
 	requestModel      internalapi.RequestModel
 	useGeminiPath     bool   // If true, use /v1beta/models path (Gemini API), else use /publishers path (Vertex AI)
+	sentToolCalls     map[string]bool // Track tool call IDs that have been sent to avoid duplicates in streaming
 }
 
 // SetUseGeminiDirectPath sets whether to use Gemini direct API path (/v1beta/models) or GCP Vertex AI path (/publishers).
@@ -77,6 +81,11 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) RequestBody(_ []byte, op
 
 	// Set streaming flag.
 	o.stream = openAIReq.Stream
+
+	// Initialize tracking for sent tool calls in streaming responses
+	if o.stream {
+		o.sentToolCalls = make(map[string]bool)
+	}
 
 	// Choose the correct endpoint based on streaming and authentication type.
 	var pathSuffix string
@@ -286,6 +295,38 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) convertGCPChunkToOpenAI(
 	if err != nil {
 		// For now, create empty choices on error to prevent breaking the stream.
 		choices = []openai.ChatCompletionResponseChunkChoice{}
+	}
+
+	// Filter out tool calls that have already been sent
+	// Gemini sends complete tool calls in every chunk, not incremental deltas
+	for i := range choices {
+		if choices[i].Delta != nil && len(choices[i].Delta.ToolCalls) > 0 {
+			var newToolCalls []openai.ChatCompletionChunkChoiceDeltaToolCall
+			for _, toolCall := range choices[i].Delta.ToolCalls {
+				if toolCall.ID != nil {
+					// Check if this tool call has already been sent
+					if !o.sentToolCalls[*toolCall.ID] {
+						// Mark as sent and include in this chunk
+						o.sentToolCalls[*toolCall.ID] = true
+						newToolCalls = append(newToolCalls, toolCall)
+						slog.Debug("sending tool call in streaming chunk",
+							"tool_id", *toolCall.ID,
+							"tool_name", toolCall.Function.Name)
+					} else {
+						slog.Debug("skipping already-sent tool call",
+							"tool_id", *toolCall.ID,
+							"tool_name", toolCall.Function.Name)
+					}
+				}
+			}
+			// Update the choice with filtered tool calls
+			choices[i].Delta.ToolCalls = newToolCalls
+			
+			// If we filtered out all tool calls and there's no content, skip this choice
+			if len(newToolCalls) == 0 && (choices[i].Delta.Content == nil || *choices[i].Delta.Content == "") {
+				choices[i].Delta = nil
+			}
+		}
 	}
 
 	// Convert usage to pointer if available.

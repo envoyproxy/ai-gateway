@@ -1506,7 +1506,7 @@ func TestExtractToolCallsFromGeminiPartsStream(t *testing.T) {
 					return false
 				}
 				call := calls[0]
-				return call.ID != nil && *call.ID != "" && // UUID should be non-empty
+				return call.ID != nil && *call.ID == "call_get_weather_0" && // Deterministic ID based on function name and index
 					call.Type == openai.ChatCompletionMessageToolCallTypeFunction &&
 					call.Function.Name == "get_weather" &&
 					call.Function.Arguments == `{"location":"San Francisco","unit":"celsius"}` &&
@@ -1536,7 +1536,7 @@ func TestExtractToolCallsFromGeminiPartsStream(t *testing.T) {
 				}
 				// Verify first call
 				call1 := calls[0]
-				if call1.ID == nil || *call1.ID == "" ||
+				if call1.ID == nil || *call1.ID != "call_function1_0" ||
 					call1.Type != openai.ChatCompletionMessageToolCallTypeFunction ||
 					call1.Function.Name != "function1" ||
 					call1.Function.Arguments != `{"param1":"value1"}` ||
@@ -1545,14 +1545,14 @@ func TestExtractToolCallsFromGeminiPartsStream(t *testing.T) {
 				}
 				// Verify second call
 				call2 := calls[1]
-				if call2.ID == nil || *call2.ID == "" ||
+				if call2.ID == nil || *call2.ID != "call_function2_1" ||
 					call2.Type != openai.ChatCompletionMessageToolCallTypeFunction ||
 					call2.Function.Name != "function2" ||
 					call2.Function.Arguments != `{"param2":42}` ||
 					call2.Index != 1 { // Second tool call should have index 1
 					return false
 				}
-				// Verify IDs are different (UUIDs should be unique)
+				// Verify IDs are different (deterministic IDs should be unique)
 				return *call1.ID != *call2.ID
 			},
 		},
@@ -1572,7 +1572,7 @@ func TestExtractToolCallsFromGeminiPartsStream(t *testing.T) {
 					return false
 				}
 				call := calls[0]
-				return call.ID != nil && *call.ID != "" &&
+				return call.ID != nil && *call.ID == "call_test_func_0" &&
 					call.Function.Name == "test_func" &&
 					call.Index == 0 // Single tool call should have index 0
 			},
@@ -1592,7 +1592,7 @@ func TestExtractToolCallsFromGeminiPartsStream(t *testing.T) {
 					return false
 				}
 				call := calls[0]
-				return call.ID != nil && *call.ID != "" &&
+				return call.ID != nil && *call.ID == "call_no_args_func_0" &&
 					call.Function.Name == "no_args_func" &&
 					call.Function.Arguments == `{}` &&
 					call.Index == 0 // Single tool call should have index 0
@@ -1613,7 +1613,7 @@ func TestExtractToolCallsFromGeminiPartsStream(t *testing.T) {
 					return false
 				}
 				call := calls[0]
-				return call.ID != nil && *call.ID != "" &&
+				return call.ID != nil && *call.ID == "call_nil_args_func_0" &&
 					call.Function.Name == "nil_args_func" &&
 					call.Function.Arguments == `null` &&
 					call.Index == 0 // Single tool call should have index 0
@@ -1661,7 +1661,7 @@ func TestExtractToolCallsFromGeminiPartsStream(t *testing.T) {
 				if !ok || !active {
 					return false
 				}
-				return call.ID != nil && *call.ID != "" &&
+				return call.ID != nil && *call.ID == "call_complex_func_0" &&
 					call.Function.Name == "complex_func" &&
 					call.Index == 0 // Single tool call should have index 0
 			},
@@ -1756,17 +1756,17 @@ func TestExtractToolCallsStreamVsNonStream(t *testing.T) {
 	// 1. Stream version should have Index field set to 0 for the first tool call
 	assert.Equal(t, int64(0), streamCall.Index)
 
-	// 2. Stream version should have a UUID (non-empty string) as ID
+	// 2. Stream version should have a deterministic ID based on function name and index
 	assert.NotNil(t, streamCall.ID)
 	assert.NotEmpty(t, *streamCall.ID)
-	// UUID should be longer than a simple sequential ID
-	assert.Greater(t, len(*streamCall.ID), 10, "Stream ID should be a UUID, got: %s", *streamCall.ID)
+	// Deterministic ID should follow pattern "call_<functionName>_<index>"
+	assert.Equal(t, "call_get_weather_0", *streamCall.ID, "Stream ID should be deterministic")
 
-	// 3. Non-stream version should have a UUID as well (both generate UUIDs now)
+	// 3. Non-stream version should have a UUID as well
 	assert.NotNil(t, nonStreamCall.ID)
 	assert.NotEmpty(t, *nonStreamCall.ID)
 
-	// 4. IDs should be different between the two calls (different UUIDs)
+	// 4. IDs should be different between the two calls (stream uses deterministic, non-stream uses UUID)
 	assert.NotEqual(t, *streamCall.ID, *nonStreamCall.ID)
 
 	// Type checking: ensure we get the right types back

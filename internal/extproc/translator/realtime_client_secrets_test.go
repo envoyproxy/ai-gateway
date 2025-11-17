@@ -30,7 +30,7 @@ func TestRealtimeClientSecretsOpenAI_PassThrough(t *testing.T) {
 	require.Nil(t, headerMutation)
 	require.Nil(t, bodyMutation)
 
-	respBody := []byte(`{"client_secret":"test_secret","expires_at":1234567890}`)
+	respBody := []byte(`{"value":"test_secret","expires_at":1234567890}`)
 	headerMutation, bodyMutation, err = translator.ResponseBody(respBody)
 	require.NoError(t, err)
 	require.Nil(t, headerMutation)
@@ -38,7 +38,7 @@ func TestRealtimeClientSecretsOpenAI_PassThrough(t *testing.T) {
 }
 
 func TestRealtimeClientSecretsGemini_Translation(t *testing.T) {
-	translator := NewRealtimeClientSecretsGeminiTranslator(true)
+	translator := NewRealtimeClientSecretsGeminiTranslator(true, nil)
 
 	req := &openai.RealtimeClientSecretRequest{
 		ExpiresAfter: &openai.RealtimeClientSecretExpiresAfter{
@@ -59,24 +59,20 @@ func TestRealtimeClientSecretsGemini_Translation(t *testing.T) {
 
 	require.Len(t, headerMutation.SetHeaders, 2)
 	require.Equal(t, ":path", headerMutation.SetHeaders[0].Header.Key)
-	require.Equal(t, "/v1alpha/authTokens:create", string(headerMutation.SetHeaders[0].Header.RawValue))
+	require.Equal(t, "/v1alpha/auth_tokens", string(headerMutation.SetHeaders[0].Header.RawValue))
 
 	var geminiReq gcp.CreateAuthTokenRequest
 	err = json.Unmarshal(bodyMutation.GetBody(), &geminiReq)
 	require.NoError(t, err)
-	require.NotNil(t, geminiReq.Config)
-	require.Equal(t, 1, geminiReq.Config.Uses)
-	require.NotEmpty(t, geminiReq.Config.ExpireTime)
-	require.NotEmpty(t, geminiReq.Config.NewSessionExpireTime)
-	require.NotNil(t, geminiReq.HTTPOptions)
-	require.Equal(t, "v1alpha", geminiReq.HTTPOptions.APIVersion)
+	require.Equal(t, 1, geminiReq.Uses)
+	require.NotEmpty(t, geminiReq.ExpireTime)
 }
 
 func TestRealtimeClientSecretsGemini_ResponseTranslation(t *testing.T) {
-	translator := NewRealtimeClientSecretsGeminiTranslator(true)
+	translator := NewRealtimeClientSecretsGeminiTranslator(true, nil)
 
 	geminiResp := gcp.CreateAuthTokenResponse{
-		Token:      "test_gemini_token",
+		Name:       "auth_tokens/test_gemini_token",
 		ExpireTime: "2025-01-01T00:00:00Z",
 	}
 	geminiRespBody, err := json.Marshal(geminiResp)
@@ -90,12 +86,12 @@ func TestRealtimeClientSecretsGemini_ResponseTranslation(t *testing.T) {
 	var openAIResp openai.RealtimeClientSecretResponse
 	err = json.Unmarshal(bodyMutation.GetBody(), &openAIResp)
 	require.NoError(t, err)
-	require.Equal(t, "test_gemini_token", openAIResp.ClientSecret)
+	require.Equal(t, "test_gemini_token", openAIResp.Value)
 	require.Equal(t, int64(1735689600), openAIResp.ExpiresAt)
 }
 
 func TestRealtimeClientSecretsGemini_DefaultExpiry(t *testing.T) {
-	translator := NewRealtimeClientSecretsGeminiTranslator(true)
+	translator := NewRealtimeClientSecretsGeminiTranslator(true, nil)
 
 	req := &openai.RealtimeClientSecretRequest{
 		Session: &openai.RealtimeClientSecretSession{
@@ -112,7 +108,6 @@ func TestRealtimeClientSecretsGemini_DefaultExpiry(t *testing.T) {
 	var geminiReq gcp.CreateAuthTokenRequest
 	err = json.Unmarshal(bodyMutation.GetBody(), &geminiReq)
 	require.NoError(t, err)
-	require.NotNil(t, geminiReq.Config)
-	require.NotEmpty(t, geminiReq.Config.ExpireTime)
+	require.NotEmpty(t, geminiReq.ExpireTime)
 }
 
