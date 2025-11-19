@@ -6,7 +6,6 @@
 package translator
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"slices"
@@ -1981,76 +1980,6 @@ data: {"candidates":[{"content":{"parts":[{"text":"world"}]}}]}
 			if diff := cmp.Diff(tc.wantBuffered, translator.bufferedBody); diff != "" {
 				t.Errorf("buffered body mismatch (-want +got):\n%s", diff)
 			}
-		})
-	}
-}
-
-func TestSSESplitFunc(t *testing.T) {
-	tests := []struct {
-		name       string
-		data       string
-		atEOF      bool
-		wantTokens []string
-	}{
-		{
-			name:       "CRLF CRLF delimiter",
-			data:       "event: chunk\r\ndata: {\"key\": \"value\"}\r\n\r\nevent: done\r\ndata: [DONE]\r\n\r\n",
-			atEOF:      true,
-			wantTokens: []string{"event: chunk\r\ndata: {\"key\": \"value\"}", "event: done\r\ndata: [DONE]"},
-		},
-		{
-			name:       "LF LF delimiter",
-			data:       "event: chunk\ndata: {\"key\": \"value\"}\n\nevent: done\ndata: [DONE]\n\n",
-			atEOF:      true,
-			wantTokens: []string{"event: chunk\ndata: {\"key\": \"value\"}", "event: done\ndata: [DONE]"},
-		},
-		{
-			name:       "CR CR delimiter",
-			data:       "event: chunk\rdata: {\"key\": \"value\"}\r\revent: done\rdata: [DONE]\r\r",
-			atEOF:      true,
-			wantTokens: []string{"event: chunk\rdata: {\"key\": \"value\"}", "event: done\rdata: [DONE]"},
-		},
-		{
-			name:       "incomplete data at EOF",
-			data:       "incomplete chunk data",
-			atEOF:      true,
-			wantTokens: []string{"incomplete chunk data"},
-		},
-		{
-			name:       "incomplete data not at EOF",
-			data:       "incomplete chunk data",
-			atEOF:      false,
-			wantTokens: []string{"incomplete chunk data"}, // scanner will eventually hit EOF and return the data
-		},
-		{
-			name:       "empty data at EOF",
-			data:       "",
-			atEOF:      true,
-			wantTokens: nil,
-		},
-		{
-			name:       "empty data not at EOF",
-			data:       "",
-			atEOF:      false,
-			wantTokens: nil,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			scanner := bufio.NewScanner(strings.NewReader(tc.data))
-			scanner.Split(sseSplitFunc)
-
-			var gotTokens []string
-			for scanner.Scan() {
-				gotTokens = append(gotTokens, string(scanner.Bytes()))
-			}
-
-			if diff := cmp.Diff(tc.wantTokens, gotTokens); diff != "" {
-				t.Errorf("tokens mismatch (-want +got):\n%s", diff)
-			}
-
-			require.NoError(t, scanner.Err())
 		})
 	}
 }

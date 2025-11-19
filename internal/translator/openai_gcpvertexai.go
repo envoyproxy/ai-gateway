@@ -6,7 +6,6 @@
 package translator
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -33,28 +32,20 @@ const (
 	CarriageReturnLineFeedSSEDelimiter = "\r\n\r\n"
 )
 
-func sseSplitFunc(data []byte, atEOF bool) (advance int, token []byte, err error) {
-	if atEOF && len(data) == 0 {
-		return 0, nil, nil
+// detectSSEDelimiter detects which SSE delimiter is being used in the data.
+// It checks for delimiters in order of preference: CRLF, LF, CR.
+// Returns the detected delimiter as a byte slice, or nil if no delimiter is found.
+func detectSSEDelimiter(data []byte) []byte {
+	if bytes.Contains(data, []byte(CarriageReturnLineFeedSSEDelimiter)) {
+		return []byte(CarriageReturnLineFeedSSEDelimiter)
 	}
-	// Check for \r\n\r\n (longest delimiter first)
-	if i := bytes.Index(data, []byte(CarriageReturnLineFeedSSEDelimiter)); i >= 0 {
-		return i + len(CarriageReturnLineFeedSSEDelimiter), data[0:i], nil
+	if bytes.Contains(data, []byte(LineFeedSSEDelimiter)) {
+		return []byte(LineFeedSSEDelimiter)
 	}
-	// Check for \n\n
-	if i := bytes.Index(data, []byte(LineFeedSSEDelimiter)); i >= 0 {
-		return i + len(LineFeedSSEDelimiter), data[0:i], nil
+	if bytes.Contains(data, []byte(CarriageReturnSSEDelimiter)) {
+		return []byte(CarriageReturnSSEDelimiter)
 	}
-	// Check for \r\r
-	if i := bytes.Index(data, []byte(CarriageReturnSSEDelimiter)); i >= 0 {
-		return i + len(CarriageReturnSSEDelimiter), data[0:i], nil
-	}
-	// If at EOF, return remaining data
-	if atEOF {
-		return len(data), data, nil
-	}
-	// Request more data
-	return 0, nil, nil
+	return nil
 }
 
 // gcpVertexAIError represents the structure of GCP Vertex AI error responses.
@@ -81,7 +72,8 @@ func NewChatCompletionOpenAIToGCPVertexAITranslator(modelNameOverride internalap
 type openAIToGCPVertexAITranslatorV1ChatCompletion struct {
 	responseMode      geminiResponseMode
 	modelNameOverride internalapi.ModelNameOverride
-	stream            bool   // Track if this is a streaming request.
+	stream            bool // Track if this is a streaming request.
+	streamDelimiter   []byte
 	bufferedBody      []byte // Buffer for incomplete JSON chunks.
 	requestModel      internalapi.RequestModel
 	toolCallIndex     int64
@@ -235,14 +227,40 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(
 func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) parseGCPStreamingChunks(body io.Reader) ([]genai.GenerateContentResponse, error) {
 	var chunks []genai.GenerateContentResponse
 
-	// Read buffered body and new input, then split into individual chunks.
+	// Read all data from buffered body and new input into memory.
 	bodyReader := io.MultiReader(bytes.NewReader(o.bufferedBody), body)
-	scanner := bufio.NewScanner(bodyReader)
-	scanner.Split(sseSplitFunc)
+	allData, err := io.ReadAll(bodyReader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read streaming body: %w", err)
+	}
 
-	for scanner.Scan() {
+	// If no data, return early.
+	if len(allData) == 0 {
+		return chunks, nil
+	}
+
+	// Detect which SSE delimiter is being used and store it for future streaming chunks.
+	if o.streamDelimiter == nil {
+		o.streamDelimiter = detectSSEDelimiter(allData)
+	}
+
+	// Split by the detected delimiter.
+	var parts [][]byte
+	if o.streamDelimiter != nil {
+		parts = bytes.Split(allData, o.streamDelimiter)
+	} else {
+		parts = [][]byte{allData}
+	}
+
+	// Process all complete chunks (all but the last part).
+	for _, part := range parts {
+		part = bytes.TrimSpace(part)
+		if len(part) == 0 {
+			continue
+		}
+
 		// Remove "data: " prefix from SSE format if present.
-		line := bytes.TrimPrefix(scanner.Bytes(), []byte("data: "))
+		line := bytes.TrimPrefix(part, []byte("data: "))
 
 		// Try to parse as JSON.
 		var chunk genai.GenerateContentResponse
@@ -250,8 +268,10 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) parseGCPStreamingChunks(
 			chunks = append(chunks, chunk)
 			o.bufferedBody = nil
 		} else {
+			// Failed to parse, buffer it for the next call.
 			o.bufferedBody = line
 		}
+		// Ignore parse errors for individual chunks to maintain stream continuity.
 	}
 
 	return chunks, nil
