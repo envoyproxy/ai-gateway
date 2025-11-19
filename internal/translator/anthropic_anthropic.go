@@ -94,12 +94,7 @@ func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body 
 	if err := json.NewDecoder(body).Decode(anthropicResp); err != nil {
 		return nil, nil, tokenUsage, responseModel, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
-	tokenUsage = LLMTokenUsage{
-		InputTokens:       uint32(anthropicResp.Usage.InputTokens),                                    //nolint:gosec
-		OutputTokens:      uint32(anthropicResp.Usage.OutputTokens),                                   //nolint:gosec
-		TotalTokens:       uint32(anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens), //nolint:gosec
-		CachedInputTokens: uint32(anthropicResp.Usage.CacheReadInputTokens),                           //nolint:gosec
-	}
+	tokenUsage = ExtractLLMTokenUsageFromUsage(anthropicResp.Usage)
 	responseModel = cmp.Or(internalapi.ResponseModel(anthropicResp.Model), a.requestModel)
 	return nil, nil, tokenUsage, responseModel, nil
 }
@@ -130,13 +125,19 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent() (tokenUsa
 				// Store the response model for future batches
 				a.streamingResponseModel = internalapi.ResponseModel(eventUnion.Message.Model)
 			}
+			// Extract usage from message_start event
+			tokenUsage = ExtractLLMTokenUsageFromMessageUsage(eventUnion.Message.Usage)
 		case "message_delta":
 			// Usage only valid in message_delta events.
-			usage := &eventUnion.Usage
-			tokenUsage.InputTokens = uint32(usage.InputTokens)                      //nolint:gosec
-			tokenUsage.OutputTokens = uint32(usage.OutputTokens)                    //nolint:gosec
-			tokenUsage.TotalTokens = uint32(usage.InputTokens + usage.OutputTokens) //nolint:gosec
-			tokenUsage.CachedInputTokens = uint32(usage.CacheReadInputTokens)       //nolint:gosec
+			// For message_delta, we need to return the total usage (as it contains final totals)
+			// but use the correct calculation including cache tokens
+			totalInputTokens := eventUnion.Usage.InputTokens + eventUnion.Usage.CacheReadInputTokens
+			tokenUsage = LLMTokenUsage{
+				InputTokens:       uint32(totalInputTokens),                       //nolint:gosec
+				OutputTokens:      uint32(eventUnion.Usage.OutputTokens),          //nolint:gosec
+				TotalTokens:       uint32(totalInputTokens + eventUnion.Usage.OutputTokens), //nolint:gosec
+				CachedInputTokens: uint32(eventUnion.Usage.CacheReadInputTokens),   //nolint:gosec
+			}
 		}
 	}
 }

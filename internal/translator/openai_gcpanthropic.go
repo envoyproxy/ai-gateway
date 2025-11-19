@@ -765,19 +765,13 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 		Choices: make([]openai.ChatCompletionResponseChoice, 0),
 		Created: openai.JSONUNIXTime(time.Now()),
 	}
-	promptTokens := anthropicResp.Usage.InputTokens + anthropicResp.Usage.CacheReadInputTokens + anthropicResp.Usage.CacheCreationInputTokens
-	tokenUsage = LLMTokenUsage{
-		InputTokens:       uint32(promptTokens),                                                                            //nolint:gosec
-		OutputTokens:      uint32(anthropicResp.Usage.OutputTokens),                                                        //nolint:gosec
-		TotalTokens:       uint32(promptTokens + anthropicResp.Usage.OutputTokens),                                         //nolint:gosec
-		CachedInputTokens: uint32(anthropicResp.Usage.CacheReadInputTokens + anthropicResp.Usage.CacheCreationInputTokens), //nolint:gosec
-	}
+	tokenUsage = ExtractLLMTokenUsageFromUsage(anthropicResp.Usage)
 	openAIResp.Usage = openai.Usage{
 		CompletionTokens: int(anthropicResp.Usage.OutputTokens),
-		PromptTokens:     int(promptTokens),
-		TotalTokens:      int(promptTokens + anthropicResp.Usage.OutputTokens),
+		PromptTokens:     int(tokenUsage.InputTokens),
+		TotalTokens:      int(tokenUsage.TotalTokens),
 		PromptTokensDetails: &openai.PromptTokensDetails{
-			CachedTokens: int(anthropicResp.Usage.CacheReadInputTokens + anthropicResp.Usage.CacheCreationInputTokens),
+			CachedTokens: int(tokenUsage.CachedInputTokens),
 		},
 	}
 
