@@ -277,9 +277,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		// For message_delta, accumulate the incremental output tokens
 		p.tokenUsage.OutputTokens += usage.OutputTokens
 		// Update input tokens to include any cache tokens from delta
-		if usage.CachedInputTokens > 0 {
-			p.tokenUsage.InputTokens += usage.CachedInputTokens
-		}
+		p.tokenUsage.InputTokens += usage.CachedInputTokens
 		// Accumulate any additional cache tokens from delta
 		p.tokenUsage.CachedInputTokens += usage.CachedInputTokens
 		if event.Delta.StopReason != "" {
