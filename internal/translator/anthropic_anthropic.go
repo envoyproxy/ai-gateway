@@ -128,13 +128,7 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent() (tokenUsa
 			// Extract usage from message_start event
 			tokenUsage = ExtractLLMTokenUsageFromMessageUsage(eventUnion.Message.Usage)
 		case "message_delta":
-			totalInputTokens := eventUnion.Usage.InputTokens + eventUnion.Usage.CacheReadInputTokens
-			tokenUsage = LLMTokenUsage{
-				InputTokens:       uint32(totalInputTokens),                                 //nolint:gosec
-				OutputTokens:      uint32(eventUnion.Usage.OutputTokens),                    //nolint:gosec
-				TotalTokens:       uint32(totalInputTokens + eventUnion.Usage.OutputTokens), //nolint:gosec
-				CachedInputTokens: uint32(eventUnion.Usage.CacheReadInputTokens),            //nolint:gosec
-			}
+			tokenUsage = ExtractLLMTokenUsageFromDeltaUsage(eventUnion.Usage)
 		}
 	}
 }
