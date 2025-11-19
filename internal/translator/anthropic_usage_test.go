@@ -14,15 +14,15 @@ import (
 
 func TestExtractLLMTokenUsage(t *testing.T) {
 	tests := []struct {
-		name                   string
-		inputTokens           int64
-		outputTokens          int64
-		cacheReadTokens       int64
-		cacheCreationTokens   int64
-		expectedInputTokens   uint32
-		expectedOutputTokens  uint32
-		expectedTotalTokens   uint32
-		expectedCachedTokens  uint32
+		name                 string
+		inputTokens          int64
+		outputTokens         int64
+		cacheReadTokens      int64
+		cacheCreationTokens  int64
+		expectedInputTokens  uint32
+		expectedOutputTokens uint32
+		expectedTotalTokens  uint32
+		expectedCachedTokens uint32
 	}{
 		{
 			name:                 "basic usage without cache",
@@ -277,38 +277,33 @@ func TestExtractLLMTokenUsageFromDeltaUsage(t *testing.T) {
 	}
 }
 
-// Test edge cases and boundary conditions
+// Test edge cases and boundary conditions.
 func TestExtractLLMTokenUsage_EdgeCases(t *testing.T) {
 	t.Run("negative values should be handled", func(t *testing.T) {
 		// Note: In practice, the Anthropic API shouldn't return negative values,
-		// but our function should handle them gracefully by casting to uint32
+		// but our function should handle them gracefully by casting to uint32.
 		result := ExtractLLMTokenUsage(-10, -5, -2, -1)
 
-		// Negative int64 values will wrap around when cast to uint32
-		// This test documents current behavior rather than prescribing it
-		assert.NotPanics(t, func() {
-			ExtractLLMTokenUsage(-10, -5, -2, -1)
-		})
-
-		// The exact values aren't important, just that it doesn't panic
+		// Negative int64 values will wrap around when cast to uint32.
+		// This test documents current behavior rather than prescribing it.
+		// The exact values aren't important, just that it doesn't panic.
 		assert.NotNil(t, result)
 	})
 
 	t.Run("maximum int64 values", func(t *testing.T) {
-		// Test with very large values to ensure no overflow issues
-		// Note: This will result in truncation when casting to uint32
-		assert.NotPanics(t, func() {
-			ExtractLLMTokenUsage(9223372036854775807, 1000, 500, 100)
-		})
+		// Test with very large values to ensure no overflow issues.
+		// Note: This will result in truncation when casting to uint32.
+		result := ExtractLLMTokenUsage(9223372036854775807, 1000, 500, 100)
+		assert.NotNil(t, result)
 	})
 }
 
-// Test that demonstrates the correct calculation according to Claude API docs
+// Test that demonstrates the correct calculation according to Claude API docs.
 func TestExtractLLMTokenUsage_ClaudeAPIDocumentationCompliance(t *testing.T) {
 	t.Run("claude API documentation example", func(t *testing.T) {
 		// This test verifies compliance with Claude API documentation:
 		// "Total input tokens in a request is the summation of input_tokens,
-		// cache_creation_input_tokens, and cache_read_input_tokens"
+		// cache_creation_input_tokens, and cache_read_input_tokens".
 
 		inputTokens := int64(100)
 		cacheCreationTokens := int64(20)
@@ -317,18 +312,20 @@ func TestExtractLLMTokenUsage_ClaudeAPIDocumentationCompliance(t *testing.T) {
 
 		result := ExtractLLMTokenUsage(inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens)
 
-		// Total input should be sum of all input token types
-		expectedTotalInput := uint32(inputTokens + cacheCreationTokens + cacheReadTokens) // 100 + 20 + 30 = 150
+		// Total input should be sum of all input token types.
+		expectedTotalInputInt := inputTokens + cacheCreationTokens + cacheReadTokens
+		expectedTotalInput := uint32(expectedTotalInputInt) // #nosec G115 - test values are small and safe
 		assert.Equal(t, expectedTotalInput, result.InputTokens,
 			"InputTokens should be sum of input_tokens + cache_creation_input_tokens + cache_read_input_tokens")
 
-		// Total cache should be sum of cache token types
-		expectedCacheTokens := uint32(cacheCreationTokens + cacheReadTokens) // 20 + 30 = 50
+		// Total cache should be sum of cache token types.
+		expectedCacheTokensInt := cacheCreationTokens + cacheReadTokens
+		expectedCacheTokens := uint32(expectedCacheTokensInt) // #nosec G115 - test values are small and safe
 		assert.Equal(t, expectedCacheTokens, result.CachedInputTokens,
 			"CachedInputTokens should be sum of cache_creation_input_tokens + cache_read_input_tokens")
 
-		// Total tokens should be input + output
-		expectedTotal := uint32(expectedTotalInput + uint32(outputTokens)) // 150 + 50 = 200
+		// Total tokens should be input + output.
+		expectedTotal := expectedTotalInput + uint32(outputTokens)
 		assert.Equal(t, expectedTotal, result.TotalTokens,
 			"TotalTokens should be InputTokens + OutputTokens")
 	})

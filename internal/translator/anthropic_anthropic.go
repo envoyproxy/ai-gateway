@@ -133,10 +133,10 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent() (tokenUsa
 			// but use the correct calculation including cache tokens
 			totalInputTokens := eventUnion.Usage.InputTokens + eventUnion.Usage.CacheReadInputTokens
 			tokenUsage = LLMTokenUsage{
-				InputTokens:       uint32(totalInputTokens),                       //nolint:gosec
-				OutputTokens:      uint32(eventUnion.Usage.OutputTokens),          //nolint:gosec
+				InputTokens:       uint32(totalInputTokens),                                 //nolint:gosec
+				OutputTokens:      uint32(eventUnion.Usage.OutputTokens),                    //nolint:gosec
 				TotalTokens:       uint32(totalInputTokens + eventUnion.Usage.OutputTokens), //nolint:gosec
-				CachedInputTokens: uint32(eventUnion.Usage.CacheReadInputTokens),   //nolint:gosec
+				CachedInputTokens: uint32(eventUnion.Usage.CacheReadInputTokens),            //nolint:gosec
 			}
 		}
 	}
