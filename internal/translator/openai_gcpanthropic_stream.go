@@ -195,7 +195,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		}
 		p.activeMessageID = event.Message.ID
 		p.created = openai.JSONUNIXTime(time.Now())
-		usage := ExtractLLMTokenUsageFromMessageUsage(event.Message.Usage)
+		usage := ExtractLLMTokenUsageFromUsage(event.Message.Usage)
 		// For message_start, we store the initial usage but don't add to the accumulated
 		// The message_delta event will contain the final totals
 		p.tokenUsage.InputTokens = usage.InputTokens

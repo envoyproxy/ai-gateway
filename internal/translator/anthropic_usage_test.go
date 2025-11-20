@@ -170,52 +170,6 @@ func TestExtractLLMTokenUsageFromUsage(t *testing.T) {
 	}
 }
 
-func TestExtractLLMTokenUsageFromMessageUsage(t *testing.T) {
-	tests := []struct {
-		name     string
-		usage    anthropic.Usage
-		expected LLMTokenUsage
-	}{
-		{
-			name: "message_start event without cache",
-			usage: anthropic.Usage{
-				InputTokens:              200,
-				OutputTokens:             1,
-				CacheReadInputTokens:     0,
-				CacheCreationInputTokens: 0,
-			},
-			expected: LLMTokenUsage{
-				InputTokens:       200,
-				OutputTokens:      1,
-				TotalTokens:       201,
-				CachedInputTokens: 0,
-			},
-		},
-		{
-			name: "message_start event with cache",
-			usage: anthropic.Usage{
-				InputTokens:              180,
-				OutputTokens:             1,
-				CacheReadInputTokens:     20,
-				CacheCreationInputTokens: 5,
-			},
-			expected: LLMTokenUsage{
-				InputTokens:       205, // 180 + 5 + 20
-				OutputTokens:      1,
-				TotalTokens:       206, // 205 + 1
-				CachedInputTokens: 25,  // 20 + 5
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := ExtractLLMTokenUsageFromMessageUsage(tt.usage)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
 func TestExtractLLMTokenUsageFromDeltaUsage(t *testing.T) {
 	tests := []struct {
 		name     string

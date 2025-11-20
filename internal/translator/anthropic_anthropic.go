@@ -126,7 +126,7 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent() (tokenUsa
 				a.streamingResponseModel = internalapi.ResponseModel(eventUnion.Message.Model)
 			}
 			// Extract usage from message_start event
-			tokenUsage = ExtractLLMTokenUsageFromMessageUsage(eventUnion.Message.Usage)
+			tokenUsage = ExtractLLMTokenUsageFromUsage(eventUnion.Message.Usage)
 		case "message_delta":
 			tokenUsage = ExtractLLMTokenUsageFromDeltaUsage(eventUnion.Usage)
 		}

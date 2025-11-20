@@ -38,16 +38,6 @@ func ExtractLLMTokenUsageFromUsage(usage anthropic.Usage) LLMTokenUsage {
 	)
 }
 
-// ExtractLLMTokenUsageFromMessageUsage extracts token usage from streaming message_start events.
-func ExtractLLMTokenUsageFromMessageUsage(usage anthropic.Usage) LLMTokenUsage {
-	return ExtractLLMTokenUsage(
-		usage.InputTokens,
-		usage.OutputTokens,
-		usage.CacheReadInputTokens,
-		usage.CacheCreationInputTokens,
-	)
-}
-
 // ExtractLLMTokenUsageFromDeltaUsage extracts token usage from streaming message_delta events.
 func ExtractLLMTokenUsageFromDeltaUsage(usage anthropic.MessageDeltaUsage) LLMTokenUsage {
 	return ExtractLLMTokenUsage(
