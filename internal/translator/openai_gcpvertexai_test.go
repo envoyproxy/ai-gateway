@@ -1157,7 +1157,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody(t *
 	}
 }
 
-func TestExtractToolCallsFromGeminiPartsStream(t *testing.T) {
+func TestOpenAIGCPExtractToolCallsFromGeminiPartsStream(t *testing.T) {
 	toolCalls := []openai.ChatCompletionChunkChoiceDeltaToolCall{}
 	tests := []struct {
 		name     string
@@ -1423,8 +1423,8 @@ func TestExtractToolCallsFromGeminiPartsStream(t *testing.T) {
 	}
 }
 
-// TestExtractToolCallsStreamVsNonStream tests the differences between streaming and non-streaming extraction
-func TestExtractToolCallsStreamVsNonStream(t *testing.T) {
+// TestOpenAIGCPExtractToolCallsStreamVsNonStream tests the differences between streaming and non-streaming extraction
+func TestOpenAIGCPExtractToolCallsStreamVsNonStream(t *testing.T) {
 	toolCalls := []openai.ChatCompletionMessageToolCallParam{}
 	toolCallsStream := []openai.ChatCompletionChunkChoiceDeltaToolCall{}
 	parts := []*genai.Part{
@@ -1479,8 +1479,8 @@ func TestExtractToolCallsStreamVsNonStream(t *testing.T) {
 	assert.IsType(t, []openai.ChatCompletionMessageToolCallParam{}, nonStreamCalls)
 }
 
-// TestExtractToolCallsStreamIndexing specifically tests that multiple tool calls get correct indices
-func TestExtractToolCallsStreamIndexing(t *testing.T) {
+// TestOpenAIGCPExtractToolCallsStreamIndexing specifically tests that multiple tool calls get correct indices
+func TestOpenAIGCPExtractToolCallsStreamIndexing(t *testing.T) {
 	toolCalls := []openai.ChatCompletionChunkChoiceDeltaToolCall{}
 	parts := []*genai.Part{
 		{
