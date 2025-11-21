@@ -7,7 +7,9 @@ package translator
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"mime"
 	"net/url"
@@ -223,12 +225,75 @@ func assistantMsgToGeminiParts(msg openai.ChatCompletionAssistantMessageParam) (
 
 	// Handle tool calls in the assistant message.
 	knownToolCalls := make(map[string]string)
-	for _, toolCall := range msg.ToolCalls {
+	for i, toolCall := range msg.ToolCalls {
 		knownToolCalls[*toolCall.ID] = toolCall.Function.Name
-		var parsedArgs map[string]any
-		if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &parsedArgs); err != nil {
-			return nil, nil, fmt.Errorf("function arguments should be valid json string. failed to parse function arguments: %w", err)
+		
+		argsStr := strings.TrimSpace(toolCall.Function.Arguments)
+		
+		// Detailed logging for debugging
+		slog.Debug("processing tool call",
+			"index", i,
+			"tool_name", toolCall.Function.Name,
+			"tool_id", *toolCall.ID,
+			"args_length", len(argsStr),
+			"args_first_100", truncateString(argsStr, 100))
+		
+		// Check for common serialization errors
+		if strings.Contains(argsStr, "}{") {
+			slog.Error("detected multiple JSON objects in tool call arguments",
+				"tool_name", toolCall.Function.Name,
+				"tool_id", *toolCall.ID,
+				"full_args", argsStr)
+			return nil, nil, fmt.Errorf("tool call '%s' contains multiple concatenated JSON objects (found '}{' pattern): %q",
+				toolCall.Function.Name, argsStr)
 		}
+		
+		// Check for empty or malformed start
+		if len(argsStr) > 0 && !strings.HasPrefix(argsStr, "{") {
+			slog.Error("tool call arguments don't start with '{'",
+				"tool_name", toolCall.Function.Name,
+				"tool_id", *toolCall.ID,
+				"first_char", string(argsStr[0]),
+				"full_args", argsStr)
+			return nil, nil, fmt.Errorf("tool call '%s' arguments must be a JSON object starting with '{': %q",
+				toolCall.Function.Name, argsStr)
+		}
+		
+		var parsedArgs map[string]any
+		if err := json.Unmarshal([]byte(argsStr), &parsedArgs); err != nil {
+			// Enhanced error with context
+			var syntaxErr *json.SyntaxError
+			if errors.As(err, &syntaxErr) {
+				// Show the problematic area
+				start := maxInt(0, int(syntaxErr.Offset)-50)
+				end := minInt(len(argsStr), int(syntaxErr.Offset)+50)
+				context := argsStr[start:end]
+				
+				slog.Error("JSON syntax error in tool call arguments",
+					"tool_name", toolCall.Function.Name,
+					"tool_id", *toolCall.ID,
+					"error_offset", syntaxErr.Offset,
+					"error_context", context,
+					"full_args", argsStr)
+				
+				return nil, nil, fmt.Errorf("invalid JSON in tool call '%s' at position %d: %w. Context: %q. Full: %q",
+					toolCall.Function.Name, syntaxErr.Offset, err, context, argsStr)
+			}
+			
+			slog.Error("failed to parse tool call arguments as JSON",
+				"tool_name", toolCall.Function.Name,
+				"tool_id", *toolCall.ID,
+				"error", err.Error(),
+				"full_args", argsStr)
+			
+			return nil, nil, fmt.Errorf("function arguments should be valid json string. failed to parse function arguments for tool '%s' (id: %s): %w. Arguments: %q",
+				toolCall.Function.Name, *toolCall.ID, err, argsStr)
+		}
+		
+		slog.Debug("successfully parsed tool call arguments",
+			"tool_name", toolCall.Function.Name,
+			"parsed_keys", getMapKeys(parsedArgs))
+		
 		parts = append(parts, genai.NewPartFromFunctionCall(toolCall.Function.Name, parsedArgs))
 	}
 
@@ -548,6 +613,32 @@ func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate, responseMode
 			continue
 		}
 
+		// Skip candidates that only contain empty content with finishReason STOP
+		// These are completion signals from Gemini, not actual content
+		// This happens in mode ANY when Gemini sends a second candidate with empty text
+		if candidate.FinishReason == genai.FinishReasonStop {
+			// Check if content is nil or has no parts
+			if candidate.Content == nil || candidate.Content.Parts == nil || len(candidate.Content.Parts) == 0 {
+				slog.Debug("skipping candidate with finishReason STOP and no content",
+					"candidate_index", idx)
+				continue
+			}
+			
+			// Check if all parts are empty (no text and no function calls)
+			isEmptyContent := true
+			for _, part := range candidate.Content.Parts {
+				if part != nil && (part.Text != "" || part.FunctionCall != nil) {
+					isEmptyContent = false
+					break
+				}
+			}
+			if isEmptyContent {
+				slog.Debug("skipping candidate with finishReason STOP and empty content",
+					"candidate_index", idx)
+				continue
+			}
+		}
+
 		// Create the choice.
 		choice := openai.ChatCompletionResponseChoice{
 			Index: int64(idx),
@@ -643,6 +734,28 @@ func extractTextFromGeminiParts(parts []*genai.Part, responseMode geminiResponse
 	return text
 }
 
+// unwrapIncorrectlyQuotedValues fixes Gemini's incorrectly quoted string values.
+// When Gemini returns {"key": "\"value\""}, we normalize it to {"key": "value"}.
+// This prevents malformed arguments from being sent back to Gemini in subsequent requests.
+func unwrapIncorrectlyQuotedValues(argsMap map[string]any) {
+	for key, value := range argsMap {
+		if strValue, ok := value.(string); ok {
+			// Check if the string value is a quoted string (starts and ends with ")
+			if len(strValue) >= 2 && strValue[0] == '"' && strValue[len(strValue)-1] == '"' {
+				// Unwrap the quotes
+				unwrapped := strValue[1 : len(strValue)-1]
+				// Unescape any escaped quotes inside
+				unwrapped = strings.ReplaceAll(unwrapped, `\"`, `"`)
+				argsMap[key] = unwrapped
+				slog.Debug("unwrapped incorrectly quoted value",
+					"key", key,
+					"original", strValue,
+					"unwrapped", unwrapped)
+			}
+		}
+	}
+}
+
 // extractToolCallsFromGeminiParts extracts tool calls from Gemini parts.
 func extractToolCallsFromGeminiParts(toolCalls []openai.ChatCompletionMessageToolCallParam, parts []*genai.Part) ([]openai.ChatCompletionMessageToolCallParam, error) {
 	for _, part := range parts {
@@ -650,10 +763,42 @@ func extractToolCallsFromGeminiParts(toolCalls []openai.ChatCompletionMessageToo
 			continue
 		}
 
+		// First, unwrap any incorrectly quoted values in the args map
+		if part.FunctionCall.Args != nil {
+			unwrapIncorrectlyQuotedValues(part.FunctionCall.Args)
+		}
+
 		// Convert function call arguments to JSON string.
 		args, err := json.Marshal(part.FunctionCall.Args)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal function arguments: %w", err)
+		}
+
+		argsStr := string(args)
+		
+		// Defensive: Clean duplicate JSON objects that Gemini sometimes returns
+		// This can happen when using specific tool choice with AllowedFunctionNames
+		if strings.Contains(argsStr, "}{") {
+			slog.Warn("gemini returned duplicate JSON objects in tool call response, extracting first valid object",
+				"function", part.FunctionCall.Name,
+				"original_length", len(argsStr))
+			
+			// Extract first complete JSON object
+			braceCount := 0
+			for idx, char := range argsStr {
+				if char == '{' {
+					braceCount++
+				} else if char == '}' {
+					braceCount--
+					if braceCount == 0 {
+						argsStr = argsStr[:idx+1]
+						slog.Info("sanitized gemini tool call response",
+							"function", part.FunctionCall.Name,
+							"cleaned_length", len(argsStr))
+						break
+					}
+				}
+			}
 		}
 
 		// Generate a random ID for the tool call.
@@ -664,11 +809,81 @@ func extractToolCallsFromGeminiParts(toolCalls []openai.ChatCompletionMessageToo
 			Type: openai.ChatCompletionMessageToolCallTypeFunction,
 			Function: openai.ChatCompletionMessageToolCallFunctionParam{
 				Name:      part.FunctionCall.Name,
-				Arguments: string(args),
+				Arguments: argsStr,
 			},
 		}
 
 		toolCalls = append(toolCalls, toolCall)
+	}
+
+	if len(toolCalls) == 0 {
+		return nil, nil
+	}
+
+	return toolCalls, nil
+}
+
+// extractToolCallsFromGeminiPartsStream extracts tool calls from Gemini parts for streaming responses.
+// Each tool call is assigned an incremental index starting from 0, matching OpenAI's streaming protocol.
+// Returns ChatCompletionChunkChoiceDeltaToolCall types suitable for streaming responses, or nil if no tool calls are found.
+// Note: Gemini sends complete tool calls in every streaming chunk, not incremental deltas.
+// The caller is responsible for deduplicating based on the generated IDs.
+func extractToolCallsFromGeminiPartsStream(toolCalls []openai.ChatCompletionChunkChoiceDeltaToolCall, parts []*genai.Part) ([]openai.ChatCompletionChunkChoiceDeltaToolCall, error) {
+	toolCallIndex := int64(0)
+
+	for _, part := range parts {
+		if part == nil || part.FunctionCall == nil {
+			continue
+		}
+
+		// First, unwrap any incorrectly quoted values in the args map
+		if part.FunctionCall.Args != nil {
+			unwrapIncorrectlyQuotedValues(part.FunctionCall.Args)
+		}
+
+		// Convert function call arguments to JSON string.
+		args, err := json.Marshal(part.FunctionCall.Args)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal function arguments: %w", err)
+		}
+
+		argsStr := string(args)
+		
+		// Defensive: Clean duplicate JSON objects from Gemini streaming responses
+		if strings.Contains(argsStr, "}{") {
+			slog.Warn("gemini stream returned duplicate JSON objects, extracting first valid object",
+				"function", part.FunctionCall.Name)
+			
+			braceCount := 0
+			for idx, char := range argsStr {
+				if char == '{' {
+					braceCount++
+				} else if char == '}' {
+					braceCount--
+					if braceCount == 0 {
+						argsStr = argsStr[:idx+1]
+						break
+					}
+				}
+			}
+		}
+
+		// Generate a deterministic ID based on function name and index
+		// This allows callers to track which tool calls have already been sent
+		toolCallID := fmt.Sprintf("call_%s_%d", part.FunctionCall.Name, toolCallIndex)
+
+		toolCall := openai.ChatCompletionChunkChoiceDeltaToolCall{
+			ID:   &toolCallID,
+			Type: openai.ChatCompletionMessageToolCallTypeFunction,
+			Function: openai.ChatCompletionMessageToolCallFunctionParam{
+				Name:      part.FunctionCall.Name,
+				Arguments: argsStr,
+			},
+			Index: toolCallIndex,
+		}
+
+		toolCalls = append(toolCalls, toolCall)
+		toolCallIndex++
 	}
 
 	if len(toolCalls) == 0 {
@@ -748,4 +963,110 @@ func buildGCPModelPathSuffix(publisher, model, gcpMethod string, queryParams ...
 		pathSuffix += "?" + strings.Join(queryParams, "&")
 	}
 	return pathSuffix
+}
+
+func buildGeminiModelPath(model string, gcpMethod string, queryParams ...string) string {
+	path := fmt.Sprintf("/v1beta/models/%s:%s", model, gcpMethod)
+	if len(queryParams) > 0 {
+		path += "?" + strings.Join(queryParams, "&")
+	}
+	return path
+}
+
+// geminiCandidatesToOpenAIStreamingChoices converts Gemini candidates to OpenAI streaming choices.
+func geminiCandidatesToOpenAIStreamingChoices(candidates []*genai.Candidate, responseMode geminiResponseMode) ([]openai.ChatCompletionResponseChunkChoice, error) {
+	choices := make([]openai.ChatCompletionResponseChunkChoice, 0, len(candidates))
+
+	for _, candidate := range candidates {
+		if candidate == nil {
+			continue
+		}
+
+		// Skip candidates that only contain empty content with finishReason STOP
+		// These are completion signals from Gemini streaming, not actual content
+		// This happens in mode ANY when Gemini sends a second candidate with empty text
+		if candidate.FinishReason == genai.FinishReasonStop {
+			// Check if content is nil or has no parts
+			if candidate.Content == nil || candidate.Content.Parts == nil || len(candidate.Content.Parts) == 0 {
+				slog.Debug("skipping streaming candidate with finishReason STOP and no content")
+				continue
+			}
+			
+			// Check if all parts are empty (no text and no function calls)
+			isEmptyContent := true
+			for _, part := range candidate.Content.Parts {
+				if part != nil && (part.Text != "" || part.FunctionCall != nil) {
+					isEmptyContent = false
+					break
+				}
+			}
+			if isEmptyContent {
+				slog.Debug("skipping streaming candidate with finishReason STOP and empty content")
+				continue
+			}
+		}
+
+		// Create the streaming choice.
+		choice := openai.ChatCompletionResponseChunkChoice{
+			Index: 0,
+		}
+
+		toolCalls := []openai.ChatCompletionChunkChoiceDeltaToolCall{}
+		var err error
+		if candidate.Content != nil {
+			delta := &openai.ChatCompletionResponseChunkChoiceDelta{
+				Role: openai.ChatMessageRoleAssistant,
+			}
+
+			// Extract text from parts for streaming (delta).
+			content := extractTextFromGeminiParts(candidate.Content.Parts, responseMode)
+			if content != "" {
+				delta.Content = &content
+			}
+
+			// Extract tool calls if any.
+			toolCalls, err = extractToolCallsFromGeminiPartsStream(toolCalls, candidate.Content.Parts)
+			if err != nil {
+				return nil, fmt.Errorf("error extracting tool calls: %w", err)
+			}
+			delta.ToolCalls = toolCalls
+
+			choice.Delta = delta
+		}
+		choice.FinishReason = geminiFinishReasonToOpenAI(candidate.FinishReason, toolCalls)
+		choices = append(choices, choice)
+	}
+
+	return choices, nil
+}
+
+// Helper functions for enhanced error handling
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen]
+}
+
+func getMapKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }

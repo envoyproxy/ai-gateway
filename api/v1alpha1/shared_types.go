@@ -15,7 +15,7 @@ package v1alpha1
 type VersionedAPISchema struct {
 	// Name is the name of the API schema of the AIGatewayRoute or AIServiceBackend.
 	//
-	// +kubebuilder:validation:Enum=OpenAI;Cohere;AWSBedrock;AzureOpenAI;GCPVertexAI;GCPAnthropic;Anthropic;AWSAnthropic
+	// +kubebuilder:validation:Enum=OpenAI;Cohere;AWSBedrock;AzureOpenAI;GCPVertexAI;Gemini;GCPAnthropic;Anthropic;AWSAnthropic
 	Name APISchema `json:"name"`
 
 	// Version is the version of the API schema.
@@ -61,6 +61,12 @@ const (
 	//
 	// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/projects.locations.endpoints/generateContent?hl=en
 	APISchemaGCPVertexAI APISchema = "GCPVertexAI"
+	// APISchemaGemini is the schema for Gemini models accessed via generativelanguage.googleapis.com.
+	// Uses API key authentication (injected as query parameter ?key=).
+	// Translation logic is identical to GCPVertexAI but targets the Gemini API endpoint.
+	//
+	// https://ai.google.dev/gemini-api/docs/api-overview
+	APISchemaGemini APISchema = "Gemini"
 	// APISchemaGCPAnthropic is the schema for Anthropic models hosted on GCP's Vertex AI platform.
 	// Returns native Anthropic format responses for seamless integration.
 	//

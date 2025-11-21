@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"log/slog"
+
 
 	"github.com/google/uuid"
 	"google.golang.org/genai"
@@ -76,8 +78,15 @@ type openAIToGCPVertexAITranslatorV1ChatCompletion struct {
 	streamDelimiter   []byte
 	bufferedBody      []byte // Buffer for incomplete JSON chunks.
 	requestModel      internalapi.RequestModel
-	toolCallIndex     int64
+	useGeminiPath     bool   // If true, use /v1beta/models path (Gemini API), else use /publishers path (Vertex AI)
 }
+
+// SetUseGeminiDirectPath sets whether to use Gemini direct API path (/v1beta/models) or GCP Vertex AI path (/publishers).
+// This should be set to true when using Gemini API key authentication, false for GCP OAuth2.
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) SetUseGeminiDirectPath(use bool) {
+	o.useGeminiPath = use
+}
+
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody] for GCP Gemini.
 // This method translates an OpenAI ChatCompletion request to a GCP Gemini API request.
@@ -93,13 +102,28 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) RequestBody(_ []byte, op
 	// Set streaming flag.
 	o.stream = openAIReq.Stream
 
-	// Choose the correct endpoint based on streaming.
-	var path string
+	// Initialize tracking for sent tool calls in streaming responses
 	if o.stream {
-		// For streaming requests, use the streamGenerateContent endpoint with SSE format.
-		path = buildGCPModelPathSuffix(gcpModelPublisherGoogle, o.requestModel, gcpMethodStreamGenerateContent, "alt=sse")
+		o.sentToolCalls = make(map[string]bool)
+	}
+
+	// Choose the correct endpoint based on streaming and authentication type.
+	var pathSuffix string
+	if o.useGeminiPath {
+		// Using Gemini API key authentication - use direct Gemini API path
+		if o.stream {
+			pathSuffix = buildGeminiModelPath(o.requestModel, gcpMethodStreamGenerateContent, "alt=sse")
+		} else {
+			pathSuffix = buildGeminiModelPath(o.requestModel, gcpMethodGenerateContent)
+		}
 	} else {
-		path = buildGCPModelPathSuffix(gcpModelPublisherGoogle, o.requestModel, gcpMethodGenerateContent)
+		// Using GCP OAuth2 authentication - use Vertex AI publisher path
+		if o.stream {
+			// For streaming requests, use the streamGenerateContent endpoint with SSE format.
+			pathSuffix = buildGCPModelPathSuffix(gcpModelPublisherGoogle, o.requestModel, gcpMethodStreamGenerateContent, "alt=sse")
+		} else {
+			pathSuffix = buildGCPModelPathSuffix(gcpModelPublisherGoogle, o.requestModel, gcpMethodGenerateContent)
+		}
 	}
 	gcpReq, err := o.openAIMessageToGeminiMessage(openAIReq, o.requestModel)
 	if err != nil {
@@ -109,11 +133,17 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) RequestBody(_ []byte, op
 	if err != nil {
 		return nil, nil, fmt.Errorf("error marshaling Gemini request: %w", err)
 	}
-	newHeaders = []internalapi.Header{
-		{pathHeaderName, path},
-		{contentLengthHeaderName, strconv.Itoa(len(newBody))},
-	}
-	return
+
+	headerMutation, bodyMutation = buildRequestMutations(pathSuffix, gcpReqBody)
+
+	slog.Info("translated chat/completions request to Gemini",
+		"path", pathSuffix,
+		"model", o.requestModel,
+		"stream", o.stream,
+		"use_gemini_path", o.useGeminiPath,
+		"body_length", len(gcpReqBody))
+
+	return headerMutation, bodyMutation, nil
 }
 
 // ResponseHeaders implements [OpenAIChatCompletionTranslator.ResponseHeaders].
@@ -233,6 +263,14 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) parseGCPStreamingChunks(
 	if err != nil {
 		return nil, fmt.Errorf("failed to read streaming body: %w", err)
 	}
+<<<<<<< HEAD:internal/translator/openai_gcpvertexai.go
+=======
+	
+	// Normalize line endings: replace \r\n with \n to handle both Windows and Unix line endings
+	// Gemini API uses \r\n\r\n as separator
+	bodyBytes = bytes.ReplaceAll(bodyBytes, []byte("\r\n"), []byte("\n"))
+	lines := bytes.Split(bodyBytes, []byte("\n\n"))
+>>>>>>> main:internal/extproc/translator/openai_gcpvertexai.go
 
 	// If no data, return early.
 	if len(allData) == 0 {
@@ -260,7 +298,13 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) parseGCPStreamingChunks(
 		}
 
 		// Remove "data: " prefix from SSE format if present.
-		line := bytes.TrimPrefix(part, []byte("data: "))
+		line = bytes.TrimPrefix(line, []byte("data: "))
+		line = bytes.TrimSpace(line)
+		
+		// Skip empty lines
+		if len(line) == 0 {
+			continue
+		}
 
 		// Try to parse as JSON.
 		var chunk genai.GenerateContentResponse
@@ -368,6 +412,38 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) convertGCPChunkToOpenAI(
 	if err != nil {
 		// For now, create empty choices on error to prevent breaking the stream.
 		choices = []openai.ChatCompletionResponseChunkChoice{}
+	}
+
+	// Filter out tool calls that have already been sent
+	// Gemini sends complete tool calls in every chunk, not incremental deltas
+	for i := range choices {
+		if choices[i].Delta != nil && len(choices[i].Delta.ToolCalls) > 0 {
+			var newToolCalls []openai.ChatCompletionChunkChoiceDeltaToolCall
+			for _, toolCall := range choices[i].Delta.ToolCalls {
+				if toolCall.ID != nil {
+					// Check if this tool call has already been sent
+					if !o.sentToolCalls[*toolCall.ID] {
+						// Mark as sent and include in this chunk
+						o.sentToolCalls[*toolCall.ID] = true
+						newToolCalls = append(newToolCalls, toolCall)
+						slog.Debug("sending tool call in streaming chunk",
+							"tool_id", *toolCall.ID,
+							"tool_name", toolCall.Function.Name)
+					} else {
+						slog.Debug("skipping already-sent tool call",
+							"tool_id", *toolCall.ID,
+							"tool_name", toolCall.Function.Name)
+					}
+				}
+			}
+			// Update the choice with filtered tool calls
+			choices[i].Delta.ToolCalls = newToolCalls
+			
+			// If we filtered out all tool calls and there's no content, skip this choice
+			if len(newToolCalls) == 0 && (choices[i].Delta.Content == nil || *choices[i].Delta.Content == "") {
+				choices[i].Delta = nil
+			}
+		}
 	}
 
 	// Convert usage to pointer if available.

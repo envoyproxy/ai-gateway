@@ -109,9 +109,49 @@ func (c *chatCompletionProcessorRouterFilter) ProcessResponseBody(ctx context.Co
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
 func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+	// DEBUG: Log the raw request body received from client
+	c.logger.Debug("[CLIENT REQUEST] Raw body received",
+		"body_length", len(rawBody.Body),
+		"body_preview", string(rawBody.Body[:minInt(len(rawBody.Body), 2000)]))
+	
 	originalModel, body, err := parseOpenAIChatCompletionBody(rawBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
+	}
+	
+	// DEBUG: Log parsed messages including tool calls
+	if len(body.Messages) > 0 {
+		c.logger.Debug("[CLIENT REQUEST] Parsed messages", "message_count", len(body.Messages))
+		for i, msg := range body.Messages {
+			msgType := "unknown"
+			if msg.OfAssistant != nil {
+				msgType = "assistant"
+				assistantMsg := msg.OfAssistant
+				if len(assistantMsg.ToolCalls) > 0 {
+					c.logger.Debug("[CLIENT REQUEST] Assistant message with tool calls",
+						"message_index", i,
+						"tool_call_count", len(assistantMsg.ToolCalls))
+					for j, toolCall := range assistantMsg.ToolCalls {
+						c.logger.Info("[CLIENT REQUEST] Tool call details",
+							"message_index", i,
+							"tool_call_index", j,
+							"tool_id", *toolCall.ID,
+							"function_name", toolCall.Function.Name,
+							"arguments_length", len(toolCall.Function.Arguments),
+							"arguments_full", toolCall.Function.Arguments)
+					}
+				}
+			} else if msg.OfUser != nil {
+				msgType = "user"
+			} else if msg.OfSystem != nil {
+				msgType = "system"
+			} else if msg.OfTool != nil {
+				msgType = "tool"
+			} else if msg.OfDeveloper != nil {
+				msgType = "developer"
+			}
+			c.logger.Debug("[CLIENT REQUEST] Message parsed", "index", i, "type", msgType)
+		}
 	}
 	if body.Stream && (body.StreamOptions == nil || !body.StreamOptions.IncludeUsage) && len(c.config.requestCosts) > 0 {
 		// If the request is a streaming request and cost metrics are configured, we need to include usage in the response
@@ -210,7 +250,7 @@ func (c *chatCompletionProcessorUpstreamFilter) selectTranslator(out filterapi.V
 		c.translator = translator.NewChatCompletionOpenAIToAWSBedrockTranslator(c.modelNameOverride)
 	case filterapi.APISchemaAzureOpenAI:
 		c.translator = translator.NewChatCompletionOpenAIToAzureOpenAITranslator(out.Version, c.modelNameOverride)
-	case filterapi.APISchemaGCPVertexAI:
+	case filterapi.APISchemaGCPVertexAI, filterapi.APISchemaGemini:
 		c.translator = translator.NewChatCompletionOpenAIToGCPVertexAITranslator(c.modelNameOverride)
 	case filterapi.APISchemaGCPAnthropic:
 		c.translator = translator.NewChatCompletionOpenAIToGCPAnthropicTranslator(out.Version, c.modelNameOverride)
@@ -482,6 +522,22 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	if err = c.selectTranslator(b.Schema); err != nil {
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
+	
+	// Configure translator for Gemini API key vs GCP Vertex AI OAuth2 authentication
+	if b.Schema.Name == filterapi.APISchemaGemini || b.Schema.Name == filterapi.APISchemaGCPVertexAI {
+		// Check if using Gemini API key authentication (which uses /v1beta path)
+		// vs GCP OAuth2 authentication (which uses /publishers path)
+		useGeminiPath := b.Auth != nil && b.Auth.GeminiAPIKey != nil
+		
+		// Configure the translator to use the appropriate path
+		type geminiPathSetter interface {
+			SetUseGeminiDirectPath(bool)
+		}
+		if setter, ok := c.translator.(geminiPathSetter); ok {
+			setter.SetUseGeminiDirectPath(useGeminiPath)
+		}
+	}
+	
 	c.handler = backendHandler
 	c.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
 	c.bodyMutator = bodymutator.NewBodyMutator(b.BodyMutation, rp.originalRequestBodyRaw)
@@ -611,4 +667,12 @@ func buildDynamicMetadata(config *processorConfig, costs *translator.LLMTokenUsa
 			},
 		},
 	}, nil
+}
+
+// Helper function for min int
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

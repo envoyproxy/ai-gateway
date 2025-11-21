@@ -114,6 +114,9 @@ const (
 	// APISchemaGCPVertexAI represents the Google Cloud Gemini API schema.
 	// Used for Gemini models hosted on Google Cloud Vertex AI.
 	APISchemaGCPVertexAI APISchemaName = "GCPVertexAI"
+	// APISchemaGemini represents the Gemini API schema.
+	// Used for Gemini models accessed via generativelanguage.googleapis.com with API key authentication.
+	APISchemaGemini APISchemaName = "Gemini"
 	// APISchemaGCPAnthropic represents the Google Cloud Anthropic API schema.
 	// Used for Claude models hosted on Google Cloud Vertex AI.
 	APISchemaGCPAnthropic APISchemaName = "GCPAnthropic"
@@ -157,6 +160,8 @@ type BackendAuth struct {
 	AzureAuth *AzureAuth `json:"azure,omitempty"`
 	// GCPAuth specifies the location of GCP credential file.
 	GCPAuth *GCPAuth `json:"gcp,omitempty"`
+	// GeminiAPIKey is the Gemini API key for generativelanguage.googleapis.com.
+	GeminiAPIKey *GeminiAPIKeyAuth `json:"geminiAPIKey,omitempty"`
 }
 
 // AWSAuth defines the credentials needed to access AWS.
@@ -182,6 +187,12 @@ type AzureAPIKeyAuth struct {
 // AnthropicAPIKeyAuth defines the Anthropic API key.
 type AnthropicAPIKeyAuth struct {
 	// Key is the Anthropic API key as a literal string.
+	Key string `json:"key"`
+}
+
+// GeminiAPIKeyAuth defines the Gemini API key.
+type GeminiAPIKeyAuth struct {
+	// Key is the Gemini API key as a literal string.
 	Key string `json:"key"`
 }
 

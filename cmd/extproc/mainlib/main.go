@@ -258,6 +258,8 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	imageGenerationMetrics := metrics.NewImageGenerationFactory(meter, metricsRequestHeaderAttributes)()
 	rerankMetrics := metrics.NewRerankFactory(meter, metricsRequestHeaderAttributes)
 	mcpMetrics := metrics.NewMCP(meter, metricsRequestHeaderAttributes)
+	audioTranscriptionMetrics := metrics.NewAudioTranscriptionFactory(meter, metricsRequestHeaderAttributes)
+	audioSpeechMetrics := metrics.NewAudioSpeechFactory(meter, metricsRequestHeaderAttributes)
 
 	tracing, err := tracing.NewTracingFromEnv(ctx, os.Stdout, spanRequestHeaderAttributes)
 	if err != nil {
@@ -268,6 +270,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to create external processor server: %w", err)
 	}
+	
 	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/chat/completions"), extproc.ChatCompletionProcessorFactory(chatCompletionMetrics))
 	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/completions"), extproc.CompletionsProcessorFactory(completionMetrics))
 	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/embeddings"), extproc.EmbeddingsProcessorFactory(embeddingsMetrics))
@@ -275,6 +278,9 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.Cohere, "/v2/rerank"), extproc.RerankProcessorFactory(rerankMetrics))
 	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/models"), extproc.NewModelsProcessor)
 	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.Anthropic, "/v1/messages"), extproc.MessagesProcessorFactory(messagesMetrics))
+	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/audio/transcriptions"), extproc.AudioTranscriptionProcessorFactory(audioTranscriptionMetrics))
+	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/audio/speech"), extproc.AudioSpeechProcessorFactory(audioSpeechMetrics))
+	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/realtime/client_secrets"), extproc.RealtimeClientSecretsProcessorFactory())
 
 	if watchErr := filterapi.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); watchErr != nil {
 		return fmt.Errorf("failed to start config watcher: %w", watchErr)

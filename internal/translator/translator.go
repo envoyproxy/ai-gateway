@@ -316,3 +316,19 @@ type ImageGenerationTranslator interface {
 	// 	- body is the response body that contains the error message.
 	ResponseError(respHeaders map[string]string, body io.Reader) (newHeaders []internalapi.Header, mutatedBody []byte, err error)
 }
+
+type RealtimeClientSecretsTranslator interface {
+	RequestBody(req *openai.RealtimeClientSecretRequest) (
+		headerMutation *extprocv3.HeaderMutation,
+		bodyMutation *extprocv3.BodyMutation,
+		err error,
+	)
+
+	ResponseBody(body []byte) (
+		headerMutation *extprocv3.HeaderMutation,
+		bodyMutation *extprocv3.BodyMutation,
+		err error,
+	)
+}
+
+

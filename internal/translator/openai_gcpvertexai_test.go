@@ -1107,7 +1107,8 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseHeaders(
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{
-				stream: tt.stream,
+				stream:        tt.stream,
+				sentToolCalls: make(map[string]bool),
 			}
 
 			headerMut, err := translator.ResponseHeaders(tt.headers)
@@ -1123,7 +1124,8 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseHeaders(
 func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody(t *testing.T) {
 	// Test basic streaming response conversion.
 	translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{
-		stream: true,
+		stream:        true,
+		sentToolCalls: make(map[string]bool),
 	}
 
 	tests := []struct {
@@ -1642,7 +1644,10 @@ data: {"candidates": [
 }
 
 func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingEndOfStream(t *testing.T) {
-	translator := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
+	translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{
+		stream:        true,
+		sentToolCalls: make(map[string]bool),
+	}
 
 	// Test end of stream marker.
 	_, body, _, _, err := translator.handleStreamingResponse(
@@ -1958,7 +1963,8 @@ data: {"candidates":[{"content":{"parts":[{"text":"world"}]}}]}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{
-				bufferedBody: tc.bufferedBody,
+				bufferedBody:  tc.bufferedBody,
+				sentToolCalls: make(map[string]bool),
 			}
 
 			chunks, err := translator.parseGCPStreamingChunks(strings.NewReader(tc.input))
@@ -2084,7 +2090,9 @@ Details: [
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			translator := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
+			translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{
+				sentToolCalls: make(map[string]bool),
+			}
 
 			body := strings.NewReader(tt.body)
 
