@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"log/slog"
 
-
 	"github.com/google/uuid"
 	"google.golang.org/genai"
 	"k8s.io/utils/ptr"
@@ -79,6 +78,7 @@ type openAIToGCPVertexAITranslatorV1ChatCompletion struct {
 	bufferedBody      []byte // Buffer for incomplete JSON chunks.
 	requestModel      internalapi.RequestModel
 	useGeminiPath     bool   // If true, use /v1beta/models path (Gemini API), else use /publishers path (Vertex AI)
+	toolCallIndex     int64
 }
 
 // SetUseGeminiDirectPath sets whether to use Gemini direct API path (/v1beta/models) or GCP Vertex AI path (/publishers).
@@ -101,11 +101,6 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) RequestBody(_ []byte, op
 
 	// Set streaming flag.
 	o.stream = openAIReq.Stream
-
-	// Initialize tracking for sent tool calls in streaming responses
-	if o.stream {
-		o.sentToolCalls = make(map[string]bool)
-	}
 
 	// Choose the correct endpoint based on streaming and authentication type.
 	var pathSuffix string
@@ -134,16 +129,19 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) RequestBody(_ []byte, op
 		return nil, nil, fmt.Errorf("error marshaling Gemini request: %w", err)
 	}
 
-	headerMutation, bodyMutation = buildRequestMutations(pathSuffix, gcpReqBody)
+	newHeaders = []internalapi.Header{
+		{pathHeaderName, pathSuffix},
+		{contentLengthHeaderName, strconv.Itoa(len(newBody))},
+	}
 
 	slog.Info("translated chat/completions request to Gemini",
 		"path", pathSuffix,
 		"model", o.requestModel,
 		"stream", o.stream,
 		"use_gemini_path", o.useGeminiPath,
-		"body_length", len(gcpReqBody))
+		"body_length", len(newBody))
 
-	return headerMutation, bodyMutation, nil
+	return newHeaders, newBody, nil
 }
 
 // ResponseHeaders implements [OpenAIChatCompletionTranslator.ResponseHeaders].
@@ -263,14 +261,6 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) parseGCPStreamingChunks(
 	if err != nil {
 		return nil, fmt.Errorf("failed to read streaming body: %w", err)
 	}
-<<<<<<< HEAD:internal/translator/openai_gcpvertexai.go
-=======
-	
-	// Normalize line endings: replace \r\n with \n to handle both Windows and Unix line endings
-	// Gemini API uses \r\n\r\n as separator
-	bodyBytes = bytes.ReplaceAll(bodyBytes, []byte("\r\n"), []byte("\n"))
-	lines := bytes.Split(bodyBytes, []byte("\n\n"))
->>>>>>> main:internal/extproc/translator/openai_gcpvertexai.go
 
 	// If no data, return early.
 	if len(allData) == 0 {
@@ -298,22 +288,22 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) parseGCPStreamingChunks(
 		}
 
 		// Remove "data: " prefix from SSE format if present.
-		line = bytes.TrimPrefix(line, []byte("data: "))
-		line = bytes.TrimSpace(line)
+		part = bytes.TrimPrefix(part, []byte("data: "))
+		part = bytes.TrimSpace(part)
 		
 		// Skip empty lines
-		if len(line) == 0 {
+		if len(part) == 0 {
 			continue
 		}
 
 		// Try to parse as JSON.
 		var chunk genai.GenerateContentResponse
-		if err := json.Unmarshal(line, &chunk); err == nil {
+		if err := json.Unmarshal(part, &chunk); err == nil {
 			chunks = append(chunks, chunk)
 			o.bufferedBody = nil
 		} else {
 			// Failed to parse, buffer it for the next call.
-			o.bufferedBody = line
+			o.bufferedBody = part
 		}
 		// Ignore parse errors for individual chunks to maintain stream continuity.
 	}
@@ -412,38 +402,6 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) convertGCPChunkToOpenAI(
 	if err != nil {
 		// For now, create empty choices on error to prevent breaking the stream.
 		choices = []openai.ChatCompletionResponseChunkChoice{}
-	}
-
-	// Filter out tool calls that have already been sent
-	// Gemini sends complete tool calls in every chunk, not incremental deltas
-	for i := range choices {
-		if choices[i].Delta != nil && len(choices[i].Delta.ToolCalls) > 0 {
-			var newToolCalls []openai.ChatCompletionChunkChoiceDeltaToolCall
-			for _, toolCall := range choices[i].Delta.ToolCalls {
-				if toolCall.ID != nil {
-					// Check if this tool call has already been sent
-					if !o.sentToolCalls[*toolCall.ID] {
-						// Mark as sent and include in this chunk
-						o.sentToolCalls[*toolCall.ID] = true
-						newToolCalls = append(newToolCalls, toolCall)
-						slog.Debug("sending tool call in streaming chunk",
-							"tool_id", *toolCall.ID,
-							"tool_name", toolCall.Function.Name)
-					} else {
-						slog.Debug("skipping already-sent tool call",
-							"tool_id", *toolCall.ID,
-							"tool_name", toolCall.Function.Name)
-					}
-				}
-			}
-			// Update the choice with filtered tool calls
-			choices[i].Delta.ToolCalls = newToolCalls
-			
-			// If we filtered out all tool calls and there's no content, skip this choice
-			if len(newToolCalls) == 0 && (choices[i].Delta.Content == nil || *choices[i].Delta.Content == "") {
-				choices[i].Delta = nil
-			}
-		}
 	}
 
 	// Convert usage to pointer if available.

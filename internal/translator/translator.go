@@ -8,6 +8,7 @@ package translator
 import (
 	"io"
 
+	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	openaisdk "github.com/openai/openai-go/v2"
 	"github.com/tidwall/sjson"
 

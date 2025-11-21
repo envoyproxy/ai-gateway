@@ -182,7 +182,22 @@ func (a *audioTranscriptionOpenAIToGCPVertexAITranslator) RequestBody(
 		}
 	}
 
-	headerMutation, bodyMutation := buildRequestMutations(pathSuffix, geminiReqBody)
+	headerMutation := &extprocv3.HeaderMutation{
+		SetHeaders: []*corev3.HeaderValueOption{
+			{
+				Header: &corev3.HeaderValue{
+					Key:      ":path",
+					RawValue: []byte(pathSuffix),
+				},
+			},
+		},
+	}
+
+	bodyMutation := &extprocv3.BodyMutation{
+		Mutation: &extprocv3.BodyMutation_Body{
+			Body: geminiReqBody,
+		},
+	}
 
 	// Add Accept header for streaming requests to match the working curl
 	if a.stream {

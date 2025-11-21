@@ -1108,7 +1108,6 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseHeaders(
 		t.Run(tt.name, func(t *testing.T) {
 			translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{
 				stream:        tt.stream,
-				sentToolCalls: make(map[string]bool),
 			}
 
 			headerMut, err := translator.ResponseHeaders(tt.headers)
@@ -1125,7 +1124,6 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody(t *
 	// Test basic streaming response conversion.
 	translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{
 		stream:        true,
-		sentToolCalls: make(map[string]bool),
 	}
 
 	tests := []struct {
@@ -1646,7 +1644,6 @@ data: {"candidates": [
 func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingEndOfStream(t *testing.T) {
 	translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{
 		stream:        true,
-		sentToolCalls: make(map[string]bool),
 	}
 
 	// Test end of stream marker.
@@ -1964,7 +1961,6 @@ data: {"candidates":[{"content":{"parts":[{"text":"world"}]}}]}
 		t.Run(tc.name, func(t *testing.T) {
 			translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{
 				bufferedBody:  tc.bufferedBody,
-				sentToolCalls: make(map[string]bool),
 			}
 
 			chunks, err := translator.parseGCPStreamingChunks(strings.NewReader(tc.input))
@@ -2090,9 +2086,7 @@ Details: [
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{
-				sentToolCalls: make(map[string]bool),
-			}
+			translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{}
 
 			body := strings.NewReader(tt.body)
 
