@@ -21,6 +21,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi/runtimefc"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
@@ -30,7 +31,7 @@ import (
 
 // RerankProcessorFactory returns a factory method to instantiate the rerank processor.
 func RerankProcessorFactory(f metrics.RerankMetricsFactory) ProcessorFactory {
-	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
+	return func(config *runtimefc.Config, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "rerank", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &rerankProcessorRouterFilter{
@@ -63,7 +64,7 @@ type rerankProcessorRouterFilter struct {
 	// TODO: this is a bit of a hack and dirty workaround, so revert this to a cleaner design later.
 	upstreamFilter Processor
 	logger         *slog.Logger
-	config         *processorConfig
+	config         *runtimefc.Config
 	requestHeaders map[string]string
 	// originalRequestBody is the original request body that is passed to the upstream filter.
 	// This is used to perform the transformation of the request body on the original input
@@ -147,7 +148,7 @@ func (r *rerankProcessorRouterFilter) ProcessRequestBody(ctx context.Context, ra
 // This is created per retry and handles the translation as well as the authentication of the request.
 type rerankProcessorUpstreamFilter struct {
 	logger                 *slog.Logger
-	config                 *processorConfig
+	config                 *runtimefc.Config
 	requestHeaders         map[string]string
 	responseHeaders        map[string]string
 	responseEncoding       string
@@ -364,7 +365,7 @@ func (r *rerankProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context,
 	// Update metrics with token usage (rerank records only input tokens in metrics package).
 	r.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, r.requestHeaders)
 
-	if body.EndOfStream && len(r.config.requestCosts) > 0 {
+	if body.EndOfStream && len(r.config.RequestCosts) > 0 {
 		resp.DynamicMetadata, err = buildDynamicMetadata(r.config, &r.costs, r.requestHeaders, r.backendName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)

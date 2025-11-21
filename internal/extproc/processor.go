@@ -11,35 +11,15 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-	"github.com/google/cel-go/cel"
 
 	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi/runtimefc"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
-// processorConfig is the configuration for the processor.
-// This will be created by the server and passed to the processor when it detects a new configuration.
-type processorConfig struct {
-	uuid           string
-	requestCosts   []processorConfigRequestCost
-	declaredModels []filterapi.Model
-	backends       map[string]*processorConfigBackend
-}
-
-type processorConfigBackend struct {
-	b       *filterapi.Backend
-	handler backendauth.Handler
-}
-
-// processorConfigRequestCost is the configuration for the request cost.
-type processorConfigRequestCost struct {
-	*filterapi.LLMRequestCost
-	celProg cel.Program
-}
-
 // ProcessorFactory is the factory function used to create new instances of a processor.
-type ProcessorFactory func(_ *processorConfig, _ map[string]string, _ *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error)
+type ProcessorFactory func(_ *runtimefc.Config, _ map[string]string, _ *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error)
 
 // Processor is the interface for the processor which corresponds to a single gRPC stream per the external processor filter.
 // This decouples the processor implementation detail from the server implementation.

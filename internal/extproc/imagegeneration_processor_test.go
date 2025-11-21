@@ -22,6 +22,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi/runtimefc"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
@@ -30,14 +31,14 @@ import (
 
 func TestImageGeneration_Schema(t *testing.T) {
 	t.Run("supported openai / on route", func(t *testing.T) {
-		cfg := &processorConfig{}
+		cfg := &runtimefc.Config{}
 		routeFilter, err := ImageGenerationProcessorFactory(nil)(cfg, nil, slog.Default(), tracing.NoopTracing{}, false)
 		require.NoError(t, err)
 		require.NotNil(t, routeFilter)
 		require.IsType(t, &imageGenerationProcessorRouterFilter{}, routeFilter)
 	})
 	t.Run("supported openai / on upstream", func(t *testing.T) {
-		cfg := &processorConfig{}
+		cfg := &runtimefc.Config{}
 		routeFilter, err := ImageGenerationProcessorFactory(nil)(cfg, nil, slog.Default(), tracing.NoopTracing{}, true)
 		require.NoError(t, err)
 		require.NotNil(t, routeFilter)
@@ -135,7 +136,7 @@ func Test_imageGenerationProcessorRouterFilter_ProcessRequestBody(t *testing.T) 
 		headers := map[string]string{":path": "/v1/images/generations"}
 		const modelKey = "x-ai-eg-model"
 		p := &imageGenerationProcessorRouterFilter{
-			config:         &processorConfig{},
+			config:         &runtimefc.Config{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
 			tracer:         tracing.NoopTracing{}.ImageGenerationTracer(),
@@ -162,7 +163,7 @@ func Test_imageGenerationProcessorRouterFilter_ProcessRequestBody(t *testing.T) 
 		mockTracerInstance := &mockImageGenerationTracer{returnedSpan: span}
 
 		p := &imageGenerationProcessorRouterFilter{
-			config:         &processorConfig{},
+			config:         &runtimefc.Config{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
 			tracer:         mockTracerInstance,
@@ -253,16 +254,16 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseBody(t *testing.
 			translator: mt,
 			logger:     slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 			metrics:    mm,
-			config: &processorConfig{
-				requestCosts: []processorConfigRequestCost{
+			config: &runtimefc.Config{
+				RequestCosts: []runtimefc.RequestCost{
 					{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"}},
 					{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeInputToken, MetadataKey: "input_token_usage"}},
 					{
-						celProg:        celProgInt,
+						CELProg:        celProgInt,
 						LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCEL, MetadataKey: "cel_int"},
 					},
 					{
-						celProg:        celProgUint,
+						CELProg:        celProgUint,
 						LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCEL, MetadataKey: "cel_uint"},
 					},
 				},
@@ -343,7 +344,7 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseBody(t *testing.
 			logger:           slog.Default(),
 			responseHeaders:  map[string]string{":status": "200"},
 			responseEncoding: "gzip",
-			config:           &processorConfig{},
+			config:           &runtimefc.Config{},
 		}
 		res, err := p.ProcessResponseBody(t.Context(), inBody)
 		require.NoError(t, err)
@@ -365,7 +366,7 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessRequestHeaders(t *testin
 		body := &openaisdk.ImageGenerateParams{Model: openaisdk.ImageModel("dall-e-3"), Prompt: "a cat"}
 		mt := &mockImageGenerationTranslator{t: t, expRequestBody: body}
 		p := &imageGenerationProcessorUpstreamFilter{
-			config:                 &processorConfig{},
+			config:                 &runtimefc.Config{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                mm,
@@ -387,7 +388,7 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessRequestHeaders(t *testin
 		body := &openaisdk.ImageGenerateParams{Model: openaisdk.ImageModel("dall-e-3"), Prompt: "a cat"}
 		mt := &mockImageGenerationTranslator{t: t, expRequestBody: body}
 		p := &imageGenerationProcessorUpstreamFilter{
-			config:                 &processorConfig{},
+			config:                 &runtimefc.Config{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                mm,
@@ -416,7 +417,7 @@ func Test_imageGenerationProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	headers := map[string]string{":path": "/v1/images/generations"}
 	mm := &mockImageGenerationMetrics{}
 	p := &imageGenerationProcessorUpstreamFilter{
-		config:         &processorConfig{},
+		config:         &runtimefc.Config{},
 		requestHeaders: headers,
 		logger:         slog.Default(),
 		metrics:        mm,
@@ -435,7 +436,7 @@ func Test_imageGenerationProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	// Supported OpenAI schema.
 	rp := &imageGenerationProcessorRouterFilter{originalRequestBody: &openaisdk.ImageGenerateParams{}}
 	p2 := &imageGenerationProcessorUpstreamFilter{
-		config:         &processorConfig{},
+		config:         &runtimefc.Config{},
 		requestHeaders: map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-image-1-mini"},
 		logger:         slog.Default(),
 		metrics:        &mockImageGenerationMetrics{},
@@ -557,7 +558,7 @@ func TestImageGenerationProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMu
 		imageMetrics := &mockImageGenerationMetrics{}
 
 		p := &imageGenerationProcessorUpstreamFilter{
-			config:                 &processorConfig{},
+			config:                 &runtimefc.Config{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                imageMetrics,
@@ -618,7 +619,7 @@ func TestImageGenerationProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMu
 		}
 
 		p := &imageGenerationProcessorUpstreamFilter{
-			config:                 &processorConfig{},
+			config:                 &runtimefc.Config{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                imageMetrics,

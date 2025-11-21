@@ -21,6 +21,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi/runtimefc"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
@@ -33,7 +34,7 @@ var (
 	_ translator.OpenAIEmbeddingTranslator      = &mockEmbeddingTranslator{}
 )
 
-func newMockProcessor(_ *processorConfig, _ *slog.Logger) Processor {
+func newMockProcessor(_ *runtimefc.Config, _ *slog.Logger) Processor {
 	return &mockProcessor{}
 }
 
