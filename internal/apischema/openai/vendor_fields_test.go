@@ -74,6 +74,109 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 			},
 		},
 		{
+			name: "Request with GCP Vertex AI EnterpriseWebSearch enabled",
+			jsonData: []byte(`{
+				"model": "gemini-1.5-pro",
+				"messages": [
+					{
+						"role": "user",
+						"content": "Hello with enterprise search!"
+					}
+				],
+				"enterprise_search": true
+			}`),
+			expected: &ChatCompletionRequest{
+				Model: "gemini-1.5-pro",
+				Messages: []ChatCompletionMessageParamUnion{
+					{
+						OfUser: &ChatCompletionUserMessageParam{
+							Role:    ChatMessageRoleUser,
+							Content: StringOrUserRoleContentUnion{Value: "Hello with enterprise search!"},
+						},
+					},
+				},
+				GCPVertexAIVendorFields: &GCPVertexAIVendorFields{
+					EnterpriseWebSearch: true,
+				},
+			},
+		},
+		{
+			name: "Request with GCP Vertex AI EnterpriseWebSearch disabled",
+			jsonData: []byte(`{
+				"model": "gemini-1.5-pro",
+				"messages": [
+					{
+						"role": "user",
+						"content": "Hello with enterprise search disabled!"
+					}
+				],
+				"enterprise_search": false
+			}`),
+			expected: &ChatCompletionRequest{
+				Model: "gemini-1.5-pro",
+				Messages: []ChatCompletionMessageParamUnion{
+					{
+						OfUser: &ChatCompletionUserMessageParam{
+							Role:    ChatMessageRoleUser,
+							Content: StringOrUserRoleContentUnion{Value: "Hello with enterprise search disabled!"},
+						},
+					},
+				},
+				GCPVertexAIVendorFields: &GCPVertexAIVendorFields{
+					EnterpriseWebSearch: false,
+				},
+			},
+		},
+		{
+			name: "Request with combined GCP Vertex AI fields including EnterpriseWebSearch",
+			jsonData: []byte(`{
+				"model": "gemini-1.5-pro",
+				"messages": [
+					{
+						"role": "user",
+						"content": "Hello with all GCP fields!"
+					}
+				],
+				"generationConfig": {
+					"thinkingConfig": {
+						"includeThoughts": true,
+						"thinkingBudget": 1000
+					}
+				},
+                "safetySettings": [{
+                    "category": "HARM_CATEGORY_HARASSMENT",
+                    "threshold": "BLOCK_ONLY_HIGH"
+                }],
+				"enterprise_search": true
+			}`),
+			expected: &ChatCompletionRequest{
+				Model: "gemini-1.5-pro",
+				Messages: []ChatCompletionMessageParamUnion{
+					{
+						OfUser: &ChatCompletionUserMessageParam{
+							Role:    ChatMessageRoleUser,
+							Content: StringOrUserRoleContentUnion{Value: "Hello with all GCP fields!"},
+						},
+					},
+				},
+				GCPVertexAIVendorFields: &GCPVertexAIVendorFields{
+					GenerationConfig: &GCPVertexAIGenerationConfig{
+						ThinkingConfig: &genai.ThinkingConfig{
+							IncludeThoughts: true,
+							ThinkingBudget:  ptr.To(int32(1000)),
+						},
+					},
+					SafetySettings: []*genai.SafetySetting{
+						{
+							Category:  genai.HarmCategoryHarassment,
+							Threshold: genai.HarmBlockThresholdBlockOnlyHigh,
+						},
+					},
+					EnterpriseWebSearch: true,
+				},
+			},
+		},
+		{
 			name: "Request with multiple vendor fields",
 			jsonData: []byte(`{
 				"model": "claude-3",
