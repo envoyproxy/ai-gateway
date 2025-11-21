@@ -1,8 +1,3 @@
-# Copyright Envoy AI Gateway Authors
-# SPDX-License-Identifier: Apache-2.0
-# The full text of the Apache license is available in the LICENSE file at
-# the root of the repo.
-
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -4786,6 +4781,58 @@ spec:
                     must be specified
                   rule: (has(self.credentialsFile) && !has(self.workloadIdentityFederationConfig))
                     || (has(self.workloadIdentityFederationConfig) && !has(self.credentialsFile))
+              geminiAPIKey:
+                description: |-
+                  GeminiAPIKey is a mechanism to access Gemini backend(s). The API key will be injected as a query parameter.
+                  https://ai.google.dev/gemini-api/docs/api-key
+                properties:
+                  secretRef:
+                    description: |-
+                      SecretRef is the reference to the secret containing the Gemini API key.
+                      ai-gateway must be given the permission to read this secret.
+                      The key of the secret should be "apiKey".
+                    properties:
+                      group:
+                        default: ""
+                        description: |-
+                          Group is the group of the referent. For example, "gateway.networking.k8s.io".
+                          When unspecified or empty string, core API group is inferred.
+                        maxLength: 253
+                        pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                        type: string
+                      kind:
+                        default: Secret
+                        description: Kind is kind of the referent. For example "Secret".
+                        maxLength: 63
+                        minLength: 1
+                        pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
+                        type: string
+                      name:
+                        description: Name is the name of the referent.
+                        maxLength: 253
+                        minLength: 1
+                        type: string
+                      namespace:
+                        description: |-
+                          Namespace is the namespace of the referenced object. When unspecified, the local
+                          namespace is inferred.
+
+                          Note that when a namespace different than the local namespace is specified,
+                          a ReferenceGrant object is required in the referent namespace to allow that
+                          namespace's owner to accept the reference. See the ReferenceGrant
+                          documentation for details.
+
+                          Support: Core
+                        maxLength: 63
+                        minLength: 1
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                        type: string
+                    required:
+                    - name
+                    type: object
+                required:
+                - secretRef
+                type: object
               targetRefs:
                 description: |-
                   TargetRefs are the names of the AIServiceBackend resources this BackendSecurityPolicy is being attached to.
@@ -4835,6 +4882,7 @@ spec:
                 - AzureCredentials
                 - GCPCredentials
                 - AnthropicAPIKey
+                - GeminiAPIKey
                 type: string
             required:
             - type
@@ -4843,32 +4891,41 @@ spec:
             - message: When type is APIKey, only apiKey field should be set
               rule: 'self.type == ''APIKey'' ? (has(self.apiKey) && !has(self.awsCredentials)
                 && !has(self.azureAPIKey) && !has(self.azureCredentials) && !has(self.gcpCredentials)
-                && !has(self.anthropicAPIKey)) : true'
+                && !has(self.anthropicAPIKey) && !has(self.geminiAPIKey)) : true'
             - message: When type is AWSCredentials, only awsCredentials field should
                 be set
               rule: 'self.type == ''AWSCredentials'' ? (has(self.awsCredentials) &&
                 !has(self.apiKey) && !has(self.azureAPIKey) && !has(self.azureCredentials)
-                && !has(self.gcpCredentials) && !has(self.anthropicAPIKey)) : true'
+                && !has(self.gcpCredentials) && !has(self.anthropicAPIKey) && !has(self.geminiAPIKey))
+                : true'
             - message: When type is AzureAPIKey, only azureAPIKey field should be
                 set
               rule: 'self.type == ''AzureAPIKey'' ? (has(self.azureAPIKey) && !has(self.apiKey)
                 && !has(self.awsCredentials) && !has(self.azureCredentials) && !has(self.gcpCredentials)
-                && !has(self.anthropicAPIKey)) : true'
+                && !has(self.anthropicAPIKey) && !has(self.geminiAPIKey)) : true'
             - message: When type is AzureCredentials, only azureCredentials field
                 should be set
               rule: 'self.type == ''AzureCredentials'' ? (has(self.azureCredentials)
                 && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey)
-                && !has(self.gcpCredentials) && !has(self.anthropicAPIKey)) : true'
+                && !has(self.gcpCredentials) && !has(self.anthropicAPIKey) && !has(self.geminiAPIKey))
+                : true'
             - message: When type is GCPCredentials, only gcpCredentials field should
                 be set
               rule: 'self.type == ''GCPCredentials'' ? (has(self.gcpCredentials) &&
                 !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey)
-                && !has(self.azureCredentials) && !has(self.anthropicAPIKey)) : true'
+                && !has(self.azureCredentials) && !has(self.anthropicAPIKey) && !has(self.geminiAPIKey))
+                : true'
             - message: When type is AnthropicAPIKey, only anthropicAPIKey field should
                 be set
               rule: 'self.type == ''AnthropicAPIKey'' ? (has(self.anthropicAPIKey)
                 && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey)
-                && !has(self.azureCredentials) && !has(self.gcpCredentials)) : true'
+                && !has(self.azureCredentials) && !has(self.gcpCredentials) && !has(self.geminiAPIKey))
+                : true'
+            - message: When type is GeminiAPIKey, only geminiAPIKey field should be
+                set
+              rule: 'self.type == ''GeminiAPIKey'' ? (has(self.geminiAPIKey) && !has(self.apiKey)
+                && !has(self.awsCredentials) && !has(self.azureAPIKey) && !has(self.azureCredentials)
+                && !has(self.gcpCredentials) && !has(self.anthropicAPIKey)) : true'
           status:
             description: Status defines the status details of the BackendSecurityPolicy.
             properties:
