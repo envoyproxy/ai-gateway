@@ -131,7 +131,9 @@ type ChatCompletionContentPartImageImageURLDetail string
 const (
 	ChatCompletionContentPartImageImageURLDetailAuto ChatCompletionContentPartImageImageURLDetail = "auto"
 	ChatCompletionContentPartImageImageURLDetailLow  ChatCompletionContentPartImageImageURLDetail = "low"
-	ChatCompletionContentPartImageImageURLDetailHigh ChatCompletionContentPartImageImageURLDetail = "high"
+	// medium is only supported in gemini-3
+	ChatCompletionContentPartImageImageURLDetailMedium ChatCompletionContentPartImageImageURLDetail = "medium"
+	ChatCompletionContentPartImageImageURLDetailHigh   ChatCompletionContentPartImageImageURLDetail = "high"
 )
 
 type ChatCompletionContentPartImageImageURLParam struct {
@@ -1580,6 +1582,9 @@ type GCPVertexAIGenerationConfig struct {
 	//
 	// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/GenerationConfig#ThinkingConfig
 	ThinkingConfig *genai.ThinkingConfig `json:"thinkingConfig,omitzero"`
+
+	// MediaResolution is to set global media resolution in gemini models: https://ai.google.dev/api/caching#MediaResolution
+	MediaResolution genai.MediaResolution `json:"media_resolution,omitempty"`
 }
 
 // AnthropicVendorFields contains Anthropic vendor-specific fields.

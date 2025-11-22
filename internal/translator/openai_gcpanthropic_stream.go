@@ -195,8 +195,11 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		}
 		p.activeMessageID = event.Message.ID
 		p.created = openai.JSONUNIXTime(time.Now())
-		p.tokenUsage.InputTokens += uint32(event.Message.Usage.InputTokens + (event.Message.Usage.CacheReadInputTokens + event.Message.Usage.CacheCreationInputTokens)) //nolint:gosec
-		p.tokenUsage.CachedInputTokens += uint32(event.Message.Usage.CacheReadInputTokens + event.Message.Usage.CacheCreationInputTokens)                               //nolint:gosec
+		usage := ExtractLLMTokenUsageFromUsage(event.Message.Usage)
+		// For message_start, we store the initial usage but don't add to the accumulated
+		// The message_delta event will contain the final totals
+		p.tokenUsage.InputTokens = usage.InputTokens
+		p.tokenUsage.CachedInputTokens = usage.CachedInputTokens
 
 		// reset the toolIndex for each message
 		p.toolIndex = -1
@@ -270,11 +273,16 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, fmt.Errorf("unmarshal message_delta: %w", err)
 		}
-		p.tokenUsage.OutputTokens += uint32(event.Usage.OutputTokens) //nolint:gosec
+		usage := ExtractLLMTokenUsageFromDeltaUsage(event.Usage)
+		// For message_delta, accumulate the incremental output tokens
+		p.tokenUsage.OutputTokens += usage.OutputTokens
+		// Update input tokens to include any cache tokens from delta
+		p.tokenUsage.InputTokens += usage.CachedInputTokens
+		// Accumulate any additional cache tokens from delta
+		p.tokenUsage.CachedInputTokens += usage.CachedInputTokens
 		if event.Delta.StopReason != "" {
 			p.stopReason = event.Delta.StopReason
 		}
-		p.tokenUsage.CachedInputTokens += uint32(event.Usage.CacheReadInputTokens) //nolint:gosec
 		return nil, nil
 
 	case string(constant.ValueOf[constant.ContentBlockDelta]()):
