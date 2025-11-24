@@ -34,7 +34,7 @@ func TestMessagesProcessorFactory(t *testing.T) {
 	require.NotNil(t, factory, "MessagesProcessorFactory should return a non-nil factory")
 
 	// Test creating a router filter.
-	config := &processorConfig{}
+	config := &filterapi.RuntimeConfig{}
 	headers := map[string]string{
 		":path":         "/anthropic/v1/messages",
 		"authorization": "Bearer token",
@@ -139,7 +139,7 @@ func TestParseAnthropicMessagesBody(t *testing.T) {
 
 func TestMessagesProcessorRouterFilter_ProcessRequestHeaders(t *testing.T) {
 	processor := &messagesProcessorRouterFilter{
-		config: &processorConfig{},
+		config: &filterapi.RuntimeConfig{},
 		logger: slog.Default(),
 	}
 
@@ -193,7 +193,7 @@ func TestMessagesProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			processor := &messagesProcessorRouterFilter{
-				config:         &processorConfig{},
+				config:         &filterapi.RuntimeConfig{},
 				requestHeaders: make(map[string]string),
 				logger:         slog.Default(),
 			}
@@ -221,7 +221,7 @@ func TestMessagesProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 
 func TestMessagesProcessorRouterFilter_UnimplementedMethods(t *testing.T) {
 	processor := &messagesProcessorRouterFilter{
-		config: &processorConfig{},
+		config: &filterapi.RuntimeConfig{},
 		logger: slog.Default(),
 	}
 
@@ -244,7 +244,7 @@ func TestMessagesProcessorRouterFilter_UnimplementedMethods(t *testing.T) {
 
 func TestMessagesProcessorUpstreamFilter_ProcessRequestBody_ShouldPanic(t *testing.T) {
 	processor := &messagesProcessorUpstreamFilter{
-		config: &processorConfig{},
+		config: &filterapi.RuntimeConfig{},
 		logger: slog.Default(),
 	}
 
@@ -261,10 +261,10 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestBody_ShouldPanic(t *testi
 
 func TestSelectTranslator(t *testing.T) {
 	processor := &messagesProcessorUpstreamFilter{
-		config: &processorConfig{
-			backends: map[string]*processorConfigBackend{
+		config: &filterapi.RuntimeConfig{
+			Backends: map[string]*filterapi.RuntimeBackend{
 				"gcp": {
-					b: &filterapi.Backend{
+					Backend: &filterapi.Backend{
 						Name: "gcp",
 						Schema: filterapi.VersionedAPISchema{
 							Name:    filterapi.APISchemaGCPAnthropic,
@@ -273,7 +273,7 @@ func TestSelectTranslator(t *testing.T) {
 					},
 				},
 				"anthropic": {
-					b: &filterapi.Backend{
+					Backend: &filterapi.Backend{
 						Name: "anthropic",
 						Schema: filterapi.VersionedAPISchema{
 							Name: filterapi.APISchemaAnthropic,
@@ -310,9 +310,9 @@ func TestSelectTranslator(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			processor.backendName = tt.backend
-			backend := processor.config.backends[tt.backend]
+			backend := processor.config.Backends[tt.backend]
 			if backend != nil {
-				err := processor.selectTranslator(backend.b.Schema)
+				err := processor.selectTranslator(backend.Backend.Schema)
 				if tt.expectError {
 					require.Error(t, err)
 				} else {
@@ -400,7 +400,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithMocks(t *test
 			chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 
 			processor := &messagesProcessorUpstreamFilter{
-				config:                 &processorConfig{},
+				config:                 &filterapi.RuntimeConfig{},
 				requestHeaders:         headers,
 				logger:                 slog.Default(),
 				metrics:                chatMetrics,
@@ -432,7 +432,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseHeaders_WithMocks(t *tes
 
 	chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 	processor := &messagesProcessorUpstreamFilter{
-		config:         &processorConfig{},
+		config:         &filterapi.RuntimeConfig{},
 		requestHeaders: make(map[string]string),
 		logger:         slog.Default(),
 		metrics:        chatMetrics,
@@ -455,7 +455,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_WithMocks(t *testin
 
 	chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 	processor := &messagesProcessorUpstreamFilter{
-		config:         &processorConfig{},
+		config:         &filterapi.RuntimeConfig{},
 		requestHeaders: make(map[string]string),
 		logger:         slog.Default(),
 		metrics:        chatMetrics,
@@ -478,7 +478,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_ErrorRecordsFailure
 
 	mm := &mockChatCompletionMetrics{}
 	processor := &messagesProcessorUpstreamFilter{
-		config:         &processorConfig{},
+		config:         &filterapi.RuntimeConfig{},
 		requestHeaders: make(map[string]string),
 		logger:         slog.Default(),
 		metrics:        mm,
@@ -501,7 +501,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_CompletionOnlyAtEnd
 
 	mm := &mockChatCompletionMetrics{}
 	processor := &messagesProcessorUpstreamFilter{
-		config:         &processorConfig{},
+		config:         &filterapi.RuntimeConfig{},
 		requestHeaders: make(map[string]string),
 		logger:         slog.Default(),
 		metrics:        mm,
@@ -524,7 +524,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_CompletionOnlyAtEnd
 func TestMessagesProcessorUpstreamFilter_MergeWithTokenLatencyMetadata(t *testing.T) {
 	chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 	processor := &messagesProcessorUpstreamFilter{
-		config:  &processorConfig{},
+		config:  &filterapi.RuntimeConfig{},
 		logger:  slog.Default(),
 		metrics: chatMetrics,
 		costs:   translator.LLMTokenUsage{InputTokens: 100, OutputTokens: 50},
@@ -553,8 +553,8 @@ func TestMessagesProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	headers := map[string]string{":path": "/anthropic/v1/messages"}
 	chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 	processor := &messagesProcessorUpstreamFilter{
-		config: &processorConfig{
-			requestCosts: []processorConfigRequestCost{
+		config: &filterapi.RuntimeConfig{
+			RequestCosts: []filterapi.RuntimeRequestCost{
 				{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage", CEL: "15"}},
 			},
 		},
@@ -569,7 +569,7 @@ func TestMessagesProcessorUpstreamFilter_SetBackend(t *testing.T) {
 		Schema:            filterapi.VersionedAPISchema{Name: "some-unsupported-schema", Version: "v10.0"},
 		ModelNameOverride: "claude-override",
 	}, nil, &messagesProcessorRouterFilter{
-		config: &processorConfig{},
+		config: &filterapi.RuntimeConfig{},
 		logger: slog.Default(),
 	})
 	require.ErrorContains(t, err, "only supports backends that return native Anthropic format")
@@ -579,7 +579,7 @@ func Test_messagesProcessorUpstreamFilter_SetBackend_Success(t *testing.T) {
 	headers := map[string]string{":path": "/anthropic/v1/messages", internalapi.ModelNameHeaderKeyDefault: "claude"}
 	chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 	p := &messagesProcessorUpstreamFilter{
-		config:         &processorConfig{},
+		config:         &filterapi.RuntimeConfig{},
 		requestHeaders: headers,
 		logger:         slog.Default(),
 		metrics:        chatMetrics,
@@ -604,7 +604,7 @@ func TestMessages_ProcessRequestHeaders_SetsRequestModel(t *testing.T) {
 	requestBodyRaw := []byte(`{"model":"body-model","messages":["hello"]}`)
 	mm := &mockChatCompletionMetrics{}
 	p := &messagesProcessorUpstreamFilter{
-		config:                 &processorConfig{},
+		config:                 &filterapi.RuntimeConfig{},
 		requestHeaders:         headers,
 		logger:                 slog.Default(),
 		metrics:                mm,
@@ -642,7 +642,7 @@ func TestMessages_ProcessResponseBody_UsesActualResponseModelOverHeaderOverride(
 	}
 
 	p := &messagesProcessorUpstreamFilter{
-		config:                 &processorConfig{},
+		config:                 &filterapi.RuntimeConfig{},
 		requestHeaders:         headers,
 		logger:                 slog.Default(),
 		metrics:                mm,
@@ -716,7 +716,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 
 		// Create processor.
 		processor := &messagesProcessorUpstreamFilter{
-			config:                 &processorConfig{},
+			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                chatMetrics,
@@ -787,7 +787,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 
 		// Create processor.
 		processor := &messagesProcessorUpstreamFilter{
-			config:                 &processorConfig{},
+			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                chatMetrics,
@@ -823,7 +823,7 @@ func TestMessagesProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *testi
 		headers := map[string]string{":path": "/anthropic/v1/messages"}
 		chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 		p := &messagesProcessorUpstreamFilter{
-			config:         &processorConfig{},
+			config:         &filterapi.RuntimeConfig{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
 			metrics:        chatMetrics,
@@ -866,7 +866,7 @@ func TestMessagesProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *testi
 		headers := map[string]string{":path": "/anthropic/v1/messages"}
 		chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 		p := &messagesProcessorUpstreamFilter{
-			config:         &processorConfig{},
+			config:         &filterapi.RuntimeConfig{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
 			metrics:        chatMetrics,
@@ -938,7 +938,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutations
 		chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
 
 		p := &messagesProcessorUpstreamFilter{
-			config:              &processorConfig{},
+			config:              &filterapi.RuntimeConfig{},
 			requestHeaders:      headers,
 			logger:              slog.Default(),
 			metrics:             chatMetrics,
@@ -991,7 +991,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutations
 		requestBody := &anthropicschema.MessagesRequest{"model": "claude-3-sonnet"}
 
 		p := &messagesProcessorUpstreamFilter{
-			config:              &processorConfig{},
+			config:              &filterapi.RuntimeConfig{},
 			requestHeaders:      headers,
 			logger:              slog.Default(),
 			metrics:             chatMetrics,

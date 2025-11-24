@@ -19,7 +19,7 @@ type gcpHandler struct {
 	projectName    string // The GCP project to use for requests.
 }
 
-func newGCPHandler(gcpAuth *filterapi.GCPAuth) (Handler, error) {
+func newGCPHandler(gcpAuth *filterapi.GCPAuth) (filterapi.BackendAuthHandler, error) {
 	if gcpAuth == nil {
 		return nil, fmt.Errorf("GCP auth configuration cannot be nil")
 	}

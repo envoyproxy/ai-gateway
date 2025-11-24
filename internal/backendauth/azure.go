@@ -18,7 +18,7 @@ type azureHandler struct {
 	azureAccessToken string
 }
 
-func newAzureHandler(auth *filterapi.AzureAuth) (Handler, error) {
+func newAzureHandler(auth *filterapi.AzureAuth) (filterapi.BackendAuthHandler, error) {
 	return &azureHandler{azureAccessToken: strings.TrimSpace(auth.AccessToken)}, nil
 }
 

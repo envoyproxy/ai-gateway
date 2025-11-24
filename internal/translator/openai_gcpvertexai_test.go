@@ -211,6 +211,42 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
     "safetySettings": [{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"}]
 }`)
 
+	wantBdyWithMediaResolutionFields := []byte(`{
+    "contents": [
+        {
+            "parts": [
+                {
+                    "text": "Test with media resolution"
+                }
+            ],
+            "role": "user"
+        }
+    ],
+    "tools": [
+        {
+            "functionDeclarations": [
+                {
+                    "name": "test_function",
+                    "description": "A test function",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "param1": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+    ],
+    "generation_config": {
+        "maxOutputTokens": 1024,
+		"mediaResolution": "high",
+        "temperature": 0.7
+    }
+}`)
+
 	wantBdyWithGuidedChoice := []byte(`{
   "contents": [
     {
@@ -593,6 +629,51 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				{"content-length", "395"},
 			},
 			wantBody: wantBdyWithSafetySettingFields,
+		},
+		{
+			name: "Request with media resolution fields",
+			input: openai.ChatCompletionRequest{
+				Model:       "gemini-1.5-pro",
+				Temperature: ptr.To(0.7),
+				MaxTokens:   ptr.To(int64(1024)),
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Role:    openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{Value: "Test with media resolution"},
+						},
+					},
+				},
+				Tools: []openai.Tool{
+					{
+						Type: openai.ToolTypeFunction,
+						Function: &openai.FunctionDefinition{
+							Name:        "test_function",
+							Description: "A test function",
+							Parameters: map[string]interface{}{
+								"type": "object",
+								"properties": map[string]interface{}{
+									"param1": map[string]interface{}{
+										"type": "string",
+									},
+								},
+							},
+						},
+					},
+				},
+				GCPVertexAIVendorFields: &openai.GCPVertexAIVendorFields{
+					GenerationConfig: &openai.GCPVertexAIGenerationConfig{
+						MediaResolution: "high",
+					},
+				},
+			},
+			onRetry:   false,
+			wantError: false,
+			wantHeaderMut: []internalapi.Header{
+				{":path", "publishers/google/models/gemini-1.5-pro:generateContent"},
+				{"content-length", "333"},
+			},
+			wantBody: wantBdyWithMediaResolutionFields,
 		},
 		{
 			name: "Request with guided choice fields",
@@ -1739,7 +1820,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_parseGCPStreamingChunks(t
 					},
 				},
 			},
-			wantBuffered: []byte(""),
+			wantBuffered: nil,
 		},
 		{
 			name:         "multiple complete chunks",
@@ -1773,7 +1854,7 @@ data: {"candidates":[{"content":{"parts":[{"text":" world"}]}}]}
 					},
 				},
 			},
-			wantBuffered: []byte(""),
+			wantBuffered: nil,
 		},
 		{
 			name:         "incomplete chunk at end",
@@ -1828,7 +1909,54 @@ data: {"candidates":[{"content":{"parts":[{"text":"new"}]}}]}
 					},
 				},
 			},
-			wantBuffered: []byte(""),
+			wantBuffered: nil,
+		},
+		{
+			name: "invalid JSON chunk in bufferedBody - ignored",
+			bufferedBody: []byte(`data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]}}]}
+
+data: invalid-json
+
+data: {"candidates":[{"content":{"parts":[{"text":"world"}]}}]}
+
+`),
+			input: `data: {"candidates":[{"content":{"parts":[{"text":"Foo"}]}}]}`,
+			wantChunks: []genai.GenerateContentResponse{
+				{
+					Candidates: []*genai.Candidate{
+						{
+							Content: &genai.Content{
+								Parts: []*genai.Part{
+									{Text: "Hello"},
+								},
+							},
+						},
+					},
+				},
+				{
+					Candidates: []*genai.Candidate{
+						{
+							Content: &genai.Content{
+								Parts: []*genai.Part{
+									{Text: "world"},
+								},
+							},
+						},
+					},
+				},
+				{
+					Candidates: []*genai.Candidate{
+						{
+							Content: &genai.Content{
+								Parts: []*genai.Part{
+									{Text: "Foo"},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantBuffered: nil,
 		},
 		{
 			name:         "invalid JSON chunk in middle - ignored",
@@ -1864,14 +1992,14 @@ data: {"candidates":[{"content":{"parts":[{"text":"world"}]}}]}
 					},
 				},
 			},
-			wantBuffered: []byte(""),
+			wantBuffered: nil,
 		},
 		{
 			name:         "empty input",
 			bufferedBody: nil,
 			input:        "",
 			wantChunks:   nil,
-			wantBuffered: []byte(""),
+			wantBuffered: nil,
 		},
 		{
 			name:         "chunk without data prefix",
@@ -1892,7 +2020,67 @@ data: {"candidates":[{"content":{"parts":[{"text":"world"}]}}]}
 					},
 				},
 			},
-			wantBuffered: []byte(""),
+			wantBuffered: nil,
+		},
+		{
+			name:         "CRLF CRLF delimiter",
+			bufferedBody: nil,
+			input:        `data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]}}]}` + "\r\n\r\n" + `data: {"candidates":[{"content":{"parts":[{"text":"World"}]}}]}`,
+			wantChunks: []genai.GenerateContentResponse{
+				{
+					Candidates: []*genai.Candidate{
+						{
+							Content: &genai.Content{
+								Parts: []*genai.Part{
+									{Text: "Hello"},
+								},
+							},
+						},
+					},
+				},
+				{
+					Candidates: []*genai.Candidate{
+						{
+							Content: &genai.Content{
+								Parts: []*genai.Part{
+									{Text: "World"},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantBuffered: nil,
+		},
+		{
+			name:         "CR CR delimiter",
+			bufferedBody: nil,
+			input:        `data: {"candidates":[{"content":{"parts":[{"text":"Test"}]}}]}` + "\r\r" + `data: {"candidates":[{"content":{"parts":[{"text":"Message"}]}}]}`,
+			wantChunks: []genai.GenerateContentResponse{
+				{
+					Candidates: []*genai.Candidate{
+						{
+							Content: &genai.Content{
+								Parts: []*genai.Part{
+									{Text: "Test"},
+								},
+							},
+						},
+					},
+				},
+				{
+					Candidates: []*genai.Candidate{
+						{
+							Content: &genai.Content{
+								Parts: []*genai.Part{
+									{Text: "Message"},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantBuffered: nil,
 		},
 	}
 

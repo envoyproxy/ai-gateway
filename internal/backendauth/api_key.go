@@ -19,7 +19,7 @@ type apiKeyHandler struct {
 	apiKey string
 }
 
-func newAPIKeyHandler(auth *filterapi.APIKeyAuth) (Handler, error) {
+func newAPIKeyHandler(auth *filterapi.APIKeyAuth) (filterapi.BackendAuthHandler, error) {
 	return &apiKeyHandler{apiKey: strings.TrimSpace(auth.Key)}, nil
 }
 

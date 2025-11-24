@@ -31,7 +31,7 @@ type awsHandler struct {
 	region              string
 }
 
-func newAWSHandler(ctx context.Context, awsAuth *filterapi.AWSAuth) (Handler, error) {
+func newAWSHandler(ctx context.Context, awsAuth *filterapi.AWSAuth) (filterapi.BackendAuthHandler, error) {
 	if awsAuth == nil {
 		return nil, fmt.Errorf("aws auth configuration is required")
 	}

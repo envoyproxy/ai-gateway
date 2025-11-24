@@ -18,7 +18,7 @@ type azureAPIKeyHandler struct {
 	apiKey string
 }
 
-func newAzureAPIKeyHandler(auth *filterapi.AzureAPIKeyAuth) (Handler, error) {
+func newAzureAPIKeyHandler(auth *filterapi.AzureAPIKeyAuth) (filterapi.BackendAuthHandler, error) {
 	if auth.Key == "" {
 		return nil, fmt.Errorf("azure API key is required")
 	}

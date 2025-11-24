@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	openaisdk "github.com/openai/openai-go/v2"
 	"google.golang.org/genai"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -117,6 +118,25 @@ func openAIMessagesToGeminiContents(messages []openai.ChatCompletionMessageParam
 	return gcpContents, systemInstruction, nil
 }
 
+// mapDetailMediaResolution converts OpenAI image detail levels to Gemini media resolution levels.
+// Returns MediaResolutionUnspecified for "auto" detail level, which indicates the caller should not
+// set any specific resolution and let Gemini use its default behavior.
+func mapDetailMediaResolution(detail openai.ChatCompletionContentPartImageImageURLDetail) (genai.PartMediaResolutionLevel, error) {
+	switch detail {
+	case openai.ChatCompletionContentPartImageImageURLDetailLow:
+		return genai.PartMediaResolutionLevelMediaResolutionLow, nil
+	case openai.ChatCompletionContentPartImageImageURLDetailMedium:
+		return genai.PartMediaResolutionLevelMediaResolutionMedium, nil
+	case openai.ChatCompletionContentPartImageImageURLDetailHigh:
+		return genai.PartMediaResolutionLevelMediaResolutionHigh, nil
+	case openai.ChatCompletionContentPartImageImageURLDetailAuto:
+		// Return unspecified to indicate no specific resolution should be set
+		return genai.PartMediaResolutionLevelMediaResolutionUnspecified, nil
+	default:
+		return "", fmt.Errorf("unsupported detail level: %q (supported: low, medium, high, auto)", detail)
+	}
+}
+
 // developerMsgToGeminiParts converts OpenAI developer message to Gemini Content.
 func developerMsgToGeminiParts(msg openai.ChatCompletionDeveloperMessageParam) ([]*genai.Part, error) {
 	var parts []*genai.Part
@@ -166,21 +186,34 @@ func userMsgToGeminiParts(msg openai.ChatCompletionUserMessageParam) ([]*genai.P
 					return nil, fmt.Errorf("invalid image URL: %w", err)
 				}
 
+				var p *genai.Part
 				if parsedURL.Scheme == "data" {
-					mimeType, imgBytes, err := parseDataURI(imgURL)
-					if err != nil {
-						return nil, fmt.Errorf("failed to parse data URI: %w", err)
+					mimeType, imgBytes, parseErr := parseDataURI(imgURL)
+					if parseErr != nil {
+						return nil, fmt.Errorf("failed to parse data URI: %w", parseErr)
 					}
-					parts = append(parts, genai.NewPartFromBytes(imgBytes, mimeType))
+					p = genai.NewPartFromBytes(imgBytes, mimeType)
 				} else {
 					// Identify mimeType based in image url.
 					mimeType := mimeTypeImageJPEG // Default to jpeg if unknown.
 					if mt := mime.TypeByExtension(path.Ext(imgURL)); mt != "" {
 						mimeType = mt
 					}
-
-					parts = append(parts, genai.NewPartFromURI(imgURL, mimeType))
+					p = genai.NewPartFromURI(imgURL, mimeType)
 				}
+
+				// Handle media resolution for both data URI and regular URL cases
+				if content.OfImageURL.ImageURL.Detail != "" {
+					mediaResolution, err := mapDetailMediaResolution(content.OfImageURL.ImageURL.Detail)
+					if err != nil {
+						return nil, fmt.Errorf("invalid Detail: %w", err)
+					}
+					// Always set MediaResolution when Detail is specified
+					p.MediaResolution = &genai.PartMediaResolution{
+						Level: mediaResolution,
+					}
+				}
+				parts = append(parts, p)
 			case content.OfInputAudio != nil:
 				// Audio content is currently not supported in this implementation.
 				return nil, fmt.Errorf("audio content not supported yet")
@@ -419,6 +452,22 @@ func responseJSONSchemaAvailable(requestModel internalapi.RequestModel) bool {
 	return strings.Contains(requestModel, "gemini") && strings.Contains(requestModel, "2.5")
 }
 
+// mapReasoningEffortToThinkingLevel converts OpenAI reasoning effort levels to Gemini thinking levels.
+// Currently supports:
+// - "low" → ThinkingLevelLow
+// - "medium" → ThinkingLevelHigh
+// https://ai.google.dev/gemini-api/docs/gemini-3?thinking=low#openai_compatibility
+func mapReasoningEffortToThinkingLevel(reasonEffort openaisdk.ReasoningEffort) (genai.ThinkingLevel, error) {
+	switch reasonEffort {
+	case openaisdk.ReasoningEffortLow:
+		return genai.ThinkingLevelLow, nil
+	case openaisdk.ReasoningEffortMedium:
+		return genai.ThinkingLevelHigh, nil
+	default:
+		return "", fmt.Errorf("unsupported reasoning effort level: %q (supported: low, medium)", reasonEffort)
+	}
+}
+
 // openAIReqToGeminiGenerationConfig converts OpenAI request to Gemini GenerationConfig.
 func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest, requestModel internalapi.RequestModel) (*genai.GenerationConfig, geminiResponseMode, error) {
 	responseMode := responseModeNone
@@ -507,6 +556,15 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest, 
 
 		gc.ResponseMIMEType = mimeTypeApplicationJSON
 		gc.ResponseJsonSchema = openAIReq.GuidedJSON
+	}
+	if openAIReq.ReasoningEffort != "" {
+		thinkLevel, err := mapReasoningEffortToThinkingLevel(openAIReq.ReasoningEffort)
+		if err != nil {
+			return nil, responseMode, fmt.Errorf("reasoning effort: %w", err)
+		}
+		gc.ThinkingConfig = &genai.ThinkingConfig{
+			ThinkingLevel: thinkLevel,
+		}
 	}
 
 	// ResponseFormat and guidedJSON/guidedChoice/guidedRegex are mutually exclusive.

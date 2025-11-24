@@ -27,3 +27,6 @@ updates:
       - dependency-name: "github.com/envoyproxy/gateway"
       # Usually, this requires manual changes to the codebase.
       - dependency-name: "sigs.k8s.io/gateway-api-inference-extension"
+      # Needs a manual update with test fixes: https://github.com/envoyproxy/ai-gateway/issues/1476
+      # Used only for testing.
+      - dependency-name: "github.com/modelcontextprotocol/go-sdk"

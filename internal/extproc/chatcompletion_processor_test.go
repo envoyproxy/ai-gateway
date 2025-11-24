@@ -32,14 +32,14 @@ import (
 
 func TestChatCompletion_Schema(t *testing.T) {
 	t.Run("supported openai / on route", func(t *testing.T) {
-		cfg := &processorConfig{}
+		cfg := &filterapi.RuntimeConfig{}
 		routeFilter, err := ChatCompletionProcessorFactory(nil)(cfg, nil, slog.Default(), tracing.NoopTracing{}, false)
 		require.NoError(t, err)
 		require.NotNil(t, routeFilter)
 		require.IsType(t, &chatCompletionProcessorRouterFilter{}, routeFilter)
 	})
 	t.Run("supported openai / on upstream", func(t *testing.T) {
-		cfg := &processorConfig{}
+		cfg := &filterapi.RuntimeConfig{}
 		routeFilter, err := ChatCompletionProcessorFactory(func() metrics.ChatCompletionMetrics {
 			return &mockChatCompletionMetrics{}
 		})(cfg, nil, slog.Default(), tracing.NoopTracing{}, true)
@@ -104,7 +104,7 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
 		p := &chatCompletionProcessorRouterFilter{
-			config:         &processorConfig{},
+			config:         &filterapi.RuntimeConfig{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
 			tracer:         tracing.NoopChatCompletionTracer{},
@@ -130,7 +130,7 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 		mockTracerInstance := &mockTracer{returnedSpan: span}
 
 		p := &chatCompletionProcessorRouterFilter{
-			config:         &processorConfig{},
+			config:         &filterapi.RuntimeConfig{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
 			tracer:         mockTracerInstance,
@@ -160,9 +160,9 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 		for _, opt := range []*openai.StreamOptions{nil, {IncludeUsage: false}} {
 			headers := map[string]string{":path": "/foo"}
 			p := &chatCompletionProcessorRouterFilter{
-				config: &processorConfig{
+				config: &filterapi.RuntimeConfig{
 					// Ensure that the stream_options.include_usage be forced to true.
-					requestCosts: []processorConfigRequestCost{{}},
+					RequestCosts: []filterapi.RuntimeRequestCost{{}},
 				},
 				requestHeaders: headers,
 				logger:         slog.Default(),
@@ -272,17 +272,17 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 			logger:     slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 			metrics:    mm,
 			stream:     true,
-			config: &processorConfig{
-				requestCosts: []processorConfigRequestCost{
+			config: &filterapi.RuntimeConfig{
+				RequestCosts: []filterapi.RuntimeRequestCost{
 					{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"}},
 					{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeInputToken, MetadataKey: "input_token_usage"}},
 					{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCachedInputToken, MetadataKey: "cached_input_token_usage"}},
 					{
-						celProg:        celProgInt,
+						CELProg:        celProgInt,
 						LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCEL, MetadataKey: "cel_int"},
 					},
 					{
-						celProg:        celProgUint,
+						CELProg:        celProgUint,
 						LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCEL, MetadataKey: "cel_uint"},
 					},
 				},
@@ -352,7 +352,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 			metrics:         mm,
 			stream:          true,
 			responseHeaders: map[string]string{":status": "200"},
-			config:          &processorConfig{},
+			config:          &filterapi.RuntimeConfig{},
 		}
 		// First chunk (not end of stream) should not complete the request.
 		chunk := &extprocv3.HttpBody{Body: []byte("chunk-1"), EndOfStream: false}
@@ -391,8 +391,8 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	headers := map[string]string{":path": "/foo"}
 	mm := &mockChatCompletionMetrics{}
 	p := &chatCompletionProcessorUpstreamFilter{
-		config: &processorConfig{
-			requestCosts: []processorConfigRequestCost{
+		config: &filterapi.RuntimeConfig{
+			RequestCosts: []filterapi.RuntimeRequestCost{
 				{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage", CEL: "15"}},
 			},
 		},
@@ -416,7 +416,7 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend_Success(t *testing.T)
 	headers := map[string]string{":path": "/foo", internalapi.ModelNameHeaderKeyDefault: "some-model"}
 	mm := &mockChatCompletionMetrics{}
 	p := &chatCompletionProcessorUpstreamFilter{
-		config:         &processorConfig{},
+		config:         &filterapi.RuntimeConfig{},
 		requestHeaders: headers,
 		logger:         slog.Default(),
 		metrics:        mm,
@@ -454,7 +454,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				tr := mockTranslator{t: t, retErr: errors.New("test error"), expRequestBody: &body}
 				mm := &mockChatCompletionMetrics{}
 				p := &chatCompletionProcessorUpstreamFilter{
-					config:                 &processorConfig{},
+					config:                 &filterapi.RuntimeConfig{},
 					requestHeaders:         headers,
 					logger:                 slog.Default(),
 					metrics:                mm,
@@ -489,7 +489,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				}
 				mm := &mockChatCompletionMetrics{}
 				p := &chatCompletionProcessorUpstreamFilter{
-					config:                         &processorConfig{},
+					config:                         &filterapi.RuntimeConfig{},
 					requestHeaders:                 headers,
 					logger:                         slog.Default(),
 					metrics:                        mm,
@@ -552,7 +552,7 @@ func Test_chatCompletionProcessorUpstreamFilter_MergeWithTokenLatencyMetadata(t 
 			logger:     slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 			metrics:    mm,
 			stream:     true,
-			config:     &processorConfig{},
+			config:     &filterapi.RuntimeConfig{},
 		}
 		metadata := &structpb.Struct{Fields: map[string]*structpb.Value{}}
 		p.mergeWithTokenLatencyMetadata(metadata)
@@ -573,7 +573,7 @@ func Test_chatCompletionProcessorUpstreamFilter_MergeWithTokenLatencyMetadata(t 
 			logger:     slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 			metrics:    mm,
 			stream:     true,
-			config:     &processorConfig{},
+			config:     &filterapi.RuntimeConfig{},
 		}
 		existingInner := &structpb.Struct{Fields: map[string]*structpb.Value{
 			"tokenCost":        {Kind: &structpb.Value_NumberValue{NumberValue: float64(200)}},
@@ -616,7 +616,7 @@ func TestChatCompletionsProcessorRouterFilter_ProcessResponseHeaders_ProcessResp
 				translator: &mockTranslator{t: t, expHeaders: map[string]string{}},
 				logger:     slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 				metrics:    &mockChatCompletionMetrics{},
-				config:     &processorConfig{},
+				config:     &filterapi.RuntimeConfig{},
 			},
 		}
 		resp, err := p.ProcessResponseHeaders(t.Context(), &corev3.HeaderMap{Headers: []*corev3.HeaderValue{}})
@@ -657,7 +657,7 @@ func TestChatCompletionProcessorRouterFilter_ProcessResponseBody_SpanHandling(t 
 				translator:      mt,
 				logger:          slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 				metrics:         &mockChatCompletionMetrics{},
-				config:          &processorConfig{},
+				config:          &filterapi.RuntimeConfig{},
 				span:            span,
 			},
 		}
@@ -678,7 +678,7 @@ func TestChatCompletionProcessorRouterFilter_ProcessResponseBody_SpanHandling(t 
 				translator:      &mockTranslator{t: t},
 				logger:          slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 				metrics:         &mockChatCompletionMetrics{},
-				config:          &processorConfig{},
+				config:          &filterapi.RuntimeConfig{},
 				span:            span,
 			},
 		}
@@ -711,7 +711,7 @@ func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestor
 			onRetry:                true,
 			metrics:                &mockChatCompletionMetrics{},
 			logger:                 slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
-			config:                 &processorConfig{},
+			config:                 &filterapi.RuntimeConfig{},
 			translator:             &mockTranslator{t: t, expForceRequestBodyMutation: true, expRequestBody: &body},
 			originalRequestBody:    &body,
 			originalRequestBodyRaw: raw,
@@ -737,7 +737,7 @@ func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestor
 			onRetry:                true, // not a retry, so should restore.
 			metrics:                &mockChatCompletionMetrics{},
 			logger:                 slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
-			config:                 &processorConfig{},
+			config:                 &filterapi.RuntimeConfig{},
 			translator:             &mockTranslator{t: t, expForceRequestBodyMutation: true, expRequestBody: &body},
 			originalRequestBody:    &body,
 			originalRequestBodyRaw: raw,
@@ -764,7 +764,7 @@ func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestor
 			headerMutator:          headermutator.NewHeaderMutator(nil, originalHeaders),
 			metrics:                &mockChatCompletionMetrics{},
 			logger:                 slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
-			config:                 &processorConfig{},
+			config:                 &filterapi.RuntimeConfig{},
 			translator:             &mockTranslator{t: t, expForceRequestBodyMutation: true, expRequestBody: &body},
 			originalRequestBody:    &body,
 			originalRequestBodyRaw: raw,
@@ -787,7 +787,7 @@ func Test_ProcessRequestHeaders_SetsRequestModel(t *testing.T) {
 	raw, _ := json.Marshal(body)
 	mm := &mockChatCompletionMetrics{}
 	p := &chatCompletionProcessorUpstreamFilter{
-		config:                 &processorConfig{},
+		config:                 &filterapi.RuntimeConfig{},
 		requestHeaders:         headers,
 		logger:                 slog.Default(),
 		metrics:                mm,
@@ -828,7 +828,7 @@ func Test_ProcessResponseBody_UsesActualResponseModel(t *testing.T) {
 	}
 
 	p := &chatCompletionProcessorUpstreamFilter{
-		config:                 &processorConfig{},
+		config:                 &filterapi.RuntimeConfig{},
 		requestHeaders:         headers,
 		logger:                 slog.Default(),
 		metrics:                mm,
@@ -897,7 +897,7 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 
 		chatMetrics := &mockChatCompletionMetrics{}
 		p := &chatCompletionProcessorUpstreamFilter{
-			config:                 &processorConfig{},
+			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                chatMetrics,
@@ -954,7 +954,7 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 		}
 
 		p := &chatCompletionProcessorUpstreamFilter{
-			config:                 &processorConfig{},
+			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                chatMetrics,

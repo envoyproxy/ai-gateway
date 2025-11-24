@@ -19,7 +19,6 @@ import (
 	openaisdk "github.com/openai/openai-go/v2"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
@@ -31,7 +30,7 @@ import (
 
 // ImageGenerationProcessorFactory returns a factory method to instantiate the image generation processor.
 func ImageGenerationProcessorFactory(igm metrics.ImageGenerationMetrics) ProcessorFactory {
-	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
+	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "image-generation", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &imageGenerationProcessorRouterFilter{
@@ -63,7 +62,7 @@ type imageGenerationProcessorRouterFilter struct {
 	//
 	upstreamFilter Processor
 	logger         *slog.Logger
-	config         *processorConfig
+	config         *filterapi.RuntimeConfig
 	requestHeaders map[string]string
 	// originalRequestBody is the original request body that is passed to the upstream filter.
 	// This is used to perform the transformation of the request body on the original input
@@ -151,13 +150,13 @@ func (i *imageGenerationProcessorRouterFilter) ProcessRequestBody(ctx context.Co
 // This is created per retry and handles the translation as well as the authentication of the request.
 type imageGenerationProcessorUpstreamFilter struct {
 	logger                 *slog.Logger
-	config                 *processorConfig
+	config                 *filterapi.RuntimeConfig
 	requestHeaders         map[string]string
 	responseHeaders        map[string]string
 	responseEncoding       string
 	modelNameOverride      internalapi.ModelNameOverride
 	backendName            string
-	handler                backendauth.Handler
+	handler                filterapi.BackendAuthHandler
 	headerMutator          *headermutator.HeaderMutator
 	bodyMutator            *bodymutator.BodyMutator
 	originalRequestBodyRaw []byte
@@ -395,7 +394,7 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessResponseBody(ctx context
 	// Record image generation metrics
 	i.metrics.RecordImageGeneration(ctx, i.requestHeaders)
 
-	if body.EndOfStream && len(i.config.requestCosts) > 0 {
+	if body.EndOfStream && len(i.config.RequestCosts) > 0 {
 		metadata, err := buildDynamicMetadata(i.config, &i.costs, i.requestHeaders, i.backendName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
@@ -410,7 +409,7 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessResponseBody(ctx context
 }
 
 // SetBackend implements [Processor.SetBackend].
-func (i *imageGenerationProcessorUpstreamFilter) SetBackend(ctx context.Context, b *filterapi.Backend, backendHandler backendauth.Handler, routeProcessor Processor) (err error) {
+func (i *imageGenerationProcessorUpstreamFilter) SetBackend(ctx context.Context, b *filterapi.Backend, backendHandler filterapi.BackendAuthHandler, routeProcessor Processor) (err error) {
 	defer func() {
 		if err != nil {
 			i.metrics.RecordRequestCompletion(ctx, false, i.requestHeaders)

@@ -11,35 +11,13 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-	"github.com/google/cel-go/cel"
 
-	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
-// processorConfig is the configuration for the processor.
-// This will be created by the server and passed to the processor when it detects a new configuration.
-type processorConfig struct {
-	uuid           string
-	requestCosts   []processorConfigRequestCost
-	declaredModels []filterapi.Model
-	backends       map[string]*processorConfigBackend
-}
-
-type processorConfigBackend struct {
-	b       *filterapi.Backend
-	handler backendauth.Handler
-}
-
-// processorConfigRequestCost is the configuration for the request cost.
-type processorConfigRequestCost struct {
-	*filterapi.LLMRequestCost
-	celProg cel.Program
-}
-
 // ProcessorFactory is the factory function used to create new instances of a processor.
-type ProcessorFactory func(_ *processorConfig, _ map[string]string, _ *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error)
+type ProcessorFactory func(_ *filterapi.RuntimeConfig, _ map[string]string, _ *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error)
 
 // Processor is the interface for the processor which corresponds to a single gRPC stream per the external processor filter.
 // This decouples the processor implementation detail from the server implementation.
@@ -59,7 +37,7 @@ type Processor interface {
 	//
 	// routerProcessor is the processor that is the "parent" which was used to determine the route at the
 	// router level. It holds the additional state that can be used to determine the backend to use.
-	SetBackend(ctx context.Context, backend *filterapi.Backend, handler backendauth.Handler, routerProcessor Processor) error
+	SetBackend(ctx context.Context, backend *filterapi.Backend, handler filterapi.BackendAuthHandler, routerProcessor Processor) error
 }
 
 // passThroughProcessor implements the Processor interface.
@@ -86,6 +64,6 @@ func (p passThroughProcessor) ProcessResponseBody(context.Context, *extprocv3.Ht
 }
 
 // SetBackend implements [Processor.SetBackend].
-func (p passThroughProcessor) SetBackend(context.Context, *filterapi.Backend, backendauth.Handler, Processor) error {
+func (p passThroughProcessor) SetBackend(context.Context, *filterapi.Backend, filterapi.BackendAuthHandler, Processor) error {
 	return nil
 }
