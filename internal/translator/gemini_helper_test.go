@@ -703,6 +703,146 @@ func TestUserMsgToGeminiParts(t *testing.T) {
 			},
 			expectedErrMsg: "unsupported content type in user message: int",
 		},
+		{
+			name: "image with low detail",
+			msg: openai.ChatCompletionUserMessageParam{
+				Role: openai.ChatMessageRoleUser,
+				Content: openai.StringOrUserRoleContentUnion{
+					Value: []openai.ChatCompletionContentPartUserUnionParam{
+						{
+							OfImageURL: &openai.ChatCompletionContentPartImageParam{
+								Type: openai.ChatCompletionContentPartImageTypeImageURL,
+								ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+									URL:    "https://example.com/image.jpg",
+									Detail: openai.ChatCompletionContentPartImageImageURLDetailLow,
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedParts: []*genai.Part{
+				{
+					FileData: &genai.FileData{
+						FileURI:  "https://example.com/image.jpg",
+						MIMEType: "image/jpeg",
+					},
+					MediaResolution: &genai.PartMediaResolution{
+						Level: genai.PartMediaResolutionLevelMediaResolutionLow,
+					},
+				},
+			},
+		},
+		{
+			name: "image with medium detail",
+			msg: openai.ChatCompletionUserMessageParam{
+				Role: openai.ChatMessageRoleUser,
+				Content: openai.StringOrUserRoleContentUnion{
+					Value: []openai.ChatCompletionContentPartUserUnionParam{
+						{
+							OfImageURL: &openai.ChatCompletionContentPartImageParam{
+								Type: openai.ChatCompletionContentPartImageTypeImageURL,
+								ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+									URL:    "https://example.com/image.jpg",
+									Detail: openai.ChatCompletionContentPartImageImageURLDetailMedium,
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedParts: []*genai.Part{
+				{
+					FileData: &genai.FileData{
+						FileURI:  "https://example.com/image.jpg",
+						MIMEType: "image/jpeg",
+					},
+					MediaResolution: &genai.PartMediaResolution{
+						Level: genai.PartMediaResolutionLevelMediaResolutionMedium,
+					},
+				},
+			},
+		},
+		{
+			name: "image with high detail",
+			msg: openai.ChatCompletionUserMessageParam{
+				Role: openai.ChatMessageRoleUser,
+				Content: openai.StringOrUserRoleContentUnion{
+					Value: []openai.ChatCompletionContentPartUserUnionParam{
+						{
+							OfImageURL: &openai.ChatCompletionContentPartImageParam{
+								Type: openai.ChatCompletionContentPartImageTypeImageURL,
+								ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+									URL:    "https://example.com/image.jpg",
+									Detail: openai.ChatCompletionContentPartImageImageURLDetailHigh,
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedParts: []*genai.Part{
+				{
+					FileData: &genai.FileData{
+						FileURI:  "https://example.com/image.jpg",
+						MIMEType: "image/jpeg",
+					},
+					MediaResolution: &genai.PartMediaResolution{
+						Level: genai.PartMediaResolutionLevelMediaResolutionHigh,
+					},
+				},
+			},
+		},
+		{
+			name: "image with auto detail",
+			msg: openai.ChatCompletionUserMessageParam{
+				Role: openai.ChatMessageRoleUser,
+				Content: openai.StringOrUserRoleContentUnion{
+					Value: []openai.ChatCompletionContentPartUserUnionParam{
+						{
+							OfImageURL: &openai.ChatCompletionContentPartImageParam{
+								Type: openai.ChatCompletionContentPartImageTypeImageURL,
+								ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+									URL:    "https://example.com/image.jpg",
+									Detail: openai.ChatCompletionContentPartImageImageURLDetailAuto,
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedParts: []*genai.Part{
+				{
+					FileData: &genai.FileData{
+						FileURI:  "https://example.com/image.jpg",
+						MIMEType: "image/jpeg",
+					},
+					MediaResolution: &genai.PartMediaResolution{
+						Level: genai.PartMediaResolutionLevelMediaResolutionUnspecified,
+					},
+				},
+			},
+		},
+		{
+			name: "image with invalid detail",
+			msg: openai.ChatCompletionUserMessageParam{
+				Role: openai.ChatMessageRoleUser,
+				Content: openai.StringOrUserRoleContentUnion{
+					Value: []openai.ChatCompletionContentPartUserUnionParam{
+						{
+							OfImageURL: &openai.ChatCompletionContentPartImageParam{
+								Type: openai.ChatCompletionContentPartImageTypeImageURL,
+								ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+									URL:    "https://example.com/image.jpg",
+									Detail: openai.ChatCompletionContentPartImageImageURLDetail("invalid"),
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedErrMsg: "invalid Detail:",
+		},
 	}
 
 	for _, tc := range tests {
@@ -907,6 +1047,40 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				GuidedChoice: []string{"A", "B"},
 			},
 			expectedErrMsg: "multiple format specifiers specified",
+			requestModel:   "gemini-2.5-flash",
+		},
+		{
+			name: "reasoning effort low",
+			input: &openai.ChatCompletionRequest{
+				ReasoningEffort: openaigo.ReasoningEffortLow,
+			},
+			expectedGenerationConfig: &genai.GenerationConfig{
+				ThinkingConfig: &genai.ThinkingConfig{
+					ThinkingLevel: genai.ThinkingLevelLow,
+				},
+			},
+			expectedResponseMode: responseModeNone,
+			requestModel:         "gemini-2.5-flash",
+		},
+		{
+			name: "reasoning effort medium",
+			input: &openai.ChatCompletionRequest{
+				ReasoningEffort: openaigo.ReasoningEffortMedium,
+			},
+			expectedGenerationConfig: &genai.GenerationConfig{
+				ThinkingConfig: &genai.ThinkingConfig{
+					ThinkingLevel: genai.ThinkingLevelHigh,
+				},
+			},
+			expectedResponseMode: responseModeNone,
+			requestModel:         "gemini-2.5-flash",
+		},
+		{
+			name: "reasoning effort unsupported",
+			input: &openai.ChatCompletionRequest{
+				ReasoningEffort: openaigo.ReasoningEffortHigh,
+			},
+			expectedErrMsg: "reasoning effort:",
 			requestModel:   "gemini-2.5-flash",
 		},
 	}
@@ -2436,6 +2610,121 @@ func TestOpenAIReqToGeminiGenerationConfigWithJsonSchemaToGemini(t *testing.T) {
 				if responseMode != tc.expectedResponseMode {
 					t.Errorf("geminiResponseMode mismatch: got %v, want %v", responseMode, tc.expectedResponseMode)
 				}
+			}
+		})
+	}
+}
+
+func TestMapDetailMediaResolution(t *testing.T) {
+	tests := []struct {
+		name               string
+		detail             openai.ChatCompletionContentPartImageImageURLDetail
+		expectedResolution genai.PartMediaResolutionLevel
+		expectedErrorMsg   string
+	}{
+		{
+			name:               "low detail",
+			detail:             openai.ChatCompletionContentPartImageImageURLDetailLow,
+			expectedResolution: genai.PartMediaResolutionLevelMediaResolutionLow,
+		},
+		{
+			name:               "medium detail",
+			detail:             openai.ChatCompletionContentPartImageImageURLDetailMedium,
+			expectedResolution: genai.PartMediaResolutionLevelMediaResolutionMedium,
+		},
+		{
+			name:               "high detail",
+			detail:             openai.ChatCompletionContentPartImageImageURLDetailHigh,
+			expectedResolution: genai.PartMediaResolutionLevelMediaResolutionHigh,
+		},
+		{
+			name:               "auto detail - returns unspecified for default behavior",
+			detail:             openai.ChatCompletionContentPartImageImageURLDetailAuto,
+			expectedResolution: genai.PartMediaResolutionLevelMediaResolutionUnspecified,
+		},
+		{
+			name:             "empty string detail",
+			detail:           openai.ChatCompletionContentPartImageImageURLDetail(""),
+			expectedErrorMsg: "unsupported detail level:",
+		},
+		{
+			name:             "unknown detail value",
+			detail:           openai.ChatCompletionContentPartImageImageURLDetail("unknown"),
+			expectedErrorMsg: "unsupported detail level:",
+		},
+		{
+			name:             "invalid detail value",
+			detail:           openai.ChatCompletionContentPartImageImageURLDetail("invalid_value"),
+			expectedErrorMsg: "unsupported detail level:",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resolution, err := mapDetailMediaResolution(tc.detail)
+
+			if tc.expectedErrorMsg != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.expectedErrorMsg)
+				assert.Equal(t, genai.PartMediaResolutionLevel(""), resolution)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tc.expectedResolution, resolution)
+			}
+		})
+	}
+}
+
+func TestMapReasoningEffortToThinkingLevel(t *testing.T) {
+	tests := []struct {
+		name             string
+		reasoningEffort  openaigo.ReasoningEffort
+		expectedThinking genai.ThinkingLevel
+		expectedErrorMsg string
+	}{
+		{
+			name:             "low effort maps to ThinkingLevelLow",
+			reasoningEffort:  openaigo.ReasoningEffortLow,
+			expectedThinking: genai.ThinkingLevelLow,
+		},
+		{
+			name:             "medium effort maps to ThinkingLevelHigh",
+			reasoningEffort:  openaigo.ReasoningEffortMedium,
+			expectedThinking: genai.ThinkingLevelHigh,
+		},
+		{
+			name:             "minimal effort - not supported",
+			reasoningEffort:  openaigo.ReasoningEffortMinimal,
+			expectedErrorMsg: "unsupported reasoning effort level:",
+		},
+		{
+			name:             "high effort - not supported",
+			reasoningEffort:  openaigo.ReasoningEffortHigh,
+			expectedErrorMsg: "unsupported reasoning effort level:",
+		},
+		{
+			name:             "empty effort - not supported",
+			reasoningEffort:  "",
+			expectedErrorMsg: "unsupported reasoning effort level:",
+		},
+		{
+			name:             "unknown effort - not supported",
+			reasoningEffort:  "unknown",
+			expectedErrorMsg: "unsupported reasoning effort level:",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			thinking, err := mapReasoningEffortToThinkingLevel(tc.reasoningEffort)
+
+			if tc.expectedErrorMsg != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.expectedErrorMsg)
+				assert.Equal(t, genai.ThinkingLevel(""), thinking)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tc.expectedThinking, thinking)
 			}
 		})
 	}
