@@ -282,13 +282,20 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 	// Currently, we have to set the resources for the extproc container at route level.
 	// We choose one of the routes to set the resources for the extproc container.
 	var resources corev1.ResourceRequirements
+	// We also collect the environment variables from the routes.
+	var routeEnvVars []corev1.EnvVar
 	for i := range routes.Items {
 		fc := routes.Items[i].Spec.FilterConfig
-		if fc != nil && fc.ExternalProcessor != nil && fc.ExternalProcessor.Resources != nil {
-			resources = *fc.ExternalProcessor.Resources
+		if fc != nil && fc.ExternalProcessor != nil {
+			if fc.ExternalProcessor.Resources != nil {
+				resources = *fc.ExternalProcessor.Resources
+			}
+			if len(fc.ExternalProcessor.Env) > 0 {
+				routeEnvVars = append(routeEnvVars, fc.ExternalProcessor.Env...)
+			}
 		}
 	}
-	envVars := g.extProcExtraEnvVars
+	envVars := append(g.extProcExtraEnvVars, routeEnvVars...)
 	const (
 		extProcAdminPort      = 1064
 		filterConfigMountPath = "/etc/filter-config"

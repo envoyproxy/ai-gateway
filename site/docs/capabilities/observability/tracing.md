@@ -128,6 +128,27 @@ extProc:
 Note: Hiding inputs/outputs prevents human or LLM-as-a-Judge evaluation of your
 LLM requests, such as done with the [Phoenix Evals library][phoenix-evals].
 
+## Per-Gateway Configuration
+
+While the global configuration via Helm values applies to all AI Gateways, you can also configure environment variables for a specific AI Gateway using the `AIGatewayRoute` CRD. This is useful when you need different tracing configurations (e.g., different service names or exporters) for different gateways.
+
+```yaml
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: my-gateway
+spec:
+  filterConfig:
+    externalProcessor:
+      env:
+        - name: OTEL_SERVICE_NAME
+          value: my-gateway-service
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://my-collector:4317
+```
+
+These environment variables will be merged with the global configuration. If a variable is defined in both, the one in the `AIGatewayRoute` will take precedence.
+
 ## Session Tracking
 
 Sessions help track and organize related traces across multi-turn conversations

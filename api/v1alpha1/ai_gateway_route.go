@@ -406,6 +406,12 @@ type AIGatewayFilterConfigExternalProcessor struct {
 	//
 	// +optional
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// Env specifies the environment variables to be added to the external processor container.
+	// These variables will be merged with the global environment variables configured in the controller.
+	//
+	// +optional
+	Env []corev1.EnvVar `json:"env,omitempty"`
 }
 
 // HTTPBodyMutation defines the mutation of HTTP request body JSON fields that will be applied to the request
