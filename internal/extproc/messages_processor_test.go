@@ -354,8 +354,12 @@ func (m mockAnthropicTranslator) ResponseHeaders(_ map[string]string) ([]interna
 }
 
 // ResponseBody implements [translator.AnthropicMessagesTranslator].
-func (m mockAnthropicTranslator) ResponseBody(_ map[string]string, _ io.Reader, _ bool) ([]internalapi.Header, []byte, translator.LLMTokenUsage, string, error) {
+func (m mockAnthropicTranslator) ResponseBody(_ map[string]string, _ io.Reader, _ bool, _ any) ([]internalapi.Header, []byte, translator.LLMTokenUsage, string, error) {
 	return m.retHeaderMutation, m.retBodyMutation, m.retTokenUsage, m.retResponseModel, m.retErr
+}
+
+func (m mockAnthropicTranslator) ResponseError(_ map[string]string, _ io.Reader) ([]internalapi.Header, []byte, error) {
+	return m.retHeaderMutation, m.retBodyMutation, m.retErr
 }
 
 func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithMocks(t *testing.T) {

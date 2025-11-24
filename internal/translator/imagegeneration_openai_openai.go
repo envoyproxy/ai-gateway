@@ -22,7 +22,7 @@ import (
 )
 
 // NewImageGenerationOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI image generation translation.
-func NewImageGenerationOpenAIToOpenAITranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride, span tracing.ImageGenerationSpan) ImageGenerationTranslator {
+func NewImageGenerationOpenAIToOpenAITranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride, span tracing.ImageGenerationSpan) OpenAIImageGenerationTranslator {
 	return &openAIToOpenAIImageGenerationTranslator{modelNameOverride: modelNameOverride, path: path.Join("/", apiVersion, "images/generations"), span: span}
 }
 
@@ -109,7 +109,7 @@ func (o *openAIToOpenAIImageGenerationTranslator) ResponseHeaders(map[string]str
 }
 
 // ResponseBody implements [ImageGenerationTranslator.ResponseBody].
-func (o *openAIToOpenAIImageGenerationTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool) (
+func (o *openAIToOpenAIImageGenerationTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ any) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
 	// Decode using OpenAI SDK v2 schema to avoid drift.

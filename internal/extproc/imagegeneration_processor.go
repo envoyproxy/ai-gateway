@@ -161,7 +161,7 @@ type imageGenerationProcessorUpstreamFilter struct {
 	bodyMutator            *bodymutator.BodyMutator
 	originalRequestBodyRaw []byte
 	originalRequestBody    *openaisdk.ImageGenerateParams
-	translator             translator.ImageGenerationTranslator
+	translator             translator.OpenAIImageGenerationTranslator
 	// onRetry is true if this is a retry request at the upstream filter.
 	onRetry bool
 	// stream is set to true if the request is a streaming request (for GPT-Image-1).
@@ -363,7 +363,7 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessResponseBody(ctx context
 	var newBody []byte
 	var tokenUsage translator.LLMTokenUsage
 	var responseModel internalapi.ResponseModel
-	newHeaders, newBody, tokenUsage, responseModel, err = i.translator.ResponseBody(i.responseHeaders, decodingResult.reader, body.EndOfStream)
+	newHeaders, newBody, tokenUsage, responseModel, err = i.translator.ResponseBody(i.responseHeaders, decodingResult.reader, body.EndOfStream, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}

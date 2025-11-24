@@ -304,7 +304,7 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseBody(ctx context.Contex
 	}
 
 	// headerMutation, bodyMutation, tokenUsage, err := c.translator.ResponseBody(c.responseHeaders, br, body.EndOfStream).
-	newHeaders, newBody, tokenUsage, responseModel, err := c.translator.ResponseBody(c.responseHeaders, decodingResult.reader, body.EndOfStream)
+	newHeaders, newBody, tokenUsage, responseModel, err := c.translator.ResponseBody(c.responseHeaders, decodingResult.reader, body.EndOfStream, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}

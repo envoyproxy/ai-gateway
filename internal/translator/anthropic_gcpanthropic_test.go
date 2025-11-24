@@ -467,7 +467,7 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_ZeroTokenUsage(t *testin
 	bodyReader := bytes.NewReader(bodyBytes)
 	respHeaders := map[string]string{"content-type": "application/json"}
 
-	_, _, tokenUsage, _, err := translator.ResponseBody(respHeaders, bodyReader, true)
+	_, _, tokenUsage, _, err := translator.ResponseBody(respHeaders, bodyReader, true, nil)
 	require.NoError(t, err)
 
 	expectedUsage := LLMTokenUsage{
@@ -545,7 +545,7 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingTokenUsage(t *t
 			bodyReader := bytes.NewReader([]byte(tt.chunk))
 			respHeaders := map[string]string{"content-type": "application/json"}
 
-			headerMutation, bodyMutation, tokenUsage, _, err := translator.ResponseBody(respHeaders, bodyReader, tt.endOfStream)
+			headerMutation, bodyMutation, tokenUsage, _, err := translator.ResponseBody(respHeaders, bodyReader, tt.endOfStream, nil)
 
 			require.NoError(t, err)
 			require.Nil(t, headerMutation)
@@ -607,7 +607,7 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases(t *te
 			bodyReader := bytes.NewReader([]byte(tt.chunk))
 			respHeaders := map[string]string{"content-type": "application/json"}
 
-			headerMutation, bodyMutation, tokenUsage, _, err := translator.ResponseBody(respHeaders, bodyReader, false)
+			headerMutation, bodyMutation, tokenUsage, _, err := translator.ResponseBody(respHeaders, bodyReader, false, nil)
 
 			require.NoError(t, err)
 			require.Nil(t, headerMutation)

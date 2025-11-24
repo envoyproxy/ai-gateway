@@ -72,7 +72,7 @@ func (t *cohereToCohereTranslatorV2Rerank) ResponseHeaders(map[string]string) (n
 
 // ResponseBody implements [CohereRerankTranslator.ResponseBody].
 // For rerank, token usage is provided via meta.tokens.input_tokens when available.
-func (t *cohereToCohereTranslatorV2Rerank) ResponseBody(_ map[string]string, body io.Reader, _ bool) (
+func (t *cohereToCohereTranslatorV2Rerank) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ any) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
 	var resp cohereschema.RerankV2Response

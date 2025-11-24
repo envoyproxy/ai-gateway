@@ -146,6 +146,7 @@ func TestOpenAIToOpenAITranslatorV1EmbeddingResponseBody(t *testing.T) {
 				respHeaders,
 				strings.NewReader(tc.responseBody),
 				true,
+				nil,
 			)
 
 			if tc.expError {

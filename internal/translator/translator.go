@@ -30,85 +30,35 @@ const (
 	awsBedrockBackendError  = "AWSBedrockBackendError"
 )
 
-// OpenAIChatCompletionTranslator translates the request and response messages between the client and the backend API schemas
-// for /v1/chat/completion endpoint of OpenAI.
+// Translator translates the request and response messages between the client
+// and the backend API schemas.
+//
+// ReqT represents the structured request body type.
+// SpanT represents the tracing span type passed to ResponseBody. Use any if the implementation does not have tracing span yet.
 //
 // This is created per request and is not thread-safe.
-type OpenAIChatCompletionTranslator interface {
+type Translator[ReqT any, SpanT any] interface {
 	// RequestBody translates the request body.
-	// 	- `raw` is the raw request body.
-	// 	- `body` is the request body parsed into the [openai.ChatCompletionRequest].
-	//	- `forceBodyMutation` is true if the translator should always mutate the body, even if no changes are made.
-	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
-	RequestBody(raw []byte, body *openai.ChatCompletionRequest, forceBodyMutation bool) (
+	//     - `raw` is the raw request body.
+	//     - `body` is the parsed request body of type *ReqT.
+	//     - `flag` is a boolean context flag. Depending on the specific implementation,
+	//       this represents either `forceBodyMutation` or `onRetry`.
+	RequestBody(raw []byte, body *ReqT, flag bool) (
 		newHeaders []internalapi.Header,
 		mutatedBody []byte,
 		err error,
 	)
 
 	// ResponseHeaders translates the response headers.
-	// 	- `headers` is the response headers.
-	//	- This returns `headerMutation` that can be nil to indicate no mutation.
-	ResponseHeaders(headers map[string]string) (
-		newHeaders []internalapi.Header,
-		err error,
-	)
-
-	// ResponseBody translates the response body. When stream=true, this is called for each chunk of the response body.
-	// 	- `body` is the response body either chunk or the entire body, depending on the context.
-	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
-	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
-	//  - This returns `responseModel` that is the model name from the response (may differ from request model).
-	// 	- The return value `mutatedBody` is the new request body that will be sent to the backend API. If `mutatedBody` is nil, the original request body will be used.
-	//		If `mutatedBody` is not nil, it will be used as the new request body. Most notably, the empty slice (not nil) will be used to clear the request body.
-	//		Empty slice is useful when translating the stream response.
-	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
-		newHeaders []internalapi.Header,
-		mutatedBody []byte,
-		tokenUsage LLMTokenUsage,
-		responseModel internalapi.ResponseModel,
-		err error,
-	)
-
-	// ResponseError translates the response error. This is called when the upstream response status code is not successful (2xx).
-	// 	- `respHeaders` is the response headers.
-	// 	- `body` is the response body that contains the error message.
-	ResponseError(respHeaders map[string]string, body io.Reader) (newHeaders []internalapi.Header, mutatedBody []byte, err error)
-}
-
-// OpenAIEmbeddingTranslator translates the request and response messages between the client and the backend API schemas
-// for /v1/embeddings endpoint of OpenAI.
-//
-// This is created per request and is not thread-safe.
-type OpenAIEmbeddingTranslator interface {
-	// RequestBody translates the request body.
-	// 	- `raw` is the raw request body.
-	// 	- `body` is the request body parsed into the [openai.EmbeddingRequest].
-	//	- `onRetry` is true if this is a retry request.
-	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
-	RequestBody(raw []byte, body *openai.EmbeddingRequest, onRetry bool) (
-		newHeaders []internalapi.Header,
-		mutatedBody []byte,
-		err error,
-	)
-
-	// ResponseHeaders translates the response headers.
-	// 	- `headers` is the response headers.
-	//	- This returns `headerMutation` that can be nil to indicate no mutation.
 	ResponseHeaders(headers map[string]string) (
 		newHeaders []internalapi.Header,
 		err error,
 	)
 
 	// ResponseBody translates the response body.
-	// 	- `body` is the response body.
-	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
-	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
-	//  - This returns `responseModel` that is the model name from the response (may differ from request model).
-	// 	- The return value `mutatedBody` is the new request body that will be sent to the backend API. If `mutatedBody` is nil, the original request body will be used.
-	//		If `mutatedBody` is not nil, it will be used as the new request body. Most notably, the empty slice (not nil) will be used to clear the request body.
-	//		Empty slice is useful when translating the stream response.
-	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
+	//     - `span` is the tracing span of type SpanT. Implementations that do not
+	//       require tracing in this step can ignore this argument.
+	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool, span SpanT) (
 		newHeaders []internalapi.Header,
 		mutatedBody []byte,
 		tokenUsage LLMTokenUsage,
@@ -116,144 +66,28 @@ type OpenAIEmbeddingTranslator interface {
 		err error,
 	)
 
-	// ResponseError translates the response error. This is called when the upstream response status code is not successful (2xx).
-	// 	- `respHeaders` is the response headers.
-	// 	- `body` is the response body that contains the error message.
-	ResponseError(respHeaders map[string]string, body io.Reader) (newHeaders []internalapi.Header, mutatedBody []byte, err error)
-}
-
-// CohereRerankTranslator translates the request and response messages between the client and the backend API schemas
-// for /v2/rerank endpoint of Cohere.
-//
-// This is created per request and is not thread-safe.
-type CohereRerankTranslator interface {
-	// RequestBody translates the request body.
-	// 	- `raw` is the raw request body.
-	// 	- `body` is the request body parsed into the Cohere rerank v2 request.
-	//	- `onRetry` is true if this is a retry request.
-	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
-	RequestBody(raw []byte, body *cohereschema.RerankV2Request, onRetry bool) (
+	// ResponseError translates the response error (non-2xx status codes).
+	ResponseError(respHeaders map[string]string, body io.Reader) (
 		newHeaders []internalapi.Header,
 		mutatedBody []byte,
-		err error,
-	)
-
-	// ResponseHeaders translates the response headers.
-	// 	- `headers` is the response headers.
-	//	- This returns `headerMutation` that can be nil to indicate no mutation.
-	ResponseHeaders(headers map[string]string) (
-		newHeaders []internalapi.Header,
-		err error,
-	)
-
-	// ResponseBody translates the response body.
-	// 	- `body` is the response body.
-	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
-	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
-	//  - This returns `responseModel` that is the model name from the response (may differ from request model).
-	// 	- The return value `mutatedBody` is the new request body that will be sent to the backend API. If `mutatedBody` is nil, the original request body will be used.
-	//		If `mutatedBody` is not nil, it will be used as the new request body. Most notably, the empty slice (not nil) will be used to clear the request body.
-	//		Empty slice is useful when translating the stream response.
-	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
-		newHeaders []internalapi.Header,
-		mutatedBody []byte,
-		tokenUsage LLMTokenUsage,
-		responseModel internalapi.ResponseModel,
-		err error,
-	)
-
-	// ResponseError translates the response error. This is called when the upstream response status code is not successful (2xx).
-	// 	- `respHeaders` is the response headers.
-	// 	- `body` is the response body that contains the error message.
-	ResponseError(respHeaders map[string]string, body io.Reader) (newHeaders []internalapi.Header, mutatedBody []byte, err error)
-}
-
-// OpenAICompletionTranslator translates the request and response messages between the client and the backend API schemas
-// for /v1/completions endpoint of OpenAI.
-//
-// This is created per request and is not thread-safe.
-type OpenAICompletionTranslator interface {
-	// RequestBody translates the request body.
-	// 	- `raw` is the raw request body.
-	// 	- `body` is the request body parsed into the [openai.CompletionRequest].
-	//	- `onRetry` is true if this is a retry request.
-	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
-	RequestBody(raw []byte, body *openai.CompletionRequest, onRetry bool) (
-		newHeaders []internalapi.Header,
-		mutatedBody []byte,
-		err error,
-	)
-
-	// ResponseHeaders translates the response headers.
-	// 	- `headers` is the response headers.
-	//	- This returns `headerMutation` that can be nil to indicate no mutation.
-	ResponseHeaders(headers map[string]string) (
-		newHeaders []internalapi.Header,
-		err error,
-	)
-
-	// ResponseBody translates the response body. When stream=true, this is called for each chunk of the response body.
-	// 	- `body` is the response body either chunk or the entire body, depending on the context.
-	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
-	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
-	//  - This returns `responseModel` that is the model name from the response (may differ from request model).
-	// 	- The return value `mutatedBody` is the new request body that will be sent to the backend API. If `mutatedBody` is nil, the original request body will be used.
-	//		If `mutatedBody` is not nil, it will be used as the new request body. Most notably, the empty slice (not nil) will be used to clear the request body.
-	//		Empty slice is useful when translating the stream response.
-	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool, span tracing.CompletionSpan) (
-		newHeaders []internalapi.Header,
-		mutatedBody []byte,
-		tokenUsage LLMTokenUsage,
-		responseModel internalapi.ResponseModel,
-		err error,
-	)
-
-	// ResponseError translates the response error. This is called when the upstream response status code is not successful (2xx).
-	// 	- `respHeaders` is the response headers.
-	// 	- `body` is the response body that contains the error message.
-	ResponseError(respHeaders map[string]string, body io.Reader) (newHeaders []internalapi.Header, mutatedBody []byte, err error)
-}
-
-// AnthropicMessagesTranslator translates the request and response messages between the client and the backend API schemas
-// for /v1/messages endpoint of Anthropic.
-//
-// This is created per request and is not thread-safe.
-type AnthropicMessagesTranslator interface {
-	// RequestBody translates the request body.
-	// 	- `raw` is the raw request body.
-	// 	- `body` is the request body parsed into the [anthropicschema.MessagesRequest].
-	//	- `forceBodyMutation` is true if the translator should always mutate the body, even if no changes are made.
-	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
-	RequestBody(raw []byte, body *anthropicschema.MessagesRequest, forceBodyMutation bool) (
-		newHeaders []internalapi.Header,
-		mutatedBody []byte,
-		err error,
-	)
-
-	// ResponseHeaders translates the response headers.
-	// 	- `headers` is the response headers.
-	//	- This returns `headerMutation` that can be nil to indicate no mutation.
-	ResponseHeaders(headers map[string]string) (
-		newHeaders []internalapi.Header,
-		err error,
-	)
-
-	// ResponseBody translates the response body. When stream=true, this is called for each chunk of the response body.
-	// 	- `body` is the response body either chunk or the entire body, depending on the context.
-	//	- This returns `headerMutation` and `bodyMutation` that can be nil to indicate no mutation.
-	//  - This returns `tokenUsage` that is extracted from the body and will be used to do token rate limiting.
-	//  - This returns `responseModel` that is the model name from the response (may differ from request model).
-	// 	- The return value `mutatedBody` is the new request body that will be sent to the backend API. If `mutatedBody` is nil, the original request body will be used.
-	//		If `mutatedBody` is not nil, it will be used as the new request body. Most notably, the empty slice (not nil) will be used to clear the request body.
-	//		Empty slice is useful when translating the stream response.
-	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
-		newHeaders []internalapi.Header,
-		mutatedBody []byte,
-		tokenUsage LLMTokenUsage,
-		responseModel internalapi.ResponseModel,
 		err error,
 	)
 }
+
+type (
+	// OpenAIChatCompletionTranslator translates the OpenAI's /chat/completions endpoint.
+	OpenAIChatCompletionTranslator Translator[openai.ChatCompletionRequest, tracing.ChatCompletionSpan]
+	// OpenAIEmbeddingTranslator translates the OpenAI's /embeddings endpoint.
+	OpenAIEmbeddingTranslator Translator[openai.EmbeddingRequest, any]
+	// OpenAICompletionTranslator translates the OpenAI's /completions endpoint.
+	OpenAICompletionTranslator Translator[openai.CompletionRequest, tracing.CompletionSpan]
+	// CohereRerankTranslator translates the Cohere's /v2/rerank endpoint.
+	CohereRerankTranslator Translator[cohereschema.RerankV2Request, any]
+	// AnthropicMessagesTranslator translates the Anthropic's /messages endpoint.
+	AnthropicMessagesTranslator Translator[anthropicschema.MessagesRequest, any]
+	// OpenAIImageGenerationTranslator translates the OpenAI's /images/generations endpoint.
+	OpenAIImageGenerationTranslator Translator[openaisdk.ImageGenerateParams, any]
+)
 
 // LLMTokenUsage represents the token usage reported usually by the backend API in the response body.
 type LLMTokenUsage struct {
@@ -273,46 +107,4 @@ var sjsonOptions = &sjson.Options{
 	// Note: DO NOT set ReplaceInPlace to true since at the translation layer, which might be called multiple times per retry,
 	// it must be ensured that the original body is not modified, i.e. the operation must be idempotent.
 	ReplaceInPlace: false,
-}
-
-// ImageGenerationTranslator translates the request and response messages between the client and the backend API schemas
-// for /v1/images/generations endpoint of OpenAI.
-//
-// This is created per request and is not thread-safe.
-type ImageGenerationTranslator interface {
-	// RequestBody translates the request body.
-	// 	- raw is the raw request body.
-	// 	- body is the request body parsed into the OpenAI SDK [openaisdk.ImageGenerateParams].
-	//	- forceBodyMutation is true if the translator should always mutate the body, even if no changes are made.
-	//	- This returns headerMutation and bodyMutation that can be nil to indicate no mutation.
-	RequestBody(raw []byte, body *openaisdk.ImageGenerateParams, forceBodyMutation bool) (
-		newHeaders []internalapi.Header,
-		mutatedBody []byte,
-		err error,
-	)
-
-	// ResponseHeaders translates the response headers.
-	// 	- headers is the response headers.
-	//	- This returns headerMutation that can be nil to indicate no mutation.
-	ResponseHeaders(headers map[string]string) (
-		newHeaders []internalapi.Header,
-		err error,
-	)
-
-	// ResponseBody translates the response body.
-	// 	- body is the response body.
-	//	- This returns headerMutation and bodyMutation that can be nil to indicate no mutation.
-	//  - This returns responseModel that is the model name from the response (may differ from request model).
-	ResponseBody(respHeaders map[string]string, body io.Reader, endOfStream bool) (
-		newHeaders []internalapi.Header,
-		mutatedBody []byte,
-		tokenUsage LLMTokenUsage,
-		responseModel internalapi.ResponseModel,
-		err error,
-	)
-
-	// ResponseError translates the response error. This is called when the upstream response status code is not successful (2xx).
-	// 	- respHeaders is the response headers.
-	// 	- body is the response body that contains the error message.
-	ResponseError(respHeaders map[string]string, body io.Reader) (newHeaders []internalapi.Header, mutatedBody []byte, err error)
 }

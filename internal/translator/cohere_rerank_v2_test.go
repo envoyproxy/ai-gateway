@@ -165,6 +165,7 @@ func TestCohereToCohereTranslatorV2Rerank_ResponseBody(t *testing.T) {
 				map[string]string{contentTypeHeaderName: jsonContentType},
 				strings.NewReader(tc.responseBody),
 				true,
+				nil,
 			)
 
 			if tc.expError {
@@ -246,6 +247,7 @@ func TestCohereToCohereTranslatorV2Rerank_ResponseBody_RecordsResponseInSpan(t *
 		map[string]string{contentTypeHeaderName: jsonContentType},
 		strings.NewReader(body),
 		true,
+		nil,
 	)
 	require.NoError(t, err)
 	require.True(t, mspan.recordCalled)

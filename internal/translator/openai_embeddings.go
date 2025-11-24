@@ -68,7 +68,7 @@ func (o *openAIToOpenAITranslatorV1Embedding) ResponseHeaders(map[string]string)
 // OpenAI embeddings support model virtualization through automatic routing and resolution,
 // so we return the actual model from the response body which may differ from the requested model
 // (e.g., request "text-embedding-3-small" → response with specific version).
-func (o *openAIToOpenAITranslatorV1Embedding) ResponseBody(_ map[string]string, body io.Reader, _ bool) (
+func (o *openAIToOpenAITranslatorV1Embedding) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ any) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
 	var resp openai.EmbeddingResponse

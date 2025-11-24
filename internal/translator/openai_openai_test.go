@@ -486,7 +486,7 @@ func TestResponseModel_OpenAIEmbeddings(t *testing.T) {
 	body, err := json.Marshal(resp)
 	require.NoError(t, err)
 
-	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader(body), true)
+	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader(body), true, nil)
 	require.NoError(t, err)
 	require.Equal(t, "text-embedding-ada-002", responseModel) // Uses response field as authoritative
 	require.Equal(t, uint32(10), tokenUsage.InputTokens)

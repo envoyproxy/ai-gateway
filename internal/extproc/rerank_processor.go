@@ -332,7 +332,7 @@ func (r *rerankProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context,
 		}, nil
 	}
 
-	newHeaders, newBody, tokenUsage, responseModel, err := r.translator.ResponseBody(r.responseHeaders, decodingResult.reader, body.EndOfStream)
+	newHeaders, newBody, tokenUsage, responseModel, err := r.translator.ResponseBody(r.responseHeaders, decodingResult.reader, body.EndOfStream, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}

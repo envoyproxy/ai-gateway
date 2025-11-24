@@ -342,7 +342,7 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 		}, nil
 	}
 
-	newHeaders, newBody, tokenUsage, responseModel, err := e.translator.ResponseBody(e.responseHeaders, decodingResult.reader, body.EndOfStream)
+	newHeaders, newBody, tokenUsage, responseModel, err := e.translator.ResponseBody(e.responseHeaders, decodingResult.reader, body.EndOfStream, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}

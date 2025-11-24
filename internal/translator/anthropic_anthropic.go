@@ -73,7 +73,7 @@ func (a *anthropicToAnthropicTranslator) ResponseHeaders(_ map[string]string) (
 }
 
 // ResponseBody implements [AnthropicMessagesTranslator.ResponseBody].
-func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool) (
+func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ any) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel string, err error,
 ) {
 	if a.stream {
@@ -131,4 +131,15 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent() (tokenUsa
 			tokenUsage = ExtractLLMTokenUsageFromDeltaUsage(eventUnion.Usage)
 		}
 	}
+}
+
+// ResponseError implements [AnthropicMessagesTranslator] for Anthropic to AWS Bedrock Anthropic translation.
+func (a *anthropicToAnthropicTranslator) ResponseError(map[string]string, io.Reader) (
+	newHeaders []internalapi.Header,
+	mutatedBody []byte,
+	err error,
+) {
+	// TODO: implement the non-anthropic error conversion logic here. For now, we just return the original error
+	// 	from the upstream as-is.
+	return
 }

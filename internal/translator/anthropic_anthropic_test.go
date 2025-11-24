@@ -90,7 +90,7 @@ func TestAnthropicToAnthropic_ResponseBody_non_streaming(t *testing.T) {
 	require.NotNil(t, translator)
 	const responseBody = `{"model":"claude-sonnet-4-5-20250929","id":"msg_01J5gW6Sffiem6avXSAooZZw","type":"message","role":"assistant","content":[{"type":"text","text":"Hi! 👋 How can I help you today?"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":16,"service_tier":"standard"}}`
 
-	headerMutation, bodyMutation, tokenUsage, responseModel, err := translator.ResponseBody(nil, strings.NewReader(responseBody), true)
+	headerMutation, bodyMutation, tokenUsage, responseModel, err := translator.ResponseBody(nil, strings.NewReader(responseBody), true, nil)
 	require.NoError(t, err)
 	require.Nil(t, headerMutation)
 	require.Nil(t, bodyMutation)
@@ -139,7 +139,7 @@ data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":
 event: message_stop
 data: {"type":"message_stop"       }`
 
-	headerMutation, bodyMutation, tokenUsage, responseModel, err := translator.ResponseBody(nil, strings.NewReader(responseHead), false)
+	headerMutation, bodyMutation, tokenUsage, responseModel, err := translator.ResponseBody(nil, strings.NewReader(responseHead), false, nil)
 	require.NoError(t, err)
 	require.Nil(t, headerMutation)
 	require.Nil(t, bodyMutation)
@@ -151,7 +151,7 @@ data: {"type":"message_stop"       }`
 	}, tokenUsage)
 	require.Equal(t, "claude-sonnet-4-5-20250929", responseModel)
 
-	headerMutation, bodyMutation, tokenUsage, responseModel, err = translator.ResponseBody(nil, strings.NewReader(responseTail), false)
+	headerMutation, bodyMutation, tokenUsage, responseModel, err = translator.ResponseBody(nil, strings.NewReader(responseTail), false, nil)
 	require.NoError(t, err)
 	require.Nil(t, headerMutation)
 	require.Nil(t, bodyMutation)

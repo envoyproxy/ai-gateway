@@ -77,7 +77,7 @@ func TestOpenAIToOpenAIImageTranslator_ResponseBody_OK(t *testing.T) {
 	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "", nil)
 	resp := &openaisdk.ImagesResponse{Size: openaisdk.ImagesResponseSize1024x1024}
 	buf, _ := json.Marshal(resp)
-	hm, bm, usage, responseModel, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true)
+	hm, bm, usage, responseModel, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true, nil)
 	require.NoError(t, err)
 	require.Nil(t, hm)
 	require.Nil(t, bm)
@@ -139,7 +139,7 @@ func TestOpenAIToOpenAIImageTranslator_ResponseBody_ModelPropagatesFromRequest(t
 		Size: openaisdk.ImagesResponseSize1024x1024,
 	}
 	buf, _ := json.Marshal(resp)
-	_, _, _, respModel, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true)
+	_, _, _, respModel, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true, nil)
 	require.NoError(t, err)
 	require.Equal(t, openai.ModelGPTImage1Mini, respModel)
 }
@@ -153,7 +153,7 @@ func TestOpenAIToOpenAIImageTranslator_ResponseHeaders_NoOp(t *testing.T) {
 
 func TestOpenAIToOpenAIImageTranslator_ResponseBody_DecodeError(t *testing.T) {
 	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "", nil)
-	_, _, _, _, err := tr.ResponseBody(map[string]string{}, bytes.NewReader([]byte("not-json")), true)
+	_, _, _, _, err := tr.ResponseBody(map[string]string{}, bytes.NewReader([]byte("not-json")), true, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to decode response body")
 }
@@ -167,7 +167,7 @@ func TestOpenAIToOpenAIImageTranslator_ResponseBody_RecordsSpan(t *testing.T) {
 		Size: openaisdk.ImagesResponseSize1024x1024,
 	}
 	buf, _ := json.Marshal(resp)
-	_, _, _, _, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true)
+	_, _, _, _, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true, nil)
 	require.NoError(t, err)
 	require.NotNil(t, mockSpan.recordedResponse)
 }
