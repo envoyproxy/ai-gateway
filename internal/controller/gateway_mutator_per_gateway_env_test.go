@@ -84,3 +84,102 @@ func TestGatewayMutator_mutatePod_PerGatewayEnvVars(t *testing.T) {
 	}
 	require.Equal(t, expectedEnvVars, extProcContainer.Env)
 }
+
+func TestGatewayMutator_mutatePod_NoSideEffects(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	fakeKube := fake2.NewClientset()
+	// Initialize with global env vars
+	g := newTestGatewayMutator(fakeClient, fakeKube, "", "", "", "GLOBAL_VAR=global-value", "", false)
+
+	// Route 1 with specific env var
+	const gwName1, gwNamespace = "gateway-1", "test-namespace"
+	err := fakeClient.Create(t.Context(), &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "route-1", Namespace: gwNamespace},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			ParentRefs: []gwapiv1a2.ParentReference{
+				{
+					Name:  gwName1,
+					Kind:  ptr.To(gwapiv1a2.Kind("Gateway")),
+					Group: ptr.To(gwapiv1a2.Group("gateway.networking.k8s.io")),
+				},
+			},
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
+			},
+			FilterConfig: &aigv1a1.AIGatewayFilterConfig{
+				ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{
+					Env: []corev1.EnvVar{
+						{Name: "ROUTE_1_VAR", Value: "val-1"},
+					},
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// Route 2 with different env var
+	const gwName2 = "gateway-2"
+	err = fakeClient.Create(t.Context(), &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "route-2", Namespace: gwNamespace},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			ParentRefs: []gwapiv1a2.ParentReference{
+				{
+					Name:  gwName2,
+					Kind:  ptr.To(gwapiv1a2.Kind("Gateway")),
+					Group: ptr.To(gwapiv1a2.Group("gateway.networking.k8s.io")),
+				},
+			},
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
+			},
+			FilterConfig: &aigv1a1.AIGatewayFilterConfig{
+				ExternalProcessor: &aigv1a1.AIGatewayFilterConfigExternalProcessor{
+					Env: []corev1.EnvVar{
+						{Name: "ROUTE_2_VAR", Value: "val-2"},
+					},
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// Create config secrets for both gateways
+	for _, gw := range []string{gwName1, gwName2} {
+		_, err = g.kube.CoreV1().Secrets(gwNamespace).Create(t.Context(),
+			&corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: FilterConfigSecretPerGatewayName(
+					gw, gwNamespace,
+				), Namespace: gwNamespace},
+			}, metav1.CreateOptions{})
+		require.NoError(t, err)
+	}
+
+	// Mutate Pod 1
+	pod1 := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "pod-1", Namespace: gwNamespace},
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "envoy"}}},
+	}
+	err = g.mutatePod(t.Context(), pod1, gwName1, gwNamespace)
+	require.NoError(t, err)
+
+	require.Len(t, pod1.Spec.Containers, 2)
+	env1 := pod1.Spec.Containers[1].Env
+	require.Contains(t, env1, corev1.EnvVar{Name: "GLOBAL_VAR", Value: "global-value"})
+	require.Contains(t, env1, corev1.EnvVar{Name: "ROUTE_1_VAR", Value: "val-1"})
+	require.NotContains(t, env1, corev1.EnvVar{Name: "ROUTE_2_VAR", Value: "val-2"})
+
+	// Mutate Pod 2
+	pod2 := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "pod-2", Namespace: gwNamespace},
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "envoy"}}},
+	}
+	err = g.mutatePod(t.Context(), pod2, gwName2, gwNamespace)
+	require.NoError(t, err)
+
+	require.Len(t, pod2.Spec.Containers, 2)
+	env2 := pod2.Spec.Containers[1].Env
+	require.Contains(t, env2, corev1.EnvVar{Name: "GLOBAL_VAR", Value: "global-value"})
+	require.Contains(t, env2, corev1.EnvVar{Name: "ROUTE_2_VAR", Value: "val-2"})
+	// CRITICAL: Ensure Route 1 var did not leak into Pod 2
+	require.NotContains(t, env2, corev1.EnvVar{Name: "ROUTE_1_VAR", Value: "val-1"})
+}
