@@ -21,7 +21,6 @@ import (
 
 	cohere "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
-	"github.com/envoyproxy/ai-gateway/internal/filterapi/runtimefc"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
@@ -32,13 +31,13 @@ import (
 
 func TestRerank_Schema(t *testing.T) {
 	t.Run("on route", func(t *testing.T) {
-		cfg := &runtimefc.Config{}
+		cfg := &filterapi.RuntimeConfig{}
 		p, err := RerankProcessorFactory(nil)(cfg, nil, slog.Default(), tracing.NoopTracing{}, false)
 		require.NoError(t, err)
 		require.IsType(t, &rerankProcessorRouterFilter{}, p)
 	})
 	t.Run("on upstream", func(t *testing.T) {
-		cfg := &runtimefc.Config{}
+		cfg := &filterapi.RuntimeConfig{}
 		p, err := RerankProcessorFactory(func() metrics.RerankMetrics { return &mockRerankMetrics{} })(cfg, nil, slog.Default(), tracing.NoopTracing{}, true)
 		require.NoError(t, err)
 		require.IsType(t, &rerankProcessorUpstreamFilter{}, p)
@@ -65,7 +64,7 @@ func Test_rerankProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		headers := map[string]string{":path": "/cohere/v2/rerank"}
 		p := &rerankProcessorRouterFilter{
-			config:         &runtimefc.Config{},
+			config:         &filterapi.RuntimeConfig{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
 			tracer:         tracing.NoopRerankTracer{},
@@ -92,7 +91,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
 		mt := &mockRerankTranslator{t: t, expRequestBody: &body, retErr: errors.New("boom")}
 		mm := &mockRerankMetrics{}
 		p := &rerankProcessorUpstreamFilter{
-			config:                 &runtimefc.Config{},
+			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                mm,
@@ -120,7 +119,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
 		mt := &mockRerankTranslator{t: t, expRequestBody: &body, retHeaderMutation: headerMut, retBodyMutation: bodyMut}
 		mm := &mockRerankMetrics{}
 		p := &rerankProcessorUpstreamFilter{
-			config:                 &runtimefc.Config{},
+			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                mm,
@@ -159,7 +158,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessRequestHeaders_HeaderMutatorMerge
 		Set:    []filterapi.HTTPHeader{{Name: "x-api-key", Value: "k"}},
 	}
 	p := &rerankProcessorUpstreamFilter{
-		config:                 &runtimefc.Config{},
+		config:                 &filterapi.RuntimeConfig{},
 		requestHeaders:         headers,
 		logger:                 slog.Default(),
 		metrics:                mm,
@@ -194,7 +193,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessRequestHeaders_AuthError(t *testi
 	mt := &mockRerankTranslator{t: t, expRequestBody: &body}
 	mm := &mockRerankMetrics{}
 	p := &rerankProcessorUpstreamFilter{
-		config:                 &runtimefc.Config{},
+		config:                 &filterapi.RuntimeConfig{},
 		requestHeaders:         headers,
 		logger:                 slog.Default(),
 		metrics:                mm,
@@ -301,7 +300,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_MetadataError(t *tes
 	p := &rerankProcessorUpstreamFilter{
 		translator:      mt,
 		metrics:         mm,
-		config:          &runtimefc.Config{RequestCosts: []runtimefc.RequestCost{{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostType("unknown"), MetadataKey: "x"}}}},
+		config:          &filterapi.RuntimeConfig{RequestCosts: []filterapi.RuntimeRequestCost{{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostType("unknown"), MetadataKey: "x"}}}},
 		responseHeaders: map[string]string{":status": "200"},
 	}
 	_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{Body: []byte("ok"), EndOfStream: true})
@@ -311,7 +310,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_MetadataError(t *tes
 func Test_rerankProcessorUpstreamFilter_SetBackend_SupportedWithOverride(t *testing.T) {
 	headers := map[string]string{":path": "/cohere/v2/rerank"}
 	mm := &mockRerankMetrics{}
-	p := &rerankProcessorUpstreamFilter{config: &runtimefc.Config{}, requestHeaders: headers, logger: slog.Default(), metrics: mm}
+	p := &rerankProcessorUpstreamFilter{config: &filterapi.RuntimeConfig{}, requestHeaders: headers, logger: slog.Default(), metrics: mm}
 	rp := &rerankProcessorRouterFilter{requestHeaders: headers}
 	err := p.SetBackend(t.Context(), &filterapi.Backend{ModelNameOverride: "override", Name: "cohere-backend", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaCohere, Version: "v2"}}, nil, rp)
 	require.NoError(t, err)
@@ -323,7 +322,7 @@ func Test_rerankProcessorUpstreamFilter_SetBackend_SupportedWithOverride(t *test
 }
 
 func Test_rerankProcessorUpstreamFilter_SetBackend_PanicWrongRoute(t *testing.T) {
-	p := &rerankProcessorUpstreamFilter{config: &runtimefc.Config{}, requestHeaders: map[string]string{}, logger: slog.Default(), metrics: &mockRerankMetrics{}}
+	p := &rerankProcessorUpstreamFilter{config: &filterapi.RuntimeConfig{}, requestHeaders: map[string]string{}, logger: slog.Default(), metrics: &mockRerankMetrics{}}
 	require.Panics(t, func() {
 		_ = p.SetBackend(t.Context(), &filterapi.Backend{Name: "b", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaCohere, Version: "v2"}}, nil, &mockProcessor{})
 	})
@@ -379,7 +378,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 			translator: mt,
 			logger:     slog.Default(),
 			metrics:    mm,
-			config: &runtimefc.Config{RequestCosts: []runtimefc.RequestCost{
+			config: &filterapi.RuntimeConfig{RequestCosts: []filterapi.RuntimeRequestCost{
 				{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeInputToken, MetadataKey: "input_token_usage"}},
 				{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeTotalToken, MetadataKey: "total_token_usage"}},
 				{CELProg: celProgInt, LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCEL, MetadataKey: "cel_int"}},
@@ -415,7 +414,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 			translator:      mt,
 			logger:          slog.Default(),
 			metrics:         mm,
-			config:          &runtimefc.Config{},
+			config:          &filterapi.RuntimeConfig{},
 			backendName:     "b",
 			responseHeaders: map[string]string{":status": "200"},
 		}
@@ -435,7 +434,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 func Test_rerankProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	headers := map[string]string{":path": "/cohere/v2/rerank"}
 	mm := &mockRerankMetrics{}
-	p := &rerankProcessorUpstreamFilter{config: &runtimefc.Config{}, requestHeaders: headers, logger: slog.Default(), metrics: mm}
+	p := &rerankProcessorUpstreamFilter{config: &filterapi.RuntimeConfig{}, requestHeaders: headers, logger: slog.Default(), metrics: mm}
 	err := p.SetBackend(t.Context(), &filterapi.Backend{Name: "some-backend", Schema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "vX"}}, nil, &rerankProcessorRouterFilter{})
 	require.ErrorContains(t, err, "unsupported API schema")
 	mm.RequireRequestFailure(t)
@@ -457,7 +456,7 @@ func Test_rerankProcessorRouterFilter_PassthroughResponses(t *testing.T) {
 				translator: &mockRerankTranslator{t: t, expHeaders: map[string]string{}},
 				logger:     slog.Default(),
 				metrics:    &mockRerankMetrics{},
-				config:     &runtimefc.Config{},
+				config:     &filterapi.RuntimeConfig{},
 			},
 		}
 		resp, err := p.ProcessResponseHeaders(t.Context(), &corev3.HeaderMap{Headers: []*corev3.HeaderValue{}})
@@ -500,7 +499,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_Tracing_EndSpanOnSuc
 		translator:      mt,
 		logger:          slog.Default(),
 		metrics:         mm,
-		config:          &runtimefc.Config{},
+		config:          &filterapi.RuntimeConfig{},
 		responseHeaders: map[string]string{":status": "200"},
 		span:            span,
 	}
@@ -636,7 +635,7 @@ func TestRerankProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutations(t
 		rerankMetrics := &mockRerankMetrics{}
 
 		p := &rerankProcessorUpstreamFilter{
-			config:                 &runtimefc.Config{},
+			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                rerankMetrics,
@@ -694,7 +693,7 @@ func TestRerankProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutations(t
 		}
 
 		p := &rerankProcessorUpstreamFilter{
-			config:                 &runtimefc.Config{},
+			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                rerankMetrics,

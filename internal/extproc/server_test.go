@@ -25,7 +25,6 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
-	"github.com/envoyproxy/ai-gateway/internal/filterapi/runtimefc"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
@@ -35,10 +34,10 @@ func requireNewServerWithMockProcessor(t *testing.T) (*Server, *mockProcessor) {
 	s, err := NewServer(slog.Default(), tracing.NoopTracing{})
 	require.NoError(t, err)
 	require.NotNil(t, s)
-	s.config = &runtimefc.Config{}
+	s.config = &filterapi.RuntimeConfig{}
 
 	m := newMockProcessor(s.config, s.logger)
-	s.Register("/", func(*runtimefc.Config, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+	s.Register("/", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
 		return m, nil
 	})
 
@@ -277,7 +276,7 @@ func TestServer_setBackend(t *testing.T) {
 				str, err := prototext.Marshal(tc.md)
 				require.NoError(t, err)
 				s, _ := requireNewServerWithMockProcessor(t)
-				s.config.Backends = map[string]*runtimefc.Backend{"openai": {Backend: &filterapi.Backend{Name: "openai", HeaderMutation: &filterapi.HTTPHeaderMutation{Set: []filterapi.HTTPHeader{{Name: "x-foo", Value: "foo"}}}}}}
+				s.config.Backends = map[string]*filterapi.RuntimeBackend{"openai": {Backend: &filterapi.Backend{Name: "openai", HeaderMutation: &filterapi.HTTPHeaderMutation{Set: []filterapi.HTTPHeader{{Name: "x-foo", Value: "foo"}}}}}}
 				mockProc := &mockProcessor{}
 
 				// Use the correct metadata field key based on isEndpointPicker.
@@ -305,12 +304,12 @@ func TestServer_ProcessorSelection(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, s)
 
-	s.config = &runtimefc.Config{}
-	s.Register("/one", func(*runtimefc.Config, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+	s.config = &filterapi.RuntimeConfig{}
+	s.Register("/one", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
 		// Returning nil guarantees that the test will fail if this processor is selected.
 		return nil, nil
 	})
-	s.Register("/two", func(*runtimefc.Config, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+	s.Register("/two", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
 		return &mockProcessor{
 			t:                     t,
 			expHeaderMap:          &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/two"}, {Key: "x-request-id", Value: "original-req-id"}}},
@@ -478,14 +477,14 @@ func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, s)
 
-	s.config = &runtimefc.Config{}
+	s.config = &filterapi.RuntimeConfig{}
 
 	// Register processors for different base paths.
 	mockProc := &mockProcessor{}
-	s.Register("/v1/messages", func(*runtimefc.Config, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+	s.Register("/v1/messages", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
 		return mockProc, nil
 	})
-	s.Register("/anthropic/v1/messages", func(*runtimefc.Config, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+	s.Register("/anthropic/v1/messages", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
 		return mockProc, nil
 	})
 

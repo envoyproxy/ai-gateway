@@ -18,13 +18,12 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
-	"github.com/envoyproxy/ai-gateway/internal/filterapi/runtimefc"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 func TestModels_ProcessRequestHeaders(t *testing.T) {
 	now := time.Now()
-	cfg := &runtimefc.Config{DeclaredModels: []filterapi.Model{
+	cfg := &filterapi.RuntimeConfig{DeclaredModels: []filterapi.Model{
 		{
 			Name:      "openai",
 			OwnedBy:   "openai",

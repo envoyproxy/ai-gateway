@@ -10,20 +10,10 @@ import (
 	"errors"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
-	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
-// Handler is the interface that deals with the backend auth for a specific backend.
-//
-// TODO: maybe this can be just "post-transformation" handler, as it is not really only about auth.
-type Handler interface {
-	// Do performs the backend auth, and make changes to the request headers passed in as `requestHeaders`.
-	// It also returns a list of headers that were added or modified as a slice of key-value pairs.
-	Do(ctx context.Context, requestHeaders map[string]string, mutatedBody []byte) ([]internalapi.Header, error)
-}
-
-// NewHandler returns a new implementation of [Handler] based on the configuration.
-func NewHandler(ctx context.Context, config *filterapi.BackendAuth) (Handler, error) {
+// NewHandler returns a new implementation of [filterapi.BackendAuthHandler] based on the configuration.
+func NewHandler(ctx context.Context, config *filterapi.BackendAuth) (filterapi.BackendAuthHandler, error) {
 	switch {
 	case config.AWSAuth != nil:
 		return newAWSHandler(ctx, config.AWSAuth)

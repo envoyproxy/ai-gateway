@@ -17,7 +17,7 @@ type anthropicAPIKeyHandler struct {
 	apiKey string
 }
 
-func newAnthropicAPIKeyHandler(auth *filterapi.AnthropicAPIKeyAuth) (Handler, error) {
+func newAnthropicAPIKeyHandler(auth *filterapi.AnthropicAPIKeyAuth) (filterapi.BackendAuthHandler, error) {
 	return &anthropicAPIKeyHandler{apiKey: strings.TrimSpace(auth.Key)}, nil
 }
 

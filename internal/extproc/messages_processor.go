@@ -18,10 +18,8 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
-	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
-	"github.com/envoyproxy/ai-gateway/internal/filterapi/runtimefc"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
@@ -34,7 +32,7 @@ import (
 // Requests: Only accepts Anthropic format requests.
 // Responses: Returns Anthropic format responses.
 func MessagesProcessorFactory(f metrics.MessagesMetricsFactory) ProcessorFactory {
-	return func(config *runtimefc.Config, requestHeaders map[string]string, logger *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
+	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "anthropic-messages", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &messagesProcessorRouterFilter{
@@ -59,7 +57,7 @@ type messagesProcessorRouterFilter struct {
 	passThroughProcessor
 	upstreamFilter         Processor
 	logger                 *slog.Logger
-	config                 *runtimefc.Config
+	config                 *filterapi.RuntimeConfig
 	requestHeaders         map[string]string
 	originalRequestBody    *anthropic.MessagesRequest
 	originalRequestBodyRaw []byte
@@ -125,7 +123,7 @@ func (c *messagesProcessorRouterFilter) ProcessResponseBody(ctx context.Context,
 }
 
 // SetBackend implements [Processor.SetBackend].
-func (c *messagesProcessorRouterFilter) SetBackend(_ context.Context, _ *filterapi.Backend, _ backendauth.Handler, _ Processor) error {
+func (c *messagesProcessorRouterFilter) SetBackend(_ context.Context, _ *filterapi.Backend, _ filterapi.BackendAuthHandler, _ Processor) error {
 	return nil
 }
 
@@ -134,13 +132,13 @@ func (c *messagesProcessorRouterFilter) SetBackend(_ context.Context, _ *filtera
 // This transforms Anthropic requests to various backend formats.
 type messagesProcessorUpstreamFilter struct {
 	logger                 *slog.Logger
-	config                 *runtimefc.Config
+	config                 *filterapi.RuntimeConfig
 	requestHeaders         map[string]string
 	responseHeaders        map[string]string
 	responseEncoding       string
 	modelNameOverride      internalapi.ModelNameOverride
 	backendName            string
-	handler                backendauth.Handler
+	handler                filterapi.BackendAuthHandler
 	headerMutator          *headermutator.HeaderMutator
 	bodyMutator            *bodymutator.BodyMutator
 	originalRequestBody    *anthropic.MessagesRequest
@@ -355,7 +353,7 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseBody(ctx context.Contex
 }
 
 // SetBackend implements [Processor.SetBackend].
-func (c *messagesProcessorUpstreamFilter) SetBackend(ctx context.Context, b *filterapi.Backend, backendHandler backendauth.Handler, routeProcessor Processor) (err error) {
+func (c *messagesProcessorUpstreamFilter) SetBackend(ctx context.Context, b *filterapi.Backend, backendHandler filterapi.BackendAuthHandler, routeProcessor Processor) (err error) {
 	defer func() {
 		if err != nil {
 			c.metrics.RecordRequestCompletion(ctx, false, c.requestHeaders)

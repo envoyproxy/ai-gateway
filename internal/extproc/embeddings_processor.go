@@ -18,10 +18,8 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
-	"github.com/envoyproxy/ai-gateway/internal/filterapi/runtimefc"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
@@ -31,7 +29,7 @@ import (
 
 // EmbeddingsProcessorFactory returns a factory method to instantiate the embeddings processor.
 func EmbeddingsProcessorFactory(f metrics.EmbeddingsMetricsFactory) ProcessorFactory {
-	return func(config *runtimefc.Config, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
+	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "embeddings", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &embeddingsProcessorRouterFilter{
@@ -64,7 +62,7 @@ type embeddingsProcessorRouterFilter struct {
 	// TODO: this is a bit of a hack and dirty workaround, so revert this to a cleaner design later.
 	upstreamFilter Processor
 	logger         *slog.Logger
-	config         *runtimefc.Config
+	config         *filterapi.RuntimeConfig
 	requestHeaders map[string]string
 	// originalRequestBody is the original request body that is passed to the upstream filter.
 	// This is used to perform the transformation of the request body on the original input
@@ -148,13 +146,13 @@ func (e *embeddingsProcessorRouterFilter) ProcessRequestBody(ctx context.Context
 // This is created per retry and handles the translation as well as the authentication of the request.
 type embeddingsProcessorUpstreamFilter struct {
 	logger                 *slog.Logger
-	config                 *runtimefc.Config
+	config                 *filterapi.RuntimeConfig
 	requestHeaders         map[string]string
 	responseHeaders        map[string]string
 	responseEncoding       string
 	modelNameOverride      internalapi.ModelNameOverride
 	backendName            string
-	handler                backendauth.Handler
+	handler                filterapi.BackendAuthHandler
 	headerMutator          *headermutator.HeaderMutator
 	bodyMutator            *bodymutator.BodyMutator
 	originalRequestBodyRaw []byte
@@ -387,7 +385,7 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 }
 
 // SetBackend implements [Processor.SetBackend].
-func (e *embeddingsProcessorUpstreamFilter) SetBackend(ctx context.Context, b *filterapi.Backend, backendHandler backendauth.Handler, routeProcessor Processor) (err error) {
+func (e *embeddingsProcessorUpstreamFilter) SetBackend(ctx context.Context, b *filterapi.Backend, backendHandler filterapi.BackendAuthHandler, routeProcessor Processor) (err error) {
 	defer func() {
 		if err != nil {
 			e.metrics.RecordRequestCompletion(ctx, false, e.requestHeaders)

@@ -19,9 +19,7 @@ import (
 
 	cohere "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
-	"github.com/envoyproxy/ai-gateway/internal/filterapi/runtimefc"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
@@ -34,7 +32,7 @@ var (
 	_ translator.OpenAIEmbeddingTranslator      = &mockEmbeddingTranslator{}
 )
 
-func newMockProcessor(_ *runtimefc.Config, _ *slog.Logger) Processor {
+func newMockProcessor(_ *filterapi.RuntimeConfig, _ *slog.Logger) Processor {
 	return &mockProcessor{}
 }
 
@@ -48,7 +46,7 @@ type mockProcessor struct {
 }
 
 // SetBackend implements [Processor.SetBackend].
-func (m mockProcessor) SetBackend(context.Context, *filterapi.Backend, backendauth.Handler, Processor) error {
+func (m mockProcessor) SetBackend(context.Context, *filterapi.Backend, filterapi.BackendAuthHandler, Processor) error {
 	return nil
 }
 
@@ -506,10 +504,10 @@ func (m *mockCompletionMetrics) RequireRequestSuccess(t *testing.T) {
 
 var _ metrics.CompletionMetrics = &mockCompletionMetrics{}
 
-// mockBackendAuthHandler implements [backendauth.Handler] for testing.
+// mockBackendAuthHandler implements [filterapi.BackendAuthHandler] for testing.
 type mockBackendAuthHandler struct{}
 
-// Do implements [backendauth.Handler.Do].
+// Do implements [filterapi.BackendAuthHandler.Do].
 func (m *mockBackendAuthHandler) Do(context.Context, map[string]string, []byte) ([]internalapi.Header, error) {
 	return []internalapi.Header{{"foo", "mock-auth-handler"}}, nil
 }

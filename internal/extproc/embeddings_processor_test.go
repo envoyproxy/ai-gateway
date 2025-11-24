@@ -20,7 +20,6 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
-	"github.com/envoyproxy/ai-gateway/internal/filterapi/runtimefc"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
@@ -31,14 +30,14 @@ import (
 
 func TestEmbeddings_Schema(t *testing.T) {
 	t.Run("supported openai / on route", func(t *testing.T) {
-		cfg := &runtimefc.Config{}
+		cfg := &filterapi.RuntimeConfig{}
 		routeFilter, err := EmbeddingsProcessorFactory(nil)(cfg, nil, slog.Default(), tracing.NoopTracing{}, false)
 		require.NoError(t, err)
 		require.NotNil(t, routeFilter)
 		require.IsType(t, &embeddingsProcessorRouterFilter{}, routeFilter)
 	})
 	t.Run("supported openai / on upstream", func(t *testing.T) {
-		cfg := &runtimefc.Config{}
+		cfg := &filterapi.RuntimeConfig{}
 		routeFilter, err := EmbeddingsProcessorFactory(func() metrics.EmbeddingsMetrics {
 			return &mockEmbeddingsMetrics{}
 		})(cfg, nil, slog.Default(), tracing.NoopTracing{}, true)
@@ -73,7 +72,7 @@ func Test_embeddingsProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
 		p := &embeddingsProcessorRouterFilter{
-			config:         &runtimefc.Config{},
+			config:         &filterapi.RuntimeConfig{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
 			tracer:         tracing.NoopEmbeddingsTracer{},
@@ -164,8 +163,8 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 			translator: mt,
 			logger:     slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 			metrics:    mm,
-			config: &runtimefc.Config{
-				RequestCosts: []runtimefc.RequestCost{
+			config: &filterapi.RuntimeConfig{
+				RequestCosts: []filterapi.RuntimeRequestCost{
 					{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeInputToken, MetadataKey: "input_token_usage"}},
 					{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeTotalToken, MetadataKey: "total_token_usage"}},
 					{
@@ -216,7 +215,7 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 			translator:        mt,
 			logger:            slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 			metrics:           mm,
-			config:            &runtimefc.Config{},
+			config:            &filterapi.RuntimeConfig{},
 			backendName:       "some_backend",
 			modelNameOverride: "some_model",
 			responseHeaders:   map[string]string{":status": "500"},
@@ -238,7 +237,7 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 			translator:        mt,
 			logger:            slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 			metrics:           mm,
-			config:            &runtimefc.Config{},
+			config:            &filterapi.RuntimeConfig{},
 			backendName:       "some_backend",
 			modelNameOverride: "some_model",
 			responseHeaders:   map[string]string{":status": "200"},
@@ -264,7 +263,7 @@ func Test_embeddingsProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	headers := map[string]string{":path": "/foo"}
 	mm := &mockEmbeddingsMetrics{}
 	p := &embeddingsProcessorUpstreamFilter{
-		config:         &runtimefc.Config{},
+		config:         &filterapi.RuntimeConfig{},
 		requestHeaders: headers,
 		logger:         slog.Default(),
 		metrics:        mm,
@@ -283,7 +282,7 @@ func Test_embeddingsProcessorUpstreamFilter_SetBackend_Success(t *testing.T) {
 	headers := map[string]string{":path": "/foo", "x-ai-eg-model": "some-model"}
 	mm := &mockEmbeddingsMetrics{}
 	p := &embeddingsProcessorUpstreamFilter{
-		config:         &runtimefc.Config{},
+		config:         &filterapi.RuntimeConfig{},
 		requestHeaders: headers,
 		logger:         slog.Default(),
 		metrics:        mm,
@@ -311,7 +310,7 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) 
 		tr := &mockEmbeddingTranslator{t: t, retErr: errors.New("test error"), expRequestBody: &body}
 		mm := &mockEmbeddingsMetrics{}
 		p := &embeddingsProcessorUpstreamFilter{
-			config:                 &runtimefc.Config{},
+			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                mm,
@@ -339,7 +338,7 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) 
 		mt := &mockEmbeddingTranslator{t: t, expRequestBody: &expBody, retHeaderMutation: headerMut, retBodyMutation: bodyMut}
 		mm := &mockEmbeddingsMetrics{}
 		p := &embeddingsProcessorUpstreamFilter{
-			config:                 &runtimefc.Config{},
+			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                mm,
@@ -375,7 +374,7 @@ func TestEmbeddings_ProcessRequestHeaders_SetsRequestModel(t *testing.T) {
 	raw, _ := json.Marshal(body)
 	mm := &mockEmbeddingsMetrics{}
 	p := &embeddingsProcessorUpstreamFilter{
-		config:                 &runtimefc.Config{},
+		config:                 &filterapi.RuntimeConfig{},
 		requestHeaders:         headers,
 		logger:                 slog.Default(),
 		metrics:                mm,
@@ -413,7 +412,7 @@ func TestEmbeddings_ProcessResponseBody_OverridesHeaderModelWithResponseModel(t 
 	}
 
 	p := &embeddingsProcessorUpstreamFilter{
-		config:                 &runtimefc.Config{},
+		config:                 &filterapi.RuntimeConfig{},
 		requestHeaders:         headers,
 		logger:                 slog.Default(),
 		metrics:                mm,
@@ -481,7 +480,7 @@ func TestEmbeddingsProcessorRouterFilter_ProcessResponseHeaders_ProcessResponseB
 				translator: &mockEmbeddingTranslator{t: t, expHeaders: map[string]string{}},
 				logger:     slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 				metrics:    &mockEmbeddingsMetrics{},
-				config:     &runtimefc.Config{},
+				config:     &filterapi.RuntimeConfig{},
 			},
 		}
 		resp, err := p.ProcessResponseHeaders(t.Context(), &corev3.HeaderMap{Headers: []*corev3.HeaderValue{}})
@@ -523,7 +522,7 @@ func TestEmbeddingsProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutat
 		mt := &mockEmbeddingTranslator{t: t, expRequestBody: &body}
 		mm := &mockEmbeddingsMetrics{}
 		p := &embeddingsProcessorUpstreamFilter{
-			config:                 &runtimefc.Config{},
+			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                mm,
@@ -577,7 +576,7 @@ func TestEmbeddingsProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutat
 		mt := &mockEmbeddingTranslator{t: t, expRequestBody: &body}
 		mm := &mockEmbeddingsMetrics{}
 		p := &embeddingsProcessorUpstreamFilter{
-			config:                 &runtimefc.Config{},
+			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                mm,
@@ -611,7 +610,7 @@ func TestEmbeddingsProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *tes
 		headers := map[string]string{":path": "/foo"}
 		mm := &mockEmbeddingsMetrics{}
 		p := &embeddingsProcessorUpstreamFilter{
-			config:         &runtimefc.Config{},
+			config:         &filterapi.RuntimeConfig{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
 			metrics:        mm,
@@ -642,7 +641,7 @@ func TestEmbeddingsProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *tes
 		headers := map[string]string{":path": "/foo"}
 		mm := &mockEmbeddingsMetrics{}
 		p := &embeddingsProcessorUpstreamFilter{
-			config:         &runtimefc.Config{},
+			config:         &filterapi.RuntimeConfig{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
 			metrics:        mm,
@@ -705,7 +704,7 @@ func TestEmbeddingsProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutatio
 		embeddingMetrics := &mockEmbeddingsMetrics{}
 
 		p := &embeddingsProcessorUpstreamFilter{
-			config:                 &runtimefc.Config{},
+			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                embeddingMetrics,
@@ -763,7 +762,7 @@ func TestEmbeddingsProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutatio
 		}
 
 		p := &embeddingsProcessorUpstreamFilter{
-			config:                 &runtimefc.Config{},
+			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
 			metrics:                embeddingMetrics,

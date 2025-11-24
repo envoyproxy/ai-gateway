@@ -25,8 +25,8 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/prototext"
 
+	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
-	"github.com/envoyproxy/ai-gateway/internal/filterapi/runtimefc"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
@@ -40,7 +40,7 @@ var (
 type Server struct {
 	logger                        *slog.Logger
 	tracing                       tracing.Tracing
-	config                        *runtimefc.Config
+	config                        *filterapi.RuntimeConfig
 	processorFactories            map[string]ProcessorFactory
 	routerProcessorsPerReqID      map[string]Processor
 	routerProcessorsPerReqIDMutex sync.RWMutex
@@ -61,7 +61,7 @@ func NewServer(logger *slog.Logger, tracing tracing.Tracing) (*Server, error) {
 
 // LoadConfig updates the configuration of the external processor.
 func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error {
-	newConfig, err := runtimefc.NewRuntimeFilterConfig(ctx, config)
+	newConfig, err := filterapi.NewRuntimeConfig(ctx, config, backendauth.NewHandler)
 	if err != nil {
 		return fmt.Errorf("cannot create runtime filter config: %w", err)
 	}

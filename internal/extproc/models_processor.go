@@ -18,7 +18,7 @@ import (
 	"google.golang.org/grpc/codes"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	"github.com/envoyproxy/ai-gateway/internal/filterapi/runtimefc"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -36,7 +36,7 @@ type modelsProcessor struct {
 var _ Processor = (*modelsProcessor)(nil)
 
 // NewModelsProcessor creates a new processor that returns the list of declared models.
-func NewModelsProcessor(config *runtimefc.Config, _ map[string]string, logger *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
+func NewModelsProcessor(config *filterapi.RuntimeConfig, _ map[string]string, logger *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 	if isUpstreamFilter {
 		return passThroughProcessor{}, nil
 	}
