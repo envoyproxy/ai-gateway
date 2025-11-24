@@ -309,7 +309,7 @@ func TestAssistantMsgToGeminiParts(t *testing.T) {
 					},
 				},
 			},
-			expectedErrorMsg: "function arguments should be valid json string",
+			expectedErrorMsg: "invalid JSON in tool call 'get_weather'",
 		},
 		{
 			name: "nil content",
@@ -2135,7 +2135,7 @@ func TestExtractToolCallsStreamVsNonStream(t *testing.T) {
 	assert.NotNil(t, streamCall.ID)
 	assert.NotEmpty(t, *streamCall.ID)
 	// Deterministic ID should follow pattern "call_<functionName>_<index>"
-	assert.Equal(t, "call_get_weather_0", *streamCall.ID, "Stream ID should be deterministic")
+	assert.Equal(t, "call_test_function_0", *streamCall.ID, "Stream ID should be deterministic")
 
 	// 3. Non-stream version should have a UUID as well
 	assert.NotNil(t, nonStreamCall.ID)

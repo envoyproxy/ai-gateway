@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -374,7 +375,9 @@ func TestWriteConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := WriteConfig(&tt.input)
 			require.NoError(t, err)
-			require.Equal(t, tt.expected, got)
+			normalizedGot := strings.ReplaceAll(got, "\r\n", "\n")
+			normalizedExpected := strings.ReplaceAll(tt.expected, "\r\n", "\n")
+			require.Equal(t, normalizedExpected, normalizedGot)
 		})
 	}
 }
