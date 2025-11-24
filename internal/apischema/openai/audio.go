@@ -6,20 +6,20 @@
 package openai
 
 type AudioTranscriptionRequest struct {
-	Model              string   `json:"model"`
-	Language           string   `json:"language,omitempty"`
-	Prompt             string   `json:"prompt,omitempty"`
-	ResponseFormat     string   `json:"response_format,omitempty"`
-	Temperature        *float64 `json:"temperature,omitempty"`
+	Model                  string   `json:"model"`
+	Language               string   `json:"language,omitempty"`
+	Prompt                 string   `json:"prompt,omitempty"`
+	ResponseFormat         string   `json:"response_format,omitempty"`
+	Temperature            *float64 `json:"temperature,omitempty"`
 	TimestampGranularities []string `json:"timestamp_granularities,omitempty"`
 }
 
 type AudioTranscriptionResponse struct {
-	Text     string                   `json:"text"`
-	Language string                   `json:"language,omitempty"`
-	Duration float64                  `json:"duration,omitempty"`
-	Segments []TranscriptionSegment   `json:"segments,omitempty"`
-	Words    []TranscriptionWord      `json:"words,omitempty"`
+	Text     string                 `json:"text"`
+	Language string                 `json:"language,omitempty"`
+	Duration float64                `json:"duration,omitempty"`
+	Segments []TranscriptionSegment `json:"segments,omitempty"`
+	Words    []TranscriptionWord    `json:"words,omitempty"`
 }
 
 type TranscriptionSegment struct {
@@ -48,4 +48,3 @@ type AudioSpeechRequest struct {
 	ResponseFormat string   `json:"response_format,omitempty"`
 	Speed          *float64 `json:"speed,omitempty"`
 }
-

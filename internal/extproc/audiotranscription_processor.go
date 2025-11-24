@@ -24,12 +24,12 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/backendauth"
-	"github.com/envoyproxy/ai-gateway/internal/translator"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
 func AudioTranscriptionProcessorFactory(f metrics.AudioTranscriptionMetricsFactory) ProcessorFactory {
@@ -160,7 +160,6 @@ func (a *audioTranscriptionProcessorUpstreamFilter) ProcessRequestHeaders(ctx co
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
-
 
 	if headerMutation == nil {
 		headerMutation = &extprocv3.HeaderMutation{}
@@ -331,7 +330,7 @@ func (a *audioTranscriptionProcessorUpstreamFilter) SetBackend(ctx context.Conte
 	if err = a.selectTranslator(b.Schema); err != nil {
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
-	
+
 	// Configure translator for Gemini API key vs GCP Vertex AI OAuth2 authentication
 	if b.Schema.Name == filterapi.APISchemaGemini || b.Schema.Name == filterapi.APISchemaGCPVertexAI {
 		// Check if using Gemini API key authentication (which uses /v1beta path)
@@ -346,7 +345,7 @@ func (a *audioTranscriptionProcessorUpstreamFilter) SetBackend(ctx context.Conte
 			setter.SetUseGeminiDirectPath(useGeminiPath)
 		}
 	}
-	
+
 	a.handler = backendHandler
 	a.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
 	if a.modelNameOverride != "" {
@@ -371,7 +370,7 @@ func parseAudioTranscriptionBody(body *extprocv3.HttpBody, contentType string) (
 
 		req := &openai.AudioTranscriptionRequest{}
 		reader := multipart.NewReader(bytes.NewReader(body.Body), boundary)
-		
+
 		for {
 			part, err := reader.NextPart()
 			if err == io.EOF {
@@ -436,4 +435,3 @@ func parseAudioTranscriptionBody(body *extprocv3.HttpBody, contentType string) (
 	}
 	return req.Model, &req, nil
 }
-

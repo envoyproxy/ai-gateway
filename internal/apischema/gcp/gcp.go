@@ -54,4 +54,3 @@ type CreateAuthTokenResponse struct {
 	// ExpireTime is the ISO8601 formatted expiration time
 	ExpireTime string `json:"expireTime,omitempty"`
 }
-

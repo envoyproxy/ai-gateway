@@ -270,7 +270,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to create external processor server: %w", err)
 	}
-	
+
 	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/chat/completions"), extproc.ChatCompletionProcessorFactory(chatCompletionMetrics))
 	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/completions"), extproc.CompletionsProcessorFactory(completionMetrics))
 	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/embeddings"), extproc.EmbeddingsProcessorFactory(embeddingsMetrics))

@@ -49,7 +49,7 @@ func (r *realtimeClientSecretsGeminiTranslator) RequestBody(req *openai.Realtime
 	// Calculate expiration time
 	now := time.Now().UTC()
 	var expireTime time.Time
-	
+
 	if req.ExpiresAfter != nil && req.ExpiresAfter.Seconds > 0 {
 		expireTime = now.Add(time.Duration(req.ExpiresAfter.Seconds) * time.Second)
 	} else {

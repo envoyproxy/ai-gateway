@@ -43,7 +43,6 @@ func (a *audioSpeechOpenAIToGCPVertexAITranslator) SetUseGeminiDirectPath(use bo
 	a.usePublisherPath = !use // Note: inverted logic - usePublisherPath=false means use Gemini path
 }
 
-
 // RequestBody implements [AudioSpeechTranslator.RequestBody] for GCP Gemini.
 // This method translates an OpenAI AudioSpeech request to a GCP Gemini API request with audio response modalities.
 func (a *audioSpeechOpenAIToGCPVertexAITranslator) RequestBody(_ []byte, body *openai.AudioSpeechRequest, _ bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {

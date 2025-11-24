@@ -87,4 +87,3 @@ func (a *audioSpeechOpenAIToOpenAITranslator) ResponseBody(headers map[string]st
 func (a *audioSpeechOpenAIToOpenAITranslator) ResponseError(headers map[string]string, body io.Reader) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
 	return nil, nil, nil
 }
-

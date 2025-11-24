@@ -113,12 +113,12 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(ctx context.Con
 	c.logger.Debug("[CLIENT REQUEST] Raw body received",
 		"body_length", len(rawBody.Body),
 		"body_preview", string(rawBody.Body[:minInt(len(rawBody.Body), 2000)]))
-	
+
 	originalModel, body, err := parseOpenAIChatCompletionBody(rawBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
-	
+
 	// DEBUG: Log parsed messages including tool calls
 	if len(body.Messages) > 0 {
 		c.logger.Debug("[CLIENT REQUEST] Parsed messages", "message_count", len(body.Messages))
@@ -522,13 +522,13 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 	if err = c.selectTranslator(b.Schema); err != nil {
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
-	
+
 	// Configure translator for Gemini API key vs GCP Vertex AI OAuth2 authentication
 	if b.Schema.Name == filterapi.APISchemaGemini || b.Schema.Name == filterapi.APISchemaGCPVertexAI {
 		// Check if using Gemini API key authentication (which uses /v1beta path)
 		// vs GCP OAuth2 authentication (which uses /publishers path)
 		useGeminiPath := b.Auth != nil && b.Auth.GeminiAPIKey != nil
-		
+
 		// Configure the translator to use the appropriate path
 		type geminiPathSetter interface {
 			SetUseGeminiDirectPath(bool)
@@ -537,7 +537,7 @@ func (c *chatCompletionProcessorUpstreamFilter) SetBackend(ctx context.Context, 
 			setter.SetUseGeminiDirectPath(useGeminiPath)
 		}
 	}
-	
+
 	c.handler = backendHandler
 	c.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
 	c.bodyMutator = bodymutator.NewBodyMutator(b.BodyMutation, rp.originalRequestBodyRaw)

@@ -391,6 +391,7 @@ MCPRouteList contains a list of MCPRoute.
 - [BackendSecurityPolicyAzureAPIKey](#backendsecuritypolicyazureapikey)
 - [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
 - [BackendSecurityPolicyGCPCredentials](#backendsecuritypolicygcpcredentials)
+- [BackendSecurityPolicyGeminiAPIKey](#backendsecuritypolicygeminiapikey)
 - [BackendSecurityPolicyOIDC](#backendsecuritypolicyoidc)
 - [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
 - [BackendSecurityPolicyStatus](#backendsecuritypolicystatus)
@@ -770,6 +771,11 @@ APISchema defines the API schema.
   required="false"
   description="APISchemaGCPVertexAI is the schema followed by Gemini models hosted on GCP's Vertex AI platform.<br />Note: Using this schema requires a BackendSecurityPolicy to be configured and attached,<br />as the transformation will use the gcp-region and project-name from the BackendSecurityPolicy.<br />https://cloud.google.com/vertex-ai/docs/reference/rest/v1/projects.locations.endpoints/generateContent?hl=en<br />"
 /><ApiField
+  name="Gemini"
+  type="enum"
+  required="false"
+  description="APISchemaGemini is the schema for Gemini models accessed via generativelanguage.googleapis.com.<br />Uses API key authentication (injected as query parameter ?key=).<br />Translation logic is identical to GCPVertexAI but targets the Gemini API endpoint.<br />https://ai.google.dev/gemini-api/docs/api-overview<br />"
+/><ApiField
   name="GCPAnthropic"
   type="enum"
   required="false"
@@ -1064,6 +1070,27 @@ BackendSecurityPolicyGCPCredentials contains the supported authentication mechan
 />
 
 
+#### BackendSecurityPolicyGeminiAPIKey
+
+
+
+**Appears in:**
+- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+
+BackendSecurityPolicyGeminiAPIKey specifies the Gemini API key.
+
+##### Fields
+
+
+
+<ApiField
+  name="secretRef"
+  type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
+  required="true"
+  description="SecretRef is the reference to the secret containing the Gemini API key.<br />ai-gateway must be given the permission to read this secret.<br />The key of the secret should be `apiKey`."
+/>
+
+
 #### BackendSecurityPolicyOIDC
 
 
@@ -1154,6 +1181,11 @@ Only one type of BackendSecurityPolicy can be defined.
   type="[BackendSecurityPolicyAnthropicAPIKey](#backendsecuritypolicyanthropicapikey)"
   required="false"
   description="AnthropicAPIKey is a mechanism to access Anthropic backend(s). The API key will be injected into the `x-api-key` header.<br />https://docs.claude.com/en/api/overview#authentication"
+/><ApiField
+  name="geminiAPIKey"
+  type="[BackendSecurityPolicyGeminiAPIKey](#backendsecuritypolicygeminiapikey)"
+  required="false"
+  description="GeminiAPIKey is a mechanism to access Gemini backend(s). The API key will be injected as a query parameter.<br />https://ai.google.dev/gemini-api/docs/api-key"
 />
 
 
@@ -1218,6 +1250,11 @@ BackendSecurityPolicyType specifies the type of auth mechanism used to access a 
   description=""
 /><ApiField
   name="GCPCredentials"
+  type="enum"
+  required="false"
+  description=""
+/><ApiField
+  name="GeminiAPIKey"
   type="enum"
   required="false"
   description=""

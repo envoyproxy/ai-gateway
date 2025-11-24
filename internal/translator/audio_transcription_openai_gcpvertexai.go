@@ -352,9 +352,9 @@ func (a *audioTranscriptionOpenAIToGCPVertexAITranslator) handleStreamingRespons
 		// Extract token usage if present (typically in last chunk)
 		if chunk.UsageMetadata != nil {
 			tokenUsage = LLMTokenUsage{
-				InputTokens:  uint32(chunk.UsageMetadata.PromptTokenCount),      // nolint:gosec
-				OutputTokens: uint32(chunk.UsageMetadata.CandidatesTokenCount),  // nolint:gosec
-				TotalTokens:  uint32(chunk.UsageMetadata.TotalTokenCount),       // nolint:gosec
+				InputTokens:  uint32(chunk.UsageMetadata.PromptTokenCount),     // nolint:gosec
+				OutputTokens: uint32(chunk.UsageMetadata.CandidatesTokenCount), // nolint:gosec
+				TotalTokens:  uint32(chunk.UsageMetadata.TotalTokenCount),      // nolint:gosec
 			}
 		}
 	}
@@ -395,7 +395,7 @@ func (a *audioTranscriptionOpenAIToGCPVertexAITranslator) parseGeminiStreamingCh
 	a.bufferedBody = append(a.bufferedBody, bodyBytes...)
 
 	var chunks []genai.GenerateContentResponse
-	
+
 	// Normalize line endings: replace \r\n with \n
 	normalizedBody := bytes.ReplaceAll(a.bufferedBody, []byte("\r\n"), []byte("\n"))
 	lines := bytes.Split(normalizedBody, []byte("\n\n"))

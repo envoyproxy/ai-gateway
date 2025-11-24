@@ -227,9 +227,9 @@ func assistantMsgToGeminiParts(msg openai.ChatCompletionAssistantMessageParam) (
 	knownToolCalls := make(map[string]string)
 	for i, toolCall := range msg.ToolCalls {
 		knownToolCalls[*toolCall.ID] = toolCall.Function.Name
-		
+
 		argsStr := strings.TrimSpace(toolCall.Function.Arguments)
-		
+
 		// Detailed logging for debugging
 		slog.Debug("processing tool call",
 			"index", i,
@@ -237,7 +237,7 @@ func assistantMsgToGeminiParts(msg openai.ChatCompletionAssistantMessageParam) (
 			"tool_id", *toolCall.ID,
 			"args_length", len(argsStr),
 			"args_first_100", truncateString(argsStr, 100))
-		
+
 		// Check for common serialization errors
 		if strings.Contains(argsStr, "}{") {
 			slog.Error("detected multiple JSON objects in tool call arguments",
@@ -247,7 +247,7 @@ func assistantMsgToGeminiParts(msg openai.ChatCompletionAssistantMessageParam) (
 			return nil, nil, fmt.Errorf("tool call '%s' contains multiple concatenated JSON objects (found '}{' pattern): %q",
 				toolCall.Function.Name, argsStr)
 		}
-		
+
 		// Check for empty or malformed start
 		if len(argsStr) > 0 && !strings.HasPrefix(argsStr, "{") {
 			slog.Error("tool call arguments don't start with '{'",
@@ -258,7 +258,7 @@ func assistantMsgToGeminiParts(msg openai.ChatCompletionAssistantMessageParam) (
 			return nil, nil, fmt.Errorf("tool call '%s' arguments must be a JSON object starting with '{': %q",
 				toolCall.Function.Name, argsStr)
 		}
-		
+
 		var parsedArgs map[string]any
 		if err := json.Unmarshal([]byte(argsStr), &parsedArgs); err != nil {
 			// Enhanced error with context
@@ -268,32 +268,32 @@ func assistantMsgToGeminiParts(msg openai.ChatCompletionAssistantMessageParam) (
 				start := maxInt(0, int(syntaxErr.Offset)-50)
 				end := minInt(len(argsStr), int(syntaxErr.Offset)+50)
 				context := argsStr[start:end]
-				
+
 				slog.Error("JSON syntax error in tool call arguments",
 					"tool_name", toolCall.Function.Name,
 					"tool_id", *toolCall.ID,
 					"error_offset", syntaxErr.Offset,
 					"error_context", context,
 					"full_args", argsStr)
-				
+
 				return nil, nil, fmt.Errorf("invalid JSON in tool call '%s' at position %d: %w. Context: %q. Full: %q",
 					toolCall.Function.Name, syntaxErr.Offset, err, context, argsStr)
 			}
-			
+
 			slog.Error("failed to parse tool call arguments as JSON",
 				"tool_name", toolCall.Function.Name,
 				"tool_id", *toolCall.ID,
 				"error", err.Error(),
 				"full_args", argsStr)
-			
+
 			return nil, nil, fmt.Errorf("function arguments should be valid json string. failed to parse function arguments for tool '%s' (id: %s): %w. Arguments: %q",
 				toolCall.Function.Name, *toolCall.ID, err, argsStr)
 		}
-		
+
 		slog.Debug("successfully parsed tool call arguments",
 			"tool_name", toolCall.Function.Name,
 			"parsed_keys", getMapKeys(parsedArgs))
-		
+
 		parts = append(parts, genai.NewPartFromFunctionCall(toolCall.Function.Name, parsedArgs))
 	}
 
@@ -623,7 +623,7 @@ func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate, responseMode
 					"candidate_index", idx)
 				continue
 			}
-			
+
 			// Check if all parts are empty (no text and no function calls)
 			isEmptyContent := true
 			for _, part := range candidate.Content.Parts {
@@ -775,14 +775,14 @@ func extractToolCallsFromGeminiParts(toolCalls []openai.ChatCompletionMessageToo
 		}
 
 		argsStr := string(args)
-		
+
 		// Defensive: Clean duplicate JSON objects that Gemini sometimes returns
 		// This can happen when using specific tool choice with AllowedFunctionNames
 		if strings.Contains(argsStr, "}{") {
 			slog.Warn("gemini returned duplicate JSON objects in tool call response, extracting first valid object",
 				"function", part.FunctionCall.Name,
 				"original_length", len(argsStr))
-			
+
 			// Extract first complete JSON object
 			braceCount := 0
 			for idx, char := range argsStr {
@@ -848,12 +848,12 @@ func extractToolCallsFromGeminiPartsStream(toolCalls []openai.ChatCompletionChun
 		}
 
 		argsStr := string(args)
-		
+
 		// Defensive: Clean duplicate JSON objects from Gemini streaming responses
 		if strings.Contains(argsStr, "}{") {
 			slog.Warn("gemini stream returned duplicate JSON objects, extracting first valid object",
 				"function", part.FunctionCall.Name)
-			
+
 			braceCount := 0
 			for idx, char := range argsStr {
 				if char == '{' {
@@ -991,7 +991,7 @@ func geminiCandidatesToOpenAIStreamingChoices(candidates []*genai.Candidate, res
 				slog.Debug("skipping streaming candidate with finishReason STOP and no content")
 				continue
 			}
-			
+
 			// Check if all parts are empty (no text and no function calls)
 			isEmptyContent := true
 			for _, part := range candidate.Content.Parts {

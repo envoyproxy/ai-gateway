@@ -48,4 +48,3 @@ func (a *audioSpeech) RecordTokenUsage(ctx context.Context, inputTokens uint32, 
 		metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput)),
 	)
 }
-

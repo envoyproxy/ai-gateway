@@ -10,8 +10,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strconv"
 	"log/slog"
+	"strconv"
 
 	"github.com/google/uuid"
 	"google.golang.org/genai"
@@ -77,7 +77,7 @@ type openAIToGCPVertexAITranslatorV1ChatCompletion struct {
 	streamDelimiter   []byte
 	bufferedBody      []byte // Buffer for incomplete JSON chunks.
 	requestModel      internalapi.RequestModel
-	useGeminiPath     bool   // If true, use /v1beta/models path (Gemini API), else use /publishers path (Vertex AI)
+	useGeminiPath     bool // If true, use /v1beta/models path (Gemini API), else use /publishers path (Vertex AI)
 	toolCallIndex     int64
 }
 
@@ -86,7 +86,6 @@ type openAIToGCPVertexAITranslatorV1ChatCompletion struct {
 func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) SetUseGeminiDirectPath(use bool) {
 	o.useGeminiPath = use
 }
-
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody] for GCP Gemini.
 // This method translates an OpenAI ChatCompletion request to a GCP Gemini API request.
@@ -290,7 +289,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) parseGCPStreamingChunks(
 		// Remove "data: " prefix from SSE format if present.
 		part = bytes.TrimPrefix(part, []byte("data: "))
 		part = bytes.TrimSpace(part)
-		
+
 		// Skip empty lines
 		if len(part) == 0 {
 			continue
