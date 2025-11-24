@@ -69,15 +69,7 @@ func (r *realtimeClientSecretsGeminiTranslator) RequestBody(req *openai.Realtime
 		return nil, nil, fmt.Errorf("failed to marshal Gemini request: %w", err)
 	}
 
-	// Update path to Gemini's CreateAuthToken endpoint
-	var path string
-	if r.useGeminiPath {
-		// Using Gemini API key authentication - note the underscore in auth_tokens
-		path = "/v1alpha/auth_tokens"
-	} else {
-		// Using GCP Vertex AI OAuth2 (not yet implemented for this endpoint)
-		path = "/v1alpha/auth_tokens"
-	}
+	path := "/v1alpha/auth_tokens"
 
 	r.logger.Info("[Gemini Realtime] Translated request",
 		slog.String("path", path),
@@ -120,28 +112,25 @@ func (r *realtimeClientSecretsGeminiTranslator) ResponseBody(body []byte) (
 	r.logger.Info("[Gemini Realtime] Received response",
 		slog.String("response_body", string(body)),
 	)
-	// Parse Gemini response
 	var geminiResp gcp.CreateAuthTokenResponse
-	if err := json.Unmarshal(body, &geminiResp); err != nil {
-		return nil, nil, fmt.Errorf("failed to unmarshal Gemini response: %w", err)
+	if unmarshalErr := json.Unmarshal(body, &geminiResp); unmarshalErr != nil {
+		return nil, nil, fmt.Errorf("failed to unmarshal Gemini response: %w", unmarshalErr)
 	}
 
-	// Extract token from name field (format: "auth_tokens/{token}")
 	token := geminiResp.Name
 	if len(token) > 12 && token[:12] == "auth_tokens/" {
-		token = token[12:] // Extract just the token part
+		token = token[12:]
 	}
 	r.logger.Info("[Gemini Realtime] Extracted token",
 		slog.String("original_name", geminiResp.Name),
 		slog.String("extracted_token", token),
 	)
 
-	// Convert ISO8601 expireTime to Unix timestamp
 	var expiresAt int64
 	if geminiResp.ExpireTime != "" {
-		t, err := time.Parse(time.RFC3339, geminiResp.ExpireTime)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to parse expire time: %w", err)
+		t, parseErr := time.Parse(time.RFC3339, geminiResp.ExpireTime)
+		if parseErr != nil {
+			return nil, nil, fmt.Errorf("failed to parse expire time: %w", parseErr)
 		}
 		expiresAt = t.Unix()
 	}

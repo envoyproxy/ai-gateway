@@ -24,7 +24,7 @@ type geminiAPIKeyHandler struct {
 func newGeminiAPIKeyHandler(auth *filterapi.GeminiAPIKeyAuth) (Handler, error) {
 	apiKey := strings.TrimSpace(auth.Key)
 	if apiKey == "" {
-		return nil, fmt.Errorf("Gemini API key cannot be empty")
+		return nil, fmt.Errorf("gemini API key cannot be empty")
 	}
 	return &geminiAPIKeyHandler{apiKey: apiKey}, nil
 }

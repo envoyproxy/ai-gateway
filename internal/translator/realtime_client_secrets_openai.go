@@ -22,7 +22,7 @@ func NewRealtimeClientSecretsOpenAITranslator() RealtimeClientSecretsTranslator 
 
 // RequestBody implements RealtimeClientSecretsTranslator.RequestBody.
 // For OpenAI, this is a pass-through - no transformation needed.
-func (r *realtimeClientSecretsOpenAITranslator) RequestBody(req *openai.RealtimeClientSecretRequest) (
+func (r *realtimeClientSecretsOpenAITranslator) RequestBody(_ *openai.RealtimeClientSecretRequest) (
 	headerMutation *extprocv3.HeaderMutation,
 	bodyMutation *extprocv3.BodyMutation,
 	err error,
@@ -33,7 +33,7 @@ func (r *realtimeClientSecretsOpenAITranslator) RequestBody(req *openai.Realtime
 
 // ResponseBody implements RealtimeClientSecretsTranslator.ResponseBody.
 // For OpenAI, this is a pass-through - no transformation needed.
-func (r *realtimeClientSecretsOpenAITranslator) ResponseBody(body []byte) (
+func (r *realtimeClientSecretsOpenAITranslator) ResponseBody(_ []byte) (
 	headerMutation *extprocv3.HeaderMutation,
 	bodyMutation *extprocv3.BodyMutation,
 	err error,

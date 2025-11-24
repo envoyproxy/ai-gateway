@@ -28,7 +28,7 @@ import (
 )
 
 func AudioSpeechProcessorFactory(f metrics.AudioSpeechMetricsFactory) ProcessorFactory {
-	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
+	return func(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "audio-speech", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &audioSpeechProcessorRouterFilter{
@@ -71,7 +71,7 @@ func (a *audioSpeechProcessorRouterFilter) ProcessResponseBody(ctx context.Conte
 	return a.passThroughProcessor.ProcessResponseBody(ctx, body)
 }
 
-func (a *audioSpeechProcessorRouterFilter) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+func (a *audioSpeechProcessorRouterFilter) ProcessRequestBody(_ context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	model, body, err := parseAudioSpeechBody(rawBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
@@ -296,7 +296,7 @@ func (a *audioSpeechProcessorUpstreamFilter) ProcessResponseBody(ctx context.Con
 	a.costs.TotalTokens += tokenUsage.TotalTokens
 
 	a.metrics.SetResponseModel(responseModel)
-	a.metrics.RecordTokenUsage(ctx, uint32(tokenUsage.InputTokens), a.requestHeaders)
+	a.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, a.requestHeaders)
 
 	if body.EndOfStream && len(a.config.requestCosts) > 0 {
 		resp.DynamicMetadata, err = buildDynamicMetadata(a.config, &a.costs, a.requestHeaders, a.backendName)

@@ -147,8 +147,7 @@ func (a *audioSpeechOpenAIToGCPVertexAITranslator) ResponseBody(_ map[string]str
 	return nil, nil, LLMTokenUsage{}, "", nil
 }
 
-// handleStreamingResponse processes streaming audio responses from Gemini
-func (a *audioSpeechOpenAIToGCPVertexAITranslator) handleStreamingResponse(body io.Reader, endOfStream bool) (
+func (a *audioSpeechOpenAIToGCPVertexAITranslator) handleStreamingResponse(body io.Reader, _ bool) (
 	headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, tokenUsage LLMTokenUsage, responseModel string, err error,
 ) {
 	// Parse GCP streaming chunks
@@ -175,12 +174,11 @@ func (a *audioSpeechOpenAIToGCPVertexAITranslator) handleStreamingResponse(body 
 			}
 		}
 
-		// Extract token usage if present (typically in last chunk)
 		if chunk.UsageMetadata != nil {
 			tokenUsage = LLMTokenUsage{
-				InputTokens:  uint32(chunk.UsageMetadata.PromptTokenCount),
-				OutputTokens: uint32(chunk.UsageMetadata.CandidatesTokenCount),
-				TotalTokens:  uint32(chunk.UsageMetadata.TotalTokenCount),
+				InputTokens:  uint32(chunk.UsageMetadata.PromptTokenCount),     // nolint:gosec
+				OutputTokens: uint32(chunk.UsageMetadata.CandidatesTokenCount), // nolint:gosec
+				TotalTokens:  uint32(chunk.UsageMetadata.TotalTokenCount),      // nolint:gosec
 			}
 		}
 	}
@@ -245,15 +243,14 @@ func (a *audioSpeechOpenAIToGCPVertexAITranslator) parseGeminiStreamingChunks(bo
 }
 
 // ResponseError implements [AudioSpeechTranslator.ResponseError].
-func (a *audioSpeechOpenAIToGCPVertexAITranslator) ResponseError(headers map[string]string, body io.Reader) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
-	// Read the error response from GCP
+func (a *audioSpeechOpenAIToGCPVertexAITranslator) ResponseError(_ map[string]string, body io.Reader) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
 	bodyBytes, err := io.ReadAll(body)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error reading error response body: %w", err)
 	}
 
 	var gcpError gcpVertexAIError
-	if err := json.Unmarshal(bodyBytes, &gcpError); err != nil {
+	if unmarshalErr := json.Unmarshal(bodyBytes, &gcpError); unmarshalErr != nil {
 		// If we can't parse as GCP error, return the raw body
 		return nil, &extprocv3.BodyMutation{
 			Mutation: &extprocv3.BodyMutation_Body{Body: bodyBytes},

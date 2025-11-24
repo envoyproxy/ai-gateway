@@ -81,7 +81,7 @@ func (a *audioTranscriptionOpenAIToGCPVertexAITranslator) SetUseGeminiDirectPath
 func (a *audioTranscriptionOpenAIToGCPVertexAITranslator) RequestBody(
 	rawBody []byte,
 	body *openai.AudioTranscriptionRequest,
-	onRetry bool,
+	_ bool,
 ) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
 	a.requestModel = body.Model
 	if a.modelNameOverride != "" {
@@ -98,9 +98,8 @@ func (a *audioTranscriptionOpenAIToGCPVertexAITranslator) RequestBody(
 		instruction = body.Prompt
 	}
 
-	// Extract audio from multipart/form-data if possible
 	var audioData []byte
-	var mimeType string = "audio/wav" // default MIME type for audio
+	mimeType := "audio/wav"
 
 	mediaType, params, err := mime.ParseMediaType(a.contentType)
 	if err == nil && strings.HasPrefix(mediaType, "multipart/") {
@@ -108,12 +107,12 @@ func (a *audioTranscriptionOpenAIToGCPVertexAITranslator) RequestBody(
 		if boundary != "" {
 			reader := multipart.NewReader(bytes.NewReader(rawBody), boundary)
 			for {
-				part, err := reader.NextPart()
-				if err == io.EOF {
+				part, partErr := reader.NextPart()
+				if partErr == io.EOF {
 					break
 				}
-				if err != nil {
-					return nil, nil, fmt.Errorf("error reading multipart: %w", err)
+				if partErr != nil {
+					return nil, nil, fmt.Errorf("error reading multipart: %w", partErr)
 				}
 				if part.FormName() == "file" {
 					audioData, _ = io.ReadAll(part)
@@ -199,11 +198,7 @@ func (a *audioTranscriptionOpenAIToGCPVertexAITranslator) RequestBody(
 		},
 	}
 
-	// Add Accept header for streaming requests to match the working curl
 	if a.stream {
-		if headerMutation == nil {
-			headerMutation = &extprocv3.HeaderMutation{}
-		}
 		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
 			Header: &corev3.HeaderValue{Key: "accept", Value: "text/event-stream"},
 		})
@@ -236,7 +231,7 @@ func (a *audioTranscriptionOpenAIToGCPVertexAITranslator) RequestBody(
 }
 
 // ResponseHeaders processes response headers from GCP Vertex AI.
-func (a *audioTranscriptionOpenAIToGCPVertexAITranslator) ResponseHeaders(headers map[string]string) (*extprocv3.HeaderMutation, error) {
+func (a *audioTranscriptionOpenAIToGCPVertexAITranslator) ResponseHeaders(_ map[string]string) (*extprocv3.HeaderMutation, error) {
 	if a.stream {
 		// For streaming responses, set content-type to text/event-stream to match OpenAI API
 		return &extprocv3.HeaderMutation{
@@ -255,7 +250,7 @@ func (a *audioTranscriptionOpenAIToGCPVertexAITranslator) ResponseHeaders(header
 
 // ResponseBody translates GCP Vertex AI response to OpenAI AudioTranscription response.
 func (a *audioTranscriptionOpenAIToGCPVertexAITranslator) ResponseBody(
-	headers map[string]string,
+	_ map[string]string,
 	body io.Reader,
 	endOfStream bool,
 ) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, LLMTokenUsage, internalapi.ResponseModel, error) {
@@ -274,15 +269,13 @@ func (a *audioTranscriptionOpenAIToGCPVertexAITranslator) handleNonStreamingResp
 		return nil, nil, LLMTokenUsage{}, "", nil
 	}
 
-	// Read the response body
 	responseBody, err := io.ReadAll(body)
 	if err != nil {
 		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("error reading response body: %w", err)
 	}
 
-	// Parse Gemini response
 	var geminiResp genai.GenerateContentResponse
-	if err := json.Unmarshal(responseBody, &geminiResp); err != nil {
+	if unmarshalErr := json.Unmarshal(responseBody, &geminiResp); unmarshalErr != nil {
 		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("error unmarshaling Gemini response: %w", err)
 	}
 
@@ -439,6 +432,6 @@ func (a *audioTranscriptionOpenAIToGCPVertexAITranslator) parseGeminiStreamingCh
 }
 
 // ResponseError handles error responses from GCP Vertex AI.
-func (a *audioTranscriptionOpenAIToGCPVertexAITranslator) ResponseError(headers map[string]string, body io.Reader) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
+func (a *audioTranscriptionOpenAIToGCPVertexAITranslator) ResponseError(_ map[string]string, _ io.Reader) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
 	return nil, nil, nil
 }

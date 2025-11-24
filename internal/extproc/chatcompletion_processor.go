@@ -123,8 +123,9 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(ctx context.Con
 	if len(body.Messages) > 0 {
 		c.logger.Debug("[CLIENT REQUEST] Parsed messages", "message_count", len(body.Messages))
 		for i, msg := range body.Messages {
-			msgType := "unknown"
-			if msg.OfAssistant != nil {
+			var msgType string
+			switch {
+			case msg.OfAssistant != nil:
 				msgType = "assistant"
 				assistantMsg := msg.OfAssistant
 				if len(assistantMsg.ToolCalls) > 0 {
@@ -141,14 +142,16 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(ctx context.Con
 							"arguments_full", toolCall.Function.Arguments)
 					}
 				}
-			} else if msg.OfUser != nil {
+			case msg.OfUser != nil:
 				msgType = "user"
-			} else if msg.OfSystem != nil {
+			case msg.OfSystem != nil:
 				msgType = "system"
-			} else if msg.OfTool != nil {
+			case msg.OfTool != nil:
 				msgType = "tool"
-			} else if msg.OfDeveloper != nil {
+			case msg.OfDeveloper != nil:
 				msgType = "developer"
+			default:
+				msgType = "unknown"
 			}
 			c.logger.Debug("[CLIENT REQUEST] Message parsed", "index", i, "type", msgType)
 		}

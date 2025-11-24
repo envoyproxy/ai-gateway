@@ -75,7 +75,7 @@ func (r *realtimeClientSecretsProcessorRouterFilter) ProcessResponseBody(ctx con
 }
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
-func (r *realtimeClientSecretsProcessorRouterFilter) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+func (r *realtimeClientSecretsProcessorRouterFilter) ProcessRequestBody(_ context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	// Parse the request body
 	var req openai.RealtimeClientSecretRequest
 	if err := json.Unmarshal(rawBody.Body, &req); err != nil {
@@ -142,9 +142,7 @@ func (r *realtimeClientSecretsProcessorRouterFilter) SetBackend(ctx context.Cont
 	return nil
 }
 
-// realtimeClientSecretsProcessorUpstreamFilter implements [Processor] for the `/v1/realtime/client_secrets` endpoint at the upstream filter.
 type realtimeClientSecretsProcessorUpstreamFilter struct {
-	passThroughProcessor
 	logger         *slog.Logger
 	config         *processorConfig
 	requestHeaders map[string]string
@@ -152,8 +150,7 @@ type realtimeClientSecretsProcessorUpstreamFilter struct {
 	handler        backendauth.Handler
 }
 
-// SetBackend implements [Processor.SetBackend].
-func (r *realtimeClientSecretsProcessorUpstreamFilter) SetBackend(ctx context.Context, b *filterapi.Backend, backendHandler backendauth.Handler, routeProcessor Processor) error {
+func (r *realtimeClientSecretsProcessorUpstreamFilter) SetBackend(_ context.Context, b *filterapi.Backend, backendHandler backendauth.Handler, _ Processor) error {
 	// Store the handler first - it may be nil for backends without auth
 	r.handler = backendHandler
 
@@ -276,8 +273,7 @@ func (r *realtimeClientSecretsProcessorUpstreamFilter) ProcessResponseHeaders(_ 
 	}, nil
 }
 
-// ProcessResponseBody implements [Processor.ProcessResponseBody].
-func (r *realtimeClientSecretsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+func (r *realtimeClientSecretsProcessorUpstreamFilter) ProcessResponseBody(_ context.Context, body *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	// Log the raw response body from Gemini for debugging
 	slog.Info("[Gemini Realtime] Received response from backend",
 		"processor", "realtime-client-secrets",

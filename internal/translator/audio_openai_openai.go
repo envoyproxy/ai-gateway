@@ -40,21 +40,21 @@ func NewAudioTranscriptionOpenAIToOpenAITranslator(version string, modelNameOver
 	}
 }
 
-func (a *audioTranscriptionOpenAIToOpenAITranslator) RequestBody(rawBody []byte, body *openai.AudioTranscriptionRequest, onRetry bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
+func (a *audioTranscriptionOpenAIToOpenAITranslator) RequestBody(rawBody []byte, _ *openai.AudioTranscriptionRequest, _ bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
 	return nil, &extprocv3.BodyMutation{
 		Mutation: &extprocv3.BodyMutation_Body{Body: rawBody},
 	}, nil
 }
 
-func (a *audioTranscriptionOpenAIToOpenAITranslator) ResponseHeaders(headers map[string]string) (*extprocv3.HeaderMutation, error) {
+func (a *audioTranscriptionOpenAIToOpenAITranslator) ResponseHeaders(_ map[string]string) (*extprocv3.HeaderMutation, error) {
 	return nil, nil
 }
 
-func (a *audioTranscriptionOpenAIToOpenAITranslator) ResponseBody(headers map[string]string, body io.Reader, endOfStream bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, LLMTokenUsage, internalapi.ResponseModel, error) {
+func (a *audioTranscriptionOpenAIToOpenAITranslator) ResponseBody(_ map[string]string, _ io.Reader, _ bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, LLMTokenUsage, internalapi.ResponseModel, error) {
 	return nil, nil, LLMTokenUsage{}, "", nil
 }
 
-func (a *audioTranscriptionOpenAIToOpenAITranslator) ResponseError(headers map[string]string, body io.Reader) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
+func (a *audioTranscriptionOpenAIToOpenAITranslator) ResponseError(_ map[string]string, _ io.Reader) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
 	return nil, nil, nil
 }
 
@@ -70,20 +70,20 @@ func NewAudioSpeechOpenAIToOpenAITranslator(version string, modelNameOverride in
 	}
 }
 
-func (a *audioSpeechOpenAIToOpenAITranslator) RequestBody(rawBody []byte, body *openai.AudioSpeechRequest, onRetry bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
+func (a *audioSpeechOpenAIToOpenAITranslator) RequestBody(rawBody []byte, _ *openai.AudioSpeechRequest, _ bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
 	return nil, &extprocv3.BodyMutation{
 		Mutation: &extprocv3.BodyMutation_Body{Body: rawBody},
 	}, nil
 }
 
-func (a *audioSpeechOpenAIToOpenAITranslator) ResponseHeaders(headers map[string]string) (*extprocv3.HeaderMutation, error) {
+func (a *audioSpeechOpenAIToOpenAITranslator) ResponseHeaders(_ map[string]string) (*extprocv3.HeaderMutation, error) {
 	return nil, nil
 }
 
-func (a *audioSpeechOpenAIToOpenAITranslator) ResponseBody(headers map[string]string, body io.Reader, endOfStream bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, LLMTokenUsage, internalapi.ResponseModel, error) {
+func (a *audioSpeechOpenAIToOpenAITranslator) ResponseBody(_ map[string]string, _ io.Reader, _ bool) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, LLMTokenUsage, internalapi.ResponseModel, error) {
 	return nil, nil, LLMTokenUsage{}, "", nil
 }
 
-func (a *audioSpeechOpenAIToOpenAITranslator) ResponseError(headers map[string]string, body io.Reader) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
+func (a *audioSpeechOpenAIToOpenAITranslator) ResponseError(_ map[string]string, _ io.Reader) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation, error) {
 	return nil, nil, nil
 }
