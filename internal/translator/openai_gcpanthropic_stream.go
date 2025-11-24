@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
@@ -22,8 +23,6 @@ import (
 
 var (
 	sseEventPrefix = []byte("event:")
-	sseDataPrefix  = []byte("data: ")
-	sseDoneMessage = []byte("[DONE]")
 	emptyStrPtr    = ptr.To("")
 )
 
@@ -45,6 +44,7 @@ type anthropicStreamParser struct {
 	stopReason      anthropic.StopReason
 	requestModel    internalapi.RequestModel
 	sentFirstChunk  bool
+	created         openai.JSONUNIXTime
 }
 
 // newAnthropicStreamParser creates a new parser for a streaming request.
@@ -63,14 +63,10 @@ func (p *anthropicStreamParser) writeChunk(eventBlock []byte, buf *[]byte) error
 		return err
 	}
 	if chunk != nil {
-		var chunkBytes []byte
-		chunkBytes, err = json.Marshal(chunk)
+		err := serializeOpenAIChatCompletionChunk(*chunk, buf)
 		if err != nil {
-			return fmt.Errorf("failed to marshal stream chunk: %w", err)
+			return err
 		}
-		*buf = append(*buf, sseDataPrefix...)
-		*buf = append(*buf, chunkBytes...)
-		*buf = append(*buf, '\n', '\n')
 	}
 	return nil
 }
@@ -114,6 +110,8 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 	if endOfStream {
 		p.tokenUsage.TotalTokens = p.tokenUsage.InputTokens + p.tokenUsage.OutputTokens
 		finalChunk := openai.ChatCompletionResponseChunk{
+			ID:      p.activeMessageID,
+			Created: p.created,
 			Object:  "chat.completion.chunk",
 			Choices: []openai.ChatCompletionResponseChunkChoice{},
 			Usage: &openai.Usage{
@@ -124,6 +122,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 					CachedTokens: int(p.tokenUsage.CachedInputTokens),
 				},
 			},
+			Model: p.requestModel,
 		}
 
 		// Add active tool calls to the final chunk.
@@ -150,14 +149,10 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 		}
 
 		if finalChunk.Usage.PromptTokens > 0 || finalChunk.Usage.CompletionTokens > 0 || len(finalChunk.Choices) > 0 {
-			chunkBytes, err := json.Marshal(finalChunk)
+			err := serializeOpenAIChatCompletionChunk(finalChunk, &newBody)
 			if err != nil {
 				return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to marshal final stream chunk: %w", err)
 			}
-			// Write the final chunk to the response body.
-			newBody = append(newBody, sseDataPrefix...)
-			newBody = append(newBody, chunkBytes...)
-			newBody = append(newBody, '\n', '\n')
 		}
 		// Add the final [DONE] message to indicate the end of the stream.
 		newBody = append(newBody, sseDataPrefix...)
@@ -199,8 +194,12 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			return nil, fmt.Errorf("unmarshal message_start: %w", err)
 		}
 		p.activeMessageID = event.Message.ID
-		p.tokenUsage.InputTokens = uint32(event.Message.Usage.InputTokens)                 //nolint:gosec
-		p.tokenUsage.CachedInputTokens += uint32(event.Message.Usage.CacheReadInputTokens) //nolint:gosec
+		p.created = openai.JSONUNIXTime(time.Now())
+		usage := ExtractLLMTokenUsageFromUsage(event.Message.Usage)
+		// For message_start, we store the initial usage but don't add to the accumulated
+		// The message_delta event will contain the final totals
+		p.tokenUsage.InputTokens = usage.InputTokens
+		p.tokenUsage.CachedInputTokens = usage.CachedInputTokens
 
 		// reset the toolIndex for each message
 		p.toolIndex = -1
@@ -274,11 +273,16 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, fmt.Errorf("unmarshal message_delta: %w", err)
 		}
-		p.tokenUsage.OutputTokens += uint32(event.Usage.OutputTokens) //nolint:gosec
+		usage := ExtractLLMTokenUsageFromDeltaUsage(event.Usage)
+		// For message_delta, accumulate the incremental output tokens
+		p.tokenUsage.OutputTokens += usage.OutputTokens
+		// Update input tokens to include any cache tokens from delta
+		p.tokenUsage.InputTokens += usage.CachedInputTokens
+		// Accumulate any additional cache tokens from delta
+		p.tokenUsage.CachedInputTokens += usage.CachedInputTokens
 		if event.Delta.StopReason != "" {
 			p.stopReason = event.Delta.StopReason
 		}
-		p.tokenUsage.CachedInputTokens += uint32(event.Usage.CacheReadInputTokens) //nolint:gosec
 		return nil, nil
 
 	case string(constant.ValueOf[constant.ContentBlockDelta]()):
@@ -361,12 +365,15 @@ func (p *anthropicStreamParser) constructOpenAIChatCompletionChunk(delta openai.
 	}
 
 	return &openai.ChatCompletionResponseChunk{
-		Object: "chat.completion.chunk",
+		ID:      p.activeMessageID,
+		Created: p.created,
+		Object:  "chat.completion.chunk",
 		Choices: []openai.ChatCompletionResponseChunkChoice{
 			{
 				Delta:        &delta,
 				FinishReason: finishReason,
 			},
 		},
+		Model: p.requestModel,
 	}
 }

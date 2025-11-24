@@ -26,6 +26,28 @@ const (
 	gcpVertexAIBackendError = "GCPVertexAIBackendError"
 )
 
+const (
+	LineFeedSSEDelimiter               = "\n\n"
+	CarriageReturnSSEDelimiter         = "\r\r"
+	CarriageReturnLineFeedSSEDelimiter = "\r\n\r\n"
+)
+
+// detectSSEDelimiter detects which SSE delimiter is being used in the data.
+// It checks for delimiters in order of preference: CRLF, LF, CR.
+// Returns the detected delimiter as a byte slice, or nil if no delimiter is found.
+func detectSSEDelimiter(data []byte) []byte {
+	if bytes.Contains(data, []byte(CarriageReturnLineFeedSSEDelimiter)) {
+		return []byte(CarriageReturnLineFeedSSEDelimiter)
+	}
+	if bytes.Contains(data, []byte(LineFeedSSEDelimiter)) {
+		return []byte(LineFeedSSEDelimiter)
+	}
+	if bytes.Contains(data, []byte(CarriageReturnSSEDelimiter)) {
+		return []byte(CarriageReturnSSEDelimiter)
+	}
+	return nil
+}
+
 // gcpVertexAIError represents the structure of GCP Vertex AI error responses.
 type gcpVertexAIError struct {
 	Error gcpVertexAIErrorDetails `json:"error"`
@@ -50,7 +72,8 @@ func NewChatCompletionOpenAIToGCPVertexAITranslator(modelNameOverride internalap
 type openAIToGCPVertexAITranslatorV1ChatCompletion struct {
 	responseMode      geminiResponseMode
 	modelNameOverride internalapi.ModelNameOverride
-	stream            bool   // Track if this is a streaming request.
+	stream            bool // Track if this is a streaming request.
+	streamDelimiter   []byte
 	bufferedBody      []byte // Buffer for incomplete JSON chunks.
 	requestModel      internalapi.RequestModel
 	toolCallIndex     int64
@@ -143,9 +166,10 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(_ map[strin
 	// Update token usage if available.
 	if gcpResp.UsageMetadata != nil {
 		tokenUsage = LLMTokenUsage{
-			InputTokens:  uint32(gcpResp.UsageMetadata.PromptTokenCount),     // nolint:gosec
-			OutputTokens: uint32(gcpResp.UsageMetadata.CandidatesTokenCount), // nolint:gosec
-			TotalTokens:  uint32(gcpResp.UsageMetadata.TotalTokenCount),      // nolint:gosec
+			InputTokens:       uint32(gcpResp.UsageMetadata.PromptTokenCount),        // nolint:gosec
+			OutputTokens:      uint32(gcpResp.UsageMetadata.CandidatesTokenCount),    // nolint:gosec
+			TotalTokens:       uint32(gcpResp.UsageMetadata.TotalTokenCount),         // nolint:gosec
+			CachedInputTokens: uint32(gcpResp.UsageMetadata.CachedContentTokenCount), // nolint:gosec
 		}
 	}
 
@@ -167,8 +191,6 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(
 		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("error parsing GCP streaming chunks: %w", err)
 	}
 
-	sseChunkBuf := bytes.Buffer{}
-
 	for _, chunk := range chunks {
 		// Convert GCP chunk to OpenAI chunk.
 		openAIChunk := o.convertGCPChunkToOpenAI(chunk)
@@ -184,20 +206,15 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(
 		}
 
 		// Serialize to SSE format as expected by OpenAI API.
-		var chunkBytes []byte
-		chunkBytes, err = json.Marshal(openAIChunk)
+		err := serializeOpenAIChatCompletionChunk(*openAIChunk, &newBody)
 		if err != nil {
 			return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("error marshaling OpenAI chunk: %w", err)
 		}
-		sseChunkBuf.WriteString("data: ")
-		sseChunkBuf.Write(chunkBytes)
-		sseChunkBuf.WriteString("\n\n")
 
 		if span != nil {
 			span.RecordResponseChunk(openAIChunk)
 		}
 	}
-	newBody = sseChunkBuf.Bytes()
 
 	if endOfStream {
 		// Add the [DONE] marker to indicate end of stream as per OpenAI API specification.
@@ -210,28 +227,51 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(
 func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) parseGCPStreamingChunks(body io.Reader) ([]genai.GenerateContentResponse, error) {
 	var chunks []genai.GenerateContentResponse
 
-	// Read buffered body and new input, then split into individual chunks.
-	bodyBytes, err := io.ReadAll(io.MultiReader(bytes.NewReader(o.bufferedBody), body))
+	// Read all data from buffered body and new input into memory.
+	bodyReader := io.MultiReader(bytes.NewReader(o.bufferedBody), body)
+	allData, err := io.ReadAll(bodyReader)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read streaming body: %w", err)
 	}
-	lines := bytes.Split(bodyBytes, []byte("\n\n"))
 
-	for idx, line := range lines {
+	// If no data, return early.
+	if len(allData) == 0 {
+		return chunks, nil
+	}
+
+	// Detect which SSE delimiter is being used and store it for future streaming chunks.
+	if o.streamDelimiter == nil {
+		o.streamDelimiter = detectSSEDelimiter(allData)
+	}
+
+	// Split by the detected delimiter.
+	var parts [][]byte
+	if o.streamDelimiter != nil {
+		parts = bytes.Split(allData, o.streamDelimiter)
+	} else {
+		parts = [][]byte{allData}
+	}
+
+	// Process all complete chunks (all but the last part).
+	for _, part := range parts {
+		part = bytes.TrimSpace(part)
+		if len(part) == 0 {
+			continue
+		}
+
 		// Remove "data: " prefix from SSE format if present.
-		line = bytes.TrimPrefix(line, []byte("data: "))
+		line := bytes.TrimPrefix(part, []byte("data: "))
 
 		// Try to parse as JSON.
 		var chunk genai.GenerateContentResponse
-		if err = json.Unmarshal(line, &chunk); err == nil {
+		if err := json.Unmarshal(line, &chunk); err == nil {
 			chunks = append(chunks, chunk)
-		} else if idx == len(lines)-1 {
-			// If we reach the last line, and it can't be parsed, keep it in the buffer
-			// for the next call to handle incomplete JSON chunks.
+			o.bufferedBody = nil
+		} else {
+			// Failed to parse, buffer it for the next call.
 			o.bufferedBody = line
 		}
-		// If this is not the last line and json unmarshal fails, we assume it's an invalid chunk and ignore it.
-		//	TODO: Log this as a warning or error once logger is available in this context.
+		// Ignore parse errors for individual chunks to maintain stream continuity.
 	}
 
 	return chunks, nil
@@ -282,14 +322,14 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiCandidatesToOpenAI
 	responseMode := o.responseMode
 	choices := make([]openai.ChatCompletionResponseChunkChoice, 0, len(candidates))
 
-	for _, candidate := range candidates {
+	for i, candidate := range candidates {
 		if candidate == nil {
 			continue
 		}
 
 		// Create the streaming choice.
 		choice := openai.ChatCompletionResponseChunkChoice{
-			Index: 0,
+			Index: int64(i),
 		}
 
 		toolCalls := []openai.ChatCompletionChunkChoiceDeltaToolCall{}
@@ -337,9 +377,12 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) convertGCPChunkToOpenAI(
 	}
 
 	return &openai.ChatCompletionResponseChunk{
+		ID:      chunk.ResponseID,
+		Created: openai.JSONUNIXTime(chunk.CreateTime),
 		Object:  "chat.completion.chunk",
 		Choices: choices,
 		Usage:   usage,
+		Model:   o.requestModel,
 	}
 }
 
@@ -405,6 +448,9 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) applyVendorSpecificField
 		if vendorGenConfig.ThinkingConfig != nil {
 			gcr.GenerationConfig.ThinkingConfig = vendorGenConfig.ThinkingConfig
 		}
+		if vendorGenConfig.MediaResolution != "" {
+			gcr.GenerationConfig.MediaResolution = vendorGenConfig.MediaResolution
+		}
 	}
 	if gcpVendorFields.SafetySettings != nil {
 		gcr.SafetySettings = gcpVendorFields.SafetySettings
@@ -420,9 +466,11 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMe
 
 	// Set up the OpenAI response.
 	openaiResp := &openai.ChatCompletionResponse{
+		ID:      gcr.ResponseID,
 		Model:   responseModel,
 		Choices: choices,
 		Object:  "chat.completion",
+		Created: openai.JSONUNIXTime(gcr.CreateTime),
 		Usage:   geminiUsageToOpenAIUsage(gcr.UsageMetadata),
 	}
 

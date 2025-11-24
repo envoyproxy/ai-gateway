@@ -107,6 +107,7 @@ func TestMCP_standalone(t *testing.T) {
 				toolName: "context7__get-library-docs",
 				params: map[string]any{
 					"context7CompatibleLibraryID": "/mongodb/docs",
+					"page":                        1,
 				},
 			},
 			{

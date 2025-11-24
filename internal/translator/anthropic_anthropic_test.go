@@ -95,9 +95,10 @@ func TestAnthropicToAnthropic_ResponseBody_non_streaming(t *testing.T) {
 	require.Nil(t, headerMutation)
 	require.Nil(t, bodyMutation)
 	require.Equal(t, LLMTokenUsage{
-		InputTokens:  9,
+		InputTokens:  9, // 9 + 0 + 0 (input + cache_creation + cache_read)
 		OutputTokens: 16,
-		TotalTokens:  25,
+		TotalTokens:  25, // 9 + 16
+		// No cache tokens in non-streaming response
 	}, tokenUsage)
 	require.Equal(t, "claude-sonnet-4-5-20250929", responseModel)
 }
@@ -142,7 +143,12 @@ data: {"type":"message_stop"       }`
 	require.NoError(t, err)
 	require.Nil(t, headerMutation)
 	require.Nil(t, bodyMutation)
-	require.Equal(t, LLMTokenUsage{}, tokenUsage)
+	require.Equal(t, LLMTokenUsage{
+		InputTokens:  9,
+		OutputTokens: 1,
+		TotalTokens:  10,
+		// No cache tokens in message_start event
+	}, tokenUsage)
 	require.Equal(t, "claude-sonnet-4-5-20250929", responseModel)
 
 	headerMutation, bodyMutation, tokenUsage, responseModel, err = translator.ResponseBody(nil, strings.NewReader(responseTail), false)
@@ -150,10 +156,10 @@ data: {"type":"message_stop"       }`
 	require.Nil(t, headerMutation)
 	require.Nil(t, bodyMutation)
 	require.Equal(t, LLMTokenUsage{
-		InputTokens:       9,
+		InputTokens:       10, // 9 + 0 + 1 (input + cache_creation + cache_read)
 		OutputTokens:      16,
-		TotalTokens:       25,
-		CachedInputTokens: 1,
+		TotalTokens:       26, // 10 + 16
+		CachedInputTokens: 1,  // cache_read_input_tokens + cache_creation_input_tokens
 	}, tokenUsage)
 	require.Equal(t, "claude-sonnet-4-5-20250929", responseModel)
 }

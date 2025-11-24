@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	"k8s.io/utils/ptr"
@@ -41,6 +42,7 @@ type openAIToAWSBedrockTranslatorV1ChatCompletion struct {
 	// Translator is created for each request/response stream inside external processor, accordingly the role is not reused by multiple streams.
 	role             string
 	requestModel     internalapi.RequestModel
+	responseID       string
 	toolIndex        int64
 	activeToolStream bool
 }
@@ -482,6 +484,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseHeaders(headers m
 			newHeaders = []internalapi.Header{{contentTypeHeaderName, "text/event-stream"}}
 		}
 	}
+	o.responseID = headers["x-amzn-requestid"]
 	return
 }
 
@@ -608,17 +611,13 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 			if !ok {
 				continue
 			}
-			var oaiEventBytes []byte
-			oaiEventBytes, err = json.Marshal(oaiEvent)
+			err = serializeOpenAIChatCompletionChunk(*oaiEvent, &newBody)
 			if err != nil {
 				panic(fmt.Errorf("failed to marshal event: %w", err))
 			}
 			if span != nil {
 				span.RecordResponseChunk(oaiEvent)
 			}
-			newBody = append(newBody, []byte("data: ")...)
-			newBody = append(newBody, oaiEventBytes...)
-			newBody = append(newBody, []byte("\n\n")...)
 		}
 
 		if endOfStream {
@@ -635,7 +634,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 		// We use request model as response model since bedrock does not return the modelName in the response.
 		Model:   o.requestModel,
 		Object:  "chat.completion",
+		Created: openai.JSONUNIXTime(time.Now()),
 		Choices: make([]openai.ChatCompletionResponseChoice, 0),
+		ID:      o.responseID,
 	}
 	// Convert token usage.
 	if bedrockResp.Usage != nil {
@@ -733,7 +734,10 @@ var emptyString = ""
 // This is a static method and does not require a receiver, but defined as a method for namespacing.
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbedrock.ConverseStreamEvent) (*openai.ChatCompletionResponseChunk, bool) {
 	const object = "chat.completion.chunk"
-	chunk := &openai.ChatCompletionResponseChunk{Object: object}
+	chunk := &openai.ChatCompletionResponseChunk{
+		Object: object, Model: o.requestModel, ID: o.responseID,
+		Created: openai.JSONUNIXTime(time.Now()),
+	}
 
 	switch event.EventType {
 	// Usage event.

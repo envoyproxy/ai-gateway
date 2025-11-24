@@ -211,6 +211,42 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
     "safetySettings": [{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"}]
 }`)
 
+	wantBdyWithMediaResolutionFields := []byte(`{
+    "contents": [
+        {
+            "parts": [
+                {
+                    "text": "Test with media resolution"
+                }
+            ],
+            "role": "user"
+        }
+    ],
+    "tools": [
+        {
+            "functionDeclarations": [
+                {
+                    "name": "test_function",
+                    "description": "A test function",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "param1": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+    ],
+    "generation_config": {
+        "maxOutputTokens": 1024,
+		"mediaResolution": "high",
+        "temperature": 0.7
+    }
+}`)
+
 	wantBdyWithGuidedChoice := []byte(`{
   "contents": [
     {
@@ -573,6 +609,51 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			wantBody: wantBdyWithSafetySettingFields,
 		},
 		{
+			name: "Request with media resolution fields",
+			input: openai.ChatCompletionRequest{
+				Model:       "gemini-1.5-pro",
+				Temperature: ptr.To(0.7),
+				MaxTokens:   ptr.To(int64(1024)),
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Role:    openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{Value: "Test with media resolution"},
+						},
+					},
+				},
+				Tools: []openai.Tool{
+					{
+						Type: openai.ToolTypeFunction,
+						Function: &openai.FunctionDefinition{
+							Name:        "test_function",
+							Description: "A test function",
+							Parameters: map[string]interface{}{
+								"type": "object",
+								"properties": map[string]interface{}{
+									"param1": map[string]interface{}{
+										"type": "string",
+									},
+								},
+							},
+						},
+					},
+				},
+				GCPVertexAIVendorFields: &openai.GCPVertexAIVendorFields{
+					GenerationConfig: &openai.GCPVertexAIGenerationConfig{
+						MediaResolution: "high",
+					},
+				},
+			},
+			onRetry:   false,
+			wantError: false,
+			wantHeaderMut: []internalapi.Header{
+				{":path", "publishers/google/models/gemini-1.5-pro:generateContent"},
+				{"content-length", "333"},
+			},
+			wantBody: wantBdyWithMediaResolutionFields,
+		},
+		{
 			name: "Request with guided choice fields",
 			input: openai.ChatCompletionRequest{
 				Model:       "gemini-1.5-pro",
@@ -779,9 +860,10 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
     }
 }`),
 			wantTokenUsage: LLMTokenUsage{
-				InputTokens:  10,
-				OutputTokens: 15,
-				TotalTokens:  25,
+				InputTokens:       10,
+				OutputTokens:      15,
+				TotalTokens:       25,
+				CachedInputTokens: 10,
 			},
 		},
 		{
@@ -945,7 +1027,7 @@ data: [DONE]
             }
         }
     ],
-    "model": "gemini-1.5-pro-002",
+	"model": "gemini-1.5-pro-002",
     "object": "chat.completion",
     "usage": {
         "completion_tokens": 8,
@@ -959,6 +1041,79 @@ data: [DONE]
 				InputTokens:  6,
 				OutputTokens: 8,
 				TotalTokens:  14,
+			},
+		},
+
+		{
+			name: "response with multiple candidates",
+			respHeaders: map[string]string{
+				"content-type": "application/json",
+			},
+			body: `{
+    "candidates": [
+        {
+            "content": {
+                "parts": [
+                    {
+                        "text": "This is a safe response from the AI assistant."
+                    }
+                ]
+            },
+            "finishReason": "STOP"
+        },
+        {
+            "content": {
+                "parts": [
+                    {
+                        "text": "This is a safer response from the AI assistant."
+                    }
+                ]
+            },
+            "finishReason": "STOP"
+        }
+    ],
+	"model": "gemini-1.5-pro-002",
+    "usageMetadata": {
+        "promptTokenCount": 8,
+        "candidatesTokenCount": 12,
+        "totalTokenCount": 20
+    }
+}`,
+			endOfStream:   true,
+			wantError:     false,
+			wantHeaderMut: []internalapi.Header{{contentLengthHeaderName, "418"}},
+			wantBodyMut: []byte(`{
+    "choices": [
+        {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+                "content": "This is a safe response from the AI assistant.",
+                "role": "assistant"
+            }
+        },
+		{
+            "finish_reason": "stop",
+            "index": 1,
+            "message": {
+                "content": "This is a safer response from the AI assistant.",
+                "role": "assistant"
+            }
+        }
+    ],
+    "object": "chat.completion",
+    "usage": {
+        "completion_tokens": 12,
+        "completion_tokens_details": {},
+        "prompt_tokens": 8,
+        "prompt_tokens_details": {},
+        "total_tokens": 20
+    }
+}`),
+			wantTokenUsage: LLMTokenUsage{
+				InputTokens:  8,
+				OutputTokens: 12,
+				TotalTokens:  20,
 			},
 		},
 	}
@@ -1052,24 +1207,35 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody(t *
 		stream: true,
 	}
 
-	// Mock GCP streaming response.
-	gcpChunk := `{"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"},"finishReason":"STOP"}]}`
+	tests := []struct {
+		name     string
+		gcpChunk string
+	}{
+		{
+			name:     "single candidate in streaming response",
+			gcpChunk: `{"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"},"finishReason":"STOP"}]}`,
+		},
+	}
 
-	headerMut, body, tokenUsage, _, err := translator.handleStreamingResponse(
-		bytes.NewReader([]byte(gcpChunk)),
-		false,
-		nil,
-	)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			headerMut, bodyMut, tokenUsage, _, err := translator.handleStreamingResponse(
+				bytes.NewReader([]byte(tt.gcpChunk)),
+				false,
+				nil,
+			)
 
-	require.Nil(t, headerMut)
-	require.NoError(t, err)
-	require.NotNil(t, body)
-
-	// Check that the response is in SSE format.
-	bodyStr := string(body)
-	require.Contains(t, bodyStr, "data: ")
-	require.Contains(t, bodyStr, "chat.completion.chunk")
-	require.Equal(t, LLMTokenUsage{}, tokenUsage) // No usage in this test chunk.
+			require.Nil(t, headerMut)
+			require.NoError(t, err)
+			require.NotNil(t, bodyMut)
+			// Check that the response is in SSE format.
+			bodyStr := string(bodyMut)
+			print(bodyStr)
+			require.Contains(t, bodyStr, "data: ")
+			require.Contains(t, bodyStr, "chat.completion.chunk")
+			require.Equal(t, LLMTokenUsage{}, tokenUsage) // No usage in this test chunk.
+		})
+	}
 }
 
 func TestExtractToolCallsFromGeminiPartsStream(t *testing.T) {
@@ -1450,23 +1616,6 @@ func TestExtractToolCallsStreamIndexing(t *testing.T) {
 	}
 }
 
-func getChatCompletionResponseChunk(body []byte) []openai.ChatCompletionResponseChunk {
-	lines := bytes.Split(body, []byte("\n\n"))
-
-	chunks := []openai.ChatCompletionResponseChunk{}
-	for _, line := range lines {
-		// Remove "data: " prefix from SSE format if present.
-		line = bytes.TrimPrefix(line, []byte("data: "))
-
-		// Try to parse as JSON.
-		var chunk openai.ChatCompletionResponseChunk
-		if err := json.Unmarshal(line, &chunk); err == nil {
-			chunks = append(chunks, chunk)
-		}
-	}
-	return chunks
-}
-
 func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingParallelToolIndex(t *testing.T) {
 	translator := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
 	// Mock multiple GCP streaming response with parallel tool calls
@@ -1623,7 +1772,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_parseGCPStreamingChunks(t
 					},
 				},
 			},
-			wantBuffered: []byte(""),
+			wantBuffered: nil,
 		},
 		{
 			name:         "multiple complete chunks",
@@ -1657,7 +1806,7 @@ data: {"candidates":[{"content":{"parts":[{"text":" world"}]}}]}
 					},
 				},
 			},
-			wantBuffered: []byte(""),
+			wantBuffered: nil,
 		},
 		{
 			name:         "incomplete chunk at end",
@@ -1712,7 +1861,54 @@ data: {"candidates":[{"content":{"parts":[{"text":"new"}]}}]}
 					},
 				},
 			},
-			wantBuffered: []byte(""),
+			wantBuffered: nil,
+		},
+		{
+			name: "invalid JSON chunk in bufferedBody - ignored",
+			bufferedBody: []byte(`data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]}}]}
+
+data: invalid-json
+
+data: {"candidates":[{"content":{"parts":[{"text":"world"}]}}]}
+
+`),
+			input: `data: {"candidates":[{"content":{"parts":[{"text":"Foo"}]}}]}`,
+			wantChunks: []genai.GenerateContentResponse{
+				{
+					Candidates: []*genai.Candidate{
+						{
+							Content: &genai.Content{
+								Parts: []*genai.Part{
+									{Text: "Hello"},
+								},
+							},
+						},
+					},
+				},
+				{
+					Candidates: []*genai.Candidate{
+						{
+							Content: &genai.Content{
+								Parts: []*genai.Part{
+									{Text: "world"},
+								},
+							},
+						},
+					},
+				},
+				{
+					Candidates: []*genai.Candidate{
+						{
+							Content: &genai.Content{
+								Parts: []*genai.Part{
+									{Text: "Foo"},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantBuffered: nil,
 		},
 		{
 			name:         "invalid JSON chunk in middle - ignored",
@@ -1748,14 +1944,14 @@ data: {"candidates":[{"content":{"parts":[{"text":"world"}]}}]}
 					},
 				},
 			},
-			wantBuffered: []byte(""),
+			wantBuffered: nil,
 		},
 		{
 			name:         "empty input",
 			bufferedBody: nil,
 			input:        "",
 			wantChunks:   nil,
-			wantBuffered: []byte(""),
+			wantBuffered: nil,
 		},
 		{
 			name:         "chunk without data prefix",
@@ -1776,7 +1972,67 @@ data: {"candidates":[{"content":{"parts":[{"text":"world"}]}}]}
 					},
 				},
 			},
-			wantBuffered: []byte(""),
+			wantBuffered: nil,
+		},
+		{
+			name:         "CRLF CRLF delimiter",
+			bufferedBody: nil,
+			input:        `data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]}}]}` + "\r\n\r\n" + `data: {"candidates":[{"content":{"parts":[{"text":"World"}]}}]}`,
+			wantChunks: []genai.GenerateContentResponse{
+				{
+					Candidates: []*genai.Candidate{
+						{
+							Content: &genai.Content{
+								Parts: []*genai.Part{
+									{Text: "Hello"},
+								},
+							},
+						},
+					},
+				},
+				{
+					Candidates: []*genai.Candidate{
+						{
+							Content: &genai.Content{
+								Parts: []*genai.Part{
+									{Text: "World"},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantBuffered: nil,
+		},
+		{
+			name:         "CR CR delimiter",
+			bufferedBody: nil,
+			input:        `data: {"candidates":[{"content":{"parts":[{"text":"Test"}]}}]}` + "\r\r" + `data: {"candidates":[{"content":{"parts":[{"text":"Message"}]}}]}`,
+			wantChunks: []genai.GenerateContentResponse{
+				{
+					Candidates: []*genai.Candidate{
+						{
+							Content: &genai.Content{
+								Parts: []*genai.Part{
+									{Text: "Test"},
+								},
+							},
+						},
+					},
+				},
+				{
+					Candidates: []*genai.Candidate{
+						{
+							Content: &genai.Content{
+								Parts: []*genai.Part{
+									{Text: "Message"},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantBuffered: nil,
 		},
 	}
 

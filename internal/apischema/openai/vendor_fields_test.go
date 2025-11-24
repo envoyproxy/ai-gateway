@@ -221,6 +221,76 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 			}`),
 			expectedErrMsg: "cannot unmarshal string into Go struct field",
 		},
+		{
+			name: "Request with media resolution detail field",
+			jsonData: []byte(`{
+				"model": "gemini-1.5-pro",
+				"messages": [
+					{
+						"role": "user",
+						"content": "Test with media resolution detail"
+					}
+				],
+				"generationConfig": {
+					"media_resolution": "high"
+				}
+			}`),
+			expected: &ChatCompletionRequest{
+				Model: "gemini-1.5-pro",
+				Messages: []ChatCompletionMessageParamUnion{
+					{
+						OfUser: &ChatCompletionUserMessageParam{
+							Role:    ChatMessageRoleUser,
+							Content: StringOrUserRoleContentUnion{Value: "Test with media resolution detail"},
+						},
+					},
+				},
+				GCPVertexAIVendorFields: &GCPVertexAIVendorFields{
+					GenerationConfig: &GCPVertexAIGenerationConfig{
+						MediaResolution: "high",
+					},
+				},
+			},
+		},
+		{
+			name: "Request with both detail and thinkingConfig fields",
+			jsonData: []byte(`{
+				"model": "gemini-1.5-pro",
+				"messages": [
+					{
+						"role": "user",
+						"content": "Test with both detail and thinking config"
+					}
+				],
+				"generationConfig": {
+					"media_resolution": "medium",
+					"thinkingConfig": {
+						"includeThoughts": true,
+						"thinkingBudget": 500
+					}
+				}
+			}`),
+			expected: &ChatCompletionRequest{
+				Model: "gemini-1.5-pro",
+				Messages: []ChatCompletionMessageParamUnion{
+					{
+						OfUser: &ChatCompletionUserMessageParam{
+							Role:    ChatMessageRoleUser,
+							Content: StringOrUserRoleContentUnion{Value: "Test with both detail and thinking config"},
+						},
+					},
+				},
+				GCPVertexAIVendorFields: &GCPVertexAIVendorFields{
+					GenerationConfig: &GCPVertexAIGenerationConfig{
+						MediaResolution: "medium",
+						ThinkingConfig: &genai.ThinkingConfig{
+							IncludeThoughts: true,
+							ThinkingBudget:  ptr.To(int32(500)),
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {

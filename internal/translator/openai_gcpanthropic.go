@@ -13,6 +13,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	anthropicParam "github.com/anthropics/anthropic-sdk-go/packages/param"
@@ -151,6 +152,10 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 				Description: anthropic.String(openAITool.Function.Description),
 			}
 
+			if isCacheEnabled(openAITool.Function.AnthropicContentFields) {
+				toolParam.CacheControl = anthropic.NewCacheControlEphemeralParam()
+			}
+
 			// The parameters for the function are expected to be a JSON Schema object.
 			// We can pass them through as-is.
 			if openAITool.Function.Parameters != nil {
@@ -223,7 +228,12 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 
 // convertImageContentToAnthropic translates an OpenAI image URL into the corresponding Anthropic content block.
 // It handles data URIs for various image types and PDFs, as well as remote URLs.
-func convertImageContentToAnthropic(imageURL string) (anthropic.ContentBlockParamUnion, error) {
+func convertImageContentToAnthropic(imageURL string, fields *openai.AnthropicContentFields) (anthropic.ContentBlockParamUnion, error) {
+	var cacheControlParam anthropic.CacheControlEphemeralParam
+	if isCacheEnabled(fields) {
+		cacheControlParam = fields.CacheControl
+	}
+
 	switch {
 	case strings.HasPrefix(imageURL, "data:"):
 		contentType, data, err := parseDataURI(imageURL)
@@ -233,17 +243,29 @@ func convertImageContentToAnthropic(imageURL string) (anthropic.ContentBlockPara
 		base64Data := base64.StdEncoding.EncodeToString(data)
 		if contentType == string(constant.ValueOf[constant.ApplicationPDF]()) {
 			pdfSource := anthropic.Base64PDFSourceParam{Data: base64Data}
-			return anthropic.NewDocumentBlock(pdfSource), nil
+			docBlock := anthropic.NewDocumentBlock(pdfSource)
+			docBlock.OfDocument.CacheControl = cacheControlParam
+			return docBlock, nil
 		}
 		if isAnthropicSupportedImageMediaType(contentType) {
-			return anthropic.NewImageBlockBase64(contentType, base64Data), nil
+			imgBlock := anthropic.NewImageBlockBase64(contentType, base64Data)
+			imgBlock.OfImage.CacheControl = cacheControlParam
+			return imgBlock, nil
 		}
 		return anthropic.ContentBlockParamUnion{}, fmt.Errorf("invalid media_type for image '%s'", contentType)
 	case strings.HasSuffix(strings.ToLower(imageURL), ".pdf"):
-		return anthropic.NewDocumentBlock(anthropic.URLPDFSourceParam{URL: imageURL}), nil
+		docBlock := anthropic.NewDocumentBlock(anthropic.URLPDFSourceParam{URL: imageURL})
+		docBlock.OfDocument.CacheControl = cacheControlParam
+		return docBlock, nil
 	default:
-		return anthropic.NewImageBlock(anthropic.URLImageSourceParam{URL: imageURL}), nil
+		imgBlock := anthropic.NewImageBlock(anthropic.URLImageSourceParam{URL: imageURL})
+		imgBlock.OfImage.CacheControl = cacheControlParam
+		return imgBlock, nil
 	}
+}
+
+func isCacheEnabled(fields *openai.AnthropicContentFields) bool {
+	return fields != nil && fields.CacheControl.Type == constant.ValueOf[constant.Ephemeral]()
 }
 
 // convertContentPartsToAnthropic iterates over a slice of OpenAI content parts
@@ -253,10 +275,14 @@ func convertContentPartsToAnthropic(parts []openai.ChatCompletionContentPartUser
 	for _, contentPart := range parts {
 		switch {
 		case contentPart.OfText != nil:
-			resultContent = append(resultContent, anthropic.NewTextBlock(contentPart.OfText.Text))
+			textBlock := anthropic.NewTextBlock(contentPart.OfText.Text)
+			if isCacheEnabled(contentPart.OfText.AnthropicContentFields) {
+				textBlock.OfText.CacheControl = contentPart.OfText.CacheControl
+			}
+			resultContent = append(resultContent, textBlock)
 
 		case contentPart.OfImageURL != nil:
-			block, err := convertImageContentToAnthropic(contentPart.OfImageURL.ImageURL.URL)
+			block, err := convertImageContentToAnthropic(contentPart.OfImageURL.ImageURL.URL, contentPart.OfImageURL.AnthropicContentFields)
 			if err != nil {
 				return nil, err
 			}
@@ -295,14 +321,16 @@ func openAIToAnthropicContent(content any) ([]anthropic.ContentBlockParamUnion, 
 				anthropic.NewTextBlock(val),
 			}, nil
 		case []openai.ChatCompletionContentPartTextParam:
-			// Convert text params to string and create text block
-			var sb strings.Builder
+			var contentBlocks []anthropic.ContentBlockParamUnion
 			for _, part := range val {
-				sb.WriteString(part.Text)
+				textBlock := anthropic.NewTextBlock(part.Text)
+				// In an array of text parts, each can have its own cache setting.
+				if isCacheEnabled(part.AnthropicContentFields) {
+					textBlock.OfText.CacheControl = part.CacheControl
+				}
+				contentBlocks = append(contentBlocks, textBlock)
 			}
-			return []anthropic.ContentBlockParamUnion{
-				anthropic.NewTextBlock(sb.String()),
-			}, nil
+			return contentBlocks, nil
 		default:
 			return nil, fmt.Errorf("unsupported ContentUnion value type: %T", val)
 		}
@@ -310,21 +338,28 @@ func openAIToAnthropicContent(content any) ([]anthropic.ContentBlockParamUnion, 
 	return nil, fmt.Errorf("unsupported OpenAI content type: %T", content)
 }
 
-func extractSystemPromptFromDeveloperMsg(msg openai.ChatCompletionDeveloperMessageParam) string {
+// extractSystemPromptFromDeveloperMsg flattens content and checks for cache flags.
+// It returns the combined string and a boolean indicating if any part was cacheable.
+func extractSystemPromptFromDeveloperMsg(msg openai.ChatCompletionDeveloperMessageParam) (msgValue string, cacheParam *anthropic.CacheControlEphemeralParam) {
 	switch v := msg.Content.Value.(type) {
 	case nil:
-		return ""
+		return
 	case string:
-		return v
+		msgValue = v
+		return
 	case []openai.ChatCompletionContentPartTextParam:
-		// Concatenate all text parts for completeness.
+		// Concatenate all text parts and check for caching.
 		var sb strings.Builder
 		for _, part := range v {
 			sb.WriteString(part.Text)
+			if isCacheEnabled(part.AnthropicContentFields) {
+				cacheParam = &part.CacheControl
+			}
 		}
-		return sb.String()
+		msgValue = sb.String()
+		return
 	default:
-		return ""
+		return
 	}
 }
 
@@ -353,7 +388,11 @@ func openAIMessageToAnthropicMessageRoleAssistant(openAiMessage *openai.ChatComp
 			}
 		case openai.ChatCompletionAssistantMessageParamContentTypeText:
 			if content.Text != nil {
-				contentBlocks = append(contentBlocks, anthropic.NewTextBlock(*content.Text))
+				textBlock := anthropic.NewTextBlock(*content.Text)
+				if isCacheEnabled(content.AnthropicContentFields) {
+					textBlock.OfText.CacheControl = content.CacheControl
+				}
+				contentBlocks = append(contentBlocks, textBlock)
 			}
 		default:
 			err = fmt.Errorf("content type not supported: %v", content.Type)
@@ -375,6 +414,11 @@ func openAIMessageToAnthropicMessageRoleAssistant(openAiMessage *openai.ChatComp
 			Name:  toolCall.Function.Name,
 			Input: input,
 		}
+
+		if isCacheEnabled(toolCall.AnthropicContentFields) {
+			toolUse.CacheControl = toolCall.CacheControl
+		}
+
 		contentBlocks = append(contentBlocks, anthropic.ContentBlockParamUnion{OfToolUse: &toolUse})
 	}
 
@@ -391,10 +435,20 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 		switch {
 		case msg.OfSystem != nil:
 			devParam := systemMsgToDeveloperMsg(*msg.OfSystem)
-			systemBlocks = append(systemBlocks, anthropic.TextBlockParam{Text: extractSystemPromptFromDeveloperMsg(devParam)})
+			systemText, cacheControl := extractSystemPromptFromDeveloperMsg(devParam)
+			systemBlock := anthropic.TextBlockParam{Text: systemText}
+			if cacheControl != nil {
+				systemBlock.CacheControl = *cacheControl
+			}
+			systemBlocks = append(systemBlocks, systemBlock)
 			i++
 		case msg.OfDeveloper != nil:
-			systemBlocks = append(systemBlocks, anthropic.TextBlockParam{Text: extractSystemPromptFromDeveloperMsg(*msg.OfDeveloper)})
+			systemText, cacheControl := extractSystemPromptFromDeveloperMsg(*msg.OfDeveloper)
+			systemBlock := anthropic.TextBlockParam{Text: systemText}
+			if cacheControl != nil {
+				systemBlock.CacheControl = *cacheControl
+			}
+			systemBlocks = append(systemBlocks, systemBlock)
 			i++
 		case msg.OfUser != nil:
 			message := *msg.OfUser
@@ -425,18 +479,29 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 			for i < len(openAIMsgs) && openAIMsgs[i].ExtractMessgaeRole() == openai.ChatMessageRoleTool {
 				currentMsg := &openAIMsgs[i]
 				toolMsg := currentMsg.OfTool
+
 				var contentBlocks []anthropic.ContentBlockParamUnion
 				contentBlocks, err = openAIToAnthropicContent(toolMsg.Content)
 				if err != nil {
 					return
 				}
+
 				var toolContent []anthropic.ToolResultBlockParamContentUnion
+				var cacheControl *anthropic.CacheControlEphemeralParam
+
 				for _, c := range contentBlocks {
 					var trb anthropic.ToolResultBlockParamContentUnion
-					if c.OfText != nil {
+					// Check if the translated part has caching enabled.
+					switch {
+					case c.OfText != nil:
 						trb.OfText = c.OfText
-					} else if c.OfImage != nil {
+						cacheControl = &c.OfText.CacheControl
+					case c.OfImage != nil:
 						trb.OfImage = c.OfImage
+						cacheControl = &c.OfImage.CacheControl
+					case c.OfDocument != nil:
+						trb.OfDocument = c.OfDocument
+						cacheControl = &c.OfDocument.CacheControl
 					}
 					toolContent = append(toolContent, trb)
 				}
@@ -457,7 +522,13 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 					Content:   toolContent,
 					IsError:   anthropic.Bool(isError),
 				}
-				toolResultBlocks = append(toolResultBlocks, anthropic.ContentBlockParamUnion{OfToolResult: &toolResultBlock})
+
+				if cacheControl != nil {
+					toolResultBlock.CacheControl = *cacheControl
+				}
+
+				toolResultBlockUnion := anthropic.ContentBlockParamUnion{OfToolResult: &toolResultBlock}
+				toolResultBlocks = append(toolResultBlocks, toolResultBlockUnion)
 				i++
 			}
 			// Append all aggregated tool results.
@@ -531,6 +602,28 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest) (params *anth
 	}
 
 	return params, nil
+}
+
+// anthropicToolUseToOpenAICalls converts Anthropic tool_use content blocks to OpenAI tool calls.
+func anthropicToolUseToOpenAICalls(block *anthropic.ContentBlockUnion) ([]openai.ChatCompletionMessageToolCallParam, error) {
+	var toolCalls []openai.ChatCompletionMessageToolCallParam
+	if block.Type != string(constant.ValueOf[constant.ToolUse]()) {
+		return toolCalls, nil
+	}
+	argsBytes, err := json.Marshal(block.Input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal tool_use input: %w", err)
+	}
+	toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
+		ID:   &block.ID,
+		Type: openai.ChatCompletionMessageToolCallTypeFunction,
+		Function: openai.ChatCompletionMessageToolCallFunctionParam{
+			Name:      block.Name,
+			Arguments: string(argsBytes),
+		},
+	})
+
+	return toolCalls, nil
 }
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody] for GCP.
@@ -633,28 +726,6 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseError(respHeade
 	return
 }
 
-// anthropicToolUseToOpenAICalls converts Anthropic tool_use content blocks to OpenAI tool calls.
-func anthropicToolUseToOpenAICalls(block *anthropic.ContentBlockUnion) ([]openai.ChatCompletionMessageToolCallParam, error) {
-	var toolCalls []openai.ChatCompletionMessageToolCallParam
-	if block.Type != string(constant.ValueOf[constant.ToolUse]()) {
-		return toolCalls, nil
-	}
-	argsBytes, err := json.Marshal(block.Input)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal tool_use input: %w", err)
-	}
-	toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
-		ID:   &block.ID,
-		Type: openai.ChatCompletionMessageToolCallTypeFunction,
-		Function: openai.ChatCompletionMessageToolCallFunctionParam{
-			Name:      block.Name,
-			Arguments: string(argsBytes),
-		},
-	})
-
-	return toolCalls, nil
-}
-
 // ResponseHeaders implements [OpenAIChatCompletionTranslator.ResponseHeaders].
 func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseHeaders(_ map[string]string) (
 	newHeaders []internalapi.Header, err error,
@@ -688,22 +759,19 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 	}
 
 	openAIResp := &openai.ChatCompletionResponse{
+		ID:      anthropicResp.ID,
 		Model:   responseModel,
 		Object:  string(openAIconstant.ValueOf[openAIconstant.ChatCompletion]()),
 		Choices: make([]openai.ChatCompletionResponseChoice, 0),
+		Created: openai.JSONUNIXTime(time.Now()),
 	}
-	tokenUsage = LLMTokenUsage{
-		InputTokens:       uint32(anthropicResp.Usage.InputTokens),                                    //nolint:gosec
-		OutputTokens:      uint32(anthropicResp.Usage.OutputTokens),                                   //nolint:gosec
-		TotalTokens:       uint32(anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens), //nolint:gosec
-		CachedInputTokens: uint32(anthropicResp.Usage.CacheReadInputTokens),                           //nolint:gosec
-	}
+	tokenUsage = ExtractLLMTokenUsageFromUsage(anthropicResp.Usage)
 	openAIResp.Usage = openai.Usage{
 		CompletionTokens: int(anthropicResp.Usage.OutputTokens),
-		PromptTokens:     int(anthropicResp.Usage.InputTokens),
-		TotalTokens:      int(anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens),
+		PromptTokens:     int(tokenUsage.InputTokens),
+		TotalTokens:      int(tokenUsage.TotalTokens),
 		PromptTokensDetails: &openai.PromptTokensDetails{
-			CachedTokens: int(anthropicResp.Usage.CacheReadInputTokens),
+			CachedTokens: int(tokenUsage.CachedInputTokens),
 		},
 	}
 

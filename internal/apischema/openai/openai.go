@@ -92,7 +92,8 @@ type ChatCompletionContentPartTextParam struct {
 	// The text content.
 	Text string `json:"text"`
 	// The type of the content part.
-	Type string `json:"type"`
+	Type                    string `json:"type"`
+	*AnthropicContentFields `json:",inline,omitempty"`
 }
 
 type ChatCompletionContentPartRefusalParam struct {
@@ -106,7 +107,8 @@ type ChatCompletionContentPartRefusalParam struct {
 type ChatCompletionContentPartInputAudioParam struct {
 	InputAudio ChatCompletionContentPartInputAudioInputAudioParam `json:"input_audio"`
 	// The type of the content part. Always `input_audio`.
-	Type ChatCompletionContentPartInputAudioType `json:"type"`
+	Type                    ChatCompletionContentPartInputAudioType `json:"type"`
+	*AnthropicContentFields `json:",inline,omitempty"`
 }
 
 // ChatCompletionContentPartInputAudioInputAudioFormat The format of the encoded audio data. Currently supports "wav" and "mp3".
@@ -129,7 +131,9 @@ type ChatCompletionContentPartImageImageURLDetail string
 const (
 	ChatCompletionContentPartImageImageURLDetailAuto ChatCompletionContentPartImageImageURLDetail = "auto"
 	ChatCompletionContentPartImageImageURLDetailLow  ChatCompletionContentPartImageImageURLDetail = "low"
-	ChatCompletionContentPartImageImageURLDetailHigh ChatCompletionContentPartImageImageURLDetail = "high"
+	// medium is only supported in gemini-3
+	ChatCompletionContentPartImageImageURLDetailMedium ChatCompletionContentPartImageImageURLDetail = "medium"
+	ChatCompletionContentPartImageImageURLDetailHigh   ChatCompletionContentPartImageImageURLDetail = "high"
 )
 
 type ChatCompletionContentPartImageImageURLParam struct {
@@ -144,7 +148,8 @@ type ChatCompletionContentPartImageImageURLParam struct {
 type ChatCompletionContentPartImageParam struct {
 	ImageURL ChatCompletionContentPartImageImageURLParam `json:"image_url"`
 	// The type of the content part.
-	Type ChatCompletionContentPartImageType `json:"type"`
+	Type                    ChatCompletionContentPartImageType `json:"type"`
+	*AnthropicContentFields `json:",inline,omitempty"`
 }
 
 type ChatCompletionContentPartFileFileParam struct {
@@ -163,7 +168,8 @@ type ChatCompletionContentPartFileParam struct {
 	// The type of the content part. Always `file`.
 	//
 	// This field can be elided, and will marshal its zero value as "file".
-	Type ChatCompletionContentPartFileType `json:"type"`
+	Type                    ChatCompletionContentPartFileType `json:"type"`
+	*AnthropicContentFields `json:",inline,omitempty"`
 }
 
 // ChatCompletionContentPartUserUnionParam Learn about
@@ -348,6 +354,11 @@ func (s StringOrUserRoleContentUnion) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.Value)
 }
 
+// AnthropicContentFields contains Anthropic model-specific fields that can be added to messages.
+type AnthropicContentFields struct {
+	CacheControl anthropic.CacheControlEphemeralParam `json:"cache_control,omitzero"`
+}
+
 // Function message is deprecated and we do not allow it.
 type ChatCompletionMessageParamUnion struct {
 	OfDeveloper *ChatCompletionDeveloperMessageParam `json:",omitzero,inline"`
@@ -504,8 +515,9 @@ type ChatCompletionAssistantMessageParamContent struct {
 	Text *string `json:"text,omitempty"`
 
 	// The signature for a thinking block.
-	Signature       *string `json:"signature,omitempty"`
-	RedactedContent []byte  `json:"redactedContent,omitempty"`
+	Signature               *string `json:"signature,omitempty"`
+	RedactedContent         []byte  `json:"redactedContent,omitempty"`
+	*AnthropicContentFields `json:",inline,omitempty"`
 }
 
 // ChatCompletionAssistantMessageParam Messages sent by the model in response to user messages.
@@ -551,7 +563,8 @@ type ChatCompletionMessageToolCallParam struct {
 	// The function that the model called.
 	Function ChatCompletionMessageToolCallFunctionParam `json:"function"`
 	// The type of the tool. Currently, only `function` is supported.
-	Type ChatCompletionMessageToolCallType `json:"type,omitempty"`
+	Type                    ChatCompletionMessageToolCallType `json:"type,omitempty"`
+	*AnthropicContentFields `json:",inline,omitempty"`
 }
 
 // extractMessageRole extracts role from OpenAI message union types.
@@ -1070,7 +1083,8 @@ type FunctionDefinition struct {
 	// or you can pass in a struct which serializes to the proper JSON schema.
 	// The jsonschema package is provided for convenience, but you should
 	// consider another specialized library if you require more complex schemas.
-	Parameters any `json:"parameters"`
+	Parameters              any `json:"parameters"`
+	*AnthropicContentFields `json:",inline,omitempty"`
 }
 
 // Deprecated: use FunctionDefinition instead.
@@ -1568,6 +1582,9 @@ type GCPVertexAIGenerationConfig struct {
 	//
 	// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/GenerationConfig#ThinkingConfig
 	ThinkingConfig *genai.ThinkingConfig `json:"thinkingConfig,omitzero"`
+
+	// MediaResolution is to set global media resolution in gemini models: https://ai.google.dev/api/caching#MediaResolution
+	MediaResolution genai.MediaResolution `json:"media_resolution,omitempty"`
 }
 
 // AnthropicVendorFields contains Anthropic vendor-specific fields.

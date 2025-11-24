@@ -6,7 +6,9 @@
 package translator
 
 import (
+	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"regexp"
 
@@ -22,6 +24,14 @@ const (
 	mimeTypeApplicationJSON = "application/json"
 	mimeTypeApplicationEnum = "text/x.enum"
 )
+
+var (
+	sseDataPrefix  = []byte("data: ")
+	sseDoneMessage = []byte("[DONE]")
+)
+
+// Define a static constant for a specific moment in time (Unix seconds), this is for test
+const ReleaseDateUnix = 1731679200 // Represents 2024-11-15 09:00:00 UTC
 
 // regDataURI follows the web uri regex definition.
 // https://developer.mozilla.org/en-US/docs/Web/URI/Schemes/data#syntax
@@ -51,4 +61,35 @@ func systemMsgToDeveloperMsg(msg openai.ChatCompletionSystemMessageParam) openai
 		Role:    openai.ChatMessageRoleDeveloper,
 		Content: msg.Content,
 	}
+}
+
+// construct an openai.ChatCompletionResponseChunk from byte array
+func getChatCompletionResponseChunk(body []byte) []openai.ChatCompletionResponseChunk {
+	lines := bytes.Split(body, []byte("\n\n"))
+
+	chunks := []openai.ChatCompletionResponseChunk{}
+	for _, line := range lines {
+		// Remove "data: " prefix from SSE format if present.
+		line = bytes.TrimPrefix(line, []byte("data: "))
+
+		// Try to parse as JSON.
+		var chunk openai.ChatCompletionResponseChunk
+		if err := json.Unmarshal(line, &chunk); err == nil {
+			chunks = append(chunks, chunk)
+		}
+	}
+	return chunks
+}
+
+// serialize a ChatCompletionResponseChunk, this is common for all chat completion request
+func serializeOpenAIChatCompletionChunk(chunk openai.ChatCompletionResponseChunk, buf *[]byte) error {
+	var chunkBytes []byte
+	chunkBytes, err := json.Marshal(chunk)
+	if err != nil {
+		return fmt.Errorf("failed to marshal stream chunk: %w", err)
+	}
+	*buf = append(*buf, sseDataPrefix...)
+	*buf = append(*buf, chunkBytes...)
+	*buf = append(*buf, '\n', '\n')
+	return nil
 }

@@ -15,10 +15,12 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	openaigo "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -1284,74 +1286,85 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseHeaders(t *testing
 
 func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_ResponseBody(t *testing.T) {
 	t.Run("streaming", func(t *testing.T) {
-		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{stream: true}
+		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{stream: true, requestModel: "claude-sonnet-4"}
 		buf, err := base64.StdEncoding.DecodeString(base64RealStreamingEvents)
 		require.NoError(t, err)
 
-		var results []string
+		var results []byte
 		for i := range buf {
 			hm, newBody, tokenUsage, _, err := o.ResponseBody(nil, bytes.NewBuffer([]byte{buf[i]}), i == len(buf)-1, nil)
 			require.NoError(t, err)
 			require.Nil(t, hm)
 			if len(newBody) > 0 {
-				results = append(results, string(newBody))
+				results = append(results, newBody...)
 			}
 			if tokenUsage.OutputTokens > 0 {
 				require.Equal(t, uint32(75), tokenUsage.OutputTokens)
 			}
 		}
 
-		result := strings.Join(results, "")
+		// normalize Created and ID
+		openaiChunks := getChatCompletionResponseChunk(results)
+
+		var normalizedResults []byte
+		for _, oaichunk := range openaiChunks {
+			oaichunk.ID = "123"
+			oaichunk.Created = openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)) // 0 nanoseconds
+			// oaichunk.Model = "claude-sonnet-4"
+			err := serializeOpenAIChatCompletionChunk(oaichunk, &normalizedResults)
+			require.NoError(t, err)
+		}
+		normalizedResults = append(normalizedResults, []byte("data: [DONE]\n")...)
 
 		require.Equal(t,
-			`data: {"choices":[{"index":0,"delta":{"content":"","role":"assistant"}}],"object":"chat.completion.chunk"}
+			`data: {"id":"123","choices":[{"index":0,"delta":{"content":"","role":"assistant"}}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":"To","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"123","choices":[{"index":0,"delta":{"content":"To","role":"assistant"}}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":" calculate the cosine","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"123","choices":[{"index":0,"delta":{"content":" calculate the cosine","role":"assistant"}}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":" of 7,","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"123","choices":[{"index":0,"delta":{"content":" of 7,","role":"assistant"}}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":" we can use the","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"123","choices":[{"index":0,"delta":{"content":" we can use the","role":"assistant"}}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":" \"","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"123","choices":[{"index":0,"delta":{"content":" \"","role":"assistant"}}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":"cosine\" function","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"123","choices":[{"index":0,"delta":{"content":"cosine\" function","role":"assistant"}}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":" that","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"123","choices":[{"index":0,"delta":{"content":" that","role":"assistant"}}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":" is","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"123","choices":[{"index":0,"delta":{"content":" is","role":"assistant"}}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":" available to","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"123","choices":[{"index":0,"delta":{"content":" available to","role":"assistant"}}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":" us.","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"123","choices":[{"index":0,"delta":{"content":" us.","role":"assistant"}}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":" Let","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"123","choices":[{"index":0,"delta":{"content":" Let","role":"assistant"}}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":"'s use","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"123","choices":[{"index":0,"delta":{"content":"'s use","role":"assistant"}}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":" this","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"123","choices":[{"index":0,"delta":{"content":" this","role":"assistant"}}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":" function to","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"123","choices":[{"index":0,"delta":{"content":" function to","role":"assistant"}}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":" get","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"123","choices":[{"index":0,"delta":{"content":" get","role":"assistant"}}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":" the result","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"123","choices":[{"index":0,"delta":{"content":" the result","role":"assistant"}}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":".","role":"assistant"}}],"object":"chat.completion.chunk"}
+data: {"id":"123","choices":[{"index":0,"delta":{"content":".","role":"assistant"}}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function"}]}}],"object":"chat.completion.chunk"}
+data: {"id":"123","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"tooluse_QklrEHKjRu6Oc4BQUfy7ZQ","function":{"arguments":"","name":"cosine"},"type":"function"}]}}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":null,"function":{"arguments":"","name":""},"type":"function"}]}}],"object":"chat.completion.chunk"}
+data: {"id":"123","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":null,"function":{"arguments":"","name":""},"type":"function"}]}}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":null,"function":{"arguments":"{\"x\": 7}","name":""},"type":"function"}]}}],"object":"chat.completion.chunk"}
+data: {"id":"123","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":null,"function":{"arguments":"{\"x\": 7}","name":""},"type":"function"}]}}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls"}],"object":"chat.completion.chunk"}
+data: {"id":"123","choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls"}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":386,"completion_tokens":75,"total_tokens":461}}
+data: {"id":"123","created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk","usage":{"prompt_tokens":386,"completion_tokens":75,"total_tokens":461}}
 
 data: [DONE]
-`, result)
+`, string(normalizedResults))
 	})
 }
 
@@ -1454,7 +1467,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 				},
 			},
 			output: openai.ChatCompletionResponse{
-				Object: "chat.completion",
+				ID:      "123",
+				Model:   "claude-sonnet-4",
+				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)),
+				Object:  "chat.completion",
 				Usage: openai.Usage{
 					TotalTokens:      30,
 					PromptTokens:     10,
@@ -1494,7 +1510,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 				},
 			},
 			output: openai.ChatCompletionResponse{
-				Object: "chat.completion",
+				ID:      "123",
+				Model:   "claude-sonnet-4",
+				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)),
+				Object:  "chat.completion",
 				Usage: openai.Usage{
 					TotalTokens:      30,
 					PromptTokens:     10,
@@ -1536,7 +1555,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 				},
 			},
 			output: openai.ChatCompletionResponse{
-				Object: "chat.completion",
+				ID:      "123",
+				Model:   "claude-sonnet-4",
+				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)),
+				Object:  "chat.completion",
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
 						Index:        0,
@@ -1582,7 +1604,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 				},
 			},
 			output: openai.ChatCompletionResponse{
-				Object: "chat.completion",
+				ID:      "123",
+				Model:   "claude-sonnet-4",
+				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)),
+				Object:  "chat.completion",
 				Usage: openai.Usage{
 					TotalTokens:      30,
 					PromptTokens:     10,
@@ -1633,7 +1658,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 				},
 			},
 			output: openai.ChatCompletionResponse{
-				Object: "chat.completion",
+				ID:      "123",
+				Model:   "claude-sonnet-4",
+				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)),
+				Object:  "chat.completion",
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
 						Index:        0,
@@ -1671,9 +1699,19 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			require.Equal(t, contentLengthHeaderName, hm[0].Key())
 			require.Equal(t, strconv.Itoa(len(newBody)), hm[0].Value())
 
+			// normalize newBody
+			var chatCompletion openai.ChatCompletionResponse
+			err = json.Unmarshal(newBody, &chatCompletion)
+			require.NoError(t, err)
+			chatCompletion.ID = "123"
+			chatCompletion.Model = "claude-sonnet-4"
+			chatCompletion.Created = openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0))
+			normalizedBody, normalizedErr := json.Marshal(chatCompletion)
+			require.NoError(t, normalizedErr)
+
 			expectedBody, err := json.Marshal(tt.output)
 			require.NoError(t, err)
-			require.JSONEq(t, string(expectedBody), string(newBody))
+			require.JSONEq(t, string(expectedBody), string(normalizedBody))
 			expectedUsage := LLMTokenUsage{
 				InputTokens:  uint32(tt.output.Usage.PromptTokens),     //nolint:gosec
 				OutputTokens: uint32(tt.output.Usage.CompletionTokens), //nolint:gosec
@@ -1877,7 +1915,10 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 				},
 			},
 			out: &openai.ChatCompletionResponseChunk{
-				Object: "chat.completion.chunk",
+				ID:      "123",
+				Model:   "claude-sonnet-4",
+				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)), // 0 nanoseconds
+				Object:  "chat.completion.chunk",
 				Usage: &openai.Usage{
 					TotalTokens:      30,
 					PromptTokens:     10,
@@ -1895,7 +1936,10 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 				Role:      ptrOf(awsbedrock.ConversationRoleAssistant),
 			},
 			out: &openai.ChatCompletionResponseChunk{
-				Object: "chat.completion.chunk",
+				ID:      "123",
+				Model:   "claude-sonnet-4",
+				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)), // 0 nanoseconds
+				Object:  "chat.completion.chunk",
 				Choices: []openai.ChatCompletionResponseChunkChoice{
 					{
 						Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
@@ -1913,7 +1957,10 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 				Delta:     &awsbedrock.ConverseStreamEventContentBlockDelta{Text: ptr.To("response")},
 			},
 			out: &openai.ChatCompletionResponseChunk{
-				Object: "chat.completion.chunk",
+				ID:      "123",
+				Model:   "claude-sonnet-4",
+				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)), // 0 nanoseconds
+				Object:  "chat.completion.chunk",
 				Choices: []openai.ChatCompletionResponseChunkChoice{
 					{
 						Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
@@ -1934,7 +1981,10 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 				},
 			},
 			out: &openai.ChatCompletionResponseChunk{
-				Object: "chat.completion.chunk",
+				ID:      "123",
+				Model:   "claude-sonnet-4",
+				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)), // 0 nanoseconds
+				Object:  "chat.completion.chunk",
 				Choices: []openai.ChatCompletionResponseChunkChoice{
 					{
 						Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
@@ -1948,12 +1998,15 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
+			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{requestModel: "claude-sonnet-4"}
 			chunk, ok := o.convertEvent(&tc.in)
+			// Define the comparison options: Ignore the "ID" and "Created" field
+			ignoreDynamicFields := cmpopts.IgnoreFields(openai.ChatCompletionResponseChunk{}, "ID", "Created")
 			if tc.out == nil {
 				require.False(t, ok)
 			} else {
-				require.Equal(t, tc.out, chunk)
+				// Use require.True and cmp.Equal with the options
+				require.True(t, cmp.Equal(*tc.out, *chunk, ignoreDynamicFields), "The ChatCompletionResponseChunk structs should be equal ignoring the ID and Created field")
 			}
 		})
 	}
