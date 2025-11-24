@@ -76,17 +76,17 @@ type Translator[ReqT any, SpanT any] interface {
 
 type (
 	// OpenAIChatCompletionTranslator translates the OpenAI's /chat/completions endpoint.
-	OpenAIChatCompletionTranslator Translator[openai.ChatCompletionRequest, tracing.ChatCompletionSpan]
-	// OpenAIEmbeddingTranslator translates the OpenAI's /embeddings endpoint.
-	OpenAIEmbeddingTranslator Translator[openai.EmbeddingRequest, any]
-	// OpenAICompletionTranslator translates the OpenAI's /completions endpoint.
-	OpenAICompletionTranslator Translator[openai.CompletionRequest, tracing.CompletionSpan]
-	// CohereRerankTranslator translates the Cohere's /v2/rerank endpoint.
-	CohereRerankTranslator Translator[cohereschema.RerankV2Request, any]
-	// AnthropicMessagesTranslator translates the Anthropic's /messages endpoint.
-	AnthropicMessagesTranslator Translator[anthropicschema.MessagesRequest, any]
+	OpenAIChatCompletionTranslator = Translator[openai.ChatCompletionRequest, tracing.ChatCompletionSpan]
+	// OpenAIEmbeddingTranslator = translates the OpenAI's /embeddings endpoint.
+	OpenAIEmbeddingTranslator = Translator[openai.EmbeddingRequest, any]
+	// OpenAICompletionTranslator = translates the OpenAI's /completions endpoint.
+	OpenAICompletionTranslator = Translator[openai.CompletionRequest, tracing.CompletionSpan]
+	// CohereRerankTranslator = translates the Cohere's /v2/rerank endpoint.
+	CohereRerankTranslator = Translator[cohereschema.RerankV2Request, any]
+	// AnthropicMessagesTranslator = translates the Anthropic's /messages endpoint.
+	AnthropicMessagesTranslator = Translator[anthropicschema.MessagesRequest, any]
 	// OpenAIImageGenerationTranslator translates the OpenAI's /images/generations endpoint.
-	OpenAIImageGenerationTranslator Translator[openaisdk.ImageGenerateParams, any]
+	OpenAIImageGenerationTranslator = Translator[openaisdk.ImageGenerateParams, any]
 )
 
 // LLMTokenUsage represents the token usage reported usually by the backend API in the response body.
