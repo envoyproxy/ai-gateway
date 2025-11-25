@@ -1498,8 +1498,8 @@ type Model struct {
 	OwnedBy string `json:"owned_by"`
 }
 
-// EmbeddingRequest represents a request structure for embeddings API.
-type EmbeddingRequest struct {
+// EmbeddingCompletionRequest represents a request structure for embeddings API.
+type EmbeddingCompletionRequest struct {
 	// Input: Input text to embed, encoded as a string or array of tokens.
 	// To embed multiple inputs in a single request, pass an array of strings or array of token arrays.
 	// The input must not exceed the max input tokens for the model (8192 tokens for text-embedding-ada-002),
@@ -1523,6 +1523,35 @@ type EmbeddingRequest struct {
 	// User: A unique identifier representing your end-user, which can help OpenAI to monitor and detect abuse.
 	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-user
 	User *string `json:"user,omitempty"`
+}
+
+// EmbeddingChatRequest represents a request structure for embeddings API. This is not a standard openai, but just extend the request to have messages/chat like completion requests
+type EmbeddingChatRequest struct {
+	// Messages: A list of messages comprising the conversation so far.
+	// Depending on the model you use, different message types (modalities) are supported,
+	// like text, images, and audio.
+	Messages []ChatCompletionMessageParamUnion `json:"messages"`
+
+	// Model: ID of the model to use.
+	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-model
+	Model string `json:"model"`
+
+	// EncodingFormat: The format to return the embeddings in. Can be either float or base64.
+	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-encoding_format
+	EncodingFormat *string `json:"encoding_format,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// Dimensions: The number of dimensions the resulting output embeddings should have.
+	// Only supported in text-embedding-3 and later models.
+	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-dimensions
+	Dimensions *int `json:"dimensions,omitempty"`
+
+	// User: A unique identifier representing your end-user, which can help OpenAI to monitor and detect abuse.
+	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-user
+	User *string `json:"user,omitempty"`
+}
+
+type EmbedddingRequest interface {
+	EmbeddingCompletionRequest | EmbeddingChatRequest
 }
 
 // EmbeddingResponse represents a response from /v1/embeddings.
