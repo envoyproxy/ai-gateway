@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"testing"
 
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	openaisdk "github.com/openai/openai-go/v2"
@@ -38,7 +39,9 @@ func TestImageGeneration_Schema(t *testing.T) {
 	})
 	t.Run("supported openai / on upstream", func(t *testing.T) {
 		cfg := &filterapi.RuntimeConfig{}
-		routeFilter, err := ImageGenerationProcessorFactory(nil)(cfg, nil, slog.Default(), tracing.NoopTracing{}, true)
+		routeFilter, err := ImageGenerationProcessorFactory(func() metrics.ImageGenerationMetrics {
+			return nil
+		})(cfg, nil, slog.Default(), tracing.NoopTracing{}, true)
 		require.NoError(t, err)
 		require.NotNil(t, routeFilter)
 		require.IsType(t, &imageGenerationProcessorUpstreamFilter{}, routeFilter)
