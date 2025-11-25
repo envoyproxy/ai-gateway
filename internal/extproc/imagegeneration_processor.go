@@ -29,7 +29,7 @@ import (
 )
 
 // ImageGenerationProcessorFactory returns a factory method to instantiate the image generation processor.
-func ImageGenerationProcessorFactory(igm metrics.ImageGenerationMetrics) ProcessorFactory {
+func ImageGenerationProcessorFactory(igm metrics.ImageGenerationMetricsFactory) ProcessorFactory {
 	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "image-generation", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
@@ -44,7 +44,7 @@ func ImageGenerationProcessorFactory(igm metrics.ImageGenerationMetrics) Process
 			config:         config,
 			requestHeaders: requestHeaders,
 			logger:         logger,
-			metrics:        igm,
+			metrics:        igm(),
 		}, nil
 	}
 }
