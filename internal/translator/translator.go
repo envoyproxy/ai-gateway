@@ -78,7 +78,7 @@ type (
 	// OpenAIChatCompletionTranslator translates the OpenAI's /chat/completions endpoint.
 	OpenAIChatCompletionTranslator = Translator[openai.ChatCompletionRequest, tracing.ChatCompletionSpan]
 	// OpenAIEmbeddingTranslator = translates the OpenAI's /embeddings endpoint.
-	OpenAIEmbeddingTranslator = Translator[openai.EmbeddingRequest, any]
+	OpenAIEmbeddingTranslator = Translator[openai.EmbeddingRequest, tracing.EmbeddingsSpan]
 	// OpenAICompletionTranslator = translates the OpenAI's /completions endpoint.
 	OpenAICompletionTranslator = Translator[openai.CompletionRequest, tracing.CompletionSpan]
 	// CohereRerankTranslator = translates the Cohere's /v2/rerank endpoint.

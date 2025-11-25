@@ -475,7 +475,7 @@ func TestResponseModel_OpenAI(t *testing.T) {
 
 // TestResponseModel_OpenAIEmbeddings tests OpenAI embeddings (not virtualized but has response field)
 func TestResponseModel_OpenAIEmbeddings(t *testing.T) {
-	translator := NewEmbeddingOpenAIToOpenAITranslator("v1", "", nil)
+	translator := NewEmbeddingOpenAIToOpenAITranslator("v1", "")
 
 	// OpenAI embeddings response includes model field even though no virtualization
 	var resp openai.EmbeddingResponse

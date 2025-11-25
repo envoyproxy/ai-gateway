@@ -13,17 +13,15 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 // NewEmbeddingOpenAIToAzureOpenAITranslator implements [Factory] for OpenAI to Azure OpenAI translation
 // for embeddings.
-func NewEmbeddingOpenAIToAzureOpenAITranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride, span tracing.EmbeddingsSpan) OpenAIEmbeddingTranslator {
+func NewEmbeddingOpenAIToAzureOpenAITranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride) OpenAIEmbeddingTranslator {
 	return &openAIToAzureOpenAITranslatorV1Embedding{
 		apiVersion: apiVersion,
 		openAIToOpenAITranslatorV1Embedding: openAIToOpenAITranslatorV1Embedding{
 			modelNameOverride: modelNameOverride,
-			span:              span,
 		},
 	}
 }
