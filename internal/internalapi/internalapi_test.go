@@ -13,23 +13,20 @@ import (
 )
 
 func TestParseEndpointPrefixes_Success(t *testing.T) {
-	in := "openai:/,cohere:/cohere,anthropic:/anthropic"
+	in := "openai:/foo,cohere:/1/2/3,anthropic:/cat"
 	ep, err := ParseEndpointPrefixes(in)
 	require.NoError(t, err)
-	require.NotNil(t, ep.OpenAI)
-	require.NotNil(t, ep.Cohere)
-	require.NotNil(t, ep.Anthropic)
-	require.Equal(t, "/", *ep.OpenAI)
-	require.Equal(t, "/cohere", *ep.Cohere)
-	require.Equal(t, "/anthropic", *ep.Anthropic)
+	require.Equal(t, "/foo", ep.OpenAI)
+	require.Equal(t, "/1/2/3", ep.Cohere)
+	require.Equal(t, "/cat", ep.Anthropic)
 }
 
 func TestParseEndpointPrefixes_EmptyInput(t *testing.T) {
 	ep, err := ParseEndpointPrefixes("")
 	require.NoError(t, err)
-	require.Nil(t, ep.OpenAI)
-	require.Nil(t, ep.Cohere)
-	require.Nil(t, ep.Anthropic)
+	require.Equal(t, "/", ep.OpenAI)
+	require.Equal(t, "/cohere", ep.Cohere)
+	require.Equal(t, "/anthropic", ep.Anthropic)
 }
 
 func TestParseEndpointPrefixes_UnknownKey(t *testing.T) {
@@ -41,8 +38,7 @@ func TestParseEndpointPrefixes_UnknownKey(t *testing.T) {
 func TestParseEndpointPrefixes_EmptyValue(t *testing.T) {
 	ep, err := ParseEndpointPrefixes("openai:")
 	require.NoError(t, err)
-	require.NotNil(t, ep.OpenAI)
-	require.Empty(t, *ep.OpenAI)
+	require.Empty(t, ep.OpenAI)
 }
 
 func TestParseEndpointPrefixes_MissingColon(t *testing.T) {
@@ -55,20 +51,6 @@ func TestParseEndpointPrefixes_EmptyPair(t *testing.T) {
 	_, err := ParseEndpointPrefixes("openai:/,,cohere:/cohere")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "empty endpointPrefixes pair at position 2")
-}
-
-func TestEndpointPrefixes_SetDefaults(t *testing.T) {
-	openai := "/custom/openai"
-	ep := EndpointPrefixes{OpenAI: &openai}
-	ep.SetDefaults()
-	// Provided field is preserved
-	require.NotNil(t, ep.OpenAI)
-	require.Equal(t, "/custom/openai", *ep.OpenAI)
-	// Missing fields defaulted
-	require.NotNil(t, ep.Cohere)
-	require.NotNil(t, ep.Anthropic)
-	require.Equal(t, "/cohere", *ep.Cohere)
-	require.Equal(t, "/anthropic", *ep.Anthropic)
 }
 
 func TestPerRouteRuleRefBackendName(t *testing.T) {
