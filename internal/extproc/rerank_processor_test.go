@@ -543,7 +543,7 @@ func (m *mockRerankTranslator) ResponseHeaders(headers map[string]string) ([]int
 	return m.retHeaderMutation, m.retErr
 }
 
-func (m *mockRerankTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ any) ([]internalapi.Header, []byte, translator.LLMTokenUsage, internalapi.ResponseModel, error) {
+func (m *mockRerankTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracing.RerankSpan) ([]internalapi.Header, []byte, translator.LLMTokenUsage, internalapi.ResponseModel, error) {
 	if m.expResponseBody != nil {
 		got, _ := io.ReadAll(body)
 		require.True(m.t, bytes.Equal(m.expResponseBody.Body, got))

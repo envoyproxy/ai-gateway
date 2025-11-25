@@ -20,8 +20,8 @@ import (
 )
 
 // NewRerankCohereToCohereTranslator implements [Factory] for Cohere Rerank v2 translation.
-func NewRerankCohereToCohereTranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride, span tracing.RerankSpan) CohereRerankTranslator {
-	return &cohereToCohereTranslatorV2Rerank{modelNameOverride: modelNameOverride, path: path.Join("/", apiVersion, "rerank"), span: span} // e.g., /v2/rerank
+func NewRerankCohereToCohereTranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride) CohereRerankTranslator {
+	return &cohereToCohereTranslatorV2Rerank{modelNameOverride: modelNameOverride, path: path.Join("/", apiVersion, "rerank")} // e.g., /v2/rerank
 }
 
 // cohereToCohereTranslatorV2Rerank is a passthrough translator for Cohere Rerank API v2.
@@ -33,8 +33,6 @@ type cohereToCohereTranslatorV2Rerank struct {
 	requestModel internalapi.RequestModel
 	// The path of the rerank endpoint to be used for the request. It is prefixed with the API path prefix.
 	path string
-	// span is the tracing span for this request, inherited from the router filter.
-	span tracing.RerankSpan
 }
 
 // RequestBody implements [CohereRerankTranslator.RequestBody].
@@ -72,7 +70,7 @@ func (t *cohereToCohereTranslatorV2Rerank) ResponseHeaders(map[string]string) (n
 
 // ResponseBody implements [CohereRerankTranslator.ResponseBody].
 // For rerank, token usage is provided via meta.tokens.input_tokens when available.
-func (t *cohereToCohereTranslatorV2Rerank) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ any) (
+func (t *cohereToCohereTranslatorV2Rerank) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracing.RerankSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
 	var resp cohereschema.RerankV2Response
@@ -81,8 +79,8 @@ func (t *cohereToCohereTranslatorV2Rerank) ResponseBody(_ map[string]string, bod
 	}
 
 	// Record the response in the span if successful.
-	if t.span != nil {
-		t.span.RecordResponse(&resp)
+	if span != nil {
+		span.RecordResponse(&resp)
 	}
 
 	// Token accounting: rerank only has input tokens; output tokens do not apply.

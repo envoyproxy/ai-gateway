@@ -500,7 +500,7 @@ func (m *mockImageGenerationTranslator) ResponseHeaders(headers map[string]strin
 	return m.retHeaderMutation, m.retErr
 }
 
-func (m *mockImageGenerationTranslator) ResponseBody(headers map[string]string, body io.Reader, endOfStream bool, _ any) ([]internalapi.Header, []byte, translator.LLMTokenUsage, internalapi.ResponseModel, error) {
+func (m *mockImageGenerationTranslator) ResponseBody(headers map[string]string, body io.Reader, endOfStream bool, _ tracing.ImageGenerationSpan) ([]internalapi.Header, []byte, translator.LLMTokenUsage, internalapi.ResponseModel, error) {
 	_ = headers
 	if m.expResponseBody != nil {
 		bodyBytes, _ := io.ReadAll(body)

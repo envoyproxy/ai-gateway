@@ -82,11 +82,11 @@ type (
 	// OpenAICompletionTranslator translates the OpenAI's /completions endpoint.
 	OpenAICompletionTranslator = Translator[openai.CompletionRequest, tracing.CompletionSpan]
 	// CohereRerankTranslator translates the Cohere's /v2/rerank endpoint.
-	CohereRerankTranslator = Translator[cohereschema.RerankV2Request, any]
+	CohereRerankTranslator = Translator[cohereschema.RerankV2Request, tracing.RerankSpan]
 	// AnthropicMessagesTranslator translates the Anthropic's /messages endpoint.
-	AnthropicMessagesTranslator = Translator[anthropicschema.MessagesRequest, any]
+	AnthropicMessagesTranslator = Translator[anthropicschema.MessagesRequest, any] // We don't have tracing implementation for /messages yet.
 	// OpenAIImageGenerationTranslator translates the OpenAI's /images/generations endpoint.
-	OpenAIImageGenerationTranslator = Translator[openaisdk.ImageGenerateParams, any]
+	OpenAIImageGenerationTranslator = Translator[openaisdk.ImageGenerateParams, tracing.ImageGenerationSpan]
 )
 
 // LLMTokenUsage represents the token usage reported usually by the backend API in the response body.

@@ -172,7 +172,7 @@ type rerankProcessorUpstreamFilter struct {
 func (r *rerankProcessorUpstreamFilter) selectTranslator(out filterapi.VersionedAPISchema) error {
 	switch out.Name {
 	case filterapi.APISchemaCohere:
-		r.translator = translator.NewRerankCohereToCohereTranslator(out.Version, r.modelNameOverride, r.span)
+		r.translator = translator.NewRerankCohereToCohereTranslator(out.Version, r.modelNameOverride)
 	default:
 		return fmt.Errorf("unsupported API schema: backend=%s", out)
 	}
@@ -332,7 +332,7 @@ func (r *rerankProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context,
 		}, nil
 	}
 
-	newHeaders, newBody, tokenUsage, responseModel, err := r.translator.ResponseBody(r.responseHeaders, decodingResult.reader, body.EndOfStream, nil)
+	newHeaders, newBody, tokenUsage, responseModel, err := r.translator.ResponseBody(r.responseHeaders, decodingResult.reader, body.EndOfStream, r.span)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}

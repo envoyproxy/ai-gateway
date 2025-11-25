@@ -18,7 +18,7 @@ import (
 )
 
 func TestOpenAIToOpenAIImageTranslator_RequestBody_ModelOverrideAndPath(t *testing.T) {
-	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", openai.ModelGPTImage1Mini, nil)
+	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", openai.ModelGPTImage1Mini)
 	req := &openaisdk.ImageGenerateParams{Model: openaisdk.ImageModelDallE3, Prompt: "a cat"}
 	original, _ := json.Marshal(req)
 
@@ -37,7 +37,7 @@ func TestOpenAIToOpenAIImageTranslator_RequestBody_ModelOverrideAndPath(t *testi
 }
 
 func TestOpenAIToOpenAIImageTranslator_RequestBody_ForceMutation(t *testing.T) {
-	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "", nil)
+	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "")
 	req := &openaisdk.ImageGenerateParams{Model: openaisdk.ImageModelDallE2, Prompt: "a cat"}
 	original, _ := json.Marshal(req)
 
@@ -58,7 +58,7 @@ func TestOpenAIToOpenAIImageTranslator_RequestBody_ForceMutation(t *testing.T) {
 }
 
 func TestOpenAIToOpenAIImageTranslator_ResponseError_NonJSON(t *testing.T) {
-	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "", nil)
+	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "")
 	headers := map[string]string{contentTypeHeaderName: "text/plain", statusHeaderName: "503"}
 	hm, bm, err := tr.ResponseError(headers, bytes.NewReader([]byte("backend error")))
 	require.NoError(t, err)
@@ -74,7 +74,7 @@ func TestOpenAIToOpenAIImageTranslator_ResponseError_NonJSON(t *testing.T) {
 }
 
 func TestOpenAIToOpenAIImageTranslator_ResponseBody_OK(t *testing.T) {
-	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "", nil)
+	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "")
 	resp := &openaisdk.ImagesResponse{Size: openaisdk.ImagesResponseSize1024x1024}
 	buf, _ := json.Marshal(resp)
 	hm, bm, usage, responseModel, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true, nil)
@@ -87,7 +87,7 @@ func TestOpenAIToOpenAIImageTranslator_ResponseBody_OK(t *testing.T) {
 }
 
 func TestOpenAIToOpenAIImageTranslator_RequestBody_NoOverrideNoForce(t *testing.T) {
-	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "", nil)
+	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "")
 	req := &openaisdk.ImageGenerateParams{Model: openaisdk.ImageModelDallE2, Prompt: "a cat"}
 	original, _ := json.Marshal(req)
 
@@ -101,7 +101,7 @@ func TestOpenAIToOpenAIImageTranslator_RequestBody_NoOverrideNoForce(t *testing.
 }
 
 func TestOpenAIToOpenAIImageTranslator_ResponseError_JSONPassthrough(t *testing.T) {
-	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "", nil)
+	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "")
 	headers := map[string]string{contentTypeHeaderName: jsonContentType, statusHeaderName: "500"}
 	// Already JSON — should be passed through (no mutation)
 	hm, bm, err := tr.ResponseError(headers, bytes.NewReader([]byte(`{"error":"msg"}`)))
@@ -115,7 +115,7 @@ type errReader struct{}
 func (errReader) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }
 
 func TestOpenAIToOpenAIImageTranslator_ResponseError_ReadError(t *testing.T) {
-	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "", nil)
+	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "")
 	headers := map[string]string{statusHeaderName: "503"}
 	hm, bm, err := tr.ResponseError(headers, errReader{})
 	require.Error(t, err)
@@ -126,7 +126,7 @@ func TestOpenAIToOpenAIImageTranslator_ResponseError_ReadError(t *testing.T) {
 
 func TestOpenAIToOpenAIImageTranslator_ResponseBody_ModelPropagatesFromRequest(t *testing.T) {
 	// Use override so effective model differs from original
-	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", openai.ModelGPTImage1Mini, nil)
+	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", openai.ModelGPTImage1Mini)
 	req := &openaisdk.ImageGenerateParams{Model: openaisdk.ImageModelDallE3, Prompt: "a cat"}
 	original, _ := json.Marshal(req)
 	// Call RequestBody first to set requestModel inside translator
@@ -145,14 +145,14 @@ func TestOpenAIToOpenAIImageTranslator_ResponseBody_ModelPropagatesFromRequest(t
 }
 
 func TestOpenAIToOpenAIImageTranslator_ResponseHeaders_NoOp(t *testing.T) {
-	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "", nil)
+	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "")
 	hm, err := tr.ResponseHeaders(map[string]string{"foo": "bar"})
 	require.NoError(t, err)
 	require.Nil(t, hm)
 }
 
 func TestOpenAIToOpenAIImageTranslator_ResponseBody_DecodeError(t *testing.T) {
-	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "", nil)
+	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "")
 	_, _, _, _, err := tr.ResponseBody(map[string]string{}, bytes.NewReader([]byte("not-json")), true, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to decode response body")
@@ -160,14 +160,14 @@ func TestOpenAIToOpenAIImageTranslator_ResponseBody_DecodeError(t *testing.T) {
 
 func TestOpenAIToOpenAIImageTranslator_ResponseBody_RecordsSpan(t *testing.T) {
 	mockSpan := &mockImageGenerationSpan{}
-	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "", mockSpan)
+	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "")
 
 	resp := &openaisdk.ImagesResponse{
 		Data: []openaisdk.Image{{URL: "https://example.com/img.png"}},
 		Size: openaisdk.ImagesResponseSize1024x1024,
 	}
 	buf, _ := json.Marshal(resp)
-	_, _, _, _, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true, nil)
+	_, _, _, _, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true, mockSpan)
 	require.NoError(t, err)
 	require.NotNil(t, mockSpan.recordedResponse)
 }

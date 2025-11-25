@@ -179,7 +179,7 @@ type imageGenerationProcessorUpstreamFilter struct {
 func (i *imageGenerationProcessorUpstreamFilter) selectTranslator(out filterapi.VersionedAPISchema) error {
 	switch out.Name {
 	case filterapi.APISchemaOpenAI:
-		i.translator = translator.NewImageGenerationOpenAIToOpenAITranslator(out.Version, i.modelNameOverride, i.span)
+		i.translator = translator.NewImageGenerationOpenAIToOpenAITranslator(out.Version, i.modelNameOverride)
 	default:
 		return fmt.Errorf("unsupported API schema: backend=%s", out)
 	}
@@ -363,7 +363,7 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessResponseBody(ctx context
 	var newBody []byte
 	var tokenUsage translator.LLMTokenUsage
 	var responseModel internalapi.ResponseModel
-	newHeaders, newBody, tokenUsage, responseModel, err = i.translator.ResponseBody(i.responseHeaders, decodingResult.reader, body.EndOfStream, nil)
+	newHeaders, newBody, tokenUsage, responseModel, err = i.translator.ResponseBody(i.responseHeaders, decodingResult.reader, body.EndOfStream, i.span)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
 	}
