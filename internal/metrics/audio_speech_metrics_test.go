@@ -16,7 +16,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
-	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 )
 
