@@ -251,12 +251,12 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to create metrics: %w", err)
 	}
-	chatCompletionMetrics := metrics.NewChatCompletionFactory(meter, metricsRequestHeaderAttributes)
-	messagesMetrics := metrics.NewMessagesFactory(meter, metricsRequestHeaderAttributes)
-	completionMetrics := metrics.NewCompletionFactory(meter, metricsRequestHeaderAttributes)
-	embeddingsMetrics := metrics.NewEmbeddingsFactory(meter, metricsRequestHeaderAttributes)
-	imageGenerationMetrics := metrics.NewImageGenerationFactory(meter, metricsRequestHeaderAttributes)
-	rerankMetrics := metrics.NewRerankFactory(meter, metricsRequestHeaderAttributes)
+	chatCompletionMetricsFactory := metrics.NewChatCompletionFactory(meter, metricsRequestHeaderAttributes)
+	messagesMetricsFactory := metrics.NewMessagesFactory(meter, metricsRequestHeaderAttributes)
+	completionMetricsFactory := metrics.NewCompletionFactory(meter, metricsRequestHeaderAttributes)
+	embeddingsMetricsFactory := metrics.NewEmbeddingsFactory(meter, metricsRequestHeaderAttributes)
+	imageGenerationMetricsFactory := metrics.NewImageGenerationFactory(meter, metricsRequestHeaderAttributes)
+	rerankMetricsFactory := metrics.NewRerankFactory(meter, metricsRequestHeaderAttributes)
 	mcpMetrics := metrics.NewMCP(meter, metricsRequestHeaderAttributes)
 
 	tracing, err := tracing.NewTracingFromEnv(ctx, os.Stdout, spanRequestHeaderAttributes)
@@ -268,13 +268,13 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to create external processor server: %w", err)
 	}
-	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/chat/completions"), extproc.ChatCompletionProcessorFactory(chatCompletionMetrics))
-	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/completions"), extproc.CompletionsProcessorFactory(completionMetrics))
-	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/embeddings"), extproc.EmbeddingsProcessorFactory(embeddingsMetrics))
-	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/images/generations"), extproc.ImageGenerationProcessorFactory(imageGenerationMetrics))
-	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.Cohere, "/v2/rerank"), extproc.RerankProcessorFactory(rerankMetrics))
+	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/chat/completions"), extproc.ChatCompletionProcessorFactory(chatCompletionMetricsFactory))
+	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/completions"), extproc.CompletionsProcessorFactory(completionMetricsFactory))
+	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/embeddings"), extproc.EmbeddingsProcessorFactory(embeddingsMetricsFactory))
+	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/images/generations"), extproc.ImageGenerationProcessorFactory(imageGenerationMetricsFactory))
+	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.Cohere, "/v2/rerank"), extproc.RerankProcessorFactory(rerankMetricsFactory))
 	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.OpenAI, "/v1/models"), extproc.NewModelsProcessor)
-	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.Anthropic, "/v1/messages"), extproc.MessagesProcessorFactory(messagesMetrics))
+	server.Register(path.Join(flags.rootPrefix, *endpointPrefixes.Anthropic, "/v1/messages"), extproc.MessagesProcessorFactory(messagesMetricsFactory))
 
 	if watchErr := filterapi.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); watchErr != nil {
 		return fmt.Errorf("failed to start config watcher: %w", watchErr)
