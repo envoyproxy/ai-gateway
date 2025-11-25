@@ -55,7 +55,9 @@ type realtimeClientSecretsProcessorRouterFilter struct {
 
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
 func (r *realtimeClientSecretsProcessorRouterFilter) ProcessRequestHeaders(_ context.Context, _ *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
-	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}, nil
+	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{
+		RequestHeaders: &extprocv3.HeadersResponse{},
+	}}, nil
 }
 
 // ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
