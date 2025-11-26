@@ -475,8 +475,3 @@ func TestNewMeterFromEnv_OTLPHeaders(t *testing.T) {
 
 	require.Equal(t, expectedAuthorization, <-actualAuthorization)
 }
-
-func TestOptUint32None(t *testing.T) {
-	uint32Max := ^uint32(0)
-	require.Equal(t, uint64(0), uint64(OptUint32(uint32Max)&OptUint32None))
-}

@@ -161,7 +161,7 @@ type embeddingsProcessorUpstreamFilter struct {
 	// onRetry is true if this is a retry request at the upstream filter.
 	onRetry bool
 	// cost is the cost of the request that is accumulated during the processing of the response.
-	costs translator.LLMTokenUsage
+	costs metrics.TokenUsage
 	// metrics tracking.
 	metrics metrics.Metrics
 	// span is the tracing span for this request, inherited from the router filter.
@@ -362,14 +362,12 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 		},
 	}
 
-	// Accumulate token usage for embeddings (only input and total tokens are relevant).
-	e.costs.InputTokens += tokenUsage.InputTokens
-	e.costs.TotalTokens += tokenUsage.TotalTokens
+	e.costs.Override(tokenUsage)
 
 	e.metrics.SetResponseModel(responseModel)
 
 	// Update metrics with token usage.
-	e.metrics.RecordTokenUsage(ctx, metrics.OptUint32(tokenUsage.InputTokens), metrics.OptUint32None, metrics.OptUint32None, e.requestHeaders)
+	e.metrics.RecordTokenUsage(ctx, e.costs, e.requestHeaders)
 
 	if body.EndOfStream && len(e.config.RequestCosts) > 0 {
 		resp.DynamicMetadata, err = buildDynamicMetadata(e.config, &e.costs, e.requestHeaders, e.backendName)

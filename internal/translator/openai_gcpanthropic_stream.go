@@ -18,6 +18,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -40,7 +41,7 @@ type anthropicStreamParser struct {
 	activeMessageID string
 	activeToolCalls map[int64]*streamingToolCall
 	toolIndex       int64
-	tokenUsage      LLMTokenUsage
+	tokenUsage      metrics.TokenUsage
 	stopReason      anthropic.StopReason
 	requestModel    internalapi.RequestModel
 	sentFirstChunk  bool
@@ -74,7 +75,7 @@ func (p *anthropicStreamParser) writeChunk(eventBlock []byte, buf *[]byte) error
 // Process reads from the Anthropic SSE stream, translates events to OpenAI chunks,
 // and returns the mutations for Envoy.
 func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
-	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel string, err error,
+	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	newBody = make([]byte, 0)
 	_ = span // TODO: add support for streaming chunks in tracing.
@@ -108,18 +109,22 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 	}
 
 	if endOfStream {
-		p.tokenUsage.TotalTokens = p.tokenUsage.InputTokens + p.tokenUsage.OutputTokens
+		inputTokens, _ := p.tokenUsage.InputTokens()
+		outputTokens, _ := p.tokenUsage.OutputTokens()
+		p.tokenUsage.SetTotalTokens(inputTokens + outputTokens)
+		totalTokens, _ := p.tokenUsage.TotalTokens()
+		cachedTokens, _ := p.tokenUsage.CachedInputTokens()
 		finalChunk := openai.ChatCompletionResponseChunk{
 			ID:      p.activeMessageID,
 			Created: p.created,
 			Object:  "chat.completion.chunk",
 			Choices: []openai.ChatCompletionResponseChunkChoice{},
 			Usage: &openai.Usage{
-				PromptTokens:     int(p.tokenUsage.InputTokens),
-				CompletionTokens: int(p.tokenUsage.OutputTokens),
-				TotalTokens:      int(p.tokenUsage.TotalTokens),
+				PromptTokens:     int(inputTokens),
+				CompletionTokens: int(outputTokens),
+				TotalTokens:      int(totalTokens),
 				PromptTokensDetails: &openai.PromptTokensDetails{
-					CachedTokens: int(p.tokenUsage.CachedInputTokens),
+					CachedTokens: int(cachedTokens),
 				},
 			},
 			Model: p.requestModel,
@@ -151,7 +156,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 		if finalChunk.Usage.PromptTokens > 0 || finalChunk.Usage.CompletionTokens > 0 || len(finalChunk.Choices) > 0 {
 			err := serializeOpenAIChatCompletionChunk(finalChunk, &newBody)
 			if err != nil {
-				return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to marshal final stream chunk: %w", err)
+				return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("failed to marshal final stream chunk: %w", err)
 			}
 		}
 		// Add the final [DONE] message to indicate the end of the stream.
@@ -198,8 +203,12 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		usage := ExtractLLMTokenUsageFromUsage(event.Message.Usage)
 		// For message_start, we store the initial usage but don't add to the accumulated
 		// The message_delta event will contain the final totals
-		p.tokenUsage.InputTokens = usage.InputTokens
-		p.tokenUsage.CachedInputTokens = usage.CachedInputTokens
+		if input, ok := usage.InputTokens(); ok {
+			p.tokenUsage.SetInputTokens(input)
+		}
+		if cached, ok := usage.CachedInputTokens(); ok {
+			p.tokenUsage.SetCachedInputTokens(cached)
+		}
 
 		// reset the toolIndex for each message
 		p.toolIndex = -1
@@ -275,11 +284,15 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		}
 		usage := ExtractLLMTokenUsageFromDeltaUsage(event.Usage)
 		// For message_delta, accumulate the incremental output tokens
-		p.tokenUsage.OutputTokens += usage.OutputTokens
+		if output, ok := usage.OutputTokens(); ok {
+			p.tokenUsage.AddOutputTokens(output)
+		}
 		// Update input tokens to include any cache tokens from delta
-		p.tokenUsage.InputTokens += usage.CachedInputTokens
-		// Accumulate any additional cache tokens from delta
-		p.tokenUsage.CachedInputTokens += usage.CachedInputTokens
+		if cached, ok := usage.CachedInputTokens(); ok {
+			p.tokenUsage.AddInputTokens(cached)
+			// Accumulate any additional cache tokens from delta
+			p.tokenUsage.AddCachedInputTokens(cached)
+		}
 		if event.Delta.StopReason != "" {
 			p.stopReason = event.Delta.StopReason
 		}

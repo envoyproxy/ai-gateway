@@ -167,7 +167,7 @@ type imageGenerationProcessorUpstreamFilter struct {
 	// stream is set to true if the request is a streaming request (for GPT-Image-1).
 	stream bool
 	// cost is the cost of the request that is accumulated during the processing of the response.
-	costs translator.LLMTokenUsage
+	costs metrics.TokenUsage
 	// metrics tracking.
 	metrics metrics.Metrics
 	// span is the tracing span for this request, inherited from the router filter.
@@ -361,7 +361,7 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessResponseBody(ctx context
 	// Translator response body transformation (if available)
 	var newHeaders []internalapi.Header
 	var newBody []byte
-	var tokenUsage translator.LLMTokenUsage
+	var tokenUsage metrics.TokenUsage
 	var responseModel internalapi.ResponseModel
 	newHeaders, newBody, tokenUsage, responseModel, err = i.translator.ResponseBody(i.responseHeaders, decodingResult.reader, body.EndOfStream, i.span)
 	if err != nil {
@@ -383,14 +383,12 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessResponseBody(ctx context
 		},
 	}
 
-	i.costs.InputTokens += tokenUsage.InputTokens
-	i.costs.OutputTokens += tokenUsage.OutputTokens
-	i.costs.TotalTokens += tokenUsage.TotalTokens
+	i.costs.Override(tokenUsage)
 
 	// Ensure response model is set before recording metrics so attributes include it.
 	i.metrics.SetResponseModel(responseModel)
 	// Update metrics with token usage (input/output only per OTEL spec).
-	i.metrics.RecordTokenUsage(ctx, metrics.OptUint32(tokenUsage.InputTokens), metrics.OptUint32None, metrics.OptUint32(tokenUsage.OutputTokens), i.requestHeaders)
+	i.metrics.RecordTokenUsage(ctx, i.costs, i.requestHeaders)
 
 	if body.EndOfStream && len(i.config.RequestCosts) > 0 {
 		metadata, err := buildDynamicMetadata(i.config, &i.costs, i.requestHeaders, i.backendName)

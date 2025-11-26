@@ -16,6 +16,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -67,7 +68,7 @@ func (o *openAIToOpenAITranslatorV1Embedding) ResponseHeaders(map[string]string)
 // so we return the actual model from the response body which may differ from the requested model
 // (e.g., request "text-embedding-3-small" → response with specific version).
 func (o *openAIToOpenAITranslatorV1Embedding) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracing.EmbeddingsSpan) (
-	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel internalapi.ResponseModel, err error,
+	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
 	var resp openai.EmbeddingResponse
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
@@ -79,12 +80,9 @@ func (o *openAIToOpenAITranslatorV1Embedding) ResponseBody(_ map[string]string, 
 		span.RecordResponse(&resp)
 	}
 
-	tokenUsage = LLMTokenUsage{
-		InputTokens: uint32(resp.Usage.PromptTokens), //nolint:gosec
-		TotalTokens: uint32(resp.Usage.TotalTokens),  //nolint:gosec
-		// Embeddings don't have output tokens, only input and total.
-		OutputTokens: 0,
-	}
+	// Embeddings don't return output tokens; populate input and total when provided.
+	tokenUsage.SetInputTokens(uint32(resp.Usage.PromptTokens)) //nolint:gosec
+	tokenUsage.SetTotalTokens(uint32(resp.Usage.TotalTokens))  //nolint:gosec
 	responseModel = resp.Model
 	return
 }

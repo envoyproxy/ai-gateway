@@ -161,7 +161,7 @@ type rerankProcessorUpstreamFilter struct {
 	// onRetry is true if this is a retry request at the upstream filter.
 	onRetry bool
 	// cost is the cost of the request that is accumulated during the processing of the response.
-	costs translator.LLMTokenUsage
+	costs metrics.TokenUsage
 	// metrics tracking.
 	metrics metrics.Metrics
 	// span is the tracing span for this request, inherited from the router filter.
@@ -352,16 +352,13 @@ func (r *rerankProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context,
 		},
 	}
 
-	// Accumulate token usage for rerank (input tokens; output tokens may be reported but not used for cost by default).
-	r.costs.InputTokens += tokenUsage.InputTokens
-	r.costs.OutputTokens += tokenUsage.OutputTokens
-	r.costs.TotalTokens += tokenUsage.TotalTokens
+	r.costs.Override(tokenUsage)
 
 	// Set the response model for metrics
 	r.metrics.SetResponseModel(responseModel)
 
 	// Update metrics with token usage (rerank records only input tokens in metrics package).
-	r.metrics.RecordTokenUsage(ctx, metrics.OptUint32(tokenUsage.InputTokens), metrics.OptUint32None, metrics.OptUint32None, r.requestHeaders)
+	r.metrics.RecordTokenUsage(ctx, tokenUsage, r.requestHeaders)
 
 	if body.EndOfStream && len(r.config.RequestCosts) > 0 {
 		resp.DynamicMetadata, err = buildDynamicMetadata(r.config, &r.costs, r.requestHeaders, r.backendName)

@@ -18,6 +18,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -108,7 +109,7 @@ func (o *openAIToOpenAIImageGenerationTranslator) ResponseHeaders(map[string]str
 
 // ResponseBody implements [ImageGenerationTranslator.ResponseBody].
 func (o *openAIToOpenAIImageGenerationTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracing.ImageGenerationSpan) (
-	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel internalapi.ResponseModel, err error,
+	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
 	// Decode using OpenAI SDK v2 schema to avoid drift.
 	resp := &openaisdk.ImagesResponse{}
@@ -118,9 +119,9 @@ func (o *openAIToOpenAIImageGenerationTranslator) ResponseBody(_ map[string]stri
 
 	// Populate token usage if provided (GPT-Image-1); otherwise remain zero.
 	if resp.JSON.Usage.Valid() {
-		tokenUsage.InputTokens = uint32(resp.Usage.InputTokens)   //nolint:gosec
-		tokenUsage.OutputTokens = uint32(resp.Usage.OutputTokens) //nolint:gosec
-		tokenUsage.TotalTokens = uint32(resp.Usage.TotalTokens)   //nolint:gosec
+		tokenUsage.SetInputTokens(uint32(resp.Usage.InputTokens))   //nolint:gosec
+		tokenUsage.SetOutputTokens(uint32(resp.Usage.OutputTokens)) //nolint:gosec
+		tokenUsage.SetTotalTokens(uint32(resp.Usage.TotalTokens))   //nolint:gosec
 	}
 
 	// There is no response model field, so use the request one.

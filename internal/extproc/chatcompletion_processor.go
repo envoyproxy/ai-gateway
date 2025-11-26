@@ -189,7 +189,7 @@ type chatCompletionProcessorUpstreamFilter struct {
 	// onRetry is true if this is a retry request at the upstream filter.
 	onRetry bool
 	// cost is the cost of the request that is accumulated during the processing of the response.
-	costs translator.LLMTokenUsage
+	costs metrics.TokenUsage
 	// metrics tracking.
 	metrics metrics.Metrics
 	// stream is set to true if the request is a streaming request.
@@ -413,17 +413,8 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 		},
 	}
 
-	// Update accumulated token usage.
-	// TODO: we need to investigate if we need to accumulate the token usage for streaming responses.
-	if c.stream {
-		// For streaming, translators report cumulative usage; keep the latest totals.
-		if tokenUsage != (translator.LLMTokenUsage{}) {
-			c.costs = tokenUsage
-		}
-	} else {
-		// Non-streaming: single-shot totals.
-		c.costs = tokenUsage
-	}
+	// Translator reports the latest cumulative token usage which we use to override existing costs.
+	c.costs.Override(tokenUsage)
 
 	// Set the response model for metrics
 	c.metrics.SetResponseModel(responseModel)
@@ -432,16 +423,17 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 	if c.stream {
 		// Token latency is only recorded for streaming responses, otherwise it doesn't make sense since
 		// these metrics are defined as a difference between the two output events.
-		c.metrics.RecordTokenLatency(ctx, tokenUsage.OutputTokens, body.EndOfStream, c.requestHeaders)
+		out, _ := c.costs.OutputTokens()
+		c.metrics.RecordTokenLatency(ctx, out, body.EndOfStream, c.requestHeaders)
 		// Emit usage once at end-of-stream using final totals.
 		if body.EndOfStream {
-			c.metrics.RecordTokenUsage(ctx, metrics.OptUint32(c.costs.InputTokens), metrics.OptUint32(c.costs.CachedInputTokens), metrics.OptUint32(c.costs.OutputTokens), c.requestHeaders)
+			c.metrics.RecordTokenUsage(ctx, c.costs, c.requestHeaders)
 		}
 		// TODO: if c.forcedStreamOptionIncludeUsage is true, we should not include usage in the response body since
 		// that's what the clients would expect. However, it is a little bit tricky as we simply just reading the streaming
 		// chunk by chunk, we only want to drop a specific line before the last chunk.
 	} else {
-		c.metrics.RecordTokenUsage(ctx, metrics.OptUint32(tokenUsage.InputTokens), metrics.OptUint32(tokenUsage.CachedInputTokens), metrics.OptUint32(tokenUsage.OutputTokens), c.requestHeaders)
+		c.metrics.RecordTokenUsage(ctx, c.costs, c.requestHeaders)
 	}
 
 	if body.EndOfStream && len(c.config.RequestCosts) > 0 {
@@ -554,29 +546,33 @@ func buildContentLengthDynamicMetadataOnRequest(contentLength int) *structpb.Str
 // This function is called by the upstream filter only at the end of the stream (body.EndOfStream=true)
 // when the response is successfully completed. It is not called for failed requests or partial responses.
 // The metadata includes token usage costs and model information for downstream processing.
-func buildDynamicMetadata(config *filterapi.RuntimeConfig, costs *translator.LLMTokenUsage, requestHeaders map[string]string, backendName string) (*structpb.Struct, error) {
+func buildDynamicMetadata(config *filterapi.RuntimeConfig, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName string) (*structpb.Struct, error) {
 	metadata := make(map[string]*structpb.Value, len(config.RequestCosts)+2)
 	for i := range config.RequestCosts {
 		rc := &config.RequestCosts[i]
 		var cost uint32
 		switch rc.Type {
 		case filterapi.LLMRequestCostTypeInputToken:
-			cost = costs.InputTokens
+			cost, _ = costs.InputTokens()
 		case filterapi.LLMRequestCostTypeCachedInputToken:
-			cost = costs.CachedInputTokens
+			cost, _ = costs.CachedInputTokens()
 		case filterapi.LLMRequestCostTypeOutputToken:
-			cost = costs.OutputTokens
+			cost, _ = costs.OutputTokens()
 		case filterapi.LLMRequestCostTypeTotalToken:
-			cost = costs.TotalTokens
+			cost, _ = costs.TotalTokens()
 		case filterapi.LLMRequestCostTypeCEL:
+			in, _ := costs.InputTokens()
+			cachedIn, _ := costs.CachedInputTokens()
+			out, _ := costs.OutputTokens()
+			total, _ := costs.TotalTokens()
 			costU64, err := llmcostcel.EvaluateProgram(
 				rc.CELProg,
 				requestHeaders[internalapi.ModelNameHeaderKeyDefault],
 				backendName,
-				costs.InputTokens,
-				costs.CachedInputTokens,
-				costs.OutputTokens,
-				costs.TotalTokens,
+				in,
+				cachedIn,
+				out,
+				total,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to evaluate CEL expression: %w", err)

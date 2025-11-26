@@ -82,7 +82,7 @@ type mockTranslator struct {
 	expResponseBody             *extprocv3.HttpBody
 	retHeaderMutation           []internalapi.Header
 	retBodyMutation             []byte
-	retUsedToken                translator.LLMTokenUsage
+	retUsedToken                metrics.TokenUsage
 	retResponseModel            internalapi.ResponseModel
 	retErr                      error
 	expForceRequestBodyMutation bool
@@ -112,7 +112,7 @@ func (m mockTranslator) ResponseError(_ map[string]string, body io.Reader) (newH
 }
 
 // ResponseBody implements [translator.OpenAIChatCompletionTranslator].
-func (m mockTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracing.ChatCompletionSpan) (newHeaders []internalapi.Header, newBody []byte, tokenUsage translator.LLMTokenUsage, responseModel string, err error) {
+func (m mockTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracing.ChatCompletionSpan) (newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error) {
 	if m.expResponseBody != nil {
 		buf, err := io.ReadAll(body)
 		require.NoError(m.t, err)
@@ -213,18 +213,15 @@ func (m *mockMetrics) SetResponseModel(responseModel internalapi.ResponseModel) 
 func (m *mockMetrics) SetBackend(backend *filterapi.Backend) { m.backend = backend.Name }
 
 // RecordTokenUsage implements [metrics.Metrics].
-func (m *mockMetrics) RecordTokenUsage(_ context.Context, input, cachedInput, output metrics.OptUint32, _ map[string]string) {
-	if input != metrics.OptUint32None {
-		inputVal := uint32(input) // nolint:gosec
-		m.inputTokenCount += int(inputVal)
+func (m *mockMetrics) RecordTokenUsage(_ context.Context, usage metrics.TokenUsage, _ map[string]string) {
+	if input, ok := usage.InputTokens(); ok {
+		m.inputTokenCount += int(input)
 	}
-	if cachedInput != metrics.OptUint32None {
-		cachedInputVal := uint32(cachedInput) // nolint:gosec
-		m.cachedInputTokenCount += int(cachedInputVal)
+	if cachedInput, ok := usage.CachedInputTokens(); ok {
+		m.cachedInputTokenCount += int(cachedInput)
 	}
-	if output != metrics.OptUint32None {
-		outputVal := uint32(output) // nolint:gosec
-		m.outputTokenCount += int(outputVal)
+	if output, ok := usage.OutputTokens(); ok {
+		m.outputTokenCount += int(output)
 	}
 }
 

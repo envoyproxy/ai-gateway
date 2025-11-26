@@ -5,7 +5,10 @@
 
 package translator
 
-import "github.com/anthropics/anthropic-sdk-go"
+import (
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
+)
 
 // ExtractLLMTokenUsage extracts the correct token usage from Anthropic API response.
 // According to Claude API documentation, total input tokens is the summation of:
@@ -13,23 +16,23 @@ import "github.com/anthropics/anthropic-sdk-go"
 //
 // This function works for both streaming and non-streaming responses by accepting
 // the common usage fields that exist in all Anthropic usage structures.
-func ExtractLLMTokenUsage(inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens int64) LLMTokenUsage {
+func ExtractLLMTokenUsage(inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens int64) metrics.TokenUsage {
 	// Calculate total input tokens as per Anthropic API documentation
 	totalInputTokens := inputTokens + cacheCreationTokens + cacheReadTokens
 
 	// Cache tokens include both read and creation tokens
 	totalCachedTokens := cacheReadTokens + cacheCreationTokens
 
-	return LLMTokenUsage{
-		InputTokens:       uint32(totalInputTokens),                //nolint:gosec
-		OutputTokens:      uint32(outputTokens),                    //nolint:gosec
-		TotalTokens:       uint32(totalInputTokens + outputTokens), //nolint:gosec
-		CachedInputTokens: uint32(totalCachedTokens),               //nolint:gosec
-	}
+	var usage metrics.TokenUsage
+	usage.SetInputTokens(uint32(totalInputTokens))                //nolint:gosec
+	usage.SetOutputTokens(uint32(outputTokens))                   //nolint:gosec
+	usage.SetTotalTokens(uint32(totalInputTokens + outputTokens)) //nolint:gosec
+	usage.SetCachedInputTokens(uint32(totalCachedTokens))         //nolint:gosec
+	return usage
 }
 
 // ExtractLLMTokenUsageFromUsage extracts token usage from anthropic.Usage struct (non-streaming).
-func ExtractLLMTokenUsageFromUsage(usage anthropic.Usage) LLMTokenUsage {
+func ExtractLLMTokenUsageFromUsage(usage anthropic.Usage) metrics.TokenUsage {
 	return ExtractLLMTokenUsage(
 		usage.InputTokens,
 		usage.OutputTokens,
@@ -39,7 +42,7 @@ func ExtractLLMTokenUsageFromUsage(usage anthropic.Usage) LLMTokenUsage {
 }
 
 // ExtractLLMTokenUsageFromDeltaUsage extracts token usage from streaming message_delta events.
-func ExtractLLMTokenUsageFromDeltaUsage(usage anthropic.MessageDeltaUsage) LLMTokenUsage {
+func ExtractLLMTokenUsageFromDeltaUsage(usage anthropic.MessageDeltaUsage) metrics.TokenUsage {
 	return ExtractLLMTokenUsage(
 		usage.InputTokens,
 		usage.OutputTokens,

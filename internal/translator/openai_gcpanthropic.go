@@ -24,6 +24,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -741,7 +742,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseHeaders(_ map[s
 // is exactly what gets executed. The response does not contain a model field, so we return
 // the request model that was originally sent.
 func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
-	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel string, err error,
+	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	// If a stream parser was initialized, this is a streaming request.
 	if o.streamParser != nil {
@@ -766,23 +767,27 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 		Created: openai.JSONUNIXTime(time.Now()),
 	}
 	tokenUsage = ExtractLLMTokenUsageFromUsage(anthropicResp.Usage)
+	inputTokens, _ := tokenUsage.InputTokens()
+	outputTokens, _ := tokenUsage.OutputTokens()
+	totalTokens, _ := tokenUsage.TotalTokens()
+	cachedTokens, _ := tokenUsage.CachedInputTokens()
 	openAIResp.Usage = openai.Usage{
-		CompletionTokens: int(anthropicResp.Usage.OutputTokens),
-		PromptTokens:     int(tokenUsage.InputTokens),
-		TotalTokens:      int(tokenUsage.TotalTokens),
+		CompletionTokens: int(outputTokens),
+		PromptTokens:     int(inputTokens),
+		TotalTokens:      int(totalTokens),
 		PromptTokensDetails: &openai.PromptTokensDetails{
-			CachedTokens: int(tokenUsage.CachedInputTokens),
+			CachedTokens: int(cachedTokens),
 		},
 	}
 
 	finishReason, err := anthropicToOpenAIFinishReason(anthropicResp.StopReason)
 	if err != nil {
-		return nil, nil, LLMTokenUsage{}, "", err
+		return nil, nil, metrics.TokenUsage{}, "", err
 	}
 
 	role, err := anthropicRoleToOpenAIRole(anthropic.MessageParamRole(anthropicResp.Role))
 	if err != nil {
-		return nil, nil, LLMTokenUsage{}, "", err
+		return nil, nil, metrics.TokenUsage{}, "", err
 	}
 
 	choice := openai.ChatCompletionResponseChoice{
@@ -796,7 +801,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 		if output.Type == string(constant.ValueOf[constant.ToolUse]()) && output.ID != "" {
 			toolCalls, toolErr := anthropicToolUseToOpenAICalls(output)
 			if toolErr != nil {
-				return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to convert anthropic tool use to openai tool call: %w", toolErr)
+				return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("failed to convert anthropic tool use to openai tool call: %w", toolErr)
 			}
 			choice.Message.ToolCalls = append(choice.Message.ToolCalls, toolCalls...)
 		} else if output.Type == string(constant.ValueOf[constant.Text]()) && output.Text != "" {
@@ -809,7 +814,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 
 	newBody, err = json.Marshal(openAIResp)
 	if err != nil {
-		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to marshal body: %w", err)
+		return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("failed to marshal body: %w", err)
 	}
 
 	if span != nil {

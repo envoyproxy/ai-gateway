@@ -133,22 +133,22 @@ func (b *metricsImpl) RecordRequestCompletion(ctx context.Context, success bool,
 }
 
 // RecordTokenUsage records token usage metrics.
-func (b *metricsImpl) RecordTokenUsage(ctx context.Context, inputTokens, cachedInputTokens, outputTokens OptUint32, requestHeaders map[string]string) {
+func (b *metricsImpl) RecordTokenUsage(ctx context.Context, usage TokenUsage, requestHeaders map[string]string) {
 	attrs := b.buildBaseAttributes(requestHeaders)
 
-	if inputTokens != OptUint32None {
+	if inputTokens, ok := usage.InputTokens(); ok {
 		b.metrics.tokenUsage.Record(ctx, float64(inputTokens),
 			metric.WithAttributeSet(attrs),
 			metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput)),
 		)
 	}
-	if cachedInputTokens != OptUint32None {
+	if cachedInputTokens, ok := usage.CachedInputTokens(); ok {
 		b.metrics.tokenUsage.Record(ctx, float64(cachedInputTokens),
 			metric.WithAttributeSet(attrs),
 			metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeCachedInput)),
 		)
 	}
-	if outputTokens != OptUint32None {
+	if outputTokens, ok := usage.OutputTokens(); ok {
 		b.metrics.tokenUsage.Record(ctx, float64(outputTokens),
 			metric.WithAttributeSet(attrs),
 			metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeOutput)),

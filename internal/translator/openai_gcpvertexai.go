@@ -19,6 +19,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/gcp"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -133,7 +134,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseHeaders(_ map[st
 // is exactly what gets executed. The response does not contain a model field, so we return
 // the request model that was originally sent.
 func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
-	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel string, err error,
+	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	if o.stream {
 		return o.handleStreamingResponse(body, endOfStream, span)
@@ -142,7 +143,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(_ map[strin
 	// Non-streaming logic.
 	var gcpResp genai.GenerateContentResponse
 	if err = json.NewDecoder(body).Decode(&gcpResp); err != nil {
-		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("error decoding GCP response: %w", err)
+		return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("error decoding GCP response: %w", err)
 	}
 
 	responseModel = o.requestModel
@@ -154,23 +155,21 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(_ map[strin
 	// Convert to OpenAI format.
 	openAIResp, err := o.geminiResponseToOpenAIMessage(gcpResp, responseModel)
 	if err != nil {
-		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("error converting GCP response to OpenAI format: %w", err)
+		return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("error converting GCP response to OpenAI format: %w", err)
 	}
 
 	// Marshal the OpenAI response.
 	newBody, err = json.Marshal(openAIResp)
 	if err != nil {
-		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("error marshaling OpenAI response: %w", err)
+		return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("error marshaling OpenAI response: %w", err)
 	}
 
 	// Update token usage if available.
 	if gcpResp.UsageMetadata != nil {
-		tokenUsage = LLMTokenUsage{
-			InputTokens:       uint32(gcpResp.UsageMetadata.PromptTokenCount),        // nolint:gosec
-			OutputTokens:      uint32(gcpResp.UsageMetadata.CandidatesTokenCount),    // nolint:gosec
-			TotalTokens:       uint32(gcpResp.UsageMetadata.TotalTokenCount),         // nolint:gosec
-			CachedInputTokens: uint32(gcpResp.UsageMetadata.CachedContentTokenCount), // nolint:gosec
-		}
+		tokenUsage.SetInputTokens(uint32(gcpResp.UsageMetadata.PromptTokenCount))              //nolint:gosec
+		tokenUsage.SetOutputTokens(uint32(gcpResp.UsageMetadata.CandidatesTokenCount))         //nolint:gosec
+		tokenUsage.SetTotalTokens(uint32(gcpResp.UsageMetadata.TotalTokenCount))               //nolint:gosec
+		tokenUsage.SetCachedInputTokens(uint32(gcpResp.UsageMetadata.CachedContentTokenCount)) //nolint:gosec
 	}
 
 	if span != nil {
@@ -182,13 +181,13 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(_ map[strin
 
 // handleStreamingResponse handles streaming responses from GCP Gemini API.
 func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
-	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel string, err error,
+	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	responseModel = o.requestModel
 	// Parse GCP streaming chunks from buffered body and current input.
 	chunks, err := o.parseGCPStreamingChunks(body)
 	if err != nil {
-		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("error parsing GCP streaming chunks: %w", err)
+		return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("error parsing GCP streaming chunks: %w", err)
 	}
 
 	for _, chunk := range chunks {
@@ -197,18 +196,24 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(
 
 		// Extract token usage if present in this chunk (typically in the last chunk).
 		if chunk.UsageMetadata != nil {
-			tokenUsage = LLMTokenUsage{
-				InputTokens:       uint32(chunk.UsageMetadata.PromptTokenCount),        //nolint:gosec
-				OutputTokens:      uint32(chunk.UsageMetadata.CandidatesTokenCount),    //nolint:gosec
-				TotalTokens:       uint32(chunk.UsageMetadata.TotalTokenCount),         //nolint:gosec
-				CachedInputTokens: uint32(chunk.UsageMetadata.CachedContentTokenCount), //nolint:gosec
+			if chunk.UsageMetadata.PromptTokenCount >= 0 {
+				tokenUsage.SetInputTokens(uint32(chunk.UsageMetadata.PromptTokenCount)) //nolint:gosec
+			}
+			if chunk.UsageMetadata.CandidatesTokenCount >= 0 {
+				tokenUsage.SetOutputTokens(uint32(chunk.UsageMetadata.CandidatesTokenCount)) //nolint:gosec
+			}
+			if chunk.UsageMetadata.TotalTokenCount >= 0 {
+				tokenUsage.SetTotalTokens(uint32(chunk.UsageMetadata.TotalTokenCount)) //nolint:gosec
+			}
+			if chunk.UsageMetadata.CachedContentTokenCount >= 0 {
+				tokenUsage.SetCachedInputTokens(uint32(chunk.UsageMetadata.CachedContentTokenCount)) //nolint:gosec
 			}
 		}
 
 		// Serialize to SSE format as expected by OpenAI API.
 		err := serializeOpenAIChatCompletionChunk(*openAIChunk, &newBody)
 		if err != nil {
-			return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("error marshaling OpenAI chunk: %w", err)
+			return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("error marshaling OpenAI chunk: %w", err)
 		}
 
 		if span != nil {

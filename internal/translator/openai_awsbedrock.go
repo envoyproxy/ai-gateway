@@ -22,6 +22,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -582,7 +583,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseError(respHeaders
 // is exactly what gets executed. The response does not contain a model field, so we return
 // the request model that was originally sent.
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
-	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel string, err error,
+	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	responseModel = o.requestModel
 	if o.stream {
@@ -590,7 +591,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 		var buf []byte
 		buf, err = io.ReadAll(body)
 		if err != nil {
-			return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to read body: %w", err)
+			return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("failed to read body: %w", err)
 		}
 		o.bufferedBody = append(o.bufferedBody, buf...)
 		o.extractAmazonEventStreamEvents()
@@ -598,13 +599,11 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 		for i := range o.events {
 			event := &o.events[i]
 			if usage := event.Usage; usage != nil {
-				tokenUsage = LLMTokenUsage{
-					InputTokens:  uint32(usage.InputTokens),  //nolint:gosec
-					OutputTokens: uint32(usage.OutputTokens), //nolint:gosec
-					TotalTokens:  uint32(usage.TotalTokens),  //nolint:gosec
-				}
+				tokenUsage.SetInputTokens(uint32(usage.InputTokens))   //nolint:gosec
+				tokenUsage.SetOutputTokens(uint32(usage.OutputTokens)) //nolint:gosec
+				tokenUsage.SetTotalTokens(uint32(usage.TotalTokens))   //nolint:gosec
 				if usage.CacheReadInputTokens != nil {
-					tokenUsage.CachedInputTokens = uint32(*usage.CacheReadInputTokens) //nolint:gosec
+					tokenUsage.SetCachedInputTokens(uint32(*usage.CacheReadInputTokens)) //nolint:gosec
 				}
 			}
 			oaiEvent, ok := o.convertEvent(event)
@@ -628,7 +627,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 
 	var bedrockResp awsbedrock.ConverseResponse
 	if err = json.NewDecoder(body).Decode(&bedrockResp); err != nil {
-		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to unmarshal body: %w", err)
+		return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 	openAIResp := &openai.ChatCompletionResponse{
 		// We use request model as response model since bedrock does not return the modelName in the response.
@@ -640,18 +639,16 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 	}
 	// Convert token usage.
 	if bedrockResp.Usage != nil {
-		tokenUsage = LLMTokenUsage{
-			InputTokens:  uint32(bedrockResp.Usage.InputTokens),  //nolint:gosec
-			OutputTokens: uint32(bedrockResp.Usage.OutputTokens), //nolint:gosec
-			TotalTokens:  uint32(bedrockResp.Usage.TotalTokens),  //nolint:gosec
-		}
+		tokenUsage.SetInputTokens(uint32(bedrockResp.Usage.InputTokens))   //nolint:gosec
+		tokenUsage.SetOutputTokens(uint32(bedrockResp.Usage.OutputTokens)) //nolint:gosec
+		tokenUsage.SetTotalTokens(uint32(bedrockResp.Usage.TotalTokens))   //nolint:gosec
 		openAIResp.Usage = openai.Usage{
 			TotalTokens:      bedrockResp.Usage.TotalTokens,
 			PromptTokens:     bedrockResp.Usage.InputTokens,
 			CompletionTokens: bedrockResp.Usage.OutputTokens,
 		}
 		if bedrockResp.Usage.CacheReadInputTokens != nil {
-			tokenUsage.CachedInputTokens = uint32(*bedrockResp.Usage.CacheReadInputTokens) //nolint:gosec
+			tokenUsage.SetCachedInputTokens(uint32(*bedrockResp.Usage.CacheReadInputTokens)) //nolint:gosec
 			openAIResp.Usage.PromptTokensDetails = &openai.PromptTokensDetails{
 				CachedTokens: *bedrockResp.Usage.CacheReadInputTokens,
 			}
@@ -692,7 +689,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 
 	newBody, err = json.Marshal(openAIResp)
 	if err != nil {
-		return nil, nil, LLMTokenUsage{}, "", fmt.Errorf("failed to marshal body: %w", err)
+		return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("failed to marshal body: %w", err)
 	}
 	if span != nil {
 		span.RecordResponse(openAIResp)

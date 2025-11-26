@@ -147,7 +147,7 @@ type messagesProcessorUpstreamFilter struct {
 	onRetry                bool
 	stream                 bool
 	metrics                metrics.Metrics
-	costs                  translator.LLMTokenUsage
+	costs                  metrics.TokenUsage
 }
 
 // selectTranslator selects the translator based on the output schema.
@@ -326,22 +326,19 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseBody(ctx context.Contex
 		},
 	}
 
-	c.costs.InputTokens += tokenUsage.InputTokens
-	c.costs.OutputTokens += tokenUsage.OutputTokens
-	c.costs.TotalTokens += tokenUsage.TotalTokens
-	c.costs.CachedInputTokens += tokenUsage.CachedInputTokens
+	// Translator reports the latest cumulative token usage which we use to override existing costs.
+	c.costs.Override(tokenUsage)
 
 	// Update metrics with token usage.
 	if c.stream {
-		c.metrics.RecordTokenLatency(ctx, tokenUsage.OutputTokens, body.EndOfStream, c.requestHeaders)
+		outToken, _ := tokenUsage.OutputTokens()
+		c.metrics.RecordTokenLatency(ctx, outToken, body.EndOfStream, c.requestHeaders)
 		// Emit usage once at end-of-stream using final totals.
 		if body.EndOfStream {
-			c.metrics.RecordTokenUsage(ctx,
-				metrics.OptUint32(c.costs.InputTokens), metrics.OptUint32(c.costs.CachedInputTokens), metrics.OptUint32(c.costs.OutputTokens), c.requestHeaders)
+			c.metrics.RecordTokenUsage(ctx, c.costs, c.requestHeaders)
 		}
 	} else {
-		c.metrics.RecordTokenUsage(ctx,
-			metrics.OptUint32(tokenUsage.InputTokens), metrics.OptUint32(tokenUsage.CachedInputTokens), metrics.OptUint32(tokenUsage.OutputTokens), c.requestHeaders)
+		c.metrics.RecordTokenUsage(ctx, c.costs, c.requestHeaders)
 	}
 
 	if body.EndOfStream && len(c.config.RequestCosts) > 0 {

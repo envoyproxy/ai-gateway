@@ -93,12 +93,6 @@ func NewMeterFromEnv(ctx context.Context, stdout io.Writer, promReader sdkmetric
 	return mp.Meter("envoyproxy/ai-gateway"), mp.Shutdown, nil
 }
 
-// OptUint32 is an optional uint32 type represented as an uint64 to allow for a None value.
-type OptUint32 uint64
-
-// OptUint32None represents the None value for OptUint32.
-const OptUint32None = OptUint32(0xffffffff_00000000)
-
 // Metrics is the interface for the base AI Gateway metrics.
 type Metrics interface {
 	// StartRequest initializes timing for a new request.
@@ -120,7 +114,7 @@ type Metrics interface {
 	// RecordTokenUsage records token usage metrics.
 	//
 	// Depending on the endpoint, some token types are not available and should be passed as OptUint32None.
-	RecordTokenUsage(ctx context.Context, inputTokens, cachedInputTokens, outputTokens OptUint32, requestHeaders map[string]string)
+	RecordTokenUsage(ctx context.Context, usage TokenUsage, requestHeaders map[string]string)
 
 	// Streaming-specific metrics methods, not used by all implementations.
 
@@ -141,4 +135,98 @@ type Factory interface {
 // NewMetricsFactory returns a Factory to create a new Metrics instance.
 func NewMetricsFactory(meter metric.Meter, requestHeaderLabelMapping map[string]string, operation GenAIOperation) Factory {
 	return &metricsImplFactory{metrics: newGenAI(meter), requestHeaderAttributeMapping: requestHeaderLabelMapping, operation: string(operation)}
+}
+
+// TokenUsage represents the token usage reported usually by the backend API in the response body.
+type TokenUsage struct {
+	// InputTokens is the number of tokens consumed from the input.
+	inputTokens uint32
+	// OutputTokens is the number of tokens consumed from the output.
+	outputTokens uint32
+	// TotalTokens is the total number of tokens consumed.
+	totalTokens uint32
+	// CachedInputTokens is the total number of tokens read from cache.
+	cachedInputTokens uint32
+
+	inputTokenSet, outputTokenSet, totalTokenSet, cachedInputTokenSet bool
+}
+
+func (u *TokenUsage) InputTokens() (uint32, bool) {
+	return u.inputTokens, u.inputTokenSet
+}
+
+func (u *TokenUsage) OutputTokens() (uint32, bool) {
+	return u.outputTokens, u.outputTokenSet
+}
+
+func (u *TokenUsage) TotalTokens() (uint32, bool) {
+	return u.totalTokens, u.totalTokenSet
+}
+
+func (u *TokenUsage) CachedInputTokens() (uint32, bool) {
+	return u.cachedInputTokens, u.cachedInputTokenSet
+}
+
+func (u *TokenUsage) SetInputTokens(tokens uint32) {
+	u.inputTokens = tokens
+	u.inputTokenSet = true
+}
+
+func (u *TokenUsage) SetOutputTokens(tokens uint32) {
+	u.outputTokens = tokens
+	u.outputTokenSet = true
+}
+
+func (u *TokenUsage) SetTotalTokens(tokens uint32) {
+	u.totalTokens = tokens
+	u.totalTokenSet = true
+}
+
+func (u *TokenUsage) SetCachedInputTokens(tokens uint32) {
+	u.cachedInputTokens = tokens
+	u.cachedInputTokenSet = true
+}
+
+// AddInputTokens increments the recorded input tokens and marks the field as set.
+func (u *TokenUsage) AddInputTokens(tokens uint32) {
+	if !u.inputTokenSet {
+		u.inputTokenSet = true
+	}
+	u.inputTokens += tokens
+}
+
+// AddOutputTokens increments the recorded output tokens and marks the field as set.
+func (u *TokenUsage) AddOutputTokens(tokens uint32) {
+	if !u.outputTokenSet {
+		u.outputTokenSet = true
+	}
+	u.outputTokens += tokens
+}
+
+// AddCachedInputTokens increments the recorded cached input tokens and marks the field as set.
+func (u *TokenUsage) AddCachedInputTokens(tokens uint32) {
+	if !u.cachedInputTokenSet {
+		u.cachedInputTokenSet = true
+	}
+	u.cachedInputTokens += tokens
+}
+
+func (u *TokenUsage) Override(other TokenUsage) {
+	result := u
+	if other.inputTokenSet {
+		result.inputTokens = other.inputTokens
+		result.inputTokenSet = true
+	}
+	if other.outputTokenSet {
+		result.outputTokens = other.outputTokens
+		result.outputTokenSet = true
+	}
+	if other.totalTokenSet {
+		result.totalTokens = other.totalTokens
+		result.totalTokenSet = true
+	}
+	if other.cachedInputTokenSet {
+		result.cachedInputTokens = other.cachedInputTokens
+		result.cachedInputTokenSet = true
+	}
 }

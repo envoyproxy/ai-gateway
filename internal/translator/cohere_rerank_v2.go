@@ -16,6 +16,7 @@ import (
 
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -71,7 +72,7 @@ func (t *cohereToCohereTranslatorV2Rerank) ResponseHeaders(map[string]string) (n
 // ResponseBody implements [CohereRerankTranslator.ResponseBody].
 // For rerank, token usage is provided via meta.tokens.input_tokens when available.
 func (t *cohereToCohereTranslatorV2Rerank) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracing.RerankSpan) (
-	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel internalapi.ResponseModel, err error,
+	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
 	var resp cohereschema.RerankV2Response
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
@@ -85,15 +86,19 @@ func (t *cohereToCohereTranslatorV2Rerank) ResponseBody(_ map[string]string, bod
 
 	// Token accounting: rerank only has input tokens; output tokens do not apply.
 	if resp.Meta != nil && resp.Meta.Tokens != nil {
+		var totalTokens uint32
 		if resp.Meta.Tokens.InputTokens != nil {
 			// Cohere uses float; round down to uint32 like embeddings.
-			tokenUsage.InputTokens = uint32(*resp.Meta.Tokens.InputTokens) //nolint:gosec
-			tokenUsage.TotalTokens = tokenUsage.InputTokens
+			input := uint32(*resp.Meta.Tokens.InputTokens) //nolint:gosec
+			tokenUsage.SetInputTokens(input)
+			totalTokens += input
 		}
 		if resp.Meta.Tokens.OutputTokens != nil {
-			tokenUsage.OutputTokens = uint32(*resp.Meta.Tokens.OutputTokens) //nolint:gosec
-			tokenUsage.TotalTokens += tokenUsage.OutputTokens
+			output := uint32(*resp.Meta.Tokens.OutputTokens) //nolint:gosec
+			tokenUsage.SetOutputTokens(output)
+			totalTokens += output
 		}
+		tokenUsage.SetTotalTokens(totalTokens)
 	}
 
 	// Cohere rerank responses do not echo model; report the effective request model if known.

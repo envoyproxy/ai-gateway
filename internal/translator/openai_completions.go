@@ -17,6 +17,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -76,7 +77,7 @@ func (o *openAIToOpenAITranslatorV1Completion) ResponseHeaders(map[string]string
 // OpenAI completions support model virtualization through automatic routing and resolution,
 // so we return the actual model from the response body which may differ from the requested model.
 func (o *openAIToOpenAITranslatorV1Completion) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracing.CompletionSpan) (
-	newHeaders []internalapi.Header, newBody []byte, tokenUsage LLMTokenUsage, responseModel internalapi.ResponseModel, err error,
+	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
 	// For streaming, just pass through and extract metadata from SSE chunks
 	if o.stream {
@@ -110,13 +111,13 @@ func (o *openAIToOpenAITranslatorV1Completion) ResponseBody(_ map[string]string,
 	if resp.Usage != nil {
 		// Safely convert int to uint32 with bounds checking
 		if resp.Usage.PromptTokens >= 0 {
-			tokenUsage.InputTokens = uint32(resp.Usage.PromptTokens) // #nosec G115
+			tokenUsage.SetInputTokens(uint32(resp.Usage.PromptTokens)) // #nosec G115
 		}
 		if resp.Usage.CompletionTokens >= 0 {
-			tokenUsage.OutputTokens = uint32(resp.Usage.CompletionTokens) // #nosec G115
+			tokenUsage.SetOutputTokens(uint32(resp.Usage.CompletionTokens)) // #nosec G115
 		}
 		if resp.Usage.TotalTokens >= 0 {
-			tokenUsage.TotalTokens = uint32(resp.Usage.TotalTokens) // #nosec G115
+			tokenUsage.SetTotalTokens(uint32(resp.Usage.TotalTokens)) // #nosec G115
 		}
 	}
 
@@ -132,7 +133,7 @@ func (o *openAIToOpenAITranslatorV1Completion) ResponseBody(_ map[string]string,
 // extractUsageFromBufferEvent extracts the token usage and model from the buffered SSE events.
 // It scans complete lines and returns the latest usage found in this batch.
 // It also records each parsed chunk to the tracing span if provided.
-func (o *openAIToOpenAITranslatorV1Completion) extractUsageFromBufferEvent(span tracing.CompletionSpan) (tokenUsage LLMTokenUsage) {
+func (o *openAIToOpenAITranslatorV1Completion) extractUsageFromBufferEvent(span tracing.CompletionSpan) (tokenUsage metrics.TokenUsage) {
 	for {
 		i := bytes.IndexByte(o.buffered, '\n')
 		if i == -1 {
@@ -166,11 +167,11 @@ func (o *openAIToOpenAITranslatorV1Completion) extractUsageFromBufferEvent(span 
 		}
 
 		if usage := event.Usage; usage != nil {
-			tokenUsage.InputTokens = uint32(usage.PromptTokens)      //nolint:gosec
-			tokenUsage.OutputTokens = uint32(usage.CompletionTokens) //nolint:gosec
-			tokenUsage.TotalTokens = uint32(usage.TotalTokens)       //nolint:gosec
+			tokenUsage.SetInputTokens(uint32(usage.PromptTokens))      //nolint:gosec
+			tokenUsage.SetOutputTokens(uint32(usage.CompletionTokens)) //nolint:gosec
+			tokenUsage.SetTotalTokens(uint32(usage.TotalTokens))       //nolint:gosec
 			if usage.PromptTokensDetails != nil {
-				tokenUsage.CachedInputTokens = uint32(usage.PromptTokensDetails.CachedTokens) //nolint:gosec
+				tokenUsage.SetCachedInputTokens(uint32(usage.PromptTokensDetails.CachedTokens)) //nolint:gosec
 			}
 			// Do not mark buffering done; keep scanning to return the latest usage in this batch.
 		}

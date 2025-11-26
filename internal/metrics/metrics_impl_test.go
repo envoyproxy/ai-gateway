@@ -80,7 +80,10 @@ func TestRecordTokenUsage(t *testing.T) {
 	pm.SetRequestModel("test-model")
 	pm.SetResponseModel("test-model")
 	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
-	pm.RecordTokenUsage(t.Context(), 10, 8, 5, nil)
+	pm.RecordTokenUsage(t.Context(), TokenUsage{
+		inputTokens: 10, outputTokens: 8, totalTokens: 5,
+		inputTokenSet: true, outputTokenSet: true, totalTokenSet: true,
+	}, nil)
 
 	count, sum := testotel.GetHistogramValues(t, mr, genaiMetricClientTokenUsage, inputAttrs)
 	assert.Equal(t, uint64(1), count)
@@ -215,7 +218,10 @@ func TestHeaderLabelMapping(t *testing.T) {
 	pm.SetRequestModel("test-model")
 	pm.SetResponseModel("test-model")
 	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
-	pm.RecordTokenUsage(t.Context(), 10, 8, 5, requestHeaders)
+	pm.RecordTokenUsage(t.Context(), TokenUsage{
+		inputTokens: 10, outputTokens: 8, totalTokens: 5,
+		inputTokenSet: true, outputTokenSet: true, totalTokenSet: true,
+	}, requestHeaders)
 
 	// Verify that the header mapping is set correctly.
 	assert.Equal(t, headerMapping, pm.requestHeaderAttributeMapping)
@@ -260,7 +266,10 @@ func TestModelNameHeaderKey(t *testing.T) {
 	// Response model is what the backend actually used
 	pm.SetResponseModel("us.meta.llama3-2-1b-instruct-v1:0")
 
-	pm.RecordTokenUsage(t.Context(), 10, 8, 5, headers)
+	pm.RecordTokenUsage(t.Context(), TokenUsage{
+		inputTokens: 10, outputTokens: 8, totalTokens: 5,
+		inputTokenSet: true, outputTokenSet: true, totalTokenSet: true,
+	}, headers)
 
 	// Verify metrics use the overridden request model and original model
 	inputAttrs := attribute.NewSet(
@@ -285,7 +294,10 @@ func TestLabels_SetModel_RequestAndResponseDiffer(t *testing.T) {
 	pm.SetOriginalModel("orig-model")
 	pm.SetRequestModel("req-model")
 	pm.SetResponseModel("res-model")
-	pm.RecordTokenUsage(t.Context(), 2, 1, 3, nil)
+	pm.RecordTokenUsage(t.Context(), TokenUsage{
+		inputTokens: 2, outputTokens: 1, totalTokens: 3,
+		inputTokenSet: true, outputTokenSet: true, totalTokenSet: true,
+	}, nil)
 
 	inputAttrs := attribute.NewSet(
 		attribute.Key(genaiAttributeOperationName).String(string(GenAIOperationCompletion)),

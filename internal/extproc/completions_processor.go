@@ -187,7 +187,7 @@ type completionsProcessorUpstreamFilter struct {
 	// See the comment on the `forcedStreamOptionIncludeUsage` field in the router filter.
 	forcedStreamOptionIncludeUsage bool
 	// cost is the cost of the request that is accumulated during the processing of the response.
-	costs translator.LLMTokenUsage
+	costs metrics.TokenUsage
 	// span is the tracing span for this request, inherited from the router filter.
 	span tracing.CompletionSpan
 	// metrics tracking.
@@ -395,23 +395,19 @@ func (c *completionsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Con
 		},
 	}
 
-	// Accumulate token usage for completions.
-	c.costs.InputTokens += tokenUsage.InputTokens
-	c.costs.OutputTokens += tokenUsage.OutputTokens
-	c.costs.TotalTokens += tokenUsage.TotalTokens
+	c.costs.Override(tokenUsage)
 
 	// Record metrics.
 	if c.stream {
 		// Token latency is only recorded for streaming responses
-		c.metrics.RecordTokenLatency(ctx, tokenUsage.OutputTokens, body.EndOfStream, c.requestHeaders)
+		out, _ := c.costs.OutputTokens()
+		c.metrics.RecordTokenLatency(ctx, out, body.EndOfStream, c.requestHeaders)
 		// Emit usage once at end-of-stream using final totals.
 		if body.EndOfStream {
-			c.metrics.RecordTokenUsage(ctx,
-				metrics.OptUint32(c.costs.InputTokens), metrics.OptUint32None, metrics.OptUint32(c.costs.OutputTokens), c.requestHeaders)
+			c.metrics.RecordTokenUsage(ctx, c.costs, c.requestHeaders)
 		}
 	} else {
-		c.metrics.RecordTokenUsage(ctx,
-			metrics.OptUint32(tokenUsage.InputTokens), metrics.OptUint32None, metrics.OptUint32(tokenUsage.OutputTokens), c.requestHeaders)
+		c.metrics.RecordTokenUsage(ctx, c.costs, c.requestHeaders)
 	}
 
 	if body.EndOfStream && len(c.config.RequestCosts) > 0 {
