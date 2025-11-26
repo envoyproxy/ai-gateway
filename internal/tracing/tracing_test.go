@@ -19,10 +19,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
 
+	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
+	openaisdk "github.com/openai/openai-go/v2"
 )
 
 // clearEnv clears any OTEL configuration that could exist in the environment.
@@ -732,8 +734,8 @@ func startCompletionsSpan(t *testing.T, tracing tracing.Tracing, headerMutation 
 }
 
 func TestTracingImpl_Getters_ImageGenerationAndRerank(t *testing.T) {
-	ig := tracing.NoopImageGenerationTracer{}
-	rr := tracing.NoopRerankTracer{}
+	ig := tracing.NoopTracer[openaisdk.ImageGenerateParams, tracing.ImageGenerationSpan]{}
+	rr := tracing.NoopTracer[cohereschema.RerankV2Request, tracing.RerankSpan]{}
 
 	ti := &tracingImpl{
 		imageGenerationTracer: ig,

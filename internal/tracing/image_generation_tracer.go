@@ -23,7 +23,7 @@ var _ tracing.ImageGenerationTracer = (*imageGenerationTracer)(nil)
 func newImageGenerationTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.ImageGenerationRecorder) tracing.ImageGenerationTracer {
 	// Check if the tracer is a no-op by checking its type.
 	if _, ok := tracer.(noop.Tracer); ok {
-		return tracing.NoopImageGenerationTracer{}
+		return tracing.NoopTracer[openaisdk.ImageGenerateParams, tracing.ImageGenerationSpan]{}
 	}
 	return &imageGenerationTracer{
 		tracer:     tracer,

@@ -54,7 +54,7 @@ func Test_rerankProcessorUpstreamFilter_SelectTranslator(t *testing.T) {
 func Test_rerankProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 	t.Run("body parser error", func(t *testing.T) {
 		p := &rerankProcessorRouterFilter{
-			tracer: tracing.NoopRerankTracer{},
+			tracer: tracing.NoopTracer[cohere.RerankV2Request, tracing.RerankSpan]{},
 		}
 		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: []byte("nonjson")})
 		require.ErrorContains(t, err, "invalid character 'o' in literal null")
@@ -66,7 +66,7 @@ func Test_rerankProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 			config:         &filterapi.RuntimeConfig{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
-			tracer:         tracing.NoopRerankTracer{},
+			tracer:         tracing.NoopTracer[cohere.RerankV2Request, tracing.RerankSpan]{},
 		}
 		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: rerankBodyFromModel("rerank-english-v3")})
 		require.NoError(t, err)

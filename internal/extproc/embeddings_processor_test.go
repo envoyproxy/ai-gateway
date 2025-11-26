@@ -60,7 +60,7 @@ func Test_embeddingsProcessorUpstreamFilter_SelectTranslator(t *testing.T) {
 func Test_embeddingsProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 	t.Run("body parser error", func(t *testing.T) {
 		p := &embeddingsProcessorRouterFilter{
-			tracer: tracing.NoopEmbeddingsTracer{},
+			tracer: tracing.NoopTracer[openai.EmbeddingRequest, tracing.EmbeddingsSpan]{},
 		}
 		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: []byte("nonjson")})
 		require.ErrorContains(t, err, "invalid character 'o' in literal null")
@@ -72,7 +72,7 @@ func Test_embeddingsProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 			config:         &filterapi.RuntimeConfig{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
-			tracer:         tracing.NoopEmbeddingsTracer{},
+			tracer:         tracing.NoopTracer[openai.EmbeddingRequest, tracing.EmbeddingsSpan]{},
 		}
 		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: embeddingBodyFromModel(t, "some-model")})
 		require.NoError(t, err)

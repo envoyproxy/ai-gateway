@@ -165,7 +165,7 @@ func TestRerankTracer_StartSpanAndInjectHeaders(t *testing.T) {
 func TestNewRerankTracer_Noop(t *testing.T) {
 	noopTracer := noop.Tracer{}
 	tracer := newRerankTracer(noopTracer, autoprop.NewTextMapPropagator(), testRerankTracerRecorder{}, nil)
-	require.IsType(t, apiTracing.NoopRerankTracer{}, tracer)
+	require.IsType(t, apiTracing.NoopTracer[cohere.RerankV2Request, apiTracing.RerankSpan]{}, tracer)
 
 	headers := map[string]string{}
 	headerMutation := &extprocv3.HeaderMutation{}

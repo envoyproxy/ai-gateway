@@ -24,7 +24,7 @@ var _ tracing.RerankTracer = (*rerankTracer)(nil)
 func newRerankTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.RerankRecorder, headerAttributes map[string]string) tracing.RerankTracer {
 	// Check if the tracer is a no-op by checking its type.
 	if _, ok := tracer.(noop.Tracer); ok {
-		return tracing.NoopRerankTracer{}
+		return tracing.NoopTracer[cohereschema.RerankV2Request, tracing.RerankSpan]{}
 	}
 	return &rerankTracer{
 		tracer:           tracer,

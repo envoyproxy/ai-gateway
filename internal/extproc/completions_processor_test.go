@@ -419,7 +419,7 @@ func (m *mockCompletionTranslator) ResponseError(map[string]string, io.Reader) (
 
 // mockCompletionTracer implements tracing.CompletionTracer for testing span creation.
 type mockCompletionTracer struct {
-	tracing.NoopCompletionTracer
+	tracing.NoopTracer[openai.CompletionRequest, tracing.CompletionSpan]
 	startSpanCalled bool
 	returnedSpan    tracing.CompletionSpan
 }

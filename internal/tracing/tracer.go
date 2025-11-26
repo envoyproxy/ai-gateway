@@ -25,7 +25,7 @@ var _ tracing.ChatCompletionTracer = (*chatCompletionTracer)(nil)
 func newChatCompletionTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.ChatCompletionRecorder, headerAttributes map[string]string) tracing.ChatCompletionTracer {
 	// Check if the tracer is a no-op by checking its type.
 	if _, ok := tracer.(noop.Tracer); ok {
-		return tracing.NoopChatCompletionTracer{}
+		return tracing.NoopTracer[openai.ChatCompletionRequest, tracing.ChatCompletionSpan]{}
 	}
 	return &chatCompletionTracer{
 		tracer:           tracer,
@@ -109,7 +109,7 @@ var _ tracing.EmbeddingsTracer = (*embeddingsTracer)(nil)
 func newEmbeddingsTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.EmbeddingsRecorder, headerAttributes map[string]string) tracing.EmbeddingsTracer {
 	// Check if the tracer is a no-op by checking its type.
 	if _, ok := tracer.(noop.Tracer); ok {
-		return tracing.NoopEmbeddingsTracer{}
+		return tracing.NoopTracer[openai.EmbeddingRequest, tracing.EmbeddingsSpan]{}
 	}
 	return &embeddingsTracer{
 		tracer:           tracer,
@@ -169,7 +169,7 @@ var _ tracing.CompletionTracer = (*completionTracer)(nil)
 func newCompletionTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.CompletionRecorder, headerAttributes map[string]string) tracing.CompletionTracer {
 	// Check if the tracer is a no-op by checking its type.
 	if _, ok := tracer.(noop.Tracer); ok {
-		return tracing.NoopCompletionTracer{}
+		return tracing.NoopTracer[openai.CompletionRequest, tracing.CompletionSpan]{}
 	}
 	return &completionTracer{
 		tracer:           tracer,

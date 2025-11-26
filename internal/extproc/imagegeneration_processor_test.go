@@ -59,7 +59,7 @@ func Test_imageGenerationProcessorUpstreamFilter_SelectTranslator(t *testing.T) 
 }
 
 type mockImageGenerationTracer struct {
-	tracing.NoopImageGenerationTracer
+	tracing.NoopTracer[openaisdk.ImageGenerateParams, tracing.ImageGenerationSpan]
 	startSpanCalled bool
 	returnedSpan    tracing.ImageGenerationSpan
 }

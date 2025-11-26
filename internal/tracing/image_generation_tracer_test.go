@@ -199,7 +199,7 @@ func TestNewImageGenerationTracer_Noop(t *testing.T) {
 	tracer := newImageGenerationTracer(noopTracer, autoprop.NewTextMapPropagator(), testImageGenTracerRecorder{})
 
 	// Verify it returns NoopTracer.
-	require.IsType(t, tracing.NoopImageGenerationTracer{}, tracer)
+	require.IsType(t, tracing.NoopTracer[openaisdk.ImageGenerateParams, tracing.ImageGenerationSpan]{}, tracer)
 
 	// Test that noop tracer doesn't create spans.
 	headers := map[string]string{}

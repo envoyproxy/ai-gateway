@@ -171,7 +171,7 @@ func TestNewChatCompletionTracer_Noop(t *testing.T) {
 	tracer := newChatCompletionTracer(noopTracer, autoprop.NewTextMapPropagator(), testChatCompletionRecorder{}, nil)
 
 	// Verify it returns NoopTracer.
-	require.IsType(t, tracing.NoopChatCompletionTracer{}, tracer)
+	require.IsType(t, tracing.NoopTracer[openai.ChatCompletionRequest, tracing.ChatCompletionSpan]{}, tracer)
 
 	// Test that noop tracer doesn't create spans.
 	headers := map[string]string{}
@@ -327,8 +327,8 @@ func TestNewEmbeddingsTracer_Noop(t *testing.T) {
 
 	tracer := newEmbeddingsTracer(noopTracer, autoprop.NewTextMapPropagator(), testEmbeddingsRecorder{}, nil)
 
-	// Verify it returns NoopEmbeddingsTracer.
-	require.IsType(t, tracing.NoopEmbeddingsTracer{}, tracer)
+	// Verify it returns the generic NoopTracer implementation.
+	require.IsType(t, tracing.NoopTracer[openai.EmbeddingRequest, tracing.EmbeddingsSpan]{}, tracer)
 
 	// Test that noop tracer doesn't create spans.
 	headers := map[string]string{}
@@ -474,8 +474,8 @@ func TestNewCompletionTracer_Noop(t *testing.T) {
 
 	tracer := newCompletionTracer(noopTracer, autoprop.NewTextMapPropagator(), testCompletionRecorder{}, nil)
 
-	// Verify it returns NoopCompletionTracer.
-	require.IsType(t, tracing.NoopCompletionTracer{}, tracer)
+	// Verify it returns the generic NoopTracer implementation.
+	require.IsType(t, tracing.NoopTracer[openai.CompletionRequest, tracing.CompletionSpan]{}, tracer)
 
 	// Test that noop tracer doesn't create spans.
 	headers := map[string]string{}

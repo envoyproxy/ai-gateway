@@ -62,27 +62,27 @@ func (t NoopTracing) MCPTracer() MCPTracer {
 
 // ChatCompletionTracer implements Tracing.ChatCompletionTracer.
 func (NoopTracing) ChatCompletionTracer() ChatCompletionTracer {
-	return NoopChatCompletionTracer{}
+	return NoopTracer[openai.ChatCompletionRequest, ChatCompletionSpan]{}
 }
 
 // CompletionTracer implements Tracing.CompletionTracer.
 func (NoopTracing) CompletionTracer() CompletionTracer {
-	return NoopCompletionTracer{}
+	return NoopTracer[openai.CompletionRequest, CompletionSpan]{}
 }
 
 // EmbeddingsTracer implements Tracing.EmbeddingsTracer.
 func (NoopTracing) EmbeddingsTracer() EmbeddingsTracer {
-	return NoopEmbeddingsTracer{}
+	return NoopTracer[openai.EmbeddingRequest, EmbeddingsSpan]{}
 }
 
 // ImageGenerationTracer implements Tracing.ImageGenerationTracer.
 func (NoopTracing) ImageGenerationTracer() ImageGenerationTracer {
-	return NoopImageGenerationTracer{}
+	return NoopTracer[openaisdk.ImageGenerateParams, ImageGenerationSpan]{}
 }
 
 // RerankTracer implements Tracing.RerankTracer.
 func (NoopTracing) RerankTracer() RerankTracer {
-	return NoopRerankTracer{}
+	return NoopTracer[cohere.RerankV2Request, RerankSpan]{}
 }
 
 // Shutdown implements Tracing.Shutdown.
@@ -176,6 +176,35 @@ type StreamResponseRecorder[ReqT any, ChunkT any, RespT any] interface {
 	RecordResponseChunks(span trace.Span, chunks []*ChunkT)
 }
 
+// NoopTracer implements RequestTracer without producing spans.
+type NoopTracer[ReqT any, SpanT TraceSpan] struct{}
+
+// StartSpanAndInjectHeaders implements RequestTracer.StartSpanAndInjectHeaders.
+func (NoopTracer[ReqT, SpanT]) StartSpanAndInjectHeaders(context.Context, map[string]string, *extprocv3.HeaderMutation, *ReqT, []byte) SpanT {
+	var zero SpanT
+	return zero
+}
+
+// NoopRecorder implements recorder interfaces without recording.
+type NoopRecorder[ReqT any, RespT any, ChunkT any] struct{}
+
+// StartParams implements SpanRecorder.StartParams.
+func (NoopRecorder[ReqT, RespT, ChunkT]) StartParams(*ReqT, []byte) (string, []trace.SpanStartOption) {
+	return "", nil
+}
+
+// RecordRequest implements SpanRecorder.RecordRequest.
+func (NoopRecorder[ReqT, RespT, ChunkT]) RecordRequest(trace.Span, *ReqT, []byte) {}
+
+// RecordResponseOnError implements SpanRecorder.RecordResponseOnError.
+func (NoopRecorder[ReqT, RespT, ChunkT]) RecordResponseOnError(trace.Span, int, []byte) {}
+
+// RecordResponse implements ResponseRecorder.RecordResponse.
+func (NoopRecorder[ReqT, RespT, ChunkT]) RecordResponse(trace.Span, *RespT) {}
+
+// RecordResponseChunks implements StreamRecorder.RecordResponseChunks.
+func (NoopRecorder[ReqT, RespT, ChunkT]) RecordResponseChunks(trace.Span, []*ChunkT) {}
+
 // ChatCompletionTracer creates spans for OpenAI chat completion requests.
 type ChatCompletionTracer = RequestTracer[openai.ChatCompletionRequest, ChatCompletionSpan]
 
@@ -184,14 +213,6 @@ type ChatCompletionSpan = StreamResponseSpan[openai.ChatCompletionResponseChunk,
 
 // ChatCompletionRecorder records attributes to a span according to a semantic convention.
 type ChatCompletionRecorder = StreamResponseRecorder[openai.ChatCompletionRequest, openai.ChatCompletionResponseChunk, openai.ChatCompletionResponse]
-
-// NoopChatCompletionTracer is a ChatCompletionTracer that doesn't do anything.
-type NoopChatCompletionTracer struct{}
-
-// StartSpanAndInjectHeaders implements ChatCompletionTracer.StartSpanAndInjectHeaders.
-func (NoopChatCompletionTracer) StartSpanAndInjectHeaders(context.Context, map[string]string, *extprocv3.HeaderMutation, *openai.ChatCompletionRequest, []byte) ChatCompletionSpan {
-	return nil
-}
 
 // CompletionTracer creates spans for OpenAI completion requests.
 type CompletionTracer = RequestTracer[openai.CompletionRequest, CompletionSpan]
@@ -203,14 +224,6 @@ type CompletionSpan = StreamResponseSpan[openai.CompletionResponse, openai.Compl
 // CompletionRecorder records attributes to a span according to a semantic convention.
 // Note: Completion streaming chunks are full CompletionResponse objects, not deltas like chat completions.
 type CompletionRecorder = StreamResponseRecorder[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse]
-
-// NoopCompletionTracer is a CompletionTracer that doesn't do anything.
-type NoopCompletionTracer struct{}
-
-// StartSpanAndInjectHeaders implements CompletionTracer.StartSpanAndInjectHeaders.
-func (NoopCompletionTracer) StartSpanAndInjectHeaders(context.Context, map[string]string, *extprocv3.HeaderMutation, *openai.CompletionRequest, []byte) CompletionSpan {
-	return nil
-}
 
 // EmbeddingsTracer creates spans for OpenAI embeddings requests.
 type EmbeddingsTracer = RequestTracer[openai.EmbeddingRequest, EmbeddingsSpan]
@@ -230,22 +243,6 @@ type ImageGenerationRecorder = ResponseRecorder[openaisdk.ImageGenerateParams, o
 // EmbeddingsRecorder records attributes to a span according to a semantic convention.
 type EmbeddingsRecorder = ResponseRecorder[openai.EmbeddingRequest, openai.EmbeddingResponse]
 
-// NoopImageGenerationTracer is a ImageGenerationTracer that doesn't do anything.
-type NoopImageGenerationTracer struct{}
-
-// StartSpanAndInjectHeaders implements ImageGenerationTracer.StartSpanAndInjectHeaders.
-func (NoopImageGenerationTracer) StartSpanAndInjectHeaders(context.Context, map[string]string, *extprocv3.HeaderMutation, *openaisdk.ImageGenerateParams, []byte) ImageGenerationSpan {
-	return nil
-}
-
-// NoopEmbeddingsTracer is an EmbeddingsTracer that doesn't do anything.
-type NoopEmbeddingsTracer struct{}
-
-// StartSpanAndInjectHeaders implements EmbeddingsTracer.StartSpanAndInjectHeaders.
-func (NoopEmbeddingsTracer) StartSpanAndInjectHeaders(context.Context, map[string]string, *extprocv3.HeaderMutation, *openai.EmbeddingRequest, []byte) EmbeddingsSpan {
-	return nil
-}
-
 // RerankTracer creates spans for rerank requests.
 type RerankTracer = RequestTracer[cohere.RerankV2Request, RerankSpan]
 
@@ -254,11 +251,3 @@ type RerankSpan = ResponseSpan[cohere.RerankV2Response]
 
 // RerankRecorder records attributes to a span according to a semantic convention.
 type RerankRecorder = ResponseRecorder[cohere.RerankV2Request, cohere.RerankV2Response]
-
-// NoopRerankTracer is a RerankTracer that doesn't do anything.
-type NoopRerankTracer struct{}
-
-// StartSpanAndInjectHeaders implements RerankTracer.StartSpanAndInjectHeaders.
-func (NoopRerankTracer) StartSpanAndInjectHeaders(context.Context, map[string]string, *extprocv3.HeaderMutation, *cohere.RerankV2Request, []byte) RerankSpan {
-	return nil
-}
