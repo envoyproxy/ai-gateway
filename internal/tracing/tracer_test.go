@@ -11,8 +11,6 @@ import (
 	"fmt"
 	"testing"
 
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	openaisdk "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/contrib/propagators/autoprop"
@@ -69,8 +67,8 @@ func runRequestTracerLifecycleTest[ReqT any, SpanT any](t *testing.T, tc request
 	tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
 	tracer := tc.constructor(tp.Tracer("test"), autoprop.NewTextMapPropagator(), tc.headerAttrs)
 
-	headerMutation := &extprocv3.HeaderMutation{}
-	span := tracer.StartSpanAndInjectHeaders(t.Context(), tc.headers, headerMutation, tc.req, tc.reqBody)
+	carrier := propagation.MapCarrier{}
+	span := tracer.StartSpanAndInjectHeaders(t.Context(), tc.headers, carrier, tc.req, tc.reqBody)
 	require.IsType(t, tc.expectedSpanType, span)
 
 	tc.recordAndEnd(span)
@@ -91,16 +89,10 @@ func runRequestTracerLifecycleTest[ReqT any, SpanT any](t *testing.T, tc request
 		require.Equal(t, tc.expectedTraceID, traceID)
 	}
 	spanID := actualSpan.SpanContext.SpanID().String()
-	require.Equal(t, &extprocv3.HeaderMutation{
-		SetHeaders: []*corev3.HeaderValueOption{
-			{
-				Header: &corev3.HeaderValue{
-					Key:      "traceparent",
-					RawValue: []byte("00-" + traceID + "-" + spanID + "-01"),
-				},
-			},
-		},
-	}, headerMutation)
+	require.Equal(t,
+		propagation.MapCarrier{
+			"traceparent": fmt.Sprintf("00-%s-%s-01", traceID, spanID),
+		}, carrier)
 }
 
 func testNoopTracer[ReqT any, SpanT any](t *testing.T, name string, ctor tracerConstructor[ReqT, SpanT], newReq func() *ReqT) {
@@ -111,11 +103,11 @@ func testNoopTracer[ReqT any, SpanT any](t *testing.T, name string, ctor tracerC
 		require.IsType(t, tracing.NoopTracer[ReqT, SpanT]{}, tracer)
 
 		headers := map[string]string{}
-		headerMutation := &extprocv3.HeaderMutation{}
+		carrier := propagation.MapCarrier{}
 		req := newReq()
-		span := tracer.StartSpanAndInjectHeaders(context.Background(), headers, headerMutation, req, []byte("{}"))
+		span := tracer.StartSpanAndInjectHeaders(context.Background(), headers, carrier, req, []byte("{}"))
 		require.Nil(t, span)
-		require.Empty(t, headerMutation.SetHeaders)
+		require.Empty(t, carrier)
 	})
 }
 
@@ -126,11 +118,11 @@ func testUnsampledTracer[ReqT any, SpanT any](t *testing.T, name string, ctor tr
 		tracer := ctor(tp.Tracer("test"), autoprop.NewTextMapPropagator(), nil)
 
 		headers := map[string]string{}
-		headerMutation := &extprocv3.HeaderMutation{}
+		carrier := propagation.MapCarrier{}
 		req := newReq()
-		span := tracer.StartSpanAndInjectHeaders(context.Background(), headers, headerMutation, req, []byte("{}"))
+		span := tracer.StartSpanAndInjectHeaders(context.Background(), headers, carrier, req, []byte("{}"))
 		require.Nil(t, span)
-		require.NotEmpty(t, headerMutation.SetHeaders)
+		require.NotEmpty(t, carrier)
 	})
 }
 
@@ -301,7 +293,7 @@ func TestNewCompletionTracer_BuildsGenericRequestTracer(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, headerAttrs, impl.headerAttributes)
 	require.NotNil(t, impl.newSpan)
-	s := tracer.StartSpanAndInjectHeaders(context.Background(), nil, &extprocv3.HeaderMutation{}, &openai.CompletionRequest{}, []byte("{}"))
+	s := tracer.StartSpanAndInjectHeaders(context.Background(), nil, propagation.MapCarrier{}, &openai.CompletionRequest{}, []byte("{}"))
 	require.IsType(t, (*completionSpan)(nil), s)
 }
 
@@ -341,7 +333,7 @@ func TestNewRerankTracer_BuildsGenericRequestTracer(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, headerAttrs, impl.headerAttributes)
 	require.NotNil(t, impl.newSpan)
-	s := tracer.StartSpanAndInjectHeaders(context.Background(), nil, &extprocv3.HeaderMutation{}, &cohere.RerankV2Request{
+	s := tracer.StartSpanAndInjectHeaders(context.Background(), nil, propagation.MapCarrier{}, &cohere.RerankV2Request{
 		TopN: ptr.To(1),
 	}, []byte("{}"))
 	require.IsType(t, (*rerankSpan)(nil), s)
@@ -362,45 +354,8 @@ func TestNewImageGenerationTracer_BuildsGenericRequestTracer(t *testing.T) {
 	require.True(t, ok)
 	require.Nil(t, impl.headerAttributes)
 	require.NotNil(t, impl.newSpan)
-	s := tracer.StartSpanAndInjectHeaders(context.Background(), nil, &extprocv3.HeaderMutation{}, &openaisdk.ImageGenerateParams{}, []byte("{}"))
+	s := tracer.StartSpanAndInjectHeaders(context.Background(), nil, propagation.MapCarrier{}, &openaisdk.ImageGenerateParams{}, []byte("{}"))
 	require.IsType(t, (*imageGenerationSpan)(nil), s)
-}
-
-func TestHeaderMutationCarrier(t *testing.T) {
-	t.Run("Get panics", func(t *testing.T) {
-		carrier := &headerMutationCarrier{m: &extprocv3.HeaderMutation{}}
-		require.Panics(t, func() { carrier.Get("test-key") })
-	})
-
-	t.Run("Keys panics", func(t *testing.T) {
-		carrier := &headerMutationCarrier{m: &extprocv3.HeaderMutation{}}
-		require.Panics(t, func() { carrier.Keys() })
-	})
-
-	t.Run("Set headers", func(t *testing.T) {
-		mutation := &extprocv3.HeaderMutation{}
-		carrier := &headerMutationCarrier{m: mutation}
-
-		carrier.Set("trace-id", "12345")
-		carrier.Set("span-id", "67890")
-
-		require.Equal(t, &extprocv3.HeaderMutation{
-			SetHeaders: []*corev3.HeaderValueOption{
-				{
-					Header: &corev3.HeaderValue{
-						Key:      "trace-id",
-						RawValue: []byte("12345"),
-					},
-				},
-				{
-					Header: &corev3.HeaderValue{
-						Key:      "span-id",
-						RawValue: []byte("67890"),
-					},
-				},
-			},
-		}, mutation)
-	})
 }
 
 type testChatCompletionRecorder struct{}

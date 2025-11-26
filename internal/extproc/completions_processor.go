@@ -146,7 +146,7 @@ func (c *completionsProcessorRouterFilter) ProcessRequestBody(ctx context.Contex
 	c.span = c.tracer.StartSpanAndInjectHeaders(
 		ctx,
 		c.requestHeaders,
-		headerMutation,
+		&headerMutationCarrier{m: headerMutation},
 		body,
 		rawBody.Body,
 	)

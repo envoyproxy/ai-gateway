@@ -8,8 +8,8 @@ package api
 import (
 	"testing"
 
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/propagation"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
@@ -28,7 +28,7 @@ func TestNoopTracerChatCompletion(t *testing.T) {
 	tracer := NoopTracer[openai.ChatCompletionRequest, ChatCompletionSpan]{}
 
 	readHeaders := map[string]string{}
-	writeHeaders := &extprocv3.HeaderMutation{}
+	writeHeaders := propagation.MapCarrier{}
 	req := &openai.ChatCompletionRequest{}
 	reqBody := []byte{'{', '}'}
 
@@ -47,7 +47,7 @@ func TestNoopTracerChatCompletion(t *testing.T) {
 
 	// no side effects
 	require.Equal(t, map[string]string{}, readHeaders)
-	require.Equal(t, &extprocv3.HeaderMutation{}, writeHeaders)
+	require.Equal(t, propagation.MapCarrier{}, writeHeaders)
 	require.Equal(t, &openai.ChatCompletionRequest{}, req)
 	require.Equal(t, []byte{'{', '}'}, reqBody)
 }

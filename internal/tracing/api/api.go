@@ -10,8 +10,8 @@ package api
 import (
 	"context"
 
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	openaisdk "github.com/openai/openai-go/v2"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
@@ -49,7 +49,7 @@ type (
 		//   - body: contains the original raw request body as a byte slice.
 		//
 		// Returns nil unless the span is sampled.
-		StartSpanAndInjectHeaders(ctx context.Context, headers map[string]string, headerMutation *extprocv3.HeaderMutation, req *ReqT, body []byte) SpanT
+		StartSpanAndInjectHeaders(ctx context.Context, headers map[string]string, carrier propagation.TextMapCarrier, req *ReqT, body []byte) SpanT
 	}
 	// ChatCompletionTracer creates spans for OpenAI chat completion requests.
 	ChatCompletionTracer = RequestTracer[openai.ChatCompletionRequest, ChatCompletionSpan]
@@ -168,7 +168,7 @@ func (NoopTracing) Shutdown(context.Context) error {
 type NoopTracer[ReqT any, SpanT any] struct{}
 
 // StartSpanAndInjectHeaders implements RequestTracer.StartSpanAndInjectHeaders.
-func (NoopTracer[ReqT, SpanT]) StartSpanAndInjectHeaders(context.Context, map[string]string, *extprocv3.HeaderMutation, *ReqT, []byte) SpanT {
+func (NoopTracer[ReqT, SpanT]) StartSpanAndInjectHeaders(context.Context, map[string]string, propagation.TextMapCarrier, *ReqT, []byte) SpanT {
 	var zero SpanT
 	return zero
 }

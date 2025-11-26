@@ -124,7 +124,7 @@ func (e *embeddingsProcessorRouterFilter) ProcessRequestBody(ctx context.Context
 	e.span = e.tracer.StartSpanAndInjectHeaders(
 		ctx,
 		e.requestHeaders,
-		headerMutation,
+		&headerMutationCarrier{m: headerMutation},
 		body,
 		rawBody.Body,
 	)

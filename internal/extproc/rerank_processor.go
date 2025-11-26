@@ -124,7 +124,7 @@ func (r *rerankProcessorRouterFilter) ProcessRequestBody(ctx context.Context, ra
 	r.span = r.tracer.StartSpanAndInjectHeaders(
 		ctx,
 		r.requestHeaders,
-		headerMutation,
+		&headerMutationCarrier{m: headerMutation},
 		body,
 		rawBody.Body,
 	)

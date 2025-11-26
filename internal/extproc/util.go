@@ -129,3 +129,28 @@ func applyBodyMutation(bodyMutator *bodymutator.BodyMutator, bodyMutation *extpr
 
 	return bodyMutation
 }
+
+// headerMutationCarrier implements [propagation.TextMapCarrier].
+type headerMutationCarrier struct {
+	m *extprocv3.HeaderMutation
+}
+
+// Get implements the same method as defined on propagation.TextMapCarrier.
+func (c *headerMutationCarrier) Get(string) string {
+	panic("unexpected as this carrier is write-only for injection")
+}
+
+// Set adds a key-value pair to the HeaderMutation.
+func (c *headerMutationCarrier) Set(key, value string) {
+	if c.m.SetHeaders == nil {
+		c.m.SetHeaders = make([]*corev3.HeaderValueOption, 0, 4)
+	}
+	c.m.SetHeaders = append(c.m.SetHeaders, &corev3.HeaderValueOption{
+		Header: &corev3.HeaderValue{Key: key, RawValue: []byte(value)},
+	})
+}
+
+// Keys implements the same method as defined on propagation.TextMapCarrier.
+func (c *headerMutationCarrier) Keys() []string {
+	panic("unexpected as this carrier is write-only for injection")
+}

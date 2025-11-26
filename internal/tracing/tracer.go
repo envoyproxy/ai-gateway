@@ -8,8 +8,6 @@ package tracing
 import (
 	"context"
 
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	openaisdk "github.com/openai/openai-go/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
@@ -71,7 +69,7 @@ func newRequestTracer[ReqT any, ChunkT any, RespT any, Recorder tracing.SpanReco
 func (t *requestTracerImpl[ReqT, ChunkT, RespT, Recorder, SpanT]) StartSpanAndInjectHeaders(
 	ctx context.Context,
 	headers map[string]string,
-	mutableHeaders *extprocv3.HeaderMutation,
+	carrier propagation.TextMapCarrier,
 	req *ReqT,
 	body []byte,
 ) SpanT {
@@ -79,7 +77,7 @@ func (t *requestTracerImpl[ReqT, ChunkT, RespT, Recorder, SpanT]) StartSpanAndIn
 	spanName, opts := t.recorder.StartParams(req, body)
 	newCtx, span := t.tracer.Start(parentCtx, spanName, opts...)
 
-	t.propagator.Inject(newCtx, &headerMutationCarrier{m: mutableHeaders})
+	t.propagator.Inject(newCtx, carrier)
 
 	var zero SpanT
 	if !span.IsRecording() {
@@ -113,30 +111,6 @@ func newChatCompletionTracer(tracer trace.Tracer, propagator propagation.TextMap
 			return &chatCompletionSpan{span: span, recorder: recorder}
 		},
 	)
-}
-
-type headerMutationCarrier struct {
-	m *extprocv3.HeaderMutation
-}
-
-// Get implements the same method as defined on propagation.TextMapCarrier.
-func (c *headerMutationCarrier) Get(string) string {
-	panic("unexpected as this carrier is write-only for injection")
-}
-
-// Set adds a key-value pair to the HeaderMutation.
-func (c *headerMutationCarrier) Set(key, value string) {
-	if c.m.SetHeaders == nil {
-		c.m.SetHeaders = make([]*corev3.HeaderValueOption, 0, 4)
-	}
-	c.m.SetHeaders = append(c.m.SetHeaders, &corev3.HeaderValueOption{
-		Header: &corev3.HeaderValue{Key: key, RawValue: []byte(value)},
-	})
-}
-
-// Keys implements the same method as defined on propagation.TextMapCarrier.
-func (c *headerMutationCarrier) Keys() []string {
-	panic("unexpected as this carrier is write-only for injection")
 }
 
 func newEmbeddingsTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.EmbeddingsRecorder, headerAttributes map[string]string) tracing.EmbeddingsTracer {

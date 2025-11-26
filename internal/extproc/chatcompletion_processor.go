@@ -152,7 +152,7 @@ func (c *chatCompletionProcessorRouterFilter) ProcessRequestBody(ctx context.Con
 	c.span = c.tracer.StartSpanAndInjectHeaders(
 		ctx,
 		c.requestHeaders,
-		headerMutation,
+		&headerMutationCarrier{m: headerMutation},
 		body,
 		rawBody.Body,
 	)

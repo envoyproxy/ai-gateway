@@ -128,7 +128,7 @@ func (i *imageGenerationProcessorRouterFilter) ProcessRequestBody(ctx context.Co
 	i.span = i.tracer.StartSpanAndInjectHeaders(
 		ctx,
 		i.requestHeaders,
-		headerMutation,
+		&headerMutationCarrier{m: headerMutation},
 		body,
 		rawBody.Body,
 	)

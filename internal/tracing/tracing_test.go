@@ -15,9 +15,9 @@ import (
 	"strconv"
 	"testing"
 
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	openaisdk "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/propagation"
 	"k8s.io/utils/ptr"
 
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
@@ -380,17 +380,16 @@ func TestNewTracingFromEnv_OtelPropagators(t *testing.T) {
 			collector, tracing := newTracingFromEnvForTest(t, io.Discard)
 
 			// Create headers for injection.
-			headerMutation := &extprocv3.HeaderMutation{}
+			carrier := propagation.MapCarrier{}
 
 			// Start span and inject headers.
-			span := startCompletionsSpan(t, tracing, headerMutation)
+			span := startCompletionsSpan(t, tracing, carrier)
 			require.NotNil(t, span)
 			span.EndSpan()
 
 			// Check that the expected header was injected.
-			require.Len(t, headerMutation.SetHeaders, 1, "expected exactly one header to be set")
-			header := headerMutation.SetHeaders[0].Header
-			require.Equal(t, tt.expectHeaderKey, header.Key)
+			require.Len(t, carrier, 1, "expected exactly one header to be set")
+			require.Contains(t, carrier, tt.expectHeaderKey)
 
 			// Get the span to check trace/span IDs.
 			v1Span := collector.TakeSpan()
@@ -402,7 +401,7 @@ func TestNewTracingFromEnv_OtelPropagators(t *testing.T) {
 
 			// Verify the header value format.
 			expectedValue := tt.expectHeaderFormat(traceIDStr, spanIDStr)
-			require.Equal(t, expectedValue, string(header.RawValue))
+			require.Equal(t, expectedValue, carrier[tt.expectHeaderKey])
 		})
 	}
 }
@@ -476,7 +475,7 @@ func TestNewTracingFromEnv_ChatCompletion_Redaction(t *testing.T) {
 			span := tracer.StartSpanAndInjectHeaders(
 				t.Context(),
 				map[string]string{},
-				&extprocv3.HeaderMutation{},
+				propagation.MapCarrier{},
 				req,
 				reqBody,
 			)
@@ -587,11 +586,11 @@ func TestNewTracingFromEnv_HeaderAttributeMapping(t *testing.T) {
 		"x-session-id": "abc123",
 		"x-user-id":    "user456",
 	}
-	headerMutation := &extprocv3.HeaderMutation{}
+	carrier := propagation.MapCarrier{}
 
 	tr := result.ChatCompletionTracer()
 	req := &openai.ChatCompletionRequest{Model: openai.ModelGPT5Nano}
-	span := tr.StartSpanAndInjectHeaders(t.Context(), headers, headerMutation, req, []byte("{}"))
+	span := tr.StartSpanAndInjectHeaders(t.Context(), headers, carrier, req, []byte("{}"))
 	require.NotNil(t, span)
 	span.EndSpan()
 
@@ -675,7 +674,7 @@ func TestNewTracingFromEnv_Embeddings_Redaction(t *testing.T) {
 			span := tracer.StartSpanAndInjectHeaders(
 				t.Context(),
 				map[string]string{},
-				&extprocv3.HeaderMutation{},
+				propagation.MapCarrier{},
 				req,
 				reqBody,
 			)
@@ -717,14 +716,13 @@ func TestNewTracingFromEnv_Embeddings_Redaction(t *testing.T) {
 }
 
 // startCompletionsSpan is a test helper that creates a span with a basic request.
-// If headerMutation is nil, a new empty HeaderMutation will be created.
-func startCompletionsSpan(t *testing.T, tracing tracing.Tracing, headerMutation *extprocv3.HeaderMutation) tracing.ChatCompletionSpan {
-	if headerMutation == nil {
-		headerMutation = &extprocv3.HeaderMutation{}
+func startCompletionsSpan(t *testing.T, tracing tracing.Tracing, carrier propagation.MapCarrier) tracing.ChatCompletionSpan {
+	if carrier == nil {
+		carrier = propagation.MapCarrier{}
 	}
 	tracer := tracing.ChatCompletionTracer()
 	req := &openai.ChatCompletionRequest{Model: openai.ModelGPT5Nano}
-	return tracer.StartSpanAndInjectHeaders(t.Context(), nil, headerMutation, req, nil)
+	return tracer.StartSpanAndInjectHeaders(t.Context(), nil, carrier, req, nil)
 }
 
 func TestTracingImpl_Getters_ImageGenerationAndRerank(t *testing.T) {
