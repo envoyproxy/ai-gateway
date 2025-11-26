@@ -407,4 +407,3 @@ func parseAudioSpeechBody(body *extprocv3.HttpBody) (modelName string, rb *opena
 	}
 	return req.Model, &req, nil
 }
-

@@ -346,7 +346,7 @@ func TestParseGeminiStreamingChunks(t *testing.T) {
 
 		chunks, err := impl.parseGeminiStreamingChunks(bytes.NewReader(sseBody))
 		require.NoError(t, err)
-		require.Len(t, chunks, 0)
+		require.Empty(t, chunks)
 	})
 
 	t.Run("incomplete chunk buffering", func(t *testing.T) {
@@ -357,7 +357,7 @@ func TestParseGeminiStreamingChunks(t *testing.T) {
 
 		chunks, err := impl.parseGeminiStreamingChunks(bytes.NewReader(incompleteBody))
 		require.NoError(t, err)
-		require.Len(t, chunks, 0)
+		require.Empty(t, chunks)
 		require.NotEmpty(t, impl.bufferedBody)
 	})
 }
@@ -409,7 +409,6 @@ func TestAudioSpeechOpenAIToGCPVertexAITranslator_ReadError(t *testing.T) {
 
 type errorReader struct{}
 
-func (e *errorReader) Read(p []byte) (n int, err error) {
+func (e *errorReader) Read(_ []byte) (n int, err error) {
 	return 0, io.ErrUnexpectedEOF
 }
-

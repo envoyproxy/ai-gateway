@@ -77,9 +77,6 @@ func (a *audioSpeechOpenAIToGCPVertexAITranslator) RequestBody(_ []byte, body *o
 	}
 
 	pathSuffix := buildGCPModelPathSuffix(gcpModelPublisherGoogle, a.requestModel, gcpMethodStreamGenerateContent, "alt=sse")
-	if !a.usePublisherPath {
-		pathSuffix = buildGeminiModelPath(a.requestModel, gcpMethodStreamGenerateContent, "alt=sse")
-	}
 
 	newHeaders = append(newHeaders, internalapi.Header{":path", pathSuffix})
 
@@ -252,4 +249,3 @@ func floatPtr(f float64) *float32 {
 func stringPtr(s string) *string {
 	return &s
 }
-

@@ -37,14 +37,19 @@ type mockAudioSpeechMetrics struct {
 	tokenUsageCount     int
 }
 
-func (m *mockAudioSpeechMetrics) StartRequest(_ map[string]string)                       { m.requestStart = time.Now() }
-func (m *mockAudioSpeechMetrics) SetOriginalModel(originalModel string)                  { m.originalModel = originalModel }
-func (m *mockAudioSpeechMetrics) SetRequestModel(requestModel string)                    { m.requestModel = requestModel }
-func (m *mockAudioSpeechMetrics) SetResponseModel(responseModel string)                  { m.responseModel = responseModel }
-func (m *mockAudioSpeechMetrics) SetBackend(backend *filterapi.Backend)                  { m.backend = backend.Name }
+func (m *mockAudioSpeechMetrics) StartRequest(_ map[string]string) { m.requestStart = time.Now() }
+func (m *mockAudioSpeechMetrics) SetOriginalModel(originalModel string) {
+	m.originalModel = originalModel
+}
+func (m *mockAudioSpeechMetrics) SetRequestModel(requestModel string) { m.requestModel = requestModel }
+func (m *mockAudioSpeechMetrics) SetResponseModel(responseModel string) {
+	m.responseModel = responseModel
+}
+func (m *mockAudioSpeechMetrics) SetBackend(backend *filterapi.Backend) { m.backend = backend.Name }
 func (m *mockAudioSpeechMetrics) RecordTokenUsage(_ context.Context, inputTokens uint32, _ map[string]string) {
 	m.tokenUsageCount += int(inputTokens)
 }
+
 func (m *mockAudioSpeechMetrics) RecordRequestCompletion(_ context.Context, success bool, _ map[string]string) {
 	if success {
 		m.requestSuccessCount++
@@ -89,7 +94,7 @@ func (m *mockAudioSpeechTranslator) ResponseBody(_ map[string]string, body io.Re
 		require.NoError(m.t, err)
 		require.Equal(m.t, m.expResponseBody, buf)
 	}
-	return m.retNewHeaders, m.retMutatedBody, m.retUsedToken, internalapi.ResponseModel(m.retResponseModel), m.retErr
+	return m.retNewHeaders, m.retMutatedBody, m.retUsedToken, m.retResponseModel, m.retErr
 }
 
 func (m *mockAudioSpeechTranslator) ResponseError(_ map[string]string, body io.Reader) ([]internalapi.Header, []byte, error) {
@@ -571,4 +576,3 @@ func TestParseAudioSpeechBody(t *testing.T) {
 		require.Contains(t, err.Error(), "failed to unmarshal body")
 	})
 }
-

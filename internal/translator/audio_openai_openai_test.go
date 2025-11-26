@@ -77,4 +77,3 @@ func TestAudioSpeechOpenAIToOpenAITranslator_ResponseError(t *testing.T) {
 	require.Nil(t, newHeaders)
 	require.Nil(t, mutatedBody)
 }
-

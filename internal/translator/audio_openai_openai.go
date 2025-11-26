@@ -58,4 +58,3 @@ func (a *audioSpeechOpenAIToOpenAITranslator) ResponseError(_ map[string]string,
 ) {
 	return nil, nil, nil
 }
-
