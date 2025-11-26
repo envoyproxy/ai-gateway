@@ -37,7 +37,7 @@ func init() {
 		Level: slog.LevelDebug, // Adjust log level from environment variable if needed.
 	}))
 	if err := filterapi.StartConfigWatcher(context.Background(),
-		os.Getenv("AI_GATEWAY_dynamicmodule_FILTER_CONFIG_PATH"), g, logger, time.Second*5); err != nil {
+		os.Getenv("AI_GATEWAY_DYNAMIC_MODULE_FILTER_CONFIG_PATH"), g, logger, time.Second*5); err != nil {
 		panic("failed to start filter config watcher: " + err.Error())
 	}
 	sdk.NewHTTPFilterConfig = g.newHTTPFilterConfig
@@ -87,21 +87,21 @@ func (g *globalState) initializeEnv() error {
 	}
 
 	endpointPrefixes, err := internalapi.ParseEndpointPrefixes(os.Getenv(
-		"AI_GATEWAY_dynamicmodule_FILTER_ENDPOINT_PREFIXES",
+		"AI_GATEWAY_DYNAMIC_MODULE_FILTER_ENDPOINT_PREFIXES",
 	))
 	if err != nil {
 		return fmt.Errorf("failed to parse endpoint prefixes: %w", err)
 	}
 
 	metricsRequestHeaderAttributes, err := internalapi.ParseRequestHeaderAttributeMapping(os.Getenv(
-		"AI_GATEWAY_dynamicmodule_FILTER_METRICS_REQUEST_HEADER_ATTRIBUTES",
+		"AI_GATEWAY_DYNAMIC_MODULE_FILTER_METRICS_REQUEST_HEADER_ATTRIBUTES",
 	))
 	if err != nil {
 		return fmt.Errorf("failed to parse metrics header mapping: %w", err)
 	}
 
 	g.env = &dynamicmodule.Env{
-		RootPrefix:                    os.Getenv("AI_GATEWAY_dynamicmodule_ROOT_PREFIX"),
+		RootPrefix:                    os.Getenv("AI_GATEWAY_DYNAMIC_MODULE_ROOT_PREFIX"),
 		EndpointPrefixes:              endpointPrefixes,
 		ChatCompletionMetricsFactory:  metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationChat),
 		MessagesMetricsFactory:        metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationMessages),
