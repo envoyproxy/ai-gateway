@@ -291,7 +291,13 @@ func TestNewCompletionTracer_BuildsGenericRequestTracer(t *testing.T) {
 	headerAttrs := map[string]string{"x-session-id": "session.id"}
 
 	tracer := newCompletionTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testCompletionRecorder{}, headerAttrs)
-	impl, ok := tracer.(*requestTracerImpl[openai.CompletionRequest, tracing.CompletionSpan, tracing.CompletionRecorder])
+	impl, ok := tracer.(*requestTracerImpl[
+		openai.CompletionRequest,
+		openai.CompletionResponse,
+		openai.CompletionResponse,
+		tracing.CompletionRecorder,
+		tracing.CompletionSpan,
+	])
 	require.True(t, ok)
 	require.Equal(t, headerAttrs, impl.headerAttributes)
 	require.NotNil(t, impl.newSpan)
@@ -304,7 +310,13 @@ func TestNewEmbeddingsTracer_BuildsGenericRequestTracer(t *testing.T) {
 	headerAttrs := map[string]string{"x-session-id": "session.id"}
 
 	tracer := newEmbeddingsTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testEmbeddingsRecorder{}, headerAttrs)
-	impl, ok := tracer.(*requestTracerImpl[openai.EmbeddingRequest, tracing.EmbeddingsSpan, tracing.EmbeddingsRecorder])
+	impl, ok := tracer.(*requestTracerImpl[
+		openai.EmbeddingRequest,
+		struct{},
+		openai.EmbeddingResponse,
+		tracing.EmbeddingsRecorder,
+		tracing.EmbeddingsSpan,
+	])
 	require.True(t, ok)
 	require.Equal(t, headerAttrs, impl.headerAttributes)
 	require.NotNil(t, impl.newSpan)
@@ -317,7 +329,13 @@ func TestNewRerankTracer_BuildsGenericRequestTracer(t *testing.T) {
 	headerAttrs := map[string]string{"x-session-id": "session.id"}
 
 	tracer := newRerankTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testRerankTracerRecorder{}, headerAttrs)
-	impl, ok := tracer.(*requestTracerImpl[cohere.RerankV2Request, tracing.RerankSpan, tracing.RerankRecorder])
+	impl, ok := tracer.(*requestTracerImpl[
+		cohere.RerankV2Request,
+		struct{},
+		cohere.RerankV2Response,
+		tracing.RerankRecorder,
+		tracing.RerankSpan,
+	])
 	require.True(t, ok)
 	require.Equal(t, headerAttrs, impl.headerAttributes)
 	require.NotNil(t, impl.newSpan)
@@ -328,7 +346,13 @@ func TestNewImageGenerationTracer_BuildsGenericRequestTracer(t *testing.T) {
 	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
 
 	tracer := newImageGenerationTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testImageGenerationRecorder{})
-	impl, ok := tracer.(*requestTracerImpl[openaisdk.ImageGenerateParams, tracing.ImageGenerationSpan, tracing.ImageGenerationRecorder])
+	impl, ok := tracer.(*requestTracerImpl[
+		openaisdk.ImageGenerateParams,
+		struct{},
+		openaisdk.ImagesResponse,
+		tracing.ImageGenerationRecorder,
+		tracing.ImageGenerationSpan,
+	])
 	require.True(t, ok)
 	require.Nil(t, impl.headerAttributes)
 	require.NotNil(t, impl.newSpan)
@@ -405,7 +429,9 @@ func (testChatCompletionRecorder) RecordResponse(span oteltrace.Span, resp *open
 
 var _ tracing.EmbeddingsRecorder = testEmbeddingsRecorder{}
 
-type testEmbeddingsRecorder struct{}
+type testEmbeddingsRecorder struct {
+	tracing.NoopChunkRecorder[struct{}]
+}
 
 func (testEmbeddingsRecorder) RecordResponseOnError(span oteltrace.Span, statusCode int, body []byte) {
 	span.SetAttributes(attribute.Int("statusCode", statusCode))
@@ -463,7 +489,9 @@ func (testCompletionRecorder) RecordResponse(span oteltrace.Span, resp *openai.C
 }
 
 // Mock recorder for testing image generation span
-type testImageGenerationRecorder struct{}
+type testImageGenerationRecorder struct {
+	tracing.NoopChunkRecorder[struct{}]
+}
 
 func (r testImageGenerationRecorder) StartParams(_ *openaisdk.ImageGenerateParams, _ []byte) (string, []oteltrace.SpanStartOption) {
 	return "ImagesResponse", nil
@@ -492,7 +520,9 @@ func (r testImageGenerationRecorder) RecordResponseOnError(span oteltrace.Span, 
 	)
 }
 
-type testRerankTracerRecorder struct{}
+type testRerankTracerRecorder struct {
+	tracing.NoopChunkRecorder[struct{}]
+}
 
 func (testRerankTracerRecorder) StartParams(*cohere.RerankV2Request, []byte) (string, []oteltrace.SpanStartOption) {
 	return "Rerank", []oteltrace.SpanStartOption{oteltrace.WithSpanKind(oteltrace.SpanKindServer)}

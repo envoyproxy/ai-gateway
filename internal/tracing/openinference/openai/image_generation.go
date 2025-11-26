@@ -21,6 +21,7 @@ import (
 
 // ImageGenerationRecorder implements recorders for OpenInference image generation spans.
 type ImageGenerationRecorder struct {
+	tracing.NoopChunkRecorder[struct{}]
 	traceConfig *openinference.TraceConfig
 }
 

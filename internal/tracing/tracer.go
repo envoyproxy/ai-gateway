@@ -22,15 +22,15 @@ import (
 )
 
 // spanFactory is a function type that creates a new SpanT given a trace.Span and a Recorder.
-type spanFactory[ReqT any, SpanT any, Recorder tracing.SpanRecorder[ReqT]] func(trace.Span, Recorder) SpanT
+type spanFactory[ReqT any, ChunkT any, RespT any, Recorder tracing.SpanRecorder[ReqT, ChunkT, RespT], SpanT any] func(trace.Span, Recorder) SpanT
 
 // requestTracerImpl implements RequestTracer for various request and span types.
-type requestTracerImpl[ReqT any, SpanT any, Recorder tracing.SpanRecorder[ReqT]] struct {
+type requestTracerImpl[ReqT any, ChunkT any, RespT any, Recorder tracing.SpanRecorder[ReqT, ChunkT, RespT], SpanT any] struct {
 	tracer           trace.Tracer
 	propagator       propagation.TextMapPropagator
 	recorder         Recorder
 	headerAttributes map[string]string
-	newSpan          spanFactory[ReqT, SpanT, Recorder]
+	newSpan          spanFactory[ReqT, ChunkT, RespT, Recorder, SpanT]
 }
 
 var (
@@ -42,24 +42,24 @@ var (
 )
 
 type (
-	chatCompletionTracer  = requestTracerImpl[openai.ChatCompletionRequest, tracing.ChatCompletionSpan, tracing.ChatCompletionRecorder]
-	embeddingsTracer      = requestTracerImpl[openai.EmbeddingRequest, tracing.EmbeddingsSpan, tracing.EmbeddingsRecorder]
-	completionTracer      = requestTracerImpl[openai.CompletionRequest, tracing.CompletionSpan, tracing.CompletionRecorder]
-	imageGenerationTracer = requestTracerImpl[openaisdk.ImageGenerateParams, tracing.ImageGenerationSpan, tracing.ImageGenerationRecorder]
-	rerankTracer          = requestTracerImpl[cohereschema.RerankV2Request, tracing.RerankSpan, tracing.RerankRecorder]
+	chatCompletionTracer  = requestTracerImpl[openai.ChatCompletionRequest, openai.ChatCompletionResponseChunk, openai.ChatCompletionResponse, tracing.ChatCompletionRecorder, tracing.ChatCompletionSpan]
+	embeddingsTracer      = requestTracerImpl[openai.EmbeddingRequest, struct{}, openai.EmbeddingResponse, tracing.EmbeddingsRecorder, tracing.EmbeddingsSpan]
+	completionTracer      = requestTracerImpl[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse, tracing.CompletionRecorder, tracing.CompletionSpan]
+	imageGenerationTracer = requestTracerImpl[openaisdk.ImageGenerateParams, struct{}, openaisdk.ImagesResponse, tracing.ImageGenerationRecorder, tracing.ImageGenerationSpan]
+	rerankTracer          = requestTracerImpl[cohereschema.RerankV2Request, struct{}, cohereschema.RerankV2Response, tracing.RerankRecorder, tracing.RerankSpan]
 )
 
-func newRequestTracer[ReqT any, SpanT any, Recorder tracing.SpanRecorder[ReqT]](
+func newRequestTracer[ReqT any, ChunkT any, RespT any, Recorder tracing.SpanRecorder[ReqT, ChunkT, RespT], SpanT any](
 	tracer trace.Tracer,
 	propagator propagation.TextMapPropagator,
 	recorder Recorder,
 	headerAttributes map[string]string,
-	newSpan spanFactory[ReqT, SpanT, Recorder],
+	newSpan spanFactory[ReqT, ChunkT, RespT, Recorder, SpanT],
 ) tracing.RequestTracer[ReqT, SpanT] {
 	if _, ok := tracer.(noop.Tracer); ok {
 		return tracing.NoopTracer[ReqT, SpanT]{}
 	}
-	return &requestTracerImpl[ReqT, SpanT, Recorder]{
+	return &requestTracerImpl[ReqT, ChunkT, RespT, Recorder, SpanT]{
 		tracer:           tracer,
 		propagator:       propagator,
 		recorder:         recorder,
@@ -68,7 +68,7 @@ func newRequestTracer[ReqT any, SpanT any, Recorder tracing.SpanRecorder[ReqT]](
 	}
 }
 
-func (t *requestTracerImpl[ReqT, SpanT, Recorder]) StartSpanAndInjectHeaders(
+func (t *requestTracerImpl[ReqT, ChunkT, RespT, Recorder, SpanT]) StartSpanAndInjectHeaders(
 	ctx context.Context,
 	headers map[string]string,
 	mutableHeaders *extprocv3.HeaderMutation,

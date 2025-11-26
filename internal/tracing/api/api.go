@@ -90,7 +90,7 @@ type (
 
 type (
 	// SpanRecorder standardizes recorder implementations for non-MCP tracers.
-	SpanRecorder[ReqT any] interface {
+	SpanRecorder[ReqT any, ChunkT any, RespT any] interface {
 		// StartParams returns the name and options to start the span with.
 		//
 		// Parameters:
@@ -99,44 +99,33 @@ type (
 		//
 		// Note: Avoid expensive data conversions since the span might not be sampled.
 		StartParams(req *ReqT, body []byte) (spanName string, opts []trace.SpanStartOption)
-
 		// RecordRequest records request attributes to the span.
 		RecordRequest(span trace.Span, req *ReqT, body []byte)
-
-		// RecordResponseOnError ends recording the span with an error status.
-		RecordResponseOnError(span trace.Span, statusCode int, body []byte)
-	}
-	// ResponseRecorder augments SpanRecorder with a typed response recorder.
-	ResponseRecorder[ReqT any, RespT any] interface {
-		SpanRecorder[ReqT]
-
 		// RecordResponse records response attributes to the span.
 		RecordResponse(span trace.Span, resp *RespT)
-	}
-	// StreamRecorder augments SpanRecorder with streaming response chunk recording.
-	StreamRecorder[ReqT any, ChunkT any] interface {
-		SpanRecorder[ReqT]
-
+		// RecordResponseOnError ends recording the span with an error status.
+		RecordResponseOnError(span trace.Span, statusCode int, body []byte)
 		// RecordResponseChunks records response chunk attributes to the span for streaming response.
 		RecordResponseChunks(span trace.Span, chunks []*ChunkT)
 	}
-	// StreamResponseRecorder combines streaming chunks with a final response recorder.
-	StreamResponseRecorder[ReqT any, ChunkT any, RespT any] interface {
-		ResponseRecorder[ReqT, RespT]
-		RecordResponseChunks(span trace.Span, chunks []*ChunkT)
-	}
 	// ChatCompletionRecorder records attributes to a span according to a semantic convention.
-	ChatCompletionRecorder = StreamResponseRecorder[openai.ChatCompletionRequest, openai.ChatCompletionResponseChunk, openai.ChatCompletionResponse]
+	ChatCompletionRecorder = SpanRecorder[openai.ChatCompletionRequest, openai.ChatCompletionResponseChunk, openai.ChatCompletionResponse]
 	// CompletionRecorder records attributes to a span according to a semantic convention.
 	// Note: Completion streaming chunks are full CompletionResponse objects, not deltas like chat completions.
-	CompletionRecorder = StreamResponseRecorder[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse]
+	CompletionRecorder = SpanRecorder[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse]
 	// ImageGenerationRecorder records attributes to a span according to a semantic convention.
-	ImageGenerationRecorder = ResponseRecorder[openaisdk.ImageGenerateParams, openaisdk.ImagesResponse]
+	ImageGenerationRecorder = SpanRecorder[openaisdk.ImageGenerateParams, struct{}, openaisdk.ImagesResponse]
 	// EmbeddingsRecorder records attributes to a span according to a semantic convention.
-	EmbeddingsRecorder = ResponseRecorder[openai.EmbeddingRequest, openai.EmbeddingResponse]
+	EmbeddingsRecorder = SpanRecorder[openai.EmbeddingRequest, struct{}, openai.EmbeddingResponse]
 	// RerankRecorder records attributes to a span according to a semantic convention.
-	RerankRecorder = ResponseRecorder[cohere.RerankV2Request, cohere.RerankV2Response]
+	RerankRecorder = SpanRecorder[cohere.RerankV2Request, struct{}, cohere.RerankV2Response]
 )
+
+// NoopChunkRecorder provides a no-op RecordResponseChunks implementation for recorders that don't emit streaming chunks.
+type NoopChunkRecorder[ChunkT any] struct{}
+
+// RecordResponseChunks implements SpanRecorder.RecordResponseChunks as a no-op.
+func (NoopChunkRecorder[ChunkT]) RecordResponseChunks(trace.Span, []*ChunkT) {}
 
 // NoopTracing is a Tracing that doesn't do anything.
 type NoopTracing struct{}

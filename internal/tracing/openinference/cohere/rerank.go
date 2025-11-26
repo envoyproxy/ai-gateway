@@ -21,6 +21,7 @@ import (
 
 // RerankRecorder implements recorders for Cohere Rerank spans.
 type RerankRecorder struct {
+	tracing.NoopChunkRecorder[struct{}]
 	traceConfig *openinference.TraceConfig
 }
 

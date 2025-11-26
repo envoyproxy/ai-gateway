@@ -19,6 +19,7 @@ import (
 
 // EmbeddingsRecorder implements recorders for OpenInference embeddings spans.
 type EmbeddingsRecorder struct {
+	tracing.NoopChunkRecorder[struct{}]
 	traceConfig *openinference.TraceConfig
 }
 
