@@ -71,7 +71,6 @@ type mockAudioSpeechTranslator struct {
 	retResponseModel    string
 	retErr              error
 	responseErrorCalled bool
-	useGeminiDirectPath bool
 }
 
 func (m *mockAudioSpeechTranslator) RequestBody(_ []byte, body *openai.AudioSpeechRequest, _ bool) ([]internalapi.Header, []byte, error) {
@@ -105,10 +104,6 @@ func (m *mockAudioSpeechTranslator) ResponseError(_ map[string]string, body io.R
 		require.Equal(m.t, m.expResponseBody, buf)
 	}
 	return m.retNewHeaders, m.retMutatedBody, m.retErr
-}
-
-func (m *mockAudioSpeechTranslator) SetUseGeminiDirectPath(use bool) {
-	m.useGeminiDirectPath = use
 }
 
 var _ translator.AudioSpeechTranslator = &mockAudioSpeechTranslator{}

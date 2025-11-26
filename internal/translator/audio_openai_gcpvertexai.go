@@ -20,7 +20,7 @@ import (
 )
 
 func NewAudioSpeechOpenAIToGCPVertexAITranslator(modelNameOverride internalapi.ModelNameOverride) AudioSpeechTranslator {
-	return &audioSpeechOpenAIToGCPVertexAITranslator{modelNameOverride: modelNameOverride, usePublisherPath: true}
+	return &audioSpeechOpenAIToGCPVertexAITranslator{modelNameOverride: modelNameOverride}
 }
 
 type audioSpeechOpenAIToGCPVertexAITranslator struct {
@@ -28,11 +28,6 @@ type audioSpeechOpenAIToGCPVertexAITranslator struct {
 	requestModel      internalapi.RequestModel
 	stream            bool
 	bufferedBody      []byte
-	usePublisherPath  bool
-}
-
-func (a *audioSpeechOpenAIToGCPVertexAITranslator) SetUseGeminiDirectPath(use bool) {
-	a.usePublisherPath = !use
 }
 
 func (a *audioSpeechOpenAIToGCPVertexAITranslator) RequestBody(_ []byte, body *openai.AudioSpeechRequest, _ bool) (
@@ -82,7 +77,6 @@ func (a *audioSpeechOpenAIToGCPVertexAITranslator) RequestBody(_ []byte, body *o
 
 	slog.Info("translated audio/speech request to Gemini",
 		"path", pathSuffix,
-		"use_publisher_path", a.usePublisherPath,
 		"model", a.requestModel,
 		"voice", voiceName,
 		"body_length", len(geminiReqBody))

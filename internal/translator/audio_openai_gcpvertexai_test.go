@@ -25,18 +25,6 @@ func TestNewAudioSpeechOpenAIToGCPVertexAITranslator(t *testing.T) {
 	impl, ok := translator.(*audioSpeechOpenAIToGCPVertexAITranslator)
 	require.True(t, ok)
 	require.Equal(t, internalapi.ModelNameOverride("override-model"), impl.modelNameOverride)
-	require.True(t, impl.usePublisherPath)
-}
-
-func TestAudioSpeechOpenAIToGCPVertexAITranslator_SetUseGeminiDirectPath(t *testing.T) {
-	translator := NewAudioSpeechOpenAIToGCPVertexAITranslator("")
-	impl := translator.(*audioSpeechOpenAIToGCPVertexAITranslator)
-
-	impl.SetUseGeminiDirectPath(true)
-	require.False(t, impl.usePublisherPath)
-
-	impl.SetUseGeminiDirectPath(false)
-	require.True(t, impl.usePublisherPath)
 }
 
 func TestAudioSpeechOpenAIToGCPVertexAITranslator_RequestBody(t *testing.T) {
@@ -98,28 +86,8 @@ func TestAudioSpeechOpenAIToGCPVertexAITranslator_RequestBody(t *testing.T) {
 		}
 	})
 
-	t.Run("gemini direct path", func(t *testing.T) {
+	t.Run("gcp vertex ai path", func(t *testing.T) {
 		translator := NewAudioSpeechOpenAIToGCPVertexAITranslator("")
-		impl := translator.(*audioSpeechOpenAIToGCPVertexAITranslator)
-		impl.SetUseGeminiDirectPath(true)
-
-		req := &openai.AudioSpeechRequest{
-			Model: "gemini-1.5-pro",
-			Input: "Test",
-			Voice: "alloy",
-		}
-
-		newHeaders, _, err := translator.RequestBody(nil, req, false)
-		require.NoError(t, err)
-
-		path := newHeaders[0].Value()
-		require.Contains(t, path, "/v1beta/models")
-	})
-
-	t.Run("publisher path", func(t *testing.T) {
-		translator := NewAudioSpeechOpenAIToGCPVertexAITranslator("")
-		impl := translator.(*audioSpeechOpenAIToGCPVertexAITranslator)
-		impl.SetUseGeminiDirectPath(false)
 
 		req := &openai.AudioSpeechRequest{
 			Model: "gemini-1.5-pro",

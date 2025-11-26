@@ -381,15 +381,6 @@ func (a *audioSpeechProcessorUpstreamFilter) SetBackend(ctx context.Context, b *
 		return fmt.Errorf("failed to select translator: %w", err)
 	}
 
-	if b.Schema.Name == filterapi.APISchemaGCPVertexAI {
-		type geminiPathSetter interface {
-			SetUseGeminiDirectPath(bool)
-		}
-		if setter, ok := a.translator.(geminiPathSetter); ok {
-			setter.SetUseGeminiDirectPath(false)
-		}
-	}
-
 	a.handler = backendHandler
 	a.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
 	if a.modelNameOverride != "" {
