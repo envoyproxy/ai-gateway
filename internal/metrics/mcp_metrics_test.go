@@ -46,7 +46,7 @@ func TestRecordMetricWithCustomAttributes(t *testing.T) {
 	m = m.WithRequestAttributes(req)
 
 	startAt := time.Now().Add(-1 * time.Minute)
-	m.RecordRequestDuration(t.Context(), &startAt, &mcpsdk.InitializeParams{
+	m.RecordRequestDuration(t.Context(), startAt, &mcpsdk.InitializeParams{
 		Meta: map[string]any{
 			"x-session-id": "sess-1234", // alphabetical order wins when multiple values match case-insensitively
 			"X-SESSION-ID": "sess-4567",
@@ -72,7 +72,7 @@ func TestRecordRequestDuration(t *testing.T) {
 	m := NewMCP(meter, nil)
 	require.NotNil(t, m)
 	startAt := time.Now().Add(-1 * time.Minute)
-	m.RecordRequestDuration(t.Context(), &startAt, nil)
+	m.RecordRequestDuration(t.Context(), startAt, nil)
 
 	count, sum := testotel.GetHistogramValues(t, mr, mcpRequestDuration, attribute.NewSet())
 	require.Equal(t, uint64(1), count)
@@ -86,7 +86,7 @@ func TestRecordRequestErrorDuration(t *testing.T) {
 	m := NewMCP(meter, nil)
 	require.NotNil(t, m)
 	startAt := time.Now().Add(-30 * time.Second)
-	m.RecordRequestErrorDuration(t.Context(), &startAt, MCPErrorUnsupportedProtocolVersion, nil)
+	m.RecordRequestErrorDuration(t.Context(), startAt, MCPErrorUnsupportedProtocolVersion, nil)
 
 	count, sum := testotel.GetHistogramValues(t, mr, mcpRequestDuration, attribute.NewSet(
 		attribute.Key(mcpAttributeErrorType).String(string(MCPErrorUnsupportedProtocolVersion)),
@@ -126,7 +126,7 @@ func TestRecordInitializationDuration(t *testing.T) {
 	require.NotNil(t, m)
 
 	startAt := time.Now().Add(-45 * time.Second)
-	m.RecordInitializationDuration(t.Context(), &startAt, nil)
+	m.RecordInitializationDuration(t.Context(), startAt, nil)
 
 	count, sum := testotel.GetHistogramValues(t, mr, mcpInitializationDuration, attribute.NewSet())
 	require.Equal(t, uint64(1), count)
