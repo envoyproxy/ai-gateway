@@ -60,6 +60,7 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 		wantSecPol     bool
 		wantJWT        bool
 		wantAPIKeyAuth *egv1a1.APIKeyAuth
+		wantExtAuth    *egv1a1.ExtAuth
 		wantBTP        bool
 		wantFilter     bool
 		wantJWKS       *egv1a1.RemoteJWKS
@@ -219,6 +220,114 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 			wantJWKS:   nil,
 			wantErr:    false,
 		},
+		{
+			name: "ext auth configured",
+			mcpRoute: &aigv1a1.MCPRoute{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
+				Spec: aigv1a1.MCPRouteSpec{
+					SecurityPolicy: &aigv1a1.MCPRouteSecurityPolicy{
+						ExtAuth: &egv1a1.ExtAuth{
+							GRPC: &egv1a1.GRPCExtAuthService{
+								BackendCluster: egv1a1.BackendCluster{
+									BackendRefs: []egv1a1.BackendRef{
+										{
+											BackendObjectReference: gwapiv1.BackendObjectReference{
+												Name: "grpc-service",
+												Port: ptr.To(gwapiv1.PortNumber(1073)),
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantSecPol: true,
+			wantJWT:    false,
+			wantExtAuth: &egv1a1.ExtAuth{
+				GRPC: &egv1a1.GRPCExtAuthService{
+					BackendCluster: egv1a1.BackendCluster{
+						BackendRefs: []egv1a1.BackendRef{
+							{
+								BackendObjectReference: gwapiv1.BackendObjectReference{
+									Name: "grpc-service",
+									Port: ptr.To(gwapiv1.PortNumber(1073)),
+								},
+							},
+						},
+					},
+				},
+			},
+			wantBTP:    false,
+			wantFilter: false,
+			wantJWKS:   nil,
+			wantErr:    false,
+		},
+		{
+			name: "api key authentication and ext auth configured",
+			mcpRoute: &aigv1a1.MCPRoute{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
+				Spec: aigv1a1.MCPRouteSpec{
+					SecurityPolicy: &aigv1a1.MCPRouteSecurityPolicy{
+						APIKeyAuth: &egv1a1.APIKeyAuth{
+							CredentialRefs: []gwapiv1.SecretObjectReference{
+								{Name: "client-keys"},
+							},
+							ExtractFrom: []*egv1a1.ExtractFrom{
+								{Headers: []string{"x-api-key"}},
+							},
+							ForwardClientIDHeader: ptr.To("x-client-id"),
+							Sanitize:              ptr.To(true),
+						},
+						ExtAuth: &egv1a1.ExtAuth{
+							GRPC: &egv1a1.GRPCExtAuthService{
+								BackendCluster: egv1a1.BackendCluster{
+									BackendRefs: []egv1a1.BackendRef{
+										{
+											BackendObjectReference: gwapiv1.BackendObjectReference{
+												Name: "grpc-service",
+												Port: ptr.To(gwapiv1.PortNumber(1073)),
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantSecPol: true,
+			wantJWT:    false,
+			wantAPIKeyAuth: &egv1a1.APIKeyAuth{ // expected spec
+				CredentialRefs: []gwapiv1.SecretObjectReference{
+					{Name: "client-keys"},
+				},
+				ExtractFrom: []*egv1a1.ExtractFrom{
+					{Headers: []string{"x-api-key"}},
+				},
+				ForwardClientIDHeader: ptr.To("x-client-id"),
+				Sanitize:              ptr.To(true),
+			},
+			wantExtAuth: &egv1a1.ExtAuth{
+				GRPC: &egv1a1.GRPCExtAuthService{
+					BackendCluster: egv1a1.BackendCluster{
+						BackendRefs: []egv1a1.BackendRef{
+							{
+								BackendObjectReference: gwapiv1.BackendObjectReference{
+									Name: "grpc-service",
+									Port: ptr.To(gwapiv1.PortNumber(1073)),
+								},
+							},
+						},
+					},
+				},
+			},
+			wantBTP:    false,
+			wantFilter: false,
+			wantJWKS:   nil,
+			wantErr:    false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -264,6 +373,13 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 					require.Equal(t, tt.wantAPIKeyAuth, securityPolicy.Spec.APIKeyAuth)
 				} else {
 					require.Nil(t, securityPolicy.Spec.APIKeyAuth)
+				}
+
+				if tt.wantExtAuth != nil {
+					require.NotNil(t, securityPolicy.Spec.ExtAuth)
+					require.Equal(t, tt.wantExtAuth, securityPolicy.Spec.ExtAuth)
+				} else {
+					require.Nil(t, securityPolicy.Spec.ExtAuth)
 				}
 
 				// The SecurityPolicy should only apply to the HTTPRoute MCP proxy rule.
