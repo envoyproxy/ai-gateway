@@ -209,10 +209,3 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 		shutdown:  tp.Shutdown, // we have to shut down what we create.
 	}, nil
 }
-
-type Shutdown interface {
-	Shutdown(context.Context) error
-}
-type noopShutdown struct{}
-
-func (noopShutdown) Shutdown(context.Context) error { return nil }

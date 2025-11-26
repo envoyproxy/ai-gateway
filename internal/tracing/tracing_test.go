@@ -531,12 +531,6 @@ func newTracingFromEnvForTest(t *testing.T, stdout io.Writer) (*testotel.OTLPCol
 	return collector, result
 }
 
-func TestNoopShutdown(t *testing.T) {
-	ns := noopShutdown{}
-	err := ns.Shutdown(t.Context())
-	require.NoError(t, err)
-}
-
 // TestNewTracingFromEnv_OTLPHeaders tests that OTEL_EXPORTER_OTLP_HEADERS
 // is properly handled by the autoexport package.
 func TestNewTracingFromEnv_OTLPHeaders(t *testing.T) {

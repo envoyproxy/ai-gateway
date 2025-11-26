@@ -78,6 +78,7 @@ jobs:
             extproc
             controller
             translator
+            tracing
             examples
             blog
             site
