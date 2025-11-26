@@ -21,8 +21,10 @@ import (
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
+// spanFactory is a function type that creates a new SpanT given a trace.Span and a Recorder.
 type spanFactory[ReqT any, SpanT tracing.SpanBase, Recorder tracing.SpanRecorder[ReqT]] func(trace.Span, Recorder) SpanT
 
+// requestTracerImpl implements RequestTracer for various request and span types.
 type requestTracerImpl[ReqT any, SpanT tracing.SpanBase, Recorder tracing.SpanRecorder[ReqT]] struct {
 	tracer           trace.Tracer
 	propagator       propagation.TextMapPropagator
@@ -102,7 +104,7 @@ func (t *requestTracerImpl[ReqT, SpanT, Recorder]) StartSpanAndInjectHeaders(
 }
 
 func newChatCompletionTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.ChatCompletionRecorder, headerAttributes map[string]string) tracing.ChatCompletionTracer {
-	return newRequestTracer[openai.ChatCompletionRequest, tracing.ChatCompletionSpan](
+	return newRequestTracer(
 		tracer,
 		propagator,
 		recorder,
@@ -138,7 +140,7 @@ func (c *headerMutationCarrier) Keys() []string {
 }
 
 func newEmbeddingsTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.EmbeddingsRecorder, headerAttributes map[string]string) tracing.EmbeddingsTracer {
-	return newRequestTracer[openai.EmbeddingRequest, tracing.EmbeddingsSpan](
+	return newRequestTracer(
 		tracer,
 		propagator,
 		recorder,
@@ -150,7 +152,7 @@ func newEmbeddingsTracer(tracer trace.Tracer, propagator propagation.TextMapProp
 }
 
 func newCompletionTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.CompletionRecorder, headerAttributes map[string]string) tracing.CompletionTracer {
-	return newRequestTracer[openai.CompletionRequest, tracing.CompletionSpan](
+	return newRequestTracer(
 		tracer,
 		propagator,
 		recorder,
@@ -162,7 +164,7 @@ func newCompletionTracer(tracer trace.Tracer, propagator propagation.TextMapProp
 }
 
 func newImageGenerationTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.ImageGenerationRecorder) tracing.ImageGenerationTracer {
-	return newRequestTracer[openaisdk.ImageGenerateParams, tracing.ImageGenerationSpan](
+	return newRequestTracer(
 		tracer,
 		propagator,
 		recorder,
@@ -174,7 +176,7 @@ func newImageGenerationTracer(tracer trace.Tracer, propagator propagation.TextMa
 }
 
 func newRerankTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.RerankRecorder, headerAttributes map[string]string) tracing.RerankTracer {
-	return newRequestTracer[cohereschema.RerankV2Request, tracing.RerankSpan](
+	return newRequestTracer(
 		tracer,
 		propagator,
 		recorder,
