@@ -20,6 +20,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
@@ -36,7 +37,7 @@ type (
 
 		// -- per endpoint processor --
 		translator any
-		metrics    any
+		metrics    metrics.Metrics
 	}
 )
 
@@ -213,7 +214,7 @@ func (f *upstreamFilter) initializeTranslatorMetrics(b *filterapi.Backend) error
 		default:
 			return fmt.Errorf("unsupported API schema: backend=%s", out)
 		}
-		f.metrics = f.env.ChatCompletionMetricsFactory()
+		f.metrics = f.env.ChatCompletionMetricsFactory.NewMetrics()
 	case completionsEndpoint:
 		switch out.Name {
 		case filterapi.APISchemaOpenAI:
@@ -221,7 +222,7 @@ func (f *upstreamFilter) initializeTranslatorMetrics(b *filterapi.Backend) error
 		default:
 			return fmt.Errorf("unsupported API schema: backend=%s", out)
 		}
-		f.metrics = f.env.CompletionMetricsFactory()
+		f.metrics = f.env.CompletionMetricsFactory.NewMetrics()
 	case embeddingsEndpoint:
 		switch out.Name {
 		case filterapi.APISchemaOpenAI:
@@ -231,7 +232,7 @@ func (f *upstreamFilter) initializeTranslatorMetrics(b *filterapi.Backend) error
 		default:
 			return fmt.Errorf("unsupported API schema: backend=%s", out)
 		}
-		f.metrics = f.env.CompletionMetricsFactory()
+		f.metrics = f.env.CompletionMetricsFactory.NewMetrics()
 	case imagesGenerationsEndpoint:
 		switch out.Name {
 		case filterapi.APISchemaOpenAI:
@@ -239,7 +240,7 @@ func (f *upstreamFilter) initializeTranslatorMetrics(b *filterapi.Backend) error
 		default:
 			return fmt.Errorf("unsupported API schema: backend=%s", out)
 		}
-		f.metrics = f.env.CompletionMetricsFactory()
+		f.metrics = f.env.CompletionMetricsFactory.NewMetrics()
 	case rerankEndpoint:
 		switch out.Name {
 		case filterapi.APISchemaCohere:
@@ -247,7 +248,7 @@ func (f *upstreamFilter) initializeTranslatorMetrics(b *filterapi.Backend) error
 		default:
 			return fmt.Errorf("unsupported API schema: backend=%s", out)
 		}
-		f.metrics = f.env.RerankMetricsFactory()
+		f.metrics = f.env.RerankMetricsFactory.NewMetrics()
 	case messagesEndpoint:
 		switch out.Name {
 		case filterapi.APISchemaAnthropic:
@@ -255,7 +256,7 @@ func (f *upstreamFilter) initializeTranslatorMetrics(b *filterapi.Backend) error
 		default:
 			return fmt.Errorf("unsupported API schema: backend=%s", out)
 		}
-		f.metrics = f.env.MessagesMetricsFactory()
+		f.metrics = f.env.MessagesMetricsFactory.NewMetrics()
 	default:
 		return fmt.Errorf("unsupported endpoint for per-route upstream filter: %v", f.rf.endpoint)
 	}

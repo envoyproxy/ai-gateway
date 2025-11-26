@@ -81,7 +81,7 @@ func (g *globalState) initializeEnv() error {
 		return fmt.Errorf("failed to create prometheus reader: %w", err)
 	}
 
-	meter, _, err := metrics.NewMetricsFromEnv(ctx, os.Stdout, promReader)
+	meter, _, err := metrics.NewMeterFromEnv(ctx, os.Stdout, promReader)
 	if err != nil {
 		return fmt.Errorf("failed to create metrics: %w", err)
 	}
@@ -103,12 +103,12 @@ func (g *globalState) initializeEnv() error {
 	g.env = &dynamicmodule.Env{
 		RootPrefix:                    os.Getenv("AI_GATEWAY_dynamicmodule_ROOT_PREFIX"),
 		EndpointPrefixes:              endpointPrefixes,
-		ChatCompletionMetricsFactory:  metrics.NewChatCompletionFactory(meter, metricsRequestHeaderAttributes),
-		MessagesMetricsFactory:        metrics.NewMessagesFactory(meter, metricsRequestHeaderAttributes),
-		CompletionMetricsFactory:      metrics.NewCompletionFactory(meter, metricsRequestHeaderAttributes),
-		EmbeddingsMetricsFactory:      metrics.NewEmbeddingsFactory(meter, metricsRequestHeaderAttributes),
-		ImageGenerationMetricsFactory: metrics.NewImageGenerationFactory(meter, metricsRequestHeaderAttributes),
-		RerankMetricsFactory:          metrics.NewRerankFactory(meter, metricsRequestHeaderAttributes),
+		ChatCompletionMetricsFactory:  metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationChat),
+		MessagesMetricsFactory:        metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationMessages),
+		CompletionMetricsFactory:      metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationCompletion),
+		EmbeddingsMetricsFactory:      metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationEmbedding),
+		ImageGenerationMetricsFactory: metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationImageGeneration),
+		RerankMetricsFactory:          metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationRerank),
 	}
 	return nil
 }
