@@ -121,14 +121,14 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 				span.EndSpanOnError(string(errType), err)
 			}
 			m.metrics.RecordMethodErrorCount(ctx, params)
-			m.metrics.RecordRequestErrorDuration(ctx, &startAt, errType, params)
+			m.metrics.RecordRequestErrorDuration(ctx, startAt, errType, params)
 			return
 		}
 
 		if span != nil {
 			span.EndSpan()
 		}
-		m.metrics.RecordRequestDuration(ctx, &startAt, params)
+		m.metrics.RecordRequestDuration(ctx, startAt, params)
 		// TODO: should we special case when this request is "Response" where method is empty?
 		m.metrics.RecordMethodCount(ctx, requestMethod, params)
 	}()
