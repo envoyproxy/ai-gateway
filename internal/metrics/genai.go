@@ -30,6 +30,7 @@ const (
 	genaiOperationMessages        = "messages"
 	genaiOperationImageGeneration = "image_generation"
 	genaiOperationRerank          = "rerank"
+	genaiOperationAudioSpeech     = "audio_speech"
 	genaiProviderOpenAI           = "openai"
 	genaiProviderAWSBedrock       = "aws.bedrock"
 	genaiTokenTypeInput           = "input"
