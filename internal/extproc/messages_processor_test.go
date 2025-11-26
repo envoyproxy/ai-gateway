@@ -29,7 +29,7 @@ import (
 )
 
 func TestMessagesProcessorFactory(t *testing.T) {
-	m := metrics.NewMessagesFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})
+	m := metrics.NewMetricsFactory(noop.NewMeterProvider().Meter("test"), map[string]string{}, metrics.GenAIOperationMessages)
 	factory := MessagesProcessorFactory(m)
 	require.NotNil(t, factory, "MessagesProcessorFactory should return a non-nil factory")
 
@@ -401,13 +401,13 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithMocks(t *test
 				retErr:                      tt.translatorErr,
 			}
 
-			chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
+			m := metrics.NewMetricsFactory(noop.NewMeterProvider().Meter("test"), map[string]string{}, metrics.GenAIOperationMessages)
 
 			processor := &messagesProcessorUpstreamFilter{
 				config:                 &filterapi.RuntimeConfig{},
 				requestHeaders:         headers,
 				logger:                 slog.Default(),
-				metrics:                chatMetrics,
+				metrics:                m.NewMetrics(),
 				translator:             mockTranslator,
 				originalRequestBody:    requestBody,
 				originalRequestBodyRaw: requestBodyRaw,
@@ -434,12 +434,12 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseHeaders_WithMocks(t *tes
 		retErr: nil,
 	}
 
-	chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
+	m := metrics.NewMetricsFactory(noop.NewMeterProvider().Meter("test"), map[string]string{}, metrics.GenAIOperationMessages)
 	processor := &messagesProcessorUpstreamFilter{
 		config:         &filterapi.RuntimeConfig{},
 		requestHeaders: make(map[string]string),
 		logger:         slog.Default(),
-		metrics:        chatMetrics,
+		metrics:        m.NewMetrics(),
 		translator:     mockTranslator,
 	}
 
@@ -457,12 +457,12 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_WithMocks(t *testin
 		retErr:           nil,
 	}
 
-	chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
+	m := metrics.NewMetricsFactory(noop.NewMeterProvider().Meter("test"), map[string]string{}, metrics.GenAIOperationMessages)
 	processor := &messagesProcessorUpstreamFilter{
 		config:         &filterapi.RuntimeConfig{},
 		requestHeaders: make(map[string]string),
 		logger:         slog.Default(),
-		metrics:        chatMetrics,
+		metrics:        m.NewMetrics(),
 		translator:     mockTranslator,
 	}
 
@@ -480,7 +480,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_ErrorRecordsFailure
 		retErr: errors.New("translate error"),
 	}
 
-	mm := &mockChatCompletionMetrics{}
+	mm := &mockMetrics{}
 	processor := &messagesProcessorUpstreamFilter{
 		config:         &filterapi.RuntimeConfig{},
 		requestHeaders: make(map[string]string),
@@ -503,7 +503,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_CompletionOnlyAtEnd
 		retErr: nil,
 	}
 
-	mm := &mockChatCompletionMetrics{}
+	mm := &mockMetrics{}
 	processor := &messagesProcessorUpstreamFilter{
 		config:         &filterapi.RuntimeConfig{},
 		requestHeaders: make(map[string]string),
@@ -526,11 +526,11 @@ func TestMessagesProcessorUpstreamFilter_ProcessResponseBody_CompletionOnlyAtEnd
 }
 
 func TestMessagesProcessorUpstreamFilter_MergeWithTokenLatencyMetadata(t *testing.T) {
-	chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
+	m := metrics.NewMetricsFactory(noop.NewMeterProvider().Meter("test"), map[string]string{}, metrics.GenAIOperationMessages)
 	processor := &messagesProcessorUpstreamFilter{
 		config:  &filterapi.RuntimeConfig{},
 		logger:  slog.Default(),
-		metrics: chatMetrics,
+		metrics: m.NewMetrics(),
 		costs:   translator.LLMTokenUsage{InputTokens: 100, OutputTokens: 50},
 	}
 
@@ -555,7 +555,7 @@ func TestMessagesProcessorUpstreamFilter_MergeWithTokenLatencyMetadata(t *testin
 
 func TestMessagesProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	headers := map[string]string{":path": "/anthropic/v1/messages"}
-	chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
+	m := metrics.NewMetricsFactory(noop.NewMeterProvider().Meter("test"), map[string]string{}, metrics.GenAIOperationMessages)
 	processor := &messagesProcessorUpstreamFilter{
 		config: &filterapi.RuntimeConfig{
 			RequestCosts: []filterapi.RuntimeRequestCost{
@@ -564,7 +564,7 @@ func TestMessagesProcessorUpstreamFilter_SetBackend(t *testing.T) {
 		},
 		requestHeaders: headers,
 		logger:         slog.Default(),
-		metrics:        chatMetrics,
+		metrics:        m.NewMetrics(),
 	}
 
 	// Test with unsupported schema (should error).
@@ -581,12 +581,12 @@ func TestMessagesProcessorUpstreamFilter_SetBackend(t *testing.T) {
 
 func Test_messagesProcessorUpstreamFilter_SetBackend_Success(t *testing.T) {
 	headers := map[string]string{":path": "/anthropic/v1/messages", internalapi.ModelNameHeaderKeyDefault: "claude"}
-	chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
+	m := metrics.NewMetricsFactory(noop.NewMeterProvider().Meter("test"), map[string]string{}, metrics.GenAIOperationMessages)
 	p := &messagesProcessorUpstreamFilter{
 		config:         &filterapi.RuntimeConfig{},
 		requestHeaders: headers,
 		logger:         slog.Default(),
-		metrics:        chatMetrics,
+		metrics:        m.NewMetrics(),
 	}
 	rp := &messagesProcessorRouterFilter{
 		originalRequestBody: &anthropicschema.MessagesRequest{"model": "claude", "stream": true},
@@ -606,7 +606,7 @@ func TestMessages_ProcessRequestHeaders_SetsRequestModel(t *testing.T) {
 	headers := map[string]string{":path": "/anthropic/v1/messages", internalapi.ModelNameHeaderKeyDefault: "header-model"}
 	requestBody := &anthropicschema.MessagesRequest{"model": "body-model", "messages": []any{"hello"}}
 	requestBodyRaw := []byte(`{"model":"body-model","messages":["hello"]}`)
-	mm := &mockChatCompletionMetrics{}
+	mm := &mockMetrics{}
 	p := &messagesProcessorUpstreamFilter{
 		config:                 &filterapi.RuntimeConfig{},
 		requestHeaders:         headers,
@@ -632,7 +632,7 @@ func TestMessages_ProcessResponseBody_UsesActualResponseModelOverHeaderOverride(
 	headers := map[string]string{":path": "/v1/messages", internalapi.ModelNameHeaderKeyDefault: "header-model"}
 	requestBody := &anthropicschema.MessagesRequest{"model": "body-model"}
 	requestBodyRaw := []byte(`{"model": "body-model"}`)
-	mm := &mockChatCompletionMetrics{}
+	mm := &mockMetrics{}
 
 	// Create a mock translator that returns token usage with response model
 	mt := &mockAnthropicTranslator{
@@ -679,7 +679,8 @@ func TestMessages_ProcessResponseBody_UsesActualResponseModelOverHeaderOverride(
 	// Original model is from request body, request model is from header (override)
 	mm.RequireSelectedModel(t, "body-model", "header-model", "actual-anthropic-model")
 	// For non-streaming, only usage is recorded, not latency
-	require.Equal(t, 60, mm.tokenUsageCount)
+	require.Equal(t, 25, mm.inputTokenCount)
+	require.Equal(t, 35, mm.outputTokenCount)
 	mm.RequireRequestSuccess(t)
 }
 
@@ -716,14 +717,14 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 		}
 
 		// Create mock metrics.
-		chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
+		m := metrics.NewMetricsFactory(noop.NewMeterProvider().Meter("test"), map[string]string{}, metrics.GenAIOperationMessages)
 
 		// Create processor.
 		processor := &messagesProcessorUpstreamFilter{
 			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
-			metrics:                chatMetrics,
+			metrics:                m.NewMetrics(),
 			translator:             mockTranslator,
 			originalRequestBody:    requestBody,
 			originalRequestBodyRaw: requestBodyRaw,
@@ -787,14 +788,14 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 		}
 
 		// Create mock metrics.
-		chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
+		m := metrics.NewMetricsFactory(noop.NewMeterProvider().Meter("test"), map[string]string{}, metrics.GenAIOperationMessages)
 
 		// Create processor.
 		processor := &messagesProcessorUpstreamFilter{
 			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
 			logger:                 slog.Default(),
-			metrics:                chatMetrics,
+			metrics:                m.NewMetrics(),
 			translator:             mockTranslator,
 			originalRequestBody:    requestBody,
 			originalRequestBodyRaw: requestBodyRaw,
@@ -825,12 +826,12 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutatio
 func TestMessagesProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *testing.T) {
 	t.Run("header mutator created correctly", func(t *testing.T) {
 		headers := map[string]string{":path": "/anthropic/v1/messages"}
-		chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
+		m := metrics.NewMetricsFactory(noop.NewMeterProvider().Meter("test"), map[string]string{}, metrics.GenAIOperationMessages)
 		p := &messagesProcessorUpstreamFilter{
 			config:         &filterapi.RuntimeConfig{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
-			metrics:        chatMetrics,
+			metrics:        m.NewMetrics(),
 		}
 
 		// Create backend with header mutations.
@@ -868,12 +869,12 @@ func TestMessagesProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *testi
 
 	t.Run("header mutator with original headers", func(t *testing.T) {
 		headers := map[string]string{":path": "/anthropic/v1/messages"}
-		chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
+		m := metrics.NewMetricsFactory(noop.NewMeterProvider().Meter("test"), map[string]string{}, metrics.GenAIOperationMessages)
 		p := &messagesProcessorUpstreamFilter{
 			config:         &filterapi.RuntimeConfig{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
-			metrics:        chatMetrics,
+			metrics:        m.NewMetrics(),
 		}
 
 		// Create backend with header mutations that don't remove x-custom.
@@ -939,13 +940,13 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutations
 			retErr:                      nil,
 		}
 
-		chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
+		m := metrics.NewMetricsFactory(noop.NewMeterProvider().Meter("test"), map[string]string{}, metrics.GenAIOperationMessages)
 
 		p := &messagesProcessorUpstreamFilter{
 			config:              &filterapi.RuntimeConfig{},
 			requestHeaders:      headers,
 			logger:              slog.Default(),
-			metrics:             chatMetrics,
+			metrics:             m.NewMetrics(),
 			originalRequestBody: requestBody,
 			translator:          &mockTranslator,
 			handler:             &mockBackendAuthHandler{},
@@ -989,7 +990,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutations
 
 	t.Run("body mutator with retry", func(t *testing.T) {
 		headers := map[string]string{":path": "/anthropic/v1/messages"}
-		chatMetrics := metrics.NewChatCompletionFactory(noop.NewMeterProvider().Meter("test"), map[string]string{})()
+		m := metrics.NewMetricsFactory(noop.NewMeterProvider().Meter("test"), map[string]string{}, metrics.GenAIOperationMessages)
 
 		originalRequestBodyRaw := []byte(`{"model": "claude-3-sonnet", "service_tier": "default"}`)
 		requestBody := &anthropicschema.MessagesRequest{"model": "claude-3-sonnet"}
@@ -998,7 +999,7 @@ func TestMessagesProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutations
 			config:              &filterapi.RuntimeConfig{},
 			requestHeaders:      headers,
 			logger:              slog.Default(),
-			metrics:             chatMetrics,
+			metrics:             m.NewMetrics(),
 			originalRequestBody: requestBody,
 		}
 

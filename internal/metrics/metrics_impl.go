@@ -16,15 +16,18 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
-type baseMetricsFactory struct {
+// metricsImplFactory implements the Factory interface for creating metricsImpl instances.
+type metricsImplFactory struct {
 	metrics                       *genAI
 	requestHeaderAttributeMapping map[string]string // maps HTTP headers to metric attribute names.
+	operation                     string
 }
 
-func (f *baseMetricsFactory) newBaseMetrics(operation string) baseMetrics {
-	return baseMetrics{
+// NewMetrics implements [Factory.NewMetrics].
+func (f *metricsImplFactory) NewMetrics() Metrics {
+	return &metricsImpl{
 		metrics:                       f.metrics,
-		operation:                     operation,
+		operation:                     f.operation,
 		originalModel:                 "unknown",
 		requestModel:                  "unknown",
 		responseModel:                 "unknown",
@@ -33,8 +36,10 @@ func (f *baseMetricsFactory) newBaseMetrics(operation string) baseMetrics {
 	}
 }
 
-// baseMetrics provides shared functionality for AI Gateway metrics implementations.
-type baseMetrics struct {
+// metricsImpl provides shared functionality for AI Gateway metrics implementations.
+//
+// This implements the Metrics interface.
+type metricsImpl struct {
 	metrics      *genAI
 	operation    string
 	requestStart time.Time
@@ -46,32 +51,39 @@ type baseMetrics struct {
 	responseModel                 string
 	backend                       string
 	requestHeaderAttributeMapping map[string]string // maps HTTP headers to metric attribute names.
+
+	// Fields for streaming token latency calculation, not used for non-streaming requests.
+
+	firstTokenSent    bool
+	timeToFirstToken  time.Duration // Duration to first token.
+	interTokenLatency time.Duration // Average time per token after first.
+	totalOutputTokens uint32
 }
 
 // StartRequest initializes timing for a new request.
-func (b *baseMetrics) StartRequest(_ map[string]string) {
+func (b *metricsImpl) StartRequest(_ map[string]string) {
 	b.requestStart = time.Now()
 }
 
 // SetOriginalModel sets the original model from the incoming request body before any virtualization applies.
 // This is usually called after parsing the request body. e.g. gpt-5
-func (b *baseMetrics) SetOriginalModel(originalModel internalapi.OriginalModel) {
+func (b *metricsImpl) SetOriginalModel(originalModel internalapi.OriginalModel) {
 	b.originalModel = originalModel
 }
 
 // SetRequestModel sets the model the request. This is usually called after parsing the request body. e.g. gpt-5-nano
-func (b *baseMetrics) SetRequestModel(requestModel internalapi.RequestModel) {
+func (b *metricsImpl) SetRequestModel(requestModel internalapi.RequestModel) {
 	b.requestModel = requestModel
 }
 
 // SetResponseModel is the model that ultimately generated the response. e.g. gpt-5-nano-2025-08-07
-func (b *baseMetrics) SetResponseModel(responseModel internalapi.ResponseModel) {
+func (b *metricsImpl) SetResponseModel(responseModel internalapi.ResponseModel) {
 	b.responseModel = responseModel
 }
 
 // SetBackend sets the name of the backend to be reported in the metrics according to:
 // https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/
-func (b *baseMetrics) SetBackend(backend *filterapi.Backend) {
+func (b *metricsImpl) SetBackend(backend *filterapi.Backend) {
 	switch backend.Schema.Name {
 	case filterapi.APISchemaOpenAI:
 		b.backend = genaiProviderOpenAI
@@ -83,7 +95,7 @@ func (b *baseMetrics) SetBackend(backend *filterapi.Backend) {
 }
 
 // buildBaseAttributes creates the base attributes for metrics recording.
-func (b *baseMetrics) buildBaseAttributes(headers map[string]string) attribute.Set {
+func (b *metricsImpl) buildBaseAttributes(headers map[string]string) attribute.Set {
 	opt := attribute.Key(genaiAttributeOperationName).String(b.operation)
 	provider := attribute.Key(genaiAttributeProviderName).String(b.backend)
 	origModel := attribute.Key(genaiAttributeOriginalModel).String(b.originalModel)
@@ -104,7 +116,7 @@ func (b *baseMetrics) buildBaseAttributes(headers map[string]string) attribute.S
 }
 
 // RecordRequestCompletion records the completion of a request with success/failure status.
-func (b *baseMetrics) RecordRequestCompletion(ctx context.Context, success bool, requestHeaders map[string]string) {
+func (b *metricsImpl) RecordRequestCompletion(ctx context.Context, success bool, requestHeaders map[string]string) {
 	attrs := b.buildBaseAttributes(requestHeaders)
 
 	if success {
@@ -117,5 +129,70 @@ func (b *baseMetrics) RecordRequestCompletion(ctx context.Context, success bool,
 			metric.WithAttributeSet(attrs),
 			metric.WithAttributes(attribute.Key(genaiAttributeErrorType).String(genaiErrorTypeFallback)),
 		)
+	}
+}
+
+// RecordTokenUsage records token usage metrics.
+func (b *metricsImpl) RecordTokenUsage(ctx context.Context, inputTokens, cachedInputTokens, outputTokens OptUint32, requestHeaders map[string]string) {
+	attrs := b.buildBaseAttributes(requestHeaders)
+
+	if inputTokens != OptUint32None {
+		b.metrics.tokenUsage.Record(ctx, float64(inputTokens),
+			metric.WithAttributeSet(attrs),
+			metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput)),
+		)
+	}
+	if cachedInputTokens != OptUint32None {
+		b.metrics.tokenUsage.Record(ctx, float64(cachedInputTokens),
+			metric.WithAttributeSet(attrs),
+			metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeCachedInput)),
+		)
+	}
+	if outputTokens != OptUint32None {
+		b.metrics.tokenUsage.Record(ctx, float64(outputTokens),
+			metric.WithAttributeSet(attrs),
+			metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeOutput)),
+		)
+	}
+}
+
+// GetTimeToFirstTokenMs implements [Metrics.GetTimeToFirstTokenMs].
+func (b *metricsImpl) GetTimeToFirstTokenMs() float64 {
+	return float64(b.timeToFirstToken.Milliseconds())
+}
+
+// GetInterTokenLatencyMs implements [Metrics.GetInterTokenLatencyMs].
+func (b *metricsImpl) GetInterTokenLatencyMs() float64 {
+	return float64(b.interTokenLatency.Milliseconds())
+}
+
+// RecordTokenLatency implements [CompletionMetrics.RecordTokenLatency].
+func (b *metricsImpl) RecordTokenLatency(ctx context.Context, tokens uint32, endOfStream bool, requestHeaders map[string]string) {
+	attrs := b.buildBaseAttributes(requestHeaders)
+
+	// Record time to first token on the first call for streaming responses.
+	// This ensures we capture the metric even when token counts aren't available in streaming chunks.
+	if !b.firstTokenSent {
+		b.firstTokenSent = true
+		b.timeToFirstToken = time.Since(b.requestStart)
+		b.metrics.firstTokenLatency.Record(ctx, b.timeToFirstToken.Seconds(), metric.WithAttributeSet(attrs))
+		return
+	}
+
+	// Track max cumulative tokens across the stream.
+	if tokens > b.totalOutputTokens {
+		b.totalOutputTokens = tokens
+	}
+
+	// Record once at end-of-stream using average from first token.
+	// Per OTEL spec: time_per_output_token = (request_duration - time_to_first_token) / (output_tokens - 1).
+	// This measures the average time for ALL tokens after the first one, not just after the first chunk.
+	if endOfStream && b.totalOutputTokens > 1 {
+		// Calculate time elapsed since first token was sent.
+		currentElapsed := time.Since(b.requestStart)
+		timeSinceFirstToken := currentElapsed - b.timeToFirstToken
+		// Divide by (total_tokens - 1) as per spec, not by tokens after first chunk.
+		b.interTokenLatency = timeSinceFirstToken / time.Duration(b.totalOutputTokens-1)
+		b.metrics.outputTokenLatency.Record(ctx, b.interTokenLatency.Seconds(), metric.WithAttributeSet(attrs))
 	}
 }

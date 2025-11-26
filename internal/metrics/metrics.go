@@ -15,9 +15,12 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
+
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
-// NewMetricsFromEnv configures an OpenTelemetry MeterProvider based on environment variables,
+// NewMeterFromEnv configures an OpenTelemetry MeterProvider based on environment variables,
 // always incorporating the provided Prometheus reader. It optionally includes additional exporters
 // (e.g., console or OTLP) if enabled via environment variables. The function returns a metric.Meter
 // for instrumentation and a shutdown function to gracefully close the provider.
@@ -29,7 +32,7 @@ import (
 //   - OTEL_EXPORTER_OTLP_ENDPOINT or OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: Enables OTLP if set.
 //
 // Prometheus is always enabled via the provided promReader; other exporters are added conditionally.
-func NewMetricsFromEnv(ctx context.Context, stdout io.Writer, promReader sdkmetric.Reader) (metric.Meter, func(context.Context) error, error) {
+func NewMeterFromEnv(ctx context.Context, stdout io.Writer, promReader sdkmetric.Reader) (metric.Meter, func(context.Context) error, error) {
 	// Initialize options for the MeterProvider, starting with the required Prometheus reader.
 	var options []sdkmetric.Option
 	options = append(options, sdkmetric.WithReader(promReader))
@@ -88,4 +91,54 @@ func NewMetricsFromEnv(ctx context.Context, stdout io.Writer, promReader sdkmetr
 	// Create and return the MeterProvider with all configured options.
 	mp := sdkmetric.NewMeterProvider(options...)
 	return mp.Meter("envoyproxy/ai-gateway"), mp.Shutdown, nil
+}
+
+// OptUint32 is an optional uint32 type represented as an uint64 to allow for a None value.
+type OptUint32 uint64
+
+// OptUint32None represents the None value for OptUint32.
+const OptUint32None = OptUint32(0xffffffff_00000000)
+
+// Metrics is the interface for the base AI Gateway metrics.
+type Metrics interface {
+	// StartRequest initializes timing for a new request.
+	StartRequest(headers map[string]string)
+	// SetOriginalModel sets the original model from the incoming request body before any virtualization applies.
+	// This is usually called after parsing the request body. Example: gpt-5
+	SetOriginalModel(originalModel internalapi.OriginalModel)
+	// SetRequestModel sets the model from the request. This is usually called after parsing the request body.
+	// Example: gpt-5-nano
+	SetRequestModel(requestModel internalapi.RequestModel)
+	// SetResponseModel sets the model that ultimately generated the response.
+	// Example: gpt-5-nano-2025-08-07
+	SetResponseModel(responseModel internalapi.ResponseModel)
+	// SetBackend sets the selected backend when the routing decision has been made. This is usually called
+	// after parsing the request body to determine the model and invoke the routing logic.
+	SetBackend(backend *filterapi.Backend)
+	// RecordRequestCompletion records the completion of the request, including success status.
+	RecordRequestCompletion(ctx context.Context, success bool, requestHeaders map[string]string)
+	// RecordTokenUsage records token usage metrics.
+	//
+	// Depending on the endpoint, some token types are not available and should be passed as OptUint32None.
+	RecordTokenUsage(ctx context.Context, inputTokens, cachedInputTokens, outputTokens OptUint32, requestHeaders map[string]string)
+
+	// Streaming-specific metrics methods, not used by all implementations.
+
+	// GetTimeToFirstTokenMs returns the time to first token in stream mode in milliseconds.
+	GetTimeToFirstTokenMs() float64
+	// GetInterTokenLatencyMs returns the inter token latency in stream mode in milliseconds.
+	GetInterTokenLatencyMs() float64
+	// RecordTokenLatency records latency metrics for token generation.
+	RecordTokenLatency(ctx context.Context, tokens uint32, endOfStream bool, requestHeaders map[string]string)
+}
+
+// Factory is a closure that creates a new Metrics instance for a given operation.
+type Factory interface {
+	// NewMetrics creates a new Metrics instance for the specified operation name.
+	NewMetrics() Metrics
+}
+
+// NewMetricsFactory returns a Factory to create a new Metrics instance.
+func NewMetricsFactory(meter metric.Meter, requestHeaderLabelMapping map[string]string, operation GenAIOperation) Factory {
+	return &metricsImplFactory{metrics: newGenAI(meter), requestHeaderAttributeMapping: requestHeaderLabelMapping, operation: string(operation)}
 }

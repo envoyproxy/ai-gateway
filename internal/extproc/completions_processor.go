@@ -29,7 +29,7 @@ import (
 )
 
 // CompletionsProcessorFactory returns a factory method to instantiate the completions processor.
-func CompletionsProcessorFactory(f metrics.CompletionMetricsFactory) ProcessorFactory {
+func CompletionsProcessorFactory(f metrics.Factory) ProcessorFactory {
 	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "completions", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
@@ -44,7 +44,7 @@ func CompletionsProcessorFactory(f metrics.CompletionMetricsFactory) ProcessorFa
 			config:         config,
 			requestHeaders: requestHeaders,
 			logger:         logger,
-			metrics:        f(),
+			metrics:        f.NewMetrics(),
 		}, nil
 	}
 }
@@ -191,7 +191,7 @@ type completionsProcessorUpstreamFilter struct {
 	// span is the tracing span for this request, inherited from the router filter.
 	span tracing.CompletionSpan
 	// metrics tracking.
-	metrics metrics.CompletionMetrics
+	metrics metrics.Metrics
 }
 
 // selectTranslator selects the translator based on the output schema.
@@ -406,15 +406,12 @@ func (c *completionsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Con
 		c.metrics.RecordTokenLatency(ctx, tokenUsage.OutputTokens, body.EndOfStream, c.requestHeaders)
 		// Emit usage once at end-of-stream using final totals.
 		if body.EndOfStream {
-			c.metrics.RecordTokenUsage(ctx, c.costs.InputTokens, c.costs.OutputTokens, c.requestHeaders)
+			c.metrics.RecordTokenUsage(ctx,
+				metrics.OptUint32(c.costs.InputTokens), metrics.OptUint32None, metrics.OptUint32(c.costs.OutputTokens), c.requestHeaders)
 		}
 	} else {
-		c.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.OutputTokens, c.requestHeaders)
-	}
-
-	// Log the response model for debugging
-	if responseModel != "" {
-		c.logger.Debug("completion response model", "model", responseModel)
+		c.metrics.RecordTokenUsage(ctx,
+			metrics.OptUint32(tokenUsage.InputTokens), metrics.OptUint32None, metrics.OptUint32(tokenUsage.OutputTokens), c.requestHeaders)
 	}
 
 	if body.EndOfStream && len(c.config.RequestCosts) > 0 {

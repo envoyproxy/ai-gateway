@@ -28,7 +28,7 @@ import (
 )
 
 // EmbeddingsProcessorFactory returns a factory method to instantiate the embeddings processor.
-func EmbeddingsProcessorFactory(f metrics.EmbeddingsMetricsFactory) ProcessorFactory {
+func EmbeddingsProcessorFactory(f metrics.Factory) ProcessorFactory {
 	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "embeddings", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
@@ -43,7 +43,7 @@ func EmbeddingsProcessorFactory(f metrics.EmbeddingsMetricsFactory) ProcessorFac
 			config:         config,
 			requestHeaders: requestHeaders,
 			logger:         logger,
-			metrics:        f(),
+			metrics:        f.NewMetrics(),
 		}, nil
 	}
 }
@@ -163,7 +163,7 @@ type embeddingsProcessorUpstreamFilter struct {
 	// cost is the cost of the request that is accumulated during the processing of the response.
 	costs translator.LLMTokenUsage
 	// metrics tracking.
-	metrics metrics.EmbeddingsMetrics
+	metrics metrics.Metrics
 	// span is the tracing span for this request, inherited from the router filter.
 	span tracing.EmbeddingsSpan
 }
@@ -369,7 +369,7 @@ func (e *embeddingsProcessorUpstreamFilter) ProcessResponseBody(ctx context.Cont
 	e.metrics.SetResponseModel(responseModel)
 
 	// Update metrics with token usage.
-	e.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, e.requestHeaders)
+	e.metrics.RecordTokenUsage(ctx, metrics.OptUint32(tokenUsage.InputTokens), metrics.OptUint32None, metrics.OptUint32None, e.requestHeaders)
 
 	if body.EndOfStream && len(e.config.RequestCosts) > 0 {
 		resp.DynamicMetadata, err = buildDynamicMetadata(e.config, &e.costs, e.requestHeaders, e.backendName)

@@ -29,10 +29,10 @@ func clearEnv(t *testing.T) {
 	t.Setenv("OTEL_SERVICE_NAME", "")
 }
 
-// TestNewMetricsFromEnv_ConsoleExporter tests console/none exporter configuration.
+// TestNewMeterFromEnv_ConsoleExporter tests console/none exporter configuration.
 // We use synctest here because console output relies on time.Sleep to wait for
 // the periodic exporter, and synctest makes these sleeps instant in wall-clock time.
-func TestNewMetricsFromEnv_ConsoleExporter(t *testing.T) {
+func TestNewMeterFromEnv_ConsoleExporter(t *testing.T) {
 	tests := []struct {
 		name                    string
 		env                     map[string]string
@@ -112,7 +112,7 @@ func TestNewMetricsFromEnv_ConsoleExporter(t *testing.T) {
 				var stdout bytes.Buffer
 				manualReader := sdkmetric.NewManualReader()
 
-				meter, shutdown, err := NewMetricsFromEnv(t.Context(), &stdout, manualReader)
+				meter, shutdown, err := NewMeterFromEnv(t.Context(), &stdout, manualReader)
 				require.NoError(t, err)
 				require.NotNil(t, meter)
 				require.NotNil(t, shutdown)
@@ -170,9 +170,9 @@ func TestNewMetricsFromEnv_ConsoleExporter(t *testing.T) {
 	}
 }
 
-// TestNewMetricsFromEnv_ConsoleExporter_NoMetrics tests that the console exporter
+// TestNewMeterFromEnv_ConsoleExporter_NoMetrics tests that the console exporter
 // does not output anything when no metrics are recorded.
-func TestNewMetricsFromEnv_ConsoleExporter_NoMetrics(t *testing.T) {
+func TestNewMeterFromEnv_ConsoleExporter_NoMetrics(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		t.Helper()
 		clearEnv(t)
@@ -182,7 +182,7 @@ func TestNewMetricsFromEnv_ConsoleExporter_NoMetrics(t *testing.T) {
 		var stdout bytes.Buffer
 		manualReader := sdkmetric.NewManualReader()
 
-		meter, shutdown, err := NewMetricsFromEnv(t.Context(), &stdout, manualReader)
+		meter, shutdown, err := NewMeterFromEnv(t.Context(), &stdout, manualReader)
 		require.NoError(t, err)
 		require.NotNil(t, meter)
 		require.NotNil(t, shutdown)
@@ -207,13 +207,13 @@ func TestNewMetricsFromEnv_ConsoleExporter_NoMetrics(t *testing.T) {
 	})
 }
 
-// TestNewMetricsFromEnv_NetworkExporters tests OTLP and other network-based exporters.
+// TestNewMeterFromEnv_NetworkExporters tests OTLP and other network-based exporters.
 // We CANNOT use synctest here because it creates a "bubble" where goroutines are isolated
 // and network operations that spawn goroutines outside the bubble cause a panic:
 // "select on synctest channel from outside bubble"
 // This happens because the HTTP client used by OTLP exporters uses net.Resolver which
 // spawns goroutines for DNS resolution that escape the synctest bubble.
-func TestNewMetricsFromEnv_NetworkExporters(t *testing.T) {
+func TestNewMeterFromEnv_NetworkExporters(t *testing.T) {
 	// Create a test server to avoid real network access
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -273,7 +273,7 @@ func TestNewMetricsFromEnv_NetworkExporters(t *testing.T) {
 			var stdout bytes.Buffer
 			manualReader := sdkmetric.NewManualReader()
 
-			meter, shutdown, err := NewMetricsFromEnv(t.Context(), &stdout, manualReader)
+			meter, shutdown, err := NewMeterFromEnv(t.Context(), &stdout, manualReader)
 			require.NoError(t, err)
 			require.NotNil(t, meter)
 			require.NotNil(t, shutdown)
@@ -316,9 +316,9 @@ func TestNewMetricsFromEnv_NetworkExporters(t *testing.T) {
 	}
 }
 
-// TestNewMetricsFromEnv_PrometheusReader tests that the prometheus reader
+// TestNewMeterFromEnv_PrometheusReader tests that the prometheus reader
 // is always included and functional.
-func TestNewMetricsFromEnv_PrometheusReader(t *testing.T) {
+func TestNewMeterFromEnv_PrometheusReader(t *testing.T) {
 	// Create a test server to avoid real network access
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -361,7 +361,7 @@ func TestNewMetricsFromEnv_PrometheusReader(t *testing.T) {
 			}
 
 			manualReader := sdkmetric.NewManualReader()
-			meter, shutdown, err := NewMetricsFromEnv(t.Context(), io.Discard, manualReader)
+			meter, shutdown, err := NewMeterFromEnv(t.Context(), io.Discard, manualReader)
 			require.NoError(t, err)
 			require.NotNil(t, meter)
 			require.NotNil(t, shutdown)
@@ -409,8 +409,8 @@ func TestNewMetricsFromEnv_PrometheusReader(t *testing.T) {
 	}
 }
 
-// TestNewMetricsFromEnv_ErrorHandling verifies error handling for invalid configurations.
-func TestNewMetricsFromEnv_ErrorHandling(t *testing.T) {
+// TestNewMeterFromEnv_ErrorHandling verifies error handling for invalid configurations.
+func TestNewMeterFromEnv_ErrorHandling(t *testing.T) {
 	tests := []struct {
 		name        string
 		env         map[string]string
@@ -434,16 +434,16 @@ func TestNewMetricsFromEnv_ErrorHandling(t *testing.T) {
 			}
 
 			manualReader := sdkmetric.NewManualReader()
-			_, _, err := NewMetricsFromEnv(t.Context(), io.Discard, manualReader)
+			_, _, err := NewMeterFromEnv(t.Context(), io.Discard, manualReader)
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tt.expectError)
 		})
 	}
 }
 
-// TestNewMetricsFromEnv_OTLPHeaders tests that OTEL_EXPORTER_OTLP_HEADERS
+// TestNewMeterFromEnv_OTLPHeaders tests that OTEL_EXPORTER_OTLP_HEADERS
 // is properly handled by the autoexport package.
-func TestNewMetricsFromEnv_OTLPHeaders(t *testing.T) {
+func TestNewMeterFromEnv_OTLPHeaders(t *testing.T) {
 	expectedAuthorization := "ApiKey test-key-123"
 	actualAuthorization := make(chan string, 1)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -458,7 +458,7 @@ func TestNewMetricsFromEnv_OTLPHeaders(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")
 
 	manualReader := sdkmetric.NewManualReader()
-	meter, shutdown, err := NewMetricsFromEnv(t.Context(), io.Discard, manualReader)
+	meter, shutdown, err := NewMeterFromEnv(t.Context(), io.Discard, manualReader)
 	require.NoError(t, err)
 	defer func() {
 		_ = shutdown(context.Background())
@@ -474,4 +474,9 @@ func TestNewMetricsFromEnv_OTLPHeaders(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, expectedAuthorization, <-actualAuthorization)
+}
+
+func TestOptUint32None(t *testing.T) {
+	uint32Max := ^uint32(0)
+	require.Equal(t, uint64(0), uint64(OptUint32(uint32Max)&OptUint32None))
 }

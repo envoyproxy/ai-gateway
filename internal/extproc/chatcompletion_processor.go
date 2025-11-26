@@ -31,7 +31,7 @@ import (
 )
 
 // ChatCompletionProcessorFactory returns a factory method to instantiate the chat completion processor.
-func ChatCompletionProcessorFactory(f metrics.ChatCompletionMetricsFactory) ProcessorFactory {
+func ChatCompletionProcessorFactory(f metrics.Factory) ProcessorFactory {
 	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "chat-completion", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
@@ -46,7 +46,7 @@ func ChatCompletionProcessorFactory(f metrics.ChatCompletionMetricsFactory) Proc
 			config:         config,
 			requestHeaders: requestHeaders,
 			logger:         logger,
-			metrics:        f(),
+			metrics:        f.NewMetrics(),
 		}, nil
 	}
 }
@@ -191,7 +191,7 @@ type chatCompletionProcessorUpstreamFilter struct {
 	// cost is the cost of the request that is accumulated during the processing of the response.
 	costs translator.LLMTokenUsage
 	// metrics tracking.
-	metrics metrics.ChatCompletionMetrics
+	metrics metrics.Metrics
 	// stream is set to true if the request is a streaming request.
 	stream bool
 	// See the comment on the `forcedStreamOptionIncludeUsage` field in the router filter.
@@ -435,13 +435,13 @@ func (c *chatCompletionProcessorUpstreamFilter) ProcessResponseBody(ctx context.
 		c.metrics.RecordTokenLatency(ctx, tokenUsage.OutputTokens, body.EndOfStream, c.requestHeaders)
 		// Emit usage once at end-of-stream using final totals.
 		if body.EndOfStream {
-			c.metrics.RecordTokenUsage(ctx, c.costs.InputTokens, c.costs.CachedInputTokens, c.costs.OutputTokens, c.requestHeaders)
+			c.metrics.RecordTokenUsage(ctx, metrics.OptUint32(c.costs.InputTokens), metrics.OptUint32(c.costs.CachedInputTokens), metrics.OptUint32(c.costs.OutputTokens), c.requestHeaders)
 		}
 		// TODO: if c.forcedStreamOptionIncludeUsage is true, we should not include usage in the response body since
 		// that's what the clients would expect. However, it is a little bit tricky as we simply just reading the streaming
 		// chunk by chunk, we only want to drop a specific line before the last chunk.
 	} else {
-		c.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.CachedInputTokens, tokenUsage.OutputTokens, c.requestHeaders)
+		c.metrics.RecordTokenUsage(ctx, metrics.OptUint32(tokenUsage.InputTokens), metrics.OptUint32(tokenUsage.CachedInputTokens), metrics.OptUint32(tokenUsage.OutputTokens), c.requestHeaders)
 	}
 
 	if body.EndOfStream && len(c.config.RequestCosts) > 0 {

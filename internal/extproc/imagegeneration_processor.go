@@ -29,7 +29,7 @@ import (
 )
 
 // ImageGenerationProcessorFactory returns a factory method to instantiate the image generation processor.
-func ImageGenerationProcessorFactory(igm metrics.ImageGenerationMetricsFactory) ProcessorFactory {
+func ImageGenerationProcessorFactory(f metrics.Factory) ProcessorFactory {
 	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "image-generation", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
@@ -44,7 +44,7 @@ func ImageGenerationProcessorFactory(igm metrics.ImageGenerationMetricsFactory) 
 			config:         config,
 			requestHeaders: requestHeaders,
 			logger:         logger,
-			metrics:        igm(),
+			metrics:        f.NewMetrics(),
 		}, nil
 	}
 }
@@ -169,7 +169,7 @@ type imageGenerationProcessorUpstreamFilter struct {
 	// cost is the cost of the request that is accumulated during the processing of the response.
 	costs translator.LLMTokenUsage
 	// metrics tracking.
-	metrics metrics.ImageGenerationMetrics
+	metrics metrics.Metrics
 	// span is the tracing span for this request, inherited from the router filter.
 	span tracing.ImageGenerationSpan
 }
@@ -390,9 +390,7 @@ func (i *imageGenerationProcessorUpstreamFilter) ProcessResponseBody(ctx context
 	// Ensure response model is set before recording metrics so attributes include it.
 	i.metrics.SetResponseModel(responseModel)
 	// Update metrics with token usage (input/output only per OTEL spec).
-	i.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.OutputTokens, i.requestHeaders)
-	// Record image generation metrics
-	i.metrics.RecordImageGeneration(ctx, i.requestHeaders)
+	i.metrics.RecordTokenUsage(ctx, metrics.OptUint32(tokenUsage.InputTokens), metrics.OptUint32None, metrics.OptUint32(tokenUsage.OutputTokens), i.requestHeaders)
 
 	if body.EndOfStream && len(i.config.RequestCosts) > 0 {
 		metadata, err := buildDynamicMetadata(i.config, &i.costs, i.requestHeaders, i.backendName)

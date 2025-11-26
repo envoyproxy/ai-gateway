@@ -19,12 +19,11 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
 
-	cohere "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
-	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
@@ -38,7 +37,7 @@ func TestRerank_Schema(t *testing.T) {
 	})
 	t.Run("on upstream", func(t *testing.T) {
 		cfg := &filterapi.RuntimeConfig{}
-		p, err := RerankProcessorFactory(func() metrics.RerankMetrics { return &mockRerankMetrics{} })(cfg, nil, slog.Default(), tracing.NoopTracing{}, true)
+		p, err := RerankProcessorFactory(&mockMetricsFactory{})(cfg, nil, slog.Default(), tracing.NoopTracing{}, true)
 		require.NoError(t, err)
 		require.IsType(t, &rerankProcessorUpstreamFilter{}, p)
 	})
@@ -89,7 +88,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
 		var body cohere.RerankV2Request
 		require.NoError(t, json.Unmarshal(raw, &body))
 		mt := &mockRerankTranslator{t: t, expRequestBody: &body, retErr: errors.New("boom")}
-		mm := &mockRerankMetrics{}
+		mm := &mockMetrics{}
 		p := &rerankProcessorUpstreamFilter{
 			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
@@ -102,7 +101,8 @@ func Test_rerankProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
 		_, err := p.ProcessRequestHeaders(t.Context(), nil)
 		require.ErrorContains(t, err, "failed to transform request: boom")
 		mm.RequireRequestFailure(t)
-		mm.RequireTokenUsage(t, 0)
+		require.Equal(t, 0, mm.inputTokenCount)
+		require.Equal(t, 0, mm.outputTokenCount)
 		// Models captured even on failure
 		require.Equal(t, "rerank-english-v3", mm.originalModel)
 		require.Equal(t, "rerank-english-v3", mm.requestModel)
@@ -117,7 +117,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {
 		headerMut := []internalapi.Header{{"foo", "bar"}}
 		bodyMut := []byte("patched")
 		mt := &mockRerankTranslator{t: t, expRequestBody: &body, retHeaderMutation: headerMut, retBodyMutation: bodyMut}
-		mm := &mockRerankMetrics{}
+		mm := &mockMetrics{}
 		p := &rerankProcessorUpstreamFilter{
 			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
@@ -152,7 +152,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessRequestHeaders_HeaderMutatorMerge
 	require.NoError(t, json.Unmarshal(raw, &body))
 	headers := map[string]string{":path": "/cohere/v2/rerank", "authorization": "Bearer xyz"}
 	mt := &mockRerankTranslator{t: t, expRequestBody: &body}
-	mm := &mockRerankMetrics{}
+	mm := &mockMetrics{}
 	mutCfg := &filterapi.HTTPHeaderMutation{
 		Remove: []string{"authorization"},
 		Set:    []filterapi.HTTPHeader{{Name: "x-api-key", Value: "k"}},
@@ -191,7 +191,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessRequestHeaders_AuthError(t *testi
 	require.NoError(t, json.Unmarshal(raw, &body))
 	headers := map[string]string{":path": "/cohere/v2/rerank", internalapi.ModelNameHeaderKeyDefault: "rerank-english-v3"}
 	mt := &mockRerankTranslator{t: t, expRequestBody: &body}
-	mm := &mockRerankMetrics{}
+	mm := &mockMetrics{}
 	p := &rerankProcessorUpstreamFilter{
 		config:                 &filterapi.RuntimeConfig{},
 		requestHeaders:         headers,
@@ -213,7 +213,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessRequestBody_Panic(t *testing.T) {
 }
 
 func Test_rerankProcessorUpstreamFilter_ProcessResponseHeaders_ErrorAndEncoding(t *testing.T) {
-	mm := &mockRerankMetrics{}
+	mm := &mockMetrics{}
 	mt := &mockRerankTranslator{t: t, retErr: errors.New("hdr fail")}
 	p := &rerankProcessorUpstreamFilter{translator: mt, metrics: mm}
 	inHeaders := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: "content-encoding", Value: "gzip"}}}
@@ -234,7 +234,7 @@ func gzipBytes(t *testing.T, b []byte) []byte {
 func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_DecodeAndRemoveContentEncoding(t *testing.T) {
 	plain := []byte("ok")
 	gz := gzipBytes(t, plain)
-	mm := &mockRerankMetrics{}
+	mm := &mockMetrics{}
 	mt := &mockRerankTranslator{
 		t:               t,
 		expResponseBody: &extprocv3.HttpBody{Body: plain},
@@ -253,7 +253,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_DecodeAndRemoveConte
 }
 
 func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_DecodeError(t *testing.T) {
-	mm := &mockRerankMetrics{}
+	mm := &mockMetrics{}
 	mt := &mockRerankTranslator{t: t}
 	p := &rerankProcessorUpstreamFilter{
 		translator:       mt,
@@ -268,7 +268,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_DecodeError(t *testi
 }
 
 func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_ErrorTransformError(t *testing.T) {
-	mm := &mockRerankMetrics{}
+	mm := &mockMetrics{}
 	mt := &mockRerankTranslator{t: t, retErr: errors.New("boom")}
 	p := &rerankProcessorUpstreamFilter{
 		translator:      mt,
@@ -280,7 +280,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_ErrorTransformError(
 }
 
 func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_ResponseTransformError(t *testing.T) {
-	mm := &mockRerankMetrics{}
+	mm := &mockMetrics{}
 	mt := &mockRerankTranslator{t: t, retErr: errors.New("boom")}
 	p := &rerankProcessorUpstreamFilter{
 		translator:      mt,
@@ -292,7 +292,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_ResponseTransformErr
 }
 
 func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_MetadataError(t *testing.T) {
-	mm := &mockRerankMetrics{}
+	mm := &mockMetrics{}
 	mt := &mockRerankTranslator{
 		t:               t,
 		expResponseBody: &extprocv3.HttpBody{Body: []byte("ok")},
@@ -309,7 +309,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_MetadataError(t *tes
 
 func Test_rerankProcessorUpstreamFilter_SetBackend_SupportedWithOverride(t *testing.T) {
 	headers := map[string]string{":path": "/cohere/v2/rerank"}
-	mm := &mockRerankMetrics{}
+	mm := &mockMetrics{}
 	p := &rerankProcessorUpstreamFilter{config: &filterapi.RuntimeConfig{}, requestHeaders: headers, logger: slog.Default(), metrics: mm}
 	rp := &rerankProcessorRouterFilter{requestHeaders: headers}
 	err := p.SetBackend(t.Context(), &filterapi.Backend{ModelNameOverride: "override", Name: "cohere-backend", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaCohere, Version: "v2"}}, nil, rp)
@@ -322,7 +322,7 @@ func Test_rerankProcessorUpstreamFilter_SetBackend_SupportedWithOverride(t *test
 }
 
 func Test_rerankProcessorUpstreamFilter_SetBackend_PanicWrongRoute(t *testing.T) {
-	p := &rerankProcessorUpstreamFilter{config: &filterapi.RuntimeConfig{}, requestHeaders: map[string]string{}, logger: slog.Default(), metrics: &mockRerankMetrics{}}
+	p := &rerankProcessorUpstreamFilter{config: &filterapi.RuntimeConfig{}, requestHeaders: map[string]string{}, logger: slog.Default(), metrics: &mockMetrics{}}
 	require.Panics(t, func() {
 		_ = p.SetBackend(t.Context(), &filterapi.Backend{Name: "b", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaCohere, Version: "v2"}}, nil, &mockProcessor{})
 	})
@@ -331,7 +331,7 @@ func Test_rerankProcessorUpstreamFilter_SetBackend_PanicWrongRoute(t *testing.T)
 func Test_rerankProcessorUpstreamFilter_ProcessResponseHeaders(t *testing.T) {
 	inHeaders := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}}}
 	exp := map[string]string{"foo": "bar"}
-	mm := &mockRerankMetrics{}
+	mm := &mockMetrics{}
 	mt := &mockRerankTranslator{t: t, expHeaders: exp}
 	p := &rerankProcessorUpstreamFilter{translator: mt, metrics: mm}
 	res, err := p.ProcessResponseHeaders(t.Context(), inHeaders)
@@ -344,7 +344,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseHeaders(t *testing.T) {
 func Test_rerankProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 	t.Run("error path", func(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("err"), EndOfStream: true}
-		mm := &mockRerankMetrics{}
+		mm := &mockMetrics{}
 		mt := &mockRerankTranslator{t: t, expResponseBody: inBody}
 		p := &rerankProcessorUpstreamFilter{
 			translator:      mt,
@@ -362,7 +362,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 
 	t.Run("success with metadata and token usage", func(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("ok"), EndOfStream: true}
-		mm := &mockRerankMetrics{}
+		mm := &mockMetrics{}
 		mt := &mockRerankTranslator{
 			t:               t,
 			expResponseBody: inBody,
@@ -392,7 +392,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 		common := resp.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
 		require.NotNil(t, common.HeaderMutation)
 		require.Nil(t, common.BodyMutation)
-		mm.RequireTokenUsage(t, 10)
+		require.Equal(t, 10, mm.inputTokenCount)
 		mm.RequireRequestSuccess(t)
 		// Response model chosen is retResponseModel
 		require.Equal(t, "rerank-english-v3-2025", mm.responseModel)
@@ -408,7 +408,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 
 	// Ensure success is recorded only at end-of-stream
 	t.Run("completion only at end", func(t *testing.T) {
-		mm := &mockRerankMetrics{}
+		mm := &mockMetrics{}
 		mt := &mockRerankTranslator{t: t}
 		p := &rerankProcessorUpstreamFilter{
 			translator:      mt,
@@ -433,7 +433,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 
 func Test_rerankProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	headers := map[string]string{":path": "/cohere/v2/rerank"}
-	mm := &mockRerankMetrics{}
+	mm := &mockMetrics{}
 	p := &rerankProcessorUpstreamFilter{config: &filterapi.RuntimeConfig{}, requestHeaders: headers, logger: slog.Default(), metrics: mm}
 	err := p.SetBackend(t.Context(), &filterapi.Backend{Name: "some-backend", Schema: filterapi.VersionedAPISchema{Name: "some-schema", Version: "vX"}}, nil, &rerankProcessorRouterFilter{})
 	require.ErrorContains(t, err, "unsupported API schema")
@@ -455,7 +455,7 @@ func Test_rerankProcessorRouterFilter_PassthroughResponses(t *testing.T) {
 			upstreamFilter: &rerankProcessorUpstreamFilter{
 				translator: &mockRerankTranslator{t: t, expHeaders: map[string]string{}},
 				logger:     slog.Default(),
-				metrics:    &mockRerankMetrics{},
+				metrics:    &mockMetrics{},
 				config:     &filterapi.RuntimeConfig{},
 			},
 		}
@@ -470,7 +470,7 @@ func Test_rerankProcessorRouterFilter_PassthroughResponses(t *testing.T) {
 
 func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_Tracing_EndSpanOnError(t *testing.T) {
 	inBody := &extprocv3.HttpBody{Body: []byte("err"), EndOfStream: true}
-	mm := &mockRerankMetrics{}
+	mm := &mockMetrics{}
 	mt := &mockRerankTranslator{t: t, expResponseBody: inBody}
 	span := &mockRerankSpan{}
 	p := &rerankProcessorUpstreamFilter{
@@ -489,7 +489,7 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_Tracing_EndSpanOnErr
 
 func Test_rerankProcessorUpstreamFilter_ProcessResponseBody_Tracing_EndSpanOnSuccess(t *testing.T) {
 	inBody := &extprocv3.HttpBody{Body: []byte("ok"), EndOfStream: true}
-	mm := &mockRerankMetrics{}
+	mm := &mockMetrics{}
 	mt := &mockRerankTranslator{
 		t:               t,
 		expResponseBody: inBody,
@@ -556,54 +556,6 @@ func (m *mockRerankTranslator) ResponseError(_ map[string]string, _ io.Reader) (
 	return m.retHeaderMutation, m.retBodyMutation, m.retErr
 }
 
-type mockRerankMetrics struct {
-	completed     *bool
-	originalModel string
-	requestModel  string
-	responseModel string
-	backend       string
-	inputTokens   uint32
-}
-
-func (m *mockRerankMetrics) StartRequest(map[string]string) {}
-func (m *mockRerankMetrics) SetOriginalModel(model internalapi.OriginalModel) {
-	m.originalModel = model
-}
-func (m *mockRerankMetrics) SetRequestModel(model internalapi.RequestModel) { m.requestModel = model }
-func (m *mockRerankMetrics) SetResponseModel(model internalapi.ResponseModel) {
-	m.responseModel = model
-}
-func (m *mockRerankMetrics) SetBackend(backend *filterapi.Backend) { m.backend = backend.Name }
-func (m *mockRerankMetrics) RecordTokenUsage(_ context.Context, input uint32, _ map[string]string) {
-	m.inputTokens += input
-}
-
-func (m *mockRerankMetrics) RecordRequestCompletion(_ context.Context, success bool, _ map[string]string) {
-	m.completed = &success
-}
-
-func (m *mockRerankMetrics) RequireRequestSuccess(t *testing.T) {
-	require.NotNil(t, m.completed)
-	require.True(t, *m.completed)
-}
-
-func (m *mockRerankMetrics) RequireRequestFailure(t *testing.T) {
-	require.NotNil(t, m.completed)
-	require.False(t, *m.completed)
-}
-
-func (m *mockRerankMetrics) RequireRequestNotCompleted(t *testing.T) {
-	require.Nil(t, m.completed)
-}
-
-func (m *mockRerankMetrics) RequireTokenUsage(t *testing.T, input uint32) {
-	require.Equal(t, input, m.inputTokens)
-}
-
-func (m *mockRerankMetrics) RequireSelectedBackend(t *testing.T, backend string) {
-	require.Equal(t, backend, m.backend)
-}
-
 func TestRerankProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutations(t *testing.T) {
 	t.Run("body mutations applied correctly", func(t *testing.T) {
 		headers := map[string]string{
@@ -632,7 +584,7 @@ func TestRerankProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutations(t
 			retErr:          nil,
 		}
 
-		rerankMetrics := &mockRerankMetrics{}
+		rerankMetrics := &mockMetrics{}
 
 		p := &rerankProcessorUpstreamFilter{
 			config:                 &filterapi.RuntimeConfig{},
@@ -685,7 +637,7 @@ func TestRerankProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutations(t
 
 	t.Run("body mutator with retry", func(t *testing.T) {
 		headers := map[string]string{":path": "/cohere/v2/rerank"}
-		rerankMetrics := &mockRerankMetrics{}
+		rerankMetrics := &mockMetrics{}
 
 		originalRequestBodyRaw := []byte(`{"model": "rerank-english-v3", "query": "Original query", "return_documents": false}`)
 		requestBody := &cohere.RerankV2Request{

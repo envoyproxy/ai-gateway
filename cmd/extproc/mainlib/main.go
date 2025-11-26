@@ -245,16 +245,16 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	}
 
 	// Create meter with Prometheus + optionally OTEL.
-	meter, metricsShutdown, err := metrics.NewMetricsFromEnv(ctx, os.Stdout, promReader)
+	meter, metricsShutdown, err := metrics.NewMeterFromEnv(ctx, os.Stdout, promReader)
 	if err != nil {
 		return fmt.Errorf("failed to create metrics: %w", err)
 	}
-	chatCompletionMetricsFactory := metrics.NewChatCompletionFactory(meter, metricsRequestHeaderAttributes)
-	messagesMetricsFactory := metrics.NewMessagesFactory(meter, metricsRequestHeaderAttributes)
-	completionMetricsFactory := metrics.NewCompletionFactory(meter, metricsRequestHeaderAttributes)
-	embeddingsMetricsFactory := metrics.NewEmbeddingsFactory(meter, metricsRequestHeaderAttributes)
-	imageGenerationMetricsFactory := metrics.NewImageGenerationFactory(meter, metricsRequestHeaderAttributes)
-	rerankMetricsFactory := metrics.NewRerankFactory(meter, metricsRequestHeaderAttributes)
+	chatCompletionMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationChat)
+	messagesMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationMessages)
+	completionMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationCompletion)
+	embeddingsMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationEmbedding)
+	imageGenerationMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationImageGeneration)
+	rerankMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationRerank)
 	mcpMetrics := metrics.NewMCP(meter, metricsRequestHeaderAttributes)
 
 	tracing, err := tracing.NewTracingFromEnv(ctx, os.Stdout, spanRequestHeaderAttributes)

@@ -28,7 +28,7 @@ import (
 )
 
 // RerankProcessorFactory returns a factory method to instantiate the rerank processor.
-func RerankProcessorFactory(f metrics.RerankMetricsFactory) ProcessorFactory {
+func RerankProcessorFactory(f metrics.Factory) ProcessorFactory {
 	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "rerank", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
@@ -43,7 +43,7 @@ func RerankProcessorFactory(f metrics.RerankMetricsFactory) ProcessorFactory {
 			config:         config,
 			requestHeaders: requestHeaders,
 			logger:         logger,
-			metrics:        f(),
+			metrics:        f.NewMetrics(),
 		}, nil
 	}
 }
@@ -163,7 +163,7 @@ type rerankProcessorUpstreamFilter struct {
 	// cost is the cost of the request that is accumulated during the processing of the response.
 	costs translator.LLMTokenUsage
 	// metrics tracking.
-	metrics metrics.RerankMetrics
+	metrics metrics.Metrics
 	// span is the tracing span for this request, inherited from the router filter.
 	span tracing.RerankSpan
 }
@@ -361,7 +361,7 @@ func (r *rerankProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context,
 	r.metrics.SetResponseModel(responseModel)
 
 	// Update metrics with token usage (rerank records only input tokens in metrics package).
-	r.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, r.requestHeaders)
+	r.metrics.RecordTokenUsage(ctx, metrics.OptUint32(tokenUsage.InputTokens), metrics.OptUint32None, metrics.OptUint32None, r.requestHeaders)
 
 	if body.EndOfStream && len(r.config.RequestCosts) > 0 {
 		resp.DynamicMetadata, err = buildDynamicMetadata(r.config, &r.costs, r.requestHeaders, r.backendName)

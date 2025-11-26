@@ -23,7 +23,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
-	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
@@ -49,9 +48,7 @@ func TestCompletions_Schema(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &filterapi.RuntimeConfig{}
-			filter, err := CompletionsProcessorFactory(func() metrics.CompletionMetrics {
-				return &mockCompletionMetrics{}
-			})(cfg, nil, slog.Default(), tracing.NoopTracing{}, tt.onUpstream)
+			filter, err := CompletionsProcessorFactory(&mockMetricsFactory{})(cfg, nil, slog.Default(), tracing.NoopTracing{}, tt.onUpstream)
 			require.NoError(t, err)
 			require.NotNil(t, filter)
 			require.IsType(t, tt.expectedType, filter)
@@ -154,7 +151,7 @@ func Test_completionsProcessorUpstreamFilter_ProcessResponseHeaders(t *testing.T
 func Test_completionsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 	t.Run("error response", func(t *testing.T) {
 		mt := &mockCompletionTranslator{t: t}
-		mm := &mockCompletionMetrics{}
+		mm := &mockMetrics{}
 		p := &completionsProcessorUpstreamFilter{
 			translator:      mt,
 			responseHeaders: map[string]string{":status": "400"},
@@ -180,7 +177,7 @@ func Test_completionsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 
 	t.Run("successful response with token usage", func(t *testing.T) {
 		mt := &mockCompletionTranslator{t: t}
-		mm := &mockCompletionMetrics{}
+		mm := &mockMetrics{}
 		p := &completionsProcessorUpstreamFilter{
 			translator:      mt,
 			responseHeaders: map[string]string{":status": "200"},
@@ -272,7 +269,7 @@ func Test_completionsProcessorUpstreamFilter_SetBackend(t *testing.T) {
 			upstreamFilter := &completionsProcessorUpstreamFilter{
 				config:         routeFilter.config,
 				requestHeaders: routeFilter.requestHeaders,
-				metrics:        &mockCompletionMetrics{},
+				metrics:        &mockMetrics{},
 			}
 
 			err := upstreamFilter.SetBackend(t.Context(), tt.backend, nil, routeFilter)
@@ -326,7 +323,7 @@ func Test_completionsProcessorRouterFilter_ProcessResponseBody(t *testing.T) {
 		upstreamFilter := &completionsProcessorUpstreamFilter{
 			translator:      mt,
 			responseHeaders: map[string]string{":status": "200"},
-			metrics:         &mockCompletionMetrics{},
+			metrics:         &mockMetrics{},
 			config:          &filterapi.RuntimeConfig{},
 		}
 		routeFilter := &completionsProcessorRouterFilter{
@@ -356,7 +353,7 @@ func Test_completionsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T)
 		originalRequestBody:    &openai.CompletionRequest{Model: "test"},
 		originalRequestBodyRaw: []byte(`{"model":"test"}`),
 		translator:             mt,
-		metrics:                &mockCompletionMetrics{},
+		metrics:                &mockMetrics{},
 	}
 
 	headers := &corev3.HeaderMap{}
@@ -523,7 +520,7 @@ func TestCompletionsProcessorRouterFilter_ProcessResponseBody_SpanHandling(t *te
 				logger:          slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 				config:          &filterapi.RuntimeConfig{},
 				span:            span,
-				metrics:         &mockCompletionMetrics{},
+				metrics:         &mockMetrics{},
 			},
 		}
 
@@ -543,7 +540,7 @@ func TestCompletionsProcessorRouterFilter_ProcessResponseBody_SpanHandling(t *te
 				logger:          slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 				config:          &filterapi.RuntimeConfig{},
 				span:            span,
-				metrics:         &mockCompletionMetrics{},
+				metrics:         &mockMetrics{},
 			},
 		}
 
@@ -604,7 +601,7 @@ func Test_completionsProcessorUpstreamFilter_ProcessResponseHeaders_Streaming(t 
 func Test_completionsProcessorUpstreamFilter_ProcessResponseBody_Streaming(t *testing.T) {
 	t.Run("streaming completion only at end", func(t *testing.T) {
 		mt := &mockCompletionTranslator{t: t}
-		mm := &mockCompletionMetrics{}
+		mm := &mockMetrics{}
 		p := &completionsProcessorUpstreamFilter{
 			translator:      mt,
 			stream:          true,
@@ -619,7 +616,6 @@ func Test_completionsProcessorUpstreamFilter_ProcessResponseBody_Streaming(t *te
 		_, err := p.ProcessResponseBody(t.Context(), chunk)
 		require.NoError(t, err)
 		mm.RequireRequestNotCompleted(t)
-		require.Zero(t, mm.tokenUsageCount)
 		require.Zero(t, mm.streamingOutputTokens) // first chunk has 0 output tokens
 
 		// Final chunk should mark success and record usage once.
@@ -628,7 +624,8 @@ func Test_completionsProcessorUpstreamFilter_ProcessResponseBody_Streaming(t *te
 		_, err = p.ProcessResponseBody(t.Context(), final)
 		require.NoError(t, err)
 		mm.RequireRequestSuccess(t)
-		require.Equal(t, 143, mm.tokenUsageCount)       // 5 input + 138 output
+		require.Equal(t, 5, mm.inputTokenCount)
+		require.Equal(t, 138, mm.outputTokenCount)
 		require.Equal(t, 138, mm.streamingOutputTokens) // accumulated output tokens from stream
 	})
 }
@@ -637,7 +634,7 @@ func Test_completionsProcessorUpstreamFilter_ProcessResponseBody_NonSuccess(t *t
 	// Verify we record failure for non-2xx responses and do it exactly once (defer suppressed).
 	t.Run("non-2xx status failure once", func(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("error-body"), EndOfStream: true}
-		mm := &mockCompletionMetrics{}
+		mm := &mockMetrics{}
 		mt := &mockCompletionTranslator{t: t, resErrorHeaderMutation: []internalapi.Header{
 			{"foo", "bar"},
 		}, resErrorBodyMutation: []byte("abcd")}
@@ -659,7 +656,7 @@ func Test_completionsProcessorUpstreamFilter_ProcessResponseBody_NonSuccess(t *t
 
 func Test_completionsProcessorUpstreamFilter_SetBackend_Failure(t *testing.T) {
 	headers := map[string]string{":path": "/foo"}
-	mm := &mockCompletionMetrics{}
+	mm := &mockMetrics{}
 	p := &completionsProcessorUpstreamFilter{
 		config:         &filterapi.RuntimeConfig{},
 		requestHeaders: headers,
@@ -676,7 +673,7 @@ func Test_completionsProcessorUpstreamFilter_SetBackend_Failure(t *testing.T) {
 	})
 	require.EqualError(t, err, "failed to select translator: unsupported API schema: backend={some-schema v10.0}")
 	mm.RequireRequestFailure(t)
-	require.Zero(t, mm.tokenUsageCount)
+	require.Zero(t, mm.inputTokenCount)
 	mm.RequireSelectedBackend(t, "some-backend")
 	require.False(t, p.stream) // On error, stream should be false regardless of the input.
 }
@@ -702,7 +699,7 @@ func Test_completionsProcessorUpstreamFilter_SetBackend_Success(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			headers := map[string]string{":path": "/foo", internalapi.ModelNameHeaderKeyDefault: "some-model"}
-			mm := &mockCompletionMetrics{}
+			mm := &mockMetrics{}
 			p := &completionsProcessorUpstreamFilter{
 				config:         &filterapi.RuntimeConfig{},
 				requestHeaders: headers,
@@ -758,7 +755,7 @@ func Test_completionsProcessorUpstreamFilter_CELCostEvaluation(t *testing.T) {
 	t.Run("CEL expressions with token usage", func(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("response-body"), EndOfStream: true}
 		expBody := []byte("response-body")
-		mm := &mockCompletionMetrics{}
+		mm := &mockMetrics{}
 		mt := &mockCompletionTranslator{
 			t:                 t,
 			resBodyMutation:   expBody,
@@ -807,7 +804,8 @@ func Test_completionsProcessorUpstreamFilter_CELCostEvaluation(t *testing.T) {
 		require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
 		require.Equal(t, "bar", string(commonRes.HeaderMutation.SetHeaders[0].Header.RawValue))
 		mm.RequireRequestSuccess(t)
-		require.Equal(t, 124, mm.tokenUsageCount) // 1 input + 123 output
+		require.Equal(t, 123, mm.outputTokenCount)
+		require.Equal(t, 1, mm.inputTokenCount)
 		md := res.DynamicMetadata
 		require.NotNil(t, md)
 		require.Equal(t, float64(123), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
@@ -846,7 +844,7 @@ func Test_completionsProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestore(t
 			translator:             &mockCompletionTranslator{t: t},
 			originalRequestBody:    &body,
 			originalRequestBodyRaw: raw,
-			metrics:                &mockCompletionMetrics{},
+			metrics:                &mockMetrics{},
 		}
 
 		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
@@ -872,7 +870,7 @@ func Test_completionsProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestore(t
 			translator:             &mockCompletionTranslator{t: t},
 			originalRequestBody:    &body,
 			originalRequestBodyRaw: raw,
-			metrics:                &mockCompletionMetrics{},
+			metrics:                &mockMetrics{},
 		}
 
 		// Call the actual method to trigger restoration logic.
@@ -899,7 +897,7 @@ func Test_completionsProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestore(t
 			translator:             &mockCompletionTranslator{t: t},
 			originalRequestBody:    &body,
 			originalRequestBodyRaw: raw,
-			metrics:                &mockCompletionMetrics{},
+			metrics:                &mockMetrics{},
 		}
 
 		// Call the actual method to trigger restoration logic.
@@ -918,7 +916,7 @@ func Test_completionsProcessorUpstreamFilter_ModelTracking(t *testing.T) {
 		headers := map[string]string{":path": "/v1/completions", internalapi.ModelNameHeaderKeyDefault: "header-model"}
 		body := openai.CompletionRequest{Model: "body-model"}
 		raw, _ := json.Marshal(body)
-		mm := &mockCompletionMetrics{}
+		mm := &mockMetrics{}
 		p := &completionsProcessorUpstreamFilter{
 			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
@@ -940,7 +938,7 @@ func Test_completionsProcessorUpstreamFilter_ModelTracking(t *testing.T) {
 		headers := map[string]string{":path": "/v1/completions"}
 		body := openai.CompletionRequest{Model: "gpt-3.5-turbo-instruct"}
 		raw, _ := json.Marshal(body)
-		mm := &mockCompletionMetrics{}
+		mm := &mockMetrics{}
 		// Create a mock translator that returns token usage with response model
 		// Simulating OpenAI's automatic routing where gpt-3.5-turbo-instruct routes to gpt-3.5-turbo-instruct-0914
 		mt := &mockCompletionTranslator{
@@ -1004,7 +1002,7 @@ func Test_completionsProcessorUpstreamFilter_TokenLatencyMetadata(t *testing.T) 
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mm := &mockCompletionMetrics{}
+			mm := &mockMetrics{}
 			mt := &mockCompletionTranslator{t: t}
 			p := &completionsProcessorUpstreamFilter{
 				translator: mt,
@@ -1057,7 +1055,7 @@ func Test_completionsProcessorUpstreamFilter_TokenLatencyMetadata(t *testing.T) 
 
 func Test_completionsProcessorUpstreamFilter_StreamingTokenLatencyTracking(t *testing.T) {
 	t.Run("tracks token latency during streaming", func(t *testing.T) {
-		mm := &mockCompletionMetrics{
+		mm := &mockMetrics{
 			timeToFirstTokenMs:  750.0,
 			interTokenLatencyMs: 250.0,
 		}
@@ -1143,7 +1141,7 @@ func Test_completionsProcessorRouterFilter_ProcessResponseHeaders_ProcessRespons
 				translator: &mockCompletionTranslator{t: t, expHeaders: map[string]string{}},
 				logger:     slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
 				config:     &filterapi.RuntimeConfig{},
-				metrics:    &mockCompletionMetrics{},
+				metrics:    &mockMetrics{},
 			},
 		}
 		resp, err := p.ProcessResponseHeaders(t.Context(), &corev3.HeaderMap{Headers: []*corev3.HeaderValue{}})
@@ -1190,7 +1188,7 @@ func TestCompletionsProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutati
 			err:             nil,
 		}
 
-		completionMetrics := &mockCompletionMetrics{}
+		completionMetrics := &mockMetrics{}
 
 		p := &completionsProcessorUpstreamFilter{
 			config:                 &filterapi.RuntimeConfig{},
@@ -1243,7 +1241,7 @@ func TestCompletionsProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutati
 
 	t.Run("body mutator with retry", func(t *testing.T) {
 		headers := map[string]string{":path": "/v1/completions"}
-		completionMetrics := &mockCompletionMetrics{}
+		completionMetrics := &mockMetrics{}
 
 		originalRequestBodyRaw := []byte(`{"model": "gpt-3.5-turbo-instruct", "prompt": "Hello", "temperature": 0.5}`)
 		requestBody := &openai.CompletionRequest{

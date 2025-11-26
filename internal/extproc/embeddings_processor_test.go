@@ -23,7 +23,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
-	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
@@ -38,9 +37,7 @@ func TestEmbeddings_Schema(t *testing.T) {
 	})
 	t.Run("supported openai / on upstream", func(t *testing.T) {
 		cfg := &filterapi.RuntimeConfig{}
-		routeFilter, err := EmbeddingsProcessorFactory(func() metrics.EmbeddingsMetrics {
-			return &mockEmbeddingsMetrics{}
-		})(cfg, nil, slog.Default(), tracing.NoopTracing{}, true)
+		routeFilter, err := EmbeddingsProcessorFactory(&mockMetricsFactory{})(cfg, nil, slog.Default(), tracing.NoopTracing{}, true)
 		require.NoError(t, err)
 		require.NotNil(t, routeFilter)
 		require.IsType(t, &embeddingsProcessorUpstreamFilter{}, routeFilter)
@@ -95,7 +92,7 @@ func Test_embeddingsProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 
 func Test_embeddingsProcessorUpstreamFilter_ProcessResponseHeaders(t *testing.T) {
 	t.Run("error translation", func(t *testing.T) {
-		mm := &mockEmbeddingsMetrics{}
+		mm := &mockMetrics{}
 		mt := &mockEmbeddingTranslator{t: t, expHeaders: make(map[string]string)}
 		p := &embeddingsProcessorUpstreamFilter{
 			translator: mt,
@@ -111,7 +108,7 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseHeaders(t *testing.T)
 			Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}, {Key: "dog", RawValue: []byte("cat")}},
 		}
 		expHeaders := map[string]string{"foo": "bar", "dog": "cat"}
-		mm := &mockEmbeddingsMetrics{}
+		mm := &mockMetrics{}
 		mt := &mockEmbeddingTranslator{t: t, expHeaders: expHeaders}
 		p := &embeddingsProcessorUpstreamFilter{
 			translator: mt,
@@ -131,7 +128,7 @@ func embeddingBodyFromModel(_ *testing.T, model string) []byte {
 
 func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 	t.Run("error translation", func(t *testing.T) {
-		mm := &mockEmbeddingsMetrics{}
+		mm := &mockMetrics{}
 		mt := &mockEmbeddingTranslator{t: t}
 		p := &embeddingsProcessorUpstreamFilter{
 			translator:      mt,
@@ -142,13 +139,14 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 		_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{})
 		require.ErrorContains(t, err, "test error")
 		mm.RequireRequestFailure(t)
-		mm.RequireTokenUsage(t, 0)
+		require.Zero(t, mm.inputTokenCount)
+		require.Zero(t, mm.outputTokenCount)
 	})
 	t.Run("ok", func(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("some-body"), EndOfStream: true}
 		expBodyMut := []byte("some body")
 		expHeadMut := []internalapi.Header{{"foo", "bar"}}
-		mm := &mockEmbeddingsMetrics{}
+		mm := &mockMetrics{}
 		mt := &mockEmbeddingTranslator{
 			t: t, expResponseBody: inBody,
 			retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut,
@@ -190,7 +188,8 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 		require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
 		require.Equal(t, []byte("bar"), commonRes.HeaderMutation.SetHeaders[0].Header.RawValue)
 		mm.RequireRequestSuccess(t)
-		mm.RequireTokenUsage(t, 123)
+		require.Equal(t, 123, mm.inputTokenCount)
+		require.Equal(t, 0, mm.outputTokenCount)
 
 		md := res.DynamicMetadata
 		require.NotNil(t, md)
@@ -209,7 +208,7 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 	})
 	t.Run("error/streaming", func(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("some-body"), EndOfStream: true}
-		mm := &mockEmbeddingsMetrics{}
+		mm := &mockMetrics{}
 		mt := &mockEmbeddingTranslator{t: t, expResponseBody: inBody}
 		p := &embeddingsProcessorUpstreamFilter{
 			translator:        mt,
@@ -231,7 +230,7 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 
 	// Success should be recorded only when EndOfStream is true.
 	t.Run("completion only at end", func(t *testing.T) {
-		mm := &mockEmbeddingsMetrics{}
+		mm := &mockMetrics{}
 		mt := &mockEmbeddingTranslator{t: t}
 		p := &embeddingsProcessorUpstreamFilter{
 			translator:        mt,
@@ -261,7 +260,7 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 
 func Test_embeddingsProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	headers := map[string]string{":path": "/foo"}
-	mm := &mockEmbeddingsMetrics{}
+	mm := &mockMetrics{}
 	p := &embeddingsProcessorUpstreamFilter{
 		config:         &filterapi.RuntimeConfig{},
 		requestHeaders: headers,
@@ -274,13 +273,14 @@ func Test_embeddingsProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	}, nil, &embeddingsProcessorRouterFilter{})
 	require.ErrorContains(t, err, "unsupported API schema: backend={some-schema v10.0}")
 	mm.RequireRequestFailure(t)
-	mm.RequireTokenUsage(t, 0)
+	require.Zero(t, mm.inputTokenCount)
+	require.Zero(t, mm.outputTokenCount)
 	mm.RequireSelectedBackend(t, "some-backend")
 }
 
 func Test_embeddingsProcessorUpstreamFilter_SetBackend_Success(t *testing.T) {
 	headers := map[string]string{":path": "/foo", "x-ai-eg-model": "some-model"}
-	mm := &mockEmbeddingsMetrics{}
+	mm := &mockMetrics{}
 	p := &embeddingsProcessorUpstreamFilter{
 		config:         &filterapi.RuntimeConfig{},
 		requestHeaders: headers,
@@ -308,7 +308,7 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) 
 		var body openai.EmbeddingRequest
 		require.NoError(t, json.Unmarshal(someBody, &body))
 		tr := &mockEmbeddingTranslator{t: t, retErr: errors.New("test error"), expRequestBody: &body}
-		mm := &mockEmbeddingsMetrics{}
+		mm := &mockMetrics{}
 		p := &embeddingsProcessorUpstreamFilter{
 			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
@@ -321,7 +321,8 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) 
 		_, err := p.ProcessRequestHeaders(t.Context(), nil)
 		require.ErrorContains(t, err, "failed to transform request: test error")
 		mm.RequireRequestFailure(t)
-		mm.RequireTokenUsage(t, 0)
+		require.Zero(t, mm.inputTokenCount)
+		require.Zero(t, mm.outputTokenCount)
 		// Verify models were set even though processing failed
 		require.Equal(t, "some-model", mm.originalModel)
 		require.Equal(t, "some-model", mm.requestModel)
@@ -336,7 +337,7 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) 
 		var expBody openai.EmbeddingRequest
 		require.NoError(t, json.Unmarshal(someBody, &expBody))
 		mt := &mockEmbeddingTranslator{t: t, expRequestBody: &expBody, retHeaderMutation: headerMut, retBodyMutation: bodyMut}
-		mm := &mockEmbeddingsMetrics{}
+		mm := &mockMetrics{}
 		p := &embeddingsProcessorUpstreamFilter{
 			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
@@ -372,7 +373,7 @@ func TestEmbeddings_ProcessRequestHeaders_SetsRequestModel(t *testing.T) {
 	headers := map[string]string{":path": "/v1/embeddings", internalapi.ModelNameHeaderKeyDefault: "header-model"}
 	body := openai.EmbeddingRequest{Model: "body-model"}
 	raw, _ := json.Marshal(body)
-	mm := &mockEmbeddingsMetrics{}
+	mm := &mockMetrics{}
 	p := &embeddingsProcessorUpstreamFilter{
 		config:                 &filterapi.RuntimeConfig{},
 		requestHeaders:         headers,
@@ -398,7 +399,7 @@ func TestEmbeddings_ProcessResponseBody_OverridesHeaderModelWithResponseModel(t 
 		Input: openai.EmbeddingRequestInput{Value: "test"},
 	}
 	raw, _ := json.Marshal(body)
-	mm := &mockEmbeddingsMetrics{}
+	mm := &mockMetrics{}
 
 	// Create a mock translator that returns token usage with response model
 	mt := &mockEmbeddingTranslator{
@@ -444,7 +445,7 @@ func TestEmbeddings_ProcessResponseBody_OverridesHeaderModelWithResponseModel(t 
 	// Should use the override model from the header, as that's what is sent upstream.
 	// Original model is from request body, request model is from header (override)
 	mm.RequireSelectedModel(t, "body-model", "header-model", "actual-embedding-model")
-	mm.RequireTokenUsage(t, 15)
+	require.Equal(t, 15, mm.inputTokenCount)
 	mm.RequireRequestSuccess(t)
 }
 
@@ -479,7 +480,7 @@ func TestEmbeddingsProcessorRouterFilter_ProcessResponseHeaders_ProcessResponseB
 			upstreamFilter: &embeddingsProcessorUpstreamFilter{
 				translator: &mockEmbeddingTranslator{t: t, expHeaders: map[string]string{}},
 				logger:     slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
-				metrics:    &mockEmbeddingsMetrics{},
+				metrics:    &mockMetrics{},
 				config:     &filterapi.RuntimeConfig{},
 			},
 		}
@@ -520,7 +521,7 @@ func TestEmbeddingsProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutat
 		}
 
 		mt := &mockEmbeddingTranslator{t: t, expRequestBody: &body}
-		mm := &mockEmbeddingsMetrics{}
+		mm := &mockMetrics{}
 		p := &embeddingsProcessorUpstreamFilter{
 			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
@@ -574,7 +575,7 @@ func TestEmbeddingsProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutat
 		require.NoError(t, json.Unmarshal(someBody, &body))
 
 		mt := &mockEmbeddingTranslator{t: t, expRequestBody: &body}
-		mm := &mockEmbeddingsMetrics{}
+		mm := &mockMetrics{}
 		p := &embeddingsProcessorUpstreamFilter{
 			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
@@ -608,7 +609,7 @@ func TestEmbeddingsProcessorUpstreamFilter_ProcessRequestHeaders_WithHeaderMutat
 func TestEmbeddingsProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *testing.T) {
 	t.Run("header mutator created correctly", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
-		mm := &mockEmbeddingsMetrics{}
+		mm := &mockMetrics{}
 		p := &embeddingsProcessorUpstreamFilter{
 			config:         &filterapi.RuntimeConfig{},
 			requestHeaders: headers,
@@ -639,7 +640,7 @@ func TestEmbeddingsProcessorUpstreamFilter_SetBackend_WithHeaderMutations(t *tes
 
 	t.Run("header mutator with original headers", func(t *testing.T) {
 		headers := map[string]string{":path": "/foo"}
-		mm := &mockEmbeddingsMetrics{}
+		mm := &mockMetrics{}
 		p := &embeddingsProcessorUpstreamFilter{
 			config:         &filterapi.RuntimeConfig{},
 			requestHeaders: headers,
@@ -701,7 +702,7 @@ func TestEmbeddingsProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutatio
 			retErr:          nil,
 		}
 
-		embeddingMetrics := &mockEmbeddingsMetrics{}
+		embeddingMetrics := &mockMetrics{}
 
 		p := &embeddingsProcessorUpstreamFilter{
 			config:                 &filterapi.RuntimeConfig{},
@@ -754,7 +755,7 @@ func TestEmbeddingsProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMutatio
 
 	t.Run("body mutator with retry", func(t *testing.T) {
 		headers := map[string]string{":path": "/v1/embeddings"}
-		embeddingMetrics := &mockEmbeddingsMetrics{}
+		embeddingMetrics := &mockMetrics{}
 
 		originalRequestBodyRaw := []byte(`{"model": "text-embedding-ada-002", "input": "Original input", "encoding_format": "float"}`)
 		requestBody := &openai.EmbeddingRequest{

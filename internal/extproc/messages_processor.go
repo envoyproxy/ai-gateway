@@ -31,7 +31,7 @@ import (
 //
 // Requests: Only accepts Anthropic format requests.
 // Responses: Returns Anthropic format responses.
-func MessagesProcessorFactory(f metrics.MessagesMetricsFactory) ProcessorFactory {
+func MessagesProcessorFactory(f metrics.Factory) ProcessorFactory {
 	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "anthropic-messages", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
@@ -45,7 +45,7 @@ func MessagesProcessorFactory(f metrics.MessagesMetricsFactory) ProcessorFactory
 			config:         config,
 			requestHeaders: requestHeaders,
 			logger:         logger,
-			metrics:        f(),
+			metrics:        f.NewMetrics(),
 		}, nil
 	}
 }
@@ -146,7 +146,7 @@ type messagesProcessorUpstreamFilter struct {
 	translator             translator.AnthropicMessagesTranslator
 	onRetry                bool
 	stream                 bool
-	metrics                metrics.MessagesMetrics
+	metrics                metrics.Metrics
 	costs                  translator.LLMTokenUsage
 }
 
@@ -332,9 +332,16 @@ func (c *messagesProcessorUpstreamFilter) ProcessResponseBody(ctx context.Contex
 	c.costs.CachedInputTokens += tokenUsage.CachedInputTokens
 
 	// Update metrics with token usage.
-	c.metrics.RecordTokenUsage(ctx, tokenUsage.InputTokens, tokenUsage.CachedInputTokens, tokenUsage.OutputTokens, c.requestHeaders)
 	if c.stream {
 		c.metrics.RecordTokenLatency(ctx, tokenUsage.OutputTokens, body.EndOfStream, c.requestHeaders)
+		// Emit usage once at end-of-stream using final totals.
+		if body.EndOfStream {
+			c.metrics.RecordTokenUsage(ctx,
+				metrics.OptUint32(c.costs.InputTokens), metrics.OptUint32(c.costs.CachedInputTokens), metrics.OptUint32(c.costs.OutputTokens), c.requestHeaders)
+		}
+	} else {
+		c.metrics.RecordTokenUsage(ctx,
+			metrics.OptUint32(tokenUsage.InputTokens), metrics.OptUint32(tokenUsage.CachedInputTokens), metrics.OptUint32(tokenUsage.OutputTokens), c.requestHeaders)
 	}
 
 	if body.EndOfStream && len(c.config.RequestCosts) > 0 {
