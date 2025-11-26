@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	openaisdk "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
 
@@ -24,7 +25,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
-	openaisdk "github.com/openai/openai-go/v2"
 )
 
 // clearEnv clears any OTEL configuration that could exist in the environment.
