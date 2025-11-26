@@ -301,6 +301,8 @@ func TestNewCompletionTracer_BuildsGenericRequestTracer(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, headerAttrs, impl.headerAttributes)
 	require.NotNil(t, impl.newSpan)
+	s := tracer.StartSpanAndInjectHeaders(context.Background(), nil, &extprocv3.HeaderMutation{}, &openai.CompletionRequest{}, []byte("{}"))
+	require.IsType(t, (*completionSpan)(nil), s)
 }
 
 func TestNewEmbeddingsTracer_BuildsGenericRequestTracer(t *testing.T) {
@@ -339,6 +341,10 @@ func TestNewRerankTracer_BuildsGenericRequestTracer(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, headerAttrs, impl.headerAttributes)
 	require.NotNil(t, impl.newSpan)
+	s := tracer.StartSpanAndInjectHeaders(context.Background(), nil, &extprocv3.HeaderMutation{}, &cohere.RerankV2Request{
+		TopN: ptr.To(1),
+	}, []byte("{}"))
+	require.IsType(t, (*rerankSpan)(nil), s)
 }
 
 func TestNewImageGenerationTracer_BuildsGenericRequestTracer(t *testing.T) {
@@ -356,6 +362,8 @@ func TestNewImageGenerationTracer_BuildsGenericRequestTracer(t *testing.T) {
 	require.True(t, ok)
 	require.Nil(t, impl.headerAttributes)
 	require.NotNil(t, impl.newSpan)
+	s := tracer.StartSpanAndInjectHeaders(context.Background(), nil, &extprocv3.HeaderMutation{}, &openaisdk.ImageGenerateParams{}, []byte("{}"))
+	require.IsType(t, (*imageGenerationSpan)(nil), s)
 }
 
 func TestHeaderMutationCarrier(t *testing.T) {
