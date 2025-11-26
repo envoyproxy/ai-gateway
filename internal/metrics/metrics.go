@@ -199,25 +199,19 @@ func (u *TokenUsage) SetCachedInputTokens(tokens uint32) {
 
 // AddInputTokens increments the recorded input tokens and marks the field as set.
 func (u *TokenUsage) AddInputTokens(tokens uint32) {
-	if !u.inputTokenSet {
-		u.inputTokenSet = true
-	}
+	u.inputTokenSet = true
 	u.inputTokens += tokens
 }
 
 // AddOutputTokens increments the recorded output tokens and marks the field as set.
 func (u *TokenUsage) AddOutputTokens(tokens uint32) {
-	if !u.outputTokenSet {
-		u.outputTokenSet = true
-	}
+	u.outputTokenSet = true
 	u.outputTokens += tokens
 }
 
 // AddCachedInputTokens increments the recorded cached input tokens and marks the field as set.
 func (u *TokenUsage) AddCachedInputTokens(tokens uint32) {
-	if !u.cachedInputTokenSet {
-		u.cachedInputTokenSet = true
-	}
+	u.cachedInputTokenSet = true
 	u.cachedInputTokens += tokens
 }
 

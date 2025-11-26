@@ -81,8 +81,8 @@ func TestRecordTokenUsage(t *testing.T) {
 	pm.SetResponseModel("test-model")
 	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 	pm.RecordTokenUsage(t.Context(), TokenUsage{
-		inputTokens: 10, outputTokens: 8, totalTokens: 5,
-		inputTokenSet: true, outputTokenSet: true, totalTokenSet: true,
+		inputTokens: 10, cachedInputTokens: 8, outputTokens: 5,
+		inputTokenSet: true, cachedInputTokenSet: true, outputTokenSet: true,
 	}, nil)
 
 	count, sum := testotel.GetHistogramValues(t, mr, genaiMetricClientTokenUsage, inputAttrs)
@@ -295,8 +295,8 @@ func TestLabels_SetModel_RequestAndResponseDiffer(t *testing.T) {
 	pm.SetRequestModel("req-model")
 	pm.SetResponseModel("res-model")
 	pm.RecordTokenUsage(t.Context(), TokenUsage{
-		inputTokens: 2, outputTokens: 1, totalTokens: 3,
-		inputTokenSet: true, outputTokenSet: true, totalTokenSet: true,
+		inputTokens: 2, cachedInputTokens: 1, outputTokens: 3,
+		inputTokenSet: true, cachedInputTokenSet: true, outputTokenSet: true,
 	}, nil)
 
 	inputAttrs := attribute.NewSet(
