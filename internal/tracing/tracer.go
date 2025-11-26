@@ -22,10 +22,10 @@ import (
 )
 
 // spanFactory is a function type that creates a new SpanT given a trace.Span and a Recorder.
-type spanFactory[ReqT any, SpanT tracing.SpanBase, Recorder tracing.SpanRecorder[ReqT]] func(trace.Span, Recorder) SpanT
+type spanFactory[ReqT any, SpanT any, Recorder tracing.SpanRecorder[ReqT]] func(trace.Span, Recorder) SpanT
 
 // requestTracerImpl implements RequestTracer for various request and span types.
-type requestTracerImpl[ReqT any, SpanT tracing.SpanBase, Recorder tracing.SpanRecorder[ReqT]] struct {
+type requestTracerImpl[ReqT any, SpanT any, Recorder tracing.SpanRecorder[ReqT]] struct {
 	tracer           trace.Tracer
 	propagator       propagation.TextMapPropagator
 	recorder         Recorder
@@ -49,7 +49,7 @@ type (
 	rerankTracer          = requestTracerImpl[cohereschema.RerankV2Request, tracing.RerankSpan, tracing.RerankRecorder]
 )
 
-func newRequestTracer[ReqT any, SpanT tracing.SpanBase, Recorder tracing.SpanRecorder[ReqT]](
+func newRequestTracer[ReqT any, SpanT any, Recorder tracing.SpanRecorder[ReqT]](
 	tracer trace.Tracer,
 	propagator propagation.TextMapPropagator,
 	recorder Recorder,

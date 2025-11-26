@@ -38,7 +38,7 @@ type (
 		Shutdown(context.Context) error
 	}
 	// RequestTracer standardizes tracer implementations for non-MCP requests.
-	RequestTracer[ReqT any, SpanT SpanBase] interface {
+	RequestTracer[ReqT any, SpanT any] interface {
 		// StartSpanAndInjectHeaders starts a span and injects trace context into the header mutation.
 		//
 		// Parameters:
@@ -64,41 +64,28 @@ type (
 )
 
 type (
-	// SpanBase standardizes span interfaces.
-	SpanBase interface {
+	// Span standardizes span interfaces, supporting both streaming and non-streaming endpoints.
+	Span[ChunkT any, RespT any] interface {
+		// RecordResponseChunk records streaming response chunks. Implementations that do not support streaming should provide a no-op implementation.
+		RecordResponseChunk(resp *ChunkT)
+		// RecordResponse records the response attributes to the span.
+		RecordResponse(resp *RespT)
 		// EndSpanOnError finalizes and ends the span with an error status.
 		EndSpanOnError(statusCode int, body []byte)
 		// EndSpan finalizes and ends the span.
 		EndSpan()
 	}
-	// ResponseSpan augments SpanBase with a typed response recorder.
-	ResponseSpan[RespT any] interface {
-		SpanBase
-		// RecordResponse records the response attributes to the span.
-		RecordResponse(resp *RespT)
-	}
-	// StreamSpan augments SpanBase with streaming response chunk recording.
-	StreamSpan[ChunkT any] interface {
-		SpanBase
-		// RecordResponseChunk records the response chunk attributes to the span for streaming response.
-		RecordResponseChunk(resp *ChunkT)
-	}
-	// StreamResponseSpan combines streaming chunks with a final response recorder.
-	StreamResponseSpan[ChunkT any, RespT any] interface {
-		StreamSpan[ChunkT]
-		ResponseSpan[RespT]
-	}
 	// ChatCompletionSpan represents an OpenAI chat completion.
-	ChatCompletionSpan = StreamResponseSpan[openai.ChatCompletionResponseChunk, openai.ChatCompletionResponse]
+	ChatCompletionSpan = Span[openai.ChatCompletionResponseChunk, openai.ChatCompletionResponse]
 	// CompletionSpan represents an OpenAI completion request.
 	// Note: Completion streaming chunks are full CompletionResponse objects, not deltas like chat completions.
-	CompletionSpan = StreamResponseSpan[openai.CompletionResponse, openai.CompletionResponse]
-	// EmbeddingsSpan represents an OpenAI embeddings request.
-	EmbeddingsSpan = ResponseSpan[openai.EmbeddingResponse]
+	CompletionSpan = Span[openai.CompletionResponse, openai.CompletionResponse]
+	// EmbeddingsSpan represents an OpenAI embeddings request. The chunk type is unused and therefore set to struct{}.
+	EmbeddingsSpan = Span[struct{}, openai.EmbeddingResponse]
 	// ImageGenerationSpan represents an OpenAI image generation.
-	ImageGenerationSpan = ResponseSpan[openaisdk.ImagesResponse]
+	ImageGenerationSpan = Span[struct{}, openaisdk.ImagesResponse]
 	// RerankSpan represents a rerank request span.
-	RerankSpan = ResponseSpan[cohere.RerankV2Response]
+	RerankSpan = Span[struct{}, cohere.RerankV2Response]
 )
 
 type (
@@ -189,7 +176,7 @@ func (NoopTracing) Shutdown(context.Context) error {
 }
 
 // NoopTracer implements RequestTracer without producing spans.
-type NoopTracer[ReqT any, SpanT SpanBase] struct{}
+type NoopTracer[ReqT any, SpanT any] struct{}
 
 // StartSpanAndInjectHeaders implements RequestTracer.StartSpanAndInjectHeaders.
 func (NoopTracer[ReqT, SpanT]) StartSpanAndInjectHeaders(context.Context, map[string]string, *extprocv3.HeaderMutation, *ReqT, []byte) SpanT {

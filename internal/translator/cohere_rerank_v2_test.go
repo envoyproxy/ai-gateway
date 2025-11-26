@@ -236,6 +236,7 @@ func (m *mockRerankSpanTranslator) EndSpanOnError(int, []byte) {}
 func (m *mockRerankSpanTranslator) RecordResponse(_ *cohereschema.RerankV2Response) {
 	m.recordCalled = true
 }
+func (m *mockRerankSpanTranslator) RecordResponseChunk(*struct{}) {}
 
 func TestCohereToCohereTranslatorV2Rerank_ResponseBody_RecordsResponseInSpan(t *testing.T) {
 	mspan := &mockRerankSpanTranslator{}

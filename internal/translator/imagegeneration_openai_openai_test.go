@@ -180,5 +180,6 @@ func (m *mockImageGenerationSpan) RecordResponse(resp *openaisdk.ImagesResponse)
 	m.recordedResponse = resp
 }
 
-func (m *mockImageGenerationSpan) EndSpanOnError(int, []byte) {}
-func (m *mockImageGenerationSpan) EndSpan()                   {}
+func (m *mockImageGenerationSpan) EndSpanOnError(int, []byte)    {}
+func (m *mockImageGenerationSpan) EndSpan()                      {}
+func (m *mockImageGenerationSpan) RecordResponseChunk(*struct{}) {}

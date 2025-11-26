@@ -379,3 +379,4 @@ func (m *mockRerankSpan) EndSpanOnError(status int, body []byte) {
 func (m *mockRerankSpan) RecordResponse(_ *cohere.RerankV2Response) {
 	m.recordCalled = true
 }
+func (m *mockRerankSpan) RecordResponseChunk(*struct{}) {}

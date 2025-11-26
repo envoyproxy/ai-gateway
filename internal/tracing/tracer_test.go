@@ -43,13 +43,13 @@ var (
 	}
 )
 
-type tracerConstructor[ReqT any, SpanT tracing.SpanBase] func(oteltrace.Tracer, propagation.TextMapPropagator, map[string]string) tracing.RequestTracer[ReqT, SpanT]
+type tracerConstructor[ReqT any, SpanT any] func(oteltrace.Tracer, propagation.TextMapPropagator, map[string]string) tracing.RequestTracer[ReqT, SpanT]
 
 var chatCompletionTracerCtor = func(tr oteltrace.Tracer, prop propagation.TextMapPropagator, headerAttrs map[string]string) tracing.ChatCompletionTracer {
 	return newChatCompletionTracer(tr, prop, testChatCompletionRecorder{}, headerAttrs)
 }
 
-type requestTracerLifecycleTest[ReqT any, SpanT tracing.SpanBase] struct {
+type requestTracerLifecycleTest[ReqT any, SpanT any] struct {
 	constructor      tracerConstructor[ReqT, SpanT]
 	req              *ReqT
 	headers          map[string]string
@@ -63,7 +63,7 @@ type requestTracerLifecycleTest[ReqT any, SpanT tracing.SpanBase] struct {
 	assertAttrs      func(*testing.T, []attribute.KeyValue)
 }
 
-func runRequestTracerLifecycleTest[ReqT any, SpanT tracing.SpanBase](t *testing.T, tc requestTracerLifecycleTest[ReqT, SpanT]) {
+func runRequestTracerLifecycleTest[ReqT any, SpanT any](t *testing.T, tc requestTracerLifecycleTest[ReqT, SpanT]) {
 	t.Helper()
 	exporter := tracetest.NewInMemoryExporter()
 	tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
@@ -103,7 +103,7 @@ func runRequestTracerLifecycleTest[ReqT any, SpanT tracing.SpanBase](t *testing.
 	}, headerMutation)
 }
 
-func testNoopTracer[ReqT any, SpanT tracing.SpanBase](t *testing.T, name string, ctor tracerConstructor[ReqT, SpanT], newReq func() *ReqT) {
+func testNoopTracer[ReqT any, SpanT any](t *testing.T, name string, ctor tracerConstructor[ReqT, SpanT], newReq func() *ReqT) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
 		noopTracer := noop.Tracer{}
@@ -119,7 +119,7 @@ func testNoopTracer[ReqT any, SpanT tracing.SpanBase](t *testing.T, name string,
 	})
 }
 
-func testUnsampledTracer[ReqT any, SpanT tracing.SpanBase](t *testing.T, name string, ctor tracerConstructor[ReqT, SpanT], newReq func() *ReqT) {
+func testUnsampledTracer[ReqT any, SpanT any](t *testing.T, name string, ctor tracerConstructor[ReqT, SpanT], newReq func() *ReqT) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
 		tp := trace.NewTracerProvider(trace.WithSampler(trace.NeverSample()))

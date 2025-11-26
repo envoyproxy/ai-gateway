@@ -24,6 +24,10 @@ type streamResponseRecorder[ChunkT any, RespT any] interface {
 	RecordResponseChunks(trace.Span, []*ChunkT)
 }
 
+type noopChunkRecorder[ChunkT any] struct{}
+
+func (noopChunkRecorder[ChunkT]) RecordResponseChunk(*ChunkT) {}
+
 type streamingSpan[ChunkT any, RespT any, Recorder streamResponseRecorder[ChunkT, RespT]] struct {
 	span     trace.Span
 	recorder Recorder
@@ -50,20 +54,21 @@ func (s *streamingSpan[ChunkT, RespT, Recorder]) EndSpanOnError(statusCode int, 
 	s.span.End()
 }
 
-type responseSpan[RespT any, Recorder responseRecorder[RespT]] struct {
+type responseSpan[ChunkT any, RespT any, Recorder responseRecorder[RespT]] struct {
+	noopChunkRecorder[ChunkT]
 	span     trace.Span
 	recorder Recorder
 }
 
-func (s *responseSpan[RespT, Recorder]) RecordResponse(resp *RespT) {
+func (s *responseSpan[ChunkT, RespT, Recorder]) RecordResponse(resp *RespT) {
 	s.recorder.RecordResponse(s.span, resp)
 }
 
-func (s *responseSpan[RespT, Recorder]) EndSpan() {
+func (s *responseSpan[ChunkT, RespT, Recorder]) EndSpan() {
 	s.span.End()
 }
 
-func (s *responseSpan[RespT, Recorder]) EndSpanOnError(statusCode int, body []byte) {
+func (s *responseSpan[ChunkT, RespT, Recorder]) EndSpanOnError(statusCode int, body []byte) {
 	s.recorder.RecordResponseOnError(s.span, statusCode, body)
 	s.span.End()
 }
@@ -72,9 +77,9 @@ func (s *responseSpan[RespT, Recorder]) EndSpanOnError(statusCode int, body []by
 type (
 	chatCompletionSpan  = streamingSpan[openai.ChatCompletionResponseChunk, openai.ChatCompletionResponse, tracing.ChatCompletionRecorder]
 	completionSpan      = streamingSpan[openai.CompletionResponse, openai.CompletionResponse, tracing.CompletionRecorder]
-	embeddingsSpan      = responseSpan[openai.EmbeddingResponse, tracing.EmbeddingsRecorder]
-	imageGenerationSpan = responseSpan[openaisdk.ImagesResponse, tracing.ImageGenerationRecorder]
-	rerankSpan          = responseSpan[cohereschema.RerankV2Response, tracing.RerankRecorder]
+	embeddingsSpan      = responseSpan[struct{}, openai.EmbeddingResponse, tracing.EmbeddingsRecorder]
+	imageGenerationSpan = responseSpan[struct{}, openaisdk.ImagesResponse, tracing.ImageGenerationRecorder]
+	rerankSpan          = responseSpan[struct{}, cohereschema.RerankV2Response, tracing.RerankRecorder]
 )
 
 var (

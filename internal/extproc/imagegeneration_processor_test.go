@@ -97,6 +97,7 @@ func (m *mockImageGenerationSpan) EndSpanOnError(status int, body []byte) {
 func (m *mockImageGenerationSpan) RecordResponse(_ *openaisdk.ImagesResponse) {
 	// Mock implementation
 }
+func (m *mockImageGenerationSpan) RecordResponseChunk(*struct{}) {}
 
 func Test_imageGenerationProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 	t.Run("response pass-through and delegation", func(t *testing.T) {
