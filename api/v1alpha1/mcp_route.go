@@ -250,23 +250,68 @@ type MCPRouteAuthorization struct {
 // MCPRouteAuthorizationRule defines an authorization rule for MCPRoute based on the MCP authorization spec.
 // Reference: https://modelcontextprotocol.io/specification/draft/basic/authorization#scope-challenge-handling
 type MCPRouteAuthorizationRule struct {
-	// Tools defines the list of tool names this rule applies to. The name must be a fully qualified tool name including the backend name.
-	// For example, "mcp-backend-name__tool-name".
+	// Source defines the authorization source for this rule.
 	//
-	// If a request calls a tool in this list, this rule is considered a match.
-	// If this request has a valid JWT token that contains all the required scopes defined in this rule,
-	// the request will be allowed. If not, the request will be denied.
+	// +kubebuilder:validation:Required
+	Source MCPAuthorizationSource `json:"source"`
+
+	// Target defines the authorization target for this rule.
+	//
+	// +kubebuilder:validation:Required
+	Target MCPAuthorizationTarget `json:"target"`
+}
+
+type MCPAuthorizationTarget struct {
+	// Tools defines the list of tools this rule applies to.
 	//
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=16
-	Tools []string `json:"tools"`
+	Tools []ToolCall `json:"tools"`
 
+	// TODO: we can add resources, prompts, etc. in the future.
+}
+
+type MCPAuthorizationSource struct {
+	// JWTSource defines the JWT scopes required for this rule to match.
+	//
+	// +kubebuilder:validation:Optional
+	JWTSource *JWTSource `json:"jwtSource,omitempty"`
+}
+
+type JWTSource struct {
 	// Scopes defines the list of JWT scopes required for the rule.
 	// If multiple scopes are specified, all scopes must be present in the JWT for the rule to match.
 	//
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=16
 	Scopes []egv1a1.JWTScope `json:"scopes"`
+
+	//TODO : we can add more fields in the future, e.g., audiences, claims, etc.
+}
+
+type ToolCall struct {
+	// Tools defines the list of tool names this rule applies to. The name must be a fully qualified tool name including the backend name.
+	// For example, "mcp-backend-name__tool-name".
+	Name string `json:"name"`
+
+	// Arguments defines the arguments that must be present in the tool call for this rule to match.
+	//
+	// +optional
+	Arguments map[string]string `json:"arguments,omitempty"`
+}
+
+type ToolArgument struct {
+	// Name is the name of the argument.
+	Name string `json:"name"`
+
+	// Value is the value of the argument.
+	Value ArgumentValues `json:"value"`
+}
+
+type ArgumentValues struct {
+	Include []string `json:"include,omitempty"`
+
+	IncludeRegex []string `json:"includeRegex,omitempty"`
 }
 
 // JWKS defines how to obtain JSON Web Key Sets (JWKS) either from a remote HTTP/HTTPS endpoint or from a local source.
