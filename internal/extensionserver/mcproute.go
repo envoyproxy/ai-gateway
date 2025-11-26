@@ -578,8 +578,11 @@ func (s *Server) modifyMCPOAuthCustomResponseRoute(routes []*routev3.RouteConfig
 const (
 	oauthProtectedResourcePath   = "/.well-known/oauth-protected-resource"
 	oauthAuthorizationServerPath = "/.well-known/oauth-authorization-server"
+	oidcAuthorizationServerPath  = "/.well-known/openid-configuration"
 )
 
 func isWellKnownOAuthPath(path string) bool {
-	return strings.Contains(path, oauthProtectedResourcePath) || strings.Contains(path, oauthAuthorizationServerPath)
+	return strings.Contains(path, oauthProtectedResourcePath) ||
+		strings.Contains(path, oauthAuthorizationServerPath) ||
+		strings.Contains(path, oidcAuthorizationServerPath)
 }

@@ -33,6 +33,7 @@ import (
 const (
 	oauthWellKnownProtectedResourceMetadataPath   = "/.well-known/oauth-protected-resource"
 	oauthWellKnownAuthorizationServerMetadataPath = "/.well-known/oauth-authorization-server"
+	oidcWellKnownMetadataPath                     = "/.well-known/openid-configuration"
 
 	oauthProtectedResourceMetadataSuffix = "-oauth-protected-resource-metadata"
 	oauthAuthServerMetadataSuffix        = "-oauth-authorization-server-metadata"
@@ -675,6 +676,7 @@ func fetchOAuthAuthServerMetadata(authServer string, maxRetryElapsedTime time.Du
 	// Build the well-known URL according to the spec: https://datatracker.ietf.org/doc/html/rfc8414#section-3
 	// Some providers like Descope do not honor the spec and put the well-known endpoint
 	// after the issuer path, so we try a set of variants to maximize compatibility.
+	// See: https://modelcontextprotocol.io/specification/draft/basic/authorization#authorization-server-metadata-discovery
 	wellKnownURLVariants := []string{
 		fmt.Sprintf("%s://%s%s%s",
 			authServerURL.Scheme,
@@ -685,8 +687,20 @@ func fetchOAuthAuthServerMetadata(authServer string, maxRetryElapsedTime time.Du
 		fmt.Sprintf("%s://%s%s%s",
 			authServerURL.Scheme,
 			authServerURL.Host,
+			oidcWellKnownMetadataPath,
+			strings.TrimSuffix(authServerURL.Path, "/"),
+		),
+		fmt.Sprintf("%s://%s%s%s",
+			authServerURL.Scheme,
+			authServerURL.Host,
 			strings.TrimSuffix(authServerURL.Path, "/"),
 			oauthWellKnownAuthorizationServerMetadataPath,
+		),
+		fmt.Sprintf("%s://%s%s%s",
+			authServerURL.Scheme,
+			authServerURL.Host,
+			strings.TrimSuffix(authServerURL.Path, "/"),
+			oidcWellKnownMetadataPath,
 		),
 	}
 

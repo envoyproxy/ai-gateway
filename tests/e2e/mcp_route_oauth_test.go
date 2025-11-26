@@ -288,25 +288,33 @@ func TestMCPRouteOAuth(t *testing.T) {
 			require.Contains(t, scopes, expectedScope, "Should contain expected scope: %s", expectedScope)
 		}
 
-		authServerURLWithoutSuffix := fmt.Sprintf("%s/.well-known/oauth-authorization-server", fwd.Address())
-		req, err = http.NewRequestWithContext(t.Context(), "GET", authServerURLWithoutSuffix, nil)
-		require.NoError(t, err)
+		// Test the rest of endpoints
+		for name, wellknownEndpoint := range map[string]string{
+			"oauth-auth-server-root": fmt.Sprintf("%s/.well-known/oauth-authorization-server", fwd.Address()),
+			"oidc-root":              fmt.Sprintf("%s/.well-known/openid-configuration", fwd.Address()),
+			"oidc-with-path":         fmt.Sprintf("%s/.well-known/openid-configuration/mcp", fwd.Address()),
+		} {
+			t.Run(name, func(t *testing.T) {
+				req, err = http.NewRequestWithContext(t.Context(), "GET", wellknownEndpoint, nil)
+				require.NoError(t, err)
 
-		resp, err = httpClient.Do(req)
-		require.NoError(t, err)
-		defer resp.Body.Close()
+				resp, err = httpClient.Do(req)
+				require.NoError(t, err)
+				t.Cleanup(func() { _ = resp.Body.Close() })
 
-		// Should get 200 OK (metadata endpoint should be publicly accessible).
-		require.Equal(t, http.StatusOK, resp.StatusCode)
+				// Should get 200 OK (metadata endpoint should be publicly accessible).
+				require.Equal(t, http.StatusOK, resp.StatusCode)
 
-		// Should return JSON content.
-		contentType = resp.Header.Get("Content-Type")
-		require.Contains(t, contentType, "application/json", "Metadata endpoint should return JSON")
+				// Should return JSON content.
+				contentType = resp.Header.Get("Content-Type")
+				require.Contains(t, contentType, "application/json", "Metadata endpoint should return JSON")
 
-		var body1 []byte
-		body1, err = io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, body, body1, "Metadata response with and without suffix should be identical")
+				var body1 []byte
+				body1, err = io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.Equal(t, body, body1, "Metadata response with and without suffix should be identical")
+			})
+		}
 	})
 
 	t.Run("Invalid token should return WWW-Authenticate", func(t *testing.T) {

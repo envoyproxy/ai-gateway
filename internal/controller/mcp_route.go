@@ -337,10 +337,32 @@ func (c *MCPRouteController) newMainHTTPRoute(dst *gwapiv1.HTTPRoute, mcpRoute *
 				},
 			},
 		}
-		rules = append(rules, authServerRootRule)
+		// Root path: /.well-known/openid-configuration.
+		authServerRootOIDCRule := gwapiv1.HTTPRouteRule{
+			Name: ptr.To(gwapiv1.SectionName("oauth-authorization-server-metadata-root-oidc")),
+			Matches: []gwapiv1.HTTPRouteMatch{
+				{
+					Path: &gwapiv1.HTTPPathMatch{
+						Type:  ptr.To(gwapiv1.PathMatchExact),
+						Value: ptr.To(oidcWellKnownMetadataPath),
+					},
+				},
+			},
+			Filters: []gwapiv1.HTTPRouteFilter{
+				{
+					Type: gwapiv1.HTTPRouteFilterExtensionRef,
+					ExtensionRef: &gwapiv1.LocalObjectReference{
+						Group: gwapiv1.Group("gateway.envoyproxy.io"),
+						Kind:  gwapiv1.Kind("HTTPRouteFilter"),
+						Name:  gwapiv1.ObjectName(authServerMeataFilterName),
+					},
+				},
+			},
+		}
+		rules = append(rules, authServerRootRule, authServerRootOIDCRule)
 
-		// Suffix path: /.well-known/oauth-authorization-server{pathPrefix} (if pathPrefix exists).
 		if servingPath != "/" {
+			// Suffix path: /.well-known/oauth-authorization-server{pathPrefix} (if pathPrefix exists).
 			authServerSuffixPath := fmt.Sprintf("%s%s", oauthWellKnownAuthorizationServerMetadataPath, servingPath)
 			authServerSuffixRule := gwapiv1.HTTPRouteRule{
 				Name: ptr.To(gwapiv1.SectionName("oauth-authorization-server-metadata-suffix")),
@@ -363,7 +385,30 @@ func (c *MCPRouteController) newMainHTTPRoute(dst *gwapiv1.HTTPRoute, mcpRoute *
 					},
 				},
 			}
-			rules = append(rules, authServerSuffixRule)
+			// Suffix path: /.well-known/openid-configuration{pathPrefix} (if pathPrefix exists).
+			authServerSuffixPathOIDC := fmt.Sprintf("%s%s", oidcWellKnownMetadataPath, servingPath)
+			authServerSuffixRuleOIDC := gwapiv1.HTTPRouteRule{
+				Name: ptr.To(gwapiv1.SectionName("oauth-authorization-server-metadata-suffix-oidc")),
+				Matches: []gwapiv1.HTTPRouteMatch{
+					{
+						Path: &gwapiv1.HTTPPathMatch{
+							Type:  ptr.To(gwapiv1.PathMatchExact),
+							Value: ptr.To(authServerSuffixPathOIDC),
+						},
+					},
+				},
+				Filters: []gwapiv1.HTTPRouteFilter{
+					{
+						Type: gwapiv1.HTTPRouteFilterExtensionRef,
+						ExtensionRef: &gwapiv1.LocalObjectReference{
+							Group: gwapiv1.Group("gateway.envoyproxy.io"),
+							Kind:  gwapiv1.Kind("HTTPRouteFilter"),
+							Name:  gwapiv1.ObjectName(authServerMeataFilterName),
+						},
+					},
+				},
+			}
+			rules = append(rules, authServerSuffixRule, authServerSuffixRuleOIDC)
 		}
 	}
 	dst.Spec.Rules = rules
