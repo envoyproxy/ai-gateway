@@ -102,7 +102,8 @@ func TestExtractLLMTokenUsage(t *testing.T) {
 			)
 
 			expected := tokenUsageFrom(
-				int32(tt.expectedInputTokens),  // nolint:gosec
+				int32(tt.expectedInputTokens), // nolint:gosec
+				-1,
 				int32(tt.expectedOutputTokens), // nolint:gosec
 				int32(tt.expectedTotalTokens),  // nolint:gosec
 			)
@@ -165,7 +166,7 @@ func TestExtractLLMTokenUsageFromUsage(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ExtractLLMTokenUsageFromUsage(tt.usage)
-			expected := tokenUsageFrom(tt.expectedInputTokens, tt.expectedOutputTokens, tt.expectedTotalTokens)
+			expected := tokenUsageFrom(tt.expectedInputTokens, 0, tt.expectedOutputTokens, tt.expectedTotalTokens)
 			expected.SetCachedInputTokens(tt.expectedCachedTokens)
 			assert.Equal(t, expected, result)
 		})
@@ -225,7 +226,7 @@ func TestExtractLLMTokenUsageFromDeltaUsage(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ExtractLLMTokenUsageFromDeltaUsage(tt.usage)
-			expected := tokenUsageFrom(tt.expectedInputTokens, tt.expectedOutputTokens, tt.expectedTotalTokens)
+			expected := tokenUsageFrom(tt.expectedInputTokens, 0, tt.expectedOutputTokens, tt.expectedTotalTokens)
 			expected.SetCachedInputTokens(tt.expectedCachedTokens)
 			assert.Equal(t, expected, result)
 		})

@@ -180,7 +180,7 @@ func TestCohereToCohereTranslatorV2Rerank_ResponseBody(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			expected := tokenUsageFrom(tc.expectedInput, tc.expectedOutput, tc.expectedTotal)
+			expected := tokenUsageFrom(tc.expectedInput, -1, tc.expectedOutput, tc.expectedTotal)
 			require.Equal(t, expected, tokenUsage)
 			require.Equal(t, "rerank-english-v3", responseModel)
 			require.Nil(t, headerMutation)

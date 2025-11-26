@@ -72,7 +72,7 @@ func TestResponseModel_AzureOpenAI(t *testing.T) {
 	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewBuffer(body), true, nil)
 	require.NoError(t, err)
 	require.Equal(t, "gpt-4o-2024-11-20", responseModel) // Uses response field as authoritative
-	require.Equal(t, tokenUsageFrom(10, 5, 15), tokenUsage)
+	require.Equal(t, tokenUsageFrom(10, -1, 5, 15), tokenUsage)
 }
 
 // TestResponseModel_AzureOpenAIStreaming tests Azure OpenAI streaming returns actual model version
@@ -103,5 +103,5 @@ data: [DONE]
 	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader([]byte(sseChunks)), true, nil)
 	require.NoError(t, err)
 	require.Equal(t, "gpt-4o-2024-11-20", responseModel) // Returns actual versioned model from response
-	require.Equal(t, tokenUsageFrom(10, 5, 15), tokenUsage)
+	require.Equal(t, tokenUsageFrom(10, -1, 5, 15), tokenUsage)
 }

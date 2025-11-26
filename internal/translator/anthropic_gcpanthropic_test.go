@@ -471,8 +471,7 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_ZeroTokenUsage(t *testin
 	_, _, tokenUsage, _, err := translator.ResponseBody(respHeaders, bodyReader, true, nil)
 	require.NoError(t, err)
 
-	expected := tokenUsageFrom(0, 0, 0)
-	expected.SetCachedInputTokens(0)
+	expected := tokenUsageFrom(0, 0, 0, 0)
 	assert.Equal(t, expected, tokenUsage)
 }
 
@@ -487,48 +486,34 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingTokenUsage(t *t
 		expectedUsage metrics.TokenUsage
 	}{
 		{
-			name:        "regular streaming chunk without usage",
-			chunk:       "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" to me.\"}}\n\n",
-			endOfStream: false,
-			expectedUsage: func() metrics.TokenUsage {
-				return tokenUsageFrom(-1, -1, -1)
-			}(),
+			name:          "regular streaming chunk without usage",
+			chunk:         "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" to me.\"}}\n\n",
+			endOfStream:   false,
+			expectedUsage: tokenUsageFrom(-1, -1, -1, -1),
 		},
 		{
-			name:        "message_delta chunk with token usage",
-			chunk:       "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":84}}\n\n",
-			endOfStream: false,
-			expectedUsage: func() metrics.TokenUsage {
-				usage := tokenUsageFrom(0, 84, 84)
-				usage.SetCachedInputTokens(0)
-				return usage
-			}(),
+			name:          "message_delta chunk with token usage",
+			chunk:         "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":84}}\n\n",
+			endOfStream:   false,
+			expectedUsage: tokenUsageFrom(0, 0, 84, 84),
 		},
 		{
-			name:        "message_stop chunk without usage",
-			chunk:       "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
-			endOfStream: false,
-			expectedUsage: func() metrics.TokenUsage {
-				return tokenUsageFrom(-1, -1, -1)
-			}(),
+			name:          "message_stop chunk without usage",
+			chunk:         "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+			endOfStream:   false,
+			expectedUsage: tokenUsageFrom(-1, -1, -1, -1),
 		},
 		{
-			name:        "invalid json chunk",
-			chunk:       "event: invalid\ndata: {\"invalid\": \"json\"}\n\n",
-			endOfStream: false,
-			expectedUsage: func() metrics.TokenUsage {
-				return tokenUsageFrom(-1, -1, -1)
-			}(),
+			name:          "invalid json chunk",
+			chunk:         "event: invalid\ndata: {\"invalid\": \"json\"}\n\n",
+			endOfStream:   false,
+			expectedUsage: tokenUsageFrom(-1, -1, -1, -1),
 		},
 		{
-			name:        "message_delta with decimal output_tokens",
-			chunk:       "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":42.0}}\n\n",
-			endOfStream: false,
-			expectedUsage: func() metrics.TokenUsage {
-				usage := tokenUsageFrom(0, 42, 42)
-				usage.SetCachedInputTokens(0)
-				return usage
-			}(),
+			name:          "message_delta with decimal output_tokens",
+			chunk:         "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":42.0}}\n\n",
+			endOfStream:   false,
+			expectedUsage: tokenUsageFrom(0, 0, 42, 42),
 		},
 	}
 
@@ -557,36 +542,24 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases(t *te
 		expectedUsage metrics.TokenUsage
 	}{
 		{
-			name:  "message_start without message field",
-			chunk: "event: message_start\ndata: {\"type\":\"message_start\"}\n\n",
-			expectedUsage: func() metrics.TokenUsage {
-				usage := tokenUsageFrom(0, 0, 0)
-				usage.SetCachedInputTokens(0)
-				return usage
-			}(),
+			name:          "message_start without message field",
+			chunk:         "event: message_start\ndata: {\"type\":\"message_start\"}\n\n",
+			expectedUsage: tokenUsageFrom(0, 0, 0, 0),
 		},
 		{
-			name:  "message_start without usage field",
-			chunk: "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_123\"}}\n\n",
-			expectedUsage: func() metrics.TokenUsage {
-				usage := tokenUsageFrom(0, 0, 0)
-				usage.SetCachedInputTokens(0)
-				return usage
-			}(),
+			name:          "message_start without usage field",
+			chunk:         "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_123\"}}\n\n",
+			expectedUsage: tokenUsageFrom(0, 0, 0, 0),
 		},
 		{
-			name:  "message_delta without usage field",
-			chunk: "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n",
-			expectedUsage: func() metrics.TokenUsage {
-				usage := tokenUsageFrom(0, 0, 0)
-				usage.SetCachedInputTokens(0)
-				return usage
-			}(),
+			name:          "message_delta without usage field",
+			chunk:         "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n",
+			expectedUsage: tokenUsageFrom(0, 0, 0, 0),
 		},
 		{
 			name:          "invalid json in data",
 			chunk:         "event: message_start\ndata: {invalid json}\n\n",
-			expectedUsage: tokenUsageFrom(-1, -1, -1),
+			expectedUsage: tokenUsageFrom(-1, -1, -1, -1),
 		},
 	}
 
@@ -605,10 +578,13 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases(t *te
 	}
 }
 
-func tokenUsageFrom(in, out, total int32) metrics.TokenUsage {
+func tokenUsageFrom(in, cachedInput, out, total int32) metrics.TokenUsage {
 	var usage metrics.TokenUsage
 	if in >= 0 {
 		usage.SetInputTokens(uint32(in))
+	}
+	if cachedInput >= 0 {
+		usage.SetCachedInputTokens(uint32(cachedInput))
 	}
 	if out >= 0 {
 		usage.SetOutputTokens(uint32(out))

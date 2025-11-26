@@ -94,8 +94,7 @@ func TestAnthropicToAnthropic_ResponseBody_non_streaming(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, headerMutation)
 	require.Nil(t, bodyMutation)
-	expected := tokenUsageFrom(9, 16, 25)
-	expected.SetCachedInputTokens(0)
+	expected := tokenUsageFrom(9, 0, 16, 25)
 	require.Equal(t, expected, tokenUsage)
 	require.Equal(t, "claude-sonnet-4-5-20250929", responseModel)
 }
@@ -140,8 +139,7 @@ data: {"type":"message_stop"       }`
 	require.NoError(t, err)
 	require.Nil(t, headerMutation)
 	require.Nil(t, bodyMutation)
-	expected := tokenUsageFrom(9, 1, 10)
-	expected.SetCachedInputTokens(0)
+	expected := tokenUsageFrom(9, 0, 1, 10)
 	require.Equal(t, expected, tokenUsage)
 	require.Equal(t, "claude-sonnet-4-5-20250929", responseModel)
 
@@ -149,8 +147,7 @@ data: {"type":"message_stop"       }`
 	require.NoError(t, err)
 	require.Nil(t, headerMutation)
 	require.Nil(t, bodyMutation)
-	expected = tokenUsageFrom(10, 16, 26)
-	expected.SetCachedInputTokens(1)
+	expected = tokenUsageFrom(10, 1, 16, 26)
 	require.Equal(t, expected, tokenUsage)
 	require.Equal(t, "claude-sonnet-4-5-20250929", responseModel)
 }

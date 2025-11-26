@@ -133,14 +133,14 @@ func TestOpenAIToOpenAITranslatorV1CompletionResponseBody(t *testing.T) {
 					"total_tokens": 13
 				}
 			}`,
-			expTokenUsage: tokenUsageFrom(5, 8, 13),
+			expTokenUsage: tokenUsageFrom(5, -1, 8, 13),
 			expModel:      "gpt-3.5-turbo-instruct",
 		},
 		{
 			name:          "invalid_json",
 			responseBody:  `invalid json`,
 			expError:      true,
-			expTokenUsage: tokenUsageFrom(-1, -1, -1),
+			expTokenUsage: tokenUsageFrom(-1, -1, -1, -1),
 		},
 		{
 			name: "response_without_usage",
@@ -157,7 +157,7 @@ func TestOpenAIToOpenAITranslatorV1CompletionResponseBody(t *testing.T) {
 					}
 				]
 			}`,
-			expTokenUsage: tokenUsageFrom(-1, -1, -1),
+			expTokenUsage: tokenUsageFrom(-1, -1, -1, -1),
 			expModel:      "gpt-3.5-turbo-instruct",
 		},
 	} {
@@ -225,7 +225,7 @@ data: [DONE]
 	require.NoError(t, err)
 	require.Nil(t, headerMutation)
 	require.Nil(t, bodyMutation)
-	require.Equal(t, tokenUsageFrom(-1, -1, -1), tokenUsage)
+	require.Equal(t, tokenUsageFrom(-1, -1, -1, -1), tokenUsage)
 	require.Equal(t, "gpt-3.5-turbo-instruct", responseModel)
 
 	// Process chunk2.
@@ -238,7 +238,7 @@ data: [DONE]
 	require.NoError(t, err)
 	require.Nil(t, headerMutation)
 	require.Nil(t, bodyMutation)
-	require.Equal(t, tokenUsageFrom(-1, -1, -1), tokenUsage)
+	require.Equal(t, tokenUsageFrom(-1, -1, -1, -1), tokenUsage)
 	require.Equal(t, "gpt-3.5-turbo-instruct", responseModel)
 
 	// Process chunk3 with usage.
@@ -251,7 +251,7 @@ data: [DONE]
 	require.NoError(t, err)
 	require.Nil(t, headerMutation)
 	require.Nil(t, bodyMutation)
-	require.Equal(t, tokenUsageFrom(5, 3, 8), tokenUsage)
+	require.Equal(t, tokenUsageFrom(5, -1, 3, 8), tokenUsage)
 	require.Equal(t, "gpt-3.5-turbo-instruct", responseModel)
 }
 
