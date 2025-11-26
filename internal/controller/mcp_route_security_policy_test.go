@@ -701,6 +701,20 @@ func Test_fetchOAuthServerMetadata(t *testing.T) {
 			wantStatusCode: http.StatusOK,
 		},
 		{
+			name:           "oidc well-known at the end",
+			issuerPath:     "/some/path",
+			authSeverURL:   "/some/path/.well-known/openid-configuration",
+			forcedFailures: 0,
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "oidc well-known after issuer",
+			issuerPath:     "/some/path",
+			authSeverURL:   "/.well-known/openid-configuration/some/path",
+			forcedFailures: 0,
+			wantStatusCode: http.StatusOK,
+		},
+		{
 			name:           "unknown failure",
 			issuerPath:     "/",
 			authSeverURL:   "/.well-known/oauth-authorization-server",

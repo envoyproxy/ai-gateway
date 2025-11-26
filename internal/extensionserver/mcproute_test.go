@@ -744,6 +744,21 @@ func TestIsWellKnownOAuthPath(t *testing.T) {
 			expected: true,
 		},
 		{
+			name:     "oauth authorization server with path",
+			path:     "/.well-known/oauth-authorization-server/issuer",
+			expected: true,
+		},
+		{
+			name:     "oidc authorization server",
+			path:     "/.well-known/openid-configuration",
+			expected: true,
+		},
+		{
+			name:     "oidc authorization server with path",
+			path:     "/.well-known/openid-configuration/issuer",
+			expected: true,
+		},
+		{
 			name:     "oauth protected resource with suffix",
 			path:     "/.well-known/oauth-protected-resource/mcp",
 			expected: true,
