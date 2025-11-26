@@ -32,8 +32,9 @@ import (
 
 const (
 	mcpBackendListenerName = "aigateway-mcp-backend-listener"
-	jwtAuthnFilterName     = "envoy.filters.http.jwt_authn"
-	apiKeyAuthFilterName   = "envoy.filters.http.api_key_auth" // #nosec G101
+	filterNameJWTAuthn     = "envoy.filters.http.jwt_authn"
+	filterNameAPIKeyAuth   = "envoy.filters.http.api_key_auth" // #nosec G101
+	filterNameExtAuth      = "envoy.filters.http.ext_authz"
 )
 
 // Generate the resources needed to support MCP Gateway functionality.
@@ -165,7 +166,7 @@ func (s *Server) maybeUpdateMCPRoutes(routes []*routev3.RouteConfiguration) {
 					}
 					// Remove the authn filters from the well-known and backend routes.
 					// TODO: remove this step once the SecurityPolicy can target the MCP proxy route rule only.
-					for _, filterName := range []string{jwtAuthnFilterName, apiKeyAuthFilterName} {
+					for _, filterName := range []string{filterNameJWTAuthn, filterNameAPIKeyAuth, filterNameExtAuth} {
 						if _, ok := route.TypedPerFilterConfig[filterName]; ok {
 							s.log.Info("removing authn filter from well-known and backend routes", "route", route.Name, "filter", filterName)
 							delete(route.TypedPerFilterConfig, filterName)

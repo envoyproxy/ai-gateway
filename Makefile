@@ -216,13 +216,13 @@ test-e2e-inference-extension: build-e2e ## Run the end-to-end tests with a local
 
 # This runs the end-to-end upgrade tests for the controller and extproc with a local kind cluster.
 .PHONY: test-e2e-upgrade
-test-e2e-upgrade: build-e2e
+test-e2e-upgrade: build-e2e ## Run the end-to-end upgrade tests with a local kind cluster.
 	@echo "Run E2E upgrade tests"
 	@go test -v ./tests/e2e-upgrade/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
 
 # This runs the end-to-end namespaced tests for the controller and extproc with a local kind cluster.
 .PHONY: test-e2e-namespaced
-test-e2e-namespaced: build-e2e
+test-e2e-namespaced: build-e2e ## Run the end-to-end namespaced tests with a local kind cluster.
 	@echo "Run E2E namespaced tests"
 	@go test -v ./tests/e2e-namespaced/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
 
@@ -276,6 +276,7 @@ build-e2e: ## Build the docker images for the controller, extproc and testupstre
 	@$(MAKE) docker-build DOCKER_BUILD_ARGS="--load"
 	@$(MAKE) docker-build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib DOCKER_BUILD_ARGS="--load"
 	@$(MAKE) docker-build.testmcpserver CMD_PATH_PREFIX=tests/internal/testmcp DOCKER_BUILD_ARGS="--load"
+	@$(MAKE) docker-build.testextauthserver CMD_PATH_PREFIX=tests/internal/testextauth DOCKER_BUILD_ARGS="--load"
 
 # This builds a docker image for a given command.
 #

@@ -324,14 +324,18 @@ func TestServer_maybeUpdateMCPRoutes(t *testing.T) {
 								{
 									Name: internalapi.MCPMainHTTPRoutePrefix + "foo/rule/0",
 									TypedPerFilterConfig: map[string]*anypb.Any{
-										jwtAuthnFilterName: emptyConfig,
+										filterNameJWTAuthn:   emptyConfig,
+										filterNameAPIKeyAuth: emptyConfig,
+										filterNameExtAuth:    emptyConfig,
 									},
 								},
 								{
 									Name: internalapi.MCPMainHTTPRoutePrefix + "foo/rule/1",
 									TypedPerFilterConfig: map[string]*anypb.Any{
-										jwtAuthnFilterName: emptyConfig,
-										"other-filter":     emptyConfig,
+										filterNameJWTAuthn:   emptyConfig,
+										filterNameAPIKeyAuth: emptyConfig,
+										filterNameExtAuth:    emptyConfig,
+										"other-filter":       emptyConfig,
 									},
 								},
 							},
@@ -348,7 +352,9 @@ func TestServer_maybeUpdateMCPRoutes(t *testing.T) {
 								{
 									Name: internalapi.MCPMainHTTPRoutePrefix + "foo/rule/0",
 									TypedPerFilterConfig: map[string]*anypb.Any{
-										jwtAuthnFilterName: emptyConfig,
+										filterNameJWTAuthn:   emptyConfig,
+										filterNameAPIKeyAuth: emptyConfig,
+										filterNameExtAuth:    emptyConfig,
 									},
 								},
 								{

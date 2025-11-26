@@ -187,6 +187,11 @@ type MCPRouteSecurityPolicy struct {
 	//
 	// +optional
 	APIKeyAuth *egv1a1.APIKeyAuth `json:"apiKeyAuth,omitempty"`
+
+	// ExtAuth defines the configuration for External Authorization.
+	//
+	// +optional
+	ExtAuth *egv1a1.ExtAuth `json:"extAuth,omitempty"`
 }
 
 // MCPRouteOAuth defines a MCP spec compatible OAuth authentication configuration for a MCPRoute.

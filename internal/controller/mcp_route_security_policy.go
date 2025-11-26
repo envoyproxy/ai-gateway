@@ -46,7 +46,8 @@ func (c *MCPRouteController) syncMCPRouteSecurityPolicy(ctx context.Context, mcp
 	securityPolicy := mcpRoute.Spec.SecurityPolicy
 	hasOAuth := securityPolicy != nil && securityPolicy.OAuth != nil
 	hasAPIKeyAuth := securityPolicy != nil && securityPolicy.APIKeyAuth != nil
-	securityPolicyConfigured := hasOAuth || hasAPIKeyAuth
+	hasExtAuth := securityPolicy != nil && securityPolicy.ExtAuth != nil
+	securityPolicyConfigured := hasOAuth || hasAPIKeyAuth || hasExtAuth
 
 	if securityPolicyConfigured {
 		// Create and manage SecurityPolicy to enforce client authentication on the MCP proxy rule.
@@ -107,6 +108,8 @@ func (c *MCPRouteController) ensureSecurityPolicy(ctx context.Context, mcpRoute 
 
 	// Configure JWT authentication to validate access tokens if OAuth is enabled.
 	if oauth := mcpRoute.Spec.SecurityPolicy.OAuth; oauth != nil {
+		c.logger.Info("Configuring OAuth in SecurityPolicy")
+
 		name := "mcp-jwt-provider"
 		jwtProvider := egv1a1.JWTProvider{
 			Name:      name,
@@ -148,7 +151,13 @@ func (c *MCPRouteController) ensureSecurityPolicy(ctx context.Context, mcpRoute 
 
 	// Configure API Key authentication if enabled.
 	if apiKeyAuth := mcpRoute.Spec.SecurityPolicy.APIKeyAuth; apiKeyAuth != nil {
+		c.logger.Info("Configuring API Key in SecurityPolicy")
 		securityPolicySpec.APIKeyAuth = apiKeyAuth.DeepCopy()
+	}
+	// Configure External Auth if set up.
+	if extAuth := mcpRoute.Spec.SecurityPolicy.ExtAuth; extAuth != nil {
+		c.logger.Info("Configuring Ext Auth in SecurityPolicy")
+		securityPolicySpec.ExtAuth = extAuth.DeepCopy()
 	}
 
 	// The SecurityPolicy should only apply to the HTTPRoute MCP proxy rule.

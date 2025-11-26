@@ -43,7 +43,7 @@ const (
 
 // By default, kind logs are collected when the e2e tests fail. The TEST_KEEP_CLUSTER environment variable
 // can be set to "true" to preserve the logs and the kind cluster even if the tests pass.
-var keepCluster = func() bool {
+var KeepCluster = func() bool {
 	v, _ := os.LookupEnv("TEST_KEEP_CLUSTER")
 	return v == "true"
 }()
@@ -164,6 +164,7 @@ func initKindCluster(ctx context.Context, clusterName string) (err error) {
 		"docker.io/envoyproxy/ai-gateway-extproc:latest",
 		"docker.io/envoyproxy/ai-gateway-testupstream:latest",
 		"docker.io/envoyproxy/ai-gateway-testmcpserver:latest",
+		"docker.io/envoyproxy/ai-gateway-testextauthserver:latest",
 	} {
 		cmd := testsinternal.GoToolCmdContext(ctx, "kind", "load", "docker-image", image, "--name", clusterName)
 		cmd.Stdout = os.Stdout
@@ -341,14 +342,14 @@ spec:
 // Also, if the tests failed or TEST_KEEP_CLUSTER is "true", it collects the kind logs
 // into the ./logs directory.
 func CleanupKindCluster(testsFailed bool, clusterName string) {
-	if testsFailed || keepCluster {
+	if testsFailed || KeepCluster {
 		cleanupLog("Collecting logs from the kind cluster")
 		cmd := testsinternal.GoToolCmd("kind", "export", "logs", "--name", clusterName, kindLogDir)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		_ = cmd.Run()
 	}
-	if !testsFailed && !keepCluster {
+	if !testsFailed && !KeepCluster {
 		cleanupLog("Destroying the kind cluster")
 		cmd := testsinternal.GoToolCmd("kind", "delete", "cluster", "--name", clusterName)
 		cmd.Stdout = os.Stdout
