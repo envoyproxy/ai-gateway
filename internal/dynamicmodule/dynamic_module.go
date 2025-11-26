@@ -32,12 +32,12 @@ const (
 
 // Env holds the environment configuration for the dynamic module that is process-wide.
 type Env struct {
-	RootPrefix                    string
-	EndpointPrefixes              internalapi.EndpointPrefixes
-	ChatCompletionMetricsFactory  metrics.ChatCompletionMetricsFactory
-	MessagesMetricsFactory        metrics.MessagesMetricsFactory
-	CompletionMetricsFactory      metrics.CompletionMetricsFactory
-	EmbeddingsMetricsFactory      metrics.EmbeddingsMetricsFactory
-	ImageGenerationMetricsFactory metrics.ImageGenerationMetricsFactory
-	RerankMetricsFactory          metrics.RerankMetricsFactory
+	RootPrefix       string
+	EndpointPrefixes internalapi.EndpointPrefixes
+	ChatCompletionMetricsFactory,
+	MessagesMetricsFactory,
+	CompletionMetricsFactory,
+	EmbeddingsMetricsFactory,
+	ImageGenerationMetricsFactory,
+	RerankMetricsFactory metrics.Factory
 }
