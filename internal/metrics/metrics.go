@@ -123,7 +123,7 @@ type Metrics interface {
 	// GetInterTokenLatencyMs returns the inter token latency in stream mode in milliseconds.
 	GetInterTokenLatencyMs() float64
 	// RecordTokenLatency records latency metrics for token generation.
-	RecordTokenLatency(ctx context.Context, tokens uint32, endOfStream bool, requestHeaders map[string]string)
+	RecordTokenLatency(ctx context.Context, accumulatedOutputToken uint32, endOfStream bool, requestHeaders map[string]string)
 }
 
 // Factory is a closure that creates a new Metrics instance for a given operation.
@@ -138,6 +138,8 @@ func NewMetricsFactory(meter metric.Meter, requestHeaderLabelMapping map[string]
 }
 
 // TokenUsage represents the token usage reported usually by the backend API in the response body.
+//
+// Fields are not exported to control the optionality of each field via the accompanying boolean flags.
 type TokenUsage struct {
 	// InputTokens is the number of tokens consumed from the input.
 	inputTokens uint32
@@ -151,37 +153,45 @@ type TokenUsage struct {
 	inputTokenSet, outputTokenSet, totalTokenSet, cachedInputTokenSet bool
 }
 
+// InputTokens returns the number of input tokens and whether it was set.
 func (u *TokenUsage) InputTokens() (uint32, bool) {
 	return u.inputTokens, u.inputTokenSet
 }
 
+// OutputTokens returns the number of output tokens and whether it was set.
 func (u *TokenUsage) OutputTokens() (uint32, bool) {
 	return u.outputTokens, u.outputTokenSet
 }
 
+// TotalTokens returns the number of total tokens and whether it was set.
 func (u *TokenUsage) TotalTokens() (uint32, bool) {
 	return u.totalTokens, u.totalTokenSet
 }
 
+// CachedInputTokens returns the number of cached input tokens and whether it was set.
 func (u *TokenUsage) CachedInputTokens() (uint32, bool) {
 	return u.cachedInputTokens, u.cachedInputTokenSet
 }
 
+// SetInputTokens sets the number of input tokens and marks the field as set.
 func (u *TokenUsage) SetInputTokens(tokens uint32) {
 	u.inputTokens = tokens
 	u.inputTokenSet = true
 }
 
+// SetOutputTokens sets the number of output tokens and marks the field as set.
 func (u *TokenUsage) SetOutputTokens(tokens uint32) {
 	u.outputTokens = tokens
 	u.outputTokenSet = true
 }
 
+// SetTotalTokens sets the number of total tokens and marks the field as set.
 func (u *TokenUsage) SetTotalTokens(tokens uint32) {
 	u.totalTokens = tokens
 	u.totalTokenSet = true
 }
 
+// SetCachedInputTokens sets the number of cached input tokens and marks the field as set.
 func (u *TokenUsage) SetCachedInputTokens(tokens uint32) {
 	u.cachedInputTokens = tokens
 	u.cachedInputTokenSet = true
@@ -211,22 +221,23 @@ func (u *TokenUsage) AddCachedInputTokens(tokens uint32) {
 	u.cachedInputTokens += tokens
 }
 
+// Override updates the TokenUsage fields with values from another TokenUsage instance.
+// Only fields that are marked as set in the other instance will override the current values.
 func (u *TokenUsage) Override(other TokenUsage) {
-	result := u
 	if other.inputTokenSet {
-		result.inputTokens = other.inputTokens
-		result.inputTokenSet = true
+		u.inputTokens = other.inputTokens
+		u.inputTokenSet = true
 	}
 	if other.outputTokenSet {
-		result.outputTokens = other.outputTokens
-		result.outputTokenSet = true
+		u.outputTokens = other.outputTokens
+		u.outputTokenSet = true
 	}
 	if other.totalTokenSet {
-		result.totalTokens = other.totalTokens
-		result.totalTokenSet = true
+		u.totalTokens = other.totalTokens
+		u.totalTokenSet = true
 	}
 	if other.cachedInputTokenSet {
-		result.cachedInputTokens = other.cachedInputTokens
-		result.cachedInputTokenSet = true
+		u.cachedInputTokens = other.cachedInputTokens
+		u.cachedInputTokenSet = true
 	}
 }

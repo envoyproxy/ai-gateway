@@ -81,8 +81,7 @@ func TestOpenAIToOpenAIImageTranslator_ResponseBody_OK(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, hm)
 	require.Nil(t, bm)
-	require.Equal(t, uint32(0), usage.InputTokens)
-	require.Equal(t, uint32(0), usage.TotalTokens)
+	require.Equal(t, tokenUsageFrom(0, 0, 0), usage)
 	require.Empty(t, responseModel)
 }
 

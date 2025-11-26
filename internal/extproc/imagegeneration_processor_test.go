@@ -25,8 +25,8 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
-	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
 func TestImageGeneration_Schema(t *testing.T) {
@@ -238,10 +238,9 @@ func Test_imageGenerationProcessorUpstreamFilter_ProcessResponseBody(t *testing.
 	t.Run("ok", func(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("some-body"), EndOfStream: true}
 		mm := &mockMetrics{}
-		mt := &mockImageGenerationTranslator{
-			t: t, expResponseBody: inBody,
-			retUsedToken: translator.LLMTokenUsage{OutputTokens: 123, InputTokens: 1},
-		}
+		mt := &mockImageGenerationTranslator{t: t, expResponseBody: inBody}
+		mt.retUsedToken.SetInputTokens(1)
+		mt.retUsedToken.SetOutputTokens(123)
 
 		celProgInt, err := llmcostcel.NewProgram("54321")
 		require.NoError(t, err)
@@ -476,7 +475,7 @@ type mockImageGenerationTranslator struct {
 	retErr                      error
 	retHeaderMutation           []internalapi.Header
 	retBodyMutation             []byte
-	retUsedToken                translator.LLMTokenUsage
+	retUsedToken                metrics.TokenUsage
 	retResponseModel            internalapi.ResponseModel
 }
 
@@ -499,7 +498,7 @@ func (m *mockImageGenerationTranslator) ResponseHeaders(headers map[string]strin
 	return m.retHeaderMutation, m.retErr
 }
 
-func (m *mockImageGenerationTranslator) ResponseBody(headers map[string]string, body io.Reader, endOfStream bool, _ tracing.ImageGenerationSpan) ([]internalapi.Header, []byte, translator.LLMTokenUsage, internalapi.ResponseModel, error) {
+func (m *mockImageGenerationTranslator) ResponseBody(headers map[string]string, body io.Reader, endOfStream bool, _ tracing.ImageGenerationSpan) ([]internalapi.Header, []byte, metrics.TokenUsage, internalapi.ResponseModel, error) {
 	_ = headers
 	if m.expResponseBody != nil {
 		bodyBytes, _ := io.ReadAll(body)

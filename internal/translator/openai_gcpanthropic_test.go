@@ -80,8 +80,12 @@ func TestResponseModel_GCPAnthropic(t *testing.T) {
 	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader(body), true, nil)
 	require.NoError(t, err)
 	require.Equal(t, modelName, responseModel) // Returns the request model since no virtualization
-	require.Equal(t, uint32(10), tokenUsage.InputTokens)
-	require.Equal(t, uint32(5), tokenUsage.OutputTokens)
+	inputTokens, ok := tokenUsage.InputTokens()
+	require.True(t, ok)
+	require.Equal(t, uint32(10), inputTokens)
+	outputTokens, ok := tokenUsage.OutputTokens()
+	require.True(t, ok)
+	require.Equal(t, uint32(5), outputTokens)
 }
 
 func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T) {
@@ -502,12 +506,12 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 			err = json.Unmarshal(newBody, &gotResp)
 			require.NoError(t, err)
 
-			expectedTokenUsage := LLMTokenUsage{
-				InputTokens:       uint32(tt.expectedOpenAIResponse.Usage.PromptTokens),                     //nolint:gosec
-				OutputTokens:      uint32(tt.expectedOpenAIResponse.Usage.CompletionTokens),                 //nolint:gosec
-				TotalTokens:       uint32(tt.expectedOpenAIResponse.Usage.TotalTokens),                      //nolint:gosec
-				CachedInputTokens: uint32(tt.expectedOpenAIResponse.Usage.PromptTokensDetails.CachedTokens), //nolint:gosec
-			}
+			expectedTokenUsage := tokenUsageFrom(
+				int32(tt.expectedOpenAIResponse.Usage.PromptTokens),     // nolint:gosec
+				int32(tt.expectedOpenAIResponse.Usage.CompletionTokens), // nolint:gosec
+				int32(tt.expectedOpenAIResponse.Usage.TotalTokens),      // nolint:gosec
+			)
+			expectedTokenUsage.SetCachedInputTokens(uint32(tt.expectedOpenAIResponse.Usage.PromptTokensDetails.CachedTokens)) //nolint:gosec
 			require.Equal(t, expectedTokenUsage, usedToken)
 
 			if diff := cmp.Diff(tt.expectedOpenAIResponse, gotResp, cmpopts.IgnoreFields(openai.ChatCompletionResponse{}, "Created")); diff != "" {

@@ -14,6 +14,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 func TestOpenAIToOpenAITranslatorV1EmbeddingRequestBody(t *testing.T) {
@@ -92,7 +93,7 @@ func TestOpenAIToOpenAITranslatorV1EmbeddingResponseBody(t *testing.T) {
 		name           string
 		responseBody   string
 		responseStatus string
-		expTokenUsage  LLMTokenUsage
+		expTokenUsage  metrics.TokenUsage
 		expError       bool
 	}{
 		{
@@ -112,23 +113,19 @@ func TestOpenAIToOpenAITranslatorV1EmbeddingResponseBody(t *testing.T) {
 					"total_tokens": 8
 				}
 			}`,
-			expTokenUsage: LLMTokenUsage{
-				InputTokens:  8,
-				OutputTokens: 0,
-				TotalTokens:  8,
-			},
+			expTokenUsage: tokenUsageFrom(8, -1, 8),
 		},
 		{
 			name:          "invalid_json",
 			responseBody:  `invalid json`,
 			expError:      true,
-			expTokenUsage: LLMTokenUsage{},
+			expTokenUsage: tokenUsageFrom(-1, -1, -1),
 		},
 		{
 			name:           "error_response",
 			responseBody:   `{"error": {"message": "Invalid input", "type": "BadRequestError"}}`,
 			responseStatus: "400",
-			expTokenUsage:  LLMTokenUsage{},
+			expTokenUsage:  tokenUsageFrom(0, -1, 0),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

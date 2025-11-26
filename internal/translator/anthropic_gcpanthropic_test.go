@@ -11,11 +11,11 @@ import (
 	"testing"
 
 	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 func TestAnthropicToGCPAnthropicTranslator_RequestBody_ModelNameOverride(t *testing.T) {
@@ -471,7 +471,9 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_ZeroTokenUsage(t *testin
 	_, _, tokenUsage, _, err := translator.ResponseBody(respHeaders, bodyReader, true, nil)
 	require.NoError(t, err)
 
-	assert.Equal(t, tokenUsageFrom(-1, -1, -1), tokenUsage)
+	expected := tokenUsageFrom(0, 0, 0)
+	expected.SetCachedInputTokens(0)
+	assert.Equal(t, expected, tokenUsage)
 }
 
 func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingTokenUsage(t *testing.T) {
@@ -485,34 +487,48 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingTokenUsage(t *t
 		expectedUsage metrics.TokenUsage
 	}{
 		{
-			name:          "regular streaming chunk without usage",
-			chunk:         "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" to me.\"}}\n\n",
-			endOfStream:   false,
-			expectedUsage: tokenUsageFrom(-1, -1, -1),
+			name:        "regular streaming chunk without usage",
+			chunk:       "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" to me.\"}}\n\n",
+			endOfStream: false,
+			expectedUsage: func() metrics.TokenUsage {
+				return tokenUsageFrom(-1, -1, -1)
+			}(),
 		},
 		{
-			name:          "message_delta chunk with token usage",
-			chunk:         "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":84}}\n\n",
-			endOfStream:   false,
-			expectedUsage: tokenUsageFrom(-1, 84, 84),
+			name:        "message_delta chunk with token usage",
+			chunk:       "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":84}}\n\n",
+			endOfStream: false,
+			expectedUsage: func() metrics.TokenUsage {
+				usage := tokenUsageFrom(0, 84, 84)
+				usage.SetCachedInputTokens(0)
+				return usage
+			}(),
 		},
 		{
-			name:          "message_stop chunk without usage",
-			chunk:         "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
-			endOfStream:   false,
-			expectedUsage: tokenUsageFrom(-1, -1, -1),
+			name:        "message_stop chunk without usage",
+			chunk:       "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+			endOfStream: false,
+			expectedUsage: func() metrics.TokenUsage {
+				return tokenUsageFrom(-1, -1, -1)
+			}(),
 		},
 		{
-			name:          "invalid json chunk",
-			chunk:         "event: invalid\ndata: {\"invalid\": \"json\"}\n\n",
-			endOfStream:   false,
-			expectedUsage: tokenUsageFrom(-1, -1, -1),
+			name:        "invalid json chunk",
+			chunk:       "event: invalid\ndata: {\"invalid\": \"json\"}\n\n",
+			endOfStream: false,
+			expectedUsage: func() metrics.TokenUsage {
+				return tokenUsageFrom(-1, -1, -1)
+			}(),
 		},
 		{
-			name:          "message_delta with decimal output_tokens",
-			chunk:         "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":42.0}}\n\n",
-			endOfStream:   false,
-			expectedUsage: tokenUsageFrom(-1, 42, 42),
+			name:        "message_delta with decimal output_tokens",
+			chunk:       "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":42.0}}\n\n",
+			endOfStream: false,
+			expectedUsage: func() metrics.TokenUsage {
+				usage := tokenUsageFrom(0, 42, 42)
+				usage.SetCachedInputTokens(0)
+				return usage
+			}(),
 		},
 	}
 
@@ -536,24 +552,41 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases(t *te
 	translator.(*anthropicToGCPAnthropicTranslator).stream = true
 
 	tests := []struct {
-		name  string
-		chunk string
+		name          string
+		chunk         string
+		expectedUsage metrics.TokenUsage
 	}{
 		{
 			name:  "message_start without message field",
 			chunk: "event: message_start\ndata: {\"type\":\"message_start\"}\n\n",
+			expectedUsage: func() metrics.TokenUsage {
+				usage := tokenUsageFrom(0, 0, 0)
+				usage.SetCachedInputTokens(0)
+				return usage
+			}(),
 		},
 		{
 			name:  "message_start without usage field",
 			chunk: "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_123\"}}\n\n",
+			expectedUsage: func() metrics.TokenUsage {
+				usage := tokenUsageFrom(0, 0, 0)
+				usage.SetCachedInputTokens(0)
+				return usage
+			}(),
 		},
 		{
 			name:  "message_delta without usage field",
 			chunk: "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n",
+			expectedUsage: func() metrics.TokenUsage {
+				usage := tokenUsageFrom(0, 0, 0)
+				usage.SetCachedInputTokens(0)
+				return usage
+			}(),
 		},
 		{
-			name:  "invalid json in data",
-			chunk: "event: message_start\ndata: {invalid json}\n\n",
+			name:          "invalid json in data",
+			chunk:         "event: message_start\ndata: {invalid json}\n\n",
+			expectedUsage: tokenUsageFrom(-1, -1, -1),
 		},
 	}
 
@@ -567,7 +600,7 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases(t *te
 			require.NoError(t, err)
 			require.Nil(t, headerMutation)
 			require.Nil(t, bodyMutation)
-			require.Equal(t, tokenUsageFrom(-1, -1, -1), tokenUsage)
+			require.Equal(t, tt.expectedUsage, tokenUsage)
 		})
 	}
 }

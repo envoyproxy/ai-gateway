@@ -24,6 +24,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 // TestResponseModel_GCPVertexAIStreaming tests that GCP Vertex AI streaming returns the request model
@@ -57,8 +58,12 @@ func TestResponseModel_GCPVertexAIStreaming(t *testing.T) {
 	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader([]byte(streamResponse)), true, nil)
 	require.NoError(t, err)
 	require.Equal(t, modelName, responseModel) // Returns the request model since no virtualization
-	require.Equal(t, uint32(10), tokenUsage.InputTokens)
-	require.Equal(t, uint32(5), tokenUsage.OutputTokens)
+	inputTokens, ok := tokenUsage.InputTokens()
+	require.True(t, ok)
+	require.Equal(t, uint32(10), inputTokens)
+	outputTokens, ok := tokenUsage.OutputTokens()
+	require.True(t, ok)
+	require.Equal(t, uint32(5), outputTokens)
 }
 
 func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T) {
@@ -800,7 +805,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 		wantError         bool
 		wantHeaderMut     []internalapi.Header
 		wantBodyMut       []byte
-		wantTokenUsage    LLMTokenUsage
+		wantTokenUsage    metrics.TokenUsage
 	}{
 		{
 			name: "successful response",
@@ -859,12 +864,11 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
         "total_tokens": 25
     }
 }`),
-			wantTokenUsage: LLMTokenUsage{
-				InputTokens:       10,
-				OutputTokens:      15,
-				TotalTokens:       25,
-				CachedInputTokens: 10,
-			},
+			wantTokenUsage: func() metrics.TokenUsage {
+				usage := tokenUsageFrom(10, 15, 25)
+				usage.SetCachedInputTokens(10)
+				return usage
+			}(),
 		},
 		{
 			name: "response with safety ratings",
@@ -944,11 +948,11 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
         "total_tokens": 20
     }
 }`),
-			wantTokenUsage: LLMTokenUsage{
-				InputTokens:  8,
-				OutputTokens: 12,
-				TotalTokens:  20,
-			},
+			wantTokenUsage: func() metrics.TokenUsage {
+				usage := tokenUsageFrom(8, 12, 20)
+				usage.SetCachedInputTokens(0)
+				return usage
+			}(),
 		},
 		{
 			name: "empty response",
@@ -960,7 +964,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			wantError:      false,
 			wantHeaderMut:  []internalapi.Header{{contentLengthHeaderName, "28"}},
 			wantBodyMut:    []byte(`{"object":"chat.completion"}`),
-			wantTokenUsage: LLMTokenUsage{},
+			wantTokenUsage: tokenUsageFrom(-1, -1, -1),
 		},
 		{
 			name: "single stream chunk response",
@@ -978,11 +982,11 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 
 data: [DONE]
 `),
-			wantTokenUsage: LLMTokenUsage{
-				InputTokens:  5,
-				OutputTokens: 3,
-				TotalTokens:  8,
-			},
+			wantTokenUsage: func() metrics.TokenUsage {
+				usage := tokenUsageFrom(5, 3, 8)
+				usage.SetCachedInputTokens(0)
+				return usage
+			}(),
 		},
 		{
 			name: "response with model version field",
@@ -1037,11 +1041,11 @@ data: [DONE]
         "total_tokens": 14
     }
 }`),
-			wantTokenUsage: LLMTokenUsage{
-				InputTokens:  6,
-				OutputTokens: 8,
-				TotalTokens:  14,
-			},
+			wantTokenUsage: func() metrics.TokenUsage {
+				usage := tokenUsageFrom(6, 8, 14)
+				usage.SetCachedInputTokens(0)
+				return usage
+			}(),
 		},
 
 		{
@@ -1110,11 +1114,11 @@ data: [DONE]
         "total_tokens": 20
     }
 }`),
-			wantTokenUsage: LLMTokenUsage{
-				InputTokens:  8,
-				OutputTokens: 12,
-				TotalTokens:  20,
-			},
+			wantTokenUsage: func() metrics.TokenUsage {
+				usage := tokenUsageFrom(8, 12, 20)
+				usage.SetCachedInputTokens(0)
+				return usage
+			}(),
 		},
 	}
 
@@ -1140,7 +1144,7 @@ data: [DONE]
 				t.Errorf("BodyMutation mismatch (-want +got):\n%s", diff)
 			}
 
-			if diff := cmp.Diff(tc.wantTokenUsage, tokenUsage); diff != "" {
+			if diff := cmp.Diff(tc.wantTokenUsage, tokenUsage, cmp.AllowUnexported(metrics.TokenUsage{})); diff != "" {
 				t.Errorf("TokenUsage mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -1233,7 +1237,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody(t *
 			print(bodyStr)
 			require.Contains(t, bodyStr, "data: ")
 			require.Contains(t, bodyStr, "chat.completion.chunk")
-			require.Equal(t, LLMTokenUsage{}, tokenUsage) // No usage in this test chunk.
+			require.Equal(t, tokenUsageFrom(-1, -1, -1), tokenUsage) // No usage in this test chunk.
 		})
 	}
 }
@@ -2252,6 +2256,10 @@ func TestResponseModel_GCPVertexAI(t *testing.T) {
 	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader([]byte(vertexResponse)), true, nil)
 	require.NoError(t, err)
 	require.Equal(t, modelName, responseModel) // Returns the request model
-	require.Equal(t, uint32(10), tokenUsage.InputTokens)
-	require.Equal(t, uint32(5), tokenUsage.OutputTokens)
+	inputTokens, ok := tokenUsage.InputTokens()
+	require.True(t, ok)
+	require.Equal(t, uint32(10), inputTokens)
+	outputTokens, ok := tokenUsage.OutputTokens()
+	require.True(t, ok)
+	require.Equal(t, uint32(5), outputTokens)
 }

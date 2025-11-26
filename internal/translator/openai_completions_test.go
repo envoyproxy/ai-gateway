@@ -14,6 +14,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 func TestOpenAIToOpenAITranslatorV1CompletionRequestBody(t *testing.T) {
@@ -108,7 +109,7 @@ func TestOpenAIToOpenAITranslatorV1CompletionResponseBody(t *testing.T) {
 		name           string
 		responseBody   string
 		responseStatus string
-		expTokenUsage  LLMTokenUsage
+		expTokenUsage  metrics.TokenUsage
 		expModel       string
 		expError       bool
 	}{
@@ -132,18 +133,14 @@ func TestOpenAIToOpenAITranslatorV1CompletionResponseBody(t *testing.T) {
 					"total_tokens": 13
 				}
 			}`,
-			expTokenUsage: LLMTokenUsage{
-				InputTokens:  5,
-				OutputTokens: 8,
-				TotalTokens:  13,
-			},
-			expModel: "gpt-3.5-turbo-instruct",
+			expTokenUsage: tokenUsageFrom(5, 8, 13),
+			expModel:      "gpt-3.5-turbo-instruct",
 		},
 		{
 			name:          "invalid_json",
 			responseBody:  `invalid json`,
 			expError:      true,
-			expTokenUsage: LLMTokenUsage{},
+			expTokenUsage: tokenUsageFrom(-1, -1, -1),
 		},
 		{
 			name: "response_without_usage",
@@ -160,7 +157,7 @@ func TestOpenAIToOpenAITranslatorV1CompletionResponseBody(t *testing.T) {
 					}
 				]
 			}`,
-			expTokenUsage: LLMTokenUsage{},
+			expTokenUsage: tokenUsageFrom(-1, -1, -1),
 			expModel:      "gpt-3.5-turbo-instruct",
 		},
 	} {
@@ -228,7 +225,7 @@ data: [DONE]
 	require.NoError(t, err)
 	require.Nil(t, headerMutation)
 	require.Nil(t, bodyMutation)
-	require.Equal(t, LLMTokenUsage{}, tokenUsage)
+	require.Equal(t, tokenUsageFrom(-1, -1, -1), tokenUsage)
 	require.Equal(t, "gpt-3.5-turbo-instruct", responseModel)
 
 	// Process chunk2.
@@ -241,7 +238,7 @@ data: [DONE]
 	require.NoError(t, err)
 	require.Nil(t, headerMutation)
 	require.Nil(t, bodyMutation)
-	require.Equal(t, LLMTokenUsage{}, tokenUsage)
+	require.Equal(t, tokenUsageFrom(-1, -1, -1), tokenUsage)
 	require.Equal(t, "gpt-3.5-turbo-instruct", responseModel)
 
 	// Process chunk3 with usage.
@@ -254,11 +251,7 @@ data: [DONE]
 	require.NoError(t, err)
 	require.Nil(t, headerMutation)
 	require.Nil(t, bodyMutation)
-	require.Equal(t, LLMTokenUsage{
-		InputTokens:  5,
-		OutputTokens: 3,
-		TotalTokens:  8,
-	}, tokenUsage)
+	require.Equal(t, tokenUsageFrom(5, 3, 8), tokenUsage)
 	require.Equal(t, "gpt-3.5-turbo-instruct", responseModel)
 }
 

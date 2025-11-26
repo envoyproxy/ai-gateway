@@ -24,8 +24,8 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
-	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
 func TestCompletions_Schema(t *testing.T) {
@@ -189,11 +189,9 @@ func Test_completionsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 
 		mt.resHeaderMutation = []internalapi.Header{{"test", "success"}}
 		mt.resBodyMutation = []byte("response body")
-		mt.resTokenUsage = translator.LLMTokenUsage{
-			InputTokens:  10,
-			OutputTokens: 20,
-			TotalTokens:  30,
-		}
+		mt.resTokenUsage.SetInputTokens(10)
+		mt.resTokenUsage.SetOutputTokens(20)
+		mt.resTokenUsage.SetTotalTokens(30)
 		mt.resModel = "gpt-4"
 
 		resp, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{Body: []byte("test"), EndOfStream: true})
@@ -209,10 +207,15 @@ func Test_completionsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 		require.Equal(t, "success", string(re.ResponseBody.GetResponse().GetHeaderMutation().SetHeaders[0].Header.RawValue))
 		require.Equal(t, "response body", string(re.ResponseBody.GetResponse().GetBodyMutation().GetBody()))
 
-		// Check that costs were accumulated
-		require.Equal(t, uint32(10), p.costs.InputTokens)
-		require.Equal(t, uint32(20), p.costs.OutputTokens)
-		require.Equal(t, uint32(30), p.costs.TotalTokens)
+		in, ok := p.costs.InputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(10), in)
+		out, ok := p.costs.OutputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(20), out)
+		total, ok := p.costs.TotalTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(30), total)
 	})
 }
 
@@ -394,7 +397,7 @@ type mockCompletionTranslator struct {
 	resBodyMutation        []byte
 	resErrorHeaderMutation []internalapi.Header
 	resErrorBodyMutation   []byte
-	resTokenUsage          translator.LLMTokenUsage
+	resTokenUsage          metrics.TokenUsage
 	resModel               internalapi.ResponseModel
 	err                    error
 }
@@ -410,7 +413,7 @@ func (m *mockCompletionTranslator) ResponseHeaders(headers map[string]string) ([
 	return m.resHeaderMutation, m.err
 }
 
-func (m *mockCompletionTranslator) ResponseBody(map[string]string, io.Reader, bool, tracing.CompletionSpan) ([]internalapi.Header, []byte, translator.LLMTokenUsage, internalapi.ResponseModel, error) {
+func (m *mockCompletionTranslator) ResponseBody(map[string]string, io.Reader, bool, tracing.CompletionSpan) ([]internalapi.Header, []byte, metrics.TokenUsage, internalapi.ResponseModel, error) {
 	return m.resHeaderMutation, m.resBodyMutation, m.resTokenUsage, m.resModel, m.err
 }
 
@@ -608,7 +611,7 @@ func Test_completionsProcessorUpstreamFilter_ProcessResponseBody_Streaming(t *te
 		}
 		// First chunk (not end of stream) should not complete the request.
 		chunk := &extprocv3.HttpBody{Body: []byte("chunk-1"), EndOfStream: false}
-		mt.resTokenUsage = translator.LLMTokenUsage{} // no usage yet in early chunks.
+		mt.resTokenUsage = metrics.TokenUsage{} // no usage yet in early chunks.
 		_, err := p.ProcessResponseBody(t.Context(), chunk)
 		require.NoError(t, err)
 		mm.RequireRequestNotCompleted(t)
@@ -616,7 +619,9 @@ func Test_completionsProcessorUpstreamFilter_ProcessResponseBody_Streaming(t *te
 
 		// Final chunk should mark success and record usage once.
 		final := &extprocv3.HttpBody{Body: []byte("chunk-final"), EndOfStream: true}
-		mt.resTokenUsage = translator.LLMTokenUsage{InputTokens: 5, OutputTokens: 138, TotalTokens: 143}
+		mt.resTokenUsage.SetInputTokens(5)
+		mt.resTokenUsage.SetOutputTokens(138)
+		mt.resTokenUsage.SetTotalTokens(143)
 		_, err = p.ProcessResponseBody(t.Context(), final)
 		require.NoError(t, err)
 		mm.RequireRequestSuccess(t)
@@ -756,11 +761,9 @@ func Test_completionsProcessorUpstreamFilter_CELCostEvaluation(t *testing.T) {
 			t:                 t,
 			resBodyMutation:   expBody,
 			resHeaderMutation: []internalapi.Header{{"foo", "bar"}},
-			resTokenUsage: translator.LLMTokenUsage{
-				OutputTokens: 123,
-				InputTokens:  1,
-			},
 		}
+		mt.resTokenUsage.SetOutputTokens(123)
+		mt.resTokenUsage.SetInputTokens(1)
 
 		celProgInt, err := llmcostcel.NewProgram("54321")
 		require.NoError(t, err)
@@ -938,13 +941,12 @@ func Test_completionsProcessorUpstreamFilter_ModelTracking(t *testing.T) {
 		// Create a mock translator that returns token usage with response model
 		// Simulating OpenAI's automatic routing where gpt-3.5-turbo-instruct routes to gpt-3.5-turbo-instruct-0914
 		mt := &mockCompletionTranslator{
-			t: t,
-			resTokenUsage: translator.LLMTokenUsage{
-				InputTokens:  10,
-				OutputTokens: 20,
-			},
+			t:        t,
 			resModel: "gpt-3.5-turbo-instruct-0914",
 		}
+		mt.resTokenUsage.SetOutputTokens(20)
+		mt.resTokenUsage.SetInputTokens(10)
+
 		p := &completionsProcessorUpstreamFilter{
 			config:                 &filterapi.RuntimeConfig{},
 			requestHeaders:         headers,
@@ -1056,9 +1058,10 @@ func Test_completionsProcessorUpstreamFilter_StreamingTokenLatencyTracking(t *te
 			interTokenLatencyMs: 250.0,
 		}
 		mt := &mockCompletionTranslator{
-			t:             t,
-			resTokenUsage: translator.LLMTokenUsage{InputTokens: 5, OutputTokens: 20},
+			t: t,
 		}
+		mt.resTokenUsage.SetOutputTokens(20)
+		mt.resTokenUsage.SetInputTokens(5)
 
 		// Build config with token metadata
 		requestCosts := []filterapi.RuntimeRequestCost{

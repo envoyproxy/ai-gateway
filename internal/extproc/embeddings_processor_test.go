@@ -24,7 +24,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
-	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
 func TestEmbeddings_Schema(t *testing.T) {
@@ -150,8 +149,9 @@ func Test_embeddingsProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 		mt := &mockEmbeddingTranslator{
 			t: t, expResponseBody: inBody,
 			retBodyMutation: expBodyMut, retHeaderMutation: expHeadMut,
-			retUsedToken: translator.LLMTokenUsage{InputTokens: 123, TotalTokens: 123},
 		}
+		mt.retUsedToken.SetTotalTokens(123)
+		mt.retUsedToken.SetInputTokens(123)
 
 		celProgInt, err := llmcostcel.NewProgram("54321")
 		require.NoError(t, err)
@@ -403,14 +403,12 @@ func TestEmbeddings_ProcessResponseBody_OverridesHeaderModelWithResponseModel(t 
 
 	// Create a mock translator that returns token usage with response model
 	mt := &mockEmbeddingTranslator{
-		t:              t,
-		expRequestBody: &body,
-		expHeaders:     map[string]string{":status": "200"},
-		retUsedToken: translator.LLMTokenUsage{
-			InputTokens: 15,
-		},
+		t:                t,
+		expRequestBody:   &body,
+		expHeaders:       map[string]string{":status": "200"},
 		retResponseModel: "actual-embedding-model",
 	}
+	mt.retUsedToken.SetInputTokens(15)
 
 	p := &embeddingsProcessorUpstreamFilter{
 		config:                 &filterapi.RuntimeConfig{},

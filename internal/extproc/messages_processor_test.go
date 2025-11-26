@@ -25,7 +25,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
-	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
 func TestMessagesProcessorFactory(t *testing.T) {
@@ -334,7 +333,7 @@ type mockAnthropicTranslator struct {
 	expForceRequestBodyMutation bool
 	retHeaderMutation           []internalapi.Header
 	retBodyMutation             []byte
-	retTokenUsage               translator.LLMTokenUsage
+	retTokenUsage               metrics.TokenUsage
 	retResponseModel            internalapi.ResponseModel
 	retErr                      error
 }
@@ -354,7 +353,7 @@ func (m mockAnthropicTranslator) ResponseHeaders(_ map[string]string) ([]interna
 }
 
 // ResponseBody implements [translator.AnthropicMessagesTranslator].
-func (m mockAnthropicTranslator) ResponseBody(_ map[string]string, _ io.Reader, _ bool, _ any) ([]internalapi.Header, []byte, translator.LLMTokenUsage, string, error) {
+func (m mockAnthropicTranslator) ResponseBody(_ map[string]string, _ io.Reader, _ bool, _ any) ([]internalapi.Header, []byte, metrics.TokenUsage, string, error) {
 	return m.retHeaderMutation, m.retBodyMutation, m.retTokenUsage, m.retResponseModel, m.retErr
 }
 
@@ -531,8 +530,9 @@ func TestMessagesProcessorUpstreamFilter_MergeWithTokenLatencyMetadata(t *testin
 		config:  &filterapi.RuntimeConfig{},
 		logger:  slog.Default(),
 		metrics: m.NewMetrics(),
-		costs:   translator.LLMTokenUsage{InputTokens: 100, OutputTokens: 50},
 	}
+	processor.costs.SetOutputTokens(50)
+	processor.costs.SetInputTokens(100)
 
 	// Test with valid metadata structure.
 	metadata := &structpb.Struct{
@@ -636,14 +636,12 @@ func TestMessages_ProcessResponseBody_UsesActualResponseModelOverHeaderOverride(
 
 	// Create a mock translator that returns token usage with response model
 	mt := &mockAnthropicTranslator{
-		t:              t,
-		expRequestBody: requestBody,
-		retTokenUsage: translator.LLMTokenUsage{
-			InputTokens:  25,
-			OutputTokens: 35,
-		},
+		t:                t,
+		expRequestBody:   requestBody,
 		retResponseModel: "actual-anthropic-model",
 	}
+	mt.retTokenUsage.SetOutputTokens(35)
+	mt.retTokenUsage.SetInputTokens(25)
 
 	p := &messagesProcessorUpstreamFilter{
 		config:                 &filterapi.RuntimeConfig{},

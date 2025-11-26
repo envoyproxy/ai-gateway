@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 // mockErrorReader is a helper for testing io.Reader failures.
@@ -138,8 +139,12 @@ data: {"type": "message_stop"}
 	_, _, tokenUsage, responseModel, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
 	require.NoError(t, err)
 	require.Equal(t, modelName, responseModel) // Returns the request model since no virtualization
-	require.Equal(t, uint32(10), tokenUsage.InputTokens)
-	require.Equal(t, uint32(5), tokenUsage.OutputTokens)
+	inputTokens, ok := tokenUsage.InputTokens()
+	require.True(t, ok)
+	require.Equal(t, uint32(10), inputTokens)
+	outputTokens, ok := tokenUsage.OutputTokens()
+	require.True(t, ok)
+	require.Equal(t, uint32(5), outputTokens)
 }
 
 func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody_Streaming(t *testing.T) {
@@ -610,7 +615,7 @@ data: {"type": "message_stop"}
 }
 
 func TestAnthropicStreamParser_EventTypes(t *testing.T) {
-	runStreamTest := func(t *testing.T, sseStream string, endOfStream bool) ([]byte, LLMTokenUsage, error) {
+	runStreamTest := func(t *testing.T, sseStream string, endOfStream bool) ([]byte, metrics.TokenUsage, error) {
 		openAIReq := &openai.ChatCompletionRequest{Stream: true, Model: "test-model", MaxTokens: new(int64)}
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
 		_, _, err := translator.RequestBody(nil, openAIReq, false)

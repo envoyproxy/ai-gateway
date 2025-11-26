@@ -28,6 +28,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) {
@@ -1298,8 +1299,8 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_ResponseBody(t *
 			if len(newBody) > 0 {
 				results = append(results, newBody...)
 			}
-			if tokenUsage.OutputTokens > 0 {
-				require.Equal(t, uint32(75), tokenUsage.OutputTokens)
+			if outputTokens, ok := tokenUsage.OutputTokens(); ok && outputTokens > 0 {
+				require.Equal(t, uint32(75), outputTokens)
 			}
 		}
 
@@ -1712,13 +1713,19 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			expectedBody, err := json.Marshal(tt.output)
 			require.NoError(t, err)
 			require.JSONEq(t, string(expectedBody), string(normalizedBody))
-			expectedUsage := LLMTokenUsage{
-				InputTokens:  uint32(tt.output.Usage.PromptTokens),     //nolint:gosec
-				OutputTokens: uint32(tt.output.Usage.CompletionTokens), //nolint:gosec
-				TotalTokens:  uint32(tt.output.Usage.TotalTokens),      //nolint:gosec
-			}
-			if tt.input.Usage != nil && tt.input.Usage.CacheReadInputTokens != nil {
-				expectedUsage.CachedInputTokens = uint32(tt.output.Usage.PromptTokensDetails.CachedTokens) //nolint:gosec
+
+			var expectedUsage metrics.TokenUsage
+			if tt.input.Usage != nil {
+				expectedUsage = tokenUsageFrom(
+					int32(tt.output.Usage.PromptTokens),     // nolint:gosec
+					int32(tt.output.Usage.CompletionTokens), // nolint:gosec
+					int32(tt.output.Usage.TotalTokens),      // nolint:gosec
+				)
+				if tt.input.Usage.CacheReadInputTokens != nil {
+					expectedUsage.SetCachedInputTokens(uint32(tt.output.Usage.PromptTokensDetails.CachedTokens)) //nolint:gosec
+				}
+			} else {
+				expectedUsage = tokenUsageFrom(-1, -1, -1)
 			}
 			require.Equal(t, expectedUsage, usedToken)
 		})
@@ -2305,6 +2312,11 @@ func TestResponseModel_AWSBedrock(t *testing.T) {
 	require.Equal(t, modelName, responseModel) // Returns the request model since no virtualization
 	respBodyModel := gjson.GetBytes(bm, "model").Value()
 	require.Equal(t, modelName, respBodyModel)
-	require.Equal(t, uint32(10), tokenUsage.InputTokens)
-	require.Equal(t, uint32(5), tokenUsage.OutputTokens)
+	inputTokens, ok := tokenUsage.InputTokens()
+	require.True(t, ok)
+	require.Equal(t, uint32(10), inputTokens)
+
+	outputTokens, ok := tokenUsage.OutputTokens()
+	require.True(t, ok)
+	require.Equal(t, uint32(5), outputTokens)
 }

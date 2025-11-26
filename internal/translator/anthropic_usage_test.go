@@ -101,19 +101,25 @@ func TestExtractLLMTokenUsage(t *testing.T) {
 				tt.cacheCreationTokens,
 			)
 
-			assert.Equal(t, tt.expectedInputTokens, result.InputTokens, "InputTokens should match")
-			assert.Equal(t, tt.expectedOutputTokens, result.OutputTokens, "OutputTokens should match")
-			assert.Equal(t, tt.expectedTotalTokens, result.TotalTokens, "TotalTokens should match")
-			assert.Equal(t, tt.expectedCachedTokens, result.CachedInputTokens, "CachedInputTokens should match")
+			expected := tokenUsageFrom(
+				int32(tt.expectedInputTokens),  // nolint:gosec
+				int32(tt.expectedOutputTokens), // nolint:gosec
+				int32(tt.expectedTotalTokens),  // nolint:gosec
+			)
+			expected.SetCachedInputTokens(tt.expectedCachedTokens)
+			assert.Equal(t, expected, result)
 		})
 	}
 }
 
 func TestExtractLLMTokenUsageFromUsage(t *testing.T) {
 	tests := []struct {
-		name     string
-		usage    anthropic.Usage
-		expected LLMTokenUsage
+		name                 string
+		usage                anthropic.Usage
+		expectedInputTokens  int32
+		expectedOutputTokens int32
+		expectedTotalTokens  int32
+		expectedCachedTokens uint32
 	}{
 		{
 			name: "non-streaming response without cache",
@@ -123,12 +129,10 @@ func TestExtractLLMTokenUsageFromUsage(t *testing.T) {
 				CacheReadInputTokens:     0,
 				CacheCreationInputTokens: 0,
 			},
-			expected: LLMTokenUsage{
-				InputTokens:       150,
-				OutputTokens:      75,
-				TotalTokens:       225,
-				CachedInputTokens: 0,
-			},
+			expectedInputTokens:  150,
+			expectedOutputTokens: 75,
+			expectedTotalTokens:  225,
+			expectedCachedTokens: 0,
 		},
 		{
 			name: "non-streaming response with cache read",
@@ -138,12 +142,10 @@ func TestExtractLLMTokenUsageFromUsage(t *testing.T) {
 				CacheReadInputTokens:     25,
 				CacheCreationInputTokens: 0,
 			},
-			expected: LLMTokenUsage{
-				InputTokens:       125, // 100 + 0 + 25
-				OutputTokens:      50,
-				TotalTokens:       175, // 125 + 50
-				CachedInputTokens: 25,  // 25 + 0
-			},
+			expectedInputTokens:  125, // 100 + 0 + 25
+			expectedOutputTokens: 50,
+			expectedTotalTokens:  175, // 125 + 50
+			expectedCachedTokens: 25,  // 25 + 0
 		},
 		{
 			name: "non-streaming response with both cache types",
@@ -153,28 +155,31 @@ func TestExtractLLMTokenUsageFromUsage(t *testing.T) {
 				CacheReadInputTokens:     15,
 				CacheCreationInputTokens: 10,
 			},
-			expected: LLMTokenUsage{
-				InputTokens:       115, // 90 + 10 + 15
-				OutputTokens:      60,
-				TotalTokens:       175, // 115 + 60
-				CachedInputTokens: 25,  // 15 + 10
-			},
+			expectedInputTokens:  115, // 90 + 10 + 15
+			expectedOutputTokens: 60,
+			expectedTotalTokens:  175, // 115 + 60
+			expectedCachedTokens: 25,  // 15 + 10
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ExtractLLMTokenUsageFromUsage(tt.usage)
-			assert.Equal(t, tt.expected, result)
+			expected := tokenUsageFrom(tt.expectedInputTokens, tt.expectedOutputTokens, tt.expectedTotalTokens)
+			expected.SetCachedInputTokens(tt.expectedCachedTokens)
+			assert.Equal(t, expected, result)
 		})
 	}
 }
 
 func TestExtractLLMTokenUsageFromDeltaUsage(t *testing.T) {
 	tests := []struct {
-		name     string
-		usage    anthropic.MessageDeltaUsage
-		expected LLMTokenUsage
+		name                 string
+		usage                anthropic.MessageDeltaUsage
+		expectedInputTokens  int32
+		expectedOutputTokens int32
+		expectedTotalTokens  int32
+		expectedCachedTokens uint32
 	}{
 		{
 			name: "message_delta event with final totals",
@@ -184,12 +189,10 @@ func TestExtractLLMTokenUsageFromDeltaUsage(t *testing.T) {
 				CacheReadInputTokens:     30,
 				CacheCreationInputTokens: 0,
 			},
-			expected: LLMTokenUsage{
-				InputTokens:       280, // 250 + 0 + 30
-				OutputTokens:      120,
-				TotalTokens:       400, // 280 + 120
-				CachedInputTokens: 30,  // 30 + 0
-			},
+			expectedInputTokens:  280, // 250 + 0 + 30
+			expectedOutputTokens: 120,
+			expectedTotalTokens:  400, // 280 + 120
+			expectedCachedTokens: 30,  // 30 + 0
 		},
 		{
 			name: "message_delta event with only output tokens",
@@ -199,12 +202,10 @@ func TestExtractLLMTokenUsageFromDeltaUsage(t *testing.T) {
 				CacheReadInputTokens:     0,
 				CacheCreationInputTokens: 0,
 			},
-			expected: LLMTokenUsage{
-				InputTokens:       0,
-				OutputTokens:      85,
-				TotalTokens:       85,
-				CachedInputTokens: 0,
-			},
+			expectedInputTokens:  0,
+			expectedOutputTokens: 85,
+			expectedTotalTokens:  85,
+			expectedCachedTokens: 0,
 		},
 		{
 			name: "message_delta with cache creation tokens",
@@ -214,19 +215,19 @@ func TestExtractLLMTokenUsageFromDeltaUsage(t *testing.T) {
 				CacheReadInputTokens:     10,
 				CacheCreationInputTokens: 5,
 			},
-			expected: LLMTokenUsage{
-				InputTokens:       165, // 150 + 5 + 10
-				OutputTokens:      75,
-				TotalTokens:       240, // 165 + 75
-				CachedInputTokens: 15,  // 10 + 5
-			},
+			expectedInputTokens:  165, // 150 + 5 + 10
+			expectedOutputTokens: 75,
+			expectedTotalTokens:  240, // 165 + 75
+			expectedCachedTokens: 15,  // 10 + 5
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ExtractLLMTokenUsageFromDeltaUsage(tt.usage)
-			assert.Equal(t, tt.expected, result)
+			expected := tokenUsageFrom(tt.expectedInputTokens, tt.expectedOutputTokens, tt.expectedTotalTokens)
+			expected.SetCachedInputTokens(tt.expectedCachedTokens)
+			assert.Equal(t, expected, result)
 		})
 	}
 }
@@ -269,18 +270,24 @@ func TestExtractLLMTokenUsage_ClaudeAPIDocumentationCompliance(t *testing.T) {
 		// Total input should be sum of all input token types.
 		expectedTotalInputInt := inputTokens + cacheCreationTokens + cacheReadTokens
 		expectedTotalInput := uint32(expectedTotalInputInt) // #nosec G115 - test values are small and safe
-		assert.Equal(t, expectedTotalInput, result.InputTokens,
+		inputTokensVal, ok := result.InputTokens()
+		assert.True(t, ok)
+		assert.Equal(t, expectedTotalInput, inputTokensVal,
 			"InputTokens should be sum of input_tokens + cache_creation_input_tokens + cache_read_input_tokens")
 
 		// Total cache should be sum of cache token types.
 		expectedCacheTokensInt := cacheCreationTokens + cacheReadTokens
 		expectedCacheTokens := uint32(expectedCacheTokensInt) // #nosec G115 - test values are small and safe
-		assert.Equal(t, expectedCacheTokens, result.CachedInputTokens,
+		cachedTokens, ok := result.CachedInputTokens()
+		assert.True(t, ok)
+		assert.Equal(t, expectedCacheTokens, cachedTokens,
 			"CachedInputTokens should be sum of cache_creation_input_tokens + cache_read_input_tokens")
 
 		// Total tokens should be input + output.
 		expectedTotal := expectedTotalInput + uint32(outputTokens)
-		assert.Equal(t, expectedTotal, result.TotalTokens,
+		totalTokens, ok := result.TotalTokens()
+		assert.True(t, ok)
+		assert.Equal(t, expectedTotal, totalTokens,
 			"TotalTokens should be InputTokens + OutputTokens")
 	})
 }

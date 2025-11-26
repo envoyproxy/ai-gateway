@@ -7,6 +7,7 @@ package translator
 
 import (
 	"github.com/anthropics/anthropic-sdk-go"
+
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 

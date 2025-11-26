@@ -129,10 +129,12 @@ func TestCohereToCohereTranslatorV2Rerank_ResponseHeaders(t *testing.T) {
 
 func TestCohereToCohereTranslatorV2Rerank_ResponseBody(t *testing.T) {
 	for _, tc := range []struct {
-		name          string
-		responseBody  string
-		expTokenUsage LLMTokenUsage
-		expError      bool
+		name           string
+		responseBody   string
+		expectedInput  int32
+		expectedOutput int32
+		expectedTotal  int32
+		expError       bool
 	}{
 		{
 			name: "valid_response_input_only",
@@ -141,7 +143,9 @@ func TestCohereToCohereTranslatorV2Rerank_ResponseBody(t *testing.T) {
 "id": "rr-123",
 "meta": {"tokens": {"input_tokens": 25}}
 }`,
-			expTokenUsage: LLMTokenUsage{InputTokens: 25, OutputTokens: 0, TotalTokens: 25},
+			expectedInput:  25,
+			expectedOutput: -1,
+			expectedTotal:  25,
 		},
 		{
 			name: "valid_response_with_output_tokens",
@@ -150,7 +154,9 @@ func TestCohereToCohereTranslatorV2Rerank_ResponseBody(t *testing.T) {
 "id": "rr-456",
 "meta": {"tokens": {"input_tokens": 10, "output_tokens": 2}}
 }`,
-			expTokenUsage: LLMTokenUsage{InputTokens: 10, OutputTokens: 2, TotalTokens: 12},
+			expectedInput:  10,
+			expectedOutput: 2,
+			expectedTotal:  12,
 		},
 		{
 			name:         "invalid_json",
@@ -174,7 +180,8 @@ func TestCohereToCohereTranslatorV2Rerank_ResponseBody(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			require.Equal(t, tc.expTokenUsage, tokenUsage)
+			expected := tokenUsageFrom(tc.expectedInput, tc.expectedOutput, tc.expectedTotal)
+			require.Equal(t, expected, tokenUsage)
 			require.Equal(t, "rerank-english-v3", responseModel)
 			require.Nil(t, headerMutation)
 			require.Nil(t, bodyMutation)

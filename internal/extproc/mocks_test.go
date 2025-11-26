@@ -308,7 +308,7 @@ type mockEmbeddingTranslator struct {
 	expResponseBody     *extprocv3.HttpBody
 	retHeaderMutation   []internalapi.Header
 	retBodyMutation     []byte
-	retUsedToken        translator.LLMTokenUsage
+	retUsedToken        metrics.TokenUsage
 	retResponseModel    string
 	responseErrorCalled bool
 	retErr              error
@@ -327,7 +327,7 @@ func (m *mockEmbeddingTranslator) ResponseHeaders(headers map[string]string) (ne
 }
 
 // ResponseBody implements [translator.OpenAIEmbeddingTranslator].
-func (m *mockEmbeddingTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracing.EmbeddingsSpan) (newHeaders []internalapi.Header, newBody []byte, tokenUsage translator.LLMTokenUsage, responseModel string, err error) {
+func (m *mockEmbeddingTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracing.EmbeddingsSpan) (newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error) {
 	if m.expResponseBody != nil {
 		buf, err := io.ReadAll(body)
 		require.NoError(m.t, err)

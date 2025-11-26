@@ -24,8 +24,8 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
-	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
 func TestRerank_Schema(t *testing.T) {
@@ -364,14 +364,12 @@ func Test_rerankProcessorUpstreamFilter_ProcessResponseBody(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("ok"), EndOfStream: true}
 		mm := &mockMetrics{}
 		mt := &mockRerankTranslator{
-			t:               t,
-			expResponseBody: inBody,
-			retUsedToken: translator.LLMTokenUsage{
-				InputTokens: 10,
-				TotalTokens: 10,
-			},
+			t:                t,
+			expResponseBody:  inBody,
 			retResponseModel: "rerank-english-v3-2025",
 		}
+		mt.retUsedToken.SetTotalTokens(10)
+		mt.retUsedToken.SetInputTokens(10)
 		celProgInt, err := llmcostcel.NewProgram("123")
 		require.NoError(t, err)
 		p := &rerankProcessorUpstreamFilter{
@@ -521,7 +519,7 @@ type mockRerankTranslator struct {
 	expResponseBody     *extprocv3.HttpBody
 	retHeaderMutation   []internalapi.Header
 	retBodyMutation     []byte
-	retUsedToken        translator.LLMTokenUsage
+	retUsedToken        metrics.TokenUsage
 	retResponseModel    internalapi.ResponseModel
 	retErr              error
 	responseErrorCalled bool
@@ -543,7 +541,7 @@ func (m *mockRerankTranslator) ResponseHeaders(headers map[string]string) ([]int
 	return m.retHeaderMutation, m.retErr
 }
 
-func (m *mockRerankTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracing.RerankSpan) ([]internalapi.Header, []byte, translator.LLMTokenUsage, internalapi.ResponseModel, error) {
+func (m *mockRerankTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracing.RerankSpan) ([]internalapi.Header, []byte, metrics.TokenUsage, internalapi.ResponseModel, error) {
 	if m.expResponseBody != nil {
 		got, _ := io.ReadAll(body)
 		require.True(m.t, bytes.Equal(m.expResponseBody.Body, got))

@@ -25,9 +25,9 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
-	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
 func TestChatCompletion_Schema(t *testing.T) {
@@ -253,8 +253,10 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		mt := &mockTranslator{
 			t: t, expResponseBody: inBody,
 			retHeaderMutation: []internalapi.Header{{"foo", "bar"}},
-			retUsedToken:      translator.LLMTokenUsage{OutputTokens: 123, InputTokens: 1, CachedInputTokens: 1},
 		}
+		mt.retUsedToken.SetOutputTokens(123)
+		mt.retUsedToken.SetInputTokens(1)
+		mt.retUsedToken.SetCachedInputTokens(1)
 
 		celProgInt, err := llmcostcel.NewProgram("54321")
 		require.NoError(t, err)
@@ -351,7 +353,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		// First chunk (not end of stream) should not complete the request.
 		chunk := &extprocv3.HttpBody{Body: []byte("chunk-1"), EndOfStream: false}
 		mt.expResponseBody = chunk
-		mt.retUsedToken = translator.LLMTokenUsage{} // no usage yet in early chunks.
+		mt.retUsedToken = metrics.TokenUsage{} // no usage yet in early chunks.
 		_, err := p.ProcessResponseBody(t.Context(), chunk)
 		require.NoError(t, err)
 		mm.RequireRequestNotCompleted(t)
@@ -361,7 +363,10 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		// Final chunk should mark success and record usage once.
 		final := &extprocv3.HttpBody{Body: []byte("chunk-final"), EndOfStream: true}
 		mt.expResponseBody = final
-		mt.retUsedToken = translator.LLMTokenUsage{InputTokens: 5, CachedInputTokens: 3, OutputTokens: 138, TotalTokens: 143}
+		mt.retUsedToken.SetInputTokens(5)
+		mt.retUsedToken.SetCachedInputTokens(3)
+		mt.retUsedToken.SetOutputTokens(138)
+		mt.retUsedToken.SetTotalTokens(143)
 		_, err = p.ProcessResponseBody(t.Context(), final)
 		require.NoError(t, err)
 		mm.RequireRequestSuccess(t)
@@ -811,15 +816,13 @@ func Test_ProcessResponseBody_UsesActualResponseModel(t *testing.T) {
 	// Create a mock translator that returns token usage with response model
 	// Simulating OpenAI's automatic routing where gpt-5-nano routes to gpt-5-nano-2025-08-07
 	mt := &mockTranslator{
-		t:              t,
-		expRequestBody: &body,
-		expHeaders:     map[string]string{":status": "200"},
-		retUsedToken: translator.LLMTokenUsage{
-			InputTokens:  10,
-			OutputTokens: 20,
-		},
+		t:                t,
+		expRequestBody:   &body,
+		expHeaders:       map[string]string{":status": "200"},
 		retResponseModel: "gpt-5-nano-2025-08-07",
 	}
+	mt.retUsedToken.SetInputTokens(10)
+	mt.retUsedToken.SetOutputTokens(20)
 
 	p := &chatCompletionProcessorUpstreamFilter{
 		config:                 &filterapi.RuntimeConfig{},
