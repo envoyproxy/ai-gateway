@@ -335,6 +335,28 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
   }
 }`)
 
+	wantBdyWithEnterpriseWebSearch := []byte(`{
+    "contents": [
+        {
+            "parts": [
+                {
+                    "text": "Test with web grounding for enterprise"
+                }
+            ],
+            "role": "user"
+        }
+    ],
+    "tools": [
+        {
+            "enterpriseWebSearch": {}
+        }
+    ],
+    "generation_config": {
+        "maxOutputTokens": 1024,
+        "temperature": 0.7
+    }
+}`)
+
 	tests := []struct {
 		name              string
 		modelNameOverride internalapi.ModelNameOverride
@@ -739,6 +761,32 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				{"content-length", "408"},
 			},
 			wantBody: wantBdyWithGuidedRegex,
+		},
+		{
+			name: "Request with gcp web grounding for enterprise",
+			input: openai.ChatCompletionRequest{
+				Model:       "gemini-1.5-pro",
+				Temperature: ptr.To(0.7),
+				MaxTokens:   ptr.To(int64(1024)),
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Role:    openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{Value: "Test with web grounding for enterprise"},
+						},
+					},
+				},
+				GCPVertexAIVendorFields: &openai.GCPVertexAIVendorFields{
+					EnterpriseWebSearch: true,
+				},
+			},
+			onRetry:   false,
+			wantError: false,
+			wantHeaderMut: []internalapi.Header{
+				{":path", "publishers/google/models/gemini-1.5-pro:generateContent"},
+				{"content-length", "190"},
+			},
+			wantBody: wantBdyWithEnterpriseWebSearch,
 		},
 	}
 

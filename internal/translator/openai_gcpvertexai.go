@@ -460,6 +460,12 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) applyVendorSpecificField
 	if gcpVendorFields.SafetySettings != nil {
 		gcr.SafetySettings = gcpVendorFields.SafetySettings
 	}
+
+	if gcpVendorFields.EnterpriseWebSearch {
+		gcr.Tools = append(gcr.Tools, genai.Tool{
+			EnterpriseWebSearch: &genai.EnterpriseWebSearch{},
+		})
+	}
 }
 
 func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMessage(gcr genai.GenerateContentResponse, responseModel string) (*openai.ChatCompletionResponse, error) {
