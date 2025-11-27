@@ -26,6 +26,7 @@ type Options struct {
 	Port                              int
 	ForceJSONResponse, DumbEchoServer bool
 	WriteTimeout                      time.Duration
+	DisableLog                        bool
 }
 
 // NewServer starts a demo MCP server with two tools: echo and sum.
@@ -130,6 +131,9 @@ func NewServer(opts *Options) *http.Server {
 		WriteTimeout: opts.WriteTimeout,
 		Handler:      handler,
 		ConnState: func(conn net.Conn, state http.ConnState) {
+			if opts.DisableLog {
+				return
+			}
 			log.Printf("MCP SERVER connection [%s] %s -> %s\n", state, conn.RemoteAddr(), conn.LocalAddr())
 		},
 	}
