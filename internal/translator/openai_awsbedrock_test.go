@@ -17,7 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -897,11 +896,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						},
 					},
 				},
-				AnthropicVendorFields: &openai.AnthropicVendorFields{
-					Thinking: &anthropic.ThinkingConfigParamUnion{
-						OfEnabled: &anthropic.ThinkingConfigEnabledParam{
-							BudgetTokens: int64(1024),
-						},
+				Thinking: &openai.ThinkingUnion{
+					OfEnabled: &openai.ThinkingEnabled{
+						BudgetTokens: int64(1024),
+						Type:         "enabled",
 					},
 				},
 			},
@@ -1115,12 +1113,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						},
 					},
 				},
-				AnthropicVendorFields: &openai.AnthropicVendorFields{
-					Thinking: &anthropic.ThinkingConfigParamUnion{
-						OfEnabled: &anthropic.ThinkingConfigEnabledParam{
-							Type:         "enabled",
-							BudgetTokens: 1024,
-						},
+				Thinking: &openai.ThinkingUnion{
+					OfEnabled: &openai.ThinkingEnabled{
+						Type:         "enabled",
+						BudgetTokens: 1024,
 					},
 				},
 			},
@@ -1149,11 +1145,9 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 						},
 					},
 				},
-				AnthropicVendorFields: &openai.AnthropicVendorFields{
-					Thinking: &anthropic.ThinkingConfigParamUnion{
-						OfDisabled: &anthropic.ThinkingConfigDisabledParam{
-							Type: "disabled",
-						},
+				Thinking: &openai.ThinkingUnion{
+					OfDisabled: &openai.ThinkingDisabled{
+						Type: "disabled",
 					},
 				},
 			},

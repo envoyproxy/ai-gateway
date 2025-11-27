@@ -312,9 +312,11 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 			Model:     claudeTestModel,
 			Messages:  []openai.ChatCompletionMessageParamUnion{},
 			MaxTokens: ptr.To(int64(100)),
-			AnthropicVendorFields: &openai.AnthropicVendorFields{
-				Thinking: &anthropic.ThinkingConfigParamUnion{
-					OfEnabled: &anthropic.ThinkingConfigEnabledParam{},
+			Thinking: &openai.ThinkingUnion{
+				OfEnabled: &openai.ThinkingEnabled{
+					BudgetTokens:    100,
+					Type:            "enabled",
+					IncludeThoughts: true,
 				},
 			},
 		}
@@ -335,9 +337,9 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 			Model:     claudeTestModel,
 			Messages:  []openai.ChatCompletionMessageParamUnion{},
 			MaxTokens: ptr.To(int64(100)),
-			AnthropicVendorFields: &openai.AnthropicVendorFields{
-				Thinking: &anthropic.ThinkingConfigParamUnion{
-					OfDisabled: &anthropic.ThinkingConfigDisabledParam{},
+			Thinking: &openai.ThinkingUnion{
+				OfDisabled: &openai.ThinkingDisabled{
+					Type: "disabled",
 				},
 			},
 		}

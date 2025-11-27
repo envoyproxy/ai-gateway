@@ -546,6 +546,28 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 	return
 }
 
+// NewThinkingConfigParamUnion converts a ThinkingUnion into a ThinkingConfigParamUnion.
+func getThinkingConfigParamUnion(tu *openai.ThinkingUnion) *anthropic.ThinkingConfigParamUnion {
+	if tu == nil {
+		return nil
+	}
+
+	result := &anthropic.ThinkingConfigParamUnion{}
+
+	if tu.OfEnabled != nil {
+		result.OfEnabled = &anthropic.ThinkingConfigEnabledParam{
+			BudgetTokens: tu.OfEnabled.BudgetTokens,
+			Type:         constant.Enabled(tu.OfEnabled.Type),
+		}
+	} else if tu.OfDisabled != nil {
+		result.OfDisabled = &anthropic.ThinkingConfigDisabledParam{
+			Type: constant.Disabled(tu.OfDisabled.Type),
+		}
+	}
+
+	return result
+}
+
 // buildAnthropicParams is a helper function that translates an OpenAI request
 // into the parameter struct required by the Anthropic SDK.
 func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest) (params *anthropic.MessageNewParams, err error) {
@@ -595,11 +617,8 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest) (params *anth
 
 	// 5. Handle Vendor specific fields.
 	// Since GCPAnthropic follows the Anthropic API, we also check for Anthropic vendor fields.
-	if openAIReq.AnthropicVendorFields != nil {
-		anthVendorFields := openAIReq.AnthropicVendorFields
-		if anthVendorFields.Thinking != nil {
-			params.Thinking = *anthVendorFields.Thinking
-		}
+	if openAIReq.Thinking != nil {
+		params.Thinking = *getThinkingConfigParamUnion(openAIReq.Thinking)
 	}
 
 	return params, nil

@@ -36,23 +36,20 @@ type ChatCompletionRequest struct {
 
 	// Vendor-specific fields are added as inline fields
 	*GCPVertexAIVendorFields `json:",inline,omitempty"`
-	*AnthropicVendorFields   `json:",inline,omitempty"`
 }
 
 // GCPVertexAIVendorFields contains GCP Vertex AI (Gemini) vendor-specific fields.
 type GCPVertexAIVendorFields struct {
 	// GenerationConfig holds Gemini generation configuration options.
-	GenerationConfig *GCPVertexAIGenerationConfig `json:"generationConfig,omitempty"`
-}
+	// Currently only a subset of the options are supported.
+	//
+	// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/GenerationConfig
+	GenerationConfig *GCPVertexAIGenerationConfig `json:"generationConfig,omitzero"`
 
-// GCPVertexAIGenerationConfig represents Gemini generation configuration options.
-type GCPVertexAIGenerationConfig struct {
-	ThinkingConfig *genai.GenerationConfigThinkingConfig `json:"thinkingConfig,omitempty"`
-}
-
-// AnthropicVendorFields contains GCP Anthropic-specific fields.
-type AnthropicVendorFields struct {
-	Thinking *anthropic.ThinkingConfigParamUnion `json:"thinking,omitzero"`
+	// SafetySettings: Safety settings in the request to block unsafe content in the response.
+	//
+	// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/SafetySetting
+	SafetySettings []*genai.SafetySetting `json:"safetySettings,omitzero"`
 }
 ```
 

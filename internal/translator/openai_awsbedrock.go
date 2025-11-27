@@ -48,6 +48,29 @@ type openAIToAWSBedrockTranslatorV1ChatCompletion struct {
 	activeToolStream bool
 }
 
+func getAwsBedrockThinkingMap(tu *openai.ThinkingUnion) map[string]any {
+	if tu == nil {
+		return nil
+	}
+
+	resultMap := make(map[string]any)
+
+	if tu.OfEnabled != nil {
+		reasoningConfigMap := map[string]any{
+			"type":          "enabled",
+			"budget_tokens": tu.OfEnabled.BudgetTokens,
+		}
+		resultMap["thinking"] = reasoningConfigMap
+	} else if tu.OfDisabled != nil {
+		reasoningConfigMap := map[string]any{
+			"type": "disabled",
+		}
+		resultMap["thinking"] = reasoningConfigMap
+	}
+
+	return resultMap
+}
+
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody].
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
@@ -83,12 +106,12 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, ope
 		bedrockReq.InferenceConfig.StopSequences = openAIReq.Stop.OfStringArray
 	}
 
-	// Handle Anthropic vendor fields if present. Currently only supports thinking fields.
-	if openAIReq.AnthropicVendorFields != nil && openAIReq.Thinking != nil {
+	// Handle thinking config
+	if openAIReq.Thinking != nil {
 		if bedrockReq.AdditionalModelRequestFields == nil {
 			bedrockReq.AdditionalModelRequestFields = make(map[string]interface{})
 		}
-		bedrockReq.AdditionalModelRequestFields["thinking"] = openAIReq.Thinking
+		bedrockReq.AdditionalModelRequestFields = getAwsBedrockThinkingMap(openAIReq.Thinking)
 	}
 
 	// Convert Chat Completion messages.

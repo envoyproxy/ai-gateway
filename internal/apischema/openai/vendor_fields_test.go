@@ -16,7 +16,6 @@ import (
 	"github.com/openai/openai-go/v2/packages/param"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genai"
-	"k8s.io/utils/ptr"
 )
 
 func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
@@ -36,12 +35,6 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 						"content": "Hello, world!"
 					}
 				],
-				"generationConfig": {
-					"thinkingConfig": {
-						"includeThoughts": true,
-						"thinkingBudget": 1000
-					}
-				},
                 "safetySettings": [{
                     "category": "HARM_CATEGORY_HARASSMENT",
                     "threshold": "BLOCK_ONLY_HIGH"
@@ -58,65 +51,10 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 					},
 				},
 				GCPVertexAIVendorFields: &GCPVertexAIVendorFields{
-					GenerationConfig: &GCPVertexAIGenerationConfig{
-						ThinkingConfig: &genai.ThinkingConfig{
-							IncludeThoughts: true,
-							ThinkingBudget:  ptr.To(int32(1000)),
-						},
-					},
 					SafetySettings: []*genai.SafetySetting{
 						{
 							Category:  genai.HarmCategoryHarassment,
 							Threshold: genai.HarmBlockThresholdBlockOnlyHigh,
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "Request with multiple vendor fields",
-			jsonData: []byte(`{
-				"model": "claude-3",
-				"messages": [
-					{
-						"role": "user",
-						"content": "Multiple vendors test"
-					}
-				],
-				"generationConfig": {
-					"thinkingConfig": {
-						"includeThoughts": true,
-						"thinkingBudget": 1000
-					}
-				},
-				"thinking": {
-					"type": "enabled",
-					"budget_tokens": 1000
-				}
-			}`),
-			expected: &ChatCompletionRequest{
-				Model: "claude-3",
-				Messages: []ChatCompletionMessageParamUnion{
-					{
-						OfUser: &ChatCompletionUserMessageParam{
-							Role:    ChatMessageRoleUser,
-							Content: StringOrUserRoleContentUnion{Value: "Multiple vendors test"},
-						},
-					},
-				},
-				AnthropicVendorFields: &AnthropicVendorFields{
-					Thinking: &anthropic.ThinkingConfigParamUnion{
-						OfEnabled: &anthropic.ThinkingConfigEnabledParam{
-							BudgetTokens: 1000,
-							Type:         "enabled",
-						},
-					},
-				},
-				GCPVertexAIVendorFields: &GCPVertexAIVendorFields{
-					GenerationConfig: &GCPVertexAIGenerationConfig{
-						ThinkingConfig: &genai.ThinkingConfig{
-							IncludeThoughts: true,
-							ThinkingBudget:  ptr.To(int32(1000)),
 						},
 					},
 				},
@@ -248,45 +186,6 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 				GCPVertexAIVendorFields: &GCPVertexAIVendorFields{
 					GenerationConfig: &GCPVertexAIGenerationConfig{
 						MediaResolution: "high",
-					},
-				},
-			},
-		},
-		{
-			name: "Request with both detail and thinkingConfig fields",
-			jsonData: []byte(`{
-				"model": "gemini-1.5-pro",
-				"messages": [
-					{
-						"role": "user",
-						"content": "Test with both detail and thinking config"
-					}
-				],
-				"generationConfig": {
-					"media_resolution": "medium",
-					"thinkingConfig": {
-						"includeThoughts": true,
-						"thinkingBudget": 500
-					}
-				}
-			}`),
-			expected: &ChatCompletionRequest{
-				Model: "gemini-1.5-pro",
-				Messages: []ChatCompletionMessageParamUnion{
-					{
-						OfUser: &ChatCompletionUserMessageParam{
-							Role:    ChatMessageRoleUser,
-							Content: StringOrUserRoleContentUnion{Value: "Test with both detail and thinking config"},
-						},
-					},
-				},
-				GCPVertexAIVendorFields: &GCPVertexAIVendorFields{
-					GenerationConfig: &GCPVertexAIGenerationConfig{
-						MediaResolution: "medium",
-						ThinkingConfig: &genai.ThinkingConfig{
-							IncludeThoughts: true,
-							ThinkingBudget:  ptr.To(int32(500)),
-						},
 					},
 				},
 			},

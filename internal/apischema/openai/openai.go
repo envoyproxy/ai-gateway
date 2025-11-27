@@ -819,6 +819,71 @@ type WebSearchLocation struct {
 	Country string `json:"country,omitempty"`
 }
 
+// ThinkingConfig contains thinking config for reasoning models
+type ThinkingUnion struct {
+	OfEnabled  *ThinkingEnabled  `json:",omitzero,inline"`
+	OfDisabled *ThinkingDisabled `json:",omitzero,inline"`
+}
+
+type ThinkingEnabled struct {
+	// Determines how many tokens the model can use for its internal reasoning process.
+	// Larger budgets can enable more thorough analysis for complex problems, improving
+	// response quality.
+	BudgetTokens int64 `json:"budget_tokens"`
+	// This field can be elided, and will marshal its zero value as "enabled".
+	Type string `json:"type"`
+
+	// Optional. Indicates the thinking budget in tokens.
+	IncludeThoughts bool `json:"includeThoughts,omitempty"`
+}
+
+type ThinkingDisabled struct {
+	Type string `json:"type,"`
+}
+
+// MarshalJSON implements the json.Marshaler interface for ThinkingUnion.
+func (t *ThinkingUnion) MarshalJSON() ([]byte, error) {
+	if t.OfEnabled != nil {
+		return json.Marshal(t.OfEnabled)
+	}
+	if t.OfDisabled != nil {
+		return json.Marshal(t.OfDisabled)
+	}
+	// If both are nil, return an empty object or an error, depending on your desired behavior.
+	return []byte(`{}`), nil
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface for ThinkingUnion.
+func (t *ThinkingUnion) UnmarshalJSON(data []byte) error {
+	// Use a temporary struct to determine the type
+	typeResult := gjson.GetBytes(data, "type")
+	if !typeResult.Exists() {
+		return errors.New("thinking config does not have a type")
+	}
+
+	// Based on the 'type' field, unmarshal into the correct struct.
+	typeVal := typeResult.String()
+
+	switch typeVal {
+	case "enabled":
+		var enabled ThinkingEnabled
+		if err := json.Unmarshal(data, &enabled); err != nil {
+			return err
+		}
+		t.OfEnabled = &enabled
+	case "disabled":
+		var disabled ThinkingDisabled
+		if err := json.Unmarshal(data, &disabled); err != nil {
+			return err
+		}
+		t.OfDisabled = &disabled
+	default:
+		return fmt.Errorf("invalid thinking union type: %s", typeVal)
+	}
+
+	return nil
+}
+
 type ChatCompletionRequest struct {
 	// Messages: A list of messages comprising the conversation so far.
 	// Depending on the model you use, different message types (modalities) are supported,
@@ -982,9 +1047,6 @@ type ChatCompletionRequest struct {
 	// GCPVertexAIVendorFields configures the GCP VertexAI specific fields during schema translation.
 	*GCPVertexAIVendorFields `json:",inline,omitempty"`
 
-	// AnthropicVendorFields configures the Anthropic specific fields during schema translation.
-	*AnthropicVendorFields `json:",inline,omitempty"`
-
 	// GuidedChoice: The output will be exactly one of the choices.
 	GuidedChoice []string `json:"guided_choice,omitzero"`
 
@@ -993,6 +1055,9 @@ type ChatCompletionRequest struct {
 
 	// GuidedJSON: The output will follow the JSON schema.
 	GuidedJSON json.RawMessage `json:"guided_json,omitzero"`
+
+	// Thinking: The thinking config for reasoning models
+	Thinking *ThinkingUnion `json:"thinking,omitzero"`
 }
 
 type StreamOptions struct {
@@ -1578,21 +1643,8 @@ type GCPVertexAIVendorFields struct {
 
 // GCPVertexAIGenerationConfig represents Gemini generation configuration options.
 type GCPVertexAIGenerationConfig struct {
-	// ThinkingConfig holds Gemini thinking configuration options.
-	//
-	// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/GenerationConfig#ThinkingConfig
-	ThinkingConfig *genai.ThinkingConfig `json:"thinkingConfig,omitzero"`
-
 	// MediaResolution is to set global media resolution in gemini models: https://ai.google.dev/api/caching#MediaResolution
 	MediaResolution genai.MediaResolution `json:"media_resolution,omitempty"`
-}
-
-// AnthropicVendorFields contains Anthropic vendor-specific fields.
-type AnthropicVendorFields struct {
-	// Thinking holds Anthropic thinking configuration options.
-	//
-	// https://docs.anthropic.com/en/api/messages#body-thinking
-	Thinking *anthropic.ThinkingConfigParamUnion `json:"thinking,omitzero"`
 }
 
 // ReasoningContentUnion content regarding the reasoning that is carried out by the model.
