@@ -217,8 +217,6 @@ stringData:
       schema:
         name: OpenAI
         version: v1
-    metadataNamespace: io.envoy.ai_gateway
-    modelNameHeaderKey: x-ai-eg-model
     models:
     - CreatedAt: "2025-05-23T00:00:00Z"
       Name: gpt-4o-mini
