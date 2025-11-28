@@ -680,7 +680,7 @@ func TestHandleToolCallRequest_UnknownBackend(t *testing.T) {
 	params := &mcp.CallToolParams{Name: "unknown-backend__unknown-tool"}
 	rr := httptest.NewRecorder()
 
-	err := proxy.handleToolCallRequest(t.Context(), s, rr, &jsonrpc.Request{}, params, nil)
+	err := proxy.handleToolCallRequest(t.Context(), s, rr, &jsonrpc.Request{}, params, nil, nil)
 	require.Error(t, err)
 
 	require.Equal(t, http.StatusNotFound, rr.Code)
@@ -710,7 +710,7 @@ func TestHandleToolCallRequest_BackendError(t *testing.T) {
 	params := &mcp.CallToolParams{Name: "backend1__test-tool"}
 	rr := httptest.NewRecorder()
 
-	err := proxy.handleToolCallRequest(t.Context(), s, rr, &jsonrpc.Request{}, params, nil)
+	err := proxy.handleToolCallRequest(t.Context(), s, rr, &jsonrpc.Request{}, params, nil, nil)
 	require.Error(t, err)
 
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
