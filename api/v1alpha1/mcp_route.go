@@ -192,6 +192,11 @@ type MCPRouteSecurityPolicy struct {
 	//
 	// +optional
 	ExtAuth *egv1a1.ExtAuth `json:"extAuth,omitempty"`
+
+	// Authorization defines the configuration for the MCP spec compatible authorization.
+	//
+	// +optional
+	Authorization *MCPRouteAuthorization `json:"authorization,omitempty"`
 }
 
 // MCPRouteOAuth defines a MCP spec compatible OAuth authentication configuration for a MCPRoute.
@@ -226,6 +231,99 @@ type MCPRouteOAuth struct {
 	// +kubebuilder:validation:Required
 	ProtectedResourceMetadata ProtectedResourceMetadata `json:"protectedResourceMetadata"`
 }
+
+// MCPRouteAuthorization defines the authorization configuration for a MCPRoute.
+type MCPRouteAuthorization struct {
+	// Rules defines a list of authorization rules.
+	// These rules are evaluated in order, the first matching rule will be applied,
+	// and the rest will be skipped.
+	//
+	// +optional
+	Rules []MCPRouteAuthorizationRule `json:"rules,omitempty"`
+
+	// DefaultAction defines the default action to be taken if no rules match.
+	// If not specified, the default action is Deny.
+	// +optional
+	DefaultAction *egv1a1.AuthorizationAction `json:"defaultAction"`
+}
+
+// MCPRouteAuthorizationRule defines an authorization rule for MCPRoute based on the MCP authorization spec.
+// Reference: https://modelcontextprotocol.io/specification/draft/basic/authorization#scope-challenge-handling
+type MCPRouteAuthorizationRule struct {
+	// Source defines the authorization source for this rule.
+	//
+	// +kubebuilder:validation:Required
+	Source MCPAuthorizationSource `json:"source"`
+
+	// Target defines the authorization target for this rule.
+	//
+	// +kubebuilder:validation:Required
+	Target MCPAuthorizationTarget `json:"target"`
+
+	// Action defines whether to allow or deny requests that match this rule.
+	//
+	// +kubebuilder:validation:Required
+	Action egv1a1.AuthorizationAction `json:"action"`
+}
+
+type MCPAuthorizationTarget struct {
+	// Tools defines the list of tools this rule applies to.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=16
+	Tools []ToolCall `json:"tools"`
+}
+
+type MCPAuthorizationSource struct {
+	// JWTSource defines the JWT scopes required for this rule to match.
+	//
+	// +kubebuilder:validation:Optional
+	JWTSource *JWTSource `json:"jwtSource,omitempty"`
+}
+
+type JWTSource struct {
+	// Scopes defines the list of JWT scopes required for the rule.
+	// If multiple scopes are specified, all scopes must be present in the JWT for the rule to match.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=16
+	Scopes []egv1a1.JWTScope `json:"scopes"`
+
+	// TODO : we can add more fields in the future, e.g., audiences, claims, etc.
+}
+
+type ToolCall struct {
+	// BackendName is the name of the backend this tool belongs to.
+	//
+	// +kubebuilder:validation:Required
+	BackendName string `json:"backendName"`
+
+	// ToolName is the name of the tool.
+	//
+	// +kubebuilder:validation:Required
+	ToolName string `json:"toolName"`
+
+	// Arguments defines the arguments that must be present in the tool call for this rule to match.
+	//
+	// +optional
+	// Arguments map[string]string `json:"arguments,omitempty"`
+}
+
+/*type ToolArgument struct {
+	// Name is the name of the argument.
+	Name string `json:"name"`
+
+	// Value is the value of the argument.
+	Value ArgumentValues `json:"value"`
+}
+
+type ArgumentValues struct {
+	Include []string `json:"include,omitempty"`
+
+	IncludeRegex []string `json:"includeRegex,omitempty"`
+}*/
 
 // JWKS defines how to obtain JSON Web Key Sets (JWKS) either from a remote HTTP/HTTPS endpoint or from a local source.
 // +kubebuilder:validation:XValidation:rule="has(self.remoteJWKS) || has(self.localJWKS)", message="either remoteJWKS or localJWKS must be specified."
