@@ -19,6 +19,7 @@ type audioSpeechOpenAIToOpenAITranslator struct {
 	modelNameOverride internalapi.ModelNameOverride
 }
 
+// NewAudioSpeechOpenAIToOpenAITranslator implements AudioSpeechTranslator for OpenAI to OpenAI passthrough translation.
 func NewAudioSpeechOpenAIToOpenAITranslator(version string, modelNameOverride internalapi.ModelNameOverride) AudioSpeechTranslator {
 	return &audioSpeechOpenAIToOpenAITranslator{
 		version:           version,

@@ -19,6 +19,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
+// NewAudioSpeechOpenAIToGCPVertexAITranslator implements AudioSpeechTranslator for OpenAI to GCP Vertex AI translation.
 func NewAudioSpeechOpenAIToGCPVertexAITranslator(modelNameOverride internalapi.ModelNameOverride) AudioSpeechTranslator {
 	return &audioSpeechOpenAIToGCPVertexAITranslator{modelNameOverride: modelNameOverride}
 }
@@ -28,6 +29,7 @@ type audioSpeechOpenAIToGCPVertexAITranslator struct {
 	requestModel      internalapi.RequestModel
 	stream            bool
 	bufferedBody      []byte
+	streamDelimiter   []byte
 }
 
 func (a *audioSpeechOpenAIToGCPVertexAITranslator) RequestBody(_ []byte, body *openai.AudioSpeechRequest, _ bool) (
@@ -41,6 +43,15 @@ func (a *audioSpeechOpenAIToGCPVertexAITranslator) RequestBody(_ []byte, body *o
 	}
 
 	a.stream = true
+
+	if body.ResponseFormat != "" && body.ResponseFormat != "mp3" {
+		slog.Warn("ResponseFormat is not supported by Gemini TTS, defaulting to WAV output",
+			"requested_format", body.ResponseFormat)
+	}
+	if body.Speed != nil && *body.Speed != 0 && *body.Speed != 1.0 {
+		slog.Warn("Speed parameter is not supported by Gemini TTS, using default speed",
+			"requested_speed", *body.Speed)
+	}
 
 	voiceName := mapOpenAIVoiceToGemini(body.Voice)
 
@@ -144,44 +155,49 @@ func (a *audioSpeechOpenAIToGCPVertexAITranslator) handleStreamingResponse(body 
 }
 
 func (a *audioSpeechOpenAIToGCPVertexAITranslator) parseGeminiStreamingChunks(body io.Reader) ([]genai.GenerateContentResponse, error) {
-	bodyBytes, err := io.ReadAll(body)
+	var chunks []genai.GenerateContentResponse
+
+	bodyReader := io.MultiReader(bytes.NewReader(a.bufferedBody), body)
+	allData, err := io.ReadAll(bodyReader)
 	if err != nil {
-		return nil, fmt.Errorf("error reading body: %w", err)
+		return nil, fmt.Errorf("failed to read streaming body: %w", err)
 	}
 
-	a.bufferedBody = append(a.bufferedBody, bodyBytes...)
+	if len(allData) == 0 {
+		return chunks, nil
+	}
 
-	var chunks []genai.GenerateContentResponse
-	lines := bytes.Split(a.bufferedBody, []byte("\n"))
+	if a.streamDelimiter == nil {
+		a.streamDelimiter = detectSSEDelimiter(allData)
+	}
 
-	var remainingBuffer []byte
-	for i, line := range lines {
-		line = bytes.TrimSpace(line)
-		if len(line) == 0 {
+	var parts [][]byte
+	if a.streamDelimiter != nil {
+		parts = bytes.Split(allData, a.streamDelimiter)
+	} else {
+		parts = [][]byte{allData}
+	}
+
+	for _, part := range parts {
+		part = bytes.TrimSpace(part)
+		if len(part) == 0 {
 			continue
 		}
 
-		if bytes.HasPrefix(line, []byte("data: ")) {
-			line = bytes.TrimPrefix(line, []byte("data: "))
-		}
+		line := bytes.TrimPrefix(part, []byte("data: "))
 
 		if bytes.Equal(line, []byte("[DONE]")) {
 			continue
 		}
 
 		var chunk genai.GenerateContentResponse
-		if err := json.Unmarshal(line, &chunk); err != nil {
-			if i < len(lines)-1 {
-				return nil, fmt.Errorf("error unmarshaling chunk: %w", err)
-			}
-			remainingBuffer = line
-			continue
+		if err := json.Unmarshal(line, &chunk); err == nil {
+			chunks = append(chunks, chunk)
+			a.bufferedBody = nil
+		} else {
+			a.bufferedBody = line
 		}
-
-		chunks = append(chunks, chunk)
 	}
-
-	a.bufferedBody = remainingBuffer
 
 	return chunks, nil
 }

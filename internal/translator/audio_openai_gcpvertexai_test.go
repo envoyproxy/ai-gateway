@@ -101,6 +101,52 @@ func TestAudioSpeechOpenAIToGCPVertexAITranslator_RequestBody(t *testing.T) {
 		path := newHeaders[0].Value()
 		require.Contains(t, path, "publishers/")
 	})
+
+	t.Run("unsupported response format", func(t *testing.T) {
+		translator := NewAudioSpeechOpenAIToGCPVertexAITranslator("")
+
+		req := &openai.AudioSpeechRequest{
+			Model:          "tts-1",
+			Input:          "Test",
+			Voice:          "alloy",
+			ResponseFormat: "opus",
+		}
+
+		_, mutatedBody, err := translator.RequestBody(nil, req, false)
+		require.NoError(t, err)
+		require.NotNil(t, mutatedBody)
+	})
+
+	t.Run("unsupported speed parameter", func(t *testing.T) {
+		translator := NewAudioSpeechOpenAIToGCPVertexAITranslator("")
+		speed := 1.5
+		req := &openai.AudioSpeechRequest{
+			Model: "tts-1",
+			Input: "Test",
+			Voice: "alloy",
+			Speed: &speed,
+		}
+
+		_, mutatedBody, err := translator.RequestBody(nil, req, false)
+		require.NoError(t, err)
+		require.NotNil(t, mutatedBody)
+	})
+
+	t.Run("default format and speed no warning", func(t *testing.T) {
+		translator := NewAudioSpeechOpenAIToGCPVertexAITranslator("")
+		speed := 1.0
+		req := &openai.AudioSpeechRequest{
+			Model:          "tts-1",
+			Input:          "Test",
+			Voice:          "alloy",
+			ResponseFormat: "mp3",
+			Speed:          &speed,
+		}
+
+		_, mutatedBody, err := translator.RequestBody(nil, req, false)
+		require.NoError(t, err)
+		require.NotNil(t, mutatedBody)
+	})
 }
 
 func TestAudioSpeechOpenAIToGCPVertexAITranslator_ResponseHeaders(t *testing.T) {
@@ -310,7 +356,7 @@ func TestParseGeminiStreamingChunks(t *testing.T) {
 		translator := NewAudioSpeechOpenAIToGCPVertexAITranslator("")
 		impl := translator.(*audioSpeechOpenAIToGCPVertexAITranslator)
 
-		sseBody := []byte("data: [DONE]\n")
+		sseBody := []byte("data: [DONE]\n\n")
 
 		chunks, err := impl.parseGeminiStreamingChunks(bytes.NewReader(sseBody))
 		require.NoError(t, err)
@@ -327,6 +373,69 @@ func TestParseGeminiStreamingChunks(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, chunks)
 		require.NotEmpty(t, impl.bufferedBody)
+	})
+
+	t.Run("crlf delimiter", func(t *testing.T) {
+		translator := NewAudioSpeechOpenAIToGCPVertexAITranslator("")
+		impl := translator.(*audioSpeechOpenAIToGCPVertexAITranslator)
+
+		chunk1 := genai.GenerateContentResponse{
+			Candidates: []*genai.Candidate{{Content: &genai.Content{Parts: []*genai.Part{{Text: "test1"}}}}},
+		}
+		chunk2 := genai.GenerateContentResponse{
+			Candidates: []*genai.Candidate{{Content: &genai.Content{Parts: []*genai.Part{{Text: "test2"}}}}},
+		}
+
+		body1, _ := json.Marshal(chunk1)
+		body2, _ := json.Marshal(chunk2)
+		sseBody := []byte("data: " + string(body1) + "\r\n\r\ndata: " + string(body2) + "\r\n\r\n")
+
+		chunks, err := impl.parseGeminiStreamingChunks(bytes.NewReader(sseBody))
+		require.NoError(t, err)
+		require.Len(t, chunks, 2)
+		require.Equal(t, []byte("\r\n\r\n"), impl.streamDelimiter)
+	})
+
+	t.Run("cr delimiter", func(t *testing.T) {
+		translator := NewAudioSpeechOpenAIToGCPVertexAITranslator("")
+		impl := translator.(*audioSpeechOpenAIToGCPVertexAITranslator)
+
+		chunk := genai.GenerateContentResponse{
+			Candidates: []*genai.Candidate{{Content: &genai.Content{Parts: []*genai.Part{{Text: "test"}}}}},
+		}
+
+		chunkBody, _ := json.Marshal(chunk)
+		sseBody := []byte("data: " + string(chunkBody) + "\r\r")
+
+		chunks, err := impl.parseGeminiStreamingChunks(bytes.NewReader(sseBody))
+		require.NoError(t, err)
+		require.Len(t, chunks, 1)
+		require.Equal(t, []byte("\r\r"), impl.streamDelimiter)
+	})
+
+	t.Run("empty body", func(t *testing.T) {
+		translator := NewAudioSpeechOpenAIToGCPVertexAITranslator("")
+		impl := translator.(*audioSpeechOpenAIToGCPVertexAITranslator)
+
+		chunks, err := impl.parseGeminiStreamingChunks(bytes.NewReader([]byte{}))
+		require.NoError(t, err)
+		require.Empty(t, chunks)
+	})
+
+	t.Run("buffered data combined with new input", func(t *testing.T) {
+		translator := NewAudioSpeechOpenAIToGCPVertexAITranslator("")
+		impl := translator.(*audioSpeechOpenAIToGCPVertexAITranslator)
+
+		chunk := genai.GenerateContentResponse{
+			Candidates: []*genai.Candidate{{Content: &genai.Content{Parts: []*genai.Part{{Text: "test"}}}}},
+		}
+		chunkBody, _ := json.Marshal(chunk)
+
+		impl.bufferedBody = []byte("data: ")
+
+		chunks, err := impl.parseGeminiStreamingChunks(bytes.NewReader(append(chunkBody, []byte("\n\n")...)))
+		require.NoError(t, err)
+		require.Len(t, chunks, 1)
 	})
 }
 

@@ -11,4 +11,5 @@ type AudioSpeechRequest struct {
 	Voice          string   `json:"voice"`
 	ResponseFormat string   `json:"response_format,omitempty"`
 	Speed          *float64 `json:"speed,omitempty"`
+	Stream         bool     `json:"stream,omitempty"`
 }

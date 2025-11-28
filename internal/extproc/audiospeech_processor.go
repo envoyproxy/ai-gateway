@@ -24,6 +24,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/translator"
+	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 )
 
 func AudioSpeechProcessorFactory(f metrics.AudioSpeechMetricsFactory) ProcessorFactory {
@@ -118,6 +119,7 @@ type audioSpeechProcessorUpstreamFilter struct {
 	onRetry                bool
 	costs                  translator.LLMTokenUsage
 	metrics                metrics.AudioSpeechMetrics
+	stream                 bool
 }
 
 func (a *audioSpeechProcessorUpstreamFilter) selectTranslator(out filterapi.VersionedAPISchema) error {
@@ -249,11 +251,20 @@ func (a *audioSpeechProcessorUpstreamFilter) ProcessResponseHeaders(ctx context.
 		}
 	}
 
+	// Enable streaming mode if the request was a streaming request and the response status is 200.
+	// This ensures audio chunks are forwarded to the client immediately as they arrive from upstream,
+	// rather than buffering the entire response.
+	var mode *extprocv3http.ProcessingMode
+	status := a.responseHeaders[":status"]
+	if a.stream && status == "200" {
+		mode = &extprocv3http.ProcessingMode{ResponseBodyMode: extprocv3http.ProcessingMode_STREAMED}
+	}
+
 	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{
 		ResponseHeaders: &extprocv3.HeadersResponse{
 			Response: &extprocv3.CommonResponse{HeaderMutation: headerMutation},
 		},
-	}}, nil
+	}, ModeOverride: mode}, nil
 }
 
 func (a *audioSpeechProcessorUpstreamFilter) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
@@ -387,6 +398,7 @@ func (a *audioSpeechProcessorUpstreamFilter) SetBackend(ctx context.Context, b *
 		a.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = a.modelNameOverride
 		a.metrics.SetRequestModel(a.modelNameOverride)
 	}
+	a.stream = a.originalRequestBody.Stream
 	rp.upstreamFilter = a
 	return
 }
