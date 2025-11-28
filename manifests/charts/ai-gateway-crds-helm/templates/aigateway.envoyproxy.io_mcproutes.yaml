@@ -603,6 +603,13 @@ spec:
                             MCPRouteAuthorizationRule defines an authorization rule for MCPRoute based on the MCP authorization spec.
                             Reference: https://modelcontextprotocol.io/specification/draft/basic/authorization#scope-challenge-handling
                           properties:
+                            action:
+                              description: Action defines whether to allow or deny
+                                requests that match this rule.
+                              enum:
+                              - Allow
+                              - Deny
+                              type: string
                             source:
                               description: Source defines the authorization source
                                 for this rule.
@@ -653,6 +660,7 @@ spec:
                               - tools
                               type: object
                           required:
+                          - action
                           - source
                           - target
                           type: object

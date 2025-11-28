@@ -259,11 +259,17 @@ type MCPRouteAuthorizationRule struct {
 	//
 	// +kubebuilder:validation:Required
 	Target MCPAuthorizationTarget `json:"target"`
+
+	// Action defines whether to allow or deny requests that match this rule.
+	//
+	// +kubebuilder:validation:Required
+	Action egv1a1.AuthorizationAction `json:"action"`
 }
 
 type MCPAuthorizationTarget struct {
 	// Tools defines the list of tools this rule applies to.
 	//
+	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=16
 	Tools []ToolCall `json:"tools"`
@@ -280,6 +286,7 @@ type JWTSource struct {
 	// Scopes defines the list of JWT scopes required for the rule.
 	// If multiple scopes are specified, all scopes must be present in the JWT for the rule to match.
 	//
+	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=16
 	Scopes []egv1a1.JWTScope `json:"scopes"`
