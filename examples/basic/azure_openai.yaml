@@ -3,6 +3,29 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
+# Azure OpenAI Authentication Examples
+#
+# This file demonstrates two authentication methods for Azure OpenAI:
+# 1. Client Secret (default, uncommented)
+# 2. Managed Identity / Workload Identity (commented alternatives)
+#
+# For AKS Workload Identity setup, configure the service account during Helm install:
+#
+#   helm upgrade --install ai-gateway-controller envoyproxy/ai-gateway-helm \
+#     --set controller.serviceAccount.annotations."azure\.workload\.identity/client-id"="<your-managed-identity-client-id>" \
+#     --set controller.serviceAccount.annotations."azure\.workload\.identity/tenant-id"="<your-tenant-id>" \
+#     --create-namespace \
+#     -n envoy-ai-gateway-system
+#
+#   # Add the required label:
+#   kubectl label serviceaccount ai-gateway-controller \
+#     azure.workload.identity/use=true \
+#     -n envoy-ai-gateway-system
+#
+# For complete Azure infrastructure setup, see:
+# https://learn.microsoft.com/en-us/azure/aks/workload-identity-deploy-cluster
+
+---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute
 metadata:
@@ -39,6 +62,7 @@ spec:
     kind: Backend
     group: gateway.envoyproxy.io
 ---
+# Option 1: Client Secret Authentication (Default)
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
 metadata:
@@ -56,6 +80,26 @@ spec:
     clientSecretRef:
       name: envoy-ai-gateway-basic-azure-client-secret
       namespace: default
+---
+# Option 2: Managed Identity / Workload Identity Authentication
+# Uncomment this section and comment out Option 1 to use Managed Identity.
+#
+# For AKS Workload Identity: Configure service account annotations during Helm install
+# (see header comment above for helm upgrade command)
+#
+# apiVersion: aigateway.envoyproxy.io/v1alpha1
+# kind: BackendSecurityPolicy
+# metadata:
+#   name: envoy-ai-gateway-basic-azure-credentials
+#   namespace: default
+# spec:
+#   targetRefs:
+#     - group: aigateway.envoyproxy.io
+#       kind: AIServiceBackend
+#       name: envoy-ai-gateway-basic-azure
+#   type: AzureCredentials
+#   azureCredentials:
+#     useManagedIdentity: true
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
