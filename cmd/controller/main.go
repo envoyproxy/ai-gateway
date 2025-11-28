@@ -48,7 +48,6 @@ type flags struct {
 	tlsKeyName                     string
 	caBundleName                   string
 	metricsRequestHeaderAttributes string
-	metricsRequestHeaderLabels     string // DEPRECATED: use metricsRequestHeaderAttributes instead.
 	spanRequestHeaderAttributes    string
 	endpointPrefixes               string
 	rootPrefix                     string
@@ -145,11 +144,6 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		"",
 		"Comma-separated key-value pairs for mapping HTTP request headers to Otel metric attributes. Format: x-team-id:team.id,x-user-id:user.id.",
 	)
-	metricsRequestHeaderLabels := fs.String(
-		"metricsRequestHeaderLabels",
-		"",
-		"DEPRECATED: Use --metricsRequestHeaderAttributes instead. This flag will be removed in a future release.",
-	)
 	spanRequestHeaderAttributes := fs.String(
 		"spanRequestHeaderAttributes",
 		"",
@@ -206,11 +200,6 @@ func parseAndValidateFlags(args []string) (flags, error) {
 	if err := fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
 		return flags{}, err
-	}
-
-	// Handle deprecated flag: fall back to metricsRequestHeaderLabels if metricsRequestHeaderAttributes is not set.
-	if *metricsRequestHeaderAttributes == "" && *metricsRequestHeaderLabels != "" {
-		*metricsRequestHeaderAttributes = *metricsRequestHeaderLabels
 	}
 
 	var slogLevel slog.Level
@@ -281,7 +270,6 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		tlsKeyName:                     *tlsKeyName,
 		caBundleName:                   *caBundleName,
 		metricsRequestHeaderAttributes: *metricsRequestHeaderAttributes,
-		metricsRequestHeaderLabels:     *metricsRequestHeaderLabels,
 		spanRequestHeaderAttributes:    *spanRequestHeaderAttributes,
 		endpointPrefixes:               *endpointPrefixes,
 		rootPrefix:                     *rootPrefix,
@@ -302,11 +290,6 @@ func main() {
 	if err != nil {
 		setupLog.Error(err, "failed to parse and validate flags")
 		os.Exit(1)
-	}
-
-	// Warn if deprecated flag is being used.
-	if parsedFlags.metricsRequestHeaderLabels != "" {
-		setupLog.Info("The --metricsRequestHeaderLabels flag is deprecated and will be removed in a future release. Please use --metricsRequestHeaderAttributes instead.")
 	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: parsedFlags.logLevel})))

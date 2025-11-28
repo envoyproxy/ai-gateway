@@ -75,28 +75,6 @@ func Test_parseAndValidateFlags(t *testing.T) {
 		}
 	})
 
-	t.Run("deprecated metricsRequestHeaderLabels flag", func(t *testing.T) {
-		args := []string{
-			"--metricsRequestHeaderLabels=x-team-id:team.id",
-		}
-		f, err := parseAndValidateFlags(args)
-		require.NoError(t, err)
-		// Verify the deprecated flag value is used for metricsRequestHeaderAttributes
-		require.Equal(t, "x-team-id:team.id", f.metricsRequestHeaderAttributes)
-		require.Equal(t, "x-team-id:team.id", f.metricsRequestHeaderLabels)
-	})
-
-	t.Run("new flag takes precedence over deprecated flag", func(t *testing.T) {
-		args := []string{
-			"--metricsRequestHeaderLabels=x-old:old.value",
-			"--metricsRequestHeaderAttributes=x-new:new.value",
-		}
-		f, err := parseAndValidateFlags(args)
-		require.NoError(t, err)
-		// Verify the new flag takes precedence
-		require.Equal(t, "x-new:new.value", f.metricsRequestHeaderAttributes)
-	})
-
 	t.Run("invalid flags", func(t *testing.T) {
 		for _, tc := range []struct {
 			name   string

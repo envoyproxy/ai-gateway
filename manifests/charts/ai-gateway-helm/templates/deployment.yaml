@@ -49,8 +49,8 @@ spec:
             {{- if .Values.extProc.imagePullSecrets }}
             - --extProcImagePullSecrets={{ include "ai-gateway-helm.extProc.imagePullSecretsString" . }}
             {{- end }}
-            {{- if or .Values.controller.metricsRequestHeaderAttributes .Values.controller.metricsRequestHeaderLabels }}
-            - --metricsRequestHeaderAttributes={{ .Values.controller.metricsRequestHeaderAttributes | default .Values.controller.metricsRequestHeaderLabels }}
+            {{- if .Values.controller.metricsRequestHeaderAttributes }}
+            - --metricsRequestHeaderAttributes={{ .Values.controller.metricsRequestHeaderAttributes }}
             {{- end }}
             {{- if .Values.controller.spanRequestHeaderAttributes }}
             - --spanRequestHeaderAttributes={{ .Values.controller.spanRequestHeaderAttributes }}

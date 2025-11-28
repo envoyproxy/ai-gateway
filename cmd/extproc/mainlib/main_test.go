@@ -124,17 +124,6 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				addr:       ":1063",
 				logLevel:   slog.LevelInfo,
 			},
-			{
-				name: "with deprecated metricsRequestHeaderLabels flag",
-				args: []string{
-					"-configPath", "/path/to/config.yaml",
-					"-metricsRequestHeaderLabels", "x-team-id:team.id",
-				},
-				configPath: "/path/to/config.yaml",
-				rootPrefix: "/",
-				addr:       ":1063",
-				logLevel:   slog.LevelInfo,
-			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				flags, err := parseAndValidateFlags(tc.args)

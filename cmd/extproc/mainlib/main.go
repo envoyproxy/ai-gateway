@@ -41,7 +41,6 @@ type extProcFlags struct {
 	logLevel                       slog.Level    // log level for the external processor.
 	adminPort                      int           // HTTP port for the admin server (metrics and health).
 	metricsRequestHeaderAttributes string        // comma-separated key-value pairs for mapping HTTP request headers to otel metric attributes.
-	metricsRequestHeaderLabels     string        // DEPRECATED: use metricsRequestHeaderAttributes instead.
 	spanRequestHeaderAttributes    string        // comma-separated key-value pairs for mapping HTTP request headers to otel span attributes.
 	mcpAddr                        string        // address for the MCP proxy server which can be either tcp or unix domain socket.
 	mcpSessionEncryptionSeed       string        // Seed for deriving the key for encrypting MCP sessions.
@@ -84,11 +83,6 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		"",
 		"Comma-separated key-value pairs for mapping HTTP request headers to otel metric attributes. Format: x-team-id:team.id,x-user-id:user.id.",
 	)
-	fs.StringVar(&flags.metricsRequestHeaderLabels,
-		"metricsRequestHeaderLabels",
-		"",
-		"DEPRECATED: Use -metricsRequestHeaderAttributes instead. This flag will be removed in a future release.",
-	)
 	fs.StringVar(&flags.spanRequestHeaderAttributes,
 		"spanRequestHeaderAttributes",
 		"",
@@ -122,11 +116,6 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 
 	if err := fs.Parse(args); err != nil {
 		return extProcFlags{}, fmt.Errorf("failed to parse extProcFlags: %w", err)
-	}
-
-	// Handle deprecated flag: fall back to metricsRequestHeaderLabels if metricsRequestHeaderAttributes is not set.
-	if flags.metricsRequestHeaderAttributes == "" && flags.metricsRequestHeaderLabels != "" {
-		flags.metricsRequestHeaderAttributes = flags.metricsRequestHeaderLabels
 	}
 
 	if flags.configPath == "" {
@@ -171,11 +160,6 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	}
 
 	l := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: flags.logLevel}))
-
-	// Warn if deprecated flag is being used.
-	if flags.metricsRequestHeaderLabels != "" {
-		l.Warn("The -metricsRequestHeaderLabels flag is deprecated and will be removed in a future release. Please use -metricsRequestHeaderAttributes instead.")
-	}
 
 	l.Info("starting external processor",
 		slog.String("version", version.Parse()),

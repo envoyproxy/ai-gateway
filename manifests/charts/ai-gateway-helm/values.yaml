@@ -54,9 +54,6 @@ controller:
   nameOverride: ""
   fullnameOverride: "ai-gateway-controller"
 
-  # DEPRECATED: metricsRequestHeaderLabels will be removed after v0.4. Use metricsRequestHeaderAttributes instead.
-  metricsRequestHeaderLabels: ""
-
   # Comma-separated key-value pairs for mapping HTTP request headers to Otel metric attributes.
   # Format: "header1:label1,header2:label2"
   # Example: "x-team-id:team.id,x-user-id:user.id"
