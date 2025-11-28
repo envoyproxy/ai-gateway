@@ -176,6 +176,37 @@ func TestAuthorizeRequest(t *testing.T) {
 			expectAllowed: true,
 		},
 		{
+			name: "no rules falls back to default deny",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: ptr.To(filterapi.AuthorizationActionDeny),
+			},
+			header:        "",
+			backendName:   "backend1",
+			toolName:      "tool1",
+			expectAllowed: false,
+		},
+		{
+			name: "no bearer token not allowed when rules exist",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: ptr.To(filterapi.AuthorizationActionAllow),
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Source: filterapi.MCPAuthorizationSource{
+							JWTSource: filterapi.JWTSource{Scopes: []string{"read"}},
+						},
+						Target: filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{BackendName: "backend1", ToolName: "tool1"}},
+						},
+						Action: filterapi.AuthorizationActionDeny,
+					},
+				},
+			},
+			header:        "",
+			backendName:   "backend1",
+			toolName:      "tool1",
+			expectAllowed: false,
+		},
+		{
 			name: "multiple rules, first match applied - denied",
 			auth: &filterapi.MCPRouteAuthorization{
 				DefaultAction: ptr.To(filterapi.AuthorizationActionDeny),
