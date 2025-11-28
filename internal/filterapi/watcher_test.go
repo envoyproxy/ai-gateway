@@ -86,7 +86,6 @@ func testStartConfigWatcher(t *testing.T) {
 	cfg := `
 schema:
   name: OpenAI
-modelNameHeaderKey: x-ai-eg-model
 backends:
 - name: kserve
   weight: 1
@@ -117,7 +116,6 @@ backends:
 	cfg = `
 schema:
   name: OpenAI
-modelNameHeaderKey: x-ai-eg-model
 backends:
 - name: openai
   schema:
