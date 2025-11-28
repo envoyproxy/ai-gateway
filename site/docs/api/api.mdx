@@ -404,8 +404,11 @@ MCPRouteList contains a list of MCPRoute.
 - [HTTPBodyMutation](#httpbodymutation)
 - [HTTPHeaderMutation](#httpheadermutation)
 - [JWKS](#jwks)
+- [JWTSource](#jwtsource)
 - [LLMRequestCost](#llmrequestcost)
 - [LLMRequestCostType](#llmrequestcosttype)
+- [MCPAuthorizationSource](#mcpauthorizationsource)
+- [MCPAuthorizationTarget](#mcpauthorizationtarget)
 - [MCPBackendAPIKey](#mcpbackendapikey)
 - [MCPBackendSecurityPolicy](#mcpbackendsecuritypolicy)
 - [MCPRouteAuthorization](#mcprouteauthorization)
@@ -417,6 +420,7 @@ MCPRouteList contains a list of MCPRoute.
 - [MCPRouteStatus](#mcproutestatus)
 - [MCPToolFilter](#mcptoolfilter)
 - [ProtectedResourceMetadata](#protectedresourcemetadata)
+- [ToolCall](#toolcall)
 - [VersionedAPISchema](#versionedapischema)
 
 ### Type Definitions
@@ -1445,6 +1449,27 @@ JWKS defines how to obtain JSON Web Key Sets (JWKS) either from a remote HTTP/HT
 />
 
 
+#### JWTSource
+
+
+
+**Appears in:**
+- [MCPAuthorizationSource](#mcpauthorizationsource)
+
+
+
+##### Fields
+
+
+
+<ApiField
+  name="scopes"
+  type="JWTScope array"
+  required="true"
+  description="Scopes defines the list of JWT scopes required for the rule.<br />If multiple scopes are specified, all scopes must be present in the JWT for the rule to match."
+/>
+
+
 #### LLMRequestCost
 
 
@@ -1515,6 +1540,48 @@ LLMRequestCostType specifies the type of the LLMRequestCost.
   required="false"
   description="LLMRequestCostTypeCEL is for calculating the cost using the CEL expression.<br />"
 />
+#### MCPAuthorizationSource
+
+
+
+**Appears in:**
+- [MCPRouteAuthorizationRule](#mcprouteauthorizationrule)
+
+
+
+##### Fields
+
+
+
+<ApiField
+  name="jwtSource"
+  type="[JWTSource](#jwtsource)"
+  required="true"
+  description="JWTSource defines the JWT scopes required for this rule to match."
+/>
+
+
+#### MCPAuthorizationTarget
+
+
+
+**Appears in:**
+- [MCPRouteAuthorizationRule](#mcprouteauthorizationrule)
+
+
+
+##### Fields
+
+
+
+<ApiField
+  name="tools"
+  type="[ToolCall](#toolcall) array"
+  required="true"
+  description="Tools defines the list of tools this rule applies to."
+/>
+
+
 #### MCPBackendAPIKey
 
 
@@ -1608,15 +1675,15 @@ Reference: https://modelcontextprotocol.io/specification/draft/basic/authorizati
 
 
 <ApiField
-  name="tools"
-  type="string array"
+  name="source"
+  type="[MCPAuthorizationSource](#mcpauthorizationsource)"
   required="true"
-  description="Tools defines the list of tool names this rule applies to. The name must be a fully qualified tool name including the backend name.<br />For example, `mcp-backend-name__tool-name`.<br />If a request calls a tool in this list, this rule is considered a match.<br />If this request has a valid JWT token that contains all the required scopes defined in this rule,<br />the request will be allowed. If not, the request will be denied."
+  description="Source defines the authorization source for this rule."
 /><ApiField
-  name="scopes"
-  type="JWTScope array"
+  name="target"
+  type="[MCPAuthorizationTarget](#mcpauthorizationtarget)"
   required="true"
-  description="Scopes defines the list of JWT scopes required for the rule.<br />If multiple scopes are specified, all scopes must be present in the JWT for the rule to match."
+  description="Target defines the authorization target for this rule."
 />
 
 
@@ -1887,6 +1954,32 @@ References:
   type="string"
   required="false"
   description="ResourcePolicyURI is a URL that points to the resource server's policy document."
+/>
+
+
+#### ToolCall
+
+
+
+**Appears in:**
+- [MCPAuthorizationTarget](#mcpauthorizationtarget)
+
+
+
+##### Fields
+
+
+
+<ApiField
+  name="backendName"
+  type="string"
+  required="true"
+  description="BackendName is the name of the backend this tool belongs to."
+/><ApiField
+  name="toolName"
+  type="string"
+  required="true"
+  description="ToolName is the name of the tool."
 />
 
 

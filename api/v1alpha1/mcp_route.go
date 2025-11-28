@@ -267,8 +267,6 @@ type MCPAuthorizationTarget struct {
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=16
 	Tools []ToolCall `json:"tools"`
-
-	// TODO: we can add resources, prompts, etc. in the future.
 }
 
 type MCPAuthorizationSource struct {
@@ -286,21 +284,27 @@ type JWTSource struct {
 	// +kubebuilder:validation:MaxItems=16
 	Scopes []egv1a1.JWTScope `json:"scopes"`
 
-	//TODO : we can add more fields in the future, e.g., audiences, claims, etc.
+	// TODO : we can add more fields in the future, e.g., audiences, claims, etc.
 }
 
 type ToolCall struct {
-	// Tools defines the list of tool names this rule applies to. The name must be a fully qualified tool name including the backend name.
-	// For example, "mcp-backend-name__tool-name".
-	Name string `json:"name"`
+	// BackendName is the name of the backend this tool belongs to.
+	//
+	// +kubebuilder:validation:Required
+	BackendName string `json:"backendName"`
+
+	// ToolName is the name of the tool.
+	//
+	// +kubebuilder:validation:Required
+	ToolName string `json:"toolName"`
 
 	// Arguments defines the arguments that must be present in the tool call for this rule to match.
 	//
 	// +optional
-	Arguments map[string]string `json:"arguments,omitempty"`
+	// Arguments map[string]string `json:"arguments,omitempty"`
 }
 
-type ToolArgument struct {
+/*type ToolArgument struct {
 	// Name is the name of the argument.
 	Name string `json:"name"`
 
@@ -312,7 +316,7 @@ type ArgumentValues struct {
 	Include []string `json:"include,omitempty"`
 
 	IncludeRegex []string `json:"includeRegex,omitempty"`
-}
+}*/
 
 // JWKS defines how to obtain JSON Web Key Sets (JWKS) either from a remote HTTP/HTTPS endpoint or from a local source.
 // +kubebuilder:validation:XValidation:rule="has(self.remoteJWKS) || has(self.localJWKS)", message="either remoteJWKS or localJWKS must be specified."
