@@ -112,7 +112,7 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 	fs.StringVar(&flags.mcpAddr, "mcpAddr", "", "the address (TCP or UDS) for the MCP proxy server, such as :1063 or unix:///tmp/ext_proc.sock. Optional.")
 	fs.StringVar(&flags.mcpSessionEncryptionSeed,
 		"mcpSessionEncryptionSeed",
-		"mcp",
+		"default-insecure-seed",
 		"Arbitrary string seed used to derive the MCP session encryption key. "+
 			"Do not include commas as they are used as separators. You can optionally pass \"fallback\" seed after the first one to allow for key rotation. "+
 			"For example: \"new-seed,old-seed-for-fallback\". The fallback seed is only used for decryption.",
