@@ -14,9 +14,10 @@ Extension fields enable you to:
 - Use advanced backend-specific features not available in the OpenAI API
 - Use unified configuration fields that work across multiple providers not available in the OpenAI API
 
-Extension fields are specified as inline fields in your OpenAI request and are applied after the standard OpenAI-to-backend translation.
+### Vendor Extension Fields
+Vendor specific fields are specified as inline fields in your OpenAI request and are applied after the standard OpenAI-to-backend translation.
 
-### Unified Thinking Configuration
+### Unified Extension Fields
 
 For thinking/reasoning capabilities, you can use a unified `thinking` field that automatically translates to the correct backend-specific format:
 
@@ -34,29 +35,23 @@ The following backends support vendor-specific fields:
 
 - **API Schema Name**: `GCPVertexAI`
 - **Supported Fields**:
-  - `generationConfig.thinkingConfig`: Configure thinking process for reasoning models. [Gemini Docs](https://cloud.google.com/vertex-ai/docs/reference/rest/v1/GenerationConfig#ThinkingConfig)
-- **Unified Fields**:
-  - `thinking`: Unified thinking configuration that automatically translates to `generationConfig.thinkingConfig`
+  - `thinking`: Configure thinking process for reasoning models that automatically tanslates to `generationConfig.thinkingConfig`. [Gemini Docs](https://cloud.google.com/vertex-ai/docs/reference/rest/v1/GenerationConfig#ThinkingConfig)
 
 ### GCP Anthropic
 
 - **API Schema Name**: `GCPAnthropic`
 - **Supported Fields**:
   - `thinking`: Configuration for enabling Claude's extended thinking. [Anthropic Docs](https://docs.anthropic.com/en/api/messages#body-thinking)
-- **Unified Fields**:
-  - `thinking`: Works directly with this provider (no translation needed)
 
 ### AWS Bedrock
 
 - **API Schema Name**: `AWSBedrock`
 - **Supported Fields**:
   - `thinking`: Configuration for enabling Anthropic Claude's extended thinking. [AWS Docs](https://docs.aws.amazon.com/bedrock/latest/userguide/claude-messages-extended-thinking.html)
-- **Unified Fields**:
-  - `thinking`: Works directly with this provider (no translation needed)
 
 ## Usage
 
-Add vendor-specific fields directly as inline fields in your OpenAI request:
+Add extension fields directly as inline fields in your OpenAI request:
 
 ### Using Unified Thinking Configuration
 
@@ -85,7 +80,7 @@ This configuration will work with any provider that supports thinking, automatic
 
 ### Using Provider-Specific Fields
 
-For more fine-grained control or provider-specific features, you can use the vendor-specific fields:
+For more fine-grained control or provider-specific features, you can use the vendor-specific fields like `safetySettings` for gemini models:
 
 ```json
 {
@@ -110,15 +105,6 @@ For more fine-grained control or provider-specific features, you can use the ven
 Vendor fields override translated fields when conflicts occur.
 
 When using unified thinking configuration, the `thinking` field takes precedence over any provider-specific thinking configurations.
-
-### Benefits of Unified Configuration
-
-The unified thinking configuration provides several advantages:
-
-1. **Provider Agnostic**: Write once, run on multiple providers
-2. **Simplified Migration**: Easy to switch between providers without changing request format
-3. **Consistent Interface**: Same field names and structure across all providers
-4. **Automatic Translation**: The gateway handles provider-specific format conversion
 
 ### Unsupported Fields/Backends
 
