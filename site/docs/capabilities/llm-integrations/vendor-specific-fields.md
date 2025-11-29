@@ -29,13 +29,14 @@ This unified approach allows you to write provider-agnostic requests while still
 
 ## Supported Backends
 
-The following backends support vendor-specific fields:
+The following backends support extension fields:
 
 ### GCP Vertex AI (Gemini)
 
 - **API Schema Name**: `GCPVertexAI`
 - **Supported Fields**:
-  - `thinking`: Configure thinking process for reasoning models that automatically tanslates to `generationConfig.thinkingConfig`. [Gemini Docs](https://cloud.google.com/vertex-ai/docs/reference/rest/v1/GenerationConfig#ThinkingConfig)
+  - `safetySettings`: Configure the safety settings for gemini models that translates to `SafetySetting`. [Gemini Docs](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/multimodal/configure-safety-filters)
+  - `thinking`: Configure thinking process for reasoning models that automatically translates to `generationConfig.thinkingConfig`. [Gemini Docs](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/thinking)
 
 ### GCP Anthropic
 
