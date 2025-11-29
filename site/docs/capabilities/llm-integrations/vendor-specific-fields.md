@@ -15,6 +15,7 @@ Extension fields enable you to:
 - Use unified configuration fields that work across multiple providers not available in the OpenAI API
 
 ### Vendor Extension Fields
+
 Vendor specific fields are specified as inline fields in your OpenAI request and are applied after the standard OpenAI-to-backend translation.
 
 ### Unified Extension Fields
@@ -94,10 +95,12 @@ For more fine-grained control or provider-specific features, you can use the ven
   ],
   "temperature": 0.7,
   "max_tokens": 2000,
-  "safetySettings": [{
-    "category": "HARM_CATEGORY_HARASSMENT",
-    "threshold": "BLOCK_ONLY_HIGH"
-  }]
+  "safetySettings": [
+    {
+      "category": "HARM_CATEGORY_HARASSMENT",
+      "threshold": "BLOCK_ONLY_HIGH"
+    }
+  ]
 }
 ```
 
