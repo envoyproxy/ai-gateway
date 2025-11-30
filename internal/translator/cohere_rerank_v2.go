@@ -125,10 +125,10 @@ func (t *cohereToCohereTranslatorV2Rerank) ResponseError(respHeaders map[string]
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to marshal error body: %w", err)
 		}
-		newHeaders = []internalapi.Header{
-			{pathHeaderName, t.path},
-			{contentTypeHeaderName, jsonContentType},
-		}
+		newHeaders = append(newHeaders,
+			internalapi.Header{contentTypeHeaderName, jsonContentType},
+			internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(newBody))},
+		)
 	}
 	return
 }
