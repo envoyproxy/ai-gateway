@@ -61,7 +61,7 @@ The simplest way to enable thinking capabilities across all providers is to use 
 
 ```json
 {
-  "model": "claude-3-5-sonnet",
+  "model": "gemini-2.5-pro",
   "messages": [
     {
       "role": "user",
