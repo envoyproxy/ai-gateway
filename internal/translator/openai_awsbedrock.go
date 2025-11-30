@@ -562,7 +562,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseError(respHeaders
 ) {
 	statusCode := respHeaders[statusHeaderName]
 	var openaiError openai.Error
-	if v, ok := respHeaders[contentTypeHeaderName]; ok && v == jsonContentType {
+	if v, ok := respHeaders[contentTypeHeaderName]; ok && strings.Contains(v, jsonContentType) {
 		var bedrockError awsbedrock.BedrockException
 		if err = json.NewDecoder(body).Decode(&bedrockError); err != nil {
 			return nil, nil, fmt.Errorf("failed to unmarshal error body: %w", err)

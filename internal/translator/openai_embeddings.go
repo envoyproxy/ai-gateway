@@ -11,6 +11,7 @@ import (
 	"io"
 	"path"
 	"strconv"
+	"strings"
 
 	"github.com/tidwall/sjson"
 
@@ -94,7 +95,7 @@ func (o *openAIToOpenAITranslatorV1Embedding) ResponseError(respHeaders map[stri
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	statusCode := respHeaders[statusHeaderName]
-	if v, ok := respHeaders[contentTypeHeaderName]; ok && v != jsonContentType {
+	if v, ok := respHeaders[contentTypeHeaderName]; ok && !strings.Contains(v, jsonContentType) {
 		var openaiError openai.Error
 		buf, err := io.ReadAll(body)
 		if err != nil {
