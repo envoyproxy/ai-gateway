@@ -86,6 +86,8 @@ spec:
             {{- end }}
             - --cacheSyncTimeout={{ .Values.controller.watch.cacheSyncTimeout }}
             - --watchNamespaces={{ join "," .Values.controller.watch.namespaces }}
+            - --mcpSessionEncryptionSeed={{ .Values.controller.mcp.sessionEncryptionSeed }}
+            - --mcpSessionEncryptionIterations={{ .Values.controller.mcp.sessionEncryptionIterations }}
           livenessProbe:
             grpc:
               port: 1063

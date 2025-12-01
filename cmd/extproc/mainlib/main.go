@@ -44,6 +44,7 @@ type extProcFlags struct {
 	spanRequestHeaderAttributes    string        // comma-separated key-value pairs for mapping HTTP request headers to otel span attributes.
 	mcpAddr                        string        // address for the MCP proxy server which can be either tcp or unix domain socket.
 	mcpSessionEncryptionSeed       string        // Seed for deriving the key for encrypting MCP sessions.
+	mcpSessionEncryptionIterations int           // Number of iterations to use for PBKDF2 key derivation for MCP session encryption.
 	mcpWriteTimeout                time.Duration // the maximum duration before timing out writes of the MCP response.
 	// rootPrefix is the root prefix for all the processors.
 	rootPrefix string
@@ -111,6 +112,8 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 			"Do not include commas as they are used as separators. You can optionally pass \"fallback\" seed after the first one to allow for key rotation. "+
 			"For example: \"new-seed,old-seed-for-fallback\". The fallback seed is only used for decryption.",
 	)
+	fs.IntVar(&flags.mcpSessionEncryptionIterations, "mcpSessionEncryptionIterations", 100_000,
+		"Number of iterations to use for PBKDF2 key derivation for MCP session encryption.")
 	fs.DurationVar(&flags.mcpWriteTimeout, "mcpWriteTimeout", 120*time.Second,
 		"The maximum duration before timing out writes of the MCP response")
 
@@ -270,7 +273,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	var mcpServer *http.Server
 	if mcpLis != nil {
 		seed, fallbackSeed, _ := strings.Cut(flags.mcpSessionEncryptionSeed, ",")
-		mcpSessionCrypto := mcpproxy.DefaultSessionCrypto(seed, fallbackSeed)
+		mcpSessionCrypto := mcpproxy.DefaultSessionCrypto(seed, fallbackSeed, flags.mcpSessionEncryptionIterations)
 		var mcpProxyMux *http.ServeMux
 		var mcpProxyConfig *mcpproxy.ProxyConfig
 		mcpProxyConfig, mcpProxyMux, err = mcpproxy.NewMCPProxy(l.With("component", "mcp-proxy"), mcpMetrics,

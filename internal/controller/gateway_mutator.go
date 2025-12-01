@@ -48,6 +48,8 @@ type gatewayMutator struct {
 
 	// mcpSessionEncryptionSeed is the seed used to derive the encryption key for MCP session data.
 	mcpSessionEncryptionSeed string
+	// mcpSessionEncryptionIterations is the number of iterations to use for PBKDF2 key derivation for MCP session data.
+	mcpSessionEncryptionIterations int
 
 	// Whether to run the extProc container as a sidecar (true) as a normal container (false).
 	// This is essentially a workaround for old k8s versions, and we can remove this in the future.
@@ -58,7 +60,7 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel,
 	udsPath, metricsRequestHeaderAttributes, spanRequestHeaderAttributes, rootPrefix, endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets string, extProcMaxRecvMsgSize int,
 	extProcAsSideCar bool,
-	mcpSessionEncryptionSeed string,
+	mcpSessionEncryptionSeed string, mcpSessionEncryptionIterations int,
 ) *gatewayMutator {
 	var parsedEnvVars []corev1.EnvVar
 	if extProcExtraEnvVars != "" {
@@ -97,6 +99,7 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 		extProcMaxRecvMsgSize:          extProcMaxRecvMsgSize,
 		extProcAsSideCar:               extProcAsSideCar,
 		mcpSessionEncryptionSeed:       mcpSessionEncryptionSeed,
+		mcpSessionEncryptionIterations: mcpSessionEncryptionIterations,
 	}
 }
 
@@ -130,8 +133,11 @@ func (g *gatewayMutator) buildExtProcArgs(filterConfigFullPath string, extProcAd
 		"-maxRecvMsgSize", fmt.Sprintf("%d", g.extProcMaxRecvMsgSize),
 	}
 	if needMCP {
-		args = append(args, "-mcpAddr", ":"+strconv.Itoa(internalapi.MCPProxyPort),
-			"-mcpSessionEncryptionSeed", g.mcpSessionEncryptionSeed)
+		args = append(args,
+			"-mcpAddr", ":"+strconv.Itoa(internalapi.MCPProxyPort),
+			"-mcpSessionEncryptionSeed", g.mcpSessionEncryptionSeed,
+			"-mcpSessionEncryptionIterations", strconv.Itoa(g.mcpSessionEncryptionIterations),
+		)
 	}
 
 	// Add metrics header label mapping if configured.

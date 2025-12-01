@@ -196,12 +196,18 @@ controller:
   # resources (configuration) is big. Defaults to 4MB.
   # maxRecvMsgSize: "4194304"
 
-  # mcpSessionEncryptionSeed is an arbitrary string seed used to derive the MCP session encryption key.
-  #	Do not include commas as they are used as separators. You can optionally pass "fallback" seed after the first one to allow for key rotation.
-  #	For example: "new-seed,old-seed-for-fallback". The fallback seed is only used for decryption.
-  #
-  # This value should be set to a secure random string in production environments instead of the default below.
-  mcpSessionEncryptionSeed: "default-insecure-seed"
+  # MCP Proxy settings
+  mcp:
+    # sessionEncryptionSeed is an arbitrary string seed used to derive the MCP session encryption key.
+    #	Do not include commas as they are used as separators. You can optionally pass "fallback" seed after the first one to allow for key rotation.
+    #	For example: "new-seed,old-seed-for-fallback". The fallback seed is only used for decryption.
+    #
+    # This value should be set to a secure random string in production environments instead of the default below.
+    sessionEncryptionSeed: "default-insecure-seed"
+    # Number of PBKDF2 iterations to use for deriving the MCP session encryption key.
+    # A higher number increases security but also increases CPU usage and time consumed during key derivation.
+    # The default value of 100,000 is a reasonable balance for most production environments.
+    sessionEncryptionIterations: 100000
 
 # Configuration for the Envoy Gateway component that AI Gateway relies on to program Envoy.
 envoyGateway:

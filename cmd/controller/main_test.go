@@ -56,6 +56,8 @@ func Test_parseAndValidateFlags(t *testing.T) {
 					tc.dash + "maxRecvMsgSize=33554432",
 					tc.dash + "watchNamespaces=default,envoy-ai-gateway-system",
 					tc.dash + "cacheSyncTimeout=5m",
+					tc.dash + "mcpSessionEncryptionSeed=my-seed,my-fallback-seed",
+					tc.dash + "mcpSessionEncryptionIterations=100",
 				}
 				f, err := parseAndValidateFlags(args)
 				require.Equal(t, "debug", f.extProcLogLevel)
@@ -70,6 +72,8 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				require.Equal(t, 32*1024*1024, f.maxRecvMsgSize)
 				require.Equal(t, []string{"default", "envoy-ai-gateway-system"}, f.watchNamespaces)
 				require.Equal(t, 5*time.Minute, f.cacheSyncTimeout)
+				require.Equal(t, "my-seed,my-fallback-seed", f.mcpSessionEncryptionSeed)
+				require.Equal(t, 100, f.mcpSessionEncryptionIterations)
 				require.NoError(t, err)
 			})
 		}
@@ -125,6 +129,16 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				name:   "invalid endpointPrefixes - missing colon",
 				flags:  []string{"--endpointPrefixes=openai"},
 				expErr: "invalid endpoint prefixes",
+			},
+			{
+				name:   "invalid mcp session encryption iterations",
+				flags:  []string{"--mcpSessionEncryptionIterations=invalid"},
+				expErr: `invalid value "invalid" for flag -mcpSessionEncryptionIterations: parse erro`,
+			},
+			{
+				name:   "negative mcp session encryption iterations",
+				flags:  []string{"--mcpSessionEncryptionIterations=-1"},
+				expErr: "mcp session encryption iterations must be positive: -1",
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {

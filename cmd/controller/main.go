@@ -56,10 +56,11 @@ type flags struct {
 	// extProcMaxRecvMsgSize is the maximum message size in bytes that the gRPC server can receive.
 	extProcMaxRecvMsgSize int
 	// maxRecvMsgSize is the maximum message size in bytes that the gRPC extension server can receive.
-	maxRecvMsgSize           int
-	mcpSessionEncryptionSeed string
-	watchNamespaces          []string
-	cacheSyncTimeout         time.Duration
+	maxRecvMsgSize                 int
+	mcpSessionEncryptionSeed       string
+	mcpSessionEncryptionIterations int
+	watchNamespaces                []string
+	cacheSyncTimeout               time.Duration
 }
 
 // parsePullPolicy parses string into a k8s PullPolicy.
@@ -191,11 +192,13 @@ func parseAndValidateFlags(args []string) (flags, error) {
 	)
 	mcpSessionEncryptionSeed := fs.String(
 		"mcpSessionEncryptionSeed",
-		"seed",
+		"default-insecure-seed",
 		"Arbitrary string seed used to derive the MCP session encryption key. "+
 			"Do not include commas as they are used as separators. You can optionally pass \"fallback\" seed after the first one to allow for key rotation. "+
 			"For example: \"new-seed,old-seed-for-fallback\". The fallback seed is only used for decryption.",
 	)
+	mcpSessionEncryptionIterations := fs.Int("mcpSessionEncryptionIterations", 100_000,
+		"Number of iterations to use for PBKDF2 key derivation for MCP session encryption.")
 
 	if err := fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
@@ -258,6 +261,10 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		}
 	}
 
+	if *mcpSessionEncryptionIterations <= 0 {
+		return flags{}, fmt.Errorf("mcp session encryption iterations must be positive: %d", *mcpSessionEncryptionIterations)
+	}
+
 	return flags{
 		extProcLogLevel:                *extProcLogLevelPtr,
 		extProcImage:                   *extProcImagePtr,
@@ -280,6 +287,7 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		watchNamespaces:                parseWatchNamespaces(*watchNamespaces),
 		cacheSyncTimeout:               *cacheSyncTimeout,
 		mcpSessionEncryptionSeed:       *mcpSessionEncryptionSeed,
+		mcpSessionEncryptionIterations: *mcpSessionEncryptionIterations,
 	}, nil
 }
 
@@ -365,6 +373,7 @@ func main() {
 		ExtProcImagePullSecrets:        parsedFlags.extProcImagePullSecrets,
 		ExtProcMaxRecvMsgSize:          parsedFlags.extProcMaxRecvMsgSize,
 		MCPSessionEncryptionSeed:       parsedFlags.mcpSessionEncryptionSeed,
+		MCPSessionEncryptionIterations: parsedFlags.mcpSessionEncryptionIterations,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}
