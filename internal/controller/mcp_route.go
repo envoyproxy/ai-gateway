@@ -9,6 +9,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"strings"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -251,23 +252,20 @@ func (c *MCPRouteController) newMainHTTPRoute(dst *gwapiv1.HTTPRoute, mcpRoute *
 
 	// Add OAuth metadata endpoints if authentication is configured.
 	if mcpRoute.Spec.SecurityPolicy != nil && mcpRoute.Spec.SecurityPolicy.OAuth != nil {
-		// Extract path component for RFC 8414 compliant well-known URI construction
-		// RFC 8414: https://datatracker.ietf.org/doc/html/rfc8414#section-3.1
-		// Pattern: "/.well-known/oauth-authorization-server" + issuer_path_component.
-
 		// OAuth 2.0 Protected Resource Metadata (RFC 9728) - serve in both root and suffix paths because different clients
 		// may expect either.
 		// TODO: only one MCPRoute targeting the same listener can be configured with OAuth due to the fixed well-known path.
 		httpRouteFilterName := oauthProtectedResourceMetadataName(mcpRoute.Name)
 
-		// Root path: /.well-known/oauth-protected-resource.
-		protectedResourceRootRule := gwapiv1.HTTPRouteRule{
-			Name: ptr.To(gwapiv1.SectionName("oauth-protected-resource-metadata-root")),
+		// Suffix path: /.well-known/oauth-protected-resource{pathPrefix} (if pathPrefix exists).
+		protectedResourceSuffixPath := fmt.Sprintf("/.well-known/oauth-protected-resource%s", strings.TrimSuffix(servingPath, "/"))
+		protectedResourceSuffixRule := gwapiv1.HTTPRouteRule{
+			Name: ptr.To(gwapiv1.SectionName("oauth-protected-resource-metadata")),
 			Matches: []gwapiv1.HTTPRouteMatch{
 				{
 					Path: &gwapiv1.HTTPPathMatch{
 						Type:  ptr.To(gwapiv1.PathMatchExact),
-						Value: ptr.To(oauthWellKnownProtectedResourceMetadataPath),
+						Value: ptr.To(protectedResourceSuffixPath),
 					},
 				},
 			},
@@ -282,47 +280,22 @@ func (c *MCPRouteController) newMainHTTPRoute(dst *gwapiv1.HTTPRoute, mcpRoute *
 				},
 			},
 		}
-		rules = append(rules, protectedResourceRootRule)
+		rules = append(rules, protectedResourceSuffixRule)
 
-		// Suffix path: /.well-known/oauth-protected-resource{pathPrefix} (if pathPrefix exists).
-		if servingPath != "/" {
-			protectedResourceSuffixPath := fmt.Sprintf("/.well-known/oauth-protected-resource%s", servingPath)
-			protectedResourceSuffixRule := gwapiv1.HTTPRouteRule{
-				Name: ptr.To(gwapiv1.SectionName("oauth-protected-resource-metadata-suffix")),
-				Matches: []gwapiv1.HTTPRouteMatch{
-					{
-						Path: &gwapiv1.HTTPPathMatch{
-							Type:  ptr.To(gwapiv1.PathMatchExact),
-							Value: ptr.To(protectedResourceSuffixPath),
-						},
-					},
-				},
-				Filters: []gwapiv1.HTTPRouteFilter{
-					{
-						Type: gwapiv1.HTTPRouteFilterExtensionRef,
-						ExtensionRef: &gwapiv1.LocalObjectReference{
-							Group: gwapiv1.Group("gateway.envoyproxy.io"),
-							Kind:  gwapiv1.Kind("HTTPRouteFilter"),
-							Name:  gwapiv1.ObjectName(httpRouteFilterName),
-						},
-					},
-				},
-			}
-			rules = append(rules, protectedResourceSuffixRule)
-		}
-
-		// OAuth 2.0 Authorization Server Metadata (RFC 8414) - serve in both root and suffix paths because different clients
-		// may expect either.
+		// Extract path component for RFC 8414 compliant well-known URI construction
+		// RFC 8414: https://datatracker.ietf.org/doc/html/rfc8414#section-3.1
+		// Pattern: "/.well-known/oauth-authorization-server" + issuer_path_component.
 		authServerMeataFilterName := oauthAuthServerMetadataFilterName(mcpRoute.Name)
 
-		// Root path: /.well-known/oauth-authorization-server.
-		authServerRootRule := gwapiv1.HTTPRouteRule{
-			Name: ptr.To(gwapiv1.SectionName("oauth-authorization-server-metadata-root")),
+		// Suffix path: /.well-known/oauth-authorization-server{pathPrefix} (if pathPrefix exists).
+		authServerSuffixPath := fmt.Sprintf("%s%s", oauthWellKnownAuthorizationServerMetadataPath, strings.TrimSuffix(servingPath, "/"))
+		authServerSuffixRule := gwapiv1.HTTPRouteRule{
+			Name: ptr.To(gwapiv1.SectionName("oauth-authorization-server-metadata")),
 			Matches: []gwapiv1.HTTPRouteMatch{
 				{
 					Path: &gwapiv1.HTTPPathMatch{
 						Type:  ptr.To(gwapiv1.PathMatchExact),
-						Value: ptr.To(oauthWellKnownAuthorizationServerMetadataPath),
+						Value: ptr.To(authServerSuffixPath),
 					},
 				},
 			},
@@ -337,14 +310,15 @@ func (c *MCPRouteController) newMainHTTPRoute(dst *gwapiv1.HTTPRoute, mcpRoute *
 				},
 			},
 		}
-		// Root path: /.well-known/openid-configuration.
-		authServerRootOIDCRule := gwapiv1.HTTPRouteRule{
-			Name: ptr.To(gwapiv1.SectionName("oauth-authorization-server-metadata-root-oidc")),
+		// Suffix path: /.well-known/openid-configuration{pathPrefix} (if pathPrefix exists).
+		authServerSuffixPathOIDC := fmt.Sprintf("%s%s", oidcWellKnownMetadataPath, servingPath)
+		authServerSuffixRuleOIDC := gwapiv1.HTTPRouteRule{
+			Name: ptr.To(gwapiv1.SectionName("oauth-authorization-server-metadata-oidc")),
 			Matches: []gwapiv1.HTTPRouteMatch{
 				{
 					Path: &gwapiv1.HTTPPathMatch{
 						Type:  ptr.To(gwapiv1.PathMatchExact),
-						Value: ptr.To(oidcWellKnownMetadataPath),
+						Value: ptr.To(authServerSuffixPathOIDC),
 					},
 				},
 			},
@@ -359,57 +333,7 @@ func (c *MCPRouteController) newMainHTTPRoute(dst *gwapiv1.HTTPRoute, mcpRoute *
 				},
 			},
 		}
-		rules = append(rules, authServerRootRule, authServerRootOIDCRule)
-
-		if servingPath != "/" {
-			// Suffix path: /.well-known/oauth-authorization-server{pathPrefix} (if pathPrefix exists).
-			authServerSuffixPath := fmt.Sprintf("%s%s", oauthWellKnownAuthorizationServerMetadataPath, servingPath)
-			authServerSuffixRule := gwapiv1.HTTPRouteRule{
-				Name: ptr.To(gwapiv1.SectionName("oauth-authorization-server-metadata-suffix")),
-				Matches: []gwapiv1.HTTPRouteMatch{
-					{
-						Path: &gwapiv1.HTTPPathMatch{
-							Type:  ptr.To(gwapiv1.PathMatchExact),
-							Value: ptr.To(authServerSuffixPath),
-						},
-					},
-				},
-				Filters: []gwapiv1.HTTPRouteFilter{
-					{
-						Type: gwapiv1.HTTPRouteFilterExtensionRef,
-						ExtensionRef: &gwapiv1.LocalObjectReference{
-							Group: gwapiv1.Group("gateway.envoyproxy.io"),
-							Kind:  gwapiv1.Kind("HTTPRouteFilter"),
-							Name:  gwapiv1.ObjectName(authServerMeataFilterName),
-						},
-					},
-				},
-			}
-			// Suffix path: /.well-known/openid-configuration{pathPrefix} (if pathPrefix exists).
-			authServerSuffixPathOIDC := fmt.Sprintf("%s%s", oidcWellKnownMetadataPath, servingPath)
-			authServerSuffixRuleOIDC := gwapiv1.HTTPRouteRule{
-				Name: ptr.To(gwapiv1.SectionName("oauth-authorization-server-metadata-suffix-oidc")),
-				Matches: []gwapiv1.HTTPRouteMatch{
-					{
-						Path: &gwapiv1.HTTPPathMatch{
-							Type:  ptr.To(gwapiv1.PathMatchExact),
-							Value: ptr.To(authServerSuffixPathOIDC),
-						},
-					},
-				},
-				Filters: []gwapiv1.HTTPRouteFilter{
-					{
-						Type: gwapiv1.HTTPRouteFilterExtensionRef,
-						ExtensionRef: &gwapiv1.LocalObjectReference{
-							Group: gwapiv1.Group("gateway.envoyproxy.io"),
-							Kind:  gwapiv1.Kind("HTTPRouteFilter"),
-							Name:  gwapiv1.ObjectName(authServerMeataFilterName),
-						},
-					},
-				},
-			}
-			rules = append(rules, authServerSuffixRule, authServerSuffixRuleOIDC)
-		}
+		rules = append(rules, authServerSuffixRule, authServerSuffixRuleOIDC)
 	}
 	dst.Spec.Rules = rules
 

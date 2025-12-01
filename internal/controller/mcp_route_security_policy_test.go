@@ -596,7 +596,7 @@ func Test_buildWWWAuthenticateHeaderValue(t *testing.T) {
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "https://api.example.com/mcp/v1",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource"`,
+			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp/v1"`,
 		},
 		{
 			name: "https URL without path",
@@ -610,14 +610,14 @@ func Test_buildWWWAuthenticateHeaderValue(t *testing.T) {
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "https://api.example.com/mcp/",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource"`,
+			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp"`,
 		},
 		{
 			name: "http URL with path",
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "http://api.example.com/mcp/v1",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="http://api.example.com/.well-known/oauth-protected-resource"`,
+			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="http://api.example.com/.well-known/oauth-protected-resource/mcp/v1"`,
 		},
 		{
 			name: "http URL without path",
@@ -631,28 +631,28 @@ func Test_buildWWWAuthenticateHeaderValue(t *testing.T) {
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "http://api.example.com/mcp/",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="http://api.example.com/.well-known/oauth-protected-resource"`,
+			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="http://api.example.com/.well-known/oauth-protected-resource/mcp"`,
 		},
 		{
 			name: "URL with port number https",
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "https://api.example.com:8080/mcp",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com:8080/.well-known/oauth-protected-resource"`,
+			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com:8080/.well-known/oauth-protected-resource/mcp"`,
 		},
 		{
 			name: "URL with port number http",
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "http://api.example.com:8080/mcp",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="http://api.example.com:8080/.well-known/oauth-protected-resource"`,
+			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="http://api.example.com:8080/.well-known/oauth-protected-resource/mcp"`,
 		},
 		{
 			name: "complex path with multiple segments",
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "https://api.example.com/v1/mcp/endpoint",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource"`,
+			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/v1/mcp/endpoint"`,
 		},
 	}
 

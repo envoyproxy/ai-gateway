@@ -213,106 +213,84 @@ func TestMCPRouteOAuth(t *testing.T) {
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
-		// Should get 200 OK (metadata endpoint should be publicly accessible).
-		require.Equal(t, http.StatusOK, resp.StatusCode)
-
-		// Should return JSON content.
-		contentType = resp.Header.Get("Content-Type")
-		require.Contains(t, contentType, "application/json", "Metadata endpoint should return JSON")
-
-		var body1 []byte
-		body1, err = io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, body, body1, "Metadata response with and without suffix should be identical")
+		// We can't expose these resource at the root, because there may be multiple MCP routes with different OAuth settings, so we need
+		// to rely on clients properly implementing the spec and using this value returned in the header.
+		// We validate that we are not exposing this route.
+		require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 
-	t.Run("OAuth authorization server metadata endpoint", func(t *testing.T) {
-		// Test the OAuth authorization server metadata endpoint (2025-03-26 spec).
-		authServerURLWithSuffix := fmt.Sprintf("%s/.well-known/oauth-authorization-server/mcp", fwd.Address())
-
-		req, err := http.NewRequestWithContext(t.Context(), "GET", authServerURLWithSuffix, nil)
-		require.NoError(t, err)
-
-		resp, err := httpClient.Do(req)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		// Should get 200 OK (metadata endpoint should be publicly accessible).
-		require.Equal(t, http.StatusOK, resp.StatusCode)
-
-		// Should return JSON content.
-		contentType := resp.Header.Get("Content-Type")
-		require.Contains(t, contentType, "application/json", "Auth server metadata endpoint should return JSON")
-
-		// Parse and validate the JSON response structure.
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-
-		var authServerMetadata map[string]interface{}
-		err = json.Unmarshal(body, &authServerMetadata)
-		require.NoError(t, err)
-
-		// Validate required fields are present according to RFC 8414.
-		require.Contains(t, authServerMetadata, "issuer", "Metadata should contain issuer field")
-		require.Contains(t, authServerMetadata, "authorization_endpoint", "Metadata should contain authorization_endpoint field")
-		require.Contains(t, authServerMetadata, "token_endpoint", "Metadata should contain token_endpoint field")
-		require.Contains(t, authServerMetadata, "jwks_uri", "Metadata should contain jwks_uri field")
-		require.Contains(t, authServerMetadata, "scopes_supported", "Metadata should contain scopes_supported field")
-		require.Contains(t, authServerMetadata, "response_types_supported", "Metadata should contain response_types_supported field")
-		require.Contains(t, authServerMetadata, "grant_types_supported", "Metadata should contain grant_types_supported field")
-		require.Contains(t, authServerMetadata, "code_challenge_methods_supported", "Metadata should contain code_challenge_methods_supported field")
-
-		// Validate field values match expected configuration.
-		require.Equal(t, "https://auth-server.example.com", authServerMetadata["issuer"], "Issuer should match configured authorization server")
-		require.Contains(t, authServerMetadata["authorization_endpoint"], "https://auth-server.example.com", "Authorization endpoint should be correctly constructed")
-		require.Contains(t, authServerMetadata["token_endpoint"], "https://auth-server.example.com", "Token endpoint should be correctly constructed")
-		require.Contains(t, authServerMetadata["jwks_uri"], "https://auth-server.example.com", "JWKS URI should be correctly constructed")
-
-		// Validate supported features for OAuth 2.1/PKCE.
-		responseTypes, ok := authServerMetadata["response_types_supported"].([]interface{})
-		require.True(t, ok, "response_types_supported should be an array")
-		require.Contains(t, responseTypes, "code", "Should support authorization code flow")
-
-		grantTypes, ok := authServerMetadata["grant_types_supported"].([]interface{})
-		require.True(t, ok, "grant_types_supported should be an array")
-		require.Contains(t, grantTypes, "authorization_code", "Should support authorization_code grant type")
-
-		codeChallengeMethods, ok := authServerMetadata["code_challenge_methods_supported"].([]interface{})
-		require.True(t, ok, "code_challenge_methods_supported should be an array")
-		require.Contains(t, codeChallengeMethods, "S256", "Should support S256 PKCE method")
-
-		scopes, ok := authServerMetadata["scopes_supported"].([]interface{})
-		require.True(t, ok, "scopes_supported should be an array")
-		expectedScopes := []string{"echo", "sum", "countdown"}
-		for _, expectedScope := range expectedScopes {
-			require.Contains(t, scopes, expectedScope, "Should contain expected scope: %s", expectedScope)
-		}
-
+	t.Run("OAuth authorization server metadata endpoints", func(t *testing.T) {
 		// Test the rest of endpoints
-		for name, wellknownEndpoint := range map[string]string{
-			"oauth-auth-server-root": fmt.Sprintf("%s/.well-known/oauth-authorization-server", fwd.Address()),
-			"oidc-root":              fmt.Sprintf("%s/.well-known/openid-configuration", fwd.Address()),
-			"oidc-with-path":         fmt.Sprintf("%s/.well-known/openid-configuration/mcp", fwd.Address()),
+		// We can't expose these resource at the root, because there may be multiple MCP routes with different OAuth settings, so we need
+		// to rely on clients properly implementing the spec and using this value returned in the header.
+		// We validate that each endpoint is properly exposed
+		for wellknownEndpoint, wantStatusCode := range map[string]int{
+			fmt.Sprintf("%s/.well-known/oauth-authorization-server/mcp", fwd.Address()): http.StatusOK,
+			fmt.Sprintf("%s/.well-known/oauth-authorization-server", fwd.Address()):     http.StatusNotFound,
+			fmt.Sprintf("%s/.well-known/openid-configuration/mcp", fwd.Address()):       http.StatusOK,
+			fmt.Sprintf("%s/.well-known/openid-configuration", fwd.Address()):           http.StatusNotFound,
 		} {
-			t.Run(name, func(t *testing.T) {
-				req, err = http.NewRequestWithContext(t.Context(), "GET", wellknownEndpoint, nil)
+			t.Run(wellknownEndpoint, func(t *testing.T) {
+				req, err := http.NewRequestWithContext(t.Context(), "GET", wellknownEndpoint, nil)
 				require.NoError(t, err)
 
-				resp, err = httpClient.Do(req)
+				resp, err := httpClient.Do(req)
 				require.NoError(t, err)
 				t.Cleanup(func() { _ = resp.Body.Close() })
 
-				// Should get 200 OK (metadata endpoint should be publicly accessible).
-				require.Equal(t, http.StatusOK, resp.StatusCode)
+				// Verify that the status code is the desired one
+				require.Equal(t, wantStatusCode, resp.StatusCode)
+				if wantStatusCode != http.StatusOK {
+					return
+				}
 
 				// Should return JSON content.
-				contentType = resp.Header.Get("Content-Type")
-				require.Contains(t, contentType, "application/json", "Metadata endpoint should return JSON")
+				contentType := resp.Header.Get("Content-Type")
+				require.Contains(t, contentType, "application/json", "Auth server metadata endpoint should return JSON")
 
-				var body1 []byte
-				body1, err = io.ReadAll(resp.Body)
+				// Parse and validate the JSON response structure.
+				body, err := io.ReadAll(resp.Body)
 				require.NoError(t, err)
-				require.Equal(t, body, body1, "Metadata response with and without suffix should be identical")
+
+				var authServerMetadata map[string]interface{}
+				err = json.Unmarshal(body, &authServerMetadata)
+				require.NoError(t, err)
+
+				// Validate required fields are present according to RFC 8414.
+				require.Contains(t, authServerMetadata, "issuer", "Metadata should contain issuer field")
+				require.Contains(t, authServerMetadata, "authorization_endpoint", "Metadata should contain authorization_endpoint field")
+				require.Contains(t, authServerMetadata, "token_endpoint", "Metadata should contain token_endpoint field")
+				require.Contains(t, authServerMetadata, "jwks_uri", "Metadata should contain jwks_uri field")
+				require.Contains(t, authServerMetadata, "scopes_supported", "Metadata should contain scopes_supported field")
+				require.Contains(t, authServerMetadata, "response_types_supported", "Metadata should contain response_types_supported field")
+				require.Contains(t, authServerMetadata, "grant_types_supported", "Metadata should contain grant_types_supported field")
+				require.Contains(t, authServerMetadata, "code_challenge_methods_supported", "Metadata should contain code_challenge_methods_supported field")
+
+				// Validate field values match expected configuration.
+				require.Equal(t, "https://auth-server.example.com", authServerMetadata["issuer"], "Issuer should match configured authorization server")
+				require.Contains(t, authServerMetadata["authorization_endpoint"], "https://auth-server.example.com", "Authorization endpoint should be correctly constructed")
+				require.Contains(t, authServerMetadata["token_endpoint"], "https://auth-server.example.com", "Token endpoint should be correctly constructed")
+				require.Contains(t, authServerMetadata["jwks_uri"], "https://auth-server.example.com", "JWKS URI should be correctly constructed")
+
+				// Validate supported features for OAuth 2.1/PKCE.
+				responseTypes, ok := authServerMetadata["response_types_supported"].([]interface{})
+				require.True(t, ok, "response_types_supported should be an array")
+				require.Contains(t, responseTypes, "code", "Should support authorization code flow")
+
+				grantTypes, ok := authServerMetadata["grant_types_supported"].([]interface{})
+				require.True(t, ok, "grant_types_supported should be an array")
+				require.Contains(t, grantTypes, "authorization_code", "Should support authorization_code grant type")
+
+				codeChallengeMethods, ok := authServerMetadata["code_challenge_methods_supported"].([]interface{})
+				require.True(t, ok, "code_challenge_methods_supported should be an array")
+				require.Contains(t, codeChallengeMethods, "S256", "Should support S256 PKCE method")
+
+				scopes, ok := authServerMetadata["scopes_supported"].([]interface{})
+				require.True(t, ok, "scopes_supported should be an array")
+				expectedScopes := []string{"echo", "sum", "countdown"}
+				for _, expectedScope := range expectedScopes {
+					require.Contains(t, scopes, expectedScope, "Should contain expected scope: %s", expectedScope)
+				}
 			})
 		}
 	})
