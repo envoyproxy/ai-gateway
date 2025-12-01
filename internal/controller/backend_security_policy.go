@@ -137,11 +137,9 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		options := policy.TokenRequestOptions{Scopes: []string{azureScopeURL}}
 
 		if bsp.Spec.AzureCredentials.UseManagedIdentity != nil && *bsp.Spec.AzureCredentials.UseManagedIdentity {
-			// Use managed identity authentication (DefaultAzureCredential).
-			provider, err = tokenprovider.NewAzureManagedIdentityTokenProvider(ctx, clientID, options)
-			if err != nil {
-				return ctrl.Result{}, err
-			}
+			// Managed identity: extproc will obtain tokens dynamically, controller doesn't need to rotate
+			c.enqueueAIServiceBackendsForBackendSecurityPolicy(ctx, bsp)
+			return ctrl.Result{}, nil
 		} else if oidc := getBackendSecurityPolicyAuthOIDC(bsp.Spec); oidc != nil {
 			var oidcProvider tokenprovider.TokenProvider
 			oidcProvider, err = tokenprovider.NewOidcTokenProvider(ctx, c.client, oidc)

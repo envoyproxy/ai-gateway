@@ -40,3 +40,5 @@ func TestNewAzureHandler_Do(t *testing.T) {
 	require.Equal(t, "Authorization", headers[0][0])
 	require.Equal(t, "Bearer some-access-token", headers[0][1])
 }
+
+// investigate how to ruun test foor workload identity cases.
