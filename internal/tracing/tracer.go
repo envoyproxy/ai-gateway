@@ -20,15 +20,15 @@ import (
 )
 
 // spanFactory is a function type that creates a new SpanT given a trace.Span and a Recorder.
-type spanFactory[ReqT any, ChunkT any, RespT any, Recorder tracing.SpanRecorder[ReqT, ChunkT, RespT], SpanT any] func(trace.Span, Recorder) SpanT
+type spanFactory[ReqT any, RespT any, RespChunkT any] func(trace.Span, tracing.SpanRecorder[ReqT, RespT, RespChunkT]) tracing.Span[RespT, RespChunkT]
 
 // requestTracerImpl implements RequestTracer for various request and span types.
-type requestTracerImpl[ReqT any, ChunkT any, RespT any, Recorder tracing.SpanRecorder[ReqT, ChunkT, RespT], SpanT any] struct {
+type requestTracerImpl[ReqT any, RespT any, RespChunkT any] struct {
 	tracer           trace.Tracer
 	propagator       propagation.TextMapPropagator
-	recorder         Recorder
+	recorder         tracing.SpanRecorder[ReqT, RespT, RespChunkT]
 	headerAttributes map[string]string
-	newSpan          spanFactory[ReqT, ChunkT, RespT, Recorder, SpanT]
+	newSpan          spanFactory[ReqT, RespT, RespChunkT]
 }
 
 var (
@@ -40,24 +40,24 @@ var (
 )
 
 type (
-	chatCompletionTracer  = requestTracerImpl[openai.ChatCompletionRequest, openai.ChatCompletionResponseChunk, openai.ChatCompletionResponse, tracing.ChatCompletionRecorder, tracing.ChatCompletionSpan]
-	embeddingsTracer      = requestTracerImpl[openai.EmbeddingRequest, struct{}, openai.EmbeddingResponse, tracing.EmbeddingsRecorder, tracing.EmbeddingsSpan]
-	completionTracer      = requestTracerImpl[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse, tracing.CompletionRecorder, tracing.CompletionSpan]
-	imageGenerationTracer = requestTracerImpl[openaisdk.ImageGenerateParams, struct{}, openaisdk.ImagesResponse, tracing.ImageGenerationRecorder, tracing.ImageGenerationSpan]
-	rerankTracer          = requestTracerImpl[cohereschema.RerankV2Request, struct{}, cohereschema.RerankV2Response, tracing.RerankRecorder, tracing.RerankSpan]
+	chatCompletionTracer  = requestTracerImpl[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]
+	embeddingsTracer      = requestTracerImpl[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
+	completionTracer      = requestTracerImpl[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse]
+	imageGenerationTracer = requestTracerImpl[openaisdk.ImageGenerateParams, openaisdk.ImagesResponse, struct{}]
+	rerankTracer          = requestTracerImpl[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]
 )
 
-func newRequestTracer[ReqT any, ChunkT any, RespT any, Recorder tracing.SpanRecorder[ReqT, ChunkT, RespT], SpanT any](
+func newRequestTracer[ReqT any, RespT any, RespChunkT any](
 	tracer trace.Tracer,
 	propagator propagation.TextMapPropagator,
-	recorder Recorder,
+	recorder tracing.SpanRecorder[ReqT, RespT, RespChunkT],
 	headerAttributes map[string]string,
-	newSpan spanFactory[ReqT, ChunkT, RespT, Recorder, SpanT],
-) tracing.RequestTracer[ReqT, SpanT] {
+	newSpan spanFactory[ReqT, RespT, RespChunkT],
+) tracing.RequestTracer[ReqT, RespT, RespChunkT] {
 	if _, ok := tracer.(noop.Tracer); ok {
-		return tracing.NoopTracer[ReqT, SpanT]{}
+		return tracing.NoopTracer[ReqT, RespT, RespChunkT]{}
 	}
-	return &requestTracerImpl[ReqT, ChunkT, RespT, Recorder, SpanT]{
+	return &requestTracerImpl[ReqT, RespT, RespChunkT]{
 		tracer:           tracer,
 		propagator:       propagator,
 		recorder:         recorder,
@@ -66,20 +66,20 @@ func newRequestTracer[ReqT any, ChunkT any, RespT any, Recorder tracing.SpanReco
 	}
 }
 
-func (t *requestTracerImpl[ReqT, ChunkT, RespT, Recorder, SpanT]) StartSpanAndInjectHeaders(
+func (t *requestTracerImpl[ReqT, RespT, ChunkT]) StartSpanAndInjectHeaders(
 	ctx context.Context,
 	headers map[string]string,
 	carrier propagation.TextMapCarrier,
 	req *ReqT,
 	body []byte,
-) SpanT {
+) tracing.Span[RespT, ChunkT] {
 	parentCtx := t.propagator.Extract(ctx, propagation.MapCarrier(headers))
 	spanName, opts := t.recorder.StartParams(req, body)
 	newCtx, span := t.tracer.Start(parentCtx, spanName, opts...)
 
 	t.propagator.Inject(newCtx, carrier)
 
-	var zero SpanT
+	var zero tracing.Span[RespT, ChunkT]
 	if !span.IsRecording() {
 		return zero
 	}
