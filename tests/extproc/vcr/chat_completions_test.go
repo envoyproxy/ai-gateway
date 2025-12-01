@@ -67,7 +67,7 @@ func TestOpenAIChatCompletions(t *testing.T) {
 		},
 		{
 			name:               testopenai.CassetteChatUnknownModel,
-			expectResponseBody: `{"type":"error","error":{"type":"OpenAIBackendError","code":"404","message":"{\n    \"error\": {\n        \"message\": \"The model ` + "`gpt-4.1-nano-wrong`" + ` does not exist or you do not have access to it.\",\n        \"type\": \"invalid_request_error\",\n        \"param\": null,\n        \"code\": \"model_not_found\"\n    }\n}\n"}}`,
+			expectResponseBody: "{\n    \"error\": {\n        \"message\": \"The model `gpt-4.1-nano-wrong` does not exist or you do not have access to it.\",\n        \"type\": \"invalid_request_error\",\n        \"param\": null,\n        \"code\": \"model_not_found\"\n    }\n}\n",
 			expectStatusCode:   http.StatusNotFound,
 		},
 		{

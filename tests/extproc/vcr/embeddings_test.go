@@ -47,7 +47,7 @@ func TestOpenAIEmbeddings(t *testing.T) {
 		},
 		{
 			name:               testopenai.CassetteEmbeddingsUnknownModel,
-			expectResponseBody: `{"type":"error","error":{"type":"OpenAIBackendError","code":"404","message":"{\n    \"error\": {\n        \"message\": \"The model ` + "`text-embedding-4-ultra`" + ` does not exist or you do not have access to it.\",\n        \"type\": \"invalid_request_error\",\n        \"param\": null,\n        \"code\": \"model_not_found\"\n    }\n}\n"}}`,
+			expectResponseBody: "{\n    \"error\": {\n        \"message\": \"The model `text-embedding-4-ultra` does not exist or you do not have access to it.\",\n        \"type\": \"invalid_request_error\",\n        \"param\": null,\n        \"code\": \"model_not_found\"\n    }\n}\n",
 			expectStatusCode:   http.StatusNotFound,
 		},
 		{
