@@ -353,7 +353,7 @@ func (m mockAnthropicTranslator) ResponseHeaders(_ map[string]string) ([]interna
 }
 
 // ResponseBody implements [translator.AnthropicMessagesTranslator].
-func (m mockAnthropicTranslator) ResponseBody(_ map[string]string, _ io.Reader, _ bool, _ any) ([]internalapi.Header, []byte, metrics.TokenUsage, string, error) {
+func (m mockAnthropicTranslator) ResponseBody(_ map[string]string, _ io.Reader, _ bool, _ tracing.MessageSpan) ([]internalapi.Header, []byte, metrics.TokenUsage, string, error) {
 	return m.retHeaderMutation, m.retBodyMutation, m.retTokenUsage, m.retResponseModel, m.retErr
 }
 

@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 
+	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
@@ -32,6 +33,8 @@ type (
 		EmbeddingsTracer() EmbeddingsTracer
 		// RerankTracer creates spans for rerank requests.
 		RerankTracer() RerankTracer
+		// MessageTracer creates spans for Anthropic messages requests.
+		MessageTracer() MessageTracer
 		// MCPTracer creates spans for MCP requests.
 		MCPTracer() MCPTracer
 		// Shutdown shuts down the tracer, flushing any buffered spans.
@@ -61,6 +64,8 @@ type (
 	ImageGenerationTracer = RequestTracer[openaisdk.ImageGenerateParams, openaisdk.ImagesResponse, struct{}]
 	// RerankTracer creates spans for rerank requests.
 	RerankTracer = RequestTracer[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
+	// MessageTracer creates spans for Anthropic messages requests.
+	MessageTracer = RequestTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 )
 
 type (
@@ -86,6 +91,8 @@ type (
 	ImageGenerationSpan = Span[openaisdk.ImagesResponse, struct{}]
 	// RerankSpan represents a rerank request span.
 	RerankSpan = Span[cohere.RerankV2Response, struct{}]
+	// MessageSpan represents an Anthropic messages request span.
+	MessageSpan = Span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 )
 
 type (
@@ -119,6 +126,8 @@ type (
 	EmbeddingsRecorder = SpanRecorder[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
 	// RerankRecorder records attributes to a span according to a semantic convention.
 	RerankRecorder = SpanRecorder[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
+	// MessageRecorder records attributes to a span according to a semantic convention.
+	MessageRecorder = SpanRecorder[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 )
 
 // NoopChunkRecorder provides a no-op RecordResponseChunks implementation for recorders that don't emit streaming chunks.
@@ -157,6 +166,10 @@ func (NoopTracing) ImageGenerationTracer() ImageGenerationTracer {
 // RerankTracer implements Tracing.RerankTracer.
 func (NoopTracing) RerankTracer() RerankTracer {
 	return NoopTracer[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]{}
+}
+
+func (NoopTracing) MessageTracer() MessageTracer {
+	return NoopTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]{}
 }
 
 // Shutdown implements Tracing.Shutdown.

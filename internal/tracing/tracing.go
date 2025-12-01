@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
+	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference/openai"
@@ -31,6 +32,7 @@ type tracingImpl struct {
 	imageGenerationTracer tracing.ImageGenerationTracer
 	embeddingsTracer      tracing.EmbeddingsTracer
 	rerankTracer          tracing.RerankTracer
+	messageTracer         tracing.MessageTracer
 	mcpTracer             tracing.MCPTracer
 	// shutdown is nil when we didn't create tp.
 	shutdown func(context.Context) error
@@ -63,6 +65,11 @@ func (t *tracingImpl) RerankTracer() tracing.RerankTracer {
 
 func (t *tracingImpl) MCPTracer() tracing.MCPTracer {
 	return t.mcpTracer
+}
+
+func (t *tracingImpl) MessageTracer() tracing.MessageTracer {
+	// Not implemented yet.
+	return nil
 }
 
 // Shutdown implements the same method as documented on api.Tracing.
@@ -205,7 +212,9 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 			rerankRecorder,
 			headerAttrs,
 		),
-		mcpTracer: newMCPTracer(tracer, propagator, headerAttrs),
-		shutdown:  tp.Shutdown, // we have to shut down what we create.
+		// TODO: implement /message tracer: https://github.com/envoyproxy/ai-gateway/issues/1389
+		messageTracer: tracing.NoopTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]{},
+		mcpTracer:     newMCPTracer(tracer, propagator, headerAttrs),
+		shutdown:      tp.Shutdown, // we have to shut down what we create.
 	}, nil
 }

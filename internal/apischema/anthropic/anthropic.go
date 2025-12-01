@@ -6,6 +6,8 @@
 // Package anthropic contains Anthropic API schema definitions using the official SDK types.
 package anthropic
 
+import "github.com/anthropics/anthropic-sdk-go"
+
 // MessagesRequest represents a request to the Anthropic Messages API.
 // Uses a dictionary approach to handle any JSON structure flexibly.
 type MessagesRequest map[string]any
@@ -32,3 +34,15 @@ func (m MessagesRequest) GetStream() bool {
 	}
 	return false
 }
+
+// MessagesResponse represents a response from the Anthropic Messages API.
+//
+// Temporarily alias to the official SDK type to be consistent with other endpoints, not actually used in the main code.
+// See https://github.com/envoyproxy/ai-gateway/issues/1389
+type MessagesResponse = anthropic.Message
+
+// MessagesStreamChunk represents a streaming chunk from the Anthropic Messages API.
+//
+// Temporarily alias to the official SDK type to be consistent with other endpoints, not actually used in the main code.
+// See https://github.com/envoyproxy/ai-gateway/issues/1389
+type MessagesStreamChunk = anthropic.MessageStreamEventUnion

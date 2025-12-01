@@ -85,7 +85,7 @@ type (
 	// CohereRerankTranslator translates the Cohere's /v2/rerank endpoint.
 	CohereRerankTranslator = Translator[cohereschema.RerankV2Request, tracing.RerankSpan]
 	// AnthropicMessagesTranslator translates the Anthropic's /messages endpoint.
-	AnthropicMessagesTranslator = Translator[anthropicschema.MessagesRequest, any] // We don't have tracing implementation for /messages yet.
+	AnthropicMessagesTranslator = Translator[anthropicschema.MessagesRequest, tracing.MessageSpan]
 	// OpenAIImageGenerationTranslator translates the OpenAI's /images/generations endpoint.
 	OpenAIImageGenerationTranslator = Translator[openaisdk.ImageGenerateParams, tracing.ImageGenerationSpan]
 )
