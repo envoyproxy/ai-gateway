@@ -69,7 +69,7 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 			name:    "basic extproc container with MCPRoute",
 			needMCP: true,
 			extprocTest: func(t *testing.T, container corev1.Container) {
-				var foundMCPAddr, foundMCPSeed, foundMCPSIterations bool
+				var foundMCPAddr, foundMCPSeed, foundMCPSIterations, foundFallbackSeed, foundFallbackIterations bool
 				for i, arg := range container.Args {
 					switch arg {
 					case "-mcpAddr":
@@ -81,11 +81,19 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 					case "-mcpSessionEncryptionIterations":
 						foundMCPSIterations = true
 						require.Equal(t, "100", container.Args[i+1])
+					case "-mcpFallbackSessionEncryptionSeed":
+						foundFallbackSeed = true
+						require.Equal(t, "fallback", container.Args[i+1])
+					case "-mcpFallbackSessionEncryptionIterations":
+						foundFallbackIterations = true
+						require.Equal(t, "200", container.Args[i+1])
 					}
 				}
 				require.True(t, foundMCPAddr)
 				require.True(t, foundMCPSeed)
 				require.True(t, foundMCPSIterations)
+				require.True(t, foundFallbackSeed)
+				require.True(t, foundFallbackIterations)
 			},
 		},
 		{
@@ -295,7 +303,7 @@ func newTestGatewayMutator(fakeClient client.Client, fakeKube *fake2.Clientset, 
 	return newGatewayMutator(
 		fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
 		"info", "/tmp/extproc.sock", metricsRequestHeaderAttributes, spanRequestHeaderAttributes, "/v1", endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets, 512*1024*1024,
-		sidecar, "seed", 100,
+		sidecar, "seed", 100, "fallback", 200,
 	)
 }
 

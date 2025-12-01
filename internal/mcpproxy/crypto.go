@@ -25,18 +25,6 @@ type SessionCrypto interface {
 	Decrypt(encrypted string) (string, error)
 }
 
-// DefaultSessionCrypto returns a SessionCrypto implementation.
-func DefaultSessionCrypto(seed, fallbackSeed string, iterations int) SessionCrypto {
-	primary := NewPBKDF2AesGcmSessionCrypto(seed, iterations)
-	if fallbackSeed == "" {
-		return primary
-	}
-	return &fallbackEnabledSessionCrypto{
-		primary:  primary,
-		fallback: NewPBKDF2AesGcmSessionCrypto(fallbackSeed, iterations),
-	}
-}
-
 // pbkdf2AesGcm implements SessionCrypto using PBKDF2 for key derivation and AES-GCM for encryption.
 type pbkdf2AesGcm struct {
 	seed       string // Seed for key derivation.
@@ -105,25 +93,25 @@ func (p pbkdf2AesGcm) Decrypt(encrypted string) (string, error) {
 	return string(plaintext), nil
 }
 
-// fallbackEnabledSessionCrypto tries to decrypt using the primary SessionCrypto first for decryption.
+// FallbackEnabledSessionCrypto tries to decrypt using the primary SessionCrypto first for decryption.
 // If that fails and a fallback SessionCrypto is provided, it tries to decrypt using the fallback.
-type fallbackEnabledSessionCrypto struct {
-	primary, fallback SessionCrypto
+type FallbackEnabledSessionCrypto struct {
+	Primary, Fallback SessionCrypto
 }
 
 // Encrypt always uses the primary SessionCrypto.
-func (f fallbackEnabledSessionCrypto) Encrypt(plaintext string) (string, error) {
-	return f.primary.Encrypt(plaintext)
+func (f FallbackEnabledSessionCrypto) Encrypt(plaintext string) (string, error) {
+	return f.Primary.Encrypt(plaintext)
 }
 
 // Decrypt tries the primary SessionCrypto first, and if that fails and a fallback is provided, it tries the fallback.
-func (f fallbackEnabledSessionCrypto) Decrypt(encrypted string) (string, error) {
-	plaintext, err := f.primary.Decrypt(encrypted)
+func (f FallbackEnabledSessionCrypto) Decrypt(encrypted string) (string, error) {
+	plaintext, err := f.Primary.Decrypt(encrypted)
 	if err == nil {
 		return plaintext, nil
 	}
-	if f.fallback != nil {
-		return f.fallback.Decrypt(encrypted)
+	if f.Fallback != nil {
+		return f.Fallback.Decrypt(encrypted)
 	}
 	return "", err
 }

@@ -61,7 +61,7 @@ var noopTracer = tracing.NoopMCPTracer{}
 
 func TestNewMCPProxy(t *testing.T) {
 	l := slog.Default()
-	proxy, mux, err := NewMCPProxy(l, stubMetrics{}, noopTracer, DefaultSessionCrypto("test", "", 100))
+	proxy, mux, err := NewMCPProxy(l, stubMetrics{}, noopTracer, NewPBKDF2AesGcmSessionCrypto("test", 100))
 
 	require.NoError(t, err)
 	require.NotNil(t, proxy)
@@ -70,7 +70,7 @@ func TestNewMCPProxy(t *testing.T) {
 
 func TestMCPProxy_HTTPMethods(t *testing.T) {
 	l := slog.Default()
-	_, mux, err := NewMCPProxy(l, stubMetrics{}, noopTracer, DefaultSessionCrypto("test", "", 100))
+	_, mux, err := NewMCPProxy(l, stubMetrics{}, noopTracer, NewPBKDF2AesGcmSessionCrypto("test", 100))
 	require.NoError(t, err)
 
 	// Test unsupported method.
@@ -84,7 +84,7 @@ func TestMCPProxy_HTTPMethods(t *testing.T) {
 }
 
 func TestLoadConfig_NilMCPConfig(t *testing.T) {
-	proxy, _, err := NewMCPProxy(slog.Default(), stubMetrics{}, noopTracer, DefaultSessionCrypto("test", "", 100))
+	proxy, _, err := NewMCPProxy(slog.Default(), stubMetrics{}, noopTracer, NewPBKDF2AesGcmSessionCrypto("test", 100))
 	require.NoError(t, err)
 
 	config := &filterapi.Config{MCPConfig: nil}

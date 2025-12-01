@@ -13,9 +13,9 @@ import (
 )
 
 func testPBKDF2AesGcmSessionCrypto(seed, fallback string) SessionCrypto {
-	return &fallbackEnabledSessionCrypto{
-		primary:  NewPBKDF2AesGcmSessionCrypto(seed, 100),
-		fallback: NewPBKDF2AesGcmSessionCrypto(fallback, 100),
+	return &FallbackEnabledSessionCrypto{
+		Primary:  NewPBKDF2AesGcmSessionCrypto(seed, 100),
+		Fallback: NewPBKDF2AesGcmSessionCrypto(fallback, 100),
 	}
 }
 
