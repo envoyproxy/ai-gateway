@@ -702,7 +702,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 			}
 		case output.ReasoningContent != nil:
 			choice.Message.ReasoningContent = &openai.ReasoningContentUnion{
-				Value: &openai.AWSBedrockReasoningContent{
+				Value: &openai.ReasoningContent{
 					ReasoningContent: output.ReasoningContent,
 				},
 			}
@@ -819,7 +819,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 				},
 			})
 		case event.Delta.ReasoningContent != nil:
-			reasoningDelta := &openai.AWSBedrockStreamReasoningContent{}
+			reasoningDelta := &openai.StreamReasoningContent{}
 
 			// Map all relevant fields from the Bedrock delta to our flattened OpenAI delta struct.
 			if event.Delta.ReasoningContent != nil {

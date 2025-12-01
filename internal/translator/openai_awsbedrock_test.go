@@ -1665,7 +1665,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 							Role:    awsbedrock.ConversationRoleAssistant,
 							Content: ptr.To("This is the final answer."),
 							ReasoningContent: &openai.ReasoningContentUnion{
-								Value: &openai.AWSBedrockReasoningContent{
+								Value: &openai.ReasoningContent{
 									ReasoningContent: &awsbedrock.ReasoningContentBlock{
 										ReasoningText: &awsbedrock.ReasoningTextBlock{
 											Text: "This is the model's thought process.",
@@ -1990,7 +1990,7 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 				Choices: []openai.ChatCompletionResponseChunkChoice{
 					{
 						Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
-							ReasoningContent: &openai.AWSBedrockStreamReasoningContent{
+							ReasoningContent: &openai.StreamReasoningContent{
 								Text: "thinking...",
 							},
 						},
@@ -2171,7 +2171,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody_WithReasoning
 	require.Equal(t, "9.11 is greater than 9.8.", *message.Content)
 
 	require.NotNil(t, message.ReasoningContent, "Reasoning content should not be nil")
-	reasoningBlock, _ := message.ReasoningContent.Value.(*openai.AWSBedrockReasoningContent)
+	reasoningBlock, _ := message.ReasoningContent.Value.(*openai.ReasoningContent)
 	require.NotNil(t, reasoningBlock, "The nested reasoning content block should not be nil")
 	require.NotEmpty(t, reasoningBlock.ReasoningContent.ReasoningText.Text, "The reasoning text itself should not be empty")
 

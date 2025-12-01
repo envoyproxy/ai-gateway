@@ -344,8 +344,14 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiCandidatesToOpenAI
 				Role: openai.ChatMessageRoleAssistant,
 			}
 
-			// Extract text from parts for streaming (delta).
-			content := extractTextFromGeminiParts(candidate.Content.Parts, responseMode)
+			// Extract thought summary and text from parts for streaming (delta).
+			thoughtSummary, content := extractTextAndThoughtSummaryFromGeminiParts(candidate.Content.Parts, responseMode)
+			if thoughtSummary != "" {
+				delta.ReasoningContent = &openai.StreamReasoningContent{
+					Text: thoughtSummary,
+				}
+			}
+
 			if content != "" {
 				delta.Content = &content
 			}

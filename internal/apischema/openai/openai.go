@@ -1444,7 +1444,7 @@ type ChatCompletionResponseChunkChoiceDelta struct {
 	Role             string                                   `json:"role,omitempty"`
 	ToolCalls        []ChatCompletionChunkChoiceDeltaToolCall `json:"tool_calls,omitempty"`
 	Annotations      *[]Annotation                            `json:"annotations,omitempty"`
-	ReasoningContent *AWSBedrockStreamReasoningContent        `json:"reasoning_content,omitempty"`
+	ReasoningContent *StreamReasoningContent                  `json:"reasoning_content,omitempty"`
 }
 
 // Error is described in the OpenAI API documentation
@@ -1662,7 +1662,7 @@ func (r *ReasoningContentUnion) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	var content *AWSBedrockReasoningContent
+	var content *ReasoningContent
 	err = json.Unmarshal(data, &content)
 	if err == nil {
 		r.Value = content
@@ -1675,19 +1675,20 @@ func (r ReasoningContentUnion) MarshalJSON() ([]byte, error) {
 	if stringContent, ok := r.Value.(string); ok {
 		return json.Marshal(stringContent)
 	}
-	if reasoningContent, ok := r.Value.(*AWSBedrockReasoningContent); ok {
+	if reasoningContent, ok := r.Value.(*ReasoningContent); ok {
 		return json.Marshal(reasoningContent)
 	}
 
 	return nil, errors.New("no reasoning content to marshal")
 }
 
-type AWSBedrockReasoningContent struct {
+// ReasoningContent is used on both aws bedrock and gemini's reasoning
+type ReasoningContent struct {
 	// See https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ReasoningContentBlock.html for more information.
 	ReasoningContent *awsbedrock.ReasoningContentBlock `json:"reasoningContent,omitzero"`
 }
 
-type AWSBedrockStreamReasoningContent struct {
+type StreamReasoningContent struct {
 	Text            string `json:"text,omitzero"`
 	Signature       string `json:"signature,omitzero"`
 	RedactedContent []byte `json:"redactedContent,omitzero"`

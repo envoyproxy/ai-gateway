@@ -18,6 +18,7 @@ import (
 	openaisdk "github.com/openai/openai-go/v2"
 	"google.golang.org/genai"
 
+	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
@@ -640,9 +641,22 @@ func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate, responseMode
 			message := openai.ChatCompletionResponseChoiceMessage{
 				Role: openai.ChatMessageRoleAssistant,
 			}
-			// Extract text from parts.
-			content := extractTextFromGeminiParts(candidate.Content.Parts, responseMode)
-			message.Content = &content
+			// Extract thought summary and text from parts.
+			thoughtSummary, content := extractTextAndThoughtSummaryFromGeminiParts(candidate.Content.Parts, responseMode)
+			if thoughtSummary != "" {
+				message.ReasoningContent = &openai.ReasoningContentUnion{
+					Value: &openai.ReasoningContent{
+						ReasoningContent: &awsbedrock.ReasoningContentBlock{
+							ReasoningText: &awsbedrock.ReasoningTextBlock{
+								Text: thoughtSummary,
+							},
+						},
+					},
+				}
+			}
+			if content != "" {
+				message.Content = &content
+			}
 
 			// Extract tool calls if any.
 			toolCalls, err = extractToolCallsFromGeminiParts(toolCalls, candidate.Content.Parts)
@@ -657,6 +671,7 @@ func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate, responseMode
 			}
 
 			choice.Message = message
+
 		}
 
 		if candidate.SafetyRatings != nil {
@@ -704,23 +719,28 @@ func geminiFinishReasonToOpenAI[T toolCallSlice](reason genai.FinishReason, tool
 	}
 }
 
-// extractTextFromGeminiParts extracts text from Gemini parts.
-func extractTextFromGeminiParts(parts []*genai.Part, responseMode geminiResponseMode) string {
-	var text string
+// extractTextAndThoughtSummaryFromGeminiParts extracts thought summary and text from Gemini parts.
+func extractTextAndThoughtSummaryFromGeminiParts(parts []*genai.Part, responseMode geminiResponseMode) (string, string) {
+	text := ""
+	thoughtSummary := ""
 	for _, part := range parts {
 		if part != nil && part.Text != "" {
-			if responseMode == responseModeRegex {
-				// GCP doesn't natively support REGEX response modes, so we instead express them as json schema.
-				// This causes the response to be wrapped in double-quotes.
-				// E.g. `"positive"` (the double-quotes at the start and end are unwanted)
-				// Here we remove the wrapping double-quotes.
-				part.Text = strings.TrimPrefix(part.Text, "\"")
-				part.Text = strings.TrimSuffix(part.Text, "\"")
+			if part.Thought {
+				thoughtSummary += part.Text
+			} else {
+				if responseMode == responseModeRegex {
+					// GCP doesn't natively support REGEX response modes, so we instead express them as json schema.
+					// This causes the response to be wrapped in double-quotes.
+					// E.g. `"positive"` (the double-quotes at the start and end are unwanted)
+					// Here we remove the wrapping double-quotes.
+					part.Text = strings.TrimPrefix(part.Text, "\"")
+					part.Text = strings.TrimSuffix(part.Text, "\"")
+				}
+				text += part.Text
 			}
-			text += part.Text
 		}
 	}
-	return text
+	return thoughtSummary, text
 }
 
 // extractToolCallsFromGeminiParts extracts tool calls from Gemini parts.

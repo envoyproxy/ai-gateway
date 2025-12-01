@@ -1099,6 +1099,91 @@ data: [DONE]
 }`),
 			wantTokenUsage: tokenUsageFrom(8, 0, 12, 20),
 		},
+		{
+			name: "response with thought summary",
+			respHeaders: map[string]string{
+				"content-type": "application/json",
+			},
+			body: `{
+				"candidates": [
+					{
+						"content": {
+							"parts": [
+								{
+									"text": "Let me think step by step.",
+									"thought": true
+								},
+								{
+									"text": "AI Gateways act as intermediaries between clients and LLM services."
+								}
+							]
+						},
+						"finishReason": "STOP",
+						"safetyRatings": []
+					}
+				],
+				"promptFeedback": {
+					"safetyRatings": []
+				},
+				"usageMetadata": {
+					"promptTokenCount": 10,
+					"candidatesTokenCount": 15,
+					"totalTokenCount": 25,
+                    "cachedContentTokenCount": 10,
+                    "thoughtsTokenCount": 10
+				}
+			}`,
+			endOfStream:   true,
+			wantError:     false,
+			wantHeaderMut: []internalapi.Header{{contentLengthHeaderName, "450"}},
+			wantBodyMut: []byte(`{
+    "choices": [
+        {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+                "content": "AI Gateways act as intermediaries between clients and LLM services.",
+				"reasoning_content": {"reasoningContent": {"reasoningText": {"text":  "Let me think step by step."}}},
+                "role": "assistant"
+            }
+        }
+    ],
+    "object": "chat.completion",
+    "usage": {
+        "completion_tokens": 25,
+        "completion_tokens_details": {
+            "reasoning_tokens": 10
+        },
+        "prompt_tokens": 10,
+        "prompt_tokens_details": {
+            "cached_tokens": 10
+        },
+        "total_tokens": 25
+    }
+}`),
+
+			wantTokenUsage: tokenUsageFrom(10, 10, 15, 25),
+		},
+		{
+			name: "stream chunks with thought summary",
+			respHeaders: map[string]string{
+				"content-type": "application/json",
+			},
+			body: `data: {"candidates":[{"content":{"parts":[{"text":"let me think step by step and reply you.", "thought": true}]}}]}
+
+data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]}}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":3,"totalTokenCount":8}}`,
+			stream:        true,
+			endOfStream:   true,
+			wantError:     false,
+			wantHeaderMut: nil,
+			wantBodyMut: []byte(`data: {"choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":{"text":"let me think step by step and reply you."}}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{},"prompt_tokens_details":{}}}
+
+data: [DONE]
+`),
+			wantTokenUsage: tokenUsageFrom(5, 0, 3, 8),
+		},
 	}
 
 	for _, tc := range tests {
