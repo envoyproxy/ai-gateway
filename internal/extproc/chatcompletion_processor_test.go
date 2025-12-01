@@ -71,7 +71,7 @@ func Test_chatCompletionProcessorUpstreamFilter_SelectTranslator(t *testing.T) {
 }
 
 type mockTracer struct {
-	tracing.NoopTracer[openai.ChatCompletionRequest, tracing.ChatCompletionSpan]
+	tracing.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]
 	startSpanCalled bool
 	returnedSpan    tracing.ChatCompletionSpan
 }
@@ -88,7 +88,7 @@ func (m *mockTracer) StartSpanAndInjectHeaders(_ context.Context, _ map[string]s
 func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 	t.Run("body parser error", func(t *testing.T) {
 		p := &chatCompletionProcessorRouterFilter{
-			tracer: tracing.NoopTracer[openai.ChatCompletionRequest, tracing.ChatCompletionSpan]{},
+			tracer: tracing.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
 		}
 		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: []byte("nonjson")})
 		require.ErrorContains(t, err, "invalid character 'o' in literal null")
@@ -100,7 +100,7 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 			config:         &filterapi.RuntimeConfig{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
-			tracer:         tracing.NoopTracer[openai.ChatCompletionRequest, tracing.ChatCompletionSpan]{},
+			tracer:         tracing.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
 		}
 		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, nil)})
 		require.NoError(t, err)
@@ -159,7 +159,7 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 				},
 				requestHeaders: headers,
 				logger:         slog.Default(),
-				tracer:         tracing.NoopTracer[openai.ChatCompletionRequest, tracing.ChatCompletionSpan]{},
+				tracer:         tracing.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
 			}
 			resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", true, opt)})
 			require.NoError(t, err)

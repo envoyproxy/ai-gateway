@@ -16,7 +16,7 @@ import (
 
 func TestNoopTracing(t *testing.T) {
 	tracing := NoopTracing{}
-	require.IsType(t, NoopTracer[openai.ChatCompletionRequest, ChatCompletionSpan]{}, tracing.ChatCompletionTracer())
+	require.IsType(t, NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{}, tracing.ChatCompletionTracer())
 	require.Equal(t, NoopMCPTracer{}, tracing.MCPTracer())
 
 	// Calling shutdown twice should not cause an error.
@@ -25,7 +25,7 @@ func TestNoopTracing(t *testing.T) {
 }
 
 func TestNoopTracerChatCompletion(t *testing.T) {
-	tracer := NoopTracer[openai.ChatCompletionRequest, ChatCompletionSpan]{}
+	tracer := NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{}
 
 	readHeaders := map[string]string{}
 	writeHeaders := propagation.MapCarrier{}

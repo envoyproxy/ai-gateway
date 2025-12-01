@@ -41,14 +41,14 @@ var (
 	}
 )
 
-type tracerConstructor[ReqT any, SpanT any] func(oteltrace.Tracer, propagation.TextMapPropagator, map[string]string) tracing.RequestTracer[ReqT, SpanT]
+type tracerConstructor[ReqT any, RespT, RespChunkT any] func(oteltrace.Tracer, propagation.TextMapPropagator, map[string]string) tracing.RequestTracer[ReqT, RespT, RespChunkT]
 
 var chatCompletionTracerCtor = func(tr oteltrace.Tracer, prop propagation.TextMapPropagator, headerAttrs map[string]string) tracing.ChatCompletionTracer {
 	return newChatCompletionTracer(tr, prop, testChatCompletionRecorder{}, headerAttrs)
 }
 
-type requestTracerLifecycleTest[ReqT any, SpanT any] struct {
-	constructor      tracerConstructor[ReqT, SpanT]
+type requestTracerLifecycleTest[ReqT any, RespT, RespChunkT any] struct {
+	constructor      tracerConstructor[ReqT, RespT, RespChunkT]
 	req              *ReqT
 	headers          map[string]string
 	headerAttrs      map[string]string
@@ -57,11 +57,11 @@ type requestTracerLifecycleTest[ReqT any, SpanT any] struct {
 	expectedAttrs    []attribute.KeyValue
 	expectedTraceID  string
 	expectedSpanType any
-	recordAndEnd     func(SpanT)
+	recordAndEnd     func(span tracing.Span[RespT, RespChunkT])
 	assertAttrs      func(*testing.T, []attribute.KeyValue)
 }
 
-func runRequestTracerLifecycleTest[ReqT any, SpanT any](t *testing.T, tc requestTracerLifecycleTest[ReqT, SpanT]) {
+func runRequestTracerLifecycleTest[ReqT any, RespT, RespChunkT any](t *testing.T, tc requestTracerLifecycleTest[ReqT, RespT, RespChunkT]) {
 	t.Helper()
 	exporter := tracetest.NewInMemoryExporter()
 	tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
@@ -95,12 +95,12 @@ func runRequestTracerLifecycleTest[ReqT any, SpanT any](t *testing.T, tc request
 		}, carrier)
 }
 
-func testNoopTracer[ReqT any, SpanT any](t *testing.T, name string, ctor tracerConstructor[ReqT, SpanT], newReq func() *ReqT) {
+func testNoopTracer[ReqT any, RespT, RespChunkT any](t *testing.T, name string, ctor tracerConstructor[ReqT, RespT, RespChunkT], newReq func() *ReqT) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
 		noopTracer := noop.Tracer{}
 		tracer := ctor(noopTracer, autoprop.NewTextMapPropagator(), nil)
-		require.IsType(t, tracing.NoopTracer[ReqT, SpanT]{}, tracer)
+		require.IsType(t, tracing.NoopTracer[ReqT, RespT, RespChunkT]{}, tracer)
 
 		headers := map[string]string{}
 		carrier := propagation.MapCarrier{}
@@ -111,7 +111,7 @@ func testNoopTracer[ReqT any, SpanT any](t *testing.T, name string, ctor tracerC
 	})
 }
 
-func testUnsampledTracer[ReqT any, SpanT any](t *testing.T, name string, ctor tracerConstructor[ReqT, SpanT], newReq func() *ReqT) {
+func testUnsampledTracer[ReqT any, RespT, RespChunkT any](t *testing.T, name string, ctor tracerConstructor[ReqT, RespT, RespChunkT], newReq func() *ReqT) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
 		tp := trace.NewTracerProvider(trace.WithSampler(trace.NeverSample()))
@@ -208,7 +208,7 @@ func TestChatCompletionTracer_StartSpanAndInjectHeaders(t *testing.T) {
 				headers[k] = v
 			}
 
-			runRequestTracerLifecycleTest(t, requestTracerLifecycleTest[openai.ChatCompletionRequest, tracing.ChatCompletionSpan]{
+			runRequestTracerLifecycleTest(t, requestTracerLifecycleTest[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{
 				constructor:      chatCompletionTracerCtor,
 				req:              tt.req,
 				headers:          headers,
@@ -250,7 +250,7 @@ func TestRequestTracer_HeaderAttributeMapping(t *testing.T) {
 
 		spanName := fmt.Sprintf("non-stream len: %d", len(reqBody))
 
-		runRequestTracerLifecycleTest(t, requestTracerLifecycleTest[openai.ChatCompletionRequest, tracing.ChatCompletionSpan]{
+		runRequestTracerLifecycleTest(t, requestTracerLifecycleTest[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{
 			constructor:      chatCompletionTracerCtor,
 			req:              req,
 			headers:          headers,
@@ -287,8 +287,6 @@ func TestNewCompletionTracer_BuildsGenericRequestTracer(t *testing.T) {
 		openai.CompletionRequest,
 		openai.CompletionResponse,
 		openai.CompletionResponse,
-		tracing.CompletionRecorder,
-		tracing.CompletionSpan,
 	])
 	require.True(t, ok)
 	require.Equal(t, headerAttrs, impl.headerAttributes)
@@ -306,10 +304,8 @@ func TestNewEmbeddingsTracer_BuildsGenericRequestTracer(t *testing.T) {
 	tracer := newEmbeddingsTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testEmbeddingsRecorder{}, headerAttrs)
 	impl, ok := tracer.(*requestTracerImpl[
 		openai.EmbeddingRequest,
-		struct{},
 		openai.EmbeddingResponse,
-		tracing.EmbeddingsRecorder,
-		tracing.EmbeddingsSpan,
+		struct{},
 	])
 	require.True(t, ok)
 	require.Equal(t, headerAttrs, impl.headerAttributes)
@@ -325,10 +321,8 @@ func TestNewRerankTracer_BuildsGenericRequestTracer(t *testing.T) {
 	tracer := newRerankTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testRerankTracerRecorder{}, headerAttrs)
 	impl, ok := tracer.(*requestTracerImpl[
 		cohere.RerankV2Request,
-		struct{},
 		cohere.RerankV2Response,
-		tracing.RerankRecorder,
-		tracing.RerankSpan,
+		struct{},
 	])
 	require.True(t, ok)
 	require.Equal(t, headerAttrs, impl.headerAttributes)
@@ -346,10 +340,8 @@ func TestNewImageGenerationTracer_BuildsGenericRequestTracer(t *testing.T) {
 	tracer := newImageGenerationTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testImageGenerationRecorder{})
 	impl, ok := tracer.(*requestTracerImpl[
 		openaisdk.ImageGenerateParams,
-		struct{},
 		openaisdk.ImagesResponse,
-		tracing.ImageGenerationRecorder,
-		tracing.ImageGenerationSpan,
+		struct{},
 	])
 	require.True(t, ok)
 	require.Nil(t, impl.headerAttributes)

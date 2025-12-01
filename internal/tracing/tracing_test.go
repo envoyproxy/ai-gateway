@@ -726,8 +726,8 @@ func startCompletionsSpan(t *testing.T, tracing tracing.Tracing, carrier propaga
 }
 
 func TestTracingImpl_Getters_ImageGenerationAndRerank(t *testing.T) {
-	ig := tracing.NoopTracer[openaisdk.ImageGenerateParams, tracing.ImageGenerationSpan]{}
-	rr := tracing.NoopTracer[cohereschema.RerankV2Request, tracing.RerankSpan]{}
+	ig := tracing.NoopTracer[openaisdk.ImageGenerateParams, openaisdk.ImagesResponse, struct{}]{}
+	rr := tracing.NoopTracer[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]{}
 
 	ti := &tracingImpl{
 		imageGenerationTracer: ig,
