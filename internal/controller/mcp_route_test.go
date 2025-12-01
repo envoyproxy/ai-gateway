@@ -217,19 +217,14 @@ func Test_newHTTPRoute_MCPOauth(t *testing.T) {
 	err := ctrlr.newMainHTTPRoute(httpRoute, mcpRoute)
 	require.NoError(t, err)
 
-	require.Len(t, httpRoute.Spec.Rules, 7) // 6 default routes for oauth which begins from index 1.
+	require.Len(t, httpRoute.Spec.Rules, 4) // 3 default routes for oauth which begins from index 1.
 	oauthRules := httpRoute.Spec.Rules[1:]
-	require.Equal(t, "oauth-protected-resource-metadata-root", string(ptr.Deref(oauthRules[0].Name, "")))
-	require.Equal(t, "oauth-protected-resource-metadata-suffix", string(ptr.Deref(oauthRules[1].Name, "")))
-	require.Equal(t, "oauth-authorization-server-metadata-root", string(ptr.Deref(oauthRules[2].Name, "")))
-	require.Equal(t, "oauth-authorization-server-metadata-root-oidc", string(ptr.Deref(oauthRules[3].Name, "")))
-	require.Equal(t, "oauth-authorization-server-metadata-suffix", string(ptr.Deref(oauthRules[4].Name, "")))
-	require.Equal(t, "oauth-authorization-server-metadata-suffix-oidc", string(ptr.Deref(oauthRules[5].Name, "")))
-
-	require.Equal(t, "/.well-known/oauth-authorization-server", ptr.Deref(oauthRules[2].Matches[0].Path.Value, ""))
-	require.Equal(t, "/.well-known/openid-configuration", ptr.Deref(oauthRules[3].Matches[0].Path.Value, ""))
-	require.Equal(t, "/.well-known/oauth-authorization-server/mcp", ptr.Deref(oauthRules[4].Matches[0].Path.Value, ""))
-	require.Equal(t, "/.well-known/openid-configuration/mcp", ptr.Deref(oauthRules[5].Matches[0].Path.Value, ""))
+	require.Equal(t, "oauth-protected-resource-metadata", string(ptr.Deref(oauthRules[0].Name, "")))
+	require.Equal(t, "oauth-authorization-server-metadata", string(ptr.Deref(oauthRules[1].Name, "")))
+	require.Equal(t, "oauth-authorization-server-metadata-oidc", string(ptr.Deref(oauthRules[2].Name, "")))
+	require.Equal(t, "/.well-known/oauth-protected-resource/mcp", ptr.Deref(oauthRules[0].Matches[0].Path.Value, ""))
+	require.Equal(t, "/.well-known/oauth-authorization-server/mcp", ptr.Deref(oauthRules[1].Matches[0].Path.Value, ""))
+	require.Equal(t, "/.well-known/openid-configuration/mcp", ptr.Deref(oauthRules[2].Matches[0].Path.Value, ""))
 }
 
 func TestMCPRouteController_updateMCPRouteStatus(t *testing.T) {
