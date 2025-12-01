@@ -36,3 +36,21 @@ type GenerateContentRequest struct {
 	// https://github.com/googleapis/go-genai/blob/6a8184fcaf8bf15f0c566616a7b356560309be9b/types.go#L1057
 	SafetySettings []*genai.SafetySetting `json:"safetySettings,omitempty"`
 }
+
+// CreateAuthTokenRequest represents a request to create an ephemeral auth token for Gemini Live API
+// Reference: https://ai.google.dev/api/generate-content#auth-tokens
+type CreateAuthTokenRequest struct {
+	// Uses specifies how many times the token can be used (typically 1)
+	Uses int `json:"uses"`
+	// ExpireTime is the ISO8601 formatted expiration time
+	ExpireTime string `json:"expireTime"`
+}
+
+// CreateAuthTokenResponse represents the response from creating an auth token
+// Reference: https://ai.google.dev/api/generate-content#auth-tokens
+type CreateAuthTokenResponse struct {
+	// Name is the resource name of the auth token in format "auth_tokens/{token}"
+	Name string `json:"name"`
+	// ExpireTime is the ISO8601 formatted expiration time
+	ExpireTime string `json:"expireTime,omitempty"`
+}

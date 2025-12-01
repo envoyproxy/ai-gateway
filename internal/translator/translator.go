@@ -8,6 +8,7 @@ package translator
 import (
 	"io"
 
+	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	openaisdk "github.com/openai/openai-go/v2"
 	"github.com/tidwall/sjson"
 
@@ -96,4 +97,19 @@ var sjsonOptions = &sjson.Options{
 	// Note: DO NOT set ReplaceInPlace to true since at the translation layer, which might be called multiple times per retry,
 	// it must be ensured that the original body is not modified, i.e. the operation must be idempotent.
 	ReplaceInPlace: false,
+}
+
+// RealtimeClientSecretsTranslator translates requests and responses for the /v1/realtime/client_secrets endpoint.
+type RealtimeClientSecretsTranslator interface {
+	RequestBody(req *openai.RealtimeClientSecretRequest) (
+		headerMutation *extprocv3.HeaderMutation,
+		bodyMutation *extprocv3.BodyMutation,
+		err error,
+	)
+
+	ResponseBody(body []byte) (
+		headerMutation *extprocv3.HeaderMutation,
+		bodyMutation *extprocv3.BodyMutation,
+		err error,
+	)
 }
