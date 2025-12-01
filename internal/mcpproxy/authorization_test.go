@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/golang-jwt/jwt/v5"
-	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
@@ -42,11 +41,11 @@ func TestAuthorizeRequest(t *testing.T) {
 		{
 			name: "matching tool and scope allowed",
 			auth: &filterapi.MCPRouteAuthorization{
-				DefaultAction: ptr.To(filterapi.AuthorizationActionDeny),
+				DefaultAction: filterapi.AuthorizationActionDeny,
 				Rules: []filterapi.MCPRouteAuthorizationRule{
 					{
 						Source: filterapi.MCPAuthorizationSource{
-							JWTSource: filterapi.JWTSource{Scopes: []string{"read"}},
+							JWTSource: filterapi.JWTSource{Scopes: []string{"read", "write"}},
 						},
 						Target: filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{BackendName: "backend1", ToolName: "tool1"}},
@@ -61,9 +60,30 @@ func TestAuthorizeRequest(t *testing.T) {
 			expectAllowed: true,
 		},
 		{
+			name: "matching tool but insufficient scopes not allowed",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: filterapi.AuthorizationActionDeny,
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Source: filterapi.MCPAuthorizationSource{
+							JWTSource: filterapi.JWTSource{Scopes: []string{"read", "write"}},
+						},
+						Target: filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{BackendName: "backend1", ToolName: "tool1"}},
+						},
+						Action: filterapi.AuthorizationActionAllow,
+					},
+				},
+			},
+			header:        "Bearer " + makeToken("read"),
+			backendName:   "backend1",
+			toolName:      "tool1",
+			expectAllowed: false,
+		},
+		{
 			name: "no matching rule falls back to default deny - tool mismatch",
 			auth: &filterapi.MCPRouteAuthorization{
-				DefaultAction: ptr.To(filterapi.AuthorizationActionDeny),
+				DefaultAction: filterapi.AuthorizationActionDeny,
 				Rules: []filterapi.MCPRouteAuthorizationRule{
 					{
 						Source: filterapi.MCPAuthorizationSource{
@@ -84,7 +104,7 @@ func TestAuthorizeRequest(t *testing.T) {
 		{
 			name: "no matching rule falls back to default deny - scope mismatch",
 			auth: &filterapi.MCPRouteAuthorization{
-				DefaultAction: ptr.To(filterapi.AuthorizationActionDeny),
+				DefaultAction: filterapi.AuthorizationActionDeny,
 				Rules: []filterapi.MCPRouteAuthorizationRule{
 					{
 						Source: filterapi.MCPAuthorizationSource{
@@ -105,7 +125,7 @@ func TestAuthorizeRequest(t *testing.T) {
 		{
 			name: "matching tool and scope denied",
 			auth: &filterapi.MCPRouteAuthorization{
-				DefaultAction: ptr.To(filterapi.AuthorizationActionAllow),
+				DefaultAction: filterapi.AuthorizationActionAllow,
 				Rules: []filterapi.MCPRouteAuthorizationRule{
 					{
 						Source: filterapi.MCPAuthorizationSource{
@@ -126,7 +146,7 @@ func TestAuthorizeRequest(t *testing.T) {
 		{
 			name: "no matching rule falls back to default allow - tool mismatch",
 			auth: &filterapi.MCPRouteAuthorization{
-				DefaultAction: ptr.To(filterapi.AuthorizationActionAllow),
+				DefaultAction: filterapi.AuthorizationActionAllow,
 				Rules: []filterapi.MCPRouteAuthorizationRule{
 					{
 						Source: filterapi.MCPAuthorizationSource{
@@ -147,7 +167,7 @@ func TestAuthorizeRequest(t *testing.T) {
 		{
 			name: "no matching rule falls back to default allow - scope mismatch",
 			auth: &filterapi.MCPRouteAuthorization{
-				DefaultAction: ptr.To(filterapi.AuthorizationActionAllow),
+				DefaultAction: filterapi.AuthorizationActionAllow,
 				Rules: []filterapi.MCPRouteAuthorizationRule{
 					{
 						Source: filterapi.MCPAuthorizationSource{
@@ -168,7 +188,7 @@ func TestAuthorizeRequest(t *testing.T) {
 		{
 			name: "no rules falls back to default allow",
 			auth: &filterapi.MCPRouteAuthorization{
-				DefaultAction: ptr.To(filterapi.AuthorizationActionAllow),
+				DefaultAction: filterapi.AuthorizationActionAllow,
 			},
 			header:        "",
 			backendName:   "backend1",
@@ -178,7 +198,7 @@ func TestAuthorizeRequest(t *testing.T) {
 		{
 			name: "no rules falls back to default deny",
 			auth: &filterapi.MCPRouteAuthorization{
-				DefaultAction: ptr.To(filterapi.AuthorizationActionDeny),
+				DefaultAction: filterapi.AuthorizationActionDeny,
 			},
 			header:        "",
 			backendName:   "backend1",
@@ -188,7 +208,7 @@ func TestAuthorizeRequest(t *testing.T) {
 		{
 			name: "no bearer token not allowed when rules exist",
 			auth: &filterapi.MCPRouteAuthorization{
-				DefaultAction: ptr.To(filterapi.AuthorizationActionAllow),
+				DefaultAction: filterapi.AuthorizationActionAllow,
 				Rules: []filterapi.MCPRouteAuthorizationRule{
 					{
 						Source: filterapi.MCPAuthorizationSource{
@@ -209,7 +229,7 @@ func TestAuthorizeRequest(t *testing.T) {
 		{
 			name: "multiple rules, first match applied - denied",
 			auth: &filterapi.MCPRouteAuthorization{
-				DefaultAction: ptr.To(filterapi.AuthorizationActionDeny),
+				DefaultAction: filterapi.AuthorizationActionDeny,
 				Rules: []filterapi.MCPRouteAuthorizationRule{
 					{
 						Source: filterapi.MCPAuthorizationSource{
@@ -239,7 +259,7 @@ func TestAuthorizeRequest(t *testing.T) {
 		{
 			name: "multiple rules, first match applied - allowed",
 			auth: &filterapi.MCPRouteAuthorization{
-				DefaultAction: ptr.To(filterapi.AuthorizationActionDeny),
+				DefaultAction: filterapi.AuthorizationActionDeny,
 				Rules: []filterapi.MCPRouteAuthorizationRule{
 					{
 						Source: filterapi.MCPAuthorizationSource{

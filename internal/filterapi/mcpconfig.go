@@ -70,8 +70,7 @@ type MCPRouteAuthorization struct {
 	Rules []MCPRouteAuthorizationRule `json:"rules,omitempty"`
 
 	// DefaultAction defines the action to take when no rules match.
-	// If unset, the default is Deny.
-	DefaultAction *AuthorizationAction `json:"defaultAction,omitempty"`
+	DefaultAction AuthorizationAction `json:"defaultAction,omitempty"`
 }
 
 // MCPRouteAuthorizationRule defines an authorization rule for MCPRoute based on the MCP authorization spec.

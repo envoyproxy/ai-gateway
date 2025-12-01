@@ -12,13 +12,12 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
-	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
 func (m *MCPProxy) authorizeRequest(authorization *filterapi.MCPRouteAuthorization, headers http.Header, backendName, toolName string) bool {
-	defaultAction := ptr.Deref(authorization.DefaultAction, filterapi.AuthorizationActionDeny) == filterapi.AuthorizationActionAllow
+	defaultAction := authorization.DefaultAction == filterapi.AuthorizationActionAllow
 
 	// If there are no rules, return the default action.
 	if len(authorization.Rules) == 0 {
@@ -115,6 +114,7 @@ func scopesSatisfied(have map[string]struct{}, required []string) bool {
 	if len(required) == 0 {
 		return true
 	}
+	// All required scopes must be present for authorization to succeed.
 	for _, scope := range required {
 		if _, ok := have[scope]; !ok {
 			return false
