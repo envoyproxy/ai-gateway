@@ -56,6 +56,10 @@ func Test_parseAndValidateFlags(t *testing.T) {
 					tc.dash + "maxRecvMsgSize=33554432",
 					tc.dash + "watchNamespaces=default,envoy-ai-gateway-system",
 					tc.dash + "cacheSyncTimeout=5m",
+					tc.dash + "mcpSessionEncryptionSeed=my-seed",
+					tc.dash + "mcpSessionEncryptionIterations=100",
+					tc.dash + "mcpFallbackSessionEncryptionSeed=my-fallback-seed",
+					tc.dash + "mcpFallbackSessionEncryptionIterations=200",
 				}
 				f, err := parseAndValidateFlags(args)
 				require.Equal(t, "debug", f.extProcLogLevel)
@@ -70,6 +74,10 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				require.Equal(t, 32*1024*1024, f.maxRecvMsgSize)
 				require.Equal(t, []string{"default", "envoy-ai-gateway-system"}, f.watchNamespaces)
 				require.Equal(t, 5*time.Minute, f.cacheSyncTimeout)
+				require.Equal(t, "my-seed", f.mcpSessionEncryptionSeed)
+				require.Equal(t, 100, f.mcpSessionEncryptionIterations)
+				require.Equal(t, "my-fallback-seed", f.mcpFallbackSessionEncryptionSeed)
+				require.Equal(t, 200, f.mcpFallbackSessionEncryptionIterations)
 				require.NoError(t, err)
 			})
 		}
@@ -125,6 +133,26 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				name:   "invalid endpointPrefixes - missing colon",
 				flags:  []string{"--endpointPrefixes=openai"},
 				expErr: "invalid endpoint prefixes",
+			},
+			{
+				name:   "invalid mcp session encryption iterations",
+				flags:  []string{"--mcpSessionEncryptionIterations=invalid"},
+				expErr: `invalid value "invalid" for flag -mcpSessionEncryptionIterations: parse error`,
+			},
+			{
+				name:   "negative mcp session encryption iterations",
+				flags:  []string{"--mcpSessionEncryptionIterations=-1"},
+				expErr: "mcp session encryption iterations must be positive: -1",
+			},
+			{
+				name:   "invalid mcp fallback session encryption iterations",
+				flags:  []string{"--mcpFallbackSessionEncryptionSeed=fallback", "--mcpFallbackSessionEncryptionIterations=invalid"},
+				expErr: `invalid value "invalid" for flag -mcpFallbackSessionEncryptionIterations: parse error`,
+			},
+			{
+				name:   "negative mcp fallback session encryption iterations",
+				flags:  []string{"--mcpFallbackSessionEncryptionSeed=fallback", "--mcpFallbackSessionEncryptionIterations=-1"},
+				expErr: "mcp fallback session encryption iterations must be positive: -1",
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {

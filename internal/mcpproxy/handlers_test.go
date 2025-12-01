@@ -42,10 +42,9 @@ func newTestMCPProxy() *MCPProxy {
 }
 
 func newTestMCPProxyWithTracer(t tracingapi.MCPTracer) *MCPProxy {
-	sessionCrypto := DefaultSessionCrypto("test", "")
 	// reduce the iterations for faster tests. The default is a good tradeoff between security
 	// and performance, but for the tests we can use fewer iterations to make tests faster.
-	sessionCrypto.(*pbkdf2AesGcm).iterations = 100
+	sessionCrypto := NewPBKDF2AesGcmSessionCrypto("test", 100)
 
 	return &MCPProxy{
 		sessionCrypto: sessionCrypto,

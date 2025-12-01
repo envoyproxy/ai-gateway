@@ -87,6 +87,12 @@ type Options struct {
 	ExtProcMaxRecvMsgSize int
 	// MCPSessionEncryptionSeed is the seed used to derive the encryption key for MCP session encryption.
 	MCPSessionEncryptionSeed string
+	// MCPSessionEncryptionIterations is the number of iterations to use for PBKDF2 key derivation for MCP session encryption.
+	MCPSessionEncryptionIterations int
+	// MCPFallbackSessionEncryptionSeed is the optional fallback seed used for MCP session key rotation.
+	MCPFallbackSessionEncryptionSeed string
+	// MCPFallbackSessionEncryptionIterations is the number of iterations used in the fallback PBKDF2 key derivation for MCP session encryption.
+	MCPFallbackSessionEncryptionIterations int
 	// EndpointPrefixes is the comma-separated key-value pairs for endpoint prefixes.
 	EndpointPrefixes string
 }
@@ -228,6 +234,9 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.ExtProcMaxRecvMsgSize,
 			isKubernetes133OrLater(versionInfo, logger),
 			options.MCPSessionEncryptionSeed,
+			options.MCPSessionEncryptionIterations,
+			options.MCPFallbackSessionEncryptionSeed,
+			options.MCPFallbackSessionEncryptionIterations,
 		))
 		mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{Handler: h})
 	}
