@@ -177,6 +177,8 @@ type MCPBackendAPIKey struct {
 }
 
 // MCPRouteSecurityPolicy defines the security policy for a MCPRoute.
+//
+// +kubebuilder:validation:XValidation:rule="!has(self.authorization) || has(self.oauth)",message="oauth must be configured when authorization is set"
 type MCPRouteSecurityPolicy struct {
 	// OAuth defines the configuration for the MCP spec compatible OAuth authentication.
 	//

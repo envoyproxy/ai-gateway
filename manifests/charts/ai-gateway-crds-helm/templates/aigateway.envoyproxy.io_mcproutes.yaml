@@ -4211,6 +4211,9 @@ spec:
                     - protectedResourceMetadata
                     type: object
                 type: object
+                x-kubernetes-validations:
+                - message: oauth must be configured when authorization is set
+                  rule: '!has(self.authorization) || has(self.oauth)'
             required:
             - backendRefs
             - parentRefs
