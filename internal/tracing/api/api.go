@@ -145,31 +145,31 @@ func (t NoopTracing) MCPTracer() MCPTracer {
 
 // ChatCompletionTracer implements Tracing.ChatCompletionTracer.
 func (NoopTracing) ChatCompletionTracer() ChatCompletionTracer {
-	return NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{}
+	return NoopChatCompletionTracer{}
 }
 
 // CompletionTracer implements Tracing.CompletionTracer.
 func (NoopTracing) CompletionTracer() CompletionTracer {
-	return NoopTracer[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse]{}
+	return NoopCompletionTracer{}
 }
 
 // EmbeddingsTracer implements Tracing.EmbeddingsTracer.
 func (NoopTracing) EmbeddingsTracer() EmbeddingsTracer {
-	return NoopTracer[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]{}
+	return NoopEmbeddingsTracer{}
 }
 
 // ImageGenerationTracer implements Tracing.ImageGenerationTracer.
 func (NoopTracing) ImageGenerationTracer() ImageGenerationTracer {
-	return NoopTracer[openaisdk.ImageGenerateParams, openaisdk.ImagesResponse, struct{}]{}
+	return NoopImageGenerationTracer{}
 }
 
 // RerankTracer implements Tracing.RerankTracer.
 func (NoopTracing) RerankTracer() RerankTracer {
-	return NoopTracer[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]{}
+	return NoopRerankTracer{}
 }
 
 func (NoopTracing) MessageTracer() MessageTracer {
-	return NoopTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]{}
+	return NoopMessageTracer{}
 }
 
 // Shutdown implements Tracing.Shutdown.
@@ -177,8 +177,22 @@ func (NoopTracing) Shutdown(context.Context) error {
 	return nil
 }
 
-// NoopTracer implements RequestTracer without producing spans.
-type NoopTracer[ReqT any, RespT any, RespChunkT any] struct{}
+type (
+	// NoopTracer implements RequestTracer without producing spans.
+	NoopTracer[ReqT any, RespT any, RespChunkT any] struct{}
+	// NoopChatCompletionTracer implements ChatCompletionTracer.
+	NoopChatCompletionTracer = NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]
+	// NoopCompletionTracer implements CompletionTracer.
+	NoopCompletionTracer = NoopTracer[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse]
+	// NoopEmbeddingsTracer implements EmbeddingsTracer.
+	NoopEmbeddingsTracer = NoopTracer[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
+	// NoopImageGenerationTracer implements ImageGenerationTracer.
+	NoopImageGenerationTracer = NoopTracer[openaisdk.ImageGenerateParams, openaisdk.ImagesResponse, struct{}]
+	// NoopRerankTracer implements RerankTracer.
+	NoopRerankTracer = NoopTracer[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
+	// NoopMessageTracer implements MessageTracer.
+	NoopMessageTracer = NoopTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+)
 
 // StartSpanAndInjectHeaders implements RequestTracer.StartSpanAndInjectHeaders.
 func (NoopTracer[ReqT, RespT, RespChunkT]) StartSpanAndInjectHeaders(context.Context, map[string]string, propagation.TextMapCarrier, *ReqT, []byte) Span[RespT, RespChunkT] {

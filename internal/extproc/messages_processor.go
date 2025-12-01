@@ -31,8 +31,8 @@ import (
 //
 // Requests: Only accepts Anthropic format requests.
 // Responses: Returns Anthropic format responses.
-func MessagesProcessorFactory(f metrics.Factory) ProcessorFactory {
-	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
+func MessagesProcessorFactory(f metrics.Factory, _ tracing.MessageTracer) ProcessorFactory {
+	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "anthropic-messages", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &messagesProcessorRouterFilter{

@@ -31,13 +31,13 @@ import (
 )
 
 // ChatCompletionProcessorFactory returns a factory method to instantiate the chat completion processor.
-func ChatCompletionProcessorFactory(f metrics.Factory) ProcessorFactory {
-	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
+func ChatCompletionProcessorFactory(f metrics.Factory, tracer tracing.ChatCompletionTracer) ProcessorFactory {
+	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "chat-completion", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &chatCompletionProcessorRouterFilter{
 				config:         config,
-				tracer:         tracing.ChatCompletionTracer(),
+				tracer:         tracer,
 				requestHeaders: requestHeaders,
 				logger:         logger,
 			}, nil

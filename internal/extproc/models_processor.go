@@ -19,7 +19,6 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 // modelsProcessor implements [Processor] for the `/v1/models` endpoint.
@@ -36,7 +35,7 @@ type modelsProcessor struct {
 var _ Processor = (*modelsProcessor)(nil)
 
 // NewModelsProcessor creates a new processor that returns the list of declared models.
-func NewModelsProcessor(config *filterapi.RuntimeConfig, _ map[string]string, logger *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
+func NewModelsProcessor(config *filterapi.RuntimeConfig, _ map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
 	if isUpstreamFilter {
 		return passThroughProcessor{}, nil
 	}

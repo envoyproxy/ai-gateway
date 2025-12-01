@@ -33,14 +33,14 @@ import (
 func TestChatCompletion_Schema(t *testing.T) {
 	t.Run("supported openai / on route", func(t *testing.T) {
 		cfg := &filterapi.RuntimeConfig{}
-		routeFilter, err := ChatCompletionProcessorFactory(nil)(cfg, nil, slog.Default(), tracing.NoopTracing{}, false)
+		routeFilter, err := ChatCompletionProcessorFactory(nil, tracing.NoopChatCompletionTracer{})(cfg, nil, slog.Default(), false)
 		require.NoError(t, err)
 		require.NotNil(t, routeFilter)
 		require.IsType(t, &chatCompletionProcessorRouterFilter{}, routeFilter)
 	})
 	t.Run("supported openai / on upstream", func(t *testing.T) {
 		cfg := &filterapi.RuntimeConfig{}
-		routeFilter, err := ChatCompletionProcessorFactory(&mockMetricsFactory{})(cfg, nil, slog.Default(), tracing.NoopTracing{}, true)
+		routeFilter, err := ChatCompletionProcessorFactory(&mockMetricsFactory{}, tracing.NoopChatCompletionTracer{})(cfg, nil, slog.Default(), true)
 		require.NoError(t, err)
 		require.NotNil(t, routeFilter)
 		require.IsType(t, &chatCompletionProcessorUpstreamFilter{}, routeFilter)

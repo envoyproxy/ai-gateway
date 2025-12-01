@@ -32,14 +32,14 @@ import (
 func TestImageGeneration_Schema(t *testing.T) {
 	t.Run("supported openai / on route", func(t *testing.T) {
 		cfg := &filterapi.RuntimeConfig{}
-		routeFilter, err := ImageGenerationProcessorFactory(nil)(cfg, nil, slog.Default(), tracing.NoopTracing{}, false)
+		routeFilter, err := ImageGenerationProcessorFactory(nil, tracing.NoopImageGenerationTracer{})(cfg, nil, slog.Default(), false)
 		require.NoError(t, err)
 		require.NotNil(t, routeFilter)
 		require.IsType(t, &imageGenerationProcessorRouterFilter{}, routeFilter)
 	})
 	t.Run("supported openai / on upstream", func(t *testing.T) {
 		cfg := &filterapi.RuntimeConfig{}
-		routeFilter, err := ImageGenerationProcessorFactory(&mockMetricsFactory{})(cfg, nil, slog.Default(), tracing.NoopTracing{}, true)
+		routeFilter, err := ImageGenerationProcessorFactory(&mockMetricsFactory{}, tracing.NoopImageGenerationTracer{})(cfg, nil, slog.Default(), true)
 		require.NoError(t, err)
 		require.NotNil(t, routeFilter)
 		require.IsType(t, &imageGenerationProcessorUpstreamFilter{}, routeFilter)

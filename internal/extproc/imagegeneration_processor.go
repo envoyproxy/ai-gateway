@@ -29,13 +29,13 @@ import (
 )
 
 // ImageGenerationProcessorFactory returns a factory method to instantiate the image generation processor.
-func ImageGenerationProcessorFactory(f metrics.Factory) ProcessorFactory {
-	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
+func ImageGenerationProcessorFactory(f metrics.Factory, tracer tracing.ImageGenerationTracer) ProcessorFactory {
+	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "image-generation", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &imageGenerationProcessorRouterFilter{
 				config:         config,
-				tracer:         tracing.ImageGenerationTracer(),
+				tracer:         tracer,
 				requestHeaders: requestHeaders,
 				logger:         logger,
 			}, nil

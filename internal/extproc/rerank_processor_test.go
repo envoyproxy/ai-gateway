@@ -31,13 +31,13 @@ import (
 func TestRerank_Schema(t *testing.T) {
 	t.Run("on route", func(t *testing.T) {
 		cfg := &filterapi.RuntimeConfig{}
-		p, err := RerankProcessorFactory(nil)(cfg, nil, slog.Default(), tracing.NoopTracing{}, false)
+		p, err := RerankProcessorFactory(nil, tracing.NoopRerankTracer{})(cfg, nil, slog.Default(), false)
 		require.NoError(t, err)
 		require.IsType(t, &rerankProcessorRouterFilter{}, p)
 	})
 	t.Run("on upstream", func(t *testing.T) {
 		cfg := &filterapi.RuntimeConfig{}
-		p, err := RerankProcessorFactory(&mockMetricsFactory{})(cfg, nil, slog.Default(), tracing.NoopTracing{}, true)
+		p, err := RerankProcessorFactory(&mockMetricsFactory{}, tracing.NoopRerankTracer{})(cfg, nil, slog.Default(), true)
 		require.NoError(t, err)
 		require.IsType(t, &rerankProcessorUpstreamFilter{}, p)
 	})

@@ -49,7 +49,7 @@ func TestCompletions_Schema(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &filterapi.RuntimeConfig{}
-			filter, err := CompletionsProcessorFactory(&mockMetricsFactory{})(cfg, nil, slog.Default(), tracing.NoopTracing{}, tt.onUpstream)
+			filter, err := CompletionsProcessorFactory(&mockMetricsFactory{}, tracing.NoopCompletionTracer{})(cfg, nil, slog.Default(), tt.onUpstream)
 			require.NoError(t, err)
 			require.NotNil(t, filter)
 			require.IsType(t, tt.expectedType, filter)

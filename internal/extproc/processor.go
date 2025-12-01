@@ -13,11 +13,10 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 // ProcessorFactory is the factory function used to create new instances of a processor.
-type ProcessorFactory func(_ *filterapi.RuntimeConfig, _ map[string]string, _ *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error)
+type ProcessorFactory func(_ *filterapi.RuntimeConfig, _ map[string]string, _ *slog.Logger, isUpstreamFilter bool) (Processor, error)
 
 // Processor is the interface for the processor which corresponds to a single gRPC stream per the external processor filter.
 // This decouples the processor implementation detail from the server implementation.

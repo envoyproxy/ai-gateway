@@ -15,11 +15,10 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/extproc"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 func TestDefaultConfig(t *testing.T) {
-	server, err := extproc.NewServer(slog.Default(), tracing.NoopTracing{})
+	server, err := extproc.NewServer(slog.Default())
 	require.NoError(t, err)
 	require.NotNil(t, server)
 

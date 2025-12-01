@@ -29,7 +29,7 @@ import (
 
 func TestMessagesProcessorFactory(t *testing.T) {
 	m := metrics.NewMetricsFactory(noop.NewMeterProvider().Meter("test"), map[string]string{}, metrics.GenAIOperationMessages)
-	factory := MessagesProcessorFactory(m)
+	factory := MessagesProcessorFactory(m, nil)
 	require.NotNil(t, factory, "MessagesProcessorFactory should return a non-nil factory")
 
 	// Test creating a router filter.
@@ -40,13 +40,13 @@ func TestMessagesProcessorFactory(t *testing.T) {
 	}
 	logger := slog.Default()
 
-	routerProcessor, err := factory(config, headers, logger, tracing.NoopTracing{}, false)
+	routerProcessor, err := factory(config, headers, logger, false)
 	require.NoError(t, err, "Factory should create router processor without error")
 	require.NotNil(t, routerProcessor, "Router processor should not be nil")
 	require.IsType(t, &messagesProcessorRouterFilter{}, routerProcessor, "Should return router filter type")
 
 	// Test creating an upstream filter.
-	upstreamProcessor, err := factory(config, headers, logger, tracing.NoopTracing{}, true)
+	upstreamProcessor, err := factory(config, headers, logger, true)
 	require.NoError(t, err, "Factory should create upstream processor without error")
 	require.NotNil(t, upstreamProcessor, "Upstream processor should not be nil")
 	require.IsType(t, &messagesProcessorUpstreamFilter{}, upstreamProcessor, "Should return upstream filter type")

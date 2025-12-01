@@ -27,17 +27,16 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 func requireNewServerWithMockProcessor(t *testing.T) (*Server, *mockProcessor) {
-	s, err := NewServer(slog.Default(), tracing.NoopTracing{})
+	s, err := NewServer(slog.Default())
 	require.NoError(t, err)
 	require.NotNil(t, s)
 	s.config = &filterapi.RuntimeConfig{}
 
 	m := newMockProcessor(s.config, s.logger)
-	s.Register("/", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+	s.Register("/", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool) (Processor, error) {
 		return m, nil
 	})
 
@@ -300,16 +299,16 @@ func TestServer_setBackend(t *testing.T) {
 }
 
 func TestServer_ProcessorSelection(t *testing.T) {
-	s, err := NewServer(slog.Default(), tracing.NoopTracing{})
+	s, err := NewServer(slog.Default())
 	require.NoError(t, err)
 	require.NotNil(t, s)
 
 	s.config = &filterapi.RuntimeConfig{}
-	s.Register("/one", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+	s.Register("/one", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool) (Processor, error) {
 		// Returning nil guarantees that the test will fail if this processor is selected.
 		return nil, nil
 	})
-	s.Register("/two", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+	s.Register("/two", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool) (Processor, error) {
 		return &mockProcessor{
 			t:                     t,
 			expHeaderMap:          &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/two"}, {Key: "x-request-id", Value: "original-req-id"}}},
@@ -473,7 +472,7 @@ func Test_headersToMap(t *testing.T) {
 }
 
 func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
-	s, err := NewServer(slog.Default(), tracing.NoopTracing{})
+	s, err := NewServer(slog.Default())
 	require.NoError(t, err)
 	require.NotNil(t, s)
 
@@ -481,10 +480,10 @@ func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
 
 	// Register processors for different base paths.
 	mockProc := &mockProcessor{}
-	s.Register("/v1/messages", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+	s.Register("/v1/messages", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool) (Processor, error) {
 		return mockProc, nil
 	})
-	s.Register("/anthropic/v1/messages", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+	s.Register("/anthropic/v1/messages", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool) (Processor, error) {
 		return mockProc, nil
 	})
 

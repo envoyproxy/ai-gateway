@@ -28,13 +28,13 @@ import (
 )
 
 // EmbeddingsProcessorFactory returns a factory method to instantiate the embeddings processor.
-func EmbeddingsProcessorFactory(f metrics.Factory) ProcessorFactory {
-	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
+func EmbeddingsProcessorFactory(f metrics.Factory, tracer tracing.EmbeddingsTracer) ProcessorFactory {
+	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "embeddings", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &embeddingsProcessorRouterFilter{
 				config:         config,
-				tracer:         tracing.EmbeddingsTracer(),
+				tracer:         tracer,
 				requestHeaders: requestHeaders,
 				logger:         logger,
 			}, nil

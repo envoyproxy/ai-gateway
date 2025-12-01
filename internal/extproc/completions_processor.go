@@ -29,13 +29,13 @@ import (
 )
 
 // CompletionsProcessorFactory returns a factory method to instantiate the completions processor.
-func CompletionsProcessorFactory(f metrics.Factory) ProcessorFactory {
-	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, tracing tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
+func CompletionsProcessorFactory(f metrics.Factory, tracer tracing.CompletionTracer) ProcessorFactory {
+	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("processor", "completions", "isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
 			return &completionsProcessorRouterFilter{
 				config:         config,
-				tracer:         tracing.CompletionTracer(),
+				tracer:         tracer,
 				requestHeaders: requestHeaders,
 				logger:         logger,
 			}, nil

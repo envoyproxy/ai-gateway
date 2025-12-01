@@ -29,14 +29,14 @@ import (
 func TestEmbeddings_Schema(t *testing.T) {
 	t.Run("supported openai / on route", func(t *testing.T) {
 		cfg := &filterapi.RuntimeConfig{}
-		routeFilter, err := EmbeddingsProcessorFactory(nil)(cfg, nil, slog.Default(), tracing.NoopTracing{}, false)
+		routeFilter, err := EmbeddingsProcessorFactory(nil, tracing.NoopEmbeddingsTracer{})(cfg, nil, slog.Default(), false)
 		require.NoError(t, err)
 		require.NotNil(t, routeFilter)
 		require.IsType(t, &embeddingsProcessorRouterFilter{}, routeFilter)
 	})
 	t.Run("supported openai / on upstream", func(t *testing.T) {
 		cfg := &filterapi.RuntimeConfig{}
-		routeFilter, err := EmbeddingsProcessorFactory(&mockMetricsFactory{})(cfg, nil, slog.Default(), tracing.NoopTracing{}, true)
+		routeFilter, err := EmbeddingsProcessorFactory(&mockMetricsFactory{}, tracing.NoopEmbeddingsTracer{})(cfg, nil, slog.Default(), true)
 		require.NoError(t, err)
 		require.NotNil(t, routeFilter)
 		require.IsType(t, &embeddingsProcessorUpstreamFilter{}, routeFilter)
