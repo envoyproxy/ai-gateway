@@ -63,13 +63,14 @@ func (t *tracingImpl) RerankTracer() tracing.RerankTracer {
 	return t.rerankTracer
 }
 
+// MCPTracer implements the same method as documented on api.Tracing.
 func (t *tracingImpl) MCPTracer() tracing.MCPTracer {
 	return t.mcpTracer
 }
 
+// MessageTracer implements the same method as documented on api.Tracing.
 func (t *tracingImpl) MessageTracer() tracing.MessageTracer {
-	// Not implemented yet.
-	return nil
+	return t.messageTracer
 }
 
 // Shutdown implements the same method as documented on api.Tracing.
