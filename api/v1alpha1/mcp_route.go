@@ -308,24 +308,12 @@ type ToolCall struct {
 	ToolName string `json:"toolName"`
 
 	// Arguments defines the arguments that must be present in the tool call for this rule to match.
+	// Keys must exist and their values must match the provided RE2-compatible regular expressions.
+	// If the argument is a non-string type, it will be matched against its JSON representation.
 	//
 	// +optional
-	// Arguments map[string]string `json:"arguments,omitempty"`
+	Arguments map[string]string `json:"arguments,omitempty"`
 }
-
-/*type ToolArgument struct {
-	// Name is the name of the argument.
-	Name string `json:"name"`
-
-	// Value is the value of the argument.
-	Value ArgumentValues `json:"value"`
-}
-
-type ArgumentValues struct {
-	Include []string `json:"include,omitempty"`
-
-	IncludeRegex []string `json:"includeRegex,omitempty"`
-}*/
 
 // JWKS defines how to obtain JSON Web Key Sets (JWKS) either from a remote HTTP/HTTPS endpoint or from a local source.
 // +kubebuilder:validation:XValidation:rule="has(self.remoteJWKS) || has(self.localJWKS)", message="either remoteJWKS or localJWKS must be specified."

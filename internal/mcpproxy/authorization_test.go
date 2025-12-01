@@ -36,6 +36,7 @@ func TestAuthorizeRequest(t *testing.T) {
 		header        string
 		backendName   string
 		toolName      string
+		args          map[string]any
 		expectAllowed bool
 	}{
 		{
@@ -57,6 +58,156 @@ func TestAuthorizeRequest(t *testing.T) {
 			header:        "Bearer " + makeToken("read", "write"),
 			backendName:   "backend1",
 			toolName:      "tool1",
+			expectAllowed: true,
+		},
+		{
+			name: "matching tool scope and arguments regex allowed",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: filterapi.AuthorizationActionDeny,
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Source: filterapi.MCPAuthorizationSource{
+							JWTSource: filterapi.JWTSource{Scopes: []string{"read"}},
+						},
+						Target: filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{
+								BackendName: "backend1",
+								ToolName:    "tool1",
+								Arguments: map[string]string{
+									"mode":  "fast|slow",
+									"user":  "u-[0-9]+",
+									"debug": "true",
+								},
+							}},
+						},
+						Action: filterapi.AuthorizationActionAllow,
+					},
+				},
+			},
+			header:      "Bearer " + makeToken("read"),
+			backendName: "backend1",
+			toolName:    "tool1",
+			args: map[string]any{
+				"mode":  "fast",
+				"user":  "u-123",
+				"debug": "true",
+			},
+			expectAllowed: true,
+		},
+		{
+			name: "argument regex mismatch denied",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: filterapi.AuthorizationActionDeny,
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Source: filterapi.MCPAuthorizationSource{
+							JWTSource: filterapi.JWTSource{Scopes: []string{"read"}},
+						},
+						Target: filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{
+								BackendName: "backend1",
+								ToolName:    "tool1",
+								Arguments: map[string]string{
+									"mode": "fast|slow",
+								},
+							}},
+						},
+						Action: filterapi.AuthorizationActionAllow,
+					},
+				},
+			},
+			header:      "Bearer " + makeToken("read"),
+			backendName: "backend1",
+			toolName:    "tool1",
+			args: map[string]any{
+				"mode": "other",
+			},
+			expectAllowed: false,
+		},
+		{
+			name: "missing argument denies when required",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: filterapi.AuthorizationActionDeny,
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Source: filterapi.MCPAuthorizationSource{
+							JWTSource: filterapi.JWTSource{Scopes: []string{"read"}},
+						},
+						Target: filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{
+								BackendName: "backend1",
+								ToolName:    "tool1",
+								Arguments: map[string]string{
+									"mode": "fast",
+								},
+							}},
+						},
+						Action: filterapi.AuthorizationActionAllow,
+					},
+				},
+			},
+			header:        "Bearer " + makeToken("read"),
+			backendName:   "backend1",
+			toolName:      "tool1",
+			args:          map[string]any{},
+			expectAllowed: false,
+		},
+		{
+			name: "numeric argument matches via JSON string",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: filterapi.AuthorizationActionDeny,
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Source: filterapi.MCPAuthorizationSource{
+							JWTSource: filterapi.JWTSource{Scopes: []string{"read"}},
+						},
+						Target: filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{
+								BackendName: "backend1",
+								ToolName:    "tool1",
+								Arguments: map[string]string{
+									"count": "^4[0-9]$",
+								},
+							}},
+						},
+						Action: filterapi.AuthorizationActionAllow,
+					},
+				},
+			},
+			header:        "Bearer " + makeToken("read"),
+			backendName:   "backend1",
+			toolName:      "tool1",
+			args:          map[string]any{"count": 42},
+			expectAllowed: true,
+		},
+		{
+			name: "object argument can be matched via JSON string",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: filterapi.AuthorizationActionDeny,
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Source: filterapi.MCPAuthorizationSource{
+							JWTSource: filterapi.JWTSource{Scopes: []string{"read"}},
+						},
+						Target: filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{
+								BackendName: "backend1",
+								ToolName:    "tool1",
+								Arguments: map[string]string{
+									"payload": `"kind":"test"`,
+								},
+							}},
+						},
+						Action: filterapi.AuthorizationActionAllow,
+					},
+				},
+			},
+			header:      "Bearer " + makeToken("read"),
+			backendName: "backend1",
+			toolName:    "tool1",
+			args: map[string]any{
+				"payload": map[string]any{"kind": "test", "value": 123},
+			},
 			expectAllowed: true,
 		},
 		{
@@ -294,7 +445,7 @@ func TestAuthorizeRequest(t *testing.T) {
 			if tt.header != "" {
 				headers.Set("Authorization", tt.header)
 			}
-			allowed := proxy.authorizeRequest(tt.auth, headers, tt.backendName, tt.toolName)
+			allowed := proxy.authorizeRequest(tt.auth, headers, tt.backendName, tt.toolName, tt.args)
 			if allowed != tt.expectAllowed {
 				t.Fatalf("expected %v, got %v", tt.expectAllowed, allowed)
 			}

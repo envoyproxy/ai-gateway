@@ -56,24 +56,89 @@ func TestMCPRouteAuthorization(t *testing.T) {
 	client := mcp.NewClient(&mcp.Implementation{Name: "demo-http-client", Version: "0.1.0"}, nil)
 
 	t.Run("allow rules with matching scopes", func(t *testing.T) {
-		token := makeSignedJWT(t, "echo", "sum")
+		token := makeSignedJWT(t, "sum")
 		authHTTPClient := &http.Client{
 			Timeout: 10 * time.Second,
 			Transport: &bearerTokenTransport{
 				token: token,
 			},
 		}
-		testMCPRouteTools(
-			t.Context(),
-			t,
-			client,
-			fwd.Address(),
-			"/mcp-authorization",
-			testMCPServerAllToolNames("mcp-backend-authorization__"),
-			authHTTPClient,
-			true,
-			true,
-		)
+
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		sess := requireConnectMCP(ctx, t, client, fmt.Sprintf("%s/mcp-authorization", fwd.Address()), authHTTPClient)
+		t.Cleanup(func() {
+			_ = sess.Close()
+		})
+
+		res, err := sess.CallTool(ctx, &mcp.CallToolParams{
+			Name:      "mcp-backend-authorization__" + testmcp.ToolSum.Tool.Name,
+			Arguments: testmcp.ToolSumArgs{A: 41, B: 1},
+		})
+		require.NoError(t, err)
+		require.False(t, res.IsError)
+		require.Len(t, res.Content, 1)
+		txt, ok := res.Content[0].(*mcp.TextContent)
+		require.True(t, ok)
+		require.Equal(t, "42", txt.Text)
+	})
+
+	t.Run("allow rules with matching scopes and arguments", func(t *testing.T) {
+		token := makeSignedJWT(t, "echo")
+		authHTTPClient := &http.Client{
+			Timeout: 10 * time.Second,
+			Transport: &bearerTokenTransport{
+				token: token,
+			},
+		}
+
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		sess := requireConnectMCP(ctx, t, client, fmt.Sprintf("%s/mcp-authorization", fwd.Address()), authHTTPClient)
+		t.Cleanup(func() {
+			_ = sess.Close()
+		})
+
+		const hello = "Hello, world!" // Should match the argument regex "^Hello, .*!$"
+		res, err := sess.CallTool(ctx, &mcp.CallToolParams{
+			Name:      "mcp-backend-authorization__" + testmcp.ToolEcho.Tool.Name,
+			Arguments: testmcp.ToolEchoArgs{Text: hello},
+		})
+		require.NoError(t, err)
+		require.False(t, res.IsError)
+		require.Len(t, res.Content, 1)
+		txt, ok := res.Content[0].(*mcp.TextContent)
+		require.True(t, ok)
+		require.Equal(t, hello, txt.Text)
+	})
+
+	t.Run("allow rules with matching scopes and mismatched arguments", func(t *testing.T) {
+		token := makeSignedJWT(t, "echo")
+		authHTTPClient := &http.Client{
+			Timeout: 10 * time.Second,
+			Transport: &bearerTokenTransport{
+				token: token,
+			},
+		}
+
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		sess := requireConnectMCP(ctx, t, client, fmt.Sprintf("%s/mcp-authorization", fwd.Address()), authHTTPClient)
+		t.Cleanup(func() {
+			_ = sess.Close()
+		})
+
+		const hello = "hello, world!" // Should match the argument regex "^Hello, .*!$"
+		_, err := sess.CallTool(ctx, &mcp.CallToolParams{
+			Name:      "mcp-backend-authorization__" + testmcp.ToolEcho.Tool.Name,
+			Arguments: testmcp.ToolEchoArgs{Text: hello},
+		})
+		require.Error(t, err)
+		errMsg := strings.ToLower(err.Error())
+		require.True(t, strings.Contains(errMsg, "401") || strings.Contains(errMsg, "authorization"), "unexpected error: %v", err)
 	})
 
 	t.Run("missing scopes fall back to deny", func(t *testing.T) {
@@ -89,25 +154,9 @@ func TestMCPRouteAuthorization(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 		t.Cleanup(cancel)
 
-		var sess *mcp.ClientSession
-		require.Eventually(t, func() bool {
-			var err error
-			sess, err = client.Connect(
-				ctx,
-				&mcp.StreamableClientTransport{
-					Endpoint:   fmt.Sprintf("%s/mcp-authorization", fwd.Address()),
-					HTTPClient: authHTTPClient,
-				}, nil)
-			if err != nil {
-				t.Logf("failed to connect to MCP server: %v", err)
-				return false
-			}
-			return true
-		}, 30*time.Second, 100*time.Millisecond, "failed to connect to MCP server")
+		sess := requireConnectMCP(ctx, t, client, fmt.Sprintf("%s/mcp-authorization", fwd.Address()), authHTTPClient)
 		t.Cleanup(func() {
-			if sess != nil {
-				_ = sess.Close()
-			}
+			_ = sess.Close()
 		})
 
 		_, err := sess.CallTool(ctx, &mcp.CallToolParams{
@@ -118,6 +167,25 @@ func TestMCPRouteAuthorization(t *testing.T) {
 		errMsg := strings.ToLower(err.Error())
 		require.True(t, strings.Contains(errMsg, "401") || strings.Contains(errMsg, "authorization"), "unexpected error: %v", err)
 	})
+}
+
+func requireConnectMCP(ctx context.Context, t *testing.T, client *mcp.Client, endpoint string, httpClient *http.Client) *mcp.ClientSession {
+	var sess *mcp.ClientSession
+	require.Eventually(t, func() bool {
+		var err error
+		sess, err = client.Connect(
+			ctx,
+			&mcp.StreamableClientTransport{
+				Endpoint:   endpoint,
+				HTTPClient: httpClient,
+			}, nil)
+		if err != nil {
+			t.Logf("failed to connect to MCP server: %v", err)
+			return false
+		}
+		return true
+	}, 30*time.Second, 100*time.Millisecond, "failed to connect to MCP server")
+	return sess
 }
 
 func makeSignedJWT(t *testing.T, scopes ...string) string {

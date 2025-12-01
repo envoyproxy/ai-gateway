@@ -500,6 +500,7 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 					tools[i] = filterapi.ToolCall{
 						BackendName: tool.BackendName,
 						ToolName:    tool.ToolName,
+						Arguments:   tool.Arguments,
 					}
 				}
 

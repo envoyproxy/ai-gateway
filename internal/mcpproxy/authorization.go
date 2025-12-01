@@ -6,9 +6,11 @@
 package mcpproxy
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -16,7 +18,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
-func (m *MCPProxy) authorizeRequest(authorization *filterapi.MCPRouteAuthorization, headers http.Header, backendName, toolName string) bool {
+func (m *MCPProxy) authorizeRequest(authorization *filterapi.MCPRouteAuthorization, headers http.Header, backendName, toolName string, argments any) bool {
 	defaultAction := authorization.DefaultAction == filterapi.AuthorizationActionAllow
 
 	// If there are no rules, return the default action.
@@ -44,9 +46,14 @@ func (m *MCPProxy) authorizeRequest(authorization *filterapi.MCPRouteAuthorizati
 		scopeSet[scope] = struct{}{}
 	}
 
-	target := filterapi.ToolCall{BackendName: backendName, ToolName: toolName}
 	for _, rule := range authorization.Rules {
-		if !toolTargetMatches(target, rule.Target.Tools) {
+		var args map[string]any
+		if argments != nil {
+			if cast, ok := argments.(map[string]any); ok {
+				args = cast
+			}
+		}
+		if !toolMatches(args, filterapi.ToolCall{BackendName: backendName, ToolName: toolName}, rule.Target.Tools) {
 			continue
 		}
 		if scopesSatisfied(scopeSet, rule.Source.JWTSource.Scopes) {
@@ -98,15 +105,54 @@ func extractScopes(claims jwt.MapClaims) []string {
 	}
 }
 
-func toolTargetMatches(target filterapi.ToolCall, tools []filterapi.ToolCall) bool {
+func toolMatches(args map[string]any, target filterapi.ToolCall, tools []filterapi.ToolCall) bool {
 	if len(tools) == 0 {
 		return true
 	}
+
 	for _, t := range tools {
-		if t.BackendName == target.BackendName && t.ToolName == target.ToolName {
+		if t.BackendName != target.BackendName || t.ToolName != target.ToolName {
+			continue
+		}
+		if len(t.Arguments) == 0 {
+			return true
+		}
+		if args == nil {
+			return false
+		}
+		allMatch := true
+		for key, pattern := range t.Arguments {
+			rawVal, ok := args[key]
+			if !ok {
+				allMatch = false
+				break
+			}
+			re, err := regexp.Compile(pattern)
+			if err != nil {
+				allMatch = false
+				break
+			}
+			var data []byte
+			if s, ok := rawVal.(string); ok {
+				data = []byte(s)
+			} else {
+				jsonVal, err := json.Marshal(rawVal)
+				if err != nil {
+					allMatch = false
+					break
+				}
+				data = jsonVal
+			}
+			if !re.Match(data) {
+				allMatch = false
+				break
+			}
+		}
+		if allMatch {
 			return true
 		}
 	}
+	// If no matching tool entry or no arguments matched, fail.
 	return false
 }
 

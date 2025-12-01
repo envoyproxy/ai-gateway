@@ -69,6 +69,8 @@ spec:
             tools:
               - backendName: mcp-backend-authorization
                 toolName: echo
+                arguments:
+                  text: "^Hello, .*!$"
           action: Allow
         - source:
             jwtSource:

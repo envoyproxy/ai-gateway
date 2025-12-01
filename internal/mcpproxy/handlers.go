@@ -542,7 +542,7 @@ func (m *MCPProxy) handleToolCallRequest(ctx context.Context, s *session, w http
 
 	// Enforce authentication if required by the route.
 	if route.authorization != nil {
-		if !m.authorizeRequest(route.authorization, headers, backendName, toolName) {
+		if !m.authorizeRequest(route.authorization, headers, backendName, toolName, p.Arguments) {
 			onErrorResponse(w, http.StatusUnauthorized, "authorization failed")
 			return fmt.Errorf("authorization failed")
 		}

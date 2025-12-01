@@ -1985,6 +1985,11 @@ References:
   type="string"
   required="true"
   description="ToolName is the name of the tool."
+/><ApiField
+  name="arguments"
+  type="object (keys:string, values:string)"
+  required="false"
+  description="Arguments defines the arguments that must be present in the tool call for this rule to match.<br />Keys must exist and their values must match the provided RE2-compatible regular expressions.<br />If the argument is a non-string type, it will be matched against its JSON representation."
 />
 
 

@@ -118,4 +118,8 @@ type ToolCall struct {
 
 	// ToolName is the name of the tool.
 	ToolName string `json:"toolName"`
+
+	// Arguments defines required arguments (exact key names with regex patterns for values).
+	// All patterns must match for the rule to apply.
+	Arguments map[string]string `json:"arguments,omitempty"`
 }

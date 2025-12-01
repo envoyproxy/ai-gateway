@@ -642,6 +642,14 @@ spec:
                                     rule applies to.
                                   items:
                                     properties:
+                                      arguments:
+                                        additionalProperties:
+                                          type: string
+                                        description: |-
+                                          Arguments defines the arguments that must be present in the tool call for this rule to match.
+                                          Keys must exist and their values must match the provided RE2-compatible regular expressions.
+                                          If the argument is a non-string type, it will be matched against its JSON representation.
+                                        type: object
                                       backendName:
                                         description: BackendName is the name of the
                                           backend this tool belongs to.
