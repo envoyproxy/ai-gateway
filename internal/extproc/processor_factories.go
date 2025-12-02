@@ -107,6 +107,7 @@ type (
 		//
 		// Parameters:
 		// * body: The raw request body as a byte slice.
+		// * costConfigured: A boolean indicating if cost metrics are configured.
 		//
 		// Returns:
 		// * originalModel: The original model specified in the request.
@@ -114,7 +115,7 @@ type (
 		// * stream: A boolean indicating if the request is for streaming responses.
 		// * mutatedBody: The possibly mutated request body as a byte slice. Or nil if no mutation is needed.
 		// * err: An error if parsing fails.
-		ParseBody(body []byte) (originalModel internalapi.OriginalModel, req *ReqT, stream bool, mutatedBody []byte, err error)
+		ParseBody(body []byte, costConfigured bool) (originalModel internalapi.OriginalModel, req *ReqT, stream bool, mutatedBody []byte, err error)
 		// GetTranslator selects the appropriate translator based on the output API schema
 		// and an optional model name override.
 		//
@@ -144,13 +145,14 @@ type (
 // ParseBody implements [endpointHandler.ParseBody].
 func (chatCompletionsEndpointHandler) ParseBody(
 	body []byte,
+	costConfigured bool,
 ) (internalapi.OriginalModel, *openai.ChatCompletionRequest, bool, []byte, error) {
 	var req openai.ChatCompletionRequest
 	if err := json.Unmarshal(body, &req); err != nil {
 		return "", nil, false, nil, fmt.Errorf("failed to unmarshal chat completion request: %w", err)
 	}
 	var mutatedBody []byte
-	if req.Stream && (req.StreamOptions == nil || !req.StreamOptions.IncludeUsage) {
+	if req.Stream && costConfigured && (req.StreamOptions == nil || !req.StreamOptions.IncludeUsage) {
 		// If the request is a streaming request and cost metrics are configured, we need to include usage in the response
 		// to avoid the bypassing of the token usage calculation.
 		req.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
@@ -191,6 +193,7 @@ func (chatCompletionsEndpointHandler) GetTranslator(schema filterapi.VersionedAP
 // ParseBody implements [endpointHandler.ParseBody].
 func (completionsEndpointHandler) ParseBody(
 	body []byte,
+	_ bool,
 ) (internalapi.OriginalModel, *openai.CompletionRequest, bool, []byte, error) {
 	var openAIReq openai.CompletionRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
@@ -212,6 +215,7 @@ func (completionsEndpointHandler) GetTranslator(schema filterapi.VersionedAPISch
 // ParseBody implements [endpointHandler.ParseBody].
 func (embeddingsEndpointHandler) ParseBody(
 	body []byte,
+	_ bool,
 ) (internalapi.OriginalModel, *openai.EmbeddingRequest, bool, []byte, error) {
 	var openAIReq openai.EmbeddingRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
@@ -234,6 +238,7 @@ func (embeddingsEndpointHandler) GetTranslator(schema filterapi.VersionedAPISche
 
 func (imageGenerationEndpointHandler) ParseBody(
 	body []byte,
+	_ bool,
 ) (internalapi.OriginalModel, *openaisdk.ImageGenerateParams, bool, []byte, error) {
 	var openAIReq openaisdk.ImageGenerateParams
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
@@ -255,6 +260,7 @@ func (imageGenerationEndpointHandler) GetTranslator(schema filterapi.VersionedAP
 // ParseBody implements [endpointHandler.ParseBody].
 func (messagesEndpointHandler) ParseBody(
 	body []byte,
+	_ bool,
 ) (internalapi.OriginalModel, *anthropic.MessagesRequest, bool, []byte, error) {
 	var anthropicReq anthropic.MessagesRequest
 	if err := json.Unmarshal(body, &anthropicReq); err != nil {
@@ -288,6 +294,7 @@ func (messagesEndpointHandler) GetTranslator(schema filterapi.VersionedAPISchema
 // ParseBody implements [endpointHandler.ParseBody].
 func (rerankEndpointHandler) ParseBody(
 	body []byte,
+	_ bool,
 ) (internalapi.OriginalModel, *cohereschema.RerankV2Request, bool, []byte, error) {
 	var req cohereschema.RerankV2Request
 	if err := json.Unmarshal(body, &req); err != nil {

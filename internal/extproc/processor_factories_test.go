@@ -134,7 +134,7 @@ func TestChatCompletionsEndpointHandler_ParseBody(t *testing.T) {
 	handler := chatCompletionsEndpointHandler{}
 
 	t.Run("invalid json", func(t *testing.T) {
-		_, _, _, _, err := handler.ParseBody([]byte("not-json"))
+		_, _, _, _, err := handler.ParseBody([]byte("not-json"), false)
 		require.ErrorContains(t, err, "failed to unmarshal chat completion request")
 	})
 
@@ -143,7 +143,7 @@ func TestChatCompletionsEndpointHandler_ParseBody(t *testing.T) {
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 
-		model, parsed, stream, mutated, err := handler.ParseBody(body)
+		model, parsed, stream, mutated, err := handler.ParseBody(body, true)
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4o", model)
 		require.True(t, stream)
@@ -167,7 +167,7 @@ func TestChatCompletionsEndpointHandler_ParseBody(t *testing.T) {
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 
-		_, parsed, _, mutated, err := handler.ParseBody(body)
+		_, parsed, _, mutated, err := handler.ParseBody(body, false)
 		require.NoError(t, err)
 		require.NotNil(t, parsed)
 		require.True(t, parsed.StreamOptions.IncludeUsage)
@@ -179,7 +179,7 @@ func TestChatCompletionsEndpointHandler_ParseBody(t *testing.T) {
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 
-		model, parsed, stream, mutated, err := handler.ParseBody(body)
+		model, parsed, stream, mutated, err := handler.ParseBody(body, false)
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4-mini", model)
 		require.False(t, stream)
@@ -218,7 +218,7 @@ func TestCompletionsEndpointHandler_ParseBody(t *testing.T) {
 	handler := completionsEndpointHandler{}
 
 	t.Run("invalid json", func(t *testing.T) {
-		_, _, _, _, err := handler.ParseBody([]byte("{bad"))
+		_, _, _, _, err := handler.ParseBody([]byte("{bad"), false)
 		require.ErrorContains(t, err, "failed to unmarshal completion request")
 	})
 
@@ -227,7 +227,7 @@ func TestCompletionsEndpointHandler_ParseBody(t *testing.T) {
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 
-		model, parsed, stream, mutated, err := handler.ParseBody(body)
+		model, parsed, stream, mutated, err := handler.ParseBody(body, false)
 		require.NoError(t, err)
 		require.Equal(t, "text-davinci-003", model)
 		require.True(t, stream)
@@ -250,7 +250,7 @@ func TestEmbeddingsEndpointHandler_ParseBody(t *testing.T) {
 	handler := embeddingsEndpointHandler{}
 
 	t.Run("invalid json", func(t *testing.T) {
-		_, _, _, _, err := handler.ParseBody([]byte("{"))
+		_, _, _, _, err := handler.ParseBody([]byte("{"), false)
 		require.ErrorContains(t, err, "failed to unmarshal embedding request")
 	})
 
@@ -259,7 +259,7 @@ func TestEmbeddingsEndpointHandler_ParseBody(t *testing.T) {
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 
-		model, parsed, stream, mutated, err := handler.ParseBody(body)
+		model, parsed, stream, mutated, err := handler.ParseBody(body, false)
 		require.NoError(t, err)
 		require.Equal(t, "text-embedding-3-large", model)
 		require.False(t, stream)
@@ -285,7 +285,7 @@ func TestImageGenerationEndpointHandler_ParseBody(t *testing.T) {
 	handler := imageGenerationEndpointHandler{}
 
 	t.Run("invalid json", func(t *testing.T) {
-		_, _, _, _, err := handler.ParseBody([]byte("{"))
+		_, _, _, _, err := handler.ParseBody([]byte("{"), false)
 		require.ErrorContains(t, err, "failed to unmarshal image generation request")
 	})
 
@@ -293,7 +293,7 @@ func TestImageGenerationEndpointHandler_ParseBody(t *testing.T) {
 		body, err := json.Marshal(map[string]any{"model": "gpt-image-1", "prompt": "cat"})
 		require.NoError(t, err)
 
-		model, parsed, stream, mutated, err := handler.ParseBody(body)
+		model, parsed, stream, mutated, err := handler.ParseBody(body, false)
 		require.NoError(t, err)
 		require.Equal(t, "gpt-image-1", model)
 		require.False(t, stream)
@@ -316,7 +316,7 @@ func TestMessagesEndpointHandler_ParseBody(t *testing.T) {
 	handler := messagesEndpointHandler{}
 
 	t.Run("invalid json", func(t *testing.T) {
-		_, _, _, _, err := handler.ParseBody([]byte("["))
+		_, _, _, _, err := handler.ParseBody([]byte("["), false)
 		require.ErrorContains(t, err, "failed to unmarshal Anthropic Messages body")
 	})
 
@@ -324,7 +324,7 @@ func TestMessagesEndpointHandler_ParseBody(t *testing.T) {
 		body, err := json.Marshal(map[string]any{"stream": true})
 		require.NoError(t, err)
 
-		_, _, _, _, err = handler.ParseBody(body)
+		_, _, _, _, err = handler.ParseBody(body, false)
 		require.ErrorContains(t, err, "model field is required")
 	})
 
@@ -332,7 +332,7 @@ func TestMessagesEndpointHandler_ParseBody(t *testing.T) {
 		body, err := json.Marshal(map[string]any{"model": "claude-3", "stream": true})
 		require.NoError(t, err)
 
-		model, parsed, stream, mutated, err := handler.ParseBody(body)
+		model, parsed, stream, mutated, err := handler.ParseBody(body, false)
 		require.NoError(t, err)
 		require.Equal(t, "claude-3", model)
 		require.True(t, stream)
@@ -360,7 +360,7 @@ func TestMessagesEndpointHandler_GetTranslator(t *testing.T) {
 func TestRerankEndpointHandler_ParseBody(t *testing.T) {
 	handler := rerankEndpointHandler{}
 	t.Run("invalid json", func(t *testing.T) {
-		_, _, _, _, err := handler.ParseBody([]byte("{"))
+		_, _, _, _, err := handler.ParseBody([]byte("{"), false)
 		require.ErrorContains(t, err, "failed to unmarshal rerank request")
 	})
 
@@ -369,7 +369,7 @@ func TestRerankEndpointHandler_ParseBody(t *testing.T) {
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 
-		model, parsed, stream, mutated, err := handler.ParseBody(body)
+		model, parsed, stream, mutated, err := handler.ParseBody(body, false)
 		require.NoError(t, err)
 		require.Equal(t, "rerank-v3.5", model)
 		require.False(t, stream)

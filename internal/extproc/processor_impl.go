@@ -126,7 +126,7 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]) ProcessResp
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
 func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
-	originalModel, body, stream, mutatedOriginalBody, err := r.eh.ParseBody(rawBody.Body)
+	originalModel, body, stream, mutatedOriginalBody, err := r.eh.ParseBody(rawBody.Body, len(r.config.RequestCosts) > 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
