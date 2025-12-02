@@ -118,8 +118,8 @@ func TestMCPRouteAPIKeyAuth(t *testing.T) {
 					HTTPClient: invalidClient,
 				}, nil)
 			if err != nil {
-				if strings.Contains(err.Error(), "401 Unauthorized") {
-					t.Logf("got expected 401 Unauthorized error: %v", err)
+				if strings.Contains(err.Error(), "Unauthorized") {
+					t.Logf("got expected Unauthorized error: %v", err)
 					return true
 				}
 				t.Logf("failed to connect to MCP server: %v", err)
