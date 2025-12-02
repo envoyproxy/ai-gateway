@@ -1525,6 +1525,11 @@ type EmbeddingCompletionRequest struct {
 	User *string `json:"user,omitempty"`
 }
 
+// GetModel implements ModelName interface
+func (e *EmbeddingCompletionRequest) GetModel() string {
+	return e.Model
+}
+
 // EmbeddingChatRequest represents a request structure for embeddings API. This is not a standard openai, but just extend the request to have messages/chat like completion requests
 type EmbeddingChatRequest struct {
 	// Messages: A list of messages comprising the conversation so far.
@@ -1550,8 +1555,26 @@ type EmbeddingChatRequest struct {
 	User *string `json:"user,omitempty"`
 }
 
-type EmbedddingRequest interface {
+// GetModel implements ModelProvider interface
+func (e *EmbeddingChatRequest) GetModel() string {
+	return e.Model
+}
+
+type EmbeddingRequest interface {
 	EmbeddingCompletionRequest | EmbeddingChatRequest
+}
+
+// ModelName interface for types that can provide a model name
+type ModelName interface {
+	GetModel() string
+}
+
+// GetModelFromEmbeddingRequest extracts the model name from any EmbeddingRequest type
+func GetModelFromEmbeddingRequest[T EmbeddingRequest](req *T) string {
+	if mp, ok := any(*req).(ModelName); ok {
+		return mp.GetModel()
+	}
+	return ""
 }
 
 // EmbeddingResponse represents a response from /v1/embeddings.

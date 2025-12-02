@@ -36,3 +36,13 @@ type GenerateContentRequest struct {
 	// https://github.com/googleapis/go-genai/blob/6a8184fcaf8bf15f0c566616a7b356560309be9b/types.go#L1057
 	SafetySettings []*genai.SafetySetting `json:"safetySettings,omitempty"`
 }
+
+type EmbedContentRequest struct {
+	// Contains the multipart content of a message.
+	//
+	// https://github.com/googleapis/go-genai/blob/6a8184fcaf8bf15f0c566616a7b356560309be9b/types.go#L858
+	Contents []genai.Content `json:"contents"`
+	// Tool details of a tool that the model may use to generate a response.
+
+	Config *genai.EmbedContentConfig `json:"config,omitempty"`
+}
