@@ -244,7 +244,6 @@ func testToolCountDown(t *testing.T, m *mcpEnv) {
 		callErrorCh <- err
 		doneBool.Store(true)
 	}()
-	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolCountDown.Tool.Name, false, "")
 
 	// we cannot assume the order of notifications, so we use a set to track them.
 	counts := sets.New[int]()
@@ -294,11 +293,12 @@ func testToolCountDown(t *testing.T, m *mcpEnv) {
 	require.Empty(t, expectedLogs)
 	require.Empty(t, counts)
 
-	err = <-callErrorCh
-	require.NoError(t, err)
+	require.NoError(t, <-callErrorCh)
 	require.Eventually(t, func() bool {
 		return doneBool.Load() == true
 	}, time.Second, time.Millisecond*10)
+	// The tool call won't end until the countdown is complete, so check the span here, not before.
+	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolCountDown.Tool.Name, false, "")
 	require.False(t, res.IsError)
 	require.Len(t, res.Content, 1)
 	require.IsType(t, &mcp.TextContent{}, res.Content[0])

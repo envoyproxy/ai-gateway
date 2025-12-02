@@ -150,35 +150,34 @@ var ToolCountDown = TestTool[ToolCountDownArgs, any]{
 			return nil, nil, err
 		}
 		// change to use goroutine to not block the handler.
-		go func() {
-			for i := args.From; i >= 0; i-- {
-				// Send a progress notification with the current count.
-				err := request.Session.NotifyProgress(ctx, &mcp.ProgressNotificationParams{
-					Message:       fmt.Sprintf("count down: %d", i),
-					ProgressToken: args.From - i,
-				})
-				if err != nil {
-					return
-				}
-				// Send a log message with the debug and error levels so that
-				// we can test that setting log level works.
-				err = request.Session.Log(ctx, &mcp.LoggingMessageParams{
-					Level: "debug",
-					Data:  `debug count down: ` + fmt.Sprint(i),
-				})
-				if err != nil {
-					return
-				}
-				err = request.Session.Log(ctx, &mcp.LoggingMessageParams{
-					Level: "error",
-					Data:  `count down: ` + fmt.Sprint(i),
-				})
-				if err != nil {
-					return
-				}
-				time.Sleep(interval)
+		for i := args.From; i >= 0; i-- {
+			// Send a progress notification with the current count.
+			request.GetSession()
+			err := request.Session.NotifyProgress(ctx, &mcp.ProgressNotificationParams{
+				Message:       fmt.Sprintf("count down: %d", i),
+				ProgressToken: args.From - i,
+			})
+			if err != nil {
+				return nil, nil, err
 			}
-		}()
+			// Send a log message with the debug and error levels so that
+			// we can test that setting log level works.
+			err = request.Session.Log(ctx, &mcp.LoggingMessageParams{
+				Level: "debug",
+				Data:  `debug count down: ` + fmt.Sprint(i),
+			})
+			if err != nil {
+				return nil, nil, err
+			}
+			err = request.Session.Log(ctx, &mcp.LoggingMessageParams{
+				Level: "error",
+				Data:  `count down: ` + fmt.Sprint(i),
+			})
+			if err != nil {
+				return nil, nil, err
+			}
+			time.Sleep(interval)
+		}
 
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
