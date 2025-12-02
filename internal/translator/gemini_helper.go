@@ -279,6 +279,12 @@ func assistantMsgToGeminiParts(msg openai.ChatCompletionAssistantMessageParam) (
 				if contPart.Text != nil && *contPart.Text != "" {
 					parts = append(parts, genai.NewPartFromText(*contPart.Text))
 				}
+			case openai.ChatCompletionAssistantMessageParamContentTypeThinking:
+				if contPart.Text != nil && *contPart.Text != "" {
+					thoughtPart := genai.NewPartFromText(*contPart.Text)
+					thoughtPart.Thought = true
+					parts = append(parts, thoughtPart)
+				}
 			case openai.ChatCompletionAssistantMessageParamContentTypeRefusal:
 				// Refusal messages are currently ignored in this implementation.
 			default:

@@ -319,6 +319,126 @@ func TestAssistantMsgToGeminiParts(t *testing.T) {
 			expectedParts:     nil,
 			expectedToolCalls: map[string]string{},
 		},
+		{
+			name: "thinking content with valid text",
+			msg: openai.ChatCompletionAssistantMessageParam{
+				Content: openai.StringOrAssistantRoleContentUnion{
+					Value: []openai.ChatCompletionAssistantMessageParamContent{
+						{
+							Type: openai.ChatCompletionAssistantMessageParamContentTypeThinking,
+							Text: ptr.To("Let me think step by step..."),
+						},
+					},
+				},
+				Role: openai.ChatMessageRoleAssistant,
+			},
+			expectedParts: []*genai.Part{
+				{
+					Text:    "Let me think step by step...",
+					Thought: true,
+				},
+			},
+			expectedToolCalls: map[string]string{},
+		},
+		{
+			name: "thinking content with nil text",
+			msg: openai.ChatCompletionAssistantMessageParam{
+				Content: openai.StringOrAssistantRoleContentUnion{
+					Value: []openai.ChatCompletionAssistantMessageParamContent{
+						{
+							Type: openai.ChatCompletionAssistantMessageParamContentTypeThinking,
+							Text: nil,
+						},
+					},
+				},
+				Role: openai.ChatMessageRoleAssistant,
+			},
+			expectedParts:     nil,
+			expectedToolCalls: map[string]string{},
+		},
+		{
+			name: "thinking content with empty text",
+			msg: openai.ChatCompletionAssistantMessageParam{
+				Content: openai.StringOrAssistantRoleContentUnion{
+					Value: []openai.ChatCompletionAssistantMessageParamContent{
+						{
+							Type: openai.ChatCompletionAssistantMessageParamContentTypeThinking,
+							Text: ptr.To(""),
+						},
+					},
+				},
+				Role: openai.ChatMessageRoleAssistant,
+			},
+			expectedParts:     nil,
+			expectedToolCalls: map[string]string{},
+		},
+		{
+			name: "mixed content with thinking and regular text",
+			msg: openai.ChatCompletionAssistantMessageParam{
+				Content: openai.StringOrAssistantRoleContentUnion{
+					Value: []openai.ChatCompletionAssistantMessageParamContent{
+						{
+							Type: openai.ChatCompletionAssistantMessageParamContentTypeThinking,
+							Text: ptr.To("First, I need to analyze this problem..."),
+						},
+						{
+							Type: openai.ChatCompletionAssistantMessageParamContentTypeText,
+							Text: ptr.To("Based on my analysis, here's the answer."),
+						},
+					},
+				},
+				Role: openai.ChatMessageRoleAssistant,
+			},
+			expectedParts: []*genai.Part{
+				{
+					Text:    "First, I need to analyze this problem...",
+					Thought: true,
+				},
+				genai.NewPartFromText("Based on my analysis, here's the answer."),
+			},
+			expectedToolCalls: map[string]string{},
+		},
+		{
+			name: "thinking content mixed with tool calls",
+			msg: openai.ChatCompletionAssistantMessageParam{
+				Content: openai.StringOrAssistantRoleContentUnion{
+					Value: []openai.ChatCompletionAssistantMessageParamContent{
+						{
+							Type: openai.ChatCompletionAssistantMessageParamContentTypeThinking,
+							Text: ptr.To("I need to call a function to get the weather"),
+						},
+						{
+							Type: openai.ChatCompletionAssistantMessageParamContentTypeText,
+							Text: ptr.To("Let me get the weather for you"),
+						},
+					},
+				},
+				Role: openai.ChatMessageRoleAssistant,
+				ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+					{
+						ID: ptr.To("call_weather"),
+						Function: openai.ChatCompletionMessageToolCallFunctionParam{
+							Name:      "get_weather",
+							Arguments: `{"location":"San Francisco"}`,
+						},
+						Type: openai.ChatCompletionMessageToolCallTypeFunction,
+					},
+				},
+			},
+			expectedParts: []*genai.Part{
+				genai.NewPartFromFunctionCall("get_weather", map[string]any{
+					"location": "San Francisco",
+				}),
+				{
+					Text:    "I need to call a function to get the weather",
+					Thought: true,
+				},
+				genai.NewPartFromText("Let me get the weather for you"),
+			},
+			expectedToolCalls: map[string]string{
+				"call_weather": "get_weather",
+			},
+		},
 	}
 
 	for _, tc := range tests {
