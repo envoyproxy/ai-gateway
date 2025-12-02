@@ -62,6 +62,7 @@ type (
 	upstreamProcessor[ReqT, RespT, RespChunkT any, EndpointHandlerT endpointHandler[ReqT, RespT, RespChunkT]] struct {
 		parent *routerProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]
 
+		logger            *slog.Logger
 		requestHeaders    map[string]string
 		responseHeaders   map[string]string
 		responseEncoding  string
@@ -95,10 +96,12 @@ func newRouterProcessor[ReqT, RespT, RespChunkT any, EndpointHandlerT endpointHa
 
 func newUpstreamProcessor[ReqT, RespT, RespChunkT any, EndpointHandlerT endpointHandler[ReqT, RespT, RespChunkT]](
 	reqHeader map[string]string, metrics metrics.Metrics,
+	logger *slog.Logger,
 ) *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT] {
 	return &upstreamProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]{
 		requestHeaders: reqHeader,
 		metrics:        metrics,
+		logger:         logger,
 	}
 }
 
@@ -228,7 +231,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]) ProcessRe
 
 	// Apply body mutations from the route and also restore original body on retry.
 	bodyMutation = applyBodyMutation(u.bodyMutator, bodyMutation,
-		u.parent.originalRequestBodyRaw, forceBodyMutation, u.parent.logger)
+		u.parent.originalRequestBodyRaw, forceBodyMutation, u.logger)
 
 	// Ensure bodyMutation is not nil for subsequent processing
 	if bodyMutation == nil {

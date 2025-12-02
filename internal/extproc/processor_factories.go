@@ -85,6 +85,7 @@ func newFactory[ReqT any, RespT any, RespChunkT any, EndpointHandlerT endpointHa
 		return newUpstreamProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT](
 			requestHeaders,
 			f.NewMetrics(),
+			logger,
 		), nil
 	}
 }
