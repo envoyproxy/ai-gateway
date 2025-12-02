@@ -138,7 +138,7 @@ func TestMCPRouteAuthorization(t *testing.T) {
 		})
 		require.Error(t, err)
 		errMsg := strings.ToLower(err.Error())
-		require.True(t, strings.Contains(errMsg, "401") || strings.Contains(errMsg, "authorization"), "unexpected error: %v", err)
+		require.True(t, strings.Contains(errMsg, "403") || strings.Contains(errMsg, "authorization"), "unexpected error: %v", err)
 	})
 
 	t.Run("missing scopes fall back to deny", func(t *testing.T) {
@@ -165,7 +165,7 @@ func TestMCPRouteAuthorization(t *testing.T) {
 		})
 		require.Error(t, err)
 		errMsg := strings.ToLower(err.Error())
-		require.True(t, strings.Contains(errMsg, "401") || strings.Contains(errMsg, "authorization"), "unexpected error: %v", err)
+		require.True(t, strings.Contains(errMsg, "403") || strings.Contains(errMsg, "authorization"), "unexpected error: %v", err)
 	})
 }
 
