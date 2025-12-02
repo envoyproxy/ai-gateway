@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"testing"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -38,6 +39,7 @@ func TestAuthorizeRequest(t *testing.T) {
 		toolName      string
 		args          map[string]any
 		expectAllowed bool
+		expectScopes  []string
 	}{
 		{
 			name: "matching tool and scope",
@@ -57,6 +59,7 @@ func TestAuthorizeRequest(t *testing.T) {
 			backendName:   "backend1",
 			toolName:      "tool1",
 			expectAllowed: true,
+			expectScopes:  nil,
 		},
 		{
 			name: "matching tool scope and arguments regex",
@@ -89,6 +92,7 @@ func TestAuthorizeRequest(t *testing.T) {
 				"debug": "true",
 			},
 			expectAllowed: true,
+			expectScopes:  nil,
 		},
 		{
 			name: "numeric argument matches via JSON string",
@@ -115,6 +119,7 @@ func TestAuthorizeRequest(t *testing.T) {
 			toolName:      "tool1",
 			args:          map[string]any{"count": 42},
 			expectAllowed: true,
+			expectScopes:  nil,
 		},
 		{
 			name: "object argument can be matched via JSON string",
@@ -149,6 +154,7 @@ func TestAuthorizeRequest(t *testing.T) {
 				},
 			},
 			expectAllowed: true,
+			expectScopes:  nil,
 		},
 		{
 			name: "matching tool but insufficient scopes not allowed",
@@ -168,6 +174,7 @@ func TestAuthorizeRequest(t *testing.T) {
 			backendName:   "backend1",
 			toolName:      "tool1",
 			expectAllowed: false,
+			expectScopes:  []string{"read", "write"},
 		},
 		{
 			name: "argument regex mismatch denied",
@@ -196,6 +203,7 @@ func TestAuthorizeRequest(t *testing.T) {
 				"mode": "other",
 			},
 			expectAllowed: false,
+			expectScopes:  nil,
 		},
 		{
 			name: "missing argument denies when required",
@@ -222,6 +230,7 @@ func TestAuthorizeRequest(t *testing.T) {
 			toolName:      "tool1",
 			args:          map[string]any{},
 			expectAllowed: false,
+			expectScopes:  nil,
 		},
 		{
 			name: "no matching rule falls back to default deny - tool mismatch",
@@ -241,6 +250,7 @@ func TestAuthorizeRequest(t *testing.T) {
 			backendName:   "backend1",
 			toolName:      "other-tool",
 			expectAllowed: false,
+			expectScopes:  nil,
 		},
 		{
 			name: "no matching rule falls back to default deny - scope mismatch",
@@ -260,6 +270,7 @@ func TestAuthorizeRequest(t *testing.T) {
 			backendName:   "backend1",
 			toolName:      "other-tool",
 			expectAllowed: false,
+			expectScopes:  nil,
 		},
 		{
 			name:          "no rules falls back to default deny",
@@ -268,6 +279,7 @@ func TestAuthorizeRequest(t *testing.T) {
 			backendName:   "backend1",
 			toolName:      "tool1",
 			expectAllowed: false,
+			expectScopes:  nil,
 		},
 		{
 			name: "no bearer token not allowed when rules exist",
@@ -287,6 +299,7 @@ func TestAuthorizeRequest(t *testing.T) {
 			backendName:   "backend1",
 			toolName:      "tool1",
 			expectAllowed: false,
+			expectScopes:  nil,
 		},
 		{
 			name: "invalid bearer token not allowed when rules exist",
@@ -306,6 +319,27 @@ func TestAuthorizeRequest(t *testing.T) {
 			backendName:   "backend1",
 			toolName:      "tool1",
 			expectAllowed: false,
+			expectScopes:  nil,
+		},
+		{
+			name: "selects smallest required scope set when multiple rules match",
+			auth: &filterapi.MCPRouteAuthorization{
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Source: filterapi.MCPAuthorizationSource{JWTSource: filterapi.JWTSource{Scopes: []string{"alpha", "beta", "gamma"}}},
+						Target: filterapi.MCPAuthorizationTarget{Tools: []filterapi.ToolCall{{BackendName: "backend1", ToolName: "tool1"}}},
+					},
+					{
+						Source: filterapi.MCPAuthorizationSource{JWTSource: filterapi.JWTSource{Scopes: []string{"alpha", "beta"}}},
+						Target: filterapi.MCPAuthorizationTarget{Tools: []filterapi.ToolCall{{BackendName: "backend1", ToolName: "tool1"}}},
+					},
+				},
+			},
+			header:        "Bearer " + makeToken("alpha"),
+			backendName:   "backend1",
+			toolName:      "tool1",
+			expectAllowed: false,
+			expectScopes:  []string{"alpha", "beta"},
 		},
 	}
 
@@ -315,10 +349,25 @@ func TestAuthorizeRequest(t *testing.T) {
 			if tt.header != "" {
 				headers.Set("Authorization", tt.header)
 			}
-			allowed := proxy.authorizeRequest(tt.auth, headers, tt.backendName, tt.toolName, tt.args)
+			allowed, requiredScopes := proxy.authorizeRequest(tt.auth, headers, tt.backendName, tt.toolName, tt.args)
 			if allowed != tt.expectAllowed {
 				t.Fatalf("expected %v, got %v", tt.expectAllowed, allowed)
 			}
+			if !reflect.DeepEqual(requiredScopes, tt.expectScopes) {
+				t.Fatalf("expected required scopes %v, got %v", tt.expectScopes, requiredScopes)
+			}
 		})
 	}
+}
+
+func TestBuildInsufficientScopeHeader(t *testing.T) {
+	const resourceMetadata = "https://api.example.com/.well-known/oauth-protected-resource/mcp"
+
+	t.Run("with scopes and resource metadata", func(t *testing.T) {
+		header := buildInsufficientScopeHeader([]string{"read", "write"}, resourceMetadata)
+		expected := `Bearer error="insufficient_scope", scope="read write", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp", error_description="The token is missing required scopes"`
+		if header != expected {
+			t.Fatalf("expected %q, got %q", expected, header)
+		}
+	})
 }

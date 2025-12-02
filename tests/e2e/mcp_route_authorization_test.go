@@ -6,6 +6,7 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"crypto/rsa"
 	"encoding/base64"
@@ -166,6 +167,46 @@ func TestMCPRouteAuthorization(t *testing.T) {
 		require.Error(t, err)
 		errMsg := strings.ToLower(err.Error())
 		require.True(t, strings.Contains(errMsg, "403") || strings.Contains(errMsg, "authorization"), "unexpected error: %v", err)
+	})
+
+	t.Run("WWW-Authenticate on insufficient scope", func(t *testing.T) {
+		token := makeSignedJWT(t, "sum") // only sum scope; echo requires echo
+		authHTTPClient := &http.Client{
+			Timeout: 10 * time.Second,
+			Transport: &bearerTokenTransport{
+				token: token,
+			},
+		}
+
+		routeHeader := "default/mcp-route-authorization-default-deny"
+
+		// First, initialize a session to obtain a session ID header.
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		sess := requireConnectMCP(ctx, t, client, fmt.Sprintf("%s/mcp-authorization", fwd.Address()), authHTTPClient)
+		t.Cleanup(func() {
+			_ = sess.Close()
+		})
+
+		// Now call a tool that requires a missing scope to trigger insufficient_scope.
+		reqBody := []byte(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"mcp-backend-authorization__echo","arguments":{"text":"Hello, world!"}}}`)
+		req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/mcp-authorization", fwd.Address()), bytes.NewReader(reqBody))
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("mcp-session-id", sess.ID())
+		req.Header.Set("x-ai-eg-mcp-route", routeHeader)
+
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusForbidden, resp.StatusCode)
+		wwwAuth := resp.Header.Get("WWW-Authenticate")
+		require.Contains(t, wwwAuth, `error="insufficient_scope"`)
+		require.Contains(t, wwwAuth, `scope="echo"`) // expected missing scope
+		require.Contains(t, wwwAuth, `resource_metadata="https://foo.bar.com/.well-known/oauth-protected-resource/mcp"`)
 	})
 }
 

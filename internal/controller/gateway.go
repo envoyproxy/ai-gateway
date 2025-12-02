@@ -476,6 +476,10 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 			authorization := route.Spec.SecurityPolicy.Authorization
 			mcpRoute.Authorization = &filterapi.MCPRouteAuthorization{}
 
+			if route.Spec.SecurityPolicy.OAuth != nil {
+				mcpRoute.Authorization.ResourceMetadataURL = buildResourceMetadataURL(&route.Spec.SecurityPolicy.OAuth.ProtectedResourceMetadata)
+			}
+
 			for _, rule := range authorization.Rules {
 				scopes := make([]string, len(rule.Source.JWTSource.Scopes))
 				for i, scope := range rule.Source.JWTSource.Scopes {

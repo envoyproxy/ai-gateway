@@ -65,9 +65,14 @@ type MCPRouteName = string
 // MCPRouteAuthorization defines the authorization configuration for a MCPRoute.
 type MCPRouteAuthorization struct {
 	// Rules defines a list of authorization rules.
-	// These rules are evaluated in order, the first matching rule will be applied,
-	// and the rest will be skipped.
+	// Requests that match any rule and satisfy the rule's conditions will be allowed.
+	// Requests that do not match any rule or fail to satisfy the matched rule's conditions will be denied.
+	// If no rules are defined, all requests will be denied.
 	Rules []MCPRouteAuthorizationRule `json:"rules,omitempty"`
+
+	// ResourceMetadataURL is the URI of the OAuth Protected Resource Metadata document for this route.
+	// This is used to populate the WWW-Authenticate header when scope-based authorization fails.
+	ResourceMetadataURL string `json:"resourceMetadataURL,omitempty"`
 }
 
 // MCPRouteAuthorizationRule defines an authorization rule for MCPRoute based on the MCP authorization spec.

@@ -8,6 +8,7 @@ package mcpproxy
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -20,14 +21,15 @@ import (
 )
 
 // authorizeRequest authorizes the request based on the given MCPRouteAuthorization configuration.
-func (m *MCPProxy) authorizeRequest(authorization *filterapi.MCPRouteAuthorization, headers http.Header, backendName, toolName string, argments any) bool {
+
+func (m *MCPProxy) authorizeRequest(authorization *filterapi.MCPRouteAuthorization, headers http.Header, backendName, toolName string, argments any) (bool, []string) {
 	if authorization == nil {
-		return true
+		return true, nil
 	}
 
 	// If no rules are defined, deny all requests.
 	if len(authorization.Rules) == 0 {
-		return false
+		return false, nil
 	}
 
 	// If the rules are defined, a valid bearer token is required.
@@ -36,17 +38,18 @@ func (m *MCPProxy) authorizeRequest(authorization *filterapi.MCPRouteAuthorizati
 	// should always be present and valid.
 	if err != nil {
 		m.l.Info("missing or invalid bearer token", slog.String("error", err.Error()))
-		return false
+		return false, nil
 	}
 
 	claims := jwt.MapClaims{}
 	// JWT verification is performed by Envoy before reaching here. So we only need to parse the token without verification.
 	if _, _, err := jwt.NewParser().ParseUnverified(token, claims); err != nil {
 		m.l.Info("failed to parse JWT token", slog.String("error", err.Error()))
-		return false
+		return false, nil
 	}
 
 	scopeSet := sets.New[string](extractScopes(claims)...)
+	var missingScopesForChallenge []string
 
 	for _, rule := range authorization.Rules {
 		var args map[string]any
@@ -58,12 +61,19 @@ func (m *MCPProxy) authorizeRequest(authorization *filterapi.MCPRouteAuthorizati
 		if !m.toolMatches(filterapi.ToolCall{BackendName: backendName, ToolName: toolName}, rule.Target.Tools, args) {
 			continue
 		}
-		if scopesSatisfied(scopeSet, rule.Source.JWTSource.Scopes) {
-			return true
+
+		requiredScopes := rule.Source.JWTSource.Scopes
+		if scopesSatisfied(scopeSet, requiredScopes) {
+			return true, nil
+		}
+
+		// Keep track of the smallest set of missing scopes for challenge.
+		if len(missingScopesForChallenge) == 0 || len(requiredScopes) < len(missingScopesForChallenge) {
+			missingScopesForChallenge = requiredScopes
 		}
 	}
 
-	return false
+	return false, missingScopesForChallenge
 }
 
 func bearerToken(header string) (string, error) {
@@ -171,4 +181,17 @@ func scopesSatisfied(have sets.Set[string], required []string) bool {
 		}
 	}
 	return true
+}
+
+// buildInsufficientScopeHeader builds the WWW-Authenticate header value for insufficient scope errors.
+// Reference: https://mcp.mintlify.app/specification/2025-11-25/basic/authorization#runtime-insufficient-scope-errors
+func buildInsufficientScopeHeader(scopes []string, resourceMetadata string) string {
+	parts := []string{`Bearer error="insufficient_scope"`}
+	parts = append(parts, fmt.Sprintf(`scope="%s"`, strings.Join(scopes, " ")))
+	if resourceMetadata != "" {
+		parts = append(parts, fmt.Sprintf(`resource_metadata="%s"`, resourceMetadata))
+	}
+	parts = append(parts, `error_description="The token is missing required scopes"`)
+
+	return strings.Join(parts, ", ")
 }

@@ -19,7 +19,6 @@ spec:
       port: 80
   securityPolicy:
     authorization:
-      defaultAction: Deny
       rules:
         - source:
             jwtSource:
@@ -29,4 +28,3 @@ spec:
             tools:
               - backendName: mcp-service
                 toolName: echo
-          action: Allow

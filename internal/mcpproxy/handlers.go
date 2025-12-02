@@ -542,7 +542,15 @@ func (m *MCPProxy) handleToolCallRequest(ctx context.Context, s *session, w http
 
 	// Enforce authentication if required by the route.
 	if route.authorization != nil {
-		if !m.authorizeRequest(route.authorization, headers, backendName, toolName, p.Arguments) {
+		allowed, requiredScopes := m.authorizeRequest(route.authorization, headers, backendName, toolName, p.Arguments)
+		if !allowed {
+			// Specify the minimum required scopes in the WWW-Authenticate header.
+			// Reference: https://mcp.mintlify.app/specification/2025-11-25/basic/authorization#runtime-insufficient-scope-errors
+			if len(requiredScopes) > 0 {
+				if challenge := buildInsufficientScopeHeader(requiredScopes, route.authorization.ResourceMetadataURL); challenge != "" {
+					w.Header().Set("WWW-Authenticate", challenge)
+				}
+			}
 			onErrorResponse(w, http.StatusForbidden, "authorization failed")
 			return fmt.Errorf("authorization failed")
 		}
