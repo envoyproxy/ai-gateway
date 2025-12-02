@@ -15,9 +15,14 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	openaisdk "github.com/openai/openai-go/v2"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
+	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
+	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -27,9 +32,67 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
+// ChatCompletionProcessorFactory returns a ProcessorFactory for /v1/chat/completions.
+func ChatCompletionProcessorFactory(f metrics.Factory, tracer tracing.ChatCompletionTracer) ProcessorFactory {
+	return newFactory[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec](f, tracer)
+}
+
+// CompletionsProcessorFactory returns a ProcessorFactory for /v1/completions.
+func CompletionsProcessorFactory(f metrics.Factory, tracer tracing.CompletionTracer) ProcessorFactory {
+	return newFactory[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse, endpointspec.CompletionsEndpointSpec](f, tracer)
+}
+
+// EmbeddingsProcessorFactory returns a ProcessorFactory for /v1/embeddings.
+func EmbeddingsProcessorFactory(f metrics.Factory, tracer tracing.EmbeddingsTracer) ProcessorFactory {
+	return newFactory[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}, endpointspec.EmbeddingsEndpointSpec](f, tracer)
+}
+
+// ImageGenerationProcessorFactory returns a ProcessorFactory for /v1/images/generations.
+func ImageGenerationProcessorFactory(f metrics.Factory, tracer tracing.ImageGenerationTracer) ProcessorFactory {
+	return newFactory[openaisdk.ImageGenerateParams, openaisdk.ImagesResponse, struct{}, endpointspec.ImageGenerationEndpointSpec](f, tracer)
+}
+
+// MessagesProcessorFactory returns a ProcessorFactory for /v1/messages.
+func MessagesProcessorFactory(f metrics.Factory, tracer tracing.MessageTracer) ProcessorFactory {
+	return newFactory[anthropic.MessagesRequest, anthropic.MessagesResponse, anthropic.MessagesStreamChunk, endpointspec.MessagesEndpointSpec](f, tracer)
+}
+
+// RerankProcessorFactory returns a ProcessorFactory for /v2/rerank.
+func RerankProcessorFactory(f metrics.Factory, tracer tracing.RerankTracer) ProcessorFactory {
+	return newFactory[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}, endpointspec.RerankEndpointSpec](f, tracer)
+}
+
+// newFactory creates a ProcessorFactory with the given parameters.
+//
+// Type Parameters:
+// * ReqT: The request type.
+// * RespT: The response type.
+// * RespChunkT: The chunk type for streaming responses.
+//
+// Parameters:
+// * f: Metrics factory for creating metrics instances.
+// * tracer: Request tracer for tracing requests and responses.
+// * parseBody: Function to parse the request body.
+// * selectTranslator: Function to select the appropriate translator based on the output schema.
+//
+// Returns:
+// * ProcessorFactory: A factory function to create processors based on the configuration.
+func newFactory[ReqT any, RespT any, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]](
+	f metrics.Factory,
+	tracer tracing.RequestTracer[ReqT, RespT, RespChunkT],
+) ProcessorFactory {
+	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
+		logger = logger.With("isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
+		if !isUpstreamFilter {
+			return newRouterProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](config, requestHeaders, logger, tracer), nil
+		}
+		return newUpstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](requestHeaders, f.NewMetrics(), logger), nil
+	}
+}
+
 type (
-	routerProcessor[ReqT, RespT, RespChunkT any, EndpointHandlerT endpointHandler[ReqT, RespT, RespChunkT]] struct {
-		eh EndpointHandlerT
+	routerProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]] struct {
+		eh EndpointSpecT
 
 		passThroughProcessor
 		// upstreamFilter is the upstream filter that is used to process the request at the upstream filter.
@@ -39,7 +102,7 @@ type (
 		// of the upstream filter to handle the response at the router filter.
 		//
 		// TODO: this is a bit of a hack and dirty workaround, so revert this to a cleaner design later.
-		upstreamFilter *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]
+		upstreamFilter *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]
 		logger         *slog.Logger
 		config         *filterapi.RuntimeConfig
 		requestHeaders map[string]string
@@ -59,8 +122,8 @@ type (
 		upstreamFilterCount int
 		stream              bool
 	}
-	upstreamProcessor[ReqT, RespT, RespChunkT any, EndpointHandlerT endpointHandler[ReqT, RespT, RespChunkT]] struct {
-		parent *routerProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]
+	upstreamProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]] struct {
+		parent *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]
 
 		logger            *slog.Logger
 		requestHeaders    map[string]string
@@ -79,13 +142,13 @@ type (
 	}
 )
 
-func newRouterProcessor[ReqT, RespT, RespChunkT any, EndpointHandlerT endpointHandler[ReqT, RespT, RespChunkT]](
+func newRouterProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]](
 	config *filterapi.RuntimeConfig,
 	requestHeaders map[string]string,
 	logger *slog.Logger,
 	tracer tracing.RequestTracer[ReqT, RespT, RespChunkT],
-) *routerProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT] {
-	return &routerProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]{
+) *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT] {
+	return &routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]{
 		config:            config,
 		requestHeaders:    requestHeaders,
 		logger:            logger,
@@ -94,11 +157,11 @@ func newRouterProcessor[ReqT, RespT, RespChunkT any, EndpointHandlerT endpointHa
 	}
 }
 
-func newUpstreamProcessor[ReqT, RespT, RespChunkT any, EndpointHandlerT endpointHandler[ReqT, RespT, RespChunkT]](
+func newUpstreamProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]](
 	reqHeader map[string]string, metrics metrics.Metrics,
 	logger *slog.Logger,
-) *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT] {
-	return &upstreamProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]{
+) *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT] {
+	return &upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]{
 		requestHeaders: reqHeader,
 		metrics:        metrics,
 		logger:         logger,
@@ -106,7 +169,7 @@ func newUpstreamProcessor[ReqT, RespT, RespChunkT any, EndpointHandlerT endpoint
 }
 
 // ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
-func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]) ProcessResponseHeaders(ctx context.Context, headerMap *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessResponseHeaders(ctx context.Context, headerMap *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
 	// If the request failed to route and/or immediate response was returned before the upstream filter was set,
 	// r.upstreamFilter can be nil.
 	if r.upstreamFilter != nil { // See the comment on the "upstreamFilter" field.
@@ -116,7 +179,7 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]) ProcessResp
 }
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
-func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (resp *extprocv3.ProcessingResponse, err error) {
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (resp *extprocv3.ProcessingResponse, err error) {
 	// If the request failed to route and/or immediate response was returned before the upstream filter was set,
 	// r.upstreamFilter can be nil.
 	if r.upstreamFilter != nil { // See the comment on the "upstreamFilter" field.
@@ -128,7 +191,7 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]) ProcessResp
 }
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
-func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	originalModel, body, stream, mutatedOriginalBody, err := r.eh.ParseBody(rawBody.Body, len(r.config.RequestCosts) > 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
@@ -177,7 +240,7 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]) ProcessRequ
 	}, nil
 }
 
-func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]) onRetry() bool {
+func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) onRetry() bool {
 	return u.parent.upstreamFilterCount > 1
 }
 
@@ -187,7 +250,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]) onRetry()
 // So, we simply do the translation and upstream auth at this stage, and send them back to Envoy
 // with the status CONTINUE_AND_REPLACE. This allows Envoy to not send the request body again
 // to the extproc.
-func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]) ProcessRequestHeaders(ctx context.Context, _ *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
+func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequestHeaders(ctx context.Context, _ *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
 	defer func() {
 		if err != nil {
 			u.metrics.RecordRequestCompletion(ctx, false, u.requestHeaders)
@@ -274,12 +337,12 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]) ProcessRe
 }
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
-func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]) ProcessRequestBody(context.Context, *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequestBody(context.Context, *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
 	panic("BUG: ProcessRequestBody should not be called in the upstream filter")
 }
 
 // ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
-func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]) ProcessResponseHeaders(ctx context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
+func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessResponseHeaders(ctx context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
 	defer func() {
 		if err != nil {
 			u.metrics.RecordRequestCompletion(ctx, false, u.requestHeaders)
@@ -308,7 +371,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]) ProcessRe
 }
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
-func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
 	recordRequestCompletionErr := false
 	defer func() {
 		if err != nil || recordRequestCompletionErr {
@@ -415,13 +478,13 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]) ProcessRe
 }
 
 // SetBackend implements [Processor.SetBackend].
-func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]) SetBackend(ctx context.Context, b *filterapi.Backend, backendHandler filterapi.BackendAuthHandler, routeProcessor Processor) (err error) {
+func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(ctx context.Context, b *filterapi.Backend, backendHandler filterapi.BackendAuthHandler, routeProcessor Processor) (err error) {
 	defer func() {
 		if err != nil {
 			u.metrics.RecordRequestCompletion(ctx, false, u.requestHeaders)
 		}
 	}()
-	rp, ok := routeProcessor.(*routerProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT])
+	rp, ok := routeProcessor.(*routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT])
 	if !ok {
 		panic("BUG: expected routeProcessor to be of type *chatCompletionProcessorRouterFilter")
 	}
@@ -446,7 +509,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]) SetBacken
 	return
 }
 
-func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT]) mergeWithTokenLatencyMetadata(metadata *structpb.Struct) {
+func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) mergeWithTokenLatencyMetadata(metadata *structpb.Struct) {
 	timeToFirstTokenMs := u.metrics.GetTimeToFirstTokenMs()
 	interTokenLatencyMs := u.metrics.GetInterTokenLatencyMs()
 	innerVal := metadata.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()

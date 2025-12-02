@@ -3,12 +3,11 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-package extproc
+package endpointspec
 
 import (
 	"encoding/json"
 	"fmt"
-	"log/slog"
 
 	openaisdk "github.com/openai/openai-go/v2"
 	"github.com/tidwall/sjson"
@@ -18,80 +17,12 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
-	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
-// ChatCompletionProcessorFactory returns a ProcessorFactory for /v1/chat/completions.
-func ChatCompletionProcessorFactory(f metrics.Factory, tracer tracing.ChatCompletionTracer) ProcessorFactory {
-	return newFactory[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, chatCompletionsEndpointHandler](f, tracer)
-}
-
-// CompletionsProcessorFactory returns a ProcessorFactory for /v1/completions.
-func CompletionsProcessorFactory(f metrics.Factory, tracer tracing.CompletionTracer) ProcessorFactory {
-	return newFactory[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse, completionsEndpointHandler](f, tracer)
-}
-
-// EmbeddingsProcessorFactory returns a ProcessorFactory for /v1/embeddings.
-func EmbeddingsProcessorFactory(f metrics.Factory, tracer tracing.EmbeddingsTracer) ProcessorFactory {
-	return newFactory[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}, embeddingsEndpointHandler](f, tracer)
-}
-
-// ImageGenerationProcessorFactory returns a ProcessorFactory for /v1/images/generations.
-func ImageGenerationProcessorFactory(f metrics.Factory, tracer tracing.ImageGenerationTracer) ProcessorFactory {
-	return newFactory[openaisdk.ImageGenerateParams, openaisdk.ImagesResponse, struct{}, imageGenerationEndpointHandler](f, tracer)
-}
-
-// MessagesProcessorFactory returns a ProcessorFactory for /v1/messages.
-func MessagesProcessorFactory(f metrics.Factory, tracer tracing.MessageTracer) ProcessorFactory {
-	return newFactory[anthropic.MessagesRequest, anthropic.MessagesResponse, anthropic.MessagesStreamChunk, messagesEndpointHandler](f, tracer)
-}
-
-// RerankProcessorFactory returns a ProcessorFactory for /v2/rerank.
-func RerankProcessorFactory(f metrics.Factory, tracer tracing.RerankTracer) ProcessorFactory {
-	return newFactory[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}, rerankEndpointHandler](f, tracer)
-}
-
-// newFactory creates a ProcessorFactory with the given parameters.
-//
-// Type Parameters:
-// * ReqT: The request type.
-// * RespT: The response type.
-// * RespChunkT: The chunk type for streaming responses.
-//
-// Parameters:
-// * f: Metrics factory for creating metrics instances.
-// * tracer: Request tracer for tracing requests and responses.
-// * parseBody: Function to parse the request body.
-// * selectTranslator: Function to select the appropriate translator based on the output schema.
-//
-// Returns:
-// * ProcessorFactory: A factory function to create processors based on the configuration.
-func newFactory[ReqT any, RespT any, RespChunkT any, EndpointHandlerT endpointHandler[ReqT, RespT, RespChunkT]](
-	f metrics.Factory,
-	tracer tracing.RequestTracer[ReqT, RespT, RespChunkT],
-) ProcessorFactory {
-	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
-		logger = logger.With("isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
-		if !isUpstreamFilter {
-			return newRouterProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT](
-				config,
-				requestHeaders,
-				logger,
-				tracer,
-			), nil
-		}
-		return newUpstreamProcessor[ReqT, RespT, RespChunkT, EndpointHandlerT](
-			requestHeaders,
-			f.NewMetrics(),
-			logger,
-		), nil
-	}
-}
-
 type (
-	// endpointHandler defines methods for parsing request bodies and selecting translators
+	// Spec defines methods for parsing request bodies and selecting translators
 	// for different API endpoints.
 	//
 	// Type Parameters:
@@ -101,7 +32,7 @@ type (
 	//
 	// This must be implemented by specific endpoint handlers to provide
 	// custom logic for parsing and translation.
-	endpointHandler[ReqT, RespT, RespChunkT any] interface {
+	Spec[ReqT, RespT, RespChunkT any] interface {
 		// ParseBody parses the request body and returns the original model,
 		// the parsed request, whether the request is streaming, any mutated body,
 		// and an error if parsing fails.
@@ -129,22 +60,22 @@ type (
 		// * err: An error if translator selection fails.
 		GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.Translator[ReqT, tracing.Span[RespT, RespChunkT]], error)
 	}
-	// chatCompletionsEndpointHandler implements endpointHandler for /v1/chat/completions.
-	chatCompletionsEndpointHandler struct{}
-	// completionsEndpointHandler implements endpointHandler for /v1/completions.
-	completionsEndpointHandler struct{}
-	// embeddingsEndpointHandler implements endpointHandler for /v1/embeddings.
-	embeddingsEndpointHandler struct{}
-	// imageGenerationEndpointHandler implements endpointHandler for /v1/images/generations.
-	imageGenerationEndpointHandler struct{}
-	// messagesEndpointHandler implements endpointHandler for /v1/messages.
-	messagesEndpointHandler struct{}
-	// rerankEndpointHandler implements endpointHandler for /v2/rerank.
-	rerankEndpointHandler struct{}
+	// ChatCompletionsEndpointSpec implements EndpointSpec for /v1/chat/completions.
+	ChatCompletionsEndpointSpec struct{}
+	// CompletionsEndpointSpec implements EndpointSpec for /v1/completions.
+	CompletionsEndpointSpec struct{}
+	// EmbeddingsEndpointSpec implements EndpointSpec for /v1/embeddings.
+	EmbeddingsEndpointSpec struct{}
+	// ImageGenerationEndpointSpec implements EndpointSpec for /v1/images/generations.
+	ImageGenerationEndpointSpec struct{}
+	// MessagesEndpointSpec implements EndpointSpec for /v1/messages.
+	MessagesEndpointSpec struct{}
+	// RerankEndpointSpec implements EndpointSpec for /v2/rerank.
+	RerankEndpointSpec struct{}
 )
 
-// ParseBody implements [endpointHandler.ParseBody].
-func (chatCompletionsEndpointHandler) ParseBody(
+// ParseBody implements [EndpointSpec.ParseBody].
+func (ChatCompletionsEndpointSpec) ParseBody(
 	body []byte,
 	costConfigured bool,
 ) (internalapi.OriginalModel, *openai.ChatCompletionRequest, bool, []byte, error) {
@@ -173,8 +104,8 @@ func (chatCompletionsEndpointHandler) ParseBody(
 	return req.Model, &req, req.Stream, mutatedBody, nil
 }
 
-// GetTranslator implements [endpointHandler.GetTranslator].
-func (chatCompletionsEndpointHandler) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIChatCompletionTranslator, error) {
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (ChatCompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIChatCompletionTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
 		return translator.NewChatCompletionOpenAIToOpenAITranslator(schema.Version, modelNameOverride), nil
@@ -191,8 +122,8 @@ func (chatCompletionsEndpointHandler) GetTranslator(schema filterapi.VersionedAP
 	}
 }
 
-// ParseBody implements [endpointHandler.ParseBody].
-func (completionsEndpointHandler) ParseBody(
+// ParseBody implements [EndpointSpec.ParseBody].
+func (CompletionsEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
 ) (internalapi.OriginalModel, *openai.CompletionRequest, bool, []byte, error) {
@@ -203,8 +134,8 @@ func (completionsEndpointHandler) ParseBody(
 	return openAIReq.Model, &openAIReq, openAIReq.Stream, nil, nil
 }
 
-// GetTranslator implements [endpointHandler.GetTranslator].
-func (completionsEndpointHandler) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAICompletionTranslator, error) {
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (CompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAICompletionTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
 		return translator.NewCompletionOpenAIToOpenAITranslator(schema.Version, modelNameOverride), nil
@@ -213,8 +144,8 @@ func (completionsEndpointHandler) GetTranslator(schema filterapi.VersionedAPISch
 	}
 }
 
-// ParseBody implements [endpointHandler.ParseBody].
-func (embeddingsEndpointHandler) ParseBody(
+// ParseBody implements [EndpointSpec.ParseBody].
+func (EmbeddingsEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
 ) (internalapi.OriginalModel, *openai.EmbeddingRequest, bool, []byte, error) {
@@ -225,8 +156,8 @@ func (embeddingsEndpointHandler) ParseBody(
 	return openAIReq.Model, &openAIReq, false, nil, nil
 }
 
-// GetTranslator implements [endpointHandler.GetTranslator].
-func (embeddingsEndpointHandler) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIEmbeddingTranslator, error) {
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (EmbeddingsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIEmbeddingTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
 		return translator.NewEmbeddingOpenAIToOpenAITranslator(schema.Version, modelNameOverride), nil
@@ -237,7 +168,7 @@ func (embeddingsEndpointHandler) GetTranslator(schema filterapi.VersionedAPISche
 	}
 }
 
-func (imageGenerationEndpointHandler) ParseBody(
+func (ImageGenerationEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
 ) (internalapi.OriginalModel, *openaisdk.ImageGenerateParams, bool, []byte, error) {
@@ -248,8 +179,8 @@ func (imageGenerationEndpointHandler) ParseBody(
 	return openAIReq.Model, &openAIReq, false, nil, nil
 }
 
-// GetTranslator implements [endpointHandler.GetTranslator].
-func (imageGenerationEndpointHandler) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIImageGenerationTranslator, error) {
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (ImageGenerationEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIImageGenerationTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
 		return translator.NewImageGenerationOpenAIToOpenAITranslator(schema.Version, modelNameOverride), nil
@@ -258,8 +189,8 @@ func (imageGenerationEndpointHandler) GetTranslator(schema filterapi.VersionedAP
 	}
 }
 
-// ParseBody implements [endpointHandler.ParseBody].
-func (messagesEndpointHandler) ParseBody(
+// ParseBody implements [EndpointSpec.ParseBody].
+func (MessagesEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
 ) (internalapi.OriginalModel, *anthropic.MessagesRequest, bool, []byte, error) {
@@ -277,8 +208,8 @@ func (messagesEndpointHandler) ParseBody(
 	return model, &anthropicReq, stream, nil, nil
 }
 
-// GetTranslator implements [endpointHandler.GetTranslator].
-func (messagesEndpointHandler) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.AnthropicMessagesTranslator, error) {
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (MessagesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.AnthropicMessagesTranslator, error) {
 	// Messages processor only supports Anthropic-native translators.
 	switch schema.Name {
 	case filterapi.APISchemaGCPAnthropic:
@@ -292,8 +223,8 @@ func (messagesEndpointHandler) GetTranslator(schema filterapi.VersionedAPISchema
 	}
 }
 
-// ParseBody implements [endpointHandler.ParseBody].
-func (rerankEndpointHandler) ParseBody(
+// ParseBody implements [EndpointSpec.ParseBody].
+func (RerankEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
 ) (internalapi.OriginalModel, *cohereschema.RerankV2Request, bool, []byte, error) {
@@ -304,8 +235,8 @@ func (rerankEndpointHandler) ParseBody(
 	return req.Model, &req, false, nil, nil
 }
 
-// GetTranslator implements [endpointHandler.GetTranslator].
-func (rerankEndpointHandler) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.CohereRerankTranslator, error) {
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (RerankEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.CohereRerankTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaCohere:
 		return translator.NewRerankCohereToCohereTranslator(schema.Version, modelNameOverride), nil

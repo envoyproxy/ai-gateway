@@ -16,11 +16,15 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	openaisdk "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/propagation"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
+	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -31,8 +35,114 @@ import (
 )
 
 type (
-	chatCompletionProcessorRouterFilter   = routerProcessor[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, chatCompletionsEndpointHandler]
-	chatCompletionProcessorUpstreamFilter = upstreamProcessor[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, chatCompletionsEndpointHandler]
+	completionsRouterProcessor       = routerProcessor[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse, endpointspec.CompletionsEndpointSpec]
+	completionsUpstreamProcessor     = upstreamProcessor[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse, endpointspec.CompletionsEndpointSpec]
+	embeddingsRouterProcessor        = routerProcessor[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}, endpointspec.EmbeddingsEndpointSpec]
+	embeddingsUpstreamProcessor      = upstreamProcessor[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}, endpointspec.EmbeddingsEndpointSpec]
+	imageGenerationRouterProcessor   = routerProcessor[openaisdk.ImageGenerateParams, openaisdk.ImagesResponse, struct{}, endpointspec.ImageGenerationEndpointSpec]
+	imageGenerationUpstreamProcessor = upstreamProcessor[openaisdk.ImageGenerateParams, openaisdk.ImagesResponse, struct{}, endpointspec.ImageGenerationEndpointSpec]
+	messagesRouterProcessor          = routerProcessor[anthropic.MessagesRequest, anthropic.MessagesResponse, anthropic.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]
+	messagesUpstreamProcessor        = upstreamProcessor[anthropic.MessagesRequest, anthropic.MessagesResponse, anthropic.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]
+	rerankRouterProcessor            = routerProcessor[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}, endpointspec.RerankEndpointSpec]
+	rerankUpstreamProcessor          = upstreamProcessor[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}, endpointspec.RerankEndpointSpec]
+)
+
+func TestNewFactory(t *testing.T) {
+	cfg := &filterapi.RuntimeConfig{}
+	headers := map[string]string{"foo": "bar"}
+
+	t.Run("router", func(t *testing.T) {
+		t.Parallel()
+
+		factory := ChatCompletionProcessorFactory(nil, tracing.NoopChatCompletionTracer{})
+		proc, err := factory(cfg, headers, slog.Default(), false)
+		require.NoError(t, err)
+		require.IsType(t, &chatCompletionProcessorRouterFilter{}, proc)
+
+		router := proc.(*chatCompletionProcessorRouterFilter)
+		require.Equal(t, cfg, router.config)
+		require.Equal(t, headers, router.requestHeaders)
+		require.NotNil(t, router.logger)
+		require.NotNil(t, router.tracer)
+	})
+
+	t.Run("upstream", func(t *testing.T) {
+		t.Parallel()
+
+		factory := ChatCompletionProcessorFactory(&mockMetricsFactory{}, tracing.NoopChatCompletionTracer{})
+		proc, err := factory(cfg, headers, slog.Default(), true)
+		require.NoError(t, err)
+		require.IsType(t, &chatCompletionProcessorUpstreamFilter{}, proc)
+
+		upstream := proc.(*chatCompletionProcessorUpstreamFilter)
+		require.Equal(t, headers, upstream.requestHeaders)
+		require.IsType(t, &mockMetrics{}, upstream.metrics)
+	})
+}
+
+func TestProcessorFactories_ReturnExpectedTypes(t *testing.T) {
+	cfg := &filterapi.RuntimeConfig{}
+	headers := map[string]string{"host": "example"}
+
+	t.Run("completions", func(t *testing.T) {
+		router, err := CompletionsProcessorFactory(nil, tracing.NoopCompletionTracer{})(cfg, headers, slog.Default(), false)
+		require.NoError(t, err)
+		require.IsType(t, &completionsRouterProcessor{}, router)
+
+		mf := &mockMetricsFactory{}
+		upstream, err := CompletionsProcessorFactory(mf, tracing.NoopCompletionTracer{})(cfg, headers, slog.Default(), true)
+		require.NoError(t, err)
+		require.IsType(t, &completionsUpstreamProcessor{}, upstream)
+	})
+
+	t.Run("embeddings", func(t *testing.T) {
+		router, err := EmbeddingsProcessorFactory(nil, tracing.NoopEmbeddingsTracer{})(cfg, headers, slog.Default(), false)
+		require.NoError(t, err)
+		require.IsType(t, &embeddingsRouterProcessor{}, router)
+
+		mf := &mockMetricsFactory{}
+		upstream, err := EmbeddingsProcessorFactory(mf, tracing.NoopEmbeddingsTracer{})(cfg, headers, slog.Default(), true)
+		require.NoError(t, err)
+		require.IsType(t, &embeddingsUpstreamProcessor{}, upstream)
+	})
+
+	t.Run("image_generation", func(t *testing.T) {
+		router, err := ImageGenerationProcessorFactory(nil, tracing.NoopImageGenerationTracer{})(cfg, headers, slog.Default(), false)
+		require.NoError(t, err)
+		require.IsType(t, &imageGenerationRouterProcessor{}, router)
+
+		mf := &mockMetricsFactory{}
+		upstream, err := ImageGenerationProcessorFactory(mf, tracing.NoopImageGenerationTracer{})(cfg, headers, slog.Default(), true)
+		require.NoError(t, err)
+		require.IsType(t, &imageGenerationUpstreamProcessor{}, upstream)
+	})
+
+	t.Run("messages", func(t *testing.T) {
+		router, err := MessagesProcessorFactory(nil, tracing.NoopMessageTracer{})(cfg, headers, slog.Default(), false)
+		require.NoError(t, err)
+		require.IsType(t, &messagesRouterProcessor{}, router)
+
+		mf := &mockMetricsFactory{}
+		upstream, err := MessagesProcessorFactory(mf, tracing.NoopMessageTracer{})(cfg, headers, slog.Default(), true)
+		require.NoError(t, err)
+		require.IsType(t, &messagesUpstreamProcessor{}, upstream)
+	})
+
+	t.Run("rerank", func(t *testing.T) {
+		router, err := RerankProcessorFactory(nil, tracing.NoopRerankTracer{})(cfg, headers, slog.Default(), false)
+		require.NoError(t, err)
+		require.IsType(t, &rerankRouterProcessor{}, router)
+
+		mf := &mockMetricsFactory{}
+		upstream, err := RerankProcessorFactory(mf, tracing.NoopRerankTracer{})(cfg, headers, slog.Default(), true)
+		require.NoError(t, err)
+		require.IsType(t, &rerankUpstreamProcessor{}, upstream)
+	})
+}
+
+type (
+	chatCompletionProcessorRouterFilter   = routerProcessor[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]
+	chatCompletionProcessorUpstreamFilter = upstreamProcessor[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]
 )
 
 func TestChatCompletion_Schema(t *testing.T) {
