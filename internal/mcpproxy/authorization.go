@@ -34,10 +34,8 @@ func (m *MCPProxy) authorizeRequest(authorization *filterapi.MCPRouteAuthorizati
 	}
 
 	claims := jwt.MapClaims{}
-	parser := jwt.NewParser(jwt.WithoutClaimsValidation())
 	// JWT verification is performed by Envoy before reaching here. So we only need to parse the token without verification.
-	// codeql[go/missing-jwt-signature-check]
-	if _, _, err := parser.ParseUnverified(token, claims); err != nil {
+	if _, _, err := jwt.NewParser().ParseUnverified(token, claims); err != nil {
 		m.l.Info("failed to parse JWT token", slog.String("error", err.Error()))
 		return false
 	}

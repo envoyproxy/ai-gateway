@@ -280,8 +280,10 @@ type MCPAuthorizationTarget struct {
 type MCPAuthorizationSource struct {
 	// JWTSource defines the JWT scopes required for this rule to match.
 	//
-	// +kubebuilder:validation:Optional
-	JWTSource *JWTSource `json:"jwtSource,omitempty"`
+	// +kubebuilder:validation:Required
+	JWTSource JWTSource `json:"jwtSource"`
+
+	// TODO: JWTSource can be optional in the future when we support more source types.
 }
 
 type JWTSource struct {

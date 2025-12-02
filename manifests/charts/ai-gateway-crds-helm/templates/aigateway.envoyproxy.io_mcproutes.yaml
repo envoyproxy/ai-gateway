@@ -632,6 +632,8 @@ spec:
                                   required:
                                   - scopes
                                   type: object
+                              required:
+                              - jwtSource
                               type: object
                             target:
                               description: Target defines the authorization target
