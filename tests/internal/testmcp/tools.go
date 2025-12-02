@@ -149,7 +149,6 @@ var ToolCountDown = TestTool[ToolCountDownArgs, any]{
 		if err != nil {
 			return nil, nil, err
 		}
-		// change to use goroutine to not block the handler.
 		for i := args.From; i >= 0; i-- {
 			// Send a progress notification with the current count.
 			request.GetSession()
