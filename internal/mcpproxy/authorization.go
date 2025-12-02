@@ -14,11 +14,17 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
+// authorizeRequest authorizes the request based on the given MCPRouteAuthorization configuration.
 func (m *MCPProxy) authorizeRequest(authorization *filterapi.MCPRouteAuthorization, headers http.Header, backendName, toolName string, argments any) bool {
+	if authorization == nil {
+		return true
+	}
+
 	defaultAction := authorization.DefaultAction == filterapi.AuthorizationActionAllow
 
 	// If there are no rules, return the default action.
@@ -28,6 +34,8 @@ func (m *MCPProxy) authorizeRequest(authorization *filterapi.MCPRouteAuthorizati
 
 	// If the rules are defined, a valid bearer token is required.
 	token, err := bearerToken(headers.Get("Authorization"))
+	// This is just a sanity check. The actual JWT verification is performed by Envoy before reaching here, and the token
+	// should always be present and valid.
 	if err != nil {
 		m.l.Info("missing or invalid bearer token", slog.String("error", err.Error()))
 		return false
@@ -40,10 +48,7 @@ func (m *MCPProxy) authorizeRequest(authorization *filterapi.MCPRouteAuthorizati
 		return false
 	}
 
-	scopeSet := make(map[string]struct{})
-	for _, scope := range extractScopes(claims) {
-		scopeSet[scope] = struct{}{}
-	}
+	scopeSet := sets.New[string](extractScopes(claims)...)
 
 	for _, rule := range authorization.Rules {
 		var args map[string]any
@@ -52,7 +57,7 @@ func (m *MCPProxy) authorizeRequest(authorization *filterapi.MCPRouteAuthorizati
 				args = cast
 			}
 		}
-		if !toolMatches(args, filterapi.ToolCall{BackendName: backendName, ToolName: toolName}, rule.Target.Tools) {
+		if !m.toolMatches(filterapi.ToolCall{BackendName: backendName, ToolName: toolName}, rule.Target.Tools, args) {
 			continue
 		}
 		if scopesSatisfied(scopeSet, rule.Source.JWTSource.Scopes) {
@@ -104,7 +109,7 @@ func extractScopes(claims jwt.MapClaims) []string {
 	}
 }
 
-func toolMatches(args map[string]any, target filterapi.ToolCall, tools []filterapi.ToolCall) bool {
+func (m *MCPProxy) toolMatches(target filterapi.ToolCall, tools []filterapi.ToolCall, args map[string]any) bool {
 	if len(tools) == 0 {
 		return true
 	}
@@ -128,6 +133,7 @@ func toolMatches(args map[string]any, target filterapi.ToolCall, tools []filtera
 			}
 			re, err := regexp.Compile(pattern)
 			if err != nil {
+				m.l.Error("invalid argument regex pattern", slog.String("pattern", pattern), slog.String("error", err.Error()))
 				allMatch = false
 				break
 			}
@@ -137,6 +143,7 @@ func toolMatches(args map[string]any, target filterapi.ToolCall, tools []filtera
 			} else {
 				jsonVal, err := json.Marshal(rawVal)
 				if err != nil {
+					m.l.Error("failed to marshal argument value to json", slog.String("key", key), slog.String("error", err.Error()))
 					allMatch = false
 					break
 				}
@@ -155,7 +162,7 @@ func toolMatches(args map[string]any, target filterapi.ToolCall, tools []filtera
 	return false
 }
 
-func scopesSatisfied(have map[string]struct{}, required []string) bool {
+func scopesSatisfied(have sets.Set[string], required []string) bool {
 	if len(required) == 0 {
 		return true
 	}

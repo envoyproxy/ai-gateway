@@ -643,6 +643,8 @@ spec:
                                   description: Tools defines the list of tools this
                                     rule applies to.
                                   items:
+                                    description: ToolCall represents a tool call in
+                                      the MCP authorization target.
                                     properties:
                                       arguments:
                                         additionalProperties:

@@ -268,6 +268,7 @@ type MCPRouteAuthorizationRule struct {
 	Action egv1a1.AuthorizationAction `json:"action"`
 }
 
+// MCPAuthorizationTarget defines the target of an authorization rule.
 type MCPAuthorizationTarget struct {
 	// Tools defines the list of tools this rule applies to.
 	//
@@ -277,6 +278,7 @@ type MCPAuthorizationTarget struct {
 	Tools []ToolCall `json:"tools"`
 }
 
+// MCPAuthorizationSource defines the source of an authorization rule.
 type MCPAuthorizationSource struct {
 	// JWTSource defines the JWT scopes required for this rule to match.
 	//
@@ -286,6 +288,7 @@ type MCPAuthorizationSource struct {
 	// TODO: JWTSource can be optional in the future when we support more source types.
 }
 
+// JWTSource defines the MCP authorization source for JWT tokens.
 type JWTSource struct {
 	// Scopes defines the list of JWT scopes required for the rule.
 	// If multiple scopes are specified, all scopes must be present in the JWT for the rule to match.
@@ -298,6 +301,7 @@ type JWTSource struct {
 	// TODO : we can add more fields in the future, e.g., audiences, claims, etc.
 }
 
+// ToolCall represents a tool call in the MCP authorization target.
 type ToolCall struct {
 	// BackendName is the name of the backend this tool belongs to.
 	//
