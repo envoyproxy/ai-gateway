@@ -68,9 +68,6 @@ type MCPRouteAuthorization struct {
 	// These rules are evaluated in order, the first matching rule will be applied,
 	// and the rest will be skipped.
 	Rules []MCPRouteAuthorizationRule `json:"rules,omitempty"`
-
-	// DefaultAction defines the action to take when no rules match.
-	DefaultAction AuthorizationAction `json:"defaultAction,omitempty"`
 }
 
 // MCPRouteAuthorizationRule defines an authorization rule for MCPRoute based on the MCP authorization spec.
@@ -81,20 +78,7 @@ type MCPRouteAuthorizationRule struct {
 
 	// Target defines the authorization target for this rule.
 	Target MCPAuthorizationTarget `json:"target"`
-
-	// Action defines whether to allow or deny requests that match this rule.
-	Action AuthorizationAction `json:"action"`
 }
-
-// AuthorizationAction represents an authorization decision.
-type AuthorizationAction string
-
-const (
-	// AuthorizationActionAllow allows the request.
-	AuthorizationActionAllow AuthorizationAction = "Allow"
-	// AuthorizationActionDeny denies the request.
-	AuthorizationActionDeny AuthorizationAction = "Deny"
-)
 
 type MCPAuthorizationTarget struct {
 	// Tools defines the list of tools this rule applies to.

@@ -237,16 +237,13 @@ type MCPRouteOAuth struct {
 // MCPRouteAuthorization defines the authorization configuration for a MCPRoute.
 type MCPRouteAuthorization struct {
 	// Rules defines a list of authorization rules.
-	// These rules are evaluated in order, the first matching rule will be applied,
-	// and the rest will be skipped.
+	//
+	// Requests that match any rule and satisfy the rule's conditions will be allowed.
+	// Requests that do not match any rule or fail to satisfy the matched rule's conditions will be denied.
+	// If no rules are defined, all requests will be denied.
 	//
 	// +optional
 	Rules []MCPRouteAuthorizationRule `json:"rules,omitempty"`
-
-	// DefaultAction defines the default action to be taken if no rules match.
-	// If not specified, the default action is Deny.
-	// +optional
-	DefaultAction *egv1a1.AuthorizationAction `json:"defaultAction"`
 }
 
 // MCPRouteAuthorizationRule defines an authorization rule for MCPRoute based on the MCP authorization spec.
@@ -261,11 +258,6 @@ type MCPRouteAuthorizationRule struct {
 	//
 	// +kubebuilder:validation:Required
 	Target MCPAuthorizationTarget `json:"target"`
-
-	// Action defines whether to allow or deny requests that match this rule.
-	//
-	// +kubebuilder:validation:Required
-	Action egv1a1.AuthorizationAction `json:"action"`
 }
 
 // MCPAuthorizationTarget defines the target of an authorization rule.

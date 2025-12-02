@@ -585,31 +585,18 @@ spec:
                     description: Authorization defines the configuration for the MCP
                       spec compatible authorization.
                     properties:
-                      defaultAction:
-                        description: |-
-                          DefaultAction defines the default action to be taken if no rules match.
-                          If not specified, the default action is Deny.
-                        enum:
-                        - Allow
-                        - Deny
-                        type: string
                       rules:
                         description: |-
                           Rules defines a list of authorization rules.
-                          These rules are evaluated in order, the first matching rule will be applied,
-                          and the rest will be skipped.
+
+                          Requests that match any rule and satisfy the rule's conditions will be allowed.
+                          Requests that do not match any rule or fail to satisfy the matched rule's conditions will be denied.
+                          If no rules are defined, all requests will be denied.
                         items:
                           description: |-
                             MCPRouteAuthorizationRule defines an authorization rule for MCPRoute based on the MCP authorization spec.
                             Reference: https://modelcontextprotocol.io/specification/draft/basic/authorization#scope-challenge-handling
                           properties:
-                            action:
-                              description: Action defines whether to allow or deny
-                                requests that match this rule.
-                              enum:
-                              - Allow
-                              - Deny
-                              type: string
                             source:
                               description: Source defines the authorization source
                                 for this rule.
@@ -672,7 +659,6 @@ spec:
                               - tools
                               type: object
                           required:
-                          - action
                           - source
                           - target
                           type: object

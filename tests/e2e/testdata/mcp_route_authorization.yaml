@@ -59,7 +59,6 @@ spec:
           - "sum"
           - "countdown"
     authorization:
-      defaultAction: Deny
       rules:
         - source:
             jwtSource:
@@ -71,7 +70,6 @@ spec:
                 toolName: echo
                 arguments:
                   text: "^Hello, .*!$"
-          action: Allow
         - source:
             jwtSource:
               scopes:
@@ -80,7 +78,6 @@ spec:
             tools:
               - backendName: mcp-backend-authorization
                 toolName: sum
-          action: Allow
 ---
 # https://www.scottbrady.io/tools/jwt
 apiVersion: v1

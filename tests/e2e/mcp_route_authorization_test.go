@@ -84,7 +84,7 @@ func TestMCPRouteAuthorization(t *testing.T) {
 		require.Equal(t, "42", txt.Text)
 	})
 
-	t.Run("allow rules with matching scopes and arguments", func(t *testing.T) {
+	t.Run("matching scopes and arguments", func(t *testing.T) {
 		token := makeSignedJWT(t, "echo")
 		authHTTPClient := &http.Client{
 			Timeout: 10 * time.Second,
@@ -114,7 +114,7 @@ func TestMCPRouteAuthorization(t *testing.T) {
 		require.Equal(t, hello, txt.Text)
 	})
 
-	t.Run("allow rules with matching scopes and mismatched arguments", func(t *testing.T) {
+	t.Run("matching scopes and mismatched arguments", func(t *testing.T) {
 		token := makeSignedJWT(t, "echo")
 		authHTTPClient := &http.Client{
 			Timeout: 10 * time.Second,

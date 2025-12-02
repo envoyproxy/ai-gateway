@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	appsv1 "k8s.io/api/apps/v1"
@@ -477,19 +476,7 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 			authorization := route.Spec.SecurityPolicy.Authorization
 			mcpRoute.Authorization = &filterapi.MCPRouteAuthorization{}
 
-			defaultAction := ptr.Deref(authorization.DefaultAction, egv1a1.AuthorizationActionDeny)
-			if defaultAction == egv1a1.AuthorizationActionAllow {
-				mcpRoute.Authorization.DefaultAction = filterapi.AuthorizationActionAllow
-			} else {
-				mcpRoute.Authorization.DefaultAction = filterapi.AuthorizationActionDeny
-			}
-
 			for _, rule := range authorization.Rules {
-				action := filterapi.AuthorizationActionDeny
-				if rule.Action == egv1a1.AuthorizationActionAllow {
-					action = filterapi.AuthorizationActionAllow
-				}
-
 				scopes := make([]string, len(rule.Source.JWTSource.Scopes))
 				for i, scope := range rule.Source.JWTSource.Scopes {
 					scopes[i] = string(scope)
@@ -505,7 +492,6 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 				}
 
 				mcpRule := filterapi.MCPRouteAuthorizationRule{
-					Action: action,
 					Source: filterapi.MCPAuthorizationSource{
 						JWTSource: filterapi.JWTSource{
 							Scopes: scopes,

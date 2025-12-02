@@ -25,11 +25,9 @@ func (m *MCPProxy) authorizeRequest(authorization *filterapi.MCPRouteAuthorizati
 		return true
 	}
 
-	defaultAction := authorization.DefaultAction == filterapi.AuthorizationActionAllow
-
-	// If there are no rules, return the default action.
+	// If no rules are defined, deny all requests.
 	if len(authorization.Rules) == 0 {
-		return defaultAction
+		return false
 	}
 
 	// If the rules are defined, a valid bearer token is required.
@@ -61,11 +59,11 @@ func (m *MCPProxy) authorizeRequest(authorization *filterapi.MCPRouteAuthorizati
 			continue
 		}
 		if scopesSatisfied(scopeSet, rule.Source.JWTSource.Scopes) {
-			return rule.Action == filterapi.AuthorizationActionAllow
+			return true
 		}
 	}
 
-	return defaultAction
+	return false
 }
 
 func bearerToken(header string) (string, error) {
