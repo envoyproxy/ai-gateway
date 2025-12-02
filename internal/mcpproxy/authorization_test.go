@@ -206,7 +206,13 @@ func TestAuthorizeRequest(t *testing.T) {
 			backendName: "backend1",
 			toolName:    "tool1",
 			args: map[string]any{
-				"payload": map[string]any{"kind": "test", "value": 123},
+				"payload": struct {
+					Kind  string `json:"kind"`
+					Value int    `json:"value"`
+				}{
+					Kind:  "test",
+					Value: 123,
+				},
 			},
 			expectAllowed: true,
 		},
@@ -373,6 +379,27 @@ func TestAuthorizeRequest(t *testing.T) {
 				},
 			},
 			header:        "",
+			backendName:   "backend1",
+			toolName:      "tool1",
+			expectAllowed: false,
+		},
+		{
+			name: "invalid bearer token not allowed when rules exist",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: filterapi.AuthorizationActionAllow,
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Source: filterapi.MCPAuthorizationSource{
+							JWTSource: filterapi.JWTSource{Scopes: []string{"read"}},
+						},
+						Target: filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{BackendName: "backend1", ToolName: "tool1"}},
+						},
+						Action: filterapi.AuthorizationActionDeny,
+					},
+				},
+			},
+			header:        "Bearer invalid.token.here",
 			backendName:   "backend1",
 			toolName:      "tool1",
 			expectAllowed: false,
