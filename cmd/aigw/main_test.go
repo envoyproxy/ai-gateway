@@ -136,6 +136,9 @@ Flags:
       --run-id=STRING         Run identifier for this invocation. Defaults to
                               timestamp-based ID or $AIGW_RUN_ID. Use '0' for
                               Docker/Kubernetes ($AIGW_RUN_ID).
+      --mcp-session-encryption-iterations=100000
+                              Number of iterations for MCP session encryption
+                              key derivation.
 `,
 			expPanicCode: ptr.To(0),
 		},

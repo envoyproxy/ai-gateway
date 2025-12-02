@@ -41,12 +41,15 @@ type (
 	}
 	// cmdRun corresponds to `aigw run` command.
 	cmdRun struct {
-		Debug     bool                   `help:"Enable debug logging emitted to stderr."`
-		Path      string                 `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Defaults to $AIGW_CONFIG_HOME/config.yaml if exists, otherwise optional when at least OPENAI_API_KEY, AZURE_OPENAI_API_KEY or ANTHROPIC_API_KEY is set." type:"path"`
-		AdminPort int                    `help:"HTTP port for the admin server (serves /metrics and /health endpoints)." default:"1064"`
-		McpConfig string                 `name:"mcp-config" help:"Path to MCP servers configuration file." type:"path"`
-		McpJSON   string                 `name:"mcp-json" help:"JSON string of MCP servers configuration."`
-		RunID     string                 `name:"run-id" env:"AIGW_RUN_ID" help:"Run identifier for this invocation. Defaults to timestamp-based ID or $AIGW_RUN_ID. Use '0' for Docker/Kubernetes."`
+		Debug     bool   `help:"Enable debug logging emitted to stderr."`
+		Path      string `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Defaults to $AIGW_CONFIG_HOME/config.yaml if exists, otherwise optional when at least OPENAI_API_KEY, AZURE_OPENAI_API_KEY or ANTHROPIC_API_KEY is set." type:"path"`
+		AdminPort int    `help:"HTTP port for the admin server (serves /metrics and /health endpoints)." default:"1064"`
+		McpConfig string `name:"mcp-config" help:"Path to MCP servers configuration file." type:"path"`
+		McpJSON   string `name:"mcp-json" help:"JSON string of MCP servers configuration."`
+		RunID     string `name:"run-id" env:"AIGW_RUN_ID" help:"Run identifier for this invocation. Defaults to timestamp-based ID or $AIGW_RUN_ID. Use '0' for Docker/Kubernetes."`
+
+		MCPSessionEncryptionIterations int `name:"mcp-session-encryption-iterations" help:"Number of iterations for MCP session encryption key derivation." default:"100000"`
+
 		mcpConfig *autoconfig.MCPServers `kong:"-"` // Internal field: normalized MCP JSON data
 		dirs      *xdg.Directories       `kong:"-"` // Internal field: XDG directories, set by BeforeApply
 		runOpts   *runOpts               `kong:"-"` // Internal field: run options, set by Validate

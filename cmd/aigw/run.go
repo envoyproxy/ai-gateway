@@ -78,6 +78,8 @@ type runCmdContext struct {
 	// fakeClientSet is the fake client set for the k8s resources. The objects are written to this client set and updated
 	// during the translation.
 	fakeClientSet *fake.Clientset
+	// mcpSessionEncryptionIterations is the number of iterations for MCP session encryption key derivation.
+	mcpSessionEncryptionIterations int
 }
 
 // run starts the AI Gateway locally for a given configuration.
@@ -361,6 +363,7 @@ func (runCtx *runCmdContext) mustStartExtProc(
 		"--extProcAddr", fmt.Sprintf("unix://%s", runCtx.udsPath),
 		"--adminPort", fmt.Sprintf("%d", runCtx.adminPort),
 		"--mcpAddr", ":" + strconv.Itoa(internalapi.MCPProxyPort),
+		"--mcpSessionEncryptionIterations", strconv.Itoa(runCtx.mcpSessionEncryptionIterations),
 	}
 	if runCtx.isDebug {
 		args = append(args, "--logLevel", "debug")
