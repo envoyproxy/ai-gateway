@@ -406,7 +406,7 @@ func TestServer_extractMCPBackendFiltersFromMCPProxyListener(t *testing.T) {
 								{
 									Name: wellknown.HTTPConnectionManager,
 									ConfigType: &listenerv3.Filter_TypedConfig{
-										TypedConfig: mustToAny(&httpconnectionmanagerv3.HttpConnectionManager{
+										TypedConfig: mustToAny(t, &httpconnectionmanagerv3.HttpConnectionManager{
 											StatPrefix: "http",
 											HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
 												{Name: internalapi.MCPPerBackendHTTPRouteFilterPrefix + "test-filter"},
@@ -435,7 +435,7 @@ func TestServer_extractMCPBackendFiltersFromMCPProxyListener(t *testing.T) {
 								{
 									Name: wellknown.HTTPConnectionManager,
 									ConfigType: &listenerv3.Filter_TypedConfig{
-										TypedConfig: mustToAny(&httpconnectionmanagerv3.HttpConnectionManager{
+										TypedConfig: mustToAny(t, &httpconnectionmanagerv3.HttpConnectionManager{
 											StatPrefix: "http",
 											HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
 												{Name: internalapi.MCPPerBackendHTTPRouteFilterPrefix + "test-filter"},
@@ -456,7 +456,7 @@ func TestServer_extractMCPBackendFiltersFromMCPProxyListener(t *testing.T) {
 								{
 									Name: wellknown.HTTPConnectionManager,
 									ConfigType: &listenerv3.Filter_TypedConfig{
-										TypedConfig: mustToAny(&httpconnectionmanagerv3.HttpConnectionManager{
+										TypedConfig: mustToAny(t, &httpconnectionmanagerv3.HttpConnectionManager{
 											StatPrefix: "http",
 											HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
 												{Name: internalapi.MCPPerBackendHTTPRouteFilterPrefix + "test-filter2"},
@@ -481,7 +481,7 @@ func TestServer_extractMCPBackendFiltersFromMCPProxyListener(t *testing.T) {
 								{
 									Name: wellknown.HTTPConnectionManager,
 									ConfigType: &listenerv3.Filter_TypedConfig{
-										TypedConfig: mustToAny(&httpconnectionmanagerv3.HttpConnectionManager{
+										TypedConfig: mustToAny(t, &httpconnectionmanagerv3.HttpConnectionManager{
 											StatPrefix: "http",
 											HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
 												{Name: internalapi.MCPPerBackendHTTPRouteFilterPrefix + "test-filter3"},
@@ -539,13 +539,13 @@ func TestServer_modifyMCPOAuthCustomResponseFilters(t *testing.T) {
 								{
 									Name: wellknown.HTTPConnectionManager,
 									ConfigType: &listenerv3.Filter_TypedConfig{
-										TypedConfig: mustToAny(&httpconnectionmanagerv3.HttpConnectionManager{
+										TypedConfig: mustToAny(t, &httpconnectionmanagerv3.HttpConnectionManager{
 											StatPrefix: "http",
 											HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
 												{
 													Name: "envoy.filters.http.custom_response/" + internalapi.MCPGeneratedResourceCommonPrefix + "test-oauth-protected-resource-metadata",
 													ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
-														TypedConfig: mustToAny(&custom_responsev3.CustomResponse{
+														TypedConfig: mustToAny(t, &custom_responsev3.CustomResponse{
 															CustomResponseMatcher: &matcherv3.Matcher{
 																MatcherType: &matcherv3.Matcher_MatcherList_{
 																	MatcherList: &matcherv3.Matcher_MatcherList{
@@ -554,7 +554,7 @@ func TestServer_modifyMCPOAuthCustomResponseFilters(t *testing.T) {
 																				OnMatch: &matcherv3.Matcher_OnMatch{
 																					OnMatch: &matcherv3.Matcher_OnMatch_Action{
 																						Action: &xdscorev3.TypedExtensionConfig{
-																							TypedConfig: mustToAny(&local_response_policyv3.LocalResponsePolicy{
+																							TypedConfig: mustToAny(t, &local_response_policyv3.LocalResponsePolicy{
 																								BodyFormat: &corev3.SubstitutionFormatString{
 																									Format: &corev3.SubstitutionFormatString_TextFormat{
 																										TextFormat: "Bearer realm=\"test\"",
@@ -590,13 +590,13 @@ func TestServer_modifyMCPOAuthCustomResponseFilters(t *testing.T) {
 								{
 									Name: wellknown.HTTPConnectionManager,
 									ConfigType: &listenerv3.Filter_TypedConfig{
-										TypedConfig: mustToAny(&httpconnectionmanagerv3.HttpConnectionManager{
+										TypedConfig: mustToAny(t, &httpconnectionmanagerv3.HttpConnectionManager{
 											StatPrefix: "http",
 											HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
 												{
 													Name: "envoy.filters.http.custom_response/" + internalapi.MCPGeneratedResourceCommonPrefix + "test-oauth-protected-resource-metadata",
 													ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
-														TypedConfig: mustToAny(&custom_responsev3.CustomResponse{
+														TypedConfig: mustToAny(t, &custom_responsev3.CustomResponse{
 															CustomResponseMatcher: &matcherv3.Matcher{
 																MatcherType: &matcherv3.Matcher_MatcherList_{
 																	MatcherList: &matcherv3.Matcher_MatcherList{
@@ -605,7 +605,7 @@ func TestServer_modifyMCPOAuthCustomResponseFilters(t *testing.T) {
 																				OnMatch: &matcherv3.Matcher_OnMatch{
 																					OnMatch: &matcherv3.Matcher_OnMatch_Action{
 																						Action: &xdscorev3.TypedExtensionConfig{
-																							TypedConfig: mustToAny(&local_response_policyv3.LocalResponsePolicy{
+																							TypedConfig: mustToAny(t, &local_response_policyv3.LocalResponsePolicy{
 																								ResponseHeadersToAdd: []*corev3.HeaderValueOption{
 																									{
 																										Header: &corev3.HeaderValue{
@@ -648,13 +648,13 @@ func TestServer_modifyMCPOAuthCustomResponseFilters(t *testing.T) {
 								{
 									Name: wellknown.HTTPConnectionManager,
 									ConfigType: &listenerv3.Filter_TypedConfig{
-										TypedConfig: mustToAny(&httpconnectionmanagerv3.HttpConnectionManager{
+										TypedConfig: mustToAny(t, &httpconnectionmanagerv3.HttpConnectionManager{
 											StatPrefix: "http",
 											HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
 												{
 													Name: "envoy.filters.http.custom_response/" + internalapi.MCPGeneratedResourceCommonPrefix + "test-oauth-protected-resource-metadata",
 													ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
-														TypedConfig: mustToAny(&custom_responsev3.CustomResponse{
+														TypedConfig: mustToAny(t, &custom_responsev3.CustomResponse{
 															CustomResponseMatcher: &matcherv3.Matcher{
 																MatcherType: &matcherv3.Matcher_MatcherList_{
 																	MatcherList: &matcherv3.Matcher_MatcherList{
@@ -663,7 +663,7 @@ func TestServer_modifyMCPOAuthCustomResponseFilters(t *testing.T) {
 																				OnMatch: &matcherv3.Matcher_OnMatch{
 																					OnMatch: &matcherv3.Matcher_OnMatch_Action{
 																						Action: &xdscorev3.TypedExtensionConfig{
-																							TypedConfig: mustToAny(&local_response_policyv3.LocalResponsePolicy{
+																							TypedConfig: mustToAny(t, &local_response_policyv3.LocalResponsePolicy{
 																								BodyFormat: &corev3.SubstitutionFormatString{
 																									Format: &corev3.SubstitutionFormatString_TextFormatSource{
 																										TextFormatSource: &corev3.DataSource{
@@ -703,13 +703,13 @@ func TestServer_modifyMCPOAuthCustomResponseFilters(t *testing.T) {
 								{
 									Name: wellknown.HTTPConnectionManager,
 									ConfigType: &listenerv3.Filter_TypedConfig{
-										TypedConfig: mustToAny(&httpconnectionmanagerv3.HttpConnectionManager{
+										TypedConfig: mustToAny(t, &httpconnectionmanagerv3.HttpConnectionManager{
 											StatPrefix: "http",
 											HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
 												{
 													Name: "envoy.filters.http.custom_response/" + internalapi.MCPGeneratedResourceCommonPrefix + "test-oauth-protected-resource-metadata",
 													ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
-														TypedConfig: mustToAny(&custom_responsev3.CustomResponse{
+														TypedConfig: mustToAny(t, &custom_responsev3.CustomResponse{
 															CustomResponseMatcher: &matcherv3.Matcher{
 																MatcherType: &matcherv3.Matcher_MatcherList_{
 																	MatcherList: &matcherv3.Matcher_MatcherList{
@@ -718,7 +718,7 @@ func TestServer_modifyMCPOAuthCustomResponseFilters(t *testing.T) {
 																				OnMatch: &matcherv3.Matcher_OnMatch{
 																					OnMatch: &matcherv3.Matcher_OnMatch_Action{
 																						Action: &xdscorev3.TypedExtensionConfig{
-																							TypedConfig: mustToAny(&local_response_policyv3.LocalResponsePolicy{
+																							TypedConfig: mustToAny(t, &local_response_policyv3.LocalResponsePolicy{
 																								ResponseHeadersToAdd: []*corev3.HeaderValueOption{
 																									{
 																										Header: &corev3.HeaderValue{
@@ -925,7 +925,7 @@ func TestServer_maybeGenerateResourcesForMCPGateway(t *testing.T) {
 									{
 										Name: wellknown.HTTPConnectionManager,
 										ConfigType: &listenerv3.Filter_TypedConfig{
-											TypedConfig: mustToAny(&httpconnectionmanagerv3.HttpConnectionManager{
+											TypedConfig: mustToAny(t, &httpconnectionmanagerv3.HttpConnectionManager{
 												StatPrefix: "http",
 												HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
 													{Name: internalapi.MCPPerBackendHTTPRouteFilterPrefix + "test-filter"},

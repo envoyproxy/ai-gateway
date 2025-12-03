@@ -330,7 +330,7 @@ func Test_findListenerRouteConfigs(t *testing.T) {
 			Filters: []*listenerv3.Filter{
 				{
 					Name:       wellknown.HTTPConnectionManager,
-					ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(newHCM("foo"))},
+					ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, newHCM("foo"))},
 				},
 			},
 		},
@@ -339,7 +339,7 @@ func Test_findListenerRouteConfigs(t *testing.T) {
 				Filters: []*listenerv3.Filter{
 					{
 						Name:       wellknown.HTTPConnectionManager,
-						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(newHCM("bar"))},
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, newHCM("bar"))},
 					},
 				},
 			},

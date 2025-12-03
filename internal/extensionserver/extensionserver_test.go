@@ -44,11 +44,9 @@ import (
 )
 
 // mustToAny marshals the provided message to an Any message.
-func mustToAny(msg proto.Message) *anypb.Any {
+func mustToAny(t *testing.T, msg proto.Message) *anypb.Any {
 	b, err := proto.Marshal(msg)
-	if err != nil {
-		panic(fmt.Sprintf("BUG: failed to marshal message: %v", err))
-	}
+	require.NoError(t, err)
 	const envoyAPIPrefix = "type.googleapis.com/"
 	return &anypb.Any{
 		TypeUrl: envoyAPIPrefix + string(msg.ProtoReflect().Descriptor().FullName()),
@@ -313,7 +311,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 				},
 			},
 			TypedExtensionProtocolOptions: map[string]*anypb.Any{
-				"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(existingPO),
+				"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(t, existingPO),
 			},
 		}
 
@@ -361,7 +359,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 				},
 			},
 			TypedExtensionProtocolOptions: map[string]*anypb.Any{
-				"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(existingPO),
+				"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(t, existingPO),
 			},
 		}
 
@@ -464,7 +462,7 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 				Filters: []*listenerv3.Filter{
 					{
 						Name:       wellknown.HTTPConnectionManager,
-						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(hcm)},
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
 					},
 				},
 			},
@@ -532,7 +530,7 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 				Filters: []*listenerv3.Filter{
 					{
 						Name:       wellknown.HTTPConnectionManager,
-						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(hcm)},
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
 					},
 				},
 			},
@@ -673,7 +671,7 @@ func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
 				Filters: []*listenerv3.Filter{
 					{
 						Name:       wellknown.HTTPConnectionManager,
-						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(hcm)},
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
 					},
 				},
 			},
@@ -784,7 +782,7 @@ func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
 					Filters: []*listenerv3.Filter{
 						{
 							Name:       wellknown.HTTPConnectionManager,
-							ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(hcm)},
+							ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
 						},
 					},
 				},
@@ -793,7 +791,7 @@ func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
 				Filters: []*listenerv3.Filter{
 					{
 						Name:       wellknown.HTTPConnectionManager,
-						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(hcm)},
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
 					},
 				},
 			},
@@ -1661,16 +1659,6 @@ func TestBuildClustersForInferencePoolEndpointPickers(t *testing.T) {
 		result, err := buildClustersForInferencePoolEndpointPickers(clusters)
 		require.NoError(t, err)
 		require.Empty(t, result)
-	})
-}
-
-// TestMustToAny tests the mustToAny helper function.
-func TestMustToAny(t *testing.T) {
-	t.Run("valid message", func(t *testing.T) {
-		cluster := &clusterv3.Cluster{Name: "test"}
-		anyProto := mustToAny(cluster)
-		require.NotNil(t, anyProto)
-		require.Contains(t, anyProto.TypeUrl, "envoy.config.cluster.v3.Cluster")
 	})
 }
 

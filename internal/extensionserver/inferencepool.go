@@ -189,7 +189,7 @@ func buildClustersForInferencePoolEndpointPickers(clusters []*clusterv3.Cluster)
 		if pool := getInferencePoolByMetadata(cluster.Metadata); pool != nil {
 			c, err := buildExtProcClusterForInferencePoolEndpointPicker(pool)
 			if err != nil {
-				continue
+				return nil, err
 			}
 			result = append(result, c)
 		}
