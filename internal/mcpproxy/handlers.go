@@ -231,16 +231,10 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 			// The MCP proxy uses it to locate the route’s backends and initialize sessions with them.
 			route := r.Header.Get(internalapi.MCPRouteHeader)
 			if route == "" {
-				if len(m.routes) == 1 {
-					for mcpRouteName := range m.routes {
-						route = mcpRouteName
-					}
-				} else {
-					errType = metrics.MCPErrorInternal
-					m.l.Error("cannot find route header in the downstream request")
-					onErrorResponse(w, http.StatusInternalServerError, "missing route header")
-					return
-				}
+				errType = metrics.MCPErrorInternal
+				m.l.Error("cannot find route header in the downstream request")
+				onErrorResponse(w, http.StatusInternalServerError, "missing route header")
+				return
 			}
 			err = m.handleInitializeRequest(ctx, w, msg, params.(*mcp.InitializeParams), route, extractSubject(r), span)
 		case "notifications/initialized":

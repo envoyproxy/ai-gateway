@@ -13,12 +13,10 @@ package bench
 import (
 	"context"
 	_ "embed"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
-	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -61,8 +59,6 @@ func setupBenchmark(b *testing.B) []MCPBenchCase {
 		_ = mcpServer.Close()
 	})
 
-	// Reset the timer to exclude setup time from the results
-	b.ResetTimer()
 	return []MCPBenchCase{
 		{
 			Name: "BaseLine",
@@ -96,7 +92,12 @@ func BenchmarkMCP(b *testing.B) {
 		b.Run(tc.Name, func(b *testing.B) {
 			c := startProxy(b, &tc)
 			defer func() {
-				_ = c.Cancel()
+				if c.Cancel != nil {
+					_ = c.Cancel()
+				}
+				if c.Process != nil {
+					_ = syscall.Kill(-c.Process.Pid, syscall.SIGKILL)
+				}
 			}()
 			mcpClient := mcp.NewClient(&mcp.Implementation{Name: "bench-http-client", Version: "0.1.0"}, nil)
 			cs, err := mcpClient.Connect(b.Context(), &mcp.StreamableClientTransport{
@@ -145,37 +146,11 @@ func BenchmarkMCP(b *testing.B) {
 	}
 }
 
-func killProcessListeningOn(port int) error {
-	cmd := exec.Command("lsof", "-nP", "-sTCP:LISTEN", "-i", fmt.Sprintf("TCP:%d", port), "-t") // nolint: gosec
-	out, err := cmd.Output()
-	if err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) && len(ee.Stderr) == 0 {
-			return fmt.Errorf("no process listening on %d", port)
-		}
-		return fmt.Errorf("lsof failed: %w", err)
-	}
-	pids := strings.Fields(string(out))
-	if len(pids) == 0 {
-		return fmt.Errorf("no process listening on %d", port)
-	}
-	for _, ps := range pids {
-		pid, err := strconv.Atoi(ps)
-		if err != nil {
-			continue
-		}
-		_ = syscall.Kill(-pid, syscall.SIGKILL)
-		_ = syscall.Kill(pid, syscall.SIGKILL)
-	}
-	return nil
-}
-
 func startProxy(b testing.TB, tc *MCPBenchCase) *exec.Cmd {
-	for _, p := range tc.CheckPorts {
-		_ = killProcessListeningOn(p)
-	}
-
 	cmd := exec.CommandContext(b.Context(), tc.Binary, tc.Args...) // nolint: gosec
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true, // put into new process group so we can kill the entire process tree (and children)
+	}
 	devnull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
 	if err != nil {
 		b.Fatalf("open %s: %v", os.DevNull, err)

@@ -348,9 +348,9 @@ func StartAndAwaitReady(t testing.TB, cmd *exec.Cmd, stdout, stderr io.Writer, r
 	require.NoError(t, err)
 
 	// Capture both stdout and stderr to the output buffer.
-	cmd.Stdout = stdout
 	// Create a multi-writer to write stderr to both our pipe (for startup detection) and the buffer.
-	stderrMultiWriter := io.MultiWriter(stderrWriter, stderr)
+	stderrMultiWriter := io.MultiWriter(stderrWriter, stderr, stdout)
+	cmd.Stdout = stderrMultiWriter
 	cmd.Stderr = stderrMultiWriter
 
 	require.NoError(t, cmd.Start())
