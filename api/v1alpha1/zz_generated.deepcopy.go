@@ -1371,10 +1371,8 @@ func (in *ToolCall) DeepCopyInto(out *ToolCall) {
 	*out = *in
 	if in.Arguments != nil {
 		in, out := &in.Arguments, &out.Arguments
-		*out = make(map[string]string, len(*in))
-		for key, val := range *in {
-			(*out)[key] = val
-		}
+		*out = new(string)
+		**out = **in
 	}
 }
 

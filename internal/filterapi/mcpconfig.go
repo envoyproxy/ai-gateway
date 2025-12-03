@@ -108,7 +108,7 @@ type ToolCall struct {
 	// ToolName is the name of the tool.
 	ToolName string `json:"toolName"`
 
-	// Arguments defines required arguments (exact key names with regex patterns for values).
-	// All patterns must match for the rule to apply.
-	Arguments map[string]string `json:"arguments,omitempty"`
+	// Arguments is a CEL expression evaluated against the tool call arguments map.
+	// The expression must evaluate to true for the rule to apply.
+	Arguments *string `json:"arguments,omitempty"`
 }

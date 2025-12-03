@@ -68,8 +68,7 @@ spec:
             tools:
               - backendName: mcp-backend-authorization
                 toolName: echo
-                arguments:
-                  text: "^Hello, .*!$"
+                arguments: args.text.matches("^Hello, .*!$")
         - source:
             jwtSource:
               scopes:

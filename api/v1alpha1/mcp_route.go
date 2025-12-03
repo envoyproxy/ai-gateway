@@ -305,12 +305,14 @@ type ToolCall struct {
 	// +kubebuilder:validation:Required
 	ToolName string `json:"toolName"`
 
-	// Arguments defines the arguments that must be present in the tool call for this rule to match.
-	// Keys must exist and their values must match the provided RE2-compatible regular expressions.
-	// If the argument is a non-string type, it will be matched against its JSON representation.
+	// Arguments is a CEL expression that must evaluate to true for the rule to match.
+	// The expression is evaluated with a single variable "args" bound to the tool call arguments as a dynamic object.
+	// Guard against missing fields with null checks (e.g., args["foo"] != null && args["foo"]["bar"] == "val").
 	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxLength=4096
 	// +optional
-	Arguments map[string]string `json:"arguments,omitempty"`
+	Arguments *string `json:"arguments,omitempty"`
 }
 
 // JWKS defines how to obtain JSON Web Key Sets (JWKS) either from a remote HTTP/HTTPS endpoint or from a local source.

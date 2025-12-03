@@ -6,23 +6,88 @@
 package mcpproxy
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
-	"regexp"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/cel-go/cel"
+	"github.com/google/cel-go/common/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
+type compiledAuthorization struct {
+	ResourceMetadataURL string
+	Rules               []compiledAuthorizationRule
+}
+
+type compiledAuthorizationRule struct {
+	Source filterapi.MCPAuthorizationSource
+	Target []compiledToolCall
+}
+
+type compiledToolCall struct {
+	BackendName string
+	ToolName    string
+	Expression  string
+	program     cel.Program
+}
+
+// compileAuthorization compiles the MCPRouteAuthorization into a compiledAuthorization for efficient CEL evaluation.
+func compileAuthorization(auth *filterapi.MCPRouteAuthorization) (*compiledAuthorization, error) {
+	if auth == nil {
+		return nil, nil
+	}
+
+	env, err := cel.NewEnv(
+		cel.Variable("args", cel.DynType),
+		cel.OptionalTypes(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
+	}
+
+	compiled := &compiledAuthorization{
+		ResourceMetadataURL: auth.ResourceMetadataURL,
+	}
+
+	for _, rule := range auth.Rules {
+		cr := compiledAuthorizationRule{
+			Source: rule.Source,
+		}
+		for _, tool := range rule.Target.Tools {
+			ct := compiledToolCall{
+				BackendName: tool.BackendName,
+				ToolName:    tool.ToolName,
+			}
+			if tool.Arguments != nil && strings.TrimSpace(*tool.Arguments) != "" {
+				expr := strings.TrimSpace(*tool.Arguments)
+				ast, issues := env.Compile(expr)
+				if issues != nil && issues.Err() != nil {
+					return nil, fmt.Errorf("failed to compile arguments CEL for tool %s/%s: %w", tool.BackendName, tool.ToolName, issues.Err())
+				}
+				program, err := env.Program(ast, cel.CostLimit(10000), cel.EvalOptions(cel.OptOptimize))
+				if err != nil {
+					return nil, fmt.Errorf("failed to build arguments CEL program for tool %s/%s: %w", tool.BackendName, tool.ToolName, err)
+				}
+				ct.Expression = expr
+				ct.program = program
+			}
+			cr.Target = append(cr.Target, ct)
+		}
+		compiled.Rules = append(compiled.Rules, cr)
+	}
+
+	return compiled, nil
+}
+
 // authorizeRequest authorizes the request based on the given MCPRouteAuthorization configuration.
 
-func (m *MCPProxy) authorizeRequest(authorization *filterapi.MCPRouteAuthorization, headers http.Header, backendName, toolName string, argments any) (bool, []string) {
+func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, headers http.Header, backendName, toolName string, arguments any) (bool, []string) {
 	if authorization == nil {
 		return true, nil
 	}
@@ -48,17 +113,11 @@ func (m *MCPProxy) authorizeRequest(authorization *filterapi.MCPRouteAuthorizati
 		return false, nil
 	}
 
-	scopeSet := sets.New[string](extractScopes(claims)...)
-	var missingScopesForChallenge []string
+	scopeSet := sets.New(extractScopes(claims)...)
+	var requiredScopesForChallenge []string
 
 	for _, rule := range authorization.Rules {
-		var args map[string]any
-		if argments != nil {
-			if cast, ok := argments.(map[string]any); ok {
-				args = cast
-			}
-		}
-		if !m.toolMatches(filterapi.ToolCall{BackendName: backendName, ToolName: toolName}, rule.Target.Tools, args) {
+		if !m.toolMatches(backendName, toolName, rule.Target, arguments) {
 			continue
 		}
 
@@ -67,13 +126,13 @@ func (m *MCPProxy) authorizeRequest(authorization *filterapi.MCPRouteAuthorizati
 			return true, nil
 		}
 
-		// Keep track of the smallest set of missing scopes for challenge.
-		if len(missingScopesForChallenge) == 0 || len(requiredScopes) < len(missingScopesForChallenge) {
-			missingScopesForChallenge = requiredScopes
+		// Keep track of the smallest set of required scopes for challenge.
+		if len(requiredScopesForChallenge) == 0 || len(requiredScopes) < len(requiredScopesForChallenge) {
+			requiredScopesForChallenge = requiredScopes
 		}
 	}
 
-	return false, missingScopesForChallenge
+	return false, requiredScopesForChallenge
 }
 
 func bearerToken(header string) (string, error) {
@@ -117,53 +176,36 @@ func extractScopes(claims jwt.MapClaims) []string {
 	}
 }
 
-func (m *MCPProxy) toolMatches(target filterapi.ToolCall, tools []filterapi.ToolCall, args map[string]any) bool {
+func (m *MCPProxy) toolMatches(backendName, toolName string, tools []compiledToolCall, args any) bool {
 	if len(tools) == 0 {
 		return true
 	}
 
 	for _, t := range tools {
-		if t.BackendName != target.BackendName || t.ToolName != target.ToolName {
+		if t.BackendName != backendName || t.ToolName != toolName {
 			continue
 		}
-		if len(t.Arguments) == 0 {
+		if t.program == nil {
 			return true
 		}
-		if args == nil {
-			return false
+
+		result, _, err := t.program.Eval(map[string]any{"args": args})
+		if err != nil {
+			m.l.Error("failed to evaluate arguments CEL", slog.String("backend", t.BackendName), slog.String("tool", t.ToolName), slog.String("error", err.Error()))
+			continue
 		}
-		allMatch := true
-		for key, pattern := range t.Arguments {
-			rawVal, ok := args[key]
-			if !ok {
-				allMatch = false
-				break
+
+		switch v := result.Value().(type) {
+		case bool:
+			if v {
+				return true
 			}
-			re, err := regexp.Compile(pattern)
-			if err != nil {
-				m.l.Error("invalid argument regex pattern", slog.String("pattern", pattern), slog.String("error", err.Error()))
-				allMatch = false
-				break
+		case types.Bool:
+			if bool(v) {
+				return true
 			}
-			var data []byte
-			if s, ok := rawVal.(string); ok {
-				data = []byte(s)
-			} else {
-				jsonVal, err := json.Marshal(rawVal)
-				if err != nil {
-					m.l.Error("failed to marshal argument value to json", slog.String("key", key), slog.String("error", err.Error()))
-					allMatch = false
-					break
-				}
-				data = jsonVal
-			}
-			if !re.Match(data) {
-				allMatch = false
-				break
-			}
-		}
-		if allMatch {
-			return true
+		default:
+			m.l.Error("arguments CEL did not return a boolean", slog.String("backend", t.BackendName), slog.String("tool", t.ToolName), slog.String("expression", t.Expression))
 		}
 	}
 	// If no matching tool entry or no arguments matched, fail.

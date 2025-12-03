@@ -53,7 +53,7 @@ type (
 	mcpProxyConfigRoute struct {
 		backends      map[filterapi.MCPBackendName]filterapi.MCPBackend
 		toolSelectors map[filterapi.MCPBackendName]*toolSelector
-		authorization *filterapi.MCPRouteAuthorization
+		authorization *compiledAuthorization
 	}
 
 	// toolSelector filters tools using include patterns with exact matches or regular expressions.
@@ -133,10 +133,15 @@ func (p *ProxyConfig) LoadConfig(_ context.Context, config *filterapi.Config) er
 	newConfig.routes = make(map[filterapi.MCPRouteName]*mcpProxyConfigRoute, len(mcpConfig.Routes))
 
 	for _, route := range mcpConfig.Routes {
+		compiledAuth, err := compileAuthorization(route.Authorization)
+		if err != nil {
+			return fmt.Errorf("failed to compile authorization rules for route %s: %w", route.Name, err)
+		}
+
 		r := &mcpProxyConfigRoute{
 			backends:      make(map[filterapi.MCPBackendName]filterapi.MCPBackend, len(route.Backends)),
 			toolSelectors: make(map[filterapi.MCPBackendName]*toolSelector, len(route.Backends)),
-			authorization: route.Authorization,
+			authorization: compiledAuth,
 		}
 		for _, backend := range route.Backends {
 			r.backends[backend.Name] = backend

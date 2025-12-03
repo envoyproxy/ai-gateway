@@ -1977,9 +1977,9 @@ ToolCall represents a tool call in the MCP authorization target.
   description="ToolName is the name of the tool."
 /><ApiField
   name="arguments"
-  type="object (keys:string, values:string)"
+  type="string"
   required="false"
-  description="Arguments defines the arguments that must be present in the tool call for this rule to match.<br />Keys must exist and their values must match the provided RE2-compatible regular expressions.<br />If the argument is a non-string type, it will be matched against its JSON representation."
+  description="Arguments is a CEL expression that must evaluate to true for the rule to match.<br />The expression is evaluated with a single variable `args` bound to the tool call arguments as a dynamic object.<br />Guard against missing fields with null checks (e.g., args[`foo`] != null && args[`foo`][`bar`] == `val`)."
 />
 
 

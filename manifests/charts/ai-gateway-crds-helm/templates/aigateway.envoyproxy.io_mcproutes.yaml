@@ -634,13 +634,12 @@ spec:
                                       the MCP authorization target.
                                     properties:
                                       arguments:
-                                        additionalProperties:
-                                          type: string
                                         description: |-
-                                          Arguments defines the arguments that must be present in the tool call for this rule to match.
-                                          Keys must exist and their values must match the provided RE2-compatible regular expressions.
-                                          If the argument is a non-string type, it will be matched against its JSON representation.
-                                        type: object
+                                          Arguments is a CEL expression that must evaluate to true for the rule to match.
+                                          The expression is evaluated with a single variable "args" bound to the tool call arguments as a dynamic object.
+                                          Guard against missing fields with null checks (e.g., args["foo"] != null && args["foo"]["bar"] == "val").
+                                        maxLength: 4096
+                                        type: string
                                       backendName:
                                         description: BackendName is the name of the
                                           backend this tool belongs to.
