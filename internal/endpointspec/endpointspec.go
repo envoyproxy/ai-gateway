@@ -201,12 +201,12 @@ func (MessagesEndpointSpec) ParseBody(
 		return "", nil, false, nil, fmt.Errorf("failed to unmarshal Anthropic Messages body: %w", err)
 	}
 
-	model := anthropicReq.GetModel()
+	model := anthropicReq.Model
 	if model == "" {
 		return "", nil, false, nil, fmt.Errorf("model field is required in Anthropic request")
 	}
 
-	stream := anthropicReq.GetStream()
+	stream := anthropicReq.Stream
 	return model, &anthropicReq, stream, nil, nil
 }
 

@@ -43,9 +43,9 @@ type anthropicToAnthropicTranslator struct {
 func (a *anthropicToAnthropicTranslator) RequestBody(original []byte, body *anthropicschema.MessagesRequest, forceBodyMutation bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
-	a.stream = body.GetStream()
+	a.stream = body.Stream
 	// Store the request model to use as fallback for response model
-	a.requestModel = body.GetModel()
+	a.requestModel = body.Model
 	if a.modelNameOverride != "" {
 		// If modelName is set we override the model to be used for the request.
 		newBody, err = sjson.SetBytesOptions(original, "model", a.modelNameOverride, sjsonOptions)

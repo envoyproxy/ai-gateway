@@ -11,120 +11,141 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMessagesRequest_GetModel(t *testing.T) {
+func TestMessageContent_UnmarshalJSON(t *testing.T) {
 	tests := []struct {
-		name     string
-		request  MessagesRequest
-		expected string
+		name    string
+		jsonStr string
+		want    MessageContent
+		wantErr bool
 	}{
 		{
-			name:     "valid model string",
-			request:  MessagesRequest{"model": "claude-3-sonnet"},
-			expected: "claude-3-sonnet",
+			name:    "string content",
+			jsonStr: `"Hello, world!"`,
+			want:    MessageContent{Text: "Hello, world!"},
+			wantErr: false,
 		},
 		{
-			name:     "missing model field",
-			request:  MessagesRequest{},
-			expected: "",
+			name:    "array content",
+			jsonStr: `[{}, {}]`,
+			want:    MessageContent{Array: []MessageContentArrayElement{struct{}{}, struct{}{}}},
+			wantErr: false,
 		},
 		{
-			name:     "non-string model field",
-			request:  MessagesRequest{"model": 123},
-			expected: "",
-		},
-		{
-			name:     "nil model field",
-			request:  MessagesRequest{"model": nil},
-			expected: "",
+			name:    "invalid content",
+			jsonStr: `12345`,
+			want:    MessageContent{},
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.request.GetModel()
-			require.Equal(t, tt.expected, result)
+			var mc MessageContent
+			err := mc.UnmarshalJSON([]byte(tt.jsonStr))
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, mc)
 		})
 	}
 }
 
-func TestMessagesRequest_GetMaxTokens(t *testing.T) {
+func TestMessageContent_MessagesStreamEvent(t *testing.T) {
 	tests := []struct {
-		name     string
-		request  MessagesRequest
-		expected int
+		name    string
+		jsonStr string
+		exp     MessagesStreamEvent
+		wantErr bool
 	}{
 		{
-			name:     "valid max_tokens float64",
-			request:  MessagesRequest{"max_tokens": 1000.0},
-			expected: 1000,
+			name:    "message_start",
+			jsonStr: `{"type":"message_start","message":{"id":"msg_014p7gG3wDgGV9EUtLvnow3U","type":"message","role":"assistant","model":"claude-sonnet-4-5-20250929","stop_sequence":null,"usage":{"input_tokens":472,"output_tokens":2},"content":[],"stop_reason":null}}`,
+			exp: MessagesStreamEvent{
+				Type: "message_start",
+				MessageStart: &MessagesStreamEventMessageStart{
+					ID:           "msg_014p7gG3wDgGV9EUtLvnow3U",
+					Type:         "message",
+					Role:         "assistant",
+					Model:        "claude-sonnet-4-5-20250929",
+					StopSequence: nil,
+					Usage: &Usage{
+						InputTokens:  472,
+						OutputTokens: 2,
+					},
+					Content:    []MessagesContentBlock{},
+					StopReason: nil,
+				},
+			},
+			wantErr: false,
 		},
 		{
-			name:     "valid max_tokens with decimal",
-			request:  MessagesRequest{"max_tokens": 1000.5},
-			expected: 1000,
+			name: "content_block_start",
+			exp: MessagesStreamEvent{
+				Type: "content_block_start",
+			},
+			jsonStr: `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
 		},
 		{
-			name:     "missing max_tokens field",
-			request:  MessagesRequest{},
-			expected: 0,
+			name: "content_block_delta",
+			exp: MessagesStreamEvent{
+				Type: "content_block_delta",
+			},
+			jsonStr: `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Okay"}}`,
 		},
 		{
-			name:     "non-float64 max_tokens field",
-			request:  MessagesRequest{"max_tokens": "1000"},
-			expected: 0,
+			name: "content_block_stop",
+			exp: MessagesStreamEvent{
+				Type: "content_block_stop",
+			},
+			jsonStr: `{"type":"content_block_stop","index":1}`,
 		},
 		{
-			name:     "nil max_tokens field",
-			request:  MessagesRequest{"max_tokens": nil},
-			expected: 0,
+			name: "message_delta",
+			exp: MessagesStreamEvent{
+				Type: "message_delta",
+				MessageDelta: &MessagesStreamEventMessageDelta{
+					Delta: MessagesStreamEventMessageDeltaDelta{
+						StopReason:   "tool_use",
+						StopSequence: nil,
+					},
+					Usage: Usage{
+						OutputTokens: 89,
+					},
+				},
+			},
+			jsonStr: `{"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":89}}`,
+		},
+		{
+			name: "message_stop",
+			exp: MessagesStreamEvent{
+				Type: "message_stop",
+			},
+			jsonStr: ` {"type":"message_stop"}`,
+		},
+		{
+			name:    "invalid event",
+			jsonStr: `abcdes`,
+			wantErr: true,
+		},
+		{
+			name:    "type field does not exist",
+			jsonStr: `{"foo":"bar"}`,
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.request.GetMaxTokens()
-			require.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-func TestMessagesRequest_GetStream(t *testing.T) {
-	tests := []struct {
-		name     string
-		request  MessagesRequest
-		expected bool
-	}{
-		{
-			name:     "stream true",
-			request:  MessagesRequest{"stream": true},
-			expected: true,
-		},
-		{
-			name:     "stream false",
-			request:  MessagesRequest{"stream": false},
-			expected: false,
-		},
-		{
-			name:     "missing stream field",
-			request:  MessagesRequest{},
-			expected: false,
-		},
-		{
-			name:     "non-bool stream field",
-			request:  MessagesRequest{"stream": "true"},
-			expected: false,
-		},
-		{
-			name:     "nil stream field",
-			request:  MessagesRequest{"stream": nil},
-			expected: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := tt.request.GetStream()
-			require.Equal(t, tt.expected, result)
+			var mse MessagesStreamEvent
+			err := mse.UnmarshalJSON([]byte(tt.jsonStr))
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.exp, mse)
 		})
 	}
 }
