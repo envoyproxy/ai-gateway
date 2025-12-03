@@ -26,8 +26,11 @@ func TestMessageContent_UnmarshalJSON(t *testing.T) {
 		},
 		{
 			name:    "array content",
-			jsonStr: `[{}, {}]`,
-			want:    MessageContent{Array: []MessageContentArrayElement{struct{}{}, struct{}{}}},
+			jsonStr: `[{"type": "text", "text": "Hello, "}, {"type": "text", "text": "world!"}]`,
+			want: MessageContent{Array: []ContentBlockParam{
+				{Text: &TextBlockParam{Text: "Hello, ", Type: "text"}},
+				{Text: &TextBlockParam{Text: "world!", Type: "text"}},
+			}},
 			wantErr: false,
 		},
 		{

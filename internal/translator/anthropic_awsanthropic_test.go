@@ -94,6 +94,8 @@ func TestAnthropicToAWSAnthropicTranslator_RequestBody_ModelNameOverride(t *test
 			var modifiedReq map[string]any
 			err = json.Unmarshal(bodyMutation, &modifiedReq)
 			require.NoError(t, err)
+			_, hasModel := modifiedReq["model"]
+			assert.False(t, hasModel, "model field should be removed from request body")
 
 			// Verify anthropic_version field is added (required by AWS Bedrock).
 			version, hasVersion := modifiedReq["anthropic_version"]

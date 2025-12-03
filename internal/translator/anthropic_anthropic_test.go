@@ -10,9 +10,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
-	"github.com/stretchr/testify/require"
 )
 
 func TestAnthropicToAnthropic_RequestBody(t *testing.T) {
