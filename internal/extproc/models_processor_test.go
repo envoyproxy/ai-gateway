@@ -61,16 +61,6 @@ func TestModels_ProcessRequestHeaders(t *testing.T) {
 	}
 }
 
-func TestModels_UnimplementedMethods(t *testing.T) {
-	p := &modelsProcessor{}
-	_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{})
-	require.ErrorIs(t, err, errUnexpectedCall)
-	_, err = p.ProcessResponseHeaders(t.Context(), &corev3.HeaderMap{})
-	require.ErrorIs(t, err, errUnexpectedCall)
-	_, err = p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{})
-	require.ErrorIs(t, err, errUnexpectedCall)
-}
-
 func headers(in []*corev3.HeaderValueOption) map[string]string {
 	h := make(map[string]string)
 	for _, v := range in {
