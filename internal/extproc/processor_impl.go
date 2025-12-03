@@ -15,12 +15,8 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-	openaisdk "github.com/openai/openai-go/v2"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
-	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -32,37 +28,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
-// ChatCompletionProcessorFactory returns a ProcessorFactory for /v1/chat/completions.
-func ChatCompletionProcessorFactory(f metrics.Factory, tracer tracing.ChatCompletionTracer) ProcessorFactory {
-	return newFactory[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec](f, tracer)
-}
-
-// CompletionsProcessorFactory returns a ProcessorFactory for /v1/completions.
-func CompletionsProcessorFactory(f metrics.Factory, tracer tracing.CompletionTracer) ProcessorFactory {
-	return newFactory[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse, endpointspec.CompletionsEndpointSpec](f, tracer)
-}
-
-// EmbeddingsProcessorFactory returns a ProcessorFactory for /v1/embeddings.
-func EmbeddingsProcessorFactory(f metrics.Factory, tracer tracing.EmbeddingsTracer) ProcessorFactory {
-	return newFactory[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}, endpointspec.EmbeddingsEndpointSpec](f, tracer)
-}
-
-// ImageGenerationProcessorFactory returns a ProcessorFactory for /v1/images/generations.
-func ImageGenerationProcessorFactory(f metrics.Factory, tracer tracing.ImageGenerationTracer) ProcessorFactory {
-	return newFactory[openaisdk.ImageGenerateParams, openaisdk.ImagesResponse, struct{}, endpointspec.ImageGenerationEndpointSpec](f, tracer)
-}
-
-// MessagesProcessorFactory returns a ProcessorFactory for /v1/messages.
-func MessagesProcessorFactory(f metrics.Factory, tracer tracing.MessageTracer) ProcessorFactory {
-	return newFactory[anthropic.MessagesRequest, anthropic.MessagesResponse, anthropic.MessagesStreamChunk, endpointspec.MessagesEndpointSpec](f, tracer)
-}
-
-// RerankProcessorFactory returns a ProcessorFactory for /v2/rerank.
-func RerankProcessorFactory(f metrics.Factory, tracer tracing.RerankTracer) ProcessorFactory {
-	return newFactory[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}, endpointspec.RerankEndpointSpec](f, tracer)
-}
-
-// newFactory creates a ProcessorFactory with the given parameters.
+// NewFactory creates a ProcessorFactory with the given parameters.
 //
 // Type Parameters:
 // * ReqT: The request type.
@@ -77,9 +43,10 @@ func RerankProcessorFactory(f metrics.Factory, tracer tracing.RerankTracer) Proc
 //
 // Returns:
 // * ProcessorFactory: A factory function to create processors based on the configuration.
-func newFactory[ReqT any, RespT any, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]](
+func NewFactory[ReqT any, RespT any, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]](
 	f metrics.Factory,
 	tracer tracing.RequestTracer[ReqT, RespT, RespChunkT],
+	_ EndpointSpecT, // This is a type marker to bind EndpointSpecT without specifying ReqT, RespT, RespChunkT explicitly.
 ) ProcessorFactory {
 	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
 		logger = logger.With("isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
@@ -91,6 +58,7 @@ func newFactory[ReqT any, RespT any, RespChunkT any, EndpointSpecT endpointspec.
 }
 
 type (
+	// routerProcessor implements [Processor] for the router filter for the standard LLM endpoints.
 	routerProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]] struct {
 		eh EndpointSpecT
 
@@ -122,6 +90,9 @@ type (
 		upstreamFilterCount int
 		stream              bool
 	}
+	// upstreamProcessor implements [Processor] for the upstream filter for the standard LLM endpoints.
+	//
+	// This will be used together with [routerProcessor].
 	upstreamProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]] struct {
 		parent *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]
 

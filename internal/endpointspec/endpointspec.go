@@ -3,6 +3,8 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
+// Package endpointspec defines the EndpointSpec which is to bundle the translator, tracing
+// and most importantly request and response types for different API endpoints.
 package endpointspec
 
 import (
