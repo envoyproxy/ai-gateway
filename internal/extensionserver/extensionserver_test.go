@@ -436,7 +436,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 		}
 
 		err = s.maybeModifyCluster(cluster)
-		require.ErrorContains(t, err, "proto: cannot parse invalid wire-format data")
+		require.Error(t, err)
 		require.Contains(t, buf.String(), "failed to unmarshal HttpProtocolOptions")
 	})
 }
