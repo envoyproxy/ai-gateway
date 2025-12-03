@@ -3,7 +3,10 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-// go test -timeout=15m -run='^$$' -bench=. -benchmem -benchtime=1x ./tests/bench/...
+// 1. Build AIGW
+//  	make clean build.aigw
+// 2. Run the bench test
+//   	go test -timeout=15m -run='^$$' -bench=. -benchmem -benchtime=1x ./tests/bench/...
 
 package bench
 
@@ -12,24 +15,18 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"log/slog"
-	"net"
-	"net/http"
+	"os"
 	"os/exec"
+	"runtime"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/stretchr/testify/require"
-	"golang.org/x/sync/errgroup"
-
-	"github.com/envoyproxy/ai-gateway/internal/filterapi"
-	"github.com/envoyproxy/ai-gateway/internal/mcpproxy"
-	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testenvironment"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testmcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
@@ -39,31 +36,13 @@ const (
 )
 
 type MCPBenchCase struct {
-	Name string
-	Port int
+	Name         string
+	CheckPorts   []int
+	Port         int
+	Binary       string
+	Args         []string
+	ReadyMessage string
 }
-
-type NoopCrypto struct{}
-
-func (n NoopCrypto) Encrypt(plaintext string) (string, error) { return plaintext, nil }
-func (n NoopCrypto) Decrypt(encrypted string) (string, error) { return encrypted, nil }
-
-// NoopMetrics implements metrics.MCPMetrics with no-ops.
-type NoopMetrics struct{}
-
-func (s NoopMetrics) WithRequestAttributes(_ *http.Request) metrics.MCPMetrics         { return s }
-func (NoopMetrics) RecordRequestDuration(_ context.Context, _ time.Time, _ mcp.Params) {}
-func (NoopMetrics) RecordRequestErrorDuration(_ context.Context, _ time.Time, _ metrics.MCPErrorType, _ mcp.Params) {
-}
-func (NoopMetrics) RecordMethodCount(_ context.Context, _ string, _ mcp.Params)               {}
-func (NoopMetrics) RecordMethodErrorCount(_ context.Context, _ mcp.Params)                    {}
-func (NoopMetrics) RecordInitializationDuration(_ context.Context, _ time.Time, _ mcp.Params) {}
-func (NoopMetrics) RecordClientCapabilities(_ context.Context, _ *mcp.ClientCapabilities, _ mcp.Params) {
-}
-
-func (NoopMetrics) RecordServerCapabilities(_ context.Context, _ *mcp.ServerCapabilities, _ mcp.Params) {
-}
-func (NoopMetrics) RecordProgress(_ context.Context, _ mcp.Params) {}
 
 // setupBenchmark sets up the client connection.
 func setupBenchmark(b *testing.B) []MCPBenchCase {
@@ -81,134 +60,43 @@ func setupBenchmark(b *testing.B) []MCPBenchCase {
 		_ = mcpServer.Close()
 	})
 
-	go startAIGW(b)
-
-	errChs := []<-chan error{
-		startMCPProxy(b, "0.0.0.0:3001", mcpServerPort, NoopCrypto{}),
-		startMCPProxy(b, "0.0.0.0:3002", mcpServerPort, mcpproxy.NewPBKDF2AesGcmSessionCrypto("test", 100)),
-		startMCPProxy(b, "0.0.0.0:3003", mcpServerPort, mcpproxy.NewPBKDF2AesGcmSessionCrypto("test", 100_100)),
-	}
-
-	for _, ch := range errChs {
-		select {
-		case err := <-ch:
-			if err != nil {
-				b.Fatalf("mcp proxy failed to start: %v", err)
-			}
-		case <-time.After(500 * time.Millisecond):
-		}
-	}
 	// Reset the timer to exclude setup time from the results
 	b.ResetTimer()
 	return []MCPBenchCase{
 		{
-			Name: "ServerDirectly",
-			Port: mcpServerPort,
-		},
-		{
-			Name: "NOPCrypto",
-			Port: 3001,
+			Name: "BaseLine",
+			Port: aigwPort,
+			Args: []string{"run", "./aigw.yaml"},
 		},
 		{
 			Name: "Iterations_100",
-			Port: 3002,
-		},
-		{
-			Name: "Iterations_100_100",
-			Port: 3003,
-		},
-		{
-			Name: "AIGW",
 			Port: aigwPort,
+			Args: []string{"run", "./aigw.yaml", "--mcp-session-encryption-iterations=100"},
 		},
 	}
-}
-
-func checkAllConnections(t testing.TB, benchCases []MCPBenchCase) error {
-	errGroup := &errgroup.Group{}
-	for _, tc := range benchCases {
-		errGroup.Go(func() error {
-			return checkConnection(t, tc.Port, tc.Name)
-		})
-	}
-	return errGroup.Wait()
-}
-
-func checkConnection(t testing.TB, port int, name string) error {
-	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
-	if err != nil {
-		t.Logf("Failed to connect to %s on port %d: %v", name, port, err)
-		return fmt.Errorf("failed to connect to %s on port %d: %w", name, port, err)
-	}
-	err = conn.Close()
-	if err != nil {
-		t.Logf("Failed to close connection to %s on port %d: %v", name, port, err)
-		return fmt.Errorf("failed to close connection to %s on port %d: %w", name, port, err)
-	}
-	t.Logf("Successfully connected to %s on port %d", name, port)
-	return nil
-}
-
-func startAIGW(b testing.TB) {
-	// go run ./cmd/aigw run ./tests/bench/aigw.yaml
-	cmd := exec.CommandContext(b.Context(), "go", "run", "../../cmd/aigw", "run", "./aigw.yaml")
-	b.Logf("Running aigw with command: %v\n", cmd.Args)
-	testenvironment.StartAndAwaitReady(b, cmd, b.Output(), b.Output(), "Envoy AI Gateway")
-}
-
-func startMCPProxy(b testing.TB, address string, mcpServerPort int, crypto mcpproxy.SessionCrypto) <-chan error {
-	errCh := make(chan error, 1)
-	go func() {
-		mcpLis, err := net.Listen("tcp", address)
-		if err != nil {
-			errCh <- fmt.Errorf("failed to listen on %s: %w", address, err)
-			return
-		}
-
-		l := slog.New(slog.NewTextHandler(b.Output(), &slog.HandlerOptions{Level: slog.LevelDebug}))
-		p, mux, _ := mcpproxy.NewMCPProxy(l, NoopMetrics{}, tracing.NoopMCPTracer{}, crypto)
-		_ = p.LoadConfig(b.Context(), &filterapi.Config{
-			MCPConfig: &filterapi.MCPConfig{
-				BackendListenerAddr: fmt.Sprintf("http://127.0.0.1:%d", mcpServerPort),
-				Routes: []filterapi.MCPRoute{
-					{
-						Name: "test-route",
-						Backends: []filterapi.MCPBackend{
-							{Name: "dumb-mcp-backend", Path: "/mcp"},
-						},
-					},
-				},
-			},
-		})
-		mcpServer := &http.Server{
-			Handler:           mux,
-			ReadHeaderTimeout: 120 * time.Second,
-			WriteTimeout:      writeTimeout,
-		}
-
-		l.Info("Starting mcp proxy", "addr", mcpLis.Addr())
-		if err2 := mcpServer.Serve(mcpLis); err2 != nil && !errors.Is(err2, http.ErrServerClosed) {
-			l.Error("mcp proxy failed", "error", err2)
-			select {
-			case errCh <- err2:
-			default:
-			}
-		}
-		// If server exits cleanly, close channel without error (optional)
-		close(errCh)
-	}()
-
-	return errCh
 }
 
 func BenchmarkMCP(b *testing.B) {
 	cases := setupBenchmark(b)
-	require.Eventually(b, func() bool {
-		return checkAllConnections(b, cases) == nil
-	}, time.Minute, time.Second)
-
 	for _, tc := range cases {
+		if tc.Binary == "" {
+			tc.Binary = fmt.Sprintf("../../out/aigw-%s-%s", runtime.GOOS, runtime.GOARCH)
+		}
+		if len(tc.Args) == 0 {
+			tc.Args = []string{"run", "../aigw.yaml"}
+		}
+		if len(tc.CheckPorts) == 0 {
+			tc.CheckPorts = []int{9901, 1061}
+		}
+		if tc.ReadyMessage == "" {
+			tc.ReadyMessage = "Envoy AI Gateway"
+		}
+
 		b.Run(tc.Name, func(b *testing.B) {
+			c := startProxy(b, &tc)
+			defer func() {
+				_ = c.Cancel()
+			}()
 			mcpClient := mcp.NewClient(&mcp.Implementation{Name: "bench-http-client", Version: "0.1.0"}, nil)
 			cs, err := mcpClient.Connect(b.Context(), &mcp.StreamableClientTransport{
 				Endpoint: fmt.Sprintf("http://localhost:%d/mcp", tc.Port),
@@ -254,4 +142,46 @@ func BenchmarkMCP(b *testing.B) {
 			}
 		})
 	}
+}
+
+func killProcessListeningOn(port int) error {
+	cmd := exec.Command("lsof", "-nP", "-sTCP:LISTEN", "-i", fmt.Sprintf("TCP:%d", port), "-t")
+	out, err := cmd.Output()
+	if err != nil {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) && len(ee.Stderr) == 0 {
+			return fmt.Errorf("no process listening on %d", port)
+		}
+		return fmt.Errorf("lsof failed: %w", err)
+	}
+	pids := strings.Fields(string(out))
+	if len(pids) == 0 {
+		return fmt.Errorf("no process listening on %d", port)
+	}
+	for _, ps := range pids {
+		pid, err := strconv.Atoi(ps)
+		if err != nil {
+			continue
+		}
+		_ = syscall.Kill(-pid, syscall.SIGKILL)
+		_ = syscall.Kill(pid, syscall.SIGKILL)
+	}
+	return nil
+}
+
+func startProxy(b testing.TB, tc *MCPBenchCase) *exec.Cmd {
+	for _, p := range tc.CheckPorts {
+		_ = killProcessListeningOn(p)
+	}
+
+	cmd := exec.CommandContext(b.Context(), tc.Binary, tc.Args...)
+	devnull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+	if err != nil {
+		b.Fatalf("open %s: %v", os.DevNull, err)
+	}
+	b.Cleanup(func() {
+		_ = devnull.Close()
+	})
+	testenvironment.StartAndAwaitReady(b, cmd, devnull, devnull, tc.ReadyMessage)
+	return cmd
 }
