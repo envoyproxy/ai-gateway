@@ -23,7 +23,6 @@ import (
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	upstreamsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -184,25 +183,32 @@ func buildEPPMetadata(metadata *corev3.Metadata, inferencePool *gwaiev1.Inferenc
 
 // buildClustersForInferencePoolEndpointPickers builds and returns a "STRICT_DNS" cluster
 // for each InferencePool's endpoint picker service.
-func buildClustersForInferencePoolEndpointPickers(clusters []*clusterv3.Cluster) []*clusterv3.Cluster {
+func buildClustersForInferencePoolEndpointPickers(clusters []*clusterv3.Cluster) ([]*clusterv3.Cluster, error) {
 	result := make([]*clusterv3.Cluster, 0, len(clusters))
 	for _, cluster := range clusters {
 		if pool := getInferencePoolByMetadata(cluster.Metadata); pool != nil {
-			result = append(result, buildExtProcClusterForInferencePoolEndpointPicker(pool))
+			c, err := buildExtProcClusterForInferencePoolEndpointPicker(pool)
+			if err != nil {
+				continue
+			}
+			result = append(result, c)
 		}
 	}
-
-	return result
+	return result, nil
 }
 
 // buildExtProcClusterForInferencePoolEndpointPicker builds and returns a "STRICT_DNS" cluster
 // for connecting to the InferencePool's endpoint picker service.
-func buildExtProcClusterForInferencePoolEndpointPicker(pool *gwaiev1.InferencePool) *clusterv3.Cluster {
-	if pool == nil {
-		panic("InferencePool cannot be nil")
-	}
-
+func buildExtProcClusterForInferencePoolEndpointPicker(pool *gwaiev1.InferencePool) (*clusterv3.Cluster, error) {
 	name := clusterNameForInferencePool(pool)
+	anyTLS, err := toAny(&tlsv3.UpstreamTlsContext{
+		CommonTlsContext: &tlsv3.CommonTlsContext{
+			ValidationContextType: &tlsv3.CommonTlsContext_ValidationContext{},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to build TLS context for InferencePool cluster %s: %w", name, err)
+	}
 	c := &clusterv3.Cluster{
 		Name:           name,
 		ConnectTimeout: durationpb.New(10 * time.Second),
@@ -214,15 +220,7 @@ func buildExtProcClusterForInferencePoolEndpointPicker(pool *gwaiev1.InferencePo
 		TransportSocket: &corev3.TransportSocket{
 			Name: "envoy.transport_sockets.tls",
 			ConfigType: &corev3.TransportSocket_TypedConfig{
-				TypedConfig: func() *anypb.Any {
-					tlsCtx := &tlsv3.UpstreamTlsContext{
-						CommonTlsContext: &tlsv3.CommonTlsContext{
-							ValidationContextType: &tlsv3.CommonTlsContext_ValidationContext{},
-						},
-					}
-					anyTLS := mustToAny(tlsCtx)
-					return anyTLS
-				}(),
+				TypedConfig: anyTLS,
 			},
 		},
 		LoadAssignment: &endpointv3.ClusterLoadAssignment{
@@ -260,21 +258,28 @@ func buildExtProcClusterForInferencePoolEndpointPicker(pool *gwaiev1.InferencePo
 		},
 	}
 
-	anyHTTP2 := mustToAny(http2Opts)
+	anyHTTP2, err := toAny(http2Opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build HTTP2 options for InferencePool cluster %s: %w", name, err)
+	}
 	c.TypedExtensionProtocolOptions = map[string]*anypb.Any{
 		"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": anyHTTP2,
 	}
 
-	return c
+	return c, nil
 }
 
 // buildInferencePoolHTTPFilter returns a HTTP filter for InferencePool.
-func buildInferencePoolHTTPFilter(pool *gwaiev1.InferencePool) *httpconnectionmanagerv3.HttpFilter {
+func buildInferencePoolHTTPFilter(pool *gwaiev1.InferencePool) (*httpconnectionmanagerv3.HttpFilter, error) {
 	poolFilter := buildHTTPFilterForInferencePool(pool)
+	a, err := toAny(poolFilter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build HTTP filter for InferencePool %s/%s: %w", pool.GetNamespace(), pool.GetName(), err)
+	}
 	return &httpconnectionmanagerv3.HttpFilter{
 		Name:       httpFilterNameForInferencePool(pool),
-		ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: mustToAny(poolFilter)},
-	}
+		ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: a},
+	}, nil
 }
 
 // buildHTTPFilterForInferencePool returns the HTTP filter for the given InferencePool.
@@ -444,17 +449,4 @@ func searchInferencePoolInFilterChain(pool *gwaiev1.InferencePool, chain []*http
 		}
 	}
 	return nil, -1, nil
-}
-
-// mustToAny marshals the provided message to an Any message.
-func mustToAny(msg proto.Message) *anypb.Any {
-	b, err := proto.Marshal(msg)
-	if err != nil {
-		panic(fmt.Sprintf("BUG: failed to marshal message: %v", err))
-	}
-	const envoyAPIPrefix = "type.googleapis.com/"
-	return &anypb.Any{
-		TypeUrl: envoyAPIPrefix + string(msg.ProtoReflect().Descriptor().FullName()),
-		Value:   b,
-	}
 }

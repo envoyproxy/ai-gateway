@@ -82,7 +82,8 @@ func TestServer_createBackendListener(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &Server{log: testr.New(t)}
-			listener := s.createBackendListener(tt.mcpHTTPFilters, tt.accessLogConfig)
+			listener, err := s.createBackendListener(tt.mcpHTTPFilters, tt.accessLogConfig)
+			require.NoError(t, err)
 
 			require.Equal(t, tt.expectedListener.Name, listener.Name)
 			require.Equal(t, tt.expectedListener.Address.GetSocketAddress().Address, listener.Address.GetSocketAddress().Address)
@@ -512,7 +513,8 @@ func TestServer_extractMCPBackendFiltersFromMCPProxyListener(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &Server{log: testr.New(t)}
-			filters, accessLogConfigs := s.extractMCPBackendFiltersFromMCPProxyListener(tt.listeners)
+			filters, accessLogConfigs, err := s.extractMCPBackendFiltersFromMCPProxyListener(tt.listeners)
+			require.NoError(t, err)
 			require.Empty(t, cmp.Diff(tt.expectedFilters, filters, protocmp.Transform()))
 			require.Empty(t, cmp.Diff(tt.expectedAccessLogs, accessLogConfigs, protocmp.Transform()))
 		})
@@ -639,7 +641,8 @@ func TestServer_modifyMCPOAuthCustomResponseFilters(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &Server{log: testr.New(t)}
-			s.modifyMCPOAuthCustomResponseFilters(tt.listeners)
+			err := s.modifyMCPOAuthCustomResponseFilters(tt.listeners)
+			require.NoError(t, err)
 			require.Empty(t, cmp.Diff(tt.expectedListeners, tt.listeners, protocmp.Transform()))
 		})
 	}

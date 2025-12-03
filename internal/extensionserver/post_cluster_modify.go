@@ -47,7 +47,7 @@ func (s *Server) PostClusterModify(_ context.Context, req *egextension.PostClust
 	// If we found an InferencePool, configure the cluster for ORIGINAL_DST.
 	if inferencePools := s.constructInferencePoolsFrom(req.PostClusterContext.BackendExtensionResources); inferencePools != nil {
 		if len(inferencePools) != 1 {
-			panic("BUG: at most one inferencepool can be referenced per route rule")
+			return nil, fmt.Errorf("BUG: at most one inferencepool can be referenced per route rule")
 		}
 		s.handleInferencePoolCluster(req.Cluster, inferencePools[0])
 	}
