@@ -150,7 +150,12 @@ func TestMCPRouteOAuth(t *testing.T) {
 		require.Contains(t, wwwAuthHeader, "Bearer", "WWW-Authenticate header should contain Bearer scheme")
 
 		// Validate WWW-Authenticate header contains resource_metadata parameter.
-		require.Contains(t, wwwAuthHeader, "resource_metadata", "WWW-Authenticate header should contain resource_metadata parameter")
+		require.Contains(t, wwwAuthHeader, `resource_metadata="https://foo.bar.com/.well-known/oauth-protected-resource/mcp"`,
+			"WWW-Authenticate header should contain resource_metadata parameter")
+		t.Logf("WWW-Authenticate header: %s", wwwAuthHeader)
+
+		// Validate WWW-Authenticate header contains scope parameter.
+		require.Contains(t, wwwAuthHeader, `scope="echo sum countdown"`, "WWW-Authenticate header should contain resource_metadata parameter")
 		t.Logf("WWW-Authenticate header: %s", wwwAuthHeader)
 	})
 
@@ -320,7 +325,12 @@ func TestMCPRouteOAuth(t *testing.T) {
 		require.Contains(t, wwwAuthHeader, "Bearer", "WWW-Authenticate header should contain Bearer scheme")
 
 		// Validate WWW-Authenticate header contains resource_metadata parameter.
-		require.Contains(t, wwwAuthHeader, "resource_metadata", "WWW-Authenticate header should contain resource_metadata parameter")
+		require.Contains(t, wwwAuthHeader, `resource_metadata="https://foo.bar.com/.well-known/oauth-protected-resource/mcp"`,
+			"WWW-Authenticate header should contain resource_metadata parameter")
+		t.Logf("WWW-Authenticate header: %s", wwwAuthHeader)
+
+		// Validate WWW-Authenticate header contains scope parameter.
+		require.Contains(t, wwwAuthHeader, `scope="echo sum countdown"`, "WWW-Authenticate header should contain resource_metadata parameter")
 		t.Logf("WWW-Authenticate header: %s", wwwAuthHeader)
 	})
 }
