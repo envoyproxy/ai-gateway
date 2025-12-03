@@ -24,9 +24,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/envoyproxy/ai-gateway/tests/internal/testenvironment"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testmcp"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
@@ -145,7 +146,7 @@ func BenchmarkMCP(b *testing.B) {
 }
 
 func killProcessListeningOn(port int) error {
-	cmd := exec.Command("lsof", "-nP", "-sTCP:LISTEN", "-i", fmt.Sprintf("TCP:%d", port), "-t")
+	cmd := exec.Command("lsof", "-nP", "-sTCP:LISTEN", "-i", fmt.Sprintf("TCP:%d", port), "-t") // nolint: gosec
 	out, err := cmd.Output()
 	if err != nil {
 		var ee *exec.ExitError
@@ -174,7 +175,7 @@ func startProxy(b testing.TB, tc *MCPBenchCase) *exec.Cmd {
 		_ = killProcessListeningOn(p)
 	}
 
-	cmd := exec.CommandContext(b.Context(), tc.Binary, tc.Args...)
+	cmd := exec.CommandContext(b.Context(), tc.Binary, tc.Args...) // nolint: gosec
 	devnull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
 	if err != nil {
 		b.Fatalf("open %s: %v", os.DevNull, err)
