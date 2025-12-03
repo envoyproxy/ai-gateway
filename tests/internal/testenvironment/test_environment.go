@@ -58,10 +58,6 @@ func (e *TestEnvironment) EnvoyListenerPort() int {
 	return e.envoyListenerPort
 }
 
-func (e *TestEnvironment) ExtProcMCPPort() int {
-	return e.extProcMCPPort
-}
-
 func (e *TestEnvironment) ExtProcAdminPort() int {
 	return e.extProcAdminPort
 }
