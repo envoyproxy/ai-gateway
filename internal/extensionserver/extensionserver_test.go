@@ -26,6 +26,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -41,6 +42,17 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
+
+// mustToAny marshals the provided message to an Any message.
+func mustToAny(t *testing.T, msg proto.Message) *anypb.Any {
+	b, err := proto.Marshal(msg)
+	require.NoError(t, err)
+	const envoyAPIPrefix = "type.googleapis.com/"
+	return &anypb.Any{
+		TypeUrl: envoyAPIPrefix + string(msg.ProtoReflect().Descriptor().FullName()),
+		Value:   b,
+	}
+}
 
 func newFakeClient() client.Client {
 	builder := fake.NewClientBuilder().WithScheme(controller.Scheme).
@@ -140,7 +152,8 @@ func Test_maybeModifyCluster(t *testing.T) {
 		t.Run("error/"+tc.errLog, func(t *testing.T) {
 			var buf bytes.Buffer
 			s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
-			s.maybeModifyCluster(tc.c)
+			err = s.maybeModifyCluster(tc.c)
+			require.NoError(t, err)
 			t.Logf("buf: %s", buf.String())
 			require.Contains(t, buf.String(), tc.errLog)
 		})
@@ -165,7 +178,8 @@ func Test_maybeModifyCluster(t *testing.T) {
 		}
 		var buf bytes.Buffer
 		s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
-		s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(cluster)
+		require.NoError(t, err)
 		require.Empty(t, buf.String())
 
 		require.Len(t, cluster.LoadAssignment.Endpoints, 2)
@@ -237,7 +251,8 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 		var buf bytes.Buffer
 		s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
 		cluster := &clusterv3.Cluster{Name: "httproute/test-ns/nonexistent-route/rule/0", Metadata: &corev3.Metadata{}}
-		s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(cluster)
+		require.NoError(t, err)
 		require.Contains(t, buf.String(), "kipping non-AIGatewayRoute HTTPRoute cluster modification")
 	})
 
@@ -258,7 +273,8 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(cluster)
+		require.NoError(t, err)
 
 		// Verify InferencePool metadata was added to cluster.
 		require.NotNil(t, cluster.Metadata)
@@ -295,11 +311,12 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 				},
 			},
 			TypedExtensionProtocolOptions: map[string]*anypb.Any{
-				"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(existingPO),
+				"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(t, existingPO),
 			},
 		}
 
-		s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(cluster)
+		require.NoError(t, err)
 
 		// Verify filters were added correctly.
 		require.NotNil(t, cluster.TypedExtensionProtocolOptions)
@@ -307,7 +324,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 		// Unmarshal and verify the updated protocol options.
 		updatedPOAny := cluster.TypedExtensionProtocolOptions["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
 		updatedPO := &httpv3.HttpProtocolOptions{}
-		err := updatedPOAny.UnmarshalTo(updatedPO)
+		err = updatedPOAny.UnmarshalTo(updatedPO)
 		require.NoError(t, err)
 
 		// Should have ext_proc + header_mutation + existing_filter (which becomes the last filter).
@@ -342,16 +359,17 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 				},
 			},
 			TypedExtensionProtocolOptions: map[string]*anypb.Any{
-				"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(existingPO),
+				"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(t, existingPO),
 			},
 		}
 
-		s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(cluster)
+		require.NoError(t, err)
 
 		// Verify no additional filters were added since ext_proc already exists.
 		updatedPOAny := cluster.TypedExtensionProtocolOptions["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
 		updatedPO := &httpv3.HttpProtocolOptions{}
-		err := updatedPOAny.UnmarshalTo(updatedPO)
+		err = updatedPOAny.UnmarshalTo(updatedPO)
 		require.NoError(t, err)
 
 		// Should still have only the existing filter.
@@ -373,14 +391,15 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(cluster)
+		require.NoError(t, err)
 
 		// Verify filters were added correctly.
 		require.NotNil(t, cluster.TypedExtensionProtocolOptions)
 
 		updatedPOAny := cluster.TypedExtensionProtocolOptions["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
 		updatedPO := &httpv3.HttpProtocolOptions{}
-		err := updatedPOAny.UnmarshalTo(updatedPO)
+		err = updatedPOAny.UnmarshalTo(updatedPO)
 		require.NoError(t, err)
 
 		// Should have ext_proc + header_mutation + upstream_codec.
@@ -414,7 +433,8 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(cluster)
+		require.Error(t, err)
 		require.Contains(t, buf.String(), "failed to unmarshal HttpProtocolOptions")
 	})
 }
@@ -442,7 +462,7 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 				Filters: []*listenerv3.Filter{
 					{
 						Name:       wellknown.HTTPConnectionManager,
-						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(hcm)},
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
 					},
 				},
 			},
@@ -466,8 +486,8 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 	}
 
 	t.Run("empty listeners and routes", func(_ *testing.T) {
-		s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{}, []*routev3.RouteConfiguration{})
-		// Should not panic or error.
+		err := s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{}, []*routev3.RouteConfiguration{})
+		require.NoError(t, err)
 	})
 
 	t.Run("listener with envoy-gateway prefix is skipped", func(_ *testing.T) {
@@ -489,7 +509,8 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 			},
 		}
 
-		s.maybeModifyListenerAndRoutes(listeners, routes)
+		err := s.maybeModifyListenerAndRoutes(listeners, routes)
+		require.NoError(t, err)
 		// Should process only normal-listener, not envoy-gateway-listener.
 	})
 
@@ -509,13 +530,14 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 				Filters: []*listenerv3.Filter{
 					{
 						Name:       wellknown.HTTPConnectionManager,
-						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(hcm)},
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
 					},
 				},
 			},
 		}
 
-		s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{listener}, []*routev3.RouteConfiguration{})
+		err := s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{listener}, []*routev3.RouteConfiguration{})
+		require.NoError(t, err)
 		// Should handle gracefully when no RDS route config name is found.
 	})
 
@@ -525,7 +547,8 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 			// No DefaultFilterChain set.
 		}
 
-		s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{listener}, []*routev3.RouteConfiguration{})
+		err := s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{listener}, []*routev3.RouteConfiguration{})
+		require.NoError(t, err)
 		// Should handle gracefully when no default filter chain exists.
 	})
 
@@ -549,7 +572,8 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 			},
 		}
 
-		s.maybeModifyListenerAndRoutes(listeners, routes)
+		err := s.maybeModifyListenerAndRoutes(listeners, routes)
+		require.NoError(t, err)
 		// Should identify and process InferencePool routes.
 	})
 
@@ -584,7 +608,9 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 			},
 		}
 
-		s.maybeModifyListenerAndRoutes(listeners, routes)
+		err := s.maybeModifyListenerAndRoutes(listeners, routes)
+		require.NoError(t, err)
+
 		// Should handle multiple listeners with different route configurations.
 	})
 
@@ -607,7 +633,8 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 			},
 		}
 
-		s.maybeModifyListenerAndRoutes(listeners, routes)
+		err := s.maybeModifyListenerAndRoutes(listeners, routes)
+		require.NoError(t, err)
 		// Should handle gracefully when referenced route config is not found.
 	})
 }
@@ -644,7 +671,7 @@ func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
 				Filters: []*listenerv3.Filter{
 					{
 						Name:       wellknown.HTTPConnectionManager,
-						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(hcm)},
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
 					},
 				},
 			},
@@ -755,7 +782,7 @@ func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
 					Filters: []*listenerv3.Filter{
 						{
 							Name:       wellknown.HTTPConnectionManager,
-							ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(hcm)},
+							ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
 						},
 					},
 				},
@@ -764,7 +791,7 @@ func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
 				Filters: []*listenerv3.Filter{
 					{
 						Name:       wellknown.HTTPConnectionManager,
-						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(hcm)},
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
 					},
 				},
 			},
@@ -853,7 +880,8 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 		}
 		pools := []*gwaiev1.InferencePool{createInferencePool("test-pool", "test-ns")}
 
-		s.patchVirtualHostWithInferencePool(vh, pools)
+		err := s.patchVirtualHostWithInferencePool(vh, pools)
+		require.NoError(t, err)
 		// Should handle gracefully when no routes exist.
 	})
 
@@ -867,7 +895,8 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 		}
 		pools := []*gwaiev1.InferencePool{createInferencePool("test-pool", "test-ns")}
 
-		s.patchVirtualHostWithInferencePool(vh, pools)
+		err := s.patchVirtualHostWithInferencePool(vh, pools)
+		require.NoError(t, err)
 
 		// Verify the route was configured to disable all inference pool filters.
 		require.NotNil(t, normalRoute.TypedPerFilterConfig)
@@ -885,7 +914,8 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 		}
 		pools := []*gwaiev1.InferencePool{pool}
 
-		s.patchVirtualHostWithInferencePool(vh, pools)
+		err := s.patchVirtualHostWithInferencePool(vh, pools)
+		require.NoError(t, err)
 
 		// Verify the route was not configured to disable its own filter.
 		// It should not have any TypedPerFilterConfig for its own filter.
@@ -908,7 +938,8 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 		}
 		pools := []*gwaiev1.InferencePool{pool1, pool2}
 
-		s.patchVirtualHostWithInferencePool(vh, pools)
+		err := s.patchVirtualHostWithInferencePool(vh, pools)
+		require.NoError(t, err)
 
 		// Verify the route disables pool2's filter but not pool1's filter.
 		require.NotNil(t, inferenceRoute.TypedPerFilterConfig)
@@ -940,7 +971,8 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 		}
 		pools := []*gwaiev1.InferencePool{createInferencePool("test-pool", "test-ns")}
 
-		s.patchVirtualHostWithInferencePool(vh, pools)
+		err := s.patchVirtualHostWithInferencePool(vh, pools)
+		require.NoError(t, err)
 
 		// Verify the direct response route was not skipped (And TypedPerFilterConfig added).
 		require.NotNil(t, directResponseRoute.TypedPerFilterConfig)
@@ -966,7 +998,8 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 		}
 		pools := []*gwaiev1.InferencePool{createInferencePool("test-pool", "test-ns")}
 
-		s.patchVirtualHostWithInferencePool(vh, pools)
+		err := s.patchVirtualHostWithInferencePool(vh, pools)
+		require.NoError(t, err)
 
 		// Verify the direct response route was processed (TypedPerFilterConfig added).
 		require.NotNil(t, directResponseRoute.TypedPerFilterConfig)
@@ -988,7 +1021,8 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 		}
 		pools := []*gwaiev1.InferencePool{pool1, pool2}
 
-		s.patchVirtualHostWithInferencePool(vh, pools)
+		err := s.patchVirtualHostWithInferencePool(vh, pools)
+		require.NoError(t, err)
 
 		// Verify normal route disables both filters.
 		require.NotNil(t, normalRoute.TypedPerFilterConfig)
@@ -1578,7 +1612,8 @@ func TestBuildExtProcClusterForInferencePoolEndpointPicker(t *testing.T) {
 	}
 
 	t.Run("valid pool", func(t *testing.T) {
-		cluster := buildExtProcClusterForInferencePoolEndpointPicker(pool)
+		cluster, err := buildExtProcClusterForInferencePoolEndpointPicker(pool)
+		require.NoError(t, err)
 		require.NotNil(t, cluster)
 		require.Equal(t, "envoy.clusters.endpointpicker_test-pool_test-ns_ext_proc", cluster.Name)
 		require.Equal(t, clusterv3.Cluster_STRICT_DNS, cluster.GetType())
@@ -1589,7 +1624,7 @@ func TestBuildExtProcClusterForInferencePoolEndpointPicker(t *testing.T) {
 
 	t.Run("nil pool panics", func(t *testing.T) {
 		require.Panics(t, func() {
-			buildExtProcClusterForInferencePoolEndpointPicker(nil)
+			_, _ = buildExtProcClusterForInferencePoolEndpointPicker(nil)
 		})
 	})
 }
@@ -1612,7 +1647,8 @@ func TestBuildClustersForInferencePoolEndpointPickers(t *testing.T) {
 
 	t.Run("with InferencePool metadata", func(t *testing.T) {
 		clusters := []*clusterv3.Cluster{cluster}
-		result := buildClustersForInferencePoolEndpointPickers(clusters)
+		result, err := buildClustersForInferencePoolEndpointPickers(clusters)
+		require.NoError(t, err)
 		require.Len(t, result, 1)
 		require.Contains(t, result[0].Name, "endpointpicker")
 	})
@@ -1620,18 +1656,9 @@ func TestBuildClustersForInferencePoolEndpointPickers(t *testing.T) {
 	t.Run("without InferencePool metadata", func(t *testing.T) {
 		normalCluster := &clusterv3.Cluster{Name: "normal-cluster"}
 		clusters := []*clusterv3.Cluster{normalCluster}
-		result := buildClustersForInferencePoolEndpointPickers(clusters)
+		result, err := buildClustersForInferencePoolEndpointPickers(clusters)
+		require.NoError(t, err)
 		require.Empty(t, result)
-	})
-}
-
-// TestMustToAny tests the mustToAny helper function.
-func TestMustToAny(t *testing.T) {
-	t.Run("valid message", func(t *testing.T) {
-		cluster := &clusterv3.Cluster{Name: "test"}
-		anyProto := mustToAny(cluster)
-		require.NotNil(t, anyProto)
-		require.Contains(t, anyProto.TypeUrl, "envoy.config.cluster.v3.Cluster")
 	})
 }
 

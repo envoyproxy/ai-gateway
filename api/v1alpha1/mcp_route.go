@@ -262,7 +262,13 @@ type ProtectedResourceMetadata struct {
 	// +optional
 	ResourceName *string `json:"resourceName,omitempty"`
 
-	// ScopesSupported is a list of OAuth 2.0 scopes that the resource server supports.
+	// ScopesSupported defines the minimal set of scopes required for the basic functionality of the MCPRoute.
+	// It should avoid broad or overly permissive scopes to prevent clients from requesting tokens with excessive privileges.
+	//
+	// If an operation requires additional scopes that are not present in the access token, the client will receive a
+	// 403 Forbidden response that includes the required scopes in the `scope` field of the `WWW-Authenticate` header.
+	// This enables incremental privilege elevation through targeted `WWW-Authenticate: scope="..."` challenges when
+	// privileged operations are first attempted.
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxItems=32

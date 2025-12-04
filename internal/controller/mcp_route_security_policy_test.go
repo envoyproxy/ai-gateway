@@ -654,6 +654,30 @@ func Test_buildWWWAuthenticateHeaderValue(t *testing.T) {
 			},
 			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/v1/mcp/endpoint"`,
 		},
+		{
+			name: "with empty scopes supported",
+			metadata: &aigv1a1.ProtectedResourceMetadata{
+				Resource:        "https://api.example.com/mcp",
+				ScopesSupported: []string{},
+			},
+			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp"`,
+		},
+		{
+			name: "with single scope supported",
+			metadata: &aigv1a1.ProtectedResourceMetadata{
+				Resource:        "https://api.example.com/mcp",
+				ScopesSupported: []string{"read"},
+			},
+			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp", scope="read"`,
+		},
+		{
+			name: "with multiple scopes supported",
+			metadata: &aigv1a1.ProtectedResourceMetadata{
+				Resource:        "https://api.example.com/mcp",
+				ScopesSupported: []string{"read", "write"},
+			},
+			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp", scope="read write"`,
+		},
 	}
 
 	for _, tt := range tests {
