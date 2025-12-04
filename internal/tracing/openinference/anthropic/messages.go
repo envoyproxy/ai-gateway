@@ -124,7 +124,6 @@ func buildRequestAttributes(req *anthropic.MessagesRequest, body string, config 
 		}
 	}
 
-	// Note: compound match here is from Python OpenInference OpenAI config.py.
 	if !config.HideInputs && !config.HideInputMessages {
 		for i, msg := range req.Messages {
 			role := msg.Role
@@ -149,7 +148,7 @@ func buildRequestAttributes(req *anthropic.MessagesRequest, body string, config 
 							attribute.String(openinference.InputMessageContentAttribute(i, j, "type"), "text"),
 						)
 					default:
-						// TODO: skip file content for now.
+						// TODO: support for other content types.
 					}
 				}
 			}
