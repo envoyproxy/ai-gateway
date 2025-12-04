@@ -272,10 +272,10 @@ type MCPAuthorizationTarget struct {
 
 // MCPAuthorizationSource defines the source of an authorization rule.
 type MCPAuthorizationSource struct {
-	// JWTSource defines the JWT scopes required for this rule to match.
+	// JWT defines the JWT scopes required for this rule to match.
 	//
 	// +kubebuilder:validation:Required
-	JWTSource JWTSource `json:"jwtSource"`
+	JWT JWTSource `json:"jwt"`
 
 	// TODO: JWTSource can be optional in the future when we support more source types.
 }
@@ -295,10 +295,10 @@ type JWTSource struct {
 
 // ToolCall represents a tool call in the MCP authorization target.
 type ToolCall struct {
-	// BackendName is the name of the backend this tool belongs to.
+	// Backend is the name of the backend this tool belongs to.
 	//
 	// +kubebuilder:validation:Required
-	BackendName string `json:"backendName"`
+	Backend string `json:"backend"`
 
 	// ToolName is the name of the tool.
 	//

@@ -481,23 +481,23 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 			}
 
 			for _, rule := range authorization.Rules {
-				scopes := make([]string, len(rule.Source.JWTSource.Scopes))
-				for i, scope := range rule.Source.JWTSource.Scopes {
+				scopes := make([]string, len(rule.Source.JWT.Scopes))
+				for i, scope := range rule.Source.JWT.Scopes {
 					scopes[i] = string(scope)
 				}
 
 				tools := make([]filterapi.ToolCall, len(rule.Target.Tools))
 				for i, tool := range rule.Target.Tools {
 					tools[i] = filterapi.ToolCall{
-						BackendName: tool.BackendName,
-						ToolName:    tool.ToolName,
-						Arguments:   tool.Arguments,
+						Backend:   tool.Backend,
+						ToolName:  tool.ToolName,
+						Arguments: tool.Arguments,
 					}
 				}
 
 				mcpRule := filterapi.MCPRouteAuthorizationRule{
 					Source: filterapi.MCPAuthorizationSource{
-						JWTSource: filterapi.JWTSource{
+						JWT: filterapi.JWTSource{
 							Scopes: scopes,
 						},
 					},

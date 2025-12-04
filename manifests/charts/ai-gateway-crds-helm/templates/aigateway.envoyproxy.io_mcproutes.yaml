@@ -601,8 +601,8 @@ spec:
                               description: Source defines the authorization source
                                 for this rule.
                               properties:
-                                jwtSource:
-                                  description: JWTSource defines the JWT scopes required
+                                jwt:
+                                  description: JWT defines the JWT scopes required
                                     for this rule to match.
                                   properties:
                                     scopes:
@@ -620,7 +620,7 @@ spec:
                                   - scopes
                                   type: object
                               required:
-                              - jwtSource
+                              - jwt
                               type: object
                             target:
                               description: Target defines the authorization target
@@ -640,15 +640,15 @@ spec:
                                           Guard against missing fields with null checks (e.g., args["foo"] != null && args["foo"]["bar"] == "val").
                                         maxLength: 4096
                                         type: string
-                                      backendName:
-                                        description: BackendName is the name of the
-                                          backend this tool belongs to.
+                                      backend:
+                                        description: Backend is the name of the backend
+                                          this tool belongs to.
                                         type: string
                                       toolName:
                                         description: ToolName is the name of the tool.
                                         type: string
                                     required:
-                                    - backendName
+                                    - backend
                                     - toolName
                                     type: object
                                   maxItems: 16

@@ -31,10 +31,10 @@ type compiledAuthorizationRule struct {
 }
 
 type compiledToolCall struct {
-	BackendName string
-	ToolName    string
-	Expression  string
-	program     cel.Program
+	Backend    string
+	ToolName   string
+	Expression string
+	program    cel.Program
 }
 
 // compileAuthorization compiles the MCPRouteAuthorization into a compiledAuthorization for efficient CEL evaluation.
@@ -61,18 +61,18 @@ func compileAuthorization(auth *filterapi.MCPRouteAuthorization) (*compiledAutho
 		}
 		for _, tool := range rule.Target.Tools {
 			ct := compiledToolCall{
-				BackendName: tool.BackendName,
-				ToolName:    tool.ToolName,
+				Backend:  tool.Backend,
+				ToolName: tool.ToolName,
 			}
 			if tool.Arguments != nil && strings.TrimSpace(*tool.Arguments) != "" {
 				expr := strings.TrimSpace(*tool.Arguments)
 				ast, issues := env.Compile(expr)
 				if issues != nil && issues.Err() != nil {
-					return nil, fmt.Errorf("failed to compile arguments CEL for tool %s/%s: %w", tool.BackendName, tool.ToolName, issues.Err())
+					return nil, fmt.Errorf("failed to compile arguments CEL for tool %s/%s: %w", tool.Backend, tool.ToolName, issues.Err())
 				}
 				program, err := env.Program(ast, cel.CostLimit(10000), cel.EvalOptions(cel.OptOptimize))
 				if err != nil {
-					return nil, fmt.Errorf("failed to build arguments CEL program for tool %s/%s: %w", tool.BackendName, tool.ToolName, err)
+					return nil, fmt.Errorf("failed to build arguments CEL program for tool %s/%s: %w", tool.Backend, tool.ToolName, err)
 				}
 				ct.Expression = expr
 				ct.program = program
@@ -121,7 +121,7 @@ func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, header
 			continue
 		}
 
-		requiredScopes := rule.Source.JWTSource.Scopes
+		requiredScopes := rule.Source.JWT.Scopes
 		if scopesSatisfied(scopeSet, requiredScopes) {
 			return true, nil
 		}
@@ -182,7 +182,7 @@ func (m *MCPProxy) toolMatches(backendName, toolName string, tools []compiledToo
 	}
 
 	for _, t := range tools {
-		if t.BackendName != backendName || t.ToolName != toolName {
+		if t.Backend != backendName || t.ToolName != toolName {
 			continue
 		}
 		if t.program == nil {
@@ -191,7 +191,7 @@ func (m *MCPProxy) toolMatches(backendName, toolName string, tools []compiledToo
 
 		result, _, err := t.program.Eval(map[string]any{"args": args})
 		if err != nil {
-			m.l.Error("failed to evaluate arguments CEL", slog.String("backend", t.BackendName), slog.String("tool", t.ToolName), slog.String("error", err.Error()))
+			m.l.Error("failed to evaluate arguments CEL", slog.String("backend", t.Backend), slog.String("tool", t.ToolName), slog.String("error", err.Error()))
 			continue
 		}
 
@@ -205,7 +205,7 @@ func (m *MCPProxy) toolMatches(backendName, toolName string, tools []compiledToo
 				return true
 			}
 		default:
-			m.l.Error("arguments CEL did not return a boolean", slog.String("backend", t.BackendName), slog.String("tool", t.ToolName), slog.String("expression", t.Expression))
+			m.l.Error("arguments CEL did not return a boolean", slog.String("backend", t.Backend), slog.String("tool", t.ToolName), slog.String("expression", t.Expression))
 		}
 	}
 	// If no matching tool entry or no arguments matched, fail.

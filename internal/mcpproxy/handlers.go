@@ -551,7 +551,7 @@ func (m *MCPProxy) handleToolCallRequest(ctx context.Context, s *session, w http
 					w.Header().Set("WWW-Authenticate", challenge)
 				}
 			}
-			onErrorResponse(w, http.StatusForbidden, "authorization failed")
+			onErrorResponse(w, http.StatusForbidden, "access denied")
 			return fmt.Errorf("authorization failed")
 		}
 	}

@@ -61,21 +61,21 @@ spec:
     authorization:
       rules:
         - source:
-            jwtSource:
+            jwt:
               scopes:
                 - echo
           target:
             tools:
-              - backendName: mcp-backend-authorization
+              - backend: mcp-backend-authorization
                 toolName: echo
                 arguments: args.text.matches("^Hello, .*!$")
         - source:
-            jwtSource:
+            jwt:
               scopes:
                 - sum
           target:
             tools:
-              - backendName: mcp-backend-authorization
+              - backend: mcp-backend-authorization
                 toolName: sum
 ---
 # https://www.scottbrady.io/tools/jwt

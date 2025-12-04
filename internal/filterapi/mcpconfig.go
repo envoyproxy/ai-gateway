@@ -91,8 +91,8 @@ type MCPAuthorizationTarget struct {
 }
 
 type MCPAuthorizationSource struct {
-	// JWTSource defines the JWT scopes required for this rule to match.
-	JWTSource JWTSource `json:"jwtSource,omitempty"`
+	// JWT defines the JWT scopes required for this rule to match.
+	JWT JWTSource `json:"jwt,omitempty"`
 }
 
 type JWTSource struct {
@@ -102,8 +102,8 @@ type JWTSource struct {
 }
 
 type ToolCall struct {
-	// BackendName is the name of the backend this tool belongs to.
-	BackendName string `json:"backendName"`
+	// Backend is the name of the backend this tool belongs to.
+	Backend string `json:"backend"`
 
 	// ToolName is the name of the tool.
 	ToolName string `json:"toolName"`

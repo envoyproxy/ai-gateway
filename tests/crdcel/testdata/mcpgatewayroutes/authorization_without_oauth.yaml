@@ -21,10 +21,10 @@ spec:
     authorization:
       rules:
         - source:
-            jwtSource:
+            jwt:
               scopes:
                 - echo
           target:
             tools:
-              - backendName: mcp-service
+              - backend: mcp-service
                 toolName: echo
