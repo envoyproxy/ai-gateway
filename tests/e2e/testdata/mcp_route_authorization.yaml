@@ -67,7 +67,7 @@ spec:
           target:
             tools:
               - backend: mcp-backend-authorization
-                toolName: echo
+                tool: echo
                 condition: args.text.matches("^Hello, .*!$")
         - source:
             jwt:
@@ -76,7 +76,7 @@ spec:
           target:
             tools:
               - backend: mcp-backend-authorization
-                toolName: sum
+                tool: sum
 ---
 # https://www.scottbrady.io/tools/jwt
 apiVersion: v1

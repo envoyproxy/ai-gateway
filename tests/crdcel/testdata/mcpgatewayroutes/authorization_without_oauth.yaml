@@ -27,4 +27,4 @@ spec:
           target:
             tools:
               - backend: mcp-service
-                toolName: echo
+                Tool: echo

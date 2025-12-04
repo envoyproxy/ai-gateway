@@ -122,8 +122,8 @@ type ToolCall struct {
 	// Backend is the name of the backend this tool belongs to.
 	Backend string `json:"backend"`
 
-	// ToolName is the name of the tool.
-	ToolName string `json:"toolName"`
+	// Tool is the name of the tool.
+	Tool string `json:"tool"`
 
 	// Condition is a CEL expression evaluated against the tool call arguments map.
 	// The expression must evaluate to true for the rule to apply.

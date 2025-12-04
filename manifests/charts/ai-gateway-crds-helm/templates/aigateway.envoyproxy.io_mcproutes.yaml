@@ -662,12 +662,12 @@ spec:
                                           Guard against missing fields with null checks (e.g., args["foo"] != null && args["foo"]["bar"] == "val").
                                         maxLength: 4096
                                         type: string
-                                      toolName:
-                                        description: ToolName is the name of the tool.
+                                      tool:
+                                        description: Tool is the name of the tool.
                                         type: string
                                     required:
                                     - backend
-                                    - toolName
+                                    - tool
                                     type: object
                                   maxItems: 16
                                   minItems: 1

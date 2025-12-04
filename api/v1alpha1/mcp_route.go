@@ -316,10 +316,10 @@ type ToolCall struct {
 	// +kubebuilder:validation:Required
 	Backend string `json:"backend"`
 
-	// ToolName is the name of the tool.
+	// Tool is the name of the tool.
 	//
 	// +kubebuilder:validation:Required
-	ToolName string `json:"toolName"`
+	Tool string `json:"tool"`
 
 	// Condition is a CEL expression that must evaluate to true for the rule to match.
 	// The expression is evaluated with a single variable "args" bound to the tool call arguments as a dynamic object.

@@ -34,7 +34,7 @@ type compiledAuthorizationRule struct {
 
 type compiledToolCall struct {
 	Backend    string
-	ToolName   string
+	Tool       string
 	Expression string
 	program    cel.Program
 }
@@ -66,18 +66,18 @@ func compileAuthorization(auth *filterapi.MCPRouteAuthorization) (*compiledAutho
 		if rule.Target != nil {
 			for _, tool := range rule.Target.Tools {
 				ct := compiledToolCall{
-					Backend:  tool.Backend,
-					ToolName: tool.ToolName,
+					Backend: tool.Backend,
+					Tool:    tool.Tool,
 				}
 				if tool.Condition != nil && strings.TrimSpace(*tool.Condition) != "" {
 					expr := strings.TrimSpace(*tool.Condition)
 					ast, issues := env.Compile(expr)
 					if issues != nil && issues.Err() != nil {
-						return nil, fmt.Errorf("failed to compile condition CEL for tool %s/%s: %w", tool.Backend, tool.ToolName, issues.Err())
+						return nil, fmt.Errorf("failed to compile condition CEL for tool %s/%s: %w", tool.Backend, tool.Tool, issues.Err())
 					}
 					program, err := env.Program(ast, cel.CostLimit(10000), cel.EvalOptions(cel.OptOptimize))
 					if err != nil {
-						return nil, fmt.Errorf("failed to build condition CEL program for tool %s/%s: %w", tool.Backend, tool.ToolName, err)
+						return nil, fmt.Errorf("failed to build condition CEL program for tool %s/%s: %w", tool.Backend, tool.Tool, err)
 					}
 					ct.Expression = expr
 					ct.program = program
@@ -92,7 +92,7 @@ func compileAuthorization(auth *filterapi.MCPRouteAuthorization) (*compiledAutho
 }
 
 // authorizeRequest authorizes the request based on the given MCPRouteAuthorization configuration.
-func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, headers http.Header, backendName, toolName string, arguments any) (bool, []string) {
+func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, headers http.Header, backend, tool string, arguments any) (bool, []string) {
 	if authorization == nil {
 		return true, nil
 	}
@@ -124,7 +124,7 @@ func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, header
 	for _, rule := range authorization.Rules {
 		action := rule.Action == filterapi.AuthorizationActionAllow
 
-		if !m.toolMatches(backendName, toolName, rule.Target, arguments) {
+		if !m.toolMatches(backend, tool, rule.Target, arguments) {
 			continue
 		}
 
@@ -191,14 +191,14 @@ func extractScopes(claims jwt.MapClaims) []string {
 	}
 }
 
-func (m *MCPProxy) toolMatches(backendName, toolName string, tools []compiledToolCall, args any) bool {
+func (m *MCPProxy) toolMatches(backend, tool string, tools []compiledToolCall, args any) bool {
 	// Empty tools means all tools match.
 	if len(tools) == 0 {
 		return true
 	}
 
 	for _, t := range tools {
-		if t.Backend != backendName || t.ToolName != toolName {
+		if t.Backend != backend || t.Tool != tool {
 			continue
 		}
 		if t.program == nil {
@@ -207,7 +207,7 @@ func (m *MCPProxy) toolMatches(backendName, toolName string, tools []compiledToo
 
 		result, _, err := t.program.Eval(map[string]any{"args": args})
 		if err != nil {
-			m.l.Error("failed to evaluate condition CEL", slog.String("backend", t.Backend), slog.String("tool", t.ToolName), slog.String("error", err.Error()))
+			m.l.Error("failed to evaluate condition CEL", slog.String("backend", t.Backend), slog.String("tool", t.Tool), slog.String("error", err.Error()))
 			continue
 		}
 
@@ -221,7 +221,7 @@ func (m *MCPProxy) toolMatches(backendName, toolName string, tools []compiledToo
 				return true
 			}
 		default:
-			m.l.Error("condition CEL did not return a boolean", slog.String("backend", t.Backend), slog.String("tool", t.ToolName), slog.String("expression", t.Expression))
+			m.l.Error("condition CEL did not return a boolean", slog.String("backend", t.Backend), slog.String("tool", t.Tool), slog.String("expression", t.Expression))
 		}
 	}
 	// If no matching tool entry or no arguments matched, fail.

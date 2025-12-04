@@ -38,7 +38,7 @@ func TestAuthorizeRequest(t *testing.T) {
 		auth          *filterapi.MCPRouteAuthorization
 		header        string
 		backend       string
-		toolName      string
+		tool          string
 		args          map[string]any
 		expectError   bool
 		expectAllowed bool
@@ -55,14 +55,14 @@ func TestAuthorizeRequest(t *testing.T) {
 							JWT: filterapi.JWTSource{Scopes: []string{"read", "write"}},
 						},
 						Target: &filterapi.MCPAuthorizationTarget{
-							Tools: []filterapi.ToolCall{{Backend: "backend1", ToolName: "tool1"}},
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "tool1"}},
 						},
 					},
 				},
 			},
 			header:        "Bearer " + makeToken("read", "write"),
 			backend:       "backend1",
-			toolName:      "tool1",
+			tool:          "tool1",
 			expectAllowed: true,
 			expectScopes:  nil,
 		},
@@ -79,16 +79,16 @@ func TestAuthorizeRequest(t *testing.T) {
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{
 								Backend:   "backend1",
-								ToolName:  "tool1",
+								Tool:      "tool1",
 								Condition: strPtr(`args.mode in ["fast", "slow"] && args.user.matches("u-[0-9]+") && args.debug == true`),
 							}},
 						},
 					},
 				},
 			},
-			header:   "Bearer " + makeToken("read"),
-			backend:  "backend1",
-			toolName: "tool1",
+			header:  "Bearer " + makeToken("read"),
+			backend: "backend1",
+			tool:    "tool1",
 			args: map[string]any{
 				"mode":  "fast",
 				"user":  "u-123",
@@ -110,7 +110,7 @@ func TestAuthorizeRequest(t *testing.T) {
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{
 								Backend:   "backend1",
-								ToolName:  "tool1",
+								Tool:      "tool1",
 								Condition: strPtr(`int(args.count) >= 40 && int(args.count) < 50`),
 							}},
 						},
@@ -119,7 +119,7 @@ func TestAuthorizeRequest(t *testing.T) {
 			},
 			header:        "Bearer " + makeToken("read"),
 			backend:       "backend1",
-			toolName:      "tool1",
+			tool:          "tool1",
 			args:          map[string]any{"count": 42},
 			expectAllowed: true,
 			expectScopes:  nil,
@@ -137,16 +137,16 @@ func TestAuthorizeRequest(t *testing.T) {
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{
 								Backend:   "backend1",
-								ToolName:  "tool1",
+								Tool:      "tool1",
 								Condition: strPtr(`args["payload"] != null && args["payload"]["kind"] == "test" && args["payload"]["value"] == 123`),
 							}},
 						},
 					},
 				},
 			},
-			header:   "Bearer " + makeToken("read"),
-			backend:  "backend1",
-			toolName: "tool1",
+			header:  "Bearer " + makeToken("read"),
+			backend: "backend1",
+			tool:    "tool1",
 			args: map[string]any{
 				"payload": map[string]any{
 					"kind":  "test",
@@ -167,14 +167,14 @@ func TestAuthorizeRequest(t *testing.T) {
 							JWT: filterapi.JWTSource{Scopes: []string{"read", "write"}},
 						},
 						Target: &filterapi.MCPAuthorizationTarget{
-							Tools: []filterapi.ToolCall{{Backend: "backend1", ToolName: "tool1"}},
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "tool1"}},
 						},
 					},
 				},
 			},
 			header:        "Bearer " + makeToken("read"),
 			backend:       "backend1",
-			toolName:      "tool1",
+			tool:          "tool1",
 			expectAllowed: false,
 			expectScopes:  []string{"read", "write"},
 		},
@@ -191,16 +191,16 @@ func TestAuthorizeRequest(t *testing.T) {
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{
 								Backend:   "backend1",
-								ToolName:  "tool1",
+								Tool:      "tool1",
 								Condition: strPtr(`args.mode in ["fast", "slow"]`),
 							}},
 						},
 					},
 				},
 			},
-			header:   "Bearer " + makeToken("read"),
-			backend:  "backend1",
-			toolName: "tool1",
+			header:  "Bearer " + makeToken("read"),
+			backend: "backend1",
+			tool:    "tool1",
 			args: map[string]any{
 				"mode": "other",
 			},
@@ -220,16 +220,16 @@ func TestAuthorizeRequest(t *testing.T) {
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{
 								Backend:   "backend1",
-								ToolName:  "tool1",
+								Tool:      "tool1",
 								Condition: strPtr(`args.nonExistingField in ["fast", "slow"]`),
 							}},
 						},
 					},
 				},
 			},
-			header:   "Bearer " + makeToken("read"),
-			backend:  "backend1",
-			toolName: "tool1",
+			header:  "Bearer " + makeToken("read"),
+			backend: "backend1",
+			tool:    "tool1",
 			args: map[string]any{
 				"mode": "other",
 			},
@@ -249,16 +249,16 @@ func TestAuthorizeRequest(t *testing.T) {
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{
 								Backend:   "backend1",
-								ToolName:  "tool1",
+								Tool:      "tool1",
 								Condition: strPtr(`args.mode`),
 							}},
 						},
 					},
 				},
 			},
-			header:   "Bearer " + makeToken("read"),
-			backend:  "backend1",
-			toolName: "tool1",
+			header:  "Bearer " + makeToken("read"),
+			backend: "backend1",
+			tool:    "tool1",
 			args: map[string]any{
 				"mode": "other",
 			},
@@ -278,16 +278,16 @@ func TestAuthorizeRequest(t *testing.T) {
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{
 								Backend:   "backend1",
-								ToolName:  "tool1",
+								Tool:      "tool1",
 								Condition: strPtr(`invalid syntax here`),
 							}},
 						},
 					},
 				},
 			},
-			header:   "Bearer " + makeToken("read"),
-			backend:  "backend1",
-			toolName: "tool1",
+			header:  "Bearer " + makeToken("read"),
+			backend: "backend1",
+			tool:    "tool1",
 			args: map[string]any{
 				"mode": "other",
 			},
@@ -308,7 +308,7 @@ func TestAuthorizeRequest(t *testing.T) {
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{
 								Backend:   "backend1",
-								ToolName:  "tool1",
+								Tool:      "tool1",
 								Condition: strPtr(`args["mode"] == "fast"`),
 							}},
 						},
@@ -317,7 +317,7 @@ func TestAuthorizeRequest(t *testing.T) {
 			},
 			header:        "Bearer " + makeToken("read"),
 			backend:       "backend1",
-			toolName:      "tool1",
+			tool:          "tool1",
 			args:          map[string]any{},
 			expectAllowed: false,
 			expectScopes:  nil,
@@ -333,14 +333,14 @@ func TestAuthorizeRequest(t *testing.T) {
 							JWT: filterapi.JWTSource{Scopes: []string{"read"}},
 						},
 						Target: &filterapi.MCPAuthorizationTarget{
-							Tools: []filterapi.ToolCall{{Backend: "backend1", ToolName: "tool1"}},
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "tool1"}},
 						},
 					},
 				},
 			},
 			header:        "Bearer " + makeToken("read", "write"),
 			backend:       "backend1",
-			toolName:      "other-tool",
+			tool:          "other-tool",
 			expectAllowed: false,
 			expectScopes:  nil,
 		},
@@ -355,14 +355,14 @@ func TestAuthorizeRequest(t *testing.T) {
 							JWT: filterapi.JWTSource{Scopes: []string{"read"}},
 						},
 						Target: &filterapi.MCPAuthorizationTarget{
-							Tools: []filterapi.ToolCall{{Backend: "backend1", ToolName: "tool1"}},
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "tool1"}},
 						},
 					},
 				},
 			},
 			header:        "Bearer " + makeToken("foo", "bar"),
 			backend:       "backend1",
-			toolName:      "other-tool",
+			tool:          "other-tool",
 			expectAllowed: false,
 			expectScopes:  nil,
 		},
@@ -377,14 +377,14 @@ func TestAuthorizeRequest(t *testing.T) {
 							JWT: filterapi.JWTSource{Scopes: []string{"read"}},
 						},
 						Target: &filterapi.MCPAuthorizationTarget{
-							Tools: []filterapi.ToolCall{{Backend: "backend1", ToolName: "tool1"}},
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "tool1"}},
 						},
 					},
 				},
 			},
 			header:        "",
 			backend:       "backend1",
-			toolName:      "tool1",
+			tool:          "tool1",
 			expectAllowed: false,
 			expectScopes:  []string{"read"},
 		},
@@ -399,14 +399,14 @@ func TestAuthorizeRequest(t *testing.T) {
 							JWT: filterapi.JWTSource{Scopes: []string{"read"}},
 						},
 						Target: &filterapi.MCPAuthorizationTarget{
-							Tools: []filterapi.ToolCall{{Backend: "backend1", ToolName: "tool1"}},
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "tool1"}},
 						},
 					},
 				},
 			},
 			header:        "Bearer invalid.token.here",
 			backend:       "backend1",
-			toolName:      "tool1",
+			tool:          "tool1",
 			expectAllowed: false,
 			expectScopes:  []string{"read"},
 		},
@@ -418,18 +418,18 @@ func TestAuthorizeRequest(t *testing.T) {
 					{
 						Action: "Allow",
 						Source: &filterapi.MCPAuthorizationSource{JWT: filterapi.JWTSource{Scopes: []string{"alpha", "beta", "gamma"}}},
-						Target: &filterapi.MCPAuthorizationTarget{Tools: []filterapi.ToolCall{{Backend: "backend1", ToolName: "tool1"}}},
+						Target: &filterapi.MCPAuthorizationTarget{Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "tool1"}}},
 					},
 					{
 						Action: "Allow",
 						Source: &filterapi.MCPAuthorizationSource{JWT: filterapi.JWTSource{Scopes: []string{"alpha", "beta"}}},
-						Target: &filterapi.MCPAuthorizationTarget{Tools: []filterapi.ToolCall{{Backend: "backend1", ToolName: "tool1"}}},
+						Target: &filterapi.MCPAuthorizationTarget{Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "tool1"}}},
 					},
 				},
 			},
 			header:        "Bearer " + makeToken("alpha"),
 			backend:       "backend1",
-			toolName:      "tool1",
+			tool:          "tool1",
 			expectAllowed: false,
 			expectScopes:  []string{"alpha", "beta"},
 		},
@@ -443,7 +443,7 @@ func TestAuthorizeRequest(t *testing.T) {
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{
 								Backend:   "backend1",
-								ToolName:  "listFiles",
+								Tool:      "listFiles",
 								Condition: strPtr(`args.folder == "restricted"`),
 							}},
 						},
@@ -455,16 +455,16 @@ func TestAuthorizeRequest(t *testing.T) {
 						},
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{
-								Backend:  "backend1",
-								ToolName: "listFiles",
+								Backend: "backend1",
+								Tool:    "listFiles",
 							}},
 						},
 					},
 				},
 			},
-			header:   "Bearer " + makeToken("read"),
-			backend:  "backend1",
-			toolName: "listFiles",
+			header:  "Bearer " + makeToken("read"),
+			backend: "backend1",
+			tool:    "listFiles",
 			args: map[string]any{
 				"folder": "restricted",
 			},
@@ -481,7 +481,7 @@ func TestAuthorizeRequest(t *testing.T) {
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{
 								Backend:   "backend1",
-								ToolName:  "listFiles",
+								Tool:      "listFiles",
 								Condition: strPtr(`args.folder == "restricted"`),
 							}},
 						},
@@ -493,16 +493,16 @@ func TestAuthorizeRequest(t *testing.T) {
 						},
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{
-								Backend:  "backend1",
-								ToolName: "listFiles",
+								Backend: "backend1",
+								Tool:    "listFiles",
 							}},
 						},
 					},
 				},
 			},
-			header:   "Bearer " + makeToken("read"),
-			backend:  "backend1",
-			toolName: "listFiles",
+			header:  "Bearer " + makeToken("read"),
+			backend: "backend1",
+			tool:    "listFiles",
 			args: map[string]any{
 				"folder": "allowed",
 			},
@@ -516,7 +516,7 @@ func TestAuthorizeRequest(t *testing.T) {
 			},
 			header:        "",
 			backend:       "backend1",
-			toolName:      "tool1",
+			tool:          "tool1",
 			expectAllowed: false,
 			expectScopes:  nil,
 		},
@@ -527,7 +527,7 @@ func TestAuthorizeRequest(t *testing.T) {
 			},
 			header:        "",
 			backend:       "backend1",
-			toolName:      "tool1",
+			tool:          "tool1",
 			expectAllowed: true,
 			expectScopes:  nil,
 		},
@@ -543,7 +543,7 @@ func TestAuthorizeRequest(t *testing.T) {
 			},
 			header:        "",
 			backend:       "backend1",
-			toolName:      "tool1",
+			tool:          "tool1",
 			expectAllowed: true,
 			expectScopes:  nil,
 		},
@@ -559,7 +559,7 @@ func TestAuthorizeRequest(t *testing.T) {
 			},
 			header:        "",
 			backend:       "backend1",
-			toolName:      "tool1",
+			tool:          "tool1",
 			expectAllowed: false,
 			expectScopes:  nil,
 		},
@@ -578,7 +578,7 @@ func TestAuthorizeRequest(t *testing.T) {
 			if err != nil {
 				return
 			}
-			allowed, requiredScopes := proxy.authorizeRequest(compiled, headers, tt.backend, tt.toolName, tt.args)
+			allowed, requiredScopes := proxy.authorizeRequest(compiled, headers, tt.backend, tt.tool, tt.args)
 			if allowed != tt.expectAllowed {
 				t.Fatalf("expected %v, got %v", tt.expectAllowed, allowed)
 			}
@@ -611,7 +611,7 @@ func TestCompileAuthorizationInvalidExpression(t *testing.T) {
 				Target: &filterapi.MCPAuthorizationTarget{
 					Tools: []filterapi.ToolCall{{
 						Backend:   "backend1",
-						ToolName:  "tool1",
+						Tool:      "tool1",
 						Condition: strPtr("args."),
 					}},
 				},
