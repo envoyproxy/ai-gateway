@@ -426,6 +426,14 @@ type MessagesStreamEvent struct {
 	MessageStart *MessagesStreamEventMessageStart
 	// MessageDelta is present if the event type is "message_delta".
 	MessageDelta *MessagesStreamEventMessageDelta
+	// MessageStop is present if the event type is "message_stop".
+	MessageStop *MessagesStreamEventMessageStop
+	// ContentBlockStart is present if the event type is "content_block_start".
+	ContentBlockStart *MessagesStreamEventContentBlockStart
+	// ContentBlockDelta is present if the event type is "content_block_delta".
+	ContentBlockDelta *MessagesStreamEventContentBlockDelta
+	// ContentBlockStop is present if the event type is "content_block_stop".
+	ContentBlockStop *MessagesStreamEventContentBlockStop
 }
 
 // MessagesStreamEventType represents the type of a streaming event in the Anthropic Messages API.
@@ -441,24 +449,45 @@ const (
 	MessagesStreamEventTypeContentBlockStop  MessagesStreamEventType = "content_block_stop"
 )
 
-// MessagesStreamEventMessageStart represents the message content in a "message_start".
-type MessagesStreamEventMessageStart MessagesResponse
-
-// MessagesStreamEventMessageDelta represents the message content in a "message_delta".
-//
-// Note: the definition of this event is vague in the Anthropic documentation.
-// This follows the same code from their official SDK.
-// https://github.com/anthropics/anthropic-sdk-go/blob/3a0275d6034e4eda9fbc8366d8a5d8b3a462b4cc/message.go#L2424-L2451
-type MessagesStreamEventMessageDelta struct {
-	// Delta contains the delta information for the message.
-	// This is cumulative per documentation.
-	Usage Usage                                `json:"usage"`
-	Delta MessagesStreamEventMessageDeltaDelta `json:"delta"`
-}
+type (
+	// MessagesStreamEventMessageStart represents the message content in a "message_start".
+	MessagesStreamEventMessageStart MessagesResponse
+	// MessagesStreamEventMessageStop represents the message content in a "message_stop".
+	MessagesStreamEventMessageStop struct {
+		Type MessagesStreamEventType `json:"type"` // Type is always "message_stop".
+	}
+	// MessagesStreamEventContentBlockStart represents the content block in a "content_block_start".
+	MessagesStreamEventContentBlockStart struct {
+		Type MessagesStreamEventType `json:"type"` // Type is always "content_block_start".
+		// TODO: add fields when we need it for observability, etc.
+	}
+	// MessagesStreamEventContentBlockDelta represents the content block delta in a "content_block_delta".
+	MessagesStreamEventContentBlockDelta struct {
+		Type MessagesStreamEventType `json:"type"` // Type is always "content_block_delta".
+		// TODO: add fields when we need it for observability, etc.
+	}
+	// MessagesStreamEventContentBlockStop represents the content block in a "content_block_stop".
+	MessagesStreamEventContentBlockStop struct {
+		Type MessagesStreamEventType `json:"type"` // Type is always "content_block_stop".
+		// TODO: add fields when we need it for observability, etc.
+	}
+	// MessagesStreamEventMessageDelta represents the message content in a "message_delta".
+	//
+	// Note: the definition of this event is vague in the Anthropic documentation.
+	// This follows the same code from their official SDK.
+	// https://github.com/anthropics/anthropic-sdk-go/blob/3a0275d6034e4eda9fbc8366d8a5d8b3a462b4cc/message.go#L2424-L2451
+	MessagesStreamEventMessageDelta struct {
+		Type MessagesStreamEventType `json:"type"` // Type is always "message_delta".
+		// Delta contains the delta information for the message.
+		// This is cumulative per documentation.
+		Usage Usage                                `json:"usage"`
+		Delta MessagesStreamEventMessageDeltaDelta `json:"delta"`
+	}
+)
 
 type MessagesStreamEventMessageDeltaDelta struct {
 	StopReason   StopReason `json:"stop_reason"`
-	StopSequence *string    `json:"stop_sequence,omitempty"`
+	StopSequence string     `json:"stop_sequence"`
 }
 
 func (m *MessagesStreamEvent) UnmarshalJSON(data []byte) error {
@@ -483,8 +512,32 @@ func (m *MessagesStreamEvent) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("failed to unmarshal message delta in stream event: %w", err)
 		}
 		m.MessageDelta = &messageDelta
+	case MessagesStreamEventTypeMessageStop:
+		var messageStop MessagesStreamEventMessageStop
+		if err := json.Unmarshal(data, &messageStop); err != nil {
+			return fmt.Errorf("failed to unmarshal message stop in stream event: %w", err)
+		}
+		m.MessageStop = &messageStop
+	case MessagesStreamEventTypeContentBlockStart:
+		var contentBlockStart MessagesStreamEventContentBlockStart
+		if err := json.Unmarshal(data, &contentBlockStart); err != nil {
+			return fmt.Errorf("failed to unmarshal content block start in stream event: %w", err)
+		}
+		m.ContentBlockStart = &contentBlockStart
+	case MessagesStreamEventTypeContentBlockDelta:
+		var contentBlockDelta MessagesStreamEventContentBlockDelta
+		if err := json.Unmarshal(data, &contentBlockDelta); err != nil {
+			return fmt.Errorf("failed to unmarshal content block delta in stream event: %w", err)
+		}
+		m.ContentBlockDelta = &contentBlockDelta
+	case MessagesStreamEventTypeContentBlockStop:
+		var contentBlockStop MessagesStreamEventContentBlockStop
+		if err := json.Unmarshal(data, &contentBlockStop); err != nil {
+			return fmt.Errorf("failed to unmarshal content block stop in stream event: %w", err)
+		}
+		m.ContentBlockStop = &contentBlockStop
 	default:
-		// TODO: handle other event types if needed.
+		return fmt.Errorf("unknown stream event type: %s", m.Type)
 	}
 	return nil
 }

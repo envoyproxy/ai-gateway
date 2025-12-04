@@ -8,10 +8,8 @@ package anthropic
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -231,76 +229,21 @@ func buildResponseAttributes(resp *anthropic.MessagesResponse, config *openinfer
 // openai.ChatCompletionResponseChunk one at a time, and then we won't need to accumulate all chunks
 // in memory.
 func convertSSEToJSON(chunks []*anthropic.MessagesStreamEvent) *anthropic.MessagesResponse {
-	var (
-		content      strings.Builder
-		usage        *anthropic.Usage
-		role         string
-		obfuscation  string
-		finishReason anthropic.StopReason
-	)
-
-	for _, chunk := range chunks {
-
-		// Accumulate content, role, and annotations from delta (assuming single choice at index 0).
-		if len(chunk.Choices) > 0 {
-			if chunk.Choices[0].Delta != nil {
-				if chunk.Choices[0].Delta.Content != nil {
-					content.WriteString(*chunk.Choices[0].Delta.Content)
-				}
-				if chunk.Choices[0].Delta.Role != "" {
-					role = chunk.Choices[0].Delta.Role
-				}
-				if as := chunk.Choices[0].Delta.Annotations; as != nil && len(*as) > 0 {
-					annotations = append(annotations, *as...)
-				}
-			}
-			// Capture finish_reason from any chunk that has it.
-			if chunk.Choices[0].FinishReason != "" {
-				finishReason = chunk.Choices[0].FinishReason
-			}
-		}
-
-		// Capture usage from the last chunk that has it.
-		if chunk.Usage != nil {
-			usage = chunk.Usage
-		}
-
-		// Capture obfuscation from the last chunk that has it.
-		if chunk.Obfuscation != "" {
-			obfuscation = chunk.Obfuscation
+	var response anthropic.MessagesResponse
+	for _, event := range chunks {
+		switch event.Type {
+		case anthropic.MessagesStreamEventTypeMessageStart:
+			response = *(*anthropic.MessagesResponse)(event.MessageStart)
+		case anthropic.MessagesStreamEventTypeMessageDelta:
+			delta := event.MessageDelta
+			response.Usage = &delta.Usage
+			response.StopReason = &delta.Delta.StopReason
+			response.StopSequence = &delta.Delta.StopSequence
+		case anthropic.MessagesStreamEventTypeContentBlockStart:
+		case anthropic.MessagesStreamEventTypeContentBlockDelta:
+		case anthropic.MessagesStreamEventTypeContentBlockStop:
+		case anthropic.MessagesStreamEventTypeMessageStop:
 		}
 	}
-
-	// Build the response as a chunk with accumulated content.
-	contentStr := content.String()
-
-	// Default to "stop" if no finish reason was captured.
-	if finishReason == "" {
-		finishReason = openai.ChatCompletionChoicesFinishReasonStop
-	}
-
-	// Create a ChatCompletionResponse with all accumulated content.
-	response := &anthropic.MessagesResponse{
-		//ID:                firstChunk.ID,
-		//Object:            "chat.completion.chunk", // Keep chunk object type for streaming.
-		//Created:           firstChunk.Created,
-		//Model:             firstChunk.Model,
-		//ServiceTier:       firstChunk.ServiceTier,
-		//SystemFingerprint: firstChunk.SystemFingerprint,
-		//Obfuscation:       obfuscation,
-		//Choices: []openai.ChatCompletionResponseChoice{{
-		//	Message: openai.ChatCompletionResponseChoiceMessage{
-		//		Role:        role,
-		//		Content:     &contentStr,
-		//		Annotations: annotationsPtr,
-		//	},
-		//	Index:        0,
-		//	FinishReason: finishReason,
-		//}},
-	}
-
-	if usage != nil {
-		response.Usage = usage
-	}
-	return response
+	return &response
 }
