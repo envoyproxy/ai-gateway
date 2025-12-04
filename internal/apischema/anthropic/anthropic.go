@@ -458,18 +458,20 @@ type (
 	}
 	// MessagesStreamEventContentBlockStart represents the content block in a "content_block_start".
 	MessagesStreamEventContentBlockStart struct {
-		Type MessagesStreamEventType `json:"type"` // Type is always "content_block_start".
-		// TODO: add fields when we need it for observability, etc.
+		Type         MessagesStreamEventType `json:"type"` // Type is always "content_block_start".
+		Index        int                     `json:"index"`
+		ContentBlock MessagesContentBlock    `json:"content_block"`
 	}
 	// MessagesStreamEventContentBlockDelta represents the content block delta in a "content_block_delta".
 	MessagesStreamEventContentBlockDelta struct {
-		Type MessagesStreamEventType `json:"type"` // Type is always "content_block_delta".
-		// TODO: add fields when we need it for observability, etc.
+		Type  MessagesStreamEventType `json:"type"` // Type is always "content_block_delta".
+		Index int                     `json:"index"`
+		Delta ContentBlockDelta       `json:"delta"`
 	}
 	// MessagesStreamEventContentBlockStop represents the content block in a "content_block_stop".
 	MessagesStreamEventContentBlockStop struct {
-		Type MessagesStreamEventType `json:"type"` // Type is always "content_block_stop".
-		// TODO: add fields when we need it for observability, etc.
+		Type  MessagesStreamEventType `json:"type"` // Type is always "content_block_stop".
+		Index int                     `json:"index"`
 	}
 	// MessagesStreamEventMessageDelta represents the message content in a "message_delta".
 	//
@@ -488,6 +490,14 @@ type (
 type MessagesStreamEventMessageDeltaDelta struct {
 	StopReason   StopReason `json:"stop_reason"`
 	StopSequence string     `json:"stop_sequence"`
+}
+
+type ContentBlockDelta struct {
+	Type        string `json:"type"`
+	Text        string `json:"text,omitempty"`
+	PartialJSON string `json:"partial_json,omitempty"`
+	Thinking    string `json:"thinking,omitempty"`
+	Signature   string `json:"signature,omitempty"`
 }
 
 func (m *MessagesStreamEvent) UnmarshalJSON(data []byte) error {

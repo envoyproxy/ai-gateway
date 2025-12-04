@@ -87,6 +87,16 @@ func TestMessageContent_MessagesStreamEvent(t *testing.T) {
 			name: "content_block_start",
 			exp: MessagesStreamEvent{
 				Type: "content_block_start",
+				ContentBlockStart: &MessagesStreamEventContentBlockStart{
+					Type:  "content_block_start",
+					Index: 0,
+					ContentBlock: MessagesContentBlock{
+						Text: &TextBlock{
+							Type: "text",
+							Text: "",
+						},
+					},
+				},
 			},
 			jsonStr: `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
 		},
@@ -94,24 +104,82 @@ func TestMessageContent_MessagesStreamEvent(t *testing.T) {
 			name: "content_block_delta",
 			exp: MessagesStreamEvent{
 				Type: "content_block_delta",
+				ContentBlockDelta: &MessagesStreamEventContentBlockDelta{
+					Type:  "content_block_delta",
+					Index: 0,
+					Delta: ContentBlockDelta{
+						Type: "text_delta",
+						Text: "Okay",
+					},
+				},
 			},
 			jsonStr: `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Okay"}}`,
+		},
+		{
+			name: "content_block_delta input_json_delta",
+			exp: MessagesStreamEvent{
+				Type: "content_block_delta",
+				ContentBlockDelta: &MessagesStreamEventContentBlockDelta{
+					Type:  "content_block_delta",
+					Index: 1,
+					Delta: ContentBlockDelta{
+						Type:        "input_json_delta",
+						PartialJSON: "{\"query",
+					},
+				},
+			},
+			jsonStr: `{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"query"}}`,
 		},
 		{
 			name: "content_block_stop",
 			exp: MessagesStreamEvent{
 				Type: "content_block_stop",
+				ContentBlockStop: &MessagesStreamEventContentBlockStop{
+					Type:  "content_block_stop",
+					Index: 1,
+				},
 			},
 			jsonStr: `{"type":"content_block_stop","index":1}`,
+		},
+		{
+			name: "content_block_delta thinking_delta",
+			exp: MessagesStreamEvent{
+				Type: "content_block_delta",
+				ContentBlockDelta: &MessagesStreamEventContentBlockDelta{
+					Type:  "content_block_delta",
+					Index: 0,
+					Delta: ContentBlockDelta{
+						Type:     "thinking_delta",
+						Thinking: "Let me solve this step by step",
+					},
+				},
+			},
+			jsonStr: `{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Let me solve this step by step"}}`,
+		},
+		{
+			name: "content_block_delta signature_delta",
+			exp: MessagesStreamEvent{
+				Type: "content_block_delta",
+				ContentBlockDelta: &MessagesStreamEventContentBlockDelta{
+					Type:  "content_block_delta",
+					Index: 0,
+					Delta: ContentBlockDelta{
+						Type:      "signature_delta",
+						Signature: "EqQBCgIYAhIM1gbcDa9GJwZA2b3hGgxBdjrkzLoky3dl1pkiMOYds...",
+					},
+				},
+			},
+			jsonStr: `{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"EqQBCgIYAhIM1gbcDa9GJwZA2b3hGgxBdjrkzLoky3dl1pkiMOYds..."}}`,
 		},
 		{
 			name: "message_delta",
 			exp: MessagesStreamEvent{
 				Type: "message_delta",
 				MessageDelta: &MessagesStreamEventMessageDelta{
+					Type: "message_delta",
 					Delta: MessagesStreamEventMessageDeltaDelta{
 						StopReason:   "tool_use",
-						StopSequence: nil,
+						StopSequence: "",
 					},
 					Usage: Usage{
 						OutputTokens: 89,
@@ -124,6 +192,9 @@ func TestMessageContent_MessagesStreamEvent(t *testing.T) {
 			name: "message_stop",
 			exp: MessagesStreamEvent{
 				Type: "message_stop",
+				MessageStop: &MessagesStreamEventMessageStop{
+					Type: "message_stop",
+				},
 			},
 			jsonStr: ` {"type":"message_stop"}`,
 		},
