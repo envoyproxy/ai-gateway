@@ -128,7 +128,6 @@ type (
 	RerankRecorder = SpanRecorder[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// MessageRecorder records attributes to a span according to a semantic convention.
 	MessageRecorder = SpanRecorder[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamEvent]
-	//
 )
 
 // NoopChunkRecorder provides a no-op RecordResponseChunks implementation for recorders that don't emit streaming chunks.
