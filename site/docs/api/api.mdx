@@ -1648,10 +1648,16 @@ MCPRouteAuthorization defines the authorization configuration for a MCPRoute.
 
 
 <ApiField
+  name="defaultAction"
+  type="[AuthorizationAction](#authorizationaction)"
+  required="false"
+  defaultValue="Deny"
+  description="DefaultAction is the action to take when no rules match. If unspecified, defaults to Deny."
+/><ApiField
   name="rules"
   type="[MCPRouteAuthorizationRule](#mcprouteauthorizationrule) array"
   required="false"
-  description="Rules defines a list of authorization rules.<br />Requests that match any rule and satisfy the rule's conditions will be allowed.<br />Requests that do not match any rule or fail to satisfy the matched rule's conditions will be denied.<br />If no rules are defined, all requests will be denied."
+  description="Rules defines a list of authorization rules.<br />These rules are evaluated in order, the first matching rule will be applied,<br />and the rest will be skipped.<br />If no rules are defined, the default action will be applied to all requests."
 />
 
 
@@ -1673,12 +1679,18 @@ Reference: https://modelcontextprotocol.io/specification/draft/basic/authorizati
   name="source"
   type="[MCPAuthorizationSource](#mcpauthorizationsource)"
   required="true"
-  description="Source defines the authorization source for this rule."
+  description="Source defines the authorization source for this rule.<br />If not specified, the rule will match all sources."
 /><ApiField
   name="target"
   type="[MCPAuthorizationTarget](#mcpauthorizationtarget)"
   required="true"
-  description="Target defines the authorization target for this rule."
+  description="Target defines the authorization target for this rule.<br />If not specified, the rule will match all targets."
+/><ApiField
+  name="action"
+  type="[AuthorizationAction](#authorizationaction)"
+  required="false"
+  defaultValue="Allow"
+  description="Action is the authorization decision for matching requests. If unspecified, defaults to Allow."
 />
 
 

@@ -585,21 +585,38 @@ spec:
                     description: Authorization defines the configuration for the MCP
                       spec compatible authorization.
                     properties:
+                      defaultAction:
+                        default: Deny
+                        description: DefaultAction is the action to take when no rules
+                          match. If unspecified, defaults to Deny.
+                        enum:
+                        - Allow
+                        - Deny
+                        type: string
                       rules:
                         description: |-
                           Rules defines a list of authorization rules.
+                          These rules are evaluated in order, the first matching rule will be applied,
+                          and the rest will be skipped.
 
-                          Requests that match any rule and satisfy the rule's conditions will be allowed.
-                          Requests that do not match any rule or fail to satisfy the matched rule's conditions will be denied.
-                          If no rules are defined, all requests will be denied.
+                          If no rules are defined, the default action will be applied to all requests.
                         items:
                           description: |-
                             MCPRouteAuthorizationRule defines an authorization rule for MCPRoute based on the MCP authorization spec.
                             Reference: https://modelcontextprotocol.io/specification/draft/basic/authorization#scope-challenge-handling
                           properties:
+                            action:
+                              default: Allow
+                              description: Action is the authorization decision for
+                                matching requests. If unspecified, defaults to Allow.
+                              enum:
+                              - Allow
+                              - Deny
+                              type: string
                             source:
-                              description: Source defines the authorization source
-                                for this rule.
+                              description: |-
+                                Source defines the authorization source for this rule.
+                                If not specified, the rule will match all sources.
                               properties:
                                 jwt:
                                   description: JWT defines the JWT scopes required
@@ -623,8 +640,9 @@ spec:
                               - jwt
                               type: object
                             target:
-                              description: Target defines the authorization target
-                                for this rule.
+                              description: |-
+                                Target defines the authorization target for this rule.
+                                If not specified, the rule will match all targets.
                               properties:
                                 tools:
                                   description: Tools defines the list of tools this
@@ -657,9 +675,6 @@ spec:
                               required:
                               - tools
                               type: object
-                          required:
-                          - source
-                          - target
                           type: object
                         type: array
                     type: object

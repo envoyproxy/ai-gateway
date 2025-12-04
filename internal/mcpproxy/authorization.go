@@ -23,11 +23,13 @@ import (
 type compiledAuthorization struct {
 	ResourceMetadataURL string
 	Rules               []compiledAuthorizationRule
+	DefaultAction       filterapi.AuthorizationAction
 }
 
 type compiledAuthorizationRule struct {
-	Source filterapi.MCPAuthorizationSource
+	Source *filterapi.MCPAuthorizationSource
 	Target []compiledToolCall
+	Action filterapi.AuthorizationAction
 }
 
 type compiledToolCall struct {
@@ -53,31 +55,35 @@ func compileAuthorization(auth *filterapi.MCPRouteAuthorization) (*compiledAutho
 
 	compiled := &compiledAuthorization{
 		ResourceMetadataURL: auth.ResourceMetadataURL,
+		DefaultAction:       auth.DefaultAction,
 	}
 
 	for _, rule := range auth.Rules {
 		cr := compiledAuthorizationRule{
 			Source: rule.Source,
+			Action: rule.Action,
 		}
-		for _, tool := range rule.Target.Tools {
-			ct := compiledToolCall{
-				Backend:  tool.Backend,
-				ToolName: tool.ToolName,
-			}
-			if tool.Arguments != nil && strings.TrimSpace(*tool.Arguments) != "" {
-				expr := strings.TrimSpace(*tool.Arguments)
-				ast, issues := env.Compile(expr)
-				if issues != nil && issues.Err() != nil {
-					return nil, fmt.Errorf("failed to compile arguments CEL for tool %s/%s: %w", tool.Backend, tool.ToolName, issues.Err())
+		if rule.Target != nil {
+			for _, tool := range rule.Target.Tools {
+				ct := compiledToolCall{
+					Backend:  tool.Backend,
+					ToolName: tool.ToolName,
 				}
-				program, err := env.Program(ast, cel.CostLimit(10000), cel.EvalOptions(cel.OptOptimize))
-				if err != nil {
-					return nil, fmt.Errorf("failed to build arguments CEL program for tool %s/%s: %w", tool.Backend, tool.ToolName, err)
+				if tool.Arguments != nil && strings.TrimSpace(*tool.Arguments) != "" {
+					expr := strings.TrimSpace(*tool.Arguments)
+					ast, issues := env.Compile(expr)
+					if issues != nil && issues.Err() != nil {
+						return nil, fmt.Errorf("failed to compile arguments CEL for tool %s/%s: %w", tool.Backend, tool.ToolName, issues.Err())
+					}
+					program, err := env.Program(ast, cel.CostLimit(10000), cel.EvalOptions(cel.OptOptimize))
+					if err != nil {
+						return nil, fmt.Errorf("failed to build arguments CEL program for tool %s/%s: %w", tool.Backend, tool.ToolName, err)
+					}
+					ct.Expression = expr
+					ct.program = program
 				}
-				ct.Expression = expr
-				ct.program = program
+				cr.Target = append(cr.Target, ct)
 			}
-			cr.Target = append(cr.Target, ct)
 		}
 		compiled.Rules = append(compiled.Rules, cr)
 	}
@@ -91,47 +97,57 @@ func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, header
 		return true, nil
 	}
 
-	// If no rules are defined, deny all requests.
+	defaultAction := authorization.DefaultAction == filterapi.AuthorizationActionAllow
+
+	// If no rules are defined, return the default action.
 	if len(authorization.Rules) == 0 {
-		return false, nil
+		return defaultAction, nil
 	}
 
-	// If the rules are defined, a valid bearer token is required.
+	scopeSet := sets.New[string]()
 	token, err := bearerToken(headers.Get("Authorization"))
 	// This is just a sanity check. The actual JWT verification is performed by Envoy before reaching here, and the token
 	// should always be present and valid.
 	if err != nil {
 		m.l.Info("missing or invalid bearer token", slog.String("error", err.Error()))
-		return false, nil
+	} else {
+		claims := jwt.MapClaims{}
+		// JWT verification is performed by Envoy before reaching here. So we only need to parse the token without verification.
+		if _, _, err := jwt.NewParser().ParseUnverified(token, claims); err != nil {
+			m.l.Info("failed to parse JWT token", slog.String("error", err.Error()))
+		}
+		scopeSet = sets.New(extractScopes(claims)...)
 	}
 
-	claims := jwt.MapClaims{}
-	// JWT verification is performed by Envoy before reaching here. So we only need to parse the token without verification.
-	if _, _, err := jwt.NewParser().ParseUnverified(token, claims); err != nil {
-		m.l.Info("failed to parse JWT token", slog.String("error", err.Error()))
-		return false, nil
-	}
-
-	scopeSet := sets.New(extractScopes(claims)...)
 	var requiredScopesForChallenge []string
 
 	for _, rule := range authorization.Rules {
+		action := rule.Action == filterapi.AuthorizationActionAllow
+
 		if !m.toolMatches(backendName, toolName, rule.Target, arguments) {
 			continue
 		}
 
-		requiredScopes := rule.Source.JWT.Scopes
-		if scopesSatisfied(scopeSet, requiredScopes) {
-			return true, nil
+		// If no source is specified, the rule matches all sources.
+		if rule.Source == nil {
+			return action, nil
 		}
 
-		// Keep track of the smallest set of required scopes for challenge.
-		if len(requiredScopesForChallenge) == 0 || len(requiredScopes) < len(requiredScopesForChallenge) {
-			requiredScopesForChallenge = requiredScopes
+		// Scopes check doesn't make much sense if action is deny, we check it anyway.
+		requiredScopes := rule.Source.JWT.Scopes
+		if scopesSatisfied(scopeSet, requiredScopes) {
+			return action, nil
+		}
+
+		// Keep track of the smallest set of required scopes for challenge when the action is allow and the request is denied.
+		if action {
+			if len(requiredScopesForChallenge) == 0 || len(requiredScopes) < len(requiredScopesForChallenge) {
+				requiredScopesForChallenge = requiredScopes
+			}
 		}
 	}
 
-	return false, requiredScopesForChallenge
+	return defaultAction, requiredScopesForChallenge
 }
 
 func bearerToken(header string) (string, error) {
@@ -176,6 +192,7 @@ func extractScopes(claims jwt.MapClaims) []string {
 }
 
 func (m *MCPProxy) toolMatches(backendName, toolName string, tools []compiledToolCall, args any) bool {
+	// Empty tools means all tools match.
 	if len(tools) == 0 {
 		return true
 	}

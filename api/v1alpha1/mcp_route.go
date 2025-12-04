@@ -236,11 +236,18 @@ type MCPRouteOAuth struct {
 
 // MCPRouteAuthorization defines the authorization configuration for a MCPRoute.
 type MCPRouteAuthorization struct {
-	// Rules defines a list of authorization rules.
+	// DefaultAction is the action to take when no rules match. If unspecified, defaults to Deny.
 	//
-	// Requests that match any rule and satisfy the rule's conditions will be allowed.
-	// Requests that do not match any rule or fail to satisfy the matched rule's conditions will be denied.
-	// If no rules are defined, all requests will be denied.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default:=Deny
+	// +optional
+	DefaultAction *egv1a1.AuthorizationAction `json:"defaultAction,omitempty"`
+
+	// Rules defines a list of authorization rules.
+	// These rules are evaluated in order, the first matching rule will be applied,
+	// and the rest will be skipped.
+	//
+	// If no rules are defined, the default action will be applied to all requests.
 	//
 	// +optional
 	Rules []MCPRouteAuthorizationRule `json:"rules,omitempty"`
@@ -250,14 +257,23 @@ type MCPRouteAuthorization struct {
 // Reference: https://modelcontextprotocol.io/specification/draft/basic/authorization#scope-challenge-handling
 type MCPRouteAuthorizationRule struct {
 	// Source defines the authorization source for this rule.
+	// If not specified, the rule will match all sources.
 	//
-	// +kubebuilder:validation:Required
-	Source MCPAuthorizationSource `json:"source"`
+	// +kubebuilder:validation:Optional
+	Source *MCPAuthorizationSource `json:"source,omitempty"`
 
 	// Target defines the authorization target for this rule.
+	// If not specified, the rule will match all targets.
 	//
-	// +kubebuilder:validation:Required
-	Target MCPAuthorizationTarget `json:"target"`
+	// +kubebuilder:validation:Optional
+	Target *MCPAuthorizationTarget `json:"target,omitempty"`
+
+	// Action is the authorization decision for matching requests. If unspecified, defaults to Allow.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default:=Allow
+	// +optional
+	Action *egv1a1.AuthorizationAction `json:"action,omitempty"`
 }
 
 // MCPAuthorizationTarget defines the target of an authorization rule.

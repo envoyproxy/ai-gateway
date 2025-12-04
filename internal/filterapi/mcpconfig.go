@@ -64,6 +64,9 @@ type MCPRouteName = string
 
 // MCPRouteAuthorization defines the authorization configuration for a MCPRoute.
 type MCPRouteAuthorization struct {
+	// DefaultAction is the action to take when no rules match.
+	DefaultAction AuthorizationAction `json:"defaultAction"`
+
 	// Rules defines a list of authorization rules.
 	// Requests that match any rule and satisfy the rule's conditions will be allowed.
 	// Requests that do not match any rule or fail to satisfy the matched rule's conditions will be denied.
@@ -75,14 +78,28 @@ type MCPRouteAuthorization struct {
 	ResourceMetadataURL string `json:"resourceMetadataURL,omitempty"`
 }
 
+type AuthorizationAction string
+
+const (
+	// AuthorizationActionAllow is the action to allow the request.
+	AuthorizationActionAllow AuthorizationAction = "Allow"
+	// AuthorizationActionDeny is the action to deny the request.
+	AuthorizationActionDeny AuthorizationAction = "Deny"
+)
+
 // MCPRouteAuthorizationRule defines an authorization rule for MCPRoute based on the MCP authorization spec.
 // Reference: https://modelcontextprotocol.io/specification/draft/basic/authorization#scope-challenge-handling
 type MCPRouteAuthorizationRule struct {
+	// Action is the action to take when the rule matches.
+	Action AuthorizationAction `json:"action"`
+
 	// Source defines the authorization source for this rule.
-	Source MCPAuthorizationSource `json:"source"`
+	// If not specified, the rule will match all sources.
+	Source *MCPAuthorizationSource `json:"source,omitempty"`
 
 	// Target defines the authorization target for this rule.
-	Target MCPAuthorizationTarget `json:"target"`
+	// If not specified, the rule will match all targets.
+	Target *MCPAuthorizationTarget `json:"target,omitempty"`
 }
 
 type MCPAuthorizationTarget struct {
@@ -92,7 +109,7 @@ type MCPAuthorizationTarget struct {
 
 type MCPAuthorizationSource struct {
 	// JWT defines the JWT scopes required for this rule to match.
-	JWT JWTSource `json:"jwt,omitempty"`
+	JWT JWTSource `json:"jwt"`
 }
 
 type JWTSource struct {

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	appsv1 "k8s.io/api/apps/v1"
@@ -480,10 +481,13 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 				mcpRoute.Authorization.ResourceMetadataURL = buildResourceMetadataURL(&route.Spec.SecurityPolicy.OAuth.ProtectedResourceMetadata)
 			}
 
+			defaultAction := ptr.Deref(authorization.DefaultAction, egv1a1.AuthorizationActionDeny)
+			mcpRoute.Authorization.DefaultAction = filterapi.AuthorizationAction(defaultAction)
+
 			for _, rule := range authorization.Rules {
-				scopes := make([]string, len(rule.Source.JWT.Scopes))
-				for i, scope := range rule.Source.JWT.Scopes {
-					scopes[i] = string(scope)
+				action := ptr.Deref(rule.Action, egv1a1.AuthorizationActionAllow)
+				if mcpRoute.Authorization.Rules == nil {
+					mcpRoute.Authorization.Rules = []filterapi.MCPRouteAuthorizationRule{}
 				}
 
 				tools := make([]filterapi.ToolCall, len(rule.Target.Tools))
@@ -495,15 +499,21 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 					}
 				}
 
+				scopes := make([]string, len(rule.Source.JWT.Scopes))
+				for i, scope := range rule.Source.JWT.Scopes {
+					scopes[i] = string(scope)
+				}
+
 				mcpRule := filterapi.MCPRouteAuthorizationRule{
-					Source: filterapi.MCPAuthorizationSource{
+					Source: &filterapi.MCPAuthorizationSource{
 						JWT: filterapi.JWTSource{
 							Scopes: scopes,
 						},
 					},
-					Target: filterapi.MCPAuthorizationTarget{
+					Target: &filterapi.MCPAuthorizationTarget{
 						Tools: tools,
 					},
+					Action: filterapi.AuthorizationAction(action),
 				}
 				mcpRoute.Authorization.Rules = append(mcpRoute.Authorization.Rules, mcpRule)
 			}
