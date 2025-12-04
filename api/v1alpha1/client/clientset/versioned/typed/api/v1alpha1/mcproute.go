@@ -39,14 +39,14 @@ type MCPRouteInterface interface {
 	MCPRouteExpansion
 }
 
-// mCPRoutes implements MCPRouteInterface
-type mCPRoutes struct {
+// MCPRoutes implements MCPRouteInterface
+type MCPRoutes struct {
 	*gentype.ClientWithList[*apiv1alpha1.MCPRoute, *apiv1alpha1.MCPRouteList]
 }
 
 // newMCPRoutes returns a MCPRoutes
-func newMCPRoutes(c *AigatewayV1alpha1Client, namespace string) *mCPRoutes {
-	return &mCPRoutes{
+func newMCPRoutes(c *AigatewayV1alpha1Client, namespace string) *MCPRoutes {
+	return &MCPRoutes{
 		gentype.NewClientWithList[*apiv1alpha1.MCPRoute, *apiv1alpha1.MCPRouteList](
 			"mcproutes",
 			c.RESTClient(),
