@@ -8,7 +8,6 @@ package extproc
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 
@@ -77,23 +76,6 @@ func (m *modelsProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.Hea
 			},
 		},
 	}, nil
-}
-
-var errUnexpectedCall = errors.New("unexpected method call")
-
-// ProcessRequestBody implements [Processor.ProcessRequestBody].
-func (m *modelsProcessor) ProcessRequestBody(context.Context, *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
-	return nil, fmt.Errorf("%w: ProcessRequestBody", errUnexpectedCall)
-}
-
-// ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
-func (m *modelsProcessor) ProcessResponseHeaders(context.Context, *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
-	return nil, fmt.Errorf("%w: ProcessResponseHeaders", errUnexpectedCall)
-}
-
-// ProcessResponseBody implements [Processor.ProcessResponseBody].
-func (m *modelsProcessor) ProcessResponseBody(context.Context, *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
-	return nil, fmt.Errorf("%w: ProcessResponseBody", errUnexpectedCall)
 }
 
 func setHeader(headers *extprocv3.HeaderMutation, key, value string) {

@@ -17,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
 
-	cohere "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -29,7 +28,6 @@ import (
 var (
 	_ Processor                                 = &mockProcessor{}
 	_ translator.OpenAIChatCompletionTranslator = &mockTranslator{}
-	_ translator.OpenAIEmbeddingTranslator      = &mockEmbeddingTranslator{}
 )
 
 func newMockProcessor(_ *filterapi.RuntimeConfig, _ *slog.Logger) Processor {
@@ -300,48 +298,6 @@ func (m *mockMetrics) RequireRequestSuccess(t *testing.T) {
 
 var _ metrics.Metrics = &mockMetrics{}
 
-// mockEmbeddingTranslator implements [translator.OpenAIEmbeddingTranslator] for testing.
-type mockEmbeddingTranslator struct {
-	t                   *testing.T
-	expHeaders          map[string]string
-	expRequestBody      *openai.EmbeddingRequest
-	expResponseBody     *extprocv3.HttpBody
-	retHeaderMutation   []internalapi.Header
-	retBodyMutation     []byte
-	retUsedToken        metrics.TokenUsage
-	retResponseModel    string
-	responseErrorCalled bool
-	retErr              error
-}
-
-// RequestBody implements [translator.OpenAIEmbeddingTranslator].
-func (m *mockEmbeddingTranslator) RequestBody(_ []byte, body *openai.EmbeddingRequest, _ bool) (newHeaders []internalapi.Header, newBody []byte, err error) {
-	require.Equal(m.t, m.expRequestBody, body)
-	return m.retHeaderMutation, m.retBodyMutation, m.retErr
-}
-
-// ResponseHeaders implements [translator.OpenAIEmbeddingTranslator].
-func (m *mockEmbeddingTranslator) ResponseHeaders(headers map[string]string) (newHeaders []internalapi.Header, err error) {
-	require.Equal(m.t, m.expHeaders, headers)
-	return m.retHeaderMutation, m.retErr
-}
-
-// ResponseBody implements [translator.OpenAIEmbeddingTranslator].
-func (m *mockEmbeddingTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracing.EmbeddingsSpan) (newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error) {
-	if m.expResponseBody != nil {
-		buf, err := io.ReadAll(body)
-		require.NoError(m.t, err)
-		require.Equal(m.t, m.expResponseBody.Body, buf)
-	}
-	return m.retHeaderMutation, m.retBodyMutation, m.retUsedToken, m.retResponseModel, m.retErr
-}
-
-// ResponseError implements [translator.OpenAIEmbeddingTranslator].
-func (m *mockEmbeddingTranslator) ResponseError(map[string]string, io.Reader) (newHeaders []internalapi.Header, newBody []byte, err error) {
-	m.responseErrorCalled = true
-	return nil, nil, nil
-}
-
 // mockBackendAuthHandler implements [filterapi.BackendAuthHandler] for testing.
 type mockBackendAuthHandler struct{}
 
@@ -349,31 +305,3 @@ type mockBackendAuthHandler struct{}
 func (m *mockBackendAuthHandler) Do(context.Context, map[string]string, []byte) ([]internalapi.Header, error) {
 	return []internalapi.Header{{"foo", "mock-auth-handler"}}, nil
 }
-
-// mockBackendAuthHandlerError returns error on Do.
-type mockBackendAuthHandlerError struct{}
-
-func (m *mockBackendAuthHandlerError) Do(context.Context, map[string]string, []byte) ([]internalapi.Header, error) {
-	return nil, io.EOF
-}
-
-type mockRerankSpan struct {
-	endCalled    bool
-	endErrStatus int
-	endErrBody   string
-	recordCalled bool
-}
-
-func (m *mockRerankSpan) EndSpan() {
-	m.endCalled = true
-}
-
-func (m *mockRerankSpan) EndSpanOnError(status int, body []byte) {
-	m.endErrStatus = status
-	m.endErrBody = string(body)
-}
-
-func (m *mockRerankSpan) RecordResponse(_ *cohere.RerankV2Response) {
-	m.recordCalled = true
-}
-func (m *mockRerankSpan) RecordResponseChunk(*struct{}) {}

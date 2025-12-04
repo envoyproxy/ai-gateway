@@ -7,6 +7,7 @@ package extensionserver
 
 import (
 	"context"
+	"fmt"
 
 	egextension "github.com/envoyproxy/gateway/proto/extension"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
@@ -32,7 +33,7 @@ func (s *Server) PostRouteModify(_ context.Context, req *egextension.PostRouteMo
 	// If we found an InferencePool, configure the route with the ext_proc per-route config.
 	if inferencePools != nil {
 		if len(inferencePools) != 1 {
-			panic("BUG: at most one inferencepool can be referenced per route rule")
+			return nil, fmt.Errorf("BUG: at most one inferencepool can be referenced per route rule but found %d", len(inferencePools))
 		}
 		// Disable auto host rewrite to prevent Envoy from overriding the host header
 		// set by the endpoint picker. The endpoint picker sets the destination via

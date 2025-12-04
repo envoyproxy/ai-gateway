@@ -111,8 +111,8 @@ func TestMCPRouteOAuth(t *testing.T) {
 					Endpoint: fmt.Sprintf("%s/mcp", fwd.Address()),
 				}, nil)
 			if err != nil {
-				if strings.Contains(err.Error(), "401 Unauthorized") {
-					t.Logf("got expected 401 Unauthorized error: %v", err)
+				if strings.Contains(err.Error(), "Unauthorized") {
+					t.Logf("got expected Unauthorized error: %v", err)
 					return true
 				}
 				t.Logf("failed to connect to MCP server: %v", err)
@@ -150,7 +150,12 @@ func TestMCPRouteOAuth(t *testing.T) {
 		require.Contains(t, wwwAuthHeader, "Bearer", "WWW-Authenticate header should contain Bearer scheme")
 
 		// Validate WWW-Authenticate header contains resource_metadata parameter.
-		require.Contains(t, wwwAuthHeader, "resource_metadata", "WWW-Authenticate header should contain resource_metadata parameter")
+		require.Contains(t, wwwAuthHeader, `resource_metadata="https://foo.bar.com/.well-known/oauth-protected-resource/mcp"`,
+			"WWW-Authenticate header should contain resource_metadata parameter")
+		t.Logf("WWW-Authenticate header: %s", wwwAuthHeader)
+
+		// Validate WWW-Authenticate header contains scope parameter.
+		require.Contains(t, wwwAuthHeader, `scope="echo sum countdown"`, "WWW-Authenticate header should contain resource_metadata parameter")
 		t.Logf("WWW-Authenticate header: %s", wwwAuthHeader)
 	})
 
@@ -320,7 +325,12 @@ func TestMCPRouteOAuth(t *testing.T) {
 		require.Contains(t, wwwAuthHeader, "Bearer", "WWW-Authenticate header should contain Bearer scheme")
 
 		// Validate WWW-Authenticate header contains resource_metadata parameter.
-		require.Contains(t, wwwAuthHeader, "resource_metadata", "WWW-Authenticate header should contain resource_metadata parameter")
+		require.Contains(t, wwwAuthHeader, `resource_metadata="https://foo.bar.com/.well-known/oauth-protected-resource/mcp"`,
+			"WWW-Authenticate header should contain resource_metadata parameter")
+		t.Logf("WWW-Authenticate header: %s", wwwAuthHeader)
+
+		// Validate WWW-Authenticate header contains scope parameter.
+		require.Contains(t, wwwAuthHeader, `scope="echo sum countdown"`, "WWW-Authenticate header should contain resource_metadata parameter")
 		t.Logf("WWW-Authenticate header: %s", wwwAuthHeader)
 	})
 }

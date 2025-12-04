@@ -329,6 +329,11 @@ func buildWWWAuthenticateHeaderValue(metadata *aigv1a1.ProtectedResourceMetadata
 	// Add resource_metadata as per RFC 9728 Section 5.1.
 	headerValue = fmt.Sprintf(`%s, resource_metadata="%s"`, headerValue, resourceMetadataURL)
 
+	if len(metadata.ScopesSupported) > 0 {
+		// Add scope as per RFC 6750 Section 3.
+		headerValue = fmt.Sprintf(`%s, scope="%s"`, headerValue, strings.Join(metadata.ScopesSupported, " "))
+	}
+
 	return headerValue
 }
 

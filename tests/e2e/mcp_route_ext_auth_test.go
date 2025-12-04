@@ -95,8 +95,8 @@ func TestMCPRouteExtAuthz(t *testing.T) {
 					HTTPClient: deniedClient,
 				}, nil)
 			if err != nil {
-				if strings.Contains(err.Error(), "403 Forbidden") {
-					t.Logf("got expected 403 Forbidden error: %v", err)
+				if strings.Contains(err.Error(), "Forbidden") {
+					t.Logf("got expected Forbidden error: %v", err)
 					return true
 				}
 				t.Logf("failed to connect to MCP server: %v", err)
