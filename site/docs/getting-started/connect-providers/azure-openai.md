@@ -11,27 +11,27 @@ import vars from '../../\_vars.json';
 
 This guide will help you configure Envoy AI Gateway to work with Azure OpenAI's foundation models.
 
-There are two ways to do the [Azure OpenAI authentication](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#authentication): Microsoft Entra ID and API Key.
+Azure OpenAI supports two authentication methods:
 
-We will use Microsoft Entra ID to authenticate an application to use the Azure OpenAI service. You can obtain an access token using the OAuth 2.0 client credentials grant flow. This process involves registering the application in Microsoft Entra ID (formerly Azure Active Directory), configuring the appropriate permissions, and acquiring a token from the Microsoft identity platform. The access token is then used as proof of authorization in API requests to the Azure OpenAI endpoint.
+1. **API Key**: Simple authentication using an API key from your Azure OpenAI resource.
 
-For detailed steps, refer to the official [Microsoft documentation](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow#get-a-token).
+2. **Microsoft Entra ID**: OAuth-based authentication with two options:
+   - **Client Secret**: Uses client credentials (client ID, tenant ID, and secret)
+   - **Managed Identity / Workload Identity**: Uses Azure Managed Identity/Workload identity (recommended for production on Azure Kubernetes Clusters)
 
-API Key authentication is not supported yet.
+This guide focuses on Microsoft Entra ID authentication. For API Key authentication, refer to the [Azure OpenAI API documentation](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#authentication).
 
 ## Prerequisites
 
 Before you begin, you'll need:
 
-- Azure credentials with access to OpenAI service.
+- Azure OpenAI resource with model access enabled (e.g., "GPT-4o")
 - Basic setup completed from the [Basic Usage](../basic-usage.md) guide
 - Basic configuration removed as described in the [Advanced Configuration](./index.md) overview
 
-## Azure Credential Setup
-
-1. An Azure account with OpenAI service access enabled
-2. Your Azure tenant ID, client ID, and client secret key
-3. Enabled model access to "GPT-4o"
+For Microsoft Entra ID authentication, additionally:
+- Azure tenant ID, client ID, and either a client secret OR a configured Managed Identity
+- For AKS Workload Identity: See [Azure documentation](https://learn.microsoft.com/en-us/azure/aks/workload-identity-deploy-cluster) for infrastructure setup
 
 ## Configuration Steps
 
@@ -43,15 +43,37 @@ Before you begin, you'll need:
 
 ### 2. Configure Azure Credentials
 
+The `azure_openai.yaml` file includes examples for both Entra ID authentication methods. By default, it uses client secret authentication.
+
+#### Client Secret Authentication (Default)
+
 Edit the `azure_openai.yaml` file to replace these placeholder values:
 
 - `AZURE_TENANT_ID`: Your Azure tenant ID
 - `AZURE_CLIENT_ID`: Your Azure client ID
 - `AZURE_CLIENT_SECRET`: Your Azure client secret
 
+#### Managed Identity / Workload Identity Authentication
+
+To use Workload Identity instead, see the commented examples in `azure_openai.yaml`. And configure the service account annotations during Helm installation:
+
+```shell
+helm upgrade --install ai-gateway-controller envoyproxy/ai-gateway-helm \
+  --set controller.serviceAccount.annotations."azure\.workload\.identity/client-id"="<your-managed-identity-client-id>" \
+  --set controller.serviceAccount.annotations."azure\.workload\.identity/tenant-id"="<your-tenant-id>" \
+  --create-namespace \
+  -n envoy-ai-gateway-system
+
+# Add the required label:
+kubectl label serviceaccount ai-gateway-controller \
+  azure.workload.identity/use=true \
+  -n envoy-ai-gateway-system
+```
+
+Then use the Managed Identity `BackendSecurityPolicy` example from the YAML file (uncomment Option 2, comment out Option 1). Omitting the `CLIENT_ID`, `CLIENT_SECRET` and only specify `useManagedIdentity: true`. When configuring the identity on Azure your federated subject should look something like this `system:serviceaccount:envoy-ai-gateway-system:ai-gateway-controller`.
+
 :::caution Security Note
 Keep your Azure credentials secure and never commit them to version control.
-The credentials will be stored in Kubernetes secrets.
 :::
 
 ### 3. Apply Configuration

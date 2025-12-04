@@ -531,6 +531,16 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 			},
 		}, nil
 	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+		azureCred := backendSecurityPolicy.Spec.AzureCredentials
+		if azureCred.UseManagedIdentity != nil && *azureCred.UseManagedIdentity {
+			return &filterapi.BackendAuth{
+				AzureAuth: &filterapi.AzureAuth{
+					UseManagedIdentity: true,
+					ClientID:           azureCred.ClientID,
+					TenantID:           azureCred.TenantID,
+				},
+			}, nil
+		}
 		secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 		azureAccessToken, err := c.getSecretData(ctx, namespace, secretName, rotators.AzureAccessTokenKey)
 		if err != nil {
