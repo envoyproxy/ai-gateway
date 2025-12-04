@@ -65,8 +65,6 @@ func (r *ImageGenerationRecorder) RecordRequest(span trace.Span, req *openaisdk.
 func (r *ImageGenerationRecorder) RecordResponse(span trace.Span, resp *openaisdk.ImagesResponse) {
 	// Set output attributes.
 	var attrs []attribute.KeyValue
-	attrs = buildImageGenerationResponseAttributes(resp, r.traceConfig)
-
 	bodyString := openinference.RedactedValue
 	if !r.traceConfig.HideOutputs {
 		marshaled, err := json.Marshal(resp)
@@ -103,15 +101,6 @@ func buildImageGenerationRequestAttributes(_ *openaisdk.ImageGenerateParams, bod
 	if !config.HideLLMInvocationParameters {
 		attrs = append(attrs, attribute.String(openinference.LLMInvocationParameters, body))
 	}
-
-	return attrs
-}
-
-// buildImageGenerationResponseAttributes builds OpenInference attributes from the image generation response.
-func buildImageGenerationResponseAttributes(_ *openaisdk.ImagesResponse, _ *openinference.TraceConfig) []attribute.KeyValue {
-	attrs := []attribute.KeyValue{}
-
-	// No image-specific response attributes
 
 	return attrs
 }
