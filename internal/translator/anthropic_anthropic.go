@@ -74,7 +74,7 @@ func (a *anthropicToAnthropicTranslator) ResponseHeaders(_ map[string]string) (
 }
 
 // ResponseBody implements [AnthropicMessagesTranslator.ResponseBody].
-func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracing.MessageSpan) (
+func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracing.MessageSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	if a.stream {
@@ -84,7 +84,7 @@ func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body 
 			return nil, nil, tokenUsage, a.requestModel, fmt.Errorf("failed to read body: %w", err)
 		}
 		a.buffered = append(a.buffered, buf...)
-		tokenUsage = a.extractUsageFromBufferEvent()
+		tokenUsage = a.extractUsageFromBufferEvent(span)
 		// Use stored streaming response model, fallback to request model for non-compliant backends
 		responseModel = cmp.Or(a.streamingResponseModel, a.requestModel)
 		return
@@ -102,14 +102,16 @@ func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body 
 		int64(usage.CacheReadInputTokens),
 		int64(usage.CacheCreationInputTokens),
 	)
-
+	if span != nil {
+		span.RecordResponse(anthropicResp)
+	}
 	responseModel = cmp.Or(anthropicResp.Model, a.requestModel)
 	return nil, nil, tokenUsage, responseModel, nil
 }
 
 // extractUsageFromBufferEvent extracts the token usage from the buffered event.
 // It scans complete lines and returns the latest usage found in this batch.
-func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent() (tokenUsage metrics.TokenUsage) {
+func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent(s tracing.MessageSpan) (tokenUsage metrics.TokenUsage) {
 	for {
 		i := bytes.IndexByte(a.buffered, '\n')
 		if i == -1 {
@@ -123,6 +125,9 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent() (tokenUsa
 		eventUnion := &anthropic.MessagesStreamEvent{}
 		if err := json.Unmarshal(bytes.TrimPrefix(line, dataPrefix), eventUnion); err != nil {
 			continue
+		}
+		if s != nil {
+			s.RecordResponseChunk(eventUnion)
 		}
 
 		// See the code in MessageStreamEventUnion.AsAny for reference.
