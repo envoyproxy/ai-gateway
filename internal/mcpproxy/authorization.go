@@ -86,7 +86,6 @@ func compileAuthorization(auth *filterapi.MCPRouteAuthorization) (*compiledAutho
 }
 
 // authorizeRequest authorizes the request based on the given MCPRouteAuthorization configuration.
-
 func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, headers http.Header, backendName, toolName string, arguments any) (bool, []string) {
 	if authorization == nil {
 		return true, nil
