@@ -230,19 +230,75 @@ func buildResponseAttributes(resp *anthropic.MessagesResponse, config *openinfer
 // in memory.
 func convertSSEToResponse(chunks []*anthropic.MessagesStreamEvent) *anthropic.MessagesResponse {
 	var response anthropic.MessagesResponse
+	toolInputs := make(map[int]string)
+
 	for _, event := range chunks {
 		switch event.Type {
 		case anthropic.MessagesStreamEventTypeMessageStart:
 			response = *(*anthropic.MessagesResponse)(event.MessageStart)
+			// Ensure Content is initialized if nil.
+			if response.Content == nil {
+				response.Content = []anthropic.MessagesContentBlock{}
+			}
+
 		case anthropic.MessagesStreamEventTypeMessageDelta:
 			delta := event.MessageDelta
-			response.Usage = &delta.Usage
+			if response.Usage == nil {
+				response.Usage = &delta.Usage
+			} else {
+				// Usage is cumulative for output tokens in message_delta.
+				// Input tokens are usually in message_start.
+				response.Usage.OutputTokens = delta.Usage.OutputTokens
+			}
 			response.StopReason = &delta.Delta.StopReason
 			response.StopSequence = &delta.Delta.StopSequence
+
 		case anthropic.MessagesStreamEventTypeContentBlockStart:
+			idx := event.ContentBlockStart.Index
+			// Grow slice if needed.
+			if idx >= len(response.Content) {
+				newContent := make([]anthropic.MessagesContentBlock, idx+1)
+				copy(newContent, response.Content)
+				response.Content = newContent
+			}
+			response.Content[idx] = event.ContentBlockStart.ContentBlock
+
 		case anthropic.MessagesStreamEventTypeContentBlockDelta:
+			idx := event.ContentBlockDelta.Index
+			if idx < len(response.Content) {
+				block := &response.Content[idx]
+				delta := event.ContentBlockDelta.Delta
+
+				if block.Text != nil && delta.Text != "" {
+					block.Text.Text += delta.Text
+				}
+				if block.Tool != nil && delta.PartialJSON != "" {
+					toolInputs[idx] += delta.PartialJSON
+				}
+				if block.Thinking != nil {
+					if delta.Thinking != "" {
+						block.Thinking.Thinking += delta.Thinking
+					}
+					if delta.Signature != "" {
+						block.Thinking.Signature = delta.Signature
+					}
+				}
+			}
+
 		case anthropic.MessagesStreamEventTypeContentBlockStop:
+			idx := event.ContentBlockStop.Index
+			if jsonStr, ok := toolInputs[idx]; ok {
+				if idx < len(response.Content) && response.Content[idx].Tool != nil {
+					var input map[string]any
+					if err := json.Unmarshal([]byte(jsonStr), &input); err == nil {
+						response.Content[idx].Tool.Input = input
+					}
+				}
+				delete(toolInputs, idx)
+			}
+
 		case anthropic.MessagesStreamEventTypeMessageStop:
+			// Nothing to do.
 		}
 	}
 	return &response

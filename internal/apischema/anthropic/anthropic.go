@@ -340,8 +340,9 @@ type (
 	// MessagesContentBlock represents a block of content in the Anthropic Messages API response.
 	// https://docs.claude.com/en/api/messages#response-content
 	MessagesContentBlock struct {
-		Text *TextBlock
-		Tool *ToolUseBlock
+		Text     *TextBlock
+		Tool     *ToolUseBlock
+		Thinking *ThinkingBlock
 		// TODO when we need it for observability, etc.
 	}
 
@@ -356,6 +357,12 @@ type (
 		ID    string         `json:"id"`
 		Name  string         `json:"name"`
 		Input map[string]any `json:"input"`
+	}
+
+	ThinkingBlock struct {
+		Type      string `json:"type"` // Always "thinking".
+		Thinking  string `json:"thinking"`
+		Signature string `json:"signature,omitempty"`
 	}
 )
 
@@ -378,6 +385,13 @@ func (m *MessagesContentBlock) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("failed to unmarshal tool use block: %w", err)
 		}
 		m.Tool = &toolUseBlock
+		return nil
+	case "thinking":
+		var thinkingBlock ThinkingBlock
+		if err := json.Unmarshal(data, &thinkingBlock); err != nil {
+			return fmt.Errorf("failed to unmarshal thinking block: %w", err)
+		}
+		m.Thinking = &thinkingBlock
 		return nil
 	default:
 		// TODO add others when we need it for observability, etc.
