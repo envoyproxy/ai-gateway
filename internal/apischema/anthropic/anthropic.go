@@ -341,13 +341,21 @@ type (
 	// https://docs.claude.com/en/api/messages#response-content
 	MessagesContentBlock struct {
 		Text *TextBlock
+		Tool *ToolUseBlock
 		// TODO when we need it for observability, etc.
 	}
 
 	TextBlock struct {
-		Type string `json:"type"`
+		Type string `json:"type"` // Always "text".
 		Text string `json:"text"`
 		// TODO: citation?
+	}
+
+	ToolUseBlock struct {
+		Type  string         `json:"type"` // Always "tool_use".
+		ID    string         `json:"id"`
+		Name  string         `json:"name"`
+		Input map[string]any `json:"input"`
 	}
 )
 
@@ -363,6 +371,13 @@ func (m *MessagesContentBlock) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("failed to unmarshal text block: %w", err)
 		}
 		m.Text = &textBlock
+		return nil
+	case "tool_use":
+		var toolUseBlock ToolUseBlock
+		if err := json.Unmarshal(data, &toolUseBlock); err != nil {
+			return fmt.Errorf("failed to unmarshal tool use block: %w", err)
+		}
+		m.Tool = &toolUseBlock
 		return nil
 	default:
 		// TODO add others when we need it for observability, etc.
@@ -400,8 +415,6 @@ type Usage struct {
 	InputTokens float64 `json:"input_tokens"`
 	// The number of output tokens which were used.
 	OutputTokens float64 `json:"output_tokens"`
-
-	// TODO: there are other fields that are currently not used in the project.
 }
 
 // MessagesStreamEvent represents a single event in the streaming response from the Anthropic Messages API.

@@ -10,7 +10,6 @@ import (
 	"fmt"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
-	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -98,8 +97,8 @@ func (r *MessageRecorder) RecordResponse(span trace.Span, resp *anthropic.Messag
 // See: openinference-instrumentation-openai _request_attributes_extractor.py.
 type llmInvocationParameters struct {
 	anthropic.MessagesRequest
-	Messages []openai.ChatCompletionMessageParamUnion `json:"messages,omitempty"`
-	Tools    []openai.Tool                            `json:"tools,omitempty"`
+	Messages []anthropic.MessageParam `json:"messages,omitempty"`
+	Tools    []anthropic.Tool         `json:"tools,omitempty"`
 }
 
 // buildRequestAttributes builds OpenInference attributes from the request.
@@ -129,18 +128,19 @@ func buildRequestAttributes(req *anthropic.MessagesRequest, body string, config 
 	if !config.HideInputs && !config.HideInputMessages {
 		for i, msg := range req.Messages {
 			role := msg.Role
-			attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(i, openinference.MessageRole), role))
+			attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(i, openinference.MessageRole), string(role)))
 			switch content := msg.Content; {
 			case content.Text != "":
+				maybeRedacted := content.Text
 				if config.HideInputText {
-					content = openinference.RedactedValue
+					maybeRedacted = openinference.RedactedValue
 				}
-				attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(i, openinference.MessageContent), content))
+				attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(i, openinference.MessageContent), maybeRedacted))
 			case content.Array != nil:
-				for j, part := range content {
+				for j, param := range content.Array {
 					switch {
-					case part.OfText != nil:
-						text := part.OfText.Text
+					case param.Text != nil:
+						text := param.Text.Text
 						if config.HideInputText {
 							text = openinference.RedactedValue
 						}
@@ -148,23 +148,7 @@ func buildRequestAttributes(req *anthropic.MessagesRequest, body string, config 
 							attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), text),
 							attribute.String(openinference.InputMessageContentAttribute(i, j, "type"), "text"),
 						)
-					case part.OfImageURL != nil && part.OfImageURL.ImageURL.URL != "":
-						if !config.HideInputImages {
-							urlKey := openinference.InputMessageContentAttribute(i, j, "image.image.url")
-							typeKey := openinference.InputMessageContentAttribute(i, j, "type")
-							url := part.OfImageURL.ImageURL.URL
-							if isBase64URL(url) && len(url) > config.Base64ImageMaxLength {
-								url = openinference.RedactedValue
-							}
-							attrs = append(attrs,
-								attribute.String(urlKey, url),
-								attribute.String(typeKey, "image"),
-							)
-						}
-					case part.OfInputAudio != nil:
-						// Skip recording audio content attributes to match Python OpenInference behavior.
-						// Audio data is already included in input.value as part of the full request.
-					case part.OfFile != nil:
+					default:
 						// TODO: skip file content for now.
 					}
 				}
@@ -180,5 +164,56 @@ func buildRequestAttributes(req *anthropic.MessagesRequest, body string, config 
 			)
 		}
 	}
+	return attrs
+}
+
+func buildResponseAttributes(resp *anthropic.MessagesResponse, config *openinference.TraceConfig) []attribute.KeyValue {
+	attrs := []attribute.KeyValue{
+		attribute.String(openinference.LLMModelName, resp.Model),
+	}
+
+	if !config.HideOutputs {
+		attrs = append(attrs, attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON))
+	}
+
+	// Note: compound match here is from Python OpenInference OpenAI config.py.
+	role := resp.Role
+	if !config.HideOutputs && !config.HideOutputMessages {
+		for i, content := range resp.Content {
+			attrs = append(attrs, attribute.String(openinference.OutputMessageAttribute(i, openinference.MessageRole), string(role)))
+
+			switch {
+			case content.Text != nil:
+				txt := content.Text.Text
+				if config.HideOutputText {
+					txt = openinference.RedactedValue
+				}
+				attrs = append(attrs, attribute.String(openinference.OutputMessageAttribute(i, openinference.MessageContent), txt))
+			case content.Tool != nil:
+				tool := content.Tool
+				attrs = append(attrs,
+					attribute.String(openinference.OutputMessageToolCallAttribute(i, 0, openinference.ToolCallID), tool.ID),
+					attribute.String(openinference.OutputMessageToolCallAttribute(i, 0, openinference.ToolCallFunctionName), tool.Name),
+				)
+				inputStr, err := json.Marshal(tool.Input)
+				if err == nil {
+					attrs = append(attrs,
+						attribute.String(openinference.OutputMessageToolCallAttribute(i, 0, openinference.ToolCallFunctionArguments), string(inputStr)),
+					)
+				}
+			}
+		}
+	}
+
+	// Token counts are considered metadata and are still included even when output content is hidden.
+	u := resp.Usage
+	// Calculate total input tokens as per Anthropic API documentation
+	totalInputTokens := u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens
+	attrs = append(attrs,
+		attribute.Int(openinference.LLMTokenCountPrompt, int(totalInputTokens)),
+		attribute.Int(openinference.LLMTokenCountPromptCacheHit, int(u.CacheCreationInputTokens+u.CacheReadInputTokens)),
+		attribute.Int(openinference.LLMTokenCountCompletion, int(u.OutputTokens)),
+		attribute.Int(openinference.LLMTokenCountTotal, int(totalInputTokens+u.OutputTokens)),
+	)
 	return attrs
 }

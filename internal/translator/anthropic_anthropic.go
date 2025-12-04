@@ -13,10 +13,9 @@ import (
 	"io"
 	"strconv"
 
-	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/tidwall/sjson"
 
-	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
@@ -40,7 +39,7 @@ type anthropicToAnthropicTranslator struct {
 }
 
 // RequestBody implements [AnthropicMessagesTranslator.RequestBody].
-func (a *anthropicToAnthropicTranslator) RequestBody(original []byte, body *anthropicschema.MessagesRequest, forceBodyMutation bool) (
+func (a *anthropicToAnthropicTranslator) RequestBody(original []byte, body *anthropic.MessagesRequest, forceBodyMutation bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	a.stream = body.Stream
@@ -92,15 +91,16 @@ func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body 
 	}
 
 	// Parse the Anthropic response to extract token usage.
-	anthropicResp := &anthropic.Message{}
+	anthropicResp := &anthropic.MessagesResponse{}
 	if err := json.NewDecoder(body).Decode(anthropicResp); err != nil {
 		return nil, nil, tokenUsage, responseModel, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
+	usage := anthropicResp.Usage
 	tokenUsage = extractTokenUsageFromAnthropic(
-		anthropicResp.Usage.InputTokens,
-		anthropicResp.Usage.OutputTokens,
-		anthropicResp.Usage.CacheReadInputTokens,
-		anthropicResp.Usage.CacheCreationInputTokens,
+		int64(usage.InputTokens),
+		int64(usage.OutputTokens),
+		int64(usage.CacheReadInputTokens),
+		int64(usage.CacheCreationInputTokens),
 	)
 
 	responseModel = cmp.Or(internalapi.ResponseModel(anthropicResp.Model), a.requestModel)
@@ -120,7 +120,7 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent() (tokenUsa
 		if !bytes.HasPrefix(line, dataPrefix) {
 			continue
 		}
-		eventUnion := &anthropic.MessageStreamEventUnion{}
+		eventUnion := &anthropic.MessagesStreamEventMessageDelta{}
 		if err := json.Unmarshal(bytes.TrimPrefix(line, dataPrefix), eventUnion); err != nil {
 			continue
 		}
