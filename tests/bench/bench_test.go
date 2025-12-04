@@ -6,7 +6,7 @@
 // 1. Build AIGW
 //  	make clean build.aigw
 // 2. Run the bench test
-//   	go test -timeout=15m -run='^$$' -bench=. -benchmem -benchtime=1x ./tests/bench/...
+//   	go test -timeout=15m -run='^$' -bench=. ./tests/bench/...
 
 package bench
 
@@ -14,7 +14,8 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"os"
+	"net"
+	"net/url"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -23,8 +24,8 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/tests/internal/testenvironment"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testmcp"
 )
 
@@ -34,13 +35,13 @@ const (
 	aigwPort      = 1975
 )
 
+var aigwBinary = fmt.Sprintf("../../out/aigw-%s-%s", runtime.GOOS, runtime.GOARCH)
+
 type MCPBenchCase struct {
-	Name         string
-	CheckPorts   []int
-	Port         int
-	Binary       string
-	Args         []string
-	ReadyMessage string
+	Name        string
+	ProxyBinary string
+	ProxyArgs   []string
+	TestAddr    string
 }
 
 // setupBenchmark sets up the client connection.
@@ -61,14 +62,30 @@ func setupBenchmark(b *testing.B) []MCPBenchCase {
 
 	return []MCPBenchCase{
 		{
-			Name: "BaseLine",
-			Port: aigwPort,
-			Args: []string{"run", "./aigw.yaml"},
+			Name:     "Baseline_NoProxy",
+			TestAddr: fmt.Sprintf("http://localhost:%d", mcpServerPort),
 		},
 		{
-			Name: "Iterations_100",
-			Port: aigwPort,
-			Args: []string{"run", "./aigw.yaml", "--mcp-session-encryption-iterations=100"},
+			Name:        "EAIGW_Default",
+			TestAddr:    fmt.Sprintf("http://localhost:%d/mcp", aigwPort),
+			ProxyBinary: aigwBinary,
+			ProxyArgs:   []string{"run", "./aigw.yaml"},
+		},
+		{
+			Name:        "EAIGW_Config_100",
+			TestAddr:    fmt.Sprintf("http://localhost:%d/mcp", aigwPort),
+			ProxyBinary: aigwBinary,
+			ProxyArgs:   []string{"run", "./aigw.yaml", "--mcp-session-encryption-iterations=100"},
+		},
+		{
+			Name:        "EAIGW_Inline_100",
+			TestAddr:    fmt.Sprintf("http://localhost:%d/mcp", aigwPort),
+			ProxyBinary: aigwBinary,
+			ProxyArgs: []string{
+				"run",
+				"--mcp-session-encryption-iterations=100",
+				`--mcp-json={"mcpServers":{"aigw":{"type":"http","url":"http://localhost:8080/mcp"}}}`,
+			},
 		},
 	}
 }
@@ -76,33 +93,14 @@ func setupBenchmark(b *testing.B) []MCPBenchCase {
 func BenchmarkMCP(b *testing.B) {
 	cases := setupBenchmark(b)
 	for _, tc := range cases {
-		if tc.Binary == "" {
-			tc.Binary = fmt.Sprintf("../../out/aigw-%s-%s", runtime.GOOS, runtime.GOARCH)
-		}
-		if len(tc.Args) == 0 {
-			tc.Args = []string{"run", "../aigw.yaml"}
-		}
-		if len(tc.CheckPorts) == 0 {
-			tc.CheckPorts = []int{9901, 1061}
-		}
-		if tc.ReadyMessage == "" {
-			tc.ReadyMessage = "Envoy AI Gateway"
+		var proxy *exec.Cmd
+		if tc.ProxyBinary != "" {
+			proxy = startProxy(b, &tc)
 		}
 
 		b.Run(tc.Name, func(b *testing.B) {
-			c := startProxy(b, &tc)
-			defer func() {
-				if c.Cancel != nil {
-					_ = c.Cancel()
-				}
-				if c.Process != nil {
-					_ = syscall.Kill(-c.Process.Pid, syscall.SIGKILL)
-				}
-			}()
 			mcpClient := mcp.NewClient(&mcp.Implementation{Name: "bench-http-client", Version: "0.1.0"}, nil)
-			cs, err := mcpClient.Connect(b.Context(), &mcp.StreamableClientTransport{
-				Endpoint: fmt.Sprintf("http://localhost:%d/mcp", tc.Port),
-			}, nil)
+			cs, err := mcpClient.Connect(b.Context(), &mcp.StreamableClientTransport{Endpoint: tc.TestAddr}, nil)
 			if err != nil {
 				b.Fatalf("Failed to connect server: %v", err)
 			}
@@ -143,21 +141,27 @@ func BenchmarkMCP(b *testing.B) {
 				}
 			}
 		})
+
+		if proxy != nil && proxy.Process != nil {
+			_ = syscall.Kill(-proxy.Process.Pid, syscall.SIGKILL)
+		}
 	}
 }
 
 func startProxy(b testing.TB, tc *MCPBenchCase) *exec.Cmd {
-	cmd := exec.CommandContext(b.Context(), tc.Binary, tc.Args...) // nolint: gosec
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true, // put into new process group so we can kill the entire process tree (and children)
-	}
-	devnull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
-	if err != nil {
-		b.Fatalf("open %s: %v", os.DevNull, err)
-	}
-	b.Cleanup(func() {
-		_ = devnull.Close()
-	})
-	testenvironment.StartAndAwaitReady(b, cmd, devnull, devnull, tc.ReadyMessage)
+	addr, err := url.Parse(tc.TestAddr)
+	require.NoError(b, err)
+
+	cmd := exec.CommandContext(b.Context(), tc.ProxyBinary, tc.ProxyArgs...) // nolint: gosec
+	// put into new process group so we can kill the entire process tree (and children)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	require.NoError(b, cmd.Start())
+
+	// Wait until we can connect to the proxy
+	require.Eventually(b, func() bool {
+		_, err = (&net.Dialer{}).DialContext(b.Context(), "tcp", addr.Host)
+		return err == nil
+	}, 30*time.Second, 500*time.Millisecond, "proxy %s did not become ready in time", tc.Name)
+
 	return cmd
 }
