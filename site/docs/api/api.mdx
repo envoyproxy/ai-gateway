@@ -1811,7 +1811,7 @@ References:
   name="scopesSupported"
   type="string array"
   required="false"
-  description="ScopesSupported is a list of OAuth 2.0 scopes that the resource server supports."
+  description="ScopesSupported defines the minimal set of scopes required for the basic functionality of the MCPRoute.<br />It should avoid broad or overly permissive scopes to prevent clients from requesting tokens with excessive privileges.<br />If an operation requires additional scopes that are not present in the access token, the client will receive a<br />403 Forbidden response that includes the required scopes in the `scope` field of the `WWW-Authenticate` header.<br />This enables incremental privilege elevation through targeted `WWW-Authenticate: scope=`...`` challenges when<br />privileged operations are first attempted."
 /><ApiField
   name="resourceSigningAlgValuesSupported"
   type="string array"
