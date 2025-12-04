@@ -80,7 +80,7 @@ func TestAuthorizeRequest(t *testing.T) {
 							Tools: []filterapi.ToolCall{{
 								Backend:   "backend1",
 								ToolName:  "tool1",
-								Arguments: strPtr(`args.mode in ["fast", "slow"] && args.user.matches("u-[0-9]+") && args.debug == true`),
+								Condition: strPtr(`args.mode in ["fast", "slow"] && args.user.matches("u-[0-9]+") && args.debug == true`),
 							}},
 						},
 					},
@@ -111,7 +111,7 @@ func TestAuthorizeRequest(t *testing.T) {
 							Tools: []filterapi.ToolCall{{
 								Backend:   "backend1",
 								ToolName:  "tool1",
-								Arguments: strPtr(`int(args.count) >= 40 && int(args.count) < 50`),
+								Condition: strPtr(`int(args.count) >= 40 && int(args.count) < 50`),
 							}},
 						},
 					},
@@ -138,7 +138,7 @@ func TestAuthorizeRequest(t *testing.T) {
 							Tools: []filterapi.ToolCall{{
 								Backend:   "backend1",
 								ToolName:  "tool1",
-								Arguments: strPtr(`args["payload"] != null && args["payload"]["kind"] == "test" && args["payload"]["value"] == 123`),
+								Condition: strPtr(`args["payload"] != null && args["payload"]["kind"] == "test" && args["payload"]["value"] == 123`),
 							}},
 						},
 					},
@@ -192,7 +192,7 @@ func TestAuthorizeRequest(t *testing.T) {
 							Tools: []filterapi.ToolCall{{
 								Backend:   "backend1",
 								ToolName:  "tool1",
-								Arguments: strPtr(`args.mode in ["fast", "slow"]`),
+								Condition: strPtr(`args.mode in ["fast", "slow"]`),
 							}},
 						},
 					},
@@ -221,7 +221,7 @@ func TestAuthorizeRequest(t *testing.T) {
 							Tools: []filterapi.ToolCall{{
 								Backend:   "backend1",
 								ToolName:  "tool1",
-								Arguments: strPtr(`args.nonExistingField in ["fast", "slow"]`),
+								Condition: strPtr(`args.nonExistingField in ["fast", "slow"]`),
 							}},
 						},
 					},
@@ -250,7 +250,7 @@ func TestAuthorizeRequest(t *testing.T) {
 							Tools: []filterapi.ToolCall{{
 								Backend:   "backend1",
 								ToolName:  "tool1",
-								Arguments: strPtr(`args.mode`),
+								Condition: strPtr(`args.mode`),
 							}},
 						},
 					},
@@ -279,7 +279,7 @@ func TestAuthorizeRequest(t *testing.T) {
 							Tools: []filterapi.ToolCall{{
 								Backend:   "backend1",
 								ToolName:  "tool1",
-								Arguments: strPtr(`invalid syntax here`),
+								Condition: strPtr(`invalid syntax here`),
 							}},
 						},
 					},
@@ -309,7 +309,7 @@ func TestAuthorizeRequest(t *testing.T) {
 							Tools: []filterapi.ToolCall{{
 								Backend:   "backend1",
 								ToolName:  "tool1",
-								Arguments: strPtr(`args["mode"] == "fast"`),
+								Condition: strPtr(`args["mode"] == "fast"`),
 							}},
 						},
 					},
@@ -444,7 +444,7 @@ func TestAuthorizeRequest(t *testing.T) {
 							Tools: []filterapi.ToolCall{{
 								Backend:   "backend1",
 								ToolName:  "listFiles",
-								Arguments: strPtr(`args.folder == "restricted"`),
+								Condition: strPtr(`args.folder == "restricted"`),
 							}},
 						},
 					},
@@ -482,7 +482,7 @@ func TestAuthorizeRequest(t *testing.T) {
 							Tools: []filterapi.ToolCall{{
 								Backend:   "backend1",
 								ToolName:  "listFiles",
-								Arguments: strPtr(`args.folder == "restricted"`),
+								Condition: strPtr(`args.folder == "restricted"`),
 							}},
 						},
 					},
@@ -612,7 +612,7 @@ func TestCompileAuthorizationInvalidExpression(t *testing.T) {
 					Tools: []filterapi.ToolCall{{
 						Backend:   "backend1",
 						ToolName:  "tool1",
-						Arguments: strPtr("args."),
+						Condition: strPtr("args."),
 					}},
 				},
 			},

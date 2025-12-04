@@ -651,16 +651,16 @@ spec:
                                     description: ToolCall represents a tool call in
                                       the MCP authorization target.
                                     properties:
-                                      arguments:
-                                        description: |-
-                                          Arguments is a CEL expression that must evaluate to true for the rule to match.
-                                          The expression is evaluated with a single variable "args" bound to the tool call arguments as a dynamic object.
-                                          Guard against missing fields with null checks (e.g., args["foo"] != null && args["foo"]["bar"] == "val").
-                                        maxLength: 4096
-                                        type: string
                                       backend:
                                         description: Backend is the name of the backend
                                           this tool belongs to.
+                                        type: string
+                                      condition:
+                                        description: |-
+                                          Condition is a CEL expression that must evaluate to true for the rule to match.
+                                          The expression is evaluated with a single variable "args" bound to the tool call arguments as a dynamic object.
+                                          Guard against missing fields with null checks (e.g., args["foo"] != null && args["foo"]["bar"] == "val").
+                                        maxLength: 4096
                                         type: string
                                       toolName:
                                         description: ToolName is the name of the tool.

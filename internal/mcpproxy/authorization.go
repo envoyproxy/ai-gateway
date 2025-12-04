@@ -69,15 +69,15 @@ func compileAuthorization(auth *filterapi.MCPRouteAuthorization) (*compiledAutho
 					Backend:  tool.Backend,
 					ToolName: tool.ToolName,
 				}
-				if tool.Arguments != nil && strings.TrimSpace(*tool.Arguments) != "" {
-					expr := strings.TrimSpace(*tool.Arguments)
+				if tool.Condition != nil && strings.TrimSpace(*tool.Condition) != "" {
+					expr := strings.TrimSpace(*tool.Condition)
 					ast, issues := env.Compile(expr)
 					if issues != nil && issues.Err() != nil {
-						return nil, fmt.Errorf("failed to compile arguments CEL for tool %s/%s: %w", tool.Backend, tool.ToolName, issues.Err())
+						return nil, fmt.Errorf("failed to compile condition CEL for tool %s/%s: %w", tool.Backend, tool.ToolName, issues.Err())
 					}
 					program, err := env.Program(ast, cel.CostLimit(10000), cel.EvalOptions(cel.OptOptimize))
 					if err != nil {
-						return nil, fmt.Errorf("failed to build arguments CEL program for tool %s/%s: %w", tool.Backend, tool.ToolName, err)
+						return nil, fmt.Errorf("failed to build condition CEL program for tool %s/%s: %w", tool.Backend, tool.ToolName, err)
 					}
 					ct.Expression = expr
 					ct.program = program
@@ -207,7 +207,7 @@ func (m *MCPProxy) toolMatches(backendName, toolName string, tools []compiledToo
 
 		result, _, err := t.program.Eval(map[string]any{"args": args})
 		if err != nil {
-			m.l.Error("failed to evaluate arguments CEL", slog.String("backend", t.Backend), slog.String("tool", t.ToolName), slog.String("error", err.Error()))
+			m.l.Error("failed to evaluate condition CEL", slog.String("backend", t.Backend), slog.String("tool", t.ToolName), slog.String("error", err.Error()))
 			continue
 		}
 
@@ -221,7 +221,7 @@ func (m *MCPProxy) toolMatches(backendName, toolName string, tools []compiledToo
 				return true
 			}
 		default:
-			m.l.Error("arguments CEL did not return a boolean", slog.String("backend", t.Backend), slog.String("tool", t.ToolName), slog.String("expression", t.Expression))
+			m.l.Error("condition CEL did not return a boolean", slog.String("backend", t.Backend), slog.String("tool", t.ToolName), slog.String("expression", t.Expression))
 		}
 	}
 	// If no matching tool entry or no arguments matched, fail.

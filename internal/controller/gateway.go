@@ -495,7 +495,7 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 					tools[i] = filterapi.ToolCall{
 						Backend:   tool.Backend,
 						ToolName:  tool.ToolName,
-						Arguments: tool.Arguments,
+						Condition: tool.Condition,
 					}
 				}
 
