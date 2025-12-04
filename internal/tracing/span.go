@@ -6,6 +6,7 @@
 package tracing
 
 import (
+	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	openaisdk "github.com/openai/openai-go/v2"
 	"go.opentelemetry.io/otel/trace"
 
@@ -80,6 +81,7 @@ type (
 	embeddingsSpan      = responseSpan[openai.EmbeddingResponse, struct{}]
 	imageGenerationSpan = responseSpan[openaisdk.ImagesResponse, struct{}]
 	rerankSpan          = responseSpan[cohereschema.RerankV2Response, struct{}]
+	messageSpan         = responseSpan[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamEvent]
 )
 
 var (

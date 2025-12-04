@@ -8,8 +8,10 @@ package anthropic
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -60,7 +62,7 @@ func (r *MessageRecorder) RecordRequest(span trace.Span, chatReq *anthropic.Mess
 }
 
 // RecordResponseChunks implements the same method as defined in tracing.MessageRecorder.
-func (r *MessageRecorder) RecordResponseChunks(span trace.Span, chunks []*anthropic.MessagesStreamEventMessageDelta) {
+func (r *MessageRecorder) RecordResponseChunks(span trace.Span, chunks []*anthropic.MessagesStreamEvent) {
 	if len(chunks) > 0 {
 		span.AddEvent("First Token Stream Event")
 	}
@@ -216,4 +218,89 @@ func buildResponseAttributes(resp *anthropic.MessagesResponse, config *openinfer
 		attribute.Int(openinference.LLMTokenCountTotal, int(totalInputTokens+u.OutputTokens)),
 	)
 	return attrs
+}
+
+// convertSSEToJSON converts a complete SSE stream to a single JSON-encoded
+// openai.ChatCompletionResponse. This will not serialize zero values including
+// fields whose values are zero or empty, or nested objects where all fields
+// have zero values.
+//
+// TODO: This can be refactored in "streaming" in stateful way without asking for all chunks at once.
+// That would reduce a slice allocation for events.
+// TODO Or, even better, we can make the chunk version of buildResponseAttributes which accepts a single
+// openai.ChatCompletionResponseChunk one at a time, and then we won't need to accumulate all chunks
+// in memory.
+func convertSSEToJSON(chunks []*anthropic.MessagesStreamEvent) *anthropic.MessagesResponse {
+	var (
+		content      strings.Builder
+		usage        *anthropic.Usage
+		role         string
+		obfuscation  string
+		finishReason anthropic.StopReason
+	)
+
+	for _, chunk := range chunks {
+
+		// Accumulate content, role, and annotations from delta (assuming single choice at index 0).
+		if len(chunk.Choices) > 0 {
+			if chunk.Choices[0].Delta != nil {
+				if chunk.Choices[0].Delta.Content != nil {
+					content.WriteString(*chunk.Choices[0].Delta.Content)
+				}
+				if chunk.Choices[0].Delta.Role != "" {
+					role = chunk.Choices[0].Delta.Role
+				}
+				if as := chunk.Choices[0].Delta.Annotations; as != nil && len(*as) > 0 {
+					annotations = append(annotations, *as...)
+				}
+			}
+			// Capture finish_reason from any chunk that has it.
+			if chunk.Choices[0].FinishReason != "" {
+				finishReason = chunk.Choices[0].FinishReason
+			}
+		}
+
+		// Capture usage from the last chunk that has it.
+		if chunk.Usage != nil {
+			usage = chunk.Usage
+		}
+
+		// Capture obfuscation from the last chunk that has it.
+		if chunk.Obfuscation != "" {
+			obfuscation = chunk.Obfuscation
+		}
+	}
+
+	// Build the response as a chunk with accumulated content.
+	contentStr := content.String()
+
+	// Default to "stop" if no finish reason was captured.
+	if finishReason == "" {
+		finishReason = openai.ChatCompletionChoicesFinishReasonStop
+	}
+
+	// Create a ChatCompletionResponse with all accumulated content.
+	response := &anthropic.MessagesResponse{
+		//ID:                firstChunk.ID,
+		//Object:            "chat.completion.chunk", // Keep chunk object type for streaming.
+		//Created:           firstChunk.Created,
+		//Model:             firstChunk.Model,
+		//ServiceTier:       firstChunk.ServiceTier,
+		//SystemFingerprint: firstChunk.SystemFingerprint,
+		//Obfuscation:       obfuscation,
+		//Choices: []openai.ChatCompletionResponseChoice{{
+		//	Message: openai.ChatCompletionResponseChoiceMessage{
+		//		Role:        role,
+		//		Content:     &contentStr,
+		//		Annotations: annotationsPtr,
+		//	},
+		//	Index:        0,
+		//	FinishReason: finishReason,
+		//}},
+	}
+
+	if usage != nil {
+		response.Usage = usage
+	}
+	return response
 }

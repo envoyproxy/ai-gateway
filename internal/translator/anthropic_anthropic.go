@@ -120,7 +120,7 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent() (tokenUsa
 		if !bytes.HasPrefix(line, dataPrefix) {
 			continue
 		}
-		eventUnion := &anthropic.MessagesStreamEventMessageDelta{}
+		eventUnion := &anthropic.MessagesStreamEvent{}
 		if err := json.Unmarshal(bytes.TrimPrefix(line, dataPrefix), eventUnion); err != nil {
 			continue
 		}
@@ -128,26 +128,27 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent() (tokenUsa
 		// See the code in MessageStreamEventUnion.AsAny for reference.
 		switch eventUnion.Type {
 		case "message_start":
+			message := eventUnion.MessageStart
 			// Message only valid in message_start events.
-			if eventUnion.Message.Model != "" {
+			if message.Model != "" {
 				// Store the response model for future batches
-				a.streamingResponseModel = internalapi.ResponseModel(eventUnion.Message.Model)
+				a.streamingResponseModel = internalapi.ResponseModel(message.Model)
 			}
 			// Extract usage from message_start event
-			usage := eventUnion.Message.Usage
+			u := message.Usage
 			tokenUsage = extractTokenUsageFromAnthropic(
-				usage.InputTokens,
-				usage.OutputTokens,
-				usage.CacheReadInputTokens,
-				usage.CacheCreationInputTokens,
+				int64(u.InputTokens),
+				int64(u.OutputTokens),
+				int64(u.CacheReadInputTokens),
+				int64(u.CacheCreationInputTokens),
 			)
 		case "message_delta":
-			usage := eventUnion.Usage
+			u := eventUnion.MessageDelta.Usage
 			tokenUsage = extractTokenUsageFromAnthropic(
-				usage.InputTokens,
-				usage.OutputTokens,
-				usage.CacheReadInputTokens,
-				usage.CacheCreationInputTokens,
+				int64(u.InputTokens),
+				int64(u.OutputTokens),
+				int64(u.CacheReadInputTokens),
+				int64(u.CacheCreationInputTokens),
 			)
 		}
 	}

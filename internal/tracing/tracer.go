@@ -160,3 +160,15 @@ func newRerankTracer(tracer trace.Tracer, propagator propagation.TextMapPropagat
 		},
 	)
 }
+
+func newMessageTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.MessageRecorder, headerAttributes map[string]string) tracing.MessageTracer {
+	return newRequestTracer(
+		tracer,
+		propagator,
+		recorder,
+		headerAttributes,
+		func(span trace.Span, recorder tracing.MessageRecorder) tracing.MessageSpan {
+			return &messageSpan{span: span, recorder: recorder}
+		},
+	)
+}
