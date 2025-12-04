@@ -200,7 +200,13 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		}
 		p.activeMessageID = event.Message.ID
 		p.created = openai.JSONUNIXTime(time.Now())
-		usage := ExtractLLMTokenUsageFromUsage(event.Message.Usage)
+		u := event.Message.Usage
+		usage := extractTokenUsageFromAnthropic(
+			u.InputTokens,
+			u.OutputTokens,
+			u.CacheReadInputTokens,
+			u.CacheCreationInputTokens,
+		)
 		// For message_start, we store the initial usage but don't add to the accumulated
 		// The message_delta event will contain the final totals
 		if input, ok := usage.InputTokens(); ok {
@@ -282,7 +288,13 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, fmt.Errorf("unmarshal message_delta: %w", err)
 		}
-		usage := ExtractLLMTokenUsageFromDeltaUsage(event.Usage)
+		u := event.Usage
+		usage := extractTokenUsageFromAnthropic(
+			u.InputTokens,
+			u.OutputTokens,
+			u.CacheReadInputTokens,
+			u.CacheCreationInputTokens,
+		)
 		// For message_delta, accumulate the incremental output tokens
 		if output, ok := usage.OutputTokens(); ok {
 			p.tokenUsage.AddOutputTokens(output)

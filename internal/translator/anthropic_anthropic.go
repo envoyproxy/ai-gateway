@@ -96,7 +96,13 @@ func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body 
 	if err := json.NewDecoder(body).Decode(anthropicResp); err != nil {
 		return nil, nil, tokenUsage, responseModel, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
-	tokenUsage = ExtractLLMTokenUsageFromUsage(anthropicResp.Usage)
+	tokenUsage = extractTokenUsageFromAnthropic(
+		anthropicResp.Usage.InputTokens,
+		anthropicResp.Usage.OutputTokens,
+		anthropicResp.Usage.CacheReadInputTokens,
+		anthropicResp.Usage.CacheCreationInputTokens,
+	)
+
 	responseModel = cmp.Or(internalapi.ResponseModel(anthropicResp.Model), a.requestModel)
 	return nil, nil, tokenUsage, responseModel, nil
 }
@@ -128,9 +134,21 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent() (tokenUsa
 				a.streamingResponseModel = internalapi.ResponseModel(eventUnion.Message.Model)
 			}
 			// Extract usage from message_start event
-			tokenUsage = ExtractLLMTokenUsageFromUsage(eventUnion.Message.Usage)
+			usage := eventUnion.Message.Usage
+			tokenUsage = extractTokenUsageFromAnthropic(
+				usage.InputTokens,
+				usage.OutputTokens,
+				usage.CacheReadInputTokens,
+				usage.CacheCreationInputTokens,
+			)
 		case "message_delta":
-			tokenUsage = ExtractLLMTokenUsageFromDeltaUsage(eventUnion.Usage)
+			usage := eventUnion.Usage
+			tokenUsage = extractTokenUsageFromAnthropic(
+				usage.InputTokens,
+				usage.OutputTokens,
+				usage.CacheReadInputTokens,
+				usage.CacheCreationInputTokens,
+			)
 		}
 	}
 }
