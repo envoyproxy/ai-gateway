@@ -135,13 +135,14 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent() (tokenUsa
 				a.streamingResponseModel = message.Model
 			}
 			// Extract usage from message_start event
-			u := message.Usage
-			tokenUsage = extractTokenUsageFromAnthropic(
-				int64(u.InputTokens),
-				int64(u.OutputTokens),
-				int64(u.CacheReadInputTokens),
-				int64(u.CacheCreationInputTokens),
-			)
+			if u := message.Usage; u != nil {
+				tokenUsage = extractTokenUsageFromAnthropic(
+					int64(u.InputTokens),
+					int64(u.OutputTokens),
+					int64(u.CacheReadInputTokens),
+					int64(u.CacheCreationInputTokens),
+				)
+			}
 		case "message_delta":
 			u := eventUnion.MessageDelta.Usage
 			tokenUsage = extractTokenUsageFromAnthropic(

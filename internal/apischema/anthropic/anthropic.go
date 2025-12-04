@@ -400,6 +400,20 @@ func (m *MessagesContentBlock) UnmarshalJSON(data []byte) error {
 	}
 }
 
+func (m *MessagesContentBlock) MarshalJSON() ([]byte, error) {
+	if m.Text != nil {
+		return json.Marshal(m.Text)
+	}
+	if m.Tool != nil {
+		return json.Marshal(m.Tool)
+	}
+	if m.Thinking != nil {
+		return json.Marshal(m.Thinking)
+	}
+	// TODO add others when we need it for observability, etc.
+	return nil, fmt.Errorf("content block must have a defined type")
+}
+
 // StopReason represents the reason for stopping the generation.
 // https://docs.claude.com/en/api/messages#response-stop-reason
 type StopReason string

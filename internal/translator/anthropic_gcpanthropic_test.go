@@ -539,12 +539,12 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases(t *te
 		{
 			name:          "message_start without message field",
 			chunk:         "event: message_start\ndata: {\"type\":\"message_start\"}\n\n",
-			expectedUsage: tokenUsageFrom(0, 0, 0, 0),
+			expectedUsage: metrics.TokenUsage{},
 		},
 		{
 			name:          "message_start without usage field",
 			chunk:         "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_123\"}}\n\n",
-			expectedUsage: tokenUsageFrom(0, 0, 0, 0),
+			expectedUsage: metrics.TokenUsage{},
 		},
 		{
 			name:          "message_delta without usage field",
