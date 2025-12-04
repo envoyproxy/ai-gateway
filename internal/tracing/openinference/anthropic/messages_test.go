@@ -251,6 +251,14 @@ var (
 				Role:    anthropic.MessageRoleUser,
 				Content: anthropic.MessageContent{Text: "Hello!"},
 			},
+			{
+				Role: anthropic.MessageRoleUser,
+				Content: anthropic.MessageContent{
+					Array: []anthropic.ContentBlockParam{
+						{Text: &anthropic.TextBlockParam{Type: "text", Text: "World"}},
+					},
+				},
+			},
 		},
 	}
 	basicReqBody, _ = json.Marshal(basicReq)
@@ -261,6 +269,7 @@ var (
 		Role:  "assistant",
 		Content: []anthropic.MessagesContentBlock{
 			{Text: &anthropic.TextBlock{Type: "text", Text: "Hi there!"}},
+			{Tool: &anthropic.ToolUseBlock{Type: "tool_use", ID: "tool_1", Name: "get_time", Input: map[string]any{"timezone": "UTC"}}},
 		},
 		Usage: &anthropic.Usage{
 			InputTokens:  10,
@@ -298,6 +307,9 @@ func TestMessageRecorder_RecordRequest(t *testing.T) {
 				attribute.String(openinference.LLMInvocationParameters, `{"model":"claude-3-opus-20240229"}`),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "user"),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "Hello!"),
+				attribute.String(openinference.InputMessageAttribute(1, openinference.MessageRole), "user"),
+				attribute.String(openinference.InputMessageContentAttribute(1, 0, "text"), "World"),
+				attribute.String(openinference.InputMessageContentAttribute(1, 0, "type"), "text"),
 			},
 		},
 	}
@@ -330,6 +342,10 @@ func TestMessageRecorder_RecordResponse(t *testing.T) {
 				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
 				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
 				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageContent), "Hi there!"),
+				attribute.String(openinference.OutputMessageAttribute(1, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(1, 0, openinference.ToolCallID), "tool_1"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(1, 0, openinference.ToolCallFunctionName), "get_time"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(1, 0, openinference.ToolCallFunctionArguments), string(`{"timezone":"UTC"}`)),
 				attribute.Int(openinference.LLMTokenCountPrompt, 10),
 				attribute.Int(openinference.LLMTokenCountPromptCacheHit, 0),
 				attribute.Int(openinference.LLMTokenCountCompletion, 5),

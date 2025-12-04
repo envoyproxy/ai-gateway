@@ -474,8 +474,27 @@ func TestMessagesContentBlock_UnmarshalJSON(t *testing.T) {
 		},
 		{
 			name:    "unknown type",
-			jsonStr: `{"type": "unknown", "text": "Hello"}`,
+			jsonStr: `{"type": "unknown"}`,
 			want:    MessagesContentBlock{},
+		},
+		{
+			name:    "tool use block",
+			jsonStr: `{"type": "tool_use", "name": "my_tool", "input": {"query": "What is the weather today?"}}`,
+			want: MessagesContentBlock{Tool: &ToolUseBlock{
+				Type: "tool_use",
+				Name: "my_tool",
+				Input: map[string]interface{}{
+					"query": "What is the weather today?",
+				},
+			}},
+		},
+		{
+			name:    "thinking block",
+			jsonStr: `{"type": "thinking", "thinking": "Let me think about that."}`,
+			want: MessagesContentBlock{Thinking: &ThinkingBlock{
+				Type:     "thinking",
+				Thinking: "Let me think about that.",
+			}},
 		},
 	}
 
@@ -489,6 +508,15 @@ func TestMessagesContentBlock_UnmarshalJSON(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Equal(t, tt.want, mcb)
+
+			marshaled, err := mcb.MarshalJSON()
+			// This is mostly for coverage. marshaling is not currently used in the main code.
+			if err == nil {
+				var unmarshaled MessagesContentBlock
+				err = unmarshaled.UnmarshalJSON(marshaled)
+				require.NoError(t, err)
+				require.Equal(t, mcb, unmarshaled)
+			}
 		})
 	}
 }
