@@ -11,7 +11,6 @@ import (
 	"io"
 	"os"
 
-	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference/anthropic"
 	"go.opentelemetry.io/contrib/exporters/autoexport"
 	"go.opentelemetry.io/contrib/propagators/autoprop"
 	"go.opentelemetry.io/otel/attribute"
@@ -20,6 +19,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference/openai"
 )

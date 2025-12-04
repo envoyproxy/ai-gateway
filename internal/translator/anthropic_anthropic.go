@@ -103,7 +103,7 @@ func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body 
 		int64(usage.CacheCreationInputTokens),
 	)
 
-	responseModel = cmp.Or(internalapi.ResponseModel(anthropicResp.Model), a.requestModel)
+	responseModel = cmp.Or(anthropicResp.Model, a.requestModel)
 	return nil, nil, tokenUsage, responseModel, nil
 }
 
@@ -132,7 +132,7 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent() (tokenUsa
 			// Message only valid in message_start events.
 			if message.Model != "" {
 				// Store the response model for future batches
-				a.streamingResponseModel = internalapi.ResponseModel(message.Model)
+				a.streamingResponseModel = message.Model
 			}
 			// Extract usage from message_start event
 			u := message.Usage

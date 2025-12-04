@@ -1,10 +1,23 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
 package anthropic
 
 import (
+	"encoding/json"
 	"testing"
 
-	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/sdk/trace"
+	oteltrace "go.opentelemetry.io/otel/trace"
+
+	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
+	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 )
 
 func TestConvertSSEToResponse(t *testing.T) {
@@ -226,6 +239,135 @@ func TestConvertSSEToResponse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := convertSSEToResponse(tt.chunks)
 			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+var (
+	basicReq = &anthropic.MessagesRequest{
+		Model: "claude-3-opus-20240229",
+		Messages: []anthropic.MessageParam{
+			{
+				Role:    anthropic.MessageRoleUser,
+				Content: anthropic.MessageContent{Text: "Hello!"},
+			},
+		},
+	}
+	basicReqBody, _ = json.Marshal(basicReq)
+
+	basicResp = &anthropic.MessagesResponse{
+		ID:    "msg_123",
+		Model: "claude-3-opus-20240229",
+		Role:  "assistant",
+		Content: []anthropic.MessagesContentBlock{
+			{Text: &anthropic.TextBlock{Type: "text", Text: "Hi there!"}},
+		},
+		Usage: &anthropic.Usage{
+			InputTokens:  10,
+			OutputTokens: 5,
+		},
+	}
+)
+
+func TestMessageRecorder_StartParams(t *testing.T) {
+	recorder := NewMessageRecorderFromEnv()
+	spanName, opts := recorder.StartParams(basicReq, basicReqBody)
+	actualSpan := testotel.RecordNewSpan(t, spanName, opts...)
+
+	require.Equal(t, "Message", actualSpan.Name)
+	require.Equal(t, oteltrace.SpanKindInternal, actualSpan.SpanKind)
+}
+
+func TestMessageRecorder_RecordRequest(t *testing.T) {
+	tests := []struct {
+		name          string
+		req           *anthropic.MessagesRequest
+		reqBody       []byte
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name:    "basic request",
+			req:     basicReq,
+			reqBody: basicReqBody,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemAnthropic),
+				attribute.String(openinference.LLMModelName, "claude-3-opus-20240229"),
+				attribute.String(openinference.InputValue, string(basicReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"claude-3-opus-20240229"}`),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "user"),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "Hello!"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := NewMessageRecorderFromEnv()
+
+			actualSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+				recorder.RecordRequest(span, tt.req, tt.reqBody)
+				return false
+			})
+
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, actualSpan.Attributes)
+		})
+	}
+}
+
+func TestMessageRecorder_RecordResponse(t *testing.T) {
+	tests := []struct {
+		name          string
+		resp          *anthropic.MessagesResponse
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name: "basic response",
+			resp: basicResp,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.LLMModelName, "claude-3-opus-20240229"),
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageContent), "Hi there!"),
+				attribute.Int(openinference.LLMTokenCountPrompt, 10),
+				attribute.Int(openinference.LLMTokenCountPromptCacheHit, 0),
+				attribute.Int(openinference.LLMTokenCountCompletion, 5),
+				attribute.Int(openinference.LLMTokenCountTotal, 15),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := NewMessageRecorderFromEnv()
+
+			actualSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+				recorder.RecordResponse(span, tt.resp)
+				return false
+			})
+
+			// Check OutputValue separately as it is a JSON string
+			var outputValue string
+			for _, attr := range actualSpan.Attributes {
+				if attr.Key == openinference.OutputValue {
+					outputValue = attr.Value.AsString()
+					break
+				}
+			}
+			require.NotEmpty(t, outputValue)
+			require.JSONEq(t, func() string { b, _ := json.Marshal(tt.resp); return string(b) }(), outputValue)
+
+			// Filter out OutputValue for easier comparison
+			var otherAttrs []attribute.KeyValue
+			for _, attr := range actualSpan.Attributes {
+				if attr.Key != openinference.OutputValue {
+					otherAttrs = append(otherAttrs, attr)
+				}
+			}
+
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, otherAttrs)
+			require.Equal(t, trace.Status{Code: codes.Ok, Description: ""}, actualSpan.Status)
 		})
 	}
 }
