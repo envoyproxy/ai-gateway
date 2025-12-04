@@ -67,15 +67,15 @@ func TestWithTestUpstream(t *testing.T) {
 			testUpstreamBodyMutationAnthropicBackend,
 			{
 				Name: "testupstream-openai-5xx", Schema: openAISchema, HeaderMutation: &filterapi.HTTPHeaderMutation{
-					Set: []filterapi.HTTPHeader{{Name: testupstreamlib.ResponseStatusKey, Value: "500"}},
-				},
+				Set: []filterapi.HTTPHeader{{Name: testupstreamlib.ResponseStatusKey, Value: "500"}},
+			},
 				ModelNameOverride: "bad-model",
 			},
 			{
 				Name:   "testupstream-anthropic",
 				Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic}, Auth: &filterapi.BackendAuth{
-					AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: "anthropic-api-key"},
-				},
+				AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: "anthropic-api-key"},
+			},
 			},
 		},
 		Models: []filterapi.Model{
@@ -851,7 +851,7 @@ data: [DONE]
 			path:              "/anthropic/v1/messages",
 			method:            http.MethodPost,
 			requestBody:       `{"model":"claude-3-sonnet","max_tokens":100,"messages":[{"role":"user","content":[{"type":"text","text":"Hello, just a simple test message."}]}],"stream":false}`,
-			expRequestBody:    `{"anthropic_version":"vertex-2023-10-16","max_tokens":100,"messages":[{"content":[{"text":"Hello, just a simple test message.","type":"text"}],"role":"user"}],"stream":false}`,
+			expRequestBody:    `{"max_tokens":100,"messages":[{"role":"user","content":[{"type":"text","text":"Hello, just a simple test message."}]}],"stream":false,"anthropic_version":"vertex-2023-10-16"}`,
 			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:rawPredict",
 			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
 			responseStatus:    strconv.Itoa(http.StatusOK),
@@ -866,7 +866,7 @@ data: [DONE]
 			method:            http.MethodPost,
 			responseType:      "sse",
 			requestBody:       `{"model":"claude-3-sonnet","max_tokens":100,"messages":[{"role":"user","content":[{"type":"text","text":"Tell me a short joke"}]}],"stream":true}`,
-			expRequestBody:    `{"anthropic_version":"vertex-2023-10-16","max_tokens":100,"messages":[{"content":[{"text":"Tell me a short joke","type":"text"}],"role":"user"}],"stream":true}`,
+			expRequestBody:    `{"max_tokens":100,"messages":[{"role":"user","content":[{"type":"text","text":"Tell me a short joke"}]}],"stream":true,"anthropic_version":"vertex-2023-10-16"}`,
 			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:streamRawPredict",
 			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
 			responseStatus:    strconv.Itoa(http.StatusOK),
