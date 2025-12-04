@@ -345,7 +345,7 @@ func TestMessageRecorder_RecordResponse(t *testing.T) {
 				attribute.String(openinference.OutputMessageAttribute(1, openinference.MessageRole), "assistant"),
 				attribute.String(openinference.OutputMessageToolCallAttribute(1, 0, openinference.ToolCallID), "tool_1"),
 				attribute.String(openinference.OutputMessageToolCallAttribute(1, 0, openinference.ToolCallFunctionName), "get_time"),
-				attribute.String(openinference.OutputMessageToolCallAttribute(1, 0, openinference.ToolCallFunctionArguments), string(`{"timezone":"UTC"}`)),
+				attribute.String(openinference.OutputMessageToolCallAttribute(1, 0, openinference.ToolCallFunctionArguments), `{"timezone":"UTC"}`),
 				attribute.Int(openinference.LLMTokenCountPrompt, 10),
 				attribute.Int(openinference.LLMTokenCountPromptCacheHit, 0),
 				attribute.Int(openinference.LLMTokenCountCompletion, 5),
