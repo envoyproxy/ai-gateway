@@ -64,7 +64,7 @@ func (r *MessageRecorder) RecordResponseChunks(span trace.Span, chunks []*anthro
 	if len(chunks) > 0 {
 		span.AddEvent("First Token Stream Event")
 	}
-	converted := convertSSEToJSON(chunks)
+	converted := convertSSEToResponse(chunks)
 	r.RecordResponse(span, converted)
 }
 
@@ -218,7 +218,7 @@ func buildResponseAttributes(resp *anthropic.MessagesResponse, config *openinfer
 	return attrs
 }
 
-// convertSSEToJSON converts a complete SSE stream to a single JSON-encoded
+// convertSSEToResponse converts a complete SSE stream to a single JSON-encoded
 // openai.ChatCompletionResponse. This will not serialize zero values including
 // fields whose values are zero or empty, or nested objects where all fields
 // have zero values.
@@ -228,7 +228,7 @@ func buildResponseAttributes(resp *anthropic.MessagesResponse, config *openinfer
 // TODO Or, even better, we can make the chunk version of buildResponseAttributes which accepts a single
 // openai.ChatCompletionResponseChunk one at a time, and then we won't need to accumulate all chunks
 // in memory.
-func convertSSEToJSON(chunks []*anthropic.MessagesStreamEvent) *anthropic.MessagesResponse {
+func convertSSEToResponse(chunks []*anthropic.MessagesStreamEvent) *anthropic.MessagesResponse {
 	var response anthropic.MessagesResponse
 	for _, event := range chunks {
 		switch event.Type {
