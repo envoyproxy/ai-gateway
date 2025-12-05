@@ -22,6 +22,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -273,6 +274,8 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		return fmt.Errorf("failed to get filter config secret: %w", err)
 	}
 
+	_, gatewayConfig := g.fetchGatewayAndConfig(ctx, gatewayName, gatewayNamespace)
+
 	// Now we construct the AI Gateway managed containers and volumes.
 	filterConfigSecretName := FilterConfigSecretPerGatewayName(gatewayName, gatewayNamespace)
 	filterConfigVolumeName := mutationNamePrefix + filterConfigSecretName
@@ -297,16 +300,17 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		podspec.ImagePullSecrets = append(podspec.ImagePullSecrets, g.extProcImagePullSecrets...)
 	}
 
-	// Currently, we have to set the resources for the extproc container at route level.
-	// We choose one of the routes to set the resources for the extproc container.
+	// Prefer GatewayConfig resources; otherwise leave empty.
 	var resources corev1.ResourceRequirements
-	for i := range routes.Items {
-		fc := routes.Items[i].Spec.FilterConfig
-		if fc != nil && fc.ExternalProcessor != nil && fc.ExternalProcessor.Resources != nil {
-			resources = *fc.ExternalProcessor.Resources
-		}
+	if gatewayConfig != nil && gatewayConfig.Spec.ExtProc != nil && gatewayConfig.Spec.ExtProc.Resources != nil {
+		resources = *gatewayConfig.Spec.ExtProc.Resources
+		g.logger.Info("using resources from GatewayConfig",
+			"gateway_name", gatewayName, "gatewayconfig_name", gatewayConfig.Name)
 	}
-	envVars := g.extProcExtraEnvVars
+
+	// Merge env vars with GatewayConfig overriding global.
+	envVars := g.mergeEnvVars(gatewayConfig)
+
 	const (
 		extProcAdminPort      = 1064
 		filterConfigMountPath = "/etc/filter-config"
@@ -388,4 +392,74 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		}
 	}
 	return nil
+}
+
+// fetchGatewayAndConfig returns the Gateway and the referenced GatewayConfig (if present).
+func (g *gatewayMutator) fetchGatewayAndConfig(ctx context.Context, gatewayName, gatewayNamespace string) (*gwapiv1.Gateway, *aigv1a1.GatewayConfig) {
+	// Fetch the Gateway object.
+	var gateway gwapiv1.Gateway
+	if err := g.c.Get(ctx, client.ObjectKey{Name: gatewayName, Namespace: gatewayNamespace}, &gateway); err != nil {
+		if apierrors.IsNotFound(err) {
+			g.logger.Info("Gateway not found, using global defaults",
+				"gateway_name", gatewayName, "gateway_namespace", gatewayNamespace)
+		} else {
+			g.logger.Error(err, "failed to get Gateway, using global defaults",
+				"gateway_name", gatewayName, "gateway_namespace", gatewayNamespace)
+		}
+		return nil, nil
+	}
+
+	// Check for GatewayConfig annotation.
+	if gateway.Annotations == nil {
+		return &gateway, nil
+	}
+
+	configName, ok := gateway.Annotations[GatewayConfigAnnotationKey]
+	if !ok || configName == "" {
+		return &gateway, nil
+	}
+
+	// Fetch the GatewayConfig (must be in same namespace as Gateway).
+	var gatewayConfig aigv1a1.GatewayConfig
+	if err := g.c.Get(ctx, client.ObjectKey{Name: configName, Namespace: gatewayNamespace}, &gatewayConfig); err != nil {
+		if apierrors.IsNotFound(err) {
+			g.logger.Info("GatewayConfig referenced by Gateway not found, using global defaults",
+				"gateway_name", gatewayName, "gatewayconfig_name", configName)
+		} else {
+			g.logger.Error(err, "failed to get GatewayConfig, using global defaults",
+				"gateway_name", gatewayName, "gatewayconfig_name", configName)
+		}
+		return &gateway, nil
+	}
+
+	g.logger.Info("found GatewayConfig for Gateway",
+		"gateway_name", gatewayName, "gatewayconfig_name", configName)
+	return &gateway, &gatewayConfig
+}
+
+// mergeEnvVars merges env vars; GatewayConfig overrides global while preserving order.
+func (g *gatewayMutator) mergeEnvVars(gatewayConfig *aigv1a1.GatewayConfig) []corev1.EnvVar {
+	result := make([]corev1.EnvVar, 0, len(g.extProcExtraEnvVars))
+	index := make(map[string]int, len(g.extProcExtraEnvVars))
+
+	// Add global env vars first (lowest precedence) preserving input order.
+	for _, env := range g.extProcExtraEnvVars {
+		result = append(result, env)
+		index[env.Name] = len(result) - 1
+	}
+
+	// Add GatewayConfig env vars (highest precedence) overriding in-place when names collide,
+	// otherwise append in the order they are defined.
+	if gatewayConfig != nil && gatewayConfig.Spec.ExtProc != nil {
+		for _, env := range gatewayConfig.Spec.ExtProc.Env {
+			if i, ok := index[env.Name]; ok {
+				result[i] = env
+			} else {
+				result = append(result, env)
+				index[env.Name] = len(result) - 1
+			}
+		}
+	}
+
+	return result
 }

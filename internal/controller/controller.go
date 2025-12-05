@@ -211,6 +211,14 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 		return fmt.Errorf("failed to create controller for MCPRoute: %w", err)
 	}
 
+	// GatewayConfig controller for gateway-scoped configuration.
+	gatewayConfigC := NewGatewayConfigController(c, logger.WithName("gateway-config"), gatewayEventChan)
+	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.GatewayConfig{}).
+		Watches(&gwapiv1.Gateway{}, handler.EnqueueRequestsFromMapFunc(gatewayConfigC.MapGatewayToGatewayConfig)).
+		Complete(gatewayConfigC); err != nil {
+		return fmt.Errorf("failed to create controller for GatewayConfig: %w", err)
+	}
+
 	// ReferenceGrant controller for cross-namespace access validation
 	referenceGrantC := NewReferenceGrantController(c, logger.WithName("reference-grant"), aiGatewayRouteEventChan)
 	if err = TypedControllerBuilderForCRD(mgr, &gwapiv1b1.ReferenceGrant{}).

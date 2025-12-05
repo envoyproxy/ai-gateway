@@ -19,6 +19,8 @@ type Interface interface {
 	AIServiceBackends() AIServiceBackendInformer
 	// BackendSecurityPolicies returns a BackendSecurityPolicyInformer.
 	BackendSecurityPolicies() BackendSecurityPolicyInformer
+	// GatewayConfigs returns a GatewayConfigInformer.
+	GatewayConfigs() GatewayConfigInformer
 	// MCPRoutes returns a MCPRouteInformer.
 	MCPRoutes() MCPRouteInformer
 }
@@ -47,6 +49,11 @@ func (v *version) AIServiceBackends() AIServiceBackendInformer {
 // BackendSecurityPolicies returns a BackendSecurityPolicyInformer.
 func (v *version) BackendSecurityPolicies() BackendSecurityPolicyInformer {
 	return &backendSecurityPolicyInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// GatewayConfigs returns a GatewayConfigInformer.
+func (v *version) GatewayConfigs() GatewayConfigInformer {
+	return &gatewayConfigInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // MCPRoutes returns a MCPRouteInformer.

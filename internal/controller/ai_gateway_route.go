@@ -43,6 +43,12 @@ const (
 	egOwningGatewayNamespaceLabel                      = egAnnotationPrefix + "owning-gateway-namespace"
 	// apiKeyInSecret is the key to store OpenAI API key.
 	apiKeyInSecret = "apiKey"
+	// GatewayConfigAnnotationKey is the annotation key used on Gateway objects to reference a GatewayConfig.
+	// The value should be the name of the GatewayConfig resource in the same namespace as the Gateway.
+	GatewayConfigAnnotationKey = "aigateway.envoyproxy.io/gateway-config"
+	// GatewayConfigFinalizerName is the finalizer added to GatewayConfig resources to prevent deletion
+	// while they are still referenced by Gateway objects.
+	GatewayConfigFinalizerName = "aigateway.envoyproxy.io/gateway-config-protection"
 )
 
 // AIGatewayRouteController implements [reconcile.TypedReconciler].

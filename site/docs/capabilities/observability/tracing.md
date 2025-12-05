@@ -192,8 +192,47 @@ helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \\
 --unset extProc.extraEnvVars`}
 </CodeBlock>
 
+## Per-Gateway Configuration
+
+For deployments with multiple Gateways that need different tracing configurations,
+use the `GatewayConfig` CRD instead of global Helm values. This allows you to:
+
+- Configure different OTEL endpoints for different Gateways
+- Set per-gateway service names for better trace organization
+- Override global tracing settings for specific Gateways
+
+### Example
+
+```yaml
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: GatewayConfig
+metadata:
+  name: production-tracing
+  namespace: default
+spec:
+  extProc:
+    env:
+      - name: OTEL_EXPORTER_OTLP_ENDPOINT
+        value: "http://production-collector:4317"
+      - name: OTEL_SERVICE_NAME
+        value: "ai-gateway-production"
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: production-gateway
+  annotations:
+    aigateway.envoyproxy.io/gateway-config: production-tracing
+spec:
+  # ...
+```
+
+See the [Gateway Configuration](gateway-config.md) guide for detailed information
+on `GatewayConfig` usage, including environment variable precedence and shared configurations.
+
 ## See Also
 
+- [Gateway Configuration](gateway-config.md) - Per-gateway configuration using GatewayConfig
 - [OpenInference Specification][openinference] - GenAI Semantic conventions for traces
 - [OpenTelemetry Configuration][otel-config] - Environment variable reference
 - [Arize Phoenix Documentation][phoenix] - LLM observability platform
