@@ -93,6 +93,9 @@ type (
 	RerankSpan = Span[cohere.RerankV2Response, struct{}]
 	// MessageSpan represents an Anthropic messages request span.
 	MessageSpan = Span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+	// AudioSpeechSpan represents an OpenAI audio speech (TTS) request span.
+	// Audio speech returns binary audio data, not structured responses.
+	AudioSpeechSpan = Span[struct{}, struct{}]
 )
 
 type (

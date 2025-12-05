@@ -88,6 +88,8 @@ type (
 	AnthropicMessagesTranslator = Translator[anthropicschema.MessagesRequest, tracing.MessageSpan]
 	// OpenAIImageGenerationTranslator translates the OpenAI's /images/generations endpoint.
 	OpenAIImageGenerationTranslator = Translator[openaisdk.ImageGenerateParams, tracing.ImageGenerationSpan]
+	// OpenAIAudioSpeechTranslator translates the OpenAI's /audio/speech endpoint (TTS).
+	OpenAIAudioSpeechTranslator = Translator[openai.AudioSpeechRequest, tracing.AudioSpeechSpan]
 )
 
 // sjsonOptions are the options used for sjson operations in the translator.

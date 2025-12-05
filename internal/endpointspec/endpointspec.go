@@ -74,6 +74,8 @@ type (
 	MessagesEndpointSpec struct{}
 	// RerankEndpointSpec implements EndpointSpec for /v2/rerank.
 	RerankEndpointSpec struct{}
+	// AudioSpeechEndpointSpec implements EndpointSpec for /v1/audio/speech.
+	AudioSpeechEndpointSpec struct{}
 )
 
 // ParseBody implements [EndpointSpec.ParseBody].
@@ -242,6 +244,29 @@ func (RerankEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, mod
 	switch schema.Name {
 	case filterapi.APISchemaCohere:
 		return translator.NewRerankCohereToCohereTranslator(schema.Version, modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+	}
+}
+
+// ParseBody implements [EndpointSpec.ParseBody].
+func (AudioSpeechEndpointSpec) ParseBody(
+	body []byte,
+	_ bool,
+) (internalapi.OriginalModel, *openai.AudioSpeechRequest, bool, []byte, error) {
+	var req openai.AudioSpeechRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return "", nil, false, nil, fmt.Errorf("failed to unmarshal audio speech request: %w", err)
+	}
+	// Audio speech returns binary audio data as a streaming chunk response
+	return req.Model, &req, true, nil, nil
+}
+
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (AudioSpeechEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.Translator[openai.AudioSpeechRequest, tracing.Span[struct{}, struct{}]], error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewAudioSpeechOpenAIToOpenAITranslator(schema.Version, modelNameOverride), nil
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}

@@ -273,3 +273,64 @@ func TestRerankEndpointSpec_GetTranslator(t *testing.T) {
 	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
 	require.ErrorContains(t, err, "unsupported API schema")
 }
+
+func TestAudioSpeechEndpointSpec_ParseBody(t *testing.T) {
+	spec := AudioSpeechEndpointSpec{}
+
+	t.Run("invalid json", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseBody([]byte("{"), false)
+		require.ErrorContains(t, err, "failed to unmarshal audio speech request")
+	})
+
+	t.Run("success", func(t *testing.T) {
+		req := openai.AudioSpeechRequest{Model: "tts-1", Input: "Hello world", Voice: "alloy"}
+		body, err := json.Marshal(req)
+		require.NoError(t, err)
+
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.Equal(t, "tts-1", model)
+		require.True(t, stream) // Audio speech returns streaming chunk response
+		require.NotNil(t, parsed)
+		require.Nil(t, mutated)
+	})
+
+	t.Run("success_with_all_fields", func(t *testing.T) {
+		speed := 1.5
+		req := openai.AudioSpeechRequest{
+			Model:          "tts-1-hd",
+			Input:          "Hello world",
+			Voice:          "nova",
+			ResponseFormat: "mp3",
+			Speed:          &speed,
+		}
+		body, err := json.Marshal(req)
+		require.NoError(t, err)
+
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.Equal(t, "tts-1-hd", model)
+		require.True(t, stream) // Audio speech returns streaming chunk response
+		require.NotNil(t, parsed)
+		require.Equal(t, "nova", parsed.Voice)
+		require.Equal(t, "mp3", parsed.ResponseFormat)
+		require.NotNil(t, parsed.Speed)
+		require.Equal(t, 1.5, *parsed.Speed)
+		require.Nil(t, mutated)
+	})
+}
+
+func TestAudioSpeechEndpointSpec_GetTranslator(t *testing.T) {
+	spec := AudioSpeechEndpointSpec{}
+
+	t.Run("supported_openai", func(t *testing.T) {
+		translator, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}, "override")
+		require.NoError(t, err)
+		require.NotNil(t, translator)
+	})
+
+	t.Run("unsupported", func(t *testing.T) {
+		_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, "override")
+		require.ErrorContains(t, err, "unsupported API schema")
+	})
+}

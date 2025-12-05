@@ -53,7 +53,12 @@ func NewFactory[ReqT any, RespT any, RespChunkT any, EndpointSpecT endpointspec.
 		if !isUpstreamFilter {
 			return newRouterProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](config, requestHeaders, logger, tracer), nil
 		}
-		return newUpstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](requestHeaders, f.NewMetrics(), logger), nil
+		// Only create metrics if factory is configured (not nil for endpoints like audio speech)
+		var m metrics.Metrics
+		if f != nil {
+			m = f.NewMetrics()
+		}
+		return newUpstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](requestHeaders, m, logger), nil
 	}
 }
 
@@ -191,13 +196,16 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 	headerMutation := &extprocv3.HeaderMutation{
 		SetHeaders: additionalHeaders,
 	}
-	r.span = r.tracer.StartSpanAndInjectHeaders(
-		ctx,
-		r.requestHeaders,
-		&headerMutationCarrier{m: headerMutation},
-		body,
-		rawBody.Body,
-	)
+	// Only start span if tracer is configured (not nil for endpoints like audio speech)
+	if r.tracer != nil {
+		r.span = r.tracer.StartSpanAndInjectHeaders(
+			ctx,
+			r.requestHeaders,
+			&headerMutationCarrier{m: headerMutation},
+			body,
+			rawBody.Body,
+		)
+	}
 
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{
@@ -223,18 +231,20 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) onRetry() bo
 // to the extproc.
 func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequestHeaders(ctx context.Context, _ *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
 	defer func() {
-		if err != nil {
+		if err != nil && u.metrics != nil {
 			u.metrics.RecordRequestCompletion(ctx, false, u.requestHeaders)
 		}
 	}()
 
 	// Start tracking metrics for this request.
-	u.metrics.StartRequest(u.requestHeaders)
-	// Set the original model from the request body before any overrides
-	u.metrics.SetOriginalModel(u.parent.originalModel)
-	// Set the request model for metrics from the original model or override if applied.
-	reqModel := cmp.Or(u.requestHeaders[internalapi.ModelNameHeaderKeyDefault], u.parent.originalModel)
-	u.metrics.SetRequestModel(reqModel)
+	if u.metrics != nil {
+		u.metrics.StartRequest(u.requestHeaders)
+		// Set the original model from the request body before any overrides
+		u.metrics.SetOriginalModel(u.parent.originalModel)
+		// Set the request model for metrics from the original model or override if applied.
+		reqModel := cmp.Or(u.requestHeaders[internalapi.ModelNameHeaderKeyDefault], u.parent.originalModel)
+		u.metrics.SetRequestModel(reqModel)
+	}
 
 	// We force the body mutation in the following cases:
 	// * The request is a retry request because the body mutation might have happened the previous iteration.
@@ -315,7 +325,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 // ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
 func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessResponseHeaders(ctx context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
 	defer func() {
-		if err != nil {
+		if err != nil && u.metrics != nil {
 			u.metrics.RecordRequestCompletion(ctx, false, u.requestHeaders)
 		}
 	}()
@@ -345,6 +355,9 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
 	recordRequestCompletionErr := false
 	defer func() {
+		if u.metrics == nil {
+			return
+		}
 		if err != nil || recordRequestCompletionErr {
 			u.metrics.RecordRequestCompletion(ctx, false, u.requestHeaders)
 			return
@@ -414,10 +427,12 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	u.costs.Override(tokenUsage)
 
 	// Set the response model for metrics
-	u.metrics.SetResponseModel(responseModel)
+	if u.metrics != nil {
+		u.metrics.SetResponseModel(responseModel)
+	}
 
 	// Record metrics.
-	if u.parent.stream {
+	if u.metrics != nil && u.parent.stream {
 		// Token latency is only recorded for streaming responses, otherwise it doesn't make sense since
 		// these metrics are defined as a difference between the two output events.
 		out, _ := u.costs.OutputTokens()
@@ -426,7 +441,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		if body.EndOfStream {
 			u.metrics.RecordTokenUsage(ctx, u.costs, u.requestHeaders)
 		}
-	} else {
+	} else if u.metrics != nil {
 		u.metrics.RecordTokenUsage(ctx, u.costs, u.requestHeaders)
 	}
 
@@ -451,7 +466,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 // SetBackend implements [Processor.SetBackend].
 func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(ctx context.Context, b *filterapi.Backend, backendHandler filterapi.BackendAuthHandler, routeProcessor Processor) (err error) {
 	defer func() {
-		if err != nil {
+		if err != nil && u.metrics != nil {
 			u.metrics.RecordRequestCompletion(ctx, false, u.requestHeaders)
 		}
 	}()
@@ -460,7 +475,9 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 		panic("BUG: expected routeProcessor to be of type *chatCompletionProcessorRouterFilter")
 	}
 	rp.upstreamFilterCount++
-	u.metrics.SetBackend(b)
+	if u.metrics != nil {
+		u.metrics.SetBackend(b)
+	}
 	u.modelNameOverride = b.ModelNameOverride
 	u.backendName = b.Name
 	u.handler = backendHandler
@@ -481,6 +498,9 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 }
 
 func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) mergeWithTokenLatencyMetadata(metadata *structpb.Struct) {
+	if u.metrics == nil {
+		return
+	}
 	timeToFirstTokenMs := u.metrics.GetTimeToFirstTokenMs()
 	interTokenLatencyMs := u.metrics.GetInterTokenLatencyMs()
 	innerVal := metadata.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
