@@ -497,7 +497,7 @@ func Test_referenceGrantIndexWithQuery(t *testing.T) {
 		require.NoError(t, err)
 
 		// Should find nothing
-		require.Len(t, grants.Items, 0)
+		require.Empty(t, grants.Items)
 	})
 
 	t.Run("query with wrong namespace", func(t *testing.T) {
@@ -507,7 +507,7 @@ func Test_referenceGrantIndexWithQuery(t *testing.T) {
 		require.NoError(t, err)
 
 		// Should find nothing (wrong namespace)
-		require.Len(t, grants.Items, 0)
+		require.Empty(t, grants.Items)
 	})
 }
 
