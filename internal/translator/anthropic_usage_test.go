@@ -9,8 +9,9 @@ import (
 	"testing"
 
 	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 func TestExtractLLMTokenUsage(t *testing.T) {
