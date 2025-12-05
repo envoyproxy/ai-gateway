@@ -127,7 +127,7 @@ func (m *MessageContent) UnmarshalJSON(data []byte) error {
 		m.Array = array
 		return nil
 	}
-	return fmt.Errorf("message content must be either string or array")
+	return fmt.Errorf("message content must be either text or array")
 }
 
 func (m *MessageContent) MarshalJSON() ([]byte, error) {
