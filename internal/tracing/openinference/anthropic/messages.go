@@ -60,7 +60,7 @@ func (r *MessageRecorder) RecordRequest(span trace.Span, chatReq *anthropic.Mess
 }
 
 // RecordResponseChunks implements the same method as defined in tracing.MessageRecorder.
-func (r *MessageRecorder) RecordResponseChunks(span trace.Span, chunks []*anthropic.MessagesStreamEvent) {
+func (r *MessageRecorder) RecordResponseChunks(span trace.Span, chunks []*anthropic.MessagesStreamChunk) {
 	if len(chunks) > 0 {
 		span.AddEvent("First Token Stream Event")
 	}
@@ -227,20 +227,20 @@ func buildResponseAttributes(resp *anthropic.MessagesResponse, config *openinfer
 // TODO Or, even better, we can make the chunk version of buildResponseAttributes which accepts a single
 // openai.ChatCompletionResponseChunk one at a time, and then we won't need to accumulate all chunks
 // in memory.
-func convertSSEToResponse(chunks []*anthropic.MessagesStreamEvent) *anthropic.MessagesResponse {
+func convertSSEToResponse(chunks []*anthropic.MessagesStreamChunk) *anthropic.MessagesResponse {
 	var response anthropic.MessagesResponse
 	toolInputs := make(map[int]string)
 
 	for _, event := range chunks {
 		switch event.Type {
-		case anthropic.MessagesStreamEventTypeMessageStart:
+		case anthropic.MessagesStreamChunkTypeMessageStart:
 			response = *(*anthropic.MessagesResponse)(event.MessageStart)
 			// Ensure Content is initialized if nil.
 			if response.Content == nil {
 				response.Content = []anthropic.MessagesContentBlock{}
 			}
 
-		case anthropic.MessagesStreamEventTypeMessageDelta:
+		case anthropic.MessagesStreamChunkTypeMessageDelta:
 			delta := event.MessageDelta
 			if response.Usage == nil {
 				response.Usage = &delta.Usage
@@ -252,7 +252,7 @@ func convertSSEToResponse(chunks []*anthropic.MessagesStreamEvent) *anthropic.Me
 			response.StopReason = &delta.Delta.StopReason
 			response.StopSequence = &delta.Delta.StopSequence
 
-		case anthropic.MessagesStreamEventTypeContentBlockStart:
+		case anthropic.MessagesStreamChunkTypeContentBlockStart:
 			idx := event.ContentBlockStart.Index
 			// Grow slice if needed.
 			if idx >= len(response.Content) {
@@ -262,7 +262,7 @@ func convertSSEToResponse(chunks []*anthropic.MessagesStreamEvent) *anthropic.Me
 			}
 			response.Content[idx] = event.ContentBlockStart.ContentBlock
 
-		case anthropic.MessagesStreamEventTypeContentBlockDelta:
+		case anthropic.MessagesStreamChunkTypeContentBlockDelta:
 			idx := event.ContentBlockDelta.Index
 			if idx < len(response.Content) {
 				block := &response.Content[idx]
@@ -284,7 +284,7 @@ func convertSSEToResponse(chunks []*anthropic.MessagesStreamEvent) *anthropic.Me
 				}
 			}
 
-		case anthropic.MessagesStreamEventTypeContentBlockStop:
+		case anthropic.MessagesStreamChunkTypeContentBlockStop:
 			idx := event.ContentBlockStop.Index
 			if jsonStr, ok := toolInputs[idx]; ok {
 				if idx < len(response.Content) && response.Content[idx].Tool != nil {
@@ -296,7 +296,7 @@ func convertSSEToResponse(chunks []*anthropic.MessagesStreamEvent) *anthropic.Me
 				delete(toolInputs, idx)
 			}
 
-		case anthropic.MessagesStreamEventTypeMessageStop:
+		case anthropic.MessagesStreamChunkTypeMessageStop:
 			// Nothing to do.
 		}
 	}

@@ -81,7 +81,7 @@ type (
 	embeddingsSpan      = responseSpan[openai.EmbeddingResponse, struct{}]
 	imageGenerationSpan = responseSpan[openaisdk.ImagesResponse, struct{}]
 	rerankSpan          = responseSpan[cohereschema.RerankV2Response, struct{}]
-	messageSpan         = responseSpan[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamEvent]
+	messageSpan         = responseSpan[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 )
 
 var (

@@ -122,7 +122,7 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent(s tracing.M
 		if !bytes.HasPrefix(line, dataPrefix) {
 			continue
 		}
-		eventUnion := &anthropic.MessagesStreamEvent{}
+		eventUnion := &anthropic.MessagesStreamChunk{}
 		if err := json.Unmarshal(bytes.TrimPrefix(line, dataPrefix), eventUnion); err != nil {
 			continue
 		}

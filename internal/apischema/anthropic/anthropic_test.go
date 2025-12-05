@@ -55,19 +55,19 @@ func TestMessageContent_UnmarshalJSON(t *testing.T) {
 	}
 }
 
-func TestMessageContent_MessagesStreamEvent(t *testing.T) {
+func TestMessageContent_MessagesStreamChunk(t *testing.T) {
 	tests := []struct {
 		name    string
 		jsonStr string
-		exp     MessagesStreamEvent
+		exp     MessagesStreamChunk
 		wantErr bool
 	}{
 		{
 			name:    "message_start",
 			jsonStr: `{"type":"message_start","message":{"id":"msg_014p7gG3wDgGV9EUtLvnow3U","type":"message","role":"assistant","model":"claude-sonnet-4-5-20250929","stop_sequence":null,"usage":{"input_tokens":472,"output_tokens":2},"content":[],"stop_reason":null}}`,
-			exp: MessagesStreamEvent{
+			exp: MessagesStreamChunk{
 				Type: "message_start",
-				MessageStart: &MessagesStreamEventMessageStart{
+				MessageStart: &MessagesStreamChunkMessageStart{
 					ID:           "msg_014p7gG3wDgGV9EUtLvnow3U",
 					Type:         "message",
 					Role:         "assistant",
@@ -85,9 +85,9 @@ func TestMessageContent_MessagesStreamEvent(t *testing.T) {
 		},
 		{
 			name: "content_block_start",
-			exp: MessagesStreamEvent{
+			exp: MessagesStreamChunk{
 				Type: "content_block_start",
-				ContentBlockStart: &MessagesStreamEventContentBlockStart{
+				ContentBlockStart: &MessagesStreamChunkContentBlockStart{
 					Type:  "content_block_start",
 					Index: 0,
 					ContentBlock: MessagesContentBlock{
@@ -102,9 +102,9 @@ func TestMessageContent_MessagesStreamEvent(t *testing.T) {
 		},
 		{
 			name: "content_block_delta",
-			exp: MessagesStreamEvent{
+			exp: MessagesStreamChunk{
 				Type: "content_block_delta",
-				ContentBlockDelta: &MessagesStreamEventContentBlockDelta{
+				ContentBlockDelta: &MessagesStreamChunkContentBlockDelta{
 					Type:  "content_block_delta",
 					Index: 0,
 					Delta: ContentBlockDelta{
@@ -117,9 +117,9 @@ func TestMessageContent_MessagesStreamEvent(t *testing.T) {
 		},
 		{
 			name: "content_block_delta input_json_delta",
-			exp: MessagesStreamEvent{
+			exp: MessagesStreamChunk{
 				Type: "content_block_delta",
-				ContentBlockDelta: &MessagesStreamEventContentBlockDelta{
+				ContentBlockDelta: &MessagesStreamChunkContentBlockDelta{
 					Type:  "content_block_delta",
 					Index: 1,
 					Delta: ContentBlockDelta{
@@ -132,9 +132,9 @@ func TestMessageContent_MessagesStreamEvent(t *testing.T) {
 		},
 		{
 			name: "content_block_stop",
-			exp: MessagesStreamEvent{
+			exp: MessagesStreamChunk{
 				Type: "content_block_stop",
-				ContentBlockStop: &MessagesStreamEventContentBlockStop{
+				ContentBlockStop: &MessagesStreamChunkContentBlockStop{
 					Type:  "content_block_stop",
 					Index: 1,
 				},
@@ -143,9 +143,9 @@ func TestMessageContent_MessagesStreamEvent(t *testing.T) {
 		},
 		{
 			name: "content_block_delta thinking_delta",
-			exp: MessagesStreamEvent{
+			exp: MessagesStreamChunk{
 				Type: "content_block_delta",
-				ContentBlockDelta: &MessagesStreamEventContentBlockDelta{
+				ContentBlockDelta: &MessagesStreamChunkContentBlockDelta{
 					Type:  "content_block_delta",
 					Index: 0,
 					Delta: ContentBlockDelta{
@@ -158,9 +158,9 @@ func TestMessageContent_MessagesStreamEvent(t *testing.T) {
 		},
 		{
 			name: "content_block_delta signature_delta",
-			exp: MessagesStreamEvent{
+			exp: MessagesStreamChunk{
 				Type: "content_block_delta",
-				ContentBlockDelta: &MessagesStreamEventContentBlockDelta{
+				ContentBlockDelta: &MessagesStreamChunkContentBlockDelta{
 					Type:  "content_block_delta",
 					Index: 0,
 					Delta: ContentBlockDelta{
@@ -173,11 +173,11 @@ func TestMessageContent_MessagesStreamEvent(t *testing.T) {
 		},
 		{
 			name: "message_delta",
-			exp: MessagesStreamEvent{
+			exp: MessagesStreamChunk{
 				Type: "message_delta",
-				MessageDelta: &MessagesStreamEventMessageDelta{
+				MessageDelta: &MessagesStreamChunkMessageDelta{
 					Type: "message_delta",
-					Delta: MessagesStreamEventMessageDeltaDelta{
+					Delta: MessagesStreamChunkMessageDeltaDelta{
 						StopReason:   "tool_use",
 						StopSequence: "",
 					},
@@ -190,9 +190,9 @@ func TestMessageContent_MessagesStreamEvent(t *testing.T) {
 		},
 		{
 			name: "message_stop",
-			exp: MessagesStreamEvent{
+			exp: MessagesStreamChunk{
 				Type: "message_stop",
-				MessageStop: &MessagesStreamEventMessageStop{
+				MessageStop: &MessagesStreamChunkMessageStop{
 					Type: "message_stop",
 				},
 			},
@@ -212,7 +212,7 @@ func TestMessageContent_MessagesStreamEvent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var mse MessagesStreamEvent
+			var mse MessagesStreamChunk
 			err := mse.UnmarshalJSON([]byte(tt.jsonStr))
 			if tt.wantErr {
 				require.Error(t, err)
