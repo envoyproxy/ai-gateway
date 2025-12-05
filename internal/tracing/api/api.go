@@ -98,6 +98,7 @@ type (
 type (
 	// SpanRecorder standardizes recorder implementations for non-MCP tracers.
 	SpanRecorder[ReqT any, RespT any, RespChunkT any] interface {
+		SpanResponseRecorder[RespT, RespChunkT]
 		// StartParams returns the name and options to start the span with.
 		//
 		// Parameters:
@@ -108,6 +109,11 @@ type (
 		StartParams(req *ReqT, body []byte) (spanName string, opts []trace.SpanStartOption)
 		// RecordRequest records request attributes to the span.
 		RecordRequest(span trace.Span, req *ReqT, body []byte)
+	}
+	// SpanResponseRecorder standardizes response recording for non-MCP tracers.
+	//
+	// It is separated from SpanRecorder to allow reusing response recording logic.
+	SpanResponseRecorder[RespT, RespChunkT any] interface {
 		// RecordResponse records response attributes to the span.
 		RecordResponse(span trace.Span, resp *RespT)
 		// RecordResponseOnError ends recording the span with an error status.
