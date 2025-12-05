@@ -229,7 +229,7 @@ func TestReferenceGrantValidator_ValidateAIServiceBackendReference(t *testing.T)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create fake client with ReferenceGrants
+			// Create fake client with ReferenceGrants and the index
 			objs := make([]client.Object, len(tt.referenceGrants))
 			for i := range tt.referenceGrants {
 				objs[i] = &tt.referenceGrants[i]
@@ -237,6 +237,7 @@ func TestReferenceGrantValidator_ValidateAIServiceBackendReference(t *testing.T)
 			fakeClient := fake.NewClientBuilder().
 				WithScheme(scheme).
 				WithObjects(objs...).
+				WithIndex(&gwapiv1b1.ReferenceGrant{}, k8sClientIndexReferenceGrantToTargetKind, referenceGrantToTargetKindIndexFunc).
 				Build()
 
 			validator := newReferenceGrantValidator(fakeClient)
@@ -370,4 +371,166 @@ func TestReferenceGrantValidator_MatchesTo_WrongKind(t *testing.T) {
 
 	result := validator.matchesTo(to)
 	require.False(t, result, "should return false for wrong kind")
+}
+
+// TestReferenceGrantValidator_WithIndex tests that the validator uses the index for efficient lookups
+func TestReferenceGrantValidator_WithIndex(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = gwapiv1b1.Install(scheme)
+	_ = aigv1a1.AddToScheme(scheme)
+
+	// Create fake client with the ReferenceGrant index
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithIndex(&gwapiv1b1.ReferenceGrant{}, k8sClientIndexReferenceGrantToTargetKind, referenceGrantToTargetKindIndexFunc).
+		Build()
+
+	// Create multiple ReferenceGrants with different target kinds
+	grant1 := &gwapiv1b1.ReferenceGrant{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "grant-aiservicebackend",
+			Namespace: "backend-ns",
+		},
+		Spec: gwapiv1b1.ReferenceGrantSpec{
+			From: []gwapiv1b1.ReferenceGrantFrom{
+				{
+					Group:     aiServiceBackendGroup,
+					Kind:      aiGatewayRouteKind,
+					Namespace: "route-ns",
+				},
+			},
+			To: []gwapiv1b1.ReferenceGrantTo{
+				{
+					Group: aiServiceBackendGroup,
+					Kind:  aiServiceBackendKind,
+				},
+			},
+		},
+	}
+
+	grant2 := &gwapiv1b1.ReferenceGrant{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "grant-secret",
+			Namespace: "backend-ns",
+		},
+		Spec: gwapiv1b1.ReferenceGrantSpec{
+			From: []gwapiv1b1.ReferenceGrantFrom{
+				{
+					Group:     "gateway.networking.k8s.io",
+					Kind:      "HTTPRoute",
+					Namespace: "route-ns",
+				},
+			},
+			To: []gwapiv1b1.ReferenceGrantTo{
+				{
+					Group: "",
+					Kind:  "Secret",
+				},
+			},
+		},
+	}
+
+	require.NoError(t, fakeClient.Create(context.Background(), grant1))
+	require.NoError(t, fakeClient.Create(context.Background(), grant2))
+
+	validator := newReferenceGrantValidator(fakeClient)
+
+	t.Run("validates with index - AIServiceBackend allowed", func(t *testing.T) {
+		// This should succeed because grant1 allows AIGatewayRoute from route-ns to AIServiceBackend
+		err := validator.validateAIServiceBackendReference(
+			context.Background(),
+			"route-ns",
+			"backend-ns",
+			"test-backend",
+		)
+		require.NoError(t, err)
+	})
+
+	t.Run("validates with index - different namespace denied", func(t *testing.T) {
+		// This should fail because no grant allows from "other-ns"
+		err := validator.validateAIServiceBackendReference(
+			context.Background(),
+			"other-ns",
+			"backend-ns",
+			"test-backend",
+		)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "is not permitted")
+	})
+
+	t.Run("index filters out irrelevant grants", func(t *testing.T) {
+		// Verify that the index only returns AIServiceBackend grants, not Secret grants
+		// We can verify this indirectly by checking that validation works correctly
+		// even though grant2 (Secret) exists in the same namespace
+
+		// Add another grant that allows AIGatewayRoute from other-ns but to Secret (not AIServiceBackend)
+		grant3 := &gwapiv1b1.ReferenceGrant{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "grant-other-ns-secret",
+				Namespace: "backend-ns",
+			},
+			Spec: gwapiv1b1.ReferenceGrantSpec{
+				From: []gwapiv1b1.ReferenceGrantFrom{
+					{
+						Group:     aiServiceBackendGroup,
+						Kind:      aiGatewayRouteKind,
+						Namespace: "other-ns",
+					},
+				},
+				To: []gwapiv1b1.ReferenceGrantTo{
+					{
+						Group: "",
+						Kind:  "Secret",
+					},
+				},
+			},
+		}
+		require.NoError(t, fakeClient.Create(context.Background(), grant3))
+
+		// This should still fail because grant3 doesn't allow AIServiceBackend
+		err := validator.validateAIServiceBackendReference(
+			context.Background(),
+			"other-ns",
+			"backend-ns",
+			"test-backend",
+		)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "is not permitted")
+	})
+}
+
+// TestGetReferenceGrantIndexKey tests the index key generation
+func TestGetReferenceGrantIndexKey(t *testing.T) {
+	tests := []struct {
+		name        string
+		namespace   string
+		kind        string
+		expectedKey string
+	}{
+		{
+			name:        "AIServiceBackend in backend-ns",
+			namespace:   "backend-ns",
+			kind:        "AIServiceBackend",
+			expectedKey: "backend-ns/AIServiceBackend",
+		},
+		{
+			name:        "Secret in default namespace",
+			namespace:   "default",
+			kind:        "Secret",
+			expectedKey: "default/Secret",
+		},
+		{
+			name:        "CustomResource in custom-ns",
+			namespace:   "custom-ns",
+			kind:        "CustomResource",
+			expectedKey: "custom-ns/CustomResource",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			key := getReferenceGrantIndexKey(tt.namespace, tt.kind)
+			require.Equal(t, tt.expectedKey, key)
+		})
+	}
 }

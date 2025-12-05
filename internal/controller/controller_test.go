@@ -20,6 +20,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
+	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 )
@@ -264,6 +265,250 @@ func Test_getSecretNameAndNamespace(t *testing.T) {
 	require.Equal(t, "mysecret.default", getSecretNameAndNamespace(secretRef, "foo"))
 	secretRef.Namespace = nil
 	require.Equal(t, "mysecret.foo", getSecretNameAndNamespace(secretRef, "foo"))
+}
+
+func Test_referenceGrantToTargetKindIndexFunc(t *testing.T) {
+	tests := []struct {
+		name           string
+		referenceGrant *gwapiv1b1.ReferenceGrant
+		expectedKeys   []string
+	}{
+		{
+			name: "single target kind - AIServiceBackend",
+			referenceGrant: &gwapiv1b1.ReferenceGrant{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "grant1",
+					Namespace: "backend-ns",
+				},
+				Spec: gwapiv1b1.ReferenceGrantSpec{
+					From: []gwapiv1b1.ReferenceGrantFrom{
+						{
+							Group:     "aigateway.envoyproxy.io",
+							Kind:      "AIGatewayRoute",
+							Namespace: "route-ns",
+						},
+					},
+					To: []gwapiv1b1.ReferenceGrantTo{
+						{
+							Group: "aigateway.envoyproxy.io",
+							Kind:  "AIServiceBackend",
+						},
+					},
+				},
+			},
+			expectedKeys: []string{"backend-ns/AIServiceBackend"},
+		},
+		{
+			name: "multiple target kinds",
+			referenceGrant: &gwapiv1b1.ReferenceGrant{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "grant2",
+					Namespace: "backend-ns",
+				},
+				Spec: gwapiv1b1.ReferenceGrantSpec{
+					From: []gwapiv1b1.ReferenceGrantFrom{
+						{
+							Group:     "aigateway.envoyproxy.io",
+							Kind:      "AIGatewayRoute",
+							Namespace: "route-ns",
+						},
+					},
+					To: []gwapiv1b1.ReferenceGrantTo{
+						{
+							Group: "aigateway.envoyproxy.io",
+							Kind:  "AIServiceBackend",
+						},
+						{
+							Group: "",
+							Kind:  "Secret",
+						},
+					},
+				},
+			},
+			expectedKeys: []string{"backend-ns/AIServiceBackend", "backend-ns/Secret"},
+		},
+		{
+			name: "empty group for core resources",
+			referenceGrant: &gwapiv1b1.ReferenceGrant{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "grant3",
+					Namespace: "other-ns",
+				},
+				Spec: gwapiv1b1.ReferenceGrantSpec{
+					From: []gwapiv1b1.ReferenceGrantFrom{
+						{
+							Group:     "gateway.networking.k8s.io",
+							Kind:      "HTTPRoute",
+							Namespace: "route-ns",
+						},
+					},
+					To: []gwapiv1b1.ReferenceGrantTo{
+						{
+							Group: "",
+							Kind:  "Service",
+						},
+					},
+				},
+			},
+			expectedKeys: []string{"other-ns/Service"},
+		},
+		{
+			name: "no target kinds",
+			referenceGrant: &gwapiv1b1.ReferenceGrant{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "grant4",
+					Namespace: "backend-ns",
+				},
+				Spec: gwapiv1b1.ReferenceGrantSpec{
+					From: []gwapiv1b1.ReferenceGrantFrom{
+						{
+							Group:     "aigateway.envoyproxy.io",
+							Kind:      "AIGatewayRoute",
+							Namespace: "route-ns",
+						},
+					},
+					To: []gwapiv1b1.ReferenceGrantTo{},
+				},
+			},
+			expectedKeys: nil, // nil is returned for empty To array
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			keys := referenceGrantToTargetKindIndexFunc(tt.referenceGrant)
+			require.Equal(t, tt.expectedKeys, keys)
+		})
+	}
+}
+
+func Test_referenceGrantIndexWithQuery(t *testing.T) {
+	// Create a fake client with the ReferenceGrant index
+	c := fake.NewClientBuilder().
+		WithScheme(Scheme).
+		WithIndex(&gwapiv1b1.ReferenceGrant{}, k8sClientIndexReferenceGrantToTargetKind, referenceGrantToTargetKindIndexFunc).
+		Build()
+
+	// Create multiple ReferenceGrants with different target kinds
+	grant1 := &gwapiv1b1.ReferenceGrant{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "grant-aiservicebackend",
+			Namespace: "backend-ns",
+		},
+		Spec: gwapiv1b1.ReferenceGrantSpec{
+			From: []gwapiv1b1.ReferenceGrantFrom{
+				{
+					Group:     "aigateway.envoyproxy.io",
+					Kind:      "AIGatewayRoute",
+					Namespace: "route-ns",
+				},
+			},
+			To: []gwapiv1b1.ReferenceGrantTo{
+				{
+					Group: "aigateway.envoyproxy.io",
+					Kind:  "AIServiceBackend",
+				},
+			},
+		},
+	}
+
+	grant2 := &gwapiv1b1.ReferenceGrant{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "grant-secret",
+			Namespace: "backend-ns",
+		},
+		Spec: gwapiv1b1.ReferenceGrantSpec{
+			From: []gwapiv1b1.ReferenceGrantFrom{
+				{
+					Group:     "gateway.networking.k8s.io",
+					Kind:      "HTTPRoute",
+					Namespace: "route-ns",
+				},
+			},
+			To: []gwapiv1b1.ReferenceGrantTo{
+				{
+					Group: "",
+					Kind:  "Secret",
+				},
+			},
+		},
+	}
+
+	grant3 := &gwapiv1b1.ReferenceGrant{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "grant-multiple",
+			Namespace: "backend-ns",
+		},
+		Spec: gwapiv1b1.ReferenceGrantSpec{
+			From: []gwapiv1b1.ReferenceGrantFrom{
+				{
+					Group:     "aigateway.envoyproxy.io",
+					Kind:      "AIGatewayRoute",
+					Namespace: "route-ns",
+				},
+			},
+			To: []gwapiv1b1.ReferenceGrantTo{
+				{
+					Group: "aigateway.envoyproxy.io",
+					Kind:  "AIServiceBackend",
+				},
+				{
+					Group: "",
+					Kind:  "Secret",
+				},
+			},
+		},
+	}
+
+	require.NoError(t, c.Create(t.Context(), grant1))
+	require.NoError(t, c.Create(t.Context(), grant2))
+	require.NoError(t, c.Create(t.Context(), grant3))
+
+	t.Run("query for AIServiceBackend grants in backend-ns", func(t *testing.T) {
+		var grants gwapiv1b1.ReferenceGrantList
+		err := c.List(t.Context(), &grants,
+			client.MatchingFields{k8sClientIndexReferenceGrantToTargetKind: "backend-ns/AIServiceBackend"})
+		require.NoError(t, err)
+
+		// Should find grant1 and grant3 (both allow AIServiceBackend in backend-ns)
+		require.Len(t, grants.Items, 2)
+		names := []string{grants.Items[0].Name, grants.Items[1].Name}
+		require.Contains(t, names, "grant-aiservicebackend")
+		require.Contains(t, names, "grant-multiple")
+	})
+
+	t.Run("query for Secret grants in backend-ns", func(t *testing.T) {
+		var grants gwapiv1b1.ReferenceGrantList
+		err := c.List(t.Context(), &grants,
+			client.MatchingFields{k8sClientIndexReferenceGrantToTargetKind: "backend-ns/Secret"})
+		require.NoError(t, err)
+
+		// Should find grant2 and grant3 (both allow Secret in backend-ns)
+		require.Len(t, grants.Items, 2)
+		names := []string{grants.Items[0].Name, grants.Items[1].Name}
+		require.Contains(t, names, "grant-secret")
+		require.Contains(t, names, "grant-multiple")
+	})
+
+	t.Run("query for non-existent kind", func(t *testing.T) {
+		var grants gwapiv1b1.ReferenceGrantList
+		err := c.List(t.Context(), &grants,
+			client.MatchingFields{k8sClientIndexReferenceGrantToTargetKind: "backend-ns/NonExistentKind"})
+		require.NoError(t, err)
+
+		// Should find nothing
+		require.Len(t, grants.Items, 0)
+	})
+
+	t.Run("query with wrong namespace", func(t *testing.T) {
+		var grants gwapiv1b1.ReferenceGrantList
+		err := c.List(t.Context(), &grants,
+			client.MatchingFields{k8sClientIndexReferenceGrantToTargetKind: "wrong-ns/AIServiceBackend"})
+		require.NoError(t, err)
+
+		// Should find nothing (wrong namespace)
+		require.Len(t, grants.Items, 0)
+	})
 }
 
 func Test_handleFinalizer(t *testing.T) {
