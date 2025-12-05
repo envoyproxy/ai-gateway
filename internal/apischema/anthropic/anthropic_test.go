@@ -66,7 +66,6 @@ func TestMessageContent_MessagesStreamChunk(t *testing.T) {
 			name:    "message_start",
 			jsonStr: `{"type":"message_start","message":{"id":"msg_014p7gG3wDgGV9EUtLvnow3U","type":"message","role":"assistant","model":"claude-sonnet-4-5-20250929","stop_sequence":null,"usage":{"input_tokens":472,"output_tokens":2},"content":[],"stop_reason":null}}`,
 			exp: MessagesStreamChunk{
-				Type: "message_start",
 				MessageStart: &MessagesStreamChunkMessageStart{
 					ID:           "msg_014p7gG3wDgGV9EUtLvnow3U",
 					Type:         "message",
@@ -86,7 +85,6 @@ func TestMessageContent_MessagesStreamChunk(t *testing.T) {
 		{
 			name: "content_block_start",
 			exp: MessagesStreamChunk{
-				Type: "content_block_start",
 				ContentBlockStart: &MessagesStreamChunkContentBlockStart{
 					Type:  "content_block_start",
 					Index: 0,
@@ -103,7 +101,6 @@ func TestMessageContent_MessagesStreamChunk(t *testing.T) {
 		{
 			name: "content_block_delta",
 			exp: MessagesStreamChunk{
-				Type: "content_block_delta",
 				ContentBlockDelta: &MessagesStreamChunkContentBlockDelta{
 					Type:  "content_block_delta",
 					Index: 0,
@@ -118,7 +115,6 @@ func TestMessageContent_MessagesStreamChunk(t *testing.T) {
 		{
 			name: "content_block_delta input_json_delta",
 			exp: MessagesStreamChunk{
-				Type: "content_block_delta",
 				ContentBlockDelta: &MessagesStreamChunkContentBlockDelta{
 					Type:  "content_block_delta",
 					Index: 1,
@@ -133,7 +129,6 @@ func TestMessageContent_MessagesStreamChunk(t *testing.T) {
 		{
 			name: "content_block_stop",
 			exp: MessagesStreamChunk{
-				Type: "content_block_stop",
 				ContentBlockStop: &MessagesStreamChunkContentBlockStop{
 					Type:  "content_block_stop",
 					Index: 1,
@@ -144,7 +139,6 @@ func TestMessageContent_MessagesStreamChunk(t *testing.T) {
 		{
 			name: "content_block_delta thinking_delta",
 			exp: MessagesStreamChunk{
-				Type: "content_block_delta",
 				ContentBlockDelta: &MessagesStreamChunkContentBlockDelta{
 					Type:  "content_block_delta",
 					Index: 0,
@@ -159,7 +153,6 @@ func TestMessageContent_MessagesStreamChunk(t *testing.T) {
 		{
 			name: "content_block_delta signature_delta",
 			exp: MessagesStreamChunk{
-				Type: "content_block_delta",
 				ContentBlockDelta: &MessagesStreamChunkContentBlockDelta{
 					Type:  "content_block_delta",
 					Index: 0,
@@ -174,7 +167,6 @@ func TestMessageContent_MessagesStreamChunk(t *testing.T) {
 		{
 			name: "message_delta",
 			exp: MessagesStreamChunk{
-				Type: "message_delta",
 				MessageDelta: &MessagesStreamChunkMessageDelta{
 					Type: "message_delta",
 					Delta: MessagesStreamChunkMessageDeltaDelta{
@@ -191,7 +183,6 @@ func TestMessageContent_MessagesStreamChunk(t *testing.T) {
 		{
 			name: "message_stop",
 			exp: MessagesStreamChunk{
-				Type: "message_stop",
 				MessageStop: &MessagesStreamChunkMessageStop{
 					Type: "message_stop",
 				},

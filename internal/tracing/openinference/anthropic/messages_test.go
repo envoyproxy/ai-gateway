@@ -30,7 +30,6 @@ func TestConvertSSEToResponse(t *testing.T) {
 			name: "basic text stream",
 			chunks: []*anthropic.MessagesStreamChunk{
 				{
-					Type: anthropic.MessagesStreamChunkTypeMessageStart,
 					MessageStart: &anthropic.MessagesStreamChunkMessageStart{
 						ID:    "msg_123",
 						Model: "claude-3",
@@ -39,7 +38,6 @@ func TestConvertSSEToResponse(t *testing.T) {
 					},
 				},
 				{
-					Type: anthropic.MessagesStreamChunkTypeContentBlockStart,
 					ContentBlockStart: &anthropic.MessagesStreamChunkContentBlockStart{
 						Index: 0,
 						ContentBlock: anthropic.MessagesContentBlock{
@@ -48,33 +46,27 @@ func TestConvertSSEToResponse(t *testing.T) {
 					},
 				},
 				{
-					Type: anthropic.MessagesStreamChunkTypeContentBlockDelta,
 					ContentBlockDelta: &anthropic.MessagesStreamChunkContentBlockDelta{
 						Index: 0,
 						Delta: anthropic.ContentBlockDelta{Type: "text_delta", Text: "Hello"},
 					},
 				},
 				{
-					Type: anthropic.MessagesStreamChunkTypeContentBlockDelta,
 					ContentBlockDelta: &anthropic.MessagesStreamChunkContentBlockDelta{
 						Index: 0,
 						Delta: anthropic.ContentBlockDelta{Type: "text_delta", Text: " World"},
 					},
 				},
 				{
-					Type:             anthropic.MessagesStreamChunkTypeContentBlockStop,
 					ContentBlockStop: &anthropic.MessagesStreamChunkContentBlockStop{Index: 0},
 				},
 				{
-					Type: anthropic.MessagesStreamChunkTypeMessageDelta,
 					MessageDelta: &anthropic.MessagesStreamChunkMessageDelta{
 						Usage: anthropic.Usage{OutputTokens: 5},
 						Delta: anthropic.MessagesStreamChunkMessageDeltaDelta{StopReason: "end_turn"},
 					},
 				},
-				{
-					Type: anthropic.MessagesStreamChunkTypeMessageStop,
-				},
+				{MessageStop: &anthropic.MessagesStreamChunkMessageStop{}},
 			},
 			want: &anthropic.MessagesResponse{
 				ID:    "msg_123",
@@ -92,7 +84,6 @@ func TestConvertSSEToResponse(t *testing.T) {
 			name: "tool use stream",
 			chunks: []*anthropic.MessagesStreamChunk{
 				{
-					Type: anthropic.MessagesStreamChunkTypeMessageStart,
 					MessageStart: &anthropic.MessagesStreamChunkMessageStart{
 						ID:    "msg_tool",
 						Model: "claude-3",
@@ -101,7 +92,6 @@ func TestConvertSSEToResponse(t *testing.T) {
 					},
 				},
 				{
-					Type: anthropic.MessagesStreamChunkTypeContentBlockStart,
 					ContentBlockStart: &anthropic.MessagesStreamChunkContentBlockStart{
 						Index: 0,
 						ContentBlock: anthropic.MessagesContentBlock{
@@ -110,25 +100,21 @@ func TestConvertSSEToResponse(t *testing.T) {
 					},
 				},
 				{
-					Type: anthropic.MessagesStreamChunkTypeContentBlockDelta,
 					ContentBlockDelta: &anthropic.MessagesStreamChunkContentBlockDelta{
 						Index: 0,
 						Delta: anthropic.ContentBlockDelta{Type: "input_json_delta", PartialJSON: `{"loc`},
 					},
 				},
 				{
-					Type: anthropic.MessagesStreamChunkTypeContentBlockDelta,
 					ContentBlockDelta: &anthropic.MessagesStreamChunkContentBlockDelta{
 						Index: 0,
 						Delta: anthropic.ContentBlockDelta{Type: "input_json_delta", PartialJSON: `ation": "NYC"}`},
 					},
 				},
 				{
-					Type:             anthropic.MessagesStreamChunkTypeContentBlockStop,
 					ContentBlockStop: &anthropic.MessagesStreamChunkContentBlockStop{Index: 0},
 				},
 				{
-					Type: anthropic.MessagesStreamChunkTypeMessageDelta,
 					MessageDelta: &anthropic.MessagesStreamChunkMessageDelta{
 						Usage: anthropic.Usage{OutputTokens: 10},
 						Delta: anthropic.MessagesStreamChunkMessageDeltaDelta{StopReason: "tool_use"},
@@ -154,7 +140,6 @@ func TestConvertSSEToResponse(t *testing.T) {
 			name: "thinking stream",
 			chunks: []*anthropic.MessagesStreamChunk{
 				{
-					Type: anthropic.MessagesStreamChunkTypeMessageStart,
 					MessageStart: &anthropic.MessagesStreamChunkMessageStart{
 						ID:    "msg_think",
 						Model: "claude-3-5-sonnet",
@@ -163,7 +148,6 @@ func TestConvertSSEToResponse(t *testing.T) {
 					},
 				},
 				{
-					Type: anthropic.MessagesStreamChunkTypeContentBlockStart,
 					ContentBlockStart: &anthropic.MessagesStreamChunkContentBlockStart{
 						Index: 0,
 						ContentBlock: anthropic.MessagesContentBlock{
@@ -172,32 +156,27 @@ func TestConvertSSEToResponse(t *testing.T) {
 					},
 				},
 				{
-					Type: anthropic.MessagesStreamChunkTypeContentBlockDelta,
 					ContentBlockDelta: &anthropic.MessagesStreamChunkContentBlockDelta{
 						Index: 0,
 						Delta: anthropic.ContentBlockDelta{Type: "thinking_delta", Thinking: "Let me "},
 					},
 				},
 				{
-					Type: anthropic.MessagesStreamChunkTypeContentBlockDelta,
 					ContentBlockDelta: &anthropic.MessagesStreamChunkContentBlockDelta{
 						Index: 0,
 						Delta: anthropic.ContentBlockDelta{Type: "thinking_delta", Thinking: "think."},
 					},
 				},
 				{
-					Type: anthropic.MessagesStreamChunkTypeContentBlockDelta,
 					ContentBlockDelta: &anthropic.MessagesStreamChunkContentBlockDelta{
 						Index: 0,
 						Delta: anthropic.ContentBlockDelta{Type: "signature_delta", Signature: "sig123"},
 					},
 				},
 				{
-					Type:             anthropic.MessagesStreamChunkTypeContentBlockStop,
 					ContentBlockStop: &anthropic.MessagesStreamChunkContentBlockStop{Index: 0},
 				},
 				{
-					Type: anthropic.MessagesStreamChunkTypeContentBlockStart,
 					ContentBlockStart: &anthropic.MessagesStreamChunkContentBlockStart{
 						Index: 1,
 						ContentBlock: anthropic.MessagesContentBlock{
@@ -206,14 +185,12 @@ func TestConvertSSEToResponse(t *testing.T) {
 					},
 				},
 				{
-					Type: anthropic.MessagesStreamChunkTypeContentBlockDelta,
 					ContentBlockDelta: &anthropic.MessagesStreamChunkContentBlockDelta{
 						Index: 1,
 						Delta: anthropic.ContentBlockDelta{Type: "text_delta", Text: "Answer"},
 					},
 				},
 				{
-					Type: anthropic.MessagesStreamChunkTypeMessageDelta,
 					MessageDelta: &anthropic.MessagesStreamChunkMessageDelta{
 						Usage: anthropic.Usage{OutputTokens: 20},
 						Delta: anthropic.MessagesStreamChunkMessageDeltaDelta{StopReason: "end_turn"},
@@ -245,7 +222,8 @@ func TestConvertSSEToResponse(t *testing.T) {
 
 var (
 	basicReq = &anthropic.MessagesRequest{
-		Model: "claude-3-opus-20240229",
+		MaxTokens: 100,
+		Model:     "claude-3-opus-20240229",
 		Messages: []anthropic.MessageParam{
 			{
 				Role:    anthropic.MessageRoleUser,
@@ -304,7 +282,7 @@ func TestMessageRecorder_RecordRequest(t *testing.T) {
 				attribute.String(openinference.LLMModelName, "claude-3-opus-20240229"),
 				attribute.String(openinference.InputValue, string(basicReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-				attribute.String(openinference.LLMInvocationParameters, `{"model":"claude-3-opus-20240229"}`),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"claude-3-opus-20240229","max_tokens":100}`),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "user"),
 				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "Hello!"),
 				attribute.String(openinference.InputMessageAttribute(1, openinference.MessageRole), "user"),

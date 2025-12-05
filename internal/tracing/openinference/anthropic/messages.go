@@ -232,15 +232,15 @@ func convertSSEToResponse(chunks []*anthropic.MessagesStreamChunk) *anthropic.Me
 	toolInputs := make(map[int]string)
 
 	for _, event := range chunks {
-		switch event.Type {
-		case anthropic.MessagesStreamChunkTypeMessageStart:
+		switch {
+		case event.MessageStart != nil:
 			response = *(*anthropic.MessagesResponse)(event.MessageStart)
 			// Ensure Content is initialized if nil.
 			if response.Content == nil {
 				response.Content = []anthropic.MessagesContentBlock{}
 			}
 
-		case anthropic.MessagesStreamChunkTypeMessageDelta:
+		case event.MessageDelta != nil:
 			delta := event.MessageDelta
 			if response.Usage == nil {
 				response.Usage = &delta.Usage
@@ -252,7 +252,7 @@ func convertSSEToResponse(chunks []*anthropic.MessagesStreamChunk) *anthropic.Me
 			response.StopReason = &delta.Delta.StopReason
 			response.StopSequence = &delta.Delta.StopSequence
 
-		case anthropic.MessagesStreamChunkTypeContentBlockStart:
+		case event.ContentBlockStart != nil:
 			idx := event.ContentBlockStart.Index
 			// Grow slice if needed.
 			if idx >= len(response.Content) {
@@ -262,7 +262,7 @@ func convertSSEToResponse(chunks []*anthropic.MessagesStreamChunk) *anthropic.Me
 			}
 			response.Content[idx] = event.ContentBlockStart.ContentBlock
 
-		case anthropic.MessagesStreamChunkTypeContentBlockDelta:
+		case event.ContentBlockDelta != nil:
 			idx := event.ContentBlockDelta.Index
 			if idx < len(response.Content) {
 				block := &response.Content[idx]
@@ -284,7 +284,7 @@ func convertSSEToResponse(chunks []*anthropic.MessagesStreamChunk) *anthropic.Me
 				}
 			}
 
-		case anthropic.MessagesStreamChunkTypeContentBlockStop:
+		case event.ContentBlockStop != nil:
 			idx := event.ContentBlockStop.Index
 			if jsonStr, ok := toolInputs[idx]; ok {
 				if idx < len(response.Content) && response.Content[idx].Tool != nil {
@@ -296,7 +296,7 @@ func convertSSEToResponse(chunks []*anthropic.MessagesStreamChunk) *anthropic.Me
 				delete(toolInputs, idx)
 			}
 
-		case anthropic.MessagesStreamChunkTypeMessageStop:
+		case event.MessageStop != nil:
 			// Nothing to do.
 		}
 	}
