@@ -139,12 +139,12 @@ func buildRequestAttributes(req *anthropic.MessagesRequest, body string, config 
 				for j, param := range content.Array {
 					switch {
 					case param.Text != nil:
-						text := param.Text.Text
+						maybeRedacted := param.Text.Text
 						if config.HideInputText {
-							text = openinference.RedactedValue
+							maybeRedacted = openinference.RedactedValue
 						}
 						attrs = append(attrs,
-							attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), text),
+							attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), maybeRedacted),
 							attribute.String(openinference.InputMessageContentAttribute(i, j, "type"), "text"),
 						)
 					default:
