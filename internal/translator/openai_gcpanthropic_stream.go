@@ -201,7 +201,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		p.activeMessageID = event.Message.ID
 		p.created = openai.JSONUNIXTime(time.Now())
 		u := event.Message.Usage
-		usage := extractTokenUsageFromAnthropic(
+		usage := metrics.ExtractTokenUsageFromAnthropic(
 			u.InputTokens,
 			u.OutputTokens,
 			u.CacheReadInputTokens,
@@ -289,7 +289,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			return nil, fmt.Errorf("unmarshal message_delta: %w", err)
 		}
 		u := event.Usage
-		usage := extractTokenUsageFromAnthropic(
+		usage := metrics.ExtractTokenUsageFromAnthropic(
 			u.InputTokens,
 			u.OutputTokens,
 			u.CacheReadInputTokens,

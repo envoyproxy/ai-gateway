@@ -786,7 +786,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 		Created: openai.JSONUNIXTime(time.Now()),
 	}
 	usage := anthropicResp.Usage
-	tokenUsage = extractTokenUsageFromAnthropic(
+	tokenUsage = metrics.ExtractTokenUsageFromAnthropic(
 		usage.InputTokens,
 		usage.OutputTokens,
 		usage.CacheReadInputTokens,

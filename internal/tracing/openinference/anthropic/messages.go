@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -206,13 +207,22 @@ func buildResponseAttributes(resp *anthropic.MessagesResponse, config *openinfer
 
 	// Token counts are considered metadata and are still included even when output content is hidden.
 	u := resp.Usage
-	// Calculate total input tokens as per Anthropic API documentation
-	totalInputTokens := u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens
+	cost := metrics.ExtractTokenUsageFromAnthropic(
+		int64(u.InputTokens),
+		int64(u.OutputTokens),
+		int64(u.CacheReadInputTokens),
+		int64(u.CacheCreationInputTokens),
+	)
+	input, _ := cost.InputTokens()
+	cache, _ := cost.CachedInputTokens()
+	output, _ := cost.OutputTokens()
+	total, _ := cost.TotalTokens()
+
 	attrs = append(attrs,
-		attribute.Int(openinference.LLMTokenCountPrompt, int(totalInputTokens)),
-		attribute.Int(openinference.LLMTokenCountPromptCacheHit, int(u.CacheCreationInputTokens+u.CacheReadInputTokens)),
-		attribute.Int(openinference.LLMTokenCountCompletion, int(u.OutputTokens)),
-		attribute.Int(openinference.LLMTokenCountTotal, int(totalInputTokens+u.OutputTokens)),
+		attribute.Int(openinference.LLMTokenCountPrompt, int(input)),
+		attribute.Int(openinference.LLMTokenCountPromptCacheHit, int(cache)),
+		attribute.Int(openinference.LLMTokenCountCompletion, int(output)),
+		attribute.Int(openinference.LLMTokenCountTotal, int(total)),
 	)
 	return attrs
 }
