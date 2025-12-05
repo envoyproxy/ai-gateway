@@ -62,7 +62,10 @@ func TestOpenAIToOpenAITranslatorV1AudioSpeech_RequestBody(t *testing.T) {
 		headers, newBody, err := translator.RequestBody(body, req, true)
 		require.NoError(t, err)
 		require.Equal(t, body, newBody) // On retry, body is returned as-is
-		require.Len(t, headers, 1)
+		require.Len(t, headers, 2)      // path + content-length
+		require.Equal(t, ":path", headers[0].Key())
+		require.Equal(t, "/v1/audio/speech", headers[0].Value())
+		require.Equal(t, "content-length", headers[1].Key())
 	})
 }
 
