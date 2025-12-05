@@ -448,8 +448,6 @@ type Usage struct {
 // MessagesStreamEvent represents a single event in the streaming response from the Anthropic Messages API.
 // https://docs.claude.com/en/docs/build-with-claude/streaming
 type MessagesStreamEvent struct {
-	// The type of the streaming event.
-	Type MessagesStreamEventType `json:"type"`
 	// MessageStart is present if the event type is "message_start" or "message_delta".
 	MessageStart *MessagesStreamEventMessageStart
 	// MessageDelta is present if the event type is "message_delta".
@@ -533,8 +531,7 @@ func (m *MessagesStreamEvent) UnmarshalJSON(data []byte) error {
 	if !eventType.Exists() {
 		return fmt.Errorf("missing type field in stream event")
 	}
-	m.Type = MessagesStreamEventType(eventType.String())
-	switch m.Type {
+	switch typ := MessagesStreamEventType(eventType.String()); typ {
 	case MessagesStreamEventTypeMessageStart:
 		messageBytes := gjson.GetBytes(data, "message")
 		r := strings.NewReader(messageBytes.Raw)
@@ -575,7 +572,7 @@ func (m *MessagesStreamEvent) UnmarshalJSON(data []byte) error {
 		}
 		m.ContentBlockStop = &contentBlockStop
 	default:
-		return fmt.Errorf("unknown stream event type: %s", m.Type)
+		return fmt.Errorf("unknown stream event type: %s", typ)
 	}
 	return nil
 }

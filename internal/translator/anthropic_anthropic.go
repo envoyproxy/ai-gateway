@@ -130,9 +130,8 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent(s tracing.M
 			s.RecordResponseChunk(eventUnion)
 		}
 
-		// See the code in MessageStreamEventUnion.AsAny for reference.
-		switch eventUnion.Type {
-		case "message_start":
+		switch {
+		case eventUnion.MessageStart != nil:
 			message := eventUnion.MessageStart
 			// Message only valid in message_start events.
 			if message.Model != "" {
@@ -148,7 +147,7 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent(s tracing.M
 					int64(u.CacheCreationInputTokens),
 				)
 			}
-		case "message_delta":
+		case eventUnion.MessageDelta != nil:
 			u := eventUnion.MessageDelta.Usage
 			tokenUsage = extractTokenUsageFromAnthropic(
 				int64(u.InputTokens),
