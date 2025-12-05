@@ -250,6 +250,10 @@ func TestMCPRoutes(t *testing.T) {
 			name:   "jwks_both.yaml",
 			expErr: "spec.securityPolicy.oauth.jwks: Invalid value: \"object\": remoteJWKS and localJWKS cannot both be specified.",
 		},
+		{
+			name:   "authorization_without_oauth.yaml",
+			expErr: "spec.securityPolicy: Invalid value: \"object\": oauth must be configured when authorization is set",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data, err := testdata.ReadFile(path.Join("testdata/mcpgatewayroutes", tc.name))

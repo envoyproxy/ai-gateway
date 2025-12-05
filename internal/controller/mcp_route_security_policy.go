@@ -281,13 +281,11 @@ func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataBTP(ctx context
 	return nil
 }
 
-// buildWWWAuthenticateHeaderValue constructs the WWW-Authenticate header value according to RFC 9728.
+// buildResourceMetadataURL constructs the OAuth protected resource metadata URL using the resource identifier.
 // References:
 // * https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization#authorization-server-location
 // * https://datatracker.ietf.org/doc/html/rfc9728#name-www-authenticate-response
-func buildWWWAuthenticateHeaderValue(metadata *aigv1a1.ProtectedResourceMetadata) string {
-	// Build resource metadata URL using RFC 8414 compliant pattern.
-	// Extract base URL and path from resource identifier.
+func buildResourceMetadataURL(metadata *aigv1a1.ProtectedResourceMetadata) string {
 	resourceURL := strings.TrimSuffix(metadata.Resource, "/")
 
 	var (
@@ -316,7 +314,15 @@ func buildWWWAuthenticateHeaderValue(metadata *aigv1a1.ProtectedResourceMetadata
 	// they should honor hte value returned here.
 	// We can't expose these resource at the root, because there may be multiple MCP routes with different OAuth settings, so we need
 	// to rely on clients properly implementing the spec and using this value returned in the header.
-	resourceMetadataURL := fmt.Sprintf("%s%s%s", baseURL, oauthWellKnownProtectedResourceMetadataPath, pathComponent)
+	return fmt.Sprintf("%s%s%s", baseURL, oauthWellKnownProtectedResourceMetadataPath, pathComponent)
+}
+
+// buildWWWAuthenticateHeaderValue constructs the WWW-Authenticate header value according to RFC 9728.
+// References:
+// * https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization#authorization-server-location
+// * https://datatracker.ietf.org/doc/html/rfc9728#name-www-authenticate-response
+func buildWWWAuthenticateHeaderValue(metadata *aigv1a1.ProtectedResourceMetadata) string {
+	resourceMetadataURL := buildResourceMetadataURL(metadata)
 	// Build the basic Bearer challenge.
 	headerValue := `Bearer error="invalid_request", error_description="No access token was provided in this request"`
 
