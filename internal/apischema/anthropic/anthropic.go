@@ -24,7 +24,7 @@ import (
 // Notably, round trip idempotency is not guaranteed when using this struct.
 type MessagesRequest struct {
 	// Model is the model to use for the request.
-	Model string `json:"model,omitempty"`
+	Model string `json:"model"`
 
 	// Messages is the list of messages in the conversation.
 	// https://docs.claude.com/en/api/messages#body-messages
@@ -32,7 +32,7 @@ type MessagesRequest struct {
 
 	// MaxTokens is the maximum number of tokens to generate.
 	// https://docs.claude.com/en/api/messages#body-max-tokens
-	MaxTokens float64 `json:"max_tokens,omitempty"`
+	MaxTokens float64 `json:"max_tokens"`
 
 	// Container identifier for reuse across requests.
 	// https://docs.claude.com/en/api/messages#body-container
@@ -109,8 +109,8 @@ const (
 // MessageContent represents the content of a message in the Anthropic Messages API.
 // https://docs.claude.com/en/api/messages#body-messages-content
 type MessageContent struct {
-	Text  string              // Non-empty iif this is not array content.
-	Array []ContentBlockParam // Non-empty iif this is array content.
+	Text  string              // Non-empty if this is not array content.
+	Array []ContentBlockParam // Non-empty if this is array content.
 }
 
 func (m *MessageContent) UnmarshalJSON(data []byte) error {
