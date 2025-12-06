@@ -209,6 +209,7 @@ func (s *session) streamNotifications(ctx context.Context, w http.ResponseWriter
 
 	for {
 		select {
+		// events received from the upstream MCP backends
 		case event, ok := <-backendMsgs:
 			if !ok {
 				// Channel closed, all backends have finished.
@@ -239,6 +240,8 @@ func (s *session) streamNotifications(ctx context.Context, w http.ResponseWriter
 			if heartbeatTicker != nil {
 				heartbeatTicker.Reset(heartbeatInterval)
 			}
+		// toolChangeSignaler will trigger when the tools configured in the MCP routes change.
+		// This is not related to upstream MCP server changes, but to the tools configured in the gateway.
 		case <-toolChangeSignaler.Watch():
 			toolChangeEvent := &sseEvent{event: "message", messages: []jsonrpc.Message{newToolListChangedMessage()}}
 			toolChangeEvent.writeAndMaybeFlush(w)
