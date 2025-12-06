@@ -1,7 +1,7 @@
 module github.com/envoyproxy/ai-gateway
 
 // Explicitly specify the Go patch version to be able to purge the CI cache correctly.
-go 1.25.3
+go 1.25.5
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.20.0

@@ -44,6 +44,10 @@ const (
 const (
 	// LLMSystemOpenAI for OpenAI systems.
 	LLMSystemOpenAI = "openai"
+	// LLMSystemCohere for Cohere systems.
+	LLMSystemCohere = "cohere"
+	// LLMSystemAnthropic for Anthropic systems.
+	LLMSystemAnthropic = "anthropic"
 )
 
 // Input/Output constants.

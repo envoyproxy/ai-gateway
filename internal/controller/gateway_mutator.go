@@ -319,8 +319,6 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		ImagePullPolicy: g.extProcImagePullPolicy,
 		Ports: []corev1.ContainerPort{
 			{Name: "aigw-admin", ContainerPort: extProcAdminPort},
-			// TODO: This is for the backward compatibility with v0.3. Remove this after v0.4 is released.
-			{Name: "aigw-metrics", ContainerPort: extProcAdminPort},
 		},
 		Args: g.buildExtProcArgs(filterConfigFullPath, extProcAdminPort, len(mcpRoutes.Items) > 0),
 		Env:  envVars,

@@ -1071,8 +1071,9 @@ type StreamOptions struct {
 type ToolType string
 
 const (
-	ToolTypeFunction        ToolType = "function"
-	ToolTypeImageGeneration ToolType = "image_generation"
+	ToolTypeFunction            ToolType = "function"
+	ToolTypeImageGeneration     ToolType = "image_generation"
+	ToolTypeEnterpriseWebSearch ToolType = "enterprise_search"
 )
 
 type Tool struct {
@@ -1314,6 +1315,10 @@ type ChatCompletionResponseChoiceMessage struct {
 	// List of ratings for the safety of a response candidate. There is at most one rating per category.
 	// https://cloud.google.com/vertex-ai/generative-ai/docs/reference/rest/v1/GenerateContentResponse#SafetyRating
 	SafetyRatings []*genai.SafetyRating `json:"safety_ratings,omitempty"`
+
+	// GroundingMetadata specifies sources used to ground generated content.
+	// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/reference/rest/v1beta1/GroundingMetadata
+	GroundingMetadata *genai.GroundingMetadata `json:"grounding_metadata,omitempty"`
 }
 
 // URLCitation contains citation information for web search results.
