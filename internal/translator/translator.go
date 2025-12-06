@@ -27,8 +27,9 @@ const (
 	awsErrorTypeHeaderName  = "x-amzn-errortype"
 	jsonContentType         = "application/json"
 	eventStreamContentType  = "text/event-stream"
-	openAIBackendError      = "OpenAIBackendError"
-	awsBedrockBackendError  = "AWSBedrockBackendError"
+	openAIBackendError       = "OpenAIBackendError"
+	awsBedrockBackendError   = "AWSBedrockBackendError"
+	awsInvokeModelBackendError = "AWSInvokeModelBackendError"
 )
 
 // Translator translates the request and response messages between the client
