@@ -194,8 +194,41 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(
 		// Convert GCP chunk to OpenAI chunk.
 		openAIChunk := o.convertGCPChunkToOpenAI(chunk)
 
-		// Extract token usage if present in this chunk (typically in the last chunk).
-		if chunk.UsageMetadata != nil {
+		// Serialize to SSE format as expected by OpenAI API.
+		err := serializeOpenAIChatCompletionChunk(*openAIChunk, &newBody)
+		if err != nil {
+			return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("error marshaling OpenAI chunk: %w", err)
+		}
+
+		if span != nil {
+			span.RecordResponseChunk(openAIChunk)
+		}
+
+		// Extract token usage only in the last chunk.
+		if chunk.UsageMetadata != nil && chunk.UsageMetadata.PromptTokenCount > 0 {
+			// Convert usage to pointer if available.
+			usage := ptr.To(geminiUsageToOpenAIUsage(chunk.UsageMetadata))
+
+			usageChunk := openai.ChatCompletionResponseChunk{
+				ID:      chunk.ResponseID,
+				Created: openai.JSONUNIXTime(chunk.CreateTime),
+				Object:  "chat.completion.chunk",
+				Choices: []openai.ChatCompletionResponseChunkChoice{},
+				// usage is nil for all chunks other than the last chunk
+				Usage: usage,
+				Model: o.requestModel,
+			}
+
+			// Serialize to SSE format as expected by OpenAI API.
+			err := serializeOpenAIChatCompletionChunk(usageChunk, &newBody)
+			if err != nil {
+				return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("error marshaling OpenAI chunk: %w", err)
+			}
+
+			if span != nil {
+				span.RecordResponseChunk(&usageChunk)
+			}
+
 			if chunk.UsageMetadata.PromptTokenCount >= 0 {
 				tokenUsage.SetInputTokens(uint32(chunk.UsageMetadata.PromptTokenCount)) //nolint:gosec
 			}
@@ -208,16 +241,6 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(
 			if chunk.UsageMetadata.CachedContentTokenCount >= 0 {
 				tokenUsage.SetCachedInputTokens(uint32(chunk.UsageMetadata.CachedContentTokenCount)) //nolint:gosec
 			}
-		}
-
-		// Serialize to SSE format as expected by OpenAI API.
-		err := serializeOpenAIChatCompletionChunk(*openAIChunk, &newBody)
-		if err != nil {
-			return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("error marshaling OpenAI chunk: %w", err)
-		}
-
-		if span != nil {
-			span.RecordResponseChunk(openAIChunk)
 		}
 	}
 
@@ -381,19 +404,14 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) convertGCPChunkToOpenAI(
 		choices = []openai.ChatCompletionResponseChunkChoice{}
 	}
 
-	// Convert usage to pointer if available.
-	var usage *openai.Usage
-	if chunk.UsageMetadata != nil {
-		usage = ptr.To(geminiUsageToOpenAIUsage(chunk.UsageMetadata))
-	}
-
 	return &openai.ChatCompletionResponseChunk{
 		ID:      chunk.ResponseID,
 		Created: openai.JSONUNIXTime(chunk.CreateTime),
 		Object:  "chat.completion.chunk",
 		Choices: choices,
-		Usage:   usage,
-		Model:   o.requestModel,
+		// usage is nil for all chunks other than the last chunk
+		Usage: nil,
+		Model: o.requestModel,
 	}
 }
 

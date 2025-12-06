@@ -364,6 +364,9 @@ func openAIToolsToGeminiTools(openaiTools []openai.Tool, parametersJSONSchemaAva
 	if len(openaiTools) == 0 {
 		return nil, nil
 	}
+
+	var genaiTools []genai.Tool
+
 	var functionDecls []*genai.FunctionDeclaration
 
 	for _, tool := range openaiTools {
@@ -395,14 +398,27 @@ func openAIToolsToGeminiTools(openaiTools []openai.Tool, parametersJSONSchemaAva
 			}
 		case openai.ToolTypeImageGeneration:
 			return nil, fmt.Errorf("tool-type image generation not supported yet when translating OpenAI req to Gemini")
+		case openai.ToolTypeEnterpriseWebSearch:
+			genaiTools = append(genaiTools, genai.Tool{
+				EnterpriseWebSearch: &genai.EnterpriseWebSearch{},
+			})
 		default:
 			return nil, fmt.Errorf("unsupported tool type: %s", tool.Type)
 		}
 	}
-	if len(functionDecls) == 0 {
+	// Only return nil if there are no tools at all (neither function declarations nor other tools)
+	if len(functionDecls) == 0 && len(genaiTools) == 0 {
 		return nil, nil
 	}
-	return []genai.Tool{{FunctionDeclarations: functionDecls}}, nil
+
+	// Only append function declarations if there are any
+	if len(functionDecls) > 0 {
+		genaiTools = append(genaiTools, genai.Tool{
+			FunctionDeclarations: functionDecls,
+		})
+	}
+
+	return genaiTools, nil
 }
 
 // openAIToolChoiceToGeminiToolConfig converts OpenAI tool_choice to Gemini ToolConfig.
@@ -686,6 +702,14 @@ func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate, responseMode
 			}
 
 			choice.Message.SafetyRatings = candidate.SafetyRatings
+		}
+
+		if candidate.GroundingMetadata != nil {
+			if choice.Message.Role == "" {
+				choice.Message.Role = openai.ChatMessageRoleAssistant
+			}
+
+			choice.Message.GroundingMetadata = candidate.GroundingMetadata
 		}
 
 		// Handle logprobs if available.

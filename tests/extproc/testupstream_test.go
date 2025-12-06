@@ -579,7 +579,9 @@ data: {"id":"msg_123","choices":[{"index":0,"delta":{"content":" you","role":"as
 
 data: {"id":"msg_123","choices":[{"index":0,"delta":{"content":" today","role":"assistant"}}],"created":123,"model":"gemini-1.5-pro","object":"chat.completion.chunk"}
 
-data: {"id":"msg_123","choices":[{"index":0,"delta":{"content":"?","role":"assistant"},"finish_reason":"stop"}],"created":123,"model":"gemini-1.5-pro","object":"chat.completion.chunk","usage":{"prompt_tokens":10,"completion_tokens":7,"total_tokens":17,"completion_tokens_details":{},"prompt_tokens_details":{}}}
+data: {"id":"msg_123","choices":[{"index":0,"delta":{"content":"?","role":"assistant"},"finish_reason":"stop"}],"created":123,"model":"gemini-1.5-pro","object":"chat.completion.chunk"}
+
+data: {"id":"msg_123","created":123,"model":"gemini-1.5-pro","object":"chat.completion.chunk","usage":{"prompt_tokens":10,"completion_tokens":7,"total_tokens":17,"completion_tokens_details":{},"prompt_tokens_details":{}}}
 
 data: [DONE]
 `,
