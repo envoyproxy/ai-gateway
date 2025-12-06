@@ -54,10 +54,13 @@ func (v *referenceGrantValidator) validateAIServiceBackendReference(
 		return nil
 	}
 
-	// List all ReferenceGrants in the backend namespace
+	indexKey := getReferenceGrantIndexKey(backendNamespace, aiServiceBackendKind)
 	var referenceGrants gwapiv1b1.ReferenceGrantList
-	if err := v.client.List(ctx, &referenceGrants, client.InNamespace(backendNamespace)); err != nil {
-		return fmt.Errorf("failed to list ReferenceGrants in namespace %s: %w", backendNamespace, err)
+	if err := v.client.List(ctx, &referenceGrants,
+		client.MatchingFields{k8sClientIndexReferenceGrantToTargetKind: indexKey},
+	); err != nil {
+		return fmt.Errorf("failed to list ReferenceGrants in namespace %s for kind %s: %w",
+			backendNamespace, aiServiceBackendKind, err)
 	}
 
 	// Check if any ReferenceGrant allows this cross-namespace reference
