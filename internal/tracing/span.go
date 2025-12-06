@@ -6,7 +6,6 @@
 package tracing
 
 import (
-	openaisdk "github.com/openai/openai-go/v2"
 	"go.opentelemetry.io/otel/trace"
 
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
@@ -50,7 +49,7 @@ type (
 	chatCompletionSpan  = span[openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]
 	completionSpan      = span[openai.CompletionResponse, openai.CompletionResponse]
 	embeddingsSpan      = span[openai.EmbeddingResponse, struct{}]
-	imageGenerationSpan = span[openaisdk.ImagesResponse, struct{}]
+	imageGenerationSpan = span[openai.ImageGenerationResponse, struct{}]
 	rerankSpan          = span[cohereschema.RerankV2Response, struct{}]
 	messageSpan         = span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 )

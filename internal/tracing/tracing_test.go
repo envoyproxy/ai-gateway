@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"testing"
 
-	openaisdk "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/propagation"
 	"k8s.io/utils/ptr"
@@ -726,7 +725,7 @@ func startCompletionsSpan(t *testing.T, tracing tracing.Tracing, carrier propaga
 }
 
 func TestTracingImpl_Getters_ImageGenerationAndRerank(t *testing.T) {
-	ig := tracing.NoopTracer[openaisdk.ImageGenerateParams, openaisdk.ImagesResponse, struct{}]{}
+	ig := tracing.NoopTracer[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]{}
 	rr := tracing.NoopTracer[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]{}
 
 	ti := &tracingImpl{
