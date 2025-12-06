@@ -40,8 +40,9 @@ func doMain() *http.Server {
 	if err != nil {
 		logger.Fatalf("invalid port: %v", err)
 	}
-	return testmcp.NewServer(&testmcp.Options{
+	server, _ := testmcp.NewServer(&testmcp.Options{
 		Port:         port,
 		WriteTimeout: 1200 * time.Second,
 	})
+	return server
 }

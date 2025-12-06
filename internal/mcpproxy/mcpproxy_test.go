@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -388,4 +389,319 @@ func Test_toolSelector_Allows(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLoadConfig_BasicConfiguration(t *testing.T) {
+	proxy := &ProxyConfig{
+		mcpProxyConfig:   &mcpProxyConfig{},
+		toolsChangedChan: make(chan struct{}, 1),
+	}
+
+	config := &filterapi.Config{
+		MCPConfig: &filterapi.MCPConfig{
+			BackendListenerAddr: "http://localhost:8080",
+			Routes: []filterapi.MCPRoute{
+				{
+					Name: "route1",
+					Backends: []filterapi.MCPBackend{
+						{Name: "backend1", Path: "/mcp1"},
+						{
+							Name: "backend2", Path: "/mcp2",
+							ToolSelector: &filterapi.MCPToolSelector{
+								Include:      []string{"tool1", "tool2"},
+								IncludeRegex: []string{"^test.*"},
+							},
+						},
+					},
+				},
+				{
+					Name: "route2",
+					Backends: []filterapi.MCPBackend{
+						{Name: "backend3", Path: "/mcp3"},
+						{Name: "backend4", Path: "/mcp4"},
+					},
+				},
+			},
+		},
+	}
+
+	err := proxy.LoadConfig(t.Context(), config)
+	require.NoError(t, err)
+	require.Equal(t, "http://localhost:8080", proxy.backendListenerAddr)
+	require.Len(t, proxy.routes, 2)
+	require.Contains(t, proxy.routes, filterapi.MCPRouteName("route1"))
+	require.Contains(t, proxy.routes, filterapi.MCPRouteName("route2"))
+	require.Len(t, proxy.routes["route1"].backends, 2)
+	require.Len(t, proxy.routes["route2"].backends, 2)
+	require.Contains(t, proxy.routes["route1"].backends, filterapi.MCPBackendName("backend1"))
+	require.Contains(t, proxy.routes["route1"].backends, filterapi.MCPBackendName("backend2"))
+	require.Contains(t, proxy.routes["route2"].backends, filterapi.MCPBackendName("backend3"))
+	require.Contains(t, proxy.routes["route2"].backends, filterapi.MCPBackendName("backend4"))
+	selector := proxy.routes["route1"].toolSelectors["backend2"]
+	require.NotNil(t, selector)
+	require.Contains(t, selector.include, "tool1")
+	require.Contains(t, selector.include, "tool2")
+	require.Len(t, selector.includeRegexps, 1)
+	require.True(t, selector.includeRegexps[0].MatchString("test123"))
+	require.False(t, selector.includeRegexps[0].MatchString("other"))
+}
+
+func TestLoadConfig_ToolsChangedNotification(t *testing.T) {
+	// Create a channel we can receive from in the test
+	toolsChangedChan := make(chan struct{}, 1)
+
+	// Initialize proxy with initial configuration directly
+	proxy := &ProxyConfig{
+		mcpProxyConfig: &mcpProxyConfig{
+			backendListenerAddr: "http://localhost:8080",
+			routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
+				"route1": {
+					backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
+						"backend1": {Name: "backend1", Path: "/mcp1"},
+					},
+					toolSelectors: map[filterapi.MCPBackendName]*toolSelector{},
+				},
+			},
+		},
+		toolsChangedChan: toolsChangedChan,
+	}
+
+	// Update with a different backend (tools changed)
+	config := &filterapi.Config{
+		MCPConfig: &filterapi.MCPConfig{
+			BackendListenerAddr: "http://localhost:8080",
+			Routes: []filterapi.MCPRoute{
+				{
+					Name: "route1",
+					Backends: []filterapi.MCPBackend{
+						{Name: "backend1", Path: "/mcp1"},
+						{Name: "backend2", Path: "/mcp2"}, // Added backend
+					},
+				},
+			},
+		},
+	}
+
+	err := proxy.LoadConfig(t.Context(), config)
+	require.NoError(t, err)
+
+	// Should receive tools changed notification
+	select {
+	case <-toolsChangedChan:
+		// Expected
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected tools changed notification but didn't receive one")
+	}
+}
+
+func TestLoadConfig_NoToolsChangedNotification(t *testing.T) {
+	// Create a channel we can receive from in the test
+	toolsChangedChan := make(chan struct{}, 1)
+
+	// Initialize proxy with initial configuration directly
+	proxy := &ProxyConfig{
+		mcpProxyConfig: &mcpProxyConfig{
+			backendListenerAddr: "http://localhost:8080",
+			routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
+				"route1": {
+					backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
+						"backend1": {Name: "backend1", Path: "/mcp1"},
+					},
+					toolSelectors: map[filterapi.MCPBackendName]*toolSelector{},
+				},
+			},
+		},
+		toolsChangedChan: toolsChangedChan,
+	}
+
+	// Update with same backends but different BackendListenerAddr (tools NOT changed)
+	config := &filterapi.Config{
+		MCPConfig: &filterapi.MCPConfig{
+			BackendListenerAddr: "http://localhost:9090", // Different address
+			Routes: []filterapi.MCPRoute{
+				{
+					Name: "route1",
+					Backends: []filterapi.MCPBackend{
+						{Name: "backend1", Path: "/mcp1"}, // Same backend
+					},
+				},
+			},
+		},
+	}
+
+	err := proxy.LoadConfig(t.Context(), config)
+	require.NoError(t, err)
+
+	// Should NOT receive tools changed notification
+	select {
+	case <-toolsChangedChan:
+		t.Fatal("unexpected tools changed notification")
+	case <-time.After(100 * time.Millisecond):
+		// Expected - no notification
+	}
+}
+
+func TestLoadConfig_InvalidRegex(t *testing.T) {
+	proxy := &ProxyConfig{
+		mcpProxyConfig:   &mcpProxyConfig{},
+		toolsChangedChan: make(chan struct{}, 1),
+	}
+
+	config := &filterapi.Config{
+		MCPConfig: &filterapi.MCPConfig{
+			BackendListenerAddr: "http://localhost:8080",
+			Routes: []filterapi.MCPRoute{
+				{
+					Name: "route1",
+					Backends: []filterapi.MCPBackend{
+						{
+							Name: "backend1",
+							Path: "/mcp1",
+							ToolSelector: &filterapi.MCPToolSelector{
+								IncludeRegex: []string{"[invalid"}, // Invalid regex
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	err := proxy.LoadConfig(t.Context(), config)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to compile include regex")
+}
+
+func TestLoadConfig_ToolSelectorChange(t *testing.T) {
+	// Create a channel we can receive from in the test
+	toolsChangedChan := make(chan struct{}, 1)
+
+	// Initialize proxy with initial configuration directly
+	proxy := &ProxyConfig{
+		mcpProxyConfig: &mcpProxyConfig{
+			backendListenerAddr: "http://localhost:8080",
+			routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
+				"route1": {
+					backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
+						"backend1": {Name: "backend1", Path: "/mcp1"},
+					},
+					toolSelectors: map[filterapi.MCPBackendName]*toolSelector{
+						"backend1": {
+							include: map[string]struct{}{"tool1": {}},
+						},
+					},
+				},
+			},
+		},
+		toolsChangedChan: toolsChangedChan,
+	}
+
+	// Update with different tool selector (tools changed)
+	config := &filterapi.Config{
+		MCPConfig: &filterapi.MCPConfig{
+			BackendListenerAddr: "http://localhost:8080",
+			Routes: []filterapi.MCPRoute{
+				{
+					Name: "route1",
+					Backends: []filterapi.MCPBackend{
+						{
+							Name: "backend1",
+							Path: "/mcp1",
+							ToolSelector: &filterapi.MCPToolSelector{
+								Include: []string{"tool1", "tool2"}, // Different tools
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	err := proxy.LoadConfig(t.Context(), config)
+	require.NoError(t, err)
+
+	// Should receive tools changed notification
+	select {
+	case <-toolsChangedChan:
+		// Expected
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected tools changed notification but didn't receive one")
+	}
+}
+
+func TestLoadConfig_ToolOrderDoesNotMatter(t *testing.T) {
+	// Create a channel we can receive from in the test
+	toolsChangedChan := make(chan struct{}, 1)
+
+	// Initialize proxy with initial configuration directly
+	proxy := &ProxyConfig{
+		mcpProxyConfig: &mcpProxyConfig{
+			backendListenerAddr: "http://localhost:8080",
+			routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
+				"route1": {
+					backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
+						"backend1": {Name: "backend1", Path: "/mcp1"},
+					},
+					toolSelectors: map[filterapi.MCPBackendName]*toolSelector{
+						"backend1": {
+							include: map[string]struct{}{
+								"tool-a": {},
+								"tool-b": {},
+								"tool-c": {},
+							},
+							includeRegexps: []*regexp.Regexp{
+								regexp.MustCompile("^prefix.*"),
+								regexp.MustCompile(".*suffix$"),
+								regexp.MustCompile("^exact$"),
+							},
+						},
+					},
+				},
+			},
+		},
+		toolsChangedChan: toolsChangedChan,
+	}
+
+	// Update with same tools and regexps but in different order
+	config := &filterapi.Config{
+		MCPConfig: &filterapi.MCPConfig{
+			BackendListenerAddr: "http://localhost:8080",
+			Routes: []filterapi.MCPRoute{
+				{
+					Name: "route1",
+					Backends: []filterapi.MCPBackend{
+						{
+							Name: "backend1",
+							Path: "/mcp1",
+							ToolSelector: &filterapi.MCPToolSelector{
+								Include:      []string{"tool-c", "tool-a", "tool-b"},        // Different order
+								IncludeRegex: []string{"^exact$", ".*suffix$", "^prefix.*"}, // Different order
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	err := proxy.LoadConfig(t.Context(), config)
+	require.NoError(t, err)
+
+	// Should NOT receive tools changed notification since same tools, just different order
+	select {
+	case <-toolsChangedChan:
+		t.Fatal("unexpected tools changed notification when only order changed")
+	case <-time.After(100 * time.Millisecond):
+		// Expected - no notification
+	}
+
+	// Verify the tool selector still works correctly regardless of order
+	route := proxy.routes["route1"]
+	require.NotNil(t, route)
+	selector := route.toolSelectors["backend1"]
+	require.NotNil(t, selector)
+	require.Contains(t, selector.include, "tool-a")
+	require.Contains(t, selector.include, "tool-b")
+	require.Contains(t, selector.include, "tool-c")
+	require.Len(t, selector.includeRegexps, 3)
 }

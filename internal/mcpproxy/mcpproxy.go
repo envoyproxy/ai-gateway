@@ -13,8 +13,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -32,6 +34,7 @@ type (
 	// ProxyConfig holds the main MCP proxy configuration.
 	ProxyConfig struct {
 		*mcpProxyConfig
+		toolsChangedChan chan<- struct{} // channel to notify tool changes to clients
 	}
 
 	// MCPProxy serves /mcp endpoint.
@@ -43,6 +46,8 @@ type (
 		l             *slog.Logger
 		sessionCrypto SessionCrypto
 		tracer        tracing.MCPTracer
+
+		toolsChangedChan chan struct{}
 	}
 
 	mcpProxyConfig struct {
@@ -62,28 +67,70 @@ type (
 	}
 )
 
-func (f *toolSelector) allows(tool string) bool {
+func (m *mcpProxyConfig) sameTools(other *mcpProxyConfig) bool {
+	if m == nil || other == nil {
+		return m == other
+	}
+	return maps.EqualFunc(m.routes, other.routes, func(a, b *mcpProxyConfigRoute) bool {
+		return a.sameTools(b)
+	})
+}
+
+func (m *mcpProxyConfigRoute) sameTools(other *mcpProxyConfigRoute) bool {
+	if m == nil || other == nil {
+		return m == other
+	}
+	if !equalKeys(m.backends, other.backends) {
+		return false
+	}
+	return maps.EqualFunc(m.toolSelectors, other.toolSelectors, func(a, b *toolSelector) bool {
+		return a.sameTools(b)
+	})
+}
+
+var sortRegexpAsString = func(a, b *regexp.Regexp) int { return strings.Compare(a.String(), b.String()) }
+
+func equalKeys[K comparable, V any](m1, m2 map[K]V) bool {
+	return maps.EqualFunc(m1, m2, func(_, _ V) bool { return true })
+}
+
+func (t *toolSelector) sameTools(other *toolSelector) bool {
+	if t == nil || other == nil {
+		return t == other
+	}
+	if !equalKeys(t.include, other.include) {
+		return false
+	}
+	slices.SortFunc(t.includeRegexps, sortRegexpAsString)
+	slices.SortFunc(other.includeRegexps, sortRegexpAsString)
+	return slices.EqualFunc(t.includeRegexps, other.includeRegexps,
+		func(a, b *regexp.Regexp) bool {
+			return a.String() == b.String()
+		})
+}
+
+func (t *toolSelector) allows(tool string) bool {
 	// Check include filters - if no filter, allow all; if filter exists, allow only matches
-	if len(f.include) > 0 {
-		_, ok := f.include[tool]
+	if len(t.include) > 0 {
+		_, ok := t.include[tool]
 		return ok
 	}
-	if len(f.includeRegexps) > 0 {
-		for _, re := range f.includeRegexps {
+	if len(t.includeRegexps) > 0 {
+		for _, re := range t.includeRegexps {
 			if re.MatchString(tool) {
 				return true
 			}
 		}
 		return false
 	}
-
 	// No filters, allow all
 	return true
 }
 
 // NewMCPProxy creates a new MCPProxy instance.
 func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracing.MCPTracer, sessionCrypto SessionCrypto) (*ProxyConfig, *http.ServeMux, error) {
-	cfg := &ProxyConfig{}
+	toolsChangedChan := make(chan struct{}, 1)
+	cfg := &ProxyConfig{toolsChangedChan: toolsChangedChan}
 	mux := http.NewServeMux()
 	mux.HandleFunc(
 		// Must match all paths since the route selection happens at Envoy level and the "route" header is already
@@ -93,11 +140,12 @@ func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracing.M
 		// with different prefixes will not be matched, which is not what we want.
 		"/", func(w http.ResponseWriter, r *http.Request) {
 			proxy := &MCPProxy{
-				mcpProxyConfig: cfg.mcpProxyConfig,
-				l:              l,
-				metrics:        mcpMetrics.WithRequestAttributes(r),
-				tracer:         tracer,
-				sessionCrypto:  sessionCrypto,
+				mcpProxyConfig:   cfg.mcpProxyConfig,
+				l:                l,
+				metrics:          mcpMetrics.WithRequestAttributes(r),
+				tracer:           tracer,
+				sessionCrypto:    sessionCrypto,
+				toolsChangedChan: toolsChangedChan,
 			}
 
 			switch r.Method {
@@ -158,7 +206,16 @@ func (p *ProxyConfig) LoadConfig(_ context.Context, config *filterapi.Config) er
 		newConfig.routes[route.Name] = r
 	}
 
+	toolsChanged := !p.sameTools(newConfig)
 	p.mcpProxyConfig = newConfig // This is racy, but we don't care.
+
+	if toolsChanged {
+		select {
+		case p.toolsChangedChan <- struct{}{}:
+		default: // Ignore if the channel is full.
+		}
+	}
+
 	return nil
 }
 
