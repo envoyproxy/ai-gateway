@@ -168,6 +168,11 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 			// need to reconcile them; just create them as-is.
 			mustExtractAndAppend(obj, &backendTLSConfigs)
 			mustWriteObj(nil, obj, out)
+		case "GatewayConfig":
+			// GatewayConfig is gateway-scoped configuration for extproc containers.
+			// Write it back as-is to the output.
+			logger.Info("Writing GatewayConfig to output as-is", "name", obj.GetName())
+			mustWriteObj(nil, obj, out)
 		default:
 			// Now you can inspect or manipulate the CRD.
 			logger.Info("Writing back non-target object into the output as-is", "kind", obj.GetKind(), "name", obj.GetName())

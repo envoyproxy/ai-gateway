@@ -477,3 +477,95 @@ func TestParseImagePullSecrets(t *testing.T) {
 		})
 	}
 }
+
+func TestGatewayMutator_mergeEnvVars(t *testing.T) {
+	tests := []struct {
+		name          string
+		globalEnvVars string
+		gatewayConfig *aigv1a1.GatewayConfig
+		expectedEnvs  map[string]string
+	}{
+		{
+			name:          "global env vars only",
+			globalEnvVars: "GLOBAL_VAR=global-value;LOG_LEVEL=info",
+			gatewayConfig: nil,
+			expectedEnvs: map[string]string{
+				"GLOBAL_VAR": "global-value",
+				"LOG_LEVEL":  "info",
+			},
+		},
+		{
+			name:          "GatewayConfig env vars only",
+			globalEnvVars: "",
+			gatewayConfig: &aigv1a1.GatewayConfig{
+				Spec: aigv1a1.GatewayConfigSpec{
+					ExtProc: &aigv1a1.GatewayConfigExtProc{
+						Env: []corev1.EnvVar{
+							{Name: "CONFIG_VAR", Value: "config-value"},
+							{Name: "LOG_LEVEL", Value: "debug"},
+						},
+					},
+				},
+			},
+			expectedEnvs: map[string]string{
+				"CONFIG_VAR": "config-value",
+				"LOG_LEVEL":  "debug",
+			},
+		},
+		{
+			name:          "GatewayConfig overrides global",
+			globalEnvVars: "LOG_LEVEL=info;GLOBAL_ONLY=global",
+			gatewayConfig: &aigv1a1.GatewayConfig{
+				Spec: aigv1a1.GatewayConfigSpec{
+					ExtProc: &aigv1a1.GatewayConfigExtProc{
+						Env: []corev1.EnvVar{
+							{Name: "LOG_LEVEL", Value: "debug"},
+							{Name: "CONFIG_ONLY", Value: "config"},
+						},
+					},
+				},
+			},
+			expectedEnvs: map[string]string{
+				"LOG_LEVEL":   "debug",  // GatewayConfig overrides global
+				"GLOBAL_ONLY": "global", // global only
+				"CONFIG_ONLY": "config", // config only
+			},
+		},
+		{
+			name:          "GatewayConfig with nil ExtProc",
+			globalEnvVars: "GLOBAL_VAR=global-value",
+			gatewayConfig: &aigv1a1.GatewayConfig{
+				Spec: aigv1a1.GatewayConfigSpec{
+					ExtProc: nil,
+				},
+			},
+			expectedEnvs: map[string]string{
+				"GLOBAL_VAR": "global-value",
+			},
+		},
+		{
+			name:          "empty both",
+			globalEnvVars: "",
+			gatewayConfig: nil,
+			expectedEnvs:  map[string]string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeClient := requireNewFakeClientWithIndexes(t)
+			fakeKube := fake2.NewClientset()
+			g := newTestGatewayMutator(fakeClient, fakeKube, "", "", "", tt.globalEnvVars, "", false)
+
+			result := g.mergeEnvVars(tt.gatewayConfig)
+
+			// Convert result to map for easier comparison.
+			resultMap := make(map[string]string)
+			for _, env := range result {
+				resultMap[env.Name] = env.Value
+			}
+
+			require.Equal(t, tt.expectedEnvs, resultMap)
+		})
+	}
+}
