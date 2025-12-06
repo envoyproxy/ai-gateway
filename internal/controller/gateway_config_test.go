@@ -6,8 +6,8 @@
 package controller
 
 import (
-	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -27,7 +27,8 @@ import (
 func requireNewFakeClientForGatewayConfig(t *testing.T) client.Client {
 	t.Helper()
 	builder := fake.NewClientBuilder().WithScheme(Scheme).
-		WithStatusSubresource(&aigv1a1.GatewayConfig{})
+		WithStatusSubresource(&aigv1a1.GatewayConfig{}).
+		WithIndex(&gwapiv1.Gateway{}, k8sClientIndexGatewayToGatewayConfig, gatewayToGatewayConfigIndexFunc)
 	return builder.Build()
 }
 
@@ -74,7 +75,7 @@ func TestGatewayConfigController_Reconcile(t *testing.T) {
 	require.Equal(t, aigv1a1.ConditionTypeAccepted, updated.Status.Conditions[0].Type)
 }
 
-func TestGatewayConfigController_FinalizerManagement(t *testing.T) {
+func TestGatewayConfigController_NotifyGateways(t *testing.T) {
 	fakeClient := requireNewFakeClientForGatewayConfig(t)
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewGatewayConfigController(fakeClient, ctrl.Log, eventCh.Ch)
@@ -105,7 +106,7 @@ func TestGatewayConfigController_FinalizerManagement(t *testing.T) {
 	var updatedConfig aigv1a1.GatewayConfig
 	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: "test-config", Namespace: "default"}, &updatedConfig)
 	require.NoError(t, err)
-	require.NotContains(t, updatedConfig.Finalizers, GatewayConfigFinalizerName)
+	require.Empty(t, updatedConfig.Finalizers)
 
 	// Create a Gateway that references the GatewayConfig.
 	gateway := &gwapiv1.Gateway{
@@ -130,7 +131,7 @@ func TestGatewayConfigController_FinalizerManagement(t *testing.T) {
 	err = fakeClient.Create(t.Context(), gateway)
 	require.NoError(t, err)
 
-	// Reconcile again - should add finalizer now.
+	// Reconcile again - should notify the Gateway and still not add any finalizer.
 	_, err = c.Reconcile(t.Context(), reconcile.Request{
 		NamespacedName: client.ObjectKey{Name: "test-config", Namespace: "default"},
 	})
@@ -138,76 +139,11 @@ func TestGatewayConfigController_FinalizerManagement(t *testing.T) {
 
 	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: "test-config", Namespace: "default"}, &updatedConfig)
 	require.NoError(t, err)
-	require.Contains(t, updatedConfig.Finalizers, GatewayConfigFinalizerName)
+	require.Empty(t, updatedConfig.Finalizers)
 
 	// Gateway event should be sent.
 	events := eventCh.RequireItemsEventually(t, 1)
 	require.Len(t, events, 1)
-
-	// Delete the Gateway reference by updating it.
-	gateway.Annotations = nil
-	err = fakeClient.Update(t.Context(), gateway)
-	require.NoError(t, err)
-
-	// Reconcile - should remove finalizer.
-	_, err = c.Reconcile(t.Context(), reconcile.Request{
-		NamespacedName: client.ObjectKey{Name: "test-config", Namespace: "default"},
-	})
-	require.NoError(t, err)
-
-	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: "test-config", Namespace: "default"}, &updatedConfig)
-	require.NoError(t, err)
-	require.NotContains(t, updatedConfig.Finalizers, GatewayConfigFinalizerName)
-}
-
-func TestGatewayConfigController_MapGatewayToGatewayConfig(t *testing.T) {
-	fakeClient := requireNewFakeClientForGatewayConfig(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
-	c := NewGatewayConfigController(fakeClient, ctrl.Log, eventCh.Ch)
-
-	t.Run("Gateway with GatewayConfig annotation", func(t *testing.T) {
-		gateway := &gwapiv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-gateway",
-				Namespace: "default",
-				Annotations: map[string]string{
-					GatewayConfigAnnotationKey: "my-config",
-				},
-			},
-		}
-
-		requests := c.MapGatewayToGatewayConfig(context.Background(), gateway)
-		require.Len(t, requests, 1)
-		require.Equal(t, "my-config", requests[0].Name)
-		require.Equal(t, "default", requests[0].Namespace)
-	})
-
-	t.Run("Gateway without annotation", func(t *testing.T) {
-		gateway := &gwapiv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-gateway",
-				Namespace: "default",
-			},
-		}
-
-		requests := c.MapGatewayToGatewayConfig(context.Background(), gateway)
-		require.Empty(t, requests)
-	})
-
-	t.Run("Gateway with empty annotation", func(t *testing.T) {
-		gateway := &gwapiv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-gateway",
-				Namespace: "default",
-				Annotations: map[string]string{
-					GatewayConfigAnnotationKey: "",
-				},
-			},
-		}
-
-		requests := c.MapGatewayToGatewayConfig(context.Background(), gateway)
-		require.Empty(t, requests)
-	})
 }
 
 func TestGatewayConfigController_MultipleGatewaysReferencing(t *testing.T) {
@@ -257,7 +193,7 @@ func TestGatewayConfigController_MultipleGatewaysReferencing(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Reconcile - should add finalizer and notify both gateways.
+	// Reconcile - should notify both gateways.
 	_, err = c.Reconcile(t.Context(), reconcile.Request{
 		NamespacedName: client.ObjectKey{Name: "shared-config", Namespace: "default"},
 	})
@@ -266,24 +202,26 @@ func TestGatewayConfigController_MultipleGatewaysReferencing(t *testing.T) {
 	var updatedConfig aigv1a1.GatewayConfig
 	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: "shared-config", Namespace: "default"}, &updatedConfig)
 	require.NoError(t, err)
-	require.Contains(t, updatedConfig.Finalizers, GatewayConfigFinalizerName)
+	require.Empty(t, updatedConfig.Finalizers)
 
 	// Both Gateways should have been notified.
 	events := eventCh.RequireItemsEventually(t, 2)
 	require.Len(t, events, 2)
 }
 
-func TestGatewayConfigController_DeletionBlocked(t *testing.T) {
+func TestGatewayConfigController_DeletionDoesNotBlock(t *testing.T) {
 	fakeClient := requireNewFakeClientForGatewayConfig(t)
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewGatewayConfigController(fakeClient, ctrl.Log, eventCh.Ch)
 
-	// Create a GatewayConfig first.
+	deletionTime := metav1.NewTime(time.Now())
+
+	// Create a GatewayConfig marked for deletion.
 	gatewayConfig := &aigv1a1.GatewayConfig{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:       "test-config",
-			Namespace:  "default",
-			Finalizers: []string{GatewayConfigFinalizerName},
+			Name:              "test-config",
+			Namespace:         "default",
+			DeletionTimestamp: &deletionTime,
 		},
 		Spec: aigv1a1.GatewayConfigSpec{},
 	}
@@ -313,32 +251,12 @@ func TestGatewayConfigController_DeletionBlocked(t *testing.T) {
 	err = fakeClient.Create(t.Context(), gateway)
 	require.NoError(t, err)
 
-	// Reconcile to verify the GatewayConfig is accepted since it has references.
+	// Reconcile should not block deletion and should notify the referencing Gateway.
 	_, err = c.Reconcile(t.Context(), reconcile.Request{
 		NamespacedName: client.ObjectKey{Name: "test-config", Namespace: "default"},
 	})
 	require.NoError(t, err)
 
-	// Get the GatewayConfig to verify finalizer exists.
-	var updatedConfig aigv1a1.GatewayConfig
-	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: "test-config", Namespace: "default"}, &updatedConfig)
-	require.NoError(t, err)
-	require.Contains(t, updatedConfig.Finalizers, GatewayConfigFinalizerName)
-
-	// Try to delete the GatewayConfig (simulate via Delete API).
-	// With finalizer, it won't actually be deleted but will have DeletionTimestamp set.
-	err = fakeClient.Delete(t.Context(), &updatedConfig)
-	require.NoError(t, err)
-
-	// Get the GatewayConfig again - it should still exist with DeletionTimestamp.
-	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: "test-config", Namespace: "default"}, &updatedConfig)
-	require.NoError(t, err)
-	require.NotNil(t, updatedConfig.DeletionTimestamp)
-
-	// Reconcile again - should fail because GatewayConfig is still referenced.
-	_, err = c.Reconcile(t.Context(), reconcile.Request{
-		NamespacedName: client.ObjectKey{Name: "test-config", Namespace: "default"},
-	})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "still referenced")
+	events := eventCh.RequireItemsEventually(t, 1)
+	require.Len(t, events, 1)
 }

@@ -30,12 +30,6 @@ import (
 // If the same environment variable name exists in both sources, the GatewayConfig
 // value takes precedence.
 //
-// Finalizer Behavior:
-// A finalizer is automatically added to the GatewayConfig when it is first referenced
-// by a Gateway. The finalizer is removed when no Gateways reference it, allowing
-// the GatewayConfig to be deleted. This prevents accidental deletion of configurations
-// that are still in use.
-//
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
@@ -78,8 +72,6 @@ type GatewayConfigExtProc struct {
 	//
 	// Common use cases include:
 	// - OTEL tracing configuration (e.g., OTEL_EXPORTER_OTLP_HEADERS, OTEL_EXPORTER_OTLP_ENDPOINT)
-	// - Log level overrides
-	// - Feature flags
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=32

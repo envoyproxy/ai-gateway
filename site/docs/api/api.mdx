@@ -315,12 +315,6 @@ When merging environment variables, the following precedence applies (highest to
 If the same environment variable name exists in both sources, the GatewayConfig
 value takes precedence.
 
-Finalizer Behavior:
-A finalizer is automatically added to the GatewayConfig when it is first referenced
-by a Gateway. The finalizer is removed when no Gateways reference it, allowing
-the GatewayConfig to be deleted. This prevents accidental deletion of configurations
-that are still in use.
-
 ##### Fields
 
 <ApiField
@@ -1462,7 +1456,7 @@ GatewayConfigExtProc defines the configuration for the external processor contai
   name="env"
   type="[EnvVar](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#envvar-v1-core) array"
   required="false"
-  description="Env specifies environment variables to be added to the external processor container.<br />These variables are merged with any global environment variables configured in the<br />AI Gateway controller. If there are conflicting variable names, the values defined<br />here take precedence over global values.<br />Common use cases include:<br />- OTEL tracing configuration (e.g., OTEL_EXPORTER_OTLP_HEADERS, OTEL_EXPORTER_OTLP_ENDPOINT)<br />- Log level overrides<br />- Feature flags"
+  description="Env specifies environment variables to be added to the external processor container.<br />These variables are merged with any global environment variables configured in the<br />AI Gateway controller. If there are conflicting variable names, the values defined<br />here take precedence over global values.<br />Common use cases include:<br />- OTEL tracing configuration (e.g., OTEL_EXPORTER_OTLP_HEADERS, OTEL_EXPORTER_OTLP_ENDPOINT)"
 /><ApiField
   name="resources"
   type="[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#resourcerequirements-v1-core)"

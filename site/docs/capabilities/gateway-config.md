@@ -1,7 +1,7 @@
 ---
 id: gateway-config
 title: Gateway Configuration
-sidebar_position: 9
+sidebar_position: 2
 ---
 
 # Gateway Configuration
@@ -172,17 +172,6 @@ spec:
   # ...
 ```
 
-## Finalizer Protection
-
-A finalizer is automatically managed on `GatewayConfig` resources:
-
-- **Added**: When the first Gateway references the GatewayConfig
-- **Removed**: When no Gateways reference it anymore
-
-This prevents accidental deletion of configurations that are still in use.
-
-Attempting to delete a GatewayConfig that is still referenced by a Gateway will result in the deletion being blocked until all references are removed.
-
 ## Migration from Route-Level Configuration
 
 The route-level resource configuration (`AIGatewayRoute.spec.filterConfig.externalProcessor.resources`) is deprecated. Migrate to `GatewayConfig`:
@@ -248,6 +237,6 @@ Possible condition types:
 
 ## See Also
 
-- [Tracing](tracing.md) - Configure distributed tracing for AI Gateway
-- [Metrics](metrics.md) - Configure metrics collection
+- [Tracing](./observability/tracing.md) - Configure distributed tracing for AI Gateway
+- [Metrics](./observability/metrics.md) - Configure metrics collection
 - [Examples](https://github.com/envoyproxy/ai-gateway/tree/main/examples/gateway-config) - Example YAML files

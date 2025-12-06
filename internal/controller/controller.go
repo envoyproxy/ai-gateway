@@ -214,7 +214,6 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	// GatewayConfig controller for gateway-scoped configuration.
 	gatewayConfigC := NewGatewayConfigController(c, logger.WithName("gateway-config"), gatewayEventChan)
 	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.GatewayConfig{}).
-		Watches(&gwapiv1.Gateway{}, handler.EnqueueRequestsFromMapFunc(gatewayConfigC.MapGatewayToGatewayConfig)).
 		Complete(gatewayConfigC); err != nil {
 		return fmt.Errorf("failed to create controller for GatewayConfig: %w", err)
 	}
@@ -282,6 +281,8 @@ const (
 	// k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy is the index name that maps from an AIServiceBackend
 	// to the BackendSecurityPolicy whose targetRefs contains the AIServiceBackend.
 	k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy = "AIServiceBackendToTargetingBackendSecurityPolicy"
+	// k8sClientIndexGatewayToGatewayConfig maps from a GatewayConfig name to Gateways referencing it.
+	k8sClientIndexGatewayToGatewayConfig = "GatewayToGatewayConfig"
 
 	// Indexes for MCP Gateway
 	//
@@ -313,6 +314,12 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 		return fmt.Errorf("failed to index field for BackendSecurityPolicy targetRefs: %w", err)
 	}
 
+	err = indexer(ctx, &gwapiv1.Gateway{},
+		k8sClientIndexGatewayToGatewayConfig, gatewayToGatewayConfigIndexFunc)
+	if err != nil {
+		return fmt.Errorf("failed to create index from GatewayConfig to Gateway: %w", err)
+	}
+
 	// Apply indexes to MCP Gateways.
 	err = indexer(ctx, &aigv1a1.MCPRoute{},
 		k8sClientIndexMCPRouteToAttachedGateway, mcpRouteToAttachedGatewayIndexFunc)
@@ -334,6 +341,18 @@ func mcpRouteToAttachedGatewayIndexFunc(o client.Object) []string {
 		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, namespace))
 	}
 	return ret
+}
+
+func gatewayToGatewayConfigIndexFunc(o client.Object) []string {
+	gateway := o.(*gwapiv1.Gateway)
+	if gateway.Annotations == nil {
+		return nil
+	}
+	configName, ok := gateway.Annotations[GatewayConfigAnnotationKey]
+	if !ok || configName == "" {
+		return nil
+	}
+	return []string{configName}
 }
 
 func aiGatewayRouteToAttachedGatewayIndexFunc(o client.Object) []string {

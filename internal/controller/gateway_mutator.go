@@ -274,7 +274,7 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		return fmt.Errorf("failed to get filter config secret: %w", err)
 	}
 
-	_, gatewayConfig := g.fetchGatewayAndConfig(ctx, gatewayName, gatewayNamespace)
+	gatewayConfig := g.fetchGatewayConfig(ctx, gatewayName, gatewayNamespace)
 
 	// Now we construct the AI Gateway managed containers and volumes.
 	filterConfigSecretName := FilterConfigSecretPerGatewayName(gatewayName, gatewayNamespace)
@@ -394,29 +394,24 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 	return nil
 }
 
-// fetchGatewayAndConfig returns the Gateway and the referenced GatewayConfig (if present).
-func (g *gatewayMutator) fetchGatewayAndConfig(ctx context.Context, gatewayName, gatewayNamespace string) (*gwapiv1.Gateway, *aigv1a1.GatewayConfig) {
+// fetchGatewayConfig returns the referenced GatewayConfig (if present).
+func (g *gatewayMutator) fetchGatewayConfig(ctx context.Context, gatewayName, gatewayNamespace string) *aigv1a1.GatewayConfig {
 	// Fetch the Gateway object.
 	var gateway gwapiv1.Gateway
 	if err := g.c.Get(ctx, client.ObjectKey{Name: gatewayName, Namespace: gatewayNamespace}, &gateway); err != nil {
 		if apierrors.IsNotFound(err) {
-			g.logger.Info("Gateway not found, using global defaults",
+			g.logger.Info("Gateway not found, using global default configuration",
 				"gateway_name", gatewayName, "gateway_namespace", gatewayNamespace)
 		} else {
-			g.logger.Error(err, "failed to get Gateway, using global defaults",
+			g.logger.Error(err, "failed to get Gateway, using global default configuration",
 				"gateway_name", gatewayName, "gateway_namespace", gatewayNamespace)
 		}
-		return nil, nil
-	}
-
-	// Check for GatewayConfig annotation.
-	if gateway.Annotations == nil {
-		return &gateway, nil
+		return nil
 	}
 
 	configName, ok := gateway.Annotations[GatewayConfigAnnotationKey]
 	if !ok || configName == "" {
-		return &gateway, nil
+		return nil
 	}
 
 	// Fetch the GatewayConfig (must be in same namespace as Gateway).
@@ -429,12 +424,12 @@ func (g *gatewayMutator) fetchGatewayAndConfig(ctx context.Context, gatewayName,
 			g.logger.Error(err, "failed to get GatewayConfig, using global defaults",
 				"gateway_name", gatewayName, "gatewayconfig_name", configName)
 		}
-		return &gateway, nil
+		return nil
 	}
 
 	g.logger.Info("found GatewayConfig for Gateway",
 		"gateway_name", gatewayName, "gatewayconfig_name", configName)
-	return &gateway, &gatewayConfig
+	return &gatewayConfig
 }
 
 // mergeEnvVars merges env vars; GatewayConfig overrides global while preserving order.
