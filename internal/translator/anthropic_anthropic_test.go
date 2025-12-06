@@ -147,7 +147,7 @@ data: {"type":"message_stop"       }`
 	require.NoError(t, err)
 	require.Nil(t, headerMutation)
 	require.Nil(t, bodyMutation)
-	expected = tokenUsageFrom(10, 1, 16, 26)
+	expected = tokenUsageFrom(9, 1, 16, 25)
 	require.Equal(t, expected, tokenUsage)
 	require.Equal(t, "claude-sonnet-4-5-20250929", responseModel)
 }

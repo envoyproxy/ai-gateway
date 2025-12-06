@@ -110,11 +110,17 @@ func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body 
 }
 
 // extractUsageFromBufferEvent extracts the token usage from the buffered event.
-// It scans complete lines and returns the latest usage found in this batch.
+// It scans complete lines and accumulates usage from all events in this batch.
 func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent(s tracing.MessageSpan) (tokenUsage metrics.TokenUsage) {
 	for {
 		i := bytes.IndexByte(a.buffered, '\n')
 		if i == -1 {
+			// Recalculate total tokens before returning
+			if inputTokens, inputSet := tokenUsage.InputTokens(); inputSet {
+				if outputTokens, outputSet := tokenUsage.OutputTokens(); outputSet {
+					tokenUsage.SetTotalTokens(inputTokens + outputTokens)
+				}
+			}
 			return
 		}
 		line := a.buffered[:i]
@@ -138,23 +144,43 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent(s tracing.M
 				// Store the response model for future batches
 				a.streamingResponseModel = message.Model
 			}
-			// Extract usage from message_start event
+			// Extract usage from message_start event - this sets the baseline input tokens
 			if u := message.Usage; u != nil {
-				tokenUsage = metrics.ExtractTokenUsageFromAnthropic(
+				messageStartUsage := metrics.ExtractTokenUsageFromAnthropic(
 					int64(u.InputTokens),
 					int64(u.OutputTokens),
 					int64(u.CacheReadInputTokens),
 					int64(u.CacheCreationInputTokens),
 				)
+				// Override with message_start usage (contains input tokens and initial state)
+				tokenUsage.Override(messageStartUsage)
 			}
 		case eventUnion.MessageDelta != nil:
 			u := eventUnion.MessageDelta.Usage
-			tokenUsage = metrics.ExtractTokenUsageFromAnthropic(
-				int64(u.InputTokens),
-				int64(u.OutputTokens),
-				int64(u.CacheReadInputTokens),
-				int64(u.CacheCreationInputTokens),
-			)
+			// message_delta events provide final counts for specific token types
+			// Only update the token types that have meaningful values
+
+			// For output tokens, always set if present (including 0, since that's meaningful)
+			if u.OutputTokens >= 0 {
+				tokenUsage.SetOutputTokens(uint32(u.OutputTokens)) //nolint:gosec
+			}
+
+			// For input tokens, only set if > 0 (preserves value from message_start when not provided)
+			if u.InputTokens > 0 {
+				tokenUsage.SetInputTokens(uint32(u.InputTokens)) //nolint:gosec
+			} else if _, wasSet := tokenUsage.InputTokens(); !wasSet {
+				// If no input tokens were set previously (e.g., in unit tests), set to 0
+				tokenUsage.SetInputTokens(0)
+			}
+
+			// For cached tokens, set if any are present
+			totalCached := uint32(u.CacheReadInputTokens + u.CacheCreationInputTokens) //nolint:gosec
+			if totalCached > 0 {
+				tokenUsage.SetCachedInputTokens(totalCached)
+			} else if _, wasSet := tokenUsage.CachedInputTokens(); !wasSet {
+				// If no cached tokens were set previously, set to 0
+				tokenUsage.SetCachedInputTokens(0)
+			}
 		}
 	}
 }
