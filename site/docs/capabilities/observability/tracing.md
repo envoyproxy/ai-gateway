@@ -227,12 +227,12 @@ spec:
   # ...
 ```
 
-See the [Gateway Configuration](gateway-config.md) guide for detailed information
+See the [Gateway Configuration](../gateway-config.md) guide for detailed information
 on `GatewayConfig` usage, including environment variable precedence and shared configurations.
 
 ## See Also
 
-- [Gateway Configuration](gateway-config.md) - Per-gateway configuration using GatewayConfig
+- [Gateway Configuration](../gateway-config.md) - Per-gateway configuration using GatewayConfig
 - [OpenInference Specification][openinference] - GenAI Semantic conventions for traces
 - [OpenTelemetry Configuration][otel-config] - Environment variable reference
 - [Arize Phoenix Documentation][phoenix] - LLM observability platform
