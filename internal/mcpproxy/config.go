@@ -43,7 +43,9 @@ type (
 	// changeSignaler is an interface for signaling configuration changes to multiple
 	// watchers.
 	changeSignaler interface {
-		// Watch returns a channel that receives a signal when the configuration changes.
+		// Watch returns a channel that is closed then the configuration changes.
+		// The channel should be obtained by calling this method every time when used in a loop,
+		// because it will be closed and recreated after each signal is sent.
 		Watch() <-chan struct{}
 		// Signal all watchers that the configuration has changed.
 		Signal()
@@ -175,7 +177,9 @@ func newMultiWatcherSignaler() *multiWatcherSignaler {
 	}
 }
 
-// Watch returns a channel that is closed when the configuration changes.
+// Watch returns a channel that is closed then the configuration changes.
+// The channel should be obtained by calling this method every time when used in a loop,
+// because it will be closed and recreated after each signal is sent.
 func (m *multiWatcherSignaler) Watch() <-chan struct{} {
 	m.mu.Lock()
 	defer m.mu.Unlock()
