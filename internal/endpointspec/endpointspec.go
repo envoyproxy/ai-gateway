@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	openaisdk "github.com/openai/openai-go/v2"
 	"github.com/tidwall/sjson"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
@@ -173,8 +172,8 @@ func (EmbeddingsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema,
 func (ImageGenerationEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
-) (internalapi.OriginalModel, *openaisdk.ImageGenerateParams, bool, []byte, error) {
-	var openAIReq openaisdk.ImageGenerateParams
+) (internalapi.OriginalModel, *openai.ImageGenerationRequest, bool, []byte, error) {
+	var openAIReq openai.ImageGenerationRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
 		return "", nil, false, nil, fmt.Errorf("failed to unmarshal image generation request: %w", err)
 	}

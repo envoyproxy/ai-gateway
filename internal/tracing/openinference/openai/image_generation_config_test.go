@@ -8,13 +8,13 @@ package openai
 import (
 	"testing"
 
-	openaisdk "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/sdk/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
 
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 )
@@ -23,7 +23,7 @@ func TestImageGenerationRecorder_WithConfig_HideInputs(t *testing.T) {
 	tests := []struct {
 		name          string
 		config        *openinference.TraceConfig
-		req           *openaisdk.ImageGenerateParams
+		req           *openai.ImageGenerationRequest
 		reqBody       []byte
 		expectedAttrs []attribute.KeyValue
 	}{

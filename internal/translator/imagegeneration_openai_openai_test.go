@@ -11,7 +11,6 @@ import (
 	"io"
 	"testing"
 
-	openaisdk "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -19,7 +18,7 @@ import (
 
 func TestOpenAIToOpenAIImageTranslator_RequestBody_ModelOverrideAndPath(t *testing.T) {
 	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", openai.ModelGPTImage1Mini)
-	req := &openaisdk.ImageGenerateParams{Model: openaisdk.ImageModelDallE3, Prompt: "a cat"}
+	req := &openai.ImageGenerationRequest{Model: "dall-e-3", Prompt: "a cat"}
 	original, _ := json.Marshal(req)
 
 	hm, bm, err := tr.RequestBody(original, req, false)
@@ -31,14 +30,14 @@ func TestOpenAIToOpenAIImageTranslator_RequestBody_ModelOverrideAndPath(t *testi
 	require.Equal(t, contentLengthHeaderName, hm[1].Key())
 
 	require.NotNil(t, bm)
-	var got openaisdk.ImageGenerateParams
+	var got openai.ImageGenerationRequest
 	require.NoError(t, json.Unmarshal(bm, &got))
 	require.Equal(t, "gpt-image-1-mini", got.Model)
 }
 
 func TestOpenAIToOpenAIImageTranslator_RequestBody_ForceMutation(t *testing.T) {
 	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "")
-	req := &openaisdk.ImageGenerateParams{Model: openaisdk.ImageModelDallE2, Prompt: "a cat"}
+	req := &openai.ImageGenerationRequest{Model: "dall-e-2", Prompt: "a cat"}
 	original, _ := json.Marshal(req)
 
 	hm, bm, err := tr.RequestBody(original, req, true)
@@ -75,19 +74,19 @@ func TestOpenAIToOpenAIImageTranslator_ResponseError_NonJSON(t *testing.T) {
 
 func TestOpenAIToOpenAIImageTranslator_ResponseBody_OK(t *testing.T) {
 	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "")
-	resp := &openaisdk.ImagesResponse{Size: openaisdk.ImagesResponseSize1024x1024}
+	resp := &openai.ImageGenerationResponse{}
 	buf, _ := json.Marshal(resp)
 	hm, bm, usage, responseModel, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true, nil)
 	require.NoError(t, err)
 	require.Nil(t, hm)
 	require.Nil(t, bm)
-	require.Equal(t, tokenUsageFrom(0, -1, 0, 0), usage)
+	require.Equal(t, tokenUsageFrom(-1, -1, -1, -1), usage)
 	require.Empty(t, responseModel)
 }
 
 func TestOpenAIToOpenAIImageTranslator_RequestBody_NoOverrideNoForce(t *testing.T) {
 	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "")
-	req := &openaisdk.ImageGenerateParams{Model: openaisdk.ImageModelDallE2, Prompt: "a cat"}
+	req := &openai.ImageGenerationRequest{Model: "dall-e-2", Prompt: "a cat"}
 	original, _ := json.Marshal(req)
 
 	hm, bm, err := tr.RequestBody(original, req, false)
@@ -126,16 +125,15 @@ func TestOpenAIToOpenAIImageTranslator_ResponseError_ReadError(t *testing.T) {
 func TestOpenAIToOpenAIImageTranslator_ResponseBody_ModelPropagatesFromRequest(t *testing.T) {
 	// Use override so effective model differs from original
 	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", openai.ModelGPTImage1Mini)
-	req := &openaisdk.ImageGenerateParams{Model: openaisdk.ImageModelDallE3, Prompt: "a cat"}
+	req := &openai.ImageGenerationRequest{Model: "dall-e-3", Prompt: "a cat"}
 	original, _ := json.Marshal(req)
 	// Call RequestBody first to set requestModel inside translator
 	_, _, err := tr.RequestBody(original, req, false)
 	require.NoError(t, err)
 
-	resp := &openaisdk.ImagesResponse{
+	resp := &openai.ImageGenerationResponse{
 		// Two images returned
-		Data: make([]openaisdk.Image, 2),
-		Size: openaisdk.ImagesResponseSize1024x1024,
+		Data: make([]openai.ImageGenerationResponseData, 2),
 	}
 	buf, _ := json.Marshal(resp)
 	_, _, _, respModel, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true, nil)
@@ -161,9 +159,8 @@ func TestOpenAIToOpenAIImageTranslator_ResponseBody_RecordsSpan(t *testing.T) {
 	mockSpan := &mockImageGenerationSpan{}
 	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "")
 
-	resp := &openaisdk.ImagesResponse{
-		Data: []openaisdk.Image{{URL: "https://example.com/img.png"}},
-		Size: openaisdk.ImagesResponseSize1024x1024,
+	resp := &openai.ImageGenerationResponse{
+		Data: []openai.ImageGenerationResponseData{{URL: "https://example.com/img.png"}},
 	}
 	buf, _ := json.Marshal(resp)
 	_, _, _, _, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true, mockSpan)
@@ -172,13 +169,28 @@ func TestOpenAIToOpenAIImageTranslator_ResponseBody_RecordsSpan(t *testing.T) {
 }
 
 type mockImageGenerationSpan struct {
-	recordedResponse *openaisdk.ImagesResponse
+	recordedResponse *openai.ImageGenerationResponse
 }
 
-func (m *mockImageGenerationSpan) RecordResponse(resp *openaisdk.ImagesResponse) {
+func (m *mockImageGenerationSpan) RecordResponse(resp *openai.ImageGenerationResponse) {
 	m.recordedResponse = resp
 }
 
 func (m *mockImageGenerationSpan) EndSpanOnError(int, []byte)    {}
 func (m *mockImageGenerationSpan) EndSpan()                      {}
 func (m *mockImageGenerationSpan) RecordResponseChunk(*struct{}) {}
+
+func TestOpenAIToOpenAIImageTranslator_ResponseBody_Usage(t *testing.T) {
+	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "")
+	resp := &openai.ImageGenerationResponse{
+		Usage: &openai.ImageGenerationUsage{
+			TotalTokens:  100,
+			InputTokens:  40,
+			OutputTokens: 60,
+		},
+	}
+	buf, _ := json.Marshal(resp)
+	_, _, usage, _, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true, nil)
+	require.NoError(t, err)
+	require.Equal(t, tokenUsageFrom(40, -1, 60, 100), usage)
+}
