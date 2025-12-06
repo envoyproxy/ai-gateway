@@ -38,7 +38,7 @@ type Options struct {
 // When dumbEchoServer is true, the server will only implement the echo tool,
 // and will not implement any prompts or resources. This is useful for testing
 // basic routing.
-func NewServer(opts *Options) *http.Server {
+func NewServer(opts *Options) (*http.Server, *mcp.Server) {
 	if opts.DumbEchoServer {
 		return newDumbServer(opts.Port)
 	}
@@ -143,10 +143,10 @@ func NewServer(opts *Options) *http.Server {
 			log.Fatalf("server error: %v", err)
 		}
 	}()
-	return server
+	return server, s
 }
 
-func newDumbServer(port int) *http.Server {
+func newDumbServer(port int) (*http.Server, *mcp.Server) {
 	s := mcp.NewServer(
 		&mcp.Implementation{Name: "dumb-echo-server", Version: "0.1.0"},
 		&mcp.ServerOptions{HasTools: true},
@@ -161,5 +161,5 @@ func newDumbServer(port int) *http.Server {
 			log.Fatalf("server error: %v", err)
 		}
 	}()
-	return server
+	return server, s
 }

@@ -47,7 +47,8 @@ func newTestMCPProxyWithTracer(t tracingapi.MCPTracer) *MCPProxy {
 	sessionCrypto := NewPBKDF2AesGcmSessionCrypto("test", 100)
 
 	return &MCPProxy{
-		sessionCrypto: sessionCrypto,
+		sessionCrypto:    sessionCrypto,
+		toolsChangedChan: make(chan struct{}, 1),
 		mcpProxyConfig: &mcpProxyConfig{
 			backendListenerAddr: "http://test-backend",
 			routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
