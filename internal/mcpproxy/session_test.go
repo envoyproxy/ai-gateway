@@ -228,7 +228,7 @@ func TestSession_StreamNotifications(t *testing.T) {
 			rr := httptest.NewRecorder()
 			ctx, cancel := context.WithTimeout(t.Context(), tc.deadline)
 			defer cancel()
-			err2 := s.streamNotifications(ctx, rr, proxy.toolsChangedChan)
+			err2 := s.streamNotifications(ctx, rr, proxy.toolChangeSignaler)
 			require.NoError(t, err2)
 			out := rr.Body.String()
 			require.Contains(t, out, "event: a1")
@@ -249,8 +249,8 @@ func TestNotifyToolsChanged(t *testing.T) {
 		reloadConfig atomic.Bool
 		proxy        = newTestMCPProxy()
 		cfg          = ProxyConfig{
-			toolsChangedChan: proxy.toolsChangedChan,
-			mcpProxyConfig:   proxy.mcpProxyConfig,
+			toolChangeSignaler: proxy.toolChangeSignaler,
+			mcpProxyConfig:     proxy.mcpProxyConfig,
 		}
 		s = &session{
 			proxy: proxy,
@@ -280,7 +280,7 @@ func TestNotifyToolsChanged(t *testing.T) {
 		rr := httptest.NewRecorder()
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		t.Cleanup(cancel)
-		err := s.streamNotifications(ctx, rr, proxy.toolsChangedChan)
+		err := s.streamNotifications(ctx, rr, proxy.toolChangeSignaler)
 		require.NoError(t, err)
 		out := rr.Body.String()
 		require.NotContains(t, out, `"id":"`+envoyAIGatewayServerToClientToolsChangedRequestIDPrefix)
@@ -292,7 +292,7 @@ func TestNotifyToolsChanged(t *testing.T) {
 		rr := httptest.NewRecorder()
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		t.Cleanup(cancel)
-		err := s.streamNotifications(ctx, rr, proxy.toolsChangedChan)
+		err := s.streamNotifications(ctx, rr, proxy.toolChangeSignaler)
 		require.NoError(t, err)
 		out := rr.Body.String()
 		require.Contains(t, out, `"id":"`+envoyAIGatewayServerToClientToolsChangedRequestIDPrefix)

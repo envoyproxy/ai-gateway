@@ -67,7 +67,7 @@ func (m *MCPProxy) serveGET(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("transfer-encoding", "chunked")
 	w.WriteHeader(http.StatusAccepted)
-	if err := s.streamNotifications(r.Context(), w, m.toolsChangedChan); err != nil && !errors.Is(err, context.Canceled) {
+	if err := s.streamNotifications(r.Context(), w, m.toolChangeSignaler); err != nil && !errors.Is(err, context.Canceled) {
 		m.l.Error("failed to collect notifications", slog.String("session_id", sessionID), slog.String("error", err.Error()))
 		http.Error(w, "failed to collect notifications", http.StatusInternalServerError)
 		return

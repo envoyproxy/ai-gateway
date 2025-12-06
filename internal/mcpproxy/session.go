@@ -183,7 +183,7 @@ func newToolListChangedMessage() *jsonrpc.Request {
 }
 
 // streamNotifications streams notifications from all backends in this session to the given writer.
-func (s *session) streamNotifications(ctx context.Context, w http.ResponseWriter, toolsChanged <-chan struct{}) error {
+func (s *session) streamNotifications(ctx context.Context, w http.ResponseWriter, toolChangeSignaler changeSignaler) error {
 	backendMsgs := s.sendToAllBackends(ctx, http.MethodGet, nil, nil)
 
 	// Create a ticker for periodic heartbeat events to avoid HTTP timeouts.
@@ -239,7 +239,7 @@ func (s *session) streamNotifications(ctx context.Context, w http.ResponseWriter
 			if heartbeatTicker != nil {
 				heartbeatTicker.Reset(heartbeatInterval)
 			}
-		case <-toolsChanged:
+		case <-toolChangeSignaler.Watch():
 			toolChangeEvent := &sseEvent{event: "message", messages: []jsonrpc.Message{newToolListChangedMessage()}}
 			toolChangeEvent.writeAndMaybeFlush(w)
 			// Reset the heartbeat ticker so that the next heartbeat will be sent after the full interval.
