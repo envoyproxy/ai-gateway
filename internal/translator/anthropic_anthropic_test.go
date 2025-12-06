@@ -107,7 +107,7 @@ func TestAnthropicToAnthropic_ResponseBody_streaming(t *testing.T) {
 	// We split the response into two parts to simulate streaming where each part can end in the
 	// middle of an event.
 	const responseHead = `event: message_start
-data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_01BfvfMsg2gBzwsk6PZRLtDg","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":1,"service_tier":"standard"}}    }
+data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_01BfvfMsg2gBzwsk6PZRLtDg","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":1,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":0,"service_tier":"standard"}}    }
 
 event: content_block_start
 data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}      }
@@ -130,7 +130,7 @@ event: content_block_stop
 data: {"type":"content_block_stop","index":0             }
 
 event: message_delta
-data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":1,"output_tokens":16}               }
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":16}               }
 
 event: message_stop
 data: {"type":"message_stop"       }`
@@ -139,7 +139,7 @@ data: {"type":"message_stop"       }`
 	require.NoError(t, err)
 	require.Nil(t, headerMutation)
 	require.Nil(t, bodyMutation)
-	expected := tokenUsageFrom(9, 0, 1, 10)
+	expected := tokenUsageFrom(10, 1, 0, 10)
 	require.Equal(t, expected, tokenUsage)
 	require.Equal(t, "claude-sonnet-4-5-20250929", responseModel)
 

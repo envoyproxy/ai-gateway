@@ -36,6 +36,7 @@ type anthropicToAnthropicTranslator struct {
 	stream                 bool
 	buffered               []byte
 	streamingResponseModel internalapi.ResponseModel
+	streamingTokenUsage    metrics.TokenUsage
 }
 
 // RequestBody implements [AnthropicMessagesTranslator.RequestBody].
@@ -83,11 +84,17 @@ func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body 
 		if err != nil {
 			return nil, nil, tokenUsage, a.requestModel, fmt.Errorf("failed to read body: %w", err)
 		}
+
+		// If this is a fresh start (no buffered data), reset the streaming token usage
+		if len(a.buffered) == 0 {
+			a.streamingTokenUsage = metrics.TokenUsage{}
+		}
+
 		a.buffered = append(a.buffered, buf...)
-		tokenUsage = a.extractUsageFromBufferEvent(span)
+		a.extractUsageFromBufferEvent(span)
 		// Use stored streaming response model, fallback to request model for non-compliant backends
 		responseModel = cmp.Or(a.streamingResponseModel, a.requestModel)
-		return
+		return nil, nil, a.streamingTokenUsage, responseModel, nil
 	}
 
 	// Parse the Anthropic response to extract token usage.
@@ -110,11 +117,13 @@ func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body 
 }
 
 // extractUsageFromBufferEvent extracts the token usage from the buffered event.
-// It scans complete lines and returns the latest usage found in this batch.
-func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent(s tracing.MessageSpan) (tokenUsage metrics.TokenUsage) {
+// It scans complete lines and accumulates usage from all events in this batch.
+func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent(s tracing.MessageSpan) {
 	for {
 		i := bytes.IndexByte(a.buffered, '\n')
 		if i == -1 {
+			// Recalculate total tokens before returning
+			a.updateTotalTokens()
 			return
 		}
 		line := a.buffered[:i]
@@ -133,29 +142,53 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent(s tracing.M
 		switch {
 		case eventUnion.MessageStart != nil:
 			message := eventUnion.MessageStart
-			// Message only valid in message_start events.
+			// Store the response model for future batches
 			if message.Model != "" {
-				// Store the response model for future batches
 				a.streamingResponseModel = message.Model
 			}
-			// Extract usage from message_start event
+			// Extract usage from message_start event - this sets the baseline input tokens
 			if u := message.Usage; u != nil {
-				tokenUsage = metrics.ExtractTokenUsageFromAnthropic(
+				messageStartUsage := metrics.ExtractTokenUsageFromAnthropic(
 					int64(u.InputTokens),
 					int64(u.OutputTokens),
 					int64(u.CacheReadInputTokens),
 					int64(u.CacheCreationInputTokens),
 				)
+				// Override with message_start usage (contains input tokens and initial state)
+				a.streamingTokenUsage.Override(messageStartUsage)
 			}
 		case eventUnion.MessageDelta != nil:
 			u := eventUnion.MessageDelta.Usage
-			tokenUsage = metrics.ExtractTokenUsageFromAnthropic(
-				int64(u.InputTokens),
-				int64(u.OutputTokens),
-				int64(u.CacheReadInputTokens),
-				int64(u.CacheCreationInputTokens),
-			)
+			// message_delta events provide final counts for specific token types
+			// Update output tokens from message_delta (final count)
+			if u.OutputTokens >= 0 {
+				a.streamingTokenUsage.SetOutputTokens(uint32(u.OutputTokens)) //nolint:gosec
+			}
 		}
+	}
+}
+
+// updateTotalTokens recalculates and sets the total token count
+func (a *anthropicToAnthropicTranslator) updateTotalTokens() {
+	inputTokens, inputSet := a.streamingTokenUsage.InputTokens()
+	outputTokens, outputSet := a.streamingTokenUsage.OutputTokens()
+
+	// Initialize missing values to 0 if we have any token data
+	if outputSet && !inputSet {
+		a.streamingTokenUsage.SetInputTokens(0)
+		inputTokens = 0
+		inputSet = true
+	}
+
+	// Set cached tokens to 0 if not set but we have other token data
+	if outputSet {
+		if _, cachedSet := a.streamingTokenUsage.CachedInputTokens(); !cachedSet {
+			a.streamingTokenUsage.SetCachedInputTokens(0)
+		}
+	}
+
+	if inputSet && outputSet {
+		a.streamingTokenUsage.SetTotalTokens(inputTokens + outputTokens)
 	}
 }
 
