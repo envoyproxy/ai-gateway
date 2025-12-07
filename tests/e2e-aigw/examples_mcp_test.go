@@ -153,7 +153,6 @@ func TestMCP_standalone_oauth(t *testing.T) {
 	url := fmt.Sprintf("http://localhost:%d/mcp", 1975)
 
 	t.Run("fail to connect to MCP server without token", func(t *testing.T) {
-		t.Skip("TODO: this passes")
 		mcpClient := mcp.NewClient(&mcp.Implementation{Name: "public-mcp-client", Version: "0.1.0"}, &mcp.ClientOptions{})
 		session, err := mcpClient.Connect(t.Context(), &mcp.StreamableClientTransport{
 			Endpoint: url,
