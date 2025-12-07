@@ -420,7 +420,7 @@ func getSecretNameAndNamespace(secretRef *gwapiv1.SecretObjectReference, namespa
 }
 
 func getReferenceGrantIndexKey(namespace, kind string) string {
-	return fmt.Sprintf("%s/%s", namespace, kind)
+	return fmt.Sprintf("%s.%s", namespace, kind)
 }
 
 func referenceGrantToTargetKindIndexFunc(o client.Object) []string {

@@ -296,7 +296,7 @@ func Test_referenceGrantToTargetKindIndexFunc(t *testing.T) {
 					},
 				},
 			},
-			expectedKeys: []string{"backend-ns/AIServiceBackend"},
+			expectedKeys: []string{"backend-ns.AIServiceBackend"},
 		},
 		{
 			name: "multiple target kinds",
@@ -325,7 +325,7 @@ func Test_referenceGrantToTargetKindIndexFunc(t *testing.T) {
 					},
 				},
 			},
-			expectedKeys: []string{"backend-ns/AIServiceBackend", "backend-ns/Secret"},
+			expectedKeys: []string{"backend-ns.AIServiceBackend", "backend-ns.Secret"},
 		},
 		{
 			name: "empty group for core resources",
@@ -350,7 +350,7 @@ func Test_referenceGrantToTargetKindIndexFunc(t *testing.T) {
 					},
 				},
 			},
-			expectedKeys: []string{"other-ns/Service"},
+			expectedKeys: []string{"other-ns.Service"},
 		},
 		{
 			name: "no target kinds",
@@ -467,7 +467,7 @@ func Test_referenceGrantIndexWithQuery(t *testing.T) {
 	t.Run("query for AIServiceBackend grants in backend-ns", func(t *testing.T) {
 		var grants gwapiv1b1.ReferenceGrantList
 		err := c.List(t.Context(), &grants,
-			client.MatchingFields{k8sClientIndexReferenceGrantToTargetKind: "backend-ns/AIServiceBackend"})
+			client.MatchingFields{k8sClientIndexReferenceGrantToTargetKind: "backend-ns.AIServiceBackend"})
 		require.NoError(t, err)
 
 		// Should find grant1 and grant3 (both allow AIServiceBackend in backend-ns)
@@ -480,7 +480,7 @@ func Test_referenceGrantIndexWithQuery(t *testing.T) {
 	t.Run("query for Secret grants in backend-ns", func(t *testing.T) {
 		var grants gwapiv1b1.ReferenceGrantList
 		err := c.List(t.Context(), &grants,
-			client.MatchingFields{k8sClientIndexReferenceGrantToTargetKind: "backend-ns/Secret"})
+			client.MatchingFields{k8sClientIndexReferenceGrantToTargetKind: "backend-ns.Secret"})
 		require.NoError(t, err)
 
 		// Should find grant2 and grant3 (both allow Secret in backend-ns)
@@ -493,7 +493,7 @@ func Test_referenceGrantIndexWithQuery(t *testing.T) {
 	t.Run("query for non-existent kind", func(t *testing.T) {
 		var grants gwapiv1b1.ReferenceGrantList
 		err := c.List(t.Context(), &grants,
-			client.MatchingFields{k8sClientIndexReferenceGrantToTargetKind: "backend-ns/NonExistentKind"})
+			client.MatchingFields{k8sClientIndexReferenceGrantToTargetKind: "backend-ns.NonExistentKind"})
 		require.NoError(t, err)
 
 		// Should find nothing
@@ -503,7 +503,7 @@ func Test_referenceGrantIndexWithQuery(t *testing.T) {
 	t.Run("query with wrong namespace", func(t *testing.T) {
 		var grants gwapiv1b1.ReferenceGrantList
 		err := c.List(t.Context(), &grants,
-			client.MatchingFields{k8sClientIndexReferenceGrantToTargetKind: "wrong-ns/AIServiceBackend"})
+			client.MatchingFields{k8sClientIndexReferenceGrantToTargetKind: "wrong-ns.AIServiceBackend"})
 		require.NoError(t, err)
 
 		// Should find nothing (wrong namespace)

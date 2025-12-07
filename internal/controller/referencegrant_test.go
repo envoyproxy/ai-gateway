@@ -511,19 +511,19 @@ func TestGetReferenceGrantIndexKey(t *testing.T) {
 			name:        "AIServiceBackend in backend-ns",
 			namespace:   "backend-ns",
 			kind:        "AIServiceBackend",
-			expectedKey: "backend-ns/AIServiceBackend",
+			expectedKey: "backend-ns.AIServiceBackend",
 		},
 		{
 			name:        "Secret in default namespace",
 			namespace:   "default",
 			kind:        "Secret",
-			expectedKey: "default/Secret",
+			expectedKey: "default.Secret",
 		},
 		{
 			name:        "CustomResource in custom-ns",
 			namespace:   "custom-ns",
 			kind:        "CustomResource",
-			expectedKey: "custom-ns/CustomResource",
+			expectedKey: "custom-ns.CustomResource",
 		},
 	}
 
