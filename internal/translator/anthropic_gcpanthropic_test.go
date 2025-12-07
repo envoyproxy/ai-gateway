@@ -608,17 +608,23 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingFullScenario(t 
 	// 3. message_delta at the end provides output_tokens=5 but no input_tokens
 	// 4. message_stop ends the stream
 	messageStartChunk := `event: message_start
-data: {"type": "message_start", "message": {"id": "msg_123", "type": "message", "role": "assistant", "content": [], "model": "claude-3-sonnet-20240229", "usage": {"input_tokens": 15, "cache_read_input_tokens": 5, "output_tokens": 0}}}\n\n`
+data: {"type": "message_start", "message": {"id": "msg_123", "type": "message", "role": "assistant", "content": [], "model": "claude-3-sonnet-20240229", "usage": {"input_tokens": 15, "cache_read_input_tokens": 5, "output_tokens": 0}}}
+`
 	contentBlockStartChunk := `event: content_block_start
-data: {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}\n\n`
+data: {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
+`
 	contentBlockDeltaChunk := `event: content_block_delta
-data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hello"}}\n\n`
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hello"}}
+`
 	contentBlockStopChunk := `event: content_block_stop
-data: {"type": "content_block_stop", "index": 0}\n\n`
+data: {"type": "content_block_stop", "index": 0}
+`
 	messageDeltaChunk := `event: message_delta
-data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 5}}\n\n`
+data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 5}}
+`
 	messageStopChunk := `event: message_stop
-data: {"type": "message_stop"}\n\n`
+data: {"type": "message_stop"}
+`
 
 	// Process the streaming response
 	_, _, tokenUsage, _, err := translator.ResponseBody(nil, strings.NewReader(messageStartChunk), false, nil)
