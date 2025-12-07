@@ -275,6 +275,10 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 	}
 
 	gatewayConfig := g.fetchGatewayConfig(ctx, gatewayName, gatewayNamespace)
+	var extProcSpec *aigv1a1.GatewayConfigExtProc
+	if gatewayConfig != nil {
+		extProcSpec = gatewayConfig.Spec.ExtProc
+	}
 
 	// Now we construct the AI Gateway managed containers and volumes.
 	filterConfigSecretName := FilterConfigSecretPerGatewayName(gatewayName, gatewayNamespace)
@@ -302,14 +306,15 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 
 	// Prefer GatewayConfig resources; otherwise leave empty.
 	var resources corev1.ResourceRequirements
-	if gatewayConfig != nil && gatewayConfig.Spec.ExtProc != nil && gatewayConfig.Spec.ExtProc.Resources != nil {
-		resources = *gatewayConfig.Spec.ExtProc.Resources
+	if extProcSpec != nil && extProcSpec.Resources != nil {
+		resources = *extProcSpec.Resources
 		g.logger.Info("using resources from GatewayConfig",
 			"gateway_name", gatewayName, "gatewayconfig_name", gatewayConfig.Name)
 	}
 
 	// Merge env vars with GatewayConfig overriding global.
 	envVars := g.mergeEnvVars(gatewayConfig)
+	image := g.resolveExtProcImage(extProcSpec)
 
 	const (
 		extProcAdminPort      = 1064
@@ -317,9 +322,26 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		filterConfigFullPath  = filterConfigMountPath + "/" + FilterConfigKeyInSecret
 	)
 	udsMountPath := filepath.Dir(g.udsPath)
+	securityContext := &corev1.SecurityContext{
+		AllowPrivilegeEscalation: ptr.To(false),
+		Capabilities: &corev1.Capabilities{
+			Drop: []corev1.Capability{"ALL"},
+		},
+		Privileged:   ptr.To(false),
+		RunAsGroup:   ptr.To(int64(65532)),
+		RunAsNonRoot: ptr.To(true),
+		RunAsUser:    ptr.To(int64(65532)),
+		SeccompProfile: &corev1.SeccompProfile{
+			Type: corev1.SeccompProfileTypeRuntimeDefault,
+		},
+	}
+	if extProcSpec != nil && extProcSpec.SecurityContext != nil {
+		securityContext = extProcSpec.SecurityContext
+	}
+
 	container := corev1.Container{
 		Name:            extProcContainerName,
-		Image:           g.extProcImage,
+		Image:           image,
 		ImagePullPolicy: g.extProcImagePullPolicy,
 		Ports: []corev1.ContainerPort{
 			{Name: "aigw-admin", ContainerPort: extProcAdminPort},
@@ -340,21 +362,7 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 				ReadOnly:  true,
 			},
 		},
-		SecurityContext: &corev1.SecurityContext{
-			AllowPrivilegeEscalation: ptr.To(false),
-			Capabilities: &corev1.Capabilities{
-				Drop: []corev1.Capability{"ALL"},
-			},
-			Privileged: ptr.To(false),
-			// To allow the UDS to be reachable by the Envoy container, we need the group (not the user) to be the same.
-			// This group ID 65532 needs to be updated if the one of Envoy proxy has changed.
-			RunAsGroup:   ptr.To(int64(65532)),
-			RunAsNonRoot: ptr.To(true),
-			RunAsUser:    ptr.To(int64(55532)),
-			SeccompProfile: &corev1.SeccompProfile{
-				Type: corev1.SeccompProfileTypeRuntimeDefault,
-			},
-		},
+		SecurityContext: securityContext,
 		ReadinessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
@@ -370,6 +378,10 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 			FailureThreshold:    1,
 		},
 		Resources: resources,
+	}
+
+	if extProcSpec != nil && len(extProcSpec.VolumeMounts) > 0 {
+		container.VolumeMounts = append(container.VolumeMounts, extProcSpec.VolumeMounts...)
 	}
 
 	if g.extProcAsSideCar {
@@ -457,4 +469,49 @@ func (g *gatewayMutator) mergeEnvVars(gatewayConfig *aigv1a1.GatewayConfig) []co
 	}
 
 	return result
+}
+
+// resolveExtProcImage chooses the extProc image honoring GatewayConfig overrides.
+func (g *gatewayMutator) resolveExtProcImage(extProc *aigv1a1.GatewayConfigExtProc) string {
+	if extProc == nil {
+		return g.extProcImage
+	}
+
+	switch {
+	case extProc.Image != nil:
+		return *extProc.Image
+	case extProc.ImageRepository != nil:
+		return mergeImageWithRepository(g.extProcImage, *extProc.ImageRepository)
+	default:
+		return g.extProcImage
+	}
+}
+
+// mergeImageWithRepository reuses the tag or digest from baseImage when a repository override is provided.
+func mergeImageWithRepository(baseImage, repository string) string {
+	if repository == "" {
+		return baseImage
+	}
+
+	suffix := imageTagOrDigest(baseImage)
+	if suffix == "" {
+		return repository
+	}
+	return repository + suffix
+}
+
+// imageTagOrDigest extracts the tag (":vX") or digest ("@sha256:...") from an image reference.
+func imageTagOrDigest(image string) string {
+	if image == "" {
+		return ""
+	}
+	if idx := strings.Index(image, "@"); idx != -1 {
+		return image[idx:]
+	}
+	lastSlash := strings.LastIndex(image, "/")
+	lastColon := strings.LastIndex(image, ":")
+	if lastColon != -1 && lastColon > lastSlash {
+		return image[lastColon:]
+	}
+	return ""
 }

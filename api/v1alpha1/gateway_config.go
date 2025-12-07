@@ -6,7 +6,7 @@
 package v1alpha1
 
 import (
-	corev1 "k8s.io/api/core/v1"
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -63,28 +63,9 @@ type GatewayConfigSpec struct {
 	ExtProc *GatewayConfigExtProc `json:"extProc,omitempty"`
 }
 
-// GatewayConfigExtProc defines the configuration for the external processor container.
-type GatewayConfigExtProc struct {
-	// Env specifies environment variables to be added to the external processor container.
-	// These variables are merged with any global environment variables configured in the
-	// AI Gateway controller. If there are conflicting variable names, the values defined
-	// here take precedence over global values.
-	//
-	// Common use cases include:
-	// - OTEL tracing configuration (e.g., OTEL_EXPORTER_OTLP_HEADERS, OTEL_EXPORTER_OTLP_ENDPOINT)
-	//
-	// +optional
-	// +kubebuilder:validation:MaxItems=32
-	Env []corev1.EnvVar `json:"env,omitempty"`
-
-	// Resources specifies the compute resources required by the external processor container.
-	// More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
-	//
-	// If not specified, the external processor will use Kubernetes default resource allocations.
-	//
-	// +optional
-	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
-}
+// GatewayConfigExtProc reuses Envoy Gateway's KubernetesContainerSpec so we stay aligned
+// with the EnvoyProxy configuration surface and inherit the full set of supported fields.
+type GatewayConfigExtProc = egv1a1.KubernetesContainerSpec
 
 // GatewayConfigStatus defines the observed state of GatewayConfig.
 type GatewayConfigStatus struct {

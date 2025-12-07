@@ -569,3 +569,50 @@ func TestGatewayMutator_mergeEnvVars(t *testing.T) {
 		})
 	}
 }
+
+func TestGatewayMutator_resolveExtProcImage(t *testing.T) {
+	tests := []struct {
+		name     string
+		base     string
+		extProc  *aigv1a1.GatewayConfigExtProc
+		expected string
+	}{
+		{
+			name:     "nil spec uses base image",
+			base:     "docker.io/envoyproxy/ai-gateway-extproc:latest",
+			extProc:  nil,
+			expected: "docker.io/envoyproxy/ai-gateway-extproc:latest",
+		},
+		{
+			name: "explicit image override",
+			base: "docker.io/envoyproxy/ai-gateway-extproc:latest",
+			extProc: &aigv1a1.GatewayConfigExtProc{
+				Image: ptr.To("gcr.io/custom/extproc:v2"),
+			},
+			expected: "gcr.io/custom/extproc:v2",
+		},
+		{
+			name: "repository override reuses tag",
+			base: "docker.io/envoyproxy/ai-gateway-extproc:latest",
+			extProc: &aigv1a1.GatewayConfigExtProc{
+				ImageRepository: ptr.To("gcr.io/custom/extproc"),
+			},
+			expected: "gcr.io/custom/extproc:latest",
+		},
+		{
+			name: "repository override keeps digest",
+			base: "docker.io/envoyproxy/ai-gateway-extproc@sha256:deadbeef",
+			extProc: &aigv1a1.GatewayConfigExtProc{
+				ImageRepository: ptr.To("gcr.io/custom/extproc"),
+			},
+			expected: "gcr.io/custom/extproc@sha256:deadbeef",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := &gatewayMutator{extProcImage: tt.base}
+			require.Equal(t, tt.expected, g.resolveExtProcImage(tt.extProc))
+		})
+	}
+}

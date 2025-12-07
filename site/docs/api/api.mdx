@@ -1439,31 +1439,6 @@ GCPCredentialsFile specifies the service account key json file to authenticate w
 
 
 
-#### GatewayConfigExtProc
-
-
-
-**Appears in:**
-- [GatewayConfigSpec](#gatewayconfigspec)
-
-GatewayConfigExtProc defines the configuration for the external processor container.
-
-##### Fields
-
-
-
-<ApiField
-  name="env"
-  type="[EnvVar](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#envvar-v1-core) array"
-  required="false"
-  description="Env specifies environment variables to be added to the external processor container.<br />These variables are merged with any global environment variables configured in the<br />AI Gateway controller. If there are conflicting variable names, the values defined<br />here take precedence over global values.<br />Common use cases include:<br />- OTEL tracing configuration (e.g., OTEL_EXPORTER_OTLP_HEADERS, OTEL_EXPORTER_OTLP_ENDPOINT)"
-/><ApiField
-  name="resources"
-  type="[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#resourcerequirements-v1-core)"
-  required="false"
-  description="Resources specifies the compute resources required by the external processor container.<br />More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/<br />If not specified, the external processor will use Kubernetes default resource allocations."
-/>
-
 
 #### GatewayConfigSpec
 
