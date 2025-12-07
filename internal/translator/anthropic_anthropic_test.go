@@ -116,10 +116,11 @@ event: content_block_delta
 data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}           }
 
 event: content_block_delta
-data: {"type":"content_block_delta","index":0,"delta":{"typ`
-	const responseTail = `
-e":"text_delta","text":"! 👋 How"}      }
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"! 👋 How"}      }
 
+`
+
+	const responseTail = `
 event: ping
 data: {"type": "ping"}
 

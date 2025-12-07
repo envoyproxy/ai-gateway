@@ -85,11 +85,6 @@ func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body 
 			return nil, nil, tokenUsage, a.requestModel, fmt.Errorf("failed to read body: %w", err)
 		}
 
-		// If this is a fresh start (no buffered data), reset the streaming token usage
-		if len(a.buffered) == 0 {
-			a.streamingTokenUsage = metrics.TokenUsage{}
-		}
-
 		a.buffered = append(a.buffered, buf...)
 		a.extractUsageFromBufferEvent(span)
 		// Use stored streaming response model, fallback to request model for non-compliant backends
