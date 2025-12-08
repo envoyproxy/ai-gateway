@@ -11,16 +11,16 @@ import (
 	"strconv"
 	"unsafe"
 
-	openaisdk "github.com/openai/openai-go/v2"
-
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/dynamicmodule/sdk"
+	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
@@ -29,15 +29,25 @@ type (
 	upstreamFilterConfig struct{ env *Env }
 	// upstreamFilter implements [sdk.HTTPFilter].
 	upstreamFilter struct {
-		env        *Env
-		rf         *routerFilter
-		backend    *filterapi.RuntimeBackend
-		reqHeaders map[string]string
-		onRetry    bool
+		env         *Env
+		typedFilter upstreamFilterTypedIface
+	}
 
-		// -- per endpoint processor --
-		translator any
-		metrics    metrics.Metrics
+	upstreamFilterTypedIface interface {
+		RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.RequestHeadersStatus
+		RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.RequestBodyStatus
+		ResponseHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.ResponseHeadersStatus
+		ResponseBody(sdk.EnvoyHTTPFilter, bool) sdk.ResponseBodyStatus
+	}
+
+	upstreamFilterTyped[ReqT, RespT, RespChunkT any, EndpointSpec endpointspec.Spec[ReqT, RespT, RespChunkT]] struct {
+		routerFilter *routerFilterTyped[ReqT, RespT, RespChunkT, EndpointSpec]
+		translator   translator.Translator[ReqT, tracing.Span[RespT, RespChunkT]]
+		metrics      metrics.Metrics
+
+		onRetry    bool
+		reqHeaders map[string]string
+		backend    *filterapi.RuntimeBackend
 	}
 )
 
@@ -63,32 +73,85 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 		e.SendLocalReply(500, nil, []byte(fmt.Sprintf("invalid router filter pointer: %v", err)))
 		return sdk.RequestHeadersStatusStopIteration
 	}
-	f.rf = (*routerFilter)(unsafe.Pointer(uintptr(rfPtr))) // nolint:govet
-	f.rf.attemptCount++
-	f.onRetry = f.rf.attemptCount > 1
-
+	rf := (*routerFilter)(unsafe.Pointer(uintptr(rfPtr))) // nolint:govet
+	rf.attemptCount++
+	onRetry := rf.attemptCount > 1
 	backend, ok := e.GetUpstreamHostMetadataString(internalapi.AIGatewayFilterMetadataNamespace, internalapi.InternalMetadataBackendNameKey)
 	if !ok {
 		e.SendLocalReply(500, nil, []byte("backend name not found in upstream host metadata"))
 		return sdk.RequestHeadersStatusStopIteration
 	}
-	b, ok := f.rf.runtimeFilterConfig.Backends[backend]
+	b, ok := rf.runtimeFilterConfig.Backends[backend]
 	if !ok {
 		e.SendLocalReply(500, nil, []byte(fmt.Sprintf("backend %s not found in filter config", backend)))
 		return sdk.RequestHeadersStatusStopIteration
 	}
 
-	f.backend = b
-	f.reqHeaders = multiValueHeadersToSingleValue(e.GetRequestHeaders())
+	switch rf.endpoint {
+	case chatCompletionsEndpoint:
+		f.typedFilter = &upstreamFilterTyped[openai.ChatCompletionRequest,
+			openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]{
+			metrics: f.env.ChatCompletionMetricsFactory.NewMetrics(),
+			onRetry: onRetry,
+			backend: b,
+		}
+	case completionsEndpoint:
+		f.typedFilter = &upstreamFilterTyped[openai.CompletionRequest,
+			openai.CompletionResponse, openai.CompletionResponse, endpointspec.CompletionsEndpointSpec]{
+			onRetry: onRetry,
+			metrics: f.env.CompletionMetricsFactory.NewMetrics(),
+			backend: b,
+		}
+	case embeddingsEndpoint:
+		f.typedFilter = &upstreamFilterTyped[openai.EmbeddingRequest,
+			openai.EmbeddingResponse, struct{}, endpointspec.EmbeddingsEndpointSpec]{
+			onRetry: onRetry,
+			metrics: f.env.EmbeddingsMetricsFactory.NewMetrics(),
+			backend: b,
+		}
+	case imagesGenerationsEndpoint:
+		f.typedFilter = &upstreamFilterTyped[openai.ImageGenerationRequest,
+			openai.ImageGenerationResponse, struct{}, endpointspec.ImageGenerationEndpointSpec]{
+			onRetry: onRetry,
+			metrics: f.env.ImageGenerationMetricsFactory.NewMetrics(),
+			backend: b,
+		}
+	case rerankEndpoint:
+		f.typedFilter = &upstreamFilterTyped[cohereschema.RerankV2Request,
+			cohereschema.RerankV2Response, struct{}, endpointspec.RerankEndpointSpec]{
+			onRetry: onRetry,
+			metrics: f.env.RerankMetricsFactory.NewMetrics(),
+			backend: b,
+		}
+	case messagesEndpoint:
+		f.typedFilter = &upstreamFilterTyped[anthropic.MessagesRequest,
+			anthropic.MessagesResponse, anthropic.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]{
+			onRetry: onRetry,
+			metrics: f.env.MessagesMetricsFactory.NewMetrics(),
+			backend: b,
+		}
+	default:
+		e.SendLocalReply(500, nil, []byte(fmt.Sprintf("unsupported endpoint type: %v", rf.endpoint)))
+		return sdk.RequestHeadersStatusStopIteration
+	}
+	return f.typedFilter.RequestHeaders(e, false)
+}
 
-	if err := f.initializeTranslatorMetrics(b.Backend); err != nil {
-		e.SendLocalReply(500, nil, []byte(fmt.Sprintf("failed to initialize translator: %v", err)))
+func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.RequestHeadersStatus {
+	var espec EndpointSpecT
+	var err error
+	f.translator, err = espec.GetTranslator(f.backend.Backend.Schema, f.backend.Backend.ModelNameOverride)
+	if err != nil {
+		e.SendLocalReply(500, nil, []byte(fmt.Sprintf("failed to create translator: %v", err)))
 		return sdk.RequestHeadersStatusStopIteration
 	}
 
+	f.reqHeaders = multiValueHeadersToSingleValue(e.GetRequestHeaders())
+
 	// Now mutate the headers based on the backend configuration.
-	if hm := b.Backend.HeaderMutation; hm != nil {
-		sets, removes := headermutator.NewHeaderMutator(b.Backend.HeaderMutation, f.rf.originalHeaders).Mutate(f.reqHeaders, f.onRetry)
+	be := f.backend.Backend
+	if hm := be.HeaderMutation; hm != nil {
+		sets, removes := headermutator.NewHeaderMutator(be.HeaderMutation, f.routerFilter.originalRequestHeaders).Mutate(f.reqHeaders, f.onRetry)
 		for _, h := range sets {
 			if !e.SetRequestHeader(h.Key(), []byte(h.Value())) {
 				e.SendLocalReply(500, nil, []byte(fmt.Sprintf("failed to set header %s", h.Key())))
@@ -109,33 +172,19 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 
 // RequestBody implements [sdk.HTTPFilter].
 func (f *upstreamFilter) RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.RequestBodyStatus {
+	return f.typedFilter.RequestBody(e, endOfStream)
+}
+
+func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.RequestBodyStatus {
 	if !endOfStream {
 		// TODO: ideally, we should not buffer the entire body for the passthrough case.
 		return sdk.RequestBodyStatusStopIterationAndBuffer
 	}
 
 	b := f.backend
+	newHeaders, newBody, err := f.translator.RequestBody(f.routerFilter.originalRequestBodyRaw,
+		f.routerFilter.originalRequestBody, f.onRetry)
 
-	var newHeaders []internalapi.Header
-	var newBody []byte
-	var err error
-	switch t := f.translator.(type) {
-	case translator.OpenAIChatCompletionTranslator:
-		newHeaders, newBody, err = t.RequestBody(f.rf.originalRequestBodyRaw, f.rf.originalRequestBody.(*openai.ChatCompletionRequest), f.onRetry)
-	case translator.OpenAICompletionTranslator:
-		newHeaders, newBody, err = t.RequestBody(f.rf.originalRequestBodyRaw, f.rf.originalRequestBody.(*openai.CompletionRequest), f.onRetry)
-	case translator.OpenAIEmbeddingTranslator:
-		newHeaders, newBody, err = t.RequestBody(f.rf.originalRequestBodyRaw, f.rf.originalRequestBody.(*openai.EmbeddingRequest), f.onRetry)
-	case translator.AnthropicMessagesTranslator:
-		newHeaders, newBody, err = t.RequestBody(f.rf.originalRequestBodyRaw, f.rf.originalRequestBody.(*anthropic.MessagesRequest), f.onRetry)
-	case translator.OpenAIImageGenerationTranslator:
-		newHeaders, newBody, err = t.RequestBody(f.rf.originalRequestBodyRaw, f.rf.originalRequestBody.(*openaisdk.ImageGenerateParams), f.onRetry)
-	case translator.CohereRerankTranslator:
-		newHeaders, newBody, err = t.RequestBody(f.rf.originalRequestBodyRaw, f.rf.originalRequestBody.(*cohereschema.RerankV2Request), f.onRetry)
-	default:
-		e.SendLocalReply(500, nil, []byte("BUG: unsupported translator type"))
-		return sdk.RequestBodyStatusStopIterationAndBuffer
-	}
 	if err != nil {
 		e.SendLocalReply(500, nil, []byte(fmt.Sprintf("failed to translate request body: %v", err)))
 		return sdk.RequestBodyStatusStopIterationAndBuffer
@@ -186,11 +235,19 @@ func (f *upstreamFilter) RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sd
 
 // ResponseHeaders implements [sdk.HTTPFilter].
 func (f *upstreamFilter) ResponseHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.ResponseHeadersStatus {
+	return f.typedFilter.ResponseHeaders(e, false)
+}
+
+func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.ResponseHeadersStatus {
 	_ = e
 	return sdk.ResponseHeadersStatusContinue
 }
 
 // ResponseBody implements [sdk.HTTPFilter].
 func (f *upstreamFilter) ResponseBody(sdk.EnvoyHTTPFilter, bool) sdk.ResponseBodyStatus {
+	return f.typedFilter.ResponseBody(nil, false)
+}
+
+func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBody(sdk.EnvoyHTTPFilter, bool) sdk.ResponseBodyStatus {
 	return sdk.ResponseBodyStatusContinue
 }
