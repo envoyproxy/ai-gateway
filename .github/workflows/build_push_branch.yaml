@@ -1,0 +1,80 @@
+name: Build and Push Docker Images (Branch)
+
+on:
+  push:
+    branches:
+      - mp-bla-255-grpc-max-message-size
+      - feat/mcp-claim-to-headers
+      - release/v0.4.0-claim-to-headers
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/ai-gateway
+
+jobs:
+  docker_builds:
+    name: ${{ matrix.command_name }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - command_name: "controller"
+            cmd_path_prefix: cmd
+          - command_name: "extproc"
+            cmd_path_prefix: cmd
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version-file: go.mod
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/go/pkg/mod
+            ~/go/bin
+          key: build-container-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        run: |
+          # Use branch name and short SHA as tag
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          SHORT_SHA=${GITHUB_SHA::7}
+          TAG="${BRANCH_NAME}-${SHORT_SHA}"
+          # Sanitize tag (replace / with -)
+          TAG=$(echo "$TAG" | sed 's/\//-/g')
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "Building tag: ${TAG}"
+
+      - name: Build and Push Image
+        run: |
+          make docker-build.${{ matrix.command_name }} \
+            CMD_PATH_PREFIX=${{ matrix.cmd_path_prefix }} \
+            ENABLE_MULTI_PLATFORMS=true \
+            TAG="${{ steps.meta.outputs.tag }}" \
+            OCI_REGISTRY="${{ env.REGISTRY }}/${{ github.repository_owner }}" \
+            DOCKER_BUILD_ARGS="--push"
+
+      - name: Output image reference
+        run: |
+          echo "Image pushed: ${{ env.IMAGE_PREFIX }}-${{ matrix.command_name }}:${{ steps.meta.outputs.tag }}"
