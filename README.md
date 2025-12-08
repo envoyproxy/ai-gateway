@@ -111,7 +111,7 @@ Envoy AI Gateway supports a wide range of AI providers, making it easy to integr
 - **Chat Completions** (`/v1/chat/completions`) - Stream and non-stream chat responses
 - **Text Completions** (`/v1/completions`) - Legacy completion endpoint support
 - **Embeddings** (`/v1/embeddings`) - Text embedding generation
-- **Tokenize** (`/tokenize`) - Count tokens for cost estimation and prompt optimization
+- **Tokenize** (`/tokenize`) - Multi-provider token counting with automatic API translation (OpenAI, GCP Vertex AI, AWS Bedrock, GCP Anthropic)
 - **Image Generation** (`/v1/images/generations`) - AI image generation
 - **Rerank** (`/cohere/v2/rerank`) - Document reranking for search
 - **Anthropic Messages** (`/anthropic/v1/messages`) - Native Claude API support

@@ -345,7 +345,7 @@ curl -H "Content-Type: application/json" \
 
 **Endpoint:** `POST /tokenize`
 
-**Status:** ✅ Fully Supported
+**Status:** ✅ Supported
 
 **Description:** Count tokens for text input without generating a response. Useful for cost estimation, prompt optimization, and understanding model input limits. Compatible with vLLM tokenize API.
 
@@ -419,6 +419,40 @@ curl -H "Content-Type: application/json" \
   $GATEWAY_URL/tokenize
 ```
 
+**AWS Bedrock Example (Claude models):**
+
+```bash
+curl -H "Content-Type: application/json" \
+  -H "x-backend: aws-bedrock" \
+  -d '{
+    "model": "anthropic.claude-3-haiku-20240307-v1:0",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Count tokens in this AWS Bedrock message"
+      }
+    ]
+  }' \
+  $GATEWAY_URL/tokenize
+```
+
+**GCP Anthropic Example (Claude models):**
+
+```bash
+curl -H "Content-Type: application/json" \
+  -H "x-backend: gcp-anthropic" \
+  -d '{
+    "model": "claude-3-haiku-20240307",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Count tokens in this GCP Anthropic message"
+      }
+    ]
+  }' \
+  $GATEWAY_URL/tokenize
+```
+
 **Response Format:**
 
 ```json
@@ -442,6 +476,12 @@ curl -H "Content-Type: application/json" \
 
 - For **vLLM backends**: Set up as OpenAI-compatible backend, vLLM automatically provides tokenize support
 - For **GCP Vertex AI**: Configure with GCPVertexAI schema, requests automatically translate to CountTokens API
+- For **AWS Bedrock**: Configure with AWSBedrock schema, requests automatically translate to AWS Bedrock CountTokens API
+  - ⚠️ **Chat messages only** - completion prompts (`prompt` field) are not supported
+  - Supports Claude models (e.g., `anthropic.claude-3-haiku-20240307-v1:0`)
+- For **GCP Anthropic**: Configure with GCPAnthropic schema, requests translate to Anthropic MessageCountTokens API
+  - ⚠️ **Chat messages only** - completion prompts (`prompt` field) are not supported
+  - Supports Claude models (e.g., `claude-3-haiku-20240307`)
 - For **cost optimization**: Use tokenize before expensive operations to validate input size
 
 ### Models
@@ -485,7 +525,7 @@ The following table summarizes which providers support which endpoints:
 | Provider                                                                                              | Chat Completions | Completions | Embeddings | Image Generation | Anthropic Messages | Rerank | Tokenize | Notes                                                                                                                |
 | ----------------------------------------------------------------------------------------------------- | :--------------: | :---------: | :--------: | :--------------: | :----------------: | :----: | :------: | -------------------------------------------------------------------------------------------------------------------- |
 | [OpenAI](https://platform.openai.com/docs/api-reference)                                              |        ✅        |     ✅      |     ✅     |        ❌        |         ✅         |   ❌   |    ✅    |                                                                                                                      |
-| [AWS Bedrock](https://docs.aws.amazon.com/bedrock/latest/APIReference/)                               |        ✅        |     🚧      |     ✅     |        ❌        |         ❌         |   ❌   |    🚧    | Via API translation (embeddings: Titan models only)                                                                  |
+| [AWS Bedrock](https://docs.aws.amazon.com/bedrock/latest/APIReference/)                               |        ✅        |     🚧      |     ✅     |        ❌        |         ❌         |   ❌   |    ✅    | Via API translation (embeddings: Titan models only)                                                                  |
 | [Azure OpenAI](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference)                  |        ✅        |     🚧      |     ✅     |        ❌        |         ⚠️         |   ❌   |    ⚠️    | Via API translation or via [OpenAI-compatible API](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/latest) |
 | [Google Gemini](https://ai.google.dev/gemini-api/docs/openai)                                         |        ✅        |     ⚠️      |     ✅     |        ⚠️        |         ❌         |   ❌   |    ⚠️    | Via OpenAI-compatible API                                                                                            |
 | [Groq](https://console.groq.com/docs/openai)                                                          |        ✅        |     ❌      |     ❌     |        ❌        |         ❌         |   ❌   |    ⚠️    | Via OpenAI-compatible API                                                                                            |
@@ -500,7 +540,7 @@ The following table summarizes which providers support which endpoints:
 | [Tetrate Agent Router Service (TARS)](https://router.tetrate.ai/)                                     |        ⚠️        |     ⚠️      |     ⚠️     |        ❌        |         ❌         |   ❌   |    ⚠️    | Via OpenAI-compatible API                                                                                            |
 | [Google Vertex AI](https://cloud.google.com/vertex-ai/docs/reference/rest)                            |        ✅        |     🚧      |     ✅     |        ❌        |         ❌         |   ❌   |    ✅    | Via API translation                                                                                                  |
 | [Anthropic on Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude) |        ✅        |     ❌      |     🚧     |        ❌        |         ✅         |   ❌   |    ✅    | Via OpenAI-compatible API and Native Anthropic API                                                                   |
-| [Anthropic on AWS Bedrock](https://aws.amazon.com/bedrock/anthropic/)                                 |        🚧        |     ❌      |     ❌     |        ❌        |         ✅         |   ❌   |    🚧    | Native Anthropic API                                                                                                 |
+| [Anthropic on AWS Bedrock](https://aws.amazon.com/bedrock/anthropic/)                                 |        🚧        |     ❌      |     ❌     |        ❌        |         ✅         |   ❌   |    ✅    | Native Anthropic API                                                                                                 |
 | [SambaNova](https://docs.sambanova.ai/sambastudio/latest/open-ai-api.html)                            |        ✅        |     ⚠️      |     ✅     |        ❌        |         ❌         |   ❌   |    ⚠️    | Via OpenAI-compatible API                                                                                            |
 | [Anthropic](https://docs.claude.com/en/home)                                                          |        ✅        |     ❌      |     ❌     |        ❌        |         ✅         |   ❌   |    ✅    | Via OpenAI-compatible API and Native Anthropic API                                                                   |
 

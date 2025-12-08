@@ -7,7 +7,7 @@ This directory contains example configurations for setting up the tokenize endpo
 The tokenize endpoint supports:
 - **Chat message tokenization** (OpenAI messages format)
 - **Completion prompt tokenization** (single string prompt)
-- **Multiple AI providers** (OpenAI, vLLM, GCP Vertex AI)
+- **Multiple AI providers** (OpenAI, vLLM, GCP Vertex AI, AWS Bedrock, GCP Anthropic)
 - **Provider fallback and load balancing**
 - **Cost optimization workflows**
 
@@ -72,7 +72,47 @@ kubectl apply -f gcp-vertex-ai.yaml
 # Set up GCP authentication (see comments in file)
 ```
 
-### 4. `multi-backend.yaml` - Comprehensive Multi-Backend
+### 4. `aws-bedrock.yaml` - AWS Bedrock
+
+Configuration for using AWS Bedrock Claude models for tokenization.
+
+**Use Cases:**
+- AWS cloud environments
+- Claude model tokenization via Bedrock
+- Enterprise AWS integrations
+
+**Features:**
+- AWS Bedrock backend with automatic API translation
+- IAM-based authentication (access keys or IRSA)
+- Regional endpoint configuration
+- Chat messages only (completion prompts not supported)
+
+```bash
+kubectl apply -f aws-bedrock.yaml
+# Set up AWS authentication (see comments in file)
+```
+
+### 5. `gcp-anthropic.yaml` - GCP Anthropic
+
+Configuration for using GCP Anthropic Claude models for tokenization.
+
+**Use Cases:**
+- Google Cloud environments with Anthropic models
+- Claude model tokenization via GCP
+- Enterprise GCP Anthropic integrations
+
+**Features:**
+- GCP Anthropic backend with automatic API translation
+- Service account-based authentication
+- Workload Identity support
+- Chat messages only (completion prompts not supported)
+
+```bash
+kubectl apply -f gcp-anthropic.yaml
+# Set up GCP authentication (see comments in file)
+```
+
+### 6. `multi-backend.yaml` - Comprehensive Multi-Backend
 
 Advanced configuration with multiple backends, fallback, and load balancing.
 
@@ -83,7 +123,7 @@ Advanced configuration with multiple backends, fallback, and load balancing.
 - Multiple provider failover
 
 **Features:**
-- Multiple backends (OpenAI, vLLM, GCP Vertex AI)
+- Multiple backends (OpenAI, vLLM, GCP Vertex AI, AWS Bedrock, GCP Anthropic)
 - Provider fallback and load balancing
 - Model-specific routing rules
 - Usage-based rate limiting
@@ -211,12 +251,15 @@ done
 
 1. **OpenAI Schema**: Direct passthrough for OpenAI API and compatible services
 2. **GCPVertexAI Schema**: Automatic translation to Gemini CountTokens API
-3. **Future**: AWS Bedrock, Azure OpenAI support planned
+3. **AWSBedrock Schema**: Automatic translation to AWS Bedrock CountTokens API (chat messages only)
+4. **GCPAnthropic Schema**: Automatic translation to Anthropic MessageCountTokens API (chat messages only)
 
 ### Authentication
 
 - **OpenAI/vLLM**: API key via `APIKey` security policy
 - **GCP Vertex AI**: OAuth2 with service account or Workload Identity
+- **AWS Bedrock**: IAM credentials via `AWS` security policy (access keys or IRSA)
+- **GCP Anthropic**: OAuth2 with service account or Workload Identity
 - **Enterprise**: Custom authentication mechanisms supported
 
 ### Performance Considerations
@@ -236,7 +279,7 @@ The tokenize endpoint provides full observability:
 
 ### Common Issues
 
-1. **"unsupported API schema"**: Check that your backend uses a supported schema (OpenAI, GCPVertexAI)
+1. **"unsupported API schema"**: Check that your backend uses a supported schema (OpenAI, GCPVertexAI, AWSBedrock, GCPAnthropic)
 2. **Authentication failures**: Verify API keys and service account permissions
 3. **Model not found**: Ensure the model name matches what your backend supports
 4. **Invalid request format**: Check that request contains either `messages` or `prompt`, not both

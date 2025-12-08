@@ -5,7 +5,7 @@
 
 # Comprehensive tokenize configuration with multiple backends and fallback
 # This example demonstrates:
-# - Multiple tokenize backends (OpenAI, vLLM, GCP Vertex AI)
+# - Multiple tokenize backends (OpenAI, vLLM, GCP Vertex AI, AWS Bedrock, GCP Anthropic)
 # - Provider fallback for high availability
 # - Model-specific routing
 # - Cost-optimized tokenize-before-completion workflow
@@ -41,6 +41,22 @@ spec:
               value: "gemini-.*"
       backendRefs:
         - name: envoy-ai-gateway-gcp-vertex
+    # Route AWS Bedrock Claude models to AWS Bedrock
+    - matches:
+        - headers:
+            - type: Regex
+              name: x-ai-eg-model
+              value: "anthropic\\.claude-.*-v1:0"
+      backendRefs:
+        - name: envoy-ai-gateway-aws-bedrock
+    # Route GCP Anthropic Claude models to GCP Anthropic
+    - matches:
+        - headers:
+            - type: Regex
+              name: x-ai-eg-model
+              value: "claude-.*"
+      backendRefs:
+        - name: envoy-ai-gateway-gcp-anthropic
     # Route OpenAI models to OpenAI with vLLM fallback
     - matches:
         - headers:
