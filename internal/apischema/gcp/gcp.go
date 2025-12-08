@@ -151,3 +151,15 @@ type EmbedContentUsageMetadata struct {
 	PromptTokenCount int `json:"promptTokenCount,omitempty"`
 	TotalTokenCount  int `json:"totalTokenCount,omitempty"`
 }
+
+type CountTokenRequest struct {
+	//  The content to count tokens for.
+	//
+	// https://github.com/googleapis/go-genai/blob/6a8184fcaf8bf15f0c566616a7b356560309be9b/types.go#L858
+	Contents []genai.Content `json:"contents"`
+
+	//  The configuration for counting tokens.
+	//
+	// https://github.com/googleapis/go-genai/blob/2c046453716ca9c10d445da5c0923b5b170773f2/types.go#L3530
+	Config genai.CountTokensConfig `json:"config,omitempty"`
+}
