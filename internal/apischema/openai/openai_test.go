@@ -1193,6 +1193,133 @@ func TestChatCompletionRequest(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "enterprise search tool",
+			jsonStr: `{
+				"model": "gemini-1.5-pro",
+				"messages": [
+					{
+						"role": "user",
+						"content": "Hello with enterprise search!"
+					}
+				],
+				"tools": [
+					{
+						"type": "enterprise_search"
+					}
+				]
+			}`,
+			expected: &ChatCompletionRequest{
+				Model: "gemini-1.5-pro",
+				Messages: []ChatCompletionMessageParamUnion{
+					{
+						OfUser: &ChatCompletionUserMessageParam{
+							Role:    ChatMessageRoleUser,
+							Content: StringOrUserRoleContentUnion{Value: "Hello with enterprise search!"},
+						},
+					},
+				},
+				Tools: []Tool{
+					{
+						Type: ToolTypeEnterpriseWebSearch,
+					},
+				},
+			},
+		},
+		{
+			name: "mixed function and enterprise search tools",
+			jsonStr: `{
+				"model": "gemini-1.5-pro",
+				"messages": [
+					{
+						"role": "user",
+						"content": "Mixed tools test"
+					}
+				],
+				"tools": [
+					{
+						"type": "function",
+						"function": {
+							"name": "get_weather",
+							"description": "Get current weather"
+						}
+					},
+					{
+						"type": "enterprise_search"
+					}
+				]
+			}`,
+			expected: &ChatCompletionRequest{
+				Model: "gemini-1.5-pro",
+				Messages: []ChatCompletionMessageParamUnion{
+					{
+						OfUser: &ChatCompletionUserMessageParam{
+							Role:    ChatMessageRoleUser,
+							Content: StringOrUserRoleContentUnion{Value: "Mixed tools test"},
+						},
+					},
+				},
+				Tools: []Tool{
+					{
+						Type: ToolTypeFunction,
+						Function: &FunctionDefinition{
+							Name:        "get_weather",
+							Description: "Get current weather",
+						},
+					},
+					{
+						Type: ToolTypeEnterpriseWebSearch,
+					},
+				},
+			},
+		},
+		{
+			name: "enterprise search with vendor fields",
+			jsonStr: `{
+				"model": "gemini-1.5-pro",
+				"messages": [
+					{
+						"role": "user",
+						"content": "Combined enterprise search and safety settings"
+					}
+				],
+				"tools": [
+					{
+						"type": "enterprise_search"
+					}
+				],
+				"safetySettings": [
+					{
+						"category": "HARM_CATEGORY_HARASSMENT",
+						"threshold": "BLOCK_ONLY_HIGH"
+					}
+				]
+			}`,
+			expected: &ChatCompletionRequest{
+				Model: "gemini-1.5-pro",
+				Messages: []ChatCompletionMessageParamUnion{
+					{
+						OfUser: &ChatCompletionUserMessageParam{
+							Role:    ChatMessageRoleUser,
+							Content: StringOrUserRoleContentUnion{Value: "Combined enterprise search and safety settings"},
+						},
+					},
+				},
+				Tools: []Tool{
+					{
+						Type: ToolTypeEnterpriseWebSearch,
+					},
+				},
+				GCPVertexAIVendorFields: &GCPVertexAIVendorFields{
+					SafetySettings: []*genai.SafetySetting{
+						{
+							Category:  genai.HarmCategoryHarassment,
+							Threshold: genai.HarmBlockThresholdBlockOnlyHigh,
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range testCases {
