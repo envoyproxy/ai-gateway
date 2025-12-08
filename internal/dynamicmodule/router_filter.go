@@ -44,7 +44,8 @@ type (
 		// runtimeFilterConfig is the snapshot of the runtime filter configuration at the time of filter creation.
 		runtimeFilterConfig *filterapi.RuntimeConfig
 		// tracing is the tracing implementation inherited from the environment.
-		tracing tracing.Tracing
+		tracing      tracing.Tracing
+		attemptCount int
 
 		// endpoint is the endpoint that the current request is targeting.
 		endpoint endpoint
@@ -60,7 +61,6 @@ type (
 	// routerFilter typed is the typed implementation of the router filter for a specific endpoint.
 	routerFilterTyped[ReqT, RespT, RespChunkT any, EndpointSpec endpointspec.Spec[ReqT, RespT, RespChunkT]] struct {
 		runtimeFilterConfig    *filterapi.RuntimeConfig
-		attemptCount           int
 		ep                     EndpointSpec
 		originalRequestHeaders map[string]string
 		originalRequestBody    *ReqT
