@@ -14,6 +14,7 @@ import (
 	"path"
 	"strconv"
 
+	sonic "github.com/bytedance/sonic"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/tidwall/sjson"
@@ -54,14 +55,30 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(original []byte, 
 	// Store the request model to use as fallback for response model
 	o.requestModel = req.Model
 	var newBody []byte
+	// source tracks the latest version of the body we are mutating.
+	// Start from the original raw body if present.
+	source := original
+
 	if o.modelNameOverride != "" {
 		// If modelName is set we override the model to be used for the request.
-		newBody, err = sjson.SetBytesOptions(original, "model", o.modelNameOverride, sjsonOptions)
+		newBody, err = sjson.SetBytesOptions(source, "model", o.modelNameOverride, sjsonOptions)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to set model name: %w", err)
 		}
 		// Make everything coherent.
 		o.requestModel = o.modelNameOverride
+		source = newBody
+	}
+
+	// For streaming requests, always ensure stream_options.include_usage=true so that
+	// the backend reports token usage in the stream. This is done only when we have a
+	// non-empty, valid JSON body to avoid changing existing behavior in tests and
+	// non-JSON edge cases.
+	if req.Stream && len(source) > 0 && sonic.Valid(source) {
+		if newBody, err = sjson.SetBytesOptions(source, "stream_options.include_usage", true, sjsonOptions); err != nil {
+			return nil, nil, fmt.Errorf("failed to set stream_options.include_usage: %w", err)
+		}
+		source = newBody
 	}
 
 	// Always set the path header to the chat completions endpoint so that the request is routed correctly.
@@ -148,8 +165,12 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]str
 		return
 	}
 	resp := &openai.ChatCompletionResponse{}
-	if err := json.NewDecoder(body).Decode(&resp); err != nil {
-		return nil, nil, tokenUsage, responseModel, fmt.Errorf("failed to unmarshal body: %w", err)
+	raw, readErr := io.ReadAll(body)
+	if readErr != nil {
+		return nil, nil, tokenUsage, responseModel, fmt.Errorf("failed to read body: %w", readErr)
+	}
+	if unmarshalErr := sonic.Unmarshal(raw, resp); unmarshalErr != nil {
+		return nil, nil, tokenUsage, responseModel, fmt.Errorf("failed to unmarshal body: %w", unmarshalErr)
 	}
 	tokenUsage = LLMTokenUsage{
 		InputTokens:  uint32(resp.Usage.PromptTokens),     //nolint:gosec
@@ -183,7 +204,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent(s
 			continue
 		}
 		event := &openai.ChatCompletionResponseChunk{}
-		if err := json.Unmarshal(bytes.TrimPrefix(line, dataPrefix), event); err != nil {
+		if err := sonic.Unmarshal(bytes.TrimPrefix(line, dataPrefix), event); err != nil {
 			continue
 		}
 		if span != nil {
