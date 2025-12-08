@@ -8,6 +8,7 @@ package dynamicmodule
 import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 // endpoint represents the type of the endpoint that the request is targeting.
@@ -40,4 +41,5 @@ type Env struct {
 	EmbeddingsMetricsFactory,
 	ImageGenerationMetricsFactory,
 	RerankMetricsFactory metrics.Factory
+	Tracing tracing.Tracing
 }
