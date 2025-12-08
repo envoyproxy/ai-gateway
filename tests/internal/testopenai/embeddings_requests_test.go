@@ -25,6 +25,8 @@ func TestNewRequestEmbeddings(t *testing.T) {
 			tests[i].expectedStatus = http.StatusBadRequest
 		case CassetteEmbeddingsUnknownModel:
 			tests[i].expectedStatus = http.StatusNotFound
+		case CassetteEmbeddingsChatEmpty:
+			tests[i].expectedStatus = http.StatusBadRequest // Empty messages should be a bad request
 		default:
 			tests[i].expectedStatus = http.StatusOK
 		}

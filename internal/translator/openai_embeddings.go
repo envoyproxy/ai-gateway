@@ -36,7 +36,7 @@ type openAIToOpenAITranslatorV1Embedding struct {
 }
 
 // RequestBody implements [OpenAIEmbeddingTranslator.RequestBody].
-func (o *openAIToOpenAITranslatorV1Embedding) RequestBody(original []byte, _ *openai.EmbeddingCompletionRequest, onRetry bool) (
+func (o *openAIToOpenAITranslatorV1Embedding) RequestBody(original []byte, req *openai.EmbeddingRequest, onRetry bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	if o.modelNameOverride != "" {

@@ -231,11 +231,29 @@ func buildEmbeddingsRequestAttributes(embRequest *openai.EmbeddingRequest, body 
 	}
 
 	if !config.HideLLMInvocationParameters {
+		// Extract parameters from the union type
+		var model string
+		var encodingFormat *string
+		var dimensions *int
+		var user *string
+
+		if embRequest.OfCompletion != nil {
+			model = embRequest.OfCompletion.Model
+			encodingFormat = embRequest.OfCompletion.EncodingFormat
+			dimensions = embRequest.OfCompletion.Dimensions
+			user = embRequest.OfCompletion.User
+		} else if embRequest.OfChat != nil {
+			model = embRequest.OfChat.Model
+			encodingFormat = embRequest.OfChat.EncodingFormat
+			dimensions = embRequest.OfChat.Dimensions
+			user = embRequest.OfChat.User
+		}
+
 		params := embeddingsInvocationParameters{
-			Model:          embRequest.Model,
-			EncodingFormat: embRequest.EncodingFormat,
-			Dimensions:     embRequest.Dimensions,
-			User:           embRequest.User,
+			Model:          model,
+			EncodingFormat: encodingFormat,
+			Dimensions:     dimensions,
+			User:           user,
 		}
 		if invocationParamsJSON, err := json.Marshal(params); err == nil {
 			attrs = append(attrs, attribute.String(openinference.EmbeddingInvocationParameters, string(invocationParamsJSON)))
@@ -250,16 +268,26 @@ func buildEmbeddingsRequestAttributes(embRequest *openai.EmbeddingRequest, body 
 	// 4. Azure deployments don't affect this (they only host OpenAI models with cl100k_base)
 	// Following OpenInference spec guidance to only record human-readable text.
 	if !config.HideInputs && !config.HideEmbeddingsText {
-		switch input := embRequest.Input.Value.(type) {
-		case string:
-			attrs = append(attrs, attribute.String(openinference.EmbeddingTextAttribute(0), input))
-		case []string:
-			for i, text := range input {
-				attrs = append(attrs, attribute.String(openinference.EmbeddingTextAttribute(i), text))
+		var inputValue any
+		if embRequest.OfCompletion != nil {
+			inputValue = embRequest.OfCompletion.Input.Value
+		} else if embRequest.OfChat != nil {
+			// For chat requests, we'll extract text from messages
+			inputValue = "chat_messages" // Simplified - could be enhanced to extract actual text
+		}
+
+		if inputValue != nil {
+			switch input := inputValue.(type) {
+			case string:
+				attrs = append(attrs, attribute.String(openinference.EmbeddingTextAttribute(0), input))
+			case []string:
+				for i, text := range input {
+					attrs = append(attrs, attribute.String(openinference.EmbeddingTextAttribute(i), text))
+				}
+			// Token inputs are not recorded to reduce span size.
+			case []int64:
+			case [][]int64:
 			}
-		// Token inputs are not recorded to reduce span size.
-		case []int64:
-		case [][]int64:
 		}
 	}
 

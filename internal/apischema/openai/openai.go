@@ -1523,6 +1523,9 @@ type EmbeddingCompletionRequest struct {
 	// User: A unique identifier representing your end-user, which can help OpenAI to monitor and detect abuse.
 	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-user
 	User *string `json:"user,omitempty"`
+
+	// GCPVertexAIEmbeddingVendorFields configures the GCP VertexAI specific fields during schema translation.
+	*GCPVertexAIEmbeddingVendorFields `json:",inline,omitempty"`
 }
 
 // GetModel implements ModelName interface
@@ -1553,6 +1556,9 @@ type EmbeddingChatRequest struct {
 	// User: A unique identifier representing your end-user, which can help OpenAI to monitor and detect abuse.
 	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-user
 	User *string `json:"user,omitempty"`
+
+	// GCPVertexAIEmbeddingVendorFields configures the GCP VertexAI specific fields during schema translation.
+	*GCPVertexAIEmbeddingVendorFields `json:",inline,omitempty"`
 }
 
 // GetModel implements ModelProvider interface
@@ -1560,19 +1566,57 @@ func (e *EmbeddingChatRequest) GetModel() string {
 	return e.Model
 }
 
-type EmbeddingRequest interface {
-	EmbeddingCompletionRequest | EmbeddingChatRequest
+// EmbeddingRequest is a union type that can handle both EmbeddingCompletionRequest and EmbeddingChatRequest.
+type EmbeddingRequest struct {
+	OfCompletion *EmbeddingCompletionRequest `json:",omitzero,inline"`
+	OfChat       *EmbeddingChatRequest       `json:",omitzero,inline"`
 }
 
-// ModelName interface for types that can provide a model name
-type ModelName interface {
-	GetModel() string
+// UnmarshalJSON implements json.Unmarshaler to handle both EmbeddingCompletionRequest and EmbeddingChatRequest.
+func (e *EmbeddingRequest) UnmarshalJSON(data []byte) error {
+	// Check for Messages field to distinguish EmbeddingChatRequest
+	messagesResult := gjson.GetBytes(data, "messages")
+	if messagesResult.Exists() {
+		var chatReq EmbeddingChatRequest
+		if err := json.Unmarshal(data, &chatReq); err != nil {
+			return err
+		}
+		e.OfChat = &chatReq
+		return nil
+	}
+
+	// Check for Input field to distinguish EmbeddingCompletionRequest
+	inputResult := gjson.GetBytes(data, "input")
+	if inputResult.Exists() {
+		var completionReq EmbeddingCompletionRequest
+		if err := json.Unmarshal(data, &completionReq); err != nil {
+			return err
+		}
+		e.OfCompletion = &completionReq
+		return nil
+	}
+
+	return errors.New("embedding request must have either 'input' field (EmbeddingCompletionRequest) or 'messages' field (EmbeddingChatRequest)")
+}
+
+// MarshalJSON implements json.Marshaler.
+func (e EmbeddingRequest) MarshalJSON() ([]byte, error) {
+	if e.OfCompletion != nil {
+		return json.Marshal(e.OfCompletion)
+	}
+	if e.OfChat != nil {
+		return json.Marshal(e.OfChat)
+	}
+	return nil, errors.New("no embedding request to marshal")
 }
 
 // GetModelFromEmbeddingRequest extracts the model name from any EmbeddingRequest type
-func GetModelFromEmbeddingRequest[T EmbeddingRequest](req *T) string {
-	if mp, ok := any(*req).(ModelName); ok {
-		return mp.GetModel()
+func GetModelFromEmbeddingRequest(req *EmbeddingRequest) string {
+	if req.OfCompletion != nil {
+		return req.OfCompletion.GetModel()
+	}
+	if req.OfChat != nil {
+		return req.OfChat.GetModel()
 	}
 	return ""
 }
@@ -1648,6 +1692,13 @@ type EmbeddingUsage struct {
 
 	// TotalTokens: The total number of tokens used by the request.
 	TotalTokens int `json:"total_tokens"` //nolint:tagliatelle //follow openai api
+}
+
+// GCPVertexAIEmbeddingVendorFields contains GCP Vertex AI (Gemini) vendor-specific fields for embedding requests.
+type GCPVertexAIEmbeddingVendorFields struct {
+	// Type of task for which the embedding will be used.
+	// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/embeddings/task-types#supported_task_types
+	TaskType string `json:"task_type,omitempty"`
 }
 
 // JSONUNIXTime is a helper type to marshal/unmarshal time.Time UNIX timestamps.

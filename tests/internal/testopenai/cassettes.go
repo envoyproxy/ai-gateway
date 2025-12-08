@@ -135,6 +135,17 @@ const (
 	// CassetteEmbeddingsBadRequest tests request with multiple validation errors.
 	CassetteEmbeddingsBadRequest
 
+	// NEW: Chat-style embedding request cassettes.
+
+	// CassetteEmbeddingsChatBasic tests basic chat-style embedding requests.
+	CassetteEmbeddingsChatBasic
+	// CassetteEmbeddingsChatMultiTurn tests multi-turn conversation embedding.
+	CassetteEmbeddingsChatMultiTurn
+	// CassetteEmbeddingsChatWithDimensions tests chat embedding with custom dimensions.
+	CassetteEmbeddingsChatWithDimensions
+	// CassetteEmbeddingsChatEmpty tests chat embedding with empty messages.
+	CassetteEmbeddingsChatEmpty
+
 	// Cassettes for the OpenAI /v1/images/generations endpoint.
 
 	// CassetteImageGenerationBasic is a basic image generation request with model and prompt.
@@ -194,6 +205,12 @@ var stringValues = map[Cassette]string{
 	CassetteEmbeddingsMaxTokens:    "embeddings-max-tokens",
 	CassetteEmbeddingsWhitespace:   "embeddings-whitespace",
 	CassetteEmbeddingsBadRequest:   "embeddings-bad-request",
+
+	// NEW: Chat-style embedding cassettes
+	CassetteEmbeddingsChatBasic:         "embeddings-chat-basic",
+	CassetteEmbeddingsChatMultiTurn:     "embeddings-chat-multi-turn",
+	CassetteEmbeddingsChatWithDimensions: "embeddings-chat-with-dimensions",
+	CassetteEmbeddingsChatEmpty:         "embeddings-chat-empty",
 
 	CassetteImageGenerationBasic: "image-generation-basic",
 }

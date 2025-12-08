@@ -533,10 +533,9 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMe
 	return openaiResp, nil
 }
 
-// ResponseError implements [OpenAIChatCompletionTranslator.ResponseError].
-// Translate GCP Vertex AI exceptions to OpenAI error type.
-// GCP error responses typically contain JSON with error details or plain text error messages.
-func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseError(respHeaders map[string]string, body io.Reader) (
+// convertGCPVertexAIErrorToOpenAI converts GCP Vertex AI error responses to OpenAI error format.
+// This is a shared function used by both chat completion and embedding translators.
+func convertGCPVertexAIErrorToOpenAI(respHeaders map[string]string, body io.Reader) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	var buf []byte
@@ -545,8 +544,8 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseError(respHeader
 		return nil, nil, fmt.Errorf("failed to read error body: %w", err)
 	}
 
-	// Assume all responses have a valid status code header.
 	statusCode := respHeaders[statusHeaderName]
+	contentType := respHeaders[contentTypeHeaderName]
 
 	openaiError := openai.Error{
 		Type: "error",
@@ -556,19 +555,45 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseError(respHeader
 		},
 	}
 
-	var gcpError gcpVertexAIError
-	// Try to parse as GCP error response structure.
-	if err = json.Unmarshal(buf, &gcpError); err == nil {
-		errMsg := gcpError.Error.Message
-		if len(gcpError.Error.Details) > 0 {
-			// If details are present and not null, append them to the error message.
-			errMsg = fmt.Sprintf("Error: %s\nDetails: %s", errMsg, string(gcpError.Error.Details))
-		}
-		openaiError.Error.Type = gcpError.Error.Status
-		openaiError.Error.Message = errMsg
-	} else {
-		// If not JSON, read the raw body as the error message.
+	// If the content type is not JSON, treat it as a generic error
+	if contentType != "" && contentType != jsonContentType {
 		openaiError.Error.Message = string(buf)
+	} else {
+		var gcpError gcpVertexAIError
+		// Try to parse as GCP error response structure first
+		if err = json.Unmarshal(buf, &gcpError); err == nil {
+			errMsg := gcpError.Error.Message
+			if len(gcpError.Error.Details) > 0 {
+				// If details are present and not null, append them to the error message.
+				errMsg = fmt.Sprintf("Error: %s\nDetails: %s", errMsg, string(gcpError.Error.Details))
+			}
+			openaiError.Error.Type = gcpError.Error.Status
+			openaiError.Error.Message = errMsg
+		} else {
+			// Try to parse as generic JSON error format
+			var genericError map[string]interface{}
+			if err := json.Unmarshal(buf, &genericError); err == nil {
+				// Extract error message from generic JSON error format
+				var errorMessage string
+				if errorField, exists := genericError["error"]; exists {
+					if errorMap, ok := errorField.(map[string]interface{}); ok {
+						if message, exists := errorMap["message"]; exists {
+							if msgStr, ok := message.(string); ok {
+								errorMessage = msgStr
+							}
+						}
+					}
+				}
+				if errorMessage != "" {
+					openaiError.Error.Message = errorMessage
+				} else {
+					openaiError.Error.Message = string(buf)
+				}
+			} else {
+				// If not parseable as JSON, use raw body as the error message
+				openaiError.Error.Message = string(buf)
+			}
+		}
 	}
 
 	newBody, err = json.Marshal(openaiError)
@@ -580,4 +605,13 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseError(respHeader
 		{contentLengthHeaderName, strconv.Itoa(len(newBody))},
 	}
 	return
+}
+
+// ResponseError implements [OpenAIChatCompletionTranslator.ResponseError].
+// Translate GCP Vertex AI exceptions to OpenAI error type.
+// GCP error responses typically contain JSON with error details or plain text error messages.
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseError(respHeaders map[string]string, body io.Reader) (
+	newHeaders []internalapi.Header, newBody []byte, err error,
+) {
+	return convertGCPVertexAIErrorToOpenAI(respHeaders, body)
 }

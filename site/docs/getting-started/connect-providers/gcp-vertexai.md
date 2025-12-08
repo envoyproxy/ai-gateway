@@ -104,6 +104,81 @@ curl -H "Content-Type: application/json" \
   $GATEWAY_URL/v1/chat/completions
 ```
 
+**NEW: To use GCP embedding models:**
+
+```shell
+curl -H "Content-Type: application/json" \
+  -d '{
+    "model": "text-embedding-004",
+    "input": "The quick brown fox jumps over the lazy dog"
+  }' \
+  $GATEWAY_URL/v1/embeddings
+```
+
+**Response:**
+```json
+{
+  "object": "list",
+  "data": [
+    {
+      "object": "embedding",
+      "index": 0,
+      "embedding": [0.1, -0.2, 0.3, ...]
+    }
+  ],
+  "model": "text-embedding-004",
+  "usage": {
+    "prompt_tokens": 0,
+    "total_tokens": 0
+  }
+}
+```
+
+**NEW: To use chat-style embedding requests:**
+
+Chat-style embedding requests allow you to convert entire conversations into embeddings, perfect for RAG (Retrieval-Augmented Generation) scenarios:
+
+```shell
+curl -H "Content-Type: application/json" \
+  -d '{
+    "model": "text-embedding-004",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What is machine learning?"
+      },
+      {
+        "role": "assistant",
+        "content": "Machine learning is a subset of artificial intelligence that enables computers to learn and improve from experience."
+      }
+    ]
+  }' \
+  $GATEWAY_URL/v1/embeddings
+```
+
+**Multiple input support:**
+```shell
+curl -H "Content-Type: application/json" \
+  -d '{
+    "model": "text-embedding-004",
+    "input": ["First document", "Second document", "Third document"]
+  }' \
+  $GATEWAY_URL/v1/embeddings
+```
+
+## Supported Input Formats
+
+The GCP VertexAI integration supports the following embedding input formats:
+
+### ✅ Fully Supported
+- **Single Text** (`string`): `"Hello world"`
+- **Multiple Texts** (`[]string`): `["Text 1", "Text 2"]`
+- **Chat-style Messages**: Conversation arrays that get flattened to text
+
+### ⚠️ Future Support
+- **Token Arrays** (`[]int64`): `[1234, 5678, 9012]`
+- **Token Array Batches** (`[][]int64`): `[[1234, 5678], [9012, 3456]]`
+
 Expected output:
 
 ```json
@@ -154,9 +229,16 @@ If you encounter issues:
    kubectl logs -n envoy-ai-gateway-system deployment/ai-gateway-controller
    ```
 4. Common errors:
-   - 401/403: Invalid credentials or insufficient permissions
-   - 404: Model not found or not available in a region
-   - 429: Rate limit exceeded
+   - **401/403**: Invalid credentials or insufficient permissions
+   - **404**: Model not found or not available in your GCP region
+   - **429**: Rate limit exceeded
+   - **400**: Invalid request format or input too large
+
+### Embedding-Specific Issues
+
+- **"No embedding returned from GCP"**: Check that the model supports embeddings and is available in your region
+- **"Request too large"**: Reduce input size or use chunking for large texts
+- **Token counting shows 0**: GCP VertexAI doesn't provide token counts for embeddings - this is expected
 
 ## Configuring More Models
 
