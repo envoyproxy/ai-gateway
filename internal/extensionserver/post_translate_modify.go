@@ -357,7 +357,7 @@ func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, 
 	listenerNameToListener := make(map[string]*listenerv3.Listener)
 	for _, listener := range listeners {
 		if strings.HasPrefix(listener.Name, "envoy-gateway") {
-			s.log.Info("[DEPRECATED] skipping envoy-gateway listener", "listener", listener.Name)
+			s.log.Info("[DEBUG] skipping envoy-gateway listener", "listener", listener.Name)
 		}
 		listenerNameToRouteNames[listener.Name] = findListenerRouteConfigs(listener)
 		listenerNameToListener[listener.Name] = listener
