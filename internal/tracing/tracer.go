@@ -8,7 +8,6 @@ package tracing
 import (
 	"context"
 
-	openaisdk "github.com/openai/openai-go/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
@@ -43,7 +42,7 @@ type (
 	chatCompletionTracer  = requestTracerImpl[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]
 	embeddingsTracer      = requestTracerImpl[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
 	completionTracer      = requestTracerImpl[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse]
-	imageGenerationTracer = requestTracerImpl[openaisdk.ImageGenerateParams, openaisdk.ImagesResponse, struct{}]
+	imageGenerationTracer = requestTracerImpl[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
 	rerankTracer          = requestTracerImpl[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]
 )
 
@@ -157,6 +156,18 @@ func newRerankTracer(tracer trace.Tracer, propagator propagation.TextMapPropagat
 		headerAttributes,
 		func(span trace.Span, recorder tracing.RerankRecorder) tracing.RerankSpan {
 			return &rerankSpan{span: span, recorder: recorder}
+		},
+	)
+}
+
+func newMessageTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.MessageRecorder, headerAttributes map[string]string) tracing.MessageTracer {
+	return newRequestTracer(
+		tracer,
+		propagator,
+		recorder,
+		headerAttributes,
+		func(span trace.Span, recorder tracing.MessageRecorder) tracing.MessageSpan {
+			return &messageSpan{span: span, recorder: recorder}
 		},
 	)
 }

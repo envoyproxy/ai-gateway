@@ -53,8 +53,8 @@ func (a *anthropicToAWSAnthropicTranslator) ResponseHeaders(headers map[string]s
 func (a *anthropicToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *anthropicschema.MessagesRequest, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
-	a.stream = body.GetStream()
-	a.requestModel = cmp.Or(a.modelNameOverride, body.GetModel())
+	a.stream = body.Stream
+	a.requestModel = cmp.Or(a.modelNameOverride, body.Model)
 
 	newBody, err = sjson.SetBytesOptions(rawBody, anthropicVersionKey, a.apiVersion, sjsonOptions)
 	if err != nil {
@@ -66,7 +66,7 @@ func (a *anthropicToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *an
 
 	// Determine the AWS Bedrock path based on whether streaming is requested.
 	var pathTemplate string
-	if body.GetStream() {
+	if body.Stream {
 		pathTemplate = "/model/%s/invoke-stream"
 	} else {
 		pathTemplate = "/model/%s/invoke"
