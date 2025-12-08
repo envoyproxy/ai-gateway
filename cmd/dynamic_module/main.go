@@ -12,6 +12,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/envoyproxy/ai-gateway/internal/tracing"
 	"github.com/prometheus/client_golang/prometheus"
 	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
 
@@ -99,6 +100,17 @@ func (g *globalState) initializeEnv() error {
 	if err != nil {
 		return fmt.Errorf("failed to parse metrics header mapping: %w", err)
 	}
+	spanRequestHeaderAttributes, err := internalapi.ParseRequestHeaderAttributeMapping(os.Getenv(
+		"AI_GATEWAY_DYNAMIC_MODULE_FILTER_TRACING_REQUEST_HEADER_ATTRIBUTES",
+	))
+	if err != nil {
+		return fmt.Errorf("failed to parse tracing header mapping: %w", err)
+	}
+
+	tracing, err := tracing.NewTracingFromEnv(ctx, os.Stdout, spanRequestHeaderAttributes)
+	if err != nil {
+		return err
+	}
 
 	g.env = &dynamicmodule.Env{
 		RootPrefix:                    os.Getenv("AI_GATEWAY_DYNAMIC_MODULE_ROOT_PREFIX"),
@@ -109,6 +121,7 @@ func (g *globalState) initializeEnv() error {
 		EmbeddingsMetricsFactory:      metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationEmbedding),
 		ImageGenerationMetricsFactory: metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationImageGeneration),
 		RerankMetricsFactory:          metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationRerank),
+		Tracing:                       tracing,
 	}
 	return nil
 }

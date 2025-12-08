@@ -6,6 +6,7 @@
 package dynamicmodule
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,14 +14,14 @@ import (
 	"strings"
 	"unsafe"
 
-	openaisdk "github.com/openai/openai-go/v2"
-
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/dynamicmodule/sdk"
+	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 const routerFilterPointerDynamicMetadataKey = "router_filter_pointer"
@@ -33,17 +34,41 @@ type (
 	routerFilterConfig struct {
 		fcr              **filterapi.RuntimeConfig
 		prefixToEndpoint map[string]endpoint
+		tracing          tracing.Tracing
 	}
 	// routerFilter implements [sdk.HTTPFilter].
 	routerFilter struct {
-		routerFilterConfig     *routerFilterConfig
+		// prefixToEndpoint maps request path prefixes to endpoints. Shallow copy of
+		// the one in routerFilterConfig at the time of filter creation.
+		prefixToEndpoint map[string]endpoint
+		// runtimeFilterConfig is the snapshot of the runtime filter configuration at the time of filter creation.
+		runtimeFilterConfig *filterapi.RuntimeConfig
+		// tracing is the tracing implementation inherited from the environment.
+		tracing tracing.Tracing
+
+		// endpoint is the endpoint that the current request is targeting.
+		endpoint endpoint
+		// typedFilter is the typed router filter for the current request.
+		typedFilter routerFilterTypedIface
+	}
+
+	// routerFilterTypedIface is the interface for the typed router filter.
+	routerFilterTypedIface interface {
+		RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.RequestBodyStatus
+	}
+
+	// routerFilter typed is the typed implementation of the router filter for a specific endpoint.
+	routerFilterTyped[ReqT, RespT, RespChunkT any, EndpointSpec endpointspec.Spec[ReqT, RespT, RespChunkT]] struct {
 		runtimeFilterConfig    *filterapi.RuntimeConfig
-		endpoint               endpoint
-		originalHeaders        map[string]string
-		originalRequestBody    any
-		originalRequestBodyRaw []byte
-		span                   any
 		attemptCount           int
+		ep                     EndpointSpec
+		originalRequestHeaders map[string]string
+		originalRequestBody    *ReqT
+		originalRequestBodyRaw []byte
+		originalModel          internalapi.OriginalModel
+		stream                 bool
+		tracer                 tracing.RequestTracer[ReqT, RespT, RespChunkT]
+		span                   tracing.Span[RespT, RespChunkT]
 	}
 )
 
@@ -61,12 +86,17 @@ func NewRouterFilterConfig(env *Env, fcr **filterapi.RuntimeConfig) sdk.HTTPFilt
 	return &routerFilterConfig{
 		fcr:              fcr,
 		prefixToEndpoint: prefixToEndpoint,
+		tracing:          env.Tracing,
 	}
 }
 
 // NewFilter implements [sdk.HTTPFilterConfig].
 func (f *routerFilterConfig) NewFilter() sdk.HTTPFilter {
-	return &routerFilter{routerFilterConfig: f, runtimeFilterConfig: *f.fcr}
+	return &routerFilter{
+		prefixToEndpoint:    f.prefixToEndpoint,
+		runtimeFilterConfig: *f.fcr,
+		tracing:             f.tracing,
+	}
 }
 
 // RequestHeaders implements [sdk.HTTPFilter].
@@ -76,7 +106,7 @@ func (f *routerFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Request
 	if queryIndex := strings.Index(p, "?"); queryIndex != -1 {
 		p = p[:queryIndex]
 	}
-	ep, ok := f.routerFilterConfig.prefixToEndpoint[p]
+	ep, ok := f.prefixToEndpoint[p]
 	if !ok {
 		e.SendLocalReply(404, nil, []byte(fmt.Sprintf("unsupported path: %s", p)))
 		return sdk.RequestHeadersStatusStopIteration
@@ -90,6 +120,45 @@ func (f *routerFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Request
 
 // RequestBody implements [sdk.HTTPFilter].
 func (f *routerFilter) RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.RequestBodyStatus {
+	switch f.endpoint {
+	case chatCompletionsEndpoint:
+		f.typedFilter = &routerFilterTyped[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]{
+			runtimeFilterConfig: f.runtimeFilterConfig,
+			tracer:              f.tracing.ChatCompletionTracer(),
+		}
+	case completionsEndpoint:
+		f.typedFilter = &routerFilterTyped[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse, endpointspec.CompletionsEndpointSpec]{
+			runtimeFilterConfig: f.runtimeFilterConfig,
+			tracer:              f.tracing.CompletionTracer(),
+		}
+	case embeddingsEndpoint:
+		f.typedFilter = &routerFilterTyped[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}, endpointspec.EmbeddingsEndpointSpec]{
+			runtimeFilterConfig: f.runtimeFilterConfig,
+			tracer:              f.tracing.EmbeddingsTracer(),
+		}
+	case imagesGenerationsEndpoint:
+		f.typedFilter = &routerFilterTyped[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}, endpointspec.ImageGenerationEndpointSpec]{
+			runtimeFilterConfig: f.runtimeFilterConfig,
+			tracer:              f.tracing.ImageGenerationTracer(),
+		}
+	case rerankEndpoint:
+		f.typedFilter = &routerFilterTyped[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}, endpointspec.RerankEndpointSpec]{
+			runtimeFilterConfig: f.runtimeFilterConfig,
+			tracer:              f.tracing.RerankTracer(),
+		}
+	case messagesEndpoint:
+		f.typedFilter = &routerFilterTyped[anthropic.MessagesRequest, anthropic.MessagesResponse, anthropic.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]{
+			runtimeFilterConfig: f.runtimeFilterConfig,
+			tracer:              f.tracing.MessageTracer(),
+		}
+	default:
+		e.SendLocalReply(500, nil, []byte("BUG: unsupported endpoint at body parsing: "+fmt.Sprintf("%d", f.endpoint)))
+		return sdk.RequestBodyStatusStopIterationAndBuffer
+	}
+	return f.typedFilter.RequestBody(e, endOfStream)
+}
+
+func (f *routerFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.RequestBodyStatus {
 	if !endOfStream {
 		return sdk.RequestBodyStatusStopIterationAndBuffer
 	}
@@ -103,31 +172,15 @@ func (f *routerFilter) RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.
 		e.SendLocalReply(400, nil, []byte("failed to read request body: "+err.Error()))
 		return sdk.RequestBodyStatusStopIterationAndBuffer
 	}
+
 	f.originalRequestBodyRaw = raw
-	var parsed any
-	var modelName string
-	switch f.endpoint {
-	case chatCompletionsEndpoint:
-		parsed, modelName, err = parseBodyWithModel(raw, func(req *openai.ChatCompletionRequest) string { return req.Model })
-	case completionsEndpoint:
-		parsed, modelName, err = parseBodyWithModel(raw, func(req *openai.CompletionRequest) string { return req.Model })
-	case embeddingsEndpoint:
-		parsed, modelName, err = parseBodyWithModel(raw, func(req *openai.EmbeddingRequest) string { return req.Model })
-	case imagesGenerationsEndpoint:
-		parsed, modelName, err = parseBodyWithModel(raw, func(req *openaisdk.ImageGenerateParams) string { return req.Model })
-	case rerankEndpoint:
-		parsed, modelName, err = parseBodyWithModel(raw, func(req *cohereschema.RerankV2Request) string { return req.Model })
-	case messagesEndpoint:
-		parsed, modelName, err = parseBodyWithModel(raw, func(req *anthropic.MessagesRequest) string { return req.GetModel() })
-	default:
-		e.SendLocalReply(500, nil, []byte("BUG: unsupported endpoint at body parsing: "+fmt.Sprintf("%d", f.endpoint)))
+	var maybeMutatedOriginalBodyRaw []byte
+	f.originalModel, f.originalRequestBody, f.stream, maybeMutatedOriginalBodyRaw, err =
+		f.ep.ParseBody(raw, len(f.runtimeFilterConfig.RequestCosts) > 0)
+	if len(maybeMutatedOriginalBodyRaw) > 0 {
+		f.originalRequestBodyRaw = maybeMutatedOriginalBodyRaw
 	}
-	if err != nil {
-		e.SendLocalReply(400, nil, []byte("failed to parse request body: "+err.Error()))
-		return sdk.RequestBodyStatusStopIterationAndBuffer
-	}
-	f.originalRequestBody = parsed
-	if !e.SetRequestHeader(internalapi.ModelNameHeaderKeyDefault, []byte(modelName)) {
+	if !e.SetRequestHeader(internalapi.ModelNameHeaderKeyDefault, []byte(f.originalModel)) {
 		e.SendLocalReply(500, nil, []byte("failed to set model name header"))
 		return sdk.RequestBodyStatusStopIterationAndBuffer
 	}
@@ -135,7 +188,15 @@ func (f *routerFilter) RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.
 	e.SetDynamicMetadataString(internalapi.AIGatewayFilterMetadataNamespace, routerFilterPointerDynamicMetadataKey,
 		fmt.Sprintf("%d", uintptr(unsafe.Pointer(f))))
 
-	f.originalHeaders = multiValueHeadersToSingleValue(e.GetRequestHeaders())
+	f.originalRequestHeaders = multiValueHeadersToSingleValue(e.GetRequestHeaders())
+
+	f.span = f.tracer.StartSpanAndInjectHeaders(
+		context.Background(),
+		f.originalRequestHeaders,
+		&headerMutationCarrier{e: e},
+		f.originalRequestBody,
+		f.originalRequestBodyRaw,
+	)
 	return sdk.RequestBodyStatusContinue
 }
 
@@ -174,14 +235,6 @@ func (f *routerFilter) handleModelsEndpoint(e sdk.EnvoyHTTPFilter) sdk.RequestHe
 	return sdk.RequestHeadersStatusStopIteration
 }
 
-func parseBodyWithModel[T any](body []byte, modelExtractFn func(req *T) string) (interface{}, string, error) {
-	var req T
-	if err := json.Unmarshal(body, &req); err != nil {
-		return nil, "", fmt.Errorf("failed to unmarshal body: %w", err)
-	}
-	return req, modelExtractFn(&req), nil
-}
-
 // multiValueHeadersToSingleValue converts a map of headers with multiple values to a map of headers with single values by taking the first value for each header.
 //
 // TODO: this is purely for feature parity with the old filter where we ignore the case of multiple header values.
@@ -191,4 +244,24 @@ func multiValueHeadersToSingleValue(headers map[string][]string) map[string]stri
 		singleValueHeaders[k] = v[0]
 	}
 	return singleValueHeaders
+}
+
+// headerMutationCarrier implements [propagation.TextMapCarrier].
+type headerMutationCarrier struct {
+	e sdk.EnvoyHTTPFilter
+}
+
+// Get implements the same method as defined on propagation.TextMapCarrier.
+func (c *headerMutationCarrier) Get(string) string {
+	panic("unexpected as this carrier is write-only for injection")
+}
+
+// Set adds a key-value pair to the HeaderMutation.
+func (c *headerMutationCarrier) Set(key, value string) {
+	_ = c.e.SetResponseHeader(key, []byte(value))
+}
+
+// Keys implements the same method as defined on propagation.TextMapCarrier.
+func (c *headerMutationCarrier) Keys() []string {
+	panic("unexpected as this carrier is write-only for injection")
 }
