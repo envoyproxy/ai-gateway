@@ -67,7 +67,7 @@ func (m *MCPProxy) serveGET(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("transfer-encoding", "chunked")
 	w.WriteHeader(http.StatusAccepted)
-	if err := s.streamNotifications(r.Context(), w); err != nil && !errors.Is(err, context.Canceled) {
+	if err := s.streamNotifications(r.Context(), w, m.toolChangeSignaler); err != nil && !errors.Is(err, context.Canceled) {
 		m.l.Error("failed to collect notifications", slog.String("session_id", sessionID), slog.String("error", err.Error()))
 		http.Error(w, "failed to collect notifications", http.StatusInternalServerError)
 		return
@@ -96,6 +96,15 @@ func onErrorResponse(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(status)
 	_, _ = w.Write([]byte(msg))
+}
+
+// doNotForwardResponseToBackends checks whether the given response doesn't need to be forwarded to the backends.
+// This is mostly because those are replies to Ping or ToolChange notifications initiated by hte gateway itself
+// (not the backends).
+func doNotForwardResponseToBackends(msg *jsonrpc.Response) bool {
+	str, ok := msg.ID.Raw().(string)
+	return ok && (strings.HasPrefix(str, envoyAIGatewayServerToClientPingRequestIDPrefix) ||
+		strings.HasPrefix(str, envoyAIGatewayServerToClientToolsChangedRequestIDPrefix))
 }
 
 func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
@@ -158,7 +167,7 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 
 	switch msg := rawMsg.(type) {
 	case *jsonrpc.Response:
-		if str, ok := msg.ID.Raw().(string); ok && strings.HasPrefix(str, envoyAIGatewayServerToClientPingRequestIDPrefix) {
+		if doNotForwardResponseToBackends(msg) {
 			w.Header().Set(sessionIDHeader, string(s.clientGatewaySessionID()))
 			w.WriteHeader(http.StatusAccepted)
 		} else {

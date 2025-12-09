@@ -138,14 +138,15 @@ func run(ctx context.Context, c cmdRun, o *runOpts, stdout, stderr io.Writer) er
 	// Do the translation of the given AI Gateway resources Yaml into Envoy Gateway resources and write them to the file.
 	resourcesBuf := &bytes.Buffer{}
 	runCtx := &runCmdContext{
-		isDebug:                  c.Debug,
-		envoyGatewayResourcesOut: resourcesBuf,
-		stderrLogger:             debugLogger,
-		stderr:                   stderr,
-		tmpdir:                   filepath.Dir(o.logPath), // runDir
-		udsPath:                  o.extprocUDSPath,
-		adminPort:                c.AdminPort,
-		extProcLauncher:          o.extProcLauncher,
+		isDebug:                        c.Debug,
+		envoyGatewayResourcesOut:       resourcesBuf,
+		stderrLogger:                   debugLogger,
+		stderr:                         stderr,
+		tmpdir:                         filepath.Dir(o.logPath), // runDir
+		udsPath:                        o.extprocUDSPath,
+		adminPort:                      c.AdminPort,
+		extProcLauncher:                o.extProcLauncher,
+		mcpSessionEncryptionIterations: c.MCPSessionEncryptionIterations,
 	}
 	// If any of the configured MCP servers is using stdio, set up the streamable HTTP proxies for them
 	if err = proxyStdioMCPServers(ctx, debugLogger, c.mcpConfig); err != nil {

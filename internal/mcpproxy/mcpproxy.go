@@ -14,7 +14,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -28,63 +27,22 @@ import (
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
-type (
-	// ProxyConfig holds the main MCP proxy configuration.
-	ProxyConfig struct {
-		*mcpProxyConfig
-	}
-
-	// MCPProxy serves /mcp endpoint.
-	//
-	// This implements [extproc.ConfigReceiver] to gets the up-to-date configuration.
-	MCPProxy struct {
-		*mcpProxyConfig
-		metrics       metrics.MCPMetrics
-		l             *slog.Logger
-		sessionCrypto SessionCrypto
-		tracer        tracing.MCPTracer
-	}
-
-	mcpProxyConfig struct {
-		backendListenerAddr string
-		routes              map[filterapi.MCPRouteName]*mcpProxyConfigRoute // route name -> backends of that route.
-	}
-
-	mcpProxyConfigRoute struct {
-		backends      map[filterapi.MCPBackendName]filterapi.MCPBackend
-		toolSelectors map[filterapi.MCPBackendName]*toolSelector
-		authorization *compiledAuthorization
-	}
-
-	// toolSelector filters tools using include patterns with exact matches or regular expressions.
-	toolSelector struct {
-		include        map[string]struct{}
-		includeRegexps []*regexp.Regexp
-	}
-)
-
-func (f *toolSelector) allows(tool string) bool {
-	// Check include filters - if no filter, allow all; if filter exists, allow only matches
-	if len(f.include) > 0 {
-		_, ok := f.include[tool]
-		return ok
-	}
-	if len(f.includeRegexps) > 0 {
-		for _, re := range f.includeRegexps {
-			if re.MatchString(tool) {
-				return true
-			}
-		}
-		return false
-	}
-
-	// No filters, allow all
-	return true
+// MCPProxy serves /mcp endpoint.
+//
+// This implements [extproc.ConfigReceiver] to gets the up-to-date configuration.
+type MCPProxy struct {
+	*mcpProxyConfig
+	metrics            metrics.MCPMetrics
+	l                  *slog.Logger
+	sessionCrypto      SessionCrypto
+	tracer             tracing.MCPTracer
+	toolChangeSignaler changeSignaler // signals tool changes to active sessions.
 }
 
 // NewMCPProxy creates a new MCPProxy instance.
 func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracing.MCPTracer, sessionCrypto SessionCrypto) (*ProxyConfig, *http.ServeMux, error) {
-	cfg := &ProxyConfig{}
+	toolChangeSignaler := newMultiWatcherSignaler() // used to signal changes to all active sessions.
+	cfg := &ProxyConfig{toolChangeSignaler: toolChangeSignaler}
 	mux := http.NewServeMux()
 	mux.HandleFunc(
 		// Must match all paths since the route selection happens at Envoy level and the "route" header is already
@@ -94,11 +52,12 @@ func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracing.M
 		// with different prefixes will not be matched, which is not what we want.
 		"/", func(w http.ResponseWriter, r *http.Request) {
 			proxy := &MCPProxy{
-				mcpProxyConfig: cfg.mcpProxyConfig,
-				l:              l,
-				metrics:        mcpMetrics.WithRequestAttributes(r),
-				tracer:         tracer,
-				sessionCrypto:  sessionCrypto,
+				mcpProxyConfig:     cfg.mcpProxyConfig,
+				l:                  l,
+				metrics:            mcpMetrics.WithRequestAttributes(r),
+				tracer:             tracer,
+				sessionCrypto:      sessionCrypto,
+				toolChangeSignaler: toolChangeSignaler,
 			}
 
 			switch r.Method {
@@ -113,60 +72,6 @@ func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracing.M
 			}
 		})
 	return cfg, mux, nil
-}
-
-// LoadConfig implements [extproc.ConfigReceiver.LoadConfig] which will be called
-// when the configuration is updated on the file system.
-func (p *ProxyConfig) LoadConfig(_ context.Context, config *filterapi.Config) error {
-	newConfig := &mcpProxyConfig{}
-	mcpConfig := config.MCPConfig
-	if config.MCPConfig == nil {
-		return nil
-	}
-
-	// Talk to the backend MCP listener on the local Envoy instance.
-	newConfig.backendListenerAddr = mcpConfig.BackendListenerAddr
-
-	// Build a map of routes to backends.
-	// Each route has its own set of backends. For a given downstream request,
-	// the MCP proxy initializes sessions only with the backends tied to that route.
-	newConfig.routes = make(map[filterapi.MCPRouteName]*mcpProxyConfigRoute, len(mcpConfig.Routes))
-
-	for _, route := range mcpConfig.Routes {
-		compiledAuth, err := compileAuthorization(route.Authorization)
-		if err != nil {
-			return fmt.Errorf("failed to compile authorization rules for route %s: %w", route.Name, err)
-		}
-
-		r := &mcpProxyConfigRoute{
-			backends:      make(map[filterapi.MCPBackendName]filterapi.MCPBackend, len(route.Backends)),
-			toolSelectors: make(map[filterapi.MCPBackendName]*toolSelector, len(route.Backends)),
-			authorization: compiledAuth,
-		}
-		for _, backend := range route.Backends {
-			r.backends[backend.Name] = backend
-			if s := backend.ToolSelector; s != nil {
-				ts := &toolSelector{
-					include: make(map[string]struct{}),
-				}
-				for _, tool := range s.Include {
-					ts.include[tool] = struct{}{}
-				}
-				for _, expr := range s.IncludeRegex {
-					re, err := regexp.Compile(expr)
-					if err != nil {
-						return fmt.Errorf("failed to compile include regex %q for backend %q in route %q: %w", expr, backend.Name, route.Name, err)
-					}
-					ts.includeRegexps = append(ts.includeRegexps, re)
-				}
-				r.toolSelectors[backend.Name] = ts
-			}
-		}
-		newConfig.routes[route.Name] = r
-	}
-
-	p.mcpProxyConfig = newConfig // This is racy, but we don't care.
-	return nil
 }
 
 // newSession creates a new session for a downstream client.

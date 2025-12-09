@@ -10,7 +10,6 @@ package api
 import (
 	"context"
 
-	openaisdk "github.com/openai/openai-go/v2"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 
@@ -61,7 +60,7 @@ type (
 	// EmbeddingsTracer creates spans for OpenAI embeddings requests.
 	EmbeddingsTracer = RequestTracer[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
 	// ImageGenerationTracer creates spans for OpenAI image generation requests.
-	ImageGenerationTracer = RequestTracer[openaisdk.ImageGenerateParams, openaisdk.ImagesResponse, struct{}]
+	ImageGenerationTracer = RequestTracer[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
 	// RerankTracer creates spans for rerank requests.
 	RerankTracer = RequestTracer[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// MessageTracer creates spans for Anthropic messages requests.
@@ -88,7 +87,7 @@ type (
 	// EmbeddingsSpan represents an OpenAI embeddings request. The chunk type is unused and therefore set to struct{}.
 	EmbeddingsSpan = Span[openai.EmbeddingResponse, struct{}]
 	// ImageGenerationSpan represents an OpenAI image generation.
-	ImageGenerationSpan = Span[openaisdk.ImagesResponse, struct{}]
+	ImageGenerationSpan = Span[openai.ImageGenerationResponse, struct{}]
 	// RerankSpan represents a rerank request span.
 	RerankSpan = Span[cohere.RerankV2Response, struct{}]
 	// MessageSpan represents an Anthropic messages request span.
@@ -98,6 +97,7 @@ type (
 type (
 	// SpanRecorder standardizes recorder implementations for non-MCP tracers.
 	SpanRecorder[ReqT any, RespT any, RespChunkT any] interface {
+		SpanResponseRecorder[RespT, RespChunkT]
 		// StartParams returns the name and options to start the span with.
 		//
 		// Parameters:
@@ -108,6 +108,11 @@ type (
 		StartParams(req *ReqT, body []byte) (spanName string, opts []trace.SpanStartOption)
 		// RecordRequest records request attributes to the span.
 		RecordRequest(span trace.Span, req *ReqT, body []byte)
+	}
+	// SpanResponseRecorder standardizes response recording for non-MCP tracers.
+	//
+	// It is separated from SpanRecorder to allow reusing response recording logic.
+	SpanResponseRecorder[RespT, RespChunkT any] interface {
 		// RecordResponse records response attributes to the span.
 		RecordResponse(span trace.Span, resp *RespT)
 		// RecordResponseOnError ends recording the span with an error status.
@@ -121,7 +126,7 @@ type (
 	// Note: Completion streaming chunks are full CompletionResponse objects, not deltas like chat completions.
 	CompletionRecorder = SpanRecorder[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse]
 	// ImageGenerationRecorder records attributes to a span according to a semantic convention.
-	ImageGenerationRecorder = SpanRecorder[openaisdk.ImageGenerateParams, openaisdk.ImagesResponse, struct{}]
+	ImageGenerationRecorder = SpanRecorder[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
 	// EmbeddingsRecorder records attributes to a span according to a semantic convention.
 	EmbeddingsRecorder = SpanRecorder[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
 	// RerankRecorder records attributes to a span according to a semantic convention.
@@ -187,7 +192,7 @@ type (
 	// NoopEmbeddingsTracer implements EmbeddingsTracer.
 	NoopEmbeddingsTracer = NoopTracer[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
 	// NoopImageGenerationTracer implements ImageGenerationTracer.
-	NoopImageGenerationTracer = NoopTracer[openaisdk.ImageGenerateParams, openaisdk.ImagesResponse, struct{}]
+	NoopImageGenerationTracer = NoopTracer[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
 	// NoopRerankTracer implements RerankTracer.
 	NoopRerankTracer = NoopTracer[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// NoopMessageTracer implements MessageTracer.

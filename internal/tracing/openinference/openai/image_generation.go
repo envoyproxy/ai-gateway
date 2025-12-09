@@ -10,11 +10,11 @@ package openai
 import (
 	"encoding/json"
 
-	openaisdk "github.com/openai/openai-go/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 )
@@ -52,21 +52,19 @@ func NewImageGenerationRecorder(config *openinference.TraceConfig) tracing.Image
 var imageGenStartOpts = []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKindInternal)}
 
 // StartParams implements the same method as defined in tracing.ImageGenerationRecorder.
-func (r *ImageGenerationRecorder) StartParams(*openaisdk.ImageGenerateParams, []byte) (spanName string, opts []trace.SpanStartOption) {
+func (r *ImageGenerationRecorder) StartParams(*openai.ImageGenerationRequest, []byte) (spanName string, opts []trace.SpanStartOption) {
 	return "ImagesResponse", imageGenStartOpts
 }
 
 // RecordRequest implements the same method as defined in tracing.ImageGenerationRecorder.
-func (r *ImageGenerationRecorder) RecordRequest(span trace.Span, req *openaisdk.ImageGenerateParams, body []byte) {
+func (r *ImageGenerationRecorder) RecordRequest(span trace.Span, req *openai.ImageGenerationRequest, body []byte) {
 	span.SetAttributes(buildImageGenerationRequestAttributes(req, string(body), r.traceConfig)...)
 }
 
 // RecordResponse implements the same method as defined in tracing.ImageGenerationRecorder.
-func (r *ImageGenerationRecorder) RecordResponse(span trace.Span, resp *openaisdk.ImagesResponse) {
+func (r *ImageGenerationRecorder) RecordResponse(span trace.Span, resp *openai.ImageGenerationResponse) {
 	// Set output attributes.
 	var attrs []attribute.KeyValue
-	attrs = buildImageGenerationResponseAttributes(resp, r.traceConfig)
-
 	bodyString := openinference.RedactedValue
 	if !r.traceConfig.HideOutputs {
 		marshaled, err := json.Marshal(resp)
@@ -87,7 +85,7 @@ func (r *ImageGenerationRecorder) RecordResponseOnError(span trace.Span, statusC
 }
 
 // buildImageGenerationRequestAttributes builds OpenInference attributes from the image generation request.
-func buildImageGenerationRequestAttributes(_ *openaisdk.ImageGenerateParams, body string, config *openinference.TraceConfig) []attribute.KeyValue {
+func buildImageGenerationRequestAttributes(_ *openai.ImageGenerationRequest, body string, config *openinference.TraceConfig) []attribute.KeyValue {
 	attrs := []attribute.KeyValue{
 		attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 		attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
@@ -103,15 +101,6 @@ func buildImageGenerationRequestAttributes(_ *openaisdk.ImageGenerateParams, bod
 	if !config.HideLLMInvocationParameters {
 		attrs = append(attrs, attribute.String(openinference.LLMInvocationParameters, body))
 	}
-
-	return attrs
-}
-
-// buildImageGenerationResponseAttributes builds OpenInference attributes from the image generation response.
-func buildImageGenerationResponseAttributes(_ *openaisdk.ImagesResponse, _ *openinference.TraceConfig) []attribute.KeyValue {
-	attrs := []attribute.KeyValue{}
-
-	// No image-specific response attributes
 
 	return attrs
 }

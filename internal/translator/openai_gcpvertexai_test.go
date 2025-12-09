@@ -335,6 +335,28 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
   }
 }`)
 
+	wantBdyWithEnterpriseWebSearch := []byte(`{
+    "contents": [
+        {
+            "parts": [
+                {
+                    "text": "Test with web grounding for enterprise"
+                }
+            ],
+            "role": "user"
+        }
+    ],
+    "tools": [
+        {
+            "enterpriseWebSearch": {}
+        }
+    ],
+    "generation_config": {
+        "maxOutputTokens": 1024,
+        "temperature": 0.7
+    }
+}`)
+
 	tests := []struct {
 		name              string
 		modelNameOverride internalapi.ModelNameOverride
@@ -739,6 +761,34 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			},
 			wantBody: wantBdyWithGuidedRegex,
 		},
+		{
+			name: "Request with gcp web grounding for enterprise",
+			input: openai.ChatCompletionRequest{
+				Model:       "gemini-1.5-pro",
+				Temperature: ptr.To(0.7),
+				MaxTokens:   ptr.To(int64(1024)),
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Role:    openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{Value: "Test with web grounding for enterprise"},
+						},
+					},
+				},
+				Tools: []openai.Tool{
+					{
+						Type: "enterprise_search",
+					},
+				},
+			},
+			onRetry:   false,
+			wantError: false,
+			wantHeaderMut: []internalapi.Header{
+				{":path", "publishers/google/models/gemini-1.5-pro:generateContent"},
+				{"content-length", "190"},
+			},
+			wantBody: wantBdyWithEnterpriseWebSearch,
+		},
 	}
 
 	for _, tc := range tests {
@@ -969,7 +1019,9 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			endOfStream:   true,
 			wantError:     false,
 			wantHeaderMut: nil,
-			wantBodyMut: []byte(`data: {"choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{},"prompt_tokens_details":{}}}
+			wantBodyMut: []byte(`data: {"choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{},"prompt_tokens_details":{}}}
 
 data: [DONE]
 `),
@@ -1178,7 +1230,9 @@ data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]}}],"usageMetadata":{
 			wantHeaderMut: nil,
 			wantBodyMut: []byte(`data: {"choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":{"text":"let me think step by step and reply you."}}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{},"prompt_tokens_details":{}}}
+data: {"choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk"}
+
+data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{},"prompt_tokens_details":{}}}
 
 data: [DONE]
 `),

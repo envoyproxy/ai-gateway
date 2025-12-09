@@ -8,7 +8,6 @@ package translator
 import (
 	"io"
 
-	openaisdk "github.com/openai/openai-go/v2"
 	"github.com/tidwall/sjson"
 
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
@@ -87,7 +86,7 @@ type (
 	// AnthropicMessagesTranslator translates the Anthropic's /messages endpoint.
 	AnthropicMessagesTranslator = Translator[anthropicschema.MessagesRequest, tracing.MessageSpan]
 	// OpenAIImageGenerationTranslator translates the OpenAI's /images/generations endpoint.
-	OpenAIImageGenerationTranslator = Translator[openaisdk.ImageGenerateParams, tracing.ImageGenerationSpan]
+	OpenAIImageGenerationTranslator = Translator[openai.ImageGenerationRequest, tracing.ImageGenerationSpan]
 )
 
 // sjsonOptions are the options used for sjson operations in the translator.

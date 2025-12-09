@@ -785,7 +785,13 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 		Choices: make([]openai.ChatCompletionResponseChoice, 0),
 		Created: openai.JSONUNIXTime(time.Now()),
 	}
-	tokenUsage = ExtractLLMTokenUsageFromUsage(anthropicResp.Usage)
+	usage := anthropicResp.Usage
+	tokenUsage = metrics.ExtractTokenUsageFromAnthropic(
+		usage.InputTokens,
+		usage.OutputTokens,
+		usage.CacheReadInputTokens,
+		usage.CacheCreationInputTokens,
+	)
 	inputTokens, _ := tokenUsage.InputTokens()
 	outputTokens, _ := tokenUsage.OutputTokens()
 	totalTokens, _ := tokenUsage.TotalTokens()
