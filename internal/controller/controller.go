@@ -356,9 +356,7 @@ func mcpRouteToAttachedGatewayIndexFunc(o client.Object) []string {
 
 func gatewayToGatewayConfigIndexFunc(o client.Object) []string {
 	gateway := o.(*gwapiv1.Gateway)
-	if gateway.Annotations == nil {
-		return nil
-	}
+
 	configName, ok := gateway.Annotations[GatewayConfigAnnotationKey]
 	if !ok || configName == "" {
 		return nil

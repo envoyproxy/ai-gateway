@@ -64,8 +64,6 @@ type GatewayConfigSpec struct {
 }
 
 // GatewayConfigExtProc holds runtime-specific configuration for the external processor.
-// The Kubernetes field mirrors Envoy Gateway's KubernetesContainerSpec so we stay aligned
-// with the EnvoyProxy configuration surface and inherit the full set of supported fields.
 type GatewayConfigExtProc struct {
 	// Kubernetes defines the configuration for running the external processor as a Kubernetes container.
 	//
