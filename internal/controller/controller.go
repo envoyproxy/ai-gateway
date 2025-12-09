@@ -211,6 +211,13 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 		return fmt.Errorf("failed to create controller for MCPRoute: %w", err)
 	}
 
+	// GatewayConfig controller for gateway-scoped configuration.
+	gatewayConfigC := NewGatewayConfigController(c, logger.WithName("gateway-config"), gatewayEventChan)
+	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.GatewayConfig{}).
+		Complete(gatewayConfigC); err != nil {
+		return fmt.Errorf("failed to create controller for GatewayConfig: %w", err)
+	}
+
 	// ReferenceGrant controller for cross-namespace access validation
 	referenceGrantC := NewReferenceGrantController(c, logger.WithName("reference-grant"), aiGatewayRouteEventChan)
 	if err = TypedControllerBuilderForCRD(mgr, &gwapiv1b1.ReferenceGrant{}).
@@ -274,6 +281,8 @@ const (
 	// k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy is the index name that maps from an AIServiceBackend
 	// to the BackendSecurityPolicy whose targetRefs contains the AIServiceBackend.
 	k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy = "AIServiceBackendToTargetingBackendSecurityPolicy"
+	// k8sClientIndexGatewayToGatewayConfig maps from a GatewayConfig name to Gateways referencing it.
+	k8sClientIndexGatewayToGatewayConfig = "GatewayToGatewayConfig"
 
 	// k8sClientIndexReferenceGrantToTargetKind is the index name that maps from namespace/kind to ReferenceGrants, enabling efficient lookup of grants
 	// allowing access to specific resource types in specific namespaces.
@@ -309,6 +318,12 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 		return fmt.Errorf("failed to index field for BackendSecurityPolicy targetRefs: %w", err)
 	}
 
+	err = indexer(ctx, &gwapiv1.Gateway{},
+		k8sClientIndexGatewayToGatewayConfig, gatewayToGatewayConfigIndexFunc)
+	if err != nil {
+		return fmt.Errorf("failed to create index from GatewayConfig to Gateway: %w", err)
+	}
+
 	// Apply indexes for ReferenceGrant.
 	err = indexer(ctx, &gwapiv1b1.ReferenceGrant{},
 		k8sClientIndexReferenceGrantToTargetKind, referenceGrantToTargetKindIndexFunc)
@@ -337,6 +352,16 @@ func mcpRouteToAttachedGatewayIndexFunc(o client.Object) []string {
 		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, namespace))
 	}
 	return ret
+}
+
+func gatewayToGatewayConfigIndexFunc(o client.Object) []string {
+	gateway := o.(*gwapiv1.Gateway)
+
+	configName, ok := gateway.Annotations[GatewayConfigAnnotationKey]
+	if !ok || configName == "" {
+		return nil
+	}
+	return []string{configName}
 }
 
 func aiGatewayRouteToAttachedGatewayIndexFunc(o client.Object) []string {

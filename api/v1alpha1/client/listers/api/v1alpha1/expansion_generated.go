@@ -31,6 +31,14 @@ type BackendSecurityPolicyListerExpansion interface{}
 // BackendSecurityPolicyNamespaceLister.
 type BackendSecurityPolicyNamespaceListerExpansion interface{}
 
+// GatewayConfigListerExpansion allows custom methods to be added to
+// GatewayConfigLister.
+type GatewayConfigListerExpansion interface{}
+
+// GatewayConfigNamespaceListerExpansion allows custom methods to be added to
+// GatewayConfigNamespaceLister.
+type GatewayConfigNamespaceListerExpansion interface{}
+
 // MCPRouteListerExpansion allows custom methods to be added to
 // MCPRouteLister.
 type MCPRouteListerExpansion interface{}

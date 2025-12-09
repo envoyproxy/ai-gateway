@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"testing"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
 	corev1 "k8s.io/api/core/v1"
@@ -474,6 +475,155 @@ func TestParseImagePullSecrets(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, tt.want, got)
 			}
+		})
+	}
+}
+
+func TestGatewayMutator_mergeEnvVars(t *testing.T) {
+	tests := []struct {
+		name          string
+		globalEnvVars string
+		gatewayConfig *aigv1a1.GatewayConfig
+		expectedEnvs  map[string]string
+	}{
+		{
+			name:          "global env vars only",
+			globalEnvVars: "GLOBAL_VAR=global-value;LOG_LEVEL=info",
+			gatewayConfig: nil,
+			expectedEnvs: map[string]string{
+				"GLOBAL_VAR": "global-value",
+				"LOG_LEVEL":  "info",
+			},
+		},
+		{
+			name:          "GatewayConfig env vars only",
+			globalEnvVars: "",
+			gatewayConfig: &aigv1a1.GatewayConfig{
+				Spec: aigv1a1.GatewayConfigSpec{
+					ExtProc: &aigv1a1.GatewayConfigExtProc{
+						Kubernetes: &egv1a1.KubernetesContainerSpec{
+							Env: []corev1.EnvVar{
+								{Name: "CONFIG_VAR", Value: "config-value"},
+								{Name: "LOG_LEVEL", Value: "debug"},
+							},
+						},
+					},
+				},
+			},
+			expectedEnvs: map[string]string{
+				"CONFIG_VAR": "config-value",
+				"LOG_LEVEL":  "debug",
+			},
+		},
+		{
+			name:          "GatewayConfig overrides global",
+			globalEnvVars: "LOG_LEVEL=info;GLOBAL_ONLY=global",
+			gatewayConfig: &aigv1a1.GatewayConfig{
+				Spec: aigv1a1.GatewayConfigSpec{
+					ExtProc: &aigv1a1.GatewayConfigExtProc{
+						Kubernetes: &egv1a1.KubernetesContainerSpec{
+							Env: []corev1.EnvVar{
+								{Name: "LOG_LEVEL", Value: "debug"},
+								{Name: "CONFIG_ONLY", Value: "config"},
+							},
+						},
+					},
+				},
+			},
+			expectedEnvs: map[string]string{
+				"LOG_LEVEL":   "debug",  // GatewayConfig overrides global
+				"GLOBAL_ONLY": "global", // global only
+				"CONFIG_ONLY": "config", // config only
+			},
+		},
+		{
+			name:          "GatewayConfig with nil ExtProc",
+			globalEnvVars: "GLOBAL_VAR=global-value",
+			gatewayConfig: &aigv1a1.GatewayConfig{
+				Spec: aigv1a1.GatewayConfigSpec{
+					ExtProc: nil,
+				},
+			},
+			expectedEnvs: map[string]string{
+				"GLOBAL_VAR": "global-value",
+			},
+		},
+		{
+			name:          "empty both",
+			globalEnvVars: "",
+			gatewayConfig: nil,
+			expectedEnvs:  map[string]string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeClient := requireNewFakeClientWithIndexes(t)
+			fakeKube := fake2.NewClientset()
+			g := newTestGatewayMutator(fakeClient, fakeKube, "", "", "", tt.globalEnvVars, "", false)
+
+			result := g.mergeEnvVars(tt.gatewayConfig)
+
+			// Convert result to map for easier comparison.
+			resultMap := make(map[string]string)
+			for _, env := range result {
+				resultMap[env.Name] = env.Value
+			}
+
+			require.Equal(t, tt.expectedEnvs, resultMap)
+		})
+	}
+}
+
+func TestGatewayMutator_resolveExtProcImage(t *testing.T) {
+	tests := []struct {
+		name     string
+		base     string
+		extProc  *aigv1a1.GatewayConfigExtProc
+		expected string
+	}{
+		{
+			name:     "nil spec uses base image",
+			base:     "docker.io/envoyproxy/ai-gateway-extproc:latest",
+			extProc:  nil,
+			expected: "docker.io/envoyproxy/ai-gateway-extproc:latest",
+		},
+		{
+			name: "explicit image override",
+			base: "docker.io/envoyproxy/ai-gateway-extproc:latest",
+			extProc: &aigv1a1.GatewayConfigExtProc{
+				Kubernetes: &egv1a1.KubernetesContainerSpec{
+					Image: ptr.To("gcr.io/custom/extproc:v2"),
+				},
+			},
+			expected: "gcr.io/custom/extproc:v2",
+		},
+		{
+			name: "repository override reuses tag",
+			base: "docker.io/envoyproxy/ai-gateway-extproc:latest",
+			extProc: &aigv1a1.GatewayConfigExtProc{
+				Kubernetes: &egv1a1.KubernetesContainerSpec{
+					ImageRepository: ptr.To("gcr.io/custom/extproc"),
+				},
+			},
+			expected: "gcr.io/custom/extproc:latest",
+		},
+		{
+			name: "repository override keeps digest",
+			base: "docker.io/envoyproxy/ai-gateway-extproc@sha256:deadbeef",
+			extProc: &aigv1a1.GatewayConfigExtProc{
+				Kubernetes: &egv1a1.KubernetesContainerSpec{
+					ImageRepository: ptr.To("gcr.io/custom/extproc"),
+				},
+			},
+			expected: "gcr.io/custom/extproc@sha256:deadbeef",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := &gatewayMutator{extProcImage: tt.base}
+			require.Equal(t, tt.expected, g.resolveExtProcImage(tt.extProc))
 		})
 	}
 }

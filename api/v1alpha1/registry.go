@@ -17,6 +17,7 @@ func init() {
 	SchemeBuilder.Register(&AIServiceBackend{}, &AIServiceBackendList{})
 	SchemeBuilder.Register(&BackendSecurityPolicy{}, &BackendSecurityPolicyList{})
 	SchemeBuilder.Register(&MCPRoute{}, &MCPRouteList{})
+	SchemeBuilder.Register(&GatewayConfig{}, &GatewayConfigList{})
 }
 
 const GroupName = "aigateway.envoyproxy.io"
@@ -48,6 +49,8 @@ func AddKnownTypes(scheme *runtime.Scheme) error {
 		&BackendSecurityPolicyList{},
 		&MCPRoute{},
 		&MCPRouteList{},
+		&GatewayConfig{},
+		&GatewayConfigList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil
