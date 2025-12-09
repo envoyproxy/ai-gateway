@@ -322,7 +322,7 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 		k8sClientIndexGatewayToGatewayConfig, gatewayToGatewayConfigIndexFunc)
 	if err != nil {
 		return fmt.Errorf("failed to create index from GatewayConfig to Gateway: %w", err)
-  }
+	}
 
 	// Apply indexes for ReferenceGrant.
 	err = indexer(ctx, &gwapiv1b1.ReferenceGrant{},
