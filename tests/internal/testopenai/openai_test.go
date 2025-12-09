@@ -32,10 +32,8 @@ func TestExtractModel(t *testing.T) {
 		{
 			name: "embeddings completion request",
 			request: &openai.EmbeddingRequest{
-				OfCompletion: &openai.EmbeddingCompletionRequest{
-					Model: "text-embedding-ada-002",
-					Input: openai.EmbeddingRequestInput{Value: "test"},
-				},
+				Model: "text-embedding-ada-002",
+				Input: openai.EmbeddingRequestInput{Value: "test"},
 			},
 			expected: "text-embedding-ada-002",
 		},

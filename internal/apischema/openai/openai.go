@@ -310,6 +310,13 @@ func (c ContentUnion) MarshalJSON() ([]byte, error) {
 	return json.Marshal(c.Value)
 }
 
+// EmbeddingInputItem represents a single embedding input with optional metadata
+type EmbeddingInputItem struct {
+	Content  string            `json:"content"`             // The actual text content
+	TaskType EmbeddingTaskType `json:"task_type,omitempty"` // Optional task type
+	Title    string            `json:"title,omitempty"`     // Optional title
+}
+
 // EmbeddingRequestInput is the EmbeddingRequest.Input type.
 type EmbeddingRequestInput struct {
 	Value any
@@ -1498,8 +1505,8 @@ type Model struct {
 	OwnedBy string `json:"owned_by"`
 }
 
-// EmbeddingCompletionRequest represents a request structure for embeddings API.
-type EmbeddingCompletionRequest struct {
+// EmbeddingRequest represents a request structure for embeddings API.
+type EmbeddingRequest struct {
 	// Input: Input text to embed, encoded as a string or array of tokens.
 	// To embed multiple inputs in a single request, pass an array of strings or array of token arrays.
 	// The input must not exceed the max input tokens for the model (8192 tokens for text-embedding-ada-002),
@@ -1524,101 +1531,33 @@ type EmbeddingCompletionRequest struct {
 	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-user
 	User *string `json:"user,omitempty"`
 
-	// GCPVertexAIEmbeddingVendorFields configures the GCP VertexAI specific fields during schema translation.
+	// GCPVertexAIEmbeddingVendorFields configures the GCP VertexAI specific fields for embedding during schema translation.
 	*GCPVertexAIEmbeddingVendorFields `json:",inline,omitempty"`
 }
 
-// GetModel implements ModelName interface
-func (e *EmbeddingCompletionRequest) GetModel() string {
-	return e.Model
-}
+type EmbeddingTaskType string
 
-// EmbeddingChatRequest represents a request structure for embeddings API. This is not a standard openai, but just extend the request to have messages/chat like completion requests
-type EmbeddingChatRequest struct {
-	// Messages: A list of messages comprising the conversation so far.
-	// Depending on the model you use, different message types (modalities) are supported,
-	// like text, images, and audio.
-	Messages []ChatCompletionMessageParamUnion `json:"messages"`
+const (
+	EmbeddingTaskTypeRetrievalQuery     EmbeddingTaskType = "RETRIEVAL_QUERY"
+	EmbeddingTaskTypeRetrievalDocument  EmbeddingTaskType = "RETRIEVAL_DOCUMENT"
+	EmbeddingTaskTypeSemanticSimilarity EmbeddingTaskType = "SEMANTIC_SIMILARITY"
+	EmbeddingTaskTypeClassification     EmbeddingTaskType = "CLASSIFICATION"
+	EmbeddingTaskTypeClustering         EmbeddingTaskType = "CLUSTERING"
+	EmbeddingTaskTypeQuestionAnswering  EmbeddingTaskType = "QUESTION_ANSWERING"
+	EmbeddingTaskTypeFactVerification   EmbeddingTaskType = "FACT_VERIFICATION"
+	EmbeddingTaskTypeCodeRetrievalQuery EmbeddingTaskType = "CODE_RETRIEVAL_QUERY"
+)
 
-	// Model: ID of the model to use.
-	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-model
-	Model string `json:"model"`
+// GCPVertexAIEmbeddingVendorFields contains GCP Vertex AI (Gemini) vendor-specific fields for embeddings.
+type GCPVertexAIEmbeddingVendorFields struct {
+	// When set to true, input text will be truncated. When set to false, an error is returned if the input text is longer than the maximum length supported by the model. Defaults to true.
+	// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/text-embeddings-api#parameter-list
 
-	// EncodingFormat: The format to return the embeddings in. Can be either float or base64.
-	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-encoding_format
-	EncodingFormat *string `json:"encoding_format,omitempty"` //nolint:tagliatelle //follow openai api
+	AutoTruncate bool `json:"auto_truncate,omitempty"`
 
-	// Dimensions: The number of dimensions the resulting output embeddings should have.
-	// Only supported in text-embedding-3 and later models.
-	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-dimensions
-	Dimensions *int `json:"dimensions,omitempty"`
-
-	// User: A unique identifier representing your end-user, which can help OpenAI to monitor and detect abuse.
-	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-user
-	User *string `json:"user,omitempty"`
-
-	// GCPVertexAIEmbeddingVendorFields configures the GCP VertexAI specific fields during schema translation.
-	*GCPVertexAIEmbeddingVendorFields `json:",inline,omitempty"`
-}
-
-// GetModel implements ModelProvider interface
-func (e *EmbeddingChatRequest) GetModel() string {
-	return e.Model
-}
-
-// EmbeddingRequest is a union type that can handle both EmbeddingCompletionRequest and EmbeddingChatRequest.
-type EmbeddingRequest struct {
-	OfCompletion *EmbeddingCompletionRequest `json:",omitzero,inline"`
-	OfChat       *EmbeddingChatRequest       `json:",omitzero,inline"`
-}
-
-// UnmarshalJSON implements json.Unmarshaler to handle both EmbeddingCompletionRequest and EmbeddingChatRequest.
-func (e *EmbeddingRequest) UnmarshalJSON(data []byte) error {
-	// Check for Messages field to distinguish EmbeddingChatRequest
-	messagesResult := gjson.GetBytes(data, "messages")
-	if messagesResult.Exists() {
-		var chatReq EmbeddingChatRequest
-		if err := json.Unmarshal(data, &chatReq); err != nil {
-			return err
-		}
-		e.OfChat = &chatReq
-		return nil
-	}
-
-	// Check for Input field to distinguish EmbeddingCompletionRequest
-	inputResult := gjson.GetBytes(data, "input")
-	if inputResult.Exists() {
-		var completionReq EmbeddingCompletionRequest
-		if err := json.Unmarshal(data, &completionReq); err != nil {
-			return err
-		}
-		e.OfCompletion = &completionReq
-		return nil
-	}
-
-	return errors.New("embedding request must have either 'input' field (EmbeddingCompletionRequest) or 'messages' field (EmbeddingChatRequest)")
-}
-
-// MarshalJSON implements json.Marshaler.
-func (e EmbeddingRequest) MarshalJSON() ([]byte, error) {
-	if e.OfCompletion != nil {
-		return json.Marshal(e.OfCompletion)
-	}
-	if e.OfChat != nil {
-		return json.Marshal(e.OfChat)
-	}
-	return nil, errors.New("no embedding request to marshal")
-}
-
-// GetModelFromEmbeddingRequest extracts the model name from any EmbeddingRequest type
-func GetModelFromEmbeddingRequest(req *EmbeddingRequest) string {
-	if req.OfCompletion != nil {
-		return req.OfCompletion.GetModel()
-	}
-	if req.OfChat != nil {
-		return req.OfChat.GetModel()
-	}
-	return ""
+	// This is global task_type set, which is convenient for users. If left blank, the default used is RETRIEVAL_QUERY.
+	// For more information about task types, see https://docs.cloud.google.com/vertex-ai/generative-ai/docs/embeddings/task-types
+	TaskType EmbeddingTaskType `json:"task_type,omitempty"`
 }
 
 // EmbeddingResponse represents a response from /v1/embeddings.
@@ -1653,6 +1592,10 @@ type Embedding struct {
 
 	// Index: The index of the embedding in the list of embeddings.
 	Index int `json:"index"`
+
+	// If the input text was truncated due to having a length longer than the allowed maximum input.
+	// https://github.com/googleapis/go-genai/blob/cb486e101dc66794d52125dd22ff43ff4c0e76a6/types.go#L2807
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 // EmbeddingUnion is a union type that can handle both []float64 and string formats.
@@ -1692,13 +1635,6 @@ type EmbeddingUsage struct {
 
 	// TotalTokens: The total number of tokens used by the request.
 	TotalTokens int `json:"total_tokens"` //nolint:tagliatelle //follow openai api
-}
-
-// GCPVertexAIEmbeddingVendorFields contains GCP Vertex AI (Gemini) vendor-specific fields for embedding requests.
-type GCPVertexAIEmbeddingVendorFields struct {
-	// Type of task for which the embedding will be used.
-	// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/embeddings/task-types#supported_task_types
-	TaskType string `json:"task_type,omitempty"`
 }
 
 // JSONUNIXTime is a helper type to marshal/unmarshal time.Time UNIX timestamps.

@@ -8,12 +8,12 @@ package translator
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/genai"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -31,151 +31,212 @@ func TestOpenAIToGCPVertexAITranslatorV1Embedding_RequestBody(t *testing.T) {
 		wantBodyContains  []string // Substrings that should be present in the request body
 	}{
 		{
-			name: "embedding completion request with string input",
+			name: "embedding request with string input",
 			input: openai.EmbeddingRequest{
-				OfCompletion: &openai.EmbeddingCompletionRequest{
-					Model: "text-embedding-004",
-					Input: openai.EmbeddingRequestInput{
-						Value: "This is a test text for embedding",
-					},
+				Model: "text-embedding-004",
+				Input: openai.EmbeddingRequestInput{
+					Value: "This is a test text for embedding",
 				},
 			},
-			wantPath: "publishers/google/models/text-embedding-004:embedContent",
+			wantPath: "publishers/google/models/text-embedding-004:predict",
 			wantBodyContains: []string{
-				`"content"`,
-				`"parts"`,
-				`"text":"This is a test text for embedding"`,
-				`"config"`,
+				`"instances"`,
+				`"content":"This is a test text for embedding"`,
+				`"parameters"`,
 			},
 		},
 		{
-			name:              "embedding completion request with model override",
+			name:              "embedding request with model override",
 			modelNameOverride: "custom-embedding-model",
 			input: openai.EmbeddingRequest{
-				OfCompletion: &openai.EmbeddingCompletionRequest{
-					Model: "text-embedding-004",
-					Input: openai.EmbeddingRequestInput{
-						Value: "Test text",
-					},
+				Model: "text-embedding-004",
+				Input: openai.EmbeddingRequestInput{
+					Value: "Test text",
 				},
 			},
-			wantPath: "publishers/google/models/custom-embedding-model:embedContent",
+			wantPath: "publishers/google/models/custom-embedding-model:predict",
 			wantBodyContains: []string{
-				`"content"`,
-				`"text":"Test text"`,
-				`"config"`,
+				`"instances"`,
+				`"content":"Test text"`,
+				`"parameters"`,
 			},
 		},
 		{
-			name: "embedding chat request",
+			name: "embedding request with EmbeddingInputItem and task_type",
 			input: openai.EmbeddingRequest{
-				OfChat: &openai.EmbeddingChatRequest{
-					Model: "text-embedding-004",
-					Messages: []openai.ChatCompletionMessageParamUnion{
-						{
-							OfUser: &openai.ChatCompletionUserMessageParam{
-								Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
-								Role:    openai.ChatMessageRoleUser,
-							},
-						},
-						{
-							OfAssistant: &openai.ChatCompletionAssistantMessageParam{
-								Content: openai.StringOrAssistantRoleContentUnion{Value: "Hi there!"},
-								Role:    openai.ChatMessageRoleAssistant,
-							},
-						},
-					},
-				},
-			},
-			wantPath: "publishers/google/models/text-embedding-004:embedContent",
-			wantBodyContains: []string{
-				`"content"`,
-				`"text":"Hello\nHi there!"`,
-				`"config"`,
-			},
-		},
-		{
-			name: "embedding chat request with system message",
-			input: openai.EmbeddingRequest{
-				OfChat: &openai.EmbeddingChatRequest{
-					Model: "text-embedding-004",
-					Messages: []openai.ChatCompletionMessageParamUnion{
-						{
-							OfSystem: &openai.ChatCompletionSystemMessageParam{
-								Content: openai.ContentUnion{Value: "System prompt"},
-								Role:    openai.ChatMessageRoleSystem,
-							},
-						},
-						{
-							OfUser: &openai.ChatCompletionUserMessageParam{
-								Content: openai.StringOrUserRoleContentUnion{Value: "User message"},
-								Role:    openai.ChatMessageRoleUser,
-							},
-						},
-					},
-				},
-			},
-			wantPath: "publishers/google/models/text-embedding-004:embedContent",
-			wantBodyContains: []string{
-				`"content"`,
-				`"text":"System prompt\nUser message"`,
-				`"config"`,
-			},
-		},
-		{
-			name: "embedding completion request with explicit task type",
-			input: openai.EmbeddingRequest{
-				OfCompletion: &openai.EmbeddingCompletionRequest{
-					Model: "text-embedding-004",
-					Input: openai.EmbeddingRequestInput{
-						Value: "This is a document to be indexed",
-					},
-					GCPVertexAIEmbeddingVendorFields: &openai.GCPVertexAIEmbeddingVendorFields{
+				Model: "text-embedding-004",
+				Input: openai.EmbeddingRequestInput{
+					Value: openai.EmbeddingInputItem{
+						Content:  "This is a document for retrieval",
 						TaskType: "RETRIEVAL_DOCUMENT",
+						Title:    "Document Title",
 					},
 				},
 			},
-			wantPath: "publishers/google/models/text-embedding-004:embedContent",
+			wantPath: "publishers/google/models/text-embedding-004:predict",
 			wantBodyContains: []string{
-				`"content"`,
-				`"parts"`,
-				`"text":"This is a document to be indexed"`,
-				`"config"`,
-				`"taskType":"RETRIEVAL_DOCUMENT"`,
+				`"instances"`,
+				`"content":"This is a document for retrieval"`,
+				`"task_type":"RETRIEVAL_DOCUMENT"`,
+				`"title":"Document Title"`,
+				`"parameters"`,
 			},
 		},
 		{
-			name: "embedding chat request with explicit task type",
+			name: "embedding request with array of EmbeddingInputItem",
 			input: openai.EmbeddingRequest{
-				OfChat: &openai.EmbeddingChatRequest{
-					Model: "text-embedding-004",
-					Messages: []openai.ChatCompletionMessageParamUnion{
+				Model: "text-embedding-004",
+				Input: openai.EmbeddingRequestInput{
+					Value: []openai.EmbeddingInputItem{
 						{
-							OfUser: &openai.ChatCompletionUserMessageParam{
-								Content: openai.StringOrUserRoleContentUnion{Value: "What is machine learning?"},
-								Role:    openai.ChatMessageRoleUser,
-							},
+							Content:  "Query about cats",
+							TaskType: "RETRIEVAL_QUERY",
+						},
+						{
+							Content:  "Document about dogs",
+							TaskType: "RETRIEVAL_DOCUMENT",
+							Title:    "Dog Info",
 						},
 					},
-					GCPVertexAIEmbeddingVendorFields: &openai.GCPVertexAIEmbeddingVendorFields{
-						TaskType: "SEMANTIC_SIMILARITY",
-					},
 				},
 			},
-			wantPath: "publishers/google/models/text-embedding-004:embedContent",
+			wantPath: "publishers/google/models/text-embedding-004:predict",
 			wantBodyContains: []string{
-				`"content"`,
-				`"text":"What is machine learning?"`,
-				`"config"`,
-				`"taskType":"SEMANTIC_SIMILARITY"`,
+				`"instances"`,
+				`"content":"Query about cats"`,
+				`"task_type":"RETRIEVAL_QUERY"`,
+				`"content":"Document about dogs"`,
+				`"task_type":"RETRIEVAL_DOCUMENT"`,
+				`"title":"Dog Info"`,
+				`"parameters"`,
 			},
 		},
 		{
-			name: "invalid request - neither completion nor chat",
+			name: "embedding request with mixed array (strings and objects)",
 			input: openai.EmbeddingRequest{
-				// Both OfCompletion and OfChat are nil
+				Model: "text-embedding-004",
+				Input: openai.EmbeddingRequestInput{
+					Value: []interface{}{
+						"Simple string text",
+						openai.EmbeddingInputItem{
+							Content:  "Enhanced text with metadata",
+							TaskType: "RETRIEVAL_DOCUMENT",
+							Title:    "Similarity Test",
+						},
+					},
+				},
 			},
-			wantError: true,
+			wantPath: "publishers/google/models/text-embedding-004:predict",
+			wantBodyContains: []string{
+				`"instances"`,
+				`"content":"Simple string text"`,
+				`"content":"Enhanced text with metadata"`,
+				`"task_type":"RETRIEVAL_DOCUMENT"`,
+				`"title":"Similarity Test"`,
+				`"parameters"`,
+			},
+		},
+		{
+			name: "embedding request with dimensions parameter",
+			input: openai.EmbeddingRequest{
+				Model: "text-embedding-004",
+				Input: openai.EmbeddingRequestInput{
+					Value: "Text for dimension testing",
+				},
+				Dimensions: &[]int{256}[0],
+			},
+			wantPath: "publishers/google/models/text-embedding-004:predict",
+			wantBodyContains: []string{
+				`"instances"`,
+				`"content":"Text for dimension testing"`,
+				`"parameters"`,
+				`"out_dimensionality":256`,
+			},
+		},
+		{
+			name: "embedding request with SEMANTIC_SIMILARITY without title",
+			input: openai.EmbeddingRequest{
+				Model: "text-embedding-004",
+				Input: openai.EmbeddingRequestInput{
+					Value: openai.EmbeddingInputItem{
+						Content:  "Text for similarity check",
+						TaskType: "SEMANTIC_SIMILARITY",
+						Title:    "This title should not appear",
+					},
+				},
+			},
+			wantPath: "publishers/google/models/text-embedding-004:predict",
+			wantBodyContains: []string{
+				`"instances"`,
+				`"content":"Text for similarity check"`,
+				`"task_type":"SEMANTIC_SIMILARITY"`,
+				`"parameters"`,
+			},
+		},
+		{
+			name: "embedding request with auto_truncate vendor field",
+			input: openai.EmbeddingRequest{
+				Model: "text-embedding-004",
+				Input: openai.EmbeddingRequestInput{
+					Value: "Test text for auto truncate",
+				},
+				GCPVertexAIEmbeddingVendorFields: &openai.GCPVertexAIEmbeddingVendorFields{
+					AutoTruncate: true,
+				},
+			},
+			wantPath: "publishers/google/models/text-embedding-004:predict",
+			wantBodyContains: []string{
+				`"instances"`,
+				`"content":"Test text for auto truncate"`,
+				`"parameters"`,
+				`"auto_truncate":true`,
+			},
+		},
+		{
+			name: "embedding request with global task_type overriding individual task_type",
+			input: openai.EmbeddingRequest{
+				Model: "text-embedding-004",
+				Input: openai.EmbeddingRequestInput{
+					Value: []openai.EmbeddingInputItem{
+						{
+							Content:  "Query text",
+							TaskType: "RETRIEVAL_DOCUMENT", // This should be overridden
+						},
+						{
+							Content: "Another text",
+							// No task type specified
+						},
+					},
+				},
+				GCPVertexAIEmbeddingVendorFields: &openai.GCPVertexAIEmbeddingVendorFields{
+					TaskType: "RETRIEVAL_QUERY", // Global task type
+				},
+			},
+			wantPath: "publishers/google/models/text-embedding-004:predict",
+			wantBodyContains: []string{
+				`"instances"`,
+				`"content":"Query text"`,
+				`"task_type":"RETRIEVAL_QUERY"`,
+				`"content":"Another text"`,
+				`"parameters"`,
+			},
+		},
+		{
+			name: "embedding request with array of strings",
+			input: openai.EmbeddingRequest{
+				Model: "text-embedding-004",
+				Input: openai.EmbeddingRequestInput{
+					Value: []string{"First text", "Second text", "Third text"},
+				},
+			},
+			wantPath: "publishers/google/models/text-embedding-004:predict",
+			wantBodyContains: []string{
+				`"instances"`,
+				`"content":"First text"`,
+				`"content":"Second text"`,
+				`"content":"Third text"`,
+				`"parameters"`,
+			},
 		},
 	}
 
@@ -234,13 +295,19 @@ func TestOpenAIToGCPVertexAITranslatorV1Embedding_ResponseBody(t *testing.T) {
 		{
 			name: "successful response with embedding data",
 			gcpResponse: `{
-				"embeddings": [
+				"predictions": [
 					{
-						"values": [0.1, 0.2, 0.3, 0.4, 0.5]
+						"embeddings": {
+							"values": [0.1, 0.2, 0.3, 0.4, 0.5],
+							"statistics": {
+								"tokenCount": 5,
+								"truncated": false
+							}
+						}
 					}
 				]
 			}`,
-			wantTokenUsage: tokenUsageFrom(-1, -1, -1, -1), // GCP doesn't provide token usage for embeddings
+			wantTokenUsage: tokenUsageFrom(5, -1, -1, 5),
 			wantResponseBody: openai.EmbeddingResponse{
 				Object: "list",
 				Model:  "text-embedding-004",
@@ -249,20 +316,21 @@ func TestOpenAIToGCPVertexAITranslatorV1Embedding_ResponseBody(t *testing.T) {
 						Object:    "embedding",
 						Index:     0,
 						Embedding: openai.EmbeddingUnion{Value: []float64{0.1, 0.2, 0.3, 0.4, 0.5}},
+						Truncated: false,
 					},
 				},
 				Usage: openai.EmbeddingUsage{
-					PromptTokens: 0,
-					TotalTokens:  0,
+					PromptTokens: 5,
+					TotalTokens:  5,
 				},
 			},
 		},
 		{
 			name: "response with no embedding data",
 			gcpResponse: `{
-				"embeddings": null
+				"predictions": null
 			}`,
-			wantTokenUsage: tokenUsageFrom(-1, -1, -1, -1),
+			wantTokenUsage: tokenUsageFrom(0, -1, -1, 0),
 			wantResponseBody: openai.EmbeddingResponse{
 				Object: "list",
 				Model:  "text-embedding-004",
@@ -276,13 +344,19 @@ func TestOpenAIToGCPVertexAITranslatorV1Embedding_ResponseBody(t *testing.T) {
 		{
 			name: "response with empty embedding values",
 			gcpResponse: `{
-				"embeddings": [
+				"predictions": [
 					{
-						"values": []
+						"embeddings": {
+							"values": [],
+							"statistics": {
+								"tokenCount": 3,
+								"truncated": false
+							}
+						}
 					}
 				]
 			}`,
-			wantTokenUsage: tokenUsageFrom(-1, -1, -1, -1),
+			wantTokenUsage: tokenUsageFrom(3, -1, -1, 3),
 			wantResponseBody: openai.EmbeddingResponse{
 				Object: "list",
 				Model:  "text-embedding-004",
@@ -291,11 +365,12 @@ func TestOpenAIToGCPVertexAITranslatorV1Embedding_ResponseBody(t *testing.T) {
 						Object:    "embedding",
 						Index:     0,
 						Embedding: openai.EmbeddingUnion{Value: []float64{}},
+						Truncated: false,
 					},
 				},
 				Usage: openai.EmbeddingUsage{
-					PromptTokens: 0,
-					TotalTokens:  0,
+					PromptTokens: 3,
+					TotalTokens:  3,
 				},
 			},
 		},
@@ -305,6 +380,131 @@ func TestOpenAIToGCPVertexAITranslatorV1Embedding_ResponseBody(t *testing.T) {
 				"embedding": invalid json
 			}`,
 			wantError: true,
+		},
+		{
+			name: "response with multiple embeddings",
+			gcpResponse: `{
+				"predictions": [
+					{
+						"embeddings": {
+							"values": [0.1, 0.2, 0.3],
+							"statistics": {
+								"tokenCount": 3,
+								"truncated": false
+							}
+						}
+					},
+					{
+						"embeddings": {
+							"values": [0.4, 0.5, 0.6],
+							"statistics": {
+								"tokenCount": 4,
+								"truncated": false
+							}
+						}
+					},
+					{
+						"embeddings": {
+							"values": [0.7, 0.8, 0.9],
+							"statistics": {
+								"tokenCount": 5,
+								"truncated": true
+							}
+						}
+					}
+				]
+			}`,
+			wantTokenUsage: tokenUsageFrom(12, -1, -1, 12), // 3 + 4 + 5 = 12
+			wantResponseBody: openai.EmbeddingResponse{
+				Object: "list",
+				Model:  "text-embedding-004",
+				Data: []openai.Embedding{
+					{
+						Object:    "embedding",
+						Index:     0,
+						Embedding: openai.EmbeddingUnion{Value: []float64{0.1, 0.2, 0.3}},
+						Truncated: false,
+					},
+					{
+						Object:    "embedding",
+						Index:     1,
+						Embedding: openai.EmbeddingUnion{Value: []float64{0.4, 0.5, 0.6}},
+						Truncated: false,
+					},
+					{
+						Object:    "embedding",
+						Index:     2,
+						Embedding: openai.EmbeddingUnion{Value: []float64{0.7, 0.8, 0.9}},
+						Truncated: true,
+					},
+				},
+				Usage: openai.EmbeddingUsage{
+					PromptTokens: 12,
+					TotalTokens:  12,
+				},
+			},
+		},
+		{
+			name: "response with truncated embedding",
+			gcpResponse: `{
+				"predictions": [
+					{
+						"embeddings": {
+							"values": [0.1, 0.2],
+							"statistics": {
+								"tokenCount": 10,
+								"truncated": true
+							}
+						}
+					}
+				]
+			}`,
+			wantTokenUsage: tokenUsageFrom(10, -1, -1, 10),
+			wantResponseBody: openai.EmbeddingResponse{
+				Object: "list",
+				Model:  "text-embedding-004",
+				Data: []openai.Embedding{
+					{
+						Object:    "embedding",
+						Index:     0,
+						Embedding: openai.EmbeddingUnion{Value: []float64{0.1, 0.2}},
+						Truncated: true,
+					},
+				},
+				Usage: openai.EmbeddingUsage{
+					PromptTokens: 10,
+					TotalTokens:  10,
+				},
+			},
+		},
+		{
+			name: "response with missing statistics",
+			gcpResponse: `{
+				"predictions": [
+					{
+						"embeddings": {
+							"values": [0.1, 0.2, 0.3]
+						}
+					}
+				]
+			}`,
+			wantTokenUsage: tokenUsageFrom(0, -1, -1, 0), // No statistics provided
+			wantResponseBody: openai.EmbeddingResponse{
+				Object: "list",
+				Model:  "text-embedding-004",
+				Data: []openai.Embedding{
+					{
+						Object:    "embedding",
+						Index:     0,
+						Embedding: openai.EmbeddingUnion{Value: []float64{0.1, 0.2, 0.3}},
+						Truncated: false,
+					},
+				},
+				Usage: openai.EmbeddingUsage{
+					PromptTokens: 0,
+					TotalTokens:  0,
+				},
+			},
 		},
 	}
 
@@ -328,9 +528,11 @@ func TestOpenAIToGCPVertexAITranslatorV1Embedding_ResponseBody(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			require.Nil(t, headerMut) // No header mutations for embeddings
+			require.NotNil(t, headerMut)
+			require.Len(t, headerMut, 1) // content-length header
+			require.Equal(t, contentLengthHeaderName, headerMut[0].Key())
 			require.NotNil(t, bodyMut)
-			require.Equal(t, "text-embedding-004", string(responseModel))
+			require.Equal(t, "text-embedding-004", responseModel)
 
 			// Check token usage
 			if diff := cmp.Diff(tc.wantTokenUsage, tokenUsage, cmp.AllowUnexported(metrics.TokenUsage{})); diff != "" {
@@ -349,16 +551,18 @@ func TestOpenAIToGCPVertexAITranslatorV1Embedding_ResponseBody(t *testing.T) {
 			require.Len(t, actualResponse.Data, len(tc.wantResponseBody.Data))
 
 			// For embedding values, check with tolerance due to float32->float64 conversion
-			if len(tc.wantResponseBody.Data) > 0 && len(actualResponse.Data) > 0 {
-				wantEmbedding := tc.wantResponseBody.Data[0].Embedding.Value.([]float64)
-				actualEmbedding := actualResponse.Data[0].Embedding.Value.([]float64)
+			for idx := range tc.wantResponseBody.Data {
+				require.Equal(t, tc.wantResponseBody.Data[idx].Object, actualResponse.Data[idx].Object)
+				require.Equal(t, tc.wantResponseBody.Data[idx].Index, actualResponse.Data[idx].Index)
+				require.Equal(t, tc.wantResponseBody.Data[idx].Truncated, actualResponse.Data[idx].Truncated)
+
+				wantEmbedding := tc.wantResponseBody.Data[idx].Embedding.Value.([]float64)
+				actualEmbedding := actualResponse.Data[idx].Embedding.Value.([]float64)
 				require.Len(t, actualEmbedding, len(wantEmbedding))
 
 				for i, wantVal := range wantEmbedding {
-					require.InDelta(t, wantVal, actualEmbedding[i], 1e-6, "Embedding value at index %d", i)
+					require.InDelta(t, wantVal, actualEmbedding[i], 1e-6, "Embedding %d value at index %d", idx, i)
 				}
-				require.Equal(t, tc.wantResponseBody.Data[0].Object, actualResponse.Data[0].Object)
-				require.Equal(t, tc.wantResponseBody.Data[0].Index, actualResponse.Data[0].Index)
 			}
 		})
 	}
@@ -366,10 +570,10 @@ func TestOpenAIToGCPVertexAITranslatorV1Embedding_ResponseBody(t *testing.T) {
 
 func TestOpenAIToGCPVertexAITranslatorV1Embedding_ResponseError(t *testing.T) {
 	tests := []struct {
-		name        string
-		headers     map[string]string
-		body        string
-		wantError   openai.Error
+		name      string
+		headers   map[string]string
+		body      string
+		wantError openai.Error
 	}{
 		{
 			name: "GCP error response with structured error",
@@ -451,78 +655,9 @@ func TestOpenAIToGCPVertexAITranslatorV1Embedding_ResponseError(t *testing.T) {
 			// Check that content-type and content-length headers are set
 			require.Len(t, headerMut, 2)
 			require.Equal(t, contentTypeHeaderName, headerMut[0].Key())
-			require.Equal(t, jsonContentType, headerMut[0].Value())
+			// Use JSONEq by wrapping values as JSON strings
+			require.JSONEq(t, fmt.Sprintf(`"%s"`, jsonContentType), fmt.Sprintf(`"%s"`, headerMut[0].Value()))
 			require.Equal(t, contentLengthHeaderName, headerMut[1].Key())
-		})
-	}
-}
-
-func TestInputToGeminiContent(t *testing.T) {
-	tests := []struct {
-		name        string
-		input       openai.EmbeddingRequestInput
-		wantContent *genai.Content
-		wantError   bool
-	}{
-		{
-			name: "string input",
-			input: openai.EmbeddingRequestInput{
-				Value: "This is a test string",
-			},
-			wantContent: &genai.Content{
-				Parts: []*genai.Part{
-					{Text: "This is a test string"},
-				},
-			},
-		},
-		{
-			name: "string array input",
-			input: openai.EmbeddingRequestInput{
-				Value: []string{"first", "second", "third"},
-			},
-			wantContent: &genai.Content{
-				Parts: []*genai.Part{
-					{Text: "first"},
-					{Text: "second"},
-					{Text: "third"},
-				},
-			},
-		},
-		{
-			name: "unsupported type - token array",
-			input: openai.EmbeddingRequestInput{
-				Value: []int64{1, 2, 3, 4, 5},
-			},
-			wantError: true,
-		},
-		{
-			name: "unsupported type - token array batch",
-			input: openai.EmbeddingRequestInput{
-				Value: [][]int64{{1, 2}, {3, 4}, {5, 6}},
-			},
-			wantError: true,
-		},
-		{
-			name: "unsupported type - int",
-			input: openai.EmbeddingRequestInput{
-				Value: 12345,
-			},
-			wantError: true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			content, err := InputToGeminiContent(tc.input)
-
-			if tc.wantError {
-				require.Error(t, err)
-				require.Nil(t, content)
-				return
-			}
-
-			require.NoError(t, err)
-			require.Equal(t, tc.wantContent, content)
 		})
 	}
 }
@@ -534,10 +669,8 @@ func TestResponseModel_GCPVertexAIEmbeddings(t *testing.T) {
 
 	// Initialize translator with embedding request
 	req := &openai.EmbeddingRequest{
-		OfCompletion: &openai.EmbeddingCompletionRequest{
-			Model: "text-embedding-004",
-			Input: openai.EmbeddingRequestInput{Value: "test"},
-		},
+		Model: "text-embedding-004",
+		Input: openai.EmbeddingRequestInput{Value: "test"},
 	}
 	reqBody, _ := json.Marshal(req)
 	_, _, err := translator.RequestBody(reqBody, req, false)
@@ -545,66 +678,27 @@ func TestResponseModel_GCPVertexAIEmbeddings(t *testing.T) {
 
 	// GCP VertexAI embedding response
 	embeddingResponse := `{
-		"embedding": {
-			"values": [0.1, 0.2, 0.3]
-		}
+		"predictions": [
+			{
+				"embeddings": {
+					"values": [0.1, 0.2, 0.3],
+					"statistics": {
+						"tokenCount": 3,
+						"truncated": false
+					}
+				}
+			}
+		]
 	}`
 
 	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader([]byte(embeddingResponse)), true, nil)
 	require.NoError(t, err)
-	require.Equal(t, modelName, string(responseModel)) // Returns the request model
+	require.Equal(t, modelName, responseModel) // Returns the request model
 
-	// Token usage should be default values since GCP doesn't provide detailed usage for embeddings
-	_, ok := tokenUsage.InputTokens()
-	require.False(t, ok) // Should not be available
+	// Token usage should be provided from the statistics field
+	inputTokens, ok := tokenUsage.InputTokens()
+	require.True(t, ok)
+	require.Equal(t, uint32(3), inputTokens)
 	_, ok = tokenUsage.OutputTokens()
-	require.False(t, ok) // Should not be available
-}
-
-func TestEmbeddingChatToGeminiMessage_ComplexMessages(t *testing.T) {
-	req := &openai.EmbeddingChatRequest{
-		Model: "text-embedding-004",
-		Messages: []openai.ChatCompletionMessageParamUnion{
-			{
-				OfSystem: &openai.ChatCompletionSystemMessageParam{
-					Content: openai.ContentUnion{Value: "You are a helpful assistant"},
-					Role:    openai.ChatMessageRoleSystem,
-				},
-			},
-			{
-				OfUser: &openai.ChatCompletionUserMessageParam{
-					Content: openai.StringOrUserRoleContentUnion{Value: "What is the weather?"},
-					Role:    openai.ChatMessageRoleUser,
-				},
-			},
-			{
-				OfAssistant: &openai.ChatCompletionAssistantMessageParam{
-					Content: openai.StringOrAssistantRoleContentUnion{Value: "I need location to check weather"},
-					Role:    openai.ChatMessageRoleAssistant,
-				},
-			},
-			{
-				OfTool: &openai.ChatCompletionToolMessageParam{
-					Content: openai.ContentUnion{Value: "Tool response data"},
-					Role:    openai.ChatMessageRoleTool,
-					ToolCallID: "tool_call_123",
-				},
-			},
-			{
-				OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
-					Content: openai.ContentUnion{Value: "Debug info"},
-					Role:    openai.ChatMessageRoleDeveloper,
-				},
-			},
-		},
-	}
-
-	result, err := openAIEmbeddingChatToGeminiMessage(req)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.NotNil(t, result.Content)
-	require.Len(t, result.Content.Parts, 1)
-
-	expectedText := "You are a helpful assistant\nWhat is the weather?\nI need location to check weather\nTool response data\nDebug info"
-	require.Equal(t, expectedText, result.Content.Parts[0].Text)
+	require.False(t, ok) // Output tokens not available for embeddings
 }

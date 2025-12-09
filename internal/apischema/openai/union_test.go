@@ -128,22 +128,22 @@ func TestUnmarshalJSONNestedUnion_Errors(t *testing.T) {
 		{
 			name:        "invalid type - object",
 			data:        []byte(`{"key": "value"}`),
-			expectedErr: "invalid prompt type (must be string or array)",
+			expectedErr: "invalid prompt type (must be string, object, or array)",
 		},
 		{
 			name:        "invalid type - null",
 			data:        []byte(`null`),
-			expectedErr: "invalid prompt type (must be string or array)",
+			expectedErr: "invalid prompt type (must be string, object, or array)",
 		},
 		{
 			name:        "invalid type - boolean",
 			data:        []byte(`true`),
-			expectedErr: "invalid prompt type (must be string or array)",
+			expectedErr: "invalid prompt type (must be string, object, or array)",
 		},
 		{
 			name:        "invalid type - bare number",
 			data:        []byte(`42`),
-			expectedErr: "invalid prompt type (must be string or array)",
+			expectedErr: "invalid prompt type (must be string, object, or array)",
 		},
 		{
 			name:        "array with only whitespace after bracket",

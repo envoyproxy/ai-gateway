@@ -572,7 +572,8 @@ func convertGCPVertexAIErrorToOpenAI(respHeaders map[string]string, body io.Read
 		} else {
 			// Try to parse as generic JSON error format
 			var genericError map[string]interface{}
-			if err := json.Unmarshal(buf, &genericError); err == nil {
+			parseErr := json.Unmarshal(buf, &genericError)
+			if parseErr == nil {
 				// Extract error message from generic JSON error format
 				var errorMessage string
 				if errorField, exists := genericError["error"]; exists {
