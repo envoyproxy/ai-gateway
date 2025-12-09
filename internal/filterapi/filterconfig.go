@@ -180,7 +180,17 @@ type AnthropicAPIKeyAuth struct {
 // AzureAuth defines the file containing azure access token that will be mounted to the external proc.
 type AzureAuth struct {
 	// AccessToken is the access token as a literal string.
-	AccessToken string `json:"accessToken"`
+	// ignored if UseManagedIdentity is true.
+	AccessToken string `json:"accessToken,omitempty"`
+	// UseManagedIdentity enables Azure Managed Identity authentication.
+	// Extproc will get token dynamically
+	UseManagedIdentity bool `json:"useManagedIdentity,omitempty"`
+	// ClientID is the Azure client ID for user-assigned managed identity.
+	// Optional when using system-assigned managed identity or when provided via environment variables.
+	ClientID string `json:"clientID,omitempty"`
+	// TenantID is the Azure tenant ID.
+	// Optional when provided via environment variables (e.g., AKS Workload Identity).
+	TenantID string `json:"tenantID,omitempty"`
 }
 
 // GCPAuth defines the GCP authentication configuration used to access Google Cloud AI services.
