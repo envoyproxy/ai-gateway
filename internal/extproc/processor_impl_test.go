@@ -16,6 +16,7 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/propagation"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -90,8 +91,16 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 			tracer: tracing.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
 			config: &filterapi.RuntimeConfig{},
 		}
-		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: []byte("nonjson")})
-		require.ErrorContains(t, err, "invalid character 'o' in literal null")
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: []byte("nonjson")})
+		require.Error(t, err, "Should return an error along with immediate response")
+		require.Contains(t, err.Error(), "failed to parse request body")
+		require.NotNil(t, resp, "Response should not be nil")
+
+		// Verify it's an immediate response with the correct error message
+		immediateResp, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
+		require.True(t, ok, "Response should be an immediate response")
+		require.Equal(t, typev3.StatusCode(400), immediateResp.ImmediateResponse.Status.Code)
+		require.Contains(t, string(immediateResp.ImmediateResponse.Body), "failed to parse request body")
 	})
 
 	t.Run("ok", func(t *testing.T) {
@@ -442,11 +451,55 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 					metrics:        mm,
 					translator:     tr,
 				}
-				_, err := p.ProcessRequestHeaders(t.Context(), nil)
-				require.ErrorContains(t, err, "failed to transform request: test error")
+				resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+				require.Error(t, err, "Should return an error along with immediate response")
+				require.Contains(t, err.Error(), "failed to transform request: test error")
+				require.NotNil(t, resp, "Response should not be nil")
+
+				// Verify it's an immediate response with the correct error message
+				immediateResp, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
+				require.True(t, ok, "Response should be an immediate response")
+				require.Equal(t, typev3.StatusCode(422), immediateResp.ImmediateResponse.Status.Code)
+				require.Contains(t, string(immediateResp.ImmediateResponse.Body), "failed to transform request")
+				require.Contains(t, string(immediateResp.ImmediateResponse.Body), "test error")
+
 				mm.RequireRequestFailure(t)
 				require.Zero(t, mm.inputTokenCount)
 				// Verify models were set even though processing failed
+				require.Equal(t, "some-model", mm.originalModel)
+				require.Equal(t, "some-model", mm.requestModel)
+			})
+			t.Run("auth handler error", func(t *testing.T) {
+				headers := map[string]string{":path": "/foo", internalapi.ModelNameHeaderKeyDefault: "some-model"}
+				someBody := bodyFromModel(t, "some-model", tc.stream, nil)
+				var body openai.ChatCompletionRequest
+				require.NoError(t, json.Unmarshal(someBody, &body))
+				tr := mockTranslator{t: t, expRequestBody: &body}
+				mm := &mockMetrics{}
+				// Create a mock auth handler that returns an error
+				authHandler := &mockBackendAuthHandlerError{err: errors.New("authentication failed")}
+				p := &chatCompletionProcessorUpstreamFilter{
+					parent: &chatCompletionProcessorRouterFilter{
+						config:                 &filterapi.RuntimeConfig{},
+						logger:                 slog.Default(),
+						originalRequestBodyRaw: someBody,
+						originalRequestBody:    &body,
+						originalModel:          "some-model",
+						stream:                 tc.stream,
+					},
+					requestHeaders: headers,
+					metrics:        mm,
+					translator:     tr,
+					handler:        authHandler,
+				}
+				resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+				require.Error(t, err, "Should return an error")
+				require.Contains(t, err.Error(), "failed to do auth request: authentication failed")
+				require.Nil(t, resp, "Response should be nil when auth request fails")
+
+				mm.RequireRequestFailure(t)
+				require.Zero(t, mm.inputTokenCount)
+				// Verify models were set even though authentication failed
 				require.Equal(t, "some-model", mm.originalModel)
 				require.Equal(t, "some-model", mm.requestModel)
 			})

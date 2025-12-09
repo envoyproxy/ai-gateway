@@ -15,6 +15,8 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
@@ -165,7 +167,19 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespons
 func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	originalModel, body, stream, mutatedOriginalBody, err := r.eh.ParseBody(rawBody.Body, len(r.config.RequestCosts) > 0)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse request body: %w", err)
+		// Return an immediate error response instead of nil
+		errorMsg := fmt.Sprintf("failed to parse request body: %v", err)
+
+		// 400 and 422 might be both reasonable here
+		return &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+				ImmediateResponse: &extprocv3.ImmediateResponse{
+					Status:     &typev3.HttpStatus{Code: typev3.StatusCode(400)},
+					Body:       []byte(errorMsg),
+					GrpcStatus: &extprocv3.GrpcStatus{Status: uint32(codes.InvalidArgument)},
+				},
+			},
+		}, fmt.Errorf("failed to parse request body: %w", err)
 	}
 	if mutatedOriginalBody != nil {
 		r.originalRequestBodyRaw = mutatedOriginalBody
@@ -243,7 +257,17 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 	forceBodyMutation := u.onRetry() || u.parent.forceBodyMutation
 	newHeaders, newBody, err := u.translator.RequestBody(u.parent.originalRequestBodyRaw, u.parent.originalRequestBody, forceBodyMutation)
 	if err != nil {
-		return nil, fmt.Errorf("failed to transform request: %w", err)
+		// Return an immediate error response instead of nil
+		errorMsg := fmt.Sprintf("failed to transform request: %v", err)
+		return &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+				ImmediateResponse: &extprocv3.ImmediateResponse{
+					Status:     &typev3.HttpStatus{Code: typev3.StatusCode(422)},
+					Body:       []byte(errorMsg),
+					GrpcStatus: &extprocv3.GrpcStatus{Status: uint32(codes.InvalidArgument)},
+				},
+			},
+		}, fmt.Errorf("failed to transform request: %w", err)
 	}
 
 	headerMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
