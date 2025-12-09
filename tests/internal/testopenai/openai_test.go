@@ -30,11 +30,8 @@ func TestExtractModel(t *testing.T) {
 			expected: "gpt-3.5-turbo",
 		},
 		{
-			name: "embeddings completion request",
-			request: &openai.EmbeddingRequest{
-				Model: "text-embedding-ada-002",
-				Input: openai.EmbeddingRequestInput{Value: "test"},
-			},
+			name:     "embeddings request",
+			request:  &openai.EmbeddingRequest{Model: "text-embedding-ada-002"},
 			expected: "text-embedding-ada-002",
 		},
 	}

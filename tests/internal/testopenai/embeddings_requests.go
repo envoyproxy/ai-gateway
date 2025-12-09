@@ -19,8 +19,9 @@ func EmbeddingsCassettes() []Cassette {
 }
 
 var cassetteEmbeddingsBasic = &openai.EmbeddingRequest{
-	Model:          openai.ModelTextEmbedding3Small,
-	Input:          openai.EmbeddingRequestInput{Value: "How do I reset my password?"},
+	Model: openai.ModelTextEmbedding3Small,
+	Input: openai.EmbeddingRequestInput{Value: "How do I reset my password?"},
+	// Python SDK coerces to base64 when NumPy is installed. Make sure float works.
 	EncodingFormat: ptr.To("float"),
 }
 
