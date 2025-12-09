@@ -472,9 +472,6 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_ZeroTokenUsage(t *testin
 }
 
 func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingTokenUsage(t *testing.T) {
-	translator := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "")
-	translator.(*anthropicToGCPAnthropicTranslator).stream = true
-
 	tests := []struct {
 		name          string
 		chunk         string
@@ -517,7 +514,8 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingTokenUsage(t *t
 		t.Run(tt.name, func(t *testing.T) {
 			bodyReader := bytes.NewReader([]byte(tt.chunk))
 			respHeaders := map[string]string{"content-type": "application/json"}
-
+			translator := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "")
+			translator.(*anthropicToGCPAnthropicTranslator).stream = true
 			headerMutation, bodyMutation, tokenUsage, _, err := translator.ResponseBody(respHeaders, bodyReader, tt.endOfStream, nil)
 
 			require.NoError(t, err)
@@ -529,9 +527,6 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingTokenUsage(t *t
 }
 
 func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases(t *testing.T) {
-	translator := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "")
-	translator.(*anthropicToGCPAnthropicTranslator).stream = true
-
 	tests := []struct {
 		name          string
 		chunk         string
@@ -563,7 +558,8 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases(t *te
 		t.Run(tt.name, func(t *testing.T) {
 			bodyReader := bytes.NewReader([]byte(tt.chunk))
 			respHeaders := map[string]string{"content-type": "application/json"}
-
+			translator := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "")
+			translator.(*anthropicToGCPAnthropicTranslator).stream = true
 			headerMutation, bodyMutation, tokenUsage, _, err := translator.ResponseBody(respHeaders, bodyReader, false, nil)
 
 			require.NoError(t, err)
@@ -611,32 +607,30 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingFullScenario(t 
 	// 2. content_block events provide the actual text content
 	// 3. message_delta at the end provides output_tokens=5 but no input_tokens
 	// 4. message_stop ends the stream
-	sseStream := `event: message_start
-data: {"type": "message_start", "message": {"id": "msg_123", "type": "message", "role": "assistant", "content": [], "model": "claude-3-sonnet-20240229", "usage": {"input_tokens": 15, "output_tokens": 0}}}
-
-event: content_block_start
+	messageStartChunk := `event: message_start
+data: {"type": "message_start", "message": {"id": "msg_123", "type": "message", "role": "assistant", "content": [], "model": "claude-3-sonnet-20240229", "usage": {"input_tokens": 15, "cache_read_input_tokens": 5, "output_tokens": 0}}}
+`
+	contentBlockStartChunk := `event: content_block_start
 data: {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
-
-event: content_block_delta
+`
+	contentBlockDeltaChunk := `event: content_block_delta
 data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hello"}}
-
-event: content_block_stop
+`
+	contentBlockStopChunk := `event: content_block_stop
 data: {"type": "content_block_stop", "index": 0}
-
-event: message_delta
+`
+	messageDeltaChunk := `event: message_delta
 data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 5}}
-
-event: message_stop
+`
+	messageStopChunk := `event: message_stop
 data: {"type": "message_stop"}
-
 `
 
 	// Process the streaming response
-	reader := strings.NewReader(sseStream)
-	_, _, tokenUsage, _, err := translator.ResponseBody(nil, reader, false, nil)
+	_, _, tokenUsage, _, err := translator.ResponseBody(nil, strings.NewReader(messageStartChunk), false, nil)
 	require.NoError(t, err)
 
-	// Verify token usage - this should preserve input_tokens from message_start
+	// Verify token usage - this should calculate input_tokens from message_start
 	inputTokens, inputSet := tokenUsage.InputTokens()
 	outputTokens, outputSet := tokenUsage.OutputTokens()
 	totalTokens, totalSet := tokenUsage.TotalTokens()
@@ -644,14 +638,43 @@ data: {"type": "message_stop"}
 
 	// Assertions
 	assert.True(t, inputSet, "Input tokens should be set")
-	assert.Equal(t, uint32(15), inputTokens, "Input tokens should be preserved from message_start")
+	assert.Equal(t, uint32(20), inputTokens, "Input tokens should be preserved from message_start")
 
 	assert.True(t, outputSet, "Output tokens should be set")
-	assert.Equal(t, uint32(5), outputTokens, "Output tokens should come from message_delta")
+	assert.Equal(t, uint32(0), outputTokens, "Output tokens should come from message_delta")
 
 	assert.True(t, totalSet, "Total tokens should be calculated")
 	assert.Equal(t, uint32(20), totalTokens, "Total tokens should be input + output")
 
 	assert.True(t, cachedSet, "Cached tokens should be set")
-	assert.Equal(t, uint32(0), cachedTokens, "No cached tokens in this scenario")
+	assert.Equal(t, uint32(5), cachedTokens, "No cached tokens in this scenario")
+
+	_, _, tokenUsage, _, err = translator.ResponseBody(nil, strings.NewReader(contentBlockStartChunk), false, nil)
+	require.NoError(t, err)
+	_, _, tokenUsage, _, err = translator.ResponseBody(nil, strings.NewReader(contentBlockDeltaChunk), false, nil)
+	require.NoError(t, err)
+	_, _, tokenUsage, _, err = translator.ResponseBody(nil, strings.NewReader(contentBlockStopChunk), false, nil)
+	require.NoError(t, err)
+	_, _, tokenUsage, _, err = translator.ResponseBody(nil, strings.NewReader(messageDeltaChunk), false, nil)
+	require.NoError(t, err)
+	_, _, tokenUsage, _, err = translator.ResponseBody(nil, strings.NewReader(messageStopChunk), false, nil)
+	require.NoError(t, err)
+
+	// Verify token usage - this should preserve input_tokens from message_start and get the output_tokens from message_delta
+	inputTokens, inputSet = tokenUsage.InputTokens()
+	outputTokens, outputSet = tokenUsage.OutputTokens()
+	totalTokens, totalSet = tokenUsage.TotalTokens()
+	cachedTokens, cachedSet = tokenUsage.CachedInputTokens()
+
+	assert.True(t, inputSet, "Input tokens should be set")
+	assert.Equal(t, uint32(20), inputTokens, "Input tokens should be preserved from message_start")
+
+	assert.True(t, outputSet, "Output tokens should be set")
+	assert.Equal(t, uint32(5), outputTokens, "Output tokens should come from message_delta")
+
+	assert.True(t, totalSet, "Total tokens should be calculated")
+	assert.Equal(t, uint32(25), totalTokens, "Total tokens should be input + output")
+
+	assert.True(t, cachedSet, "Cached tokens should be set")
+	assert.Equal(t, uint32(5), cachedTokens, "No cached tokens in this scenario")
 }

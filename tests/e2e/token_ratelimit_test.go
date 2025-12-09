@@ -155,7 +155,7 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 		defer fwd.Kill()
 		// notice all labels are snake_case in Prometheus even though the otel inputs are dotted.
 		query := fmt.Sprintf(
-			`sum(gen_ai_client_token_usage_token_sum{gateway_envoyproxy_io_owning_gateway_name = "envoy-ai-gateway-token-ratelimit"}) by (gen_ai_request_model, gen_ai_token_type, %s)`,
+			`sum(gen_ai_client_token_usage_sum{gateway_envoyproxy_io_owning_gateway_name = "envoy-ai-gateway-token-ratelimit"}) by (gen_ai_request_model, gen_ai_token_type, %s)`,
 			userIDMetricsLabel)
 		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/v1/query?query=%s", fwd.Address(), url.QueryEscape(query)), nil)
 		require.NoError(t, err)

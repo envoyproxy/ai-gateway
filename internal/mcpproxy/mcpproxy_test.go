@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"regexp"
 	"sync"
 	"testing"
 
@@ -81,16 +80,6 @@ func TestMCPProxy_HTTPMethods(t *testing.T) {
 
 	require.Equal(t, http.StatusMethodNotAllowed, rr.Code)
 	require.Contains(t, rr.Body.String(), "method not allowed")
-}
-
-func TestLoadConfig_NilMCPConfig(t *testing.T) {
-	proxy, _, err := NewMCPProxy(slog.Default(), stubMetrics{}, noopTracer, NewPBKDF2AesGcmSessionCrypto("test", 100))
-	require.NoError(t, err)
-
-	config := &filterapi.Config{MCPConfig: nil}
-
-	err = proxy.LoadConfig(t.Context(), config)
-	require.NoError(t, err)
 }
 
 const (
@@ -351,41 +340,4 @@ func TestInvokeJSONRPCRequest_NoSessionID(t *testing.T) {
 	require.NotNil(t, resp)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-}
-
-func Test_toolSelector_Allows(t *testing.T) {
-	reBa := regexp.MustCompile("^ba.*")
-	tests := []struct {
-		name     string
-		selector toolSelector
-		tools    []string
-		want     []bool
-	}{
-		{
-			name:     "no rules allows all",
-			selector: toolSelector{},
-			tools:    []string{"foo", "bar"},
-			want:     []bool{true, true},
-		},
-		{
-			name:     "include specific tool",
-			selector: toolSelector{include: map[string]struct{}{"foo": {}}},
-			tools:    []string{"foo", "bar"},
-			want:     []bool{true, false},
-		},
-		{
-			name:     "include regexp",
-			selector: toolSelector{includeRegexps: []*regexp.Regexp{reBa}},
-			tools:    []string{"bar", "foo"},
-			want:     []bool{true, false},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			for i, tool := range tt.tools {
-				got := tt.selector.allows(tool)
-				require.Equalf(t, tt.want[i], got, "tool: %s", tool)
-			}
-		})
-	}
 }

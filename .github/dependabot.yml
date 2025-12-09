@@ -25,6 +25,8 @@ updates:
           - "*"
     ignore:
       - dependency-name: "github.com/envoyproxy/gateway"
+      # Gateway API must match the one used in EG as well as GAIE's to properly run the conformance tests.
+      - dependency-name: "sigs.k8s.io/gateway-api"
       # Usually, this requires manual changes to the codebase.
       - dependency-name: "sigs.k8s.io/gateway-api-inference-extension"
       # Needs a manual update with test fixes: https://github.com/envoyproxy/ai-gateway/issues/1476

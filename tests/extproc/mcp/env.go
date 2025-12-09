@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -37,6 +38,7 @@ var envoyConfig string
 // TODO: move this to testmcp package so that we could reuse the same tests in the end-to-end tests.
 type mcpEnv struct {
 	client            *mcp.Client
+	mcp1, mcp2        *mcp.Server
 	mux               sync.Mutex
 	extProcMetricsURL string
 	baseURL           string
@@ -55,6 +57,7 @@ type mcpEnv struct {
 type mcpSession struct {
 	session *mcp.ClientSession
 	// TODO: merge them into one chan for simplicity?
+	toolListChangedNotifications     chan *mcp.ToolListChangedRequest
 	progressNotifications            chan *mcp.ProgressNotificationClientRequest
 	promptListChangedNotifications   chan *mcp.PromptListChangedRequest
 	resourceUpdatedNotifications     chan *mcp.ResourceUpdatedNotificationRequest
@@ -109,15 +112,17 @@ func requireNewMCPEnv(t *testing.T, forceJSONResponse bool, writeTimeout time.Du
 	config, err := json.Marshal(filterapi.Config{MCPConfig: mcpConfig})
 	require.NoError(t, err)
 
+	var mcp1, mcp2 *mcp.Server
 	env := testenvironment.StartTestEnvironment(t,
 		func(_ testing.TB, _ io.Writer, ports map[string]int) {
-			srv1 := testmcp.NewServer(&testmcp.Options{
+			var srv1, srv2 *http.Server
+			srv1, mcp1 = testmcp.NewServer(&testmcp.Options{
 				Port:              ports["ts1"],
 				ForceJSONResponse: forceJSONResponse,
 				DumbEchoServer:    false,
 				WriteTimeout:      writeTimeout,
 			})
-			srv2 := testmcp.NewServer(&testmcp.Options{
+			srv2, mcp2 = testmcp.NewServer(&testmcp.Options{
 				Port:              ports["ts2"],
 				ForceJSONResponse: forceJSONResponse,
 				DumbEchoServer:    true,
@@ -133,12 +138,23 @@ func requireNewMCPEnv(t *testing.T, forceJSONResponse bool, writeTimeout time.Du
 	)
 
 	m := new(mcpEnv)
+	m.mcp1, m.mcp2 = mcp1, mcp2
 	m.collector = collector
 	m.writeTimeout = writeTimeout
 	m.extProcMetricsURL = fmt.Sprintf("http://localhost:%d/metrics", env.ExtProcAdminPort())
 	m.baseURL = fmt.Sprintf("http://localhost:%d%s", env.EnvoyListenerPort(), path)
 
 	m.client = mcp.NewClient(&mcp.Implementation{Name: "demo-http-client", Version: "0.1.0"}, &mcp.ClientOptions{
+		ToolListChangedHandler: func(_ context.Context, request *mcp.ToolListChangedRequest) {
+			m.mux.Lock()
+			defer m.mux.Unlock()
+			if sess, ok := m.sessions[request.GetSession().ID()]; ok {
+				t.Log("received tool list change for session ", request.GetSession().ID(), ": ", request.Params)
+				sess.toolListChangedNotifications <- request
+			} else {
+				t.Fatalf("received tool list change for unknown session ID %q", request.GetSession().ID())
+			}
+		},
 		// TODO: this is due to how the official go-sdk is designed. Notification is a per-session concept but
 		// they force the handler to be per-client, which resulted in forcing us to do this multiplexing here.
 		ProgressNotificationHandler: func(_ context.Context, request *mcp.ProgressNotificationClientRequest) {
@@ -236,6 +252,7 @@ func requireNewMCPEnv(t *testing.T, forceJSONResponse bool, writeTimeout time.Du
 // newSession creates a new MCP client session and registers it for progress notifications.
 func (m *mcpEnv) newSession(t *testing.T) *mcpSession {
 	ret := &mcpSession{
+		toolListChangedNotifications:     make(chan *mcp.ToolListChangedRequest, 100),
 		progressNotifications:            make(chan *mcp.ProgressNotificationClientRequest, 100),
 		promptListChangedNotifications:   make(chan *mcp.PromptListChangedRequest, 100),
 		resourceUpdatedNotifications:     make(chan *mcp.ResourceUpdatedNotificationRequest, 100),
@@ -245,6 +262,7 @@ func (m *mcpEnv) newSession(t *testing.T) *mcpSession {
 		elicitRequests:                   make(chan *mcp.ElicitRequest, 100),
 	}
 	var err error
+
 	ret.session, err = m.client.Connect(t.Context(), &mcp.StreamableClientTransport{Endpoint: m.baseURL}, nil)
 	require.NoError(t, err)
 	span := m.collector.TakeSpan()
@@ -263,6 +281,7 @@ func (m *mcpEnv) newSession(t *testing.T) *mcpSession {
 		m.mux.Lock()
 		defer m.mux.Unlock()
 		delete(m.sessions, ret.session.ID())
+		close(ret.toolListChangedNotifications)
 		close(ret.progressNotifications)
 		close(ret.promptListChangedNotifications)
 		close(ret.resourceUpdatedNotifications)
