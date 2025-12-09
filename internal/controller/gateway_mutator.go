@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -275,9 +276,15 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 	}
 
 	gatewayConfig := g.fetchGatewayConfig(ctx, gatewayName, gatewayNamespace)
-	var extProcSpec *aigv1a1.GatewayConfigExtProc
+	var (
+		extProcSpec       *aigv1a1.GatewayConfigExtProc
+		kubernetesExtProc *egv1a1.KubernetesContainerSpec
+	)
 	if gatewayConfig != nil {
 		extProcSpec = gatewayConfig.Spec.ExtProc
+		if extProcSpec != nil {
+			kubernetesExtProc = extProcSpec.Kubernetes
+		}
 	}
 
 	// Now we construct the AI Gateway managed containers and volumes.
@@ -306,8 +313,8 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 
 	// Prefer GatewayConfig resources; otherwise leave empty.
 	var resources corev1.ResourceRequirements
-	if extProcSpec != nil && extProcSpec.Resources != nil {
-		resources = *extProcSpec.Resources
+	if kubernetesExtProc != nil && kubernetesExtProc.Resources != nil {
+		resources = *kubernetesExtProc.Resources
 		g.logger.Info("using resources from GatewayConfig",
 			"gateway_name", gatewayName, "gatewayconfig_name", gatewayConfig.Name)
 	}
@@ -335,8 +342,8 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 			Type: corev1.SeccompProfileTypeRuntimeDefault,
 		},
 	}
-	if extProcSpec != nil && extProcSpec.SecurityContext != nil {
-		securityContext = extProcSpec.SecurityContext
+	if kubernetesExtProc != nil && kubernetesExtProc.SecurityContext != nil {
+		securityContext = kubernetesExtProc.SecurityContext
 	}
 
 	container := corev1.Container{
@@ -378,8 +385,8 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		Resources: resources,
 	}
 
-	if extProcSpec != nil && len(extProcSpec.VolumeMounts) > 0 {
-		container.VolumeMounts = append(container.VolumeMounts, extProcSpec.VolumeMounts...)
+	if kubernetesExtProc != nil && len(kubernetesExtProc.VolumeMounts) > 0 {
+		container.VolumeMounts = append(container.VolumeMounts, kubernetesExtProc.VolumeMounts...)
 	}
 
 	if g.extProcAsSideCar {
@@ -455,8 +462,8 @@ func (g *gatewayMutator) mergeEnvVars(gatewayConfig *aigv1a1.GatewayConfig) []co
 
 	// Add GatewayConfig env vars (highest precedence) overriding in-place when names collide,
 	// otherwise append in the order they are defined.
-	if gatewayConfig != nil && gatewayConfig.Spec.ExtProc != nil {
-		for _, env := range gatewayConfig.Spec.ExtProc.Env {
+	if gatewayConfig != nil && gatewayConfig.Spec.ExtProc != nil && gatewayConfig.Spec.ExtProc.Kubernetes != nil {
+		for _, env := range gatewayConfig.Spec.ExtProc.Kubernetes.Env {
 			if i, ok := index[env.Name]; ok {
 				result[i] = env
 			} else {
@@ -471,15 +478,16 @@ func (g *gatewayMutator) mergeEnvVars(gatewayConfig *aigv1a1.GatewayConfig) []co
 
 // resolveExtProcImage chooses the extProc image honoring GatewayConfig overrides.
 func (g *gatewayMutator) resolveExtProcImage(extProc *aigv1a1.GatewayConfigExtProc) string {
-	if extProc == nil {
+	if extProc == nil || extProc.Kubernetes == nil {
 		return g.extProcImage
 	}
 
+	kubernetesExtProc := extProc.Kubernetes
 	switch {
-	case extProc.Image != nil:
-		return *extProc.Image
-	case extProc.ImageRepository != nil:
-		return mergeImageWithRepository(g.extProcImage, *extProc.ImageRepository)
+	case kubernetesExtProc.Image != nil:
+		return *kubernetesExtProc.Image
+	case kubernetesExtProc.ImageRepository != nil:
+		return mergeImageWithRepository(g.extProcImage, *kubernetesExtProc.ImageRepository)
 	default:
 		return g.extProcImage
 	}

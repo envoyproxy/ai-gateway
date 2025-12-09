@@ -24,7 +24,7 @@ import (
 //
 // Environment Variable Precedence:
 // When merging environment variables, the following precedence applies (highest to lowest):
-//  1. GatewayConfig.Spec.ExtProc.Env (this resource)
+//  1. GatewayConfig.Spec.ExtProc.Kubernetes.Env (this resource)
 //  2. Global controller flags (extProcExtraEnvVars)
 //
 // If the same environment variable name exists in both sources, the GatewayConfig
@@ -63,9 +63,15 @@ type GatewayConfigSpec struct {
 	ExtProc *GatewayConfigExtProc `json:"extProc,omitempty"`
 }
 
-// GatewayConfigExtProc reuses Envoy Gateway's KubernetesContainerSpec so we stay aligned
+// GatewayConfigExtProc holds runtime-specific configuration for the external processor.
+// The Kubernetes field mirrors Envoy Gateway's KubernetesContainerSpec so we stay aligned
 // with the EnvoyProxy configuration surface and inherit the full set of supported fields.
-type GatewayConfigExtProc = egv1a1.KubernetesContainerSpec
+type GatewayConfigExtProc struct {
+	// Kubernetes defines the configuration for running the external processor as a Kubernetes container.
+	//
+	// +optional
+	Kubernetes *egv1a1.KubernetesContainerSpec `json:"kubernetes,omitempty"`
+}
 
 // GatewayConfigStatus defines the observed state of GatewayConfig.
 type GatewayConfigStatus struct {

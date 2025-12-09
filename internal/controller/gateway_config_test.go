@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -45,13 +46,15 @@ func TestGatewayConfigController_Reconcile(t *testing.T) {
 		},
 		Spec: aigv1a1.GatewayConfigSpec{
 			ExtProc: &aigv1a1.GatewayConfigExtProc{
-				Env: []corev1.EnvVar{
-					{Name: "OTEL_EXPORTER_OTLP_ENDPOINT", Value: "http://otel-collector:4317"},
-				},
-				Resources: &corev1.ResourceRequirements{
-					Requests: corev1.ResourceList{
-						corev1.ResourceCPU:    resource.MustParse("100m"),
-						corev1.ResourceMemory: resource.MustParse("128Mi"),
+				Kubernetes: &egv1a1.KubernetesContainerSpec{
+					Env: []corev1.EnvVar{
+						{Name: "OTEL_EXPORTER_OTLP_ENDPOINT", Value: "http://otel-collector:4317"},
+					},
+					Resources: &corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("100m"),
+							corev1.ResourceMemory: resource.MustParse("128Mi"),
+						},
 					},
 				},
 			},
@@ -88,8 +91,10 @@ func TestGatewayConfigController_NotifyGateways(t *testing.T) {
 		},
 		Spec: aigv1a1.GatewayConfigSpec{
 			ExtProc: &aigv1a1.GatewayConfigExtProc{
-				Env: []corev1.EnvVar{
-					{Name: "LOG_LEVEL", Value: "debug"},
+				Kubernetes: &egv1a1.KubernetesContainerSpec{
+					Env: []corev1.EnvVar{
+						{Name: "LOG_LEVEL", Value: "debug"},
+					},
 				},
 			},
 		},
@@ -159,8 +164,10 @@ func TestGatewayConfigController_MultipleGatewaysReferencing(t *testing.T) {
 		},
 		Spec: aigv1a1.GatewayConfigSpec{
 			ExtProc: &aigv1a1.GatewayConfigExtProc{
-				Env: []corev1.EnvVar{
-					{Name: "SHARED_VAR", Value: "shared-value"},
+				Kubernetes: &egv1a1.KubernetesContainerSpec{
+					Env: []corev1.EnvVar{
+						{Name: "SHARED_VAR", Value: "shared-value"},
+					},
 				},
 			},
 		},

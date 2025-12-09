@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"testing"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
 	corev1 "k8s.io/api/core/v1"
@@ -500,9 +501,11 @@ func TestGatewayMutator_mergeEnvVars(t *testing.T) {
 			gatewayConfig: &aigv1a1.GatewayConfig{
 				Spec: aigv1a1.GatewayConfigSpec{
 					ExtProc: &aigv1a1.GatewayConfigExtProc{
-						Env: []corev1.EnvVar{
-							{Name: "CONFIG_VAR", Value: "config-value"},
-							{Name: "LOG_LEVEL", Value: "debug"},
+						Kubernetes: &egv1a1.KubernetesContainerSpec{
+							Env: []corev1.EnvVar{
+								{Name: "CONFIG_VAR", Value: "config-value"},
+								{Name: "LOG_LEVEL", Value: "debug"},
+							},
 						},
 					},
 				},
@@ -518,9 +521,11 @@ func TestGatewayMutator_mergeEnvVars(t *testing.T) {
 			gatewayConfig: &aigv1a1.GatewayConfig{
 				Spec: aigv1a1.GatewayConfigSpec{
 					ExtProc: &aigv1a1.GatewayConfigExtProc{
-						Env: []corev1.EnvVar{
-							{Name: "LOG_LEVEL", Value: "debug"},
-							{Name: "CONFIG_ONLY", Value: "config"},
+						Kubernetes: &egv1a1.KubernetesContainerSpec{
+							Env: []corev1.EnvVar{
+								{Name: "LOG_LEVEL", Value: "debug"},
+								{Name: "CONFIG_ONLY", Value: "config"},
+							},
 						},
 					},
 				},
@@ -587,7 +592,9 @@ func TestGatewayMutator_resolveExtProcImage(t *testing.T) {
 			name: "explicit image override",
 			base: "docker.io/envoyproxy/ai-gateway-extproc:latest",
 			extProc: &aigv1a1.GatewayConfigExtProc{
-				Image: ptr.To("gcr.io/custom/extproc:v2"),
+				Kubernetes: &egv1a1.KubernetesContainerSpec{
+					Image: ptr.To("gcr.io/custom/extproc:v2"),
+				},
 			},
 			expected: "gcr.io/custom/extproc:v2",
 		},
@@ -595,7 +602,9 @@ func TestGatewayMutator_resolveExtProcImage(t *testing.T) {
 			name: "repository override reuses tag",
 			base: "docker.io/envoyproxy/ai-gateway-extproc:latest",
 			extProc: &aigv1a1.GatewayConfigExtProc{
-				ImageRepository: ptr.To("gcr.io/custom/extproc"),
+				Kubernetes: &egv1a1.KubernetesContainerSpec{
+					ImageRepository: ptr.To("gcr.io/custom/extproc"),
+				},
 			},
 			expected: "gcr.io/custom/extproc:latest",
 		},
@@ -603,7 +612,9 @@ func TestGatewayMutator_resolveExtProcImage(t *testing.T) {
 			name: "repository override keeps digest",
 			base: "docker.io/envoyproxy/ai-gateway-extproc@sha256:deadbeef",
 			extProc: &aigv1a1.GatewayConfigExtProc{
-				ImageRepository: ptr.To("gcr.io/custom/extproc"),
+				Kubernetes: &egv1a1.KubernetesContainerSpec{
+					ImageRepository: ptr.To("gcr.io/custom/extproc"),
+				},
 			},
 			expected: "gcr.io/custom/extproc@sha256:deadbeef",
 		},
