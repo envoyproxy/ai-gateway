@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -67,13 +66,11 @@ func TestAnthropicToAWSAnthropicTranslator_RequestBody_ModelNameOverride(t *test
 
 			// Create the request using map structure.
 			originalReq := &anthropicschema.MessagesRequest{
-				"model": tt.inputModel,
-				"messages": []anthropic.MessageParam{
+				Model: tt.inputModel,
+				Messages: []anthropicschema.MessageParam{
 					{
-						Role: anthropic.MessageParamRoleUser,
-						Content: []anthropic.ContentBlockParamUnion{
-							anthropic.NewTextBlock("Hello"),
-						},
+						Role:    anthropicschema.MessageRoleUser,
+						Content: anthropicschema.MessageContent{Text: "Hello"},
 					},
 				},
 			}
@@ -141,19 +138,21 @@ func TestAnthropicToAWSAnthropicTranslator_RequestBody_StreamingPaths(t *testing
 			translator := NewAnthropicToAWSAnthropicTranslator("bedrock-2023-05-31", "")
 
 			parsedReq := &anthropicschema.MessagesRequest{
-				"model": "anthropic.claude-3-sonnet-20240229-v1:0",
-				"messages": []anthropic.MessageParam{
+				Model: "anthropic.claude-3-sonnet-20240229-v1:0",
+				Messages: []anthropicschema.MessageParam{
 					{
-						Role: anthropic.MessageParamRoleUser,
-						Content: []anthropic.ContentBlockParamUnion{
-							anthropic.NewTextBlock("Test"),
+						Role: anthropicschema.MessageRoleUser,
+						Content: anthropicschema.MessageContent{
+							Array: []anthropicschema.ContentBlockParam{
+								{Text: &anthropicschema.TextBlockParam{Text: "Hello"}},
+							},
 						},
 					},
 				},
 			}
 			if tt.stream != nil {
 				if streamVal, ok := tt.stream.(bool); ok {
-					(*parsedReq)["stream"] = streamVal
+					parsedReq.Stream = streamVal
 				}
 			}
 
@@ -201,12 +200,14 @@ func TestAnthropicToAWSAnthropicTranslator_URLEncoding(t *testing.T) {
 			translator := NewAnthropicToAWSAnthropicTranslator("bedrock-2023-05-31", "")
 
 			originalReq := &anthropicschema.MessagesRequest{
-				"model": tt.modelID,
-				"messages": []anthropic.MessageParam{
+				Model: tt.modelID,
+				Messages: []anthropicschema.MessageParam{
 					{
-						Role: anthropic.MessageParamRoleUser,
-						Content: []anthropic.ContentBlockParamUnion{
-							anthropic.NewTextBlock("Test"),
+						Role: anthropicschema.MessageRoleUser,
+						Content: anthropicschema.MessageContent{
+							Array: []anthropicschema.ContentBlockParam{
+								{Text: &anthropicschema.TextBlockParam{Text: "Hello"}},
+							},
 						},
 					},
 				},

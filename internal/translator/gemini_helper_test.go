@@ -1540,6 +1540,58 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 			parametersJSONSchemaAvailable: false,
 			expected:                      nil,
 		},
+		{
+			name: "enterprise search tool only",
+			openaiTools: []openai.Tool{
+				{
+					Type: openai.ToolTypeEnterpriseWebSearch,
+				},
+			},
+			parametersJSONSchemaAvailable: false,
+			expected: []genai.Tool{
+				{
+					EnterpriseWebSearch: &genai.EnterpriseWebSearch{},
+				},
+			},
+		},
+		{
+			name: "mixed function and enterprise search tools",
+			openaiTools: []openai.Tool{
+				{
+					Type: openai.ToolTypeFunction,
+					Function: &openai.FunctionDefinition{
+						Name:        "get_weather",
+						Description: "Get current weather",
+						Parameters:  funcParams,
+					},
+				},
+				{
+					Type: openai.ToolTypeEnterpriseWebSearch,
+				},
+			},
+			parametersJSONSchemaAvailable: false,
+			expected: []genai.Tool{
+				{
+					EnterpriseWebSearch: &genai.EnterpriseWebSearch{},
+				},
+				{
+					FunctionDeclarations: []*genai.FunctionDeclaration{
+						{
+							Name:        "get_weather",
+							Description: "Get current weather",
+							Parameters: &genai.Schema{
+								Type: "object",
+								Properties: map[string]*genai.Schema{
+									"a": {Type: "integer"},
+									"b": {Type: "integer"},
+								},
+								Required: []string{"a", "b"},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range tests {

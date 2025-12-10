@@ -69,12 +69,12 @@ func buildRequestAttributes(chatRequest *openai.ChatCompletionRequest, body stri
 					for j, part := range content {
 						switch {
 						case part.OfText != nil:
-							text := part.OfText.Text
+							maybeRedacted := part.OfText.Text
 							if config.HideInputText {
-								text = openinference.RedactedValue
+								maybeRedacted = openinference.RedactedValue
 							}
 							attrs = append(attrs,
-								attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), text),
+								attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), maybeRedacted),
 								attribute.String(openinference.InputMessageContentAttribute(i, j, "type"), "text"),
 							)
 						case part.OfImageURL != nil && part.OfImageURL.ImageURL.URL != "":
@@ -110,12 +110,12 @@ func buildRequestAttributes(chatRequest *openai.ChatCompletionRequest, body stri
 				case []openai.ChatCompletionAssistantMessageParamContent:
 					for j, part := range content {
 						if part.Type == "text" && part.Text != nil {
-							text := *part.Text
+							maybeRedacted := *part.Text
 							if config.HideInputText {
-								text = openinference.RedactedValue
+								maybeRedacted = openinference.RedactedValue
 							}
 							attrs = append(attrs,
-								attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), text),
+								attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), maybeRedacted),
 								attribute.String(openinference.InputMessageContentAttribute(i, j, "type"), "text"),
 							)
 						}
@@ -132,12 +132,12 @@ func buildRequestAttributes(chatRequest *openai.ChatCompletionRequest, body stri
 					}
 				case []openai.ChatCompletionContentPartTextParam:
 					for j, part := range content {
-						text := part.Text
+						maybeRedacted := part.Text
 						if config.HideInputText {
-							text = openinference.RedactedValue
+							maybeRedacted = openinference.RedactedValue
 						}
 						attrs = append(attrs,
-							attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), text),
+							attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), maybeRedacted),
 							attribute.String(openinference.InputMessageContentAttribute(i, j, "type"), "text"),
 						)
 					}
@@ -153,12 +153,12 @@ func buildRequestAttributes(chatRequest *openai.ChatCompletionRequest, body stri
 					}
 				case []openai.ChatCompletionContentPartTextParam:
 					for j, part := range content {
-						text := part.Text
+						maybeRedacted := part.Text
 						if config.HideInputText {
-							text = openinference.RedactedValue
+							maybeRedacted = openinference.RedactedValue
 						}
 						attrs = append(attrs,
-							attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), text),
+							attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), maybeRedacted),
 							attribute.String(openinference.InputMessageContentAttribute(i, j, "type"), "text"),
 						)
 					}
@@ -174,12 +174,12 @@ func buildRequestAttributes(chatRequest *openai.ChatCompletionRequest, body stri
 					}
 				case []openai.ChatCompletionContentPartTextParam:
 					for j, part := range content {
-						text := part.Text
+						maybeRedacted := part.Text
 						if config.HideInputText {
-							text = openinference.RedactedValue
+							maybeRedacted = openinference.RedactedValue
 						}
 						attrs = append(attrs,
-							attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), text),
+							attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), maybeRedacted),
 							attribute.String(openinference.InputMessageContentAttribute(i, j, "type"), "text"),
 						)
 					}

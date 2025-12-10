@@ -62,12 +62,12 @@ func TestPrometheusMetrics(t *testing.T) {
 
 		// Just check if we have the metrics we need
 		return metricFamilies["gen_ai_server_request_duration_seconds"] != nil &&
-			metricFamilies["gen_ai_client_token_usage_token"] != nil
+			metricFamilies["gen_ai_client_token_usage"] != nil
 	}, 3*time.Second, 100*time.Millisecond)
 
 	requestModel := "gpt-5-nano"
 	verifyPrometheusRequestDuration(t, metricFamilies["gen_ai_server_request_duration_seconds"], requestModel)
-	verifyPrometheusTokenUsage(t, metricFamilies["gen_ai_client_token_usage_token"], requestModel)
+	verifyPrometheusTokenUsage(t, metricFamilies["gen_ai_client_token_usage"], requestModel)
 }
 
 // verifyPrometheusRequestDuration verifies the request duration metric has the expected labels and values.

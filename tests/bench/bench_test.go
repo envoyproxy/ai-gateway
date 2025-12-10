@@ -49,7 +49,7 @@ func setupBenchmark(b *testing.B) []MCPBenchCase {
 	b.Helper() // Treat this as a helper function
 
 	// setup MCP server
-	mcpServer := testmcp.NewServer(&testmcp.Options{
+	mcpServer, _ := testmcp.NewServer(&testmcp.Options{
 		Port:              mcpServerPort,
 		ForceJSONResponse: false,
 		DumbEchoServer:    true,

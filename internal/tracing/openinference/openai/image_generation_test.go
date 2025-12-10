@@ -8,34 +8,32 @@ package openai
 import (
 	"testing"
 
-	openaisdk "github.com/openai/openai-go/v2"
-	openaiparam "github.com/openai/openai-go/v2/packages/param"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/sdk/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
 
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 )
 
 var (
-	basicImageReq = &openaisdk.ImageGenerateParams{
-		Model:          openaisdk.ImageModelGPTImage1,
+	basicImageReq = &openai.ImageGenerationRequest{
+		Model:          "gpt-image-1",
 		Prompt:         "a hummingbird",
-		Size:           openaisdk.ImageGenerateParamsSize1024x1024,
-		Quality:        openaisdk.ImageGenerateParamsQualityHigh,
-		ResponseFormat: openaisdk.ImageGenerateParamsResponseFormatB64JSON,
-		N:              openaiparam.NewOpt[int64](1),
+		Size:           "1024x1024",
+		Quality:        "hd",
+		ResponseFormat: "b64_json",
+		N:              1,
 	}
 	basicImageReqBody = mustJSON(basicImageReq)
 
-	basicImageResp = &openaisdk.ImagesResponse{
-		Data: []openaisdk.Image{{URL: "https://example.com/img.png"}},
-		Size: openaisdk.ImagesResponseSize1024x1024,
-		Usage: openaisdk.ImagesResponseUsage{
+	basicImageResp = &openai.ImageGenerationResponse{
+		Data: []openai.ImageGenerationResponseData{{URL: "https://example.com/img.png"}},
+		Usage: &openai.ImageGenerationUsage{
 			InputTokens:  8,
 			OutputTokens: 1056,
 			TotalTokens:  1064,
@@ -47,7 +45,7 @@ var (
 func TestImageGenerationRecorder_StartParams(t *testing.T) {
 	tests := []struct {
 		name             string
-		req              *openaisdk.ImageGenerateParams
+		req              *openai.ImageGenerationRequest
 		reqBody          []byte
 		expectedSpanName string
 	}{
@@ -75,7 +73,7 @@ func TestImageGenerationRecorder_StartParams(t *testing.T) {
 func TestImageGenerationRecorder_RecordRequest(t *testing.T) {
 	tests := []struct {
 		name          string
-		req           *openaisdk.ImageGenerateParams
+		req           *openai.ImageGenerationRequest
 		reqBody       []byte
 		config        *openinference.TraceConfig
 		expectedAttrs []attribute.KeyValue
@@ -138,7 +136,7 @@ func TestImageGenerationRecorder_RecordRequest(t *testing.T) {
 func TestImageGenerationRecorder_RecordResponse(t *testing.T) {
 	tests := []struct {
 		name           string
-		resp           *openaisdk.ImagesResponse
+		resp           *openai.ImageGenerationResponse
 		config         *openinference.TraceConfig
 		expectedAttrs  []attribute.KeyValue
 		expectedEvents []trace.Event

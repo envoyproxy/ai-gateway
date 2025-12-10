@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"testing"
 
-	openaisdk "github.com/openai/openai-go/v2"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/contrib/propagators/autoprop"
 	"go.opentelemetry.io/otel/attribute"
@@ -339,14 +338,14 @@ func TestNewImageGenerationTracer_BuildsGenericRequestTracer(t *testing.T) {
 
 	tracer := newImageGenerationTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testImageGenerationRecorder{})
 	impl, ok := tracer.(*requestTracerImpl[
-		openaisdk.ImageGenerateParams,
-		openaisdk.ImagesResponse,
+		openai.ImageGenerationRequest,
+		openai.ImageGenerationResponse,
 		struct{},
 	])
 	require.True(t, ok)
 	require.Nil(t, impl.headerAttributes)
 	require.NotNil(t, impl.newSpan)
-	s := tracer.StartSpanAndInjectHeaders(context.Background(), nil, propagation.MapCarrier{}, &openaisdk.ImageGenerateParams{}, []byte("{}"))
+	s := tracer.StartSpanAndInjectHeaders(context.Background(), nil, propagation.MapCarrier{}, &openai.ImageGenerationRequest{}, []byte("{}"))
 	require.IsType(t, (*imageGenerationSpan)(nil), s)
 }
 
@@ -448,19 +447,19 @@ type testImageGenerationRecorder struct {
 	tracing.NoopChunkRecorder[struct{}]
 }
 
-func (r testImageGenerationRecorder) StartParams(_ *openaisdk.ImageGenerateParams, _ []byte) (string, []oteltrace.SpanStartOption) {
+func (r testImageGenerationRecorder) StartParams(_ *openai.ImageGenerationRequest, _ []byte) (string, []oteltrace.SpanStartOption) {
 	return "ImagesResponse", nil
 }
 
-func (r testImageGenerationRecorder) RecordRequest(span oteltrace.Span, req *openaisdk.ImageGenerateParams, _ []byte) {
+func (r testImageGenerationRecorder) RecordRequest(span oteltrace.Span, req *openai.ImageGenerationRequest, _ []byte) {
 	span.SetAttributes(
 		attribute.String("model", req.Model),
 		attribute.String("prompt", req.Prompt),
-		attribute.String("size", string(req.Size)),
+		attribute.String("size", req.Size),
 	)
 }
 
-func (r testImageGenerationRecorder) RecordResponse(span oteltrace.Span, resp *openaisdk.ImagesResponse) {
+func (r testImageGenerationRecorder) RecordResponse(span oteltrace.Span, resp *openai.ImageGenerationResponse) {
 	respBytes, _ := json.Marshal(resp)
 	span.SetAttributes(
 		attribute.Int("statusCode", 200),

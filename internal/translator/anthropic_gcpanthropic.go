@@ -6,10 +6,11 @@
 package translator
 
 import (
-	"encoding/json"
+	"cmp"
 	"fmt"
-	"maps"
 	"strconv"
+
+	"github.com/tidwall/sjson"
 
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -33,42 +34,30 @@ type anthropicToGCPAnthropicTranslator struct {
 
 // RequestBody implements [AnthropicMessagesTranslator.RequestBody] for Anthropic to GCP Anthropic translation.
 // This handles the transformation from native Anthropic format to GCP Anthropic format.
-func (a *anthropicToGCPAnthropicTranslator) RequestBody(_ []byte, body *anthropicschema.MessagesRequest, _ bool) (
+func (a *anthropicToGCPAnthropicTranslator) RequestBody(raw []byte, req *anthropicschema.MessagesRequest, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
-	// Extract model name for GCP endpoint from the parsed request.
-	modelName := body.GetModel()
-	a.stream = body.GetStream()
-
-	// Work directly with the map since MessagesRequest is already map[string]interface{}.
-	anthropicReq := make(map[string]any)
-	maps.Copy(anthropicReq, *body)
+	a.stream = req.Stream
 
 	// Apply model name override if configured.
-	a.requestModel = modelName
-	if a.modelNameOverride != "" {
-		a.requestModel = a.modelNameOverride
-	}
-
-	// Remove the model field since GCP doesn't want it in the body.
-	delete(anthropicReq, "model")
+	a.requestModel = cmp.Or(a.modelNameOverride, req.Model)
 
 	// Add GCP-specific anthropic_version field (required by GCP Vertex AI).
 	// Uses backend config version (e.g., "vertex-2023-10-16" for GCP Vertex AI).
 	if a.apiVersion == "" {
 		return nil, nil, fmt.Errorf("anthropic_version is required for GCP Vertex AI but not provided in backend configuration")
 	}
-	anthropicReq[anthropicVersionKey] = a.apiVersion
 
-	// Marshal the modified request.
-	newBody, err = json.Marshal(anthropicReq)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal modified request: %w", err)
-	}
+	mutatedBody, _ := sjson.SetBytesOptions(raw, anthropicVersionKey, a.apiVersion, sjsonOptions)
+
+	// Remove the model field since GCP doesn't want it in the body.
+	// Note: Do not operate on raw here, as that would mutate the original request body.
+	// Hence, we do the SetBytesOptions above to create mutatedBody first.
+	newBody, _ = sjson.DeleteBytes(mutatedBody, "model")
 
 	// Determine the GCP path based on whether streaming is requested.
 	specifier := "rawPredict"
-	if stream, ok := anthropicReq["stream"].(bool); ok && stream {
+	if req.Stream {
 		specifier = "streamRawPredict"
 	}
 

@@ -228,7 +228,7 @@ func TestSession_StreamNotifications(t *testing.T) {
 			rr := httptest.NewRecorder()
 			ctx, cancel := context.WithTimeout(t.Context(), tc.deadline)
 			defer cancel()
-			err2 := s.streamNotifications(ctx, rr)
+			err2 := s.streamNotifications(ctx, rr, proxy.toolChangeSignaler)
 			require.NoError(t, err2)
 			out := rr.Body.String()
 			require.Contains(t, out, "event: a1")
@@ -242,6 +242,62 @@ func TestSession_StreamNotifications(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNotifyToolsChanged(t *testing.T) {
+	var (
+		reloadConfig atomic.Bool
+		proxy        = newTestMCPProxy()
+		cfg          = ProxyConfig{
+			toolChangeSignaler: proxy.toolChangeSignaler,
+			mcpProxyConfig:     proxy.mcpProxyConfig,
+		}
+		s = &session{
+			proxy: proxy,
+			route: "test-route",
+			perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"backend1": {sessionID: "s1"},
+			},
+		}
+	)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		// if the test wants to reload config, trigger it once the stream is open, to better simulate
+		// changes when there is an active streaming session.
+		// wait a bit and trigger the config change.
+		if reloadConfig.Load() {
+			time.Sleep(50 * time.Millisecond)
+			require.NoError(t, cfg.LoadConfig(t.Context(),
+				// Clear all the routes -> should trigger a tools changed notification.
+				&filterapi.Config{MCPConfig: &filterapi.MCPConfig{}}),
+			)
+		}
+	}))
+	proxy.backendListenerAddr = srv.URL
+
+	t.Run("no tool changes by default", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+		t.Cleanup(cancel)
+		err := s.streamNotifications(ctx, rr, proxy.toolChangeSignaler)
+		require.NoError(t, err)
+		out := rr.Body.String()
+		require.NotContains(t, out, `"id":"`+envoyAIGatewayServerToClientToolsChangedRequestIDPrefix)
+		require.NotContains(t, out, `"method":"notifications/tools/list_changed"`)
+	})
+
+	t.Run("notify tools changed", func(t *testing.T) {
+		reloadConfig.Store(true)
+		rr := httptest.NewRecorder()
+		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+		t.Cleanup(cancel)
+		err := s.streamNotifications(ctx, rr, proxy.toolChangeSignaler)
+		require.NoError(t, err)
+		out := rr.Body.String()
+		require.Contains(t, out, `"id":"`+envoyAIGatewayServerToClientToolsChangedRequestIDPrefix)
+		require.Contains(t, out, `"method":"notifications/tools/list_changed"`)
+	})
 }
 
 func TestSendRequestPerBackend_ErrorStatus(t *testing.T) {

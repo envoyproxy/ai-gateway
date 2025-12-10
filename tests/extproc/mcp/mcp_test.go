@@ -45,6 +45,7 @@ var tests = []struct {
 	{name: "ToolCallDumbEcho", testFn: testToolCallDumbEcho},
 	{name: "ToolCallError", testFn: testToolCallError},
 	{name: "ToolCountDown", testFn: testToolCountDown},
+	{name: "ToolChangeNotifications", testFn: testToolChangeNotifications},
 	{name: "Ping", testFn: testPing},
 	{name: "LoggingSetLevel", testFn: testLoggingSetLevel},
 	{name: "ListPrompts", testFn: testListPrompts},
@@ -132,6 +133,32 @@ func testListToolsRequireOnlyDumb(t *testing.T, m *mcpEnv) {
 	}
 	require.ElementsMatch(t, names, []string{
 		"dumb-mcp-backend__" + testmcp.ToolDumbEcho.Tool.Name,
+	})
+}
+
+func testToolChangeNotifications(t *testing.T, m *mcpEnv) {
+	s := m.newSession(t)
+
+	requireToolChangedNotification := func(t *testing.T) {
+		var req *mcp.ToolListChangedRequest
+		select {
+		case req = <-s.toolListChangedNotifications:
+		case <-time.After(5 * time.Second):
+			t.Fatal("timeout waiting for tool list change notification")
+		}
+		require.NotNil(t, req)
+		require.NotNil(t, req.Params)
+		require.IsTypef(t, &mcp.ToolListChangedParams{}, req.Params, "expected ToolListChangedParams, got %T", req.Params)
+	}
+
+	t.Run("tool add", func(t *testing.T) {
+		mcp.AddTool(m.mcp1, testmcp.ToolDumbEcho.Tool, testmcp.ToolDumbEcho.Handler)
+		requireToolChangedNotification(t)
+	})
+
+	t.Run("tool remove", func(t *testing.T) {
+		m.mcp1.RemoveTools(testmcp.ToolDumbEcho.Tool.Name)
+		requireToolChangedNotification(t)
 	})
 }
 

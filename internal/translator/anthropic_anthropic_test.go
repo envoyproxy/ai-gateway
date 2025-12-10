@@ -30,7 +30,7 @@ func TestAnthropicToAnthropic_RequestBody(t *testing.T) {
 		{
 			name:              "no mutation",
 			original:          []byte(`{"model":"claude-2","messages":[{"role":"user","content":"Hello!"}]}`),
-			body:              anthropicschema.MessagesRequest{"stream": false, "model": "claude-2"},
+			body:              anthropicschema.MessagesRequest{Stream: false, Model: "claude-2"},
 			forceBodyMutation: false,
 			modelNameOverride: "",
 			expRequestModel:   "claude-2",
@@ -38,17 +38,17 @@ func TestAnthropicToAnthropic_RequestBody(t *testing.T) {
 		},
 		{
 			name:              "model override",
-			original:          []byte(`{"model":"claude-2","messages":[{"role":"user","content":"Hello!"}], "stream": true}`),
-			body:              anthropicschema.MessagesRequest{"stream": true, "model": "claude-2"},
+			original:          []byte(`{"model":"claude-2","messages":[{"role":"user","content":"Hello!"}], Stream: true}`),
+			body:              anthropicschema.MessagesRequest{Stream: true, Model: "claude-2"},
 			forceBodyMutation: false,
 			modelNameOverride: "claude-100.1",
 			expRequestModel:   "claude-100.1",
-			expNewBody:        []byte(`{"model":"claude-100.1","messages":[{"role":"user","content":"Hello!"}], "stream": true}`),
+			expNewBody:        []byte(`{"model":"claude-100.1","messages":[{"role":"user","content":"Hello!"}], Stream: true}`),
 		},
 		{
 			name:              "force mutation",
 			original:          []byte(`{"model":"claude-2","messages":[{"role":"user","content":"Hello!"}]}`),
-			body:              anthropicschema.MessagesRequest{"stream": false, "model": "claude-2"},
+			body:              anthropicschema.MessagesRequest{Stream: false, Model: "claude-2"},
 			forceBodyMutation: true,
 			modelNameOverride: "",
 			expRequestModel:   "claude-2",
@@ -71,7 +71,7 @@ func TestAnthropicToAnthropic_RequestBody(t *testing.T) {
 			require.Equal(t, tc.expNewBody, bodyMutation)
 
 			require.Equal(t, tc.expRequestModel, translator.(*anthropicToAnthropicTranslator).requestModel)
-			require.Equal(t, tc.body.GetStream(), translator.(*anthropicToAnthropicTranslator).stream)
+			require.Equal(t, tc.body.Stream, translator.(*anthropicToAnthropicTranslator).stream)
 		})
 	}
 }
@@ -107,7 +107,7 @@ func TestAnthropicToAnthropic_ResponseBody_streaming(t *testing.T) {
 	// We split the response into two parts to simulate streaming where each part can end in the
 	// middle of an event.
 	const responseHead = `event: message_start
-data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_01BfvfMsg2gBzwsk6PZRLtDg","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":1,"service_tier":"standard"}}    }
+data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_01BfvfMsg2gBzwsk6PZRLtDg","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":1,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":0,"service_tier":"standard"}}    }
 
 event: content_block_start
 data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}      }
@@ -116,10 +116,11 @@ event: content_block_delta
 data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}           }
 
 event: content_block_delta
-data: {"type":"content_block_delta","index":0,"delta":{"typ`
-	const responseTail = `
-e":"text_delta","text":"! 👋 How"}      }
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"! 👋 How"}      }
 
+`
+
+	const responseTail = `
 event: ping
 data: {"type": "ping"}
 
@@ -130,7 +131,7 @@ event: content_block_stop
 data: {"type":"content_block_stop","index":0             }
 
 event: message_delta
-data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":1,"output_tokens":16}               }
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":16}               }
 
 event: message_stop
 data: {"type":"message_stop"       }`
@@ -139,7 +140,7 @@ data: {"type":"message_stop"       }`
 	require.NoError(t, err)
 	require.Nil(t, headerMutation)
 	require.Nil(t, bodyMutation)
-	expected := tokenUsageFrom(9, 0, 1, 10)
+	expected := tokenUsageFrom(10, 1, 0, 10)
 	require.Equal(t, expected, tokenUsage)
 	require.Equal(t, "claude-sonnet-4-5-20250929", responseModel)
 

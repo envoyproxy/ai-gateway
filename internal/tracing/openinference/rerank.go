@@ -42,12 +42,6 @@ const (
 	DocumentScore   = "document.score"
 )
 
-// LLMSystem values (extend with Cohere).
-const (
-	// LLMSystemCohere for Cohere systems.
-	LLMSystemCohere = "cohere"
-)
-
 // RerankerInputDocumentAttribute returns a flattened key for an input document sub-attribute.
 // Example: reranker.input_documents.0.document.content
 func RerankerInputDocumentAttribute(index int, docAttr string) string {

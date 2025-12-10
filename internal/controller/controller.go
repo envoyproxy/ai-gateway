@@ -275,6 +275,10 @@ const (
 	// to the BackendSecurityPolicy whose targetRefs contains the AIServiceBackend.
 	k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy = "AIServiceBackendToTargetingBackendSecurityPolicy"
 
+	// k8sClientIndexReferenceGrantToTargetKind is the index name that maps from namespace/kind to ReferenceGrants, enabling efficient lookup of grants
+	// allowing access to specific resource types in specific namespaces.
+	k8sClientIndexReferenceGrantToTargetKind = "ReferenceGrantToTargetKind"
+
 	// Indexes for MCP Gateway
 	//
 	// k8sClientIndexMCPRouteToAttachedGateway is the index name that maps from a Gateway to the
@@ -303,6 +307,13 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 		k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy, backendSecurityPolicyTargetRefsIndexFunc)
 	if err != nil {
 		return fmt.Errorf("failed to index field for BackendSecurityPolicy targetRefs: %w", err)
+	}
+
+	// Apply indexes for ReferenceGrant.
+	err = indexer(ctx, &gwapiv1b1.ReferenceGrant{},
+		k8sClientIndexReferenceGrantToTargetKind, referenceGrantToTargetKindIndexFunc)
+	if err != nil {
+		return fmt.Errorf("failed to create index from target kind to ReferenceGrant: %w", err)
 	}
 
 	// Apply indexes to MCP Gateways.
@@ -406,6 +417,20 @@ func getSecretNameAndNamespace(secretRef *gwapiv1.SecretObjectReference, namespa
 		return fmt.Sprintf("%s.%s", secretRef.Name, *secretRef.Namespace)
 	}
 	return fmt.Sprintf("%s.%s", secretRef.Name, namespace)
+}
+
+func getReferenceGrantIndexKey(namespace, kind string) string {
+	return fmt.Sprintf("%s.%s", namespace, kind)
+}
+
+func referenceGrantToTargetKindIndexFunc(o client.Object) []string {
+	referenceGrant := o.(*gwapiv1b1.ReferenceGrant)
+	var keys []string
+	for _, to := range referenceGrant.Spec.To {
+		key := getReferenceGrantIndexKey(referenceGrant.Namespace, string(to.Kind))
+		keys = append(keys, key)
+	}
+	return keys
 }
 
 // newConditions creates a new condition with the given type and message.

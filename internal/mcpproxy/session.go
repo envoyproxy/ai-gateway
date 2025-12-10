@@ -157,8 +157,10 @@ func (s *session) lastEventID() string {
 }
 
 var (
-	envoyAIGatewayServerToClientPingRequestIDPrefix = "aigw-server-to-client-ping"
-	pingParam, _                                    = json.Marshal(&mcpsdk.PingParams{})
+	envoyAIGatewayServerToClientPingRequestIDPrefix         = "aigw-server-to-client-ping"
+	envoyAIGatewayServerToClientToolsChangedRequestIDPrefix = "aigw-server-to-client-tools-changed"
+	pingParam, _                                            = json.Marshal(&mcpsdk.PingParams{})
+	toolsChangedParam, _                                    = json.Marshal(&mcpsdk.ToolListChangedParams{})
 )
 
 func newHeartBeatPingMessage() *jsonrpc.Request {
@@ -171,12 +173,21 @@ func newHeartBeatPingMessage() *jsonrpc.Request {
 	}
 }
 
+func newToolListChangedMessage() *jsonrpc.Request {
+	id, _ := jsonrpc.MakeID(envoyAIGatewayServerToClientToolsChangedRequestIDPrefix + uuid.NewString())
+	return &jsonrpc.Request{
+		ID:     id,
+		Method: "notifications/tools/list_changed",
+		Params: toolsChangedParam,
+	}
+}
+
 // streamNotifications streams notifications from all backends in this session to the given writer.
-func (s *session) streamNotifications(ctx context.Context, w http.ResponseWriter) error {
+func (s *session) streamNotifications(ctx context.Context, w http.ResponseWriter, toolChangeSignaler changeSignaler) error {
 	backendMsgs := s.sendToAllBackends(ctx, http.MethodGet, nil, nil)
 
 	// Create a ticker for periodic heartbeat events to avoid HTTP timeouts.
-	// This also helps unblock Goose at startup — it looks like Goose is waiting for the first SSE event before proceeding.
+	// This also helps unblock Goose at startup - it looks like Goose is waiting for the first SSE event before proceeding.
 	//
 	// TODO: no idea exactly why this is necessary. Goose shouldn't block on the first event.
 
@@ -198,6 +209,7 @@ func (s *session) streamNotifications(ctx context.Context, w http.ResponseWriter
 
 	for {
 		select {
+		// events received from the upstream MCP backends
 		case event, ok := <-backendMsgs:
 			if !ok {
 				// Channel closed, all backends have finished.
@@ -223,6 +235,16 @@ func (s *session) streamNotifications(ctx context.Context, w http.ResponseWriter
 				s.proxy.recordResponse(ctx, _msg)
 			}
 			event.writeAndMaybeFlush(w)
+			// Reset the heartbeat ticker so that the next heartbeat will be sent after the full interval.
+			// This avoids sending heartbeats too frequently when there are events.
+			if heartbeatTicker != nil {
+				heartbeatTicker.Reset(heartbeatInterval)
+			}
+		// toolChangeSignaler will trigger when the tools configured in the MCP routes change.
+		// This is not related to upstream MCP server changes, but to the tools configured in the gateway.
+		case <-toolChangeSignaler.Watch():
+			toolChangeEvent := &sseEvent{event: "message", messages: []jsonrpc.Message{newToolListChangedMessage()}}
+			toolChangeEvent.writeAndMaybeFlush(w)
 			// Reset the heartbeat ticker so that the next heartbeat will be sent after the full interval.
 			// This avoids sending heartbeats too frequently when there are events.
 			if heartbeatTicker != nil {
