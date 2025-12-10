@@ -404,10 +404,15 @@ MCPRouteList contains a list of MCPRoute.
 - [HTTPBodyMutation](#httpbodymutation)
 - [HTTPHeaderMutation](#httpheadermutation)
 - [JWKS](#jwks)
+- [JWTSource](#jwtsource)
 - [LLMRequestCost](#llmrequestcost)
 - [LLMRequestCostType](#llmrequestcosttype)
+- [MCPAuthorizationSource](#mcpauthorizationsource)
+- [MCPAuthorizationTarget](#mcpauthorizationtarget)
 - [MCPBackendAPIKey](#mcpbackendapikey)
 - [MCPBackendSecurityPolicy](#mcpbackendsecuritypolicy)
+- [MCPRouteAuthorization](#mcprouteauthorization)
+- [MCPRouteAuthorizationRule](#mcprouteauthorizationrule)
 - [MCPRouteBackendRef](#mcproutebackendref)
 - [MCPRouteOAuth](#mcprouteoauth)
 - [MCPRouteSecurityPolicy](#mcproutesecuritypolicy)
@@ -415,6 +420,7 @@ MCPRouteList contains a list of MCPRoute.
 - [MCPRouteStatus](#mcproutestatus)
 - [MCPToolFilter](#mcptoolfilter)
 - [ProtectedResourceMetadata](#protectedresourcemetadata)
+- [ToolCall](#toolcall)
 - [VersionedAPISchema](#versionedapischema)
 
 ### Type Definitions
@@ -1443,6 +1449,27 @@ JWKS defines how to obtain JSON Web Key Sets (JWKS) either from a remote HTTP/HT
 />
 
 
+#### JWTSource
+
+
+
+**Appears in:**
+- [MCPAuthorizationSource](#mcpauthorizationsource)
+
+JWTSource defines the MCP authorization source for JWT tokens.
+
+##### Fields
+
+
+
+<ApiField
+  name="scopes"
+  type="JWTScope array"
+  required="true"
+  description="Scopes defines the list of JWT scopes required for the rule.<br />If multiple scopes are specified, all scopes must be present in the JWT for the rule to match."
+/>
+
+
 #### LLMRequestCost
 
 
@@ -1513,6 +1540,48 @@ LLMRequestCostType specifies the type of the LLMRequestCost.
   required="false"
   description="LLMRequestCostTypeCEL is for calculating the cost using the CEL expression.<br />"
 />
+#### MCPAuthorizationSource
+
+
+
+**Appears in:**
+- [MCPRouteAuthorizationRule](#mcprouteauthorizationrule)
+
+MCPAuthorizationSource defines the source of an authorization rule.
+
+##### Fields
+
+
+
+<ApiField
+  name="jwt"
+  type="[JWTSource](#jwtsource)"
+  required="true"
+  description="JWT defines the JWT scopes required for this rule to match."
+/>
+
+
+#### MCPAuthorizationTarget
+
+
+
+**Appears in:**
+- [MCPRouteAuthorizationRule](#mcprouteauthorizationrule)
+
+MCPAuthorizationTarget defines the target of an authorization rule.
+
+##### Fields
+
+
+
+<ApiField
+  name="tools"
+  type="[ToolCall](#toolcall) array"
+  required="true"
+  description="Tools defines the list of tools this rule applies to."
+/>
+
+
 #### MCPBackendAPIKey
 
 
@@ -1562,6 +1631,66 @@ MCPBackendSecurityPolicy defines the security policy for a sp
   type="[MCPBackendAPIKey](#mcpbackendapikey)"
   required="false"
   description="APIKey is a mechanism to access a backend. The API key will be injected into the request headers."
+/>
+
+
+#### MCPRouteAuthorization
+
+
+
+**Appears in:**
+- [MCPRouteSecurityPolicy](#mcproutesecuritypolicy)
+
+MCPRouteAuthorization defines the authorization configuration for a MCPRoute.
+
+##### Fields
+
+
+
+<ApiField
+  name="defaultAction"
+  type="[AuthorizationAction](#authorizationaction)"
+  required="false"
+  defaultValue="Deny"
+  description="DefaultAction is the action to take when no rules match. If unspecified, defaults to Deny."
+/><ApiField
+  name="rules"
+  type="[MCPRouteAuthorizationRule](#mcprouteauthorizationrule) array"
+  required="false"
+  description="Rules defines a list of authorization rules.<br />These rules are evaluated in order, the first matching rule will be applied,<br />and the rest will be skipped.<br />If no rules are defined, the default action will be applied to all requests."
+/>
+
+
+#### MCPRouteAuthorizationRule
+
+
+
+**Appears in:**
+- [MCPRouteAuthorization](#mcprouteauthorization)
+
+MCPRouteAuthorizationRule defines an authorization rule for MCPRoute based on the MCP authorization spec.
+Reference: https://modelcontextprotocol.io/specification/draft/basic/authorization#scope-challenge-handling
+
+##### Fields
+
+
+
+<ApiField
+  name="source"
+  type="[MCPAuthorizationSource](#mcpauthorizationsource)"
+  required="true"
+  description="Source defines the authorization source for this rule.<br />If not specified, the rule will match all sources."
+/><ApiField
+  name="target"
+  type="[MCPAuthorizationTarget](#mcpauthorizationtarget)"
+  required="true"
+  description="Target defines the authorization target for this rule.<br />If not specified, the rule will match all targets."
+/><ApiField
+  name="action"
+  type="[AuthorizationAction](#authorizationaction)"
+  required="false"
+  defaultValue="Allow"
+  description="Action is the authorization decision for matching requests. If unspecified, defaults to Allow."
 />
 
 
@@ -1688,6 +1817,11 @@ MCPRouteSecurityPolicy defines the security policy for a MCPRoute.
   type="[ExtAuth](#extauth)"
   required="false"
   description="ExtAuth defines the configuration for External Authorization."
+/><ApiField
+  name="authorization"
+  type="[MCPRouteAuthorization](#mcprouteauthorization)"
+  required="false"
+  description="Authorization defines the configuration for the MCP spec compatible authorization."
 />
 
 
@@ -1827,6 +1961,37 @@ References:
   type="string"
   required="false"
   description="ResourcePolicyURI is a URL that points to the resource server's policy document."
+/>
+
+
+#### ToolCall
+
+
+
+**Appears in:**
+- [MCPAuthorizationTarget](#mcpauthorizationtarget)
+
+ToolCall represents a tool call in the MCP authorization target.
+
+##### Fields
+
+
+
+<ApiField
+  name="backend"
+  type="string"
+  required="true"
+  description="Backend is the name of the backend this tool belongs to."
+/><ApiField
+  name="tool"
+  type="string"
+  required="true"
+  description="Tool is the name of the tool."
+/><ApiField
+  name="when"
+  type="string"
+  required="false"
+  description="When is a CEL expression that must evaluate to true for the rule to match.<br />The expression is evaluated with a single variable `args` bound to the tool call arguments as a dynamic object.<br />Guard against missing fields with null checks (e.g., args[`foo`] != null && args[`foo`][`bar`] == `val`)."
 />
 
 

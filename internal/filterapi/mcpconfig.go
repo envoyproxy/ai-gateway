@@ -27,6 +27,9 @@ type MCPRoute struct {
 
 	// Backends is the list of backends that this route can route to.
 	Backends []MCPBackend `json:"backends"`
+
+	// Authorization is the authorization configuration for this route.
+	Authorization *MCPRouteAuthorization `json:"authorization,omitempty"`
 }
 
 // MCPBackend is the MCP backend configuration.
@@ -58,3 +61,71 @@ type MCPToolSelector struct {
 
 // MCPRouteName is the name of the MCP route.
 type MCPRouteName = string
+
+// MCPRouteAuthorization defines the authorization configuration for a MCPRoute.
+type MCPRouteAuthorization struct {
+	// DefaultAction is the action to take when no rules match.
+	DefaultAction AuthorizationAction `json:"defaultAction"`
+
+	// Rules defines a list of authorization rules.
+	// Requests that match any rule and satisfy the rule's conditions will be allowed.
+	// Requests that do not match any rule or fail to satisfy the matched rule's conditions will be denied.
+	// If no rules are defined, all requests will be denied.
+	Rules []MCPRouteAuthorizationRule `json:"rules,omitempty"`
+
+	// ResourceMetadataURL is the URI of the OAuth Protected Resource Metadata document for this route.
+	// This is used to populate the WWW-Authenticate header when scope-based authorization fails.
+	ResourceMetadataURL string `json:"resourceMetadataURL,omitempty"`
+}
+
+type AuthorizationAction string
+
+const (
+	// AuthorizationActionAllow is the action to allow the request.
+	AuthorizationActionAllow AuthorizationAction = "Allow"
+	// AuthorizationActionDeny is the action to deny the request.
+	AuthorizationActionDeny AuthorizationAction = "Deny"
+)
+
+// MCPRouteAuthorizationRule defines an authorization rule for MCPRoute based on the MCP authorization spec.
+// Reference: https://modelcontextprotocol.io/specification/draft/basic/authorization#scope-challenge-handling
+type MCPRouteAuthorizationRule struct {
+	// Action is the action to take when the rule matches.
+	Action AuthorizationAction `json:"action"`
+
+	// Source defines the authorization source for this rule.
+	// If not specified, the rule will match all sources.
+	Source *MCPAuthorizationSource `json:"source,omitempty"`
+
+	// Target defines the authorization target for this rule.
+	// If not specified, the rule will match all targets.
+	Target *MCPAuthorizationTarget `json:"target,omitempty"`
+}
+
+type MCPAuthorizationTarget struct {
+	// Tools defines the list of tools this rule applies to.
+	Tools []ToolCall `json:"tools"`
+}
+
+type MCPAuthorizationSource struct {
+	// JWT defines the JWT scopes required for this rule to match.
+	JWT JWTSource `json:"jwt"`
+}
+
+type JWTSource struct {
+	// Scopes defines the list of JWT scopes required for the rule.
+	// If multiple scopes are specified, all scopes must be present in the JWT for the rule to match.
+	Scopes []string `json:"scopes"`
+}
+
+type ToolCall struct {
+	// Backend is the name of the backend this tool belongs to.
+	Backend string `json:"backend"`
+
+	// Tool is the name of the tool.
+	Tool string `json:"tool"`
+
+	// When is a CEL expression evaluated against the tool call arguments map.
+	// The expression must evaluate to true for the rule to apply.
+	When *string `json:"when,omitempty"`
+}
