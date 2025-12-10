@@ -5,7 +5,11 @@
 
 package gcp
 
-import "google.golang.org/genai"
+import (
+	"google.golang.org/genai"
+
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+)
 
 type GenerateContentRequest struct {
 	// Contains the multipart content of a message.
@@ -35,4 +39,49 @@ type GenerateContentRequest struct {
 	//
 	// https://github.com/googleapis/go-genai/blob/6a8184fcaf8bf15f0c566616a7b356560309be9b/types.go#L1057
 	SafetySettings []*genai.SafetySetting `json:"safetySettings,omitempty"`
+}
+
+// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/text-embeddings-api#syntax
+type Instance struct {
+	// The text that you want to generate embeddings for.
+	Content string `json:"content"`
+
+	// Used to convey intended downstream application to help the model produce better embeddings. If left blank, the default used is RETRIEVAL_QUERY.
+	// For more information about task types, see https://docs.cloud.google.com/vertex-ai/generative-ai/docs/embeddings/task-types
+	// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/text-embeddings-api#task_type
+	TaskType openai.EmbeddingTaskType `json:"task_type,omitempty"`
+
+	// Used to help the model produce better embeddings. Only valid with task_type=RETRIEVAL_DOCUMENT.
+	Title string `json:"title,omitempty"`
+}
+
+// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/text-embeddings-api#parameter-list
+type Parameters struct {
+	// When set to true, input text will be truncated. When set to false, an error is returned if the input text is longer than the maximum length supported by the model. Defaults to true.
+	AutoTruncate bool `json:"auto_truncate,omitempty"`
+
+	// Used to specify output embedding size. If set, output embeddings will be truncated to the size specified.
+	OutputDimensionality int `json:"out_dimensionality,omitempty"`
+}
+
+// https://github.com/googleapis/python-aiplatform/blob/30e41d01f3fd0ef08da6ad6eb7f83df34476105e/google/cloud/aiplatform_v1/types/prediction_service.py#L63
+type PredictRequest struct {
+	// A list of instances
+	//
+	Instances []*Instance `json:"instances"`
+
+	// Optional configuration for the embedding request.
+	// Uses the official genai library configuration structure.
+	Parameters Parameters `json:"parameters,omitempty"`
+}
+
+// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/text-embeddings-api#response_body
+type Prediction struct {
+	// The result generated from input text.
+	Embeddings genai.ContentEmbedding `json:"embeddings"`
+}
+
+// https://github.com/googleapis/python-aiplatform/blob/30e41d01f3fd0ef08da6ad6eb7f83df34476105e/google/cloud/aiplatform_v1/types/prediction_service.py#L117
+type PredictResponse struct {
+	Predictions []*Prediction `json:"predictions"`
 }
