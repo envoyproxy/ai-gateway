@@ -63,6 +63,10 @@ func unmarshalJSONNestedUnion(typ string, data []byte) (interface{}, error) {
 			return strs, nil
 
 		case '{':
+			// Check if this is a mixed array (strings and objects)
+			if isMixedArray(data) {
+				return unmarshalMixedArray(typ, data)
+			}
 			// []EmbeddingInputItem
 			var items []EmbeddingInputItem
 			if err := json.Unmarshal(data, &items); err != nil {

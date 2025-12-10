@@ -62,6 +62,41 @@ func TestUnmarshalJSONNestedUnion(t *testing.T) {
 			data:     []byte(`[ "aa", "bb", "cc" ]`),
 			expected: []string{"aa", "bb", "cc"},
 		},
+		{
+			name: "array of EmbeddingInputItem objects",
+			data: []byte(`[{"content":"hello"},{"content":"world","task_type":"RETRIEVAL_QUERY"}]`),
+			expected: []EmbeddingInputItem{
+				{Content: "hello"},
+				{Content: "world", TaskType: "RETRIEVAL_QUERY"},
+			},
+		},
+		{
+			name: "single EmbeddingInputItem object",
+			data: []byte(`{"content":"test content","task_type":"RETRIEVAL_DOCUMENT","title":"Test"}`),
+			expected: EmbeddingInputItem{
+				Content:  "test content",
+				TaskType: "RETRIEVAL_DOCUMENT",
+				Title:    "Test",
+			},
+		},
+		{
+			name: "mixed array with strings and objects",
+			data: []byte(`["plain text",{"content":"structured content","task_type":"RETRIEVAL_QUERY"},"another string"]`),
+			expected: []interface{}{
+				"plain text",
+				EmbeddingInputItem{Content: "structured content", TaskType: "RETRIEVAL_QUERY"},
+				"another string",
+			},
+		},
+		{
+			name: "mixed array with whitespace",
+			data: []byte(`[ "text" , { "content": "obj" } , "more text" ]`),
+			expected: []interface{}{
+				"text",
+				EmbeddingInputItem{Content: "obj"},
+				"more text",
+			},
+		},
 	}
 
 	allCases := append(promptUnionBenchmarkCases, additionalSuccessCases...) //nolint:gocritic // intentionally creating new slice
@@ -149,6 +184,36 @@ func TestUnmarshalJSONNestedUnion_Errors(t *testing.T) {
 			name:        "array with only whitespace after bracket",
 			data:        []byte(`[   `),
 			expectedErr: "truncated prompt data",
+		},
+		{
+			name:        "object without content field",
+			data:        []byte(`{"task_type":"RETRIEVAL_QUERY"}`),
+			expectedErr: "invalid prompt type",
+		},
+		{
+			name:        "object with empty content",
+			data:        []byte(`{"content":""}`),
+			expectedErr: "invalid prompt type",
+		},
+		{
+			name:        "array of objects with empty content",
+			data:        []byte(`[{"content":"valid"},{"content":""}]`),
+			expectedErr: "invalid prompt array element",
+		},
+		{
+			name:        "mixed array with empty element",
+			data:        []byte(`["text",   ,"more"]`),
+			expectedErr: "invalid character",
+		},
+		{
+			name:        "mixed array with invalid object",
+			data:        []byte(`["text",{"task_type":"QUERY"},"more"]`),
+			expectedErr: "invalid element type in mixed prompt array",
+		},
+		{
+			name:        "mixed array with number element",
+			data:        []byte(`["text",123,"more"]`),
+			expectedErr: "cannot unmarshal prompt as []string",
 		},
 	}
 
