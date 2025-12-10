@@ -7,6 +7,7 @@ package translator
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -216,7 +217,7 @@ func TestOpenAIToAwsOpenAITranslatorV1ChatCompletion_RequestBody(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			translator := NewChatCompletionOpenAIToAwsOpenAITranslator("v1", tt.modelNameOverride)
+			translator := NewChatCompletionOpenAIToAwsOpenAITranslator(tt.modelNameOverride)
 
 			// Marshal input to JSON
 			rawBody, err := json.Marshal(tt.input)
@@ -241,7 +242,7 @@ func TestOpenAIToAwsOpenAITranslatorV1ChatCompletion_RequestBody(t *testing.T) {
 			// Compare essential fields only
 			require.Equal(t, tt.expectedBody.Model, actualBody.Model)
 			require.Equal(t, tt.expectedBody.Stream, actualBody.Stream)
-			require.Equal(t, len(tt.expectedBody.Messages), len(actualBody.Messages))
+			require.Len(t, actualBody.Messages, len(tt.expectedBody.Messages))
 
 			// For complex requests, check tools and parameters
 			if tt.expectedBody.Temperature != nil {
@@ -251,7 +252,7 @@ func TestOpenAIToAwsOpenAITranslatorV1ChatCompletion_RequestBody(t *testing.T) {
 				require.Equal(t, *tt.expectedBody.MaxTokens, *actualBody.MaxTokens)
 			}
 			if len(tt.expectedBody.Tools) > 0 {
-				require.Equal(t, len(tt.expectedBody.Tools), len(actualBody.Tools))
+				require.Len(t, actualBody.Tools, len(tt.expectedBody.Tools))
 				require.Equal(t, tt.expectedBody.Tools[0].Type, actualBody.Tools[0].Type)
 				if tt.expectedBody.Tools[0].Function != nil {
 					require.Equal(t, tt.expectedBody.Tools[0].Function.Name, actualBody.Tools[0].Function.Name)
@@ -301,7 +302,7 @@ func TestOpenAIToAwsOpenAITranslatorV1ChatCompletion_ResponseHeaders(t *testing.
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			translator := NewChatCompletionOpenAIToAwsOpenAITranslator("v1", "").(*openAIToAwsOpenAITranslatorV1ChatCompletion)
+			translator := NewChatCompletionOpenAIToAwsOpenAITranslator("").(*openAIToAwsOpenAITranslatorV1ChatCompletion)
 			translator.stream = tt.isStreaming
 
 			headers, err := translator.ResponseHeaders(tt.inputHeaders)
@@ -419,7 +420,7 @@ data: [DONE]
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			translator := NewChatCompletionOpenAIToAwsOpenAITranslator("v1", "").(*openAIToAwsOpenAITranslatorV1ChatCompletion)
+			translator := NewChatCompletionOpenAIToAwsOpenAITranslator("").(*openAIToAwsOpenAITranslatorV1ChatCompletion)
 			translator.stream = tt.isStreaming
 			translator.requestModel = "gpt-4"
 			translator.responseID = "test-request-id"
@@ -555,7 +556,7 @@ func TestOpenAIToAwsOpenAITranslatorV1ChatCompletion_ResponseError(t *testing.T)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			translator := NewChatCompletionOpenAIToAwsOpenAITranslator("v1", "").(*openAIToAwsOpenAITranslatorV1ChatCompletion)
+			translator := NewChatCompletionOpenAIToAwsOpenAITranslator("").(*openAIToAwsOpenAITranslatorV1ChatCompletion)
 
 			body := strings.NewReader(tt.inputBody)
 
@@ -565,7 +566,7 @@ func TestOpenAIToAwsOpenAITranslatorV1ChatCompletion_ResponseError(t *testing.T)
 			// Check headers
 			require.Len(t, resultHeaders, 2)
 			require.Equal(t, contentTypeHeaderName, resultHeaders[0][0])
-			require.Equal(t, jsonContentType, resultHeaders[0][1])
+			require.JSONEq(t, fmt.Sprintf(`"%s"`, jsonContentType), fmt.Sprintf(`"%s"`, resultHeaders[0][1]))
 			require.Equal(t, contentLengthHeaderName, resultHeaders[1][0])
 			require.Equal(t, strconv.Itoa(len(resultBody)), resultHeaders[1][1])
 
@@ -606,7 +607,7 @@ func TestOpenAIToAwsOpenAITranslatorV1ChatCompletion_ModelNameEncoding(t *testin
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			translator := NewChatCompletionOpenAIToAwsOpenAITranslator("v1", tt.modelName)
+			translator := NewChatCompletionOpenAIToAwsOpenAITranslator(tt.modelName)
 
 			input := openai.ChatCompletionRequest{
 				Stream: false,

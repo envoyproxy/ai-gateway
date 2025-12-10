@@ -113,7 +113,7 @@ func (ChatCompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISc
 	case filterapi.APISchemaAWSBedrock:
 		return translator.NewChatCompletionOpenAIToAWSBedrockTranslator(modelNameOverride), nil
 	case filterapi.APISchemaAWSOpenAI:
-		return translator.NewChatCompletionOpenAIToAwsOpenAITranslator(schema.Version, modelNameOverride), nil
+		return translator.NewChatCompletionOpenAIToAwsOpenAITranslator(modelNameOverride), nil
 	case filterapi.APISchemaAzureOpenAI:
 		return translator.NewChatCompletionOpenAIToAzureOpenAITranslator(schema.Version, modelNameOverride), nil
 	case filterapi.APISchemaGCPVertexAI:

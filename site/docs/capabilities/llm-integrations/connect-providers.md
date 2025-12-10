@@ -58,6 +58,7 @@ Different providers require different schema configurations:
 | -------------------------- | --------------------------------------------------------- |
 | OpenAI                     | `{"name":"OpenAI","version":"v1"}`                        |
 | AWS Bedrock                | `{"name":"AWSBedrock"}`                                   |
+| AWS Bedrock OpenAI         | `{"name":"AWSOpenAI"}`                                    |
 | Azure OpenAI               | `{"name":"AzureOpenAI","version":"2025-01-01-preview"}`   |
 | GCP Vertex AI              | `{"name":"GCPVertexAI"}`                                  |
 | GCP Anthropic on Vertex AI | `{"name":"GCPAnthropic", "version": "vertex-2023-10-16"}` |

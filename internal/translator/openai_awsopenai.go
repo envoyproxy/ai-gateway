@@ -20,7 +20,7 @@ import (
 )
 
 // NewChatCompletionOpenAIToAwsOpenAITranslator implements [Factory] for OpenAI to Aws OpenAI translations.
-func NewChatCompletionOpenAIToAwsOpenAITranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride) OpenAIChatCompletionTranslator {
+func NewChatCompletionOpenAIToAwsOpenAITranslator(modelNameOverride internalapi.ModelNameOverride) OpenAIChatCompletionTranslator {
 	return &openAIToAwsOpenAITranslatorV1ChatCompletion{
 		modelNameOverride: modelNameOverride,
 	}
@@ -30,14 +30,13 @@ func NewChatCompletionOpenAIToAwsOpenAITranslator(apiVersion string, modelNameOv
 // This uses the InvokeModel API which accepts model-specific request/response formats.
 // For OpenAI models, this preserves the OpenAI format but uses AWS Bedrock endpoints.
 type openAIToAwsOpenAITranslatorV1ChatCompletion struct {
-	openAIToOpenAITranslatorV1ChatCompletion
 	modelNameOverride internalapi.ModelNameOverride
 	requestModel      internalapi.RequestModel
 	responseID        string
 	stream            bool
 }
 
-func (o *openAIToAwsOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *openai.ChatCompletionRequest, forceBodyMutation bool) (
+func (o *openAIToAwsOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *openai.ChatCompletionRequest, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	// Store request model and streaming state
@@ -54,17 +53,19 @@ func (o *openAIToAwsOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, re
 	encodedModelName := url.PathEscape(o.requestModel)
 
 	// Set the path for AWS Bedrock InvokeModel API
+	// https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModel.html#API_runtime_InvokeModel_RequestSyntax
 	pathTemplate := "/model/%s/invoke"
 	if req.Stream {
+		// https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModelWithResponseStream.html#API_runtime_InvokeModelWithResponseStream_RequestSyntax
 		pathTemplate = "/model/%s/invoke-with-response-stream"
 	}
 
 	// For InvokeModel API, the request body should be the OpenAI format
-	// since we're invoking OpenAI models through Bedrock
 	if o.modelNameOverride != "" {
 		// If we need to override the model in the request body
 		var openAIReq openai.ChatCompletionRequest
-		if err := json.Unmarshal(raw, &openAIReq); err != nil {
+		err = json.Unmarshal(raw, &openAIReq)
+		if err != nil {
 			return nil, nil, fmt.Errorf("failed to unmarshal request: %w", err)
 		}
 		openAIReq.Model = o.modelNameOverride
@@ -106,7 +107,7 @@ func (o *openAIToAwsOpenAITranslatorV1ChatCompletion) ResponseHeaders(headers ma
 // ResponseBody implements [OpenAIChatCompletionTranslator.ResponseBody].
 // AWS Bedrock InvokeModel API with OpenAI models returns responses in OpenAI format.
 // This function handles both streaming and non-streaming responses.
-func (o *openAIToAwsOpenAITranslatorV1ChatCompletion) ResponseBody(headers map[string]string, body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
+func (o *openAIToAwsOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	responseModel = o.requestModel
@@ -130,9 +131,9 @@ func (o *openAIToAwsOpenAITranslatorV1ChatCompletion) ResponseBody(headers map[s
 					var chunk openai.ChatCompletionResponseChunk
 					if json.Unmarshal([]byte(dataStr), &chunk) == nil {
 						if chunk.Usage != nil {
-							tokenUsage.SetInputTokens(uint32(chunk.Usage.PromptTokens))
-							tokenUsage.SetOutputTokens(uint32(chunk.Usage.CompletionTokens))
-							tokenUsage.SetTotalTokens(uint32(chunk.Usage.TotalTokens))
+							tokenUsage.SetInputTokens(uint32(chunk.Usage.PromptTokens))      //nolint:gosec
+							tokenUsage.SetOutputTokens(uint32(chunk.Usage.CompletionTokens)) //nolint:gosec
+							tokenUsage.SetTotalTokens(uint32(chunk.Usage.TotalTokens))       //nolint:gosec
 						}
 						if span != nil {
 							span.RecordResponseChunk(&chunk)
@@ -165,11 +166,10 @@ func (o *openAIToAwsOpenAITranslatorV1ChatCompletion) ResponseBody(headers map[s
 		}
 
 		// Extract token usage
-		if openAIResp.Usage.TotalTokens > 0 {
-			tokenUsage.SetInputTokens(uint32(openAIResp.Usage.PromptTokens))
-			tokenUsage.SetOutputTokens(uint32(openAIResp.Usage.CompletionTokens))
-			tokenUsage.SetTotalTokens(uint32(openAIResp.Usage.TotalTokens))
-		}
+
+		tokenUsage.SetInputTokens(uint32(openAIResp.Usage.PromptTokens))      //nolint:gosec
+		tokenUsage.SetOutputTokens(uint32(openAIResp.Usage.CompletionTokens)) //nolint:gosec
+		tokenUsage.SetTotalTokens(uint32(openAIResp.Usage.TotalTokens))       //nolint:gosec
 
 		// Override the ID with AWS request ID if available
 		if o.responseID != "" {
