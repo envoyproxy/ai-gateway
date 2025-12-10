@@ -655,15 +655,15 @@ spec:
                                         description: Backend is the name of the backend
                                           this tool belongs to.
                                         type: string
-                                      condition:
+                                      tool:
+                                        description: Tool is the name of the tool.
+                                        type: string
+                                      when:
                                         description: |-
-                                          Condition is a CEL expression that must evaluate to true for the rule to match.
+                                          When is a CEL expression that must evaluate to true for the rule to match.
                                           The expression is evaluated with a single variable "args" bound to the tool call arguments as a dynamic object.
                                           Guard against missing fields with null checks (e.g., args["foo"] != null && args["foo"]["bar"] == "val").
                                         maxLength: 4096
-                                        type: string
-                                      tool:
-                                        description: Tool is the name of the tool.
                                         type: string
                                     required:
                                     - backend

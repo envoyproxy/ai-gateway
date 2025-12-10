@@ -78,9 +78,9 @@ func TestAuthorizeRequest(t *testing.T) {
 						},
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{
-								Backend:   "backend1",
-								Tool:      "tool1",
-								Condition: strPtr(`args.mode in ["fast", "slow"] && args.user.matches("u-[0-9]+") && args.debug == true`),
+								Backend: "backend1",
+								Tool:    "tool1",
+								When:    strPtr(`args.mode in ["fast", "slow"] && args.user.matches("u-[0-9]+") && args.debug == true`),
 							}},
 						},
 					},
@@ -109,9 +109,9 @@ func TestAuthorizeRequest(t *testing.T) {
 						},
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{
-								Backend:   "backend1",
-								Tool:      "tool1",
-								Condition: strPtr(`int(args.count) >= 40 && int(args.count) < 50`),
+								Backend: "backend1",
+								Tool:    "tool1",
+								When:    strPtr(`int(args.count) >= 40 && int(args.count) < 50`),
 							}},
 						},
 					},
@@ -136,9 +136,9 @@ func TestAuthorizeRequest(t *testing.T) {
 						},
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{
-								Backend:   "backend1",
-								Tool:      "tool1",
-								Condition: strPtr(`args["payload"] != null && args["payload"]["kind"] == "test" && args["payload"]["value"] == 123`),
+								Backend: "backend1",
+								Tool:    "tool1",
+								When:    strPtr(`args["payload"] != null && args["payload"]["kind"] == "test" && args["payload"]["value"] == 123`),
 							}},
 						},
 					},
@@ -190,9 +190,9 @@ func TestAuthorizeRequest(t *testing.T) {
 						},
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{
-								Backend:   "backend1",
-								Tool:      "tool1",
-								Condition: strPtr(`args.mode in ["fast", "slow"]`),
+								Backend: "backend1",
+								Tool:    "tool1",
+								When:    strPtr(`args.mode in ["fast", "slow"]`),
 							}},
 						},
 					},
@@ -219,9 +219,9 @@ func TestAuthorizeRequest(t *testing.T) {
 						},
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{
-								Backend:   "backend1",
-								Tool:      "tool1",
-								Condition: strPtr(`args.nonExistingField in ["fast", "slow"]`),
+								Backend: "backend1",
+								Tool:    "tool1",
+								When:    strPtr(`args.nonExistingField in ["fast", "slow"]`),
 							}},
 						},
 					},
@@ -248,9 +248,9 @@ func TestAuthorizeRequest(t *testing.T) {
 						},
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{
-								Backend:   "backend1",
-								Tool:      "tool1",
-								Condition: strPtr(`args.mode`),
+								Backend: "backend1",
+								Tool:    "tool1",
+								When:    strPtr(`args.mode`),
 							}},
 						},
 					},
@@ -277,9 +277,9 @@ func TestAuthorizeRequest(t *testing.T) {
 						},
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{
-								Backend:   "backend1",
-								Tool:      "tool1",
-								Condition: strPtr(`invalid syntax here`),
+								Backend: "backend1",
+								Tool:    "tool1",
+								When:    strPtr(`invalid syntax here`),
 							}},
 						},
 					},
@@ -307,9 +307,9 @@ func TestAuthorizeRequest(t *testing.T) {
 						},
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{
-								Backend:   "backend1",
-								Tool:      "tool1",
-								Condition: strPtr(`args["mode"] == "fast"`),
+								Backend: "backend1",
+								Tool:    "tool1",
+								When:    strPtr(`args["mode"] == "fast"`),
 							}},
 						},
 					},
@@ -442,9 +442,9 @@ func TestAuthorizeRequest(t *testing.T) {
 						Action: "Deny",
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{
-								Backend:   "backend1",
-								Tool:      "listFiles",
-								Condition: strPtr(`args.folder == "restricted"`),
+								Backend: "backend1",
+								Tool:    "listFiles",
+								When:    strPtr(`args.folder == "restricted"`),
 							}},
 						},
 					},
@@ -480,9 +480,9 @@ func TestAuthorizeRequest(t *testing.T) {
 						Action: "Deny",
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{
-								Backend:   "backend1",
-								Tool:      "listFiles",
-								Condition: strPtr(`args.folder == "restricted"`),
+								Backend: "backend1",
+								Tool:    "listFiles",
+								When:    strPtr(`args.folder == "restricted"`),
 							}},
 						},
 					},
@@ -610,9 +610,9 @@ func TestCompileAuthorizationInvalidExpression(t *testing.T) {
 				},
 				Target: &filterapi.MCPAuthorizationTarget{
 					Tools: []filterapi.ToolCall{{
-						Backend:   "backend1",
-						Tool:      "tool1",
-						Condition: strPtr("args."),
+						Backend: "backend1",
+						Tool:    "tool1",
+						When:    strPtr("args."),
 					}},
 				},
 			},

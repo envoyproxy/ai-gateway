@@ -321,14 +321,14 @@ type ToolCall struct {
 	// +kubebuilder:validation:Required
 	Tool string `json:"tool"`
 
-	// Condition is a CEL expression that must evaluate to true for the rule to match.
+	// When is a CEL expression that must evaluate to true for the rule to match.
 	// The expression is evaluated with a single variable "args" bound to the tool call arguments as a dynamic object.
 	// Guard against missing fields with null checks (e.g., args["foo"] != null && args["foo"]["bar"] == "val").
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxLength=4096
 	// +optional
-	Condition *string `json:"condition,omitempty"`
+	When *string `json:"when,omitempty"`
 }
 
 // JWKS defines how to obtain JSON Web Key Sets (JWKS) either from a remote HTTP/HTTPS endpoint or from a local source.

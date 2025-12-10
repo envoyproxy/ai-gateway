@@ -68,7 +68,7 @@ spec:
             tools:
               - backend: mcp-backend-authorization
                 tool: echo
-                condition: args.text.matches("^Hello, .*!$")
+                when: args.text.matches("^Hello, .*!$")
         - source:
             jwt:
               scopes:

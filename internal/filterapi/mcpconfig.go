@@ -125,7 +125,7 @@ type ToolCall struct {
 	// Tool is the name of the tool.
 	Tool string `json:"tool"`
 
-	// Condition is a CEL expression evaluated against the tool call arguments map.
+	// When is a CEL expression evaluated against the tool call arguments map.
 	// The expression must evaluate to true for the rule to apply.
-	Condition *string `json:"condition,omitempty"`
+	When *string `json:"when,omitempty"`
 }

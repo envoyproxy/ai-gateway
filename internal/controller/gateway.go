@@ -493,9 +493,9 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 				tools := make([]filterapi.ToolCall, len(rule.Target.Tools))
 				for i, tool := range rule.Target.Tools {
 					tools[i] = filterapi.ToolCall{
-						Backend:   tool.Backend,
-						Tool:      tool.Tool,
-						Condition: tool.Condition,
+						Backend: tool.Backend,
+						Tool:    tool.Tool,
+						When:    tool.When,
 					}
 				}
 

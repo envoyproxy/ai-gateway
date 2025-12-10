@@ -1988,10 +1988,10 @@ ToolCall represents a tool call in the MCP authorization target.
   required="true"
   description="Tool is the name of the tool."
 /><ApiField
-  name="condition"
+  name="when"
   type="string"
   required="false"
-  description="Condition is a CEL expression that must evaluate to true for the rule to match.<br />The expression is evaluated with a single variable `args` bound to the tool call arguments as a dynamic object.<br />Guard against missing fields with null checks (e.g., args[`foo`] != null && args[`foo`][`bar`] == `val`)."
+  description="When is a CEL expression that must evaluate to true for the rule to match.<br />The expression is evaluated with a single variable `args` bound to the tool call arguments as a dynamic object.<br />Guard against missing fields with null checks (e.g., args[`foo`] != null && args[`foo`][`bar`] == `val`)."
 />
 
 
