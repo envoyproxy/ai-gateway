@@ -142,8 +142,7 @@ func (o *ToAWSBedrockTranslatorV1Tokenize) openAIMessageToBedrockMessageRoleAssi
 	}
 
 	for _, content := range contentParts {
-		switch content.Type {
-		case openai.ChatCompletionAssistantMessageParamContentTypeText:
+		if content.Type == openai.ChatCompletionAssistantMessageParamContentTypeText {
 			if content.Text != nil {
 				contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: content.Text})
 			}
@@ -251,11 +250,11 @@ func (o *ToAWSBedrockTranslatorV1Tokenize) bedrockCountTokensToTokenizeResponse(
 
 // RequestBody implements [TokenizeTranslator.RequestBody] for AWS Bedrock.
 // This method translates an OpenAI tokenize request to AWS Bedrock CountTokens format.
-func (o *ToAWSBedrockTranslatorV1Tokenize) RequestBody(original []byte, tokenizeReq *tokenize.TokenizeRequestUnion, _ bool) (
+func (o *ToAWSBedrockTranslatorV1Tokenize) RequestBody(_ []byte, tokenizeReq *tokenize.TokenizeRequestUnion, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	// Validate that the union has exactly one request type set
-	if err := tokenizeReq.Validate(); err != nil {
+	if err = tokenizeReq.Validate(); err != nil {
 		return nil, nil, fmt.Errorf("invalid tokenize request: %w", err)
 	}
 
@@ -354,7 +353,7 @@ func (o *ToAWSBedrockTranslatorV1Tokenize) ResponseBody(_ map[string]string, bod
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	bedrockResp := &awsbedrock.CountTokensResponse{}
-	if err := json.NewDecoder(body).Decode(&bedrockResp); err != nil {
+	if err = json.NewDecoder(body).Decode(&bedrockResp); err != nil {
 		return nil, nil, tokenUsage, responseModel, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 

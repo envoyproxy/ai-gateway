@@ -1,3 +1,8 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
 package openai
 
 import (
@@ -113,11 +118,11 @@ func TestTokenizeRecorder_RecordRequest(t *testing.T) {
 			name: "chat request with all attributes",
 			req: &tokenize.TokenizeRequestUnion{
 				TokenizeChatRequest: &tokenize.TokenizeChatRequest{
-					Model:                  "gpt-4",
-					AddGenerationPrompt:    true,
-					ContinueFinalMessage:   false,
-					AddSpecialTokens:       true,
-					ReturnTokenStrs:        boolPtr(true),
+					Model:                "gpt-4",
+					AddGenerationPrompt:  true,
+					ContinueFinalMessage: false,
+					AddSpecialTokens:     true,
+					ReturnTokenStrs:      boolPtr(true),
 					Messages: []openai.ChatCompletionMessageParamUnion{
 						{
 							OfUser: &openai.ChatCompletionUserMessageParam{
@@ -140,17 +145,17 @@ func TestTokenizeRecorder_RecordRequest(t *testing.T) {
 				HideOutputs: false,
 			},
 			expectedAttrs: map[string]interface{}{
-				openinference.SpanKind:               openinference.SpanKindLLM,
-				openinference.LLMSystem:              openinference.LLMSystemOpenAI,
-				openinference.LLMModelName:           "gpt-4",
-				openinference.InputValue:             `{"model":"gpt-4","messages":[...]}`,
-				openinference.InputMimeType:          openinference.MimeTypeJSON,
-				"tokenize.request_type":              "chat",
-				"tokenize.add_generation_prompt":     true,
-				"tokenize.continue_final_message":    false,
-				"tokenize.add_special_tokens":        true,
-				"tokenize.return_token_strs":         true,
-				"tokenize.message_count":             int64(2), // OpenTelemetry returns int64
+				openinference.SpanKind:            openinference.SpanKindLLM,
+				openinference.LLMSystem:           openinference.LLMSystemOpenAI,
+				openinference.LLMModelName:        "gpt-4",
+				openinference.InputValue:          `{"model":"gpt-4","messages":[...]}`,
+				openinference.InputMimeType:       openinference.MimeTypeJSON,
+				"tokenize.request_type":           "chat",
+				"tokenize.add_generation_prompt":  true,
+				"tokenize.continue_final_message": false,
+				"tokenize.add_special_tokens":     true,
+				"tokenize.return_token_strs":      true,
+				"tokenize.message_count":          int64(2), // OpenTelemetry returns int64
 			},
 			shouldHideBody: false,
 		},
@@ -170,12 +175,12 @@ func TestTokenizeRecorder_RecordRequest(t *testing.T) {
 				HideOutputs: false,
 			},
 			expectedAttrs: map[string]interface{}{
-				openinference.SpanKind:      openinference.SpanKindLLM,
-				openinference.LLMSystem:     openinference.LLMSystemOpenAI,
-				openinference.LLMModelName:  "gpt-3.5-turbo",
-				openinference.InputValue:    `{"model":"gpt-3.5-turbo","prompt":"Complete this"}`,
-				openinference.InputMimeType: openinference.MimeTypeJSON,
-				"tokenize.request_type":     "completion",
+				openinference.SpanKind:        openinference.SpanKindLLM,
+				openinference.LLMSystem:       openinference.LLMSystemOpenAI,
+				openinference.LLMModelName:    "gpt-3.5-turbo",
+				openinference.InputValue:      `{"model":"gpt-3.5-turbo","prompt":"Complete this"}`,
+				openinference.InputMimeType:   openinference.MimeTypeJSON,
+				"tokenize.request_type":       "completion",
 				"tokenize.add_special_tokens": false,
 				"tokenize.return_token_strs":  false,
 			},
@@ -245,10 +250,10 @@ func TestTokenizeRecorder_RecordRequest(t *testing.T) {
 
 func TestTokenizeRecorder_RecordResponse(t *testing.T) {
 	tests := []struct {
-		name        string
-		config      *openinference.TraceConfig
-		resp        *tokenize.TokenizeResponse
-		expectBody  bool
+		name       string
+		config     *openinference.TraceConfig
+		resp       *tokenize.TokenizeResponse
+		expectBody bool
 	}{
 		{
 			name: "outputs visible",

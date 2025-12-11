@@ -11,12 +11,13 @@ import (
 	"io"
 	"strconv"
 
+	"google.golang.org/genai"
+
 	"github.com/envoyproxy/ai-gateway/internal/apischema/gcp"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/tokenize"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
-	"google.golang.org/genai"
 )
 
 // NewTokenizeToGCPVertexAITranslator implements [Factory] for tokenize to GCP Vertex AI translation.
@@ -69,28 +70,25 @@ func (o *ToGCPVertexAITranslatorV1Tokenize) tokenizeToGeminiCountToken(tokenizeC
 	}
 
 	return &gcr, nil
-
 }
 
 // geminiCountTokenToTokenizeResponse converts a GCP Gemini CountTokens response to OpenAI tokenize format.
 func (o *ToGCPVertexAITranslatorV1Tokenize) geminiCountTokenToTokenizeResponse(gcpResp *genai.CountTokensResponse) (*tokenize.TokenizeResponse, error) {
-
 	// only media_resolution is related to the # prompt tokens
 	tokenizeResp := tokenize.TokenizeResponse{
 		Count: int(gcpResp.TotalTokens),
 	}
 
 	return &tokenizeResp, nil
-
 }
 
 // RequestBody implements [TokenizeTranslator.RequestBody] for GCP Vertex AI.
 // This method translates an OpenAI tokenize request to GCP Gemini CountTokens format.
-func (o *ToGCPVertexAITranslatorV1Tokenize) RequestBody(original []byte, tokenizeReq *tokenize.TokenizeRequestUnion, _ bool) (
+func (o *ToGCPVertexAITranslatorV1Tokenize) RequestBody(_ []byte, tokenizeReq *tokenize.TokenizeRequestUnion, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	// Validate that the union has exactly one request type set
-	if err := tokenizeReq.Validate(); err != nil {
+	if err = tokenizeReq.Validate(); err != nil {
 		return nil, nil, fmt.Errorf("invalid tokenize request: %w", err)
 	}
 
@@ -147,7 +145,7 @@ func (o *ToGCPVertexAITranslatorV1Tokenize) ResponseBody(_ map[string]string, bo
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	gcpResp := &genai.CountTokensResponse{}
-	if err := json.NewDecoder(body).Decode(&gcpResp); err != nil {
+	if err = json.NewDecoder(body).Decode(&gcpResp); err != nil {
 		return nil, nil, tokenUsage, responseModel, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 

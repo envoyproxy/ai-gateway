@@ -65,9 +65,9 @@ spec:
               value: "gpt-.*"
       backendRefs:
         - name: envoy-ai-gateway-openai
-          weight: 80  # Primary
+          weight: 80 # Primary
         - name: envoy-ai-gateway-vllm-openai
-          weight: 20  # Fallback/load balancing
+          weight: 20 # Fallback/load balancing
     # Route custom models to vLLM
     - matches:
         - headers:
@@ -246,7 +246,7 @@ spec:
       kind: AIServiceBackend
       name: envoy-ai-gateway-gcp-vertex
   rateLimits:
-    - tokenLimit: 1000000  # 1M tokens per minute
+    - tokenLimit: 1000000 # 1M tokens per minute
       period: 60s
 ---
 # Secrets (create these separately)

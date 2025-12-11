@@ -23,7 +23,7 @@ var startOptsTokenize = []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKin
 
 // TokenizeRecorder implements recorders for OpenInference tokenize spans.
 type TokenizeRecorder struct {
-	traceConfig *openinference.TraceConfig
+	traceConfig                         *openinference.TraceConfig
 	tracing.NoopChunkRecorder[struct{}] // Tokenize operations don't have streaming chunks
 }
 
@@ -131,7 +131,7 @@ func buildTokenizeRequestAttributes(req *tokenize.TokenizeRequestUnion, body str
 }
 
 // buildTokenizeResponseAttributes builds OpenInference attributes from a tokenize response.
-func buildTokenizeResponseAttributes(resp *tokenize.TokenizeResponse, config *openinference.TraceConfig) []attribute.KeyValue {
+func buildTokenizeResponseAttributes(resp *tokenize.TokenizeResponse, _ *openinference.TraceConfig) []attribute.KeyValue {
 	var attrs []attribute.KeyValue
 
 	// Add tokenization results

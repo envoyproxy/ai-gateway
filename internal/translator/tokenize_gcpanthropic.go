@@ -110,11 +110,11 @@ func (o *ToGCPAnthropicTranslatorV1Tokenize) anthropicTokensCountToTokenizeRespo
 // RequestBody implements [TokenizeTranslator.RequestBody] for GCP Anthropic.
 // This method translates an OpenAI tokenize request to GCP Anthropic Messages format.
 // TODO: check whether I need to add other fields.
-func (o *ToGCPAnthropicTranslatorV1Tokenize) RequestBody(original []byte, tokenizeReq *tokenize.TokenizeRequestUnion, _ bool) (
+func (o *ToGCPAnthropicTranslatorV1Tokenize) RequestBody(_ []byte, tokenizeReq *tokenize.TokenizeRequestUnion, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	// Validate that the union has exactly one request type set
-	if err := tokenizeReq.Validate(); err != nil {
+	if err = tokenizeReq.Validate(); err != nil {
 		return nil, nil, fmt.Errorf("invalid tokenize request: %w", err)
 	}
 
@@ -172,7 +172,7 @@ func (o *ToGCPAnthropicTranslatorV1Tokenize) ResponseBody(_ map[string]string, b
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	anthropicResp := &anthropic.MessageTokensCount{}
-	if err := json.NewDecoder(body).Decode(&anthropicResp); err != nil {
+	if err = json.NewDecoder(body).Decode(&anthropicResp); err != nil {
 		return nil, nil, tokenUsage, responseModel, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 

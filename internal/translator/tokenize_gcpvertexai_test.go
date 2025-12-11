@@ -449,9 +449,9 @@ func TestToGCPVertexAITranslatorV1Tokenize_ResponseHeaders(t *testing.T) {
 	translator := &ToGCPVertexAITranslatorV1Tokenize{}
 
 	headers, err := translator.ResponseHeaders(map[string]string{
-		"content-type":   "application/json",
-		"custom-header":  "value",
-		"cache-control":  "no-cache",
+		"content-type":  "application/json",
+		"custom-header": "value",
+		"cache-control": "no-cache",
 	})
 
 	require.NoError(t, err)
@@ -626,8 +626,8 @@ func TestToGCPVertexAITranslatorV1Tokenize_IdentifiedIssues(t *testing.T) {
 		inputTokens, hasInput := tokenUsage.InputTokens()
 		totalTokens, hasTotal := tokenUsage.TotalTokens()
 
-		require.False(t, hasInput)  // Should ideally be true with gcpResp.TotalTokens
-		require.False(t, hasTotal)  // Should ideally be true with gcpResp.TotalTokens
+		require.False(t, hasInput) // Should ideally be true with gcpResp.TotalTokens
+		require.False(t, hasTotal) // Should ideally be true with gcpResp.TotalTokens
 		require.Equal(t, uint32(0), inputTokens)
 		require.Equal(t, uint32(0), totalTokens)
 

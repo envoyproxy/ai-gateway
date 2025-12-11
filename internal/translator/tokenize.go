@@ -45,7 +45,7 @@ func (o *TranslatorV1Tokenize) RequestBody(original []byte, req *tokenize.Tokeni
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	// Validate that the union has exactly one request type set
-	if err := req.Validate(); err != nil {
+	if err = req.Validate(); err != nil {
 		return nil, nil, fmt.Errorf("invalid tokenize request: %w", err)
 	}
 

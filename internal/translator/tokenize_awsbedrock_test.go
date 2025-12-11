@@ -347,9 +347,9 @@ func TestToAWSBedrockTranslatorV1Tokenize_ResponseError(t *testing.T) {
 		{
 			name: "AWS Bedrock structured error response",
 			responseHeaders: map[string]string{
-				":status":              "400",
-				"content-type":         "application/json",
-				"x-amzn-errortype":     "ValidationException",
+				":status":          "400",
+				"content-type":     "application/json",
+				"x-amzn-errortype": "ValidationException",
 			},
 			input: `{
 				"message": "Invalid model ARN specified"

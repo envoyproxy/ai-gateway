@@ -55,7 +55,7 @@ metadata:
 spec:
   endpoints:
     - fqdn:
-        hostname: api.openai.com  # Replace with your test backend
+        hostname: api.openai.com # Replace with your test backend
         port: 443
 ---
 # Basic API key authentication

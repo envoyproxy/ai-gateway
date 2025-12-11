@@ -117,7 +117,7 @@ metadata:
 spec:
   endpoints:
     - fqdn:
-        hostname: your-vllm-server.example.com  # Replace with your vLLM server
+        hostname: your-vllm-server.example.com # Replace with your vLLM server
         port: 8000
 ---
 # Create secrets for API keys

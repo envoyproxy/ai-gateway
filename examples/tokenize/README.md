@@ -5,6 +5,7 @@ This directory contains example configurations for setting up the tokenize endpo
 ## Overview
 
 The tokenize endpoint supports:
+
 - **Chat message tokenization** (OpenAI messages format)
 - **Completion prompt tokenization** (single string prompt)
 - **Multiple AI providers** (OpenAI, vLLM, GCP Vertex AI, AWS Bedrock, GCP Anthropic)
@@ -18,11 +19,13 @@ The tokenize endpoint supports:
 A minimal configuration for testing the tokenize endpoint with a single backend.
 
 **Use Cases:**
+
 - Initial testing and validation
 - Simple development environments
 - Single provider deployments
 
 **Features:**
+
 - Single OpenAI-compatible backend
 - Basic API key authentication
 - Minimal configuration
@@ -37,11 +40,13 @@ kubectl apply -f simple-test.yaml
 Configuration for using both OpenAI API and vLLM backends for tokenization.
 
 **Use Cases:**
+
 - Hybrid cloud/on-premises deployments
 - Cost optimization (vLLM for high volume, OpenAI for accuracy)
 - Custom model tokenization with vLLM
 
 **Features:**
+
 - OpenAI backend for standard models
 - vLLM backend for custom/open-source models
 - Header-based routing (`x-ai-eg-backend`)
@@ -57,11 +62,13 @@ kubectl apply -f openai-vllm.yaml
 Configuration for using GCP Vertex AI Gemini models for tokenization.
 
 **Use Cases:**
+
 - Google Cloud environments
 - Gemini model tokenization
 - Enterprise Google Cloud integrations
 
 **Features:**
+
 - GCP Vertex AI backend with automatic API translation
 - Service account-based authentication
 - Workload Identity support
@@ -77,11 +84,13 @@ kubectl apply -f gcp-vertex-ai.yaml
 Configuration for using AWS Bedrock Claude models for tokenization.
 
 **Use Cases:**
+
 - AWS cloud environments
 - Claude model tokenization via Bedrock
 - Enterprise AWS integrations
 
 **Features:**
+
 - AWS Bedrock backend with automatic API translation
 - IAM-based authentication (access keys or IRSA)
 - Regional endpoint configuration
@@ -97,11 +106,13 @@ kubectl apply -f aws-bedrock.yaml
 Configuration for using GCP Anthropic Claude models for tokenization.
 
 **Use Cases:**
+
 - Google Cloud environments with Anthropic models
 - Claude model tokenization via GCP
 - Enterprise GCP Anthropic integrations
 
 **Features:**
+
 - GCP Anthropic backend with automatic API translation
 - Service account-based authentication
 - Workload Identity support
@@ -117,12 +128,14 @@ kubectl apply -f gcp-anthropic.yaml
 Advanced configuration with multiple backends, fallback, and load balancing.
 
 **Use Cases:**
+
 - Production environments
 - High availability deployments
 - Cost-optimized routing strategies
 - Multiple provider failover
 
 **Features:**
+
 - Multiple backends (OpenAI, vLLM, GCP Vertex AI, AWS Bedrock, GCP Anthropic)
 - Provider fallback and load balancing
 - Model-specific routing rules
@@ -193,10 +206,10 @@ The tokenize endpoint returns:
 
 ```json
 {
-  "count": 15,                    // Total token count
-  "max_model_len": 4096,         // Model's context limit (optional)
-  "tokens": [1234, 5678, 9012],  // Token IDs (optional)
-  "token_strs": ["Hello", " world", "!"]  // Token strings (optional)
+  "count": 15, // Total token count
+  "max_model_len": 4096, // Model's context limit (optional)
+  "tokens": [1234, 5678, 9012], // Token IDs (optional)
+  "token_strs": ["Hello", " world", "!"] // Token strings (optional)
 }
 ```
 
@@ -271,6 +284,7 @@ done
 ### Monitoring
 
 The tokenize endpoint provides full observability:
+
 - **Metrics**: Request count, duration, token counts per model
 - **Tracing**: End-to-end request tracing with OpenInference
 - **Logging**: Structured logs with request/response details
@@ -300,6 +314,7 @@ kubectl logs -l app=envoy-ai-gateway -f
 ```
 
 For more information, see:
+
 - [Supported Endpoints Documentation](https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-endpoints/)
 - [AI Gateway Configuration Guide](https://aigateway.envoyproxy.io/docs/concepts/)
 - [Troubleshooting Guide](https://aigateway.envoyproxy.io/docs/troubleshooting/)

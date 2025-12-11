@@ -27,7 +27,7 @@ func TestTokenizeCompletionRequest_JSON(t *testing.T) {
 			input: `{"prompt": "Hello world", "model": "gpt-4"}`,
 			expected: TokenizeCompletionRequest{
 				Prompt: "Hello world",
-				Model:  stringPtr("gpt-4"),
+				Model:  "gpt-4",
 			},
 		},
 		{
@@ -35,7 +35,7 @@ func TestTokenizeCompletionRequest_JSON(t *testing.T) {
 			input: `{"prompt": "Hello", "model": "gpt-4", "add_special_tokens": true, "return_token_strs": true}`,
 			expected: TokenizeCompletionRequest{
 				Prompt:           "Hello",
-				Model:            stringPtr("gpt-4"),
+				Model:            "gpt-4",
 				AddSpecialTokens: true,
 				ReturnTokenStrs:  boolPtr(true),
 			},
@@ -51,7 +51,7 @@ func TestTokenizeCompletionRequest_JSON(t *testing.T) {
 			name:  "completion request missing prompt",
 			input: `{"model": "gpt-4"}`,
 			expected: TokenizeCompletionRequest{
-				Model:  stringPtr("gpt-4"),
+				Model:  "gpt-4",
 				Prompt: "", // Empty prompt - should be validated elsewhere
 			},
 			wantErr: false, // JSON unmarshaling succeeds, validation should catch this
@@ -97,7 +97,7 @@ func TestTokenizeChatRequest_JSON(t *testing.T) {
 				"model": "gpt-4"
 			}`,
 			expected: TokenizeChatRequest{
-				Model:    stringPtr("gpt-4"),
+				Model:    "gpt-4",
 				Messages: []openai.ChatCompletionMessageParamUnion{},
 			},
 			// Note: We can't easily create the expected Messages here due to the complex union type
@@ -267,7 +267,7 @@ func TestTokenizeResponse_JSON(t *testing.T) {
 
 func TestDetokenizeRequest_JSON(t *testing.T) {
 	req := DetokenizeRequest{
-		Model:  stringPtr("gpt-4"),
+		Model:  stringPtr("gpt-4"), // Model is *string for DetokenizeRequest
 		Tokens: []int{1, 2, 3, 4, 5},
 	}
 
@@ -406,7 +406,7 @@ func TestTokenizeRequestValidation(t *testing.T) {
 		// This highlights the need for validation in TokenizeChatRequest
 		req := TokenizeChatRequest{
 			Messages: []openai.ChatCompletionMessageParamUnion{},
-			Model:    stringPtr("gpt-4"),
+			Model:    "gpt-4",
 		}
 
 		// Currently only validates conflicting flags

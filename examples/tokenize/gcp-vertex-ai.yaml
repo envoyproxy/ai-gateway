@@ -69,7 +69,7 @@ metadata:
 spec:
   endpoints:
     - fqdn:
-        hostname: us-central1-aiplatform.googleapis.com  # Adjust region as needed
+        hostname: us-central1-aiplatform.googleapis.com # Adjust region as needed
         port: 443
 ---
 # GCP Authentication using service account
@@ -86,7 +86,7 @@ spec:
   type: OAuth2
   oauth2:
     clientCredentials:
-      clientID: "client-id-placeholder"  # Will be set via service account
+      clientID: "client-id-placeholder" # Will be set via service account
       clientSecret:
         secretRef:
           name: gcp-vertex-secret

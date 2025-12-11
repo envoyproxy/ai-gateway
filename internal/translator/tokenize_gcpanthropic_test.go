@@ -434,9 +434,9 @@ func TestToGCPAnthropicTranslatorV1Tokenize_ResponseHeaders(t *testing.T) {
 	translator := &ToGCPAnthropicTranslatorV1Tokenize{}
 
 	headers, err := translator.ResponseHeaders(map[string]string{
-		"content-type":   "application/json",
-		"custom-header":  "value",
-		"cache-control":  "no-cache",
+		"content-type":  "application/json",
+		"custom-header": "value",
+		"cache-control": "no-cache",
 	})
 
 	require.NoError(t, err)
