@@ -47,9 +47,11 @@ func TestOpenAIToAzureOpenAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 		require.Nil(t, bm)
 		require.NoError(t, err)
 		require.NotNil(t, hm)
-		require.Len(t, hm, 1)
+		require.Len(t, hm, 2)
 		require.Equal(t, pathHeaderName, hm[0].Key())
 		require.Equal(t, "/openai/deployments/"+modelName+"/chat/completions?api-version=some-version", hm[0].Value())
+		require.Equal(t, schemeHeaderName, hm[1].Key())
+		require.Equal(t, "https", hm[1].Value())
 	})
 }
 

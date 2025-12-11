@@ -20,6 +20,7 @@ import (
 
 const (
 	pathHeaderName          = ":path"
+	schemeHeaderName        = ":scheme"
 	statusHeaderName        = ":status"
 	contentTypeHeaderName   = "content-type"
 	contentLengthHeaderName = "content-length"

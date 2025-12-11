@@ -11,6 +11,7 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	listenerv3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	httpconnectionmanagerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"github.com/stretchr/testify/require"
@@ -349,4 +350,129 @@ func Test_findListenerRouteConfigs(t *testing.T) {
 	}
 	names := findListenerRouteConfigs(l)
 	require.ElementsMatch(t, []string{"foo", "bar"}, names)
+}
+
+func TestEnableRouterLevelAIGatewayExtProcOnRoute(t *testing.T) {
+	// Create metadata struct that marks a route as AIGateway-generated.
+	aiGatewayAnnotation, err := structpb.NewStruct(map[string]any{
+		"resources": []any{
+			map[string]any{
+				"annotations": map[string]any{
+					internalapi.AIGatewayGeneratedHTTPRouteAnnotation: "true",
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	t.Run("enables ext_proc for AIGateway-generated routes", func(t *testing.T) {
+		s := &Server{log: zap.New()}
+		routeConfig := &routev3.RouteConfiguration{
+			VirtualHosts: []*routev3.VirtualHost{
+				{
+					Name: "vh",
+					Routes: []*routev3.Route{
+						{
+							Name: "ai-gateway-route",
+							Metadata: &corev3.Metadata{
+								FilterMetadata: map[string]*structpb.Struct{
+									"envoy-gateway": aiGatewayAnnotation,
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		enabled, err := s.enableRouterLevelAIGatewayExtProcOnRoute(routeConfig)
+		require.NoError(t, err)
+		require.True(t, enabled)
+
+		route := routeConfig.VirtualHosts[0].Routes[0]
+		require.NotNil(t, route.TypedPerFilterConfig)
+		require.Contains(t, route.TypedPerFilterConfig, aiGatewayExtProcName)
+
+		// Verify the config is ExtProcPerRoute with Overrides (which enables the filter).
+		perRoute := &extprocv3.ExtProcPerRoute{}
+		err = route.TypedPerFilterConfig[aiGatewayExtProcName].UnmarshalTo(perRoute)
+		require.NoError(t, err)
+		require.NotNil(t, perRoute.GetOverride())
+		overrides, ok := perRoute.GetOverride().(*extprocv3.ExtProcPerRoute_Overrides)
+		require.True(t, ok)
+		require.NotNil(t, overrides.Overrides)
+	})
+
+	t.Run("does not modify non-AIGateway routes", func(t *testing.T) {
+		s := &Server{log: zap.New()}
+		routeConfig := &routev3.RouteConfiguration{
+			VirtualHosts: []*routev3.VirtualHost{
+				{
+					Name: "vh",
+					Routes: []*routev3.Route{
+						{
+							Name: "normal-route",
+							// No AIGateway metadata.
+						},
+					},
+				},
+			},
+		}
+
+		enabled, err := s.enableRouterLevelAIGatewayExtProcOnRoute(routeConfig)
+		require.NoError(t, err)
+		require.False(t, enabled)
+
+		route := routeConfig.VirtualHosts[0].Routes[0]
+		require.Nil(t, route.TypedPerFilterConfig)
+	})
+
+	t.Run("handles mixed routes", func(t *testing.T) {
+		s := &Server{log: zap.New()}
+		routeConfig := &routev3.RouteConfiguration{
+			VirtualHosts: []*routev3.VirtualHost{
+				{
+					Name: "vh",
+					Routes: []*routev3.Route{
+						{
+							Name: "ai-gateway-route",
+							Metadata: &corev3.Metadata{
+								FilterMetadata: map[string]*structpb.Struct{
+									"envoy-gateway": aiGatewayAnnotation,
+								},
+							},
+						},
+						{
+							Name: "normal-route",
+							// No AIGateway metadata.
+						},
+					},
+				},
+			},
+		}
+
+		enabled, err := s.enableRouterLevelAIGatewayExtProcOnRoute(routeConfig)
+		require.NoError(t, err)
+		require.True(t, enabled)
+
+		// AIGateway route should have ext_proc enabled.
+		aiRoute := routeConfig.VirtualHosts[0].Routes[0]
+		require.NotNil(t, aiRoute.TypedPerFilterConfig)
+		require.Contains(t, aiRoute.TypedPerFilterConfig, aiGatewayExtProcName)
+
+		// Non-AIGateway route should not be modified.
+		normalRoute := routeConfig.VirtualHosts[0].Routes[1]
+		require.Nil(t, normalRoute.TypedPerFilterConfig)
+	})
+
+	t.Run("handles empty route config", func(t *testing.T) {
+		s := &Server{log: zap.New()}
+		routeConfig := &routev3.RouteConfiguration{
+			VirtualHosts: []*routev3.VirtualHost{},
+		}
+
+		enabled, err := s.enableRouterLevelAIGatewayExtProcOnRoute(routeConfig)
+		require.NoError(t, err)
+		require.False(t, enabled)
+	})
 }

@@ -56,24 +56,26 @@ func TestOpenAIToAzureOpenAITranslatorV1EmbeddingRequestBody(t *testing.T) {
 			headerMutation, bodyMutation, err := translator.RequestBody([]byte(originalBody), &req, tc.onRetry)
 			require.NoError(t, err)
 			require.NotNil(t, headerMutation)
-			require.GreaterOrEqual(t, len(headerMutation), 1)
+			require.GreaterOrEqual(t, len(headerMutation), 2)
 			require.Equal(t, pathHeaderName, headerMutation[0].Key())
 			require.Equal(t, tc.expPath, headerMutation[0].Value())
+			require.Equal(t, schemeHeaderName, headerMutation[1].Key())
+			require.Equal(t, "https", headerMutation[1].Value())
 
 			switch {
 			case tc.expBodyContains != "":
 				require.NotNil(t, bodyMutation)
 				require.Contains(t, string(bodyMutation), tc.expBodyContains)
-				// Verify content-length header is set.
-				require.Len(t, headerMutation, 2)
-				require.Equal(t, contentLengthHeaderName, headerMutation[1].Key())
+				// Verify content-length header is set (path + scheme + content-length).
+				require.Len(t, headerMutation, 3)
+				require.Equal(t, contentLengthHeaderName, headerMutation[2].Key())
 			case bodyMutation != nil:
-				// If there's a body mutation (like on retry), content-length header should be set.
-				require.Len(t, headerMutation, 2)
-				require.Equal(t, contentLengthHeaderName, headerMutation[1].Key())
+				// If there's a body mutation (like on retry), content-length header should be set (path + scheme + content-length).
+				require.Len(t, headerMutation, 3)
+				require.Equal(t, contentLengthHeaderName, headerMutation[2].Key())
 			default:
-				// No body mutation, only path header.
-				require.Len(t, headerMutation, 1)
+				// No body mutation, only path and scheme headers.
+				require.Len(t, headerMutation, 2)
 			}
 		})
 	}
