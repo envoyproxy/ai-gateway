@@ -96,6 +96,7 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 		backends:       backends,
 		requestCosts:   costs,
 		declaredModels: config.Models,
+		modelsByHost:   config.ModelsByHost,
 	}
 	s.config = newConfig // This is racey, but we don't care.
 	return nil

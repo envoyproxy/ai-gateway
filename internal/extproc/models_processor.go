@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -18,6 +19,7 @@ import (
 	"google.golang.org/grpc/codes"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -35,23 +37,27 @@ type modelsProcessor struct {
 var _ Processor = (*modelsProcessor)(nil)
 
 // NewModelsProcessor creates a new processor that returns the list of declared models.
-func NewModelsProcessor(config *processorConfig, _ map[string]string, logger *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
+func NewModelsProcessor(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
 	if isUpstreamFilter {
 		return passThroughProcessor{}, nil
 	}
-	models := openai.ModelList{
+
+	host := requestHost(requestHeaders)
+	selectedModels := selectModelsForHost(host, config)
+
+	modelList := openai.ModelList{
 		Object: "list",
-		Data:   make([]openai.Model, 0, len(config.declaredModels)),
+		Data:   make([]openai.Model, 0, len(selectedModels)),
 	}
-	for _, m := range config.declaredModels {
-		models.Data = append(models.Data, openai.Model{
+	for _, m := range selectedModels {
+		modelList.Data = append(modelList.Data, openai.Model{
 			ID:      m.Name,
 			Object:  "model",
 			OwnedBy: m.OwnedBy,
 			Created: openai.JSONUNIXTime(m.CreatedAt),
 		})
 	}
-	return &modelsProcessor{logger: logger, models: models}, nil
+	return &modelsProcessor{logger: logger.With("host", host), models: modelList}, nil
 }
 
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
@@ -103,4 +109,42 @@ func setHeader(headers *extprocv3.HeaderMutation, key, value string) {
 			RawValue: []byte(value),
 		},
 	})
+}
+
+// requestHost normalizes the host/authority header for matching (lowercases and strips port).
+func requestHost(headers map[string]string) string {
+	host := headers[":authority"]
+	if host == "" {
+		host = headers["host"]
+	}
+	if host == "" {
+		return ""
+	}
+	if idx := strings.IndexByte(host, ':'); idx != -1 {
+		host = host[:idx]
+	}
+	return strings.ToLower(host)
+}
+
+// selectModelsForHost returns the models for the given host, falling back to the global list.
+func selectModelsForHost(host string, cfg *processorConfig) []filterapi.Model {
+	if host == "" || len(cfg.modelsByHost) == 0 {
+		return cfg.declaredModels
+	}
+
+	if exact, ok := cfg.modelsByHost[host]; ok {
+		return exact
+	}
+
+	for pattern, models := range cfg.modelsByHost {
+		if !strings.HasPrefix(pattern, "*.") {
+			continue
+		}
+		suffix := strings.TrimPrefix(pattern, "*.")
+		if strings.HasSuffix(host, suffix) && len(host) > len(suffix) {
+			return models
+		}
+	}
+
+	return cfg.declaredModels
 }

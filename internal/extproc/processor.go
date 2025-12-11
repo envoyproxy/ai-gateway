@@ -24,6 +24,7 @@ type processorConfig struct {
 	uuid           string
 	requestCosts   []processorConfigRequestCost
 	declaredModels []filterapi.Model
+	modelsByHost   map[string][]filterapi.Model
 	backends       map[string]*processorConfigBackend
 }
 

@@ -197,6 +197,52 @@ func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
 			require.Equal(t, strconv.Itoa(len(bm.Mutation.(*extprocv3.BodyMutation_Body).Body)), string(hm.SetHeaders[1].Header.RawValue))
 		}
 	})
+	t.Run("stream include_usage enforced", func(t *testing.T) {
+		t.Run("adds stream_options when missing", func(t *testing.T) {
+			originalReq := &openai.ChatCompletionRequest{
+				Model:  "foo-bar-ai",
+				Stream: true,
+			}
+			rawReq, err := json.Marshal(originalReq)
+			require.NoError(t, err)
+
+			o := NewChatCompletionOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1ChatCompletion)
+			hm, bm, err := o.RequestBody(rawReq, originalReq, false)
+			require.NoError(t, err)
+			require.NotNil(t, bm)
+			require.NotNil(t, hm)
+
+			var newReq openai.ChatCompletionRequest
+			err = json.Unmarshal(bm.Mutation.(*extprocv3.BodyMutation_Body).Body, &newReq)
+			require.NoError(t, err)
+			require.NotNil(t, newReq.StreamOptions)
+			require.True(t, newReq.StreamOptions.IncludeUsage)
+		})
+
+		t.Run("overrides existing include_usage=false", func(t *testing.T) {
+			originalReq := &openai.ChatCompletionRequest{
+				Model:  "foo-bar-ai",
+				Stream: true,
+				StreamOptions: &openai.StreamOptions{
+					IncludeUsage: false,
+				},
+			}
+			rawReq, err := json.Marshal(originalReq)
+			require.NoError(t, err)
+
+			o := NewChatCompletionOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1ChatCompletion)
+			hm, bm, err := o.RequestBody(rawReq, originalReq, false)
+			require.NoError(t, err)
+			require.NotNil(t, bm)
+			require.NotNil(t, hm)
+
+			var newReq openai.ChatCompletionRequest
+			err = json.Unmarshal(bm.Mutation.(*extprocv3.BodyMutation_Body).Body, &newReq)
+			require.NoError(t, err)
+			require.NotNil(t, newReq.StreamOptions)
+			require.True(t, newReq.StreamOptions.IncludeUsage)
+		})
+	})
 	t.Run("forced mutation", func(t *testing.T) {
 		originalReq := &openai.ChatCompletionRequest{Model: "foo-bar-ai", Stream: true}
 		original := []byte("whatever")

@@ -43,6 +43,9 @@ type Config struct {
 	Backends []Backend `json:"backends,omitempty"`
 	// Models is the list of models that this route is aware of. Used to populate the "/models" endpoint in OpenAI-compatible APIs.
 	Models []Model `json:"models,omitempty"`
+	// ModelsByHost is the list of models keyed by hostname. When present, the extproc "/v1/models" processor will prefer
+	// the hostname-specific list over the global Models slice.
+	ModelsByHost map[string][]Model `json:"modelsByHost,omitempty"`
 	// MCPConfig is the configuration for the MCPRoute implementations.
 	MCPConfig *MCPConfig `json:"mcpConfig,omitempty"`
 }
