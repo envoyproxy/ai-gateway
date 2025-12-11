@@ -30,6 +30,8 @@ type (
 		CompletionTracer() CompletionTracer
 		// EmbeddingsTracer creates spans for OpenAI embeddings requests on /embeddings endpoint.
 		EmbeddingsTracer() EmbeddingsTracer
+		// ResponsesTracer creates spans for OpenAI responses requests on /v1/responses endpoint.
+		ResponsesTracer() ResponsesTracer
 		// RerankTracer creates spans for rerank requests.
 		RerankTracer() RerankTracer
 		// MessageTracer creates spans for Anthropic messages requests.
@@ -61,6 +63,8 @@ type (
 	EmbeddingsTracer = RequestTracer[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
 	// ImageGenerationTracer creates spans for OpenAI image generation requests.
 	ImageGenerationTracer = RequestTracer[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
+	// ResponsesTracer creates spans for OpenAI responses requests.
+	ResponsesTracer = RequestTracer[openai.ResponseRequest, openai.Response, openai.ResponseCompletedEvent]
 	// RerankTracer creates spans for rerank requests.
 	RerankTracer = RequestTracer[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// MessageTracer creates spans for Anthropic messages requests.
@@ -88,6 +92,8 @@ type (
 	EmbeddingsSpan = Span[openai.EmbeddingResponse, struct{}]
 	// ImageGenerationSpan represents an OpenAI image generation.
 	ImageGenerationSpan = Span[openai.ImageGenerationResponse, struct{}]
+	// ResponsesSpan represents an OpenAI responses request span.
+	ResponsesSpan = Span[openai.Response, openai.ResponseCompletedEvent]
 	// RerankSpan represents a rerank request span.
 	RerankSpan = Span[cohere.RerankV2Response, struct{}]
 	// MessageSpan represents an Anthropic messages request span.
@@ -129,6 +135,8 @@ type (
 	ImageGenerationRecorder = SpanRecorder[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
 	// EmbeddingsRecorder records attributes to a span according to a semantic convention.
 	EmbeddingsRecorder = SpanRecorder[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
+	// ResponsesRecorder records attributes to a span according to a semantic convention.
+	ResponsesRecorder = SpanRecorder[openai.ResponseRequest, openai.Response, openai.ResponseCompletedEvent]
 	// RerankRecorder records attributes to a span according to a semantic convention.
 	RerankRecorder = SpanRecorder[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// MessageRecorder records attributes to a span according to a semantic convention.
@@ -168,6 +176,11 @@ func (NoopTracing) ImageGenerationTracer() ImageGenerationTracer {
 	return NoopImageGenerationTracer{}
 }
 
+// ResponsesTracer implements Tracing.ResponsesTracer.
+func (NoopTracing) ResponsesTracer() ResponsesTracer {
+	return NoopResponsesTracer{}
+}
+
 // RerankTracer implements Tracing.RerankTracer.
 func (NoopTracing) RerankTracer() RerankTracer {
 	return NoopRerankTracer{}
@@ -193,6 +206,8 @@ type (
 	NoopEmbeddingsTracer = NoopTracer[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
 	// NoopImageGenerationTracer implements ImageGenerationTracer.
 	NoopImageGenerationTracer = NoopTracer[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
+	// NoopResponsesTracer implements ResponsesTracer.
+	NoopResponsesTracer = NoopTracer[openai.ResponseRequest, openai.Response, openai.ResponseCompletedEvent]
 	// NoopRerankTracer implements RerankTracer.
 	NoopRerankTracer = NoopTracer[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// NoopMessageTracer implements MessageTracer.

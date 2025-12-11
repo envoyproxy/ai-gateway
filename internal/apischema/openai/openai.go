@@ -2040,7 +2040,6 @@ type ImageGenerationResponseData struct {
 // The Responses API is a stateful API that combines capabilities from chat completions and assistants.
 // Docs: https://platform.openai.com/docs/api-reference/responses/create
 type ResponseRequest struct {
-
 	// Whether to run the model response in the background.
 	// [Learn more](https://platform.openai.com/docs/guides/background).
 	Background *bool `json:"background,omitempty"`
@@ -2624,4 +2623,14 @@ type ResponseTextConfig struct {
 	//
 	// Any of "low", "medium", "high".
 	Verbosity string `json:"verbosity,omitzero"`
+}
+
+// Emitted when the model response is complete.
+type ResponseCompletedEvent struct {
+	// Properties of the completed response.
+	Response Response `json:"response"`
+	// The sequence number for this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.completed`.
+	Type string `json:"type"`
 }
