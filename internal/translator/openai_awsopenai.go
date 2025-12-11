@@ -6,12 +6,17 @@
 package translator
 
 import (
+	"bytes"
+	"cmp"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -22,7 +27,9 @@ import (
 // NewChatCompletionOpenAIToAwsOpenAITranslator implements [Factory] for OpenAI to Aws OpenAI translations.
 func NewChatCompletionOpenAIToAwsOpenAITranslator(modelNameOverride internalapi.ModelNameOverride) OpenAIChatCompletionTranslator {
 	return &openAIToAwsOpenAITranslatorV1ChatCompletion{
-		modelNameOverride: modelNameOverride,
+		openAIToOpenAITranslatorV1ChatCompletion: openAIToOpenAITranslatorV1ChatCompletion{
+			modelNameOverride: modelNameOverride,
+		},
 	}
 }
 
@@ -30,10 +37,8 @@ func NewChatCompletionOpenAIToAwsOpenAITranslator(modelNameOverride internalapi.
 // This uses the InvokeModel API which accepts model-specific request/response formats.
 // For OpenAI models, this preserves the OpenAI format but uses AWS Bedrock endpoints.
 type openAIToAwsOpenAITranslatorV1ChatCompletion struct {
-	modelNameOverride internalapi.ModelNameOverride
-	requestModel      internalapi.RequestModel
-	responseID        string
-	stream            bool
+	openAIToOpenAITranslatorV1ChatCompletion
+	responseID string
 }
 
 func (o *openAIToAwsOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *openai.ChatCompletionRequest, _ bool) (
@@ -105,71 +110,46 @@ func (o *openAIToAwsOpenAITranslatorV1ChatCompletion) ResponseHeaders(headers ma
 }
 
 // ResponseBody implements [OpenAIChatCompletionTranslator.ResponseBody].
-// AWS Bedrock InvokeModel API with OpenAI models returns responses in OpenAI format.
-// This function handles both streaming and non-streaming responses.
+// For streaming responses, AWS returns binary EventStream format with base64-encoded OpenAI JSON.
+// This method decodes the EventStream and converts it to OpenAI SSE format to send to the client.
 func (o *openAIToAwsOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
-	responseModel = o.requestModel
-
 	if o.stream {
-		// Handle streaming response
+		// Streaming: decode AWS EventStream format and convert to SSE
 		var buf []byte
 		buf, err = io.ReadAll(body)
 		if err != nil {
 			return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("failed to read streaming body: %w", err)
 		}
 
-		// For InvokeModel with OpenAI models, the streaming response should already be in
-		// Server-Sent Events format with OpenAI chunks
-		newBody = buf
-
-		// Parse for token usage if available in the stream
-		for _, line := range strings.Split(string(buf), "\n") {
-			if dataStr, found := strings.CutPrefix(line, "data: "); found {
-				if dataStr != "[DONE]" {
-					var chunk openai.ChatCompletionResponseChunk
-					if json.Unmarshal([]byte(dataStr), &chunk) == nil {
-						if chunk.Usage != nil {
-							tokenUsage.SetInputTokens(uint32(chunk.Usage.PromptTokens))      //nolint:gosec
-							tokenUsage.SetOutputTokens(uint32(chunk.Usage.CompletionTokens)) //nolint:gosec
-							tokenUsage.SetTotalTokens(uint32(chunk.Usage.TotalTokens))       //nolint:gosec
-						}
-						if span != nil {
-							span.RecordResponseChunk(&chunk)
-						}
-					}
-				}
-			}
+		// Convert AWS EventStream to OpenAI SSE format and return it as newBody
+		newBody, tokenUsage, err = o.convertEventStreamToSSE(buf, span)
+		if err != nil {
+			return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("failed to convert EventStream to SSE: %w", err)
 		}
 
 		if endOfStream && !strings.HasSuffix(string(newBody), "data: [DONE]\n") {
 			newBody = append(newBody, []byte("data: [DONE]\n")...)
 		}
+		responseModel = o.requestModel
 	} else {
-		// Handle non-streaming response
-		var buf []byte
-		buf, err = io.ReadAll(body)
-		if err != nil {
-			return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("failed to read body: %w", err)
-		}
-
-		// For InvokeModel with OpenAI models, response should already be in OpenAI format
+		// Non-streaming: handle regular JSON response
 		var openAIResp openai.ChatCompletionResponse
-		if err = json.Unmarshal(buf, &openAIResp); err != nil {
-			return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("failed to unmarshal response: %w", err)
-		}
-
-		// Use response model if available, otherwise use request model
-		if openAIResp.Model != "" {
-			responseModel = openAIResp.Model
+		if err = json.NewDecoder(body).Decode(&openAIResp); err != nil {
+			return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("failed to decode response: %w", err)
 		}
 
 		// Extract token usage
-
 		tokenUsage.SetInputTokens(uint32(openAIResp.Usage.PromptTokens))      //nolint:gosec
 		tokenUsage.SetOutputTokens(uint32(openAIResp.Usage.CompletionTokens)) //nolint:gosec
 		tokenUsage.SetTotalTokens(uint32(openAIResp.Usage.TotalTokens))       //nolint:gosec
+		if openAIResp.Usage.PromptTokensDetails != nil {
+			tokenUsage.SetCachedInputTokens(uint32(openAIResp.Usage.PromptTokensDetails.CachedTokens)) //nolint:gosec
+		}
+
+		// Fallback to request model for non-compliant backends
+		responseModel = cmp.Or(openAIResp.Model, o.requestModel)
 
 		// Override the ID with AWS request ID if available
 		if o.responseID != "" {
@@ -190,6 +170,75 @@ func (o *openAIToAwsOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]
 		newHeaders = []internalapi.Header{{contentLengthHeaderName, strconv.Itoa(len(newBody))}}
 	}
 	return
+}
+
+// convertEventStreamToSSE decodes AWS EventStream binary format and converts to OpenAI SSE format.
+// AWS EventStream contains base64-encoded OpenAI JSON in a "bytes" field.
+// Returns the SSE data and extracted token usage.
+func (o *openAIToAwsOpenAITranslatorV1ChatCompletion) convertEventStreamToSSE(data []byte, span tracing.ChatCompletionSpan) ([]byte, metrics.TokenUsage, error) {
+	var tokenUsage metrics.TokenUsage
+
+	if len(data) == 0 {
+		return nil, tokenUsage, nil
+	}
+
+	r := bytes.NewReader(data)
+	dec := eventstream.NewDecoder()
+	var result []byte
+	var decodedBytes []byte
+
+	for {
+		msg, err := dec.Decode(r, nil)
+		if err != nil {
+			// End of stream or incomplete message
+			break
+		}
+
+		// Parse the payload which contains {"bytes": "base64data", ...}
+		var payload struct {
+			Bytes string `json:"bytes"`
+		}
+		if json.Unmarshal(msg.Payload, &payload) != nil {
+			continue
+		}
+
+		// Base64 decode the bytes field
+		decodedBytes, err = base64.StdEncoding.DecodeString(payload.Bytes)
+		if err != nil {
+			continue
+		}
+
+		// Parse the chunk to extract usage information
+		var chunk openai.ChatCompletionResponseChunk
+		if json.Unmarshal(decodedBytes, &chunk) == nil {
+			// Extract token usage if present
+			if chunk.Usage != nil {
+				tokenUsage.SetInputTokens(uint32(chunk.Usage.PromptTokens))      //nolint:gosec
+				tokenUsage.SetOutputTokens(uint32(chunk.Usage.CompletionTokens)) //nolint:gosec
+				tokenUsage.SetTotalTokens(uint32(chunk.Usage.TotalTokens))       //nolint:gosec
+				if chunk.Usage.PromptTokensDetails != nil {
+					tokenUsage.SetCachedInputTokens(uint32(chunk.Usage.PromptTokensDetails.CachedTokens)) //nolint:gosec
+				}
+			}
+
+			// Record the chunk in the span if provided
+			if span != nil {
+				span.RecordResponseChunk(&chunk)
+			}
+
+			// Store the response model if present
+			if chunk.Model != "" {
+				o.streamingResponseModel = chunk.Model
+			}
+		}
+
+		// Convert to SSE format: "data: <json>\n\n"
+		result = append(result, []byte("data: ")...)
+		result = append(result, decodedBytes...)
+		result = append(result, []byte("\n\n")...)
+	}
+
+	return result, tokenUsage, nil
 }
 
 // ResponseError implements [OpenAIChatCompletionTranslator.ResponseError].

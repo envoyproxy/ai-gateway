@@ -275,9 +275,9 @@ spec:
 
 AWS Bedrock supports multiple API formats:
 
-### 1. AWSBedrock Schema (Native AWS Format)
+### 1. AWSBedrock Schema (Converse API Format)
 
-The default `AWSBedrock` schema uses AWS Bedrock's native API format. This works with all Bedrock models.
+The default `AWSBedrock` schema uses AWS Bedrock's Converse API format. This works with all Bedrock models.
 
 ### 2. AWSOpenAI Schema (OpenAI-Compatible Models)
 

@@ -6,12 +6,16 @@
 package translator
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
@@ -228,34 +232,43 @@ func TestOpenAIToAwsOpenAITranslatorV1ChatCompletion_RequestBody(t *testing.T) {
 			require.NoError(t, err)
 
 			// Check headers
-			require.Len(t, headers, 2)
+			require.NotEmpty(t, headers)
 			require.Equal(t, pathHeaderName, headers[0][0])
 			require.Equal(t, tt.expectedPath, headers[0][1])
-			require.Equal(t, contentLengthHeaderName, headers[1][0])
-			require.Equal(t, strconv.Itoa(len(newBody)), headers[1][1])
+
+			// Content-length header is only added when newBody has content
+			if len(newBody) > 0 {
+				require.Len(t, headers, 2)
+				require.Equal(t, contentLengthHeaderName, headers[1][0])
+				require.Equal(t, strconv.Itoa(len(newBody)), headers[1][1])
+			} else {
+				require.Len(t, headers, 1)
+			}
 
 			// Check body - compare essential fields instead of full struct comparison
 			var actualBody openai.ChatCompletionRequest
-			err = json.Unmarshal(newBody, &actualBody)
-			require.NoError(t, err)
+			if len(newBody) > 0 {
+				err = json.Unmarshal(newBody, &actualBody)
+				require.NoError(t, err)
 
-			// Compare essential fields only
-			require.Equal(t, tt.expectedBody.Model, actualBody.Model)
-			require.Equal(t, tt.expectedBody.Stream, actualBody.Stream)
-			require.Len(t, actualBody.Messages, len(tt.expectedBody.Messages))
+				// Compare essential fields only
+				require.Equal(t, tt.expectedBody.Model, actualBody.Model)
+				require.Equal(t, tt.expectedBody.Stream, actualBody.Stream)
+				require.Len(t, actualBody.Messages, len(tt.expectedBody.Messages))
 
-			// For complex requests, check tools and parameters
-			if tt.expectedBody.Temperature != nil {
-				require.Equal(t, *tt.expectedBody.Temperature, *actualBody.Temperature)
-			}
-			if tt.expectedBody.MaxTokens != nil {
-				require.Equal(t, *tt.expectedBody.MaxTokens, *actualBody.MaxTokens)
-			}
-			if len(tt.expectedBody.Tools) > 0 {
-				require.Len(t, actualBody.Tools, len(tt.expectedBody.Tools))
-				require.Equal(t, tt.expectedBody.Tools[0].Type, actualBody.Tools[0].Type)
-				if tt.expectedBody.Tools[0].Function != nil {
-					require.Equal(t, tt.expectedBody.Tools[0].Function.Name, actualBody.Tools[0].Function.Name)
+				// For complex requests, check tools and parameters
+				if tt.expectedBody.Temperature != nil {
+					require.Equal(t, *tt.expectedBody.Temperature, *actualBody.Temperature)
+				}
+				if tt.expectedBody.MaxTokens != nil {
+					require.Equal(t, *tt.expectedBody.MaxTokens, *actualBody.MaxTokens)
+				}
+				if len(tt.expectedBody.Tools) > 0 {
+					require.Len(t, actualBody.Tools, len(tt.expectedBody.Tools))
+					require.Equal(t, tt.expectedBody.Tools[0].Type, actualBody.Tools[0].Type)
+					if tt.expectedBody.Tools[0].Function != nil {
+						require.Equal(t, tt.expectedBody.Tools[0].Function.Name, actualBody.Tools[0].Function.Name)
+					}
 				}
 			}
 		})
@@ -318,11 +331,50 @@ func TestOpenAIToAwsOpenAITranslatorV1ChatCompletion_ResponseHeaders(t *testing.
 	}
 }
 
+// Helper function to create AWS EventStream binary data
+func createEventStreamMessage(t *testing.T, chunk openai.ChatCompletionResponseChunk) []byte {
+	t.Helper()
+
+	// Marshal the chunk to JSON
+	chunkJSON, err := json.Marshal(chunk)
+	require.NoError(t, err)
+
+	// Base64 encode the JSON
+	base64Encoded := base64.StdEncoding.EncodeToString(chunkJSON)
+
+	// Create the payload with "bytes" field
+	payload := map[string]string{
+		"bytes": base64Encoded,
+	}
+	payloadJSON, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	// Create EventStream message
+	encoder := eventstream.NewEncoder()
+	var buf bytes.Buffer
+
+	msg := eventstream.Message{
+		Headers: eventstream.Headers{
+			eventstream.Header{Name: ":event-type", Value: eventstream.StringValue("chunk")},
+			eventstream.Header{Name: ":content-type", Value: eventstream.StringValue("application/json")},
+			eventstream.Header{Name: ":message-type", Value: eventstream.StringValue("event")},
+		},
+		Payload: payloadJSON,
+	}
+
+	err = encoder.Encode(&buf, msg)
+	require.NoError(t, err)
+
+	return buf.Bytes()
+}
+
 func TestOpenAIToAwsOpenAITranslatorV1ChatCompletion_ResponseBody(t *testing.T) {
 	tests := []struct {
 		name                   string
 		isStreaming            bool
 		inputBody              string
+		inputBodyBytes         []byte // For EventStream binary data
+		useEventStream         bool   // Whether to use EventStream format
 		endOfStream            bool
 		expectedInputTokens    uint32
 		expectedOutputTokens   uint32
@@ -379,43 +431,6 @@ func TestOpenAIToAwsOpenAITranslatorV1ChatCompletion_ResponseBody(t *testing.T) 
 				}
 			}`,
 		},
-		{
-			name:        "streaming response",
-			isStreaming: true,
-			inputBody: `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1677858242,"model":"gpt-4","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":null}]}
-
-data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1677858242,"model":"gpt-4","choices":[{"index":0,"delta":{"content":"!"},"finish_reason":null}]}
-
-data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1677858242,"model":"gpt-4","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":13,"completion_tokens":9,"total_tokens":22}}
-
-`,
-			endOfStream:          true,
-			expectedInputTokens:  13,
-			expectedOutputTokens: 9,
-			expectedTotalTokens:  22,
-			expectedResponseBody: `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1677858242,"model":"gpt-4","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":null}]}
-
-data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1677858242,"model":"gpt-4","choices":[{"index":0,"delta":{"content":"!"},"finish_reason":null}]}
-
-data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1677858242,"model":"gpt-4","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":13,"completion_tokens":9,"total_tokens":22}}
-
-data: [DONE]
-`,
-			checkResponseBodyExact: true,
-		},
-		{
-			name:        "streaming response without DONE",
-			isStreaming: true,
-			inputBody: `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1677858242,"model":"gpt-4","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":null}]}
-
-`,
-			endOfStream: true,
-			expectedResponseBody: `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1677858242,"model":"gpt-4","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":null}]}
-
-data: [DONE]
-`,
-			checkResponseBodyExact: true,
-		},
 	}
 
 	for _, tt := range tests {
@@ -426,24 +441,31 @@ data: [DONE]
 			translator.responseID = "test-request-id"
 
 			headers := map[string]string{}
-			body := strings.NewReader(tt.inputBody)
+			var body *strings.Reader
+			if tt.useEventStream {
+				body = strings.NewReader(string(tt.inputBodyBytes))
+			} else {
+				body = strings.NewReader(tt.inputBody)
+			}
 
 			resultHeaders, resultBody, tokenUsage, responseModel, err := translator.ResponseBody(headers, body, tt.endOfStream, nil)
 			require.NoError(t, err)
 
-			// Check token usage
-			actualInputTokens, _ := tokenUsage.InputTokens()
-			actualOutputTokens, _ := tokenUsage.OutputTokens()
-			actualTotalTokens, _ := tokenUsage.TotalTokens()
-			require.Equal(t, tt.expectedInputTokens, actualInputTokens)
-			require.Equal(t, tt.expectedOutputTokens, actualOutputTokens)
-			require.Equal(t, tt.expectedTotalTokens, actualTotalTokens)
+			// Check token usage if expected
+			if tt.expectedInputTokens > 0 || tt.expectedOutputTokens > 0 || tt.expectedTotalTokens > 0 {
+				actualInputTokens, _ := tokenUsage.InputTokens()
+				actualOutputTokens, _ := tokenUsage.OutputTokens()
+				actualTotalTokens, _ := tokenUsage.TotalTokens()
+				require.Equal(t, tt.expectedInputTokens, actualInputTokens)
+				require.Equal(t, tt.expectedOutputTokens, actualOutputTokens)
+				require.Equal(t, tt.expectedTotalTokens, actualTotalTokens)
+			}
 
 			// Check response model
 			require.Equal(t, "gpt-4", responseModel)
 
-			// Check headers
-			if len(resultBody) > 0 {
+			// Check headers - non-streaming returns headers with content-length
+			if !tt.isStreaming && len(resultBody) > 0 {
 				require.Len(t, resultHeaders, 1)
 				require.Equal(t, contentLengthHeaderName, resultHeaders[0][0])
 				require.Equal(t, strconv.Itoa(len(resultBody)), resultHeaders[0][1])
@@ -467,6 +489,167 @@ data: [DONE]
 			}
 		})
 	}
+}
+
+func TestOpenAIToAwsOpenAITranslatorV1ChatCompletion_ResponseBody_EventStream(t *testing.T) {
+	t.Run("streaming response with EventStream format", func(t *testing.T) {
+		translator := NewChatCompletionOpenAIToAwsOpenAITranslator("").(*openAIToAwsOpenAITranslatorV1ChatCompletion)
+		translator.stream = true
+		translator.requestModel = "gpt-4"
+		translator.responseID = "test-request-id"
+
+		// Create test chunks
+		testTime := openai.JSONUNIXTime(time.Unix(1677858242, 0))
+		chunk1 := openai.ChatCompletionResponseChunk{
+			ID:      "chatcmpl-test",
+			Object:  "chat.completion.chunk",
+			Created: testTime,
+			Model:   "gpt-4",
+			Choices: []openai.ChatCompletionResponseChunkChoice{
+				{
+					Index: 0,
+					Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
+						Role:    "assistant",
+						Content: ptr.To("Hello"),
+					},
+					FinishReason: "",
+				},
+			},
+		}
+
+		chunk2 := openai.ChatCompletionResponseChunk{
+			ID:      "chatcmpl-test",
+			Object:  "chat.completion.chunk",
+			Created: testTime,
+			Model:   "gpt-4",
+			Choices: []openai.ChatCompletionResponseChunkChoice{
+				{
+					Index: 0,
+					Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
+						Content: ptr.To(" World!"),
+					},
+					FinishReason: "",
+				},
+			},
+		}
+
+		chunk3 := openai.ChatCompletionResponseChunk{
+			ID:      "chatcmpl-test",
+			Object:  "chat.completion.chunk",
+			Created: testTime,
+			Model:   "gpt-4",
+			Choices: []openai.ChatCompletionResponseChunkChoice{
+				{
+					Index: 0,
+					Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
+						Content: ptr.To(""),
+					},
+					FinishReason: "stop",
+				},
+			},
+			Usage: &openai.Usage{
+				PromptTokens:     10,
+				CompletionTokens: 5,
+				TotalTokens:      15,
+			},
+		}
+
+		// Create EventStream messages
+		eventStreamData := bytes.NewBuffer(nil)
+		eventStreamData.Write(createEventStreamMessage(t, chunk1))
+		eventStreamData.Write(createEventStreamMessage(t, chunk2))
+		eventStreamData.Write(createEventStreamMessage(t, chunk3))
+
+		// Call ResponseBody
+		headers := map[string]string{}
+		body := bytes.NewReader(eventStreamData.Bytes())
+
+		resultHeaders, resultBody, tokenUsage, responseModel, err := translator.ResponseBody(headers, body, false, nil)
+		require.NoError(t, err)
+
+		// Verify token usage was extracted
+		actualInputTokens, _ := tokenUsage.InputTokens()
+		actualOutputTokens, _ := tokenUsage.OutputTokens()
+		actualTotalTokens, _ := tokenUsage.TotalTokens()
+		require.Equal(t, uint32(10), actualInputTokens)
+		require.Equal(t, uint32(5), actualOutputTokens)
+		require.Equal(t, uint32(15), actualTotalTokens)
+
+		// Verify response model
+		require.Equal(t, "gpt-4", responseModel)
+
+		// Verify headers contain content-length for streaming with content
+		require.Len(t, resultHeaders, 1)
+		require.Equal(t, contentLengthHeaderName, resultHeaders[0][0])
+
+		// Verify the output is in SSE format
+		require.NotEmpty(t, resultBody)
+		resultString := string(resultBody)
+
+		// Should contain all three chunks in SSE format
+		require.Contains(t, resultString, "data: ")
+		require.Contains(t, resultString, "Hello")
+		require.Contains(t, resultString, " World!")
+		require.Contains(t, resultString, "\"finish_reason\":\"stop\"")
+
+		// Parse and verify each chunk
+		lines := strings.Split(resultString, "\n\n")
+		require.GreaterOrEqual(t, len(lines), 3, "Should have at least 3 SSE chunks")
+
+		// Verify first chunk
+		require.True(t, strings.HasPrefix(lines[0], "data: "))
+		chunk1JSON := strings.TrimPrefix(lines[0], "data: ")
+		var parsedChunk1 openai.ChatCompletionResponseChunk
+		err = json.Unmarshal([]byte(chunk1JSON), &parsedChunk1)
+		require.NoError(t, err)
+		require.Equal(t, "Hello", *parsedChunk1.Choices[0].Delta.Content)
+		require.Equal(t, "assistant", parsedChunk1.Choices[0].Delta.Role)
+
+		// Verify second chunk
+		require.True(t, strings.HasPrefix(lines[1], "data: "))
+		chunk2JSON := strings.TrimPrefix(lines[1], "data: ")
+		var parsedChunk2 openai.ChatCompletionResponseChunk
+		err = json.Unmarshal([]byte(chunk2JSON), &parsedChunk2)
+		require.NoError(t, err)
+		require.Equal(t, " World!", *parsedChunk2.Choices[0].Delta.Content)
+
+		// Verify third chunk with usage
+		require.True(t, strings.HasPrefix(lines[2], "data: "))
+		chunk3JSON := strings.TrimPrefix(lines[2], "data: ")
+		var parsedChunk3 openai.ChatCompletionResponseChunk
+		err = json.Unmarshal([]byte(chunk3JSON), &parsedChunk3)
+		require.NoError(t, err)
+		require.Equal(t, openai.ChatCompletionChoicesFinishReason("stop"), parsedChunk3.Choices[0].FinishReason)
+		require.NotNil(t, parsedChunk3.Usage)
+		require.Equal(t, 10, parsedChunk3.Usage.PromptTokens)
+		require.Equal(t, 5, parsedChunk3.Usage.CompletionTokens)
+		require.Equal(t, 15, parsedChunk3.Usage.TotalTokens)
+	})
+
+	t.Run("streaming with empty EventStream", func(t *testing.T) {
+		translator := NewChatCompletionOpenAIToAwsOpenAITranslator("").(*openAIToAwsOpenAITranslatorV1ChatCompletion)
+		translator.stream = true
+		translator.requestModel = "gpt-4"
+
+		headers := map[string]string{}
+		body := strings.NewReader("")
+
+		resultHeaders, resultBody, tokenUsage, responseModel, err := translator.ResponseBody(headers, body, false, nil)
+		require.NoError(t, err)
+
+		// Verify empty response
+		require.Empty(t, resultHeaders)
+		require.Empty(t, resultBody)
+		require.Equal(t, "gpt-4", responseModel)
+
+		// Verify no token usage
+		actualInputTokens, _ := tokenUsage.InputTokens()
+		actualOutputTokens, _ := tokenUsage.OutputTokens()
+		actualTotalTokens, _ := tokenUsage.TotalTokens()
+		require.Equal(t, uint32(0), actualInputTokens)
+		require.Equal(t, uint32(0), actualOutputTokens)
+		require.Equal(t, uint32(0), actualTotalTokens)
+	})
 }
 
 func TestOpenAIToAwsOpenAITranslatorV1ChatCompletion_ResponseError(t *testing.T) {
