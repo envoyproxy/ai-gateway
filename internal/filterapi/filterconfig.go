@@ -99,14 +99,14 @@ const (
 	APISchemaOpenAI APISchemaName = "OpenAI"
 	// APISchemaCohere represents the Cohere API schema.
 	APISchemaCohere APISchemaName = "Cohere"
-	// APISchemaAWSBedrock represents the AWS Bedrock API schema.
+	// APISchemaAWSBedrock represents the AWS Bedrock Converse API schema.
 	APISchemaAWSBedrock APISchemaName = "AWSBedrock"
 	// APISchemaAzureOpenAI represents the Azure OpenAI API schema.
 	APISchemaAzureOpenAI APISchemaName = "AzureOpenAI"
 	// APISchemaGCPVertexAI represents the Google Cloud Gemini API schema.
 	// Used for Gemini models hosted on Google Cloud Vertex AI.
 	APISchemaGCPVertexAI APISchemaName = "GCPVertexAI"
-	// APISchemaGCPAnthropic represents the Google Cloud Anthropic API schema.
+	// APISchemaGCPAnthropic represents the schema from OpenAI API to Google Cloud Anthropic API.
 	// Used for Claude models hosted on Google Cloud Vertex AI.
 	APISchemaGCPAnthropic APISchemaName = "GCPAnthropic"
 	// APISchemaAnthropic represents the standard Anthropic API schema.
@@ -114,6 +114,9 @@ const (
 	// APISchemaAWSAnthropic represents the AWS Bedrock Anthropic API schema.
 	// Used for Claude models hosted on AWS Bedrock using the native Anthropic Messages API.
 	APISchemaAWSAnthropic APISchemaName = "AWSAnthropic"
+	// APISchemaOpenAIAWSAnthropic represents the schema translation from OpenAI API to Anthropic API
+	// Used for Claude models hosted on AWS Bedrock via InvokeModel API
+	APISchemaOpenAIAWSAnthropic APISchemaName = "OpenAIAWSAnthropic"
 )
 
 // RouteRuleName is the name of the route rule.

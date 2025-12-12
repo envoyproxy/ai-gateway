@@ -14,9 +14,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
-	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
+	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
 // MessageRecorder implements recorders for OpenInference chat completion spans.
@@ -207,7 +207,7 @@ func buildResponseAttributes(resp *anthropic.MessagesResponse, config *openinfer
 
 	// Token counts are considered metadata and are still included even when output content is hidden.
 	u := resp.Usage
-	cost := metrics.ExtractTokenUsageFromAnthropic(
+	cost := translator.ExtractTokenUsageFromAnthropic(
 		int64(u.InputTokens),
 		int64(u.OutputTokens),
 		int64(u.CacheReadInputTokens),

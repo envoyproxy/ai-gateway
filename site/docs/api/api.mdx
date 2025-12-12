@@ -784,6 +784,11 @@ APISchema defines the API schema.
   type="enum"
   required="false"
   description="APISchemaAWSAnthropic is the schema for Anthropic models hosted on AWS Bedrock.<br />Uses the native Anthropic Messages API format for requests and responses.<br />https://aws.amazon.com/bedrock/anthropic/<br />https://docs.claude.com/en/api/claude-on-amazon-bedrock<br />"
+/><ApiField
+  name="OpenAIAWSAnthropic"
+  type="enum"
+  required="false"
+  description="APISchemaOpenAIAWSAnthropic is the schema for Anthropic models hosted on AWS Bedrock<br />Users still use the OpenAI API format for requests and responses., and ai-gateway would translate them into native Anthropic Messages API<br />https://aws.amazon.com/bedrock/<br />"
 />
 #### AWSCredentialsFile
 

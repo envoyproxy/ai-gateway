@@ -570,23 +570,6 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases(t *te
 	}
 }
 
-func tokenUsageFrom(in, cachedInput, out, total int32) metrics.TokenUsage {
-	var usage metrics.TokenUsage
-	if in >= 0 {
-		usage.SetInputTokens(uint32(in))
-	}
-	if cachedInput >= 0 {
-		usage.SetCachedInputTokens(uint32(cachedInput))
-	}
-	if out >= 0 {
-		usage.SetOutputTokens(uint32(out))
-	}
-	if total >= 0 {
-		usage.SetTotalTokens(uint32(total))
-	}
-	return usage
-}
-
 func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingFullScenario(t *testing.T) {
 	// Test to reproduce and verify fix for the input_token=0 issue in Anthropic streaming
 	// This test verifies that input_tokens from message_start are preserved when

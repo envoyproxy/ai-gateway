@@ -98,7 +98,7 @@ func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body 
 		return nil, nil, tokenUsage, responseModel, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 	usage := anthropicResp.Usage
-	tokenUsage = metrics.ExtractTokenUsageFromAnthropic(
+	tokenUsage = ExtractTokenUsageFromAnthropic(
 		int64(usage.InputTokens),
 		int64(usage.OutputTokens),
 		int64(usage.CacheReadInputTokens),
@@ -143,7 +143,7 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent(s tracing.M
 			}
 			// Extract usage from message_start event - this sets the baseline input tokens
 			if u := message.Usage; u != nil {
-				messageStartUsage := metrics.ExtractTokenUsageFromAnthropic(
+				messageStartUsage := ExtractTokenUsageFromAnthropic(
 					int64(u.InputTokens),
 					int64(u.OutputTokens),
 					int64(u.CacheReadInputTokens),

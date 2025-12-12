@@ -75,6 +75,12 @@ const (
 	// https://aws.amazon.com/bedrock/anthropic/
 	// https://docs.claude.com/en/api/claude-on-amazon-bedrock
 	APISchemaAWSAnthropic APISchema = "AWSAnthropic"
+
+	// APISchemaOpenAIAWSAnthropic is the schema for Anthropic models hosted on AWS Bedrock
+	// Users still use the OpenAI API format for requests and responses., and ai-gateway would translate them into native Anthropic Messages API
+	//
+	// https://aws.amazon.com/bedrock/
+	APISchemaOpenAIAWSAnthropic APISchema = "OpenAIAWSAnthropic"
 )
 
 const (
