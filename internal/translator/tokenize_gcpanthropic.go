@@ -13,12 +13,13 @@ import (
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/tidwall/sjson"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/tokenize"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 const (
@@ -35,10 +36,11 @@ func NewTokenizeToGCPAnthropicTranslator(modelNameOverride internalapi.ModelName
 
 // ToGCPAnthropicTranslatorV1Tokenize translates tokenize API requests to GCP Anthropic format.
 // Converts OpenAI-compatible tokenize requests to GCP Anthropic Messages API format for token counting.
-// Uses the Messages API with minimal token generation to extract input token usage statistics.
+// Uses the count-tokens model with rawPredict method for token counting.
 type ToGCPAnthropicTranslatorV1Tokenize struct {
 	modelNameOverride internalapi.ModelNameOverride
 	requestModel      internalapi.RequestModel
+	apiVersion        string
 }
 
 // tokenizeToAnthropicMessages converts an OpenAI tokenize chat request to GCP Anthropic token counting format.
@@ -132,7 +134,8 @@ func (o *ToGCPAnthropicTranslatorV1Tokenize) RequestBody(_ []byte, tokenizeReq *
 	}
 
 	// Build the correct path for GCP Anthropic token counting
-	path := buildGCPModelPathSuffix(gcpModelPublisherAnthropic, o.requestModel, gcpMethodRawPredict)
+	// Use countTokens method as per: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude/count-tokens
+	path := buildGCPModelPathSuffix(gcpModelPublisherAnthropic, "count-tokens", gcpMethodRawPredict)
 
 	anthropicReq, err := o.tokenizeToAnthropicMessages(tokenizeReq.TokenizeChatRequest, o.requestModel)
 	if err != nil {
@@ -142,6 +145,16 @@ func (o *ToGCPAnthropicTranslatorV1Tokenize) RequestBody(_ []byte, tokenizeReq *
 	newBody, err = json.Marshal(anthropicReq)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error marshaling Anthropic messages request: %w", err)
+	}
+
+	// Add anthropic_version field (required by GCP)
+	anthropicVersion := "vertex-2023-10-16" // Default version
+	if o.apiVersion != "" {
+		anthropicVersion = o.apiVersion
+	}
+	newBody, err = sjson.SetBytes(newBody, "anthropic_version", anthropicVersion)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to set anthropic_version: %w", err)
 	}
 
 	newHeaders = []internalapi.Header{
@@ -168,7 +181,7 @@ func (o *ToGCPAnthropicTranslatorV1Tokenize) ResponseHeaders(map[string]string) 
 // This method translates a GCP Anthropic MessageTokensCount response to OpenAI tokenize format.
 // GCP Anthropic uses deterministic model mapping without virtualization, where the requested model
 // is exactly what gets executed. We extract token count from the token counting response.
-func (o *ToGCPAnthropicTranslatorV1Tokenize) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracing.TokenizeSpan) (
+func (o *ToGCPAnthropicTranslatorV1Tokenize) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracingapi.TokenizeSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	anthropicResp := &anthropic.MessageTokensCount{}

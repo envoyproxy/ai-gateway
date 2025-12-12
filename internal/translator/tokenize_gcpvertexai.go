@@ -17,7 +17,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/tokenize"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // NewTokenizeToGCPVertexAITranslator implements [Factory] for tokenize to GCP Vertex AI translation.
@@ -128,7 +128,7 @@ func (o *ToGCPVertexAITranslatorV1Tokenize) RequestBody(_ []byte, tokenizeReq *t
 func (o *ToGCPVertexAITranslatorV1Tokenize) ResponseError(respHeaders map[string]string, body io.Reader) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
-	return translateGCPVertexAIErrorToOpenAI(respHeaders, body)
+	return convertGCPVertexAIErrorToOpenAI(respHeaders, body)
 }
 
 // ResponseHeaders implements [TokenizeTranslator.ResponseHeaders].
@@ -141,7 +141,7 @@ func (o *ToGCPVertexAITranslatorV1Tokenize) ResponseHeaders(map[string]string) (
 // GCP Vertex AI uses deterministic model mapping without virtualization, where the requested model
 // is exactly what gets executed. The response does not contain a model field, so we return
 // the request model that was originally sent.
-func (o *ToGCPVertexAITranslatorV1Tokenize) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracing.TokenizeSpan) (
+func (o *ToGCPVertexAITranslatorV1Tokenize) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracingapi.TokenizeSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	gcpResp := &genai.CountTokensResponse{}

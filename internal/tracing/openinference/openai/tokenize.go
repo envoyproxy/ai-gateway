@@ -13,8 +13,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/tokenize"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // startOptsTokenize sets trace.SpanKindInternal as that's the span kind used in
@@ -24,47 +24,47 @@ var startOptsTokenize = []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKin
 // TokenizeRecorder implements recorders for OpenInference tokenize spans.
 type TokenizeRecorder struct {
 	traceConfig                         *openinference.TraceConfig
-	tracing.NoopChunkRecorder[struct{}] // Tokenize operations don't have streaming chunks
+	tracingapi.NoopChunkRecorder[struct{}] // Tokenize operations don't have streaming chunks
 }
 
 // NewTokenizeRecorderFromEnv creates an api.TokenizeRecorder
 // from environment variables using the OpenInference configuration specification.
 //
 // See: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
-func NewTokenizeRecorderFromEnv() tracing.TokenizeRecorder {
+func NewTokenizeRecorderFromEnv() tracingapi.TokenizeRecorder {
 	return NewTokenizeRecorder(nil)
 }
 
-// NewTokenizeRecorder creates a tracing.TokenizeRecorder with the
+// NewTokenizeRecorder creates a tracingapi.TokenizeRecorder with the
 // given config using the OpenInference configuration specification.
 //
 // Parameters:
 //   - config: configuration for redaction. Defaults to NewTraceConfigFromEnv().
 //
 // See: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
-func NewTokenizeRecorder(config *openinference.TraceConfig) tracing.TokenizeRecorder {
+func NewTokenizeRecorder(config *openinference.TraceConfig) tracingapi.TokenizeRecorder {
 	if config == nil {
 		config = openinference.NewTraceConfigFromEnv()
 	}
 	return &TokenizeRecorder{traceConfig: config}
 }
 
-// StartParams implements the same method as defined in tracing.TokenizeRecorder.
+// StartParams implements the same method as defined in tracingapi.TokenizeRecorder.
 func (r *TokenizeRecorder) StartParams(*tokenize.TokenizeRequestUnion, []byte) (spanName string, opts []trace.SpanStartOption) {
 	return "Tokenize", startOptsTokenize
 }
 
-// RecordRequest implements the same method as defined in tracing.TokenizeRecorder.
+// RecordRequest implements the same method as defined in tracingapi.TokenizeRecorder.
 func (r *TokenizeRecorder) RecordRequest(span trace.Span, tokenizeReq *tokenize.TokenizeRequestUnion, body []byte) {
 	span.SetAttributes(buildTokenizeRequestAttributes(tokenizeReq, string(body), r.traceConfig)...)
 }
 
-// RecordResponseOnError implements the same method as defined in tracing.TokenizeRecorder.
+// RecordResponseOnError implements the same method as defined in tracingapi.TokenizeRecorder.
 func (r *TokenizeRecorder) RecordResponseOnError(span trace.Span, statusCode int, body []byte) {
 	openinference.RecordResponseError(span, statusCode, string(body))
 }
 
-// RecordResponse implements the same method as defined in tracing.TokenizeRecorder.
+// RecordResponse implements the same method as defined in tracingapi.TokenizeRecorder.
 func (r *TokenizeRecorder) RecordResponse(span trace.Span, resp *tokenize.TokenizeResponse) {
 	// Set output attributes.
 	var attrs []attribute.KeyValue

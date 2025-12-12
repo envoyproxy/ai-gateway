@@ -18,7 +18,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/tokenize"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // NewTokenizeToAWSBedrockTranslator implements [Factory] for tokenize to AWS Bedrock translation.
@@ -158,14 +158,14 @@ func (o *ToAWSBedrockTranslatorV1Tokenize) openAIMessageToBedrockMessageRoleSyst
 ) error {
 	if v, ok := openAiMessage.Content.Value.(string); ok {
 		*bedrockSystem = append(*bedrockSystem, &awsbedrock.SystemContentBlock{
-			Text: v,
+			Text: &v,
 		})
 	} else if contents, ok := openAiMessage.Content.Value.([]openai.ChatCompletionContentPartTextParam); ok {
 		for i := range contents {
 			contentPart := &contents[i]
 			textContentPart := contentPart.Text
 			*bedrockSystem = append(*bedrockSystem, &awsbedrock.SystemContentBlock{
-				Text: textContentPart,
+				Text: &textContentPart,
 			})
 		}
 	} else {
@@ -349,7 +349,7 @@ func (o *ToAWSBedrockTranslatorV1Tokenize) ResponseHeaders(map[string]string) (n
 // This method translates an AWS Bedrock CountTokens response to OpenAI tokenize format.
 // AWS Bedrock uses static model execution without virtualization, where the requested model
 // is exactly what gets executed. We extract token count from the CountTokens response.
-func (o *ToAWSBedrockTranslatorV1Tokenize) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracing.TokenizeSpan) (
+func (o *ToAWSBedrockTranslatorV1Tokenize) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracingapi.TokenizeSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	bedrockResp := &awsbedrock.CountTokensResponse{}
