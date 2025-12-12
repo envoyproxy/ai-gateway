@@ -30,6 +30,7 @@ const (
 	GenAIOperationMessages        GenAIOperation = "messages"
 	GenAIOperationImageGeneration GenAIOperation = "image_generation"
 	GenAIOperationRerank          GenAIOperation = "rerank"
+	GenAIOperationTokenize        GenAIOperation = "tokenize"
 	genaiProviderOpenAI                          = "openai"
 	genaiProviderAWSBedrock                      = "aws.bedrock"
 	genaiTokenTypeInput                          = "input"

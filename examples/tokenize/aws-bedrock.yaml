@@ -1,0 +1,135 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# Example configuration for tokenize endpoint with AWS Bedrock backend
+# This demonstrates:
+# - AWS Bedrock Claude models for tokenization
+# - Authentication with AWS credentials
+# - Automatic translation to AWS Bedrock CountTokens API
+
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: Gateway
+metadata:
+  name: envoy-ai-gateway-aws-bedrock-tokenize
+  namespace: default
+spec:
+  gatewayClassName: envoy-ai-gateway
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-aws-bedrock-tokenize-routes
+  namespace: default
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway-aws-bedrock-tokenize
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    # Route for Claude models on AWS Bedrock
+    - matches:
+        - headers:
+            - type: Regex
+              name: x-ai-eg-model
+              value: "anthropic\\.claude-.*"
+      backendRefs:
+        - name: envoy-ai-gateway-aws-bedrock
+    # Default route for tokenize requests
+    - backendRefs:
+        - name: envoy-ai-gateway-aws-bedrock
+---
+# AWS Bedrock Backend for tokenize
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-aws-bedrock
+  namespace: default
+spec:
+  schema:
+    name: AWSBedrock
+    version: v1
+  backendRef:
+    name: aws-bedrock-backend
+    kind: Backend
+    group: gateway.envoyproxy.io
+  # Optional: Override model names for specific requests
+  # modelNameOverride: "anthropic.claude-3-haiku-20240307-v1:0"
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: aws-bedrock-backend
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: bedrock-runtime.us-east-1.amazonaws.com # Adjust region as needed
+        port: 443
+---
+# AWS Authentication using IAM credentials
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: aws-bedrock-auth
+  namespace: default
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: envoy-ai-gateway-aws-bedrock
+  type: AWS
+  aws:
+    region: "us-east-1" # Adjust region as needed
+    service: "bedrock"
+    credentials:
+      secretRef:
+        name: aws-bedrock-credentials
+        accessKeyKey: "access-key-id"
+        secretAccessKeyKey: "secret-access-key"
+        # Optional session token for temporary credentials
+        sessionTokenKey: "session-token"
+---
+# Alternative: Using IAM Roles for Service Accounts (IRSA) - recommended for EKS
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aws-bedrock-sa
+  namespace: default
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT-ID:role/bedrock-tokenize-role"
+---
+# Create secrets for AWS credentials (if not using IRSA)
+# Option 1: Using access keys
+# kubectl create secret generic aws-bedrock-credentials \
+#   --from-literal=access-key-id="your-access-key-id" \
+#   --from-literal=secret-access-key="your-secret-access-key"
+
+# Option 2: Using temporary credentials (for cross-account access)
+# kubectl create secret generic aws-bedrock-credentials \
+#   --from-literal=access-key-id="your-access-key-id" \
+#   --from-literal=secret-access-key="your-secret-access-key" \
+#   --from-literal=session-token="your-session-token"
+
+# Option 3: Using IRSA (recommended for EKS)
+# 1. Create IAM policy:
+# {
+#   "Version": "2012-10-17",
+#   "Statement": [
+#     {
+#       "Effect": "Allow",
+#       "Action": [
+#         "bedrock:InvokeModel",
+#         "bedrock:InvokeModelWithResponseStream"
+#       ],
+#       "Resource": "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-*"
+#     }
+#   ]
+# }
+# 2. Create IAM role and associate with service account
+# 3. Deploy this configuration with the serviceAccountName: aws-bedrock-sa

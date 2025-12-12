@@ -13,6 +13,7 @@ import (
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/tokenize"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
@@ -28,6 +29,7 @@ const (
 	eventStreamContentType  = "text/event-stream"
 	openAIBackendError      = "OpenAIBackendError"
 	awsBedrockBackendError  = "AWSBedrockBackendError"
+	gcpVertexAIBackendError = "GCPVertexAIBackendError"
 )
 
 // Translator translates the request and response messages between the client
@@ -87,6 +89,8 @@ type (
 	AnthropicMessagesTranslator = Translator[anthropicschema.MessagesRequest, tracing.MessageSpan]
 	// OpenAIImageGenerationTranslator translates the OpenAI's /images/generations endpoint.
 	OpenAIImageGenerationTranslator = Translator[openai.ImageGenerationRequest, tracing.ImageGenerationSpan]
+	// TokenizeTranslator translates the tokenize endpoint.
+	TokenizeTranslator = Translator[tokenize.TokenizeRequestUnion, tracing.TokenizeSpan]
 )
 
 // sjsonOptions are the options used for sjson operations in the translator.

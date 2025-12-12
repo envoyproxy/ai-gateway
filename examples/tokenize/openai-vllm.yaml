@@ -1,0 +1,124 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# Example configuration for tokenize endpoint with OpenAI and vLLM backends
+# This demonstrates:
+# - OpenAI API for tokenization
+# - vLLM backend with custom model for tokenization
+# - Model-specific routing based on headers
+
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: Gateway
+metadata:
+  name: envoy-ai-gateway-tokenize
+  namespace: default
+spec:
+  gatewayClassName: envoy-ai-gateway
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-tokenize-routes
+  namespace: default
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway-tokenize
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    # Route for OpenAI models (e.g., gpt-3.5-turbo, gpt-4)
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-backend
+              value: openai
+      backendRefs:
+        - name: envoy-ai-gateway-openai
+    # Route for vLLM models (e.g., llama-2-7b-chat, mistral-7b)
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-backend
+              value: vllm
+      backendRefs:
+        - name: envoy-ai-gateway-vllm
+    # Default route to OpenAI for standard models
+    - backendRefs:
+        - name: envoy-ai-gateway-openai
+---
+# OpenAI Backend for tokenize
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-openai
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+    version: v1
+  backendRef:
+    name: openai-backend
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: openai-backend
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: api.openai.com
+        port: 443
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: openai-apikey
+  namespace: default
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: envoy-ai-gateway-openai
+  type: APIKey
+  apiKey:
+    secretRef:
+      name: openai-secret
+      key: api-key
+---
+# vLLM Backend for tokenize (OpenAI-compatible)
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-vllm
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+    version: v1
+  backendRef:
+    name: vllm-backend
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: vllm-backend
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: your-vllm-server.example.com # Replace with your vLLM server
+        port: 8000
+---
+# Create secrets for API keys
+# kubectl create secret generic openai-secret --from-literal=api-key="your-openai-api-key"

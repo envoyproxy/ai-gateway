@@ -1,0 +1,133 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# Example configuration for tokenize endpoint with GCP Anthropic backend
+# This demonstrates:
+# - GCP Anthropic Claude models for tokenization
+# - Authentication with GCP service account
+# - Automatic translation to Anthropic MessageCountTokens API
+
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: Gateway
+metadata:
+  name: envoy-ai-gateway-gcp-anthropic-tokenize
+  namespace: default
+spec:
+  gatewayClassName: envoy-ai-gateway
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-gcp-anthropic-tokenize-routes
+  namespace: default
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway-gcp-anthropic-tokenize
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    # Route for Claude models on GCP Anthropic
+    - matches:
+        - headers:
+            - type: Regex
+              name: x-ai-eg-model
+              value: "claude-.*"
+      backendRefs:
+        - name: envoy-ai-gateway-gcp-anthropic
+    # Default route for tokenize requests
+    - backendRefs:
+        - name: envoy-ai-gateway-gcp-anthropic
+---
+# GCP Anthropic Backend for tokenize
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-gcp-anthropic
+  namespace: default
+spec:
+  schema:
+    name: GCPAnthropic
+    version: v1
+  backendRef:
+    name: gcp-anthropic-backend
+    kind: Backend
+    group: gateway.envoyproxy.io
+  # Optional: Override model names for specific requests
+  # modelNameOverride: "claude-3-haiku-20240307"
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: gcp-anthropic-backend
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: us-central1-aiplatform.googleapis.com # Adjust region as needed
+        port: 443
+---
+# GCP Authentication using service account
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: gcp-anthropic-auth
+  namespace: default
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: envoy-ai-gateway-gcp-anthropic
+  type: OAuth2
+  oauth2:
+    clientCredentials:
+      clientID: "client-id-placeholder" # Will be set via service account
+      clientSecret:
+        secretRef:
+          name: gcp-anthropic-secret
+          key: service-account-key
+    scopes:
+      - "https://www.googleapis.com/auth/cloud-platform"
+    tokenEndpoint: "https://oauth2.googleapis.com/token"
+---
+# Alternative: GCP Service Account-based authentication
+# This is the recommended approach for GCP Anthropic
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gcp-anthropic-sa
+  namespace: default
+  annotations:
+    iam.gke.io/gcp-service-account: "anthropic-service-account@your-project.iam.gserviceaccount.com"
+---
+# Create secrets for GCP service account
+# Option 1: Using service account key file
+# kubectl create secret generic gcp-anthropic-secret \
+#   --from-file=service-account-key=path/to/service-account.json
+
+# Option 2: Using Workload Identity (recommended)
+# 1. Create GCP service account:
+# gcloud iam service-accounts create anthropic-service-account
+
+# 2. Grant necessary permissions for Anthropic on Vertex AI:
+# gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+#   --member="serviceAccount:anthropic-service-account@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+#   --role="roles/aiplatform.user"
+
+# 3. Grant access to Claude models specifically:
+# gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+#   --member="serviceAccount:anthropic-service-account@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+#   --role="roles/aiplatform.claudeUser"
+
+# 4. Enable Workload Identity:
+# gcloud iam service-accounts add-iam-policy-binding \
+#   --role roles/iam.workloadIdentityUser \
+#   --member "serviceAccount:YOUR_PROJECT_ID.svc.id.goog[default/gcp-anthropic-sa]" \
+#   anthropic-service-account@YOUR_PROJECT_ID.iam.gserviceaccount.com
+
+# 5. Deploy this configuration with serviceAccountName: gcp-anthropic-sa
