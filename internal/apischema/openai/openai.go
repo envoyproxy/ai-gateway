@@ -10,6 +10,7 @@ package openai
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -515,8 +516,8 @@ type ChatCompletionAssistantMessageParamContent struct {
 	Text *string `json:"text,omitempty"`
 
 	// The signature for a thinking block.
-	Signature               *string `json:"signature,omitempty"`
-	RedactedContent         []byte  `json:"redactedContent,omitempty"`
+	Signature               *string               `json:"signature,omitempty"`
+	RedactedContent         *RedactedContentUnion `json:"redactedContent,omitempty"`
 	*AnthropicContentFields `json:",inline,omitempty"`
 }
 
@@ -1586,6 +1587,43 @@ func (e *EmbeddingUnion) UnmarshalJSON(data []byte) error {
 // MarshalJSON implements json.Marshaler.
 func (e EmbeddingUnion) MarshalJSON() ([]byte, error) {
 	return json.Marshal(e.Value)
+}
+
+// RedactedContentUnion is a union type that can handle both []byte and string formats.
+// AWS Bedrock uses []byte while GCP Anthropic uses string.
+type RedactedContentUnion struct {
+	Value any
+}
+
+// UnmarshalJSON implements json.Unmarshaler to handle both []byte and string formats.
+func (r *RedactedContentUnion) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as []byte first (base64 encoded).
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		// Try to decode as base64 first (this would be []byte encoded as base64)
+		if decoded, err := base64.StdEncoding.DecodeString(str); err == nil {
+			r.Value = decoded
+			return nil
+		}
+		// If not base64, treat as plain string
+		r.Value = str
+		return nil
+	}
+
+	return errors.New("redactedContent must be either []byte (base64 encoded) or string")
+}
+
+// MarshalJSON implements json.Marshaler.
+func (r RedactedContentUnion) MarshalJSON() ([]byte, error) {
+	switch v := r.Value.(type) {
+	case []byte:
+		// Encode []byte as base64 string
+		return json.Marshal(base64.StdEncoding.EncodeToString(v))
+	case string:
+		return json.Marshal(v)
+	default:
+		return json.Marshal(r.Value)
+	}
 }
 
 // EmbeddingUsage represents the usage information for an embeddings request.

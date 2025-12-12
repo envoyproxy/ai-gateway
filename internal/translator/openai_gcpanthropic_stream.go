@@ -14,7 +14,6 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
-	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -22,10 +21,7 @@ import (
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
-var (
-	sseEventPrefix = []byte("event:")
-	emptyStrPtr    = ptr.To("")
-)
+var sseEventPrefix = []byte("event:")
 
 // streamingToolCall holds the state for a single tool call that is being streamed.
 type streamingToolCall struct {
@@ -271,16 +267,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			}
 			return p.constructOpenAIChatCompletionChunk(delta, ""), nil
 		}
-		if event.ContentBlock.Type == string(constant.ValueOf[constant.Thinking]()) {
-			delta := openai.ChatCompletionResponseChunkChoiceDelta{Content: emptyStrPtr}
-			return p.constructOpenAIChatCompletionChunk(delta, ""), nil
-		}
-
-		if event.ContentBlock.Type == string(constant.ValueOf[constant.RedactedThinking]()) {
-			// This is a latency-hiding event, ignore it.
-			return nil, nil
-		}
-
+		// do not need to return an empty str for thinking start block
 		return nil, nil
 
 	case string(constant.ValueOf[constant.MessageDelta]()):
@@ -316,10 +303,28 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			return nil, fmt.Errorf("unmarshal content_block_delta: %w", err)
 		}
 		switch event.Delta.Type {
-		case string(constant.ValueOf[constant.TextDelta]()), string(constant.ValueOf[constant.ThinkingDelta]()):
-			// Treat thinking_delta just like a text_delta.
+		case string(constant.ValueOf[constant.TextDelta]()):
 			delta := openai.ChatCompletionResponseChunkChoiceDelta{Content: &event.Delta.Text}
 			return p.constructOpenAIChatCompletionChunk(delta, ""), nil
+
+		case string(constant.ValueOf[constant.ThinkingDelta]()):
+			// this should already include the case for redacted thinking: https://platform.claude.com/docs/en/build-with-claude/streaming#content-block-delta-types
+
+			reasoningDelta := &openai.StreamReasoningContent{}
+
+			// Map all relevant fields from the Bedrock delta to our flattened OpenAI delta struct.
+			if event.Delta.Thinking != "" {
+				reasoningDelta.Text = event.Delta.Thinking
+			}
+			if event.Delta.Signature != "" {
+				reasoningDelta.Signature = event.Delta.Signature
+			}
+
+			delta := openai.ChatCompletionResponseChunkChoiceDelta{
+				ReasoningContent: reasoningDelta,
+			}
+			return p.constructOpenAIChatCompletionChunk(delta, ""), nil
+
 		case string(constant.ValueOf[constant.InputJSONDelta]()):
 			tool, ok := p.activeToolCalls[p.toolIndex]
 			if !ok {
@@ -338,6 +343,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			tool.inputJSON += event.Delta.PartialJSON
 			return p.constructOpenAIChatCompletionChunk(delta, ""), nil
 		}
+		// Do not process redacted thinking stream? Did not find the source
 
 	case string(constant.ValueOf[constant.ContentBlockStop]()):
 		// This event is for state cleanup, no chunk is sent.
