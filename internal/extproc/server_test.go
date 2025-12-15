@@ -276,7 +276,7 @@ func TestServer_setBackend(t *testing.T) {
 				require.NoError(t, err)
 				// Test the breaking-change scenario where the metadata is prefixed with "google/debugproto".
 				// See the comment in setBackend for more details.
-				str = append([]byte("goo.gle/debugproto"), str...)
+				str = append([]byte("goo.gle/debugproto "), str...)
 				s, _ := requireNewServerWithMockProcessor(t)
 				s.config.Backends = map[string]*filterapi.RuntimeBackend{"openai": {Backend: &filterapi.Backend{Name: "openai", HeaderMutation: &filterapi.HTTPHeaderMutation{Set: []filterapi.HTTPHeader{{Name: "x-foo", Value: "foo"}}}}}}
 				mockProc := &mockProcessor{}
