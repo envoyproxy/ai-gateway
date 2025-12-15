@@ -207,7 +207,7 @@ func (e *TestEnvironment) checkConnection(t testing.TB, port int, name string) e
 	return nil
 }
 
-func waitForReadyMessage(ctx context.Context, outReader io.Reader, readyMessage string) {
+func waitForReadyMessage(t testing.TB, ctx context.Context, outReader io.Reader, readyMessage string) {
 	scanner := bufio.NewScanner(outReader)
 	done := make(chan bool)
 
@@ -229,7 +229,18 @@ func waitForReadyMessage(ctx context.Context, outReader io.Reader, readyMessage 
 		}
 	}()
 
-	<-done
+	select {
+	case <-done:
+		return
+	case <-time.After(30 * time.Second):
+		t.Fatalf("timed out waiting for process to become ready (message: %q)", readyMessage)
+	case <-ctx.Done():
+		// Use Logf instead of Fatalf here because context cancellation might be expected
+		// during cleanup or if the test has already officially failed/ended.
+		t.Logf("context canceled while waiting for process ready message: %q", readyMessage)
+		// Return to allow cleanup
+		return
+	}
 }
 
 // requireEnvoy starts Envoy with the given configuration and ports.
@@ -356,7 +367,7 @@ func StartAndAwaitReady(t testing.TB, cmd *exec.Cmd, stdout, stderr io.Writer, r
 	require.NoError(t, cmd.Start())
 
 	// Wait for the ready message or exit.
-	waitForReadyMessage(t.Context(), stderrReader, readyMessage)
+	waitForReadyMessage(t, t.Context(), stderrReader, readyMessage)
 }
 
 // replaceTokens replaces all occurrences of tokens in content with their corresponding values.
