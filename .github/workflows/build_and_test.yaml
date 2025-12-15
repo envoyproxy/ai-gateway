@@ -133,7 +133,7 @@ jobs:
 
   test_extproc:
     needs: changes
-    if: ${{ needs.changes.outputs.code == 'true' }}
+    if: ${{ needs.changes.outputs.code == 'true' && github.repository == 'envoyproxy/ai-gateway' }}
     name: External Processor Test (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -170,7 +170,7 @@ jobs:
 
   test_e2e:
     needs: changes
-    if: ${{ needs.changes.outputs.code == 'true' }}
+    if: ${{ needs.changes.outputs.code == 'true' && github.repository == 'envoyproxy/ai-gateway' }}
     # Not all the cases in E2E require secrets, so we run for all the events.
     name: E2E Test (Envoy Gateway ${{ matrix.name }})
     # TODO: make it possible to run this job on macOS as well, which is a bit tricky due to the nested
@@ -213,7 +213,7 @@ jobs:
 
   test_e2e_upgrade:
     needs: changes
-    if: ${{ needs.changes.outputs.code == 'true' }}
+    if: ${{ needs.changes.outputs.code == 'true' && github.repository == 'envoyproxy/ai-gateway' }}
     name: E2E Test for Upgrades (k8s ${{ matrix.k8s-version }})
     runs-on: ubuntu-latest
     strategy:
@@ -249,7 +249,7 @@ jobs:
 
   test_e2e_inference_extension:
     needs: changes
-    if: ${{ needs.changes.outputs.code == 'true' }}
+    if: ${{ needs.changes.outputs.code == 'true' && github.repository == 'envoyproxy/ai-gateway' }}
     name: E2E Test for Inference Extensions
     # TODO: make it possible to run this job on macOS as well, which is a bit tricky due to the nested
     # virtualization is not supported on macOS runners.
@@ -277,7 +277,7 @@ jobs:
 
   test_e2e_namespaced:
     needs: changes
-    if: ${{ needs.changes.outputs.code == 'true' }}
+    if: ${{ needs.changes.outputs.code == 'true' && github.repository == 'envoyproxy/ai-gateway' }}
     name: E2E Test for Namespaced Controller
     # TODO: make it possible to run this job on macOS as well, which is a bit tricky due to the nested
     # virtualization is not supported on macOS runners.
@@ -308,7 +308,7 @@ jobs:
   test_e2e_aigw:
     needs: changes
     name: E2E Test for aigw CLI
-    if: ${{ needs.changes.outputs.code == 'true' }}
+    if: ${{ needs.changes.outputs.code == 'true' && github.repository == 'envoyproxy/ai-gateway' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
