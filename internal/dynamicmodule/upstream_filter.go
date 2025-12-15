@@ -303,9 +303,12 @@ func (f *upstreamFilter) ResponseBody(e sdk.EnvoyHTTPFilter, endOfStream bool) s
 		return sdk.ResponseBodyStatusStopIterationAndBuffer
 	}
 	if !f.success {
-		if err := f.typedFilter.ResponseBodyOnError(e, endOfStream); err != nil {
-			return sdk.ResponseBodyStatusStopIterationAndBuffer
+		if err := f.typedFilter.ResponseBodyOnError(e); err != nil {
+			// TODO: log the error in the proper way.
+			fmt.Println("response body on error handling error:", err)
+			e.SendLocalReply(500, nil, []byte("internal server error"))
 		}
+		return sdk.ResponseBodyStatusStopIterationAndBuffer
 	}
 
 	if err := f.typedFilter.ResponseBody(e, endOfStream); err != nil {
@@ -315,10 +318,9 @@ func (f *upstreamFilter) ResponseBody(e sdk.EnvoyHTTPFilter, endOfStream bool) s
 }
 
 func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBody(e sdk.EnvoyHTTPFilter, endOfStream bool) (err error) {
-	recordRequestCompletionErr := false
 	defer func() {
 		ctx := context.Background()
-		if err != nil || recordRequestCompletionErr {
+		if err != nil {
 			f.metrics.RecordRequestCompletion(ctx, false, f.reqHeaders)
 			return
 		}
@@ -326,38 +328,67 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 			f.metrics.RecordRequestCompletion(ctx, true, f.reqHeaders)
 		}
 	}()
-
-	reader, ok := e.GetResponseBody()
+	// Decompress the body if needed using common utility.
+	body, ok := e.GetResponseBody()
 	if !ok {
 		return errors.New("failed to get response body")
 	}
-
-	body, err := io.ReadAll(reader)
-	if err != nil {
-		return fmt.Errorf("failed to read response body: %v", err)
-	}
-
-	// Decompress the body if needed using common utility.
-	decodingResult, err := decodeContentIfNeeded(bytes.NewReader(body), f.resHeaders["content-encoding"])
+	decodingResult, err := decodeContentIfNeeded(body, f.resHeaders["content-encoding"])
 	if err != nil {
 		return err
 	}
-	var newHeaders []internalapi.Header
-	var newBody []byte
-	newHeaders, newBody, err = f.translator.ResponseError(f.resHeaders, decodingResult.reader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to transform response error: %w", err)
-	}
-
 	span := f.routerFilter.span
-	if span != nil {
-		b := bodyMutation.GetBody()
-		if b == nil {
-			b = body.Body
+	newHeaders, newBody, tokenUsage, responseModel, err := f.translator.ResponseBody(f.resHeaders, decodingResult.reader, endOfStream, span)
+	if err != nil {
+		return fmt.Errorf("failed to transform response: %w", err)
+	}
+	if newBody != nil && decodingResult.isEncoded {
+		// Remove the content-encoding header if the body was modified and was encoded.
+		e.SetResponseHeader("content-encoding", nil)
+	}
+	for _, h := range newHeaders {
+		if !e.SetResponseHeader(h.Key(), []byte(h.Value())) {
+			return fmt.Errorf("failed to set transformed header %s", h.Key())
 		}
-		u.parent.span.EndSpanOnError(code, b)
+	}
+	if newBody != nil {
+		cur, ok := e.GetResponseBody()
+		if !ok {
+			return errors.New("failed to get current response body for replacement")
+		}
+		_ = e.DrainResponseBody(cur.Len())
+		_ = e.AppendResponseBody(newBody)
 	}
 
+	// Translator reports the latest cumulative token usage which we use to override existing costs.
+	f.costs.Override(tokenUsage)
+
+	// Set the response model for metrics
+	f.metrics.SetResponseModel(responseModel)
+
+	// Record metrics.
+	ctx := context.Background()
+	stream := f.routerFilter.stream
+	if stream {
+		// Token latency is only recorded for streaming responses, otherwise it doesn't make sense since
+		// these metrics are defined as a difference between the two output events.
+		out, _ := f.costs.OutputTokens()
+		f.metrics.RecordTokenLatency(ctx, out, endOfStream, f.reqHeaders)
+		// Emit usage once at end-of-stream using final totals.
+		if endOfStream {
+			f.metrics.RecordTokenUsage(ctx, f.costs, f.reqHeaders)
+		}
+	} else {
+		f.metrics.RecordTokenUsage(ctx, f.costs, f.reqHeaders)
+	}
+
+	if endOfStream && len(f.routerFilter.runtimeFilterConfig.RequestCosts) > 0 {
+		// TODO: build dynamic cost metadata.
+	}
+
+	if endOfStream && span != nil {
+		span.EndSpan()
+	}
 	return nil
 }
 
@@ -366,21 +397,42 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 		f.metrics.RecordRequestCompletion(context.Background(), false, f.reqHeaders)
 	}()
 
+	body, ok := e.GetResponseBody()
+	if !ok {
+		return errors.New("failed to get response body for error handling")
+	}
+	bodyBytes, err := io.ReadAll(body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body for error handling: %w", err)
+	}
+
+	decodingResult, err := decodeContentIfNeeded(bytes.NewBuffer(bodyBytes), f.resHeaders["content-encoding"])
+	if err != nil {
+		return err
+	}
+
 	var newHeaders []internalapi.Header
 	var newBody []byte
 	newHeaders, newBody, err = f.translator.ResponseError(f.resHeaders, decodingResult.reader)
 	if err != nil {
 		return fmt.Errorf("failed to transform response error: %w", err)
 	}
+	statusCode := f.resHeaders[":200"]
+	code, _ := strconv.Atoi(statusCode)
+	span := f.routerFilter.span
 	if span != nil {
-		b := bodyMutation.GetBody()
+		b := newBody
 		if b == nil {
-			b = body.Body
+			b = bodyBytes
 		}
 		span.EndSpanOnError(code, b)
 	}
-	// Mark so the deferred handler records failure.
-	recordRequestCompletionErr = true
+	var headers [][2]string
+	for _, h := range newHeaders {
+		headers = append(headers, [2]string{h.Key(), h.Value()})
+	}
+	e.SendLocalReply(uint32(code), headers, newBody)
+	return nil
 }
 
 // contentDecodingResult contains the result of content decoding operation.
@@ -392,10 +444,10 @@ type contentDecodingResult struct {
 // decodeContentIfNeeded decompresses the response body based on the content-encoding header.
 // Currently, supports gzip and brotli encoding, but can be extended to support other encodings in the future.
 // Returns a reader for the (potentially decompressed) body and metadata about the encoding.
-func decodeContentIfNeeded(body io.Reader, contentEncoding string) (contentDecodingResult, error) {
+func decodeContentIfNeeded(base io.Reader, contentEncoding string) (contentDecodingResult, error) {
 	switch contentEncoding {
 	case "gzip":
-		reader, err := gzip.NewReader(body)
+		reader, err := gzip.NewReader(base)
 		if err != nil {
 			return contentDecodingResult{}, fmt.Errorf("failed to decode gzip: %w", err)
 		}
@@ -404,14 +456,14 @@ func decodeContentIfNeeded(body io.Reader, contentEncoding string) (contentDecod
 			isEncoded: true,
 		}, nil
 	case "br":
-		reader := brotli.NewReader(body)
+		reader := brotli.NewReader(base)
 		return contentDecodingResult{
 			reader:    reader,
 			isEncoded: true,
 		}, nil
 	default:
 		return contentDecodingResult{
-			reader:    body,
+			reader:    base,
 			isEncoded: false,
 		}, nil
 	}
