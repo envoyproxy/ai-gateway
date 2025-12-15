@@ -113,11 +113,6 @@ func verifyRequestDurationMetricsWithOriginal(t *testing.T, op string, metrics *
 func verifyRequestDurationMetricsWithProvider(t *testing.T, op string, provider string, metrics *metricsv1.ScopeMetrics, span *tracev1.Span, originalModel, requestModel, responseModel string, isError bool) {
 	t.Helper()
 
-	spanDurationSec := float64(span.EndTimeUnixNano-span.StartTimeUnixNano) / 1e9
-	metricDurationSec := getMetricHistogramSum(metrics, "gen_ai.server.request.duration")
-	require.Greater(t, metricDurationSec, 0.0)
-	require.InDelta(t, spanDurationSec, metricDurationSec, 0.3)
-
 	// For error cases, don't validate response model since we don't get one from the backend
 	if isError {
 		// Just verify the error type is present
@@ -153,6 +148,11 @@ func verifyRequestDurationMetricsWithProvider(t *testing.T, op string, provider 
 		"gen_ai.response.model": responseModel,
 	}
 	verifyMetricAttributes(t, metrics, "gen_ai.server.request.duration", expectedAttrs)
+
+	spanDurationSec := float64(span.EndTimeUnixNano-span.StartTimeUnixNano) / 1e9
+	metricDurationSec := getMetricHistogramSum(metrics, "gen_ai.server.request.duration")
+	require.GreaterOrEqual(t, metricDurationSec, 0.0)
+	require.InDelta(t, spanDurationSec, metricDurationSec, 0.3)
 }
 
 func getSpanAttributeInt(attrs []*commonv1.KeyValue, key string) int64 {

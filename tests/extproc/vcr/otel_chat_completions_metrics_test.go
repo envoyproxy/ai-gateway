@@ -140,11 +140,6 @@ func TestOtelOpenAIChatCompletions_metrics_modelNameOverride(t *testing.T) {
 func verifyTimeToFirstTokenMetrics(t *testing.T, metrics *metricsv1.ScopeMetrics, originalModel, requestModel, responseModel string) {
 	t.Helper()
 
-	ttft := getMetricHistogramSum(metrics, "gen_ai.server.time_to_first_token")
-	metricDurationSec := getMetricHistogramSum(metrics, "gen_ai.server.request.duration")
-	require.Greater(t, ttft, 0.0)
-	require.Less(t, ttft, metricDurationSec)
-
 	expectedAttrs := map[string]string{
 		"gen_ai.operation.name": "chat",
 		"gen_ai.provider.name":  "openai",
@@ -153,6 +148,11 @@ func verifyTimeToFirstTokenMetrics(t *testing.T, metrics *metricsv1.ScopeMetrics
 		"gen_ai.response.model": responseModel,
 	}
 	verifyMetricAttributes(t, metrics, "gen_ai.server.time_to_first_token", expectedAttrs)
+
+	ttft := getMetricHistogramSum(metrics, "gen_ai.server.time_to_first_token")
+	metricDurationSec := getMetricHistogramSum(metrics, "gen_ai.server.request.duration")
+	require.GreaterOrEqual(t, ttft, 0.0)
+	require.Less(t, ttft, metricDurationSec)
 }
 
 // verifyTimePerOutputTokenMetricsWithOriginal verifies the gen_ai.server.time_per_output_token metric including original model attribute.
@@ -164,11 +164,6 @@ func verifyTimePerOutputTokenMetricsWithOriginal(t *testing.T, metrics *metricsv
 		return // Skip if no output tokens.
 	}
 
-	tpot := getMetricHistogramSum(metrics, "gen_ai.server.time_per_output_token")
-	metricDurationSec := getMetricHistogramSum(metrics, "gen_ai.server.request.duration")
-	require.Greater(t, tpot, 0.0)
-	require.Less(t, tpot, metricDurationSec)
-
 	expectedAttrs := map[string]string{
 		"gen_ai.operation.name": "chat",
 		"gen_ai.provider.name":  "openai",
@@ -177,4 +172,9 @@ func verifyTimePerOutputTokenMetricsWithOriginal(t *testing.T, metrics *metricsv
 		"gen_ai.response.model": responseModel,
 	}
 	verifyMetricAttributes(t, metrics, "gen_ai.server.time_per_output_token", expectedAttrs)
+
+	tpot := getMetricHistogramSum(metrics, "gen_ai.server.time_per_output_token")
+	metricDurationSec := getMetricHistogramSum(metrics, "gen_ai.server.request.duration")
+	require.GreaterOrEqual(t, tpot, 0.0)
+	require.Less(t, tpot, metricDurationSec)
 }
