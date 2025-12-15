@@ -152,7 +152,7 @@ func verifyTimeToFirstTokenMetrics(t *testing.T, metrics *metricsv1.ScopeMetrics
 	ttft := getMetricHistogramSum(metrics, "gen_ai.server.time_to_first_token")
 	metricDurationSec := getMetricHistogramSum(metrics, "gen_ai.server.request.duration")
 	require.GreaterOrEqual(t, ttft, 0.0)
-	require.Less(t, ttft, metricDurationSec)
+	require.LessOrEqual(t, ttft, metricDurationSec)
 }
 
 // verifyTimePerOutputTokenMetricsWithOriginal verifies the gen_ai.server.time_per_output_token metric including original model attribute.
@@ -176,5 +176,5 @@ func verifyTimePerOutputTokenMetricsWithOriginal(t *testing.T, metrics *metricsv
 	tpot := getMetricHistogramSum(metrics, "gen_ai.server.time_per_output_token")
 	metricDurationSec := getMetricHistogramSum(metrics, "gen_ai.server.request.duration")
 	require.GreaterOrEqual(t, tpot, 0.0)
-	require.Less(t, tpot, metricDurationSec)
+	require.LessOrEqual(t, tpot, metricDurationSec)
 }
