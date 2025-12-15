@@ -56,6 +56,7 @@ type (
 	// routerFilterTypedIface is the interface for the typed router filter.
 	routerFilterTypedIface interface {
 		RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.RequestBodyStatus
+		Stream() bool
 	}
 
 	// routerFilter typed is the typed implementation of the router filter for a specific endpoint.
@@ -66,6 +67,7 @@ type (
 		originalRequestBody    *ReqT
 		originalRequestBodyRaw []byte
 		originalModel          internalapi.OriginalModel
+		forceBodyMutation      bool
 		stream                 bool
 		tracer                 tracing.RequestTracer[ReqT, RespT, RespChunkT]
 		span                   tracing.Span[RespT, RespChunkT]
@@ -158,6 +160,10 @@ func (f *routerFilter) RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.
 	return f.typedFilter.RequestBody(e, endOfStream)
 }
 
+func (f *routerFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) Stream() bool {
+	return f.stream
+}
+
 func (f *routerFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.RequestBodyStatus {
 	if !endOfStream {
 		return sdk.RequestBodyStatusStopIterationAndBuffer
@@ -179,6 +185,7 @@ func (f *routerFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(
 		f.ep.ParseBody(raw, len(f.runtimeFilterConfig.RequestCosts) > 0)
 	if len(maybeMutatedOriginalBodyRaw) > 0 {
 		f.originalRequestBodyRaw = maybeMutatedOriginalBodyRaw
+		f.forceBodyMutation = true
 	}
 	if !e.SetRequestHeader(internalapi.ModelNameHeaderKeyDefault, []byte(f.originalModel)) {
 		e.SendLocalReply(500, nil, []byte("failed to set model name header"))
