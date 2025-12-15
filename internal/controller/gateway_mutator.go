@@ -311,7 +311,7 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		podspec.ImagePullSecrets = append(podspec.ImagePullSecrets, g.extProcImagePullSecrets...)
 	}
 
-	// TODO: remove after the next release once GatewayConfig adoption is complete.
+	// TODO: remove after the next release v0.5.
 	var resources corev1.ResourceRequirements
 	for i := range routes.Items {
 		fc := routes.Items[i].Spec.FilterConfig
