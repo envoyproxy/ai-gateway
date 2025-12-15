@@ -151,6 +151,8 @@ func verifyRequestDurationMetricsWithProvider(t *testing.T, op string, provider 
 
 	spanDurationSec := float64(span.EndTimeUnixNano-span.StartTimeUnixNano) / 1e9
 	metricDurationSec := getMetricHistogramSum(metrics, "gen_ai.server.request.duration")
+	// In VCR/mock environments, a duration of 0.0 is possible and acceptable.
+	// In real scenarios, a nonzero duration is expected.
 	require.GreaterOrEqual(t, metricDurationSec, 0.0)
 	require.InDelta(t, spanDurationSec, metricDurationSec, 0.3)
 }
