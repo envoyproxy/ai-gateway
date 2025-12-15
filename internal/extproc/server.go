@@ -313,12 +313,22 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 	var metadata corev3.Metadata
 	// This is a *very* hacky workaround for a breaking change introduced in
 	// protobuf dependency used in Envoy since https://github.com/envoyproxy/envoy/pull/42435.
+	// More specifically, the string value of the metadata now contains a debug prefix that
+	// is not valid protobuf text format for the current Go protobuf library.
+	// The example of the prefix can be found here:
+	// https://github.com/protocolbuffers/protobuf/blob/ee9f0bccf0950e07070e43d8d53ca70876fa050a/src/google/protobuf/text_format.cc#L3087
+	//
 	// Ideally, the Go protobuf lib should be able to handle this natively, but until then,
 	// we manually strip the prefix.
-	hostMetadataStr := strings.TrimPrefix(hostMetadata.GetStringValue(),
-		// https://github.com/protocolbuffers/protobuf/blob/ee9f0bccf0950e07070e43d8d53ca70876fa050a/src/google/protobuf/text_format.cc#L3087
-		`goo.gle/debugproto`)
-	err := prototext.Unmarshal([]byte(hostMetadataStr), &metadata)
+	//
+	// We are only interested in the `filter_metadata` part, so we find its index and slice from there.
+	hostMetadataStr := hostMetadata.GetStringValue()
+	index := strings.Index(hostMetadataStr, "filter_metadata")
+	if index > 0 {
+		hostMetadataStr = hostMetadataStr[index-1:]
+	}
+	opt := prototext.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
+	err := opt.Unmarshal([]byte(hostMetadataStr), &metadata)
 	if err != nil {
 		return status.Errorf(codes.Internal,
 			"cannot unmarshal host metadata '%s': %v",
