@@ -324,8 +324,8 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 	// We are only interested in the `filter_metadata` part, so we find its index and slice from there.
 	hostMetadataStr := hostMetadata.GetStringValue()
 	index := strings.Index(hostMetadataStr, "filter_metadata")
-	if index > 0 {
-		hostMetadataStr = hostMetadataStr[index-1:]
+	if index != -1 {
+		hostMetadataStr = hostMetadataStr[index:]
 	}
 	opt := prototext.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
 	err := opt.Unmarshal([]byte(hostMetadataStr), &metadata)
