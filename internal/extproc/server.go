@@ -317,7 +317,7 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 	// we manually strip the prefix.
 	hostMetadataStr := strings.TrimPrefix(hostMetadata.GetStringValue(),
 		// https://github.com/protocolbuffers/protobuf/blob/ee9f0bccf0950e07070e43d8d53ca70876fa050a/src/google/protobuf/text_format.cc#L3087
-		`google/debugproto`)
+		`goo.gle/debugproto`)
 	err := prototext.Unmarshal([]byte(hostMetadataStr), &metadata)
 	if err != nil {
 		return status.Errorf(codes.Internal,
