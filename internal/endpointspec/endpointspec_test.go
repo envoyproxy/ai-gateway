@@ -7,36 +7,14 @@ package endpointspec
 
 import (
 	"encoding/json"
-	"fmt"
-	"strings"
 	"testing"
 
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/encoding/prototext"
 
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
-
-func Test_a(t *testing.T) {
-	var metadata corev3.Metadata
-	opt := prototext.UnmarshalOptions{
-		AllowPartial:   true,
-		DiscardUnknown: true,
-	}
-	hostMetadata := `goo.gle/debugproto  filter_metadata { key: "aigateway.envoy.io" value { fields { key: "per_route_rule_backend_name" value { string_value: "default/translation-testupstream-another-cool-model-backend/route/translation-testupstream/rule/1/ref/0" } } } }`
-	index := strings.Index(hostMetadata, "filter_metadata")
-	if index != -1 {
-		hostMetadata = hostMetadata[index:]
-	}
-	fmt.Println(hostMetadata)
-	err := opt.Unmarshal([]byte(
-		hostMetadata,
-	), &metadata)
-	require.NoError(t, err)
-}
 
 func TestChatCompletionsEndpointSpec_ParseBody(t *testing.T) {
 	spec := ChatCompletionsEndpointSpec{}
