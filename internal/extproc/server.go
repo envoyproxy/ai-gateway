@@ -311,9 +311,19 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 	}
 	// Unmarshal the text into the struct since the metadata is encoded as a proto string.
 	var metadata corev3.Metadata
-	err := prototext.Unmarshal([]byte(hostMetadata.GetStringValue()), &metadata)
+	// This is a *very* hacky workaround for a breaking change introduced in
+	// protobuf dependency used in Envoy since https://github.com/envoyproxy/envoy/pull/42435.
+	// Ideally, the Go protobuf lib should be able to handle this natively, but until then,
+	// we manually strip the prefix.
+	hostMetadataStr := strings.TrimPrefix(hostMetadata.GetStringValue(),
+		// https://github.com/protocolbuffers/protobuf/blob/ee9f0bccf0950e07070e43d8d53ca70876fa050a/src/google/protobuf/text_format.cc#L3087
+		`google/debugproto`)
+	err := prototext.Unmarshal([]byte(hostMetadataStr), &metadata)
 	if err != nil {
-		panic(err)
+		return status.Errorf(codes.Internal,
+			"cannot unmarshal host metadata '%s': %v",
+			hostMetadata.GetStringValue(),
+			err)
 	}
 
 	aiGatewayEndpointMetadata, ok := metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]

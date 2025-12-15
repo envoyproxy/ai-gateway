@@ -274,6 +274,9 @@ func TestServer_setBackend(t *testing.T) {
 			t.Run(fmt.Sprintf("errors/%s/isEndpointPicker=%t", tc.errStr, isEndpointPicker), func(t *testing.T) {
 				str, err := prototext.Marshal(tc.md)
 				require.NoError(t, err)
+				// Test the breaking-change scenario where the metadata is prefixed with "google/debugproto".
+				// See the comment in setBackend for more details.
+				str = append([]byte("google/debugproto"), str...)
 				s, _ := requireNewServerWithMockProcessor(t)
 				s.config.Backends = map[string]*filterapi.RuntimeBackend{"openai": {Backend: &filterapi.Backend{Name: "openai", HeaderMutation: &filterapi.HTTPHeaderMutation{Set: []filterapi.HTTPHeader{{Name: "x-foo", Value: "foo"}}}}}}
 				mockProc := &mockProcessor{}
