@@ -248,7 +248,9 @@ func TestServer_setBackend(t *testing.T) {
 		md     *corev3.Metadata
 		errStr string
 	}{
-		{md: &corev3.Metadata{}, errStr: "missing aigateway.envoy.io metadata"},
+		{md: &corev3.Metadata{
+			FilterMetadata: map[string]*structpb.Struct{"foo": {}},
+		}, errStr: "missing aigateway.envoy.io metadata"},
 		{
 			md:     &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{internalapi.InternalEndpointMetadataNamespace: {}}},
 			errStr: "missing per_route_rule_backend_name in endpoint metadata",
