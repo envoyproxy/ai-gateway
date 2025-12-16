@@ -718,6 +718,124 @@ func TestHandleToolCallRequest_BackendError(t *testing.T) {
 	require.Contains(t, rr.Body.String(), "call to backend1 failed with status code 500, body=backend error")
 }
 
+func TestHandleToolCallRequest_InvalidToolName(t *testing.T) {
+	// Mock backend server that returns a JSON-RPC error saying the tool doesn't exist
+	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Read the request to extract the ID
+		body, _ := io.ReadAll(r.Body)
+		req, _ := jsonrpc.DecodeMessage(body)
+		reqMsg := req.(*jsonrpc.Request)
+
+		// Return a JSON-RPC error response indicating tool not found
+		resp := &jsonrpc.Response{
+			ID: reqMsg.ID,
+			Error: &jsonrpc.Error{
+				Code:    -32601,
+				Message: "unknown tool \"unknown_tool\"",
+			},
+		}
+		respBody, _ := jsonrpc.EncodeMessage(resp)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(respBody)
+	}))
+	t.Cleanup(backendServer.Close)
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = backendServer.URL
+
+	// Add "unknown_tool" to the allowed list for backend1
+	// This simulates a tool being in the config but not actually on the MCP server
+	proxy.routes["test-route"].toolSelectors["backend1"].include["unknown_tool"] = struct{}{}
+
+	s := &session{
+		proxy: proxy,
+		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
+			"backend1": {
+				sessionID: "test-session",
+			},
+		},
+		route: "test-route",
+	}
+
+	// Use a tool that is in the allowed list (unknown_tool is in backend1's selector)
+	// but doesn't actually exist on the MCP server
+	params := &mcp.CallToolParams{Name: "backend1__unknown_tool"}
+	rr := httptest.NewRecorder()
+
+	id := mustJSONRPCRequestID()
+	req := &jsonrpc.Request{ID: id, Method: "tools/call"}
+
+	err := proxy.handleToolCallRequest(t.Context(), s, rr, req, params, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unknown tool")
+
+	// Response should be written with the JSON-RPC error
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Contains(t, rr.Body.String(), "unknown tool")
+}
+
+func TestHandleToolCallRequest_ToolResultWithIsError(t *testing.T) {
+	// Mock backend server that returns a successful JSON-RPC response, but the tool result has isError: true.
+	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Read the request to extract the ID
+		body, _ := io.ReadAll(r.Body)
+		req, _ := jsonrpc.DecodeMessage(body)
+		reqMsg := req.(*jsonrpc.Request)
+
+		// Create a CallToolResult with IsError: true
+		toolResult := mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: "missing required parameter: owner"},
+			},
+		}
+		resultJSON, _ := json.Marshal(toolResult)
+
+		// Return a successful JSON-RPC response with the error tool result
+		resp := &jsonrpc.Response{
+			ID:     reqMsg.ID,
+			Result: resultJSON,
+		}
+		respBody, _ := jsonrpc.EncodeMessage(resp)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(respBody)
+	}))
+	t.Cleanup(backendServer.Close)
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = backendServer.URL
+	s := &session{
+		proxy: proxy,
+		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
+			"backend1": {
+				sessionID: "test-session",
+			},
+		},
+		route: "test-route",
+	}
+
+	params := &mcp.CallToolParams{Name: "backend1__test-tool"}
+	rr := httptest.NewRecorder()
+
+	id := mustJSONRPCRequestID()
+	req := &jsonrpc.Request{ID: id, Method: "tools/call"}
+
+	err := proxy.handleToolCallRequest(t.Context(), s, rr, req, params, nil)
+	// Should return an error since isError: true
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "tool returned isError=true")
+
+	// But the response should still be written to the client (HTTP 200)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	// Verify the response contains the error message
+	require.Contains(t, rr.Body.String(), "missing required parameter: owner")
+}
+
 func TestProxyResponseBody_JSONResponse(t *testing.T) {
 	proxy := newTestMCPProxy()
 
@@ -734,7 +852,7 @@ func TestProxyResponseBody_JSONResponse(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 
-	proxy.proxyResponseBody(t.Context(), nil, rr, httpResp, &jsonrpc.Request{ID: id}, filterapi.MCPBackend{Name: "mybackend"})
+	proxy.proxyResponseBody(t.Context(), nil, rr, httpResp, &jsonrpc.Request{ID: id}, filterapi.MCPBackend{Name: "mybackend"}) //nolint:errcheck
 
 	require.Contains(t, rr.Body.String(), "test")
 	require.Contains(t, rr.Body.String(), "data")
@@ -776,7 +894,7 @@ data: %s
 	s, err := proxy.sessionFromID(secureClientToGatewaySessionID(sessionID), secureClientToGatewayEventID(eventID))
 	require.NoError(t, err)
 
-	proxy.proxyResponseBody(t.Context(), s, rr, httpResp, &jsonrpc.Request{Method: "test", ID: id}, filterapi.MCPBackend{Name: "mybackend"})
+	proxy.proxyResponseBody(t.Context(), s, rr, httpResp, &jsonrpc.Request{Method: "test", ID: id}, filterapi.MCPBackend{Name: "mybackend"}) //nolint:errcheck
 
 	require.Contains(t, rr.Body.String(), "event: test")
 	require.Contains(t, rr.Body.String(), "data:")

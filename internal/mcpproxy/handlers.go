@@ -130,6 +130,7 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 				span.EndSpanOnError(string(errType), err)
 			}
 			m.metrics.RecordMethodErrorCount(ctx, params)
+			m.metrics.RecordMethodFailedCount(ctx, requestMethod, params)
 			m.metrics.RecordRequestErrorDuration(ctx, startAt, errType, params)
 			return
 		}
@@ -519,8 +520,7 @@ func (m *MCPProxy) handleClientToServerResponse(ctx context.Context, s *session,
 	}()
 	copyProxyHeaders(resp, w)
 	w.Header().Set(sessionIDHeader, string(s.clientGatewaySessionID()))
-	m.proxyResponseBody(ctx, s, w, resp, nil, backend)
-	return nil
+	return m.proxyResponseBody(ctx, s, w, resp, nil, backend)
 }
 
 func (m *MCPProxy) handleToolCallRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.CallToolParams, span tracing.MCPSpan, headers http.Header) error {
@@ -604,33 +604,60 @@ func copyProxyHeaders(resp *http.Response, w http.ResponseWriter) {
 
 func (m *MCPProxy) proxyResponseBody(ctx context.Context, s *session, w http.ResponseWriter, resp *http.Response,
 	req *jsonrpc.Request, backend filterapi.MCPBackend,
-) {
+) error {
 	if resp.Header.Get("Content-Type") == "application/json" {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			m.l.Error("failed to read response body", slog.String("error", err.Error()))
-			return
+			return err
 		}
 		_msg, err := jsonrpc.DecodeMessage(body)
 		if err != nil {
 			m.l.Error("failed to decode JSON-RPC message from response body", slog.String("error", err.Error()))
-			return
+			return err
 		}
 
 		switch msg := _msg.(type) {
 		case *jsonrpc.Request:
 			if err := m.maybeServerToClientRequestModify(ctx, msg, backend.Name); err != nil {
 				m.l.Error("failed to modify server->client request", slog.String("error", err.Error()))
-				return
+				return err
 			}
 			body, _ = jsonrpc.EncodeMessage(msg)
 		case *jsonrpc.Response:
 			if req != nil {
 				if err := m.maybeResponseModify(ctx, req, msg, backend.Name); err != nil {
 					m.l.Error("failed to modify response", slog.String("error", err.Error()))
-					return
+					return err
 				}
 				msg.ID = req.ID
+
+				// Check if this is a JSON-RPC error response
+				if msg.Error != nil {
+					// Return error so metrics are recorded as failure
+					body, _ = jsonrpc.EncodeMessage(msg)
+					w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
+					w.WriteHeader(resp.StatusCode)
+					_, _ = w.Write(body)
+					return fmt.Errorf("%s: %s", string(metrics.MCPErrorInternal), msg.Error.Error())
+				}
+
+				// Check if this is a tools/call response with isError=true
+				if req.Method == "tools/call" && msg.Result != nil {
+					var toolResult mcp.CallToolResult
+					if err := json.Unmarshal(msg.Result, &toolResult); err == nil {
+						if toolResult.IsError {
+							// Tool execution failed, record as failure and return error
+							m.recordResponse(ctx, msg)
+							body, _ = jsonrpc.EncodeMessage(msg)
+							w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
+							w.WriteHeader(resp.StatusCode)
+							_, _ = w.Write(body)
+							return fmt.Errorf("%s: %s", string(metrics.MCPErrorInternal), "tool returned isError=true")
+						}
+					}
+				}
+
 				body, _ = jsonrpc.EncodeMessage(msg)
 			}
 			m.recordResponse(ctx, msg)
@@ -640,7 +667,7 @@ func (m *MCPProxy) proxyResponseBody(ctx context.Context, s *session, w http.Res
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
 		w.WriteHeader(resp.StatusCode)
 		_, _ = w.Write(body)
-		return
+		return nil
 	}
 
 	// io.Copy won't flush until the end, which doesn't happen for streaming responses.
@@ -650,6 +677,9 @@ func (m *MCPProxy) proxyResponseBody(ctx context.Context, s *session, w http.Res
 	}
 	w.WriteHeader(resp.StatusCode)
 	parser := newSSEEventParser(resp.Body, backend.Name)
+
+	// response error is used to store the error from the response body.
+	var responseError error
 	for {
 		event, err := parser.next()
 		// TODO: handle reconnect. We need to re-arrange the event ID so that it will also contain the backend name and the original session ID.
@@ -680,6 +710,23 @@ func (m *MCPProxy) proxyResponseBody(ctx context.Context, s *session, w http.Res
 							continue
 						}
 						msg.ID = req.ID
+
+						// Check if this is a JSON-RPC error response. This error occurs when a tool name is part of the allowed list
+						// but upstream MCP Server doesn't contain this tool.
+						if msg.Error != nil {
+							responseError = fmt.Errorf("%s: %s", string(metrics.MCPErrorInvalidParam), msg.Error.Error())
+						}
+
+						// Check if this is a tools/call response with isError=true
+						if req.Method == "tools/call" && msg.Result != nil {
+							var toolResult mcp.CallToolResult
+							if err = json.Unmarshal(msg.Result, &toolResult); err == nil {
+								if toolResult.IsError {
+									// Tool execution failed, record as failure
+									responseError = fmt.Errorf("%s: %s", string(metrics.MCPErrorInternal), "tool returned isError=true")
+								}
+							}
+						}
 					}
 					m.recordResponse(ctx, msg)
 				}
@@ -694,6 +741,7 @@ func (m *MCPProxy) proxyResponseBody(ctx context.Context, s *session, w http.Res
 			break
 		}
 	}
+	return responseError
 }
 
 // https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/progress#progress
@@ -1198,8 +1246,7 @@ func (m *MCPProxy) invokeAndProxyResponse(ctx context.Context, s *session, w htt
 	}
 	copyProxyHeaders(resp, w)
 	w.Header().Set(sessionIDHeader, string(s.clientGatewaySessionID()))
-	m.proxyResponseBody(ctx, s, w, resp, req, backend)
-	return nil
+	return m.proxyResponseBody(ctx, s, w, resp, req, backend)
 }
 
 // addMCPHeaders adds the MCP metadata headers to the HTTP request.
@@ -1257,6 +1304,7 @@ func sendToAllBackendsAndAggregateResponsesImpl[responseType any](ctx context.Co
 			if respMsg, ok := event.messages[l-1].(*jsonrpc.Response); ok && respMsg.ID == request.ID {
 				switch {
 				case respMsg.Error != nil:
+					m.metrics.RecordMethodFailedCount(ctx, request.Method, nil)
 					logger.Error("error response from backend", slog.String("backend", event.backend), slog.Any("error", respMsg.Error))
 				case respMsg.Result != nil: // Empty result is valid, for example set/loggingLevel returns empty result from some backends.
 					var result responseType

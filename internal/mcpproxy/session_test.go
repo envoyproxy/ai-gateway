@@ -35,6 +35,7 @@ func (stubMetrics) RecordRequestDuration(_ context.Context, _ time.Time, _ mcpsd
 func (stubMetrics) RecordRequestErrorDuration(_ context.Context, _ time.Time, _ metrics.MCPErrorType, _ mcpsdk.Params) {
 }
 func (stubMetrics) RecordMethodCount(_ context.Context, _ string, _ mcpsdk.Params)               {}
+func (stubMetrics) RecordMethodFailedCount(_ context.Context, _ string, _ mcpsdk.Params)         {}
 func (stubMetrics) RecordMethodErrorCount(_ context.Context, _ mcpsdk.Params)                    {}
 func (stubMetrics) RecordInitializationDuration(_ context.Context, _ time.Time, _ mcpsdk.Params) {}
 func (stubMetrics) RecordClientCapabilities(_ context.Context, _ *mcpsdk.ClientCapabilities, _ mcpsdk.Params) {

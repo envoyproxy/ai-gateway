@@ -118,6 +118,23 @@ func TestRecordMethodCount(t *testing.T) {
 	require.Equal(t, float64(1), val)
 }
 
+func TestRecordMethodFailedCount(t *testing.T) {
+	mr := metric.NewManualReader()
+	meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
+
+	m := NewMCP(meter, nil)
+	require.NotNil(t, m)
+
+	m.RecordMethodFailedCount(t.Context(), "test_method_name", nil)
+
+	attrs := attribute.NewSet(
+		attribute.Key(mcpAttributeMethodName).String("test_method_name"),
+		attribute.Key(mcpAttributeStatusName).String(string(mcpStatusFailed)),
+	)
+	val := testotel.GetCounterValue(t, mr, mcpMethodCount, attrs)
+	require.Equal(t, float64(1), val)
+}
+
 func TestRecordInitializationDuration(t *testing.T) {
 	mr := metric.NewManualReader()
 	meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
