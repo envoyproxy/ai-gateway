@@ -43,18 +43,20 @@ type EnvoyHTTPFilter interface {
 	GetResponseHeaders() map[string][]string
 	// SetResponseHeader sets the response header. Returns true if the header is set successfully.
 	SetResponseHeader(key string, value []byte) bool
-	// GetRequestBody gets the request body. Returns the io.Reader and true if the body is found.
-	GetRequestBody() (BodyReader, bool)
-	// DrainRequestBody drains n bytes from the request body. This will invalidate the io.Reader returned by GetRequestBody before this is called.
-	DrainRequestBody(n int) bool
-	// AppendRequestBody appends the data to the request body. This will invalidate the io.Reader returned by GetRequestBody before this is called.
-	AppendRequestBody(data []byte) bool
-	// GetResponseBody gets the response body. Returns the io.Reader and true if the body is found.
-	GetResponseBody() (BodyReader, bool)
-	// DrainResponseBody drains n bytes from the response body. This will invalidate the io.Reader returned by GetResponseBody before this is called.
-	DrainResponseBody(n int) bool
-	// AppendResponseBody appends the data to the response body. This will invalidate the io.Reader returned by GetResponseBody before this is called.
-	AppendResponseBody(data []byte) bool
+
+	// GetBufferedRequestBody gets the request body. Returns the io.Reader and true if the body is found.
+	GetBufferedRequestBody() (BodyReader, bool)
+	// DrainBufferedRequestBody drains n bytes from the request body. This will invalidate the io.Reader returned by GetRequestBody before this is called.
+	DrainBufferedRequestBody(n int) bool
+	// AppendBufferedRequestBody appends the data to the request body. This will invalidate the io.Reader returned by GetRequestBody before this is called.
+	AppendBufferedRequestBody(data []byte) bool
+	// GetBufferedResponseBody gets the response body. Returns the io.Reader and true if the body is found.
+	GetBufferedResponseBody() (BodyReader, bool)
+	// DrainBufferedResponseBody drains n bytes from the response body. This will invalidate the io.Reader returned by GetResponseBody before this is called.
+	DrainBufferedResponseBody(n int) bool
+	// AppendBufferedResponseBody appends the data to the response body. This will invalidate the io.Reader returned by GetResponseBody before this is called.
+	AppendBufferedResponseBody(data []byte) bool
+
 	// SendLocalReply sends a local reply to the client. This must not be used in after returning continue from the response headers phase.
 	SendLocalReply(statusCode uint32, headers [][2]string, body []byte)
 	// GetDynamicMetadataString gets the dynamic metadata value for the given namespace and key. Returns the value and true if the value is found.

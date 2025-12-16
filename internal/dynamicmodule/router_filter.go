@@ -168,7 +168,7 @@ func (f *routerFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(
 	if !endOfStream {
 		return sdk.RequestBodyStatusStopIterationAndBuffer
 	}
-	b, ok := e.GetRequestBody()
+	b, ok := e.GetBufferedRequestBody()
 	if !ok {
 		e.SendLocalReply(400, nil, []byte("failed to read request body"))
 		return sdk.RequestBodyStatusStopIterationAndBuffer

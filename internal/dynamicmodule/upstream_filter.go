@@ -241,12 +241,12 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBod
 	}
 
 	if newBody != nil {
-		cur, ok := e.GetRequestBody()
+		cur, ok := e.GetBufferedRequestBody()
 		if !ok {
 			return errors.New("failed to get current request body for replacement")
 		}
-		_ = e.DrainResponseBody(cur.Len())
-		_ = e.AppendRequestBody(newBody)
+		_ = e.DrainBufferedResponseBody(cur.Len())
+		_ = e.AppendBufferedRequestBody(newBody)
 
 		// Set the content-length header with the new body length.
 		if !e.SetRequestHeader("content-length", []byte(strconv.Itoa(len(newBody)))) {
@@ -329,7 +329,13 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 		}
 	}()
 	// Decompress the body if needed using common utility.
-	body, ok := e.GetResponseBody()
+	var body sdk.BodyReader
+	var ok bool
+	if f.routerFilter.Stream() {
+		// TODO.
+	} else {
+		body, ok = e.GetBufferedResponseBody()
+	}
 	if !ok {
 		return errors.New("failed to get response body")
 	}
@@ -351,12 +357,16 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 		if decodingResult.isEncoded {
 			e.SetResponseHeader("content-encoding", nil)
 		}
-		cur, ok := e.GetResponseBody()
-		if !ok {
-			return errors.New("failed to get current response body for replacement")
+		if f.routerFilter.Stream() {
+			// TODO.
+		} else {
+			cur, ok := e.GetBufferedResponseBody()
+			if !ok {
+				return errors.New("failed to get current response body for replacement")
+			}
+			_ = e.DrainBufferedResponseBody(cur.Len())
+			_ = e.AppendBufferedResponseBody(newBody)
 		}
-		_ = e.DrainResponseBody(cur.Len())
-		_ = e.AppendResponseBody(newBody)
 	}
 
 	// Translator reports the latest cumulative token usage which we use to override existing costs.
@@ -396,7 +406,7 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 		f.metrics.RecordRequestCompletion(context.Background(), false, f.reqHeaders)
 	}()
 
-	body, ok := e.GetResponseBody()
+	body, ok := e.GetBufferedResponseBody()
 	if !ok {
 		return errors.New("failed to get response body for error handling")
 	}

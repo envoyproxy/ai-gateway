@@ -48,50 +48,50 @@ bool envoy_dynamic_module_callback_http_set_response_header(
     uintptr_t key, size_t key_length,
     uintptr_t value, size_t value_length);
 
-#cgo noescape envoy_dynamic_module_callback_http_append_request_body
-#cgo nocallback envoy_dynamic_module_callback_http_append_request_body
-bool envoy_dynamic_module_callback_http_append_request_body(
+#cgo noescape envoy_dynamic_module_callback_http_append_buffered_request_body
+#cgo nocallback envoy_dynamic_module_callback_http_append_buffered_request_body
+bool envoy_dynamic_module_callback_http_append_buffered_request_body(
     uintptr_t filter_envoy_ptr,
     uintptr_t data, size_t length);
 
-#cgo noescape envoy_dynamic_module_callback_http_drain_request_body
-#cgo nocallback envoy_dynamic_module_callback_http_drain_request_body
-bool envoy_dynamic_module_callback_http_drain_request_body(
+#cgo noescape envoy_dynamic_module_callback_http_drain_buffered_request_body
+#cgo nocallback envoy_dynamic_module_callback_http_drain_buffered_request_body
+bool envoy_dynamic_module_callback_http_drain_buffered_request_body(
 	uintptr_t filter_envoy_ptr,
 	size_t length);
 
-#cgo noescape envoy_dynamic_module_callback_http_get_request_body_vector
-#cgo nocallback envoy_dynamic_module_callback_http_get_request_body_vector
-bool envoy_dynamic_module_callback_http_get_request_body_vector(
+#cgo noescape envoy_dynamic_module_callback_http_get_buffered_request_body_vector
+#cgo nocallback envoy_dynamic_module_callback_http_get_buffered_request_body_vector
+bool envoy_dynamic_module_callback_http_get_buffered_request_body_vector(
     uintptr_t filter_envoy_ptr,
     uintptr_t* result_buffer_vector);
 
-#cgo noescape envoy_dynamic_module_callback_http_get_request_body_vector_size
-#cgo nocallback envoy_dynamic_module_callback_http_get_request_body_vector_size
-bool envoy_dynamic_module_callback_http_get_request_body_vector_size(
+#cgo noescape envoy_dynamic_module_callback_http_get_buffered_request_body_vector_size
+#cgo nocallback envoy_dynamic_module_callback_http_get_buffered_request_body_vector_size
+bool envoy_dynamic_module_callback_http_get_buffered_request_body_vector_size(
     uintptr_t filter_envoy_ptr, size_t* size);
 
-#cgo noescape envoy_dynamic_module_callback_http_append_response_body
-#cgo nocallback envoy_dynamic_module_callback_http_append_response_body
-bool envoy_dynamic_module_callback_http_append_response_body(
+#cgo noescape envoy_dynamic_module_callback_http_append_buffered_response_body
+#cgo nocallback envoy_dynamic_module_callback_http_append_buffered_response_body
+bool envoy_dynamic_module_callback_http_append_buffered_response_body(
     uintptr_t filter_envoy_ptr,
     uintptr_t data, size_t length);
 
-#cgo noescape envoy_dynamic_module_callback_http_drain_response_body
-#cgo nocallback envoy_dynamic_module_callback_http_drain_response_body
-bool envoy_dynamic_module_callback_http_drain_response_body(
+#cgo noescape envoy_dynamic_module_callback_http_drain_buffered_response_body
+#cgo nocallback envoy_dynamic_module_callback_http_drain_buffered_response_body
+bool envoy_dynamic_module_callback_http_drain_buffered_response_body(
 	uintptr_t filter_envoy_ptr,
 	size_t length);
 
-#cgo noescape envoy_dynamic_module_callback_http_get_response_body_vector
-#cgo nocallback envoy_dynamic_module_callback_http_get_response_body_vector
-bool envoy_dynamic_module_callback_http_get_response_body_vector(
+#cgo noescape envoy_dynamic_module_callback_http_get_buffered_response_body_vector
+#cgo nocallback envoy_dynamic_module_callback_http_get_buffered_response_body_vector
+bool envoy_dynamic_module_callback_http_get_buffered_response_body_vector(
     uintptr_t filter_envoy_ptr,
     uintptr_t* result_buffer_vector);
 
-#cgo noescape envoy_dynamic_module_callback_http_get_response_body_vector_size
-#cgo nocallback envoy_dynamic_module_callback_http_get_response_body_vector_size
-bool envoy_dynamic_module_callback_http_get_response_body_vector_size(
+#cgo noescape envoy_dynamic_module_callback_http_get_buffered_response_body_vector_size
+#cgo nocallback envoy_dynamic_module_callback_http_get_buffered_response_body_vector_size
+bool envoy_dynamic_module_callback_http_get_buffered_response_body_vector_size(
     uintptr_t filter_envoy_ptr, size_t* size);
 
 #cgo noescape envoy_dynamic_module_callback_http_send_response
@@ -149,8 +149,8 @@ import (
 	"unsafe"
 )
 
-// https://github.com/envoyproxy/envoy/blob/dc2d3098ae5641555f15c71d5bb5ce0060a8015c/source/extensions/dynamic_modules/abi_version.h
-var version = append([]byte("ca2be3b80954d2a0e22b41d033b18eff9390c30261c8ec9ffe6e6bf971f41c27"), 0)
+// https://github.com/envoyproxy/envoy/blob/bad8280de85c25b147a90c1d9b8a8c67a13e7134/source/extensions/dynamic_modules/abi_version.h#L9C28-L9C92
+var version = append([]byte("7ee559f16f35086fa7dc9ed380e2efc6b4d89031a001fb504aa71eccd25882f7"), 0)
 
 //export envoy_dynamic_module_on_program_init
 func envoy_dynamic_module_on_program_init() uintptr {
@@ -219,8 +219,8 @@ func envoy_dynamic_module_on_http_filter_request_headers(
 	return uintptr(status)
 }
 
-//export envoy_dynamic_module_on_http_filter_request_body
-func envoy_dynamic_module_on_http_filter_request_body(
+//export envoy_dynamic_module_on_http_filter_buffered_request_body
+func envoy_dynamic_module_on_http_filter_buffered_request_body(
 	filterEnvoyPtr uintptr,
 	filterModulePtr uintptr,
 	endOfStream bool,
@@ -246,8 +246,8 @@ func envoy_dynamic_module_on_http_filter_response_headers(
 	return uintptr(status)
 }
 
-//export envoy_dynamic_module_on_http_filter_response_body
-func envoy_dynamic_module_on_http_filter_response_body(
+//export envoy_dynamic_module_on_http_filter_buffered_response_body
+func envoy_dynamic_module_on_http_filter_buffered_response_body(
 	filterEnvoyPtr uintptr,
 	filterModulePtr uintptr,
 	endOfStream bool,
@@ -490,10 +490,10 @@ func (e envoyFilter) SendLocalReply(statusCode uint32, headers [][2]string, body
 	runtime.KeepAlive(body)
 }
 
-// AppendRequestBody implements [EnvoyHTTPFilter].
-func (e envoyFilter) AppendRequestBody(data []byte) bool {
+// AppendBufferedRequestBody implements [EnvoyHTTPFilter].
+func (e envoyFilter) AppendBufferedRequestBody(data []byte) bool {
 	dataPtr := uintptr(unsafe.Pointer(unsafe.SliceData(data)))
-	ret := C.envoy_dynamic_module_callback_http_append_request_body(
+	ret := C.envoy_dynamic_module_callback_http_append_buffered_request_body(
 		C.uintptr_t(e.raw),
 		C.uintptr_t(dataPtr),
 		C.size_t(len(data)),
@@ -502,19 +502,19 @@ func (e envoyFilter) AppendRequestBody(data []byte) bool {
 	return bool(ret)
 }
 
-// DrainRequestBody implements [EnvoyHTTPFilter].
-func (e envoyFilter) DrainRequestBody(n int) bool {
-	ret := C.envoy_dynamic_module_callback_http_drain_request_body(
+// DrainBufferedRequestBody implements [EnvoyHTTPFilter].
+func (e envoyFilter) DrainBufferedRequestBody(n int) bool {
+	ret := C.envoy_dynamic_module_callback_http_drain_buffered_request_body(
 		C.uintptr_t(e.raw),
 		C.size_t(n),
 	)
 	return bool(ret)
 }
 
-// GetRequestBody implements [EnvoyHTTPFilter].
-func (e envoyFilter) GetRequestBody() (BodyReader, bool) {
+// GetBufferedRequestBody implements [EnvoyHTTPFilter].
+func (e envoyFilter) GetBufferedRequestBody() (BodyReader, bool) {
 	var vectorSize int
-	ret := C.envoy_dynamic_module_callback_http_get_request_body_vector_size(
+	ret := C.envoy_dynamic_module_callback_http_get_buffered_request_body_vector_size(
 		C.uintptr_t(e.raw),
 		(*C.size_t)(unsafe.Pointer(&vectorSize)),
 	)
@@ -523,7 +523,7 @@ func (e envoyFilter) GetRequestBody() (BodyReader, bool) {
 	}
 
 	chunks := make([]envoySlice, vectorSize)
-	ret = C.envoy_dynamic_module_callback_http_get_request_body_vector(
+	ret = C.envoy_dynamic_module_callback_http_get_buffered_request_body_vector(
 		C.uintptr_t(e.raw),
 		(*C.uintptr_t)(unsafe.Pointer(&chunks[0])),
 	)
@@ -533,10 +533,10 @@ func (e envoyFilter) GetRequestBody() (BodyReader, bool) {
 	return &bodyReader{chunks: chunks}, true
 }
 
-// AppendResponseBody implements [EnvoyHTTPFilter].
-func (e envoyFilter) AppendResponseBody(data []byte) bool {
+// AppendBufferedResponseBody implements [EnvoyHTTPFilter].
+func (e envoyFilter) AppendBufferedResponseBody(data []byte) bool {
 	dataPtr := uintptr(unsafe.Pointer(unsafe.SliceData(data)))
-	ret := C.envoy_dynamic_module_callback_http_append_response_body(
+	ret := C.envoy_dynamic_module_callback_http_append_buffered_response_body(
 		C.uintptr_t(e.raw),
 		C.uintptr_t(dataPtr),
 		C.size_t(len(data)),
@@ -545,19 +545,19 @@ func (e envoyFilter) AppendResponseBody(data []byte) bool {
 	return bool(ret)
 }
 
-// DrainResponseBody implements [EnvoyHTTPFilter].
-func (e envoyFilter) DrainResponseBody(n int) bool {
-	ret := C.envoy_dynamic_module_callback_http_drain_response_body(
+// DrainBufferedResponseBody implements [EnvoyHTTPFilter].
+func (e envoyFilter) DrainBufferedResponseBody(n int) bool {
+	ret := C.envoy_dynamic_module_callback_http_drain_buffered_response_body(
 		C.uintptr_t(e.raw),
 		C.size_t(n),
 	)
 	return bool(ret)
 }
 
-// GetResponseBody implements [EnvoyHTTPFilter].
-func (e envoyFilter) GetResponseBody() (BodyReader, bool) {
+// GetBufferedResponseBody implements [EnvoyHTTPFilter].
+func (e envoyFilter) GetBufferedResponseBody() (BodyReader, bool) {
 	var vectorSize int
-	ret := C.envoy_dynamic_module_callback_http_get_response_body_vector_size(
+	ret := C.envoy_dynamic_module_callback_http_get_buffered_response_body_vector_size(
 		C.uintptr_t(e.raw),
 		(*C.size_t)(unsafe.Pointer(&vectorSize)),
 	)
@@ -565,7 +565,7 @@ func (e envoyFilter) GetResponseBody() (BodyReader, bool) {
 		return nil, false
 	}
 	chunks := make([]envoySlice, vectorSize)
-	ret = C.envoy_dynamic_module_callback_http_get_response_body_vector(
+	ret = C.envoy_dynamic_module_callback_http_get_buffered_response_body_vector(
 		C.uintptr_t(e.raw),
 		(*C.uintptr_t)(unsafe.Pointer(&chunks[0])),
 	)
