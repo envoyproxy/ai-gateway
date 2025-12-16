@@ -54,10 +54,10 @@ type metricsImpl struct {
 
 	// Fields for streaming token latency calculation, not used for non-streaming requests.
 
-	firstTokenSent    bool
-	timeToFirstToken  time.Duration // Duration to first token.
-	interTokenLatency time.Duration // Average time per token after first.
-	totalOutputTokens uint32
+	firstTokenSent       bool
+	timeToFirstToken     time.Duration // Duration to first token.
+	interTokenLatencySec float64       // Average time per token after first, in seconds.
+	totalOutputTokens    uint32
 }
 
 // StartRequest initializes timing for a new request.
@@ -163,7 +163,7 @@ func (b *metricsImpl) GetTimeToFirstTokenMs() float64 {
 
 // GetInterTokenLatencyMs implements [Metrics.GetInterTokenLatencyMs].
 func (b *metricsImpl) GetInterTokenLatencyMs() float64 {
-	return float64(b.interTokenLatency.Milliseconds())
+	return b.interTokenLatencySec * 1000
 }
 
 // RecordTokenLatency implements [CompletionMetrics.RecordTokenLatency].
@@ -192,7 +192,7 @@ func (b *metricsImpl) RecordTokenLatency(ctx context.Context, tokens uint32, end
 		currentElapsed := time.Since(b.requestStart)
 		timeSinceFirstToken := currentElapsed - b.timeToFirstToken
 		// Divide by (total_tokens - 1) as per spec, not by tokens after first chunk.
-		b.interTokenLatency = timeSinceFirstToken / time.Duration(b.totalOutputTokens-1)
-		b.metrics.outputTokenLatency.Record(ctx, b.interTokenLatency.Seconds(), metric.WithAttributeSet(attrs))
+		b.interTokenLatencySec = timeSinceFirstToken.Seconds() / float64(b.totalOutputTokens-1)
+		b.metrics.outputTokenLatency.Record(ctx, b.interTokenLatencySec, metric.WithAttributeSet(attrs))
 	}
 }
