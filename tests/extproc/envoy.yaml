@@ -337,7 +337,7 @@ static_resources:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 allow_mode_override: true
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -396,7 +396,7 @@ static_resources:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 allow_mode_override: true
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -454,7 +454,7 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -524,7 +524,7 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -582,7 +582,7 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -640,7 +640,7 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -710,7 +710,7 @@ static_resources:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 allow_mode_override: true
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -786,7 +786,7 @@ static_resources:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 allow_mode_override: true
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -850,7 +850,7 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -909,7 +909,7 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -968,7 +968,7 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -1026,7 +1026,7 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -1101,7 +1101,7 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -1164,7 +1164,7 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -1247,7 +1247,7 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -1311,7 +1311,7 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -1375,7 +1375,7 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -1439,7 +1439,7 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -1503,7 +1503,7 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -1565,8 +1565,8 @@ static_resources:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 allow_mode_override: true
                 request_attributes:
-                  - xds.upstream_host_metadata
-                  - xds.cluster_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "BUFFERED"
@@ -1624,8 +1624,8 @@ static_resources:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 allow_mode_override: true
                 request_attributes:
-                  - xds.upstream_host_metadata
-                  - xds.cluster_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "BUFFERED"

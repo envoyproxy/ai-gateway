@@ -243,7 +243,11 @@ func TestServer_Process(t *testing.T) {
 	})
 }
 
-func TestServer_setBackend(t *testing.T) {
+// TestServer_setBackend_legacy is the tests for the legacy behavior of setBackend function
+// using the text-encoded Metadata proto in the xds.upstream_host_metadata or xds.cluster_metadata field.
+//
+// TODO: delete this test after the v0.5 is released.
+func TestServer_setBackend_legacy(t *testing.T) {
 	for _, tc := range []struct {
 		md     *corev3.Metadata
 		errStr string
@@ -276,9 +280,6 @@ func TestServer_setBackend(t *testing.T) {
 			t.Run(fmt.Sprintf("errors/%s/isEndpointPicker=%t", tc.errStr, isEndpointPicker), func(t *testing.T) {
 				str, err := prototext.Marshal(tc.md)
 				require.NoError(t, err)
-				// Test the breaking-change scenario where the metadata is prefixed with "google/debugproto".
-				// See the comment in setBackend for more details.
-				str = append([]byte("goo.gle/debugproto "), str...)
 				s, _ := requireNewServerWithMockProcessor(t)
 				s.config.Backends = map[string]*filterapi.RuntimeBackend{"openai": {Backend: &filterapi.Backend{Name: "openai", HeaderMutation: &filterapi.HTTPHeaderMutation{Set: []filterapi.HTTPHeader{{Name: "x-foo", Value: "foo"}}}}}}
 				mockProc := &mockProcessor{}
@@ -300,6 +301,35 @@ func TestServer_setBackend(t *testing.T) {
 				require.ErrorContains(t, err, tc.errStr)
 			})
 		}
+	}
+}
+
+func TestServer_setBackend(t *testing.T) {
+	s, _ := requireNewServerWithMockProcessor(t)
+	s.config.Backends = map[string]*filterapi.RuntimeBackend{"openai": {Backend: &filterapi.Backend{Name: "openai"}}}
+	mockProc := &mockProcessor{}
+
+	for _, isEndpointPicker := range []bool{true, false} {
+		t.Run(fmt.Sprintf("isEndpointPicker=%t", isEndpointPicker), func(t *testing.T) {
+			attributeKey := internalapi.XDSUpstreamHostMetadataBackendNamePath
+			if isEndpointPicker {
+				attributeKey = internalapi.XDSClusterMetadataBackendNamePath
+			}
+
+			err := s.setBackend(t.Context(), mockProc, "aaaaaaaaaaaa", isEndpointPicker, &extprocv3.ProcessingRequest{
+				Attributes: map[string]*structpb.Struct{
+					"envoy.filters.http.ext_proc": {Fields: map[string]*structpb.Value{
+						attributeKey: {Kind: &structpb.Value_StringValue{
+							StringValue: "openai",
+						}},
+					}},
+				},
+				Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{}},
+			})
+			// Should be an error as there is no router processor registered for openai backend.
+			// The purpose of this test is to verify that the backend name is correctly extracted.
+			require.ErrorContains(t, err, `no router processor found, request_id=aaaaaaaaaaaa, backend=openai`)
+		})
 	}
 }
 
