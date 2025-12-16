@@ -298,7 +298,13 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) error {
 		},
 	}
 	extProcConfig.AllowModeOverride = true
-	extProcConfig.RequestAttributes = []string{internalapi.XDSUpstreamHostMetadataKey, internalapi.XDSClusterMetadataKey}
+	extProcConfig.RequestAttributes = []string{
+		internalapi.XDSUpstreamHostMetadataBackendNamePath,
+		internalapi.XDSClusterMetadataBackendNamePath,
+		// These two are for backward compatibility with older versions of AI Gateway extproc.
+		internalapi.XDSUpstreamHostMetadataKey,
+		internalapi.XDSClusterMetadataKey,
+	}
 	extProcConfig.ProcessingMode = &extprocv3.ProcessingMode{
 		RequestHeaderMode: extprocv3.ProcessingMode_SEND,
 		// At the upstream filter, it can access the original body in its memory, so it can perform the translation
