@@ -4233,7 +4233,7 @@ spec:
                 - message: oauth must be configured when any authorization rule uses
                     a jwt source
                   rule: '!(has(self.authorization) && self.authorization.rules.exists(r,
-                    has(r.source.jwt)) && !has(self.oauth))'
+                    has(r.source) && has(r.source.jwt)) && !has(self.oauth))'
             required:
             - backendRefs
             - parentRefs

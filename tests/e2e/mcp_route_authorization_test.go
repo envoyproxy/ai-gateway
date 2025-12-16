@@ -73,7 +73,7 @@ func TestMCPRouteAuthorization(t *testing.T) {
 			_ = sess.Close()
 		})
 
-		requireSumToolResult(t, ctx, sess, 41, 1, "42")
+		requireSumToolResult(ctx, t, sess, 41, 1, "42")
 	})
 
 	t.Run("matching scopes and arguments", func(t *testing.T) {
@@ -244,7 +244,7 @@ func TestMCPRouteAuthorization(t *testing.T) {
 			_ = sess.Close()
 		})
 
-		requireSumToolResult(t, ctx, sess, 41, 1, "42")
+		requireSumToolResult(ctx, t, sess, 41, 1, "42")
 	})
 }
 
@@ -267,7 +267,7 @@ func requireConnectMCP(ctx context.Context, t *testing.T, client *mcp.Client, en
 	return sess
 }
 
-func requireSumToolResult(t *testing.T, ctx context.Context, sess *mcp.ClientSession, a, b float64, expected string) {
+func requireSumToolResult(ctx context.Context, t *testing.T, sess *mcp.ClientSession, a, b float64, expected string) {
 	t.Helper()
 
 	res, err := sess.CallTool(ctx, &mcp.CallToolParams{
