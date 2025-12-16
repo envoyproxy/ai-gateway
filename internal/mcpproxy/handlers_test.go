@@ -619,7 +619,10 @@ func TestServePOST_ToolsCallRequest(t *testing.T) {
 				)
 				durationAttrs = attribute.NewSet()
 			} else {
-				countAttrs = attribute.NewSet(attribute.String("status", "error"))
+				countAttrs = attribute.NewSet(
+					attribute.String("mcp.method.name", "tools/call"),
+					attribute.String("status", "error"),
+				)
 				durationAttrs = attribute.NewSet(attribute.String("error.type", string(metrics.MCPErrorInvalidParam)))
 			}
 
@@ -662,6 +665,7 @@ func TestServePOST_UnsupportedMethod(t *testing.T) {
 	require.Contains(t, rr.Body.String(), "unsupported method")
 
 	methodCount := testotel.GetCounterValue(t, mr, "mcp.method.count", attribute.NewSet(
+		attribute.String("mcp.method.name", "unsupported/method"),
 		attribute.String("status", "error")))
 	require.Equal(t, 1, int(methodCount))
 
