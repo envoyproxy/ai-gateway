@@ -118,7 +118,7 @@ type MCPMetrics interface {
 	// RecordMethodFailedCount records the count of method invocations with failed status.
 	RecordMethodFailedCount(ctx context.Context, methodName string, meta mcpsdk.Params)
 	// RecordMethodErrorCount records the count of method invocations with error status.
-	RecordMethodErrorCount(ctx context.Context, meta mcpsdk.Params)
+	RecordMethodErrorCount(ctx context.Context, methodName string, meta mcpsdk.Params)
 	// RecordInitializationDuration records the duration of MCP initialization.
 	RecordInitializationDuration(ctx context.Context, startAt time.Time, meta mcpsdk.Params)
 	// RecordClientCapabilities records the negotiated client capabilities.
@@ -221,9 +221,13 @@ func (m *mcp) RecordMethodFailedCount(ctx context.Context, methodName string, pa
 }
 
 // RecordMethodErrorCount implements [MCPMetrics.RecordMethodErrorCount].
-func (m *mcp) RecordMethodErrorCount(ctx context.Context, params mcpsdk.Params) {
+func (m *mcp) RecordMethodErrorCount(ctx context.Context, methodName string, params mcpsdk.Params) {
+	if methodName == "" {
+		return
+	}
 	m.methodCount.Add(ctx, 1,
 		m.withDefaultAttributes(params,
+			attribute.Key(mcpAttributeMethodName).String(methodName),
 			attribute.String(mcpAttributeStatusName, string(mcpStatusError)),
 		))
 }

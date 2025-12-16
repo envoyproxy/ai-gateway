@@ -768,8 +768,8 @@ func TestHandleToolCallRequest_InvalidToolName(t *testing.T) {
 	req := &jsonrpc.Request{ID: id, Method: "tools/call"}
 
 	err := proxy.handleToolCallRequest(t.Context(), s, rr, req, params, nil)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "unknown tool")
+	// JSON-RPC errors are application-level errors returned to the client, but it is a valid RPC response
+	require.NoError(t, err)
 
 	// Response should be written with the JSON-RPC error
 	require.Equal(t, http.StatusOK, rr.Code)
@@ -825,11 +825,10 @@ func TestHandleToolCallRequest_ToolResultWithIsError(t *testing.T) {
 	req := &jsonrpc.Request{ID: id, Method: "tools/call"}
 
 	err := proxy.handleToolCallRequest(t.Context(), s, rr, req, params, nil)
-	// Should return an error since isError: true
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "tool returned isError=true")
+	// isError: true is a valid tool response that should be passed to the LLM, not a protocol error
+	require.NoError(t, err)
 
-	// But the response should still be written to the client (HTTP 200)
+	// The response should be written to the client (HTTP 200)
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	// Verify the response contains the error message

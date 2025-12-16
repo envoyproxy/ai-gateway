@@ -40,6 +40,23 @@ var (
 	errInvalidToolName = errors.New("invalid tool name")
 )
 
+// errToolCall represents a tool execution error with structured information
+// about the failed tool call. This allows callers to have better context
+// about tool execution failures.
+type errToolCall struct {
+	toolName string
+	backend  string
+	err      error
+}
+
+func (e *errToolCall) Error() string {
+	return fmt.Sprintf("tool call failed: tool=%s, backend=%s: %v", e.toolName, e.backend, e.err)
+}
+
+func (e *errToolCall) Unwrap() error {
+	return e.err
+}
+
 func (m *MCPProxy) serveGET(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.Header.Get(sessionIDHeader)
 	lastEventID := r.Header.Get(lastEventIDHeader)
@@ -129,8 +146,7 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 			if span != nil {
 				span.EndSpanOnError(string(errType), err)
 			}
-			m.metrics.RecordMethodErrorCount(ctx, params)
-			m.metrics.RecordMethodFailedCount(ctx, requestMethod, params)
+			m.metrics.RecordMethodErrorCount(ctx, requestMethod, params)
 			m.metrics.RecordRequestErrorDuration(ctx, startAt, errType, params)
 			return
 		}
@@ -371,13 +387,45 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 }
 
 func errorType(err error) metrics.MCPErrorType {
+	if err == nil {
+		return ""
+	}
+
+	var joinedErrs interface{ Unwrap() []error }
+	if errors.As(err, &joinedErrs) {
+		errs := joinedErrs.Unwrap()
+		for _, e := range errs {
+			if errType := errorType(e); errType != "" && errType != metrics.MCPErrorInternal {
+				return errType
+			}
+		}
+		return metrics.MCPErrorInternal
+	}
+
+	// Check if error is a jsonrpc.Error and map the code to appropriate MCPErrorType
+	var jsonrpcErr *jsonrpc.Error
+	if errors.As(err, &jsonrpcErr) {
+		switch jsonrpcErr.Code {
+		case jsonrpc.CodeInvalidParams:
+			return metrics.MCPErrorInvalidParam
+		case jsonrpc.CodeMethodNotFound:
+			return metrics.MCPErrorUnsupportedMethod
+		case jsonrpc.CodeInvalidRequest, jsonrpc.CodeParseError:
+			return metrics.MCPErrorInvalidJSONRPC
+		case jsonrpc.CodeInternalError:
+			return metrics.MCPErrorInternal
+		default:
+			return metrics.MCPErrorInternal
+		}
+	}
+
+	// Check for specific error types
 	switch {
 	case errors.Is(err, errBackendNotFound) || errors.Is(err, errSessionNotFound) || errors.Is(err, errInvalidToolName):
 		return metrics.MCPErrorInvalidParam
-	case err != nil:
+	default:
 		return metrics.MCPErrorInternal
 	}
-	return ""
 }
 
 // handleInitializeRequest handles the "initialize" JSON-RPC method.
@@ -617,43 +665,49 @@ func (m *MCPProxy) proxyResponseBody(ctx context.Context, s *session, w http.Res
 			return err
 		}
 
+		var responseError error
 		switch msg := _msg.(type) {
 		case *jsonrpc.Request:
-			if err := m.maybeServerToClientRequestModify(ctx, msg, backend.Name); err != nil {
+			if err = m.maybeServerToClientRequestModify(ctx, msg, backend.Name); err != nil {
 				m.l.Error("failed to modify server->client request", slog.String("error", err.Error()))
 				return err
 			}
 			body, _ = jsonrpc.EncodeMessage(msg)
 		case *jsonrpc.Response:
 			if req != nil {
-				if err := m.maybeResponseModify(ctx, req, msg, backend.Name); err != nil {
+				if err = m.maybeResponseModify(ctx, req, msg, backend.Name); err != nil {
 					m.l.Error("failed to modify response", slog.String("error", err.Error()))
 					return err
 				}
 				msg.ID = req.ID
 
 				// Check if this is a JSON-RPC error response
+				// Note: JSON-RPC errors (like validation errors) are application-level errors
+				// that should be returned to the client. We record them as failures in metrics
+				// but don't create span exceptions.
 				if msg.Error != nil {
-					// Return error so metrics are recorded as failure
-					body, _ = jsonrpc.EncodeMessage(msg)
-					w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
-					w.WriteHeader(resp.StatusCode)
-					_, _ = w.Write(body)
-					return fmt.Errorf("%s: %s", string(metrics.MCPErrorInternal), msg.Error.Error())
+					responseError = msg.Error
 				}
 
 				// Check if this is a tools/call response with isError=true
+				// Note: isError=true means the tool executed successfully but returned an error result.
+				// We record this as a failure in metrics but don't create span exceptions since
+				// the protocol worked correctly and the LLM needs to see these errors.
 				if req.Method == "tools/call" && msg.Result != nil {
 					var toolResult mcp.CallToolResult
-					if err := json.Unmarshal(msg.Result, &toolResult); err == nil {
-						if toolResult.IsError {
-							// Tool execution failed, record as failure and return error
-							m.recordResponse(ctx, msg)
-							body, _ = jsonrpc.EncodeMessage(msg)
-							w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
-							w.WriteHeader(resp.StatusCode)
-							_, _ = w.Write(body)
-							return fmt.Errorf("%s: %s", string(metrics.MCPErrorInternal), "tool returned isError=true")
+					if err = json.Unmarshal(msg.Result, &toolResult); err == nil && toolResult.IsError {
+						// Tool execution returned error - create structured error for metrics
+						toolName := ""
+						if req.Params != nil {
+							var params mcp.CallToolParams
+							if err = json.Unmarshal(req.Params, &params); err == nil {
+								toolName = params.Name
+							}
+						}
+						responseError = &errToolCall{
+							toolName: toolName,
+							backend:  backend.Name,
+							err:      errors.New("tool returned isError=true"),
 						}
 					}
 				}
@@ -667,6 +721,15 @@ func (m *MCPProxy) proxyResponseBody(ctx context.Context, s *session, w http.Res
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
 		w.WriteHeader(resp.StatusCode)
 		_, _ = w.Write(body)
+
+		// Record metrics for application-level errors but don't return them (to avoid span exceptions)
+		if responseError != nil && req != nil {
+			// we need to record failedCount here and not errorCount since these are application errors
+			m.metrics.RecordMethodFailedCount(ctx, req.Method, nil)
+			m.metrics.RecordRequestErrorDuration(ctx, time.Now(), metrics.MCPErrorInternal, nil)
+		}
+
+		// Return nil to prevent span exceptions while still having recorded failure metrics
 		return nil
 	}
 
@@ -678,8 +741,8 @@ func (m *MCPProxy) proxyResponseBody(ctx context.Context, s *session, w http.Res
 	w.WriteHeader(resp.StatusCode)
 	parser := newSSEEventParser(resp.Body, backend.Name)
 
-	// response error is used to store the error from the response body.
-	var responseError error
+	// Collect errors from multiple events to return them all to the caller
+	var responseErrors []error
 	for {
 		event, err := parser.next()
 		// TODO: handle reconnect. We need to re-arrange the event ID so that it will also contain the backend name and the original session ID.
@@ -711,20 +774,29 @@ func (m *MCPProxy) proxyResponseBody(ctx context.Context, s *session, w http.Res
 						}
 						msg.ID = req.ID
 
-						// Check if this is a JSON-RPC error response. This error occurs when a tool name is part of the allowed list
-						// but upstream MCP Server doesn't contain this tool.
+						// Check if this is a JSON-RPC error response
 						if msg.Error != nil {
-							responseError = fmt.Errorf("%s: %s", string(metrics.MCPErrorInvalidParam), msg.Error.Error())
+							// Collect error to return to caller
+							responseErrors = append(responseErrors, msg.Error)
 						}
 
 						// Check if this is a tools/call response with isError=true
 						if req.Method == "tools/call" && msg.Result != nil {
 							var toolResult mcp.CallToolResult
-							if err = json.Unmarshal(msg.Result, &toolResult); err == nil {
-								if toolResult.IsError {
-									// Tool execution failed, record as failure
-									responseError = fmt.Errorf("%s: %s", string(metrics.MCPErrorInternal), "tool returned isError=true")
+							if err = json.Unmarshal(msg.Result, &toolResult); err == nil && toolResult.IsError {
+								// Tool execution failed - create structured error
+								toolName := ""
+								if req.Params != nil {
+									var params mcp.CallToolParams
+									if err = json.Unmarshal(req.Params, &params); err == nil {
+										toolName = params.Name
+									}
 								}
+								responseErrors = append(responseErrors, &errToolCall{
+									toolName: toolName,
+									backend:  backend.Name,
+									err:      errors.New("tool returned isError=true"),
+								})
 							}
 						}
 					}
@@ -741,7 +813,14 @@ func (m *MCPProxy) proxyResponseBody(ctx context.Context, s *session, w http.Res
 			break
 		}
 	}
-	return responseError
+	// Record metrics for application-level errors but don't return them (to avoid span exceptions)
+	if len(responseErrors) > 0 && req != nil {
+		// we need to record failedCount here and not errorCount since these are application errors.
+		m.metrics.RecordMethodFailedCount(ctx, req.Method, nil)
+		m.metrics.RecordRequestErrorDuration(ctx, time.Now(), metrics.MCPErrorInternal, nil)
+	}
+	// Return nil to prevent span exceptions while still having recorded failure metrics
+	return nil
 }
 
 // https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/progress#progress
@@ -909,7 +988,7 @@ func (m *MCPProxy) recordResponse(ctx context.Context, rawMsg jsonrpc.Message) {
 		case "elicitation/create":
 		default:
 			knownMethod = false
-			m.metrics.RecordMethodErrorCount(ctx, nil)
+			m.metrics.RecordMethodErrorCount(ctx, msg.Method, nil)
 			m.l.Warn("Unsupported MCP request method from server", slog.String("method", msg.Method))
 		}
 		if knownMethod {
