@@ -219,8 +219,8 @@ func envoy_dynamic_module_on_http_filter_request_headers(
 	return uintptr(status)
 }
 
-//export envoy_dynamic_module_on_http_filter_buffered_request_body
-func envoy_dynamic_module_on_http_filter_buffered_request_body(
+//export envoy_dynamic_module_on_http_filter_request_body
+func envoy_dynamic_module_on_http_filter_request_body(
 	filterEnvoyPtr uintptr,
 	filterModulePtr uintptr,
 	endOfStream bool,
@@ -246,8 +246,8 @@ func envoy_dynamic_module_on_http_filter_response_headers(
 	return uintptr(status)
 }
 
-//export envoy_dynamic_module_on_http_filter_buffered_response_body
-func envoy_dynamic_module_on_http_filter_buffered_response_body(
+//export envoy_dynamic_module_on_http_filter_response_body
+func envoy_dynamic_module_on_http_filter_response_body(
 	filterEnvoyPtr uintptr,
 	filterModulePtr uintptr,
 	endOfStream bool,

@@ -128,6 +128,10 @@ func StartTestEnvironment(t testing.TB,
 	processedExtProcConfig := replaceTokens(env.extprocConfig, replacements)
 	env.extprocConfig = processedExtProcConfig
 
+	envoyEnvVars := append(os.Environ(),
+		"ENVOY_DYNAMIC_MODULES_SEARCH_PATH="+internaltesting.FindProjectRoot()+"/out",
+	)
+
 	// Start ExtProc.
 	if extprocBin != "" {
 		requireExtProc(t,
@@ -141,6 +145,15 @@ func StartTestEnvironment(t testing.TB,
 			env.mcpWriteTimeout,
 			extProcInProcess,
 		)
+	} else {
+		// AI_GATEWAY_DYNAMIC_MODULE_ADMIN_ADDRESS
+		envoyEnvVars = append(envoyEnvVars,
+			fmt.Sprintf("AI_GATEWAY_DYNAMIC_MODULE_ADMIN_ADDRESS=:%d", env.extProcAdminPort))
+		// AI_GATEWAY_DYNAMIC_MODULE_FILTER_CONFIG_PATH
+		configPath := t.TempDir() + "/extproc-config.yaml"
+		require.NoError(t, os.WriteFile(configPath, []byte(env.extprocConfig), 0o600))
+		envoyEnvVars = append(envoyEnvVars,
+			fmt.Sprintf("AI_GATEWAY_DYNAMIC_MODULE_FILTER_CONFIG_PATH=%s", configPath))
 	}
 
 	// Start Envoy mapping its testupstream port 8080 to the ephemeral one.
@@ -148,6 +161,7 @@ func StartTestEnvironment(t testing.TB,
 		env.envoyStdout,
 		env.envoyStderr,
 		env.envoyConfig,
+		envoyEnvVars,
 		env.envoyListenerPort,
 		env.envoyAdminPort,
 		env.extProcPort,
@@ -168,7 +182,7 @@ func StartTestEnvironment(t testing.TB,
 		}
 		t.Logf("All services are up and running")
 		return true
-	}, time.Second*3, time.Millisecond*20, "failed to connect to all services in the test environment")
+	}, time.Second*3, time.Millisecond*500, "failed to connect to all services in the test environment")
 	return env
 }
 
@@ -240,6 +254,7 @@ func waitForReadyMessage(ctx context.Context, outReader io.Reader, readyMessage 
 func requireEnvoy(t testing.TB,
 	stdout, stderr io.Writer,
 	config string,
+	envVars []string,
 	listenerPort, adminPort, extProcPort, extProcMCPPort int,
 	miscPorts, miscPortDefaults map[string]int,
 ) {
@@ -288,8 +303,7 @@ func requireEnvoy(t testing.TB,
 	t.Logf("Starting Envoy version %s", strings.TrimSpace(string(version)))
 	cmd.WaitDelay = 3 * time.Second // auto-kill after 3 seconds.
 	// Unconditionally allow dynamic modules from out/.
-	cmd.Env = append(os.Environ(),
-		"ENVOY_DYNAMIC_MODULES_SEARCH_PATH="+internaltesting.FindProjectRoot()+"/out")
+	cmd.Env = envVars
 	t.Cleanup(func() {
 		defer cancel()
 		// Graceful shutdown, should kill the Envoy subprocess, too.

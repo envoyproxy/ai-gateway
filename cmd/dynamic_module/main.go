@@ -6,15 +6,15 @@
 package main
 
 import (
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"time"
-
-	"github.com/envoyproxy/ai-gateway/internal/tracing"
-	"github.com/prometheus/client_golang/prometheus"
-	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
 
 	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/dynamicmodule"
@@ -22,15 +22,37 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
+	"github.com/envoyproxy/ai-gateway/internal/tracing"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
 )
 
 func main() {} // This must be present to make a shared library.
 
+// List of constants for environment variable names.
+const (
+	envAdminAddress                   = "AI_GATEWAY_DYNAMIC_MODULE_ADMIN_ADDRESS"      // mandatory
+	envFilterConfigPath               = "AI_GATEWAY_DYNAMIC_MODULE_FILTER_CONFIG_PATH" // mandatory
+	envRootPrefix                     = "AI_GATEWAY_DYNAMIC_MODULE_ROOT_PREFIX"
+	envEndpointPrefixes               = "AI_GATEWAY_DYNAMIC_MODULE_FILTER_ENDPOINT_PREFIXES"
+	envMetricsRequestHeaderAttributes = "AI_GATEWAY_DYNAMIC_MODULE_FILTER_METRICS_REQUEST_HEADER_ATTRIBUTES"
+	envTracingRequestHeaderAttributes = "AI_GATEWAY_DYNAMIC_MODULE_FILTER_TRACING_REQUEST_HEADER_ATTRIBUTES"
+)
+
 // Set the envoy.NewHTTPFilter function to create a new http filter.
 func init() {
 	g := &globalState{}
-	if err := g.initializeEnv(); err != nil {
+	promRegistry := prometheus.NewRegistry()
+	if err := g.initializeEnv(promRegistry); err != nil {
 		panic("failed to create env config: " + err.Error())
+	}
+
+	err := startAdminServer(
+		os.Getenv(envAdminAddress),
+		promRegistry)
+	if err != nil {
+		panic("failed to start admin server: " + err.Error())
 	}
 
 	// TODO: use a writer implemented with the Logger ABI of Envoy.
@@ -38,7 +60,7 @@ func init() {
 		Level: slog.LevelDebug, // Adjust log level from environment variable if needed.
 	}))
 	if err := filterapi.StartConfigWatcher(context.Background(),
-		os.Getenv("AI_GATEWAY_DYNAMIC_MODULE_FILTER_CONFIG_PATH"), g, logger, time.Second*5); err != nil {
+		os.Getenv(envFilterConfigPath), g, logger, time.Second*5); err != nil {
 		panic("failed to start filter config watcher: " + err.Error())
 	}
 	sdk.NewHTTPFilterConfig = g.newHTTPFilterConfig
@@ -74,9 +96,8 @@ func (g *globalState) LoadConfig(ctx context.Context, config *filterapi.Config) 
 	return nil
 }
 
-func (g *globalState) initializeEnv() error {
+func (g *globalState) initializeEnv(promRegistry *prometheus.Registry) error {
 	ctx := context.Background()
-	promRegistry := prometheus.NewRegistry()
 	promReader, err := otelprom.New(otelprom.WithRegisterer(promRegistry))
 	if err != nil {
 		return fmt.Errorf("failed to create prometheus reader: %w", err)
@@ -87,33 +108,31 @@ func (g *globalState) initializeEnv() error {
 		return fmt.Errorf("failed to create metrics: %w", err)
 	}
 
-	endpointPrefixes, err := internalapi.ParseEndpointPrefixes(os.Getenv(
-		"AI_GATEWAY_DYNAMIC_MODULE_FILTER_ENDPOINT_PREFIXES",
-	))
+	endpointPrefixes, err := internalapi.ParseEndpointPrefixes(os.Getenv(envEndpointPrefixes))
 	if err != nil {
 		return fmt.Errorf("failed to parse endpoint prefixes: %w", err)
 	}
 
 	metricsRequestHeaderAttributes, err := internalapi.ParseRequestHeaderAttributeMapping(os.Getenv(
-		"AI_GATEWAY_DYNAMIC_MODULE_FILTER_METRICS_REQUEST_HEADER_ATTRIBUTES",
+		envMetricsRequestHeaderAttributes,
 	))
 	if err != nil {
 		return fmt.Errorf("failed to parse metrics header mapping: %w", err)
 	}
 	spanRequestHeaderAttributes, err := internalapi.ParseRequestHeaderAttributeMapping(os.Getenv(
-		"AI_GATEWAY_DYNAMIC_MODULE_FILTER_TRACING_REQUEST_HEADER_ATTRIBUTES",
+		envTracingRequestHeaderAttributes,
 	))
 	if err != nil {
 		return fmt.Errorf("failed to parse tracing header mapping: %w", err)
 	}
 
-	tracing, err := tracing.NewTracingFromEnv(ctx, os.Stdout, spanRequestHeaderAttributes)
+	tr, err := tracing.NewTracingFromEnv(ctx, os.Stdout, spanRequestHeaderAttributes)
 	if err != nil {
 		return err
 	}
 
 	g.env = &dynamicmodule.Env{
-		RootPrefix:                    os.Getenv("AI_GATEWAY_DYNAMIC_MODULE_ROOT_PREFIX"),
+		RootPrefix:                    cmp.Or(os.Getenv(envRootPrefix), "/"),
 		EndpointPrefixes:              endpointPrefixes,
 		ChatCompletionMetricsFactory:  metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationChat),
 		MessagesMetricsFactory:        metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationMessages),
@@ -121,7 +140,32 @@ func (g *globalState) initializeEnv() error {
 		EmbeddingsMetricsFactory:      metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationEmbedding),
 		ImageGenerationMetricsFactory: metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationImageGeneration),
 		RerankMetricsFactory:          metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationRerank),
-		Tracing:                       tracing,
+		Tracing:                       tr,
 	}
+	return nil
+}
+
+func startAdminServer(address string, registry prometheus.Gatherer) error {
+	var lc net.ListenConfig
+	lis, err := lc.Listen(context.Background(), "tcp", address)
+	if err != nil {
+		return fmt.Errorf("failed to listen for admin: %w", err)
+	}
+
+	fmt.Printf("Admin server listening on %s\n", address) // TODO: use logger
+
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.HandlerFor(
+		registry,
+		promhttp.HandlerOpts{},
+	))
+	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	go func() {
+		fmt.Println("Starting admin server on :9090") // TODO: use logger
+		if err := server.Serve(lis); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			fmt.Fprintf(os.Stderr, "Admin server failed: %v\n", err) // TODO: use logger
+		}
+		fmt.Println(err)
+	}()
 	return nil
 }
