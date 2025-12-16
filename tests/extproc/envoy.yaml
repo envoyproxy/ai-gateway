@@ -1566,7 +1566,7 @@ static_resources:
                 allow_mode_override: true
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
-                  - xds.cluster_metadata
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "BUFFERED"
@@ -1625,7 +1625,7 @@ static_resources:
                 allow_mode_override: true
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
-                  - xds.cluster_metadata
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "BUFFERED"
