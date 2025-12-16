@@ -124,7 +124,7 @@ func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, header
 	for _, rule := range authorization.Rules {
 		action := rule.Action == filterapi.AuthorizationActionAllow
 
-		if !m.toolMatches(backend, tool, rule.Target, arguments) {
+		if rule.Target != nil && !m.toolMatches(backend, tool, rule.Target, arguments) {
 			continue
 		}
 

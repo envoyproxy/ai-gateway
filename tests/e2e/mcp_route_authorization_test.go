@@ -73,16 +73,7 @@ func TestMCPRouteAuthorization(t *testing.T) {
 			_ = sess.Close()
 		})
 
-		res, err := sess.CallTool(ctx, &mcp.CallToolParams{
-			Name:      "mcp-backend-authorization__" + testmcp.ToolSum.Tool.Name,
-			Arguments: testmcp.ToolSumArgs{A: 41, B: 1},
-		})
-		require.NoError(t, err)
-		require.False(t, res.IsError)
-		require.Len(t, res.Content, 1)
-		txt, ok := res.Content[0].(*mcp.TextContent)
-		require.True(t, ok)
-		require.Equal(t, "42", txt.Text)
+		requireSumToolResult(t, ctx, sess, 41, 1, "42")
 	})
 
 	t.Run("matching scopes and arguments", func(t *testing.T) {
@@ -208,6 +199,53 @@ func TestMCPRouteAuthorization(t *testing.T) {
 		require.Contains(t, wwwAuth, `scope="echo"`) // expected missing scope
 		require.Contains(t, wwwAuth, `resource_metadata="https://foo.bar.com/.well-known/oauth-protected-resource/mcp"`)
 	})
+
+	t.Run("empty source matches all sources", func(t *testing.T) {
+		token := makeSignedJWT(t, "not-a-real-scope")
+		authHTTPClient := &http.Client{
+			Timeout: 10 * time.Second,
+			Transport: &bearerTokenTransport{
+				token: token,
+			},
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		sess := requireConnectMCP(ctx, t, client, fmt.Sprintf("%s/mcp-authorization", fwd.Address()), authHTTPClient)
+		t.Cleanup(func() {
+			_ = sess.Close()
+		})
+
+		res, err := sess.CallTool(ctx, &mcp.CallToolParams{
+			Name:      "mcp-backend-authorization__" + testmcp.ToolCountDown.Tool.Name,
+			Arguments: testmcp.ToolCountDownArgs{From: 3, Interval: "10ms"},
+		})
+		require.NoError(t, err)
+		if res.IsError {
+			json, _ := res.Content[0].MarshalJSON()
+			t.Logf("error content: %s", json)
+		}
+		require.False(t, res.IsError)
+	})
+	t.Run("empty target matches all targets", func(t *testing.T) {
+		token := makeSignedJWT(t, "all-access")
+		authHTTPClient := &http.Client{
+			Timeout: 10 * time.Second,
+			Transport: &bearerTokenTransport{
+				token: token,
+			},
+		}
+
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		sess := requireConnectMCP(ctx, t, client, fmt.Sprintf("%s/mcp-authorization", fwd.Address()), authHTTPClient)
+		t.Cleanup(func() {
+			_ = sess.Close()
+		})
+
+		requireSumToolResult(t, ctx, sess, 41, 1, "42")
+	})
 }
 
 func requireConnectMCP(ctx context.Context, t *testing.T, client *mcp.Client, endpoint string, httpClient *http.Client) *mcp.ClientSession {
@@ -227,6 +265,21 @@ func requireConnectMCP(ctx context.Context, t *testing.T, client *mcp.Client, en
 		return true
 	}, 30*time.Second, 100*time.Millisecond, "failed to connect to MCP server")
 	return sess
+}
+
+func requireSumToolResult(t *testing.T, ctx context.Context, sess *mcp.ClientSession, a, b float64, expected string) {
+	t.Helper()
+
+	res, err := sess.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "mcp-backend-authorization__" + testmcp.ToolSum.Tool.Name,
+		Arguments: testmcp.ToolSumArgs{A: a, B: b},
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError)
+	require.Len(t, res.Content, 1)
+	txt, ok := res.Content[0].(*mcp.TextContent)
+	require.True(t, ok)
+	require.Equal(t, expected, txt.Text)
 }
 
 func makeSignedJWT(t *testing.T, scopes ...string) string {

@@ -563,6 +563,47 @@ func TestAuthorizeRequest(t *testing.T) {
 			expectAllowed: false,
 			expectScopes:  nil,
 		},
+		{
+			name: "rule with no source allows all requests for matching tool",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{
+								Backend: "backend1",
+								Tool:    "tool1",
+							}},
+						},
+						Action: "Allow",
+					},
+				},
+			},
+			header:        "",
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: true,
+			expectScopes:  nil,
+		},
+		{
+			name: "rule with no target allows all requests with matching source",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{Scopes: []string{"read"}},
+						},
+						Action: "Allow",
+					},
+				},
+			},
+			header:        "Bearer " + makeToken("read"),
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: true,
+			expectScopes:  nil,
+		},
 	}
 
 	for _, tt := range tests {

@@ -490,31 +490,36 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 					mcpRoute.Authorization.Rules = []filterapi.MCPRouteAuthorizationRule{}
 				}
 
-				tools := make([]filterapi.ToolCall, len(rule.Target.Tools))
-				for i, tool := range rule.Target.Tools {
-					tools[i] = filterapi.ToolCall{
-						Backend: tool.Backend,
-						Tool:    tool.Tool,
-						When:    tool.When,
-					}
-				}
-
-				scopes := make([]string, len(rule.Source.JWT.Scopes))
-				for i, scope := range rule.Source.JWT.Scopes {
-					scopes[i] = string(scope)
-				}
-
 				mcpRule := filterapi.MCPRouteAuthorizationRule{
-					Source: &filterapi.MCPAuthorizationSource{
+					Action: filterapi.AuthorizationAction(action),
+				}
+
+				if rule.Source != nil {
+					scopes := make([]string, len(rule.Source.JWT.Scopes))
+					for i, scope := range rule.Source.JWT.Scopes {
+						scopes[i] = string(scope)
+					}
+					mcpRule.Source = &filterapi.MCPAuthorizationSource{
 						JWT: filterapi.JWTSource{
 							Scopes: scopes,
 						},
-					},
-					Target: &filterapi.MCPAuthorizationTarget{
-						Tools: tools,
-					},
-					Action: filterapi.AuthorizationAction(action),
+					}
 				}
+
+				if rule.Target != nil {
+					tools := make([]filterapi.ToolCall, len(rule.Target.Tools))
+					for i, tool := range rule.Target.Tools {
+						tools[i] = filterapi.ToolCall{
+							Backend: tool.Backend,
+							Tool:    tool.Tool,
+							When:    tool.When,
+						}
+					}
+					mcpRule.Target = &filterapi.MCPAuthorizationTarget{
+						Tools: tools,
+					}
+				}
+
 				mcpRoute.Authorization.Rules = append(mcpRoute.Authorization.Rules, mcpRule)
 			}
 		}

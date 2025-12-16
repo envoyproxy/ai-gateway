@@ -77,6 +77,16 @@ spec:
             tools:
               - backend: mcp-backend-authorization
                 tool: sum
+        - target:
+            tools:
+              - backend: mcp-backend-authorization
+                tool: countdown
+          # No source means all sources are allowed.
+        - source:
+            jwt:
+              scopes:
+                - all-access
+          # No target means all targets are allowed.
 ---
 # https://www.scottbrady.io/tools/jwt
 apiVersion: v1
