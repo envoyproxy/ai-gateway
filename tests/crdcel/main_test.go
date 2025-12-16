@@ -251,8 +251,8 @@ func TestMCPRoutes(t *testing.T) {
 			expErr: "spec.securityPolicy.oauth.jwks: Invalid value: \"object\": remoteJWKS and localJWKS cannot both be specified.",
 		},
 		{
-			name:   "authorization_without_oauth.yaml",
-			expErr: "spec.securityPolicy: Invalid value: \"object\": oauth must be configured when authorization is set",
+			name:   "authorization_with_jwt_without_oauth.yaml",
+			expErr: "spec.securityPolicy: Invalid value: \"object\": oauth must be configured when any authorization rule uses a jwt source",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

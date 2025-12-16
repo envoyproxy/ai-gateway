@@ -6,7 +6,7 @@
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: MCPRoute
 metadata:
-  name: authorization-without-oauth
+  name: authorization-with-jwt-without-oauth
   namespace: default
 spec:
   parentRefs:
@@ -27,4 +27,4 @@ spec:
           target:
             tools:
               - backend: mcp-service
-                Tool: echo
+                tool: echo
