@@ -152,7 +152,7 @@ func startAdminServer(address string, registry prometheus.Gatherer) error {
 		return fmt.Errorf("failed to listen for admin: %w", err)
 	}
 
-	fmt.Printf("Admin server listening on %s\n", address) // TODO: use logger
+	sdk.Log(sdk.LogLevelInfo, "admin server listening on %s", address)
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(
@@ -161,11 +161,10 @@ func startAdminServer(address string, registry prometheus.Gatherer) error {
 	))
 	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
-		fmt.Println("Starting admin server on :9090") // TODO: use logger
+		sdk.Log(sdk.LogLevelInfo, "starting admin server on %s", address)
 		if err := server.Serve(lis); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			fmt.Fprintf(os.Stderr, "Admin server failed: %v\n", err) // TODO: use logger
+			sdk.Log(sdk.LogLevelError, "admin server failed: %v", err)
 		}
-		fmt.Println(err)
 	}()
 	return nil
 }

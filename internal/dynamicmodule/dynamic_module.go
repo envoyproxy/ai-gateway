@@ -31,6 +31,19 @@ const (
 	modelsEndpoint
 )
 
+// String implements fmt.Stringer.
+func (e endpoint) String() string {
+	return [...]string{
+		"chat_completions",
+		"completions",
+		"embeddings",
+		"image_generations",
+		"rerank",
+		"messages",
+		"models",
+	}[e]
+}
+
 // Env holds the environment configuration for the dynamic module that is process-wide.
 type Env struct {
 	RootPrefix       string

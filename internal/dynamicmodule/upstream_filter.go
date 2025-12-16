@@ -87,7 +87,7 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 	rf := (*routerFilter)(unsafe.Pointer(uintptr(rfPtr))) // nolint:govet
 	rf.attemptCount++
 	onRetry := rf.attemptCount > 1
-	backend, ok := e.GetUpstreamHostMetadataString(internalapi.AIGatewayFilterMetadataNamespace, internalapi.InternalMetadataBackendNameKey)
+	backend, ok := e.GetDynamicMetadataString(internalapi.AIGatewayFilterMetadataNamespace, internalapi.InternalMetadataBackendNameKey)
 	if !ok {
 		e.SendLocalReply(500, nil, []byte("backend name not found in upstream host metadata"))
 		return sdk.RequestHeadersStatusStopIteration

@@ -113,11 +113,17 @@ func (f *routerFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Request
 		e.SendLocalReply(404, nil, []byte(fmt.Sprintf("unsupported path: %s", p)))
 		return sdk.RequestHeadersStatusStopIteration
 	}
+	if sdk.LogDebugEnabled {
+		sdk.Log(sdk.LogLevelDebug, "router filter: routing request path %s to endpoint %s", p, ep)
+	}
 	f.endpoint = ep
 	if f.endpoint == modelsEndpoint {
 		return f.handleModelsEndpoint(e)
 	}
-	return sdk.RequestHeadersStatusContinue
+	if sdk.LogDebugEnabled {
+		sdk.Log(sdk.LogLevelDebug, "router filter: continuing to request body phase for endpoint %s", f.endpoint)
+	}
+	return sdk.RequestHeadersStatusStopIteration // Do not invoke the subsequent filters but continue to the body phase on this filter.
 }
 
 // RequestBody implements [sdk.HTTPFilter].
@@ -166,6 +172,10 @@ func (f *routerFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) Stream() boo
 
 func (f *routerFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.RequestBodyStatus {
 	if !endOfStream {
+		if sdk.LogDebugEnabled {
+			sdk.Log(sdk.LogLevelDebug,
+				"router filter: waiting for end of stream to parse request body")
+		}
 		return sdk.RequestBodyStatusStopIterationAndBuffer
 	}
 	b, ok := e.GetBufferedRequestBody()
@@ -192,8 +202,23 @@ func (f *routerFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(
 		return sdk.RequestBodyStatusStopIterationAndBuffer
 	}
 	// Store the pointer to the filter in dynamic metadata for later retrieval in the upstream filter.
-	e.SetDynamicMetadataString(internalapi.AIGatewayFilterMetadataNamespace, routerFilterPointerDynamicMetadataKey,
-		fmt.Sprintf("%d", uintptr(unsafe.Pointer(f))))
+	if !e.SetDynamicMetadataString(internalapi.AIGatewayFilterMetadataNamespace, routerFilterPointerDynamicMetadataKey,
+		fmt.Sprintf("%d", uintptr(unsafe.Pointer(f)))) {
+		e.SendLocalReply(500, nil, []byte("failed to set dynamic metadata"))
+		return sdk.RequestBodyStatusStopIterationAndBuffer
+	}
+
+	// Try to get the metadata we set for sanity check.
+	if v, ok := e.GetDynamicMetadataString(internalapi.AIGatewayFilterMetadataNamespace, routerFilterPointerDynamicMetadataKey); !ok || v != fmt.Sprintf("%d", uintptr(unsafe.Pointer(f))) {
+		e.SendLocalReply(500, nil, []byte("failed to get dynamic metadata for sanity check"))
+		return sdk.RequestBodyStatusStopIterationAndBuffer
+	} else {
+		sdk.Log(sdk.LogLevelError, "router filter: successfully set and got dynamic metadata router filter pointer: %s", v)
+	}
+
+	if sdk.LogDebugEnabled {
+		sdk.Log(sdk.LogLevelDebug, "router filter: parsed request body for endpoint %T: %+v", f.ep, f.originalRequestBody)
+	}
 
 	f.originalRequestHeaders = multiValueHeadersToSingleValue(e.GetRequestHeaders())
 

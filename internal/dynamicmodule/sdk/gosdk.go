@@ -121,3 +121,15 @@ const (
 	ResponseBodyStatusContinue               ResponseBodyStatus = 0
 	ResponseBodyStatusStopIterationAndBuffer ResponseBodyStatus = 1
 )
+
+type LogLevel int
+
+const (
+	LogLevelTrace LogLevel = iota
+	LogLevelDebug
+	LogLevelInfo
+	LogLevelWarn
+	LogLevelError
+	LogLevelCritical
+	LogLevelOff
+)
