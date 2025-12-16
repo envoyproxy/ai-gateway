@@ -248,7 +248,9 @@ func TestServer_setBackend(t *testing.T) {
 		md     *corev3.Metadata
 		errStr string
 	}{
-		{md: &corev3.Metadata{}, errStr: "missing aigateway.envoy.io metadata"},
+		{md: &corev3.Metadata{
+			FilterMetadata: map[string]*structpb.Struct{"foo": {}},
+		}, errStr: "missing aigateway.envoy.io metadata"},
 		{
 			md:     &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{internalapi.InternalEndpointMetadataNamespace: {}}},
 			errStr: "missing per_route_rule_backend_name in endpoint metadata",
@@ -274,6 +276,9 @@ func TestServer_setBackend(t *testing.T) {
 			t.Run(fmt.Sprintf("errors/%s/isEndpointPicker=%t", tc.errStr, isEndpointPicker), func(t *testing.T) {
 				str, err := prototext.Marshal(tc.md)
 				require.NoError(t, err)
+				// Test the breaking-change scenario where the metadata is prefixed with "google/debugproto".
+				// See the comment in setBackend for more details.
+				str = append([]byte("goo.gle/debugproto "), str...)
 				s, _ := requireNewServerWithMockProcessor(t)
 				s.config.Backends = map[string]*filterapi.RuntimeBackend{"openai": {Backend: &filterapi.Backend{Name: "openai", HeaderMutation: &filterapi.HTTPHeaderMutation{Set: []filterapi.HTTPHeader{{Name: "x-foo", Value: "foo"}}}}}}
 				mockProc := &mockProcessor{}

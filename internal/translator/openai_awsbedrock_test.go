@@ -986,7 +986,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 								Value: []openai.ChatCompletionAssistantMessageParamContent{
 									{
 										Type:            openai.ChatCompletionAssistantMessageParamContentTypeRedactedThinking,
-										RedactedContent: []byte{104, 101, 108, 108, 111},
+										RedactedContent: &openai.RedactedContentUnion{Value: []byte{104, 101, 108, 108, 111}},
 									},
 								},
 							},

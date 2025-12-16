@@ -47,7 +47,7 @@ It is not a fork or a side project running in isolation; it is designed to feed 
 
 #### Reality
 
-The Envoy proxy's architecture is ideally suited for managing AI traffic, including use cases like MCP. Both LLM and MCP traffic ultimately rely on HTTP. As a cloud-native, battle-tested HTTP proxy utilized at scale for over a decade, Envoy is a proven solution.
+The Envoy proxy's architecture is ideally suited for managing AI traffic, including use cases like MCP. Both LLM and MCP traffic ultimately rely on HTTP. As a cloud-native, battle-tested HTTP proxy utilized at scale for nearly a decade, Envoy is a proven solution.
 
 Furthermore, the [Envoy community is actively working](https://github.com/search?q=repo%3Aenvoyproxy%2Fenvoy+mcp&type=pullrequests&s=created&o=desc) toward making the core Envoy proxy fully MCP-compliant. This future compatibility means Envoy AI Gateway users will be able to leverage the standard Envoy proxy for their data plane needs.
 

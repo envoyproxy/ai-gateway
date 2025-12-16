@@ -312,11 +312,18 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 			}
 		case openai.ChatCompletionAssistantMessageParamContentTypeRedactedThinking:
 			if content.RedactedContent != nil {
-				contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{
-					ReasoningContent: &awsbedrock.ReasoningContentBlock{
-						RedactedContent: content.RedactedContent,
-					},
-				})
+				switch v := content.RedactedContent.Value.(type) {
+				case []byte:
+					contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{
+						ReasoningContent: &awsbedrock.ReasoningContentBlock{
+							RedactedContent: v,
+						},
+					})
+				case string:
+					return nil, fmt.Errorf("AWS Bedrock does not support string format for RedactedContent, expected []byte")
+				default:
+					return nil, fmt.Errorf("unsupported RedactedContent type: %T, expected []byte", v)
+				}
 			}
 		case openai.ChatCompletionAssistantMessageParamContentTypeRefusal:
 			if content.Refusal != nil {
