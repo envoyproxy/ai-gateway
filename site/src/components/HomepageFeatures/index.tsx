@@ -32,7 +32,7 @@ const FeatureList: FeatureItem[] = [
     image: require('@site/static/img/2.png').default,
     description: (
       <>
-        Join our community on Slack, join the conversation on GitHub, and attend our Thursday community meetings. See links in footer.
+        Join our community on Slack, join the conversation on GitHub, and attend our Monday community meetings. See links in footer.
       </>
     ),
   },
