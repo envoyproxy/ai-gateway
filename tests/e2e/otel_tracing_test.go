@@ -208,7 +208,7 @@ func TestOTELTracingWithGatewayConfig(t *testing.T) {
 
 		// Delete the test namespace to clean up completely.
 		deleteNs := exec.CommandContext(restoreCtx, "kubectl", "delete", "namespace",
-			"otel-gateway-config-test-namespace", "--ignore-not-found=true")
+			"otel-gwconfig-ns", "--ignore-not-found=true")
 		_ = deleteNs.Run()
 	})
 
@@ -221,7 +221,7 @@ func TestOTELTracingWithGatewayConfig(t *testing.T) {
 
 	// Get pod name from envoy-gateway-system namespace (where pods are created).
 	require.Eventually(t, func() bool {
-		const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-gateway-config-test"
+		const egSelector = "gateway.envoyproxy.io/owning-gateway-name=eg-gwconfig-test"
 		getPodsCmd := exec.CommandContext(ctx, "kubectl", "get", "pods", // #nosec G204
 			"-n", e2elib.EnvoyGatewayNamespace,
 			"-l", egSelector,
@@ -233,7 +233,7 @@ func TestOTELTracingWithGatewayConfig(t *testing.T) {
 			t.Logf("Failed to get pod name: %v", err)
 			return false // Retry if command fails.
 		}
-		podName := string(podNameBytes)
+		podName := strings.TrimSpace(string(podNameBytes))
 		if len(podName) == 0 {
 			t.Log("No pods found with the specified selector, retrying...")
 			return false // Retry if no pods found.

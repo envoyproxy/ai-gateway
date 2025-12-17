@@ -7,12 +7,12 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: otel-gateway-config-test-namespace
+  name: otel-gwconfig-ns
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
-  name: envoy-ai-gateway-gateway-config-test
+  name: eg-gwconfig-test
 spec:
   controllerName: gateway.envoyproxy.io/gatewayclass-controller
 ---
@@ -20,41 +20,42 @@ apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: GatewayConfig
 metadata:
   name: comprehensive-config
-  namespace: otel-gateway-config-test-namespace
+  namespace: otel-gwconfig-ns
 spec:
   extProc:
-    env:
-      - name: OTEL_EXPORTER_OTLP_ENDPOINT
-        value: "http://otel-collector.monitoring:4317"
-      - name: OTEL_EXPORTER_OTLP_HEADERS
-        value: "api-key=your-secret-key"
-      - name: OTEL_SERVICE_NAME
-        value: "ai-gateway-production"
-      - name: OTEL_TRACES_SAMPLER
-        value: "parentbased_traceidratio"
-      - name: OTEL_TRACES_SAMPLER_ARG
-        value: "0.1"
-      - name: LOG_LEVEL
-        value: "info"
-      - name: ENABLE_DEBUG_METRICS
-        value: "false"
-    resources:
-      requests:
-        cpu: "100m"
-        memory: "128Mi"
-      limits:
-        cpu: "500m"
-        memory: "512Mi"
+    kubernetes:
+      env:
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://otel-collector.monitoring:4317"
+        - name: OTEL_EXPORTER_OTLP_HEADERS
+          value: "api-key=your-secret-key"
+        - name: OTEL_SERVICE_NAME
+          value: "ai-gateway-production"
+        - name: OTEL_TRACES_SAMPLER
+          value: "parentbased_traceidratio"
+        - name: OTEL_TRACES_SAMPLER_ARG
+          value: "0.1"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: ENABLE_DEBUG_METRICS
+          value: "false"
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "128Mi"
+        limits:
+          cpu: "500m"
+          memory: "512Mi"
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: envoy-ai-gateway-gateway-config-test
-  namespace: otel-gateway-config-test-namespace
+  name: eg-gwconfig-test
+  namespace: otel-gwconfig-ns
   annotations:
     aigateway.envoyproxy.io/gateway-config: comprehensive-config
 spec:
-  gatewayClassName: envoy-ai-gateway-gateway-config-test
+  gatewayClassName: eg-gwconfig-test
   listeners:
     - name: http
       protocol: HTTP
@@ -63,13 +64,13 @@ spec:
     parametersRef:
       group: gateway.envoyproxy.io
       kind: EnvoyProxy
-      name: envoy-ai-gateway-gateway-config-test
+      name: eg-gwconfig-test
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyProxy
 metadata:
-  name: envoy-ai-gateway-gateway-config-test
-  namespace: otel-gateway-config-test-namespace
+  name: eg-gwconfig-test
+  namespace: otel-gwconfig-ns
 spec:
   provider:
     type: Kubernetes
@@ -83,7 +84,7 @@ apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
 metadata:
   name: gateway-config-test-backend
-  namespace: otel-gateway-config-test-namespace
+  namespace: otel-gwconfig-ns
 spec:
   endpoints:
     - fqdn:
@@ -94,7 +95,7 @@ apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
 metadata:
   name: gateway-config-test-backend
-  namespace: otel-gateway-config-test-namespace
+  namespace: otel-gwconfig-ns
 spec:
   schema:
     name: OpenAI
@@ -108,10 +109,10 @@ apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute
 metadata:
   name: gateway-config-tracing
-  namespace: otel-gateway-config-test-namespace
+  namespace: otel-gwconfig-ns
 spec:
   parentRefs:
-    - name: envoy-ai-gateway-gateway-config-test
+    - name: eg-gwconfig-test
       kind: Gateway
       group: gateway.networking.k8s.io
   rules:

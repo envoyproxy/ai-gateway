@@ -10,29 +10,29 @@ metadata:
   namespace: default
 spec:
   extProc:
-    env:
-      - name: OTEL_EXPORTER_OTLP_ENDPOINT
-        value: "http://otel-collector.monitoring:4317"
-      - name: OTEL_EXPORTER_OTLP_HEADERS
-        value: "api-key=your-secret-key"
-      - name: OTEL_SERVICE_NAME
-        value: "ai-gateway-production"
-      - name: OTEL_TRACES_SAMPLER
-        value: "parentbased_traceidratio"
-      - name: OTEL_TRACES_SAMPLER_ARG
-        value: "0.1"
-      - name: LOG_LEVEL
-        value: "info"
-      - name: ENABLE_DEBUG_METRICS
-        value: "false"
-
-    resources:
-      requests:
-        cpu: "100m"
-        memory: "128Mi"
-      limits:
-        cpu: "500m"
-        memory: "512Mi"
+    kubernetes:
+      env:
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://otel-collector.monitoring:4317"
+        - name: OTEL_EXPORTER_OTLP_HEADERS
+          value: "api-key=your-secret-key"
+        - name: OTEL_SERVICE_NAME
+          value: "ai-gateway-production"
+        - name: OTEL_TRACES_SAMPLER
+          value: "parentbased_traceidratio"
+        - name: OTEL_TRACES_SAMPLER_ARG
+          value: "0.1"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: ENABLE_DEBUG_METRICS
+          value: "false"
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "128Mi"
+        limits:
+          cpu: "500m"
+          memory: "512Mi"
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
