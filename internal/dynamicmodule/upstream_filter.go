@@ -147,8 +147,7 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 		return sdk.RequestHeadersStatusStopIteration
 	}
 	if err := f.typedFilter.RequestHeaders(e, false); err != nil {
-		// TODO: log the error in the proper way.
-		fmt.Println("request headers error:", err)
+		sdk.Log(sdk.LogLevelError, "request headers error: %v", err)
 		e.SendLocalReply(500, nil, []byte("internal server error"))
 		return sdk.RequestHeadersStatusStopIteration
 	}
@@ -193,8 +192,7 @@ func (f *upstreamFilter) RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sd
 	}
 
 	if err := f.typedFilter.RequestBody(e, endOfStream); err != nil {
-		// TODO: log the error in the proper way.
-		fmt.Println("request body error:", err)
+		sdk.Log(sdk.LogLevelError, "request body error: %v", err)
 		e.SendLocalReply(500, nil, []byte("internal server error"))
 		return sdk.RequestBodyStatusStopIterationAndBuffer
 	}
@@ -304,8 +302,7 @@ func (f *upstreamFilter) ResponseBody(e sdk.EnvoyHTTPFilter, endOfStream bool) s
 	}
 	if !f.success {
 		if err := f.typedFilter.ResponseBodyOnError(e); err != nil {
-			// TODO: log the error in the proper way.
-			fmt.Println("response body on error handling error:", err)
+			sdk.Log(sdk.LogLevelError, "response body on error handling failed: %v", err)
 			e.SendLocalReply(500, nil, []byte("internal server error"))
 		}
 		return sdk.ResponseBodyStatusStopIterationAndBuffer
@@ -332,7 +329,7 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 	var body sdk.BodyReader
 	var ok bool
 	if f.routerFilter.Stream() {
-		// TODO.
+		body, ok = e.GetReceivedResponseBody()
 	} else {
 		body, ok = e.GetBufferedResponseBody()
 	}
@@ -358,7 +355,12 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 			e.SetResponseHeader("content-encoding", nil)
 		}
 		if f.routerFilter.Stream() {
-			// TODO.
+			cur, ok := e.GetReceivedResponseBody()
+			if !ok {
+				return errors.New("failed to get current response body for replacement")
+			}
+			_ = e.DrainReceivedResponseBody(cur.Len())
+			_ = e.AppendReceivedResponseBody(newBody)
 		} else {
 			cur, ok := e.GetBufferedResponseBody()
 			if !ok {
