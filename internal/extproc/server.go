@@ -298,35 +298,52 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 	if attributes == nil || len(attributes.Fields) == 0 { // coverage-ignore
 		return status.Error(codes.Internal, "missing attributes in request")
 	}
-	var metadataFieldKey string
+	// metadataFieldKey is the key for the entire metadata field in the attributes for backward compatibility.
+	// backendNamePath is the path to the backend name in the metadata.
+	var metadataFieldKey, backendNamePath string
 	if isEndpointPicker {
 		metadataFieldKey = internalapi.XDSClusterMetadataKey
+		backendNamePath = internalapi.XDSClusterMetadataBackendNamePath
 	} else {
 		metadataFieldKey = internalapi.XDSUpstreamHostMetadataKey
-	}
-	// This should contain the endpoint metadata.
-	hostMetadata, ok := attributes.Fields[metadataFieldKey]
-	if !ok {
-		return status.Errorf(codes.Internal, "missing %s in request", metadataFieldKey)
-	}
-	// Unmarshal the text into the struct since the metadata is encoded as a proto string.
-	var metadata corev3.Metadata
-	err := prototext.Unmarshal([]byte(hostMetadata.GetStringValue()), &metadata)
-	if err != nil {
-		panic(err)
+		backendNamePath = internalapi.XDSUpstreamHostMetadataBackendNamePath
 	}
 
-	aiGatewayEndpointMetadata, ok := metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
-	if !ok {
-		return status.Errorf(codes.Internal, "missing %s metadata", internalapi.InternalEndpointMetadataNamespace)
+	var backendName string
+	if b, ok := attributes.Fields[backendNamePath]; ok {
+		backendName = b.GetStringValue()
+	} else if hostMetadata, ok := attributes.Fields[metadataFieldKey]; ok {
+		// This is the backward compatible path where we read the full host metadata, which
+		// can be fragile due to how unstable proto text format can be. After v0.5 is release,
+		// we can remove this code path.
+
+		// Unmarshal the text into the struct since the metadata is encoded as a proto string.
+		var metadata corev3.Metadata
+		opt := prototext.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
+		err := opt.Unmarshal([]byte(hostMetadata.GetStringValue()), &metadata)
+		if err != nil {
+			return status.Errorf(codes.Internal,
+				"cannot unmarshal host metadata '%s': %v",
+				hostMetadata.GetStringValue(),
+				err)
+		}
+
+		aiGatewayEndpointMetadata, ok := metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
+		if !ok {
+			return status.Errorf(codes.Internal, "missing %s metadata", internalapi.InternalEndpointMetadataNamespace)
+		}
+		b, ok := aiGatewayEndpointMetadata.Fields[internalapi.InternalMetadataBackendNameKey]
+		if !ok {
+			return status.Errorf(codes.Internal, "missing %s in endpoint metadata", internalapi.InternalMetadataBackendNameKey)
+		}
+		backendName = b.GetStringValue()
+	} else {
+		return status.Errorf(codes.Internal, "missing %s in request", metadataFieldKey)
 	}
-	backendName, ok := aiGatewayEndpointMetadata.Fields[internalapi.InternalMetadataBackendNameKey]
+
+	backend, ok := s.config.Backends[backendName]
 	if !ok {
-		return status.Errorf(codes.Internal, "missing %s in endpoint metadata", internalapi.InternalMetadataBackendNameKey)
-	}
-	backend, ok := s.config.Backends[backendName.GetStringValue()]
-	if !ok {
-		return status.Errorf(codes.Internal, "unknown backend: %s", backendName.GetStringValue())
+		return status.Errorf(codes.Internal, "unknown backend: %s", backendName)
 	}
 
 	s.routerProcessorsPerReqIDMutex.RLock()
@@ -334,7 +351,7 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 	routerProcessor, ok := s.routerProcessorsPerReqID[internalReqID]
 	if !ok {
 		return status.Errorf(codes.Internal, "no router processor found, request_id=%s, backend=%s",
-			internalReqID, backendName.GetStringValue())
+			internalReqID, backendName)
 	}
 
 	if err := p.SetBackend(ctx, backend.Backend, backend.Handler, routerProcessor); err != nil {
