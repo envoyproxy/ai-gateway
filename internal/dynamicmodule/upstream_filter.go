@@ -76,25 +76,34 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 	rfPtrStr, ok := e.GetDynamicMetadataString(internalapi.AIGatewayFilterMetadataNamespace,
 		routerFilterPointerDynamicMetadataKey)
 	if !ok {
-		e.SendLocalReply(500, nil, []byte("router filter pointer not found in dynamic metadata"))
+		e.SendLocalReply(500, nil, []byte("internal server error"))
+		sdk.Log(sdk.LogLevelError, "router filter pointer not found in dynamic metadata")
 		return sdk.RequestHeadersStatusStopIteration
 	}
+
 	rfPtr, err := strconv.ParseInt(rfPtrStr, 10, 64)
 	if err != nil {
-		e.SendLocalReply(500, nil, []byte(fmt.Sprintf("invalid router filter pointer: %v", err)))
+		e.SendLocalReply(500, nil, []byte("internal server error"))
+		sdk.Log(sdk.LogLevelError, "failed to parse router filter pointer from dynamic metadata: %v", err)
 		return sdk.RequestHeadersStatusStopIteration
+	}
+	if sdk.LogDebugEnabled {
+		sdk.Log(sdk.LogLevelDebug, "upstream filter got router filter pointer: %d", rfPtr)
 	}
 	rf := (*routerFilter)(unsafe.Pointer(uintptr(rfPtr))) // nolint:govet
 	rf.attemptCount++
 	onRetry := rf.attemptCount > 1
+
 	backend, ok := e.GetUpstreamHostMetadataString(internalapi.InternalEndpointMetadataNamespace, internalapi.InternalMetadataBackendNameKey)
 	if !ok {
-		e.SendLocalReply(500, nil, []byte("backend name not found in upstream host metadata"))
+		e.SendLocalReply(500, nil, []byte("internal server error"))
+		sdk.Log(sdk.LogLevelError, "backend name not found in upstream host metadata")
 		return sdk.RequestHeadersStatusStopIteration
 	}
 	b, ok := rf.runtimeFilterConfig.Backends[backend]
 	if !ok {
-		e.SendLocalReply(500, nil, []byte(fmt.Sprintf("backend %s not found in filter config", backend)))
+		e.SendLocalReply(500, nil, []byte("internal server error"))
+		sdk.Log(sdk.LogLevelError, "backend %s not found in runtime filter config in %v", backend, rf.runtimeFilterConfig)
 		return sdk.RequestHeadersStatusStopIteration
 	}
 	f.stream = rf.typedFilter.Stream()

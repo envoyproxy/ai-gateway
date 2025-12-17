@@ -30,12 +30,6 @@ static_resources:
                         json_format:
                           used_token: "%DYNAMIC_METADATA(io.envoy.ai_gateway:used_token)%"
                           some_cel: "%DYNAMIC_METADATA(io.envoy.ai_gateway:some_cel)%"
-                  - name: dump_dynamic_metadata # For debugging.
-                    typed_config:
-                      "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StderrAccessLog
-                      log_format:
-                        json_format:
-                          some_cel: "%DYNAMIC_METADATA(io.envoy.ai_gateway)%"
                 route_config:
                   virtual_hosts:
                     - name: local_route
