@@ -16,6 +16,7 @@ import (
 	"strconv"
 
 	"github.com/andybalholm/brotli"
+
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -35,8 +36,6 @@ type (
 	// upstreamFilter implements [sdk.HTTPFilter].
 	upstreamFilter struct {
 		env         *Env
-		stream      bool
-		success     bool
 		typedFilter upstreamFilterTypedIface
 	}
 
@@ -104,11 +103,10 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 		sdk.Log(sdk.LogLevelError, "backend %s not found in runtime filter config in %v", backend, rf.runtimeFilterConfig)
 		return sdk.RequestHeadersStatusStopIteration
 	}
-	f.stream = rf.typedFilter.Stream()
 
 	switch rf.endpoint {
 	case chatCompletionsEndpoint:
-		f.typedFilter = &upstreamFilterTyped[openai.ChatCompletionRequest,
+		typed := &upstreamFilterTyped[openai.ChatCompletionRequest,
 			openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]{
 			metrics: f.env.ChatCompletionMetricsFactory.NewMetrics(),
 			onRetry: onRetry,
@@ -116,8 +114,10 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 			routerFilter: rf.typedFilter.(*routerFilterTyped[openai.ChatCompletionRequest,
 				openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]),
 		}
+		typed.routerFilter.upstreamFilter = typed
+		f.typedFilter = typed
 	case completionsEndpoint:
-		f.typedFilter = &upstreamFilterTyped[openai.CompletionRequest,
+		typed := &upstreamFilterTyped[openai.CompletionRequest,
 			openai.CompletionResponse, openai.CompletionResponse, endpointspec.CompletionsEndpointSpec]{
 			onRetry: onRetry,
 			metrics: f.env.CompletionMetricsFactory.NewMetrics(),
@@ -125,8 +125,10 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 			routerFilter: rf.typedFilter.(*routerFilterTyped[openai.CompletionRequest,
 				openai.CompletionResponse, openai.CompletionResponse, endpointspec.CompletionsEndpointSpec]),
 		}
+		typed.routerFilter.upstreamFilter = typed
+		f.typedFilter = typed
 	case embeddingsEndpoint:
-		f.typedFilter = &upstreamFilterTyped[openai.EmbeddingRequest,
+		typed := &upstreamFilterTyped[openai.EmbeddingRequest,
 			openai.EmbeddingResponse, struct{}, endpointspec.EmbeddingsEndpointSpec]{
 			onRetry: onRetry,
 			metrics: f.env.EmbeddingsMetricsFactory.NewMetrics(),
@@ -134,8 +136,10 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 			routerFilter: rf.typedFilter.(*routerFilterTyped[openai.EmbeddingRequest,
 				openai.EmbeddingResponse, struct{}, endpointspec.EmbeddingsEndpointSpec]),
 		}
+		typed.routerFilter.upstreamFilter = typed
+		f.typedFilter = typed
 	case imagesGenerationsEndpoint:
-		f.typedFilter = &upstreamFilterTyped[openai.ImageGenerationRequest,
+		typed := &upstreamFilterTyped[openai.ImageGenerationRequest,
 			openai.ImageGenerationResponse, struct{}, endpointspec.ImageGenerationEndpointSpec]{
 			onRetry: onRetry,
 			metrics: f.env.ImageGenerationMetricsFactory.NewMetrics(),
@@ -143,8 +147,10 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 			routerFilter: rf.typedFilter.(*routerFilterTyped[openai.ImageGenerationRequest,
 				openai.ImageGenerationResponse, struct{}, endpointspec.ImageGenerationEndpointSpec]),
 		}
+		typed.routerFilter.upstreamFilter = typed
+		f.typedFilter = typed
 	case rerankEndpoint:
-		f.typedFilter = &upstreamFilterTyped[cohereschema.RerankV2Request,
+		typed := &upstreamFilterTyped[cohereschema.RerankV2Request,
 			cohereschema.RerankV2Response, struct{}, endpointspec.RerankEndpointSpec]{
 			onRetry: onRetry,
 			metrics: f.env.RerankMetricsFactory.NewMetrics(),
@@ -152,8 +158,10 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 			routerFilter: rf.typedFilter.(*routerFilterTyped[cohereschema.RerankV2Request,
 				cohereschema.RerankV2Response, struct{}, endpointspec.RerankEndpointSpec]),
 		}
+		typed.routerFilter.upstreamFilter = typed
+		f.typedFilter = typed
 	case messagesEndpoint:
-		f.typedFilter = &upstreamFilterTyped[anthropic.MessagesRequest,
+		typed := &upstreamFilterTyped[anthropic.MessagesRequest,
 			anthropic.MessagesResponse, anthropic.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]{
 			onRetry: onRetry,
 			metrics: f.env.MessagesMetricsFactory.NewMetrics(),
@@ -161,6 +169,8 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 			routerFilter: rf.typedFilter.(*routerFilterTyped[anthropic.MessagesRequest,
 				anthropic.MessagesResponse, anthropic.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]),
 		}
+		typed.routerFilter.upstreamFilter = typed
+		f.typedFilter = typed
 	default:
 		e.SendLocalReply(500, nil, []byte(fmt.Sprintf("unsupported endpoint type: %v", rf.endpoint)))
 		return sdk.RequestHeadersStatusStopIteration
@@ -178,7 +188,7 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestHea
 	var err error
 	f.translator, err = espec.GetTranslator(f.backend.Backend.Schema, f.backend.Backend.ModelNameOverride)
 	if err != nil {
-		return fmt.Errorf("failed to get translator for backend schema %s: %v", f.backend.Backend.Schema, err)
+		return fmt.Errorf("failed to get translator for backend schema %s: %w", f.backend.Backend.Schema, err)
 	}
 
 	f.reqHeaders = multiValueHeadersToSingleValue(e.GetRequestHeaders())
@@ -253,9 +263,8 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBod
 	b := f.backend
 	newHeaders, newBody, err := f.translator.RequestBody(f.routerFilter.originalRequestBodyRaw,
 		f.routerFilter.originalRequestBody, forceBodyMutation)
-
 	if err != nil {
-		return fmt.Errorf("failed to translate request body for upstream: %v", err)
+		return fmt.Errorf("failed to translate request body for upstream: %w", err)
 	}
 	for _, h := range newHeaders {
 		if !e.SetRequestHeader(h.Key(), []byte(h.Value())) {
@@ -297,7 +306,7 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBod
 
 		authHeaders, err := b.Handler.Do(context.Background(), f.reqHeaders, originalOrNewBody)
 		if err != nil {
-			return fmt.Errorf("failed to get auth headers from handler: %v", err)
+			return fmt.Errorf("failed to get auth headers from handler: %w", err)
 		}
 		for _, h := range authHeaders {
 			if !e.SetRequestHeader(h.Key(), []byte(h.Value())) {
@@ -309,19 +318,13 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBod
 }
 
 // ResponseHeaders implements [sdk.HTTPFilter].
-func (f *upstreamFilter) ResponseHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.ResponseHeadersStatus {
-	if err := f.typedFilter.ResponseHeaders(e, false); err != nil {
-		sdk.Log(sdk.LogLevelError, "response headers error: %v", err)
-		e.SendLocalReply(500, nil, []byte("internal server error"))
-		return sdk.ResponseHeadersStatusStopIteration
-	}
-	status, _ := e.GetResponseHeader(":status")
-	f.success = status == "200"
-	if sdk.LogDebugEnabled {
-		sdk.Log(sdk.LogLevelDebug,
-			"upstream response headers processed, :status header=%v", status)
-	}
-	return sdk.ResponseHeadersStatusStopIteration
+func (f *upstreamFilter) ResponseHeaders(sdk.EnvoyHTTPFilter, bool) sdk.ResponseHeadersStatus {
+	return sdk.ResponseHeadersStatusContinue
+}
+
+// ResponseBody implements [sdk.HTTPFilter].
+func (f *upstreamFilter) ResponseBody(sdk.EnvoyHTTPFilter, bool) sdk.ResponseBodyStatus {
+	return sdk.ResponseBodyStatusContinue
 }
 
 func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseHeaders(e sdk.EnvoyHTTPFilter, _ bool) error {
@@ -330,39 +333,6 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseHe
 		sdk.Log(sdk.LogLevelDebug, "upstream response headers processed: %v", f.resHeaders)
 	}
 	return nil
-}
-
-// ResponseBody implements [sdk.HTTPFilter].
-func (f *upstreamFilter) ResponseBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.ResponseBodyStatus {
-	if (!f.success || !f.stream) && !endOfStream {
-		// Buffer the entire body if not streaming.
-		if sdk.LogDebugEnabled {
-			sdk.Log(sdk.LogLevelDebug,
-				"upstream response body buffering as not streaming or error response: success: %v, stream: %v, endOfStream: %v",
-				f.success, f.stream, endOfStream)
-		}
-		return sdk.ResponseBodyStatusStopIterationAndBuffer
-	}
-	if !f.success {
-		if sdk.LogDebugEnabled {
-			sdk.Log(sdk.LogLevelDebug, "upstream response body error handling started, endOfStream: %v", endOfStream)
-		}
-		if err := f.typedFilter.ResponseBodyOnError(e); err != nil {
-			sdk.Log(sdk.LogLevelError, "response body on error handling failed: %v", err)
-			e.SendLocalReply(500, nil, []byte("internal server error"))
-		}
-		return sdk.ResponseBodyStatusContinue
-	}
-
-	if err := f.typedFilter.ResponseBody(e, endOfStream); err != nil {
-		sdk.Log(sdk.LogLevelError, "response body on error handling failed: %v", err)
-		e.SendLocalReply(500, nil, []byte("internal server error"))
-		return sdk.ResponseBodyStatusStopIterationAndBuffer
-	}
-	if sdk.LogDebugEnabled {
-		sdk.Log(sdk.LogLevelDebug, "upstream response body processed, endOfStream: %v", endOfStream)
-	}
-	return sdk.ResponseBodyStatusContinue
 }
 
 func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBody(e sdk.EnvoyHTTPFilter, endOfStream bool) (err error) {

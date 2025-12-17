@@ -146,3 +146,24 @@ const (
 	LogLevelCritical
 	LogLevelOff
 )
+
+func (l LogLevel) String() string {
+	switch l {
+	case LogLevelTrace:
+		return "TRACE"
+	case LogLevelDebug:
+		return "DEBUG"
+	case LogLevelInfo:
+		return "INFO"
+	case LogLevelWarn:
+		return "WARN"
+	case LogLevelError:
+		return "ERROR"
+	case LogLevelCritical:
+		return "CRITICAL"
+	case LogLevelOff:
+		return "OFF"
+	default:
+		return "UNKNOWN"
+	}
+}

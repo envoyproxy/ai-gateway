@@ -18,7 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/envoyproxy/ai-gateway/tests/internal/testenvironment"
 	openaigo "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
@@ -26,6 +25,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/tests/internal/testenvironment"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
