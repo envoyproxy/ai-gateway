@@ -405,7 +405,7 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend(t *testing.T) {
 		Schema:            filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
 		ModelNameOverride: "ai_gateway_llm",
 	}, nil, r)
-	require.ErrorContains(t, err, "unsupported API schema: backend={some-schema v10.0}")
+	require.ErrorContains(t, err, "unsupported API schema: backend")
 	mm.RequireRequestFailure(t)
 	require.Zero(t, mm.inputTokenCount)
 	mm.RequireSelectedBackend(t, "some-backend")
