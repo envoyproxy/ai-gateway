@@ -50,7 +50,7 @@ var responsesStartOpts = []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKi
 
 // StartParams implements the same method as defined in tracing.ResponsesRecorder.
 func (r *ResponsesRecorder) StartParams(*openai.ResponseRequest, []byte) (spanName string, opts []trace.SpanStartOption) {
-	return "CreateResponse", responsesStartOpts
+	return "Responses", responsesStartOpts
 }
 
 // RecordRequest implements the same method as defined in tracing.ResponsesRecorder.
@@ -59,12 +59,21 @@ func (r *ResponsesRecorder) RecordRequest(span trace.Span, req *openai.ResponseR
 }
 
 // RecordResponseChunks implements the same method as defined in tracing.ResponsesRecorder.
-func (r *ResponsesRecorder) RecordResponseChunks(span trace.Span, chunks []*openai.ResponseCompletedEvent) {
-	// TODO: Record all chunk events
+func (r *ResponsesRecorder) RecordResponseChunks(span trace.Span, chunks []*openai.ResponseStreamEventUnion) {
+	if len(chunks) > 0 {
+		span.AddEvent("First Token Stream Event")
+	}
 	for _, chunk := range chunks {
 		if chunk != nil {
-			span.AddEvent("Response Completed Event")
-			r.RecordResponse(span, &chunk.Response)
+			// response.completed event contains the full response so we don't need to accumulate chunks.
+			if chunk.Type == "response.completed" {
+				respComplEvent := openai.ResponseCompletedEvent{}
+				if err := json.Unmarshal([]byte(chunk.RawJSON()), &respComplEvent); err != nil {
+					continue // skip if unmarshal fails
+				}
+				span.AddEvent("Response Completed Event")
+				r.RecordResponse(span, &respComplEvent.Response)
+			}
 		}
 	}
 }

@@ -2634,3 +2634,6 @@ type ResponseCompletedEvent struct {
 	// The type of the event. Always `response.completed`.
 	Type string `json:"type"`
 }
+
+// ResponseStreamEventUnion contains all possible properties and values for response events
+type ResponseStreamEventUnion = responses.ResponseStreamEventUnion

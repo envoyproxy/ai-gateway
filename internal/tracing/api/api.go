@@ -64,7 +64,7 @@ type (
 	// ImageGenerationTracer creates spans for OpenAI image generation requests.
 	ImageGenerationTracer = RequestTracer[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
 	// ResponsesTracer creates spans for OpenAI responses requests.
-	ResponsesTracer = RequestTracer[openai.ResponseRequest, openai.Response, openai.ResponseCompletedEvent]
+	ResponsesTracer = RequestTracer[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
 	// RerankTracer creates spans for rerank requests.
 	RerankTracer = RequestTracer[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// MessageTracer creates spans for Anthropic messages requests.
@@ -93,7 +93,7 @@ type (
 	// ImageGenerationSpan represents an OpenAI image generation.
 	ImageGenerationSpan = Span[openai.ImageGenerationResponse, struct{}]
 	// ResponsesSpan represents an OpenAI responses request span.
-	ResponsesSpan = Span[openai.Response, openai.ResponseCompletedEvent]
+	ResponsesSpan = Span[openai.Response, openai.ResponseStreamEventUnion]
 	// RerankSpan represents a rerank request span.
 	RerankSpan = Span[cohere.RerankV2Response, struct{}]
 	// MessageSpan represents an Anthropic messages request span.
@@ -136,7 +136,7 @@ type (
 	// EmbeddingsRecorder records attributes to a span according to a semantic convention.
 	EmbeddingsRecorder = SpanRecorder[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
 	// ResponsesRecorder records attributes to a span according to a semantic convention.
-	ResponsesRecorder = SpanRecorder[openai.ResponseRequest, openai.Response, openai.ResponseCompletedEvent]
+	ResponsesRecorder = SpanRecorder[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
 	// RerankRecorder records attributes to a span according to a semantic convention.
 	RerankRecorder = SpanRecorder[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// MessageRecorder records attributes to a span according to a semantic convention.
@@ -207,7 +207,7 @@ type (
 	// NoopImageGenerationTracer implements ImageGenerationTracer.
 	NoopImageGenerationTracer = NoopTracer[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
 	// NoopResponsesTracer implements ResponsesTracer.
-	NoopResponsesTracer = NoopTracer[openai.ResponseRequest, openai.Response, openai.ResponseCompletedEvent]
+	NoopResponsesTracer = NoopTracer[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
 	// NoopRerankTracer implements RerankTracer.
 	NoopRerankTracer = NoopTracer[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// NoopMessageTracer implements MessageTracer.

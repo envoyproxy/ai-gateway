@@ -44,7 +44,7 @@ type (
 	embeddingsTracer      = requestTracerImpl[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
 	completionTracer      = requestTracerImpl[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse]
 	imageGenerationTracer = requestTracerImpl[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
-	responsesTracer       = requestTracerImpl[openai.ResponseRequest, openai.Response, openai.ResponseCompletedEvent]
+	responsesTracer       = requestTracerImpl[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
 	rerankTracer          = requestTracerImpl[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]
 )
 
