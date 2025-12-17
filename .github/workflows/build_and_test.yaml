@@ -165,7 +165,8 @@ jobs:
           TEST_GROK_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_GROK_API_KEY }}
           TEST_SAMBANOVA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_SAMBANOVA_API_KEY }}
           TEST_DEEPINFRA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_DEEPINFRA_API_KEY }}
-          TEST_GITHUB_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # TODO: Uncomment after https://github.com/github/github-mcp-server/issues/1610
+          # TEST_GITHUB_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: make test-extproc
 
   test_e2e:
@@ -346,9 +347,10 @@ jobs:
           OS: Linux
         run: |
           curl -fsSL https://github.com/block/goose/releases/download/stable/download_cli.sh | CONFIGURE=false bash
-      - env:
-          # This is used to access the GitHub MCP server.
-          TEST_GITHUB_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - # env:
+        # This is used to access the GitHub MCP server.
+        # TODO: Uncomment after https://github.com/github/github-mcp-server/issues/1610
+        # TEST_GITHUB_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: make test-e2e-aigw
       - if: failure()
         run: cat ollama.log || true

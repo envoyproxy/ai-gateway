@@ -64,10 +64,17 @@ const (
 )
 
 const (
+	xdsMetadataBackendNamePath = `.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']`
 	// XDSClusterMetadataKey is the key used to access cluster metadata in xDS attributes
+	// This is for backward compatibility with the older deployment. TODO: remove this after v0.5 is released.
 	XDSClusterMetadataKey = "xds.cluster_metadata"
+	// XDSClusterMetadataBackendNamePath is the full attribute path to access the backend name in cluster metadata in xDS attributes.
+	XDSClusterMetadataBackendNamePath = XDSClusterMetadataKey + xdsMetadataBackendNamePath
 	// XDSUpstreamHostMetadataKey is the key used to access upstream host metadata in xDS attributes
+	// This is for backward compatibility with the older deployment. TODO: remove this after v0.5 is released.
 	XDSUpstreamHostMetadataKey = "xds.upstream_host_metadata"
+	// XDSUpstreamHostMetadataBackendNamePath is the full attribute path to access the backend name in upstream host metadata in xDS attributes.
+	XDSUpstreamHostMetadataBackendNamePath = XDSUpstreamHostMetadataKey + xdsMetadataBackendNamePath
 )
 
 // PerRouteRuleRefBackendName generates a unique backend name for a per-route rule,
