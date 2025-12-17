@@ -165,7 +165,7 @@ const config: Config = {
               href: 'https://envoyproxy.slack.com/archives/C07Q4N24VAA',
             },
              {
-              label: 'Weekly Meeting Notes (Thursdays)',
+              label: 'Weekly Meeting Notes (Mondays)',
               href: 'https://docs.google.com/document/d/10e1sfsF-3G3Du5nBHGmLjXw5GVMqqCvFDqp_O65B0_w/edit?tab=t.0',
             },
             {
@@ -222,7 +222,7 @@ const config: Config = {
               href: 'https://communityinviter.com/apps/envoyproxy/envoy',
             },
             {
-              label: 'Weekly Meeting (Thursdays)',
+              label: 'Weekly Meeting (Mondays)',
               href: 'https://zoom-lfx.platform.linuxfoundation.org/meeting/91546415944?password=61fd5a5d-41e9-4b0c-86ea-b607c4513e37',
             },
             {
