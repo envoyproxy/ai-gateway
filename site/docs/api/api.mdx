@@ -1858,7 +1858,12 @@ the ai-gateway, but by the vendor via proper versioning.
   name="version"
   type="string"
   required="true"
-  description="Version is the version of the API schema.<br />When the name is set to `OpenAI`, this equals to the prefix of the OpenAI API endpoints. This defaults to `v1`<br />if not set or empty string. For example, `chat completions` API endpoint will be `/v1/chat/completions`<br />if the version is set to `v1`.<br />This is especially useful when routing to the backend that has an OpenAI compatible API but has a different<br />versioning scheme. For example, Gemini OpenAI compatible API (https://ai.google.dev/gemini-api/docs/openai) uses<br />`/v1beta/openai` version prefix. Another example is that Cohere AI (https://docs.cohere.com/v2/docs/compatibility-api)<br />uses `/compatibility/v1` version prefix. On the other hand, DeepSeek (https://api-docs.deepseek.com/) doesn't<br />use version prefix, so the version can be set to an empty string.<br />When the name is set to AzureOpenAI, this version maps to `API Version` in the<br />Azure OpenAI API documentation (https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#rest-api-versioning)."
+  description="Version is the version of the API schema.<br />When the name is set to AzureOpenAI, this version maps to `API Version` in the<br />Azure OpenAI API documentation (https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#rest-api-versioning).<br />**Deprecated Behavior**: When the name is set to `OpenAI`, this version field will behave as the<br />prefix field. This is to maintain backward compatibility. This will be removed in future releases.<br />See https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-providers for details."
+/><ApiField
+  name="prefix"
+  type="string"
+  required="true"
+  description="Prefix is the prefix for the API.<br />When the name is set to `OpenAI`, `chat completions` API endpoint will be `$\{this_field\}/chat/completions`.<br />It can be with or without a leading slash (`/`).<br />This is especially useful when routing to the backend that has an OpenAI compatible API but has a different<br />prefix. For example, Gemini OpenAI compatible API (https://ai.google.dev/gemini-api/docs/openai) uses<br />`/v1beta/openai` prefix. Another example is that Cohere AI (https://docs.cohere.com/v2/docs/compatibility-api)<br />uses `/compatibility/v1` prefix. On the other hand, DeepSeek (https://api-docs.deepseek.com/) doesn't<br />use prefix, so you can leave this field unset.<br />See https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-providers for details."
 />
 
 

@@ -150,12 +150,20 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 }
 
 // schemaToFilterAPI converts an aigv1a1.VersionedAPISchema to filterapi.VersionedAPISchema.
-func schemaToFilterAPI(schema aigv1a1.VersionedAPISchema) filterapi.VersionedAPISchema {
+func schemaToFilterAPI(schema aigv1a1.VersionedAPISchema, l logr.Logger) filterapi.VersionedAPISchema {
 	ret := filterapi.VersionedAPISchema{}
 	ret.Name = filterapi.APISchemaName(schema.Name)
 	if schema.Name == aigv1a1.APISchemaOpenAI {
-		// When the schema is OpenAI, we default to the v1 version if not specified or nil.
-		ret.Version = cmp.Or(ptr.Deref(schema.Version, "v1"), "v1")
+		if schema.Prefix != nil {
+			ret.Prefix = *schema.Prefix
+		} else {
+			// We default to the v1 version if not specified or nil for the legacy use of "version" field.
+			// TODO: This is to maintain backward compatibility, delete this in future releases.
+			ret.Prefix = cmp.Or(ptr.Deref(schema.Version, "v1"), "v1")
+			l.Info("Warning: 'prefix' field is not set for OpenAI schema, using 'version' field as prefix for backward compatibility. " +
+				"Please set 'prefix' field explicitly as this use of 'version' field will be removed in future releases.",
+			)
+		}
 	} else {
 		ret.Version = ptr.Deref(schema.Version, "")
 	}
@@ -360,7 +368,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					mergedBodyMutation := mergeBodyMutations(routeBodyMutation, backendBodyMutation)
 					b.BodyMutation = bodyMutationToFilterAPI(mergedBodyMutation)
 
-					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
+					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema, c.logger)
 					if bsp != nil {
 						b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, bsp)
 						if err != nil {
