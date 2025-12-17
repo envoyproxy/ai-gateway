@@ -195,39 +195,11 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 				slog.String("duration", time.Since(startAt).String()))
 		}
 		if err != nil {
-			// Application-level errors (JSON-RPC errors, tool isError=true) should not
-			// create span exceptions. Check if this is an application error.
-			isApplicationError := false
-			var joinedErrs interface{ Unwrap() []error }
-			if errors.As(err, &joinedErrs) {
-				// Unwrap() is cheap here: it returns the underlying error slice from errors.Join()
-				// without allocation. This is already an error path, so the call is not performance-critical.
-				errs := joinedErrs.Unwrap()
-				allAppErrors := len(errs) > 0
-				for _, e := range errs {
-					var toolErr *errToolCall
-					var jsonrpcErr *jsonrpc.Error
-					if !errors.As(e, &toolErr) && !errors.As(e, &jsonrpcErr) {
-						allAppErrors = false
-						break
-					}
-				}
-				isApplicationError = allAppErrors
-			} else {
-				var toolErr *errToolCall
-				var jsonrpcErr *jsonrpc.Error
-				isApplicationError = errors.As(err, &toolErr) || errors.As(err, &jsonrpcErr)
-			}
-
 			if span != nil {
-				if isApplicationError {
-					// Application errors don't create span exceptions
-					span.EndSpan()
-				} else {
-					span.EndSpanOnError(string(errType), err)
-				}
+				span.EndSpanOnError(string(errType), err)
 			}
 			m.metrics.RecordMethodErrorCount(ctx, requestMethod, params)
+			m.metrics.RecordMethodFailedCount(ctx, requestMethod, params)
 			m.metrics.RecordRequestErrorDuration(ctx, startAt, errType, params)
 			return
 		}
@@ -763,16 +735,11 @@ func (m *MCPProxy) proxyResponseBody(ctx context.Context, s *session, w http.Res
 				msg.ID = req.ID
 
 				// Check if this is a JSON-RPC error response
-				// Note: JSON-RPC errors (like validation errors) are application-level errors
-				// that should be returned to the client. We record them as failures in metrics
-				// but don't create span exceptions.
 				if msg.Error != nil {
 					responseError = msg.Error
 				}
 
 				// Check if this is a tools/call response with isError=true
-				// Note: isError=true means the tool executed successfully but returned an error result.
-				// We record this as a failure in metrics but don't create span exceptions
 				if toolErr := checkToolCallError(req, msg, backend.Name); toolErr != nil {
 					responseError = toolErr
 				}
@@ -787,15 +754,7 @@ func (m *MCPProxy) proxyResponseBody(ctx context.Context, s *session, w http.Res
 		w.WriteHeader(resp.StatusCode)
 		_, _ = w.Write(body)
 
-		// Application-level errors (JSON-RPC errors, tool isError=true) have been written
-		// to the response body and should be returned so proper metrics are recorded.
-		// The span handler should not treat these as span exceptions.
-		if responseError != nil && req != nil {
-			m.metrics.RecordMethodFailedCount(ctx, req.Method, nil)
-			return responseError
-		}
-
-		return nil
+		return responseError
 	}
 
 	// io.Copy won't flush until the end, which doesn't happen for streaming responses.
@@ -863,14 +822,7 @@ func (m *MCPProxy) proxyResponseBody(ctx context.Context, s *session, w http.Res
 			break
 		}
 	}
-	// Application-level errors (JSON-RPC errors, tool isError=true) have been written
-	// to the response body and should be returned so proper metrics are recorded.
-	// The span handler should not treat these as span exceptions.
-	if len(responseErrors) > 0 && req != nil {
-		m.metrics.RecordMethodFailedCount(ctx, req.Method, nil)
-		return errors.Join(responseErrors...)
-	}
-	return nil
+	return errors.Join(responseErrors...)
 }
 
 // https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/progress#progress
