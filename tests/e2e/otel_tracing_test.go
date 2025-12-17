@@ -183,3 +183,152 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 
 	t.Log("OTEL environment variables and header attribute args successfully verified in extProc container")
 }
+
+// TestOTELTracingWithGatewayConfig verifies that OTEL environment variables
+// can be configured via GatewayConfig and are properly injected into extProc containers.
+func TestOTELTracingWithGatewayConfig(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+	defer cancel()
+
+	// Get the source directory relative to this test file.
+	_, filename, _, ok := runtime.Caller(0)
+	require.True(t, ok, "failed to get source file path")
+	sourceDir := filepath.Dir(filename)
+
+	manifest := filepath.Join(sourceDir, "testdata", "otel_tracing_gateway_config.yaml")
+
+	// Setup cleanup to remove test resources after test.
+	t.Cleanup(func() {
+		t.Log("Cleaning up GatewayConfig test resources")
+		restoreCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+
+		// Clean up the test manifest resources including namespace.
+		_ = e2elib.KubectlDeleteManifest(restoreCtx, manifest)
+
+		// Delete the test namespace to clean up completely.
+		deleteNs := exec.CommandContext(restoreCtx, "kubectl", "delete", "namespace",
+			"otel-gateway-config-test-namespace", "--ignore-not-found=true")
+		_ = deleteNs.Run()
+	})
+
+	// Apply the test manifest which includes GatewayConfig and Gateway.
+	t.Log("Applying GatewayConfig test manifest")
+	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
+
+	// Get the pod with extProc container and verify GatewayConfig env vars.
+	t.Log("Checking extProc container for GatewayConfig OTEL environment variables")
+
+	// Get pod name from envoy-gateway-system namespace (where pods are created).
+	require.Eventually(t, func() bool {
+		const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-gateway-config-test"
+		getPodsCmd := exec.CommandContext(ctx, "kubectl", "get", "pods", // #nosec G204
+			"-n", e2elib.EnvoyGatewayNamespace,
+			"-l", egSelector,
+			"-o", "jsonpath={.items[0].metadata.name}")
+
+		var podNameBytes []byte
+		podNameBytes, err := getPodsCmd.Output()
+		if err != nil {
+			t.Logf("Failed to get pod name: %v", err)
+			return false // Retry if command fails.
+		}
+		podName := string(podNameBytes)
+		if len(podName) == 0 {
+			t.Log("No pods found with the specified selector, retrying...")
+			return false // Retry if no pods found.
+		}
+		t.Logf("Found pod: %s", podName)
+
+		// Get the pod description to check env vars.
+		describeCmd := exec.CommandContext(ctx, "kubectl", "get", "pod", podName,
+			"-n", e2elib.EnvoyGatewayNamespace,
+			"-o", "jsonpath={.spec.initContainers[?(@.name=='ai-gateway-extproc')].env}")
+
+		describeOutput := &bytes.Buffer{}
+		describeCmd.Stdout = describeOutput
+		describeCmd.Stderr = describeOutput
+
+		err = describeCmd.Run()
+		if err != nil {
+			t.Logf("Failed to describe pod %s: %v", podName, err)
+			return false // Retry if command fails.
+		}
+
+		envVars := describeOutput.String()
+		t.Logf("Environment variables in extProc container: %s", envVars)
+
+		// Get the container resources to verify GatewayConfig resources are applied.
+		resourcesCmd := exec.CommandContext(ctx, "kubectl", "get", "pod", podName,
+			"-n", e2elib.EnvoyGatewayNamespace,
+			"-o", "jsonpath={.spec.initContainers[?(@.name=='ai-gateway-extproc')].resources}")
+
+		resourcesOutput := &bytes.Buffer{}
+		resourcesCmd.Stdout = resourcesOutput
+		resourcesCmd.Stderr = resourcesOutput
+
+		err = resourcesCmd.Run()
+		if err != nil {
+			t.Logf("Failed to get container resources for pod %s: %v", podName, err)
+			return false // Retry if command fails.
+		}
+
+		resources := resourcesOutput.String()
+		t.Logf("Resources in extProc container: %s", resources)
+
+		defer func() {
+			// Deletes the pods to ensure they are recreated with the new configuration for the next iteration.
+			deletePodsCmd := e2elib.Kubectl(ctx, "delete", "pod", podName,
+				"-n", e2elib.EnvoyGatewayNamespace,
+				"--ignore-not-found=true")
+			err = deletePodsCmd.Run()
+			if err != nil {
+				t.Logf("Failed to delete pod %s: %v", podName, err)
+			}
+		}()
+
+		// Verify that GatewayConfig OTEL env vars are present in the pod spec.
+		expectedEnvVars := []struct {
+			name  string
+			value string
+		}{
+			{"OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector.monitoring:4317"},
+			{"OTEL_EXPORTER_OTLP_HEADERS", "api-key=your-secret-key"},
+			{"OTEL_SERVICE_NAME", "ai-gateway-production"},
+			{"OTEL_TRACES_SAMPLER", "parentbased_traceidratio"},
+			{"OTEL_TRACES_SAMPLER_ARG", "0.1"},
+			{"LOG_LEVEL", "info"},
+			{"ENABLE_DEBUG_METRICS", "false"},
+		}
+
+		for _, expected := range expectedEnvVars {
+			expectedStr := `"name":"` + expected.name + `","value":"` + expected.value + `"`
+			if !strings.Contains(envVars, expectedStr) {
+				t.Logf("Expected %s=%s in extProc container spec", expected.name, expected.value)
+				return false
+			}
+		}
+
+		// Verify that GatewayConfig resources are applied.
+		if !strings.Contains(resources, `"cpu":"100m"`) {
+			t.Log("Expected CPU request 100m from GatewayConfig")
+			return false
+		}
+		if !strings.Contains(resources, `"memory":"128Mi"`) {
+			t.Log("Expected Memory request 128Mi from GatewayConfig")
+			return false
+		}
+		if !strings.Contains(resources, `"cpu":"500m"`) {
+			t.Log("Expected CPU limit 500m from GatewayConfig")
+			return false
+		}
+		if !strings.Contains(resources, `"memory":"512Mi"`) {
+			t.Log("Expected Memory limit 512Mi from GatewayConfig")
+			return false
+		}
+
+		return true
+	}, 2*time.Minute, 5*time.Second)
+
+	t.Log("GatewayConfig OTEL environment variables and resources successfully verified in extProc container")
+}

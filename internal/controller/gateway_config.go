@@ -77,11 +77,6 @@ func (c *GatewayConfigController) syncGatewayConfig(ctx context.Context, gateway
 		return fmt.Errorf("failed to find referencing Gateways: %w", err)
 	}
 
-	if gatewayConfig.DeletionTimestamp != nil {
-		c.notifyReferencingGateways(gatewayConfig, referencingGateways)
-		return nil
-	}
-
 	// Notify all referencing Gateways to reconcile.
 	c.notifyReferencingGateways(gatewayConfig, referencingGateways)
 

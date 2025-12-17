@@ -14,12 +14,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
@@ -208,6 +210,27 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 				require.Equal(t, expectedSecrets, pod.Spec.ImagePullSecrets)
 			},
 		},
+		{
+			name:                "with GatewayConfig",
+			extProcExtraEnvVars: "GLOBAL_VAR=global-value;LOG_LEVEL=info",
+			extprocTest: func(t *testing.T, container corev1.Container) {
+				// GatewayConfig env vars override global env vars
+				require.Equal(t, []corev1.EnvVar{
+					{Name: "GLOBAL_VAR", Value: "global-value"},
+					{Name: "LOG_LEVEL", Value: "debug"}, // GatewayConfig overrides global
+					{Name: "CONFIG_VAR", Value: "config-value"},
+				}, container.Env)
+				// GatewayConfig image override
+				require.Equal(t, "gcr.io/custom/extproc:v2", container.Image)
+				// GatewayConfig resources
+				require.NotNil(t, container.Resources)
+				require.NotNil(t, container.Resources.Requests)
+				cpuReq := container.Resources.Requests[corev1.ResourceCPU]
+				memReq := container.Resources.Requests[corev1.ResourceMemory]
+				require.Equal(t, resource.MustParse("200m"), cpuReq)
+				require.Equal(t, resource.MustParse("256Mi"), memReq)
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -248,6 +271,50 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 										Group: ptr.To(gwapiv1a2.Group("gateway.networking.k8s.io")),
 									},
 								},
+							},
+						})
+						require.NoError(t, err)
+					}
+
+					// Create Gateway and GatewayConfig for GatewayConfig test case
+					if tt.name == "with GatewayConfig" {
+						// Create GatewayConfig
+						err = fakeClient.Create(t.Context(), &aigv1a1.GatewayConfig{
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      "test-gateway-config",
+								Namespace: gwNamespace,
+							},
+							Spec: aigv1a1.GatewayConfigSpec{
+								ExtProc: &aigv1a1.GatewayConfigExtProc{
+									Kubernetes: &egv1a1.KubernetesContainerSpec{
+										Image: ptr.To("gcr.io/custom/extproc:v2"),
+										Env: []corev1.EnvVar{
+											{Name: "LOG_LEVEL", Value: "debug"}, // Overrides global
+											{Name: "CONFIG_VAR", Value: "config-value"},
+										},
+										Resources: &corev1.ResourceRequirements{
+											Requests: corev1.ResourceList{
+												corev1.ResourceCPU:    resource.MustParse("200m"),
+												corev1.ResourceMemory: resource.MustParse("256Mi"),
+											},
+										},
+									},
+								},
+							},
+						})
+						require.NoError(t, err)
+
+						// Create Gateway with GatewayConfig annotation
+						err = fakeClient.Create(t.Context(), &gwapiv1.Gateway{
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      gwName,
+								Namespace: gwNamespace,
+								Annotations: map[string]string{
+									GatewayConfigAnnotationKey: "test-gateway-config",
+								},
+							},
+							Spec: gwapiv1.GatewaySpec{
+								GatewayClassName: "test-class",
 							},
 						})
 						require.NoError(t, err)
