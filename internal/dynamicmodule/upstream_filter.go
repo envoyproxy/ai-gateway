@@ -342,16 +342,15 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 	if err != nil {
 		return fmt.Errorf("failed to transform response: %w", err)
 	}
-	if newBody != nil && decodingResult.isEncoded {
-		// Remove the content-encoding header if the body was modified and was encoded.
-		e.SetResponseHeader("content-encoding", nil)
-	}
 	for _, h := range newHeaders {
 		if !e.SetResponseHeader(h.Key(), []byte(h.Value())) {
 			return fmt.Errorf("failed to set transformed header %s", h.Key())
 		}
 	}
 	if newBody != nil {
+		if decodingResult.isEncoded {
+			e.SetResponseHeader("content-encoding", nil)
+		}
 		cur, ok := e.GetResponseBody()
 		if !ok {
 			return errors.New("failed to get current response body for replacement")

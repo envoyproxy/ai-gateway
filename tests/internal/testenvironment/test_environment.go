@@ -129,17 +129,19 @@ func StartTestEnvironment(t testing.TB,
 	env.extprocConfig = processedExtProcConfig
 
 	// Start ExtProc.
-	requireExtProc(t,
-		env.extprocOut,
-		env.extprocBin,
-		env.extprocConfig,
-		env.extprocEnv,
-		env.extProcPort,
-		env.extProcAdminPort,
-		env.extProcMCPPort,
-		env.mcpWriteTimeout,
-		extProcInProcess,
-	)
+	if extprocBin != "" {
+		requireExtProc(t,
+			env.extprocOut,
+			env.extprocBin,
+			env.extprocConfig,
+			env.extprocEnv,
+			env.extProcPort,
+			env.extProcAdminPort,
+			env.extProcMCPPort,
+			env.mcpWriteTimeout,
+			extProcInProcess,
+		)
+	}
 
 	// Start Envoy mapping its testupstream port 8080 to the ephemeral one.
 	requireEnvoy(t,
@@ -172,9 +174,11 @@ func StartTestEnvironment(t testing.TB,
 
 func (e *TestEnvironment) checkAllConnections(t testing.TB) error {
 	errGroup := &errgroup.Group{}
-	errGroup.Go(func() error {
-		return e.checkConnection(t, e.extProcPort, "extProc")
-	})
+	if e.extprocBin != "" {
+		errGroup.Go(func() error {
+			return e.checkConnection(t, e.extProcPort, "extProc")
+		})
+	}
 	errGroup.Go(func() error {
 		return e.checkConnection(t, e.extProcAdminPort, "extProcAdmin")
 	})
@@ -283,6 +287,9 @@ func requireEnvoy(t testing.TB,
 	require.NoError(t, err)
 	t.Logf("Starting Envoy version %s", strings.TrimSpace(string(version)))
 	cmd.WaitDelay = 3 * time.Second // auto-kill after 3 seconds.
+	// Unconditionally allow dynamic modules from out/.
+	cmd.Env = append(os.Environ(),
+		"ENVOY_DYNAMIC_MODULES_SEARCH_PATH="+internaltesting.FindProjectRoot()+"/out")
 	t.Cleanup(func() {
 		defer cancel()
 		// Graceful shutdown, should kill the Envoy subprocess, too.
@@ -298,7 +305,9 @@ func requireEnvoy(t testing.TB,
 	})
 
 	// wait for the ready message or exit.
-	StartAndAwaitReady(t, cmd, stdout, stderr, "starting main dispatch loop")
+	StartAndAwaitReady(t, cmd, stdout,
+		// TODO: revert after fixing.
+		os.Stdout, "starting main dispatch loop")
 }
 
 // requireExtProc starts the external processor with the given configuration.

@@ -97,6 +97,11 @@ var (
 	//go:embed envoy.yaml
 	envoyConfig string
 
+	// envoyConfigWithDynamicModules is the embedded Envoy configuration template with dynamic modules enabled.
+	//
+	//go:embed envoy_dynamic_modules.yaml
+	envoyConfigWithDynamicModules string
+
 	// extprocBin holds the path to the compiled extproc binary.
 	extprocBin string
 
@@ -141,6 +146,16 @@ func TestMain(m *testing.M) {
 		"port_value: "+strconv.Itoa(errorServerTLSDefaultPort),
 		"port_value: "+strconv.Itoa(errorServerTLSPort),
 	)
+	envoyConfigWithDynamicModules = strings.ReplaceAll(
+		envoyConfigWithDynamicModules,
+		"port_value: "+strconv.Itoa(errorServerDefaultPort),
+		"port_value: "+strconv.Itoa(errorServerPort),
+	)
+	envoyConfigWithDynamicModules = strings.ReplaceAll(
+		envoyConfigWithDynamicModules,
+		"port_value: "+strconv.Itoa(errorServerTLSDefaultPort),
+		"port_value: "+strconv.Itoa(errorServerTLSPort),
+	)
 
 	errorServer := &http.Server{Handler: errorServerMux, ReadHeaderTimeout: 5 * time.Second}
 	errorServerTLS := &http.Server{Handler: errorServerMux, ReadHeaderTimeout: 5 * time.Second}
@@ -167,6 +182,13 @@ func startTestEnvironment(t testing.TB, extprocConfig string, okToDumpLogOnFailu
 	return testenvironment.StartTestEnvironment(t,
 		requireUpstream, map[string]int{"upstream": 8080},
 		extprocBin, extprocConfig, nil, envoyConfig, okToDumpLogOnFailure, extProcInProcess, 120*time.Second,
+	)
+}
+
+func startTestEnvironmentWithDynamicModule(t testing.TB, extprocConfig string, okToDumpLogOnFailure bool) *testenvironment.TestEnvironment {
+	return testenvironment.StartTestEnvironment(t,
+		requireUpstream, map[string]int{"upstream": 8080},
+		"", extprocConfig, nil, envoyConfig, okToDumpLogOnFailure, false, 120*time.Second,
 	)
 }
 
