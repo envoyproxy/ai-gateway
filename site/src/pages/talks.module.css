@@ -1,5 +1,11 @@
 .talksPage {
-  padding: 2rem 0;
+  padding: 2rem 1rem;
+}
+
+@media (min-width: 768px) {
+  .talksPage {
+    padding: 2rem 2rem;
+  }
 }
 
 .header {
