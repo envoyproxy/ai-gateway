@@ -57,6 +57,19 @@ type EnvoyHTTPFilter interface {
 	// AppendBufferedResponseBody appends the data to the response body. This will invalidate the io.Reader returned by GetResponseBody before this is called.
 	AppendBufferedResponseBody(data []byte) bool
 
+	// GetReceivedRequestBody gets the received request body. Returns the io.Reader and true if the body is found.
+	GetReceivedRequestBody() (BodyReader, bool)
+	// DrainReceivedRequestBody drains n bytes from the received request body. This will invalidate the io.Reader returned by GetReceivedRequestBody before this is called.
+	DrainReceivedRequestBody(n int) bool
+	// AppendReceivedRequestBody appends the data to the received request body. This will invalidate the io.Reader returned by GetReceivedRequestBody before this is called.
+	AppendReceivedRequestBody(data []byte) bool
+	// GetReceivedResponseBody gets the received response body. Returns the io.Reader and true if the body is found.
+	GetReceivedResponseBody() (BodyReader, bool)
+	// DrainReceivedResponseBody drains n bytes from the received response body. This will invalidate the io.Reader returned by GetReceivedResponseBody before this is called.
+	DrainReceivedResponseBody(n int) bool
+	// AppendReceivedResponseBody appends the data to the received response body. This will invalidate the io.Reader returned by GetReceivedResponseBody before this is called.
+	AppendReceivedResponseBody(data []byte) bool
+
 	// SendLocalReply sends a local reply to the client. This must not be used in after returning continue from the response headers phase.
 	SendLocalReply(statusCode uint32, headers [][2]string, body []byte)
 	// GetDynamicMetadataString gets the dynamic metadata value for the given namespace and key. Returns the value and true if the value is found.

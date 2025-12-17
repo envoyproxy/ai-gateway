@@ -104,6 +104,52 @@ bool envoy_dynamic_module_callback_http_get_buffered_response_body_vector(
 bool envoy_dynamic_module_callback_http_get_buffered_response_body_vector_size(
     uintptr_t filter_envoy_ptr, size_t* size);
 
+#cgo noescape envoy_dynamic_module_callback_http_get_received_request_body_vector
+#cgo nocallback envoy_dynamic_module_callback_http_get_received_request_body_vector
+bool envoy_dynamic_module_callback_http_get_received_request_body_vector(
+    uintptr_t filter_envoy_ptr,
+    uintptr_t* result_buffer_vector);
+
+#cgo noescape envoy_dynamic_module_callback_http_get_received_request_body_vector_size
+#cgo nocallback envoy_dynamic_module_callback_http_get_received_request_body_vector_size
+bool envoy_dynamic_module_callback_http_get_received_request_body_vector_size(
+    uintptr_t filter_envoy_ptr, size_t* size);
+
+#cgo noescape envoy_dynamic_module_callback_http_append_received_request_body
+#cgo nocallback envoy_dynamic_module_callback_http_append_received_request_body
+bool envoy_dynamic_module_callback_http_append_received_request_body(
+    uintptr_t filter_envoy_ptr,
+    uintptr_t data, size_t length);
+
+#cgo noescape envoy_dynamic_module_callback_http_drain_received_request_body
+#cgo nocallback envoy_dynamic_module_callback_http_drain_received_request_body
+bool envoy_dynamic_module_callback_http_drain_received_request_body(
+	uintptr_t filter_envoy_ptr,
+	size_t length);
+
+#cgo noescape envoy_dynamic_module_callback_http_get_received_response_body_vector
+#cgo nocallback envoy_dynamic_module_callback_http_get_received_response_body_vector
+bool envoy_dynamic_module_callback_http_get_received_response_body_vector(
+    uintptr_t filter_envoy_ptr,
+    uintptr_t* result_buffer_vector);
+
+#cgo noescape envoy_dynamic_module_callback_http_get_received_response_body_vector_size
+#cgo nocallback envoy_dynamic_module_callback_http_get_received_response_body_vector_size
+bool envoy_dynamic_module_callback_http_get_received_response_body_vector_size(
+    uintptr_t filter_envoy_ptr, size_t* size);
+
+#cgo noescape envoy_dynamic_module_callback_http_append_received_response_body
+#cgo nocallback envoy_dynamic_module_callback_http_append_received_response_body
+bool envoy_dynamic_module_callback_http_append_received_response_body(
+    uintptr_t filter_envoy_ptr,
+    uintptr_t data, size_t length);
+
+#cgo noescape envoy_dynamic_module_callback_http_drain_received_response_body
+#cgo nocallback envoy_dynamic_module_callback_http_drain_received_response_body
+bool envoy_dynamic_module_callback_http_drain_received_response_body(
+	uintptr_t filter_envoy_ptr,
+	size_t length);
+
 #cgo noescape envoy_dynamic_module_callback_http_send_response
 // Uncomment once https://github.com/envoyproxy/envoy/pull/39206 is merged.
 // #cgo nocallback envoy_dynamic_module_callback_http_send_response
@@ -604,6 +650,91 @@ func (e envoyFilter) GetBufferedResponseBody() (BodyReader, bool) {
 	}
 	chunks := make([]envoySlice, vectorSize)
 	ret = C.envoy_dynamic_module_callback_http_get_buffered_response_body_vector(
+		C.uintptr_t(e.raw),
+		(*C.uintptr_t)(unsafe.Pointer(&chunks[0])),
+	)
+	if !ret {
+		return nil, false
+	}
+	return &bodyReader{chunks: chunks}, true
+}
+
+// AppendReceivedRequestBody implements [EnvoyHTTPFilter].
+func (e envoyFilter) AppendReceivedRequestBody(data []byte) bool {
+	dataPtr := uintptr(unsafe.Pointer(unsafe.SliceData(data)))
+	ret := C.envoy_dynamic_module_callback_http_append_received_request_body(
+		C.uintptr_t(e.raw),
+		C.uintptr_t(dataPtr),
+		C.size_t(len(data)),
+	)
+	runtime.KeepAlive(data)
+	return bool(ret)
+}
+
+// DrainReceivedRequestBody implements [EnvoyHTTPFilter].
+func (e envoyFilter) DrainReceivedRequestBody(n int) bool {
+	ret := C.envoy_dynamic_module_callback_http_drain_received_request_body(
+		C.uintptr_t(e.raw),
+		C.size_t(n),
+	)
+	return bool(ret)
+}
+
+// GetReceivedRequestBody implements [EnvoyHTTPFilter].
+func (e envoyFilter) GetReceivedRequestBody() (BodyReader, bool) {
+	var vectorSize int
+	ret := C.envoy_dynamic_module_callback_http_get_received_request_body_vector_size(
+		C.uintptr_t(e.raw),
+		(*C.size_t)(unsafe.Pointer(&vectorSize)),
+	)
+	if !ret {
+		return nil, false
+	}
+
+	chunks := make([]envoySlice, vectorSize)
+	ret = C.envoy_dynamic_module_callback_http_get_received_request_body_vector(
+		C.uintptr_t(e.raw),
+		(*C.uintptr_t)(unsafe.Pointer(&chunks[0])),
+	)
+	if !ret {
+		return nil, false
+	}
+	return &bodyReader{chunks: chunks}, true
+}
+
+// AppendReceivedResponseBody implements [EnvoyHTTPFilter].
+func (e envoyFilter) AppendReceivedResponseBody(data []byte) bool {
+	dataPtr := uintptr(unsafe.Pointer(unsafe.SliceData(data)))
+	ret := C.envoy_dynamic_module_callback_http_append_received_response_body(
+		C.uintptr_t(e.raw),
+		C.uintptr_t(dataPtr),
+		C.size_t(len(data)),
+	)
+	runtime.KeepAlive(data)
+	return bool(ret)
+}
+
+// DrainReceivedResponseBody implements [EnvoyHTTPFilter].
+func (e envoyFilter) DrainReceivedResponseBody(n int) bool {
+	ret := C.envoy_dynamic_module_callback_http_drain_received_response_body(
+		C.uintptr_t(e.raw),
+		C.size_t(n),
+	)
+	return bool(ret)
+}
+
+// GetReceivedResponseBody implements [EnvoyHTTPFilter].
+func (e envoyFilter) GetReceivedResponseBody() (BodyReader, bool) {
+	var vectorSize int
+	ret := C.envoy_dynamic_module_callback_http_get_received_response_body_vector_size(
+		C.uintptr_t(e.raw),
+		(*C.size_t)(unsafe.Pointer(&vectorSize)),
+	)
+	if !ret {
+		return nil, false
+	}
+	chunks := make([]envoySlice, vectorSize)
+	ret = C.envoy_dynamic_module_callback_http_get_received_response_body_vector(
 		C.uintptr_t(e.raw),
 		(*C.uintptr_t)(unsafe.Pointer(&chunks[0])),
 	)
