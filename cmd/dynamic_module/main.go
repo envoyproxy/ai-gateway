@@ -141,6 +141,9 @@ func (g *globalState) initializeEnv(promRegistry *prometheus.Registry) error {
 		ImageGenerationMetricsFactory: metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationImageGeneration),
 		RerankMetricsFactory:          metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationRerank),
 		Tracing:                       tr,
+		RouterFilters: &dynamicmodule.RouterFilters{
+			Filters: make(map[string]sdk.HTTPFilter),
+		},
 	}
 	return nil
 }

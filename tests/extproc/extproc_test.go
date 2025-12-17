@@ -188,7 +188,7 @@ func startTestEnvironment(t testing.TB, extprocConfig string, okToDumpLogOnFailu
 func startTestEnvironmentWithDynamicModule(t testing.TB, extprocConfig string, okToDumpLogOnFailure bool) *testenvironment.TestEnvironment {
 	return testenvironment.StartTestEnvironment(t,
 		requireUpstream, map[string]int{"upstream": 8080},
-		"", extprocConfig, nil, envoyConfig, okToDumpLogOnFailure, false, 120*time.Second,
+		"", extprocConfig, nil, envoyConfigWithDynamicModules, okToDumpLogOnFailure, false, 120*time.Second,
 	)
 }
 

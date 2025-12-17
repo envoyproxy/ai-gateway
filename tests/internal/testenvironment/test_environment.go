@@ -146,10 +146,8 @@ func StartTestEnvironment(t testing.TB,
 			extProcInProcess,
 		)
 	} else {
-		// AI_GATEWAY_DYNAMIC_MODULE_ADMIN_ADDRESS
 		envoyEnvVars = append(envoyEnvVars,
 			fmt.Sprintf("AI_GATEWAY_DYNAMIC_MODULE_ADMIN_ADDRESS=:%d", env.extProcAdminPort))
-		// AI_GATEWAY_DYNAMIC_MODULE_FILTER_CONFIG_PATH
 		configPath := t.TempDir() + "/extproc-config.yaml"
 		require.NoError(t, os.WriteFile(configPath, []byte(env.extprocConfig), 0o600))
 		envoyEnvVars = append(envoyEnvVars,

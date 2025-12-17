@@ -6,6 +6,9 @@
 package dynamicmodule
 
 import (
+	"sync"
+
+	"github.com/envoyproxy/ai-gateway/internal/dynamicmodule/sdk"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
@@ -54,5 +57,12 @@ type Env struct {
 	EmbeddingsMetricsFactory,
 	ImageGenerationMetricsFactory,
 	RerankMetricsFactory metrics.Factory
-	Tracing tracing.Tracing
+	Tracing       tracing.Tracing
+	RouterFilters *RouterFilters
+}
+
+// RouterFilters holds the instantiated router filters keyed on the request-id.
+type RouterFilters struct {
+	Filters map[string]sdk.HTTPFilter
+	Lock    sync.RWMutex
 }
