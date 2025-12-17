@@ -90,7 +90,6 @@ func TestPublicMCPServers(t *testing.T) {
 		if githubConfigured {
 			exps = append(exps, "github__issue_read")
 			exps = append(exps, "github__pull_request_read")
-			exps = append(exps, "github__list_issue_types")
 			exps = append(exps, "github__list_issues")
 			exps = append(exps, "github__list_pull_requests")
 			exps = append(exps, "github__search_issues")
