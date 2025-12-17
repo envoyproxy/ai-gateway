@@ -199,7 +199,6 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 				span.EndSpanOnError(string(errType), err)
 			}
 			m.metrics.RecordMethodErrorCount(ctx, requestMethod, params)
-			m.metrics.RecordMethodFailedCount(ctx, requestMethod, params)
 			m.metrics.RecordRequestErrorDuration(ctx, startAt, errType, params)
 			return
 		}
@@ -1385,7 +1384,7 @@ func sendToAllBackendsAndAggregateResponsesImpl[responseType any](ctx context.Co
 			if respMsg, ok := event.messages[l-1].(*jsonrpc.Response); ok && respMsg.ID == request.ID {
 				switch {
 				case respMsg.Error != nil:
-					m.metrics.RecordMethodFailedCount(ctx, request.Method, nil)
+					m.metrics.RecordMethodErrorCount(ctx, request.Method, nil)
 					logger.Error("error response from backend", slog.String("backend", event.backend), slog.Any("error", respMsg.Error))
 				case respMsg.Result != nil: // Empty result is valid, for example set/loggingLevel returns empty result from some backends.
 					var result responseType

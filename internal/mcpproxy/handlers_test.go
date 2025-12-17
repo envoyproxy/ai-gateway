@@ -771,7 +771,7 @@ func TestHandleToolCallRequest_InvalidToolName(t *testing.T) {
 	id := mustJSONRPCRequestID()
 	req := &jsonrpc.Request{ID: id, Method: "tools/call"}
 
-	err := proxy.handleToolCallRequest(t.Context(), s, rr, req, params, nil)
+	err := proxy.handleToolCallRequest(t.Context(), s, rr, req, params, nil, http.Header{})
 	// JSON-RPC errors are application-level errors that should be returned for proper metrics tracking,
 	// but they're not treated as span exceptions since the protocol worked correctly.
 	require.Error(t, err)
@@ -834,7 +834,7 @@ func TestHandleToolCallRequest_ToolResultWithIsError(t *testing.T) {
 	id := mustJSONRPCRequestID()
 	req := &jsonrpc.Request{ID: id, Method: "tools/call"}
 
-	err := proxy.handleToolCallRequest(t.Context(), s, rr, req, params, nil)
+	err := proxy.handleToolCallRequest(t.Context(), s, rr, req, params, nil, http.Header{})
 	// isError: true means the tool executed successfully but returned an error result.
 	// An error is returned for proper metrics tracking, but it's treated as an application-level
 	// error (not a span exception) since the protocol worked correctly and the LLM needs to see these errors.
