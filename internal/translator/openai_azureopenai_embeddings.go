@@ -54,7 +54,7 @@ func (o *openAIToAzureOpenAITranslatorV1Embedding) RequestBody(original []byte, 
 	}
 	newHeaders = []internalapi.Header{
 		{pathHeaderName, fmt.Sprintf(pathTemplate, modelName, o.apiVersion)},
-		{schemeHeaderName, "https"},
+		{schemeHeaderName, protocolHTTPS},
 	}
 
 	if len(newBody) > 0 {

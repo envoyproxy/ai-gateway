@@ -60,7 +60,7 @@ func TestOpenAIToAzureOpenAITranslatorV1EmbeddingRequestBody(t *testing.T) {
 			require.Equal(t, pathHeaderName, headerMutation[0].Key())
 			require.Equal(t, tc.expPath, headerMutation[0].Value())
 			require.Equal(t, schemeHeaderName, headerMutation[1].Key())
-			require.Equal(t, "https", headerMutation[1].Value())
+			require.Equal(t, protocolHTTPS, headerMutation[1].Value())
 
 			switch {
 			case tc.expBodyContains != "":

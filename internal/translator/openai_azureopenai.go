@@ -51,7 +51,7 @@ func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, 
 	pathTemplate := "/openai/deployments/%s/chat/completions?api-version=%s"
 	newHeaders = []internalapi.Header{
 		{pathHeaderName, fmt.Sprintf(pathTemplate, modelName, o.apiVersion)},
-		{schemeHeaderName, "https"},
+		{schemeHeaderName, protocolHTTPS},
 	}
 	if req.Stream {
 		o.stream = true

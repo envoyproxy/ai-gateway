@@ -23,6 +23,8 @@ const (
 	mimeTypeTextPlain       = "text/plain"
 	mimeTypeApplicationJSON = "application/json"
 	mimeTypeApplicationEnum = "text/x.enum"
+
+	protocolHTTPS = "https"
 )
 
 var (
