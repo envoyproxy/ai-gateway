@@ -42,8 +42,8 @@ type (
 	}
 
 	upstreamFilterTypedIface interface {
-		RequestHeaders(e sdk.EnvoyHTTPFilter, endOfStream bool) error
-		RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) error
+		RequestHeaders(e sdk.EnvoyHTTPFilter) error
+		RequestBody(e sdk.EnvoyHTTPFilter) error
 		ResponseHeaders(e sdk.EnvoyHTTPFilter, endOfStream bool) error
 		ResponseBody(e sdk.EnvoyHTTPFilter, endOfStream bool) error
 		ResponseBodyOnError(e sdk.EnvoyHTTPFilter) error
@@ -87,7 +87,7 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 	rf := (*routerFilter)(unsafe.Pointer(uintptr(rfPtr))) // nolint:govet
 	rf.attemptCount++
 	onRetry := rf.attemptCount > 1
-	backend, ok := e.GetDynamicMetadataString(internalapi.AIGatewayFilterMetadataNamespace, internalapi.InternalMetadataBackendNameKey)
+	backend, ok := e.GetUpstreamHostMetadataString(internalapi.InternalEndpointMetadataNamespace, internalapi.InternalMetadataBackendNameKey)
 	if !ok {
 		e.SendLocalReply(500, nil, []byte("backend name not found in upstream host metadata"))
 		return sdk.RequestHeadersStatusStopIteration
@@ -146,7 +146,7 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 		e.SendLocalReply(500, nil, []byte(fmt.Sprintf("unsupported endpoint type: %v", rf.endpoint)))
 		return sdk.RequestHeadersStatusStopIteration
 	}
-	if err := f.typedFilter.RequestHeaders(e, false); err != nil {
+	if err := f.typedFilter.RequestHeaders(e); err != nil {
 		sdk.Log(sdk.LogLevelError, "request headers error: %v", err)
 		e.SendLocalReply(500, nil, []byte("internal server error"))
 		return sdk.RequestHeadersStatusStopIteration
@@ -154,7 +154,7 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 	return sdk.RequestHeadersStatusContinue
 }
 
-func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) error {
+func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestHeaders(e sdk.EnvoyHTTPFilter) error {
 	var espec EndpointSpecT
 	var err error
 	f.translator, err = espec.GetTranslator(f.backend.Backend.Schema, f.backend.Backend.ModelNameOverride)
@@ -188,10 +188,11 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestHea
 func (f *upstreamFilter) RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.RequestBodyStatus {
 	if !endOfStream {
 		// TODO: ideally, we should not buffer the entire body for the passthrough case.
+		//	However, the body is already buffered in Envoy at this point, so this should be almost no-op.
 		return sdk.RequestBodyStatusStopIterationAndBuffer
 	}
 
-	if err := f.typedFilter.RequestBody(e, endOfStream); err != nil {
+	if err := f.typedFilter.RequestBody(e); err != nil {
 		sdk.Log(sdk.LogLevelError, "request body error: %v", err)
 		e.SendLocalReply(500, nil, []byte("internal server error"))
 		return sdk.RequestBodyStatusStopIterationAndBuffer
@@ -199,7 +200,7 @@ func (f *upstreamFilter) RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sd
 	return sdk.RequestBodyStatusContinue
 }
 
-func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) (err error) {
+func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(e sdk.EnvoyHTTPFilter) (err error) {
 	defer func() {
 		if err != nil {
 			f.metrics.RecordRequestCompletion(context.Background(), false, f.reqHeaders)
