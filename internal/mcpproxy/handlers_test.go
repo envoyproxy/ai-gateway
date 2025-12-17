@@ -772,8 +772,14 @@ func TestHandleToolCallRequest_InvalidToolName(t *testing.T) {
 	req := &jsonrpc.Request{ID: id, Method: "tools/call"}
 
 	err := proxy.handleToolCallRequest(t.Context(), s, rr, req, params, nil)
-	// JSON-RPC errors are application-level errors returned to the client, but it is a valid RPC response
-	require.NoError(t, err)
+	// JSON-RPC errors are application-level errors that should be returned for proper metrics tracking,
+	// but they're not treated as span exceptions since the protocol worked correctly.
+	require.Error(t, err)
+
+	// Verify it's a JSON-RPC error
+	var jsonrpcErr *jsonrpc.Error
+	require.ErrorAs(t, err, &jsonrpcErr)
+	require.Contains(t, err.Error(), "unknown tool")
 
 	// Response should be written with the JSON-RPC error
 	require.Equal(t, http.StatusOK, rr.Code)
@@ -829,8 +835,17 @@ func TestHandleToolCallRequest_ToolResultWithIsError(t *testing.T) {
 	req := &jsonrpc.Request{ID: id, Method: "tools/call"}
 
 	err := proxy.handleToolCallRequest(t.Context(), s, rr, req, params, nil)
-	// isError: true is a valid tool response that should be passed to the LLM, not a protocol error
-	require.NoError(t, err)
+	// isError: true means the tool executed successfully but returned an error result.
+	// An error is returned for proper metrics tracking, but it's treated as an application-level
+	// error (not a span exception) since the protocol worked correctly and the LLM needs to see these errors.
+	require.Error(t, err)
+
+	// Verify it's a structured errToolCall with the expected details
+	var toolErr *errToolCall
+	require.ErrorAs(t, err, &toolErr)
+	require.Equal(t, "test-tool", toolErr.toolName)
+	require.Equal(t, "backend1", toolErr.backend)
+	require.Contains(t, err.Error(), "missing required parameter: owner")
 
 	// The response should be written to the client (HTTP 200)
 	require.Equal(t, http.StatusOK, rr.Code)
@@ -1804,4 +1819,214 @@ func Test_parseParamsAndMaybeStartSpan_NilParam(t *testing.T) {
 	s, err := parseParamsAndMaybeStartSpan(t.Context(), m, req, p, nil)
 	require.NoError(t, err)
 	require.Nil(t, s)
+}
+
+func Test_errorType(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected metrics.MCPErrorType
+	}{
+		{
+			name:     "nil error",
+			err:      nil,
+			expected: "",
+		},
+		{
+			name:     "jsonrpc invalid params error",
+			err:      &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: "invalid params"},
+			expected: metrics.MCPErrorInvalidParam,
+		},
+		{
+			name:     "jsonrpc method not found error",
+			err:      &jsonrpc.Error{Code: jsonrpc.CodeMethodNotFound, Message: "method not found"},
+			expected: metrics.MCPErrorUnsupportedMethod,
+		},
+		{
+			name:     "jsonrpc invalid request error",
+			err:      &jsonrpc.Error{Code: jsonrpc.CodeInvalidRequest, Message: "invalid request"},
+			expected: metrics.MCPErrorInvalidJSONRPC,
+		},
+		{
+			name:     "jsonrpc parse error",
+			err:      &jsonrpc.Error{Code: jsonrpc.CodeParseError, Message: "parse error"},
+			expected: metrics.MCPErrorInvalidJSONRPC,
+		},
+		{
+			name:     "jsonrpc internal error",
+			err:      &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: "internal error"},
+			expected: metrics.MCPErrorInternal,
+		},
+		{
+			name:     "jsonrpc unknown error code",
+			err:      &jsonrpc.Error{Code: -32000, Message: "custom error"},
+			expected: metrics.MCPErrorInternal,
+		},
+		{
+			name:     "backend not found error",
+			err:      errBackendNotFound,
+			expected: metrics.MCPErrorInvalidParam,
+		},
+		{
+			name:     "session not found error",
+			err:      errSessionNotFound,
+			expected: metrics.MCPErrorInvalidParam,
+		},
+		{
+			name:     "invalid tool name error",
+			err:      errInvalidToolName,
+			expected: metrics.MCPErrorInvalidParam,
+		},
+		{
+			name:     "wrapped backend not found error",
+			err:      fmt.Errorf("failed to call backend: %w", errBackendNotFound),
+			expected: metrics.MCPErrorInvalidParam,
+		},
+		{
+			name:     "generic error",
+			err:      errors.New("some generic error"),
+			expected: metrics.MCPErrorInternal,
+		},
+		{
+			name: "joined errors with non-internal error",
+			err: errors.Join(
+				errors.New("error 1"),
+				errBackendNotFound,
+				errors.New("error 3"),
+			),
+			expected: metrics.MCPErrorInvalidParam,
+		},
+		{
+			name: "joined errors all internal",
+			err: errors.Join(
+				errors.New("error 1"),
+				errors.New("error 2"),
+			),
+			expected: metrics.MCPErrorInternal,
+		},
+		{
+			name: "joined errors with jsonrpc error",
+			err: errors.Join(
+				errors.New("error 1"),
+				&jsonrpc.Error{Code: jsonrpc.CodeMethodNotFound, Message: "method not found"},
+			),
+			expected: metrics.MCPErrorUnsupportedMethod,
+		},
+		{
+			name:     "tool call error",
+			err:      &errToolCall{toolName: "test-tool", backend: "backend1", err: errors.New("tool failed")},
+			expected: metrics.MCPErrorInternal,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := errorType(tt.err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func Test_checkToolCallError(t *testing.T) {
+	tests := []struct {
+		name        string
+		req         *jsonrpc.Request
+		msg         *jsonrpc.Response
+		backendName string
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name:        "nil request",
+			req:         nil,
+			msg:         &jsonrpc.Response{Result: json.RawMessage(`{"isError": true}`)},
+			backendName: "backend1",
+			wantErr:     false,
+		},
+		{
+			name:        "not a tools/call request",
+			req:         &jsonrpc.Request{Method: "prompts/list"},
+			msg:         &jsonrpc.Response{Result: json.RawMessage(`{"isError": true}`)},
+			backendName: "backend1",
+			wantErr:     false,
+		},
+		{
+			name:        "nil result",
+			req:         &jsonrpc.Request{Method: "tools/call"},
+			msg:         &jsonrpc.Response{Result: nil},
+			backendName: "backend1",
+			wantErr:     false,
+		},
+		{
+			name:        "isError is false",
+			req:         &jsonrpc.Request{Method: "tools/call"},
+			msg:         &jsonrpc.Response{Result: json.RawMessage(`{"isError": false, "content": []}`)},
+			backendName: "backend1",
+			wantErr:     false,
+		},
+		{
+			name:        "isError true with no content",
+			req:         &jsonrpc.Request{Method: "tools/call", Params: json.RawMessage(`{"name": "test-tool"}`)},
+			msg:         &jsonrpc.Response{Result: json.RawMessage(`{"isError": true, "content": []}`)},
+			backendName: "backend1",
+			wantErr:     true,
+			errContains: "tool returned isError=true",
+		},
+		{
+			name:        "isError true with text content",
+			req:         &jsonrpc.Request{Method: "tools/call", Params: json.RawMessage(`{"name": "test-tool"}`)},
+			msg:         &jsonrpc.Response{Result: json.RawMessage(`{"isError": true, "content": [{"type": "text", "text": "missing required parameter: owner"}]}`)},
+			backendName: "backend1",
+			wantErr:     true,
+			errContains: "missing required parameter: owner",
+		},
+		{
+			name:        "isError true with multiple text contents",
+			req:         &jsonrpc.Request{Method: "tools/call", Params: json.RawMessage(`{"name": "test-tool"}`)},
+			msg:         &jsonrpc.Response{Result: json.RawMessage(`{"isError": true, "content": [{"type": "text", "text": "error 1"}, {"type": "text", "text": "error 2"}]}`)},
+			backendName: "backend1",
+			wantErr:     true,
+			errContains: "error 1; error 2",
+		},
+		{
+			name:        "isError true with mixed content types",
+			req:         &jsonrpc.Request{Method: "tools/call", Params: json.RawMessage(`{"name": "test-tool"}`)},
+			msg:         &jsonrpc.Response{Result: json.RawMessage(`{"isError": true, "content": [{"type": "text", "text": "Error occurred"}, {"type": "text", "text": "Additional info"}]}`)},
+			backendName: "backend1",
+			wantErr:     true,
+			errContains: "Error occurred; Additional info",
+		},
+		{
+			name:        "isError true without tool name in params",
+			req:         &jsonrpc.Request{Method: "tools/call", Params: json.RawMessage(`{}`)},
+			msg:         &jsonrpc.Response{Result: json.RawMessage(`{"isError": true, "content": [{"type": "text", "text": "tool error"}]}`)},
+			backendName: "backend1",
+			wantErr:     true,
+			errContains: "tool error",
+		},
+		{
+			name:        "isError true with invalid params",
+			req:         &jsonrpc.Request{Method: "tools/call", Params: json.RawMessage(`invalid json`)},
+			msg:         &jsonrpc.Response{Result: json.RawMessage(`{"isError": true, "content": [{"type": "text", "text": "tool error"}]}`)},
+			backendName: "backend1",
+			wantErr:     true,
+			errContains: "tool error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkToolCallError(tt.req, tt.msg, tt.backendName)
+			if tt.wantErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errContains)
+				// Verify it's an errToolCall
+				var toolErr *errToolCall
+				require.ErrorAs(t, err, &toolErr)
+				require.Equal(t, tt.backendName, toolErr.backend)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
