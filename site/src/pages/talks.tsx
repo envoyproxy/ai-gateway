@@ -15,10 +15,10 @@ type Talk = {
 
 function formatDate(dateString: string): string {
   const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', { 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric' 
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
   });
 }
 
@@ -44,7 +44,7 @@ export default function Talks(): React.ReactElement {
   today.setHours(0, 0, 0, 0);
 
   // Sort talks by date descending
-  const sortedTalks = [...talks].sort((a, b) => 
+  const sortedTalks = [...talks].sort((a, b) =>
     new Date(b.date).getTime() - new Date(a.date).getTime()
   );
 
