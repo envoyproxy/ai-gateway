@@ -108,7 +108,7 @@ Envoy AI Gateway supports a wide range of AI providers, making it easy to integr
 
 We adhere to the [CNCF Code of conduct][Code of conduct]
 
-The Envoy AI Gateway team and community members meet every Thursday.
+The Envoy AI Gateway team and community members meet every Monday.
 Please register for the meeting, add agenda points, and get involved. The
 meeting details are available in the [public document][meeting].
 
