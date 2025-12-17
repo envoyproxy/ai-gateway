@@ -467,6 +467,7 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 	if err != nil {
 		return fmt.Errorf("failed to read response body for error handling: %w", err)
 	}
+	originalLen := len(bodyBytes)
 
 	decodingResult, err := decodeContentIfNeeded(bytes.NewBuffer(bodyBytes), f.resHeaders["content-encoding"])
 	if err != nil {
@@ -496,11 +497,7 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 				"failed to set transformed error header %s: %s", h.Key(), h.Value())
 		}
 	}
-	cur, ok := e.GetBufferedResponseBody()
-	if !ok {
-		return errors.New("failed to get current response body for replacement")
-	}
-	_ = e.DrainBufferedResponseBody(cur.Len())
+	_ = e.DrainBufferedResponseBody(originalLen)
 	_ = e.AppendBufferedResponseBody(newBody)
 	return nil
 }
