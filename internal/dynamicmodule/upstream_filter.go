@@ -170,7 +170,7 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 		e.SendLocalReply(500, nil, []byte("internal server error"))
 		return sdk.RequestHeadersStatusStopIteration
 	}
-	return sdk.RequestHeadersStatusContinue
+	return sdk.RequestHeadersStatusContinue // I think this should be StopIteration.
 }
 
 func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestHeaders(e sdk.EnvoyHTTPFilter) error {
@@ -321,7 +321,7 @@ func (f *upstreamFilter) ResponseHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Resp
 		sdk.Log(sdk.LogLevelDebug,
 			"upstream response headers processed, :status header=%v", status)
 	}
-	return sdk.ResponseHeadersStatusContinue
+	return sdk.ResponseHeadersStatusStopIteration
 }
 
 func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseHeaders(e sdk.EnvoyHTTPFilter, _ bool) error {
