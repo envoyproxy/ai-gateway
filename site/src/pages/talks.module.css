@@ -94,7 +94,7 @@
   margin-bottom: 0.5rem;
 }
 
-.talkTitle:hover {
+a.talkTitle:hover {
   color: var(--ifm-color-primary);
   text-decoration: underline;
 }

@@ -1,5 +1,13 @@
 [
     {
+        "date": "2025-11-13",
+        "title": "Inference Awakens: Tools for the Age of GenAI",
+        "url": "https://www.youtube.com/watch?v=nlTk5q3MPZ4",
+        "event": "KubeCon North America 2025",
+        "speaker": "Alexa Griffith (Bloomberg), Erica Hughberg (Tetrate)",
+        "description": "This talk explores what it takes to build GenAI platforms capable of serving modern inference at scale without falling to the dark side of complexity. You'll learn from a real-world reference architecture using open-source tools like Envoy AI Gateway, KServe, and others-designed to support dynamic model-based routing, token-level rate limiting, secure upstream auth, observability, and multi-provider failover. These aren't bonus features-they're the new minimum requirements for reliable AI inference."
+    },
+    {
         "date": "2025-11-10",
         "title": "Evolution of Envoy AI Gateway",
         "url": "https://www.youtube.com/watch?v=oXlnhRKPXhA",

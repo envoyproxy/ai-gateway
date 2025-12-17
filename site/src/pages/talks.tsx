@@ -7,7 +7,7 @@ import styles from './talks.module.css';
 type Talk = {
   date: string;
   title: string;
-  url: string;
+  url?: string;
   event?: string;
   speaker?: string;
   description?: string;
@@ -27,9 +27,13 @@ function TalkItem({ talk }: { talk: Talk }) {
     <li className={styles.talkItem}>
       <div className={styles.talkDate}>{formatDate(talk.date)}</div>
       <div className={styles.talkDetails}>
-        <a href={talk.url} target="_blank" rel="noopener noreferrer" className={styles.talkTitle}>
-          {talk.title}
-        </a>
+        {talk.url ? (
+          <a href={talk.url} target="_blank" rel="noopener noreferrer" className={styles.talkTitle}>
+            {talk.title}
+          </a>
+        ) : (
+          <div className={styles.talkTitle}>{talk.title}</div>
+        )}
         {talk.event && <div className={styles.talkEvent}>{talk.event}</div>}
         {talk.speaker && <div className={styles.talkSpeaker}>{talk.speaker}</div>}
         {talk.description && <div className={styles.talkDescription}>{talk.description}</div>}
