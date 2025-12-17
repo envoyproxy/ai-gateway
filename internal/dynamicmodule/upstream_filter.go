@@ -269,12 +269,18 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBod
 	}
 
 	if newBody != nil {
-		cur, ok := e.GetBufferedRequestBody()
-		if !ok {
-			return errors.New("failed to get current request body for replacement")
+		if cur, ok := e.GetBufferedRequestBody(); !ok {
+			// On retry path, the body will be in received buffer.
+			cur, ok = e.GetReceivedRequestBody()
+			if !ok {
+				return errors.New("failed to get current request body for replacement")
+			}
+			_ = e.DrainReceivedRequestBody(cur.Len())
+			_ = e.AppendReceivedRequestBody(newBody)
+		} else {
+			_ = e.DrainBufferedRequestBody(cur.Len())
+			_ = e.AppendBufferedRequestBody(newBody)
 		}
-		_ = e.DrainBufferedRequestBody(cur.Len())
-		_ = e.AppendBufferedRequestBody(newBody)
 
 		// Set the content-length header with the new body length.
 		if !e.SetRequestHeader("content-length", []byte(strconv.Itoa(len(newBody)))) {
@@ -313,7 +319,7 @@ func (f *upstreamFilter) ResponseHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Resp
 	f.success = status == "200"
 	if sdk.LogDebugEnabled {
 		sdk.Log(sdk.LogLevelDebug,
-			"upstream response headers processed, :status header=%v %v", status)
+			"upstream response headers processed, :status header=%v", status)
 	}
 	return sdk.ResponseHeadersStatusContinue
 }
@@ -338,11 +344,14 @@ func (f *upstreamFilter) ResponseBody(e sdk.EnvoyHTTPFilter, endOfStream bool) s
 		return sdk.ResponseBodyStatusStopIterationAndBuffer
 	}
 	if !f.success {
+		if sdk.LogDebugEnabled {
+			sdk.Log(sdk.LogLevelDebug, "upstream response body error handling started, endOfStream: %v", endOfStream)
+		}
 		if err := f.typedFilter.ResponseBodyOnError(e); err != nil {
 			sdk.Log(sdk.LogLevelError, "response body on error handling failed: %v", err)
 			e.SendLocalReply(500, nil, []byte("internal server error"))
 		}
-		return sdk.ResponseBodyStatusStopIterationAndBuffer
+		return sdk.ResponseBodyStatusContinue
 	}
 
 	if err := f.typedFilter.ResponseBody(e, endOfStream); err != nil {
@@ -470,21 +479,29 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 	if err != nil {
 		return fmt.Errorf("failed to transform response error: %w", err)
 	}
-	statusCode := f.resHeaders[":200"]
-	code, _ := strconv.Atoi(statusCode)
 	span := f.routerFilter.span
 	if span != nil {
 		b := newBody
 		if b == nil {
 			b = bodyBytes
 		}
+		statusCode := f.resHeaders[":status"]
+		code, _ := strconv.Atoi(statusCode)
 		span.EndSpanOnError(code, b)
 	}
-	var headers [][2]string
+
 	for _, h := range newHeaders {
-		headers = append(headers, [2]string{h.Key(), h.Value()})
+		if !e.SetResponseHeader(h.Key(), []byte(h.Value())) {
+			return fmt.Errorf(
+				"failed to set transformed error header %s: %s", h.Key(), h.Value())
+		}
 	}
-	e.SendLocalReply(uint32(code), headers, newBody)
+	cur, ok := e.GetBufferedResponseBody()
+	if !ok {
+		return errors.New("failed to get current response body for replacement")
+	}
+	_ = e.DrainBufferedResponseBody(cur.Len())
+	_ = e.AppendBufferedResponseBody(newBody)
 	return nil
 }
 
@@ -504,20 +521,11 @@ func decodeContentIfNeeded(base io.Reader, contentEncoding string) (contentDecod
 		if err != nil {
 			return contentDecodingResult{}, fmt.Errorf("failed to decode gzip: %w", err)
 		}
-		return contentDecodingResult{
-			reader:    reader,
-			isEncoded: true,
-		}, nil
+		return contentDecodingResult{reader: reader, isEncoded: true}, nil
 	case "br":
 		reader := brotli.NewReader(base)
-		return contentDecodingResult{
-			reader:    reader,
-			isEncoded: true,
-		}, nil
+		return contentDecodingResult{reader: reader, isEncoded: true}, nil
 	default:
-		return contentDecodingResult{
-			reader:    base,
-			isEncoded: false,
-		}, nil
+		return contentDecodingResult{reader: base, isEncoded: false}, nil
 	}
 }
