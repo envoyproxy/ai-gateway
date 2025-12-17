@@ -1,0 +1,131 @@
+.talksPage {
+  padding: 2rem 0;
+}
+
+.header {
+  margin-bottom: 3rem;
+  text-align: center;
+}
+
+.header h1 {
+  margin-bottom: 1rem;
+}
+
+.description {
+  font-size: 1.15rem;
+  color: var(--ifm-color-emphasis-700);
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.contributeButton {
+  margin-top: 1.5rem;
+}
+
+.button {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: white;
+  background-color: var(--ifm-color-primary);
+  border-radius: 6px;
+  text-decoration: none;
+  transition: background-color 0.2s ease;
+}
+
+.button:hover {
+  background-color: var(--ifm-color-primary-dark);
+  color: white;
+  text-decoration: none;
+}
+
+.section {
+  margin-bottom: 3rem;
+}
+
+.sectionTitle {
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--ifm-color-emphasis-200);
+}
+
+.talksList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.talkItem {
+  display: flex;
+  gap: 1.5rem;
+  padding: 1.5rem 0;
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.talkItem:last-child {
+  border-bottom: none;
+}
+
+.talkDate {
+  flex-shrink: 0;
+  width: 140px;
+  font-weight: 600;
+  color: var(--ifm-color-primary);
+  font-size: 0.95rem;
+}
+
+.talkDetails {
+  flex: 1;
+}
+
+.talkTitle {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--ifm-font-color-base);
+  text-decoration: none;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.talkTitle:hover {
+  color: var(--ifm-color-primary);
+  text-decoration: underline;
+}
+
+.talkEvent {
+  font-size: 0.95rem;
+  color: var(--ifm-color-emphasis-700);
+  margin-bottom: 0.25rem;
+  font-style: italic;
+}
+
+.talkSpeaker {
+  font-size: 0.9rem;
+  color: var(--ifm-color-emphasis-600);
+  margin-bottom: 0.25rem;
+}
+
+.talkDescription {
+  font-size: 0.95rem;
+  color: var(--ifm-color-emphasis-700);
+  margin-top: 0.5rem;
+  line-height: 1.6;
+}
+
+.placeholder {
+  color: var(--ifm-color-emphasis-600);
+  font-style: italic;
+  padding: 1rem 0;
+}
+
+@media (max-width: 768px) {
+  .talkItem {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .talkDate {
+    width: 100%;
+  }
+}

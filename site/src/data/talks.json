@@ -1,0 +1,34 @@
+[
+    {
+        "date": "2025-11-10",
+        "title": "Evolution of Envoy AI Gateway",
+        "url": "https://www.youtube.com/watch?v=oXlnhRKPXhA",
+        "event": "EnvoyCon North America 2025",
+        "speaker": "Yan Avlasov (Google), Takeshi Yoneda (Google)",
+        "description": "In this talk we will explore use, configuration and inner workings of the new features in Envoy AI Gateway."
+    },
+    {
+        "date": "2025-10-15",
+        "title": "Taming AI Sprawl: Your First Look at the Envoy AI Gateway",
+        "url": "https://www.youtube.com/watch?v=T9RX7cgeYKA",
+        "event": "EnvoyCon Virtual 2025",
+        "speaker": "Anmol Krishan Sachdeva (Google), Bhavishya Gupta (Google)",
+        "description": "This session introduces the Envoy AI Gateway, a recent open-source CNCF project designed to be the central control plane for your GenAI traffic. Learn how it provides a unified API to abstract away the differences between various AI/LLM providers, enabling seamless model switching."
+    },
+    {
+        "date": "2025-10-15",
+        "title": "Panel: Evolve, Adapt, and Adopt: Envoy in the AI Era",
+        "url": "https://www.youtube.com/watch?v=sx5p0m2gM5U",
+        "event": "EnvoyCon Virtual 2025",
+        "speaker": "Erica Hughberg (Tetrate), Yan Avlasov (Google), Ross Morrow (Coactive AI), Xunzhuo Liu (Tencent), Dan Sun (Bloomberg)",
+        "description": "This panel brings together Envoy maintainers, builders, and adopters who are shaping the next generation of GenAI platforms and infrastructure. We'll explore how Envoy is evolving to meet the needs of AI workloads, how the community is adapting to new demands, and how adopters are leveraging Envoy."
+    },
+    {
+        "date": "2025-06-16",
+        "title": "Access AI Models Anywhere: Scaling AI Traffic With Envoy AI Gateway",
+        "url": "https://www.youtube.com/watch?v=xk1HsvVHMtA",
+        "event": "KubeCon Japan 2025",
+        "speaker": "Dan Sun (Bloomberg), Takeshi Yoneda (Tetrate)",
+        "description": "In this talk, we will dive into the architecture of Envoy AI Gateway to learn how it extends Envoy’s capabilities to efficiently manage AI-driven workloads for enterprise needs, while providing robustness, scalability, and adaptability in the rapidly-changing generative AI landscape. We will also showcase a demo of an AI agent seamlessly accessing models anywhere through a unified API."
+    }
+]
