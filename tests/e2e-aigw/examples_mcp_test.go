@@ -33,14 +33,6 @@ var (
 		"kiwi__feedback-to-devs",
 		"kiwi__search-flight",
 	}
-
-	// Filtered tools based on mcp_example.yaml selectors
-	filteredNonGithubTools = []string{
-		"context7__get-library-docs",
-		"context7__resolve-library-id",
-		"kiwi__feedback-to-devs",
-		"kiwi__search-flight",
-	}
 )
 
 func TestMCP_standalone(t *testing.T) {
