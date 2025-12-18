@@ -286,7 +286,7 @@ func TestResponsesEndpointSpec_ParseBody(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		req := openai.ResponseRequest{Model: "gpt-4o", Input: responses.ResponseNewParamsInputUnion{
 			OfString: param.Opt[string]{Value: "Hi"},
-		}, Stream: true,}
+		}, Stream: true}
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 

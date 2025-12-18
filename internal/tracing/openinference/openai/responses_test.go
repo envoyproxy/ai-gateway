@@ -35,7 +35,7 @@ var (
 		Model: openai.ModelGPT5Nano,
 		Output: []responses.ResponseOutputItemUnion{
 			{
-				ID: "msg_01",
+				ID:   "msg_01",
 				Type: "message",
 				Role: "assistant",
 				Content: []responses.ResponseOutputMessageContentUnion{
@@ -47,7 +47,7 @@ var (
 			},
 		},
 		Usage: &openai.ResponseUsage{
-			InputTokens:  20,
+			InputTokens: 20,
 			InputTokensDetails: openai.ResponseUsageInputTokensDetails{
 				CachedTokens: 2,
 			},
@@ -58,7 +58,7 @@ var (
 	basicResponseRespBody = mustJSON(basicResponseResp)
 
 	responseReqWithStreaming = &openai.ResponseRequest{
-		Model:  openai.ModelGPT5Nano,
+		Model: openai.ModelGPT5Nano,
 		Input: responses.ResponseNewParamsInputUnion{
 			OfString: param.Opt[string]{Value: "Hi"},
 		},

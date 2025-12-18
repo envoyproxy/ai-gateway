@@ -199,7 +199,7 @@ func (ResponsesEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *openai.ResponseRequest, bool, []byte, error) {
 	var openAIReq openai.ResponseRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
-		return "", nil, false, nil, fmt.Errorf("failed to unmarshal response request: %w", err)
+		return "", nil, false, nil, fmt.Errorf("failed to unmarshal responses request: %w", err)
 	}
 	return openAIReq.Model, &openAIReq, openAIReq.Stream, nil, nil
 }
