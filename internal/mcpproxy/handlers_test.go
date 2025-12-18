@@ -734,7 +734,7 @@ func TestHandleToolCallRequest_InvalidToolName(t *testing.T) {
 		resp := &jsonrpc.Response{
 			ID: reqMsg.ID,
 			Error: &jsonrpc.Error{
-				Code:    -32601,
+				Code:    jsonrpc.CodeMethodNotFound,
 				Message: "unknown tool \"unknown_tool\"",
 			},
 		}
