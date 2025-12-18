@@ -172,6 +172,10 @@ const config: Config = {
               label: 'GitHub Discussions',
               href: 'https://github.com/envoyproxy/ai-gateway/issues?q=is%3Aissue+label%3Adiscussion',
             },
+            {
+              label: 'Talks and Presentations',
+              to: '/talks',
+            },
           ],
         },
         {
@@ -232,6 +236,10 @@ const config: Config = {
             {
               label: 'LinkedIn',
               href: 'https://www.linkedin.com/company/envoy-cloud-native',
+            },
+            {
+              label: 'Talks and Presentations',
+              to: '/talks',
             },
           ],
         },

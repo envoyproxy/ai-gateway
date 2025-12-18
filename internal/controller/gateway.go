@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	appsv1 "k8s.io/api/apps/v1"
@@ -478,6 +479,57 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 			}
 			mcpRoute.Backends = append(
 				mcpRoute.Backends, mcpBackend)
+		}
+		// Add authorization configuration for the route.
+		if route.Spec.SecurityPolicy != nil && route.Spec.SecurityPolicy.Authorization != nil {
+			authorization := route.Spec.SecurityPolicy.Authorization
+			mcpRoute.Authorization = &filterapi.MCPRouteAuthorization{}
+
+			if route.Spec.SecurityPolicy.OAuth != nil {
+				mcpRoute.Authorization.ResourceMetadataURL = buildResourceMetadataURL(&route.Spec.SecurityPolicy.OAuth.ProtectedResourceMetadata)
+			}
+
+			defaultAction := ptr.Deref(authorization.DefaultAction, egv1a1.AuthorizationActionDeny)
+			mcpRoute.Authorization.DefaultAction = filterapi.AuthorizationAction(defaultAction)
+
+			for _, rule := range authorization.Rules {
+				action := ptr.Deref(rule.Action, egv1a1.AuthorizationActionAllow)
+				if mcpRoute.Authorization.Rules == nil {
+					mcpRoute.Authorization.Rules = []filterapi.MCPRouteAuthorizationRule{}
+				}
+
+				mcpRule := filterapi.MCPRouteAuthorizationRule{
+					Action: filterapi.AuthorizationAction(action),
+				}
+
+				if rule.Source != nil {
+					scopes := make([]string, len(rule.Source.JWT.Scopes))
+					for i, scope := range rule.Source.JWT.Scopes {
+						scopes[i] = string(scope)
+					}
+					mcpRule.Source = &filterapi.MCPAuthorizationSource{
+						JWT: filterapi.JWTSource{
+							Scopes: scopes,
+						},
+					}
+				}
+
+				if rule.Target != nil {
+					tools := make([]filterapi.ToolCall, len(rule.Target.Tools))
+					for i, tool := range rule.Target.Tools {
+						tools[i] = filterapi.ToolCall{
+							Backend: tool.Backend,
+							Tool:    tool.Tool,
+							When:    tool.When,
+						}
+					}
+					mcpRule.Target = &filterapi.MCPAuthorizationTarget{
+						Tools: tools,
+					}
+				}
+
+				mcpRoute.Authorization.Rules = append(mcpRoute.Authorization.Rules, mcpRule)
+			}
 		}
 		mc.Routes = append(mc.Routes, mcpRoute)
 	}
