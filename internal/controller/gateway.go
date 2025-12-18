@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	appsv1 "k8s.io/api/apps/v1"
@@ -150,12 +151,20 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 }
 
 // schemaToFilterAPI converts an aigv1a1.VersionedAPISchema to filterapi.VersionedAPISchema.
-func schemaToFilterAPI(schema aigv1a1.VersionedAPISchema) filterapi.VersionedAPISchema {
+func schemaToFilterAPI(schema aigv1a1.VersionedAPISchema, l logr.Logger) filterapi.VersionedAPISchema {
 	ret := filterapi.VersionedAPISchema{}
 	ret.Name = filterapi.APISchemaName(schema.Name)
 	if schema.Name == aigv1a1.APISchemaOpenAI {
-		// When the schema is OpenAI, we default to the v1 version if not specified or nil.
-		ret.Version = cmp.Or(ptr.Deref(schema.Version, "v1"), "v1")
+		if schema.Prefix != nil {
+			ret.Prefix = *schema.Prefix
+		} else {
+			// We default to the v1 version if not specified or nil for the legacy use of "version" field.
+			// TODO: This is to maintain backward compatibility, delete this in future releases.
+			ret.Prefix = cmp.Or(ptr.Deref(schema.Version, "v1"), "v1")
+			l.Info("Warning: 'prefix' field is not set for OpenAI schema, using 'version' field as prefix for backward compatibility. " +
+				"Please set 'prefix' field explicitly as this use of 'version' field will be removed in future releases.",
+			)
+		}
 	} else {
 		ret.Version = ptr.Deref(schema.Version, "")
 	}
@@ -331,7 +340,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				b.ModelNameOverride = backendRef.ModelNameOverride
 				if backendRef.IsInferencePool() {
 					// We assume that InferencePools are all OpenAI schema.
-					b.Schema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"}
+					b.Schema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1"}
 				} else {
 					var backendObj *aigv1a1.AIServiceBackend
 					var bsp *aigv1a1.BackendSecurityPolicy
@@ -360,7 +369,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					mergedBodyMutation := mergeBodyMutations(routeBodyMutation, backendBodyMutation)
 					b.BodyMutation = bodyMutationToFilterAPI(mergedBodyMutation)
 
-					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
+					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema, c.logger)
 					if bsp != nil {
 						b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, bsp)
 						if err != nil {
@@ -470,6 +479,57 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 			}
 			mcpRoute.Backends = append(
 				mcpRoute.Backends, mcpBackend)
+		}
+		// Add authorization configuration for the route.
+		if route.Spec.SecurityPolicy != nil && route.Spec.SecurityPolicy.Authorization != nil {
+			authorization := route.Spec.SecurityPolicy.Authorization
+			mcpRoute.Authorization = &filterapi.MCPRouteAuthorization{}
+
+			if route.Spec.SecurityPolicy.OAuth != nil {
+				mcpRoute.Authorization.ResourceMetadataURL = buildResourceMetadataURL(&route.Spec.SecurityPolicy.OAuth.ProtectedResourceMetadata)
+			}
+
+			defaultAction := ptr.Deref(authorization.DefaultAction, egv1a1.AuthorizationActionDeny)
+			mcpRoute.Authorization.DefaultAction = filterapi.AuthorizationAction(defaultAction)
+
+			for _, rule := range authorization.Rules {
+				action := ptr.Deref(rule.Action, egv1a1.AuthorizationActionAllow)
+				if mcpRoute.Authorization.Rules == nil {
+					mcpRoute.Authorization.Rules = []filterapi.MCPRouteAuthorizationRule{}
+				}
+
+				mcpRule := filterapi.MCPRouteAuthorizationRule{
+					Action: filterapi.AuthorizationAction(action),
+				}
+
+				if rule.Source != nil {
+					scopes := make([]string, len(rule.Source.JWT.Scopes))
+					for i, scope := range rule.Source.JWT.Scopes {
+						scopes[i] = string(scope)
+					}
+					mcpRule.Source = &filterapi.MCPAuthorizationSource{
+						JWT: filterapi.JWTSource{
+							Scopes: scopes,
+						},
+					}
+				}
+
+				if rule.Target != nil {
+					tools := make([]filterapi.ToolCall, len(rule.Target.Tools))
+					for i, tool := range rule.Target.Tools {
+						tools[i] = filterapi.ToolCall{
+							Backend: tool.Backend,
+							Tool:    tool.Tool,
+							When:    tool.When,
+						}
+					}
+					mcpRule.Target = &filterapi.MCPAuthorizationTarget{
+						Tools: tools,
+					}
+				}
+
+				mcpRoute.Authorization.Rules = append(mcpRoute.Authorization.Rules, mcpRule)
+			}
 		}
 		mc.Routes = append(mc.Routes, mcpRoute)
 	}

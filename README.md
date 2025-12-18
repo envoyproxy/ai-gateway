@@ -94,10 +94,11 @@ Envoy AI Gateway supports a wide range of AI providers, making it easy to integr
 
 ## Documentation
 
-- [Blog](https://aigateway.envoyproxy.io/blog) introducing Envoy AI Gateway.
+- [Blog](https://aigateway.envoyproxy.io/blog/introducing-envoy-ai-gateway) introducing Envoy AI Gateway.
 - [Documentation](https://aigateway.envoyproxy.io/docs) for Envoy AI Gateway.
 - [Quickstart](https://aigateway.envoyproxy.io/docs/getting-started/) to use Envoy AI Gateway in a few simple steps.
 - [Concepts](https://aigateway.envoyproxy.io/docs/concepts/) to understand the architecture and resources of Envoy AI Gateway.
+- [Talks and Presentations](https://aigateway.envoyproxy.io/talks) about Envoy AI Gateway.
 
 ## Contact
 
@@ -108,7 +109,7 @@ Envoy AI Gateway supports a wide range of AI providers, making it easy to integr
 
 We adhere to the [CNCF Code of conduct][Code of conduct]
 
-The Envoy AI Gateway team and community members meet every Thursday.
+The Envoy AI Gateway team and community members meet every Monday.
 Please register for the meeting, add agenda points, and get involved. The
 meeting details are available in the [public document][meeting].
 

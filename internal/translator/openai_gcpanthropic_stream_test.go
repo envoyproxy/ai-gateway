@@ -539,7 +539,7 @@ event: content_block_start
 data: {"type": "content_block_start", "index": 0, "content_block": {"type": "thinking", "name": "web_searcher"}}
 
 event: content_block_delta
-data: {"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "text": "Searching for information..."}}
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": "Searching for information..."}}
 
 event: content_block_stop
 data: {"type": "content_block_stop", "index": 0}
@@ -564,6 +564,7 @@ data: {"type": "message_stop"}
 		bodyStr := string(bm)
 
 		var contentDeltas []string
+		var reasoningTexts []string
 		var foundToolCallWithArgs bool
 		var finalFinishReason openai.ChatCompletionChoicesFinishReason
 
@@ -586,6 +587,11 @@ data: {"type": "message_stop"}
 				if choice.Delta.Content != nil {
 					contentDeltas = append(contentDeltas, *choice.Delta.Content)
 				}
+				if choice.Delta.ReasoningContent != nil {
+					if choice.Delta.ReasoningContent.Text != "" {
+						reasoningTexts = append(reasoningTexts, choice.Delta.ReasoningContent.Text)
+					}
+				}
 				if len(choice.Delta.ToolCalls) > 0 {
 					toolCall := choice.Delta.ToolCalls[0]
 					// Check if this is the tool chunk that contains the arguments.
@@ -607,10 +613,154 @@ data: {"type": "message_stop"}
 			}
 		}
 
-		fullContent := strings.Join(contentDeltas, "")
-		assert.Contains(t, fullContent, "Searching for information...")
+		fullReasoning := strings.Join(reasoningTexts, "")
+
+		assert.Contains(t, fullReasoning, "Searching for information...")
 		require.True(t, foundToolCallWithArgs, "Did not find a tool call chunk with arguments to assert against")
 		assert.Equal(t, openai.ChatCompletionChoicesFinishReasonToolCalls, finalFinishReason, "Final finish reason should be 'tool_calls'")
+	})
+
+	t.Run("handles thinking delta stream with text only", func(t *testing.T) {
+		sseStream := `
+event: message_start
+data: {"type": "message_start", "message": {"id": "msg_thinking_1", "type": "message", "role": "assistant", "usage": {"input_tokens": 20, "output_tokens": 1}}}
+
+event: content_block_start
+data: {"type": "content_block_start", "index": 0, "content_block": {"type": "thinking"}}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": "Let me think about this problem step by step."}}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": " First, I need to understand the requirements."}}
+
+event: content_block_stop
+data: {"type": "content_block_stop", "index": 0}
+
+event: message_delta
+data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 15}}
+
+event: message_stop
+data: {"type": "message_stop"}
+`
+		openAIReq := &openai.ChatCompletionRequest{Stream: true, Model: "test-model", MaxTokens: new(int64)}
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
+		_, _, err := translator.RequestBody(nil, openAIReq, false)
+		require.NoError(t, err)
+
+		_, bm, _, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
+		require.NoError(t, err)
+		require.NotNil(t, bm)
+		bodyStr := string(bm)
+
+		var reasoningTexts []string
+		var foundFinishReason bool
+
+		lines := strings.SplitSeq(strings.TrimSpace(bodyStr), "\n\n")
+		for line := range lines {
+			if !strings.HasPrefix(line, "data: ") || strings.Contains(line, "[DONE]") {
+				continue
+			}
+			jsonBody := strings.TrimPrefix(line, "data: ")
+
+			var chunk openai.ChatCompletionResponseChunk
+			err = json.Unmarshal([]byte(jsonBody), &chunk)
+			require.NoError(t, err, "Failed to unmarshal chunk: %s", jsonBody)
+
+			if len(chunk.Choices) == 0 {
+				continue
+			}
+			choice := chunk.Choices[0]
+			if choice.Delta != nil && choice.Delta.ReasoningContent != nil {
+				if choice.Delta.ReasoningContent.Text != "" {
+					reasoningTexts = append(reasoningTexts, choice.Delta.ReasoningContent.Text)
+				}
+			}
+			if choice.FinishReason == openai.ChatCompletionChoicesFinishReasonStop {
+				foundFinishReason = true
+			}
+		}
+
+		fullReasoning := strings.Join(reasoningTexts, "")
+		assert.Contains(t, fullReasoning, "Let me think about this problem step by step.")
+		assert.Contains(t, fullReasoning, " First, I need to understand the requirements.")
+		require.True(t, foundFinishReason, "Should find stop finish reason")
+	})
+
+	t.Run("handles thinking delta stream with text and signature", func(t *testing.T) {
+		sseStream := `
+event: message_start
+data: {"type": "message_start", "message": {"id": "msg_thinking_2", "type": "message", "role": "assistant", "usage": {"input_tokens": 25, "output_tokens": 1}}}
+
+event: content_block_start
+data: {"type": "content_block_start", "index": 0, "content_block": {"type": "thinking"}}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": "Processing request...", "signature": "sig_abc123"}}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": " Analyzing data...", "signature": "sig_def456"}}
+
+event: content_block_stop
+data: {"type": "content_block_stop", "index": 0}
+
+event: message_delta
+data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 20}}
+
+event: message_stop
+data: {"type": "message_stop"}
+`
+		openAIReq := &openai.ChatCompletionRequest{Stream: true, Model: "test-model", MaxTokens: new(int64)}
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
+		_, _, err := translator.RequestBody(nil, openAIReq, false)
+		require.NoError(t, err)
+
+		_, bm, _, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
+		require.NoError(t, err)
+		require.NotNil(t, bm)
+		bodyStr := string(bm)
+
+		var reasoningTexts []string
+		var signatures []string
+		var foundFinishReason bool
+
+		lines := strings.SplitSeq(strings.TrimSpace(bodyStr), "\n\n")
+		for line := range lines {
+			if !strings.HasPrefix(line, "data: ") || strings.Contains(line, "[DONE]") {
+				continue
+			}
+			jsonBody := strings.TrimPrefix(line, "data: ")
+
+			var chunk openai.ChatCompletionResponseChunk
+			err = json.Unmarshal([]byte(jsonBody), &chunk)
+			require.NoError(t, err, "Failed to unmarshal chunk: %s", jsonBody)
+
+			if len(chunk.Choices) == 0 {
+				continue
+			}
+			choice := chunk.Choices[0]
+			if choice.Delta != nil && choice.Delta.ReasoningContent != nil {
+				if choice.Delta.ReasoningContent.Text != "" {
+					reasoningTexts = append(reasoningTexts, choice.Delta.ReasoningContent.Text)
+				}
+				if choice.Delta.ReasoningContent.Signature != "" {
+					signatures = append(signatures, choice.Delta.ReasoningContent.Signature)
+				}
+			}
+			if choice.FinishReason == openai.ChatCompletionChoicesFinishReasonStop {
+				foundFinishReason = true
+			}
+		}
+
+		fullReasoning := strings.Join(reasoningTexts, "")
+		assert.Contains(t, fullReasoning, "Processing request...")
+		assert.Contains(t, fullReasoning, " Analyzing data...")
+
+		allSignatures := strings.Join(signatures, ",")
+		assert.Contains(t, allSignatures, "sig_abc123")
+		assert.Contains(t, allSignatures, "sig_def456")
+
+		require.True(t, foundFinishReason, "Should find stop finish reason")
 	})
 }
 

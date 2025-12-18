@@ -187,7 +187,7 @@ func testRecordRequestCompletion(t *testing.T) {
 
 func TestGetTimeToFirstTokenMsAndGetInterTokenLatencyMs(t *testing.T) {
 	t.Parallel()
-	c := metricsImpl{timeToFirstToken: 1 * time.Second, interTokenLatency: 2 * time.Second}
+	c := metricsImpl{timeToFirstToken: 1 * time.Second, interTokenLatencySec: 2}
 	assert.Equal(t, 1000.0, c.GetTimeToFirstTokenMs())
 	assert.Equal(t, 2000.0, c.GetInterTokenLatencyMs())
 }
@@ -435,9 +435,8 @@ func TestRecordTokenLatency_OnlyFinalUsage(t *testing.T) {
 
 		count, sum := getHistogramValues(t, mr, genaiMetricServerTimePerOutputToken, attrs)
 		assert.Equal(t, uint64(1), count)
-		expectedDuration := 10 * time.Millisecond / 6
-		expectedSeconds := expectedDuration.Seconds()
-		assert.Equal(t, expectedSeconds, sum)
+		expected := (10 * time.Millisecond).Seconds() / 6
+		assert.Equal(t, expected, sum)
 	})
 }
 
@@ -483,6 +482,42 @@ func TestRecordTokenLatency_ZeroTokensFirst(t *testing.T) {
 		count, sum = getHistogramValues(t, mr, genaiMetricServerTimePerOutputToken, attrs)
 		assert.Equal(t, uint64(1), count)
 		assert.Equal(t, (10*time.Millisecond).Seconds()/4, sum)
+	})
+}
+
+// TestRecordTokenLatency_IntegerTruncation tests that time_per_output_token
+// does not truncate to zero due to integer division.
+func TestRecordTokenLatency_IntegerTruncation(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		mr := metric.NewManualReader()
+		meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
+		pm := NewMetricsFactory(meter, nil, GenAIOperationCompletion).NewMetrics().(*metricsImpl)
+
+		attrs := attribute.NewSet(
+			attribute.Key(genaiAttributeOperationName).String(string(GenAIOperationCompletion)),
+			attribute.Key(genaiAttributeProviderName).String(genaiProviderOpenAI),
+			attribute.Key(genaiAttributeOriginalModel).String("test-model"),
+			attribute.Key(genaiAttributeRequestModel).String("test-model"),
+			attribute.Key(genaiAttributeResponseModel).String("test-model"),
+		)
+
+		pm.StartRequest(nil)
+		pm.SetOriginalModel("test-model")
+		pm.SetRequestModel("test-model")
+		pm.SetResponseModel("test-model")
+		pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
+
+		// First call records TTFT.
+		time.Sleep(1 * time.Millisecond)
+		pm.RecordTokenLatency(t.Context(), 1, false, nil)
+
+		// 50ns / (100-1) = 0.5ns TPOT; integer division would truncate to 0.
+		time.Sleep(50 * time.Nanosecond)
+		pm.RecordTokenLatency(t.Context(), 100, true, nil)
+
+		count, sum := getHistogramValues(t, mr, genaiMetricServerTimePerOutputToken, attrs)
+		require.Equal(t, uint64(1), count)
+		require.Greater(t, sum, 0.0)
 	})
 }
 

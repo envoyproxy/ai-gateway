@@ -109,7 +109,7 @@ func (ChatCompletionsEndpointSpec) ParseBody(
 func (ChatCompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIChatCompletionTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
-		return translator.NewChatCompletionOpenAIToOpenAITranslator(schema.Version, modelNameOverride), nil
+		return translator.NewChatCompletionOpenAIToOpenAITranslator(schema.Prefix, modelNameOverride), nil
 	case filterapi.APISchemaAWSBedrock:
 		return translator.NewChatCompletionOpenAIToAWSBedrockTranslator(modelNameOverride), nil
 	case filterapi.APISchemaAzureOpenAI:
@@ -139,7 +139,7 @@ func (CompletionsEndpointSpec) ParseBody(
 func (CompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAICompletionTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
-		return translator.NewCompletionOpenAIToOpenAITranslator(schema.Version, modelNameOverride), nil
+		return translator.NewCompletionOpenAIToOpenAITranslator(schema.Prefix, modelNameOverride), nil
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}
@@ -161,7 +161,7 @@ func (EmbeddingsEndpointSpec) ParseBody(
 func (EmbeddingsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIEmbeddingTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
-		return translator.NewEmbeddingOpenAIToOpenAITranslator(schema.Version, modelNameOverride), nil
+		return translator.NewEmbeddingOpenAIToOpenAITranslator(schema.Prefix, modelNameOverride), nil
 	case filterapi.APISchemaAzureOpenAI:
 		return translator.NewEmbeddingOpenAIToAzureOpenAITranslator(schema.Version, modelNameOverride), nil
 	default:
@@ -184,7 +184,7 @@ func (ImageGenerationEndpointSpec) ParseBody(
 func (ImageGenerationEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIImageGenerationTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
-		return translator.NewImageGenerationOpenAIToOpenAITranslator(schema.Version, modelNameOverride), nil
+		return translator.NewImageGenerationOpenAIToOpenAITranslator(schema.Prefix, modelNameOverride), nil
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}

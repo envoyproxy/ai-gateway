@@ -77,7 +77,7 @@ func TestChatCompletionsEndpointSpec_ParseBody(t *testing.T) {
 func TestChatCompletionsEndpointSpec_GetTranslator(t *testing.T) {
 	spec := ChatCompletionsEndpointSpec{}
 	supported := []filterapi.VersionedAPISchema{
-		{Name: filterapi.APISchemaOpenAI, Version: "v1"},
+		{Name: filterapi.APISchemaOpenAI, Prefix: "v1"},
 		{Name: filterapi.APISchemaAWSBedrock},
 		{Name: filterapi.APISchemaAzureOpenAI, Version: "2024-02-01"},
 		{Name: filterapi.APISchemaGCPVertexAI},

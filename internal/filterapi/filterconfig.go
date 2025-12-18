@@ -89,6 +89,8 @@ type VersionedAPISchema struct {
 	Name APISchemaName `json:"name"`
 	// Version is the version of the API schema. Optional.
 	Version string `json:"version,omitempty"`
+	// Prefix is the prefix of the API schema. Optional. Currently, only used for OpenAI.
+	Prefix string `json:"prefix,omitempty"`
 }
 
 // APISchemaName corresponds to APISchemaName in api/v1alpha1/api.go.
