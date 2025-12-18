@@ -7,6 +7,7 @@ package openai
 
 import (
 	"testing"
+	"time"
 
 	"github.com/openai/openai-go/v2/packages/param"
 	"github.com/openai/openai-go/v2/responses"
@@ -257,6 +258,83 @@ func TestResponsesRecorder_RecordResponseChunks_Empty(t *testing.T) {
 
 	// Empty chunks should not produce any events
 	openinference.RequireEventsEqual(t, []trace.Event{}, actualSpan.Events)
+}
+
+func TestResponsesRecorder_RecordResponseChunks(t *testing.T) {
+	recorder := NewResponsesRecorderFromEnv()
+	respCmplEventJSON := `{
+      "type": "response.completed",
+      "response": {
+        "id": "resp_123",
+        "object": "response",
+        "created_at": 1740855869,
+        "status": "completed",
+        "error": null,
+        "incomplete_details": null,
+        "input": [],
+        "instructions": null,
+        "max_output_tokens": null,
+        "model": "gpt-4o-mini-2024-07-18",
+        "output": [
+          {
+            "id": "msg_123",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "In a shimmering forest under a sky full of stars, a lonely unicorn named Lila discovered a hidden pond that glowed with moonlight. Every night, she would leave sparkling, magical flowers by the water's edge, hoping to share her beauty with others. One enchanting evening, she woke to find a group of friendly animals gathered around, eager to be friends and share in her magic.",
+                "annotations": []
+              }
+            ]
+          }
+        ],
+        "previous_response_id": null,
+        "reasoning_effort": null,
+        "store": false,
+        "temperature": 1,
+        "text": {
+          "format": {
+            "type": "text"
+          }
+        },
+        "tool_choice": "auto",
+        "tools": [],
+        "top_p": 1,
+        "truncation": "disabled",
+        "usage": {
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "total_tokens": 0
+        },
+        "user": null,
+        "metadata": {}
+      },
+      "sequence_number": 2
+    }`
+	var respCmplEvent responses.ResponseStreamEventUnion
+	err := respCmplEvent.UnmarshalJSON([]byte(respCmplEventJSON))
+	require.NoError(t, err)
+
+	actualSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+		recorder.RecordResponseChunks(span, []*openai.ResponseStreamEventUnion{{}, &respCmplEvent})
+		return false
+	})
+
+	// should produce two events
+	openinference.RequireEventsEqual(t, []trace.Event{
+		{
+			Name: "First Token Stream Event",
+			Time: time.Time{},
+		},
+		{
+			Name: "Response Completed Event",
+			Time: time.Time{},
+		},
+	}, actualSpan.Events)
 }
 
 func TestResponsesRecorder_WithConfig_HideInputs(t *testing.T) {
