@@ -80,6 +80,7 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 	}
 	rfs := f.env.RouterFilters
 	rfs.Lock.RLock()
+	// TODO: release the router filter from the map when the request is done to avoid memory leak.
 	rf, ok := rfs.Filters[internalRequestID].(*routerFilter)
 	rfs.Lock.RUnlock()
 	if !ok {
