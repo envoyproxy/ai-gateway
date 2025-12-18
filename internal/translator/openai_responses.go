@@ -127,10 +127,12 @@ func (o *openAIToOpenAITranslatorV1Responses) handleNonStreamingResponse(body io
 	responseModel = cmp.Or(resp.Model, o.requestModel)
 
 	// TODO: Add reasoning token usage
-	tokenUsage.SetInputTokens(uint32(resp.Usage.InputTokens))                           // #nosec G115
-	tokenUsage.SetOutputTokens(uint32(resp.Usage.OutputTokens))                         // #nosec G115
-	tokenUsage.SetTotalTokens(uint32(resp.Usage.TotalTokens))                           // #nosec G115
-	tokenUsage.SetCachedInputTokens(uint32(resp.Usage.InputTokensDetails.CachedTokens)) // #nosec G115
+	if resp.Usage != nil {
+		tokenUsage.SetInputTokens(uint32(resp.Usage.InputTokens))                           // #nosec G115
+		tokenUsage.SetOutputTokens(uint32(resp.Usage.OutputTokens))                         // #nosec G115
+		tokenUsage.SetTotalTokens(uint32(resp.Usage.TotalTokens))                           // #nosec G115
+		tokenUsage.SetCachedInputTokens(uint32(resp.Usage.InputTokensDetails.CachedTokens)) // #nosec G115
+	}
 
 	// Record non-streaming response to span if tracing is enabled.
 	if span != nil {

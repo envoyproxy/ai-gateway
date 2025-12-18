@@ -761,7 +761,7 @@ func TestResponsesOpenAIToOpenAITranslatorWithModelOverride(t *testing.T) {
 		// Response without model
 		resp := openai.Response{
 			Model: "",
-			Usage: openai.ResponseUsage{
+			Usage: &openai.ResponseUsage{
 				InputTokens:  10,
 				OutputTokens: 5,
 				TotalTokens:  15,

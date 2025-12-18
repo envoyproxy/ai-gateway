@@ -46,8 +46,11 @@ var (
 				},
 			},
 		},
-		Usage: openai.ResponseUsage{
+		Usage: &openai.ResponseUsage{
 			InputTokens:  20,
+			InputTokensDetails: openai.ResponseUsageInputTokensDetails{
+				CachedTokens: 2,
+			},
 			OutputTokens: 10,
 			TotalTokens:  30,
 		},
@@ -164,6 +167,7 @@ func TestResponsesRecorder_RecordResponse(t *testing.T) {
 				attribute.Int(openinference.LLMTokenCountPrompt, 20),
 				attribute.Int(openinference.LLMTokenCountCompletion, 10),
 				attribute.Int(openinference.LLMTokenCountTotal, 30),
+				attribute.Int(openinference.LLMTokenCountPromptCacheHit, 2),
 				attribute.String(openinference.OutputValue, string(basicResponseRespBody)),
 			},
 			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},

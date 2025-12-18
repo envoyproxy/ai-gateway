@@ -2332,20 +2332,20 @@ type Response struct {
 	ID string `json:"id"`
 
 	// Unix timestamp (in seconds) of when this Response was created.
-	CreatedAt float64 `json:"created_at"`
+	CreatedAt JSONUNIXTime `json:"created_at"`
 
 	// An error object returned when the model fails to generate a Response.
-	Error ResponseError `json:"error"`
+	Error ResponseError `json:"error,omitzero"`
 
 	// Details about why the response is incomplete.
-	IncompleteDetails ResponseIncompleteDetails `json:"incomplete_details"`
+	IncompleteDetails ResponseIncompleteDetails `json:"incomplete_details,omitzero"`
 
 	// A system (or developer) message inserted into the model's context.
 	//
 	// When using along with `previous_response_id`, the instructions from a previous
 	// response will not be carried over to the next response. This makes it simple to
 	// swap out system (or developer) messages in new responses.
-	Instructions responses.ResponseInstructionsUnion `json:"instructions"`
+	Instructions responses.ResponseInstructionsUnion `json:"instructions,omitzero"`
 
 	// Set of 16 key-value pairs that can be attached to an object. This can be useful
 	// for storing additional information about the object in a structured format, and
@@ -2353,7 +2353,7 @@ type Response struct {
 	//
 	// Keys are strings with a maximum length of 64 characters. Values are strings with
 	// a maximum length of 512 characters.
-	Metadata map[string]string `json:"metadata"`
+	Metadata map[string]string `json:"metadata,omitzero"`
 
 	// Model ID used to generate the response, like `gpt-4o` or `o3`.
 	Model string `json:"model"`
@@ -2382,11 +2382,11 @@ type Response struct {
 	// How the model should select which tool (or tools) to use when generating a
 	// response. See the `tools` parameter to see how to specify which tools the model
 	// can call.
-	ToolChoice responses.ResponseToolChoiceUnion `json:"tool_choice"`
+	ToolChoice responses.ResponseToolChoiceUnion `json:"tool_choice,omitzero"`
 
 	// An array of tools the model may call while generating a response. You can
 	// specify which tool to use by setting the `tool_choice` parameter.
-	Tools []responses.ToolUnion `json:"tools"`
+	Tools []responses.ToolUnion `json:"tools,omitzero"`
 
 	// An alternative to sampling with temperature, called nucleus sampling, where the
 	// model considers the results of the tokens with top_p probability mass. So 0.1
@@ -2427,7 +2427,7 @@ type Response struct {
 	// Used by OpenAI to cache responses for similar requests to optimize your cache
 	// hit rates. Replaces the `user` field.
 	// [Learn more](https://platform.openai.com/docs/guides/prompt-caching).
-	PromptCacheKey string `json:"prompt_cache_key"`
+	PromptCacheKey string `json:"prompt_cache_key,omitzero"`
 
 	// The retention policy for the prompt cache. Set to `24h` to enable extended
 	// prompt caching, which keeps cached prefixes active for longer, up to a maximum
@@ -2446,7 +2446,7 @@ type Response struct {
 	// identifies each user. We recommend hashing their username or email address, in
 	// order to avoid sending us any identifying information.
 	// [Learn more](https://platform.openai.com/docs/guides/safety-best-practices#safety-identifiers).
-	SafetyIdentifier string `json:"safety_identifier"`
+	SafetyIdentifier string `json:"safety_identifier,omitzero"`
 
 	// Specifies the processing type used for serving the request.
 	//
@@ -2499,7 +2499,7 @@ type Response struct {
 
 	// Represents token usage details including input tokens, output tokens, a
 	// breakdown of output tokens, and the total tokens used.
-	Usage ResponseUsage `json:"usage"`
+	Usage *ResponseUsage `json:"usage,omitempty"`
 
 	// This field is being replaced by `safety_identifier` and `prompt_cache_key`. Use
 	// `prompt_cache_key` instead to maintain caching optimizations. A stable
@@ -2508,7 +2508,7 @@ type Response struct {
 	// [Learn more](https://platform.openai.com/docs/guides/safety-best-practices#safety-identifiers).
 	//
 	// Deprecated: deprecated
-	User string `json:"user"`
+	User string `json:"user,omitzero"`
 }
 
 // Represents token usage details including input tokens, output tokens, a
