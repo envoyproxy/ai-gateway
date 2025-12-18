@@ -24,10 +24,10 @@ import (
 )
 
 // NewResponsesOpenAIToOpenAITranslator implements [OpenAIResponsesTranslator] for OpenAI to OpenAI translation for responses.
-func NewResponsesOpenAIToOpenAITranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride) OpenAIResponsesTranslator {
+func NewResponsesOpenAIToOpenAITranslator(prefix string, modelNameOverride internalapi.ModelNameOverride) OpenAIResponsesTranslator {
 	return &openAIToOpenAITranslatorV1Responses{
 		modelNameOverride: modelNameOverride,
-		path:              path.Join("/", apiVersion, "responses"),
+		path:              path.Join("/", prefix, "responses"),
 	}
 }
 
