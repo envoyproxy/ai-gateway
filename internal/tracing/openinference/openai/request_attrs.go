@@ -321,7 +321,7 @@ func buildCompletionRequestAttributes(req *openai.CompletionRequest, body []byte
 
 // buildResponsesRequestAttributes builds OpenTelemetry attributes for responses requests.
 func buildResponsesRequestAttributes(req *openai.ResponseRequest, body []byte, config *openinference.TraceConfig) []attribute.KeyValue {
-	// TODO: Handle files and images case
+	// TODO: Add more detailed request attributes.
 	attrs := []attribute.KeyValue{
 		attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 		attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
@@ -331,7 +331,7 @@ func buildResponsesRequestAttributes(req *openai.ResponseRequest, body []byte, c
 		attrs = append(attrs, attribute.String(openinference.LLMModelName, req.Model))
 	}
 
-	// Add input value
+	// TODO: Improve input recording based on actual input type.
 	bodyString := openinference.RedactedValue
 	if !config.HideInputs {
 		bodyString = string(body)

@@ -85,7 +85,6 @@ func (r *ResponsesRecorder) RecordResponseOnError(span trace.Span, statusCode in
 
 // RecordResponse implements the same method as defined in tracing.ResponsesRecorder.
 func (r *ResponsesRecorder) RecordResponse(span trace.Span, resp *openai.Response) {
-	// TODO: Add more detailed response attributes if needed.
 	// Add response attributes.
 	attrs := buildResponsesResponseAttributes(resp, r.traceConfig)
 

@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/openai/openai-go/v2/packages/param"
+	"github.com/openai/openai-go/v2/responses"
 	"github.com/stretchr/testify/require"
 
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
@@ -271,5 +273,38 @@ func TestRerankEndpointSpec_GetTranslator(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
+	require.ErrorContains(t, err, "unsupported API schema")
+}
+
+func TestResponsesEndpointSpec_ParseBody(t *testing.T) {
+	spec := ResponsesEndpointSpec{}
+	t.Run("invalid json", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseBody([]byte("{"), false)
+		require.ErrorContains(t, err, "failed to unmarshal responses request")
+	})
+
+	t.Run("success", func(t *testing.T) {
+		req := openai.ResponseRequest{Model: "gpt-4o", Input: responses.ResponseNewParamsInputUnion{
+			OfString: param.Opt[string]{Value: "Hi"},
+		}, Stream: true,}
+		body, err := json.Marshal(req)
+		require.NoError(t, err)
+
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o", model)
+		require.True(t, stream)
+		require.NotNil(t, parsed)
+		require.Nil(t, mutated)
+	})
+}
+
+func TestResponsesEndpointSpec_GetTranslator(t *testing.T) {
+	spec := ResponsesEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI}, "override")
 	require.ErrorContains(t, err, "unsupported API schema")
 }

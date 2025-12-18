@@ -172,6 +172,7 @@ func buildCompletionResponseAttributes(resp *openai.CompletionResponse, config *
 
 // buildResponsesResponseAttributes builds OpenTelemetry attributes for responses responses.
 func buildResponsesResponseAttributes(resp *openai.Response, _ *openinference.TraceConfig) []attribute.KeyValue {
+	// TODO: Add more detailed response attributes
 	var attrs []attribute.KeyValue
 
 	if resp.Model != "" {
