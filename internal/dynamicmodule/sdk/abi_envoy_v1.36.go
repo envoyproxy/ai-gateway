@@ -288,6 +288,8 @@ func envoy_dynamic_module_on_http_filter_destroy(
 	filterPtr uintptr,
 ) {
 	pinned := unwrapPinnedHTTPFilter(filterPtr)
+	pinned.obj.OnDestroy()
+
 	// Unpin the filter from the memory manager.
 	memManager.unpinHTTPFilter(pinned)
 }
@@ -730,7 +732,7 @@ func (e envoyFilter) GetReceivedResponseBody() (BodyReader, bool) {
 		C.uintptr_t(e.raw),
 		(*C.size_t)(unsafe.Pointer(&vectorSize)),
 	)
-	if !ret {
+	if !ret || vectorSize == 0 {
 		return nil, false
 	}
 	chunks := make([]envoySlice, vectorSize)

@@ -55,7 +55,8 @@ type (
 		// Inherited from the environment.
 		routerFilters *RouterFilters
 		// This indicates whether the request was 200 on the response headers phase.
-		success bool
+		success           bool
+		internalRequestID string
 	}
 
 	// routerFilterTypedIface is the interface for the typed router filter.
@@ -135,13 +136,19 @@ func (f *routerFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Request
 		return sdk.RequestHeadersStatusStopIteration
 	}
 	internalReqID := originalReqID + uuid.NewString()
-	if !e.SetDynamicMetadataString(internalapi.AIGatewayFilterMetadataNamespace, internalRequestIDMetadataKey, originalReqID) {
+	if !e.SetDynamicMetadataString(internalapi.AIGatewayFilterMetadataNamespace, internalRequestIDMetadataKey, internalReqID) {
 		e.SendLocalReply(500, nil, []byte("failed to set x-internal-request-id metadata"))
 		return sdk.RequestHeadersStatusStopIteration
 	}
 	f.routerFilters.Lock.Lock()
 	f.routerFilters.Filters[internalReqID] = f
 	f.routerFilters.Lock.Unlock()
+	if sdk.LogDebugEnabled {
+		sdk.Log(sdk.LogLevelDebug,
+			"router filter: registered filter for internal request ID %s (original request ID: %s)",
+			internalReqID, originalReqID)
+	}
+	f.internalRequestID = internalReqID
 	return sdk.RequestHeadersStatusStopIteration // Do not invoke the subsequent filters but continue to the body phase on this filter.
 }
 
@@ -243,6 +250,9 @@ func (f *routerFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(
 // ResponseHeaders implements [sdk.HTTPFilter].
 func (f *routerFilter) ResponseHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.ResponseHeadersStatus {
 	typedFilter := f.typedFilter.UpstreamTypedFilter()
+	if typedFilter == nil {
+		return sdk.ResponseHeadersStatusContinue
+	}
 	if err := typedFilter.ResponseHeaders(e, false); err != nil {
 		sdk.Log(sdk.LogLevelError, "response headers error: %v", err)
 		e.SendLocalReply(500, nil, []byte("internal server error"))
@@ -254,12 +264,18 @@ func (f *routerFilter) ResponseHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Respon
 		sdk.Log(sdk.LogLevelDebug,
 			"upstream response headers processed, :status header=%v", status)
 	}
+	if f.typedFilter.Stream() && f.success {
+		return sdk.ResponseHeadersStatusContinue
+	}
 	return sdk.ResponseHeadersStatusStopIteration
 }
 
 // ResponseBody implements [sdk.HTTPFilter].
 func (f *routerFilter) ResponseBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.ResponseBodyStatus {
 	typedFilter := f.typedFilter.UpstreamTypedFilter()
+	if typedFilter == nil {
+		return sdk.ResponseBodyStatusContinue
+	}
 	if (!f.success || !f.typedFilter.Stream()) && !endOfStream {
 		// Buffer the entire body if not streaming.
 		if sdk.LogDebugEnabled {
@@ -286,9 +302,20 @@ func (f *routerFilter) ResponseBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk
 		return sdk.ResponseBodyStatusStopIterationAndBuffer
 	}
 	if sdk.LogDebugEnabled {
-		sdk.Log(sdk.LogLevelDebug, "upstream response body processed, endOfStream: %v", endOfStream)
+		sdk.Log(sdk.LogLevelDebug, "upstream response body processed, endOfStream: %v",
+			endOfStream)
 	}
 	return sdk.ResponseBodyStatusContinue
+}
+
+func (f *routerFilter) OnDestroy() {
+	f.routerFilters.Lock.Lock()
+	delete(f.routerFilters.Filters, f.internalRequestID)
+	f.routerFilters.Lock.Unlock()
+	if sdk.LogDebugEnabled {
+		sdk.Log(sdk.LogLevelDebug,
+			"router filter: cleaned up filter for internal request ID %s", f.internalRequestID)
+	}
 }
 
 // handleModelsEndpoint handles the /v1/models endpoint by returning the list of declared models in the filter configuration.

@@ -98,6 +98,8 @@ type HTTPFilter interface {
 	ResponseHeaders(e EnvoyHTTPFilter, endOfStream bool) ResponseHeadersStatus
 	// ResponseBody is called when the response body is received.
 	ResponseBody(e EnvoyHTTPFilter, endOfStream bool) ResponseBodyStatus
+	// OnDestroy is called when the filter is being destroyed.
+	OnDestroy()
 }
 
 // RequestHeadersStatus is the return value of the HTTPFilter.RequestHeaders.

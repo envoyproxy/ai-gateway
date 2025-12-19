@@ -69,6 +69,9 @@ func (f *upstreamFilterConfig) NewFilter() sdk.HTTPFilter {
 	return &upstreamFilter{env: f.env}
 }
 
+// OnDestroy implements [sdk.HTTPFilter].
+func (f *upstreamFilter) OnDestroy() {}
+
 // RequestHeaders implements [sdk.HTTPFilter].
 func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.RequestHeadersStatus {
 	internalRequestID, ok := e.GetDynamicMetadataString(internalapi.AIGatewayFilterMetadataNamespace,
@@ -80,7 +83,6 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 	}
 	rfs := f.env.RouterFilters
 	rfs.Lock.RLock()
-	// TODO: release the router filter from the map when the request is done to avoid memory leak.
 	rf, ok := rfs.Filters[internalRequestID].(*routerFilter)
 	rfs.Lock.RUnlock()
 	if !ok {
@@ -181,7 +183,7 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 		e.SendLocalReply(500, nil, []byte("internal server error"))
 		return sdk.RequestHeadersStatusStopIteration
 	}
-	return sdk.RequestHeadersStatusContinue // I think this should be StopIteration.
+	return sdk.RequestHeadersStatusStopIteration // I think this should be StopIteration.
 }
 
 func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestHeaders(e sdk.EnvoyHTTPFilter) error {
@@ -280,16 +282,28 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBod
 
 	if newBody != nil {
 		if cur, ok := e.GetBufferedRequestBody(); ok {
-			_ = e.DrainBufferedRequestBody(cur.Len())
-			_ = e.AppendBufferedRequestBody(newBody)
+			ok = e.DrainBufferedRequestBody(cur.Len())
+			if !ok {
+				return errors.New("failed to drain current request body for replacement")
+			}
+			ok = e.AppendBufferedRequestBody(newBody)
+			if !ok {
+				return errors.New("failed to append new request body for replacement")
+			}
 		} else {
 			// On retry path, the body will be in received buffer.
 			cur, ok = e.GetReceivedRequestBody()
 			if !ok {
 				return errors.New("failed to get current request body for replacement")
 			}
-			_ = e.DrainReceivedRequestBody(cur.Len())
-			_ = e.AppendReceivedRequestBody(newBody)
+			ok = e.DrainReceivedRequestBody(cur.Len())
+			if !ok {
+				return errors.New("failed to drain current received request body for replacement")
+			}
+			ok = e.AppendReceivedRequestBody(newBody)
+			if !ok {
+				return errors.New("failed to append new request body for replacement")
+			}
 		}
 
 		// Set the content-length header with the new body length.
@@ -352,12 +366,16 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 	var ok bool
 	if f.routerFilter.Stream() {
 		body, ok = e.GetReceivedResponseBody()
+		if !ok {
+			return nil
+		}
 	} else {
 		body, ok = e.GetBufferedResponseBody()
+		if !ok {
+			return errors.New("failed to get response body")
+		}
 	}
-	if !ok {
-		return errors.New("failed to get response body")
-	}
+
 	decodingResult, err := decodeContentIfNeeded(body, f.resHeaders["content-encoding"])
 	if err != nil {
 		return err
@@ -468,8 +486,26 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 				"failed to set transformed error header %s: %s", h.Key(), h.Value())
 		}
 	}
-	_ = e.DrainBufferedResponseBody(originalLen)
-	_ = e.AppendBufferedResponseBody(newBody)
+	if newBody != nil {
+		if sdk.LogDebugEnabled {
+			sdk.Log(sdk.LogLevelDebug,
+				"replacing error response body: original len %d, new len %d: %s",
+				originalLen, len(newBody), string(newBody))
+		}
+		ok = e.DrainBufferedResponseBody(originalLen)
+		if !ok {
+			return errors.New("failed to drain current response body for replacement")
+		}
+		ok = e.AppendBufferedResponseBody(newBody)
+		if !ok {
+			return errors.New("failed to append new response body for replacement")
+		}
+
+		// Set the content-length header with the new body length.
+		if !e.SetResponseHeader("content-length", []byte(strconv.Itoa(len(newBody)))) {
+			return errors.New("failed to set content-length header")
+		}
+	}
 	return nil
 }
 
