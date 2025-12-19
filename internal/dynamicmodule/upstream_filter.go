@@ -279,7 +279,10 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBod
 	}
 
 	if newBody != nil {
-		if cur, ok := e.GetBufferedRequestBody(); !ok {
+		if cur, ok := e.GetBufferedRequestBody(); ok {
+			_ = e.DrainBufferedRequestBody(cur.Len())
+			_ = e.AppendBufferedRequestBody(newBody)
+		} else {
 			// On retry path, the body will be in received buffer.
 			cur, ok = e.GetReceivedRequestBody()
 			if !ok {
@@ -287,9 +290,6 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBod
 			}
 			_ = e.DrainReceivedRequestBody(cur.Len())
 			_ = e.AppendReceivedRequestBody(newBody)
-		} else {
-			_ = e.DrainBufferedRequestBody(cur.Len())
-			_ = e.AppendBufferedRequestBody(newBody)
 		}
 
 		// Set the content-length header with the new body length.

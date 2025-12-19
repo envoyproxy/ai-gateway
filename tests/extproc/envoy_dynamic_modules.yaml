@@ -314,16 +314,6 @@ static_resources:
                   name: aigateway
                   do_not_close: true
                 filter_name: ai_gateway.upstream
-            - name: envoy.filters.http.header_mutation
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
-                mutations:
-                  request_mutations:
-                    - append:
-                        append_action: ADD_IF_ABSENT
-                        header:
-                          key: content-length
-                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -362,16 +352,6 @@ static_resources:
                   name: aigateway
                   do_not_close: true
                 filter_name: ai_gateway.upstream
-            - name: envoy.filters.http.header_mutation
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
-                mutations:
-                  request_mutations:
-                    - append:
-                        append_action: ADD_IF_ABSENT
-                        header:
-                          key: content-length
-                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -410,16 +390,6 @@ static_resources:
                   name: aigateway
                   do_not_close: true
                 filter_name: ai_gateway.upstream
-            - name: envoy.filters.http.header_mutation
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
-                mutations:
-                  request_mutations:
-                    - append:
-                        append_action: ADD_IF_ABSENT
-                        header:
-                          key: content-length
-                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -470,16 +440,6 @@ static_resources:
                   name: aigateway
                   do_not_close: true
                 filter_name: ai_gateway.upstream
-            - name: envoy.filters.http.header_mutation
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
-                mutations:
-                  request_mutations:
-                    - append:
-                        append_action: ADD_IF_ABSENT
-                        header:
-                          key: content-length
-                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -518,16 +478,6 @@ static_resources:
                   name: aigateway
                   do_not_close: true
                 filter_name: ai_gateway.upstream
-            - name: envoy.filters.http.header_mutation
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
-                mutations:
-                  request_mutations:
-                    - append:
-                        append_action: ADD_IF_ABSENT
-                        header:
-                          key: content-length
-                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -566,16 +516,6 @@ static_resources:
                   name: aigateway
                   do_not_close: true
                 filter_name: ai_gateway.upstream
-            - name: envoy.filters.http.header_mutation
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
-                mutations:
-                  request_mutations:
-                    - append:
-                        append_action: ADD_IF_ABSENT
-                        header:
-                          key: content-length
-                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -625,16 +565,6 @@ static_resources:
                   name: aigateway
                   do_not_close: true
                 filter_name: ai_gateway.upstream
-            - name: envoy.filters.http.header_mutation
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
-                mutations:
-                  request_mutations:
-                    - append:
-                        append_action: ADD_IF_ABSENT
-                        header:
-                          key: content-length
-                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -690,16 +620,6 @@ static_resources:
                   name: aigateway
                   do_not_close: true
                 filter_name: ai_gateway.upstream
-            - name: envoy.filters.http.header_mutation
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
-                mutations:
-                  request_mutations:
-                    - append:
-                        append_action: ADD_IF_ABSENT
-                        header:
-                          key: content-length
-                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -744,16 +664,6 @@ static_resources:
                   name: aigateway
                   do_not_close: true
                 filter_name: ai_gateway.upstream
-            - name: envoy.filters.http.header_mutation
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
-                mutations:
-                  request_mutations:
-                    - append:
-                        append_action: ADD_IF_ABSENT
-                        header:
-                          key: content-length
-                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -793,16 +703,6 @@ static_resources:
                   name: aigateway
                   do_not_close: true
                 filter_name: ai_gateway.upstream
-            - name: envoy.filters.http.header_mutation
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
-                mutations:
-                  request_mutations:
-                    - append:
-                        append_action: ADD_IF_ABSENT
-                        header:
-                          key: content-length
-                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -842,16 +742,6 @@ static_resources:
                   name: aigateway
                   do_not_close: true
                 filter_name: ai_gateway.upstream
-            - name: envoy.filters.http.header_mutation
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
-                mutations:
-                  request_mutations:
-                    - append:
-                        append_action: ADD_IF_ABSENT
-                        header:
-                          key: content-length
-                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -890,16 +780,6 @@ static_resources:
                   name: aigateway
                   do_not_close: true
                 filter_name: ai_gateway.upstream
-            - name: envoy.filters.http.header_mutation
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
-                mutations:
-                  request_mutations:
-                    - append:
-                        append_action: ADD_IF_ABSENT
-                        header:
-                          key: content-length
-                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -955,16 +835,6 @@ static_resources:
                   name: aigateway
                   do_not_close: true
                 filter_name: ai_gateway.upstream
-            - name: envoy.filters.http.header_mutation
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
-                mutations:
-                  request_mutations:
-                    - append:
-                        append_action: ADD_IF_ABSENT
-                        header:
-                          key: content-length
-                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -1008,16 +878,6 @@ static_resources:
                   name: aigateway
                   do_not_close: true
                 filter_name: ai_gateway.upstream
-            - name: envoy.filters.http.header_mutation
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
-                mutations:
-                  request_mutations:
-                    - append:
-                        append_action: ADD_IF_ABSENT
-                        header:
-                          key: content-length
-                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -1081,16 +941,6 @@ static_resources:
                   name: aigateway
                   do_not_close: true
                 filter_name: ai_gateway.upstream
-            - name: envoy.filters.http.header_mutation
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
-                mutations:
-                  request_mutations:
-                    - append:
-                        append_action: ADD_IF_ABSENT
-                        header:
-                          key: content-length
-                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -1135,16 +985,6 @@ static_resources:
                   name: aigateway
                   do_not_close: true
                 filter_name: ai_gateway.upstream
-            - name: envoy.filters.http.header_mutation
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
-                mutations:
-                  request_mutations:
-                    - append:
-                        append_action: ADD_IF_ABSENT
-                        header:
-                          key: content-length
-                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -1189,16 +1029,6 @@ static_resources:
                   name: aigateway
                   do_not_close: true
                 filter_name: ai_gateway.upstream
-            - name: envoy.filters.http.header_mutation
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
-                mutations:
-                  request_mutations:
-                    - append:
-                        append_action: ADD_IF_ABSENT
-                        header:
-                          key: content-length
-                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -1243,16 +1073,6 @@ static_resources:
                   name: aigateway
                   do_not_close: true
                 filter_name: ai_gateway.upstream
-            - name: envoy.filters.http.header_mutation
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
-                mutations:
-                  request_mutations:
-                    - append:
-                        append_action: ADD_IF_ABSENT
-                        header:
-                          key: content-length
-                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -1297,16 +1117,6 @@ static_resources:
                   name: aigateway
                   do_not_close: true
                 filter_name: ai_gateway.upstream
-            - name: envoy.filters.http.header_mutation
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
-                mutations:
-                  request_mutations:
-                    - append:
-                        append_action: ADD_IF_ABSENT
-                        header:
-                          key: content-length
-                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -1348,16 +1158,6 @@ static_resources:
                   name: aigateway
                   do_not_close: true
                 filter_name: ai_gateway.upstream
-            - name: envoy.filters.http.header_mutation
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
-                mutations:
-                  request_mutations:
-                    - append:
-                        append_action: ADD_IF_ABSENT
-                        header:
-                          key: content-length
-                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
@@ -1394,16 +1194,6 @@ static_resources:
                   name: aigateway
                   do_not_close: true
                 filter_name: ai_gateway.upstream
-            - name: envoy.filters.http.header_mutation
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
-                mutations:
-                  request_mutations:
-                    - append:
-                        append_action: ADD_IF_ABSENT
-                        header:
-                          key: content-length
-                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
