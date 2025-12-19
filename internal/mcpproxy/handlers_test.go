@@ -1782,7 +1782,7 @@ func Test_sendToAllBackendsAndAggregateResponsesImpl(t *testing.T) {
 			return combined
 		},
 	)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, errBackendResponseError)
 	require.Equal(t, http.StatusOK, rr.Code)
 	// The response is the SSE stream containing the aggregated result.
 	require.Equal(t, "text/event-stream", rr.Header().Get("Content-Type"))
@@ -2016,16 +2016,13 @@ func Test_checkToolCallError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := checkToolCallError(tt.req, tt.msg, tt.backendName)
+			toolErr := checkToolCallError(tt.req, tt.msg, tt.backendName)
 			if tt.wantErr {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), tt.errContains)
-				// Verify it's an errToolCall
-				var toolErr *errToolCall
-				require.ErrorAs(t, err, &toolErr)
+				require.NotNil(t, toolErr)
+				require.Contains(t, toolErr.Error(), tt.errContains)
 				require.Equal(t, tt.backendName, toolErr.backend)
 			} else {
-				require.NoError(t, err)
+				require.Nil(t, toolErr)
 			}
 		})
 	}

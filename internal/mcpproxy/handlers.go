@@ -35,9 +35,10 @@ import (
 )
 
 var (
-	errSessionNotFound = errors.New("session not found")
-	errBackendNotFound = errors.New("backend not found")
-	errInvalidToolName = errors.New("invalid tool name")
+	errSessionNotFound      = errors.New("session not found")
+	errBackendNotFound      = errors.New("backend not found")
+	errInvalidToolName      = errors.New("invalid tool name")
+	errBackendResponseError = errors.New("one or more backends returned an error response")
 )
 
 // errToolCall represents a tool execution error with structured information
@@ -1382,7 +1383,7 @@ func sendToAllBackendsAndAggregateResponsesImpl[responseType any](ctx context.Co
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set(sessionIDHeader, string(s.clientGatewaySessionID()))
 	w.WriteHeader(http.StatusOK)
-	var recordErrorMetric bool
+	var hasBackendError bool
 	var responses []broadCastResponse[responseType]
 	for event := range events {
 		// Update backend last event id and regenerate event ID.
@@ -1394,7 +1395,7 @@ func sendToAllBackendsAndAggregateResponsesImpl[responseType any](ctx context.Co
 			if respMsg, ok := event.messages[l-1].(*jsonrpc.Response); ok && respMsg.ID == request.ID {
 				switch {
 				case respMsg.Error != nil:
-					recordErrorMetric = true
+					hasBackendError = true
 					logger.Error("error response from backend", slog.String("backend", event.backend), slog.Any("error", respMsg.Error))
 				case respMsg.Result != nil: // Empty result is valid, for example set/loggingLevel returns empty result from some backends.
 					var result responseType
@@ -1426,10 +1427,6 @@ func sendToAllBackendsAndAggregateResponsesImpl[responseType any](ctx context.Co
 		}
 	}
 
-	if recordErrorMetric {
-		m.metrics.RecordMethodErrorCount(ctx, request.Method, nil, metrics.MCPStatusError)
-	}
-
 	mergedResp := mergeFn(s, responses)
 	encodedResp, err := json.Marshal(mergedResp)
 	if err != nil {
@@ -1447,6 +1444,11 @@ func sendToAllBackendsAndAggregateResponsesImpl[responseType any](ctx context.Co
 		messages: []jsonrpc.Message{&jsonrpc.Response{ID: request.ID, Result: encodedResp}},
 	}
 	event.writeAndMaybeFlush(w)
+
+	// Return error to record error metrics.
+	if hasBackendError {
+		return errBackendResponseError
+	}
 	return nil
 }
 
