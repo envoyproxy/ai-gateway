@@ -34,7 +34,11 @@ const (
 )
 
 var (
-	openAISchema         = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1"}
+	openAISchema = filterapi.VersionedAPISchema{
+		Name: filterapi.APISchemaOpenAI,
+		// This is backwards compatibility for existing users. Use 'prefix' after v0.5 release.
+		Version: "v1",
+	}
 	awsBedrockSchema     = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}
 	awsAnthropicSchema   = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSAnthropic, Version: "bedrock-2023-05-31"}
 	azureOpenAISchema    = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2025-01-01-preview"}
