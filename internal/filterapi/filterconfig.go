@@ -12,6 +12,7 @@
 package filterapi
 
 import (
+	"cmp"
 	"os"
 	"time"
 
@@ -97,10 +98,7 @@ type VersionedAPISchema struct {
 // This is for backwards compatibility with existing users. This won't be
 // necessary after v0.5 release when we can use Prefix directly.
 func (v VersionedAPISchema) OpenAIPrefix() string {
-	if v.Version != "" {
-		return v.Version
-	}
-	return v.Prefix
+	return cmp.Or(v.Version, v.Prefix)
 }
 
 // APISchemaName corresponds to APISchemaName in api/v1alpha1/api.go.
