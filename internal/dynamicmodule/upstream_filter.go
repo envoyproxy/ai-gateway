@@ -367,6 +367,10 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 	if f.routerFilter.Stream() {
 		body, ok = e.GetReceivedResponseBody()
 		if !ok {
+			if sdk.LogDebugEnabled {
+				sdk.Log(sdk.LogLevelDebug,
+					"no received response body to process at endOfStream: %v", endOfStream)
+			}
 			return nil
 		}
 	} else {
@@ -391,23 +395,42 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 		}
 	}
 	if newBody != nil {
+		if sdk.LogDebugEnabled {
+			sdk.Log(sdk.LogLevelDebug,
+				"replacing response body at endOfStream %v: original len %d, new len %d: %s",
+				endOfStream, body.Len(), len(newBody), string(newBody))
+		}
 		if decodingResult.isEncoded {
-			e.SetResponseHeader("content-encoding", nil)
+			if !e.SetResponseHeader("content-encoding", nil) {
+				return errors.New("failed to remove content-encoding header after decoding")
+			}
 		}
 		if f.routerFilter.Stream() {
 			cur, ok := e.GetReceivedResponseBody()
 			if !ok {
 				return errors.New("failed to get current response body for replacement")
 			}
-			_ = e.DrainReceivedResponseBody(cur.Len())
-			_ = e.AppendReceivedResponseBody(newBody)
+			ok = e.DrainReceivedResponseBody(cur.Len())
+			if !ok {
+				return errors.New("failed to drain current received response body for replacement")
+			}
+			ok = e.AppendReceivedResponseBody(newBody)
+			if !ok {
+				return errors.New("failed to append new response body for replacement")
+			}
 		} else {
 			cur, ok := e.GetBufferedResponseBody()
 			if !ok {
 				return errors.New("failed to get current response body for replacement")
 			}
-			_ = e.DrainBufferedResponseBody(cur.Len())
-			_ = e.AppendBufferedResponseBody(newBody)
+			ok = e.DrainBufferedResponseBody(cur.Len())
+			if !ok {
+				return errors.New("failed to drain current response body for replacement")
+			}
+			ok = e.AppendBufferedResponseBody(newBody)
+			if !ok {
+				return errors.New("failed to append new response body for replacement")
+			}
 		}
 	}
 
