@@ -604,7 +604,7 @@ func (e envoyFilter) GetBufferedRequestBody() (BodyReader, bool) {
 		C.uintptr_t(e.raw),
 		(*C.size_t)(unsafe.Pointer(&vectorSize)),
 	)
-	if !ret {
+	if !ret || vectorSize == 0 {
 		return nil, false
 	}
 
@@ -647,7 +647,7 @@ func (e envoyFilter) GetBufferedResponseBody() (BodyReader, bool) {
 		C.uintptr_t(e.raw),
 		(*C.size_t)(unsafe.Pointer(&vectorSize)),
 	)
-	if !ret {
+	if !ret || vectorSize == 0 {
 		return nil, false
 	}
 	chunks := make([]envoySlice, vectorSize)
@@ -689,7 +689,7 @@ func (e envoyFilter) GetReceivedRequestBody() (BodyReader, bool) {
 		C.uintptr_t(e.raw),
 		(*C.size_t)(unsafe.Pointer(&vectorSize)),
 	)
-	if !ret {
+	if !ret || vectorSize == 0 {
 		return nil, false
 	}
 
