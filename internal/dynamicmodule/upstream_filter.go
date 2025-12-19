@@ -270,9 +270,13 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBod
 		return fmt.Errorf("failed to translate request body for upstream: %w", err)
 	}
 	for _, h := range newHeaders {
+		if sdk.LogDebugEnabled {
+			sdk.Log(sdk.LogLevelDebug, "setting translated header %s: %s", h.Key(), h.Value())
+		}
 		if !e.SetRequestHeader(h.Key(), []byte(h.Value())) {
 			return fmt.Errorf("failed to set translated header %s", h.Key())
 		}
+		f.reqHeaders[h.Key()] = h.Value()
 	}
 
 	if bm := b.Backend.BodyMutation; bm != nil {
@@ -281,6 +285,11 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBod
 	}
 
 	if newBody != nil {
+		if sdk.LogDebugEnabled {
+			sdk.Log(sdk.LogLevelDebug,
+				"replacing request body: original len %d, new len %d: %s",
+				len(f.routerFilter.originalRequestBodyRaw), len(newBody), string(newBody))
+		}
 		if cur, ok := e.GetBufferedRequestBody(); ok {
 			ok = e.DrainBufferedRequestBody(cur.Len())
 			if !ok {
@@ -310,6 +319,7 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBod
 		if !e.SetRequestHeader("content-length", []byte(strconv.Itoa(len(newBody)))) {
 			return fmt.Errorf("failed to set content-length header")
 		}
+		f.reqHeaders["content-length"] = strconv.Itoa(len(newBody))
 	}
 
 	// Next is to do the upstream auth if needed.
@@ -324,9 +334,13 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBod
 			return fmt.Errorf("failed to get auth headers from handler: %w", err)
 		}
 		for _, h := range authHeaders {
+			if sdk.LogDebugEnabled {
+				sdk.Log(sdk.LogLevelDebug, "setting auth header %s: %s", h.Key(), h.Value())
+			}
 			if !e.SetRequestHeader(h.Key(), []byte(h.Value())) {
 				return fmt.Errorf("failed to set auth header %s", h.Key())
 			}
+			f.reqHeaders[h.Key()] = h.Value()
 		}
 	}
 	return nil
