@@ -97,9 +97,6 @@ type VersionedAPISchema struct {
 // This is for backwards compatibility with existing users. This won't be
 // necessary after v0.5 release when we can use Prefix directly.
 func (v VersionedAPISchema) OpenAIPrefix() string {
-	if v.Name != APISchemaOpenAI {
-		return ""
-	}
 	if v.Version != "" {
 		return v.Version
 	}
