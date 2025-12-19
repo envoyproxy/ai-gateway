@@ -590,6 +590,9 @@ func (e envoyFilter) AppendBufferedRequestBody(data []byte) bool {
 
 // DrainBufferedRequestBody implements [EnvoyHTTPFilter].
 func (e envoyFilter) DrainBufferedRequestBody(n int) bool {
+	if n == 0 {
+		return true
+	}
 	ret := C.envoy_dynamic_module_callback_http_drain_buffered_request_body(
 		C.uintptr_t(e.raw),
 		C.size_t(n),
@@ -605,6 +608,9 @@ func (e envoyFilter) GetBufferedRequestBody() (BodyReader, bool) {
 		(*C.size_t)(unsafe.Pointer(&vectorSize)),
 	)
 	if !ret || vectorSize == 0 {
+		if vectorSize == 0 {
+			return &bodyReader{chunks: []envoySlice{}}, true
+		}
 		return nil, false
 	}
 
@@ -633,6 +639,9 @@ func (e envoyFilter) AppendBufferedResponseBody(data []byte) bool {
 
 // DrainBufferedResponseBody implements [EnvoyHTTPFilter].
 func (e envoyFilter) DrainBufferedResponseBody(n int) bool {
+	if n == 0 {
+		return true
+	}
 	ret := C.envoy_dynamic_module_callback_http_drain_buffered_response_body(
 		C.uintptr_t(e.raw),
 		C.size_t(n),
@@ -648,6 +657,9 @@ func (e envoyFilter) GetBufferedResponseBody() (BodyReader, bool) {
 		(*C.size_t)(unsafe.Pointer(&vectorSize)),
 	)
 	if !ret || vectorSize == 0 {
+		if vectorSize == 0 {
+			return &bodyReader{chunks: []envoySlice{}}, true
+		}
 		return nil, false
 	}
 	chunks := make([]envoySlice, vectorSize)
@@ -675,6 +687,9 @@ func (e envoyFilter) AppendReceivedRequestBody(data []byte) bool {
 
 // DrainReceivedRequestBody implements [EnvoyHTTPFilter].
 func (e envoyFilter) DrainReceivedRequestBody(n int) bool {
+	if n == 0 {
+		return true
+	}
 	ret := C.envoy_dynamic_module_callback_http_drain_received_request_body(
 		C.uintptr_t(e.raw),
 		C.size_t(n),
@@ -690,6 +705,9 @@ func (e envoyFilter) GetReceivedRequestBody() (BodyReader, bool) {
 		(*C.size_t)(unsafe.Pointer(&vectorSize)),
 	)
 	if !ret || vectorSize == 0 {
+		if vectorSize == 0 {
+			return &bodyReader{chunks: []envoySlice{}}, true
+		}
 		return nil, false
 	}
 
@@ -718,6 +736,9 @@ func (e envoyFilter) AppendReceivedResponseBody(data []byte) bool {
 
 // DrainReceivedResponseBody implements [EnvoyHTTPFilter].
 func (e envoyFilter) DrainReceivedResponseBody(n int) bool {
+	if n == 0 {
+		return true
+	}
 	ret := C.envoy_dynamic_module_callback_http_drain_received_response_body(
 		C.uintptr_t(e.raw),
 		C.size_t(n),
@@ -733,6 +754,9 @@ func (e envoyFilter) GetReceivedResponseBody() (BodyReader, bool) {
 		(*C.size_t)(unsafe.Pointer(&vectorSize)),
 	)
 	if !ret || vectorSize == 0 {
+		if vectorSize == 0 {
+			return &bodyReader{chunks: []envoySlice{}}, true
+		}
 		return nil, false
 	}
 	chunks := make([]envoySlice, vectorSize)

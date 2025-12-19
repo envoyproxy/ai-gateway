@@ -347,6 +347,15 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseHe
 	if sdk.LogDebugEnabled {
 		sdk.Log(sdk.LogLevelDebug, "upstream response headers processed: %v", f.resHeaders)
 	}
+	headers, err := f.translator.ResponseHeaders(f.resHeaders)
+	if err != nil {
+		return fmt.Errorf("failed to transform response headers: %w", err)
+	}
+	for _, h := range headers {
+		if !e.SetResponseHeader(h.Key(), []byte(h.Value())) {
+			return fmt.Errorf("failed to set transformed header %s", h.Key())
+		}
+	}
 	return nil
 }
 
