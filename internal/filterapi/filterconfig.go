@@ -93,6 +93,19 @@ type VersionedAPISchema struct {
 	Prefix string `json:"prefix,omitempty"`
 }
 
+// OpenAIPrefix returns the OpenAI API prefix for the VersionedAPISchema.
+// This is for backwards compatibility with existing users. This won't be
+// necessary after v0.5 release when we can use Prefix directly.
+func (v VersionedAPISchema) OpenAIPrefix() string {
+	if v.Name != APISchemaOpenAI {
+		return ""
+	}
+	if v.Version != "" {
+		return v.Version
+	}
+	return v.Prefix
+}
+
 // APISchemaName corresponds to APISchemaName in api/v1alpha1/api.go.
 type APISchemaName string
 
