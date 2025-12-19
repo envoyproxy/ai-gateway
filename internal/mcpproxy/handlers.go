@@ -811,10 +811,8 @@ func (m *MCPProxy) proxyResponseBody(ctx context.Context, s *session, w http.Res
 						if msg.Error != nil {
 							// Collect error to return to caller
 							responseErrors = append(responseErrors, msg.Error)
-						}
-
-						// Check if this is a tools/call response with isError=true
-						if toolErr := checkToolCallError(req, msg, backend.Name); toolErr != nil {
+						}else if toolErr := checkToolCallError(req, msg, backend.Name); toolErr != nil {
+							// Check if this is a tools/call response with isError=true
 							responseErrors = append(responseErrors, toolErr)
 						}
 					}
