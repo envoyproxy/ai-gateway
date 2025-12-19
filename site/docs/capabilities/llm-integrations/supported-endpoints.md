@@ -191,6 +191,56 @@ curl -H "Content-Type: application/json" \
   $GATEWAY_URL/v1/images/generations
 ```
 
+### Responses
+
+**Endpoint:** `POST /v1/responses`
+
+**Status:** ✅ Fully Supported
+
+**Description:** Creates a model response. Provide text or image inputs to generate text or JSON outputs. Have the model call your own custom code or use built-in tools.
+
+**Features:**
+
+- ✅ Streaming and non-streaming responses
+- ✅ Function calling
+- ✅ MCP Tools support
+- ✅ Reasoning 
+- ✅ Multi-turn conversations
+- ✅ Native multimodal support for text and images
+- ✅ Response format specification (including JSON schema)
+- ✅ Temperature, top_p, and other sampling parameters
+- ✅ System and user messages
+- ✅ Model selection via request body or `x-ai-eg-model` header
+- ✅ Token usage tracking and cost calculation
+- ✅ Provider fallback and load balancing
+
+**Supported Providers:**
+
+- OpenAI
+- Any OpenAI-compatible provider (Groq, Together AI, Mistral, Tetrate Agent Router Service, etc.)
+
+**Example:**
+
+```bash
+curl -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4.1",
+    "input": [
+      {
+        "role": "user",
+        "content": [
+          {"type": "input_text", "text": "what is in this image?"},
+          {
+            "type": "input_image",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
+          }
+        ]
+      }
+    ]
+  }' \
+  $GATEWAY_URL/v1/responses
+```
+
 ### Rerank
 
 **Endpoint:** `POST /cohere/v2/rerank`
