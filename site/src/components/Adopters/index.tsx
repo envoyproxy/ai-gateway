@@ -57,7 +57,7 @@ function AdopterLogo({ name, logoUrl, url, description }: Adopter) {
 
 export default function Adopters(): React.ReactElement {
   return (
-    <section className={styles.adoptersSection}>
+    <section id="adopters" className={styles.adoptersSection}>
       <div className="container">
         <div className={styles.sectionHeader}>
           <Heading as="h2" className={styles.sectionTitle}>
