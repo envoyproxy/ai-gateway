@@ -1,6 +1,7 @@
 import React from 'react';
 import Layout from '@theme/Layout';
 import Heading from '@theme/Heading';
+import Link from '@docusaurus/Link';
 import talksData from '../data/talks.json';
 import styles from './talks.module.css';
 
@@ -68,13 +69,13 @@ export default function Talks(): React.ReactElement {
               Watch talks and presentations about Envoy AI Gateway from conferences, meetups, and community events.
             </p>
             <div className={styles.contributeButton}>
-              <a
+              <Link
+                className="button button--primary button--lg"
                 href="https://github.com/envoyproxy/ai-gateway/edit/main/site/src/data/talks.json"
                 target="_blank"
-                rel="noopener noreferrer"
-                className={styles.button}>
+                rel="noopener noreferrer">
                 Add your session!
-              </a>
+              </Link>
             </div>
           </div>
 

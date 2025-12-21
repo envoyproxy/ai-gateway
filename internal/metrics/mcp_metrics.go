@@ -73,12 +73,13 @@ const (
 	MCPErrorInternal MCPErrorType = "internal_error"
 )
 
-// mcpStatusType defines the status of an MCP request.
-type mcpStatusType string
+// MCPStatusType defines the status of an MCP request.
+type MCPStatusType string
 
 const (
-	mcpStatusSuccess mcpStatusType = "success"
-	mcpStatusError   mcpStatusType = "error"
+	MCPStatusSuccess MCPStatusType = "success"
+	MCPStatusFailed  MCPStatusType = "failed"
+	MCPStatusError   MCPStatusType = "error"
 )
 
 // mcpCapabilityType defines the type of capability that is negotiated between client and server.
@@ -115,7 +116,7 @@ type MCPMetrics interface {
 	// RecordMethodCount records the count of method invocations.
 	RecordMethodCount(ctx context.Context, methodName string, meta mcpsdk.Params)
 	// RecordMethodErrorCount records the count of method invocations with error status.
-	RecordMethodErrorCount(ctx context.Context, meta mcpsdk.Params)
+	RecordMethodErrorCount(ctx context.Context, methodName string, meta mcpsdk.Params, status MCPStatusType)
 	// RecordInitializationDuration records the duration of MCP initialization.
 	RecordInitializationDuration(ctx context.Context, startAt time.Time, meta mcpsdk.Params)
 	// RecordClientCapabilities records the negotiated client capabilities.
@@ -201,15 +202,19 @@ func (m *mcp) RecordMethodCount(ctx context.Context, methodName string, params m
 	m.methodCount.Add(ctx, 1,
 		m.withDefaultAttributes(params,
 			attribute.Key(mcpAttributeMethodName).String(methodName),
-			attribute.String(mcpAttributeStatusName, string(mcpStatusSuccess)),
+			attribute.String(mcpAttributeStatusName, string(MCPStatusSuccess)),
 		))
 }
 
 // RecordMethodErrorCount implements [MCPMetrics.RecordMethodErrorCount].
-func (m *mcp) RecordMethodErrorCount(ctx context.Context, params mcpsdk.Params) {
+func (m *mcp) RecordMethodErrorCount(ctx context.Context, methodName string, params mcpsdk.Params, status MCPStatusType) {
+	if methodName == "" {
+		return
+	}
 	m.methodCount.Add(ctx, 1,
 		m.withDefaultAttributes(params,
-			attribute.String(mcpAttributeStatusName, string(mcpStatusError)),
+			attribute.Key(mcpAttributeMethodName).String(methodName),
+			attribute.String(mcpAttributeStatusName, string(status)),
 		))
 }
 

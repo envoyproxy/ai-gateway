@@ -119,7 +119,7 @@ function ProviderLogo({ name, logoUrl, status }: LLMProvider) {
 
 export default function LLMProviders(): React.ReactElement {
   return (
-    <section className={styles.providersSection}>
+    <section id="llm-providers" className={styles.providersSection}>
       <div className="container">
         <div className={styles.sectionHeader}>
           <Heading as="h2" className={styles.sectionTitle}>

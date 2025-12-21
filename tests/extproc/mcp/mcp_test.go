@@ -207,7 +207,7 @@ func testToolCallDumbEcho(t *testing.T, m *mcpEnv) {
 
 func testToolCallError(t *testing.T, m *mcpEnv) {
 	// Tool execution errors are returned in the content so that the LLM
-	// can process the messages and react to them.
+	// can process the messages and react to them. All errors now create span exceptions.
 	s := m.newSession(t)
 	t.Run("tool error", func(t *testing.T) {
 		const errTool = "tool error"
@@ -220,11 +220,11 @@ func testToolCallError(t *testing.T, m *mcpEnv) {
 		require.Len(t, res.Content, 1)
 		require.IsType(t, &mcp.TextContent{}, res.Content[0])
 		require.Equal(t, errTool, res.Content[0].(*mcp.TextContent).Text)
-		requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolError.Tool.Name, false, "")
+		requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolError.Tool.Name, false, "tool returned isError=true")
 	})
 
 	// Protocol errors or tool invocation errors (such as validation errors) are
-	// returned as errors.
+	// returned as errors and create span exceptions.
 	t.Run("validation error", func(t *testing.T) {
 		res, err := s.session.CallTool(t.Context(), &mcp.CallToolParams{
 			Name:      defaultMCPBackendResourcePrefix + testmcp.ToolError.Tool.Name,
@@ -233,7 +233,7 @@ func testToolCallError(t *testing.T, m *mcpEnv) {
 		require.Error(t, err)
 		require.Nil(t, res)
 		require.Contains(t, err.Error(), "minLength")
-		requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolError.Tool.Name, false, "")
+		requireToolSpanWithExceptionType(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolError.Tool.Name, false, "minLength", "invalid_param")
 	})
 }
 
@@ -455,10 +455,10 @@ func testReadResourceNotFound(t *testing.T, m *mcpEnv) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "Resource not found")
 	require.Nil(t, r)
-	requireMCPSpan(t, m.collector.TakeSpan(), "ReadResource", map[string]string{
+	requireMCPSpanWithException(t, m.collector.TakeSpan(), "ReadResource", map[string]string{
 		"mcp.method.name":  "resources/read",
 		"mcp.resource.uri": defaultMCPBackendResourceURIPrefix + "file:///notfound.txt",
-	})
+	}, "Resource not found")
 }
 
 func testListResourceTemplates(t *testing.T, m *mcpEnv) {
@@ -635,7 +635,8 @@ func testListRootsAndChangeRoots(t *testing.T, m *mcpEnv) {
 	require.Len(t, res.Content, 1)
 	require.IsType(t, &mcp.TextContent{}, res.Content[0])
 	require.Contains(t, res.Content[0].(*mcp.TextContent).Text, fmt.Sprintf("root %q not found", mcpDefaultRootName))
-	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolContainsRootTool.Tool.Name, false, "")
+	// Tool returns isError=true, which now creates an exception
+	requireToolSpan(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolContainsRootTool.Tool.Name, false, "tool returned isError=true")
 
 	requireEventuallyNotificationCountMessages(t, s, m, "roots_list_changed: 1")
 
@@ -908,6 +909,12 @@ func requireEventuallyNotificationCountMessages(t *testing.T, s *mcpSession, m *
 //   - exceptionMessage: expected exception message substring, or empty string
 func requireToolSpan(t *testing.T, span *tracev1.Span, backendName string, toolName string, isNew bool, exceptionMessage string) {
 	t.Helper()
+	requireToolSpanWithExceptionType(t, span, backendName, toolName, isNew, exceptionMessage, "internal_error")
+}
+
+// requireToolSpanWithExceptionType verifies a CallTool span with custom exception type.
+func requireToolSpanWithExceptionType(t *testing.T, span *tracev1.Span, backendName string, toolName string, isNew bool, exceptionMessage string, exceptionType string) {
+	t.Helper()
 
 	requireMCPSpan(t, span, "CallTool", map[string]string{
 		"mcp.method.name": "tools/call",
@@ -927,7 +934,7 @@ func requireToolSpan(t *testing.T, span *tracev1.Span, backendName string, toolN
 		expectedEvents = append(expectedEvents, &tracev1.Span_Event{
 			Name: "exception",
 			Attributes: []*commonv1.KeyValue{
-				{Key: "exception.type", Value: &commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: "internal_error"}}},
+				{Key: "exception.type", Value: &commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: exceptionType}}},
 				{Key: "exception.message", Value: &commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: exceptionMessage}}},
 			},
 		})

@@ -1,0 +1,9 @@
+<svg width="120" height="80" viewBox="0 0 120 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="120" height="80" rx="8" fill="#f8f9fa" stroke="#dee2e6" stroke-width="2"/>
+  <circle cx="35" cy="25" r="8" fill="#6c757d"/>
+  <rect x="50" y="20" width="50" height="4" rx="2" fill="#6c757d"/>
+  <rect x="50" y="28" width="35" height="4" rx="2" fill="#adb5bd"/>
+  <rect x="20" y="45" width="80" height="2" rx="1" fill="#dee2e6"/>
+  <rect x="30" y="55" width="60" height="8" rx="4" fill="#e9ecef"/>
+  <text x="60" y="62" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#6c757d">Your Logo Here</text>
+</svg>

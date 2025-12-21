@@ -105,14 +105,15 @@ func TestRecordMethodCount(t *testing.T) {
 	m.RecordMethodCount(t.Context(), "test_method_name", nil)
 	attrs := attribute.NewSet(
 		attribute.Key(mcpAttributeMethodName).String("test_method_name"),
-		attribute.Key(mcpAttributeStatusName).String(string(mcpStatusSuccess)),
+		attribute.Key(mcpAttributeStatusName).String(string(MCPStatusSuccess)),
 	)
 	val := testotel.GetCounterValue(t, mr, mcpMethodCount, attrs)
 	require.Equal(t, float64(1), val)
 
-	m.RecordMethodErrorCount(t.Context(), nil)
+	m.RecordMethodErrorCount(t.Context(), "test_method_name", nil, MCPStatusError)
 	attrs = attribute.NewSet(
-		attribute.Key(mcpAttributeStatusName).String(string(mcpStatusError)),
+		attribute.Key(mcpAttributeMethodName).String("test_method_name"),
+		attribute.Key(mcpAttributeStatusName).String(string(MCPStatusError)),
 	)
 	val = testotel.GetCounterValue(t, mr, mcpMethodCount, attrs)
 	require.Equal(t, float64(1), val)
