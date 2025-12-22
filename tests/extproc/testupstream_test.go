@@ -76,15 +76,15 @@ func testWithTestUpstream(t *testing.T, dynamicModules bool) {
 			testUpstreamBodyMutationAnthropicBackend,
 			{
 				Name: "testupstream-openai-5xx", Schema: openAISchema, HeaderMutation: &filterapi.HTTPHeaderMutation{
-					Set: []filterapi.HTTPHeader{{Name: testupstreamlib.ResponseStatusKey, Value: "500"}},
-				},
+				Set: []filterapi.HTTPHeader{{Name: testupstreamlib.ResponseStatusKey, Value: "500"}},
+			},
 				ModelNameOverride: "bad-model",
 			},
 			{
 				Name:   "testupstream-anthropic",
 				Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic}, Auth: &filterapi.BackendAuth{
-					AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: "anthropic-api-key"},
-				},
+				AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: "anthropic-api-key"},
+			},
 			},
 		},
 		Models: []filterapi.Model{
@@ -1253,7 +1253,7 @@ data: {"type":"response.completed","sequence_number":10,"response":{"id":"resp_6
 				lastStatusCode = resp.StatusCode
 				lastHeaders = resp.Header
 				return resp.StatusCode == tc.expStatus
-			}, eventuallyTimeout, eventuallyInterval,
+			}, 3*time.Second, 500*time.Millisecond,
 				"Test failed - Last error: %v, Last status code: %d (expected: %d), Last body: %s",
 				lastErr, lastStatusCode, tc.expStatus, lastBody)
 

@@ -93,6 +93,10 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 
 	rf.attemptCount++
 	onRetry := rf.attemptCount > 1
+	if sdk.LogDebugEnabled {
+		sdk.Log(sdk.LogLevelDebug, "upstream filter request headers called, attempt count: %d, onRetry: %v",
+			rf.attemptCount, onRetry)
+	}
 
 	backend, ok := e.GetUpstreamHostMetadataString(internalapi.InternalEndpointMetadataNamespace, internalapi.InternalMetadataBackendNameKey)
 	if !ok {
@@ -198,15 +202,21 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestHea
 
 	// Now mutate the headers based on the backend configuration.
 	be := f.backend.Backend
-	if hm := be.HeaderMutation; hm != nil {
-		sets, removes := headermutator.NewHeaderMutator(be.HeaderMutation, f.routerFilter.originalRequestHeaders).Mutate(f.reqHeaders, f.onRetry)
+	if hm := headermutator.NewHeaderMutator(be.HeaderMutation, f.routerFilter.originalRequestHeaders); hm != nil {
+		sets, removes := hm.Mutate(f.reqHeaders, f.onRetry)
 		for _, h := range sets {
+			if sdk.LogDebugEnabled {
+				sdk.Log(sdk.LogLevelDebug, "setting mutated header %s: %s", h.Key(), h.Value())
+			}
 			if !e.SetRequestHeader(h.Key(), []byte(h.Value())) {
 				return fmt.Errorf("failed to set mutated header %s", h.Key())
 			}
 			f.reqHeaders[h.Key()] = h.Value()
 		}
 		for _, key := range removes {
+			if sdk.LogDebugEnabled {
+				sdk.Log(sdk.LogLevelDebug, "removing mutated header %s", key)
+			}
 			if !e.SetRequestHeader(key, nil) {
 				return fmt.Errorf("failed to remove mutated header %s", key)
 			}
@@ -503,6 +513,11 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 		return fmt.Errorf("failed to read response body for error handling: %w", err)
 	}
 	originalLen := len(bodyBytes)
+	if sdk.LogDebugEnabled {
+		sdk.Log(sdk.LogLevelDebug,
+			"upstream response body on error processing started: original len %d: %s",
+			originalLen, string(bodyBytes))
+	}
 
 	decodingResult, err := decodeContentIfNeeded(bytes.NewBuffer(bodyBytes), f.resHeaders["content-encoding"])
 	if err != nil {
@@ -514,6 +529,11 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 	newHeaders, newBody, err = f.translator.ResponseError(f.resHeaders, decodingResult.reader)
 	if err != nil {
 		return fmt.Errorf("failed to transform response error: %w", err)
+	}
+	if sdk.LogDebugEnabled {
+		sdk.Log(sdk.LogLevelDebug,
+			"replacing error response body: original len %d, new len %d: %s",
+			originalLen, len(newBody), string(newBody))
 	}
 	span := f.routerFilter.span
 	if span != nil {
