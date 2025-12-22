@@ -16,6 +16,7 @@ import (
 	"strconv"
 
 	"github.com/andybalholm/brotli"
+	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
@@ -290,8 +291,15 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBod
 	}
 
 	if bm := b.Backend.BodyMutation; bm != nil {
-		// TODO: Apply body mutation.
-		_ = bm
+		originalRaw := f.routerFilter.originalRequestBodyRaw
+		mutator := bodymutator.NewBodyMutator(bm, originalRaw)
+		var mutatedBody []byte
+		if newBody == nil {
+			mutatedBody, err = mutator.Mutate(originalRaw, f.onRetry)
+		} else {
+			mutatedBody, err = mutator.Mutate(newBody, f.onRetry)
+		}
+		newBody = mutatedBody
 	}
 
 	if newBody != nil {
