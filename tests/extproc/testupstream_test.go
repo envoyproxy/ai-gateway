@@ -76,15 +76,15 @@ func testWithTestUpstream(t *testing.T, dynamicModules bool) {
 			testUpstreamBodyMutationAnthropicBackend,
 			{
 				Name: "testupstream-openai-5xx", Schema: openAISchema, HeaderMutation: &filterapi.HTTPHeaderMutation{
-				Set: []filterapi.HTTPHeader{{Name: testupstreamlib.ResponseStatusKey, Value: "500"}},
-			},
+					Set: []filterapi.HTTPHeader{{Name: testupstreamlib.ResponseStatusKey, Value: "500"}},
+				},
 				ModelNameOverride: "bad-model",
 			},
 			{
 				Name:   "testupstream-anthropic",
 				Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic}, Auth: &filterapi.BackendAuth{
-				AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: "anthropic-api-key"},
-			},
+					AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: "anthropic-api-key"},
+				},
 			},
 		},
 		Models: []filterapi.Model{
