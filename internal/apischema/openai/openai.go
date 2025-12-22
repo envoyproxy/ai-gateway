@@ -1079,6 +1079,7 @@ const (
 )
 
 // GCPGoogleSearchConfig contains GCP-specific configuration for Google Search grounding.
+// https://pkg.go.dev/google.golang.org/genai#GoogleSearch
 type GCPGoogleSearchConfig struct {
 	ExcludeDomains     []string            `json:"exclude_domains,omitempty"`     //nolint:tagliatelle
 	BlockingConfidence string              `json:"blocking_confidence,omitempty"` //nolint:tagliatelle
