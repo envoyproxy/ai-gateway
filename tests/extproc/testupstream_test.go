@@ -1097,13 +1097,15 @@ data: {"type":"message_stop"}
 			expResponseBody: `{"id":"resp_67cc","object":"response","created_at":1741476542,"status":"completed","model":"something","output":[{"type":"message","id":"msg_67c","status":"completed","role":"assistant","content":[{"type":"output_text","text":"This is a test."}]}],"parallel_tool_calls":true,"store":true,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","top_p":1,"truncation":"disabled","usage":{"input_tokens":16,"input_tokens_details":{"cached_tokens":5},"output_tokens":6,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":22}}`,
 		},
 		{
-			name:        "openai - /v1/responses - stream",
-			backend:     "openai",
-			path:        "/v1/responses",
-			method:      http.MethodPost,
-			requestBody: `{"model":"something","input": "Say this is a test.", "stream": true, "instructions":"You are a helpful assistant."}`,
-			expPath:     "/v1/responses",
-			expStatus:   http.StatusOK,
+			name:           "openai - /v1/responses - stream",
+			backend:        "openai",
+			path:           "/v1/responses",
+			method:         http.MethodPost,
+			responseType:   "sse",
+			requestBody:    `{"model":"something","input": "Say this is a test.", "stream": true, "instructions":"You are a helpful assistant."}`,
+			expPath:        "/v1/responses",
+			expStatus:      http.StatusOK,
+			responseStatus: strconv.Itoa(http.StatusOK),
 			responseBody: `event: response.created
 data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_67c","object":"response","created_at":1741290958,"status":"in_progress","error":null,"incomplete_details":null,"instructions":"You are a helpful assistant.","max_output_tokens":null,"model":"gpt-4.1-2025-04-14","output":[],"parallel_tool_calls":true,"previous_response_id":null,"reasoning":{"effort":null,"summary":null},"store":true,"temperature":1.0,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}}}
 
