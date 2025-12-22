@@ -208,7 +208,7 @@ func (ResponsesEndpointSpec) ParseBody(
 func (ResponsesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIResponsesTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
-		return translator.NewResponsesOpenAIToOpenAITranslator(schema.Prefix, modelNameOverride), nil
+		return translator.NewResponsesOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}

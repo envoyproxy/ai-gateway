@@ -204,7 +204,7 @@ curl -H "Content-Type: application/json" \
 - ✅ Streaming and non-streaming responses
 - ✅ Function calling
 - ✅ MCP Tools support
-- ✅ Reasoning 
+- ✅ Reasoning
 - ✅ Multi-turn conversations
 - ✅ Native multimodal support for text and images
 - ✅ Response format specification (including JSON schema)
