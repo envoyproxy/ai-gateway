@@ -311,6 +311,13 @@ func (c ContentUnion) MarshalJSON() ([]byte, error) {
 	return json.Marshal(c.Value)
 }
 
+// EmbeddingInputItem represents a single embedding input with optional metadata
+type EmbeddingInputItem struct {
+	Content  string            `json:"content"`             // The actual text content
+	TaskType EmbeddingTaskType `json:"task_type,omitempty"` // Optional task type
+	Title    string            `json:"title,omitempty"`     // Optional title
+}
+
 // EmbeddingRequestInput is the EmbeddingRequest.Input type.
 type EmbeddingRequestInput struct {
 	Value any
@@ -1524,6 +1531,34 @@ type EmbeddingRequest struct {
 	// User: A unique identifier representing your end-user, which can help OpenAI to monitor and detect abuse.
 	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-user
 	User *string `json:"user,omitempty"`
+
+	// GCPVertexAIEmbeddingVendorFields configures the GCP VertexAI specific fields for embedding during schema translation.
+	*GCPVertexAIEmbeddingVendorFields `json:",inline,omitempty"`
+}
+
+type EmbeddingTaskType string
+
+const (
+	EmbeddingTaskTypeRetrievalQuery     EmbeddingTaskType = "RETRIEVAL_QUERY"
+	EmbeddingTaskTypeRetrievalDocument  EmbeddingTaskType = "RETRIEVAL_DOCUMENT"
+	EmbeddingTaskTypeSemanticSimilarity EmbeddingTaskType = "SEMANTIC_SIMILARITY"
+	EmbeddingTaskTypeClassification     EmbeddingTaskType = "CLASSIFICATION"
+	EmbeddingTaskTypeClustering         EmbeddingTaskType = "CLUSTERING"
+	EmbeddingTaskTypeQuestionAnswering  EmbeddingTaskType = "QUESTION_ANSWERING"
+	EmbeddingTaskTypeFactVerification   EmbeddingTaskType = "FACT_VERIFICATION"
+	EmbeddingTaskTypeCodeRetrievalQuery EmbeddingTaskType = "CODE_RETRIEVAL_QUERY"
+)
+
+// GCPVertexAIEmbeddingVendorFields contains GCP Vertex AI (Gemini) vendor-specific fields for embeddings.
+type GCPVertexAIEmbeddingVendorFields struct {
+	// When set to true, input text will be truncated. When set to false, an error is returned if the input text is longer than the maximum length supported by the model. Defaults to true.
+	// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/text-embeddings-api#parameter-list
+
+	AutoTruncate bool `json:"auto_truncate,omitempty"`
+
+	// This is global task_type set, which is convenient for users. If left blank, the default used is RETRIEVAL_QUERY.
+	// For more information about task types, see https://docs.cloud.google.com/vertex-ai/generative-ai/docs/embeddings/task-types
+	TaskType EmbeddingTaskType `json:"task_type,omitempty"`
 }
 
 // EmbeddingResponse represents a response from /v1/embeddings.
@@ -1558,6 +1593,10 @@ type Embedding struct {
 
 	// Index: The index of the embedding in the list of embeddings.
 	Index int `json:"index"`
+
+	// If the input text was truncated due to having a length longer than the allowed maximum input.
+	// https://github.com/googleapis/go-genai/blob/cb486e101dc66794d52125dd22ff43ff4c0e76a6/types.go#L2807
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 // EmbeddingUnion is a union type that can handle both []float64 and string formats.
