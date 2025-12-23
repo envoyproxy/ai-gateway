@@ -33,6 +33,10 @@ Shows how to configure automatic failover between multiple AI providers for high
 
 Demonstrates usage-based rate limiting to control costs and prevent abuse.
 
+### [Cache Control](cache/cache_control.md)
+
+Shows how to use prompt caching with AWS Bedrock Claude models to reduce costs and improve performance through provider-agnostic cache control.
+
 ### [Monitoring](./monitoring/)
 
 Example setup for comprehensive monitoring and observability with Prometheus and Grafana.
