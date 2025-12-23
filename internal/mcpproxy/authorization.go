@@ -105,18 +105,22 @@ func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, header
 	}
 
 	scopeSet := sets.New[string]()
+	tokenClaims := jwt.MapClaims{}
+
 	token, err := bearerToken(headers.Get("Authorization"))
 	// This is just a sanity check. The actual JWT verification is performed by Envoy before reaching here, and the token
 	// should always be present and valid.
 	if err != nil {
 		m.l.Info("missing or invalid bearer token", slog.String("error", err.Error()))
 	} else {
-		claims := jwt.MapClaims{}
 		// JWT verification is performed by Envoy before reaching here. So we only need to parse the token without verification.
-		if _, _, err := jwt.NewParser().ParseUnverified(token, claims); err != nil {
+		if _, _, err := jwt.NewParser().ParseUnverified(token, tokenClaims); err != nil {
 			m.l.Info("failed to parse JWT token", slog.String("error", err.Error()))
 		}
-		scopeSet = sets.New(extractScopes(claims)...)
+		scopeSet = sets.New(extractScopes(tokenClaims)...)
+
+		// Scopes are handled separately, remove them from the claims map to avoid interference.
+		delete(tokenClaims, "scope")
 	}
 
 	var requiredScopesForChallenge []string
@@ -131,6 +135,10 @@ func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, header
 		// If no source is specified, the rule matches all sources.
 		if rule.Source == nil {
 			return action, nil
+		}
+
+		if !claimsSatisfied(tokenClaims, rule.Source.JWT.Claims) {
+			continue
 		}
 
 		// Scopes check doesn't make much sense if action is deny, we check it anyway.
@@ -239,6 +247,89 @@ func scopesSatisfied(have sets.Set[string], required []string) bool {
 		}
 	}
 	return true
+}
+
+func claimsSatisfied(claims jwt.MapClaims, required []filterapi.JWTClaim) bool {
+	if len(required) == 0 {
+		return true
+	}
+
+	for _, claim := range required {
+		value, ok := lookupClaim(claims, claim.Name)
+		if !ok {
+			return false
+		}
+
+		valueType := claim.ValueType
+		if valueType == "" {
+			valueType = filterapi.JWTClaimValueTypeString
+		}
+
+		switch valueType {
+		case filterapi.JWTClaimValueTypeString:
+			strVal, ok := value.(string)
+			if !ok || !isStringAllowed(strVal, claim.Values) {
+				return false
+			}
+		case filterapi.JWTClaimValueTypeStringArray:
+			if !claimHasAllowedString(value, claim.Values) {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+
+	return true
+}
+
+func lookupClaim(claims map[string]any, path string) (any, bool) {
+	current := any(claims)
+	for _, part := range strings.Split(path, ".") {
+		m, ok := current.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		next, ok := m[part]
+		if !ok {
+			return nil, false
+		}
+		current = next
+	}
+	return current, true
+}
+
+// When the claim is a string, check if it is in the allowed list.
+func isStringAllowed(value string, allowed []string) bool {
+	for _, a := range allowed {
+		if a == value {
+			return true
+		}
+	}
+	return false
+}
+
+// When the claim is an array, check if any of the values is in the allowed list.
+func claimHasAllowedString(value any, allowed []string) bool {
+	switch v := value.(type) {
+	case []string:
+		for _, item := range v {
+			if isStringAllowed(item, allowed) {
+				return true
+			}
+		}
+	case []any:
+		for _, item := range v {
+			if str, ok := item.(string); ok && isStringAllowed(str, allowed) {
+				return true
+			}
+		}
+	// Handle the case where the claim is a single string instead of an array.
+	// This avoids authorization failures when the claim matches but is not in an array.
+	case string:
+		return isStringAllowed(v, allowed)
+	}
+	return false
 }
 
 // buildInsufficientScopeHeader builds the WWW-Authenticate header value for insufficient scope errors.

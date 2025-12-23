@@ -73,6 +73,17 @@ spec:
             jwt:
               scopes:
                 - sum
+              claims:
+                - name: tenant
+                  valueType: String
+                  values:
+                    - acme
+                    - globex
+                - name: org.departments
+                  valueType: StringArray
+                  values:
+                    - engineering
+                    - development
           target:
             tools:
               - backend: mcp-backend-authorization

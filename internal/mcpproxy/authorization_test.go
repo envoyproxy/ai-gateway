@@ -20,14 +20,21 @@ import (
 func strPtr(s string) *string { return &s }
 
 func TestAuthorizeRequest(t *testing.T) {
-	makeToken := func(scopes ...string) string {
+	makeTokenWithClaims := func(extraClaims jwt.MapClaims, scopes ...string) string {
 		claims := jwt.MapClaims{}
+		for k, v := range extraClaims {
+			claims[k] = v
+		}
 		if len(scopes) > 0 {
 			claims["scope"] = scopes
 		}
 		token := jwt.NewWithClaims(jwt.SigningMethodNone, claims)
 		signed, _ := token.SignedString(jwt.UnsafeAllowNoneSignatureType)
 		return signed
+	}
+
+	makeToken := func(scopes ...string) string {
+		return makeTokenWithClaims(jwt.MapClaims{}, scopes...)
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -65,6 +72,259 @@ func TestAuthorizeRequest(t *testing.T) {
 			tool:          "tool1",
 			expectAllowed: true,
 			expectScopes:  nil,
+		},
+		{
+			name: "claims mismatch denies request",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{
+								Scopes: []string{"read"},
+								Claims: []filterapi.JWTClaim{{
+									Name:      "tenant",
+									ValueType: filterapi.JWTClaimValueTypeString,
+									Values:    []string{"acme", "globex"},
+								}},
+							},
+						},
+					},
+				},
+			},
+			header:        "Bearer " + makeTokenWithClaims(jwt.MapClaims{"tenant": "other"}, "read"),
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: false,
+			expectScopes:  nil,
+		},
+		{
+			name: "claims match allows request - first value",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{
+								Scopes: []string{"read"},
+								Claims: []filterapi.JWTClaim{{
+									Name:      "tenant",
+									ValueType: filterapi.JWTClaimValueTypeString,
+									Values:    []string{"acme", "globex"},
+								}},
+							},
+						},
+					},
+				},
+			},
+			header:        "Bearer " + makeTokenWithClaims(jwt.MapClaims{"tenant": "acme"}, "read"),
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: true,
+			expectScopes:  nil,
+		},
+		{
+			name: "claims match allows request - second value",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{
+								Scopes: []string{"read"},
+								Claims: []filterapi.JWTClaim{{
+									Name:      "tenant",
+									ValueType: filterapi.JWTClaimValueTypeString,
+									Values:    []string{"acme", "globex"},
+								}},
+							},
+						},
+					},
+				},
+			},
+			header:        "Bearer " + makeTokenWithClaims(jwt.MapClaims{"tenant": "globex"}, "read"),
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: true,
+			expectScopes:  nil,
+		},
+		{
+			name: "scope mismatch denies request even if claims match",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{
+								Scopes: []string{"admin"},
+								Claims: []filterapi.JWTClaim{{
+									Name:      "tenant",
+									ValueType: filterapi.JWTClaimValueTypeString,
+									Values:    []string{"acme", "globex"},
+								}},
+							},
+						},
+					},
+				},
+			},
+			header:        "Bearer " + makeTokenWithClaims(jwt.MapClaims{"tenant": "acme"}, "read"),
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: false,
+			expectScopes:  []string{"admin"},
+		},
+		{
+			name: "scope and claims match allows request",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{
+								Scopes: []string{"admin"},
+								Claims: []filterapi.JWTClaim{
+									{
+										Name:      "tenant",
+										ValueType: filterapi.JWTClaimValueTypeString,
+										Values:    []string{"acme", "globex"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			header:        "Bearer " + makeTokenWithClaims(jwt.MapClaims{"tenant": "acme"}, "admin"),
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: true,
+		},
+		{
+			name: "matching nested jwt claim string array value",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{
+								Claims: []filterapi.JWTClaim{{
+									Name:      "org.departments",
+									ValueType: filterapi.JWTClaimValueTypeStringArray,
+									Values:    []string{"security", "hr"},
+								}},
+							},
+						},
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "tool1"}},
+						},
+					},
+				},
+			},
+			header: "Bearer " + makeTokenWithClaims(jwt.MapClaims{
+				"org": map[string]any{"departments": []any{"engineering", "security"}},
+			}),
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: true,
+			expectScopes:  nil,
+		},
+		{
+			name: "non-matching nested jwt claim string array value",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{
+								Claims: []filterapi.JWTClaim{{
+									Name:      "org.departments",
+									ValueType: filterapi.JWTClaimValueTypeStringArray,
+									Values:    []string{"operations", "hr"},
+								}},
+							},
+						},
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "tool1"}},
+						},
+					},
+				},
+			},
+			header: "Bearer " + makeTokenWithClaims(jwt.MapClaims{
+				"org": map[string]any{"departments": []any{"engineering", "security"}},
+			}),
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: false,
+			expectScopes:  nil,
+		},
+		{
+			name: "matching nested jwt claim string array single value",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{
+								Claims: []filterapi.JWTClaim{{
+									Name:      "org.departments",
+									ValueType: filterapi.JWTClaimValueTypeStringArray,
+									Values:    []string{"operations", "hr", "engineering"},
+								}},
+							},
+						},
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "tool1"}},
+						},
+					},
+				},
+			},
+			header: "Bearer " + makeTokenWithClaims(jwt.MapClaims{
+				"org": map[string]any{"departments": "engineering"},
+			}),
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: true,
+			expectScopes:  nil,
+		},
+		{
+			name: "complex matching nested jwt claims",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{
+								Scopes: []string{"admin"},
+								Claims: []filterapi.JWTClaim{
+									{
+										Name:      "tenant",
+										ValueType: filterapi.JWTClaimValueTypeString,
+										Values:    []string{"acme", "globex"},
+									},
+									{
+										Name:      "org.departments",
+										ValueType: filterapi.JWTClaimValueTypeStringArray,
+										Values:    []string{"operations", "engineering"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			header:        "Bearer " + makeTokenWithClaims(jwt.MapClaims{"tenant": "acme", "org": map[string]any{"departments": []any{"engineering", "hr"}}}, "admin"),
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: true,
 		},
 		{
 			name: "matching tool scope and arguments CEL",

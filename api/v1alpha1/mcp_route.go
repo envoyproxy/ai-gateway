@@ -249,6 +249,7 @@ type MCPRouteAuthorization struct {
 	//
 	// If no rules are defined, the default action will be applied to all requests.
 	//
+	// +kubebuilder:validation:MaxItems=32
 	// +optional
 	Rules []MCPRouteAuthorizationRule `json:"rules,omitempty"`
 }
@@ -316,6 +317,7 @@ type JWTSource struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxItems=16
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="!self.exists(c, c.name == 'scope')",message="'scope' claim name is reserved for OAuth scopes"
 	Claims []egv1a1.JWTClaim `json:"claims,omitempty"`
 }
 
