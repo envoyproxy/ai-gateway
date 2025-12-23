@@ -99,7 +99,6 @@ func applyCacheControlToTool(tool *awsbedrock.Tool, fields *openai.AnthropicCont
 	}
 }
 
-
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody].
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,

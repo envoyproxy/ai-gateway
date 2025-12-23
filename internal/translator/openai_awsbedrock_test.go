@@ -2447,7 +2447,6 @@ func TestOpenAIToAWSBedrockTranslator_CacheControl(t *testing.T) {
 	}
 }
 
-
 func TestCacheControlHelpers(t *testing.T) {
 	t.Run("isCacheEnabled", func(t *testing.T) {
 		// Test with nil fields

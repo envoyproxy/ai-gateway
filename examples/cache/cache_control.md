@@ -25,27 +25,30 @@ This unified approach ensures your caching implementation works consistently reg
 Choose your preferred provider and ensure you have:
 
 ### For Direct Anthropic
+
 - Anthropic API key
 - Envoy AI Gateway configured for Anthropic (see [Anthropic setup guide](../../site/docs/getting-started/connect-providers/anthropic.md))
 
 ### For GCP Vertex AI
+
 - GCP credentials with Vertex AI access
 - Enabled Claude models in your GCP project
 - Envoy AI Gateway configured for GCP Vertex AI (see [GCP Vertex AI setup guide](../../site/docs/getting-started/connect-providers/gcp-vertexai.md))
 
 ### For AWS Bedrock
+
 - AWS credentials with Bedrock access
 - Enabled Claude models in AWS Bedrock
 - Envoy AI Gateway configured for AWS Bedrock (see [AWS Bedrock setup guide](../../site/docs/getting-started/connect-providers/aws-bedrock.md))
 
 ## Provider-Specific Considerations
 
-| Feature | Anthropic Direct | GCP Vertex AI | AWS Bedrock |
-|---------|-----------------|---------------|-------------|
-| Max Cache Points | No limit | No limit | [4 per request](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html) |
-| Min Token Threshold | 1,024+ tokens | 1,024+ tokens | 1,024+ tokens |
-| Billing Integration | Native | Native | Native |
-| Cache Types | ephemeral | ephemeral | ephemeral |
+| Feature             | Anthropic Direct | GCP Vertex AI | AWS Bedrock                                                                               |
+| ------------------- | ---------------- | ------------- | ----------------------------------------------------------------------------------------- |
+| Max Cache Points    | No limit         | No limit      | [4 per request](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html) |
+| Min Token Threshold | 1,024+ tokens    | 1,024+ tokens | 1,024+ tokens                                                                             |
+| Billing Integration | Native           | Native        | Native                                                                                    |
+| Cache Types         | ephemeral        | ephemeral     | ephemeral                                                                                 |
 
 ## Example Requests
 
