@@ -99,44 +99,6 @@ func applyCacheControlToTool(tool *awsbedrock.Tool, fields *openai.AnthropicCont
 	}
 }
 
-// validateCachePointCount validates that the number of cache points doesn't exceed AWS Bedrock limits.
-// AWS Bedrock supports a maximum of 4 cache checkpoints per request.
-func validateCachePointCount(bedrockReq *awsbedrock.ConverseInput) error {
-	cachePointCount := 0
-
-	// Count cache points in messages
-	for _, message := range bedrockReq.Messages {
-		for _, content := range message.Content {
-			if content.CachePoint != nil {
-				cachePointCount++
-			}
-		}
-	}
-
-	// Count cache points in system blocks
-	if bedrockReq.System != nil {
-		for _, systemBlock := range bedrockReq.System {
-			if systemBlock.CachePoint != nil {
-				cachePointCount++
-			}
-		}
-	}
-
-	// Count cache points in tools
-	if bedrockReq.ToolConfig != nil && bedrockReq.ToolConfig.Tools != nil {
-		for _, tool := range bedrockReq.ToolConfig.Tools {
-			if tool.CachePoint != nil {
-				cachePointCount++
-			}
-		}
-	}
-
-	if cachePointCount > 4 {
-		return fmt.Errorf("AWS Bedrock supports a maximum of 4 cache checkpoints per request, found %d", cachePointCount)
-	}
-
-	return nil
-}
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody].
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
@@ -192,12 +154,6 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, ope
 		if err != nil {
 			return nil, nil, err
 		}
-	}
-
-	// Validate AWS Bedrock cache limitations
-	err = validateCachePointCount(&bedrockReq)
-	if err != nil {
-		return nil, nil, err
 	}
 
 	newBody, err = json.Marshal(bedrockReq)
