@@ -1,0 +1,254 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# Comprehensive tokenize configuration with multiple backends and fallback
+# This example demonstrates:
+# - Multiple tokenize backends (OpenAI, vLLM, GCP Vertex AI, AWS Bedrock, GCP Anthropic)
+# - Provider fallback for high availability
+# - Model-specific routing
+# - Cost-optimized tokenize-before-completion workflow
+
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: Gateway
+metadata:
+  name: envoy-ai-gateway-multi-tokenize
+  namespace: default
+spec:
+  gatewayClassName: envoy-ai-gateway
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-multi-tokenize-routes
+  namespace: default
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway-multi-tokenize
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    # Route Gemini models to GCP Vertex AI for native tokenization
+    - matches:
+        - headers:
+            - type: Regex
+              name: x-ai-eg-model
+              value: "gemini-.*"
+      backendRefs:
+        - name: envoy-ai-gateway-gcp-vertex
+    # Route AWS Bedrock Claude models to AWS Bedrock
+    - matches:
+        - headers:
+            - type: Regex
+              name: x-ai-eg-model
+              value: "anthropic\\.claude-.*-v1:0"
+      backendRefs:
+        - name: envoy-ai-gateway-aws-bedrock
+    # Route GCP Anthropic Claude models to GCP Anthropic
+    - matches:
+        - headers:
+            - type: Regex
+              name: x-ai-eg-model
+              value: "claude-.*"
+      backendRefs:
+        - name: envoy-ai-gateway-gcp-anthropic
+    # Route OpenAI models to OpenAI with vLLM fallback
+    - matches:
+        - headers:
+            - type: Regex
+              name: x-ai-eg-model
+              value: "gpt-.*"
+      backendRefs:
+        - name: envoy-ai-gateway-openai
+          weight: 80 # Primary
+        - name: envoy-ai-gateway-vllm-openai
+          weight: 20 # Fallback/load balancing
+    # Route custom models to vLLM
+    - matches:
+        - headers:
+            - type: Regex
+              name: x-ai-eg-model
+              value: "(llama|mistral|codellama)-.*"
+      backendRefs:
+        - name: envoy-ai-gateway-vllm-custom
+    # Default route with fallback chain
+    - backendRefs:
+        - name: envoy-ai-gateway-openai
+          weight: 60
+        - name: envoy-ai-gateway-gcp-vertex
+          weight: 30
+        - name: envoy-ai-gateway-vllm-openai
+          weight: 10
+---
+# Primary OpenAI Backend
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-openai
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+    version: v1
+  backendRef:
+    name: openai-backend
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: openai-backend
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: api.openai.com
+        port: 443
+---
+# GCP Vertex AI Backend for Gemini models
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-gcp-vertex
+  namespace: default
+spec:
+  schema:
+    name: GCPVertexAI
+    version: v1
+  backendRef:
+    name: gcp-vertex-backend
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: gcp-vertex-backend
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: us-central1-aiplatform.googleapis.com
+        port: 443
+---
+# vLLM Backend for OpenAI-compatible models (fallback)
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-vllm-openai
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+    version: v1
+  backendRef:
+    name: vllm-openai-backend
+    kind: Backend
+    group: gateway.envoyproxy.io
+  # Override to use a specific model for tokenization
+  # modelNameOverride: "gpt-3.5-turbo-equivalent"
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: vllm-openai-backend
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: vllm-openai-compatible.example.com
+        port: 8000
+---
+# vLLM Backend for custom models
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-vllm-custom
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+    version: v1
+  backendRef:
+    name: vllm-custom-backend
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: vllm-custom-backend
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: vllm-custom-models.example.com
+        port: 8000
+---
+# Authentication for OpenAI
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: openai-apikey
+  namespace: default
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: envoy-ai-gateway-openai
+  type: APIKey
+  apiKey:
+    secretRef:
+      name: openai-secret
+      key: api-key
+---
+# Authentication for GCP Vertex AI
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: gcp-vertex-auth
+  namespace: default
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: envoy-ai-gateway-gcp-vertex
+  type: OAuth2
+  oauth2:
+    clientCredentials:
+      clientID: "client-id-placeholder"
+      clientSecret:
+        secretRef:
+          name: gcp-vertex-secret
+          key: service-account-key
+    scopes:
+      - "https://www.googleapis.com/auth/cloud-platform"
+    tokenEndpoint: "https://oauth2.googleapis.com/token"
+---
+# Usage-based rate limiting for tokenize endpoint (optional)
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendRateLimitPolicy
+metadata:
+  name: tokenize-rate-limit
+  namespace: default
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: envoy-ai-gateway-openai
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: envoy-ai-gateway-gcp-vertex
+  rateLimits:
+    - tokenLimit: 1000000 # 1M tokens per minute
+      period: 60s
+---
+# Secrets (create these separately)
+# kubectl create secret generic openai-secret --from-literal=api-key="your-openai-api-key"
+# kubectl create secret generic gcp-vertex-secret --from-file=service-account-key=path/to/service-account.json

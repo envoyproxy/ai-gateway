@@ -564,3 +564,26 @@ type ToolSpecification struct {
 	// Name is a required field.
 	Name *string `json:"name"`
 }
+
+// CountTokensInput represents the request structure for the AWS Bedrock Converse API request for token counting.
+// https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ConverseTokensRequest.html
+type CountTokensInput struct {
+	// The messages to count tokens for
+	// https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Message.html
+	Messages []*Message `json:"messages"`
+
+	// A system prompt to include in token counting
+	// https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_SystemContentBlock.html
+	System []*SystemContentBlock `json:"system,omitempty"`
+
+	// Configuration information for tools to include in token counting
+	// https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ToolConfiguration.html
+	ToolConfig *ToolConfiguration `json:"toolConfig,omitempty"`
+}
+
+// CountTokensResponse represents the response structure for the AWS Bedrock CountTokens API
+// https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CountTokens.html
+type CountTokensResponse struct {
+	// The total number of input tokens that were counted
+	InputTokens int `json:"inputTokens"`
+}

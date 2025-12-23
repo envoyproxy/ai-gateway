@@ -92,6 +92,32 @@ Envoy AI Gateway supports a wide range of AI providers, making it easy to integr
   </table>
 </div>
 
+## Key Features
+
+🚀 **Comprehensive AI API Support**: Compatible with OpenAI, Anthropic, and other leading AI providers
+
+🔄 **Multi-Provider Routing**: Route requests to different AI providers with automatic fallback
+
+📊 **Token Usage Tracking**: Built-in tokenization support for cost estimation and usage monitoring
+
+🛡️ **Security & Authentication**: Advanced authentication and authorization controls
+
+⚖️ **Load Balancing**: Intelligent traffic distribution across multiple AI backends
+
+📈 **Observability**: Full metrics, tracing, and logging for AI API requests
+
+### Supported API Endpoints
+
+- **Chat Completions** (`/v1/chat/completions`) - Stream and non-stream chat responses
+- **Text Completions** (`/v1/completions`) - Legacy completion endpoint support
+- **Embeddings** (`/v1/embeddings`) - Text embedding generation
+- **Tokenize** (`/tokenize`) - Multi-provider token counting with automatic API translation (OpenAI, GCP Vertex AI, AWS Bedrock, GCP Anthropic)
+- **Image Generation** (`/v1/images/generations`) - AI image generation
+- **Rerank** (`/cohere/v2/rerank`) - Document reranking for search
+- **Anthropic Messages** (`/anthropic/v1/messages`) - Native Claude API support
+
+Learn more in our [Supported Endpoints Documentation](https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-endpoints/).
+
 ## Documentation
 
 - [Blog](https://aigateway.envoyproxy.io/blog/introducing-envoy-ai-gateway) introducing Envoy AI Gateway.

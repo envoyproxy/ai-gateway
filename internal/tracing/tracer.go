@@ -171,3 +171,15 @@ func newMessageTracer(tracer trace.Tracer, propagator propagation.TextMapPropaga
 		},
 	)
 }
+
+func newTokenizeTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.TokenizeRecorder, headerAttributes map[string]string) tracing.TokenizeTracer {
+	return newRequestTracer(
+		tracer,
+		propagator,
+		recorder,
+		headerAttributes,
+		func(span trace.Span, recorder tracing.TokenizeRecorder) tracing.TokenizeSpan {
+			return &tokenizeSpan{span: span, recorder: recorder}
+		},
+	)
+}

@@ -1,0 +1,124 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# Example configuration for tokenize endpoint with GCP Vertex AI backend
+# This demonstrates:
+# - GCP Vertex AI Gemini models for tokenization
+# - Authentication with GCP service account
+# - Automatic translation to CountTokens API
+
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: Gateway
+metadata:
+  name: envoy-ai-gateway-gcp-tokenize
+  namespace: default
+spec:
+  gatewayClassName: envoy-ai-gateway
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-gcp-tokenize-routes
+  namespace: default
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway-gcp-tokenize
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    # Route for Gemini models (gemini-1.5-pro, gemini-1.5-flash)
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-backend
+              value: gcp
+      backendRefs:
+        - name: envoy-ai-gateway-gcp-vertex
+    # Default route for tokenize requests
+    - backendRefs:
+        - name: envoy-ai-gateway-gcp-vertex
+---
+# GCP Vertex AI Backend for tokenize
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-gcp-vertex
+  namespace: default
+spec:
+  schema:
+    name: GCPVertexAI
+    version: v1
+  backendRef:
+    name: gcp-vertex-backend
+    kind: Backend
+    group: gateway.envoyproxy.io
+  # Optional: Override model names for specific requests
+  # modelNameOverride: "gemini-1.5-pro"
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: gcp-vertex-backend
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: us-central1-aiplatform.googleapis.com # Adjust region as needed
+        port: 443
+---
+# GCP Authentication using service account
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: gcp-vertex-auth
+  namespace: default
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: envoy-ai-gateway-gcp-vertex
+  type: OAuth2
+  oauth2:
+    clientCredentials:
+      clientID: "client-id-placeholder" # Will be set via service account
+      clientSecret:
+        secretRef:
+          name: gcp-vertex-secret
+          key: service-account-key
+    scopes:
+      - "https://www.googleapis.com/auth/cloud-platform"
+    tokenEndpoint: "https://oauth2.googleapis.com/token"
+---
+# Alternative: GCP Service Account-based authentication
+# This is the recommended approach for GCP Vertex AI
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gcp-vertex-sa
+  namespace: default
+  annotations:
+    iam.gke.io/gcp-service-account: "vertex-ai-service-account@your-project.iam.gserviceaccount.com"
+---
+# Create secrets for GCP service account
+# Option 1: Using service account key file
+# kubectl create secret generic gcp-vertex-secret \
+#   --from-file=service-account-key=path/to/service-account.json
+
+# Option 2: Using Workload Identity (recommended)
+# 1. Create GCP service account:
+# gcloud iam service-accounts create vertex-ai-service-account
+# 2. Grant necessary permissions:
+# gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+#   --member="serviceAccount:vertex-ai-service-account@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+#   --role="roles/aiplatform.user"
+# 3. Enable Workload Identity:
+# gcloud iam service-accounts add-iam-policy-binding \
+#   --role roles/iam.workloadIdentityUser \
+#   --member "serviceAccount:YOUR_PROJECT_ID.svc.id.goog[default/gcp-vertex-sa]" \
+#   vertex-ai-service-account@YOUR_PROJECT_ID.iam.gserviceaccount.com

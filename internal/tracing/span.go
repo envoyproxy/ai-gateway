@@ -11,6 +11,7 @@ import (
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/tokenize"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
@@ -52,4 +53,5 @@ type (
 	imageGenerationSpan = span[openai.ImageGenerationResponse, struct{}]
 	rerankSpan          = span[cohereschema.RerankV2Response, struct{}]
 	messageSpan         = span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+	tokenizeSpan        = span[tokenize.TokenizeResponse, struct{}]
 )
