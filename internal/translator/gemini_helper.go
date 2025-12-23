@@ -6,6 +6,7 @@
 package translator
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -654,9 +655,12 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest, 
 	if openAIReq.N != nil {
 		gc.CandidateCount = int32(*openAIReq.N) // nolint:gosec
 	}
-	if openAIReq.MaxTokens != nil {
-		gc.MaxOutputTokens = int32(*openAIReq.MaxTokens) // nolint:gosec
+
+	maxTokens := cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens)
+	if maxTokens != nil {
+		gc.MaxOutputTokens = int32(*maxTokens) // nolint:gosec
 	}
+
 	if openAIReq.PresencePenalty != nil {
 		gc.PresencePenalty = openAIReq.PresencePenalty
 	}

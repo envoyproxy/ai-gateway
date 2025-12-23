@@ -1029,6 +1029,51 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 			expectedResponseMode:     responseModeNone,
 		},
 		{
+			name: "only MaxTokens set",
+			input: &openai.ChatCompletionRequest{
+				MaxTokens: ptr.To(int64(100)),
+			},
+			expectedGenerationConfig: &genai.GenerationConfig{
+				MaxOutputTokens: 100,
+			},
+			expectedResponseMode: responseModeNone,
+			requestModel:         "gemini-2.5-flash",
+		},
+		{
+			name: "only MaxCompletionTokens set",
+			input: &openai.ChatCompletionRequest{
+				MaxCompletionTokens: ptr.To(int64(200)),
+			},
+			expectedGenerationConfig: &genai.GenerationConfig{
+				MaxOutputTokens: 200,
+			},
+			expectedResponseMode: responseModeNone,
+			requestModel:         "gemini-2.5-flash",
+		},
+		{
+			name: "both MaxCompletionTokens and MaxTokens set - MaxCompletionTokens takes precedence",
+			input: &openai.ChatCompletionRequest{
+				MaxCompletionTokens: ptr.To(int64(300)),
+				MaxTokens:           ptr.To(int64(100)),
+			},
+			expectedGenerationConfig: &genai.GenerationConfig{
+				MaxOutputTokens: 300,
+			},
+			expectedResponseMode: responseModeNone,
+			requestModel:         "gemini-2.5-flash",
+		},
+		{
+			name: "neither MaxCompletionTokens nor MaxTokens set",
+			input: &openai.ChatCompletionRequest{
+				Temperature: ptr.To(0.5),
+			},
+			expectedGenerationConfig: &genai.GenerationConfig{
+				Temperature: ptr.To(float32(0.5)),
+			},
+			expectedResponseMode: responseModeNone,
+			requestModel:         "gemini-2.5-flash",
+		},
+		{
 			name: "stop sequences",
 			input: &openai.ChatCompletionRequest{
 				Stop: openaigo.ChatCompletionNewParamsStopUnion{
