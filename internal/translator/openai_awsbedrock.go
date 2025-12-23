@@ -71,6 +71,73 @@ func getAwsBedrockThinkingMap(tu *openai.ThinkingUnion) map[string]any {
 	return resultMap
 }
 
+// createCachePointBlock creates a cache point block for AWS Bedrock when cache control is enabled.
+func createCachePointBlock() *awsbedrock.CachePointBlock {
+	return &awsbedrock.CachePointBlock{
+		Type: "default",
+	}
+}
+
+// applyCacheControlToContentBlock adds a cache point to a content block if cache control is enabled.
+func applyCacheControlToContentBlock(block *awsbedrock.ContentBlock, fields *openai.AnthropicContentFields) {
+	if isCacheEnabled(fields) {
+		block.CachePoint = createCachePointBlock()
+	}
+}
+
+// applyCacheControlToSystemBlock adds a cache point to a system content block if cache control is enabled.
+func applyCacheControlToSystemBlock(block *awsbedrock.SystemContentBlock, fields *openai.AnthropicContentFields) {
+	if isCacheEnabled(fields) {
+		block.CachePoint = createCachePointBlock()
+	}
+}
+
+// applyCacheControlToTool adds a cache point to a tool if cache control is enabled.
+func applyCacheControlToTool(tool *awsbedrock.Tool, fields *openai.AnthropicContentFields) {
+	if isCacheEnabled(fields) {
+		tool.CachePoint = createCachePointBlock()
+	}
+}
+
+// validateCachePointCount validates that the number of cache points doesn't exceed AWS Bedrock limits.
+// AWS Bedrock supports a maximum of 4 cache checkpoints per request.
+func validateCachePointCount(bedrockReq *awsbedrock.ConverseInput) error {
+	cachePointCount := 0
+
+	// Count cache points in messages
+	for _, message := range bedrockReq.Messages {
+		for _, content := range message.Content {
+			if content.CachePoint != nil {
+				cachePointCount++
+			}
+		}
+	}
+
+	// Count cache points in system blocks
+	if bedrockReq.System != nil {
+		for _, systemBlock := range bedrockReq.System {
+			if systemBlock.CachePoint != nil {
+				cachePointCount++
+			}
+		}
+	}
+
+	// Count cache points in tools
+	if bedrockReq.ToolConfig != nil && bedrockReq.ToolConfig.Tools != nil {
+		for _, tool := range bedrockReq.ToolConfig.Tools {
+			if tool.CachePoint != nil {
+				cachePointCount++
+			}
+		}
+	}
+
+	if cachePointCount > 4 {
+		return fmt.Errorf("AWS Bedrock supports a maximum of 4 cache checkpoints per request, found %d", cachePointCount)
+	}
+
+	return nil
+}
+
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody].
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
@@ -127,6 +194,12 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, ope
 		}
 	}
 
+	// Validate AWS Bedrock cache limitations
+	err = validateCachePointCount(&bedrockReq)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	newBody, err = json.Marshal(bedrockReq)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to marshal body: %w", err)
@@ -161,6 +234,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIToolsToBedrockToolC
 					},
 				},
 			}
+			applyCacheControlToTool(tool, toolDefinition.Function.AnthropicContentFields)
 			tools = append(tools, tool)
 		}
 	}
@@ -222,9 +296,11 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 			contentPart := &contents[i]
 			if contentPart.OfText != nil {
 				textContentPart := contentPart.OfText
-				chatMessage.Content = append(chatMessage.Content, &awsbedrock.ContentBlock{
+				block := &awsbedrock.ContentBlock{
 					Text: &textContentPart.Text,
-				})
+				}
+				applyCacheControlToContentBlock(block, textContentPart.AnthropicContentFields)
+				chatMessage.Content = append(chatMessage.Content, block)
 			} else if contentPart.OfImageURL != nil {
 				imageContentPart := contentPart.OfImageURL
 				contentType, b, err := parseDataURI(imageContentPart.ImageURL.URL)
@@ -246,14 +322,16 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 						contentType)
 				}
 
-				chatMessage.Content = append(chatMessage.Content, &awsbedrock.ContentBlock{
+				block := &awsbedrock.ContentBlock{
 					Image: &awsbedrock.ImageBlock{
 						Format: format,
 						Source: awsbedrock.ImageSource{
 							Bytes: b, // Decoded data as bytes.
 						},
 					},
-				})
+				}
+				applyCacheControlToContentBlock(block, imageContentPart.AnthropicContentFields)
+				chatMessage.Content = append(chatMessage.Content, block)
 			}
 		}
 		return chatMessage, nil
@@ -294,7 +372,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 		switch content.Type {
 		case openai.ChatCompletionAssistantMessageParamContentTypeText:
 			if content.Text != nil {
-				contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: content.Text})
+				block := &awsbedrock.ContentBlock{Text: content.Text}
+				applyCacheControlToContentBlock(block, content.AnthropicContentFields)
+				contentBlocks = append(contentBlocks, block)
 			}
 		case openai.ChatCompletionAssistantMessageParamContentTypeThinking:
 			if content.Text != nil {
@@ -304,21 +384,25 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 				if content.Signature != nil {
 					reasoningText.Signature = *content.Signature
 				}
-				contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{
+				block := &awsbedrock.ContentBlock{
 					ReasoningContent: &awsbedrock.ReasoningContentBlock{
 						ReasoningText: reasoningText,
 					},
-				})
+				}
+				applyCacheControlToContentBlock(block, content.AnthropicContentFields)
+				contentBlocks = append(contentBlocks, block)
 			}
 		case openai.ChatCompletionAssistantMessageParamContentTypeRedactedThinking:
 			if content.RedactedContent != nil {
 				switch v := content.RedactedContent.Value.(type) {
 				case []byte:
-					contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{
+					block := &awsbedrock.ContentBlock{
 						ReasoningContent: &awsbedrock.ReasoningContentBlock{
 							RedactedContent: v,
 						},
-					})
+					}
+					applyCacheControlToContentBlock(block, content.AnthropicContentFields)
+					contentBlocks = append(contentBlocks, block)
 				case string:
 					return nil, fmt.Errorf("AWS Bedrock does not support string format for RedactedContent, expected []byte")
 				default:
@@ -327,7 +411,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 			}
 		case openai.ChatCompletionAssistantMessageParamContentTypeRefusal:
 			if content.Refusal != nil {
-				contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: content.Refusal})
+				block := &awsbedrock.ContentBlock{Text: content.Refusal}
+				applyCacheControlToContentBlock(block, content.AnthropicContentFields)
+				contentBlocks = append(contentBlocks, block)
 			}
 		}
 	}
@@ -364,9 +450,11 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 		for i := range contents {
 			contentPart := &contents[i]
 			textContentPart := contentPart.Text
-			*bedrockSystem = append(*bedrockSystem, &awsbedrock.SystemContentBlock{
+			block := &awsbedrock.SystemContentBlock{
 				Text: textContentPart,
-			})
+			}
+			applyCacheControlToSystemBlock(block, contentPart.AnthropicContentFields)
+			*bedrockSystem = append(*bedrockSystem, block)
 		}
 	} else {
 		return fmt.Errorf("unexpected content type for system message")
@@ -461,9 +549,11 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 					for i := range contents {
 						contentPart := &contents[i]
 						textContentPart := contentPart.Text
-						bedrockReq.System = append(bedrockReq.System, &awsbedrock.SystemContentBlock{
+						block := &awsbedrock.SystemContentBlock{
 							Text: textContentPart,
-						})
+						}
+						applyCacheControlToSystemBlock(block, contentPart.AnthropicContentFields)
+						bedrockReq.System = append(bedrockReq.System, block)
 					}
 				} else {
 					return fmt.Errorf("unexpected content type for developer message")
