@@ -1257,10 +1257,10 @@ func testWithTestUpstream(t *testing.T, dynamicModules bool) {
 				var resp *http.Response
 				resp, lastErr = http.DefaultClient.Do(req)
 				if lastErr != nil {
+					t.Logf("Request error: %v", lastErr)
 					return false
 				}
 				defer func() {
-					_, _ = io.ReadAll(resp.Body)
 					_ = resp.Body.Close()
 				}()
 
@@ -1316,6 +1316,7 @@ func testWithTestUpstream(t *testing.T, dynamicModules bool) {
 			}
 		})
 	}
+	time.Sleep(10 * time.Second)
 
 	t.Run("stream non blocking", func(t *testing.T) {
 		t.Skip()
