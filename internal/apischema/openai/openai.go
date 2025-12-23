@@ -915,7 +915,7 @@ type ChatCompletionRequest struct {
 	LogProbs *bool `json:"logprobs,omitempty"`
 
 	// TopLogProbs is an integer between 0 and 5 specifying the number of most likely tokens to return at each
-	// token position, each with an assRequiredociated log probability.
+	// token position, each with an associated log probability.
 	// logprobs must be set to true if this parameter is used.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-top_logprobs
 	TopLogProbs *int `json:"top_logprobs,omitempty"` //nolint:tagliatelle //follow openai api
