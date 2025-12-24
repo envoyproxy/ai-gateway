@@ -61,9 +61,10 @@ type Env struct {
 	EmbeddingsMetricsFactory,
 	ImageGenerationMetricsFactory,
 	RerankMetricsFactory metrics.Factory
-	Tracing       tracing.Tracing
-	RouterFilters *RouterFilters
-	Logger        *slog.Logger
+	Tracing         tracing.Tracing
+	RouterFilters   *RouterFilters
+	Logger          *slog.Logger
+	DebugLogEnabled bool
 }
 
 // RouterFilters holds the instantiated router filters keyed on the request-id.

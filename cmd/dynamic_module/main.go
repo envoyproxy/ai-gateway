@@ -144,6 +144,7 @@ func (g *globalState) initializeEnv(promRegistry *prometheus.Registry) error {
 		},
 		Logger: sdk.NewSlogLogger(),
 	}
+	g.env.DebugLogEnabled = g.env.Logger.Enabled(ctx, slog.LevelDebug)
 	return nil
 }
 

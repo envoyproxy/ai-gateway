@@ -41,9 +41,10 @@ type (
 	}
 	// upstreamFilter implements [sdk.HTTPFilter].
 	upstreamFilter struct {
-		logger      *slog.Logger
-		env         *Env
-		typedFilter upstreamFilterTypedIface
+		logger          *slog.Logger
+		debugLogEnabled bool
+		env             *Env
+		typedFilter     upstreamFilterTypedIface
 	}
 
 	upstreamFilterTypedIface interface {
@@ -55,10 +56,11 @@ type (
 	}
 
 	upstreamFilterTyped[ReqT, RespT, RespChunkT any, EndpointSpec endpointspec.Spec[ReqT, RespT, RespChunkT]] struct {
-		logger       *slog.Logger
-		routerFilter *routerFilterTyped[ReqT, RespT, RespChunkT, EndpointSpec]
-		translator   translator.Translator[ReqT, tracing.Span[RespT, RespChunkT]]
-		metrics      metrics.Metrics
+		logger          *slog.Logger
+		debugLogEnabled bool
+		routerFilter    *routerFilterTyped[ReqT, RespT, RespChunkT, EndpointSpec]
+		translator      translator.Translator[ReqT, tracing.Span[RespT, RespChunkT]]
+		metrics         metrics.Metrics
 
 		onRetry                bool
 		reqHeaders, resHeaders map[string]string
@@ -74,7 +76,7 @@ func NewUpstreamFilterConfig(env *Env) sdk.HTTPFilterConfig {
 
 // NewFilter implements [sdk.HTTPFilterConfig].
 func (f *upstreamFilterConfig) NewFilter() sdk.HTTPFilter {
-	return &upstreamFilter{env: f.env, logger: f.logger}
+	return &upstreamFilter{env: f.env, logger: f.logger, debugLogEnabled: f.env.DebugLogEnabled}
 }
 
 // OnDestroy implements [sdk.HTTPFilter].
@@ -101,7 +103,7 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 
 	rf.attemptCount++
 	onRetry := rf.attemptCount > 1
-	if f.logger.Enabled(context.Background(), slog.LevelDebug) {
+	if f.debugLogEnabled {
 		f.logger.Debug("upstream filter request headers called",
 			slog.Int("attempt_count", rf.attemptCount),
 			slog.Bool("on_retry", onRetry))
@@ -126,10 +128,11 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 		m = f.env.ChatCompletionMetricsFactory.NewMetrics()
 		typed := &upstreamFilterTyped[openai.ChatCompletionRequest,
 			openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]{
-			metrics: m,
-			onRetry: onRetry,
-			backend: b,
-			logger:  f.logger,
+			metrics:         m,
+			onRetry:         onRetry,
+			backend:         b,
+			logger:          f.logger,
+			debugLogEnabled: f.debugLogEnabled,
 			routerFilter: rf.typedFilter.(*routerFilterTyped[openai.ChatCompletionRequest,
 				openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]),
 		}
@@ -139,10 +142,11 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 		m = f.env.CompletionMetricsFactory.NewMetrics()
 		typed := &upstreamFilterTyped[openai.CompletionRequest,
 			openai.CompletionResponse, openai.CompletionResponse, endpointspec.CompletionsEndpointSpec]{
-			onRetry: onRetry,
-			metrics: m,
-			backend: b,
-			logger:  f.logger,
+			onRetry:         onRetry,
+			metrics:         m,
+			backend:         b,
+			logger:          f.logger,
+			debugLogEnabled: f.debugLogEnabled,
 			routerFilter: rf.typedFilter.(*routerFilterTyped[openai.CompletionRequest,
 				openai.CompletionResponse, openai.CompletionResponse, endpointspec.CompletionsEndpointSpec]),
 		}
@@ -152,10 +156,11 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 		m = f.env.EmbeddingsMetricsFactory.NewMetrics()
 		typed := &upstreamFilterTyped[openai.EmbeddingRequest,
 			openai.EmbeddingResponse, struct{}, endpointspec.EmbeddingsEndpointSpec]{
-			onRetry: onRetry,
-			metrics: m,
-			backend: b,
-			logger:  f.logger,
+			onRetry:         onRetry,
+			metrics:         m,
+			backend:         b,
+			logger:          f.logger,
+			debugLogEnabled: f.debugLogEnabled,
 			routerFilter: rf.typedFilter.(*routerFilterTyped[openai.EmbeddingRequest,
 				openai.EmbeddingResponse, struct{}, endpointspec.EmbeddingsEndpointSpec]),
 		}
@@ -165,10 +170,11 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 		m = f.env.ImageGenerationMetricsFactory.NewMetrics()
 		typed := &upstreamFilterTyped[openai.ImageGenerationRequest,
 			openai.ImageGenerationResponse, struct{}, endpointspec.ImageGenerationEndpointSpec]{
-			onRetry: onRetry,
-			metrics: m,
-			backend: b,
-			logger:  f.logger,
+			onRetry:         onRetry,
+			metrics:         m,
+			backend:         b,
+			logger:          f.logger,
+			debugLogEnabled: f.debugLogEnabled,
 			routerFilter: rf.typedFilter.(*routerFilterTyped[openai.ImageGenerationRequest,
 				openai.ImageGenerationResponse, struct{}, endpointspec.ImageGenerationEndpointSpec]),
 		}
@@ -178,10 +184,11 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 		m = f.env.RerankMetricsFactory.NewMetrics()
 		typed := &upstreamFilterTyped[cohereschema.RerankV2Request,
 			cohereschema.RerankV2Response, struct{}, endpointspec.RerankEndpointSpec]{
-			onRetry: onRetry,
-			metrics: m,
-			backend: b,
-			logger:  f.logger,
+			onRetry:         onRetry,
+			metrics:         m,
+			backend:         b,
+			logger:          f.logger,
+			debugLogEnabled: f.debugLogEnabled,
 			routerFilter: rf.typedFilter.(*routerFilterTyped[cohereschema.RerankV2Request,
 				cohereschema.RerankV2Response, struct{}, endpointspec.RerankEndpointSpec]),
 		}
@@ -191,10 +198,11 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 		m = f.env.MessagesMetricsFactory.NewMetrics()
 		typed := &upstreamFilterTyped[anthropic.MessagesRequest,
 			anthropic.MessagesResponse, anthropic.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]{
-			onRetry: onRetry,
-			metrics: m,
-			backend: b,
-			logger:  f.logger,
+			onRetry:         onRetry,
+			metrics:         m,
+			backend:         b,
+			logger:          f.logger,
+			debugLogEnabled: f.debugLogEnabled,
 			routerFilter: rf.typedFilter.(*routerFilterTyped[anthropic.MessagesRequest,
 				anthropic.MessagesResponse, anthropic.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]),
 		}
@@ -204,10 +212,11 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 		m = f.env.MessagesMetricsFactory.NewMetrics()
 		typed := &upstreamFilterTyped[openai.ResponseRequest,
 			openai.Response, openai.ResponseStreamEventUnion, endpointspec.ResponsesEndpointSpec]{
-			onRetry: onRetry,
-			metrics: m,
-			backend: b,
-			logger:  f.logger,
+			onRetry:         onRetry,
+			metrics:         m,
+			backend:         b,
+			logger:          f.logger,
+			debugLogEnabled: f.debugLogEnabled,
 			routerFilter: rf.typedFilter.(*routerFilterTyped[openai.ResponseRequest,
 				openai.Response, openai.ResponseStreamEventUnion, endpointspec.ResponsesEndpointSpec]),
 		}
@@ -240,7 +249,7 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestHea
 	be := f.backend.Backend
 	if hm := headermutator.NewHeaderMutator(be.HeaderMutation, f.routerFilter.originalRequestHeaders); hm != nil {
 		sets, removes := hm.Mutate(f.reqHeaders, f.onRetry)
-		if f.logger.Enabled(context.Background(), slog.LevelDebug) {
+		if f.debugLogEnabled {
 			f.logger.Debug("setting mutated header",
 				slog.Any("sets", sets),
 				slog.Any("removes", removes))
@@ -263,7 +272,7 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestHea
 
 // RequestBody implements [sdk.HTTPFilter].
 func (f *upstreamFilter) RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.RequestBodyStatus {
-	if f.logger.Enabled(context.Background(), slog.LevelDebug) {
+	if f.debugLogEnabled {
 		f.logger.Debug("upstream request body called", slog.Bool("end_of_stream", endOfStream))
 	}
 	if !endOfStream {
@@ -306,7 +315,7 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBod
 	if err != nil {
 		return fmt.Errorf("failed to translate request body for upstream: %w", err)
 	}
-	if f.logger.Enabled(context.Background(), slog.LevelDebug) {
+	if f.debugLogEnabled {
 		f.logger.Debug("upstream request body translated",
 			slog.Any("new_headers", newHeaders),
 			slog.Int("new_body_length", len(newBody)),
@@ -426,7 +435,7 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 	if f.routerFilter.Stream() {
 		body, ok = e.GetReceivedResponseBody()
 		if !ok {
-			if f.logger.Enabled(context.Background(), slog.LevelDebug) {
+			if f.debugLogEnabled {
 				f.logger.Debug("no received response body to process",
 					slog.Bool("end_of_stream", endOfStream))
 			}
@@ -592,7 +601,7 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 		return fmt.Errorf("failed to read response body for error handling: %w", err)
 	}
 	originalLen := len(bodyBytes)
-	if f.logger.Enabled(context.Background(), slog.LevelDebug) {
+	if f.debugLogEnabled {
 		f.logger.Debug("upstream response body on error processing started",
 			slog.Int("original_length", originalLen),
 			slog.String("body", string(bodyBytes)))
@@ -627,7 +636,7 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 		}
 	}
 	if newBody != nil {
-		if f.logger.Enabled(context.Background(), slog.LevelDebug) {
+		if f.debugLogEnabled {
 			f.logger.Debug("replacing error response body",
 				slog.Int("original_length", originalLen),
 				slog.Int("new_length", len(newBody)),
