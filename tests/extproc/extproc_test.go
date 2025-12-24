@@ -153,6 +153,7 @@ func TestMain(m *testing.M) {
 		"port_value: "+strconv.Itoa(errorServerTLSDefaultPort),
 		"port_value: "+strconv.Itoa(errorServerTLSPort),
 	)
+
 	envoyConfigWithDynamicModules = strings.ReplaceAll(
 		envoyConfigWithDynamicModules,
 		"port_value: "+strconv.Itoa(errorServerDefaultPort),
