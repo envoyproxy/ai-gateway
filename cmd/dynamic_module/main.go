@@ -50,18 +50,15 @@ func init() {
 	}
 
 	err := startAdminServer(
+		g.env.Logger,
 		os.Getenv(envAdminAddress),
 		promRegistry)
 	if err != nil {
 		panic("failed to start admin server: " + err.Error())
 	}
 
-	// TODO: use a writer implemented with the Logger ABI of Envoy.
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug, // Adjust log level from environment variable if needed.
-	}))
 	if err := filterapi.StartConfigWatcher(context.Background(),
-		os.Getenv(envFilterConfigPath), g, logger, time.Second*5); err != nil {
+		os.Getenv(envFilterConfigPath), g, g.env.Logger, time.Second*5); err != nil {
 		panic("failed to start filter config watcher: " + err.Error())
 	}
 	sdk.NewHTTPFilterConfig = g.newHTTPFilterConfig
@@ -145,18 +142,19 @@ func (g *globalState) initializeEnv(promRegistry *prometheus.Registry) error {
 		RouterFilters: &dynamicmodule.RouterFilters{
 			Filters: make(map[string]sdk.HTTPFilter),
 		},
+		Logger: sdk.NewSlogLogger(),
 	}
 	return nil
 }
 
-func startAdminServer(address string, registry prometheus.Gatherer) error {
+func startAdminServer(l *slog.Logger, address string, registry prometheus.Gatherer) error {
 	var lc net.ListenConfig
 	lis, err := lc.Listen(context.Background(), "tcp", address)
 	if err != nil {
 		return fmt.Errorf("failed to listen for admin: %w", err)
 	}
 
-	sdk.Log(sdk.LogLevelInfo, "admin server listening on %s", address)
+	l.Info("admin server listening on " + address)
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(
@@ -165,9 +163,10 @@ func startAdminServer(address string, registry prometheus.Gatherer) error {
 	))
 	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
-		sdk.Log(sdk.LogLevelInfo, "starting admin server on %s", address)
+		//sdk.Log(sdk.LogLevelInfo, "starting admin server on %s", address)
+		l.Info("starting admin server on " + address)
 		if err := server.Serve(lis); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			sdk.Log(sdk.LogLevelError, "admin server failed: %v", err)
+			l.Error("admin server failed: " + err.Error())
 		}
 	}()
 	return nil

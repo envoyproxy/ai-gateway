@@ -6,6 +6,7 @@
 package dynamicmodule
 
 import (
+	"log/slog"
 	"sync"
 
 	"github.com/envoyproxy/ai-gateway/internal/dynamicmodule/sdk"
@@ -62,6 +63,7 @@ type Env struct {
 	RerankMetricsFactory metrics.Factory
 	Tracing       tracing.Tracing
 	RouterFilters *RouterFilters
+	Logger        *slog.Logger
 }
 
 // RouterFilters holds the instantiated router filters keyed on the request-id.

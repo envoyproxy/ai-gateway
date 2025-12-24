@@ -136,36 +136,3 @@ const (
 	ResponseBodyStatusContinue               ResponseBodyStatus = 0
 	ResponseBodyStatusStopIterationAndBuffer ResponseBodyStatus = 1
 )
-
-type LogLevel int
-
-const (
-	LogLevelTrace LogLevel = iota
-	LogLevelDebug
-	LogLevelInfo
-	LogLevelWarn
-	LogLevelError
-	LogLevelCritical
-	LogLevelOff
-)
-
-func (l LogLevel) String() string {
-	switch l {
-	case LogLevelTrace:
-		return "TRACE"
-	case LogLevelDebug:
-		return "DEBUG"
-	case LogLevelInfo:
-		return "INFO"
-	case LogLevelWarn:
-		return "WARN"
-	case LogLevelError:
-		return "ERROR"
-	case LogLevelCritical:
-		return "CRITICAL"
-	case LogLevelOff:
-		return "OFF"
-	default:
-		return "UNKNOWN"
-	}
-}

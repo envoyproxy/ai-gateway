@@ -742,22 +742,6 @@ static_resources:
                   name: aigateway
                   do_not_close: true
                 filter_name: ai_gateway.upstream
-            - name: lua
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-                default_source_code:
-                  inline_string: |
-                    function envoy_on_request(handle)
-                      local headers = handle:headers()
-                      for k, v in pairs(headers) do
-                        handle:logErr("Header: " .. k .. " = " .. v)
-                      end
-                      local body = handle:body(false)
-                      local data = body:getBytes(0, body:length())
-                      handle:logErr(tostring(data))
-                    end
-                    function envoy_on_response(handle)
-                    end
             - name: envoy.filters.http.upstream_codec
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec

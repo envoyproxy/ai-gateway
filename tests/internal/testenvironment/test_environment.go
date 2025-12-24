@@ -292,7 +292,7 @@ func requireEnvoy(t testing.TB,
 		// This allows multiple Envoy instances to run in parallel.
 		"--base-id", strconv.Itoa(time.Now().Nanosecond()),
 		// Add debug logging for http.
-		"--component-log-level", "http:warn,dynamic_modules:warn",
+		"--component-log-level", "http:warn,dynamic_modules:debug",
 	)
 	// func-e will use the version specified in the project root's .envoy-version file.
 	cmd.Dir = internaltesting.FindProjectRoot()
@@ -317,7 +317,7 @@ func requireEnvoy(t testing.TB,
 	})
 
 	// wait for the ready message or exit.
-	StartAndAwaitReady(t, cmd, stdout, stderr, "starting main dispatch loop")
+	StartAndAwaitReady(t, cmd, stdout, stdout, "starting main dispatch loop")
 }
 
 // requireExtProc starts the external processor with the given configuration.

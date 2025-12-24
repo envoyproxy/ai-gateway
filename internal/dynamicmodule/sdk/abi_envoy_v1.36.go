@@ -200,8 +200,8 @@ bool envoy_dynamic_module_callback_http_get_metadata_string(
 import "C"
 
 import (
-	"fmt"
 	"io"
+	"log/slog"
 	"runtime"
 	"unsafe"
 )
@@ -209,32 +209,52 @@ import (
 // https://github.com/envoyproxy/envoy/blob/bad8280de85c25b147a90c1d9b8a8c67a13e7134/source/extensions/dynamic_modules/abi_version.h#L9C28-L9C92
 var version = append([]byte("7ee559f16f35086fa7dc9ed380e2efc6b4d89031a001fb504aa71eccd25882f7"), 0)
 
-var (
-	LogDebugEnabled = func() bool {
-		// This can change at runtime but for now we just read it once.
-		ret := C.envoy_dynamic_module_callback_log_enabled(C.uintptr_t(LogLevelDebug))
-		return bool(ret)
-	}()
-	LogInfoEnabled = func() bool {
-		// This can change at runtime but for now we just read it once.
-		ret := C.envoy_dynamic_module_callback_log_enabled(C.uintptr_t(LogLevelInfo))
-		return bool(ret)
-	}()
-)
-
-func Log(level LogLevel, format string, args ...interface{}) {
-	message := format
-	if len(args) > 0 {
-		message = fmt.Sprintf(format, args...)
+func init() {
+	logFunc = func(slevel slog.Level, message string) {
+		var level logLevel
+		switch slevel {
+		case slog.LevelDebug:
+			level = logLevelDebug
+		case slog.LevelInfo:
+			level = logLevelInfo
+		case slog.LevelWarn:
+			level = logLevelWarn
+		case slog.LevelError:
+			level = logLevelError
+		}
+		messagePtr := uintptr(unsafe.Pointer(unsafe.StringData(message)))
+		C.envoy_dynamic_module_callback_log(
+			C.uintptr_t(level),
+			C.uintptr_t(messagePtr),
+			C.size_t(len(message)),
+		)
+		runtime.KeepAlive(message)
 	}
-	messagePtr := uintptr(unsafe.Pointer(unsafe.StringData(message)))
-	C.envoy_dynamic_module_callback_log(
-		C.uintptr_t(level),
-		C.uintptr_t(messagePtr),
-		C.size_t(len(message)),
-	)
-	runtime.KeepAlive(message)
+	switch {
+	case bool(C.envoy_dynamic_module_callback_log_enabled(C.uintptr_t(logLevelTrace))):
+		logLevelEnabledOnEnvoy = slog.LevelDebug
+	case bool(C.envoy_dynamic_module_callback_log_enabled(C.uintptr_t(logLevelDebug))):
+		logLevelEnabledOnEnvoy = slog.LevelDebug
+	case bool(C.envoy_dynamic_module_callback_log_enabled(C.uintptr_t(logLevelInfo))):
+		logLevelEnabledOnEnvoy = slog.LevelInfo
+	case bool(C.envoy_dynamic_module_callback_log_enabled(C.uintptr_t(logLevelWarn))):
+		logLevelEnabledOnEnvoy = slog.LevelWarn
+	case bool(C.envoy_dynamic_module_callback_log_enabled(C.uintptr_t(logLevelError))):
+		logLevelEnabledOnEnvoy = slog.LevelError
+	default:
+		logLevelEnabledOnEnvoy = slog.Level(100) // Disable all logging
+	}
 }
+
+type logLevel int
+
+const (
+	logLevelTrace logLevel = iota
+	logLevelDebug
+	logLevelInfo
+	logLevelWarn
+	logLevelError
+)
 
 //export envoy_dynamic_module_on_program_init
 func envoy_dynamic_module_on_program_init() uintptr {
