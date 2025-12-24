@@ -163,7 +163,7 @@ func startAdminServer(l *slog.Logger, address string, registry prometheus.Gather
 	))
 	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
-		//sdk.Log(sdk.LogLevelInfo, "starting admin server on %s", address)
+		// sdk.Log(sdk.LogLevelInfo, "starting admin server on %s", address)
 		l.Info("starting admin server on " + address)
 		if err := server.Serve(lis); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			l.Error("admin server failed: " + err.Error())

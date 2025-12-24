@@ -1,3 +1,8 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
 package sdk
 
 import (
@@ -38,11 +43,9 @@ func (h *handler) Enabled(_ context.Context, level slog.Level) bool {
 
 // Handle implements [slog.Handler].
 func (h *handler) Handle(_ context.Context, r slog.Record) error {
-	// Build message
 	var b strings.Builder
 	b.WriteString(r.Message)
 
-	// Attach attrs from WithAttrs / WithGroup
 	h.mu.Lock()
 	attrs := append([]slog.Attr(nil), h.attrs...)
 	groups := append([]string(nil), h.groups...)
@@ -55,12 +58,10 @@ func (h *handler) Handle(_ context.Context, r slog.Record) error {
 		return true
 	})
 
-	// Render attrs: msg key=value ...
-	// (You can switch to JSON if you prefer.)
-	all := append(attrs, recAttrs...)
-	if len(all) > 0 {
+	attrs = append(attrs, recAttrs...)
+	if len(attrs) > 0 {
 		b.WriteString(" ")
-		renderAttrs(&b, groups, all)
+		renderAttrs(&b, groups, attrs)
 	}
 
 	logFunc(r.Level, b.String())
