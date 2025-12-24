@@ -618,7 +618,6 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 		}
 	}
 	if newBody != nil {
-		//}
 		if f.logger.Enabled(context.Background(), slog.LevelDebug) {
 			f.logger.Debug("replacing error response body",
 				slog.Int("original_length", originalLen),
