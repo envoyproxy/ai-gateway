@@ -192,7 +192,7 @@ test-extproc: build.extproc ## Run the integration tests for extproc without con
 	@EXTPROC_BIN=$(OUTPUT_DIR)/extproc-$(shell go env GOOS)-$(shell go env GOARCH) go test ./tests/extproc/... $(GO_TEST_E2E_ARGS)
 
 .PHONY: test-dynamic-module # This requires the extproc binary to be built.
-test-dynamic-module: build-dynamic-module ## Run the integration tests for extproc without controller or k8s at all.
+test-dynamic-module: build-dynamic-module ## Run the integration tests for dynamic module with Envoy, almost identical to test-extproc.
 	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
 	@echo "Ensure func-e is built and Envoy is installed"
 	@@$(GO_TOOL) func-e run --version >/dev/null 2>&1
