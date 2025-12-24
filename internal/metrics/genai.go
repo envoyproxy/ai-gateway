@@ -29,6 +29,7 @@ const (
 	GenAIOperationEmbedding       GenAIOperation = "embeddings"
 	GenAIOperationMessages        GenAIOperation = "messages"
 	GenAIOperationImageGeneration GenAIOperation = "image_generation"
+	GenAIOperationResponses       GenAIOperation = "responses"
 	GenAIOperationRerank          GenAIOperation = "rerank"
 	genaiProviderOpenAI                          = "openai"
 	genaiProviderAWSBedrock                      = "aws.bedrock"

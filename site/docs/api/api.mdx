@@ -1457,6 +1457,8 @@ JWKS defines how to obtain JSON Web Key Sets (JWKS) either from a remote HTTP/HT
 - [MCPAuthorizationSource](#mcpauthorizationsource)
 
 JWTSource defines the MCP authorization source for JWT tokens.
+At least one of scopes or claims must be provided.
+Scopes and claims are AND-ed: when both are specified, both sets must match.
 
 ##### Fields
 
@@ -1465,8 +1467,13 @@ JWTSource defines the MCP authorization source for JWT tokens.
 <ApiField
   name="scopes"
   type="JWTScope array"
-  required="true"
+  required="false"
   description="Scopes defines the list of JWT scopes required for the rule.<br />If multiple scopes are specified, all scopes must be present in the JWT for the rule to match."
+/><ApiField
+  name="claims"
+  type="JWTClaim array"
+  required="false"
+  description="Claims defines the list of JWT claims required for the rule. Each claim must exist on the token<br />and have at least one of the expected values. Use to enforce tenant or subject-based access."
 />
 
 

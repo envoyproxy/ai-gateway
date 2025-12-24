@@ -513,9 +513,18 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 					for i, scope := range rule.Source.JWT.Scopes {
 						scopes[i] = string(scope)
 					}
+					claims := make([]filterapi.JWTClaim, len(rule.Source.JWT.Claims))
+					for i, claim := range rule.Source.JWT.Claims {
+						claims[i] = filterapi.JWTClaim{
+							Name:      claim.Name,
+							ValueType: filterapi.JWTClaimValueType(ptr.Deref(claim.ValueType, egv1a1.JWTClaimValueTypeString)),
+							Values:    append([]string(nil), claim.Values...),
+						}
+					}
 					mcpRule.Source = &filterapi.MCPAuthorizationSource{
 						JWT: filterapi.JWTSource{
 							Scopes: scopes,
+							Claims: claims,
 						},
 					}
 				}

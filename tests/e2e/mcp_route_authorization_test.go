@@ -56,8 +56,13 @@ func TestMCPRouteAuthorization(t *testing.T) {
 
 	client := mcp.NewClient(&mcp.Implementation{Name: "demo-http-client", Version: "0.1.0"}, nil)
 
-	t.Run("allow rules with matching scopes", func(t *testing.T) {
-		token := makeSignedJWT(t, "sum")
+	t.Run("allow rules with matching scopes and claims", func(t *testing.T) {
+		token := makeSignedJWTWithClaims(t, jwt.MapClaims{
+			"tenant": "acme",
+			"org": map[string]any{
+				"departments": []any{"engineering", "operations"},
+			},
+		}, "sum")
 		authHTTPClient := &http.Client{
 			Timeout: 10 * time.Second,
 			Transport: &bearerTokenTransport{
@@ -74,6 +79,37 @@ func TestMCPRouteAuthorization(t *testing.T) {
 		})
 
 		requireSumToolResult(ctx, t, sess, 41, 1, "42")
+	})
+
+	t.Run("access denied with matching scopes and mismatching claims", func(t *testing.T) {
+		token := makeSignedJWTWithClaims(t, jwt.MapClaims{
+			"tenant": "acme",
+			"org": map[string]any{
+				"departments": []any{"hr"},
+			},
+		}, "sum")
+		authHTTPClient := &http.Client{
+			Timeout: 10 * time.Second,
+			Transport: &bearerTokenTransport{
+				token: token,
+			},
+		}
+
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		sess := requireConnectMCP(ctx, t, client, fmt.Sprintf("%s/mcp-authorization", fwd.Address()), authHTTPClient)
+		t.Cleanup(func() {
+			_ = sess.Close()
+		})
+
+		_, err := sess.CallTool(ctx, &mcp.CallToolParams{
+			Name:      "mcp-backend-authorization__" + testmcp.ToolSum.Tool.Name,
+			Arguments: testmcp.ToolSumArgs{A: 41, B: 1},
+		})
+		require.Error(t, err)
+		errMsg := strings.ToLower(err.Error())
+		require.Contains(t, errMsg, "forbidden", "unexpected error: %v", err)
 	})
 
 	t.Run("matching scopes and arguments", func(t *testing.T) {
@@ -284,17 +320,15 @@ func requireSumToolResult(ctx context.Context, t *testing.T, sess *mcp.ClientSes
 
 func makeSignedJWT(t *testing.T, scopes ...string) string {
 	t.Helper()
+	return makeSignedJWTWithClaims(t, jwt.MapClaims{}, scopes...)
+}
 
-	claims := jwt.MapClaims{
-		"iss":        "https://auth-server.example.com",
-		"aud":        "mcp-test",
-		"sub":        "robin",
-		"client_id":  "my_mcp_gateway",
-		"scope":      strings.Join(scopes, " "),
-		"exp":        time.Now().Add(30 * time.Minute).Unix(),
-		"iat":        time.Now().Unix(),
-		"auth_time":  time.Now().Unix(),
-		"token_type": "Bearer",
+func makeSignedJWTWithClaims(t *testing.T, claims jwt.MapClaims, scopes ...string) string {
+	t.Helper()
+
+	if len(scopes) > 0 {
+		claims["scope"] = strings.Join(scopes, " ")
+		claims["exp"] = time.Now().Add(30 * time.Minute).Unix()
 	}
 
 	key := jwkPrivateKey(t)
