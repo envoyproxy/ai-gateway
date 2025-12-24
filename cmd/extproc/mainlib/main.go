@@ -360,7 +360,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	}()
 
 	// Emit startup message to stderr when all listeners are ready.
-	fmt.Println("AI Gateway External Processor is ready") // Intentionally not using slog for this to unconditionally emit to stdout.
+	fmt.Fprintf(stderr, "AI Gateway External Processor is ready") // Intentionally not using slog for this to unconditionally emit to stdout.
 	return s.Serve(extProcLis)
 }
 
