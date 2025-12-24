@@ -204,6 +204,12 @@ bool envoy_dynamic_module_callback_http_get_metadata_string(
 	uintptr_t namespace_ptr, size_t namespace_size,
 	uintptr_t key_ptr, size_t key_size,
 	uintptr_t* result_ptr, size_t* result_size);
+
+#cgo noescape envoy_dynamic_module_callback_http_clear_route_cache
+#cgo nocallback envoy_dynamic_module_callback_http_clear_route_cache
+void envoy_dynamic_module_callback_http_clear_route_cache(
+	uintptr_t filter_envoy_ptr);
+
 */
 import "C"
 
@@ -875,4 +881,11 @@ func (e envoyFilter) SetDynamicMetadataNumber(namespace string, key string, valu
 	runtime.KeepAlive(namespace)
 	runtime.KeepAlive(key)
 	return bool(ret)
+}
+
+// ClearRouteCache implements [EnvoyHTTPFilter].
+func (e envoyFilter) ClearRouteCache() {
+	C.envoy_dynamic_module_callback_http_clear_route_cache(
+		C.uintptr_t(e.raw),
+	)
 }

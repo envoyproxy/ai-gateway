@@ -249,6 +249,12 @@ func (f *routerFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(
 		f.originalRequestBodyRaw = maybeMutatedOriginalBodyRaw
 		f.forceBodyMutation = true
 	}
+	if f.logger.Enabled(context.Background(), slog.LevelDebug) {
+		f.logger.Debug("parsed request body",
+			slog.Any("original_model", f.originalModel),
+			slog.Bool("stream", f.stream),
+			slog.Bool("force_body_mutation", f.forceBodyMutation))
+	}
 	if !e.SetRequestHeader(internalapi.ModelNameHeaderKeyDefault, []byte(f.originalModel)) {
 		e.SendLocalReply(500, nil, []byte("failed to set model name header"))
 		return sdk.RequestBodyStatusStopIterationAndBuffer
@@ -263,6 +269,7 @@ func (f *routerFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(
 		f.originalRequestBody,
 		f.originalRequestBodyRaw,
 	)
+	e.ClearRouteCache()
 	return sdk.RequestBodyStatusContinue
 }
 

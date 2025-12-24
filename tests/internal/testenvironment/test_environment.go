@@ -152,6 +152,7 @@ func StartTestEnvironment(t testing.TB,
 			fmt.Sprintf("AI_GATEWAY_DYNAMIC_MODULE_ADMIN_ADDRESS=:%d", env.extProcAdminPort),
 			fmt.Sprintf("AI_GATEWAY_DYNAMIC_MODULE_FILTER_CONFIG_PATH=%s", configPath),
 		)
+		envoyEnvVars = append(envoyEnvVars, env.extprocEnv...)
 	}
 
 	// Start Envoy mapping its testupstream port 8080 to the ephemeral one.

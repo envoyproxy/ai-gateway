@@ -187,16 +187,17 @@ func TestMain(m *testing.M) {
 }
 
 func startTestEnvironment(t testing.TB, extprocConfig string, okToDumpLogOnFailure, extProcInProcess bool) *testenvironment.TestEnvironment {
+	if os.Getenv("TEST_WITH_DYNAMIC_MODULE") != "" {
+		t.Log("Starting test environment with dynamic modules")
+		return testenvironment.StartTestEnvironment(t,
+			requireUpstream, map[string]int{"upstream": 8080},
+			"", extprocConfig, nil, envoyConfigWithDynamicModules, okToDumpLogOnFailure, false, 120*time.Second,
+		)
+	}
+	t.Log("Starting test environment with extproc binary")
 	return testenvironment.StartTestEnvironment(t,
 		requireUpstream, map[string]int{"upstream": 8080},
 		extprocBin, extprocConfig, nil, envoyConfig, okToDumpLogOnFailure, extProcInProcess, 120*time.Second,
-	)
-}
-
-func startTestEnvironmentWithDynamicModule(t testing.TB, extprocConfig string, okToDumpLogOnFailure bool) *testenvironment.TestEnvironment {
-	return testenvironment.StartTestEnvironment(t,
-		requireUpstream, map[string]int{"upstream": 8080},
-		"", extprocConfig, nil, envoyConfigWithDynamicModules, okToDumpLogOnFailure, false, 120*time.Second,
 	)
 }
 

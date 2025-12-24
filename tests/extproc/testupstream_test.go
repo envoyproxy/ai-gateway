@@ -25,7 +25,6 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
-	"github.com/envoyproxy/ai-gateway/tests/internal/testenvironment"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
@@ -44,14 +43,6 @@ func failIf5xx(t *testing.T, resp *http.Response, was5xx *bool) {
 //
 // This does not require any environment variables to be set as it relies on the test upstream.
 func TestWithTestUpstream(t *testing.T) {
-	testWithTestUpstream(t, false)
-}
-
-func TestWithTestUpstreamDynamicModules(t *testing.T) {
-	testWithTestUpstream(t, true)
-}
-
-func testWithTestUpstream(t *testing.T, dynamicModules bool) {
 	now := time.Unix(int64(time.Now().Second()), 0).UTC()
 
 	// Substitute any dynamically generated UUIDs in the response body with a placeholder
@@ -96,12 +87,7 @@ func testWithTestUpstream(t *testing.T, dynamicModules bool) {
 
 	configBytes, err := yaml.Marshal(config)
 	require.NoError(t, err)
-	var env *testenvironment.TestEnvironment
-	if dynamicModules {
-		env = startTestEnvironmentWithDynamicModule(t, string(configBytes), true)
-	} else {
-		env = startTestEnvironment(t, string(configBytes), true, true)
-	}
+	env := startTestEnvironment(t, string(configBytes), true, true)
 
 	listenerPort := env.EnvoyListenerPort()
 

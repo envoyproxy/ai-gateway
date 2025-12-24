@@ -80,6 +80,9 @@ type EnvoyHTTPFilter interface {
 	SetDynamicMetadataString(namespace string, key string, value string) bool
 	// SetDynamicMetadataNumber sets the dynamic metadata value for the given namespace and key. Returns true if the value is set successfully.
 	SetDynamicMetadataNumber(namespace string, key string, value float64) bool
+
+	// ClearRouteCache clears the route cache for the current request.
+	ClearRouteCache()
 }
 
 type BodyReader interface {
