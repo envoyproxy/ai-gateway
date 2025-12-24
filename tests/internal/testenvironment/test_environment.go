@@ -34,6 +34,7 @@ type TestEnvironment struct {
 	extprocBin, extprocConfig                         string
 	extprocEnv                                        []string
 	extProcPort, extProcAdminPort, extProcMCPPort     int
+	extProcInProcess                                  bool
 	envoyConfig                                       string
 	envoyListenerPort, envoyAdminPort                 int
 	upstreamOut, extprocOut, envoyStdout, envoyStderr internaltesting.OutBuffer
@@ -100,6 +101,7 @@ func StartTestEnvironment(t testing.TB,
 		extProcPort:       ports[0],
 		extProcAdminPort:  ports[1],
 		extProcMCPPort:    ports[2],
+		extProcInProcess:  extProcInProcess,
 		envoyConfig:       envoyConfig,
 		envoyListenerPort: ports[3],
 		envoyAdminPort:    ports[4],
@@ -130,7 +132,7 @@ func StartTestEnvironment(t testing.TB,
 
 	// Start ExtProc.
 	var envoyEnvVars []string
-	if extprocBin != "" {
+	if extprocBin != "" || extProcInProcess {
 		requireExtProc(t,
 			env.extprocOut,
 			env.extprocBin,
@@ -142,7 +144,7 @@ func StartTestEnvironment(t testing.TB,
 			env.mcpWriteTimeout,
 			extProcInProcess,
 		)
-	} else {
+	} else { // Dynamic module mode.
 		configPath := t.TempDir() + "/extproc-config.yaml"
 		require.NoError(t, os.WriteFile(configPath, []byte(env.extprocConfig), 0o600))
 		envoyEnvVars = append(os.Environ(),
@@ -184,14 +186,14 @@ func StartTestEnvironment(t testing.TB,
 
 func (e *TestEnvironment) checkAllConnections(t testing.TB) error {
 	errGroup := &errgroup.Group{}
-	if e.extprocBin != "" {
+	if e.extprocBin != "" || e.extProcInProcess {
 		errGroup.Go(func() error {
 			return e.checkConnection(t, e.extProcPort, "extProc")
 		})
+		errGroup.Go(func() error {
+			return e.checkConnection(t, e.extProcAdminPort, "extProcAdmin")
+		})
 	}
-	errGroup.Go(func() error {
-		return e.checkConnection(t, e.extProcAdminPort, "extProcAdmin")
-	})
 	errGroup.Go(func() error {
 		return e.checkConnection(t, e.envoyListenerPort, "envoyListener")
 	})
