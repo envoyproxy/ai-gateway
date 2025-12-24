@@ -22,7 +22,7 @@ func init() {
 const GroupName = "aigateway.envoyproxy.io"
 
 var (
-	// schemeGroupVersion is group version used to register these objects.
+	// SchemeGroupVersion is group version used to register these objects.
 	SchemeGroupVersion = schema.GroupVersion{Group: GroupName, Version: "v1alpha1"}
 
 	// SchemeBuilder is used to add go types to the GroupVersionKind scheme.

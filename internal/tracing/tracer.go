@@ -35,6 +35,7 @@ var (
 	_ tracing.EmbeddingsTracer      = (*embeddingsTracer)(nil)
 	_ tracing.CompletionTracer      = (*completionTracer)(nil)
 	_ tracing.ImageGenerationTracer = (*imageGenerationTracer)(nil)
+	_ tracing.ResponsesTracer       = (*responsesTracer)(nil)
 	_ tracing.RerankTracer          = (*rerankTracer)(nil)
 )
 
@@ -43,6 +44,7 @@ type (
 	embeddingsTracer      = requestTracerImpl[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
 	completionTracer      = requestTracerImpl[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse]
 	imageGenerationTracer = requestTracerImpl[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
+	responsesTracer       = requestTracerImpl[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
 	rerankTracer          = requestTracerImpl[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]
 )
 
@@ -144,6 +146,18 @@ func newImageGenerationTracer(tracer trace.Tracer, propagator propagation.TextMa
 		nil,
 		func(span trace.Span, recorder tracing.ImageGenerationRecorder) tracing.ImageGenerationSpan {
 			return &imageGenerationSpan{span: span, recorder: recorder}
+		},
+	)
+}
+
+func newResponsesTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.ResponsesRecorder, headerAttributes map[string]string) tracing.ResponsesTracer {
+	return newRequestTracer(
+		tracer,
+		propagator,
+		recorder,
+		headerAttributes,
+		func(span trace.Span, recorder tracing.ResponsesRecorder) tracing.ResponsesSpan {
+			return &responsesSpan{span: span, recorder: recorder}
 		},
 	)
 }

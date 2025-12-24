@@ -249,6 +249,7 @@ type MCPRouteAuthorization struct {
 	//
 	// If no rules are defined, the default action will be applied to all requests.
 	//
+	// +kubebuilder:validation:MaxItems=32
 	// +optional
 	Rules []MCPRouteAuthorizationRule `json:"rules,omitempty"`
 }
@@ -297,16 +298,27 @@ type MCPAuthorizationSource struct {
 }
 
 // JWTSource defines the MCP authorization source for JWT tokens.
+// At least one of scopes or claims must be provided.
+// Scopes and claims are AND-ed: when both are specified, both sets must match.
+//
+// +kubebuilder:validation:XValidation:rule="(has(self.scopes) && size(self.scopes) > 0) || (has(self.claims) && size(self.claims) > 0)",message="either scopes or claims must be specified"
 type JWTSource struct {
 	// Scopes defines the list of JWT scopes required for the rule.
 	// If multiple scopes are specified, all scopes must be present in the JWT for the rule to match.
 	//
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxItems=16
-	Scopes []egv1a1.JWTScope `json:"scopes"`
+	// +optional
+	Scopes []egv1a1.JWTScope `json:"scopes,omitempty"`
 
-	// TODO : we can add more fields in the future, e.g., audiences, claims, etc.
+	// Claims defines the list of JWT claims required for the rule. Each claim must exist on the token
+	// and have at least one of the expected values. Use to enforce tenant or subject-based access.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxItems=16
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="!self.exists(c, c.name == 'scope')",message="'scope' claim name is reserved for OAuth scopes"
+	Claims []egv1a1.JWTClaim `json:"claims,omitempty"`
 }
 
 // ToolCall represents a tool call in the MCP authorization target.
