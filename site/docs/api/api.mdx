@@ -1686,6 +1686,11 @@ Reference: https://modelcontextprotocol.io/specification/draft/basic/authorizati
   required="true"
   description="Target defines the authorization target for this rule.<br />If not specified, the rule will match all targets."
 /><ApiField
+  name="cel"
+  type="string"
+  required="false"
+  description="CEL specifies a Common Expression Language (CEL) expression for this rule.<br />The expression must evaluate to a boolean value. If it evaluates to true,<br />the rule is considered a match.<br />Example CEL expressions:<br />  - `request.method == `POST``<br />  - `request.headers[`X-Custom-Header`] == `AllowedValue``<br />  - `request.mcp.tool in [`toolA`, `toolB`]`<br />Note: The CEL expression support is experimental, and the attributes<br />available to the expression may change in future releases."
+/><ApiField
   name="action"
   type="[AuthorizationAction](#authorizationaction)"
   required="false"
@@ -1987,11 +1992,6 @@ ToolCall represents a tool call in the MCP authorization target.
   type="string"
   required="true"
   description="Tool is the name of the tool."
-/><ApiField
-  name="when"
-  type="string"
-  required="false"
-  description="When is a CEL expression that must evaluate to true for the rule to match.<br />The expression is evaluated with a single variable `args` bound to the tool call arguments as a dynamic object.<br />Guard against missing fields with null checks (e.g., args[`foo`] != null && args[`foo`][`bar`] == `val`)."
 />
 
 

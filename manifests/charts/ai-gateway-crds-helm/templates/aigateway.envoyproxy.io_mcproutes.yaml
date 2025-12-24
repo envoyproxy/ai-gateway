@@ -613,6 +613,21 @@ spec:
                               - Allow
                               - Deny
                               type: string
+                            cel:
+                              description: |-
+                                CEL specifies a Common Expression Language (CEL) expression for this rule.
+                                The expression must evaluate to a boolean value. If it evaluates to true,
+                                the rule is considered a match.
+
+                                Example CEL expressions:
+                                  - `request.method == "POST"`
+                                  - `request.headers["X-Custom-Header"] == "AllowedValue"`
+                                  - `request.mcp.tool in ["toolA", "toolB"]`
+
+                                Note: The CEL expression support is experimental, and the attributes
+                                available to the expression may change in future releases.
+                              maxLength: 4096
+                              type: string
                             source:
                               description: |-
                                 Source defines the authorization source for this rule.
@@ -657,13 +672,6 @@ spec:
                                         type: string
                                       tool:
                                         description: Tool is the name of the tool.
-                                        type: string
-                                      when:
-                                        description: |-
-                                          When is a CEL expression that must evaluate to true for the rule to match.
-                                          The expression is evaluated with a single variable "args" bound to the tool call arguments as a dynamic object.
-                                          Guard against missing fields with null checks (e.g., args["foo"] != null && args["foo"]["bar"] == "val").
-                                        maxLength: 4096
                                         type: string
                                     required:
                                     - backend
