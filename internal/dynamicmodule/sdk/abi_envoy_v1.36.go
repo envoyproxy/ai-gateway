@@ -188,6 +188,14 @@ bool envoy_dynamic_module_callback_http_set_dynamic_metadata_string(
 	uintptr_t key_ptr, size_t key_size,
 	uintptr_t value_ptr, size_t value_size);
 
+#cgo noescape envoy_dynamic_module_callback_http_set_dynamic_metadata_number
+#cgo nocallback envoy_dynamic_module_callback_http_set_dynamic_metadata_number
+bool envoy_dynamic_module_callback_http_set_dynamic_metadata_number(
+	uintptr_t filter_envoy_ptr,
+	uintptr_t namespace_ptr, size_t namespace_size,
+	uintptr_t key_ptr, size_t key_size,
+	double value_ptr);
+
 #cgo noescape envoy_dynamic_module_callback_http_get_metadata_string
 #cgo nocallback envoy_dynamic_module_callback_http_get_metadata_string
 bool envoy_dynamic_module_callback_http_get_metadata_string(
@@ -849,5 +857,22 @@ func (e envoyFilter) SetDynamicMetadataString(namespace string, key string, valu
 	runtime.KeepAlive(namespace)
 	runtime.KeepAlive(key)
 	runtime.KeepAlive(value)
+	return bool(ret)
+}
+
+// SetDynamicMetadataNumber implements [EnvoyHTTPFilter].
+func (e envoyFilter) SetDynamicMetadataNumber(namespace string, key string, value float64) bool {
+	namespacePtr := uintptr(unsafe.Pointer(unsafe.StringData(namespace)))
+	keyPtr := uintptr(unsafe.Pointer(unsafe.StringData(key)))
+	ret := C.envoy_dynamic_module_callback_http_set_dynamic_metadata_number(
+		C.uintptr_t(e.raw),
+		C.uintptr_t(namespacePtr),
+		C.size_t(len(namespace)),
+		C.uintptr_t(keyPtr),
+		C.size_t(len(key)),
+		C.double(value),
+	)
+	runtime.KeepAlive(namespace)
+	runtime.KeepAlive(key)
 	return bool(ret)
 }

@@ -78,6 +78,8 @@ type EnvoyHTTPFilter interface {
 	GetUpstreamHostMetadataString(namespace string, key string) (string, bool)
 	// SetDynamicMetadataString sets the dynamic metadata value for the given namespace and key. Returns true if the value is set successfully.
 	SetDynamicMetadataString(namespace string, key string, value string) bool
+	// SetDynamicMetadataNumber sets the dynamic metadata value for the given namespace and key. Returns true if the value is set successfully.
+	SetDynamicMetadataNumber(namespace string, key string, value float64) bool
 }
 
 type BodyReader interface {

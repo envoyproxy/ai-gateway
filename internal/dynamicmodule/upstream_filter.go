@@ -27,6 +27,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/translator"
@@ -500,12 +501,70 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 		f.metrics.RecordTokenUsage(ctx, f.costs, f.reqHeaders)
 	}
 
-	if endOfStream && len(f.routerFilter.runtimeFilterConfig.RequestCosts) > 0 {
-		// TODO: build dynamic cost metadata.
+	if endOfStream {
+		if err = f.buildDynamicMetadataOnResponse(e, &f.costs); err != nil {
+			return fmt.Errorf("failed to build dynamic metadata on response: %w", err)
+		}
 	}
 
 	if endOfStream && span != nil {
 		span.EndSpan()
+	}
+	return nil
+}
+
+func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) buildDynamicMetadataOnResponse(e sdk.EnvoyHTTPFilter, costs *metrics.TokenUsage) (err error) {
+	config := f.routerFilter.runtimeFilterConfig
+	for i := range config.RequestCosts {
+		rc := &config.RequestCosts[i]
+		var cost uint32
+		switch rc.Type {
+		case filterapi.LLMRequestCostTypeInputToken:
+			cost, _ = costs.InputTokens()
+		case filterapi.LLMRequestCostTypeCachedInputToken:
+			cost, _ = costs.CachedInputTokens()
+		case filterapi.LLMRequestCostTypeOutputToken:
+			cost, _ = costs.OutputTokens()
+		case filterapi.LLMRequestCostTypeTotalToken:
+			cost, _ = costs.TotalTokens()
+		case filterapi.LLMRequestCostTypeCEL:
+			in, _ := costs.InputTokens()
+			cachedIn, _ := costs.CachedInputTokens()
+			out, _ := costs.OutputTokens()
+			total, _ := costs.TotalTokens()
+			costU64, err := llmcostcel.EvaluateProgram(
+				rc.CELProg,
+				f.reqHeaders[internalapi.ModelNameHeaderKeyDefault],
+				f.backend.Backend.Name,
+				in,
+				cachedIn,
+				out,
+				total,
+			)
+			if err != nil {
+				return fmt.Errorf("failed to evaluate CEL expression: %w", err)
+			}
+			cost = uint32(costU64) //nolint:gosec
+		default:
+			return fmt.Errorf("unknown request cost kind: %s", rc.Type)
+		}
+		e.SetDynamicMetadataNumber(internalapi.AIGatewayFilterMetadataNamespace, rc.MetadataKey, float64(cost))
+	}
+	if f.backend.Backend.ModelNameOverride != "" {
+		actualModel := f.backend.Backend.ModelNameOverride
+		e.SetDynamicMetadataString(internalapi.AIGatewayFilterMetadataNamespace,
+			"model_name_override", actualModel)
+	}
+	e.SetDynamicMetadataString(internalapi.AIGatewayFilterMetadataNamespace,
+		"backend_name", f.backend.Backend.Name)
+
+	if f.routerFilter.stream {
+		timeToFirstTokenMs := f.metrics.GetTimeToFirstTokenMs()
+		interTokenLatencyMs := f.metrics.GetInterTokenLatencyMs()
+		e.SetDynamicMetadataNumber(internalapi.AIGatewayFilterMetadataNamespace,
+			"token_latency_ttft", timeToFirstTokenMs)
+		e.SetDynamicMetadataNumber(internalapi.AIGatewayFilterMetadataNamespace,
+			"token_latency_itl", interTokenLatencyMs)
 	}
 	return nil
 }
