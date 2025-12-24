@@ -331,7 +331,7 @@ func requireExtProc(t testing.TB, out io.Writer, bin, config string, env []strin
 		"-adminPort", strconv.Itoa(adminPort),
 		"-mcpAddr", ":" + strconv.Itoa(mcpPort),
 		"-mcpWriteTimeout", mcpWriteTimeout.String(),
-		"-logLevel", "info",
+		"-logLevel", "warn",
 	}
 	// Disable pprof for tests to avoid port conflicts.
 	env = append(env, fmt.Sprintf("%s=true", pprof.DisableEnvVarKey))
