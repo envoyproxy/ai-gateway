@@ -607,11 +607,10 @@ func (e envoyFilter) GetBufferedRequestBody() (BodyReader, bool) {
 		C.uintptr_t(e.raw),
 		(*C.size_t)(unsafe.Pointer(&vectorSize)),
 	)
-	if !ret || vectorSize == 0 {
-		if vectorSize == 0 {
-			return &bodyReader{chunks: []envoySlice{}}, true
-		}
+	if !ret {
 		return nil, false
+	} else if vectorSize == 0 {
+		return &bodyReader{chunks: []envoySlice{}}, true
 	}
 
 	chunks := make([]envoySlice, vectorSize)
@@ -656,11 +655,10 @@ func (e envoyFilter) GetBufferedResponseBody() (BodyReader, bool) {
 		C.uintptr_t(e.raw),
 		(*C.size_t)(unsafe.Pointer(&vectorSize)),
 	)
-	if !ret || vectorSize == 0 {
-		if vectorSize == 0 {
-			return &bodyReader{chunks: []envoySlice{}}, true
-		}
+	if !ret {
 		return nil, false
+	} else if vectorSize == 0 {
+		return &bodyReader{chunks: []envoySlice{}}, true
 	}
 	chunks := make([]envoySlice, vectorSize)
 	ret = C.envoy_dynamic_module_callback_http_get_buffered_response_body_vector(
@@ -704,11 +702,10 @@ func (e envoyFilter) GetReceivedRequestBody() (BodyReader, bool) {
 		C.uintptr_t(e.raw),
 		(*C.size_t)(unsafe.Pointer(&vectorSize)),
 	)
-	if !ret || vectorSize == 0 {
-		if vectorSize == 0 {
-			return &bodyReader{chunks: []envoySlice{}}, true
-		}
+	if !ret {
 		return nil, false
+	} else if vectorSize == 0 {
+		return &bodyReader{chunks: []envoySlice{}}, true
 	}
 
 	chunks := make([]envoySlice, vectorSize)
@@ -753,11 +750,10 @@ func (e envoyFilter) GetReceivedResponseBody() (BodyReader, bool) {
 		C.uintptr_t(e.raw),
 		(*C.size_t)(unsafe.Pointer(&vectorSize)),
 	)
-	if !ret || vectorSize == 0 {
-		if vectorSize == 0 {
-			return &bodyReader{chunks: []envoySlice{}}, true
-		}
+	if !ret {
 		return nil, false
+	} else if vectorSize == 0 {
+		return &bodyReader{chunks: []envoySlice{}}, true
 	}
 	chunks := make([]envoySlice, vectorSize)
 	ret = C.envoy_dynamic_module_callback_http_get_received_response_body_vector(

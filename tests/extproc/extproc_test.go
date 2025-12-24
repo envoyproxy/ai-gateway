@@ -200,7 +200,7 @@ func requireUpstream(t testing.TB, out io.Writer, ports map[string]int) {
 		fmt.Sprintf("LISTENER_PORT=%d", ports["upstream"]))
 
 	// wait for the ready message or exit.
-	testenvironment.StartAndAwaitReady(t, cmd, os.Stdout, os.Stdout, "Test upstream is ready")
+	testenvironment.StartAndAwaitReady(t, cmd, out, out, "Test upstream is ready")
 }
 
 func listen(ctx context.Context, name string) (net.Listener, int) {

@@ -30,6 +30,8 @@ const (
 	rerankEndpoint
 	// messagesEndpoint represents the /v1/messages endpoint of anthropic.
 	messagesEndpoint
+	// responsesEndpoint represents the /v1/responses endpoint of anthropic.
+	responsesEndpoint
 	// modelsEndpoint represents the /v1/models endpoint.
 	modelsEndpoint
 )
@@ -43,6 +45,7 @@ func (e endpoint) String() string {
 		"image_generations",
 		"rerank",
 		"messages",
+		"responses",
 		"models",
 	}[e]
 }

@@ -16,11 +16,11 @@ import (
 	"strconv"
 
 	"github.com/andybalholm/brotli"
-	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/dynamicmodule/sdk"
 	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -179,6 +179,17 @@ func (f *upstreamFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Reque
 		}
 		typed.routerFilter.upstreamFilter = typed
 		f.typedFilter = typed
+	case responsesEndpoint:
+		typed := &upstreamFilterTyped[openai.ResponseRequest,
+			openai.Response, openai.ResponseStreamEventUnion, endpointspec.ResponsesEndpointSpec]{
+			onRetry: onRetry,
+			metrics: f.env.MessagesMetricsFactory.NewMetrics(),
+			backend: b,
+			routerFilter: rf.typedFilter.(*routerFilterTyped[openai.ResponseRequest,
+				openai.Response, openai.ResponseStreamEventUnion, endpointspec.ResponsesEndpointSpec]),
+		}
+		typed.routerFilter.upstreamFilter = typed
+		f.typedFilter = typed
 	default:
 		e.SendLocalReply(500, nil, []byte(fmt.Sprintf("unsupported endpoint type: %v", rf.endpoint)))
 		return sdk.RequestHeadersStatusStopIteration
@@ -309,9 +320,15 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBod
 				len(f.routerFilter.originalRequestBodyRaw), len(newBody), string(newBody))
 		}
 		if cur, ok := e.GetBufferedRequestBody(); ok {
+			if sdk.LogDebugEnabled {
+				sdk.Log(sdk.LogLevelDebug, "draining current buffered request body length: %d", cur.Len())
+			}
 			ok = e.DrainBufferedRequestBody(cur.Len())
 			if !ok {
 				return errors.New("failed to drain current request body for replacement")
+			}
+			if sdk.LogDebugEnabled {
+				sdk.Log(sdk.LogLevelDebug, "appending new buffered request body length: %d", len(newBody))
 			}
 			ok = e.AppendBufferedRequestBody(newBody)
 			if !ok {
@@ -348,7 +365,7 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBod
 
 	// Next is to do the upstream auth if needed.
 	if b.Handler != nil {
-		var originalOrNewBody []byte
+		originalOrNewBody := f.routerFilter.originalRequestBodyRaw
 		if newBody != nil {
 			originalOrNewBody = newBody
 		}
@@ -470,9 +487,15 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBo
 			if !ok {
 				return errors.New("failed to get current response body for replacement")
 			}
+			if sdk.LogDebugEnabled {
+				sdk.Log(sdk.LogLevelDebug, "draining current response body length: %d", cur.Len())
+			}
 			ok = e.DrainBufferedResponseBody(cur.Len())
 			if !ok {
 				return errors.New("failed to drain current response body for replacement")
+			}
+			if sdk.LogDebugEnabled {
+				sdk.Log(sdk.LogLevelDebug, "appending new response body length: %d", len(newBody))
 			}
 			ok = e.AppendBufferedResponseBody(newBody)
 			if !ok {

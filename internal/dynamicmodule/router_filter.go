@@ -92,6 +92,7 @@ func NewRouterFilterConfig(env *Env, fcr **filterapi.RuntimeConfig) sdk.HTTPFilt
 		path.Join(env.RootPrefix, env.EndpointPrefixes.Cohere, "/v2/rerank"):             rerankEndpoint,
 		path.Join(env.RootPrefix, env.EndpointPrefixes.OpenAI, "/v1/models"):             modelsEndpoint,
 		path.Join(env.RootPrefix, env.EndpointPrefixes.Anthropic, "/v1/messages"):        messagesEndpoint,
+		path.Join(env.RootPrefix, env.EndpointPrefixes.OpenAI, "/v1/responses"):          responsesEndpoint,
 	}
 	return &routerFilterConfig{
 		fcr:              fcr,
@@ -184,6 +185,11 @@ func (f *routerFilter) RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.
 		f.typedFilter = &routerFilterTyped[anthropic.MessagesRequest, anthropic.MessagesResponse, anthropic.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]{
 			runtimeFilterConfig: f.runtimeFilterConfig,
 			tracer:              f.tracing.MessageTracer(),
+		}
+	case responsesEndpoint:
+		f.typedFilter = &routerFilterTyped[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion, endpointspec.ResponsesEndpointSpec]{
+			runtimeFilterConfig: f.runtimeFilterConfig,
+			tracer:              f.tracing.ResponsesTracer(),
 		}
 	default:
 		e.SendLocalReply(500, nil, []byte("BUG: unsupported endpoint at body parsing: "+fmt.Sprintf("%d", f.endpoint)))
