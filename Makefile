@@ -271,9 +271,10 @@ build: ## Build all binaries under cmd/ directory.
 	@$(foreach COMMAND_NAME,$(COMMANDS),$(MAKE) build.$(COMMAND_NAME);)
 
 # This builds the dynamic module filter for Envoy. This is the shared library that can be loaded by Envoy to run the AI Gateway filter.
+# TODO: multiple Envoy versions support with multiple platform builds.
 .PHONE: build-dm
 build-dm: ## Build the dynamic module for Envoy.
-	CGO_ENABLED=1 go build -tags "envoy_1.36 envoy" -buildmode=c-shared -o $(OUTPUT_DIR)/libaigateway.so ./cmd/dynamic_module
+	CGO_ENABLED=1 go build -tags "envoy" -buildmode=c-shared -o $(OUTPUT_DIR)/libaigateway.so ./cmd/dynamic_module
 
 # This builds the docker images for the controller, extproc and testupstream for the e2e tests.
 .PHONY: build-e2e

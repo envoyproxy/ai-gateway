@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testenvironment"
 )
 
@@ -115,6 +116,12 @@ func TestMain(m *testing.M) {
 	// Build extproc binary once for all tests.
 	if extprocBin, err = BuildExtProcOnDemand(); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start tests due to extproc build error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Build dynamic module once for all tests.
+	if err = internaltesting.BuildDynamicModuleOnDemand(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start tests due to dynamic module build error: %v\n", err)
 		os.Exit(1)
 	}
 
