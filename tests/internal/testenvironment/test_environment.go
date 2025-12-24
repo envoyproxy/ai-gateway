@@ -128,11 +128,8 @@ func StartTestEnvironment(t testing.TB,
 	processedExtProcConfig := replaceTokens(env.extprocConfig, replacements)
 	env.extprocConfig = processedExtProcConfig
 
-	envoyEnvVars := append(os.Environ(),
-		"ENVOY_DYNAMIC_MODULES_SEARCH_PATH="+internaltesting.FindProjectRoot()+"/out",
-	)
-
 	// Start ExtProc.
+	var envoyEnvVars []string
 	if extprocBin != "" {
 		requireExtProc(t,
 			env.extprocOut,
@@ -146,12 +143,13 @@ func StartTestEnvironment(t testing.TB,
 			extProcInProcess,
 		)
 	} else {
-		envoyEnvVars = append(envoyEnvVars,
-			fmt.Sprintf("AI_GATEWAY_DYNAMIC_MODULE_ADMIN_ADDRESS=:%d", env.extProcAdminPort))
 		configPath := t.TempDir() + "/extproc-config.yaml"
 		require.NoError(t, os.WriteFile(configPath, []byte(env.extprocConfig), 0o600))
-		envoyEnvVars = append(envoyEnvVars,
-			fmt.Sprintf("AI_GATEWAY_DYNAMIC_MODULE_FILTER_CONFIG_PATH=%s", configPath))
+		envoyEnvVars = append(os.Environ(),
+			"ENVOY_DYNAMIC_MODULES_SEARCH_PATH="+internaltesting.FindProjectRoot()+"/out",
+			fmt.Sprintf("AI_GATEWAY_DYNAMIC_MODULE_ADMIN_ADDRESS=:%d", env.extProcAdminPort),
+			fmt.Sprintf("AI_GATEWAY_DYNAMIC_MODULE_FILTER_CONFIG_PATH=%s", configPath),
+		)
 	}
 
 	// Start Envoy mapping its testupstream port 8080 to the ephemeral one.
@@ -300,7 +298,6 @@ func requireEnvoy(t testing.TB,
 	require.NoError(t, err)
 	t.Logf("Starting Envoy version %s", strings.TrimSpace(string(version)))
 	cmd.WaitDelay = 3 * time.Second // auto-kill after 3 seconds.
-	// Unconditionally allow dynamic modules from out/.
 	cmd.Env = envVars
 	t.Cleanup(func() {
 		defer cancel()
@@ -331,7 +328,7 @@ func requireExtProc(t testing.TB, out io.Writer, bin, config string, env []strin
 		"-adminPort", strconv.Itoa(adminPort),
 		"-mcpAddr", ":" + strconv.Itoa(mcpPort),
 		"-mcpWriteTimeout", mcpWriteTimeout.String(),
-		"-logLevel", "warn",
+		"-logLevel", "info",
 	}
 	// Disable pprof for tests to avoid port conflicts.
 	env = append(env, fmt.Sprintf("%s=true", pprof.DisableEnvVarKey))
