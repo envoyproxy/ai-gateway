@@ -317,6 +317,12 @@ func (f *upstreamFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBod
 			if !ok {
 				return errors.New("failed to append new request body for replacement")
 			}
+			if sdk.LogDebugEnabled {
+				sdk.Log(sdk.LogLevelDebug, "replaced buffered request body successfully")
+				for key, values := range e.GetRequestHeaders() {
+					sdk.Log(sdk.LogLevelDebug, "request header after body replacement: %s: %v", key, values)
+				}
+			}
 		} else {
 			// On retry path, the body will be in received buffer.
 			cur, ok = e.GetReceivedRequestBody()
