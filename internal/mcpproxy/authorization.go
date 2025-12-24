@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -260,15 +261,10 @@ func claimsSatisfied(claims jwt.MapClaims, required []filterapi.JWTClaim) bool {
 			return false
 		}
 
-		valueType := claim.ValueType
-		if valueType == "" {
-			valueType = filterapi.JWTClaimValueTypeString
-		}
-
-		switch valueType {
+		switch claim.ValueType {
 		case filterapi.JWTClaimValueTypeString:
 			strVal, ok := value.(string)
-			if !ok || !isStringAllowed(strVal, claim.Values) {
+			if !ok || !slices.Contains(claim.Values, strVal) {
 				return false
 			}
 		case filterapi.JWTClaimValueTypeStringArray:
@@ -299,35 +295,25 @@ func lookupClaim(claims map[string]any, path string) (any, bool) {
 	return current, true
 }
 
-// When the claim is a string, check if it is in the allowed list.
-func isStringAllowed(value string, allowed []string) bool {
-	for _, a := range allowed {
-		if a == value {
-			return true
-		}
-	}
-	return false
-}
-
 // When the claim is an array, check if any of the values is in the allowed list.
 func claimHasAllowedString(value any, allowed []string) bool {
 	switch v := value.(type) {
 	case []string:
 		for _, item := range v {
-			if isStringAllowed(item, allowed) {
+			if slices.Contains(allowed, item) {
 				return true
 			}
 		}
 	case []any:
 		for _, item := range v {
-			if str, ok := item.(string); ok && isStringAllowed(str, allowed) {
+			if str, ok := item.(string); ok && slices.Contains(allowed, str) {
 				return true
 			}
 		}
 	// Handle the case where the claim is a single string instead of an array.
 	// This avoids authorization failures when the claim matches but is not in an array.
 	case string:
-		return isStringAllowed(v, allowed)
+		return slices.Contains(allowed, v)
 	}
 	return false
 }

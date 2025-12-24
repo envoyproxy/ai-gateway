@@ -81,7 +81,7 @@ func TestMCPRouteAuthorization(t *testing.T) {
 		requireSumToolResult(ctx, t, sess, 41, 1, "42")
 	})
 
-	t.Run("allow rules with matching scopes and mismatching claims", func(t *testing.T) {
+	t.Run("access denied with matching scopes and mismatching claims", func(t *testing.T) {
 		token := makeSignedJWTWithClaims(t, jwt.MapClaims{
 			"tenant": "acme",
 			"org": map[string]any{
