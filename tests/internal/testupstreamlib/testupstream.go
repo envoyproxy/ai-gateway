@@ -47,4 +47,6 @@ const (
 	ExpectedTestUpstreamIDKey = "x-expected-testupstream-id"
 	// ExpectedHostKey is the key for the expected host in the request.
 	ExpectedHostKey = "x-expected-host"
+	// LargeFakeResponseHeaderKey is the key to trigger a large fake response body.
+	LargeFakeResponseHeaderKey = "x-large-fake-response"
 )
