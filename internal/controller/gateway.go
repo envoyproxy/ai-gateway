@@ -165,6 +165,8 @@ func schemaToFilterAPI(schema aigv1a1.VersionedAPISchema, l logr.Logger) filtera
 				"Please set 'prefix' field explicitly as this use of 'version' field will be removed in future releases.",
 			)
 		}
+		// This is for backward compatibility. TODO: remove this after v0.5.0 release.
+		ret.Version = ret.Prefix
 	} else {
 		ret.Version = ptr.Deref(schema.Version, "")
 	}
@@ -340,7 +342,11 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				b.ModelNameOverride = backendRef.ModelNameOverride
 				if backendRef.IsInferencePool() {
 					// We assume that InferencePools are all OpenAI schema.
-					b.Schema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1"}
+					b.Schema = filterapi.VersionedAPISchema{
+						Name: filterapi.APISchemaOpenAI,
+						// This is for backward compatibility. TODO: Remove the 'version' field usage after v0.5.0 release.
+						Version: "v1", Prefix: "v1",
+					}
 				} else {
 					var backendObj *aigv1a1.AIServiceBackend
 					var bsp *aigv1a1.BackendSecurityPolicy

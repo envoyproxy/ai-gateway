@@ -20,6 +20,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/openai/openai-go/v2"
+	"github.com/openai/openai-go/v2/responses"
 	"github.com/tidwall/gjson"
 	"google.golang.org/genai"
 
@@ -2034,3 +2035,605 @@ type ImageGenerationResponseData struct {
 	URL           string `json:"url,omitempty"`
 	RevisedPrompt string `json:"revised_prompt,omitempty"`
 }
+
+// ResponseRequest represents a request to the /v1/responses endpoint.
+// The Responses API is a stateful API that combines capabilities from chat completions and assistants.
+// Docs: https://platform.openai.com/docs/api-reference/responses/create
+type ResponseRequest struct {
+	// Whether to run the model response in the background.
+	// [Learn more](https://platform.openai.com/docs/guides/background).
+	Background *bool `json:"background,omitempty"`
+
+	// A system (or developer) message inserted into the model's context.
+	//
+	// When using along with `previous_response_id`, the instructions from a previous
+	// response will not be carried over to the next response. This makes it simple to
+	// swap out system (or developer) messages in new responses.
+	Instructions string `json:"instructions,omitzero"`
+
+	// An upper bound for the number of tokens that can be generated for a response,
+	// including visible output tokens and
+	// [reasoning tokens](https://platform.openai.com/docs/guides/reasoning).
+	MaxOutputTokens *int64 `json:"max_output_tokens,omitempty"`
+
+	// The maximum number of total calls to built-in tools that can be processed in a
+	// response. This maximum number applies across all built-in tool calls, not per
+	// individual tool. Any further attempts to call a tool by the model will be
+	// ignored.
+	MaxToolCalls *int64 `json:"max_tool_calls,omitempty"`
+
+	// Whether to allow the model to run tool calls in parallel.
+	ParallelToolCalls *bool `json:"parallel_tool_calls,omitempty"`
+
+	// The unique ID of the previous response to the model. Use this to create
+	// multi-turn conversations. Learn more about
+	// [conversation state](https://platform.openai.com/docs/guides/conversation-state).
+	// Cannot be used in conjunction with `conversation`.
+	PreviousResponseID string `json:"previous_response_id,omitzero"`
+
+	// Whether to store the generated model response for later retrieval via API.
+	Store *bool `json:"store,omitempty"`
+
+	// What sampling temperature to use, between 0 and 2. Higher values like 0.8 will
+	// make the output more random, while lower values like 0.2 will make it more
+	// focused and deterministic. We generally recommend altering this or `top_p` but
+	// not both.
+	Temperature *float64 `json:"temperature,omitempty"`
+
+	// An integer between 0 and 20 specifying the number of most likely tokens to
+	// return at each token position, each with an associated log probability.
+	TopLogprobs *int64 `json:"top_logprobs,omitempty"`
+
+	// An alternative to sampling with temperature, called nucleus sampling, where the
+	// model considers the results of the tokens with top_p probability mass. So 0.1
+	// means only the tokens comprising the top 10% probability mass are considered.
+	//
+	// We generally recommend altering this or `temperature` but not both.
+	TopP *float64 `json:"top_p,omitempty"`
+
+	// Used by OpenAI to cache responses for similar requests to optimize your cache
+	// hit rates. Replaces the `user` field.
+	// [Learn more](https://platform.openai.com/docs/guides/prompt-caching).
+	PromptCacheKey string `json:"prompt_cache_key,omitzero"`
+
+	// A stable identifier used to help detect users of your application that may be
+	// violating OpenAI's usage policies. The IDs should be a string that uniquely
+	// identifies each user. We recommend hashing their username or email address, in
+	// order to avoid sending us any identifying information.
+	// [Learn more](https://platform.openai.com/docs/guides/safety-best-practices#safety-identifiers).
+	SafetyIdentifier string `json:"safety_identifier,omitzero"`
+
+	// This field is being replaced by `safety_identifier` and `prompt_cache_key`. Use
+	// `prompt_cache_key` instead to maintain caching optimizations. A stable
+	// identifier for your end-users. Used to boost cache hit rates by better bucketing
+	// similar requests and to help OpenAI detect and prevent abuse.
+	// [Learn more](https://platform.openai.com/docs/guides/safety-best-practices#safety-identifiers).
+	User string `json:"user,omitzero"`
+
+	// The conversation that this response belongs to. Items from this conversation are
+	// prepended to `input_items` for this response request. Input items and output
+	// items from this response are automatically added to this conversation after this
+	// response completes.
+	Conversation responses.ResponseNewParamsConversationUnion `json:"conversation,omitzero"`
+
+	// Specify additional output data to include in the model response. Currently
+	// supported values are:
+	//
+	//   - `web_search_call.action.sources`: Include the sources of the web search tool
+	//     call.
+	//   - `code_interpreter_call.outputs`: Includes the outputs of python code execution
+	//     in code interpreter tool call items.
+	//   - `computer_call_output.output.image_url`: Include image urls from the computer
+	//     call output.
+	//   - `file_search_call.results`: Include the search results of the file search tool
+	//     call.
+	//   - `message.input_image.image_url`: Include image urls from the input message.
+	//   - `message.output_text.logprobs`: Include logprobs with assistant messages.
+	//   - `reasoning.encrypted_content`: Includes an encrypted version of reasoning
+	//     tokens in reasoning item outputs. This enables reasoning items to be used in
+	//     multi-turn conversations when using the Responses API statelessly (like when
+	//     the `store` parameter is set to `false`, or when an organization is enrolled
+	//     in the zero data retention program).
+	Include []string `json:"include,omitzero"`
+
+	// Set of 16 key-value pairs that can be attached to an object. This can be useful
+	// for storing additional information about the object in a structured format, and
+	// querying for objects via API or the dashboard.
+	//
+	// Keys are strings with a maximum length of 64 characters. Values are strings with
+	// a maximum length of 512 characters.
+	Metadata map[string]string `json:"metadata,omitzero"`
+
+	// Reference to a prompt template and its variables.
+	// [Learn more](https://platform.openai.com/docs/guides/text?api-mode=responses#reusable-prompts).
+	Prompt responses.ResponsePromptParam `json:"prompt,omitzero"`
+
+	// The retention policy for the prompt cache. Set to `24h` to enable extended
+	// prompt caching, which keeps cached prefixes active for longer, up to a maximum
+	// of 24 hours.
+	// [Learn more](https://platform.openai.com/docs/guides/prompt-caching#prompt-cache-retention).
+	//
+	// Any of "in-memory", "24h".
+	PromptCacheRetention string `json:"prompt_cache_retention,omitzero"`
+
+	// Specifies the processing type used for serving the request.
+	//
+	//   - If set to 'auto', then the request will be processed with the service tier
+	//     configured in the Project settings. Unless otherwise configured, the Project
+	//     will use 'default'.
+	//   - If set to 'default', then the request will be processed with the standard
+	//     pricing and performance for the selected model.
+	//   - If set to '[flex](https://platform.openai.com/docs/guides/flex-processing)' or
+	//     '[priority](https://openai.com/api-priority-processing/)', then the request
+	//     will be processed with the corresponding service tier.
+	//   - When not set, the default behavior is 'auto'.
+	//
+	// When the `service_tier` parameter is set, the response body will include the
+	// `service_tier` value based on the processing mode actually used to serve the
+	// request. This response value may be different from the value set in the
+	// parameter.
+	//
+	// Any of "auto", "default", "flex", "scale", "priority".
+	ServiceTier string `json:"service_tier,omitzero"`
+
+	// Options for streaming responses. Only set this when you set `stream: true`.
+	StreamOptions ResponseStreamOptions `json:"stream_options,omitzero"`
+
+	// The truncation strategy to use for the model response.
+	//
+	//   - `auto`: If the input to this Response exceeds the model's context window size,
+	//     the model will truncate the response to fit the context window by dropping
+	//     items from the beginning of the conversation.
+	//   - `disabled` (default): If the input size will exceed the context window size
+	//     for a model, the request will fail with a 400 error.
+	//
+	// Any of "auto", "disabled".
+	Truncation string `json:"truncation,omitzero"`
+
+	// Text, image, or file inputs to the model, used to generate a response.
+	//
+	// Learn more:
+	//
+	// - [Text inputs and outputs](https://platform.openai.com/docs/guides/text)
+	// - [Image inputs](https://platform.openai.com/docs/guides/images)
+	// - [File inputs](https://platform.openai.com/docs/guides/pdf-files)
+	// - [Conversation state](https://platform.openai.com/docs/guides/conversation-state)
+	// - [Function calling](https://platform.openai.com/docs/guides/function-calling)
+	Input responses.ResponseNewParamsInputUnion `json:"input,omitzero"`
+
+	// Model ID used to generate the response, like `gpt-4o` or `o3`. OpenAI offers a
+	// wide range of models with different capabilities, performance characteristics,
+	// and price points. Refer to the
+	// [model guide](https://platform.openai.com/docs/models) to browse and compare
+	// available models.
+	Model string `json:"model,omitzero"`
+
+	// Configuration options for
+	// [reasoning models](https://platform.openai.com/docs/guides/reasoning).
+	Reasoning ReasoningParam `json:"reasoning,omitzero"`
+
+	// Stream: If set, the response will be streamed back as server-sent events.
+	Stream bool `json:"stream,omitempty"`
+
+	// Configuration options for a text response from the model. Can be plain text or
+	// structured JSON data. Learn more:
+	//
+	// - [Text inputs and outputs](https://platform.openai.com/docs/guides/text)
+	// - [Structured Outputs](https://platform.openai.com/docs/guides/structured-outputs)
+	Text ResponseTextConfigParam `json:"text,omitzero"`
+
+	// How the model should select which tool (or tools) to use when generating a
+	// response. See the `tools` parameter to see how to specify which tools the model
+	// can call.
+	ToolChoice responses.ResponseNewParamsToolChoiceUnion `json:"tool_choice,omitzero"`
+
+	// An array of tools the model may call while generating a response. You can
+	// specify which tool to use by setting the `tool_choice` parameter.
+	//
+	// We support the following categories of tools:
+	//
+	//   - **Built-in tools**: Tools that are provided by OpenAI that extend the model's
+	//     capabilities, like
+	//     [web search](https://platform.openai.com/docs/guides/tools-web-search) or
+	//     [file search](https://platform.openai.com/docs/guides/tools-file-search).
+	//     Learn more about
+	//     [built-in tools](https://platform.openai.com/docs/guides/tools).
+	//   - **MCP Tools**: Integrations with third-party systems via custom MCP servers or
+	//     predefined connectors such as Google Drive and SharePoint. Learn more about
+	//     [MCP Tools](https://platform.openai.com/docs/guides/tools-connectors-mcp).
+	//   - **Function calls (custom tools)**: Functions that are defined by you, enabling
+	//     the model to call your own code with strongly typed arguments and outputs.
+	//     Learn more about
+	//     [function calling](https://platform.openai.com/docs/guides/function-calling).
+	//     You can also use custom tools to call your own code.
+	Tools []responses.ToolUnionParam `json:"tools,omitzero"`
+}
+
+// Configuration options for a text response from the model. Can be plain text or
+// structured JSON data. Learn more:
+//
+// - [Text inputs and outputs](https://platform.openai.com/docs/guides/text)
+// - [Structured Outputs](https://platform.openai.com/docs/guides/structured-outputs)
+type ResponseTextConfigParam struct {
+	// Constrains the verbosity of the model's response. Lower values will result in
+	// more concise responses, while higher values will result in more verbose
+	// responses. Currently supported values are `low`, `medium`, and `high`.
+	//
+	// Any of "low", "medium", "high".
+	Verbosity string `json:"verbosity,omitzero"`
+	// An object specifying the format that the model must output.
+	//
+	// Configuring `{ "type": "json_schema" }` enables Structured Outputs, which
+	// ensures the model will match your supplied JSON schema. Learn more in the
+	// [Structured Outputs guide](https://platform.openai.com/docs/guides/structured-outputs).
+	//
+	// The default format is `{ "type": "text" }` with no additional options.
+	//
+	//
+	// Setting to `{ "type": "json_object" }` enables the older JSON mode, which
+	// ensures the message the model generates is valid JSON. Using `json_schema` is
+	// preferred for models that support it.
+	Format responses.ResponseFormatTextConfigUnionParam `json:"format,omitzero"`
+}
+
+// Reasoning configuration for reasoning models.
+type ReasoningParam struct {
+	// Constrains effort on reasoning for
+	// [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently
+	// supported values are `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`.
+	// Reducing reasoning effort can result in faster responses and fewer tokens used
+	// on reasoning in a response.
+	//
+	//   - `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported
+	//     reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool
+	//     calls are supported for all reasoning values in gpt-5.1.
+	//   - All models before `gpt-5.1` default to `medium` reasoning effort, and do not
+	//     support `none`.
+	//   - The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.
+	//   - `xhigh` is currently only supported for `gpt-5.1-codex-max`.
+	//
+	// Any of "none", "minimal", "low", "medium", "high", "xhigh".
+	Effort string `json:"effort,omitzero"`
+	// **Deprecated:** use `summary` instead.
+	//
+	// A summary of the reasoning performed by the model. This can be useful for
+	// debugging and understanding the model's reasoning process. One of `auto`,
+	// `concise`, or `detailed`.
+	//
+	// Any of "auto", "concise", "detailed".
+	//
+	// Deprecated: deprecated
+	GenerateSummary string `json:"generate_summary,omitzero"`
+	// A summary of the reasoning performed by the model. This can be useful for
+	// debugging and understanding the model's reasoning process. One of `auto`,
+	// `concise`, or `detailed`.
+	//
+	// `concise` is only supported for `computer-use-preview` models.
+	//
+	// Any of "auto", "concise", "detailed".
+	Summary string `json:"summary,omitzero"`
+}
+
+// Options for streaming responses.
+type ResponseStreamOptions struct {
+	// When true, stream obfuscation will be enabled. Stream obfuscation adds random
+	// characters to an `obfuscation` field on streaming delta events to normalize
+	// payload sizes as a mitigation to certain side-channel attacks. These obfuscation
+	// fields are included by default, but add a small amount of overhead to the data
+	// stream. You can set `include_obfuscation` to false to optimize for bandwidth if
+	// you trust the network links between your application and the OpenAI API.
+	IncludeObfuscation bool `json:"include_obfuscation,omitzero"`
+}
+
+// Response represents a response from the /v1/responses endpoint.
+// Docs: https://platform.openai.com/docs/api-reference/responses/object
+type Response struct {
+	// Unique identifier for this Response.
+	ID string `json:"id"`
+
+	// Unix timestamp (in seconds) of when this Response was created.
+	CreatedAt JSONUNIXTime `json:"created_at"`
+
+	// An error object returned when the model fails to generate a Response.
+	Error ResponseError `json:"error,omitzero"`
+
+	// Details about why the response is incomplete.
+	IncompleteDetails ResponseIncompleteDetails `json:"incomplete_details,omitzero"`
+
+	// A system (or developer) message inserted into the model's context.
+	//
+	// When using along with `previous_response_id`, the instructions from a previous
+	// response will not be carried over to the next response. This makes it simple to
+	// swap out system (or developer) messages in new responses.
+	Instructions responses.ResponseInstructionsUnion `json:"instructions,omitzero"`
+
+	// Set of 16 key-value pairs that can be attached to an object. This can be useful
+	// for storing additional information about the object in a structured format, and
+	// querying for objects via API or the dashboard.
+	//
+	// Keys are strings with a maximum length of 64 characters. Values are strings with
+	// a maximum length of 512 characters.
+	Metadata map[string]string `json:"metadata,omitzero"`
+
+	// Model ID used to generate the response, like `gpt-4o` or `o3`.
+	Model string `json:"model"`
+
+	// The object type of this resource - always set to `response`.
+	Object string `json:"object"`
+
+	// An array of content items generated by the model.
+	//
+	//   - The length and order of items in the `output` array is dependent on the
+	//     model's response.
+	//   - Rather than accessing the first item in the `output` array and assuming it's
+	//     an `assistant` message with the content generated by the model, you might
+	//     consider using the `output_text` property where supported in SDKs.
+	Output []responses.ResponseOutputItemUnion `json:"output"`
+
+	// Whether to allow the model to run tool calls in parallel.
+	ParallelToolCalls bool `json:"parallel_tool_calls"`
+
+	// What sampling temperature to use, between 0 and 2. Higher values like 0.8 will
+	// make the output more random, while lower values like 0.2 will make it more
+	// focused and deterministic. We generally recommend altering this or `top_p` but
+	// not both.
+	Temperature float64 `json:"temperature"`
+
+	// How the model should select which tool (or tools) to use when generating a
+	// response. See the `tools` parameter to see how to specify which tools the model
+	// can call.
+	ToolChoice responses.ResponseToolChoiceUnion `json:"tool_choice,omitzero"`
+
+	// An array of tools the model may call while generating a response. You can
+	// specify which tool to use by setting the `tool_choice` parameter.
+	Tools []responses.ToolUnion `json:"tools,omitzero"`
+
+	// An alternative to sampling with temperature, called nucleus sampling, where the
+	// model considers the results of the tokens with top_p probability mass. So 0.1
+	// means only the tokens comprising the top 10% probability mass are considered.
+	//
+	// We generally recommend altering this or `temperature` but not both.
+	TopP float64 `json:"top_p"`
+
+	// Whether to run the model response in the background.
+	// [Learn more](https://platform.openai.com/docs/guides/background).
+	Background *bool `json:"background,omitempty"`
+
+	// The conversation that this response belongs to. Input items and output items
+	// from this response are automatically added to this conversation.
+	Conversation ResponseConversation `json:"conversation,omitzero"`
+
+	// An upper bound for the number of tokens that can be generated for a response,
+	// including visible output tokens and
+	// [reasoning tokens](https://platform.openai.com/docs/guides/reasoning).
+	MaxOutputTokens *int64 `json:"max_output_tokens,omitempty"`
+
+	// The maximum number of total calls to built-in tools that can be processed in a
+	// response. This maximum number applies across all built-in tool calls, not per
+	// individual tool. Any further attempts to call a tool by the model will be
+	// ignored.
+	MaxToolCalls *int64 `json:"max_tool_calls,omitempty"`
+
+	// The unique ID of the previous response to the model. Use this to create
+	// multi-turn conversations. Learn more about
+	// [conversation state](https://platform.openai.com/docs/guides/conversation-state).
+	// Cannot be used in conjunction with `conversation`.
+	PreviousResponseID string `json:"previous_response_id,omitzero"`
+
+	// Reference to a prompt template and its variables.
+	// [Learn more](https://platform.openai.com/docs/guides/text?api-mode=responses#reusable-prompts).
+	Prompt ResponsePrompt `json:"prompt,omitzero"`
+
+	// Used by OpenAI to cache responses for similar requests to optimize your cache
+	// hit rates. Replaces the `user` field.
+	// [Learn more](https://platform.openai.com/docs/guides/prompt-caching).
+	PromptCacheKey string `json:"prompt_cache_key,omitzero"`
+
+	// The retention policy for the prompt cache. Set to `24h` to enable extended
+	// prompt caching, which keeps cached prefixes active for longer, up to a maximum
+	// of 24 hours.
+	// [Learn more](https://platform.openai.com/docs/guides/prompt-caching#prompt-cache-retention).
+	//
+	// Any of "in-memory", "24h".
+	PromptCacheRetention string `json:"prompt_cache_retention,omitzero"`
+
+	// Configuration options for
+	// [reasoning models](https://platform.openai.com/docs/guides/reasoning).
+	Reasoning ReasoningParam `json:"reasoning,omitzero"`
+
+	// A stable identifier used to help detect users of your application that may be
+	// violating OpenAI's usage policies. The IDs should be a string that uniquely
+	// identifies each user. We recommend hashing their username or email address, in
+	// order to avoid sending us any identifying information.
+	// [Learn more](https://platform.openai.com/docs/guides/safety-best-practices#safety-identifiers).
+	SafetyIdentifier string `json:"safety_identifier,omitzero"`
+
+	// Specifies the processing type used for serving the request.
+	//
+	//   - If set to 'auto', then the request will be processed with the service tier
+	//     configured in the Project settings. Unless otherwise configured, the Project
+	//     will use 'default'.
+	//   - If set to 'default', then the request will be processed with the standard
+	//     pricing and performance for the selected model.
+	//   - If set to '[flex](https://platform.openai.com/docs/guides/flex-processing)' or
+	//     '[priority](https://openai.com/api-priority-processing/)', then the request
+	//     will be processed with the corresponding service tier.
+	//   - When not set, the default behavior is 'auto'.
+	//
+	// When the `service_tier` parameter is set, the response body will include the
+	// `service_tier` value based on the processing mode actually used to serve the
+	// request. This response value may be different from the value set in the
+	// parameter.
+	//
+	// Any of "auto", "default", "flex", "scale", "priority".
+	ServiceTier string `json:"service_tier,omitzero"`
+
+	// The status of the response generation. One of `completed`, `failed`,
+	// `in_progress`, `cancelled`, `queued`, or `incomplete`.
+	//
+	// Any of "completed", "failed", "in_progress", "cancelled", "queued",
+	// "incomplete".
+	Status string `json:"status"`
+
+	// Configuration options for a text response from the model. Can be plain text or
+	// structured JSON data. Learn more:
+	//
+	// - [Text inputs and outputs](https://platform.openai.com/docs/guides/text)
+	// - [Structured Outputs](https://platform.openai.com/docs/guides/structured-outputs)
+	Text ResponseTextConfig `json:"text"`
+
+	// An integer between 0 and 20 specifying the number of most likely tokens to
+	// return at each token position, each with an associated log probability.
+	TopLogprobs *int64 `json:"top_logprobs,omitempty"`
+
+	// The truncation strategy to use for the model response.
+	//
+	//   - `auto`: If the input to this Response exceeds the model's context window size,
+	//     the model will truncate the response to fit the context window by dropping
+	//     items from the beginning of the conversation.
+	//   - `disabled` (default): If the input size will exceed the context window size
+	//     for a model, the request will fail with a 400 error.
+	//
+	// Any of "auto", "disabled".
+	Truncation string `json:"truncation,omitzero"`
+
+	// Represents token usage details including input tokens, output tokens, a
+	// breakdown of output tokens, and the total tokens used.
+	Usage *ResponseUsage `json:"usage,omitempty"`
+
+	// This field is being replaced by `safety_identifier` and `prompt_cache_key`. Use
+	// `prompt_cache_key` instead to maintain caching optimizations. A stable
+	// identifier for your end-users. Used to boost cache hit rates by better bucketing
+	// similar requests and to help OpenAI detect and prevent abuse.
+	// [Learn more](https://platform.openai.com/docs/guides/safety-best-practices#safety-identifiers).
+	//
+	// Deprecated: deprecated
+	User string `json:"user,omitzero"`
+}
+
+// Represents token usage details including input tokens, output tokens, a
+// breakdown of output tokens, and the total tokens used.
+type ResponseUsage struct {
+	// The number of input tokens.
+	InputTokens int64 `json:"input_tokens"`
+
+	// A detailed breakdown of the input tokens.
+	InputTokensDetails ResponseUsageInputTokensDetails `json:"input_tokens_details"`
+
+	// The number of output tokens.
+	OutputTokens int64 `json:"output_tokens"`
+
+	// A detailed breakdown of the output tokens.
+	OutputTokensDetails ResponseUsageOutputTokensDetails `json:"output_tokens_details"`
+
+	// The total number of tokens used.
+	TotalTokens int64 `json:"total_tokens"`
+}
+
+// A detailed breakdown of the input tokens.
+type ResponseUsageInputTokensDetails struct {
+	// The number of tokens that were retrieved from the cache.
+	// [More on prompt caching](https://platform.openai.com/docs/guides/prompt-caching).
+	CachedTokens int64 `json:"cached_tokens"`
+}
+
+// A detailed breakdown of the output tokens.
+type ResponseUsageOutputTokensDetails struct {
+	// The number of reasoning tokens.
+	ReasoningTokens int64 `json:"reasoning_tokens"`
+}
+
+// ResponseTokensDetails represents detailed token usage breakdown.
+type ResponseTokensDetails struct {
+	// CachedTokens: Number of cached tokens.
+	CachedTokens int `json:"cached_tokens,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// ReasoningTokens: Number of reasoning tokens (for reasoning models).
+	ReasoningTokens int `json:"reasoning_tokens,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// AudioTokens: Number of audio tokens.
+	AudioTokens int `json:"audio_tokens,omitempty"` //nolint:tagliatelle //follow openai api
+}
+
+// An error object returned when the model fails to generate a Response.
+type ResponseError struct {
+	// The error code for the response.
+	//
+	// Any of "server_error", "rate_limit_exceeded", "invalid_prompt",
+	// "vector_store_timeout", "invalid_image", "invalid_image_format",
+	// "invalid_base64_image", "invalid_image_url", "image_too_large",
+	// "image_too_small", "image_parse_error", "image_content_policy_violation",
+	// "invalid_image_mode", "image_file_too_large", "unsupported_image_media_type",
+	// "empty_image_file", "failed_to_download_image", "image_file_not_found".
+	Code string `json:"code"`
+	// A human-readable description of the error.
+	Message string `json:"message"`
+}
+
+// Details about why the response is incomplete.
+type ResponseIncompleteDetails struct {
+	// The reason why the response is incomplete.
+	//
+	// Any of "max_output_tokens", "content_filter".
+	Reason string `json:"reason"`
+}
+
+// The conversation that this response belongs to. Input items and output items
+// from this response are automatically added to this conversation.
+type ResponseConversation struct {
+	// The unique ID of the conversation.
+	ID string `json:"id"`
+}
+
+// Reference to a prompt template and its variables.
+// [Learn more](https://platform.openai.com/docs/guides/text?api-mode=responses#reusable-prompts).
+type ResponsePrompt struct {
+	// The unique identifier of the prompt template to use.
+	ID string `json:"id"`
+	// Optional map of values to substitute in for variables in your prompt. The
+	// substitution values can either be strings, or other Response input types like
+	// images or files.
+	Variables map[string]responses.ResponsePromptVariableUnion `json:"variables,omitzero"`
+	// Optional version of the prompt template.
+	Version string `json:"version,omitzero"`
+}
+
+// Configuration options for a text response from the model. Can be plain text or
+// structured JSON data. Learn more:
+//
+// - [Text inputs and outputs](https://platform.openai.com/docs/guides/text)
+// - [Structured Outputs](https://platform.openai.com/docs/guides/structured-outputs)
+type ResponseTextConfig struct {
+	// An object specifying the format that the model must output.
+	//
+	// Configuring `{ "type": "json_schema" }` enables Structured Outputs, which
+	// ensures the model will match your supplied JSON schema. Learn more in the
+	// [Structured Outputs guide](https://platform.openai.com/docs/guides/structured-outputs).
+	//
+	// The default format is `{ "type": "text" }` with no additional options.
+	//
+	//
+	// Setting to `{ "type": "json_object" }` enables the older JSON mode, which
+	// ensures the message the model generates is valid JSON. Using `json_schema` is
+	// preferred for models that support it.
+	Format responses.ResponseFormatTextConfigUnion `json:"format"`
+	// Constrains the verbosity of the model's response. Lower values will result in
+	// more concise responses, while higher values will result in more verbose
+	// responses. Currently supported values are `low`, `medium`, and `high`.
+	//
+	// Any of "low", "medium", "high".
+	Verbosity string `json:"verbosity,omitzero"`
+}
+
+// Emitted when the model response is complete.
+type ResponseCompletedEvent struct {
+	// Properties of the completed response.
+	Response Response `json:"response"`
+	// The sequence number for this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.completed`.
+	Type string `json:"type"`
+}
+
+// ResponseStreamEventUnion contains all possible properties and values for response events
+type ResponseStreamEventUnion = responses.ResponseStreamEventUnion
