@@ -257,8 +257,7 @@ func (f *upstreamFilter) RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sd
 		f.logger.Debug("upstream request body called", slog.Bool("end_of_stream", endOfStream))
 	}
 	if !endOfStream {
-		// TODO: ideally, we should not buffer the entire body for the passthrough case.
-		//	However, the body is already buffered in Envoy at this point, so this should be almost no-op.
+		// The body is already buffered in Envoy at this point, so this should be almost no-op.
 		return sdk.RequestBodyStatusStopIterationAndBuffer
 	}
 

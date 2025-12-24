@@ -110,7 +110,7 @@ func NewRouterFilterConfig(env *Env, fcr **filterapi.RuntimeConfig) sdk.HTTPFilt
 func (f *routerFilterConfig) NewFilter() sdk.HTTPFilter {
 	return &routerFilter{
 		prefixToEndpoint:    f.prefixToEndpoint,
-		runtimeFilterConfig: *f.fcr,
+		runtimeFilterConfig: *f.fcr, // This is racy but we don't care.
 		tracing:             f.env.Tracing,
 		routerFilters:       f.env.RouterFilters,
 		logger:              f.logger,
