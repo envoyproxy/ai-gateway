@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -22,8 +23,19 @@ import (
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
+func BenchmarkChatCompletions_extproc(b *testing.B) {
+	b.Run("extproc", func(b *testing.B) {
+		b.Setenv("TEST_WITH_DYNAMIC_MODULE", "")
+		benchmarkChatCompletions(b, false)
+	})
+	b.Run("dynamic_module", func(b *testing.B) {
+		b.Setenv("TEST_WITH_DYNAMIC_MODULE", "true")
+		benchmarkChatCompletions(b, false)
+	})
+}
+
 // BenchmarkChatCompletions benchmarks the chat/completions endpoint for various backends.
-func BenchmarkChatCompletions(b *testing.B) {
+func benchmarkChatCompletions(b *testing.B, pprof bool) {
 	config := &filterapi.Config{
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
@@ -38,7 +50,29 @@ func BenchmarkChatCompletions(b *testing.B) {
 
 	configBytes, err := yaml.Marshal(config)
 	require.NoError(b, err)
-	env := startTestEnvironment(b, string(configBytes), false, true)
+	env := startTestEnvironment(b, string(configBytes), false, false)
+	profilingDone := make(chan struct{})
+	go func() {
+		defer close(profilingDone)
+		if !pprof {
+			return
+		}
+		// Invoke localhost:6060 and collect cpu profile for 5 seconds.
+		client := &http.Client{}
+		req, err := http.NewRequestWithContext(context.Background(),
+			http.MethodGet, "http://localhost:6060/debug/pprof/profile?seconds=5", nil)
+		require.NoError(b, err)
+
+		resp, err := client.Do(req)
+		require.NoError(b, err)
+		defer resp.Body.Close()
+
+		profileData, err := io.ReadAll(resp.Body)
+		require.NoError(b, err)
+
+		err = os.WriteFile("cpu_profile_dynamic_module.pprof", profileData, 0644)
+		require.NoError(b, err)
+	}()
 
 	listenerPort := env.EnvoyListenerPort()
 
@@ -184,6 +218,7 @@ func BenchmarkChatCompletions(b *testing.B) {
 			})
 		})
 	}
+	<-profilingDone
 }
 
 // BenchmarkEmbeddings benchmarks the embeddings endpoint.
