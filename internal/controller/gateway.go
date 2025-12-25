@@ -705,7 +705,7 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 					rollout = false
 					for j := range podSpec.InitContainers[i].Args {
 						// logLevel arg should be indexed 2 based on gateway_mutator.go, but we check all args to be safe.
-						if j > 0 && podSpec.InitContainers[i].Args[j-1] == "--logLevel" && podSpec.InitContainers[i].Args[j] != c.extProcLogLevel {
+						if j > 0 && podSpec.InitContainers[i].Args[j-1] == "-logLevel" && podSpec.InitContainers[i].Args[j] != c.extProcLogLevel {
 							rollout = true
 							break
 						}
