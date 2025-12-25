@@ -173,19 +173,26 @@ func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, req au
 }
 
 func buildRequestForCEL(req authorizationRequest, claims jwt.MapClaims, scopes sets.Set[string]) map[string]any {
+	// Normalize headers to lowercased keys to align with Envoy's behavior.
+	// Expose both single-value and multi-value header views for CEL.
+	// - request.headers: lowercased keys, first value only.
+	// - request.headers_all: lowercased keys, []string of all values.
 	headers := map[string]string{}
-	// Normalize headers to lowercase for CEL evaluation.
+	headersAll := map[string][]string{}
 	for k, v := range req.Headers {
 		if len(v) == 0 {
 			continue
 		}
-		headers[strings.ToLower(k)] = v[0]
+		lk := strings.ToLower(k)
+		headers[lk] = v[0]
+		headersAll[lk] = append([]string(nil), v...)
 	}
 	return map[string]any{
-		"method":  req.HTTPMethod,
-		"host":    req.Host,
-		"headers": headers,
-		"path":    req.HTTPPath,
+		"method":      req.HTTPMethod,
+		"host":        req.Host,
+		"headers":     headers,
+		"headers_all": headersAll,
+		"path":        req.HTTPPath,
 		"auth": map[string]any{
 			"jwt": map[string]any{
 				"claims": claims,

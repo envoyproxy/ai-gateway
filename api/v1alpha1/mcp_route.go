@@ -269,29 +269,27 @@ type MCPRouteAuthorizationRule struct {
 	// +kubebuilder:validation:Optional
 	Target *MCPAuthorizationTarget `json:"target,omitempty"`
 
-	// CEL specifies a Common Expression Language (CEL) expression for this rule.
-	// The expression must evaluate to a boolean value. If it evaluates to true,
-	// the rule is considered a match.
+	// CEL specifies a Common Expression Language (CEL) expression evaluated for this rule.
+	// The expression must return a boolean; evaluation errors or non-boolean results
+	// are treated as "no match".
 	//
 	// Example CEL expressions:
-	//   - `request.method == "POST"`
-	//   - `request.headers["X-Custom-Header"] == "AllowedValue"`
-	//   - `request.mcp.tool in ["toolA", "toolB"]`
+	//	* `request.method == "POST"`
+	//	* `request.headers["x-custom-header"] == "AllowedValue"`
+	//	* `request.mcp.tool in ["toolA", "toolB"]`
 	//
 	// Available attributes in the CEL expression:
 	//
-	// General HTTP-related properties
-	// request.method       # GET / POST, etc
-	// request.headers      # Map of request headers msp[string]string (lowercased keys, first value only)
-	// request.path         # Path like /mcp, etc
-	// request.auth.jwt.claims     # map[string]string with all JWT token claims, if a bearer token is present AND it is a JWT (not opaque) token
-	// request.auth.jwt.scopes     # []string with all JWT token scopes, if a bearer token is present AND it is a JWT (not opaque) token
-	//
-	// MCP specific properties
-	// request.mcp.method         # tools/list, tools/call, etc
-	// request.mcp.backend        # name of the upstream backend (kiwi, github)
-	// request.mcp.tool           # tool being called without the backend prefix (list_issues, etc)
-	// request.mcp.params         # params of the MCP method. Include keys as "_meta", "arguments" in tool calls, etc.
+	//	* request.method: HTTP method such as GET or POST. Type: string.
+	//	* request.headers: map of headers with lowercased keys, first value only. Type: map[string]string.
+	//	* request.headers_all: map of headers with lowercased keys, all values. Type: map[string][]string.
+	//	* request.path: request path such as /mcp. Type: string.
+	//	* request.auth.jwt.claims: JWT claims when a bearer JWT is present. Type: map[string]string.
+	//	* request.auth.jwt.scopes: JWT scopes when a bearer JWT is present. Type: []string.
+	//	* request.mcp.method: MCP method such as tools/list or tools/call. Type: string.
+	//	* request.mcp.backend: upstream backend name (for example, "kiwi" or "github"). Type: string.
+	//	* request.mcp.tool: tool name without backend prefix (for example, "list_issues"). Type: string.
+	//	* request.mcp.params: parameters of the MCP method, including keys like "_meta" and "arguments". Type: object.
 	//
 	// Note: The CEL expression support is experimental, and the attributes
 	// available to the expression may change in future releases.
