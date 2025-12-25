@@ -302,17 +302,15 @@ func envoy_dynamic_module_on_http_filter_config_destroy(ptr uintptr) {
 
 //export envoy_dynamic_module_on_http_filter_new
 func envoy_dynamic_module_on_http_filter_new(
-	filterConfigPtr uintptr,
-	_ uintptr,
+	filterConfigPtr,
+	filterEnvoyPtr uintptr,
 ) uintptr {
 	pinnedFilterConfig := unwrapPinnedHTTPFilterConfig(filterConfigPtr)
 	filterConfig := pinnedFilterConfig.obj
-	filter := filterConfig.NewFilter()
-	if filter == nil {
-		return 0
-	}
 	// Pin the filter to the memory manager.
-	pinned := memManager.pinHTTPFilter(filter)
+	pinned := memManager.pinHTTPFilter(&pinedHTTPFilterItem{
+		config: filterConfig,
+	})
 	// Return the pinned filter.
 	return uintptr(unsafe.Pointer(pinned))
 }
@@ -322,7 +320,9 @@ func envoy_dynamic_module_on_http_filter_destroy(
 	filterPtr uintptr,
 ) {
 	pinned := unwrapPinnedHTTPFilter(filterPtr)
-	pinned.obj.OnDestroy()
+	if f := pinned.obj.filter; f != nil {
+		f.OnDestroy()
+	}
 
 	// Unpin the filter from the memory manager.
 	memManager.unpinHTTPFilter(pinned)
@@ -337,7 +337,15 @@ func envoy_dynamic_module_on_http_filter_request_headers(
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	pinned := unwrapPinnedHTTPFilter(filterModulePtr)
-	status := pinned.obj.RequestHeaders(envoyFilter{raw: filterEnvoyPtr}, endOfStream)
+	f := pinned.obj.filter
+	if f == nil {
+		f = pinned.obj.config.NewFilter(envoyFilter{raw: filterEnvoyPtr})
+		if f == nil {
+			return 0
+		}
+		pinned.obj.filter = f
+	}
+	status := f.RequestHeaders(envoyFilter{raw: filterEnvoyPtr}, endOfStream)
 	return uintptr(status)
 }
 
@@ -350,7 +358,7 @@ func envoy_dynamic_module_on_http_filter_request_body(
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	pinned := unwrapPinnedHTTPFilter(filterModulePtr)
-	status := pinned.obj.RequestBody(envoyFilter{raw: filterEnvoyPtr}, endOfStream)
+	status := pinned.obj.filter.RequestBody(envoyFilter{raw: filterEnvoyPtr}, endOfStream)
 	return uintptr(status)
 }
 
@@ -368,7 +376,15 @@ func envoy_dynamic_module_on_http_filter_response_headers(
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	pinned := unwrapPinnedHTTPFilter(filterModulePtr)
-	status := pinned.obj.ResponseHeaders(envoyFilter{raw: filterEnvoyPtr}, endOfStream)
+	f := pinned.obj.filter
+	if f == nil {
+		f = pinned.obj.config.NewFilter(envoyFilter{raw: filterEnvoyPtr})
+		if f == nil {
+			return 0
+		}
+		pinned.obj.filter = f
+	}
+	status := f.ResponseHeaders(envoyFilter{raw: filterEnvoyPtr}, endOfStream)
 	return uintptr(status)
 }
 
@@ -381,7 +397,7 @@ func envoy_dynamic_module_on_http_filter_response_body(
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	pinned := unwrapPinnedHTTPFilter(filterModulePtr)
-	status := pinned.obj.ResponseBody(envoyFilter{raw: filterEnvoyPtr}, endOfStream)
+	status := pinned.obj.filter.ResponseBody(envoyFilter{raw: filterEnvoyPtr}, endOfStream)
 	return uintptr(status)
 }
 

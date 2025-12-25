@@ -69,6 +69,11 @@ type Env struct {
 
 // RouterFilters holds the instantiated router filters keyed on the request-id.
 type RouterFilters struct {
-	Filters map[string]sdk.HTTPFilter
+	Filters map[string]RouterFilterItem
 	Lock    sync.RWMutex
+}
+
+type RouterFilterItem interface {
+	Endpoint() endpoint
+	sdk.HTTPFilter
 }

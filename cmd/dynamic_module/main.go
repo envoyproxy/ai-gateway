@@ -140,7 +140,7 @@ func (g *globalState) initializeEnv(promRegistry *prometheus.Registry) error {
 		RerankMetricsFactory:          metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationRerank),
 		Tracing:                       tr,
 		RouterFilters: &dynamicmodule.RouterFilters{
-			Filters: make(map[string]sdk.HTTPFilter),
+			Filters: make(map[string]dynamicmodule.RouterFilterItem),
 		},
 		Logger: sdk.NewSlogLogger(),
 	}
@@ -169,6 +169,6 @@ func startAdminServer(l *slog.Logger, address string, registry prometheus.Gather
 			l.Error("admin server failed: " + err.Error())
 		}
 	}()
-	//pprof.Run(context.Background())
+	// pprof.Run(context.Background())
 	return nil
 }

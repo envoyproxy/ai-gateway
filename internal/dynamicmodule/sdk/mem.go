@@ -33,11 +33,16 @@ type (
 	pinedHTTPFilterConfig = linkedList[HTTPFilterConfig]
 
 	// pinedHTTPFilter holds a pinned HTTPFilter managed by the memory manager.
-	pinedHTTPFilter = linkedList[HTTPFilter]
+	pinedHTTPFilter = linkedList[*pinedHTTPFilterItem]
 
 	linkedList[T any] struct {
 		obj        T
 		next, prev *linkedList[T]
+	}
+
+	pinedHTTPFilterItem struct {
+		filter HTTPFilter
+		config HTTPFilterConfig
 	}
 )
 
@@ -69,7 +74,7 @@ func unwrapPinnedHTTPFilterConfig(raw uintptr) *pinedHTTPFilterConfig {
 }
 
 // pinHTTPFilter pins the http filter to the memory manager.
-func (m *memoryManager) pinHTTPFilter(filter HTTPFilter) *pinedHTTPFilter {
+func (m *memoryManager) pinHTTPFilter(filter *pinedHTTPFilterItem) *pinedHTTPFilter {
 	item := &pinedHTTPFilter{obj: filter, next: nil, prev: nil}
 	index := shardingKey(uintptr(unsafe.Pointer(item)))
 	mux := &m.httpFilterListsMuxes[index]

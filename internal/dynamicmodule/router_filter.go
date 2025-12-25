@@ -40,12 +40,9 @@ type (
 		logger           *slog.Logger
 	}
 	// routerFilter implements [sdk.HTTPFilter].
-	routerFilter struct {
+	routerFilter[ReqT, RespT, RespChunkT any, EndpointSpec endpointspec.Spec[ReqT, RespT, RespChunkT]] struct {
 		logger          *slog.Logger
 		debugLogEnabled bool
-		// prefixToEndpoint maps request path prefixes to endpoints. Shallow copy of
-		// the one in routerFilterConfig at the time of filter creation.
-		prefixToEndpoint map[string]endpoint
 		// runtimeFilterConfig is the snapshot of the runtime filter configuration at the time of filter creation.
 		runtimeFilterConfig *filterapi.RuntimeConfig
 		// tracing is the tracing implementation inherited from the environment.
@@ -53,29 +50,12 @@ type (
 		attemptCount int
 		// endpoint is the endpoint that the current request is targeting.
 		endpoint endpoint
-		// typedFilter is the typed router filter for the current request.
-		typedFilter routerFilterTypedIface
-
 		// Inherited from the environment.
 		routerFilters *RouterFilters
 		// This indicates whether the request was 200 on the response headers phase.
 		success           bool
 		internalRequestID string
-	}
 
-	// routerFilterTypedIface is the interface for the typed router filter.
-	routerFilterTypedIface interface {
-		RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.RequestBodyStatus
-		UpstreamTypedFilter() upstreamFilterTypedIface
-		Stream() bool
-	}
-
-	// routerFilter typed is the typed implementation of the router filter for a specific endpoint.
-	routerFilterTyped[ReqT, RespT, RespChunkT any, EndpointSpec endpointspec.Spec[ReqT, RespT, RespChunkT]] struct {
-		logger                 *slog.Logger
-		debugLogEnabled        bool
-		runtimeFilterConfig    *filterapi.RuntimeConfig
-		ep                     EndpointSpec
 		originalRequestHeaders map[string]string
 		originalRequestBody    *ReqT
 		originalRequestBodyRaw []byte
@@ -84,7 +64,8 @@ type (
 		stream                 bool
 		tracer                 tracing.RequestTracer[ReqT, RespT, RespChunkT]
 		span                   tracing.Span[RespT, RespChunkT]
-		upstreamFilter         upstreamFilterTypedIface
+
+		upstreamFilter *upstreamFilter[ReqT, RespT, RespChunkT, EndpointSpec]
 	}
 )
 
@@ -109,38 +90,119 @@ func NewRouterFilterConfig(env *Env, fcr **filterapi.RuntimeConfig) sdk.HTTPFilt
 }
 
 // NewFilter implements [sdk.HTTPFilterConfig].
-func (f *routerFilterConfig) NewFilter() sdk.HTTPFilter {
-	return &routerFilter{
-		prefixToEndpoint:    f.prefixToEndpoint,
-		runtimeFilterConfig: *f.fcr, // This is racy but we don't care.
-		tracing:             f.env.Tracing,
-		routerFilters:       f.env.RouterFilters,
-		logger:              f.logger,
-		debugLogEnabled:     f.env.DebugLogEnabled,
+func (f *routerFilterConfig) NewFilter(e sdk.EnvoyHTTPFilter) sdk.HTTPFilter {
+	if f.env.DebugLogEnabled {
+		f.logger.Debug("router filter NewFilter called")
 	}
-}
-
-// RequestHeaders implements [sdk.HTTPFilter].
-func (f *routerFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.RequestHeadersStatus {
-	p, _ := e.GetRequestHeader(":path") // The :path pseudo header is always present.
+	p, ok := e.GetRequestHeader(":path") // The :path pseudo header is always present.
+	if !ok {
+		f.logger.Error("missing :path header in request")
+		e.SendLocalReply(400, nil, []byte("missing :path header"))
+		return sdk.NoopHTTPFilter{}
+	}
 	// Strip query parameters for processor lookup.
 	if queryIndex := strings.Index(p, "?"); queryIndex != -1 {
 		p = p[:queryIndex]
 	}
 	ep, ok := f.prefixToEndpoint[p]
 	if !ok {
+		if f.env.DebugLogEnabled {
+			f.logger.Debug("unsupported path requested", slog.String("path", p))
+		}
 		e.SendLocalReply(404, nil, []byte(fmt.Sprintf("unsupported path: %s", p)))
-		return sdk.RequestHeadersStatusStopIteration
+		return sdk.NoopHTTPFilter{}
 	}
-	if f.debugLogEnabled {
+	if f.env.DebugLogEnabled {
 		f.logger.Debug("continuing to request body phase for endpoint",
 			slog.String("endpoint", ep.String()))
 	}
-	f.endpoint = ep
-	if f.endpoint == modelsEndpoint {
-		return f.handleModelsEndpoint(e)
+	switch ep {
+	case chatCompletionsEndpoint:
+		return &routerFilter[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]{
+			endpoint:            ep,
+			runtimeFilterConfig: *f.fcr, // This is racy but we don't care.
+			tracing:             f.env.Tracing,
+			routerFilters:       f.env.RouterFilters,
+			logger:              f.logger,
+			debugLogEnabled:     f.env.DebugLogEnabled,
+			tracer:              f.env.Tracing.ChatCompletionTracer(),
+		}
+	case completionsEndpoint:
+		return &routerFilter[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse, endpointspec.CompletionsEndpointSpec]{
+			endpoint:            ep,
+			runtimeFilterConfig: *f.fcr,
+			tracing:             f.env.Tracing,
+			routerFilters:       f.env.RouterFilters,
+			logger:              f.logger,
+			debugLogEnabled:     f.env.DebugLogEnabled,
+			tracer:              f.env.Tracing.CompletionTracer(),
+		}
+	case embeddingsEndpoint:
+		return &routerFilter[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}, endpointspec.EmbeddingsEndpointSpec]{
+			endpoint:            ep,
+			runtimeFilterConfig: *f.fcr,
+			tracing:             f.env.Tracing,
+			routerFilters:       f.env.RouterFilters,
+			logger:              f.logger,
+			debugLogEnabled:     f.env.DebugLogEnabled,
+			tracer:              f.env.Tracing.EmbeddingsTracer(),
+		}
+	case imagesGenerationsEndpoint:
+		return &routerFilter[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}, endpointspec.ImageGenerationEndpointSpec]{
+			endpoint:            ep,
+			runtimeFilterConfig: *f.fcr,
+			tracing:             f.env.Tracing,
+			routerFilters:       f.env.RouterFilters,
+			logger:              f.logger,
+			debugLogEnabled:     f.env.DebugLogEnabled,
+			tracer:              f.env.Tracing.ImageGenerationTracer(),
+		}
+	case rerankEndpoint:
+		return &routerFilter[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}, endpointspec.RerankEndpointSpec]{
+			endpoint:            ep,
+			runtimeFilterConfig: *f.fcr,
+			tracing:             f.env.Tracing,
+			routerFilters:       f.env.RouterFilters,
+			logger:              f.logger,
+			debugLogEnabled:     f.env.DebugLogEnabled,
+			tracer:              f.env.Tracing.RerankTracer(),
+		}
+	case messagesEndpoint:
+		return &routerFilter[anthropic.MessagesRequest, anthropic.MessagesResponse, anthropic.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]{
+			endpoint:            ep,
+			runtimeFilterConfig: *f.fcr,
+			tracing:             f.env.Tracing,
+			routerFilters:       f.env.RouterFilters,
+			logger:              f.logger,
+			debugLogEnabled:     f.env.DebugLogEnabled,
+			tracer:              f.env.Tracing.MessageTracer(),
+		}
+	case responsesEndpoint:
+		return &routerFilter[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion, endpointspec.ResponsesEndpointSpec]{
+			endpoint:            ep,
+			runtimeFilterConfig: *f.fcr,
+			tracing:             f.env.Tracing,
+			routerFilters:       f.env.RouterFilters,
+			logger:              f.logger,
+			debugLogEnabled:     f.env.DebugLogEnabled,
+			tracer:              f.env.Tracing.ResponsesTracer(),
+		}
+	case modelsEndpoint:
+		handleModelsEndpoint(e, *f.fcr)
+		return sdk.NoopHTTPFilter{}
+	default:
+		e.SendLocalReply(500, nil, []byte("BUG: unsupported endpoint at body parsing: "+ep.String()))
+		return nil
 	}
+}
 
+// Endpoint returns the endpoint that the filter is targeting.
+func (f *routerFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) Endpoint() endpoint {
+	return f.endpoint
+}
+
+// RequestHeaders implements [sdk.HTTPFilter].
+func (f *routerFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.RequestHeadersStatus {
 	originalReqID, ok := e.GetRequestHeader("x-request-id")
 	if !ok {
 		e.SendLocalReply(400, nil, []byte("missing x-request-id header"))
@@ -164,73 +226,7 @@ func (f *routerFilter) RequestHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Request
 }
 
 // RequestBody implements [sdk.HTTPFilter].
-func (f *routerFilter) RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.RequestBodyStatus {
-	switch f.endpoint {
-	case chatCompletionsEndpoint:
-		f.typedFilter = &routerFilterTyped[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]{
-			logger:              f.logger,
-			debugLogEnabled:     f.debugLogEnabled,
-			runtimeFilterConfig: f.runtimeFilterConfig,
-			tracer:              f.tracing.ChatCompletionTracer(),
-		}
-	case completionsEndpoint:
-		f.typedFilter = &routerFilterTyped[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse, endpointspec.CompletionsEndpointSpec]{
-			logger:              f.logger,
-			debugLogEnabled:     f.debugLogEnabled,
-			runtimeFilterConfig: f.runtimeFilterConfig,
-			tracer:              f.tracing.CompletionTracer(),
-		}
-	case embeddingsEndpoint:
-		f.typedFilter = &routerFilterTyped[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}, endpointspec.EmbeddingsEndpointSpec]{
-			logger:              f.logger,
-			debugLogEnabled:     f.debugLogEnabled,
-			runtimeFilterConfig: f.runtimeFilterConfig,
-			tracer:              f.tracing.EmbeddingsTracer(),
-		}
-	case imagesGenerationsEndpoint:
-		f.typedFilter = &routerFilterTyped[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}, endpointspec.ImageGenerationEndpointSpec]{
-			logger:              f.logger,
-			debugLogEnabled:     f.debugLogEnabled,
-			runtimeFilterConfig: f.runtimeFilterConfig,
-			tracer:              f.tracing.ImageGenerationTracer(),
-		}
-	case rerankEndpoint:
-		f.typedFilter = &routerFilterTyped[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}, endpointspec.RerankEndpointSpec]{
-			logger:              f.logger,
-			debugLogEnabled:     f.debugLogEnabled,
-			runtimeFilterConfig: f.runtimeFilterConfig,
-			tracer:              f.tracing.RerankTracer(),
-		}
-	case messagesEndpoint:
-		f.typedFilter = &routerFilterTyped[anthropic.MessagesRequest, anthropic.MessagesResponse, anthropic.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]{
-			logger:              f.logger,
-			debugLogEnabled:     f.debugLogEnabled,
-			runtimeFilterConfig: f.runtimeFilterConfig,
-			tracer:              f.tracing.MessageTracer(),
-		}
-	case responsesEndpoint:
-		f.typedFilter = &routerFilterTyped[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion, endpointspec.ResponsesEndpointSpec]{
-			logger:              f.logger,
-			debugLogEnabled:     f.debugLogEnabled,
-			runtimeFilterConfig: f.runtimeFilterConfig,
-			tracer:              f.tracing.ResponsesTracer(),
-		}
-	default:
-		e.SendLocalReply(500, nil, []byte("BUG: unsupported endpoint at body parsing: "+fmt.Sprintf("%d", f.endpoint)))
-		return sdk.RequestBodyStatusStopIterationAndBuffer
-	}
-	return f.typedFilter.RequestBody(e, endOfStream)
-}
-
-func (f *routerFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) UpstreamTypedFilter() upstreamFilterTypedIface {
-	return f.upstreamFilter
-}
-
-func (f *routerFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) Stream() bool {
-	return f.stream
-}
-
-func (f *routerFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.RequestBodyStatus {
+func (f *routerFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.RequestBodyStatus {
 	if !endOfStream {
 		if f.debugLogEnabled {
 			f.logger.Debug("waiting for end of stream to parse request body")
@@ -250,7 +246,8 @@ func (f *routerFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(
 
 	f.originalRequestBodyRaw = raw
 	var maybeMutatedOriginalBodyRaw []byte
-	f.originalModel, f.originalRequestBody, f.stream, maybeMutatedOriginalBodyRaw, err = f.ep.ParseBody(raw, len(f.runtimeFilterConfig.RequestCosts) > 0)
+	var ep EndpointSpecT
+	f.originalModel, f.originalRequestBody, f.stream, maybeMutatedOriginalBodyRaw, err = ep.ParseBody(raw, len(f.runtimeFilterConfig.RequestCosts) > 0)
 	if err != nil {
 		e.SendLocalReply(400, nil, []byte("failed to parse request body: "+err.Error()))
 		return sdk.RequestBodyStatusStopIterationAndBuffer
@@ -284,12 +281,11 @@ func (f *routerFilterTyped[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(
 }
 
 // ResponseHeaders implements [sdk.HTTPFilter].
-func (f *routerFilter) ResponseHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.ResponseHeadersStatus {
-	typedFilter := f.typedFilter.UpstreamTypedFilter()
-	if typedFilter == nil {
+func (f *routerFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.ResponseHeadersStatus {
+	if f.upstreamFilter == nil {
 		return sdk.ResponseHeadersStatusContinue
 	}
-	if err := typedFilter.ResponseHeaders(e, false); err != nil {
+	if err := f.upstreamFilter.ResponseHeadersImpl(e, false); err != nil {
 		f.logger.Error("response headers error", slog.String("error", err.Error()))
 		e.SendLocalReply(500, nil, []byte("internal server error"))
 		return sdk.ResponseHeadersStatusStopIteration
@@ -300,24 +296,23 @@ func (f *routerFilter) ResponseHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.Respon
 		f.logger.Debug("upstream response headers processed",
 			slog.String(":status", status))
 	}
-	if f.typedFilter.Stream() && f.success {
+	if f.stream && f.success {
 		return sdk.ResponseHeadersStatusContinue
 	}
 	return sdk.ResponseHeadersStatusStopIteration
 }
 
 // ResponseBody implements [sdk.HTTPFilter].
-func (f *routerFilter) ResponseBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.ResponseBodyStatus {
-	typedFilter := f.typedFilter.UpstreamTypedFilter()
-	if typedFilter == nil {
+func (f *routerFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.ResponseBodyStatus {
+	if f.upstreamFilter == nil {
 		return sdk.ResponseBodyStatusContinue
 	}
-	if (!f.success || !f.typedFilter.Stream()) && !endOfStream {
+	if (!f.success || !f.stream) && !endOfStream {
 		// Buffer the entire body if not streaming.
 		if f.debugLogEnabled {
 			f.logger.Debug("upstream response body buffering as not streaming or error response",
 				slog.Bool("success", f.success),
-				slog.Bool("stream", f.typedFilter.Stream()),
+				slog.Bool("stream", f.stream),
 				slog.Bool("end_of_stream", endOfStream))
 		}
 		return sdk.ResponseBodyStatusStopIterationAndBuffer
@@ -327,14 +322,14 @@ func (f *routerFilter) ResponseBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk
 			f.logger.Debug("upstream response body error handling started",
 				slog.Bool("end_of_stream", endOfStream))
 		}
-		if err := typedFilter.ResponseBodyOnError(e); err != nil {
+		if err := f.upstreamFilter.ResponseBodyOnError(e); err != nil {
 			f.logger.Error("response body on error handling failed", slog.String("error", err.Error()))
 			e.SendLocalReply(500, nil, []byte("internal server error"))
 		}
 		return sdk.ResponseBodyStatusContinue
 	}
 
-	if err := typedFilter.ResponseBody(e, endOfStream); err != nil {
+	if err := f.upstreamFilter.ResponseBodyImpl(e, endOfStream); err != nil {
 		f.logger.Error("response body handling failed", slog.String("error", err.Error()))
 		e.SendLocalReply(500, nil, []byte("internal server error"))
 		return sdk.ResponseBodyStatusStopIterationAndBuffer
@@ -346,7 +341,7 @@ func (f *routerFilter) ResponseBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk
 	return sdk.ResponseBodyStatusContinue
 }
 
-func (f *routerFilter) OnDestroy() {
+func (f *routerFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) OnDestroy() {
 	f.routerFilters.Lock.Lock()
 	delete(f.routerFilters.Filters, f.internalRequestID)
 	f.routerFilters.Lock.Unlock()
@@ -359,8 +354,7 @@ func (f *routerFilter) OnDestroy() {
 // handleModelsEndpoint handles the /v1/models endpoint by returning the list of declared models in the filter configuration.
 //
 // This is called on request headers phase.
-func (f *routerFilter) handleModelsEndpoint(e sdk.EnvoyHTTPFilter) sdk.RequestHeadersStatus {
-	config := f.runtimeFilterConfig
+func handleModelsEndpoint(e sdk.EnvoyHTTPFilter, config *filterapi.RuntimeConfig) sdk.RequestHeadersStatus {
 	models := openai.ModelList{
 		Object: "list",
 		Data:   make([]openai.Model, 0, len(config.DeclaredModels)),

@@ -36,7 +36,7 @@ func BenchmarkChatCompletions_extproc(b *testing.B) {
 }
 
 // BenchmarkChatCompletions benchmarks the chat/completions endpoint for various backends.
-func benchmarkChatCompletions(b *testing.B, pprof bool) {
+func benchmarkChatCompletions(b *testing.B, _ bool) {
 	config := &filterapi.Config{
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
@@ -82,7 +82,7 @@ func benchmarkChatCompletions(b *testing.B, pprof bool) {
 		profileData, err := io.ReadAll(resp.Body)
 		require.NoError(b, err)
 
-		err = os.WriteFile("cpu_profile_dynamic_module.pprof", profileData, 0644)
+		err = os.WriteFile("cpu_profile_dynamic_module.pprof", profileData, 0o600)
 		require.NoError(b, err)
 	}()
 	wg.Add(1)
@@ -103,7 +103,7 @@ func benchmarkChatCompletions(b *testing.B, pprof bool) {
 		profileData, err := io.ReadAll(resp.Body)
 		require.NoError(b, err)
 
-		err = os.WriteFile("memory_profile_dynamic_module.pprof", profileData, 0644)
+		err = os.WriteFile("memory_profile_dynamic_module.pprof", profileData, 0o600)
 		require.NoError(b, err)
 	}()
 	wg.Add(1)
@@ -124,7 +124,7 @@ func benchmarkChatCompletions(b *testing.B, pprof bool) {
 		profileData, err := io.ReadAll(resp.Body)
 		require.NoError(b, err)
 
-		err = os.WriteFile("blocking_profile_dynamic_module.pprof", profileData, 0644)
+		err = os.WriteFile("blocking_profile_dynamic_module.pprof", profileData, 0o600)
 		require.NoError(b, err)
 	}()
 	wg.Add(1)
@@ -145,7 +145,7 @@ func benchmarkChatCompletions(b *testing.B, pprof bool) {
 		profileData, err := io.ReadAll(resp.Body)
 		require.NoError(b, err)
 
-		err = os.WriteFile("mutex_profile_dynamic_module.pprof", profileData, 0644)
+		err = os.WriteFile("mutex_profile_dynamic_module.pprof", profileData, 0o600)
 		require.NoError(b, err)
 	}()
 	wg.Add(1)
@@ -165,7 +165,7 @@ func benchmarkChatCompletions(b *testing.B, pprof bool) {
 		profileData, err := io.ReadAll(resp.Body)
 		require.NoError(b, err)
 
-		err = os.WriteFile("tracing_profile_dynamic_module.pprof", profileData, 0644)
+		err = os.WriteFile("tracing_profile_dynamic_module.pprof", profileData, 0o600)
 		require.NoError(b, err)
 	}()
 

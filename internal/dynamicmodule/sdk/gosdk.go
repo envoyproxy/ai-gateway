@@ -21,7 +21,7 @@ var NewHTTPFilterConfig func(name string, config []byte) HTTPFilterConfig
 type HTTPFilterConfig interface {
 	// NewFilter is called for each new Http request.
 	// Note that this must be concurrency-safe as it can be called concurrently for multiple requests.
-	NewFilter() HTTPFilter
+	NewFilter(e EnvoyHTTPFilter) HTTPFilter
 }
 
 // EnvoyHTTPFilter is an interface that represents the underlying Envoy filter.
@@ -106,6 +106,27 @@ type HTTPFilter interface {
 	// OnDestroy is called when the filter is being destroyed.
 	OnDestroy()
 }
+
+// NoopHTTPFilter is a no-op implementation of the HTTPFilter interface.
+type NoopHTTPFilter struct{}
+
+func (f NoopHTTPFilter) RequestHeaders(EnvoyHTTPFilter, bool) RequestHeadersStatus {
+	return RequestHeadersStatusContinue
+}
+
+func (f NoopHTTPFilter) RequestBody(EnvoyHTTPFilter, bool) RequestBodyStatus {
+	return RequestBodyStatusContinue
+}
+
+func (f NoopHTTPFilter) ResponseHeaders(EnvoyHTTPFilter, bool) ResponseHeadersStatus {
+	return ResponseHeadersStatusContinue
+}
+
+func (f NoopHTTPFilter) ResponseBody(EnvoyHTTPFilter, bool) ResponseBodyStatus {
+	return ResponseBodyStatusContinue
+}
+
+func (f NoopHTTPFilter) OnDestroy() {}
 
 // RequestHeadersStatus is the return value of the HTTPFilter.RequestHeaders.
 type RequestHeadersStatus int
