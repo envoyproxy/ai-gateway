@@ -506,6 +506,7 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 
 				mcpRule := filterapi.MCPRouteAuthorizationRule{
 					Action: filterapi.AuthorizationAction(action),
+					CEL:    rule.CEL,
 				}
 
 				if rule.Source != nil {
@@ -535,7 +536,6 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 						tools[i] = filterapi.ToolCall{
 							Backend: tool.Backend,
 							Tool:    tool.Tool,
-							When:    tool.When,
 						}
 					}
 					mcpRule.Target = &filterapi.MCPAuthorizationTarget{
