@@ -36,10 +36,8 @@ type compiledAuthorizationRule struct {
 }
 
 type compiledToolCall struct {
-	Backend    string
-	Tool       string
-	Expression string
-	program    cel.Program
+	Backend string
+	Tool    string
 }
 
 // authorizationRequest captures the parts of an MCP request needed for authorization.
@@ -61,7 +59,6 @@ func compileAuthorization(auth *filterapi.MCPRouteAuthorization) (*compiledAutho
 	}
 
 	env, err := cel.NewEnv(
-		cel.Variable("args", cel.DynType),
 		cel.Variable("request", cel.DynType),
 		cel.OptionalTypes(),
 	)
@@ -84,19 +81,6 @@ func compileAuthorization(auth *filterapi.MCPRouteAuthorization) (*compiledAutho
 				ct := compiledToolCall{
 					Backend: tool.Backend,
 					Tool:    tool.Tool,
-				}
-				if tool.When != nil && strings.TrimSpace(*tool.When) != "" {
-					expr := strings.TrimSpace(*tool.When)
-					ast, issues := env.Compile(expr)
-					if issues != nil && issues.Err() != nil {
-						return nil, fmt.Errorf("failed to compile when CEL for tool %s/%s: %w", tool.Backend, tool.Tool, issues.Err())
-					}
-					program, err := env.Program(ast, cel.CostLimit(10000), cel.EvalOptions(cel.OptOptimize))
-					if err != nil {
-						return nil, fmt.Errorf("failed to build when CEL program for tool %s/%s: %w", tool.Backend, tool.Tool, err)
-					}
-					ct.Expression = expr
-					ct.program = program
 				}
 				cr.Target = append(cr.Target, ct)
 			}
@@ -154,7 +138,7 @@ func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, req au
 	for _, rule := range authorization.Rules {
 		action := rule.Action == filterapi.AuthorizationActionAllow
 
-		if rule.Target != nil && !m.toolMatches(req.Backend, req.Tool, rule.Target, req.Params) {
+		if rule.Target != nil && !m.toolMatches(req.Backend, req.Tool, rule.Target) {
 			continue
 		}
 
@@ -278,7 +262,7 @@ func (m *MCPProxy) evalRuleCEL(rule compiledAuthorizationRule, request map[strin
 	}
 }
 
-func (m *MCPProxy) toolMatches(backend, tool string, tools []compiledToolCall, args any) bool {
+func (m *MCPProxy) toolMatches(backend, tool string, tools []compiledToolCall) bool {
 	// Empty tools means all tools match.
 	if len(tools) == 0 {
 		return true
@@ -288,28 +272,7 @@ func (m *MCPProxy) toolMatches(backend, tool string, tools []compiledToolCall, a
 		if t.Backend != backend || t.Tool != tool {
 			continue
 		}
-		if t.program == nil {
-			return true
-		}
-
-		result, _, err := t.program.Eval(map[string]any{"args": args})
-		if err != nil {
-			m.l.Error("failed to evaluate when CEL", slog.String("backend", t.Backend), slog.String("tool", t.Tool), slog.String("error", err.Error()))
-			continue
-		}
-
-		switch v := result.Value().(type) {
-		case bool:
-			if v {
-				return true
-			}
-		case types.Bool:
-			if bool(v) {
-				return true
-			}
-		default:
-			m.l.Error("when CEL did not return a boolean", slog.String("backend", t.Backend), slog.String("tool", t.Tool), slog.String("expression", t.Expression))
-		}
+		return true
 	}
 	// If no matching tool entry or no arguments matched, fail.
 	return false

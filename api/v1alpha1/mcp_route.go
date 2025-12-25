@@ -352,14 +352,6 @@ type ToolCall struct {
 	//
 	// +kubebuilder:validation:Required
 	Tool string `json:"tool"`
-
-	// When is a CEL expression evaluated against the tool call arguments map.
-	// The expression must evaluate to true for the tool to match the rule.
-	//
-	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:MaxLength=4096
-	// +optional
-	When *string `json:"when,omitempty"`
 }
 
 // JWKS defines how to obtain JSON Web Key Sets (JWKS) either from a remote HTTP/HTTPS endpoint or from a local source.

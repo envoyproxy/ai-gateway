@@ -688,12 +688,6 @@ spec:
                                       tool:
                                         description: Tool is the name of the tool.
                                         type: string
-                                      when:
-                                        description: |-
-                                          When is a CEL expression evaluated against the tool call arguments map.
-                                          The expression must evaluate to true for the tool to match the rule.
-                                        maxLength: 4096
-                                        type: string
                                     required:
                                     - backend
                                     - tool
