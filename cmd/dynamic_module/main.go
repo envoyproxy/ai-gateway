@@ -16,7 +16,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/envoyproxy/ai-gateway/internal/pprof"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
@@ -170,6 +169,6 @@ func startAdminServer(l *slog.Logger, address string, registry prometheus.Gather
 			l.Error("admin server failed: " + err.Error())
 		}
 	}()
-	pprof.Run(context.Background())
+	//pprof.Run(context.Background())
 	return nil
 }

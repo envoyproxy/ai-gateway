@@ -50,7 +50,7 @@ func benchmarkChatCompletions(b *testing.B, pprof bool) {
 	}
 
 	var messages []string
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 10000; i++ {
 		messages = append(messages, fmt.Sprintf(`{"role": "user", "content": "This is message number %d."}`, i+1))
 	}
 	largeRequestBody := fmt.Sprintf(`{
@@ -61,12 +61,12 @@ func benchmarkChatCompletions(b *testing.B, pprof bool) {
 
 	configBytes, err := yaml.Marshal(config)
 	require.NoError(b, err)
-	env := startTestEnvironment(b, string(configBytes), true, false)
+	env := startTestEnvironment(b, string(configBytes), false, false)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if false {
+		if true {
 			return
 		}
 		// Invoke localhost:6060 and collect cpu profile for 5 seconds.
@@ -88,7 +88,7 @@ func benchmarkChatCompletions(b *testing.B, pprof bool) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if false {
+		if true {
 			return
 		}
 		// Invoke localhost:6060 and collect memory profile for 5 seconds.
@@ -109,7 +109,7 @@ func benchmarkChatCompletions(b *testing.B, pprof bool) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if false {
+		if true {
 			return
 		}
 		// Invoke localhost:6060 and collect blocking profile for 5 seconds.
@@ -130,7 +130,7 @@ func benchmarkChatCompletions(b *testing.B, pprof bool) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if false {
+		if true {
 			return
 		}
 		// Invoke localhost:6060 and collect mutex profile for 5 seconds.
@@ -151,7 +151,7 @@ func benchmarkChatCompletions(b *testing.B, pprof bool) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if false {
+		if true {
 			return
 		}
 		// Invoke localhost:6060 and collect tracing profile for 5 seconds.

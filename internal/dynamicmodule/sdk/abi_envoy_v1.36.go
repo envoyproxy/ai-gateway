@@ -334,6 +334,8 @@ func envoy_dynamic_module_on_http_filter_request_headers(
 	filterModulePtr uintptr,
 	endOfStream bool,
 ) uintptr {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	pinned := unwrapPinnedHTTPFilter(filterModulePtr)
 	status := pinned.obj.RequestHeaders(envoyFilter{raw: filterEnvoyPtr}, endOfStream)
 	return uintptr(status)
@@ -345,6 +347,8 @@ func envoy_dynamic_module_on_http_filter_request_body(
 	filterModulePtr uintptr,
 	endOfStream bool,
 ) uintptr {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	pinned := unwrapPinnedHTTPFilter(filterModulePtr)
 	status := pinned.obj.RequestBody(envoyFilter{raw: filterEnvoyPtr}, endOfStream)
 	return uintptr(status)
@@ -361,6 +365,8 @@ func envoy_dynamic_module_on_http_filter_response_headers(
 	filterModulePtr uintptr,
 	endOfStream bool,
 ) uintptr {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	pinned := unwrapPinnedHTTPFilter(filterModulePtr)
 	status := pinned.obj.ResponseHeaders(envoyFilter{raw: filterEnvoyPtr}, endOfStream)
 	return uintptr(status)
@@ -372,6 +378,8 @@ func envoy_dynamic_module_on_http_filter_response_body(
 	filterModulePtr uintptr,
 	endOfStream bool,
 ) uintptr {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	pinned := unwrapPinnedHTTPFilter(filterModulePtr)
 	status := pinned.obj.ResponseBody(envoyFilter{raw: filterEnvoyPtr}, endOfStream)
 	return uintptr(status)
