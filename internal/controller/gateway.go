@@ -534,6 +534,10 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 					}
 				}
 
+				if rule.CEL != nil {
+					mcpRule.CEL = rule.CEL
+				}
+
 				mcpRoute.Authorization.Rules = append(mcpRoute.Authorization.Rules, mcpRule)
 			}
 		}

@@ -372,7 +372,7 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 				onErrorResponse(w, http.StatusBadRequest, "invalid params")
 				return
 			}
-			err = m.handleToolCallRequest(ctx, s, w, msg, params.(*mcp.CallToolParams), span, r.Header)
+			err = m.handleToolCallRequest(ctx, s, w, msg, params.(*mcp.CallToolParams), span, r)
 		case "tools/list":
 			params = &mcp.ListToolsParams{}
 			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, params, r.Header)
@@ -635,7 +635,7 @@ func (m *MCPProxy) handleClientToServerResponse(ctx context.Context, s *session,
 	return m.proxyResponseBody(ctx, s, w, resp, nil, backend)
 }
 
-func (m *MCPProxy) handleToolCallRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.CallToolParams, span tracing.MCPSpan, headers http.Header) error {
+func (m *MCPProxy) handleToolCallRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.CallToolParams, span tracing.MCPSpan, r *http.Request) error {
 	backendName, toolName, err := upstreamResourceName(p.Name)
 	if err != nil {
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid tool name %s: %v", p.Name, err))
@@ -663,7 +663,21 @@ func (m *MCPProxy) handleToolCallRequest(ctx context.Context, s *session, w http
 
 	// Enforce authentication if required by the route.
 	if route.authorization != nil {
-		allowed, requiredScopes := m.authorizeRequest(route.authorization, headers, backendName, toolName, p.Arguments)
+		httpMethod := r.Method
+		httpPath := ""
+		if r.URL != nil {
+			httpPath = r.URL.Path
+		}
+		allowed, requiredScopes := m.authorizeRequest(route.authorization, authorizationRequest{
+			Headers:    r.Header,
+			HTTPMethod: httpMethod,
+			Host:       r.Host,
+			HTTPPath:   httpPath,
+			MCPMethod:  req.Method,
+			Backend:    backendName,
+			Tool:       toolName,
+			Params:     p.Arguments,
+		})
 		if !allowed {
 			// Specify the minimum required scopes in the WWW-Authenticate header.
 			// Reference: https://mcp.mintlify.app/specification/2025-11-25/basic/authorization#runtime-insufficient-scope-errors

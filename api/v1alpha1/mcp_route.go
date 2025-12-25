@@ -281,7 +281,7 @@ type MCPRouteAuthorizationRule struct {
 	//
 	// General HTTP-related properties
 	// request.method       # GET / POST, etc
-	// request.headers      # Map of request headers msp[string]string (no multi-value headers support probably)
+	// request.headers      # Map of request headers msp[string]string (lowercased keys, first value only)
 	// request.path         # Path like /mcp, etc
 	// request.auth.jwt.claims     # map[string]string with all JWT token claims, if a bearer token is present AND it is a JWT (not opaque) token
 	// request.auth.jwt.scopes     # []string with all JWT token scopes, if a bearer token is present AND it is a JWT (not opaque) token
@@ -352,6 +352,14 @@ type ToolCall struct {
 	//
 	// +kubebuilder:validation:Required
 	Tool string `json:"tool"`
+
+	// When is a CEL expression evaluated against the tool call arguments map.
+	// The expression must evaluate to true for the tool to match the rule.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxLength=4096
+	// +optional
+	When *string `json:"when,omitempty"`
 }
 
 // JWKS defines how to obtain JSON Web Key Sets (JWKS) either from a remote HTTP/HTTPS endpoint or from a local source.

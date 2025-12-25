@@ -100,6 +100,11 @@ type MCPRouteAuthorizationRule struct {
 	// Target defines the authorization target for this rule.
 	// If not specified, the rule will match all targets.
 	Target *MCPAuthorizationTarget `json:"target,omitempty"`
+
+	// CEL specifies a Common Expression Language (CEL) expression for this rule.
+	// The expression must evaluate to true for the rule to match.
+	// If empty, no CEL condition is applied.
+	CEL *string `json:"cel,omitempty"`
 }
 
 type MCPAuthorizationTarget struct {

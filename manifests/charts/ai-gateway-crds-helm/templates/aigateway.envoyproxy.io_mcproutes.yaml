@@ -624,6 +624,21 @@ spec:
                                   - `request.headers["X-Custom-Header"] == "AllowedValue"`
                                   - `request.mcp.tool in ["toolA", "toolB"]`
 
+                                Available attributes in the CEL expression:
+
+                                General HTTP-related properties
+                                request.method       # GET / POST, etc
+                                request.headers      # Map of request headers msp[string]string (lowercased keys, first value only)
+                                request.path         # Path like /mcp, etc
+                                request.auth.jwt.claims     # map[string]string with all JWT token claims, if a bearer token is present AND it is a JWT (not opaque) token
+                                request.auth.jwt.scopes     # []string with all JWT token scopes, if a bearer token is present AND it is a JWT (not opaque) token
+
+                                MCP specific properties
+                                request.mcp.method         # tools/list, tools/call, etc
+                                request.mcp.backend        # name of the upstream backend (kiwi, github)
+                                request.mcp.tool           # tool being called without the backend prefix (list_issues, etc)
+                                request.mcp.params         # params of the MCP method. Include keys as "_meta", "arguments" in tool calls, etc.
+
                                 Note: The CEL expression support is experimental, and the attributes
                                 available to the expression may change in future releases.
                               maxLength: 4096
@@ -672,6 +687,12 @@ spec:
                                         type: string
                                       tool:
                                         description: Tool is the name of the tool.
+                                        type: string
+                                      when:
+                                        description: |-
+                                          When is a CEL expression evaluated against the tool call arguments map.
+                                          The expression must evaluate to true for the tool to match the rule.
+                                        maxLength: 4096
                                         type: string
                                     required:
                                     - backend

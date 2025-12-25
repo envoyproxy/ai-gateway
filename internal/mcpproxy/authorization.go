@@ -30,6 +30,9 @@ type compiledAuthorizationRule struct {
 	Source *filterapi.MCPAuthorizationSource
 	Target []compiledToolCall
 	Action filterapi.AuthorizationAction
+	// CEL expression compiled for request-level evaluation.
+	celExpression string
+	celProgram    cel.Program
 }
 
 type compiledToolCall struct {
@@ -37,6 +40,18 @@ type compiledToolCall struct {
 	Tool       string
 	Expression string
 	program    cel.Program
+}
+
+// authorizationRequest captures the parts of an MCP request needed for authorization.
+type authorizationRequest struct {
+	Headers    http.Header
+	HTTPMethod string
+	Host       string
+	HTTPPath   string
+	MCPMethod  string
+	Backend    string
+	Tool       string
+	Params     any
 }
 
 // compileAuthorization compiles the MCPRouteAuthorization into a compiledAuthorization for efficient CEL evaluation.
@@ -47,6 +62,7 @@ func compileAuthorization(auth *filterapi.MCPRouteAuthorization) (*compiledAutho
 
 	env, err := cel.NewEnv(
 		cel.Variable("args", cel.DynType),
+		cel.Variable("request", cel.DynType),
 		cel.OptionalTypes(),
 	)
 	if err != nil {
@@ -85,6 +101,19 @@ func compileAuthorization(auth *filterapi.MCPRouteAuthorization) (*compiledAutho
 				cr.Target = append(cr.Target, ct)
 			}
 		}
+		if rule.CEL != nil && strings.TrimSpace(*rule.CEL) != "" {
+			expr := strings.TrimSpace(*rule.CEL)
+			ast, issues := env.Compile(expr)
+			if issues != nil && issues.Err() != nil {
+				return nil, fmt.Errorf("failed to compile rule CEL: %w", issues.Err())
+			}
+			program, err := env.Program(ast, cel.CostLimit(10000), cel.EvalOptions(cel.OptOptimize))
+			if err != nil {
+				return nil, fmt.Errorf("failed to build rule CEL program: %w", err)
+			}
+			cr.celExpression = expr
+			cr.celProgram = program
+		}
 		compiled.Rules = append(compiled.Rules, cr)
 	}
 
@@ -92,7 +121,7 @@ func compileAuthorization(auth *filterapi.MCPRouteAuthorization) (*compiledAutho
 }
 
 // authorizeRequest authorizes the request based on the given MCPRouteAuthorization configuration.
-func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, headers http.Header, backend, tool string, arguments any) (bool, []string) {
+func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, req authorizationRequest) (bool, []string) {
 	if authorization == nil {
 		return true, nil
 	}
@@ -105,13 +134,13 @@ func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, header
 	}
 
 	scopeSet := sets.New[string]()
-	token, err := bearerToken(headers.Get("Authorization"))
+	claims := jwt.MapClaims{}
+	token, err := bearerToken(req.Headers.Get("Authorization"))
 	// This is just a sanity check. The actual JWT verification is performed by Envoy before reaching here, and the token
 	// should always be present and valid.
 	if err != nil {
 		m.l.Info("missing or invalid bearer token", slog.String("error", err.Error()))
 	} else {
-		claims := jwt.MapClaims{}
 		// JWT verification is performed by Envoy before reaching here. So we only need to parse the token without verification.
 		if _, _, err := jwt.NewParser().ParseUnverified(token, claims); err != nil {
 			m.l.Info("failed to parse JWT token", slog.String("error", err.Error()))
@@ -120,12 +149,20 @@ func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, header
 	}
 
 	var requiredScopesForChallenge []string
+	requestForCEL := buildRequestForCEL(req, claims, scopeSet)
 
 	for _, rule := range authorization.Rules {
 		action := rule.Action == filterapi.AuthorizationActionAllow
 
-		if rule.Target != nil && !m.toolMatches(backend, tool, rule.Target, arguments) {
+		if rule.Target != nil && !m.toolMatches(req.Backend, req.Tool, rule.Target, req.Params) {
 			continue
+		}
+
+		if rule.celProgram != nil {
+			match, ok := m.evalRuleCEL(rule, requestForCEL)
+			if !ok || !match {
+				continue
+			}
 		}
 
 		// If no source is specified, the rule matches all sources.
@@ -148,6 +185,35 @@ func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, header
 	}
 
 	return defaultAction, requiredScopesForChallenge
+}
+
+func buildRequestForCEL(req authorizationRequest, claims jwt.MapClaims, scopes sets.Set[string]) map[string]any {
+	headers := map[string]string{}
+	// Normalize headers to lowercase for CEL evaluation.
+	for k, v := range req.Headers {
+		if len(v) == 0 {
+			continue
+		}
+		headers[strings.ToLower(k)] = v[0]
+	}
+	return map[string]any{
+		"method":  req.HTTPMethod,
+		"host":    req.Host,
+		"headers": headers,
+		"path":    req.HTTPPath,
+		"auth": map[string]any{
+			"jwt": map[string]any{
+				"claims": claims,
+				"scopes": sets.List(scopes),
+			},
+		},
+		"mcp": map[string]any{
+			"method":  req.MCPMethod,
+			"backend": req.Backend,
+			"tool":    req.Tool,
+			"params":  req.Params,
+		},
+	}
 }
 
 func bearerToken(header string) (string, error) {
@@ -188,6 +254,27 @@ func extractScopes(claims jwt.MapClaims) []string {
 		return scopes
 	default:
 		return nil
+	}
+}
+
+func (m *MCPProxy) evalRuleCEL(rule compiledAuthorizationRule, request map[string]any) (bool, bool) {
+	if rule.celProgram == nil {
+		return true, true
+	}
+	result, _, err := rule.celProgram.Eval(map[string]any{"request": request})
+	if err != nil {
+		m.l.Error("failed to evaluate authorization CEL", slog.String("error", err.Error()), slog.String("expression", rule.celExpression))
+		return false, false
+	}
+
+	switch v := result.Value().(type) {
+	case bool:
+		return v, true
+	case types.Bool:
+		return bool(v), true
+	default:
+		m.l.Error("authorization CEL did not return a boolean", slog.String("expression", rule.celExpression))
+		return false, false
 	}
 }
 
