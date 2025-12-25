@@ -251,6 +251,7 @@ backends:
 			"-extProcAddr", ":0",
 			"-adminPort", "0",
 			"-mcpAddr", "unix://" + socketPath,
+			"-logLevel", "info",
 		}
 		errCh <- Main(ctx, args, stderrW)
 	}()
