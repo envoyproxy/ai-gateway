@@ -29,16 +29,11 @@ type compiledAuthorization struct {
 
 type compiledAuthorizationRule struct {
 	Source *filterapi.MCPAuthorizationSource
-	Target []compiledToolCall
+	Target []filterapi.ToolCall
 	Action filterapi.AuthorizationAction
 	// CEL expression compiled for request-level evaluation.
 	celExpression string
 	celProgram    cel.Program
-}
-
-type compiledToolCall struct {
-	Backend string
-	Tool    string
 }
 
 // authorizationRequest captures the parts of an MCP request needed for authorization.
@@ -78,13 +73,7 @@ func compileAuthorization(auth *filterapi.MCPRouteAuthorization) (*compiledAutho
 			Action: rule.Action,
 		}
 		if rule.Target != nil {
-			for _, tool := range rule.Target.Tools {
-				ct := compiledToolCall{
-					Backend: tool.Backend,
-					Tool:    tool.Tool,
-				}
-				cr.Target = append(cr.Target, ct)
-			}
+			cr.Target = append(cr.Target, rule.Target.Tools...)
 		}
 		if rule.CEL != nil && strings.TrimSpace(*rule.CEL) != "" {
 			expr := strings.TrimSpace(*rule.CEL)
@@ -143,10 +132,7 @@ func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, req au
 	for _, rule := range authorization.Rules {
 		action := rule.Action == filterapi.AuthorizationActionAllow
 
-		if rule.Target != nil && !m.toolMatches(req.Backend, req.Tool, rule.Target) {
-			continue
-		}
-
+		// Evaluate CEL expression if present.
 		if rule.celProgram != nil {
 			match, ok := m.evalRuleCEL(rule, requestForCEL)
 			if !ok || !match {
@@ -154,11 +140,17 @@ func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, req au
 			}
 		}
 
+		// If no target is specified, the rule matches all targets.
+		if rule.Target != nil && !m.toolMatches(req.Backend, req.Tool, rule.Target) {
+			continue
+		}
+
 		// If no source is specified, the rule matches all sources.
 		if rule.Source == nil {
 			return action, nil
 		}
 
+		// Check source if specified.
 		if !claimsSatisfied(claims, rule.Source.JWT.Claims) {
 			continue
 		}
@@ -271,7 +263,7 @@ func (m *MCPProxy) evalRuleCEL(rule compiledAuthorizationRule, request map[strin
 	}
 }
 
-func (m *MCPProxy) toolMatches(backend, tool string, tools []compiledToolCall) bool {
+func (m *MCPProxy) toolMatches(backend, tool string, tools []filterapi.ToolCall) bool {
 	// Empty tools means all tools match.
 	if len(tools) == 0 {
 		return true

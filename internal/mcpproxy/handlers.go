@@ -663,14 +663,13 @@ func (m *MCPProxy) handleToolCallRequest(ctx context.Context, s *session, w http
 
 	// Enforce authentication if required by the route.
 	if route.authorization != nil {
-		httpMethod := r.Method
 		httpPath := ""
 		if r.URL != nil {
 			httpPath = r.URL.Path
 		}
 		allowed, requiredScopes := m.authorizeRequest(route.authorization, authorizationRequest{
 			Headers:    r.Header,
-			HTTPMethod: httpMethod,
+			HTTPMethod: r.Method,
 			Host:       r.Host,
 			HTTPPath:   httpPath,
 			MCPMethod:  req.Method,
