@@ -27,8 +27,9 @@ import (
 
 // bearerTokenTransport injects a bearer token into outgoing requests.
 type bearerTokenTransport struct {
-	token string
-	base  http.RoundTripper
+	token   string
+	headers map[string]string
+	base    http.RoundTripper
 }
 
 // RoundTrip implements [http.RoundTripper.RoundTrip].
@@ -38,6 +39,9 @@ func (t *bearerTokenTransport) RoundTrip(req *http.Request) (*http.Response, err
 		base = http.DefaultTransport
 	}
 	req.Header.Set("Authorization", "Bearer "+t.token)
+	for k, v := range t.headers {
+		req.Header.Set(k, v)
+	}
 	return base.RoundTrip(req)
 }
 
@@ -76,13 +80,11 @@ func TestMCPRouteAuthorization(t *testing.T) {
 		requireSumToolResult(ctx, t, sess, 41, 1, "42")
 	})
 
-	t.Run("matching scopes and arguments", func(t *testing.T) {
+	t.Run("matching scopes, arguments, and headers", func(t *testing.T) {
 		token := makeSignedJWT(t, "echo")
 		authHTTPClient := &http.Client{
-			Timeout: 10 * time.Second,
-			Transport: &bearerTokenTransport{
-				token: token,
-			},
+			Timeout:   10 * time.Second,
+			Transport: &bearerTokenTransport{token: token, headers: map[string]string{"x-tenant": "t-123"}},
 		}
 
 		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
@@ -93,7 +95,7 @@ func TestMCPRouteAuthorization(t *testing.T) {
 			_ = sess.Close()
 		})
 
-		const hello = "Hello, world!" // Should match the argument regex "^Hello, .*!$"
+		const hello = "Hello, world!" // Should match the CEL expression on params + header
 		res, err := sess.CallTool(ctx, &mcp.CallToolParams{
 			Name:      "mcp-backend-authorization__" + testmcp.ToolEcho.Tool.Name,
 			Arguments: testmcp.ToolEchoArgs{Text: hello},
@@ -106,13 +108,11 @@ func TestMCPRouteAuthorization(t *testing.T) {
 		require.Equal(t, hello, txt.Text)
 	})
 
-	t.Run("matching scopes and mismatched arguments", func(t *testing.T) {
+	t.Run("matching scopes and mismatched arguments or headers", func(t *testing.T) {
 		token := makeSignedJWT(t, "echo")
 		authHTTPClient := &http.Client{
-			Timeout: 10 * time.Second,
-			Transport: &bearerTokenTransport{
-				token: token,
-			},
+			Timeout:   10 * time.Second,
+			Transport: &bearerTokenTransport{token: token, headers: map[string]string{"x-tenant": "t-123"}},
 		}
 
 		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
@@ -123,7 +123,7 @@ func TestMCPRouteAuthorization(t *testing.T) {
 			_ = sess.Close()
 		})
 
-		const hello = "hello, world!" // Should match the argument regex "^Hello, .*!$"
+		const hello = "hello, world!" // Should fail CEL due to lowercase h
 		_, err := sess.CallTool(ctx, &mcp.CallToolParams{
 			Name:      "mcp-backend-authorization__" + testmcp.ToolEcho.Tool.Name,
 			Arguments: testmcp.ToolEchoArgs{Text: hello},
@@ -163,10 +163,8 @@ func TestMCPRouteAuthorization(t *testing.T) {
 	t.Run("WWW-Authenticate on insufficient scope", func(t *testing.T) {
 		token := makeSignedJWT(t, "sum") // only sum scope; echo requires echo
 		authHTTPClient := &http.Client{
-			Timeout: 10 * time.Second,
-			Transport: &bearerTokenTransport{
-				token: token,
-			},
+			Timeout:   10 * time.Second,
+			Transport: &bearerTokenTransport{token: token},
 		}
 
 		routeHeader := "default/mcp-route-authorization-default-deny"
@@ -186,6 +184,7 @@ func TestMCPRouteAuthorization(t *testing.T) {
 		require.NoError(t, err)
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-tenant", "t-123")
 		req.Header.Set("mcp-session-id", sess.ID())
 		req.Header.Set("x-ai-eg-mcp-route", routeHeader)
 
