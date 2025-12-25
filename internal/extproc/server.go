@@ -38,6 +38,7 @@ var (
 // Server implements the external processor server.
 type Server struct {
 	logger                        *slog.Logger
+	debugLogEnabled               bool
 	config                        *filterapi.RuntimeConfig
 	processorFactories            map[string]ProcessorFactory
 	routerProcessorsPerReqID      map[string]Processor
@@ -47,8 +48,10 @@ type Server struct {
 
 // NewServer creates a new external processor server.
 func NewServer(logger *slog.Logger) (*Server, error) {
+	debugLogEnabled := logger.Enabled(context.Background(), slog.LevelDebug)
 	srv := &Server{
 		logger:                   logger,
+		debugLogEnabled:          debugLogEnabled,
 		processorFactories:       make(map[string]ProcessorFactory),
 		routerProcessorsPerReqID: make(map[string]Processor),
 		uuidFn:                   uuid.NewString,
@@ -105,8 +108,10 @@ const internalReqIDHeader = internalapi.EnvoyAIGatewayHeaderPrefix + "internal-r
 
 // Process implements [extprocv3.ExternalProcessorServer].
 func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error {
-	s.logger.Debug("handling a new stream", slog.Any("config_uuid", s.config.UUID))
 	ctx := stream.Context()
+	if s.debugLogEnabled {
+		s.logger.Debug("handling a new stream", slog.Any("config_uuid", s.config.UUID))
+	}
 
 	// The processor will be instantiated when the first message containing the request headers is received.
 	// The :path header is used to determine the processor to use, based on the registered ones.
@@ -253,11 +258,14 @@ func (s *Server) processMsg(ctx context.Context, l *slog.Logger, p Processor, re
 				)
 			}
 		}
-
-		l.Debug("request headers processed", slog.Any("response", resp))
+		if s.debugLogEnabled {
+			l.Debug("request headers processed", slog.Any("response", resp))
+		}
 		return resp, nil
 	case *extprocv3.ProcessingRequest_RequestBody:
-		l.Debug("request body processing", slog.Any("request", req))
+		if s.debugLogEnabled {
+			l.Debug("request body processing", slog.Any("request", req))
+		}
 		resp, err := p.ProcessRequestBody(ctx, value.RequestBody)
 		// If the DEBUG log level is enabled, filter the sensitive body before logging.
 		if l.Enabled(ctx, slog.LevelDebug) {
@@ -270,17 +278,25 @@ func (s *Server) processMsg(ctx context.Context, l *slog.Logger, p Processor, re
 		return resp, nil
 	case *extprocv3.ProcessingRequest_ResponseHeaders:
 		responseHdrs := req.GetResponseHeaders().Headers
-		l.Debug("response headers processing", slog.Any("response_headers", responseHdrs))
+		if s.debugLogEnabled {
+			l.Debug("response headers processing", slog.Any("response_headers", responseHdrs))
+		}
 		resp, err := p.ProcessResponseHeaders(ctx, responseHdrs)
 		if err != nil {
 			return nil, fmt.Errorf("cannot process response headers: %w", err)
 		}
-		l.Debug("response headers processed", slog.Any("response", resp))
+		if s.debugLogEnabled {
+			l.Debug("response headers processed", slog.Any("response", resp))
+		}
 		return resp, nil
 	case *extprocv3.ProcessingRequest_ResponseBody:
-		l.Debug("response body processing", slog.Any("request", req))
+		if s.debugLogEnabled {
+			l.Debug("response body processing", slog.Any("request", req))
+		}
 		resp, err := p.ProcessResponseBody(ctx, value.ResponseBody)
-		l.Debug("response body processed", slog.Any("response", resp))
+		if s.debugLogEnabled {
+			l.Debug("response body processed", slog.Any("response", resp))
+		}
 		if err != nil {
 			return nil, fmt.Errorf("cannot process response body: %w", err)
 		}

@@ -120,8 +120,33 @@ type MCPAuthorizationSource struct {
 type JWTSource struct {
 	// Scopes defines the list of JWT scopes required for the rule.
 	// If multiple scopes are specified, all scopes must be present in the JWT for the rule to match.
-	Scopes []string `json:"scopes"`
+	Scopes []string `json:"scopes,omitempty"`
+
+	// Claims defines the list of JWT claims required for the rule. Each claim must exist on the token
+	// and have at least one of the expected values.
+	Claims []JWTClaim `json:"claims,omitempty"`
 }
+
+type JWTClaim struct {
+	// Name is the name of the claim, supports dotted paths for nested claims.
+	Name string `json:"name"`
+
+	// ValueType indicates whether the claim value is expected to be a string or string array.
+	ValueType JWTClaimValueType `json:"valueType"`
+
+	// Values are the values that the claim must match.
+	// If the claim is a string type, the specified value must match exactly.
+	// If the claim is a string array type, the specified value must match one of the values in the array.
+	// If multiple values are specified, one of the values must match for the rule to match.
+	Values []string `json:"values"`
+}
+
+type JWTClaimValueType string
+
+const (
+	JWTClaimValueTypeString      JWTClaimValueType = "String"
+	JWTClaimValueTypeStringArray JWTClaimValueType = "StringArray"
+)
 
 type ToolCall struct {
 	// Backend is the name of the backend this tool belongs to.
