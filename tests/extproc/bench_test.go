@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,7 +31,7 @@ func BenchmarkChatCompletions_extproc(b *testing.B) {
 	})
 	b.Run("dynamic_module", func(b *testing.B) {
 		b.Setenv("TEST_WITH_DYNAMIC_MODULE", "true")
-		benchmarkChatCompletions(b, true)
+		benchmarkChatCompletions(b, false)
 	})
 }
 
@@ -61,10 +62,11 @@ func benchmarkChatCompletions(b *testing.B, pprof bool) {
 	configBytes, err := yaml.Marshal(config)
 	require.NoError(b, err)
 	env := startTestEnvironment(b, string(configBytes), true, false)
-	profilingDone := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
-		defer close(profilingDone)
-		if !pprof {
+		defer wg.Done()
+		if false {
 			return
 		}
 		// Invoke localhost:6060 and collect cpu profile for 5 seconds.
@@ -83,6 +85,89 @@ func benchmarkChatCompletions(b *testing.B, pprof bool) {
 		err = os.WriteFile("cpu_profile_dynamic_module.pprof", profileData, 0644)
 		require.NoError(b, err)
 	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if false {
+			return
+		}
+		// Invoke localhost:6060 and collect memory profile for 5 seconds.
+		client := &http.Client{}
+		req, err := http.NewRequestWithContext(context.Background(),
+			http.MethodGet, "http://localhost:6060/debug/pprof/heap?seconds=2", nil)
+		require.NoError(b, err)
+
+		resp, err := client.Do(req)
+		require.NoError(b, err)
+		defer resp.Body.Close()
+		profileData, err := io.ReadAll(resp.Body)
+		require.NoError(b, err)
+
+		err = os.WriteFile("memory_profile_dynamic_module.pprof", profileData, 0644)
+		require.NoError(b, err)
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if false {
+			return
+		}
+		// Invoke localhost:6060 and collect blocking profile for 5 seconds.
+		client := &http.Client{}
+		req, err := http.NewRequestWithContext(context.Background(),
+			http.MethodGet, "http://localhost:6060/debug/pprof/block?seconds=2", nil)
+		require.NoError(b, err)
+
+		resp, err := client.Do(req)
+		require.NoError(b, err)
+		defer resp.Body.Close()
+		profileData, err := io.ReadAll(resp.Body)
+		require.NoError(b, err)
+
+		err = os.WriteFile("blocking_profile_dynamic_module.pprof", profileData, 0644)
+		require.NoError(b, err)
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if false {
+			return
+		}
+		// Invoke localhost:6060 and collect mutex profile for 5 seconds.
+		client := &http.Client{}
+		req, err := http.NewRequestWithContext(context.Background(),
+			http.MethodGet, "http://localhost:6060/debug/pprof/mutex?seconds=2", nil)
+		require.NoError(b, err)
+
+		resp, err := client.Do(req)
+		require.NoError(b, err)
+		defer resp.Body.Close()
+		profileData, err := io.ReadAll(resp.Body)
+		require.NoError(b, err)
+
+		err = os.WriteFile("mutex_profile_dynamic_module.pprof", profileData, 0644)
+		require.NoError(b, err)
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if false {
+			return
+		}
+		// Invoke localhost:6060 and collect tracing profile for 5 seconds.
+		client := &http.Client{}
+		req, err := http.NewRequestWithContext(context.Background(),
+			http.MethodGet, "http://localhost:6060/debug/pprof/trace?seconds=2", nil)
+		require.NoError(b, err)
+		resp, err := client.Do(req)
+		require.NoError(b, err)
+		defer resp.Body.Close()
+		profileData, err := io.ReadAll(resp.Body)
+		require.NoError(b, err)
+
+		err = os.WriteFile("tracing_profile_dynamic_module.pprof", profileData, 0644)
+		require.NoError(b, err)
+	}()
 
 	listenerPort := env.EnvoyListenerPort()
 
@@ -97,109 +182,109 @@ func benchmarkChatCompletions(b *testing.B, pprof bool) {
 			backend:     "openai",
 			requestBody: largeRequestBody,
 		},
-		//{
-		//	name:    "OpenAI",
-		//	backend: "openai",
-		//	requestBody: `{
-		//		"model": "gpt-4",
-		//		"messages": [
-		//			{"role": "user", "content": "Hello, this is a benchmark test message."}
-		//		],
-		//		"max_tokens": 100
-		//	}`,
-		//	responseBody: `{
-		//		"id": "chatcmpl-benchmark",
-		//		"object": "chat.completion",
-		//		"created": 1234567890,
-		//		"model": "gpt-4",
-		//		"choices": [{
-		//			"index": 0,
-		//			"message": {
-		//				"role": "assistant",
-		//				"content": "Hello! This is a benchmark response from OpenAI."
-		//			},
-		//			"finish_reason": "stop"
-		//		}],
-		//		"usage": {
-		//			"prompt_tokens": 10,
-		//			"completion_tokens": 12,
-		//			"total_tokens": 22
-		//		}
-		//	}`,
-		//},
-		//
-		//{
-		//	name:    "AWS_Bedrock",
-		//	backend: "aws-bedrock",
-		//	requestBody: `{
-		//		"model": "claude-3-sonnet",
-		//		"messages": [
-		//			{"role": "user", "content": "Hello, this is a benchmark test message."}
-		//		],
-		//		"max_tokens": 100
-		//	}`,
-		//	responseBody: `{
-		//		"output": {
-		//			"message": {
-		//				"content": [{"text": "Hello! This is a benchmark response from AWS Bedrock."}],
-		//				"role": "assistant"
-		//			}
-		//		},
-		//		"stopReason": "end_turn",
-		//		"usage": {
-		//			"inputTokens": 10,
-		//			"outputTokens": 12,
-		//			"totalTokens": 22
-		//		}
-		//	}`,
-		//},
-		//{
-		//	name:    "GCP_VertexAI",
-		//	backend: "gcp-vertexai",
-		//	requestBody: `{
-		//		"model": "gemini-1.5-pro",
-		//		"messages": [
-		//			{"role": "user", "content": "Hello, this is a benchmark test message."}
-		//		],
-		//		"max_tokens": 100
-		//	}`,
-		//	responseBody: `{
-		//		"candidates": [{
-		//			"content": {
-		//				"parts": [{"text": "Hello! This is a benchmark response from GCP Vertex AI."}],
-		//				"role": "model"
-		//			},
-		//			"finishReason": "STOP"
-		//		}],
-		//		"usageMetadata": {
-		//			"promptTokenCount": 10,
-		//			"candidatesTokenCount": 12,
-		//			"totalTokenCount": 22
-		//		}
-		//	}`,
-		//},
-		//{
-		//	name:    "GCP_AnthropicAI",
-		//	backend: "gcp-anthropicai",
-		//	requestBody: `{
-		//		"model": "claude-3-sonnet",
-		//		"messages": [
-		//			{"role": "user", "content": "Hello, this is a benchmark test message."}
-		//		],
-		//		"max_tokens": 100
-		//	}`,
-		//	responseBody: `{
-		//		"id": "msg_benchmark",
-		//		"type": "message",
-		//		"role": "assistant",
-		//		"stop_reason": "end_turn",
-		//		"content": [{"type": "text", "text": "Hello! This is a benchmark response from GCP Anthropic AI."}],
-		//		"usage": {
-		//			"input_tokens": 10,
-		//			"output_tokens": 12
-		//		}
-		//	}`,
-		//},
+		{
+			name:    "OpenAI",
+			backend: "openai",
+			requestBody: `{
+				"model": "gpt-4",
+				"messages": [
+					{"role": "user", "content": "Hello, this is a benchmark test message."}
+				],
+				"max_tokens": 100
+			}`,
+			responseBody: `{
+				"id": "chatcmpl-benchmark",
+				"object": "chat.completion",
+				"created": 1234567890,
+				"model": "gpt-4",
+				"choices": [{
+					"index": 0,
+					"message": {
+						"role": "assistant",
+						"content": "Hello! This is a benchmark response from OpenAI."
+					},
+					"finish_reason": "stop"
+				}],
+				"usage": {
+					"prompt_tokens": 10,
+					"completion_tokens": 12,
+					"total_tokens": 22
+				}
+			}`,
+		},
+
+		{
+			name:    "AWS_Bedrock",
+			backend: "aws-bedrock",
+			requestBody: `{
+				"model": "claude-3-sonnet",
+				"messages": [
+					{"role": "user", "content": "Hello, this is a benchmark test message."}
+				],
+				"max_tokens": 100
+			}`,
+			responseBody: `{
+				"output": {
+					"message": {
+						"content": [{"text": "Hello! This is a benchmark response from AWS Bedrock."}],
+						"role": "assistant"
+					}
+				},
+				"stopReason": "end_turn",
+				"usage": {
+					"inputTokens": 10,
+					"outputTokens": 12,
+					"totalTokens": 22
+				}
+			}`,
+		},
+		{
+			name:    "GCP_VertexAI",
+			backend: "gcp-vertexai",
+			requestBody: `{
+				"model": "gemini-1.5-pro",
+				"messages": [
+					{"role": "user", "content": "Hello, this is a benchmark test message."}
+				],
+				"max_tokens": 100
+			}`,
+			responseBody: `{
+				"candidates": [{
+					"content": {
+						"parts": [{"text": "Hello! This is a benchmark response from GCP Vertex AI."}],
+						"role": "model"
+					},
+					"finishReason": "STOP"
+				}],
+				"usageMetadata": {
+					"promptTokenCount": 10,
+					"candidatesTokenCount": 12,
+					"totalTokenCount": 22
+				}
+			}`,
+		},
+		{
+			name:    "GCP_AnthropicAI",
+			backend: "gcp-anthropicai",
+			requestBody: `{
+				"model": "claude-3-sonnet",
+				"messages": [
+					{"role": "user", "content": "Hello, this is a benchmark test message."}
+				],
+				"max_tokens": 100
+			}`,
+			responseBody: `{
+				"id": "msg_benchmark",
+				"type": "message",
+				"role": "assistant",
+				"stop_reason": "end_turn",
+				"content": [{"type": "text", "text": "Hello! This is a benchmark response from GCP Anthropic AI."}],
+				"usage": {
+					"input_tokens": 10,
+					"output_tokens": 12
+				}
+			}`,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -238,7 +323,7 @@ func benchmarkChatCompletions(b *testing.B, pprof bool) {
 			})
 		})
 	}
-	<-profilingDone
+	wg.Wait()
 }
 
 // BenchmarkEmbeddings benchmarks the embeddings endpoint.
