@@ -177,7 +177,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		logAndSendError(w, http.StatusInternalServerError, "failed to read the request body: %v", err)
 		return
 	}
-	logger.Printf("Request body (%d bytes): %s", len(requestBody), string(requestBody))
 
 	// At least for the endpoints we want to support, all requests should have a Content-Length header
 	// and should not use chunked transfer encoding.
@@ -381,7 +380,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		var responseBody []byte
 		if expResponseBody := r.Header.Get(testupstreamlib.ResponseBodyHeaderKey); expResponseBody == "" {
 			// If the expected response body is not set, get the fake response if the path is known.
-			responseBody, err = getFakeResponse(r.URL.Path)
+			responseBody, err = getFakeResponse(r.URL.Path, r.Header)
 			if err != nil {
 				logAndSendError(w, http.StatusBadRequest, "failed to get the fake response for path %s: %v", r.URL.Path, err)
 				return
@@ -403,7 +402,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			responseBody = buf.Bytes()
 		}
 		_, _ = w.Write(responseBody)
-		logger.Println("response sent:", string(responseBody))
 	}
 }
 
@@ -447,12 +445,15 @@ var chatCompletionFakeResponses = []string{
 	`Expecto Patronum!`,
 }
 
-func getFakeResponse(path string) ([]byte, error) {
+func getFakeResponse(path string, headers http.Header) ([]byte, error) {
 	switch path {
 	case "/non-llm-route":
 		const template = `{"message":"This is a non-LLM endpoint response"}`
 		return []byte(template), nil
 	case "/v1/chat/completions":
+		if headers.Get(testupstreamlib.LargeFakeResponseHeaderKey) != "" {
+			return largeFakeResponse, nil
+		}
 		const template = `{"choices":[{"message":{"role":"assistant", "content":"%s"}}]}`
 		msg := fmt.Sprintf(template,
 			//nolint:gosec
@@ -466,3 +467,49 @@ func getFakeResponse(path string) ([]byte, error) {
 		return nil, fmt.Errorf("unknown path: %s", path)
 	}
 }
+
+// largeFakeResponse generates a large fake response body for testing large payload handling with 3MB size.
+var largeFakeResponse = func() []byte {
+	const template = `{
+  "id": "chatcmpl-CqSf2jfV03XXLdrL2CoreXibglhVU",
+  "object": "chat.completion",
+  "created": 1766619264,
+  "model": "gpt-4o-mini-2024-07-18",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "%s",
+        "refusal": null,
+        "annotations": []
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 13,
+    "completion_tokens": 12,
+    "total_tokens": 25,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "audio_tokens": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "audio_tokens": 0,
+      "accepted_prediction_tokens": 0,
+      "rejected_prediction_tokens": 0
+    }
+  },
+  "service_tier": "default",
+  "system_fingerprint": "fp_8bbc38b4db"
+}`
+	// Generate a large content string of approximately 3MB.
+	var largeContent bytes.Buffer
+	for i := 0; i < 3000; i++ {
+		largeContent.WriteString("This is a line in the large fake response content. ")
+	}
+	return []byte(fmt.Sprintf(template, largeContent.String()))
+}()

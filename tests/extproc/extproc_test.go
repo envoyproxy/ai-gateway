@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testenvironment"
 )
 
@@ -97,6 +98,11 @@ var (
 	//go:embed envoy.yaml
 	envoyConfig string
 
+	// envoyConfigWithDynamicModules is the embedded Envoy configuration template with dynamic modules enabled.
+	//
+	//go:embed envoy_dynamic_modules.yaml
+	envoyConfigWithDynamicModules string
+
 	// extprocBin holds the path to the compiled extproc binary.
 	extprocBin string
 
@@ -110,6 +116,12 @@ func TestMain(m *testing.M) {
 	// Build extproc binary once for all tests.
 	if extprocBin, err = BuildExtProcOnDemand(); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start tests due to extproc build error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Build dynamic module once for all tests.
+	if err = internaltesting.BuildDynamicModuleOnDemand(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start tests due to dynamic module build error: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -142,6 +154,17 @@ func TestMain(m *testing.M) {
 		"port_value: "+strconv.Itoa(errorServerTLSPort),
 	)
 
+	envoyConfigWithDynamicModules = strings.ReplaceAll(
+		envoyConfigWithDynamicModules,
+		"port_value: "+strconv.Itoa(errorServerDefaultPort),
+		"port_value: "+strconv.Itoa(errorServerPort),
+	)
+	envoyConfigWithDynamicModules = strings.ReplaceAll(
+		envoyConfigWithDynamicModules,
+		"port_value: "+strconv.Itoa(errorServerTLSDefaultPort),
+		"port_value: "+strconv.Itoa(errorServerTLSPort),
+	)
+
 	errorServer := &http.Server{Handler: errorServerMux, ReadHeaderTimeout: 5 * time.Second}
 	errorServerTLS := &http.Server{Handler: errorServerMux, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
@@ -164,6 +187,14 @@ func TestMain(m *testing.M) {
 }
 
 func startTestEnvironment(t testing.TB, extprocConfig string, okToDumpLogOnFailure, extProcInProcess bool) *testenvironment.TestEnvironment {
+	if os.Getenv("TEST_WITH_DYNAMIC_MODULE") != "" {
+		t.Log("Starting test environment with dynamic modules")
+		return testenvironment.StartTestEnvironment(t,
+			requireUpstream, map[string]int{"upstream": 8080},
+			"", extprocConfig, nil, envoyConfigWithDynamicModules, okToDumpLogOnFailure, false, 120*time.Second,
+		)
+	}
+	t.Log("Starting test environment with extproc binary")
 	return testenvironment.StartTestEnvironment(t,
 		requireUpstream, map[string]int{"upstream": 8080},
 		extprocBin, extprocConfig, nil, envoyConfig, okToDumpLogOnFailure, extProcInProcess, 120*time.Second,

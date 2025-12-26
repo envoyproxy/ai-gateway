@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,8 +24,19 @@ import (
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
+func BenchmarkChatCompletions_extproc(b *testing.B) {
+	b.Run("extproc", func(b *testing.B) {
+		b.Setenv("TEST_WITH_DYNAMIC_MODULE", "")
+		benchmarkChatCompletions(b, false)
+	})
+	b.Run("dynamic_module", func(b *testing.B) {
+		b.Setenv("TEST_WITH_DYNAMIC_MODULE", "true")
+		benchmarkChatCompletions(b, false)
+	})
+}
+
 // BenchmarkChatCompletions benchmarks the chat/completions endpoint for various backends.
-func BenchmarkChatCompletions(b *testing.B) {
+func benchmarkChatCompletions(b *testing.B, _ bool) {
 	config := &filterapi.Config{
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
@@ -36,9 +49,125 @@ func BenchmarkChatCompletions(b *testing.B) {
 		},
 	}
 
+	var messages []string
+	for i := 0; i < 10000; i++ {
+		messages = append(messages, fmt.Sprintf(`{"role": "user", "content": "This is message number %d."}`, i+1))
+	}
+	largeRequestBody := fmt.Sprintf(`{
+		"model": "gpt-4",
+		"messages": [%s],
+		"max_tokens": 100
+	}`, strings.Join(messages, ","))
+
 	configBytes, err := yaml.Marshal(config)
 	require.NoError(b, err)
-	env := startTestEnvironment(b, string(configBytes), false, true)
+	env := startTestEnvironment(b, string(configBytes), false, false)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if true {
+			return
+		}
+		// Invoke localhost:6060 and collect cpu profile for 5 seconds.
+		client := &http.Client{}
+		req, err := http.NewRequestWithContext(context.Background(),
+			http.MethodGet, "http://localhost:6060/debug/pprof/profile?seconds=2", nil)
+		require.NoError(b, err)
+
+		resp, err := client.Do(req)
+		require.NoError(b, err)
+		defer resp.Body.Close()
+
+		profileData, err := io.ReadAll(resp.Body)
+		require.NoError(b, err)
+
+		err = os.WriteFile("cpu_profile_dynamic_module.pprof", profileData, 0o600)
+		require.NoError(b, err)
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if true {
+			return
+		}
+		// Invoke localhost:6060 and collect memory profile for 5 seconds.
+		client := &http.Client{}
+		req, err := http.NewRequestWithContext(context.Background(),
+			http.MethodGet, "http://localhost:6060/debug/pprof/heap?seconds=2", nil)
+		require.NoError(b, err)
+
+		resp, err := client.Do(req)
+		require.NoError(b, err)
+		defer resp.Body.Close()
+		profileData, err := io.ReadAll(resp.Body)
+		require.NoError(b, err)
+
+		err = os.WriteFile("memory_profile_dynamic_module.pprof", profileData, 0o600)
+		require.NoError(b, err)
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if true {
+			return
+		}
+		// Invoke localhost:6060 and collect blocking profile for 5 seconds.
+		client := &http.Client{}
+		req, err := http.NewRequestWithContext(context.Background(),
+			http.MethodGet, "http://localhost:6060/debug/pprof/block?seconds=2", nil)
+		require.NoError(b, err)
+
+		resp, err := client.Do(req)
+		require.NoError(b, err)
+		defer resp.Body.Close()
+		profileData, err := io.ReadAll(resp.Body)
+		require.NoError(b, err)
+
+		err = os.WriteFile("blocking_profile_dynamic_module.pprof", profileData, 0o600)
+		require.NoError(b, err)
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if true {
+			return
+		}
+		// Invoke localhost:6060 and collect mutex profile for 5 seconds.
+		client := &http.Client{}
+		req, err := http.NewRequestWithContext(context.Background(),
+			http.MethodGet, "http://localhost:6060/debug/pprof/mutex?seconds=2", nil)
+		require.NoError(b, err)
+
+		resp, err := client.Do(req)
+		require.NoError(b, err)
+		defer resp.Body.Close()
+		profileData, err := io.ReadAll(resp.Body)
+		require.NoError(b, err)
+
+		err = os.WriteFile("mutex_profile_dynamic_module.pprof", profileData, 0o600)
+		require.NoError(b, err)
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if true {
+			return
+		}
+		// Invoke localhost:6060 and collect tracing profile for 5 seconds.
+		client := &http.Client{}
+		req, err := http.NewRequestWithContext(context.Background(),
+			http.MethodGet, "http://localhost:6060/debug/pprof/trace?seconds=2", nil)
+		require.NoError(b, err)
+		resp, err := client.Do(req)
+		require.NoError(b, err)
+		defer resp.Body.Close()
+		profileData, err := io.ReadAll(resp.Body)
+		require.NoError(b, err)
+
+		err = os.WriteFile("tracing_profile_dynamic_module.pprof", profileData, 0o600)
+		require.NoError(b, err)
+	}()
 
 	listenerPort := env.EnvoyListenerPort()
 
@@ -48,6 +177,11 @@ func BenchmarkChatCompletions(b *testing.B) {
 		requestBody  string
 		responseBody string
 	}{
+		{
+			name:        "OpenAI - large body",
+			backend:     "openai",
+			requestBody: largeRequestBody,
+		},
 		{
 			name:    "OpenAI",
 			backend: "openai",
@@ -78,6 +212,7 @@ func BenchmarkChatCompletions(b *testing.B) {
 				}
 			}`,
 		},
+
 		{
 			name:    "AWS_Bedrock",
 			backend: "aws-bedrock",
@@ -164,8 +299,12 @@ func BenchmarkChatCompletions(b *testing.B) {
 
 				req.Header.Set("Content-Type", "application/json")
 				req.Header.Set("x-test-backend", tc.backend)
-				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
-					base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
+				if tc.responseBody != "" {
+					req.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
+						base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
+				} else {
+					req.Header.Set(testupstreamlib.LargeFakeResponseHeaderKey, "true")
+				}
 				req.Header.Set(testupstreamlib.ResponseStatusKey, "200")
 
 				for pb.Next() {
@@ -184,6 +323,7 @@ func BenchmarkChatCompletions(b *testing.B) {
 			})
 		})
 	}
+	wg.Wait()
 }
 
 // BenchmarkEmbeddings benchmarks the embeddings endpoint.

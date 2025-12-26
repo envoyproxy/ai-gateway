@@ -34,6 +34,7 @@ type TestEnvironment struct {
 	extprocBin, extprocConfig                         string
 	extprocEnv                                        []string
 	extProcPort, extProcAdminPort, extProcMCPPort     int
+	extProcInProcess                                  bool
 	envoyConfig                                       string
 	envoyListenerPort, envoyAdminPort                 int
 	upstreamOut, extprocOut, envoyStdout, envoyStderr internaltesting.OutBuffer
@@ -100,6 +101,7 @@ func StartTestEnvironment(t testing.TB,
 		extProcPort:       ports[0],
 		extProcAdminPort:  ports[1],
 		extProcMCPPort:    ports[2],
+		extProcInProcess:  extProcInProcess,
 		envoyConfig:       envoyConfig,
 		envoyListenerPort: ports[3],
 		envoyAdminPort:    ports[4],
@@ -129,23 +131,36 @@ func StartTestEnvironment(t testing.TB,
 	env.extprocConfig = processedExtProcConfig
 
 	// Start ExtProc.
-	requireExtProc(t,
-		env.extprocOut,
-		env.extprocBin,
-		env.extprocConfig,
-		env.extprocEnv,
-		env.extProcPort,
-		env.extProcAdminPort,
-		env.extProcMCPPort,
-		env.mcpWriteTimeout,
-		extProcInProcess,
-	)
+	var envoyEnvVars []string
+	if extprocBin != "" || extProcInProcess {
+		requireExtProc(t,
+			env.extprocOut,
+			env.extprocBin,
+			env.extprocConfig,
+			env.extprocEnv,
+			env.extProcPort,
+			env.extProcAdminPort,
+			env.extProcMCPPort,
+			env.mcpWriteTimeout,
+			extProcInProcess,
+		)
+	} else { // Dynamic module mode.
+		configPath := t.TempDir() + "/extproc-config.yaml"
+		require.NoError(t, os.WriteFile(configPath, []byte(env.extprocConfig), 0o600))
+		envoyEnvVars = append(os.Environ(),
+			"ENVOY_DYNAMIC_MODULES_SEARCH_PATH="+internaltesting.FindProjectRoot()+"/out",
+			fmt.Sprintf("AI_GATEWAY_DYNAMIC_MODULE_ADMIN_ADDRESS=:%d", env.extProcAdminPort),
+			fmt.Sprintf("AI_GATEWAY_DYNAMIC_MODULE_FILTER_CONFIG_PATH=%s", configPath),
+		)
+		envoyEnvVars = append(envoyEnvVars, env.extprocEnv...)
+	}
 
 	// Start Envoy mapping its testupstream port 8080 to the ephemeral one.
 	requireEnvoy(t,
 		env.envoyStdout,
 		env.envoyStderr,
 		env.envoyConfig,
+		envoyEnvVars,
 		env.envoyListenerPort,
 		env.envoyAdminPort,
 		env.extProcPort,
@@ -166,18 +181,20 @@ func StartTestEnvironment(t testing.TB,
 		}
 		t.Logf("All services are up and running")
 		return true
-	}, time.Second*3, time.Millisecond*20, "failed to connect to all services in the test environment")
+	}, time.Second*3, time.Millisecond*500, "failed to connect to all services in the test environment")
 	return env
 }
 
 func (e *TestEnvironment) checkAllConnections(t testing.TB) error {
 	errGroup := &errgroup.Group{}
-	errGroup.Go(func() error {
-		return e.checkConnection(t, e.extProcPort, "extProc")
-	})
-	errGroup.Go(func() error {
-		return e.checkConnection(t, e.extProcAdminPort, "extProcAdmin")
-	})
+	if e.extprocBin != "" || e.extProcInProcess {
+		errGroup.Go(func() error {
+			return e.checkConnection(t, e.extProcPort, "extProc")
+		})
+		errGroup.Go(func() error {
+			return e.checkConnection(t, e.extProcAdminPort, "extProcAdmin")
+		})
+	}
 	errGroup.Go(func() error {
 		return e.checkConnection(t, e.envoyListenerPort, "envoyListener")
 	})
@@ -236,6 +253,7 @@ func waitForReadyMessage(ctx context.Context, outReader io.Reader, readyMessage 
 func requireEnvoy(t testing.TB,
 	stdout, stderr io.Writer,
 	config string,
+	envVars []string,
 	listenerPort, adminPort, extProcPort, extProcMCPPort int,
 	miscPorts, miscPortDefaults map[string]int,
 ) {
@@ -275,7 +293,7 @@ func requireEnvoy(t testing.TB,
 		// This allows multiple Envoy instances to run in parallel.
 		"--base-id", strconv.Itoa(time.Now().Nanosecond()),
 		// Add debug logging for http.
-		"--component-log-level", "http:debug",
+		"--component-log-level", "http:warn,dynamic_modules:warn",
 	)
 	// func-e will use the version specified in the project root's .envoy-version file.
 	cmd.Dir = internaltesting.FindProjectRoot()
@@ -283,6 +301,7 @@ func requireEnvoy(t testing.TB,
 	require.NoError(t, err)
 	t.Logf("Starting Envoy version %s", strings.TrimSpace(string(version)))
 	cmd.WaitDelay = 3 * time.Second // auto-kill after 3 seconds.
+	cmd.Env = envVars
 	t.Cleanup(func() {
 		defer cancel()
 		// Graceful shutdown, should kill the Envoy subprocess, too.
