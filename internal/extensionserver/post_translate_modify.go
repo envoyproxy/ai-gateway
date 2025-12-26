@@ -207,14 +207,25 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) error {
 			s.log.Info("LoadAssignment is nil", "cluster_name", cluster.Name)
 			return nil
 		}
-		if len(cluster.LoadAssignment.Endpoints) != len(httpRouteRule.BackendRefs) {
+    // Filter backendRefs with weight > 0 to match LoadAssignment endpoints.
+    // BackendRefs with weight=0 are intentionally skipped during endpoint construction.
+    activeBackendRefs := httpRouteRule.BackendRefs[:0]
+        for _, br := range httpRouteRule.BackendRefs {
+    	// Default weight is treated as > 0
+        	if br.Weight == nil || *br.Weight > 0 {
+     		activeBackendRefs = append(activeBackendRefs, br)
+    	    }
+        }
+
+
+		if len(cluster.LoadAssignment.Endpoints) != len(activeBackendRefs) {
 			s.log.Info("LoadAssignment endpoints length does not match backend refs length",
-				"cluster_name", cluster.Name, "endpoints_length", len(cluster.LoadAssignment.Endpoints), "backend_refs_length", len(httpRouteRule.BackendRefs))
+				"cluster_name", cluster.Name, "active_backend_refs_length", len(activeBackendRefs), "backend_refs_length", len(activeBackendRefs))
 			return nil
 		}
 		// Populate the metadata for each endpoint in the LoadAssignment.
 		for i, endpoints := range cluster.LoadAssignment.Endpoints {
-			backendRef := httpRouteRule.BackendRefs[i]
+			backendRef := activeBackendRefs[i]
 			name := backendRef.Name
 			namespace := aigwRoute.Namespace
 			if backendRef.Priority != nil {

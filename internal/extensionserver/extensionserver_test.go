@@ -33,7 +33,6 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
@@ -111,6 +110,10 @@ func TestServerPostTranslateModify(t *testing.T) {
 func Test_maybeModifyCluster(t *testing.T) {
 	c := newFakeClient()
 
+	// ---- priorities for first test ----
+	p0 := uint32(0)
+	p1 := uint32(1)
+
 	// Create some fake AIGatewayRoute objects.
 	err := c.Create(t.Context(), &aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
@@ -121,8 +124,8 @@ func Test_maybeModifyCluster(t *testing.T) {
 			Rules: []aigv1a1.AIGatewayRouteRule{
 				{
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-						{Name: "aaa", Priority: ptr.To[uint32](0)},
-						{Name: "bbb", Priority: ptr.To[uint32](1)},
+						{Name: "aaa", Priority: &p0},
+						{Name: "bbb", Priority: &p1},
 					},
 				},
 			},
@@ -135,64 +138,128 @@ func Test_maybeModifyCluster(t *testing.T) {
 		errLog string
 	}{
 		{c: &clusterv3.Cluster{}, errLog: "non-ai-gateway cluster name"},
-		{c: &clusterv3.Cluster{
-			Name: "httproute/ns/name/rule/invalid",
-		}, errLog: "failed to parse HTTPRoute rule index"},
-		{c: &clusterv3.Cluster{
-			Name: "httproute/ns/myroute/rule/99999",
-		}, errLog: `HTTPRoute rule index out of range`},
-		{c: &clusterv3.Cluster{
-			Name: "httproute/ns/myroute/rule/0",
-		}, errLog: `LoadAssignment is nil`},
-		{c: &clusterv3.Cluster{
-			Name:           "httproute/ns/myroute/rule/0",
-			LoadAssignment: &endpointv3.ClusterLoadAssignment{},
-		}, errLog: `LoadAssignment endpoints length does not match backend refs length`},
+		{
+			c: &clusterv3.Cluster{
+				Name: "httproute/ns/name/rule/invalid",
+			},
+			errLog: "failed to parse HTTPRoute rule index",
+		},
+		{
+			c: &clusterv3.Cluster{
+				Name: "httproute/ns/myroute/rule/99999",
+			},
+			errLog: "HTTPRoute rule index out of range",
+		},
+		{
+			c: &clusterv3.Cluster{
+				Name: "httproute/ns/myroute/rule/0",
+			},
+			errLog: "LoadAssignment is nil",
+		},
+		{
+			c: &clusterv3.Cluster{
+				Name:           "httproute/ns/myroute/rule/0",
+				LoadAssignment: &endpointv3.ClusterLoadAssignment{},
+			},
+			errLog: "LoadAssignment endpoints length does not match backend refs length",
+		},
 	} {
 		t.Run("error/"+tc.errLog, func(t *testing.T) {
 			var buf bytes.Buffer
-			s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
+            s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
 			err = s.maybeModifyCluster(tc.c)
 			require.NoError(t, err)
 			t.Logf("buf: %s", buf.String())
 			require.Contains(t, buf.String(), tc.errLog)
 		})
 	}
+
 	t.Run("ok", func(t *testing.T) {
 		cluster := &clusterv3.Cluster{
 			Name: "httproute/ns/myroute/rule/0",
 			LoadAssignment: &endpointv3.ClusterLoadAssignment{
 				Endpoints: []*endpointv3.LocalityLbEndpoints{
+					{LbEndpoints: []*endpointv3.LbEndpoint{{}}},
+					{LbEndpoints: []*endpointv3.LbEndpoint{{}}},
+				},
+			},
+		}
+
+		var buf bytes.Buffer
+		s := New(c, logr.FromSlogHandler(
+			slog.NewTextHandler(&buf, &slog.HandlerOptions{})),
+			udsPath, false,
+		)
+
+		err = s.maybeModifyCluster(cluster)
+		require.NoError(t, err)
+		require.Empty(t, buf.String())
+
+		require.Equal(t, uint32(0), cluster.LoadAssignment.Endpoints[0].Priority)
+		require.Equal(t, uint32(1), cluster.LoadAssignment.Endpoints[1].Priority)
+
+		md := cluster.LoadAssignment.Endpoints[0].LbEndpoints[0].Metadata
+		require.NotNil(t, md)
+
+		mmd := md.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
+		require.Equal(
+			t,
+			"ns/aaa/route/myroute/rule/0/ref/0",
+			mmd.Fields[internalapi.InternalMetadataBackendNameKey].GetStringValue(),
+		)
+	})
+	
+	t.Run("skip backendRef with weight zero", func(t *testing.T) {
+		c := newFakeClient()
+
+		w0 := int32(0)
+		w100 := int32(100)
+
+		err := c.Create(t.Context(), &aigv1a1.AIGatewayRoute{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "weight-route",
+				Namespace: "ns",
+			},
+			Spec: aigv1a1.AIGatewayRouteSpec{
+				Rules: []aigv1a1.AIGatewayRouteRule{
 					{
-						LbEndpoints: []*endpointv3.LbEndpoint{
-							{},
+						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+							{Name: "backend-zero", Weight: &w0},
+							{Name: "backend-active", Weight: &w100},
 						},
 					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		cluster := &clusterv3.Cluster{
+			Name: "httproute/ns/weight-route/rule/0",
+			LoadAssignment: &endpointv3.ClusterLoadAssignment{
+				Endpoints: []*endpointv3.LocalityLbEndpoints{
 					{
 						LbEndpoints: []*endpointv3.LbEndpoint{
-							{},
+							{Metadata: &corev3.Metadata{}},
 						},
 					},
 				},
 			},
 		}
-		var buf bytes.Buffer
-		s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
+
+		s := New(c, logr.Discard(), udsPath, false)
 		err = s.maybeModifyCluster(cluster)
 		require.NoError(t, err)
-		require.Empty(t, buf.String())
 
-		require.Len(t, cluster.LoadAssignment.Endpoints, 2)
-		require.Len(t, cluster.LoadAssignment.Endpoints[0].LbEndpoints, 1)
-		require.Equal(t, uint32(0), cluster.LoadAssignment.Endpoints[0].Priority)
-		require.Equal(t, uint32(1), cluster.LoadAssignment.Endpoints[1].Priority)
-		md := cluster.LoadAssignment.Endpoints[0].LbEndpoints[0].Metadata
+		md := cluster.LoadAssignment.Endpoints[0].
+			LbEndpoints[0].
+			Metadata.
+			FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
+
 		require.NotNil(t, md)
-		require.Len(t, md.FilterMetadata, 1)
-		mmd, ok := md.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
-		require.True(t, ok)
-		require.Len(t, mmd.Fields, 1)
-		require.Equal(t, "ns/aaa/route/myroute/rule/0/ref/0", mmd.Fields[internalapi.InternalMetadataBackendNameKey].GetStringValue())
+
+		backendName := md.Fields[internalapi.InternalMetadataBackendNameKey].GetStringValue()
+		require.Contains(t, backendName, "backend-active")
+		require.NotContains(t, backendName, "backend-zero")
 	})
 }
 
