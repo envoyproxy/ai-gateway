@@ -23,7 +23,7 @@ func TestDefaultConfig(t *testing.T) {
 	require.NotNil(t, server)
 
 	cfg := filterapi.MustLoadDefaultConfig()
-	require.Equal(t, &filterapi.Config{}, cfg)
+	require.Equal(t, &filterapi.Config{Version: "dev"}, cfg)
 
 	err = server.LoadConfig(t.Context(), cfg)
 	require.NoError(t, err)

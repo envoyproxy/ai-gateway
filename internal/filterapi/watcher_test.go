@@ -84,6 +84,7 @@ func testStartConfigWatcher(t *testing.T) {
 
 	// Create the initial config file.
 	cfg := `
+version: dev
 schema:
   name: OpenAI
 backends:
@@ -114,6 +115,7 @@ backends:
 
 	// Update the config file.
 	cfg = `
+version: dev
 schema:
   name: OpenAI
 backends:
@@ -132,6 +134,23 @@ backends:
 	require.NotNil(t, secondCfg)
 	require.Len(t, secondCfg.Backends, 1, buf.String())
 	require.Equal(t, "openai", secondCfg.Backends[0].Name)
+
+	// Update the config file with the different version, which shouldn't be loaded.
+	cfg = `
+version: some-new-version
+foo: bar
+`
+	requireAtomicWriteFile(t, tickInterval, path, []byte(cfg), 0o600)
+
+	// Verify the config has NOT been updated due to the error.
+	time.Sleep(2 * tickInterval)
+	thirdCfg := rcv.getConfig()
+	require.Equal(t, secondCfg, thirdCfg, "config should not have changed on invalid update")
+
+	// Verify the buffer contains the error message.
+	require.Eventually(t, func() bool {
+		return strings.Contains(buf.String(), "failed to update config")
+	}, 1*time.Second, tickInterval, buf.String())
 }
 
 // requireAtomicWriteFile creates a temporary file, writes the data to it, and then renames it to the final filename.

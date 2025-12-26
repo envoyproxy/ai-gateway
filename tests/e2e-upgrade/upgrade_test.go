@@ -8,6 +8,7 @@ package e2eupgrade
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -20,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
@@ -184,6 +186,10 @@ func TestUpgrade(t *testing.T) {
 			}
 			t.Logf("Request count before upgrade: %d", phase.requestCounts.Load())
 			phase.currentPhase.Store(int32(duringUpgrade))
+			t.Log("Breaking filter config secret to simulate config change during upgrade")
+			breakSecret(t)
+			time.Sleep(15 * time.Second)
+
 			t.Log("Starting upgrade while making requests")
 			tc.upgradeFunc(t.Context())
 			t.Log("Upgrade completed")
@@ -296,6 +302,24 @@ func makeRequest(t *testing.T, ipAddress string, phase string) error {
 		return fmt.Errorf("[%s] unexpected status code %d: body=%s", phase, resp.StatusCode, string(body))
 	}
 	return nil
+}
+
+// breakSecret modifies the filter config secret to contain an invalid configuration, which should be
+// ignored by the running pods.
+func breakSecret(t *testing.T) {
+	var config filterapi.Config
+	config.Version = "some-nonexistent-version" // The version mismatch should cause the filter to ignore this config.
+	newConfigBytes, err := json.Marshal(&config)
+	require.NoError(t, err, "failed to marshal modified filter config")
+	newEncodedConfig := base64.StdEncoding.EncodeToString(newConfigBytes)
+
+	// Patch the secret with the broken config.
+	patch := fmt.Sprintf(`{"data":{"filter-config.yaml":"%s"}}`, newEncodedConfig)
+	patchCmd := e2elib.Kubectl(t.Context(), "patch", "secret", "envoy-gateway-filter-config", "-n", e2elib.EnvoyGatewayNamespace,
+		"--type=merge", "-p", patch)
+	patchCmd.Stdout = nil
+	patchCmd.Stderr = nil
+	require.NoError(t, patchCmd.Run(), "failed to patch filter config secret")
 }
 
 // monitorPods periodically checks the status of pods with the given label selector

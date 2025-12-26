@@ -11,6 +11,8 @@ import (
 	"log/slog"
 	"os"
 	"time"
+
+	"github.com/envoyproxy/ai-gateway/internal/version"
 )
 
 // ConfigReceiver is an interface that can receive *Config updates.
@@ -26,12 +28,13 @@ type configWatcher struct {
 	rcv             ConfigReceiver
 	l               *slog.Logger
 	usingDefaultCfg bool
+	versionStr      string
 }
 
 // StartConfigWatcher starts a watcher for the given path and Receiver.
 // Periodically checks the file for changes and calls the Receiver's UpdateConfig method.
 func StartConfigWatcher(ctx context.Context, path string, rcv ConfigReceiver, l *slog.Logger, tick time.Duration) error {
-	cw := &configWatcher{rcv: rcv, l: l, path: path}
+	cw := &configWatcher{rcv: rcv, l: l, path: path, versionStr: version.Parse()}
 
 	if err := cw.loadConfig(ctx); err != nil {
 		return fmt.Errorf("failed to load initial config: %w", err)
@@ -93,6 +96,11 @@ func (cw *configWatcher) loadConfig(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+	}
+
+	if cfg.Version != cw.versionStr {
+		return fmt.Errorf(`config version mismatch: expected %q, got %q. Likely in the middle of rolling update`,
+			cw.versionStr, cfg.Version)
 	}
 
 	if err = cw.rcv.LoadConfig(ctx, cfg); err != nil {
