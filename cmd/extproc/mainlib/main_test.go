@@ -256,10 +256,8 @@ backends:
 		errCh <- Main(ctx, args, stderrW)
 	}()
 
-	// block until the context is canceled or an error occurs.
 	timeout, cancelTimeout := context.WithTimeout(t.Context(), time.Second*3)
 	defer cancelTimeout()
-
 	select {
 	case <-ctx.Done():
 	case <-timeout.Done():
