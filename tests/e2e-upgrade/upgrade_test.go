@@ -186,9 +186,6 @@ func TestUpgrade(t *testing.T) {
 			}
 			t.Logf("Request count before upgrade: %d", phase.requestCounts.Load())
 			phase.currentPhase.Store(int32(duringUpgrade))
-			t.Log("Breaking filter config secret to simulate config change during upgrade")
-			breakSecret(t)
-			time.Sleep(15 * time.Second)
 
 			t.Log("Starting upgrade while making requests")
 			tc.upgradeFunc(t.Context())
@@ -198,6 +195,10 @@ func TestUpgrade(t *testing.T) {
 			t.Log("Making sure multiple requests work after the upgrade")
 			time.Sleep(tc.runningAfterUpgrade)
 			t.Logf("Request count after upgrade: %d", phase.requestCounts.Load())
+
+			t.Log("Breaking filter config secret to simulate config change during control plane upgrade")
+			breakSecret(t)
+			time.Sleep(15 * time.Second)
 
 			// Stop request goroutines and wait for clean shutdown before checking failures.
 			cancelRequests()
