@@ -196,7 +196,7 @@ func TestUpgrade(t *testing.T) {
 			time.Sleep(tc.runningAfterUpgrade)
 			t.Logf("Request count after upgrade: %d", phase.requestCounts.Load())
 
-			t.Log("Breaking filter config secret to simulate config change during control plane upgrade")
+			t.Log("Breaking filter config secret to simulate config change during control plane upgrade for the future versions")
 			breakSecret(t)
 			time.Sleep(15 * time.Second)
 
