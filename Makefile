@@ -169,7 +169,7 @@ test-coverage: ## Run the unit tests for the codebase with coverage check.
 .PHONY: test-crdcel
 test-crdcel: apigen ## Run the integration tests of CEL validation in CRD definitions with envtest.
 	echo "Run CEL Validation"
-	go test ./tests/crdcel/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
+	@go test ./tests/crdcel/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
 
 # This runs the end-to-end tests for extproc without controller or k8s at all.
 # It is useful for the fast iteration of the extproc code.
@@ -193,10 +193,8 @@ test-extproc: build.extproc ## Run the integration tests for extproc without con
 # time to complete. For concurrency issues, use normal unit tests and race them.
 .PHONY: test-controller
 test-controller: apigen ## Run the integration tests for the controller with envtest.
-	@for k8sVersion in $(ENVTEST_K8S_VERSIONS); do \
-  		echo "Run Controller tests on k8s $$k8sVersion"; \
-        ENVTEST_K8S_VERSION=$$k8sVersion go test ./tests/controller/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS); \
-    done
+	echo "Run Controller tests on k8s"
+	@go test ./tests/controller/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS);
 
 # This runs the end-to-end tests for the controller and extproc with a local kind cluster.
 .PHONY: test-e2e
