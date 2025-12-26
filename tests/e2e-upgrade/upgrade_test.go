@@ -315,8 +315,9 @@ func breakSecret(t *testing.T) {
 
 	// Patch the secret with the broken config.
 	patch := fmt.Sprintf(`{"data":{"filter-config.yaml":"%s"}}`, newEncodedConfig)
-	patchCmd := e2elib.Kubectl(t.Context(), "patch", "secret", "envoy-gateway-filter-config", "-n", e2elib.EnvoyGatewayNamespace,
-		"--type=merge", "-p", patch)
+	patchCmd := e2elib.Kubectl(t.Context(), "patch", "secret",
+		"upgrade-test-default", // The name and namespace of the Gateway in testdata/manifest.yaml.
+		"-n", e2elib.EnvoyGatewayNamespace, "--type=merge", "-p", patch)
 	patchCmd.Stdout = nil
 	patchCmd.Stderr = nil
 	require.NoError(t, patchCmd.Run(), "failed to patch filter config secret")
