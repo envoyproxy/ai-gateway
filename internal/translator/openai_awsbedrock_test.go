@@ -2466,26 +2466,22 @@ func TestCacheControlHelpers(t *testing.T) {
 		}))
 	})
 
-	t.Run("createCachePointBlock", func(t *testing.T) {
-		block := createCachePointBlock()
-		require.NotNil(t, block)
-		require.Equal(t, "default", block.Type)
-	})
-
-	t.Run("applyCacheControlToContentBlock", func(t *testing.T) {
-		block := &awsbedrock.ContentBlock{Text: ptr.To("test")}
-
-		// Apply cache control
-		applyCacheControlToContentBlock(block, &openai.AnthropicContentFields{
+	t.Run("getCachePoint", func(t *testing.T) {
+		// Test with cache control enabled
+		cachePoint := getCachePoint(&openai.AnthropicContentFields{
 			CacheControl: anthropic.CacheControlEphemeralParam{Type: constant.ValueOf[constant.Ephemeral]()},
 		})
-
-		require.NotNil(t, block.CachePoint)
-		require.Equal(t, "default", block.CachePoint.Type)
+		require.NotNil(t, cachePoint)
+		require.Equal(t, "default", cachePoint.Type)
 
 		// Test with no cache control
-		block2 := &awsbedrock.ContentBlock{Text: ptr.To("test2")}
-		applyCacheControlToContentBlock(block2, nil)
-		require.Nil(t, block2.CachePoint)
+		cachePoint2 := getCachePoint(nil)
+		require.Nil(t, cachePoint2)
+
+		// Test with non-ephemeral cache control
+		cachePoint3 := getCachePoint(&openai.AnthropicContentFields{
+			CacheControl: anthropic.CacheControlEphemeralParam{Type: "other"},
+		})
+		require.Nil(t, cachePoint3)
 	})
 }

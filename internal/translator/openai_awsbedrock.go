@@ -71,32 +71,14 @@ func getAwsBedrockThinkingMap(tu *openai.ThinkingUnion) map[string]any {
 	return resultMap
 }
 
-// createCachePointBlock creates a cache point block for AWS Bedrock when cache control is enabled.
-func createCachePointBlock() *awsbedrock.CachePointBlock {
-	return &awsbedrock.CachePointBlock{
-		Type: "default",
-	}
-}
-
-// applyCacheControlToContentBlock adds a cache point to a content block if cache control is enabled.
-func applyCacheControlToContentBlock(block *awsbedrock.ContentBlock, fields *openai.AnthropicContentFields) {
+// getCachePoint returns a cache point block for AWS Bedrock if cache control is enabled, otherwise nil.
+func getCachePoint(fields *openai.AnthropicContentFields) *awsbedrock.CachePointBlock {
 	if isCacheEnabled(fields) {
-		block.CachePoint = createCachePointBlock()
+		return &awsbedrock.CachePointBlock{
+			Type: "default",
+		}
 	}
-}
-
-// applyCacheControlToSystemBlock adds a cache point to a system content block if cache control is enabled.
-func applyCacheControlToSystemBlock(block *awsbedrock.SystemContentBlock, fields *openai.AnthropicContentFields) {
-	if isCacheEnabled(fields) {
-		block.CachePoint = createCachePointBlock()
-	}
-}
-
-// applyCacheControlToTool adds a cache point to a tool if cache control is enabled.
-func applyCacheControlToTool(tool *awsbedrock.Tool, fields *openai.AnthropicContentFields) {
-	if isCacheEnabled(fields) {
-		tool.CachePoint = createCachePointBlock()
-	}
+	return nil
 }
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody].
@@ -188,8 +170,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIToolsToBedrockToolC
 						JSON: toolDefinition.Function.Parameters,
 					},
 				},
+				CachePoint: getCachePoint(toolDefinition.Function.AnthropicContentFields),
 			}
-			applyCacheControlToTool(tool, toolDefinition.Function.AnthropicContentFields)
 			tools = append(tools, tool)
 		}
 	}
@@ -252,9 +234,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 			if contentPart.OfText != nil {
 				textContentPart := contentPart.OfText
 				block := &awsbedrock.ContentBlock{
-					Text: &textContentPart.Text,
+					Text:       &textContentPart.Text,
+					CachePoint: getCachePoint(textContentPart.AnthropicContentFields),
 				}
-				applyCacheControlToContentBlock(block, textContentPart.AnthropicContentFields)
 				chatMessage.Content = append(chatMessage.Content, block)
 			} else if contentPart.OfImageURL != nil {
 				imageContentPart := contentPart.OfImageURL
@@ -284,8 +266,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 							Bytes: b, // Decoded data as bytes.
 						},
 					},
+					CachePoint: getCachePoint(imageContentPart.AnthropicContentFields),
 				}
-				applyCacheControlToContentBlock(block, imageContentPart.AnthropicContentFields)
 				chatMessage.Content = append(chatMessage.Content, block)
 			}
 		}
@@ -327,8 +309,10 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 		switch content.Type {
 		case openai.ChatCompletionAssistantMessageParamContentTypeText:
 			if content.Text != nil {
-				block := &awsbedrock.ContentBlock{Text: content.Text}
-				applyCacheControlToContentBlock(block, content.AnthropicContentFields)
+				block := &awsbedrock.ContentBlock{
+					Text:       content.Text,
+					CachePoint: getCachePoint(content.AnthropicContentFields),
+				}
 				contentBlocks = append(contentBlocks, block)
 			}
 		case openai.ChatCompletionAssistantMessageParamContentTypeThinking:
@@ -343,8 +327,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 					ReasoningContent: &awsbedrock.ReasoningContentBlock{
 						ReasoningText: reasoningText,
 					},
+					CachePoint: getCachePoint(content.AnthropicContentFields),
 				}
-				applyCacheControlToContentBlock(block, content.AnthropicContentFields)
 				contentBlocks = append(contentBlocks, block)
 			}
 		case openai.ChatCompletionAssistantMessageParamContentTypeRedactedThinking:
@@ -355,8 +339,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 						ReasoningContent: &awsbedrock.ReasoningContentBlock{
 							RedactedContent: v,
 						},
+						CachePoint: getCachePoint(content.AnthropicContentFields),
 					}
-					applyCacheControlToContentBlock(block, content.AnthropicContentFields)
 					contentBlocks = append(contentBlocks, block)
 				case string:
 					return nil, fmt.Errorf("AWS Bedrock does not support string format for RedactedContent, expected []byte")
@@ -366,8 +350,10 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 			}
 		case openai.ChatCompletionAssistantMessageParamContentTypeRefusal:
 			if content.Refusal != nil {
-				block := &awsbedrock.ContentBlock{Text: content.Refusal}
-				applyCacheControlToContentBlock(block, content.AnthropicContentFields)
+				block := &awsbedrock.ContentBlock{
+					Text:       content.Refusal,
+					CachePoint: getCachePoint(content.AnthropicContentFields),
+				}
 				contentBlocks = append(contentBlocks, block)
 			}
 		}
@@ -406,9 +392,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 			contentPart := &contents[i]
 			textContentPart := contentPart.Text
 			block := &awsbedrock.SystemContentBlock{
-				Text: textContentPart,
+				Text:       textContentPart,
+				CachePoint: getCachePoint(contentPart.AnthropicContentFields),
 			}
-			applyCacheControlToSystemBlock(block, contentPart.AnthropicContentFields)
 			*bedrockSystem = append(*bedrockSystem, block)
 		}
 	} else {
@@ -505,9 +491,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 						contentPart := &contents[i]
 						textContentPart := contentPart.Text
 						block := &awsbedrock.SystemContentBlock{
-							Text: textContentPart,
+							Text:       textContentPart,
+							CachePoint: getCachePoint(contentPart.AnthropicContentFields),
 						}
-						applyCacheControlToSystemBlock(block, contentPart.AnthropicContentFields)
 						bedrockReq.System = append(bedrockReq.System, block)
 					}
 				} else {

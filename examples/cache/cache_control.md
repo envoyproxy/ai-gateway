@@ -58,8 +58,7 @@ This example works identically across all providers - just change the model name
 
 ```bash
 # Direct Anthropic
-curl -X POST http://localhost:8080/v1/messages\
-  -H "Content-Type: application/json" \
+curl -X POST http://localhost:8080/v1/messages -H "Content-Type: application/json" \
   -d '{
     "model": "claude-3-5-sonnet-20241022",
     "messages": [
