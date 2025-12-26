@@ -3,6 +3,21 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
+# This example demonstrates a comprehensive GatewayConfig with OpenTelemetry tracing configuration
+# that can be shared across multiple Gateways.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: default
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: envoy-gateway
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: GatewayConfig
 metadata:
@@ -47,7 +62,6 @@ spec:
     - name: http
       protocol: HTTP
       port: 8080
-
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
@@ -62,3 +76,42 @@ spec:
     - name: http
       protocol: HTTP
       port: 8081
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: example-backend
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: api.openai.com
+        port: 443
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: example-backend
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+    version: v1
+  backendRef:
+    name: example-backend
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: example-route
+  namespace: default
+spec:
+  parentRefs:
+    - name: production-ai-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - backendRefs:
+        - name: example-backend

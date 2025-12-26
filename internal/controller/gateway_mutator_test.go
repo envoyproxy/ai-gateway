@@ -28,6 +28,30 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
+// testGatewayConfig is a GatewayConfig used for testing.
+var testGatewayConfig = &aigv1a1.GatewayConfig{
+	ObjectMeta: metav1.ObjectMeta{
+		Name: "test-gateway-config",
+	},
+	Spec: aigv1a1.GatewayConfigSpec{
+		ExtProc: &aigv1a1.GatewayConfigExtProc{
+			Kubernetes: &egv1a1.KubernetesContainerSpec{
+				Image: ptr.To("gcr.io/custom/extproc:v2"),
+				Env: []corev1.EnvVar{
+					{Name: "LOG_LEVEL", Value: "debug"}, // Overrides global
+					{Name: "CONFIG_VAR", Value: "config-value"},
+				},
+				Resources: &corev1.ResourceRequirements{
+					Requests: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("200m"),
+						corev1.ResourceMemory: resource.MustParse("256Mi"),
+					},
+				},
+			},
+		},
+	},
+}
+
 func TestGatewayMutator_Default(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	fakeKube := fake2.NewClientset()
@@ -58,6 +82,7 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 		extprocTest                    func(t *testing.T, container corev1.Container)
 		podTest                        func(t *testing.T, pod corev1.Pod)
 		needMCP                        bool
+		gatewayConfig                  *aigv1a1.GatewayConfig
 	}{
 		{
 			name: "basic extproc container",
@@ -213,6 +238,7 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 		{
 			name:                "with GatewayConfig",
 			extProcExtraEnvVars: "GLOBAL_VAR=global-value;LOG_LEVEL=info",
+			gatewayConfig:       testGatewayConfig,
 			extprocTest: func(t *testing.T, container corev1.Container) {
 				// GatewayConfig env vars override global env vars
 				require.Equal(t, []corev1.EnvVar{
@@ -276,32 +302,12 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 						require.NoError(t, err)
 					}
 
-					// Create Gateway and GatewayConfig for GatewayConfig test case
-					if tt.name == "with GatewayConfig" {
+					// Create Gateway and GatewayConfig if configured for this test case
+					if tt.gatewayConfig != nil {
 						// Create GatewayConfig
-						err = fakeClient.Create(t.Context(), &aigv1a1.GatewayConfig{
-							ObjectMeta: metav1.ObjectMeta{
-								Name:      "test-gateway-config",
-								Namespace: gwNamespace,
-							},
-							Spec: aigv1a1.GatewayConfigSpec{
-								ExtProc: &aigv1a1.GatewayConfigExtProc{
-									Kubernetes: &egv1a1.KubernetesContainerSpec{
-										Image: ptr.To("gcr.io/custom/extproc:v2"),
-										Env: []corev1.EnvVar{
-											{Name: "LOG_LEVEL", Value: "debug"}, // Overrides global
-											{Name: "CONFIG_VAR", Value: "config-value"},
-										},
-										Resources: &corev1.ResourceRequirements{
-											Requests: corev1.ResourceList{
-												corev1.ResourceCPU:    resource.MustParse("200m"),
-												corev1.ResourceMemory: resource.MustParse("256Mi"),
-											},
-										},
-									},
-								},
-							},
-						})
+						gatewayConfig := tt.gatewayConfig.DeepCopy()
+						gatewayConfig.Namespace = gwNamespace
+						err = fakeClient.Create(t.Context(), gatewayConfig)
 						require.NoError(t, err)
 
 						// Create Gateway with GatewayConfig annotation
@@ -310,7 +316,7 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 								Name:      gwName,
 								Namespace: gwNamespace,
 								Annotations: map[string]string{
-									GatewayConfigAnnotationKey: "test-gateway-config",
+									GatewayConfigAnnotationKey: tt.gatewayConfig.Name,
 								},
 							},
 							Spec: gwapiv1.GatewaySpec{

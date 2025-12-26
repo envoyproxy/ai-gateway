@@ -333,13 +333,13 @@ func TestGatewayConfigController_GatewayReferencesNonExistingConfig(t *testing.T
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewGatewayConfigController(fakeClient, ctrl.Log, eventCh.Ch)
 
-	// Create a Gateway that references a GatewayConfig that doesn't exist yet.
+	// Create a Gateway that references a GatewayConfig that doesn't exist (e.g., user made a typo).
 	gateway := &gwapiv1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-gateway",
 			Namespace: "default",
 			Annotations: map[string]string{
-				GatewayConfigAnnotationKey: "non-existing-config",
+				GatewayConfigAnnotationKey: "typo-config", // This config will never be created
 			},
 		},
 		Spec: gwapiv1.GatewaySpec{
@@ -356,43 +356,15 @@ func TestGatewayConfigController_GatewayReferencesNonExistingConfig(t *testing.T
 	err := fakeClient.Create(t.Context(), gateway)
 	require.NoError(t, err)
 
-	// Now create the GatewayConfig that the Gateway references.
-	gatewayConfig := &aigv1a1.GatewayConfig{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "non-existing-config",
-			Namespace: "default",
-		},
-		Spec: aigv1a1.GatewayConfigSpec{
-			ExtProc: &aigv1a1.GatewayConfigExtProc{
-				Kubernetes: &egv1a1.KubernetesContainerSpec{
-					Env: []corev1.EnvVar{
-						{Name: "TEST_VAR", Value: "test-value"},
-					},
-				},
-			},
-		},
-	}
-	err = fakeClient.Create(t.Context(), gatewayConfig)
-	require.NoError(t, err)
-
-	// Reconcile the GatewayConfig - it should find and notify the Gateway that references it.
+	// Try to reconcile the non-existing GatewayConfig.
+	// This should return nil (no error) since the resource doesn't exist.
 	_, err = c.Reconcile(t.Context(), reconcile.Request{
-		NamespacedName: client.ObjectKey{Name: "non-existing-config", Namespace: "default"},
+		NamespacedName: client.ObjectKey{Name: "typo-config", Namespace: "default"},
 	})
 	require.NoError(t, err)
 
-	// Verify status was updated to Accepted.
-	var updated aigv1a1.GatewayConfig
-	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: "non-existing-config", Namespace: "default"}, &updated)
-	require.NoError(t, err)
-	require.Len(t, updated.Status.Conditions, 1)
-	require.Equal(t, aigv1a1.ConditionTypeAccepted, updated.Status.Conditions[0].Type)
-
-	// Gateway should have been notified.
-	events := eventCh.RequireItemsEventually(t, 1)
-	require.Len(t, events, 1)
-	require.Equal(t, "test-gateway", events[0].Name)
-	require.Equal(t, "default", events[0].Namespace)
+	// No events should be sent since the GatewayConfig doesn't exist.
+	require.Empty(t, eventCh.RequireItemsEventually(t, 0))
 }
 
 func TestGatewayConfigConditionsNotAccepted(t *testing.T) {

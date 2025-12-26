@@ -186,42 +186,23 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 
 // TestOTELTracingWithGatewayConfig verifies that OTEL environment variables
 // can be configured via GatewayConfig and are properly injected into extProc containers.
+// This test uses the comprehensive example from examples/gateway-config/comprehensive.yaml.
 func TestOTELTracingWithGatewayConfig(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	defer cancel()
 
-	// Get the source directory relative to this test file.
-	_, filename, _, ok := runtime.Caller(0)
-	require.True(t, ok, "failed to get source file path")
-	sourceDir := filepath.Dir(filename)
-
-	manifest := filepath.Join(sourceDir, "testdata", "otel_tracing_gateway_config.yaml")
-
-	// Setup cleanup to remove test resources after test.
-	t.Cleanup(func() {
-		t.Log("Cleaning up GatewayConfig test resources")
-		restoreCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer cancel()
-
-		// Clean up the test manifest resources including namespace.
-		_ = e2elib.KubectlDeleteManifest(restoreCtx, manifest)
-
-		// Delete the test namespace to clean up completely.
-		deleteNs := exec.CommandContext(restoreCtx, "kubectl", "delete", "namespace",
-			"otel-gwconfig-ns", "--ignore-not-found=true")
-		_ = deleteNs.Run()
-	})
-
-	// Apply the test manifest which includes GatewayConfig and Gateway.
-	t.Log("Applying GatewayConfig test manifest")
+	const manifest = "../../examples/gateway-config/comprehensive.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
+	t.Cleanup(func() {
+		_ = e2elib.KubectlDeleteManifest(context.Background(), manifest)
+	})
 
 	// Get the pod with extProc container and verify GatewayConfig env vars.
 	t.Log("Checking extProc container for GatewayConfig OTEL environment variables")
 
 	// Get pod name from envoy-gateway-system namespace (where pods are created).
 	require.Eventually(t, func() bool {
-		const egSelector = "gateway.envoyproxy.io/owning-gateway-name=eg-gwconfig-test"
+		const egSelector = "gateway.envoyproxy.io/owning-gateway-name=production-ai-gateway"
 		getPodsCmd := exec.CommandContext(ctx, "kubectl", "get", "pods", // #nosec G204
 			"-n", e2elib.EnvoyGatewayNamespace,
 			"-l", egSelector,
