@@ -330,3 +330,27 @@ func requireMCPSpan(t *testing.T, span *tracev1.Span, expectedName string, addit
 
 	require.Equalf(t, combined, attrsFromSpan, "span attributes mismatch, full span: %s", span.String())
 }
+
+// requireMCPSpanWithException verifies an MCP span with expected attributes and an exception event.
+func requireMCPSpanWithException(t *testing.T, span *tracev1.Span, expectedName string, additionalAttrs map[string]string, exceptionMessage string) {
+	t.Helper()
+	// First verify the basic span attributes
+	requireMCPSpan(t, span, expectedName, additionalAttrs)
+
+	// Then verify the exception event
+	require.NotEmpty(t, span.Events, "expected span to have exception event")
+	foundException := false
+	for _, event := range span.Events {
+		if event.Name == "exception" {
+			foundException = true
+			// Check that the exception message contains the expected substring
+			for _, attr := range event.Attributes {
+				if attr.Key == "exception.message" {
+					actualMsg := attr.Value.GetStringValue()
+					require.Contains(t, actualMsg, exceptionMessage, "exception message mismatch")
+				}
+			}
+		}
+	}
+	require.True(t, foundException, "expected span to have exception event but none found")
+}

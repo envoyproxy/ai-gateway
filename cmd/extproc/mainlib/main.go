@@ -243,6 +243,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	completionMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationCompletion)
 	embeddingsMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationEmbedding)
 	imageGenerationMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationImageGeneration)
+	responsesMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationResponses)
 	rerankMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationRerank)
 	mcpMetrics := metrics.NewMCP(meter, metricsRequestHeaderAttributes)
 
@@ -261,6 +262,8 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		completionMetricsFactory, tracing.CompletionTracer(), endpointspec.CompletionsEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/embeddings"), extproc.NewFactory(
 		embeddingsMetricsFactory, tracing.EmbeddingsTracer(), endpointspec.EmbeddingsEndpointSpec{}))
+	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/responses"), extproc.NewFactory(
+		responsesMetricsFactory, tracing.ResponsesTracer(), endpointspec.ResponsesEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/images/generations"), extproc.NewFactory(
 		imageGenerationMetricsFactory, tracing.ImageGenerationTracer(), endpointspec.ImageGenerationEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Cohere, "/v2/rerank"), extproc.NewFactory(
@@ -357,7 +360,10 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	}()
 
 	// Emit startup message to stderr when all listeners are ready.
-	l.Info("AI Gateway External Processor is ready")
+	// Intentionally not using slog for this to unconditionally emit to stderr. This is important
+	// to avoid the deadlock in e2e tests where we wait for this message before proceeding, otherwise
+	// it would be extremely hard to debug issues where the external processor fails to start.
+	fmt.Fprintf(stderr, "AI Gateway External Processor is ready")
 	return s.Serve(extProcLis)
 }
 

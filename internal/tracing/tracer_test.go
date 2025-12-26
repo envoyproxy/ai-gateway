@@ -349,6 +349,25 @@ func TestNewImageGenerationTracer_BuildsGenericRequestTracer(t *testing.T) {
 	require.IsType(t, (*imageGenerationSpan)(nil), s)
 }
 
+func TestResponsesTracer_BuildsGenericRequestTracer(t *testing.T) {
+	tp := trace.NewTracerProvider()
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+
+	headerAttrs := map[string]string{"x-session-id": "session.id"}
+
+	tracer := newResponsesTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testResponsesRecorder{}, headerAttrs)
+	impl, ok := tracer.(*requestTracerImpl[
+		openai.ResponseRequest,
+		openai.Response,
+		openai.ResponseStreamEventUnion,
+	])
+	require.True(t, ok)
+	require.Equal(t, headerAttrs, impl.headerAttributes)
+	require.NotNil(t, impl.newSpan)
+	s := tracer.StartSpanAndInjectHeaders(context.Background(), nil, propagation.MapCarrier{}, &openai.ResponseRequest{}, []byte("{}"))
+	require.IsType(t, (*responsesSpan)(nil), s)
+}
+
 type testChatCompletionRecorder struct{}
 
 func (r testChatCompletionRecorder) RecordResponseChunks(span oteltrace.Span, chunks []*openai.ChatCompletionResponseChunk) {
@@ -500,4 +519,42 @@ func (testRerankTracerRecorder) RecordResponse(span oteltrace.Span, resp *cohere
 func (testRerankTracerRecorder) RecordResponseOnError(span oteltrace.Span, statusCode int, body []byte) {
 	span.SetAttributes(attribute.Int("statusCode", statusCode))
 	span.SetAttributes(attribute.String("errorBody", string(body)))
+}
+
+// Mock recorder for testing responses span
+type testResponsesRecorder struct {
+	tracing.NoopChunkRecorder[struct{}]
+}
+
+func (r testResponsesRecorder) StartParams(_ *openai.ResponseRequest, _ []byte) (string, []oteltrace.SpanStartOption) {
+	return "Responses", startOpts
+}
+
+func (r testResponsesRecorder) RecordRequest(span oteltrace.Span, req *openai.ResponseRequest, body []byte) {
+	span.SetAttributes(
+		attribute.String("model", req.Model),
+		attribute.Int("reqBodyLen", len(body)),
+	)
+}
+
+func (r testResponsesRecorder) RecordResponse(span oteltrace.Span, resp *openai.Response) {
+	respBytes, err := json.Marshal(resp)
+	if err != nil {
+		panic(err)
+	}
+	span.SetAttributes(
+		attribute.Int("statusCode", 200),
+		attribute.Int("respBodyLen", len(respBytes)),
+	)
+}
+
+func (r testResponsesRecorder) RecordResponseChunks(span oteltrace.Span, chunks []*openai.ResponseStreamEventUnion) {
+	span.SetAttributes(attribute.Int("eventCount", len(chunks)))
+}
+
+func (r testResponsesRecorder) RecordResponseOnError(span oteltrace.Span, statusCode int, body []byte) {
+	span.SetAttributes(
+		attribute.Int("statusCode", statusCode),
+		attribute.String("errorBody", string(body)),
+	)
 }

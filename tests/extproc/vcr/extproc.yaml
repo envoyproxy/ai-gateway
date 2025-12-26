@@ -7,22 +7,22 @@ backends:
   - name: openai
     schema:
       name: OpenAI
-      version: v1
+      prefix: v1
   # Test backend that forces a model name override.
   - name: openai-chat-override
     schema:
       name: OpenAI
-      version: v1
+      prefix: v1
     modelNameOverride: gpt-5-nano
   - name: openai-completions-override
     schema:
       name: OpenAI
-      version: v1
+      prefix: v1
     modelNameOverride: babbage-002
   - name: openai-embeddings-override
     schema:
       name: OpenAI
-      version: v1
+      prefix: v1
     modelNameOverride: text-embedding-3-small
   # Azure OpenAI backend
   - name: azure-openai

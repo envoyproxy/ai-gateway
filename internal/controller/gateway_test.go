@@ -877,16 +877,18 @@ func Test_schemaToFilterAPI(t *testing.T) {
 		expected filterapi.VersionedAPISchema
 	}{
 		{
+			// Backward compatible case.
 			in:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("v123")},
-			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v123"},
+			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v123", Version: "v123"},
 		},
 		{
+			// Backward compatible case.
 			in:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI},
-			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"},
+			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1", Version: "v1"},
 		},
 		{
-			in:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("")},
-			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Version: "v1"},
+			in:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Prefix: ptr.To("v1/foo")},
+			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1/foo", Version: "v1/foo"},
 		},
 		{
 			in:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaAWSBedrock},
@@ -894,7 +896,7 @@ func Test_schemaToFilterAPI(t *testing.T) {
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			require.Equal(t, tc.expected, schemaToFilterAPI(tc.in))
+			require.Equal(t, tc.expected, schemaToFilterAPI(tc.in, ctrl.Log))
 		})
 	}
 }

@@ -200,6 +200,7 @@ stringData:
       name: default/envoy-ai-gateway-basic-openai/route/envoy-ai-gateway-basic/rule/0/ref/0
       schema:
         name: OpenAI
+        prefix: v1
         version: v1
     - auth:
         aws:
@@ -216,6 +217,7 @@ stringData:
       name: default/envoy-ai-gateway-basic-testupstream/route/envoy-ai-gateway-basic/rule/2/ref/0
       schema:
         name: OpenAI
+        prefix: v1
         version: v1
     models:
     - CreatedAt: "2025-05-23T00:00:00Z"

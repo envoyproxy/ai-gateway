@@ -581,6 +581,154 @@ spec:
                     - credentialRefs
                     - extractFrom
                     type: object
+                  authorization:
+                    description: Authorization defines the configuration for the MCP
+                      spec compatible authorization.
+                    properties:
+                      defaultAction:
+                        default: Deny
+                        description: DefaultAction is the action to take when no rules
+                          match. If unspecified, defaults to Deny.
+                        enum:
+                        - Allow
+                        - Deny
+                        type: string
+                      rules:
+                        description: |-
+                          Rules defines a list of authorization rules.
+                          These rules are evaluated in order, the first matching rule will be applied,
+                          and the rest will be skipped.
+
+                          If no rules are defined, the default action will be applied to all requests.
+                        items:
+                          description: |-
+                            MCPRouteAuthorizationRule defines an authorization rule for MCPRoute based on the MCP authorization spec.
+                            Reference: https://modelcontextprotocol.io/specification/draft/basic/authorization#scope-challenge-handling
+                          properties:
+                            action:
+                              default: Allow
+                              description: Action is the authorization decision for
+                                matching requests. If unspecified, defaults to Allow.
+                              enum:
+                              - Allow
+                              - Deny
+                              type: string
+                            source:
+                              description: |-
+                                Source defines the authorization source for this rule.
+                                If not specified, the rule will match all sources.
+                              properties:
+                                jwt:
+                                  description: JWT defines the JWT scopes required
+                                    for this rule to match.
+                                  properties:
+                                    claims:
+                                      description: |-
+                                        Claims defines the list of JWT claims required for the rule. Each claim must exist on the token
+                                        and have at least one of the expected values. Use to enforce tenant or subject-based access.
+                                      items:
+                                        description: JWTClaim specifies a claim in
+                                          a JWT token.
+                                        properties:
+                                          name:
+                                            description: |-
+                                              Name is the name of the claim.
+                                              If it is a nested claim, use a dot (.) separated string as the name to
+                                              represent the full path to the claim.
+                                              For example, if the claim is in the "department" field in the "organization" field,
+                                              the name should be "organization.department".
+                                            maxLength: 253
+                                            minLength: 1
+                                            type: string
+                                          valueType:
+                                            default: String
+                                            description: |-
+                                              ValueType is the type of the claim value.
+                                              Only String and StringArray types are supported for now.
+                                            enum:
+                                            - String
+                                            - StringArray
+                                            type: string
+                                          values:
+                                            description: |-
+                                              Values are the values that the claim must match.
+                                              If the claim is a string type, the specified value must match exactly.
+                                              If the claim is a string array type, the specified value must match one of the values in the array.
+                                              If multiple values are specified, one of the values must match for the rule to match.
+                                            items:
+                                              type: string
+                                            maxItems: 128
+                                            minItems: 1
+                                            type: array
+                                        required:
+                                        - name
+                                        - values
+                                        type: object
+                                      maxItems: 16
+                                      type: array
+                                      x-kubernetes-validations:
+                                      - message: '''scope'' claim name is reserved
+                                          for OAuth scopes'
+                                        rule: '!self.exists(c, c.name == ''scope'')'
+                                    scopes:
+                                      description: |-
+                                        Scopes defines the list of JWT scopes required for the rule.
+                                        If multiple scopes are specified, all scopes must be present in the JWT for the rule to match.
+                                      items:
+                                        maxLength: 253
+                                        minLength: 1
+                                        type: string
+                                      maxItems: 16
+                                      type: array
+                                  type: object
+                                  x-kubernetes-validations:
+                                  - message: either scopes or claims must be specified
+                                    rule: (has(self.scopes) && size(self.scopes) >
+                                      0) || (has(self.claims) && size(self.claims)
+                                      > 0)
+                              required:
+                              - jwt
+                              type: object
+                            target:
+                              description: |-
+                                Target defines the authorization target for this rule.
+                                If not specified, the rule will match all targets.
+                              properties:
+                                tools:
+                                  description: Tools defines the list of tools this
+                                    rule applies to.
+                                  items:
+                                    description: ToolCall represents a tool call in
+                                      the MCP authorization target.
+                                    properties:
+                                      backend:
+                                        description: Backend is the name of the backend
+                                          this tool belongs to.
+                                        type: string
+                                      tool:
+                                        description: Tool is the name of the tool.
+                                        type: string
+                                      when:
+                                        description: |-
+                                          When is a CEL expression that must evaluate to true for the rule to match.
+                                          The expression is evaluated with a single variable "args" bound to the tool call arguments as a dynamic object.
+                                          Guard against missing fields with null checks (e.g., args["foo"] != null && args["foo"]["bar"] == "val").
+                                        maxLength: 4096
+                                        type: string
+                                    required:
+                                    - backend
+                                    - tool
+                                    type: object
+                                  maxItems: 16
+                                  minItems: 1
+                                  type: array
+                              required:
+                              - tools
+                              type: object
+                          type: object
+                        maxItems: 32
+                        type: array
+                    type: object
                   extAuth:
                     description: ExtAuth defines the configuration for External Authorization.
                     properties:
@@ -4132,6 +4280,11 @@ spec:
                     - protectedResourceMetadata
                     type: object
                 type: object
+                x-kubernetes-validations:
+                - message: oauth must be configured when any authorization rule uses
+                    a jwt source
+                  rule: '!(has(self.authorization) && self.authorization.rules.exists(r,
+                    has(r.source) && has(r.source.jwt)) && !has(self.oauth))'
             required:
             - backendRefs
             - parentRefs

@@ -69,6 +69,8 @@ type (
 	EmbeddingsEndpointSpec struct{}
 	// ImageGenerationEndpointSpec implements EndpointSpec for /v1/images/generations.
 	ImageGenerationEndpointSpec struct{}
+	// ResponsesEndpointSpec implements EndpointSpec for /v1/responses.
+	ResponsesEndpointSpec struct{}
 	// MessagesEndpointSpec implements EndpointSpec for /v1/messages.
 	MessagesEndpointSpec struct{}
 	// RerankEndpointSpec implements EndpointSpec for /v2/rerank.
@@ -109,7 +111,7 @@ func (ChatCompletionsEndpointSpec) ParseBody(
 func (ChatCompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIChatCompletionTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
-		return translator.NewChatCompletionOpenAIToOpenAITranslator(schema.Version, modelNameOverride), nil
+		return translator.NewChatCompletionOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	case filterapi.APISchemaAWSBedrock:
 		return translator.NewChatCompletionOpenAIToAWSBedrockTranslator(modelNameOverride), nil
 	case filterapi.APISchemaAzureOpenAI:
@@ -139,7 +141,7 @@ func (CompletionsEndpointSpec) ParseBody(
 func (CompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAICompletionTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
-		return translator.NewCompletionOpenAIToOpenAITranslator(schema.Version, modelNameOverride), nil
+		return translator.NewCompletionOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}
@@ -161,7 +163,7 @@ func (EmbeddingsEndpointSpec) ParseBody(
 func (EmbeddingsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIEmbeddingTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
-		return translator.NewEmbeddingOpenAIToOpenAITranslator(schema.Version, modelNameOverride), nil
+		return translator.NewEmbeddingOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	case filterapi.APISchemaAzureOpenAI:
 		return translator.NewEmbeddingOpenAIToAzureOpenAITranslator(schema.Version, modelNameOverride), nil
 	default:
@@ -184,7 +186,29 @@ func (ImageGenerationEndpointSpec) ParseBody(
 func (ImageGenerationEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIImageGenerationTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
-		return translator.NewImageGenerationOpenAIToOpenAITranslator(schema.Version, modelNameOverride), nil
+		return translator.NewImageGenerationOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+	}
+}
+
+// ParseBody implements [EndpointSpec.ParseBody].
+func (ResponsesEndpointSpec) ParseBody(
+	body []byte,
+	_ bool,
+) (internalapi.OriginalModel, *openai.ResponseRequest, bool, []byte, error) {
+	var openAIReq openai.ResponseRequest
+	if err := json.Unmarshal(body, &openAIReq); err != nil {
+		return "", nil, false, nil, fmt.Errorf("failed to unmarshal responses request: %w", err)
+	}
+	return openAIReq.Model, &openAIReq, openAIReq.Stream, nil, nil
+}
+
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (ResponsesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIResponsesTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewResponsesOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}

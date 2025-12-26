@@ -68,7 +68,7 @@ The server version in the output should show version {vars.k8sMinVersion} or hig
 {
   "serverVersion": {
     "major": "1",
-    "minor": "29+",
+    "minor": "32+",
     ...
   }
 }
@@ -76,7 +76,8 @@ The server version in the output should show version {vars.k8sMinVersion} or hig
 
 :::caution
 
-If your cluster is running a version lower than {vars.k8sMinVersion}, you'll need to upgrade it before proceeding with the installation.
+If your cluster is running a version lower than {vars.k8sMinVersion}, our recommendation is to upgrade your cluster to meet the minimum requirements.
+The recommended Kubernetes versions are those that are actively tested and supported by the Envoy AI Gateway team.
 
 :::
 

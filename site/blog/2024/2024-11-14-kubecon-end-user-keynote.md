@@ -3,6 +3,7 @@ slug: kubecon-end-user-keynote-2024
 title: End User Keynote at KubeCon 2024
 authors: [missberg, alexagriffith]
 tags: [news, presentations]
+description: Watch the KubeCon 2024 End User Keynote featuring Envoy AI Gateway—learn how Bloomberg and Tetrate are centralizing enterprise AI workflows with unified model access, usage limiting, and upstream authorization at scale.
 ---
 
 At KubeCon North America 2024, Alexa Griffith had the opportunity to present the End User Keynote on **Centralizing & Simplifying Enterprise AI Workflows with Envoy AI Gateway**.

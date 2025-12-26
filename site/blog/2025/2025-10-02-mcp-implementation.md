@@ -3,6 +3,8 @@ slug: mcp-implementation
 title: Announcing Model Context Protocol Support in Envoy AI Gateway
 authors: [nacx, mathetake]
 tags: [news, features]
+image: ./images/mcp-blog-hero.png
+description: Envoy AI Gateway now supports Model Context Protocol (MCP), bringing enterprise-grade security, routing, and observability to AI agent tool integrations with full spec compliance, OAuth authentication, and zero-friction deployment.
 ---
 
 ![Hero feature image of title.](images/mcp-blog-hero.png)

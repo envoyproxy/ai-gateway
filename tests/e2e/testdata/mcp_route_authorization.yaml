@@ -1,0 +1,191 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: mcp-gateway-class-authorization
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: mcp-gateway-authorization
+  namespace: default
+spec:
+  gatewayClassName: mcp-gateway-class-authorization
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: envoy-mcp-gateway-authorization
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: MCPRoute
+metadata:
+  name: mcp-route-authorization-default-deny
+  namespace: default
+spec:
+  path: "/mcp-authorization"
+  parentRefs:
+    - name: mcp-gateway-authorization
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  backendRefs:
+    - name: mcp-backend-authorization
+      port: 1063
+  securityPolicy:
+    oauth:
+      issuer: "https://auth-server.example.com"
+      jwks:
+        localJWKS:
+          type: ValueRef
+          valueRef:
+            group: ""
+            kind: ConfigMap
+            name: jwks-configmap
+      protectedResourceMetadata:
+        resource: "https://foo.bar.com/mcp"
+        resourceName: "example-resource"
+        scopesSupported:
+          - "echo"
+          - "sum"
+          - "countdown"
+    authorization:
+      rules:
+        - source:
+            jwt:
+              scopes:
+                - echo
+          target:
+            tools:
+              - backend: mcp-backend-authorization
+                tool: echo
+                when: args.text.matches("^Hello, .*!$")
+        - source:
+            jwt:
+              scopes:
+                - sum
+              claims:
+                - name: tenant
+                  valueType: String
+                  values:
+                    - acme
+                    - globex
+                - name: org.departments
+                  valueType: StringArray
+                  values:
+                    - engineering
+                    - development
+          target:
+            tools:
+              - backend: mcp-backend-authorization
+                tool: sum
+        - target:
+            tools:
+              - backend: mcp-backend-authorization
+                tool: countdown
+          # No source means all sources are allowed.
+        - source:
+            jwt:
+              scopes:
+                - all-access
+          # No target means all targets are allowed.
+---
+# https://www.scottbrady.io/tools/jwt
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jwks-configmap
+  namespace: default
+data:
+  jwks: |
+    {
+      "keys": [
+        {
+          "alg": "RS256",
+          "d": "CCv3lFeZmUautsntgGxmIqzOqTBrtUoWTC9zCvrm1YDCDYIwJgq1Xi5_P2tbWRSs_wIq90UWGIkVnNAv-uNTDiTyu8hvxqca1vqIDfpnfRwuOO-pGi6P3Z07XvXfg2tr-Bu0ALwJK-6EwB3hUO-CNZrXBJd_56LLr9qPhQ3e9KEVWu3gUfxzGV06HsZvYOFYxysR7MlTswiiwvR5FgE7YBS4izp80kPGV3QbbYCYlBYLGp52DZ1bWyCGo5ZSpPAt4Az9wdDTzJoTtflLymg8kZ-idQqk2_re214xQgeCuVAHujjC4r3GqSzbQGUqXicd-rbRLenyB22Ul8wyHqY8WtcFrGmHojK8b-W3M9m0-xYkMXmWcllYQuQ0LMP9K8Tl0uMpKsyd0AePItaWa_ft3dAzoBiUZA15X2_Nbbc9WbkmjN0Et8E1RWlrL5fzppbvLUl4mlSKHsLnwgmLx2OROjEnQsfzjMGxV2KhMZXzdvbRPTkaDtq3YT70ZiRIyvRD",
+          "dp": "w2Z3NznPTe6B_Yse51UfEiXZlxJblgTNIwZeupjHZPwns80pK7L1i6ID6NeCZHPXLslZyjjHeXUutCSSSPZBe9bYdzXC4LTIPutz8u7pCMTbqZkcr_LnKLv9PSqrNjRWfhC7i94KEVoFecAmUt2hG3RoU2xwjtdFBCxykzYwxwP0USvxEXUfDIUlMXVlXfJzEkm6KxLgz5KDf2N26k8Z4l6Cdb4b8qxc-oSVIvF1pYHxSrGwuoVpR4e-Lw8uOOgv",
+          "dq": "Czchi5z5wSkamEO-vpvJvTWIrTmigP2C_sEhhe2O5jXwVkyWR5Cc91wS1YVQ5U4499LP-holUtp0M4QD_41DGDJONjLb2w7Zo41LLF808r7pcI3t5ESE3JlGkztRFqvQlHxe5YaCqlN2_wVC5fYhCtJrWoGlWbntTKKFNNwjl7NUC_WOMEE0asIFaqiakCaTAB2wc8FL_Va9NamDPgKrR1jJo0RVK8M04pKkrLgEf3bq6mFPX5OF67qwlWchzu1_",
+          "e": "AQAB",
+          "key_ops": [
+            "sign"
+          ],
+          "kty": "RSA",
+          "n": "lQiREO6mH0tV14KjhSz02zNaJ1SExS1QjlGoMSbG2-NUeURmvnwg-eY95sDCFpWuH3_ovFyRBGTi0e3j79mrQhM53PZQys-gr-rYGz8LeHp8G6H3XmeDxTvyemhB6uiN4EZkjOo6xT2ipmPEN3u315xPCR60Pwac2E0t4vZGxtU4LGYatIFOYtUvDdMPBLfGMKVapHBzbx9Ll4INEic1fNrAIUVtOn6i3sxzGHj4iGWsMrEUIXDOWEHzioXgPuRjJDRjhHRuEeA9i_Y-a9hY92q6P-dcPnCDLNF3349WDyw7jIMlU6TLM8lQ5ci_TS_0avovXPNECsuOObtT78LJJKLg58ghTnqrihwvSccVgW4M43Ntv7TOAgOsRl-NKY7QQJIbkxemvh14-gzwA6LijMvb0Tjrh6NynKfCIO0ASsMp3K3uks4cYhBALLJ1E41V-cYqdwg0c6Jam0Y4OXxNv_0FfmcsOk8iXdroNgWjBs3KaObMiMvNOKHNWZ4PsEll",
+          "p": "yO5hho-83vQQ3t7HeVeinZClemDazWT5T7f2ZVMigcuyUNQjC69tyMzJ3I_UN5nUCwpKCw5wY8uCeT82o1j-OJC3irxWjAPHkkbsYTNxRnk8ShJ2UFdu5a7MEF82-QuRKciAv11cebEpk5ggf-jQrtTY2yQru0fW0WZB8hz19XywhFQ_mVMMahNHfycfXT2BMaV0wiBFKY8FXKqb5cErsCodcZ_STvqOTykWBaA4AWmJFRqd4i4enpf-MhgtkQK3",
+          "q": "veD3yFnEOZegVIpIxPqIsj7zazjKRn-io1s3KJxkgaz5ND1o1JwbxiLuUNL9ufkj6cPOVCEHRkjQ2GabHnA0NYci4qRHBWdHhCD7aisS2D60xZAiAVmNZlEGLxRS7gFnyD8uneLILFFMalvJdIccCXzN3c8vPlC_9FlEzaEyDUmWzT_1zZES2GpaYeC73fNg7h-mJ6m-96Y6Wwvlx6YlCRCIPLU7l4kA-jca37T0IMNhobWmg8u4yqvVaqdDhojD",
+          "qi": "TDrZ2CE6uHay64K4f9sSDN0QANTxk60SDVALWCz8apB66q5g2XuaTak2LvIAMBw758rIM_DhpCH7gs9sEc1UoFbs6KLR-6cb1WtsoTxNtXbXFQDuVtDRbjGjVWXRuRe8rY5Hca2Kx2-Tl1iXT4tBkMPcr-1TGHY8A5uiRzldY5u2Qu2W-wlGNwLe87CSzoo3QT0l1h9aMCNH6T6q1cD1ZiUktPWAmGtZl88YzC6dHrxIoYAz4BSVIdbGoV82vvuI",
+          "use": "sig",
+          "kid": "8b267675394d7786f98ae29d8fddf905"
+        },
+        {
+          "alg": "RS256",
+          "e": "AQAB",
+          "key_ops": [
+            "verify"
+          ],
+          "kty": "RSA",
+          "n": "lQiREO6mH0tV14KjhSz02zNaJ1SExS1QjlGoMSbG2-NUeURmvnwg-eY95sDCFpWuH3_ovFyRBGTi0e3j79mrQhM53PZQys-gr-rYGz8LeHp8G6H3XmeDxTvyemhB6uiN4EZkjOo6xT2ipmPEN3u315xPCR60Pwac2E0t4vZGxtU4LGYatIFOYtUvDdMPBLfGMKVapHBzbx9Ll4INEic1fNrAIUVtOn6i3sxzGHj4iGWsMrEUIXDOWEHzioXgPuRjJDRjhHRuEeA9i_Y-a9hY92q6P-dcPnCDLNF3349WDyw7jIMlU6TLM8lQ5ci_TS_0avovXPNECsuOObtT78LJJKLg58ghTnqrihwvSccVgW4M43Ntv7TOAgOsRl-NKY7QQJIbkxemvh14-gzwA6LijMvb0Tjrh6NynKfCIO0ASsMp3K3uks4cYhBALLJ1E41V-cYqdwg0c6Jam0Y4OXxNv_0FfmcsOk8iXdroNgWjBs3KaObMiMvNOKHNWZ4PsEll",
+          "use": "sig",
+          "kid": "8b267675394d7786f98ae29d8fddf905"
+        }
+      ]
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-backend-authorization
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-backend-authorization
+  template:
+    metadata:
+      labels:
+        app: mcp-backend-authorization
+    spec:
+      containers:
+        - name: mcp-backend-authorization
+          image: docker.io/envoyproxy/ai-gateway-testmcpserver:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 1063
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-backend-authorization
+  namespace: default
+spec:
+  selector:
+    app: mcp-backend-authorization
+  ports:
+    - protocol: TCP
+      port: 1063
+      targetPort: 1063
+  type: ClusterIP
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: envoy-mcp-gateway-authorization
+  namespace: default
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        container:
+          # Clear the default memory/cpu requirements for local tests.
+          resources: {}
