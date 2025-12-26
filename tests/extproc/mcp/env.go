@@ -24,6 +24,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
+	"github.com/envoyproxy/ai-gateway/internal/version"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testenvironment"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testmcp"
 )
@@ -109,7 +110,7 @@ func requireNewMCPEnv(t *testing.T, forceJSONResponse bool, writeTimeout time.Du
 			},
 		},
 	}
-	config, err := json.Marshal(filterapi.Config{MCPConfig: mcpConfig})
+	config, err := json.Marshal(filterapi.Config{MCPConfig: mcpConfig, Version: version.Parse()})
 	require.NoError(t, err)
 
 	var mcp1, mcp2 *mcp.Server
