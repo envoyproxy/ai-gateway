@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/version"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testenvironment"
 )
 
@@ -50,7 +51,7 @@ func TestPublicMCPServers(t *testing.T) {
 		githubConfigured = true
 	}
 
-	config, err := json.Marshal(filterapi.Config{MCPConfig: mcpConfig})
+	config, err := json.Marshal(filterapi.Config{MCPConfig: mcpConfig, Version: version.Parse()})
 	require.NoError(t, err)
 
 	env := testenvironment.StartTestEnvironment(t,
