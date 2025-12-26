@@ -21,10 +21,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
