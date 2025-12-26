@@ -8,7 +8,6 @@ package e2eupgrade
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -24,7 +23,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
@@ -186,7 +184,6 @@ func TestUpgrade(t *testing.T) {
 			}
 			t.Logf("Request count before upgrade: %d", phase.requestCounts.Load())
 			phase.currentPhase.Store(int32(duringUpgrade))
-
 			t.Log("Starting upgrade while making requests")
 			tc.upgradeFunc(t.Context())
 			t.Log("Upgrade completed")
@@ -197,7 +194,7 @@ func TestUpgrade(t *testing.T) {
 			t.Logf("Request count after upgrade: %d", phase.requestCounts.Load())
 
 			t.Log("Breaking filter config secret to simulate config change during control plane upgrade for the future versions")
-			breakSecret(t)
+			breakFilterConfig(t)
 			time.Sleep(15 * time.Second)
 
 			// Stop request goroutines and wait for clean shutdown before checking failures.
@@ -305,14 +302,13 @@ func makeRequest(t *testing.T, ipAddress string, phase string) error {
 	return nil
 }
 
-// breakSecret modifies the filter config secret to contain an invalid configuration, which should be
+// breakFilterConfig modifies the filter config secret to contain an invalid configuration, which should be
 // ignored by the running pods.
-func breakSecret(t *testing.T) {
-	var config filterapi.Config
-	config.Version = "some-nonexistent-version" // The version mismatch should cause the filter to ignore this config.
-	newConfigBytes, err := json.Marshal(&config)
-	require.NoError(t, err, "failed to marshal modified filter config")
-	newEncodedConfig := base64.StdEncoding.EncodeToString(newConfigBytes)
+func breakFilterConfig(t *testing.T) {
+	newEncodedConfig := base64.StdEncoding.EncodeToString([]byte(`
+version: some-nonexistent-version # The version mismatch should cause the filter to ignore this config.
+foo: bar
+`))
 
 	// Patch the secret with the broken config.
 	patch := fmt.Sprintf(`{"data":{"filter-config.yaml":"%s"}}`, newEncodedConfig)
