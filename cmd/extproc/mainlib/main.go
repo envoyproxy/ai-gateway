@@ -363,7 +363,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	// Intentionally not using slog for this to unconditionally emit to stderr. This is important
 	// to avoid the deadlock in e2e tests where we wait for this message before proceeding, otherwise
 	// it would be extremely hard to debug issues where the external processor fails to start.
-	fmt.Fprintf(stderr, "AI Gateway External Processor is ready")
+	fmt.Fprintf(stderr, "AI Gateway External Processor is ready\n")
 	return s.Serve(extProcLis)
 }
 
