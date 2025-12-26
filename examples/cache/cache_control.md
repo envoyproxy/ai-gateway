@@ -58,7 +58,7 @@ This example works identically across all providers - just change the model name
 
 ```bash
 # Direct Anthropic
-curl -X POST http://localhost:8080/v1/chat/completions \
+curl -X POST http://localhost:8080/v1/messages\
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-3-5-sonnet-20241022",
@@ -308,8 +308,8 @@ To switch between providers while maintaining caching:
 ## Implementation Notes
 
 - **Anthropic Direct**: Native cache_control support
-- **GCP Vertex AI**: Cache control translated to Anthropic format
-- **AWS Bedrock**: Cache control translated to Bedrock cachePoint format
+- **OpenAI API with GCP Vertex AI**: Cache control translated to Anthropic format
+- **OpenAI API AWS Bedrock**: Cache control translated to Bedrock cachePoint format
 - All providers support `"ephemeral"` cache type
 - Backward compatible - existing requests without cache control continue to work
 
