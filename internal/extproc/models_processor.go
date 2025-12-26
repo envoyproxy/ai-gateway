@@ -55,8 +55,6 @@ func NewModelsProcessor(config *filterapi.RuntimeConfig, _ map[string]string, lo
 
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
 func (m *modelsProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
-	m.logger.Info("Serving list of declared models")
-
 	body, err := json.Marshal(m.models)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal body: %w", err)
