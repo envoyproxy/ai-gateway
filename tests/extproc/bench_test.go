@@ -19,12 +19,14 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/version"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
 // BenchmarkChatCompletions benchmarks the chat/completions endpoint for various backends.
 func BenchmarkChatCompletions(b *testing.B) {
 	config := &filterapi.Config{
+		Version: version.Parse(),
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 		},

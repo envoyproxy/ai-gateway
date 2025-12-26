@@ -24,6 +24,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
+	"github.com/envoyproxy/ai-gateway/internal/version"
 )
 
 // Real providers test cases require the real credentials to be set in the environment. So,
@@ -39,6 +40,7 @@ func TestWithRealProviders(t *testing.T) {
 	cc := internaltesting.RequireNewCredentialsContext()
 
 	config := &filterapi.Config{
+		Version: version.Parse(),
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 			{MetadataKey: "some_cel", Type: filterapi.LLMRequestCostTypeCEL, CEL: "1+1"},

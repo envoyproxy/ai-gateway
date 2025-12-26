@@ -25,6 +25,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/version"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
@@ -51,6 +52,7 @@ func TestWithTestUpstream(t *testing.T) {
 	createdReg := regexp.MustCompile(`"created":\d+`)
 
 	config := &filterapi.Config{
+		Version: version.Parse(),
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 		},
