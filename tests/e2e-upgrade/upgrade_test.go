@@ -195,7 +195,7 @@ func TestUpgrade(t *testing.T) {
 
 			t.Log("Breaking filter config secret to simulate config change during control plane upgrade for the future versions")
 			breakFilterConfig(t)
-			time.Sleep(15 * time.Second)
+			time.Sleep(30 * time.Second)
 
 			// Stop request goroutines and wait for clean shutdown before checking failures.
 			cancelRequests()
