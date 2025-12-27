@@ -6,11 +6,11 @@
 package openai
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/goccy/go-json"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"

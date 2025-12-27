@@ -7,10 +7,10 @@ package tracing
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"testing"
 
+	"github.com/goccy/go-json"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/contrib/propagators/autoprop"
 	"go.opentelemetry.io/otel/attribute"

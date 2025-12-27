@@ -7,12 +7,12 @@ package translator
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"strconv"
 	"testing"
 
+	"github.com/goccy/go-json"
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"

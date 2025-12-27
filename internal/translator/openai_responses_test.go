@@ -7,11 +7,11 @@ package translator
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"strconv"
 	"testing"
 
+	"github.com/goccy/go-json"
 	"github.com/openai/openai-go/v2/packages/param"
 	"github.com/openai/openai-go/v2/responses"
 	"github.com/stretchr/testify/require"

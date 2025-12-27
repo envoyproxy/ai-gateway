@@ -7,10 +7,10 @@ package translator
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"testing"
 
+	"github.com/goccy/go-json"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"

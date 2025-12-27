@@ -7,7 +7,6 @@ package translator
 
 import (
 	"cmp"
-	"encoding/json"
 	"fmt"
 	"maps"
 	"mime"
@@ -15,6 +14,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/goccy/go-json"
 	"github.com/google/uuid"
 	openaisdk "github.com/openai/openai-go/v2"
 	"google.golang.org/genai"

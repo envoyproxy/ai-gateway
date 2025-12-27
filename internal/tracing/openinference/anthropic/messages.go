@@ -6,9 +6,9 @@
 package anthropic
 
 import (
-	"encoding/json"
 	"fmt"
 
+	"github.com/goccy/go-json"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"

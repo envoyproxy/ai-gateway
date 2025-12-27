@@ -6,10 +6,10 @@
 package openai
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/goccy/go-json"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/openai/openai-go/v2"

@@ -7,13 +7,13 @@ package translator
 
 import (
 	"bytes"
-	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"github.com/goccy/go-json"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	openaigo "github.com/openai/openai-go/v2"

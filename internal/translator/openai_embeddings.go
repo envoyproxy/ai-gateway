@@ -6,13 +6,13 @@
 package translator
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"path"
 	"strconv"
 	"strings"
 
+	"github.com/goccy/go-json"
 	"github.com/tidwall/sjson"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"

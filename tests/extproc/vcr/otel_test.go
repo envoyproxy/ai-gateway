@@ -8,12 +8,12 @@ package vcr
 import (
 	"bytes"
 	_ "embed"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"testing"
 
+	"github.com/goccy/go-json"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/sjson"
 	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"

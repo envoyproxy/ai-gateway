@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"embed"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -20,6 +19,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/goccy/go-json"
 	"gopkg.in/dnaeon/go-vcr.v4/pkg/cassette"
 	"gopkg.in/dnaeon/go-vcr.v4/pkg/recorder"
 	"gopkg.in/yaml.v3" //nolint:depguard // sigs.k8s.io/yaml breaks Duration unmarshaling in cassettes

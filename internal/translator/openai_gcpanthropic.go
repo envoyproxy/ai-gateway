@@ -8,7 +8,6 @@ package translator
 import (
 	"cmp"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
 	"strconv"
@@ -19,6 +18,7 @@ import (
 	anthropicParam "github.com/anthropics/anthropic-sdk-go/packages/param"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	anthropicVertex "github.com/anthropics/anthropic-sdk-go/vertex"
+	"github.com/goccy/go-json"
 	openAIconstant "github.com/openai/openai-go/shared/constant"
 	"github.com/tidwall/sjson"
 

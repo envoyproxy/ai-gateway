@@ -8,7 +8,6 @@ package extproc
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	anthropicoption "github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/goccy/go-json"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/assert"

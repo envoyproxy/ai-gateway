@@ -8,11 +8,11 @@ package translator
 import (
 	"bytes"
 	"cmp"
-	"encoding/json"
 	"fmt"
 	"io"
 	"strconv"
 
+	"github.com/goccy/go-json"
 	"github.com/tidwall/sjson"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
