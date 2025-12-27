@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
@@ -177,7 +178,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		logAndSendError(w, http.StatusInternalServerError, "failed to read the request body: %v", err)
 		return
 	}
-	logger.Printf("Request body (%d bytes): %s", len(requestBody), string(requestBody))
+	logger.Printf("Request body (%d bytes)", len(requestBody))
 
 	// At least for the endpoints we want to support, all requests should have a Content-Length header
 	// and should not use chunked transfer encoding.
@@ -381,7 +382,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		var responseBody []byte
 		if expResponseBody := r.Header.Get(testupstreamlib.ResponseBodyHeaderKey); expResponseBody == "" {
 			// If the expected response body is not set, get the fake response if the path is known.
-			responseBody, err = getFakeResponse(r.URL.Path)
+			responseBody, err = getFakeResponse(r.URL.Path, r.Header)
 			if err != nil {
 				logAndSendError(w, http.StatusBadRequest, "failed to get the fake response for path %s: %v", r.URL.Path, err)
 				return
@@ -403,7 +404,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			responseBody = buf.Bytes()
 		}
 		_, _ = w.Write(responseBody)
-		logger.Println("response sent:", string(responseBody))
 	}
 }
 
@@ -447,22 +447,148 @@ var chatCompletionFakeResponses = []string{
 	`Expecto Patronum!`,
 }
 
-func getFakeResponse(path string) ([]byte, error) {
+func getFakeResponse(path string, headers http.Header) ([]byte, error) {
 	switch path {
 	case "/non-llm-route":
 		const template = `{"message":"This is a non-LLM endpoint response"}`
 		return []byte(template), nil
 	case "/v1/chat/completions":
+		if v := headers.Get(testupstreamlib.FakeResponseHeaderKey); v != "" {
+			fake, ok := chatCompletionsFakeResponses[v]
+			if !ok {
+				return nil, fmt.Errorf("unknown large fake response key: %s", headers.Get(testupstreamlib.FakeResponseHeaderKey))
+			}
+			return fake, nil
+		}
 		const template = `{"choices":[{"message":{"role":"assistant", "content":"%s"}}]}`
 		msg := fmt.Sprintf(template,
 			//nolint:gosec
 			chatCompletionFakeResponses[rand.New(rand.NewSource(uint64(time.Now().UnixNano()))).
 				Intn(len(chatCompletionFakeResponses))])
 		return []byte(msg), nil
+	case "/model/gpt-4/converse": // Only used in benchmark tests.
+		if v := headers.Get(testupstreamlib.FakeResponseHeaderKey); v != "" {
+			fake, ok := awsBedrockBenchmarkResponses[v]
+			if ok {
+				return fake, nil
+			}
+		}
+		return nil, fmt.Errorf("unknown large fake response key: %s", headers.Get(testupstreamlib.FakeResponseHeaderKey))
+	case "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/gpt-4:generateContent": // Only used in benchmark tests.
+		if v := headers.Get(testupstreamlib.FakeResponseHeaderKey); v != "" {
+			fake, ok := gcpVertexAIBenchmarkResponses[v]
+			if ok {
+				return fake, nil
+			}
+		}
+		return nil, fmt.Errorf("unknown large fake response key: %s", headers.Get(testupstreamlib.FakeResponseHeaderKey))
+	case "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/gpt-4:rawPredict": // Only used in benchmark tests.
+		if v := headers.Get(testupstreamlib.FakeResponseHeaderKey); v != "" {
+			fake, ok := gcpAnthropicAIBenchmarkResponses[v]
+			if ok {
+				return fake, nil
+			}
+		}
+		return nil, fmt.Errorf("unknown large fake response key: %s", headers.Get(testupstreamlib.FakeResponseHeaderKey))
 	case "/v1/embeddings":
 		const embeddingTemplate = `{"object":"list","data":[{"object":"embedding","embedding":[0.1,0.2,0.3,0.4,0.5],"index":0}],"model":"some-cool-self-hosted-model","usage":{"prompt_tokens":3,"total_tokens":3}}`
 		return []byte(embeddingTemplate), nil
 	default:
 		return nil, fmt.Errorf("unknown path: %s", path)
 	}
+}
+
+var (
+	chatCompletionsFakeResponses = map[string][]byte{
+		"small":  newChatCompletionsLargeFakeResponse(100),    // ~5KB
+		"medium": newChatCompletionsLargeFakeResponse(10000),  // ~500KB
+		"large":  newChatCompletionsLargeFakeResponse(100000), // ~5MB
+	}
+	awsBedrockBenchmarkResponses = map[string][]byte{
+		"small":  newAWSBedrockBenchmarkResponse(100),    // ~1KB
+		"medium": newAWSBedrockBenchmarkResponse(10000),  // ~500KB
+		"large":  newAWSBedrockBenchmarkResponse(100000), // ~5MB
+	}
+	gcpVertexAIBenchmarkResponses = map[string][]byte{
+		"small":  newGCPVertexAIBenchmarkResponse(100),    // ~1KB
+		"medium": newGCPVertexAIBenchmarkResponse(10000),  // ~500KB
+		"large":  newGCPVertexAIBenchmarkResponse(100000), // ~5MB
+	}
+	gcpAnthropicAIBenchmarkResponses = map[string][]byte{
+		"small":  newGCPAnthropicAIBenchmarkResponse(100),    // ~1KB
+		"medium": newGCPAnthropicAIBenchmarkResponse(10000),  // ~500KB
+		"large":  newGCPAnthropicAIBenchmarkResponse(100000), // ~5MB
+	}
+)
+
+func newChatCompletionsLargeFakeResponse(count int) []byte {
+	const template = `{
+  "id": "chatcmpl-CqSf2jfV03XXLdrL2CoreXibglhVU",
+  "object": "chat.completion",
+  "created": 1766619264,
+  "model": "gpt-4o-mini-2024-07-18",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "%s",
+        "refusal": null,
+        "annotations": []
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 13,
+    "completion_tokens": 12,
+    "total_tokens": 25,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "audio_tokens": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "audio_tokens": 0,
+      "accepted_prediction_tokens": 0,
+      "rejected_prediction_tokens": 0
+    }
+  },
+  "service_tier": "default",
+  "system_fingerprint": "fp_8bbc38b4db"
+}`
+	// Generate a large content string of approximately 3MB.
+	var largeContent bytes.Buffer
+	for i := 0; i < count; i++ {
+		largeContent.WriteString("This is a line in the large fake response content. ")
+	}
+	return []byte(fmt.Sprintf(template, largeContent.String()))
+}
+
+func newAWSBedrockBenchmarkResponse(count int) []byte {
+	const template = `{"output": {"message": {"content": [%s], "role": "assistant"}}, "stopReason": "end_turn", "usage": {"inputTokens": 1, "outputTokens": 2, "totalTokens": 3}}`
+	var contentParts []string
+	for i := 0; i < count; i++ {
+		contentParts = append(contentParts, `{"text": "This is part `+strconv.Itoa(i+1)+` of a large benchmark response from AWS Bedrock."}`)
+	}
+	return []byte(fmt.Sprintf(template, strings.Join(contentParts, ", ")))
+}
+
+func newGCPVertexAIBenchmarkResponse(count int) []byte {
+	const template = `{"candidates": [{"content": {"parts": [%s], "role": "model"}, "finishReason": "STOP"}], "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 2, "totalTokenCount": 3}}`
+	var contentParts []string
+	for i := 0; i < count; i++ {
+		contentParts = append(contentParts, `{"type": "text", "text": "This is part `+strconv.Itoa(i+1)+` of a large benchmark response from GCP Vertex AI."}`)
+	}
+	return []byte(fmt.Sprintf(template, strings.Join(contentParts, ", ")))
+}
+
+func newGCPAnthropicAIBenchmarkResponse(count int) []byte {
+	const template = `{"id": "msg_benchmark", "type": "message", "role": "assistant", "stop_reason": "end_turn", "content": [%s], "usage": {"input_tokens": 1, "output_tokens": 2}}`
+	var contentParts []string
+	for i := 0; i < count; i++ {
+		contentParts = append(contentParts, `{"type": "text", "text": "This is part `+strconv.Itoa(i+1)+` of a large benchmark response from GCP Anthropic AI."}`)
+	}
+	return []byte(fmt.Sprintf(template, strings.Join(contentParts, ", ")))
 }

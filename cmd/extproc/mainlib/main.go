@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -104,8 +105,8 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 	)
 	fs.IntVar(&flags.maxRecvMsgSize,
 		"maxRecvMsgSize",
-		4*1024*1024,
-		"Maximum message size in bytes that the gRPC server can receive. Default is 4MB.",
+		math.MaxInt,
+		"Maximum message size in bytes that the gRPC server can receive. Default is unlimited since the flow control should be handled by Envoy.",
 	)
 	fs.StringVar(&flags.mcpAddr, "mcpAddr", "", "the address (TCP or UDS) for the MCP proxy server, such as :1063 or unix:///tmp/ext_proc.sock. Optional.")
 	fs.StringVar(&flags.mcpSessionEncryptionSeed, "mcpSessionEncryptionSeed", "default-insecure-seed",

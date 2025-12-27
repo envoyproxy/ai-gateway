@@ -15,6 +15,7 @@ static_resources:
         socket_address:
           address: 0.0.0.0
           port_value: 1062
+      per_connection_buffer_limit_bytes: 52428800
       filter_chains:
         - filters:
             - name: envoy.filters.network.http_connection_manager
@@ -30,6 +31,9 @@ static_resources:
                         json_format:
                           used_token: "%DYNAMIC_METADATA(io.envoy.ai_gateway:used_token)%"
                           some_cel: "%DYNAMIC_METADATA(io.envoy.ai_gateway:some_cel)%"
+                  - name: default
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StderrAccessLog
                 route_config:
                   virtual_hosts:
                     - name: local_route
@@ -285,7 +289,8 @@ static_resources:
                       grpc_service:
                         envoy_grpc:
                           cluster_name: extproc_cluster
-                      message_timeout: 5s
+                        timeout: 30s
+                      message_timeout: 60s
                       metadataOptions:
                         receivingNamespaces:
                           untyped:
@@ -300,6 +305,7 @@ static_resources:
       connect_timeout: 5s
       type: STATIC
       lb_policy: ROUND_ROBIN
+      per_connection_buffer_limit_bytes: 52428800
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
           "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
@@ -320,6 +326,7 @@ static_resources:
     - name: testupstream-openai
       connect_timeout: 0.25s
       type: STATIC
+      per_connection_buffer_limit_bytes: 52428800
       lb_policy: ROUND_ROBIN
       outlier_detection:
         consecutive_5xx: 1
@@ -346,6 +353,8 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                  timeout: 30s
+                message_timeout: 60s
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
@@ -379,6 +388,7 @@ static_resources:
     - name: testupstream-anthropic
       connect_timeout: 0.25s
       type: STATIC
+      per_connection_buffer_limit_bytes: 52428800
       lb_policy: ROUND_ROBIN
       outlier_detection:
         consecutive_5xx: 1
@@ -405,6 +415,8 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                  timeout: 30s
+                message_timeout: 60s
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
@@ -438,6 +450,7 @@ static_resources:
     - name: testupstream-modelname-override-and-fallback
       connect_timeout: 0.25s
       type: STATIC
+      per_connection_buffer_limit_bytes: 52428800
       lb_policy: ROUND_ROBIN
       outlier_detection:
         consecutive_5xx: 1
@@ -463,6 +476,8 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                  timeout: 30s
+                message_timeout: 60s
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
@@ -508,6 +523,7 @@ static_resources:
     - name: testupstream-modelname-override
       connect_timeout: 0.25s
       type: STATIC
+      per_connection_buffer_limit_bytes: 52428800
       lb_policy: ROUND_ROBIN
       outlier_detection:
         consecutive_5xx: 1
@@ -533,6 +549,8 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                  timeout: 30s
+                message_timeout: 60s
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
@@ -566,6 +584,7 @@ static_resources:
     - name: testupstream-aws
       connect_timeout: 0.25s
       type: STATIC
+      per_connection_buffer_limit_bytes: 52428800
       lb_policy: ROUND_ROBIN
       outlier_detection:
         consecutive_5xx: 1
@@ -591,6 +610,8 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                  timeout: 30s
+                message_timeout: 60s
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
@@ -624,6 +645,7 @@ static_resources:
     - name: testupstream-azure
       connect_timeout: 0.25s
       type: STATIC
+      per_connection_buffer_limit_bytes: 52428800
       lb_policy: ROUND_ROBIN
       outlier_detection:
         consecutive_5xx: 1
@@ -649,6 +671,8 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                  timeout: 30s
+                message_timeout: 60s
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
@@ -693,6 +717,7 @@ static_resources:
                       per_route_rule_backend_name: "testupstream-azure"
     - name: aws_bedrock
       connect_timeout: 30s
+      per_connection_buffer_limit_bytes: 52428800
       type: STRICT_DNS
       outlier_detection:
         consecutive_5xx: 1
@@ -719,6 +744,8 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                  timeout: 30s
+                message_timeout: 60s
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
@@ -769,6 +796,7 @@ static_resources:
           auto_host_sni: true
     - name: anthropic_aws_bedrock
       connect_timeout: 30s
+      per_connection_buffer_limit_bytes: 52428800
       type: STRICT_DNS
       outlier_detection:
         consecutive_5xx: 1
@@ -795,6 +823,8 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                  timeout: 30s
+                message_timeout: 60s
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
@@ -834,6 +864,7 @@ static_resources:
     - name: testupstream-gcp-vertexai
       connect_timeout: 0.25s
       type: STATIC
+      per_connection_buffer_limit_bytes: 52428800
       lb_policy: ROUND_ROBIN
       outlier_detection:
         consecutive_5xx: 1
@@ -859,6 +890,8 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                  timeout: 30s
+                message_timeout: 60s
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
@@ -893,6 +926,7 @@ static_resources:
     - name: testupstream-gcp-anthropicai
       connect_timeout: 0.25s
       type: STATIC
+      per_connection_buffer_limit_bytes: 52428800
       lb_policy: ROUND_ROBIN
       outlier_detection:
         consecutive_5xx: 1
@@ -918,6 +952,8 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                  timeout: 30s
+                message_timeout: 60s
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
@@ -952,6 +988,7 @@ static_resources:
     - name: testupstream-aws-anthropic
       connect_timeout: 0.25s
       type: STATIC
+      per_connection_buffer_limit_bytes: 52428800
       lb_policy: ROUND_ROBIN
       outlier_detection:
         consecutive_5xx: 1
@@ -977,6 +1014,8 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                  timeout: 30s
+                message_timeout: 60s
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
@@ -1010,6 +1049,7 @@ static_resources:
                       per_route_rule_backend_name: "testupstream-aws-anthropic"
     - name: openai
       connect_timeout: 30s
+      per_connection_buffer_limit_bytes: 52428800
       type: STRICT_DNS
       outlier_detection:
         consecutive_5xx: 1
@@ -1035,6 +1075,8 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                  timeout: 30s
+                message_timeout: 60s
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
@@ -1085,6 +1127,7 @@ static_resources:
           auto_host_sni: true
     - name: anthropic
       connect_timeout: 30s
+      per_connection_buffer_limit_bytes: 52428800
       type: STRICT_DNS
       outlier_detection:
         consecutive_5xx: 1
@@ -1110,6 +1153,8 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                  timeout: 30s
+                message_timeout: 60s
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
@@ -1148,6 +1193,7 @@ static_resources:
           auto_host_sni: true
     - name: azure_openai
       connect_timeout: 30s
+      per_connection_buffer_limit_bytes: 52428800
       type: STRICT_DNS
       outlier_detection:
         consecutive_5xx: 1
@@ -1173,6 +1219,8 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                  timeout: 30s
+                message_timeout: 60s
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
@@ -1221,15 +1269,9 @@ static_resources:
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
           auto_host_sni: true
-    - name: original_destination_cluster
-      connectTimeout: 30s
-      type: ORIGINAL_DST
-      lbPolicy: CLUSTER_PROVIDED
-      originalDstLbConfig:
-        httpHeaderName: x-ai-eg-original-dst
-        useHttpHeader: true
     - name: gemini
       connect_timeout: 30s
+      per_connection_buffer_limit_bytes: 52428800
       type: STRICT_DNS
       dns_lookup_family: V4_ONLY
       outlier_detection:
@@ -1256,6 +1298,8 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                  timeout: 30s
+                message_timeout: 60s
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
@@ -1294,6 +1338,7 @@ static_resources:
           auto_host_sni: true
     - name: groq
       connect_timeout: 30s
+      per_connection_buffer_limit_bytes: 52428800
       type: STRICT_DNS
       dns_lookup_family: V4_ONLY
       outlier_detection:
@@ -1320,6 +1365,8 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                  timeout: 30s
+                message_timeout: 60s
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
@@ -1358,6 +1405,7 @@ static_resources:
           auto_host_sni: true
     - name: grok
       connect_timeout: 30s
+      per_connection_buffer_limit_bytes: 52428800
       type: STRICT_DNS
       dns_lookup_family: V4_ONLY
       outlier_detection:
@@ -1384,6 +1432,8 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                  timeout: 30s
+                message_timeout: 60s
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
@@ -1422,6 +1472,7 @@ static_resources:
           auto_host_sni: true
     - name: sambanova
       connect_timeout: 30s
+      per_connection_buffer_limit_bytes: 52428800
       type: STRICT_DNS
       dns_lookup_family: V4_ONLY
       outlier_detection:
@@ -1448,6 +1499,8 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                  timeout: 30s
+                message_timeout: 60s
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
@@ -1486,6 +1539,7 @@ static_resources:
           auto_host_sni: true
     - name: deepinfra
       connect_timeout: 30s
+      per_connection_buffer_limit_bytes: 52428800
       type: STRICT_DNS
       dns_lookup_family: V4_ONLY
       outlier_detection:
@@ -1512,6 +1566,8 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                  timeout: 30s
+                message_timeout: 60s
                 metadataOptions:
                   receivingNamespaces:
                     untyped:
@@ -1550,6 +1606,7 @@ static_resources:
           auto_host_sni: true
     - name: testupstream-body-mutation
       connect_timeout: 0.25s
+      per_connection_buffer_limit_bytes: 52428800
       type: STATIC
       lb_policy: ROUND_ROBIN
       typed_extension_protocol_options:
@@ -1575,6 +1632,7 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                  timeout: 30s
                 message_timeout: 60s
                 metadata_options:
                   receivingNamespaces:
@@ -1609,6 +1667,7 @@ static_resources:
                       per_route_rule_backend_name: "testupstream-body-mutation"
     - name: testupstream-body-mutation-anthropic
       connect_timeout: 0.25s
+      per_connection_buffer_limit_bytes: 52428800
       type: STATIC
       lb_policy: ROUND_ROBIN
       typed_extension_protocol_options:
@@ -1634,6 +1693,7 @@ static_resources:
                 grpc_service:
                   envoy_grpc:
                     cluster_name: extproc_cluster
+                  timeout: 30s
                 message_timeout: 60s
                 metadata_options:
                   receivingNamespaces:

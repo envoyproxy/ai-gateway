@@ -27,9 +27,6 @@ import (
 func BenchmarkChatCompletions(b *testing.B) {
 	config := &filterapi.Config{
 		Version: version.Parse(),
-		LLMRequestCosts: []filterapi.LLMRequestCost{
-			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
-		},
 		Backends: []filterapi.Backend{
 			testUpstreamOpenAIBackend,
 			testUpstreamAAWSBackend,
@@ -40,117 +37,116 @@ func BenchmarkChatCompletions(b *testing.B) {
 
 	configBytes, err := yaml.Marshal(config)
 	require.NoError(b, err)
-	env := startTestEnvironment(b, string(configBytes), false, true)
+	env := startTestEnvironment(b, string(configBytes), true, false)
+	time.Sleep(5 * time.Second)
 
 	listenerPort := env.EnvoyListenerPort()
+	smallRequest := createChatCompletionRequest(100)     // ~6KB.
+	mediumRequest := createChatCompletionRequest(10000)  // ~600KB.
+	largeRequest := createChatCompletionRequest(100000)  // ~6MB.
+	xlargeRequest := createChatCompletionRequest(500000) // ~30MB.
 
 	testCases := []struct {
-		name         string
-		backend      string
-		requestBody  string
-		responseBody string
+		name                 string
+		backend              string
+		requestBody          string
+		fakeResponseBodyType string
 	}{
 		{
-			name:    "OpenAI",
-			backend: "openai",
-			requestBody: `{
-				"model": "gpt-4",
-				"messages": [
-					{"role": "user", "content": "Hello, this is a benchmark test message."}
-				],
-				"max_tokens": 100
-			}`,
-			responseBody: `{
-				"id": "chatcmpl-benchmark",
-				"object": "chat.completion",
-				"created": 1234567890,
-				"model": "gpt-4",
-				"choices": [{
-					"index": 0,
-					"message": {
-						"role": "assistant",
-						"content": "Hello! This is a benchmark response from OpenAI."
-					},
-					"finish_reason": "stop"
-				}],
-				"usage": {
-					"prompt_tokens": 10,
-					"completion_tokens": 12,
-					"total_tokens": 22
-				}
-			}`,
+			name:                 "OpenAI - small",
+			backend:              "openai",
+			requestBody:          smallRequest,
+			fakeResponseBodyType: "small",
 		},
 		{
-			name:    "AWS_Bedrock",
-			backend: "aws-bedrock",
-			requestBody: `{
-				"model": "claude-3-sonnet",
-				"messages": [
-					{"role": "user", "content": "Hello, this is a benchmark test message."}
-				],
-				"max_tokens": 100
-			}`,
-			responseBody: `{
-				"output": {
-					"message": {
-						"content": [{"text": "Hello! This is a benchmark response from AWS Bedrock."}],
-						"role": "assistant"
-					}
-				},
-				"stopReason": "end_turn",
-				"usage": {
-					"inputTokens": 10,
-					"outputTokens": 12,
-					"totalTokens": 22
-				}
-			}`,
+			name:                 "OpenAI - medium",
+			backend:              "openai",
+			requestBody:          mediumRequest,
+			fakeResponseBodyType: "medium",
 		},
 		{
-			name:    "GCP_VertexAI",
-			backend: "gcp-vertexai",
-			requestBody: `{
-				"model": "gemini-1.5-pro",
-				"messages": [
-					{"role": "user", "content": "Hello, this is a benchmark test message."}
-				],
-				"max_tokens": 100
-			}`,
-			responseBody: `{
-				"candidates": [{
-					"content": {
-						"parts": [{"text": "Hello! This is a benchmark response from GCP Vertex AI."}],
-						"role": "model"
-					},
-					"finishReason": "STOP"
-				}],
-				"usageMetadata": {
-					"promptTokenCount": 10,
-					"candidatesTokenCount": 12,
-					"totalTokenCount": 22
-				}
-			}`,
+			name:                 "OpenAI - large",
+			backend:              "openai",
+			requestBody:          largeRequest,
+			fakeResponseBodyType: "large",
 		},
 		{
-			name:    "GCP_AnthropicAI",
-			backend: "gcp-anthropicai",
-			requestBody: `{
-				"model": "claude-3-sonnet",
-				"messages": [
-					{"role": "user", "content": "Hello, this is a benchmark test message."}
-				],
-				"max_tokens": 100
-			}`,
-			responseBody: `{
-				"id": "msg_benchmark",
-				"type": "message",
-				"role": "assistant",
-				"stop_reason": "end_turn",
-				"content": [{"type": "text", "text": "Hello! This is a benchmark response from GCP Anthropic AI."}],
-				"usage": {
-					"input_tokens": 10,
-					"output_tokens": 12
-				}
-			}`,
+			name:                 "OpenAI - xlarge",
+			backend:              "openai",
+			requestBody:          xlargeRequest,
+			fakeResponseBodyType: "large",
+		},
+		{
+			name:                 "AWS_Bedrock - small",
+			backend:              "aws-bedrock",
+			requestBody:          smallRequest,
+			fakeResponseBodyType: "small",
+		},
+		{
+			name:                 "AWS_Bedrock - medium",
+			backend:              "aws-bedrock",
+			requestBody:          mediumRequest,
+			fakeResponseBodyType: "medium",
+		},
+		{
+			name:                 "AWS_Bedrock - large",
+			backend:              "aws-bedrock",
+			requestBody:          largeRequest,
+			fakeResponseBodyType: "large",
+		},
+		{
+			name:                 "AWS_Bedrock - xlarge",
+			backend:              "aws-bedrock",
+			requestBody:          xlargeRequest,
+			fakeResponseBodyType: "large",
+		},
+		{
+			name:                 "GCP_VertexAI - small",
+			backend:              "gcp-vertexai",
+			requestBody:          smallRequest,
+			fakeResponseBodyType: "small",
+		},
+		{
+			name:                 "GCP_VertexAI - medium",
+			backend:              "gcp-vertexai",
+			requestBody:          mediumRequest,
+			fakeResponseBodyType: "medium",
+		},
+		{
+			name:                 "GCP_VertexAI - large",
+			backend:              "gcp-vertexai",
+			requestBody:          largeRequest,
+			fakeResponseBodyType: "large",
+		},
+		{
+			name:                 "GCP_VertexAI - xlarge",
+			backend:              "gcp-vertexai",
+			requestBody:          xlargeRequest,
+			fakeResponseBodyType: "large",
+		},
+		{
+			name:                 "GCP_AnthropicAI - small",
+			backend:              "gcp-anthropicai",
+			requestBody:          smallRequest,
+			fakeResponseBodyType: "small",
+		},
+		{
+			name:                 "GCP_AnthropicAI - medium",
+			backend:              "gcp-anthropicai",
+			requestBody:          mediumRequest,
+			fakeResponseBodyType: "medium",
+		},
+		{
+			name:                 "GCP_AnthropicAI - large",
+			backend:              "gcp-anthropicai",
+			requestBody:          largeRequest,
+			fakeResponseBodyType: "large",
+		},
+		{
+			name:                 "GCP_AnthropicAI - xlarge",
+			backend:              "gcp-anthropicai",
+			requestBody:          xlargeRequest,
+			fakeResponseBodyType: "large",
 		},
 	}
 
@@ -166,8 +162,7 @@ func BenchmarkChatCompletions(b *testing.B) {
 
 				req.Header.Set("Content-Type", "application/json")
 				req.Header.Set("x-test-backend", tc.backend)
-				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
-					base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
+				req.Header.Set(testupstreamlib.FakeResponseHeaderKey, tc.fakeResponseBodyType)
 				req.Header.Set(testupstreamlib.ResponseStatusKey, "200")
 
 				for pb.Next() {
@@ -186,6 +181,19 @@ func BenchmarkChatCompletions(b *testing.B) {
 			})
 		})
 	}
+}
+
+func createChatCompletionRequest(numMessages int) string {
+	var messages []string
+	for i := 0; i < numMessages; i++ {
+		messages = append(messages, fmt.Sprintf(`{"role": "user", "content": "This is message number %d."}`, i+1))
+	}
+	largeRequestBody := fmt.Sprintf(`{
+		"model": "gpt-4",
+		"messages": [%s],
+		"max_tokens": 100
+	}`, strings.Join(messages, ","))
+	return largeRequestBody
 }
 
 // BenchmarkEmbeddings benchmarks the embeddings endpoint.
