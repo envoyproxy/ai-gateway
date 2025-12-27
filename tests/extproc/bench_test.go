@@ -37,7 +37,7 @@ func BenchmarkChatCompletions(b *testing.B) {
 
 	configBytes, err := yaml.Marshal(config)
 	require.NoError(b, err)
-	env := startTestEnvironment(b, string(configBytes), true, false)
+	env := startTestEnvironment(b, string(configBytes), false, false)
 	time.Sleep(5 * time.Second)
 
 	listenerPort := env.EnvoyListenerPort()
