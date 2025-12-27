@@ -24,6 +24,14 @@ import (
 )
 
 // BenchmarkChatCompletions benchmarks the chat/completions endpoint for various backends.
+//
+//	$ go install golang.org/x/perf/cmd/...@latest
+//	$ cd tests/extproc
+//	$ git checkout origin/main # Any base branch/commit to compare against.
+//	$ go test . -timeout=20m -count=10 -bench='BenchmarkChatCompletions' . > old.txt
+//	$ git checkout <your-feature-branch>
+//	$ go test . -timeout=20m -count=10 -bench='BenchmarkChatCompletions' . > new.txt
+//	$ benchstat old.txt new.txt
 func BenchmarkChatCompletions(b *testing.B) {
 	config := &filterapi.Config{
 		Version: version.Parse(),
