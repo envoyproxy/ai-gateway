@@ -6,10 +6,10 @@
 package translator
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
+	"github.com/goccy/go-json"
 	"google.golang.org/genai"
 )
 

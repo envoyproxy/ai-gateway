@@ -6,10 +6,10 @@
 package translator
 
 import (
-	"encoding/json"
 	"fmt"
 	"testing"
 
+	"github.com/goccy/go-json"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	openaigo "github.com/openai/openai-go/v2"

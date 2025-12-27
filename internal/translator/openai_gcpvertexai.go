@@ -7,11 +7,11 @@ package translator
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"strconv"
 
+	"github.com/goccy/go-json"
 	"github.com/google/uuid"
 	"google.golang.org/genai"
 	"k8s.io/utils/ptr"

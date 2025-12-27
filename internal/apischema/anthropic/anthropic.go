@@ -6,11 +6,11 @@
 package anthropic
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/goccy/go-json"
 	"github.com/tidwall/gjson"
 )
 

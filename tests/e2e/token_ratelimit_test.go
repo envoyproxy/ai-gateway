@@ -8,7 +8,6 @@ package e2e
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/goccy/go-json"
 	"github.com/openai/openai-go"
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"

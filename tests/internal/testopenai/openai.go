@@ -6,9 +6,10 @@
 package testopenai
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
+
+	"github.com/goccy/go-json"
 )
 
 // extractModel extracts the Model field from an OpenAI request body using reflection.

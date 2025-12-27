@@ -6,11 +6,11 @@
 package translator
 
 import (
-	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 
+	"github.com/goccy/go-json"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/sjson"
 

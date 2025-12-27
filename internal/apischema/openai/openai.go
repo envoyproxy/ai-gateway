@@ -11,7 +11,6 @@ package openai
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -19,6 +18,7 @@ import (
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/goccy/go-json"
 	"github.com/openai/openai-go/v2"
 	"github.com/openai/openai-go/v2/responses"
 	"github.com/tidwall/gjson"

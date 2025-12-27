@@ -7,13 +7,13 @@ package testopeninference
 
 import (
 	"cmp"
-	"encoding/json"
 	"reflect"
 	"regexp"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/goccy/go-json"
 	gocmp "github.com/google/go-cmp/cmp"
 	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
 	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"

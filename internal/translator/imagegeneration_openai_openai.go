@@ -7,12 +7,12 @@ package translator
 
 import (
 	"cmp"
-	"encoding/json"
 	"fmt"
 	"io"
 	"path"
 	"strconv"
 
+	"github.com/goccy/go-json"
 	"github.com/tidwall/sjson"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
