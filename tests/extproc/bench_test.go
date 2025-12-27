@@ -207,9 +207,7 @@ func createChatCompletionRequest(numMessages int) string {
 // BenchmarkEmbeddings benchmarks the embeddings endpoint.
 func BenchmarkEmbeddings(b *testing.B) {
 	config := &filterapi.Config{
-		LLMRequestCosts: []filterapi.LLMRequestCost{
-			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
-		},
+		Version: version.Parse(),
 		Backends: []filterapi.Backend{
 			testUpstreamOpenAIBackend,
 		},
@@ -289,9 +287,7 @@ func BenchmarkChatCompletionsStreaming(b *testing.B) {
 	now := time.Unix(int64(time.Now().Second()), 0).UTC()
 
 	config := &filterapi.Config{
-		LLMRequestCosts: []filterapi.LLMRequestCost{
-			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
-		},
+		Version: version.Parse(),
 		Backends: []filterapi.Backend{
 			testUpstreamOpenAIBackend,
 			testUpstreamAAWSBackend,
