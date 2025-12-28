@@ -178,7 +178,7 @@ func StartTestEnvironment(t testing.TB,
 	// Sanity-check all connections to ensure everything is up.
 	require.Eventually(t, func() bool {
 		t.Logf("Checking connections to all services in the test environment")
-		err := env.checkAllConnections(t)
+		err := env.checkAllConnections()
 		if err != nil {
 			t.Logf("Error checking connections: %v", err)
 			return false
@@ -189,37 +189,35 @@ func StartTestEnvironment(t testing.TB,
 	return env
 }
 
-func (e *TestEnvironment) checkAllConnections(t testing.TB) error {
+func (e *TestEnvironment) checkAllConnections() error {
 	errGroup := &errgroup.Group{}
 	errGroup.Go(func() error {
-		return e.checkConnection(t, e.extProcPort, "extProc")
+		return e.checkConnection(e.extProcPort, "extProc")
 	})
 	errGroup.Go(func() error {
-		return e.checkConnection(t, e.extProcAdminPort, "extProcAdmin")
+		return e.checkConnection(e.extProcAdminPort, "extProcAdmin")
 	})
 	errGroup.Go(func() error {
-		return e.checkConnection(t, e.envoyListenerPort, "envoyListener")
+		return e.checkConnection(e.envoyListenerPort, "envoyListener")
 	})
 	errGroup.Go(func() error {
-		return e.checkConnection(t, e.envoyAdminPort, "envoyAdmin")
+		return e.checkConnection(e.envoyAdminPort, "envoyAdmin")
 	})
 	for name, port := range e.miscPorts {
 		errGroup.Go(func() error {
-			return e.checkConnection(t, port, fmt.Sprintf("misc-%s", name))
+			return e.checkConnection(port, fmt.Sprintf("misc-%s", name))
 		})
 	}
 	return errGroup.Wait()
 }
 
-func (e *TestEnvironment) checkConnection(t testing.TB, port int, name string) error {
+func (e *TestEnvironment) checkConnection(port int, name string) error {
 	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
-		t.Logf("Failed to connect to %s on port %d: %v", name, port, err)
 		return fmt.Errorf("failed to connect to %s on port %d: %w", name, port, err)
 	}
 	err = conn.Close()
 	if err != nil {
-		t.Logf("Failed to close connection to %s on port %d: %v", name, port, err)
 		return fmt.Errorf("failed to close connection to %s on port %d: %w", name, port, err)
 	}
 	return nil

@@ -21,6 +21,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/tests/internal/dataplaneenv"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -159,6 +160,7 @@ func requireUpstream(t testing.TB, out io.Writer, ports map[string]int) {
 	cmd.Env = append(os.Environ(),
 		"TESTUPSTREAM_ID=extproc_test",
 		fmt.Sprintf("LISTENER_PORT=%d", ports["upstream"]))
+	require.NoError(t, cmd.Start(), "failed to start testupstream")
 }
 
 func listen(ctx context.Context, name string) (net.Listener, int) {
