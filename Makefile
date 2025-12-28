@@ -31,7 +31,7 @@ HELM_CHART_VERSION ?= v0.0.0-latest
 # Arguments for go test. This can be used, for example, to run specific tests via
 # `GO_TEST_ARGS="-run TestName/foo/etc -v -race"`.
 GO_TEST_ARGS ?=
-# Arguments for go test in e2e tests in addition to GO_TEST_ARGS, applicable to test-e2e, test-extproc, and test-controller.
+# Arguments for go test in e2e tests in addition to GO_TEST_ARGS, applicable to test-e2e, test-data-plane, etc.
 GO_TEST_E2E_ARGS ?= -count=1 -timeout 30m
 
 ## help: Show this help info.
