@@ -177,7 +177,7 @@ test-crdcel: apigen ## Run the integration tests of CEL validation in CRD defini
 # Since this is an integration test, we don't use -race, as it takes a very long
 # time to complete. For concurrency issues, use normal unit tests and race them.
 .PHONY: test-data-plane
-test-data-plane: build.extproc ## Run the integration tests for data plane without controller or k8s at all.
+test-data-plane: build.extproc build-dynamic-module ## Run the integration tests for data plane without controller or k8s at all.
 	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
 	@echo "Ensure func-e is built and Envoy is installed"
 	@@$(GO_TOOL) func-e run --version >/dev/null 2>&1
@@ -196,14 +196,6 @@ test-data-plane-mcp: build.extproc ## Run the integration tests for MCP data pla
 	@@$(GO_TOOL) func-e run --version >/dev/null 2>&1
 	@echo "Run Data Plane MCP test"
 	@go test ./tests/data-plane-mcp/... $(GO_TEST_E2E_ARGS)
-
-.PHONY: test-dynamic-module # This requires the extproc binary to be built.
-test-dynamic-module: build-dynamic-module ## Run the integration tests for dynamic module with Envoy, almost identical to test-extproc.
-	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
-	@echo "Ensure func-e is built and Envoy is installed"
-	@@$(GO_TOOL) func-e run --version >/dev/null 2>&1
-	@echo "Run Dynamic Module test"
-	@go test ./tests/extproc ./tests/extproc/vcr -v $(GO_TEST_E2E_ARGS)
 
 # This runs the end-to-end tests for the controller with EnvTest.
 #
