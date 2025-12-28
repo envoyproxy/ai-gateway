@@ -154,7 +154,7 @@ jobs:
             ~/.cache/go-build
             ~/go/pkg/mod
             ~/go/bin
-          key: dataplane-tests-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+          key: data-plane-tests-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
       - env:
           TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
           TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
@@ -191,7 +191,7 @@ jobs:
             ~/.cache/go-build
             ~/go/pkg/mod
             ~/go/bin
-          key: dataplane-tests-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+          key: data-plane-tests-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
       - run: make test-data-plane-mcp
 
   test_e2e:
