@@ -37,6 +37,9 @@ func init() {
 	if err != nil {
 		panic(fmt.Sprintf("failed to build extproc binary: %v", err))
 	}
+	if err := internaltesting.BuildDynamicModuleOnDemand(); err != nil {
+		panic(fmt.Sprintf("failed to build dynamic module: %v", err))
+	}
 }
 
 // TestEnvironment holds all the services needed for tests.
@@ -44,6 +47,7 @@ type TestEnvironment struct {
 	extprocConfig                                     string
 	extprocEnv                                        []string
 	extProcPort, extProcAdminPort, extProcMCPPort     int
+	extProcInProcess, dynamicModule                   bool
 	envoyConfig                                       string
 	envoyListenerPort, envoyAdminPort                 int
 	upstreamOut, extprocOut, envoyStdout, envoyStderr internaltesting.OutBuffer
@@ -80,7 +84,7 @@ func (e *TestEnvironment) ExtProcAdminPort() int {
 func StartTestEnvironment(t testing.TB,
 	requireNewUpstream func(t testing.TB, out io.Writer, miscPorts map[string]int), miscPortDefauls map[string]int,
 	extprocConfig string, extprocEnv []string, envoyConfig string, okToDumpLogOnFailure, extProcInProcess bool,
-	mcpWriteTimeout time.Duration,
+	mcpWriteTimeout time.Duration, dynamicModule bool,
 ) *TestEnvironment {
 	// Get random ports for all services.
 	const defaultPortCount = 5
@@ -109,6 +113,7 @@ func StartTestEnvironment(t testing.TB,
 		extProcPort:       ports[0],
 		extProcAdminPort:  ports[1],
 		extProcMCPPort:    ports[2],
+		extProcInProcess:  extProcInProcess,
 		envoyConfig:       envoyConfig,
 		envoyListenerPort: ports[3],
 		envoyAdminPort:    ports[4],
@@ -119,6 +124,7 @@ func StartTestEnvironment(t testing.TB,
 		mcpWriteTimeout:   mcpWriteTimeout,
 		miscPorts:         miscPorts,
 		miscPortDefaults:  miscPortDefauls,
+		dynamicModule:     dynamicModule,
 	}
 
 	t.Logf("Starting test environment with ports: extproc=%d, envoyListener=%d, envoyAdmin=%d misc=%v",
@@ -137,23 +143,35 @@ func StartTestEnvironment(t testing.TB,
 	processedExtProcConfig := replaceTokens(env.extprocConfig, replacements)
 	env.extprocConfig = processedExtProcConfig
 
-	// Start ExtProc.
-	requireExtProc(t,
-		env.extprocOut,
-		env.extprocConfig,
-		env.extprocEnv,
-		env.extProcPort,
-		env.extProcAdminPort,
-		env.extProcMCPPort,
-		env.mcpWriteTimeout,
-		extProcInProcess,
-	)
+	var envoyEnvVars []string
+	if !env.dynamicModule {
+		requireExtProc(t,
+			env.extprocOut,
+			env.extprocConfig,
+			env.extprocEnv,
+			env.extProcPort,
+			env.extProcAdminPort,
+			env.extProcMCPPort,
+			env.mcpWriteTimeout,
+			extProcInProcess,
+		)
+	} else {
+		configPath := t.TempDir() + "/extproc-config.yaml"
+		require.NoError(t, os.WriteFile(configPath, []byte(env.extprocConfig), 0o600))
+		envoyEnvVars = append(os.Environ(),
+			"ENVOY_DYNAMIC_MODULES_SEARCH_PATH="+internaltesting.FindProjectRoot()+"/out",
+			fmt.Sprintf("AI_GATEWAY_DYNAMIC_MODULE_ADMIN_ADDRESS=:%d", env.extProcAdminPort),
+			fmt.Sprintf("AI_GATEWAY_DYNAMIC_MODULE_FILTER_CONFIG_PATH=%s", configPath),
+		)
+		envoyEnvVars = append(envoyEnvVars, env.extprocEnv...)
+	}
 
 	// Start Envoy mapping its testupstream port 8080 to the ephemeral one.
 	requireEnvoy(t,
 		env.envoyStdout,
 		env.envoyStderr,
 		env.envoyConfig,
+		envoyEnvVars,
 		env.envoyListenerPort,
 		env.envoyAdminPort,
 		env.extProcPort,
@@ -180,12 +198,14 @@ func StartTestEnvironment(t testing.TB,
 
 func (e *TestEnvironment) checkAllConnections() error {
 	errGroup := &errgroup.Group{}
-	errGroup.Go(func() error {
-		return e.checkConnection(e.extProcPort, "extProc")
-	})
-	errGroup.Go(func() error {
-		return e.checkConnection(e.extProcAdminPort, "extProcAdmin")
-	})
+	if !e.dynamicModule {
+		errGroup.Go(func() error {
+			return e.checkConnection(e.extProcPort, "extProc")
+		})
+		errGroup.Go(func() error {
+			return e.checkConnection(e.extProcAdminPort, "extProcAdmin")
+		})
+	}
 	errGroup.Go(func() error {
 		return e.checkConnection(e.envoyListenerPort, "envoyListener")
 	})
@@ -216,6 +236,7 @@ func (e *TestEnvironment) checkConnection(port int, name string) error {
 func requireEnvoy(t testing.TB,
 	stdout, stderr io.Writer,
 	config string,
+	envVars []string,
 	listenerPort, adminPort, extProcPort, extProcMCPPort int,
 	miscPorts, miscPortDefaults map[string]int,
 ) {
@@ -254,7 +275,8 @@ func requireEnvoy(t testing.TB,
 		"--concurrency", strconv.Itoa(max(runtime.NumCPU(), 2)),
 		// This allows multiple Envoy instances to run in parallel.
 		"--base-id", strconv.Itoa(time.Now().Nanosecond()),
-		"--component-log-level", "http:warn",
+		// Add debug logging for http.
+		"--component-log-level", "http:warn,dynamic_modules:warn",
 	)
 	// func-e will use the version specified in the project root's .envoy-version file.
 	cmd.Dir = internaltesting.FindProjectRoot()
@@ -262,6 +284,7 @@ func requireEnvoy(t testing.TB,
 	require.NoError(t, err)
 	t.Logf("Starting Envoy version %s", strings.TrimSpace(string(version)))
 	cmd.WaitDelay = 3 * time.Second // auto-kill after 3 seconds.
+	cmd.Env = envVars
 	t.Cleanup(func() {
 		defer cancel()
 		// Graceful shutdown, should kill the Envoy subprocess, too.

@@ -135,7 +135,7 @@ func requireNewMCPEnv(t *testing.T, forceJSONResponse bool, writeTimeout time.Du
 			})
 		}, map[string]int{"ts1": 8080, "ts2": 8081, "special_listener": 9999},
 		string(config), collector.Env(), envoyConfig, true, true,
-		writeTimeout,
+		writeTimeout, false,
 	)
 
 	m := new(mcpEnv)

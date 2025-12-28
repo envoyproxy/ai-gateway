@@ -32,6 +32,17 @@ import (
 //	$ go test ./tests/data-plane -run='^$' -timeout=20m -count=10 -bench='BenchmarkChatCompletions' . > new.txt
 //	$ benchstat old.txt new.txt
 func BenchmarkChatCompletions(b *testing.B) {
+	b.Run("extproc", func(b *testing.B) {
+		b.Setenv("TEST_WITH_DYNAMIC_MODULE", "")
+		benchmarkChatCompletions(b)
+	})
+	b.Run("dynamic_module", func(b *testing.B) {
+		b.Setenv("TEST_WITH_DYNAMIC_MODULE", "true")
+		benchmarkChatCompletions(b)
+	})
+}
+
+func benchmarkChatCompletions(b *testing.B) {
 	config := &filterapi.Config{
 		Version: version.Parse(),
 		Backends: []filterapi.Backend{
@@ -45,7 +56,6 @@ func BenchmarkChatCompletions(b *testing.B) {
 	configBytes, err := yaml.Marshal(config)
 	require.NoError(b, err)
 	env := startTestEnvironment(b, string(configBytes), false, false)
-	time.Sleep(5 * time.Second)
 
 	listenerPort := env.EnvoyListenerPort()
 	smallRequest := createChatCompletionRequest(100)     // ~6KB.

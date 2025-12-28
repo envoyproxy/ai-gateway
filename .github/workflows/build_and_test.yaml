@@ -195,6 +195,44 @@ jobs:
         env:
           TEST_GITHUB_ACCESS_TOKEN: ${{ secrets.TEST_GITHUB_ACCESS_TOKEN }}
 
+  test_dynamic_module:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    name: Dynamic Module Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+            ~/go/bin
+          key: extproc-tests-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+      - env:
+          TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
+          TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
+          TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
+          TEST_GEMINI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_GEMINI_API_KEY }}
+          TEST_COHERE_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_COHERE_API_KEY }}
+          TEST_GROQ_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_GROQ_API_KEY }}
+          TEST_GROK_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_GROK_API_KEY }}
+          TEST_SAMBANOVA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_SAMBANOVA_API_KEY }}
+          TEST_DEEPINFRA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_DEEPINFRA_API_KEY }}
+          TEST_GITHUB_ACCESS_TOKEN: ${{ secrets.TEST_GITHUB_ACCESS_TOKEN }}
+          TEST_WITH_DYNAMIC_MODULE: "true"
+        run: make test-dynamic-module
+
   test_e2e:
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}

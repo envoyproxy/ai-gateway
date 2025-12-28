@@ -197,6 +197,14 @@ test-data-plane-mcp: build.extproc ## Run the integration tests for MCP data pla
 	@echo "Run Data Plane MCP test"
 	@go test ./tests/data-plane-mcp/... $(GO_TEST_E2E_ARGS)
 
+.PHONY: test-dynamic-module # This requires the extproc binary to be built.
+test-dynamic-module: build-dynamic-module ## Run the integration tests for dynamic module with Envoy, almost identical to test-extproc.
+	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
+	@echo "Ensure func-e is built and Envoy is installed"
+	@@$(GO_TOOL) func-e run --version >/dev/null 2>&1
+	@echo "Run Dynamic Module test"
+	@go test ./tests/extproc ./tests/extproc/vcr -v $(GO_TEST_E2E_ARGS)
+
 # This runs the end-to-end tests for the controller with EnvTest.
 #
 # Since this is an integration test, we don't use -race, as it takes a very long
@@ -273,6 +281,12 @@ build.%: ## Build a binary for the given command under the internal/cmd director
 .PHONE: build
 build: ## Build all binaries under cmd/ directory.
 	@$(foreach COMMAND_NAME,$(COMMANDS),$(MAKE) build.$(COMMAND_NAME);)
+
+# This builds the dynamic module filter for Envoy. This is the shared library that can be loaded by Envoy to run the AI Gateway filter.
+# TODO: multiple Envoy versions support with multiple platform builds.
+.PHONE: build-dynamic-module
+build-dynamic-module: ## Build the dynamic module for Envoy.
+	CGO_ENABLED=1 go build -tags "envoy" -buildmode=c-shared -o $(OUTPUT_DIR)/libaigateway.so ./cmd/dynamic_module
 
 # This builds the docker images for the controller, extproc and testupstream for the e2e tests.
 .PHONY: build-e2e
