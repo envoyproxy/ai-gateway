@@ -39,7 +39,6 @@ func requireUpstream(t testing.TB, out io.Writer, ports map[string]int) {
 
 // TestMain sets up the test environment once for all tests.
 func TestMain(m *testing.M) {
-
 	// Run tests.
 	os.Exit(m.Run())
 }

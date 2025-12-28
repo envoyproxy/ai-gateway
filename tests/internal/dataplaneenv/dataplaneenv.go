@@ -185,7 +185,7 @@ func StartTestEnvironment(t testing.TB,
 		}
 		t.Logf("All services are up and running")
 		return true
-	}, time.Second*3, time.Millisecond*20, "failed to connect to all services in the test environment")
+	}, time.Second*5, time.Millisecond*500, "failed to connect to all services in the test environment")
 	return env
 }
 

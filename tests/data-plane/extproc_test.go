@@ -19,9 +19,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/tests/internal/dataplaneenv"
-	"github.com/stretchr/testify/require"
 )
 
 const (
