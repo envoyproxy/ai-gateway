@@ -102,7 +102,7 @@ jobs:
             ~/.cache/go-build
             ~/go/pkg/mod
             ~/go/bin
-          key: celvalidation-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}-${{ matrix.os }}
+          key: controller-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}-${{ matrix.os }}
       - run: make test-crdcel
 
   test_controller:
@@ -131,10 +131,10 @@ jobs:
           key: controller-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}-${{ matrix.os }}
       - run: make test-controller
 
-  test_extproc:
+  test_data_plane:
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
-    name: External Processor Test (${{ matrix.os }})
+    name: Data Plane Test (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -154,7 +154,7 @@ jobs:
             ~/.cache/go-build
             ~/go/pkg/mod
             ~/go/bin
-          key: extproc-tests-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+          key: dataplane-tests-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
       - env:
           TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
           TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
@@ -166,7 +166,33 @@ jobs:
           TEST_SAMBANOVA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_SAMBANOVA_API_KEY }}
           TEST_DEEPINFRA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_DEEPINFRA_API_KEY }}
           TEST_GITHUB_ACCESS_TOKEN: ${{ secrets.TEST_GITHUB_ACCESS_TOKEN }}
-        run: make test-extproc
+        run: make test-data-plane
+
+  test_data_plane_mcp:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    name: Data Plane MCP Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+            ~/go/bin
+          key: dataplane-tests-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+      - run: make test-data-plane-mcp
 
   test_e2e:
     needs: changes
@@ -386,10 +412,11 @@ jobs:
       - unittest
       - test_crdcel
       - test_controller
-      - test_extproc
       - test_e2e
       - test_e2e_upgrade
       - test_e2e_inference_extension
+      - test_data_plane
+      - test_data_plane_mcp
       - test_e2e_aigw
     # We need this to run always to force-fail (and not skip) if any needed
     # job has failed. Otherwise, a skipped job will not fail the workflow.
