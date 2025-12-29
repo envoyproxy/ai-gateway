@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -104,8 +105,8 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 	)
 	fs.IntVar(&flags.maxRecvMsgSize,
 		"maxRecvMsgSize",
-		4*1024*1024,
-		"Maximum message size in bytes that the gRPC server can receive. Default is 4MB.",
+		math.MaxInt,
+		"Maximum message size in bytes that the gRPC server can receive. Default is unlimited since the flow control should be handled by Envoy.",
 	)
 	fs.StringVar(&flags.mcpAddr, "mcpAddr", "", "the address (TCP or UDS) for the MCP proxy server, such as :1063 or unix:///tmp/ext_proc.sock. Optional.")
 	fs.StringVar(&flags.mcpSessionEncryptionSeed, "mcpSessionEncryptionSeed", "default-insecure-seed",
@@ -363,7 +364,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	// Intentionally not using slog for this to unconditionally emit to stderr. This is important
 	// to avoid the deadlock in e2e tests where we wait for this message before proceeding, otherwise
 	// it would be extremely hard to debug issues where the external processor fails to start.
-	fmt.Fprintf(stderr, "AI Gateway External Processor is ready")
+	fmt.Fprintf(stderr, "AI Gateway External Processor is ready\n")
 	return s.Serve(extProcLis)
 }
 
