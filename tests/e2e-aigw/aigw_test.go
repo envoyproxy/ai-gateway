@@ -27,6 +27,11 @@ var (
 	ollamaModel string
 )
 
+var localOllamaEnv = []string{
+	"OPENAI_BASE_URL=http://localhost:11434/v1",
+	"OPENAI_API_KEY=unused",
+}
+
 func TestMain(m *testing.M) {
 	var err error
 	if aigwBin, err = buildAigwOnDemand(); err == nil {
@@ -51,7 +56,9 @@ func TestMain(m *testing.M) {
 }
 
 func TestAIGWRun_AdminEndpoints(t *testing.T) {
-	adminPort := startAIGWCLI(t, aigwBin, nil, "run")
+	// The env vars are not needed for this test, but AIGW needs either a config or
+	// the env vars set to start.
+	adminPort := startAIGWCLI(t, aigwBin, localOllamaEnv, "run")
 	statusOK := func(r *http.Response) bool { return r.StatusCode == 200 }
 
 	for endpoint, condition := range map[string]func(r *http.Response) bool{

@@ -17,10 +17,7 @@ import (
 )
 
 func TestAIGWRun_LLM(t *testing.T) {
-	startAIGWCLI(t, aigwBin, []string{
-		"OPENAI_BASE_URL=http://localhost:11434/v1",
-		"OPENAI_API_KEY=unused",
-	}, "run")
+	startAIGWCLI(t, aigwBin, localOllamaEnv, "run")
 
 	ctx := t.Context()
 
