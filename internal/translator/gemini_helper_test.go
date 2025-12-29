@@ -1967,11 +1967,7 @@ func TestExtractToolCallsFromGeminiParts(t *testing.T) {
 				calls[i].ID = ptr.To(fmt.Sprintf("%d", i))
 			}
 
-			expMarshaled, err := json.Marshal(tt.expected)
-			require.NoError(t, err)
-			actualMarshaled, err := json.Marshal(calls)
-			require.NoError(t, err)
-			require.JSONEq(t, string(expMarshaled), string(actualMarshaled))
+			require.Equal(t, tt.expected, calls)
 		})
 	}
 }
