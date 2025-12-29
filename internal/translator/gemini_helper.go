@@ -685,7 +685,7 @@ func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate, responseMode
 			}
 
 			// Extract tool calls if any.
-			toolCalls, err = extractToolCallsFromGeminiParts(toolCalls, candidate.Content.Parts)
+			toolCalls, err = extractToolCallsFromGeminiParts(toolCalls, candidate.Content.Parts, json.Marshal)
 			if err != nil {
 				return nil, fmt.Errorf("error extracting tool calls: %w", err)
 			}
@@ -779,14 +779,15 @@ func extractTextAndThoughtSummaryFromGeminiParts(parts []*genai.Part, responseMo
 }
 
 // extractToolCallsFromGeminiParts extracts tool calls from Gemini parts.
-func extractToolCallsFromGeminiParts(toolCalls []openai.ChatCompletionMessageToolCallParam, parts []*genai.Part) ([]openai.ChatCompletionMessageToolCallParam, error) {
+func extractToolCallsFromGeminiParts(toolCalls []openai.ChatCompletionMessageToolCallParam, parts []*genai.Part, argsMarshaler json.Marshaler,
+) ([]openai.ChatCompletionMessageToolCallParam, error) {
 	for _, part := range parts {
 		if part == nil || part.FunctionCall == nil {
 			continue
 		}
 
 		// Convert function call arguments to JSON string.
-		args, err := json.Marshal(part.FunctionCall.Args)
+		args, err := argsMarshaler(part.FunctionCall.Args)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal function arguments: %w", err)
 		}

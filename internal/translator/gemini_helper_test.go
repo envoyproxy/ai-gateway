@@ -1953,7 +1953,7 @@ func TestExtractToolCallsFromGeminiParts(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			calls, err := extractToolCallsFromGeminiParts(toolCalls, tt.input)
+			calls, err := extractToolCallsFromGeminiParts(toolCalls, tt.input, json.MarshalForDeterministicTesting)
 
 			if tt.wantErr {
 				require.Error(t, err)

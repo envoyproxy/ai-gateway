@@ -166,7 +166,7 @@ func normalizeJSON(s string) string {
 		return s
 	}
 	processedV := processValue(v)
-	b, err := json.Marshal(processedV)
+	b, err := json.MarshalForDeterministicTesting(processedV)
 	if err != nil {
 		return s
 	}

@@ -308,14 +308,17 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) parseGCPStreamingChunks(
 // extractToolCallsFromGeminiPartsStream extracts tool calls from Gemini parts for streaming responses.
 // Each tool call is assigned an incremental index starting from 0, matching OpenAI's streaming protocol.
 // Returns ChatCompletionChunkChoiceDeltaToolCall types suitable for streaming responses, or nil if no tool calls are found.
-func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) extractToolCallsFromGeminiPartsStream(toolCalls []openai.ChatCompletionChunkChoiceDeltaToolCall, parts []*genai.Part) ([]openai.ChatCompletionChunkChoiceDeltaToolCall, error) {
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) extractToolCallsFromGeminiPartsStream(
+	toolCalls []openai.ChatCompletionChunkChoiceDeltaToolCall, parts []*genai.Part,
+	argsMarshaller json.Marshaler,
+) ([]openai.ChatCompletionChunkChoiceDeltaToolCall, error) {
 	for _, part := range parts {
 		if part == nil || part.FunctionCall == nil {
 			continue
 		}
 
 		// Convert function call arguments to JSON string.
-		args, err := json.Marshal(part.FunctionCall.Args)
+		args, err := argsMarshaller(part.FunctionCall.Args)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal function arguments: %w", err)
 		}
@@ -380,7 +383,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiCandidatesToOpenAI
 			}
 
 			// Extract tool calls if any.
-			toolCalls, err = o.extractToolCallsFromGeminiPartsStream(toolCalls, candidate.Content.Parts)
+			toolCalls, err = o.extractToolCallsFromGeminiPartsStream(toolCalls, candidate.Content.Parts, json.Marshal)
 			if err != nil {
 				return nil, fmt.Errorf("error extracting tool calls: %w", err)
 			}

@@ -1607,7 +1607,7 @@ func TestExtractToolCallsFromGeminiPartsStream(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			o := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
-			calls, err := o.extractToolCallsFromGeminiPartsStream(toolCalls, tt.input)
+			calls, err := o.extractToolCallsFromGeminiPartsStream(toolCalls, tt.input, json.MarshalForDeterministicTesting)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -1644,11 +1644,11 @@ func TestExtractToolCallsStreamVsNonStream(t *testing.T) {
 	o := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
 
 	// Get results from both functions
-	streamCalls, err := o.extractToolCallsFromGeminiPartsStream(toolCallsStream, parts)
+	streamCalls, err := o.extractToolCallsFromGeminiPartsStream(toolCallsStream, parts, json.MarshalForDeterministicTesting)
 	require.NoError(t, err)
 	require.Len(t, streamCalls, 1)
 
-	nonStreamCalls, err := extractToolCallsFromGeminiParts(toolCalls, parts)
+	nonStreamCalls, err := extractToolCallsFromGeminiParts(toolCalls, parts, json.MarshalForDeterministicTesting)
 	require.NoError(t, err)
 	require.Len(t, nonStreamCalls, 1)
 
@@ -1657,7 +1657,7 @@ func TestExtractToolCallsStreamVsNonStream(t *testing.T) {
 
 	// Verify function name and arguments are the same
 	assert.Equal(t, nonStreamCall.Function.Name, streamCall.Function.Name)
-	assert.Equal(t, nonStreamCall.Function.Arguments, streamCall.Function.Arguments)
+	assert.JSONEq(t, nonStreamCall.Function.Arguments, streamCall.Function.Arguments)
 	assert.Equal(t, openai.ChatCompletionMessageToolCallTypeFunction, streamCall.Type)
 
 	// Verify differences:
@@ -1708,7 +1708,7 @@ func TestExtractToolCallsStreamIndexing(t *testing.T) {
 	}
 	o := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
 
-	calls, err := o.extractToolCallsFromGeminiPartsStream(toolCalls, parts)
+	calls, err := o.extractToolCallsFromGeminiPartsStream(toolCalls, parts, json.MarshalForDeterministicTesting)
 	require.NoError(t, err)
 	require.Len(t, calls, 3)
 

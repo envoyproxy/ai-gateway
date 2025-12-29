@@ -12,22 +12,32 @@ import (
 )
 
 var (
-	Unmarshal     = sonicjson.ConfigDefault.Unmarshal
-	Marshal       = sonicjson.ConfigDefault.Marshal
-	NewEncoder    = sonicjson.ConfigDefault.NewEncoder
-	NewDecoder    = sonicjson.ConfigDefault.NewDecoder
-	Valid         = sonicjson.ConfigDefault.Valid
+	// Unmarshal is equivalent to encoding/json.Unmarshal.
+	Unmarshal = sonicjson.ConfigDefault.Unmarshal
+	// Marshal is equivalent to encoding/json.Marshal.
+	Marshal = sonicjson.ConfigDefault.Marshal
+	// NewEncoder is equivalent to encoding/json.NewEncoder.
+	NewEncoder = sonicjson.ConfigDefault.NewEncoder
+	// NewDecoder is equivalent to encoding/json.NewDecoder.
+	NewDecoder = sonicjson.ConfigDefault.NewDecoder
+	// Valid is equivalent to encoding/json.Valid.
+	Valid = sonicjson.ConfigDefault.Valid
+	// MarshalIndent is equivalent to encoding/json.MarshalIndent.
 	MarshalIndent = sonicjson.ConfigDefault.MarshalIndent
+	// MarshalForDeterministicTesting marshals a value to JSON in a deterministic way for testing.
+	// The normal sonic configuration does not guarantee deterministic output in terms of field order.
+	// It panics if called outside of tests.
+	MarshalForDeterministicTesting = func(v interface{}) ([]byte, error) {
+		if !testing.Testing() {
+			panic("MarshalForDeterministicTesting can only be called from tests")
+		}
+		return sonicjson.ConfigStd.Marshal(v)
+	}
 )
 
-type RawMessage = sonicjson.NoCopyRawMessage
-
-func init() {
-	if testing.Testing() {
-		config := sonicjson.ConfigStd
-		Unmarshal = config.Unmarshal
-		Marshal = config.Marshal
-		NewEncoder = config.NewEncoder
-		NewDecoder = config.NewDecoder
-	}
-}
+type (
+	// RawMessage is equivalent to encoding/json.RawMessage.
+	RawMessage = sonicjson.NoCopyRawMessage
+	// Marshaler is the function signature of encoding/json.Marshal.
+	Marshaler = func(interface{}) ([]byte, error)
+)

@@ -89,7 +89,7 @@ func TestWithTestUpstream(t *testing.T) {
 
 	configBytes, err := yaml.Marshal(config)
 	require.NoError(t, err)
-	env := startTestEnvironment(t, string(configBytes), true, true)
+	env := startTestEnvironment(t, string(configBytes), true, false)
 
 	listenerPort := env.EnvoyListenerPort()
 
