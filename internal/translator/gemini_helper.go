@@ -755,12 +755,13 @@ func geminiFinishReasonToOpenAI[T toolCallSlice](reason genai.FinishReason, tool
 
 // extractTextAndThoughtSummaryFromGeminiParts extracts thought summary and text from Gemini parts.
 func extractTextAndThoughtSummaryFromGeminiParts(parts []*genai.Part, responseMode geminiResponseMode) (string, string) {
-	text := ""
-	thoughtSummary := ""
+	var textBuilder strings.Builder
+	var thoughtBuilder strings.Builder
+
 	for _, part := range parts {
 		if part != nil && part.Text != "" {
 			if part.Thought {
-				thoughtSummary += part.Text
+				thoughtBuilder.WriteString(part.Text)
 			} else {
 				if responseMode == responseModeRegex {
 					// GCP doesn't natively support REGEX response modes, so we instead express them as json schema.
@@ -770,11 +771,11 @@ func extractTextAndThoughtSummaryFromGeminiParts(parts []*genai.Part, responseMo
 					part.Text = strings.TrimPrefix(part.Text, "\"")
 					part.Text = strings.TrimSuffix(part.Text, "\"")
 				}
-				text += part.Text
+				textBuilder.WriteString(part.Text)
 			}
 		}
 	}
-	return thoughtSummary, text
+	return thoughtBuilder.String(), textBuilder.String()
 }
 
 // extractToolCallsFromGeminiParts extracts tool calls from Gemini parts.

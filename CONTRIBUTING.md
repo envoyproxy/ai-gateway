@@ -46,7 +46,7 @@ For example,
 Other than that, everything will be automatically managed and installed via `make` targets,
 and you should not need to worry about the dependencies (tell us if you do).
 
-Additionally, some of the test cases in `test-e2e` and `test-extproc` might require some credentials.
+Additionally, some of the test cases in `test-e2e` and `test-data-plane` might require some credentials.
 You will find which credentials are required in the output of the test command. All test cases requiring
 credentials are skipped by default when the credentials are not provided. If you
 want to run these tests locally, please prepare the necessary credentials by yourself.

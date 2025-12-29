@@ -273,6 +273,7 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		require.True(t, ok)
 		var fc filterapi.Config
 		require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
+		require.Equal(t, "dev", fc.Version)
 		require.Len(t, fc.LLMRequestCosts, 5)
 		require.Equal(t, filterapi.LLMRequestCostTypeInputToken, fc.LLMRequestCosts[0].Type)
 		require.Equal(t, filterapi.LLMRequestCostTypeOutputToken, fc.LLMRequestCosts[1].Type)

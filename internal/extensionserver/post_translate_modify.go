@@ -156,7 +156,7 @@ func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTra
 //
 // 4. Configures special handling for InferencePool clusters (ORIGINAL_DST type).
 //
-// The resulting configuration is similar to the envoy.yaml files in tests/extproc.
+// The resulting configuration is similar to the envoy.yaml files in tests/data-plane/.
 // Only clusters with names matching the AIGatewayRoute pattern are modified.
 func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) error {
 	// Parse cluster name to extract AIGatewayRoute information.
