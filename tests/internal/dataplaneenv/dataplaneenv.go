@@ -28,10 +28,8 @@ import (
 	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 )
 
-var (
-	// extprocBin holds the path to the compiled extproc binary.
-	extprocBin string
-)
+// extprocBin holds the path to the compiled extproc binary.
+var extprocBin string
 
 func init() {
 	var err error
