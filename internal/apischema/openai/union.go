@@ -6,9 +6,10 @@
 package openai
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 // unmarshalJSONNestedUnion is tuned to be faster with substantially reduced

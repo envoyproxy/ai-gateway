@@ -7,7 +7,6 @@ package translator
 
 import (
 	"cmp"
-	"encoding/json"
 	"fmt"
 	"maps"
 	"mime"
@@ -22,6 +21,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 const (

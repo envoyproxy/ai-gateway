@@ -8,7 +8,6 @@ package dataplane
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -23,6 +22,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/envoyproxy/ai-gateway/internal/version"
 )

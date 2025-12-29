@@ -6,7 +6,6 @@
 package translator
 
 import (
-	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -20,6 +19,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func TestOpenAIMessagesToGeminiContents(t *testing.T) {
@@ -1967,7 +1967,11 @@ func TestExtractToolCallsFromGeminiParts(t *testing.T) {
 				calls[i].ID = ptr.To(fmt.Sprintf("%d", i))
 			}
 
-			require.Equal(t, tt.expected, calls)
+			expMarshaled, err := json.Marshal(tt.expected)
+			require.NoError(t, err)
+			actualMarshaled, err := json.Marshal(calls)
+			require.NoError(t, err)
+			require.JSONEq(t, string(expMarshaled), string(actualMarshaled))
 		})
 	}
 }

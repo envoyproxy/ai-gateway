@@ -8,10 +8,11 @@ package testopenai
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 // Cassette is an HTTP interaction recording.
