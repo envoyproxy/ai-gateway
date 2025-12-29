@@ -83,7 +83,7 @@ func TestPublicMCPServers(t *testing.T) {
 
 		exps := []string{
 			"context7__resolve-library-id",
-			"context7__get-library-docs",
+			"context7__query-docs",
 			"kiwi__search-flight",
 			"kiwi__feedback-to-devs",
 		}
@@ -112,14 +112,15 @@ func TestPublicMCPServers(t *testing.T) {
 			{
 				toolName: "context7__resolve-library-id",
 				params: map[string]any{
-					"libraryName": "non-existent",
+					"libraryName": "envoyproxy/ai-gateway",
+					"query":       "how can I route to an LLM bakend",
 				},
 			},
 			{
-				toolName: "context7__get-library-docs",
+				toolName: "context7__query-docs",
 				params: map[string]any{
-					"context7CompatibleLibraryID": "/mongodb/docs",
-					"page":                        1,
+					"libraryId": "/envoyproxy/ai-gateway",
+					"query":     "how can I route to an LLM bakend",
 				},
 			},
 			{
@@ -127,9 +128,9 @@ func TestPublicMCPServers(t *testing.T) {
 				params: map[string]any{
 					"flyFrom":                "LAX",
 					"flyTo":                  "HND",
-					"departureDate":          "01/01/2026",
+					"departureDate":          "01/12/2026",
 					"departureDateFlexRange": 1,
-					"returnDate":             "02/01/2026",
+					"returnDate":             "02/12/2026",
 					"returnDateFlexRange":    1,
 					"passengers": map[string]any{
 						"adults":   1,
