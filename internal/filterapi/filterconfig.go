@@ -21,10 +21,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
-// DefaultConfig is the default configuration that can be used as a
-// fallback when the configuration is not explicitly provided.
-var DefaultConfig = ``
-
 // Config is the configuration for the Envoy AI Gateway filter.
 type Config struct {
 	// Version is the version of the AI Gateway, e.g., "v0.4.0" derived from internal/version package.
