@@ -127,14 +127,17 @@ func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, req au
 	}
 
 	var requiredScopesForChallenge []string
-	requestForCEL := buildRequestForCEL(req, claims, scopeSet)
+	var celActivation map[string]any
 
 	for _, rule := range authorization.Rules {
 		action := rule.Action == filterapi.AuthorizationActionAllow
 
 		// Evaluate CEL expression if present.
 		if rule.celProgram != nil {
-			match, ok := m.evalRuleCEL(rule, requestForCEL)
+			if celActivation == nil {
+				celActivation = buildCELActivation(req, claims, scopeSet)
+			}
+			match, ok := m.evalRuleCEL(rule, celActivation)
 			if !ok || !match {
 				continue
 			}
@@ -172,7 +175,7 @@ func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, req au
 	return defaultAction, requiredScopesForChallenge
 }
 
-func buildRequestForCEL(req authorizationRequest, claims jwt.MapClaims, scopes sets.Set[string]) map[string]any {
+func buildCELActivation(req authorizationRequest, claims jwt.MapClaims, scopes sets.Set[string]) map[string]any {
 	// Normalize headers to lowercased keys to align with Envoy's behavior.
 	// Expose both single-value and multi-value header views for CEL.
 	// - request.headers: lowercased keys, first value only.
@@ -187,7 +190,7 @@ func buildRequestForCEL(req authorizationRequest, claims jwt.MapClaims, scopes s
 		headers[lk] = v[0]
 		headersAll[lk] = append([]string(nil), v...)
 	}
-	return map[string]any{
+	request := map[string]any{
 		"method":      req.HTTPMethod,
 		"host":        req.Host,
 		"headers":     headers,
@@ -205,6 +208,10 @@ func buildRequestForCEL(req authorizationRequest, claims jwt.MapClaims, scopes s
 			"tool":    req.Tool,
 			"params":  req.Params,
 		},
+	}
+	// Only request is supported for now. Future expansions may include more context.
+	return map[string]any{
+		"request": request,
 	}
 }
 
@@ -249,11 +256,11 @@ func extractScopes(claims jwt.MapClaims) []string {
 	}
 }
 
-func (m *MCPProxy) evalRuleCEL(rule compiledAuthorizationRule, request map[string]any) (bool, bool) {
+func (m *MCPProxy) evalRuleCEL(rule compiledAuthorizationRule, activation map[string]any) (bool, bool) {
 	if rule.celProgram == nil {
 		return true, true
 	}
-	result, _, err := rule.celProgram.Eval(map[string]any{"request": request})
+	result, _, err := rule.celProgram.Eval(activation)
 	if err != nil {
 		m.l.Error("failed to evaluate authorization CEL", slog.String("error", err.Error()), slog.String("expression", rule.celExpression))
 		return false, false
