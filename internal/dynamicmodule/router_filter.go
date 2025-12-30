@@ -7,7 +7,6 @@ package dynamicmodule
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -23,6 +22,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
