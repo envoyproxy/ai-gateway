@@ -25,6 +25,8 @@ API group.
 - [GatewayConfigList](#gatewayconfiglist)
 - [MCPRoute](#mcproute)
 - [MCPRouteList](#mcproutelist)
+- [QuotaPolicy](#quotapolicy)
+- [QuotaPolicyList](#quotapolicylist)
 
 ### Kind Definitions
 #### AIGatewayRoute
@@ -467,6 +469,87 @@ MCPRouteList contains a list of MCPRoute.
 />
 
 
+#### QuotaPolicy
+
+
+
+**Appears in:**
+- [QuotaPolicyList](#quotapolicylist)
+
+QuotaPolicy specifies token quota configuration for inference services.
+Providing a list of backends in the AIGatewayRouteRule allows failover to a different service
+if token quota for a service had been exceeded.
+
+##### Fields
+
+<ApiField
+  name="apiVersion"
+  type="String"
+  required="true"
+  description="We are on version <code>aigateway.envoyproxy.io/v1alpha1</code> of the API."
+/>
+
+<ApiField
+  name="kind"
+  type="String"
+  required="true"
+  description="This is a <code>QuotaPolicy</code> resource"
+/>
+
+<ApiField
+  name="metadata"
+  type="[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#objectmeta-v1-meta)"
+  required="true"
+  description="Refer to Kubernetes API documentation for fields of `metadata`."
+/><ApiField
+  name="spec"
+  type="[QuotaPolicySpec](#quotapolicyspec)"
+  required="true"
+  description=""
+/><ApiField
+  name="status"
+  type="[QuotaPolicyStatus](#quotapolicystatus)"
+  required="true"
+  description="Status defines the status details of the QuotaPolicy."
+/>
+
+
+#### QuotaPolicyList
+
+
+
+
+QuotaPolicyList contains a list of QuotaPolicy
+
+##### Fields
+
+<ApiField
+  name="apiVersion"
+  type="String"
+  required="true"
+  description="We are on version <code>aigateway.envoyproxy.io/v1alpha1</code> of the API."
+/>
+
+<ApiField
+  name="kind"
+  type="String"
+  required="true"
+  description="This is a <code>QuotaPolicyList</code> resource"
+/>
+
+<ApiField
+  name="metadata"
+  type="[ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#listmeta-v1-meta)"
+  required="true"
+  description="Refer to Kubernetes API documentation for fields of `metadata`."
+/><ApiField
+  name="items"
+  type="[QuotaPolicy](#quotapolicy) array"
+  required="true"
+  description=""
+/>
+
+
 ## Supporting Types
 
 ### Available Types
@@ -522,6 +605,8 @@ MCPRouteList contains a list of MCPRoute.
 - [MCPRouteStatus](#mcproutestatus)
 - [MCPToolFilter](#mcptoolfilter)
 - [ProtectedResourceMetadata](#protectedresourcemetadata)
+- [QuotaPolicySpec](#quotapolicyspec)
+- [QuotaPolicyStatus](#quotapolicystatus)
 - [ToolCall](#toolcall)
 - [VersionedAPISchema](#versionedapischema)
 
@@ -1648,6 +1733,7 @@ Scopes and claims are AND-ed: when both are specified, both sets must match.
 
 **Appears in:**
 - [AIGatewayRouteSpec](#aigatewayroutespec)
+- [QuotaPolicySpec](#quotapolicyspec)
 
 LLMRequestCost configures each request cost.
 
@@ -2138,6 +2224,53 @@ References:
   type="string"
   required="false"
   description="ResourcePolicyURI is a URL that points to the resource server's policy document."
+/>
+
+
+#### QuotaPolicySpec
+
+
+
+**Appears in:**
+- [QuotaPolicy](#quotapolicy)
+
+QuotaPolicySpec specifies rules for computing token based costs of requests.
+
+##### Fields
+
+
+
+<ApiField
+  name="targetRefs"
+  type="[LocalPolicyTargetReference](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1alpha2.LocalPolicyTargetReference) array"
+  required="false"
+  description="TargetRefs are the names of the AIServiceBackend resources this QuotaPolicy is being attached to.<br />Attaching multiple QuotaPolicies to the same AIServiceBackend is invalid and will result in an error<br />during the reconciliation of AIServiceBackend."
+/><ApiField
+  name="llmRequestCosts"
+  type="[LLMRequestCost](#llmrequestcost) array"
+  required="false"
+  description="LLMRequestCosts specifies how to capture the cost of the LLM-related request, notably the token usage.<br />The AI Gateway filter will capture each specified number and store it in the Envoy's dynamic<br />metadata per HTTP request. The namespaced key is `io.envoy.ai_gateway`,<br />For example, let's say we have the following LLMRequestCosts configuration:<br />```yaml<br />	llmRequestCosts:<br />	- metadataKey: llm_input_token<br />	  type: InputToken<br />	- metadataKey: llm_output_token<br />	  type: OutputToken<br />	- metadataKey: llm_total_token<br />	  type: TotalToken<br />	- metadataKey: llm_cached_input_token<br />	  type: CachedInputToken<br />```<br />The token costs computed using this policy are debited from the quota specificed by the BackendTrafficPolicy<br />attached to the same AIServiceBackend. In the BackendTrafficPolicy you can have multiple buckets<br />tracking quot ausage for each distinct x-user-id header value. Quota can be specified in terms of total (input + output)<br />token counts or just the output or onput token counts.<br />Each bucket will be reduced by the corresponding token usage captured by the AI Gateway filter.<br />```yaml<br />	apiVersion: gateway.envoyproxy.io/v1alpha1<br />	kind: BackendTrafficPolicy<br />	metadata:<br />	  name: some-example-token-rate-limit<br />	  namespace: default<br />	spec:<br />	  targetRefs:<br />	  - group: gateway.networking.k8s.io<br />	     kind: HTTPRoute<br />	     name: usage-rate-limit<br />	  rateLimit:<br />	    type: Global<br />	    global:<br />	      rules:<br />	        - clientSelectors:<br />	            # Do the rate limiting based on the x-user-id header.<br />	            - headers:<br />	                - name: x-user-id<br />	                  type: Distinct<br />	          limit:<br />	            # Configures the number of `tokens` allowed per hour.<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              # Setting the request cost to zero allows to only check the rate limit budget,<br />	              # and not consume the budget on the request path.<br />	              number: 0<br />	            # This specifies the cost of the response retrieved from the dynamic metadata set by the AI Gateway filter.<br />	            # The extracted value will be used to consume the rate limit budget, and subsequent requests will be rate limited<br />	            # if the budget is exhausted.<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_total_token<br />```<br />Note that when multiple AIGatewayRoute resources are attached to the same Gateway, and<br />different costs are configured for the same metadata key, the ai-gateway will pick one of them<br />to configure the metadata key in the generated HTTPRoute, and ignore the rest."
+/>
+
+
+#### QuotaPolicyStatus
+
+
+
+**Appears in:**
+- [QuotaPolicy](#quotapolicy)
+
+QuotaPolicyStatus contains the conditions by the reconciliation result.
+
+##### Fields
+
+
+
+<ApiField
+  name="conditions"
+  type="[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#condition-v1-meta) array"
+  required="true"
+  description="Conditions is the list of conditions by the reconciliation result.<br />Currently, at most one condition is set.<br />Known .status.conditions.type are: `Accepted`, `NotAccepted`."
 />
 
 

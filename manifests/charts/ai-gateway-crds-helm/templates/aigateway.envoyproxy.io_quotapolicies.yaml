@@ -1,0 +1,252 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.3
+  labels:
+    gateway.networking.k8s.io/policy: direct
+  name: quotapolicies.aigateway.envoyproxy.io
+spec:
+  group: aigateway.envoyproxy.io
+  names:
+    kind: QuotaPolicy
+    listKind: QuotaPolicyList
+    plural: quotapolicies
+    singular: quotapolicy
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[-1:].type
+      name: Status
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          QuotaPolicy specifies token quota configuration for inference services.
+          Providing a list of backends in the AIGatewayRouteRule allows failover to a different service
+          if token quota for a service had been exceeded.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: QuotaPolicySpec specifies rules for computing token based
+              costs of requests.
+            properties:
+              llmRequestCosts:
+                description: "LLMRequestCosts specifies how to capture the cost of
+                  the LLM-related request, notably the token usage.\nThe AI Gateway
+                  filter will capture each specified number and store it in the Envoy's
+                  dynamic\nmetadata per HTTP request. The namespaced key is \"io.envoy.ai_gateway\",\n\nFor
+                  example, let's say we have the following LLMRequestCosts configuration:\n```yaml\n\tllmRequestCosts:\n\t-
+                  metadataKey: llm_input_token\n\t  type: InputToken\n\t- metadataKey:
+                  llm_output_token\n\t  type: OutputToken\n\t- metadataKey: llm_total_token\n\t
+                  \ type: TotalToken\n\t- metadataKey: llm_cached_input_token\n\t
+                  \ type: CachedInputToken\n```\nThe token costs computed using this
+                  policy are debited from the quota specificed by the BackendTrafficPolicy\nattached
+                  to the same AIServiceBackend. In the BackendTrafficPolicy you can
+                  have multiple buckets\ntracking quot ausage for each distinct x-user-id
+                  header value. Quota can be specified in terms of total (input +
+                  output)\ntoken counts or just the output or onput token counts.\nEach
+                  bucket will be reduced by the corresponding token usage captured
+                  by the AI Gateway filter.\n\n```yaml\n\tapiVersion: gateway.envoyproxy.io/v1alpha1\n\tkind:
+                  BackendTrafficPolicy\n\tmetadata:\n\t  name: some-example-token-rate-limit\n\t
+                  \ namespace: default\n\tspec:\n\t  targetRefs:\n\t  - group: gateway.networking.k8s.io\n\t
+                  \    kind: HTTPRoute\n\t     name: usage-rate-limit\n\t  rateLimit:\n\t
+                  \   type: Global\n\t    global:\n\t      rules:\n\t        - clientSelectors:\n\t
+                  \           # Do the rate limiting based on the x-user-id header.\n\t
+                  \           - headers:\n\t                - name: x-user-id\n\t
+                  \                 type: Distinct\n\t          limit:\n\t            #
+                  Configures the number of \"tokens\" allowed per hour.\n\t            requests:
+                  10000\n\t            unit: Hour\n\t          cost:\n\t            request:\n\t
+                  \             from: Number\n\t              # Setting the request
+                  cost to zero allows to only check the rate limit budget,\n\t              #
+                  and not consume the budget on the request path.\n\t              number:
+                  0\n\t            # This specifies the cost of the response retrieved
+                  from the dynamic metadata set by the AI Gateway filter.\n\t            #
+                  The extracted value will be used to consume the rate limit budget,
+                  and subsequent requests will be rate limited\n\t            # if
+                  the budget is exhausted.\n\t            response:\n\t              from:
+                  Metadata\n\t              metadata:\n\t                namespace:
+                  io.envoy.ai_gateway\n\t                key: llm_total_token\n```\n\nNote
+                  that when multiple AIGatewayRoute resources are attached to the
+                  same Gateway, and\ndifferent costs are configured for the same metadata
+                  key, the ai-gateway will pick one of them\nto configure the metadata
+                  key in the generated HTTPRoute, and ignore the rest."
+                items:
+                  description: LLMRequestCost configures each request cost.
+                  properties:
+                    cel:
+                      description: "CEL is the CEL expression to calculate the cost
+                        of the request.\nThe CEL expression must return a signed or
+                        unsigned integer. If the\nreturn value is negative, it will
+                        be error.\n\nThe expression can use the following variables:\n\n\t*
+                        model: the model name extracted from the request content.
+                        Type: string.\n\t* backend: the backend name in the form of
+                        \"name.namespace\". Type: string.\n\t* input_tokens: the number
+                        of input tokens. Type: unsigned integer.\n\t* cached_input_tokens:
+                        the number of cached input tokens. Type: unsigned integer.\n\t*
+                        output_tokens: the number of output tokens. Type: unsigned
+                        integer.\n\t* total_tokens: the total number of tokens. Type:
+                        unsigned integer.\n\nFor example, the following expressions
+                        are valid:\n\n\t* \"model == 'llama' ?  input_tokens + output_token
+                        * 0.5 : total_tokens\"\n\t* \"backend == 'foo.default' ?  input_tokens
+                        + output_tokens : total_tokens\"\n\t* \"backend == 'bar.default'
+                        ?  (input_tokens - cached_input_tokens) + cached_input_tokens
+                        * 0.1 + output_tokens : total_tokens\"\n\t* \"input_tokens
+                        + output_tokens + total_tokens\"\n\t* \"input_tokens * output_tokens\""
+                      type: string
+                    metadataKey:
+                      description: MetadataKey is the key of the metadata to store
+                        this cost of the request.
+                      type: string
+                    type:
+                      description: |-
+                        Type specifies the type of the request cost. The default is "OutputToken",
+                        and it uses "output token" as the cost. The other types are "InputToken", "TotalToken",
+                        and "CEL".
+                      enum:
+                      - OutputToken
+                      - InputToken
+                      - CachedInputToken
+                      - TotalToken
+                      - CEL
+                      type: string
+                  required:
+                  - metadataKey
+                  - type
+                  type: object
+                maxItems: 36
+                type: array
+              targetRefs:
+                description: |-
+                  TargetRefs are the names of the AIServiceBackend resources this QuotaPolicy is being attached to.
+                  Attaching multiple QuotaPolicies to the same AIServiceBackend is invalid and will result in an error
+                  during the reconciliation of AIServiceBackend.
+                items:
+                  description: |-
+                    LocalPolicyTargetReference identifies an API object to apply a direct or
+                    inherited policy to. This should be used as part of Policy resources
+                    that can target Gateway API resources. For more information on how this
+                    policy attachment model works, and a sample Policy resource, refer to
+                    the policy attachment documentation for Gateway API.
+                  properties:
+                    group:
+                      description: Group is the group of the target resource.
+                      maxLength: 253
+                      pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                      type: string
+                    kind:
+                      description: Kind is kind of the target resource.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
+                      type: string
+                    name:
+                      description: Name is the name of the target resource.
+                      maxLength: 253
+                      minLength: 1
+                      type: string
+                  required:
+                  - group
+                  - kind
+                  - name
+                  type: object
+                maxItems: 16
+                type: array
+                x-kubernetes-validations:
+                - message: targetRefs must reference AIServiceBackend resources
+                  rule: self.all(ref, ref.group == 'aigateway.envoyproxy.io' && ref.kind
+                    == 'AIServiceBackend')
+            type: object
+          status:
+            description: Status defines the status details of the QuotaPolicy.
+            properties:
+              conditions:
+                description: |-
+                  Conditions is the list of conditions by the reconciliation result.
+                  Currently, at most one condition is set.
+
+                  Known .status.conditions.type are: "Accepted", "NotAccepted".
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
