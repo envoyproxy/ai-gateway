@@ -367,6 +367,9 @@ helm-test: helm-package  ## Test the helm chart with a dummy version.
 	@$(GO_TOOL) helm show chart ${HELM_CHART_PATH} | grep -q "appVersion: ${TAG}"
 	@$(GO_TOOL) helm template ${HELM_CHART_PATH} | grep -q "docker.io/envoyproxy/ai-gateway-extproc:${TAG}"
 	@$(GO_TOOL) helm template ${HELM_CHART_PATH} | grep -q "docker.io/envoyproxy/ai-gateway-controller:${TAG}"
+	@$(GO_TOOL) helm template ${HELM_CHART_PATH} --set global.imagePullSecrets[0].name=testsecret | grep -q "imagePullSecrets:"
+	@$(GO_TOOL) helm template ${HELM_CHART_PATH} --set global.imagePullSecrets[0].name=testsecret | grep -q "name: testsecret"
+	@$(GO_TOOL) helm template ${HELM_CHART_PATH} --set global.imagePullSecrets[0].name=testsecret | grep -q -- "extProcImagePullSecrets=testsecret"
 
 # This pushes the helm chart to the OCI registry, requiring the access to the registry endpoint.
 .PHONY: helm-push
