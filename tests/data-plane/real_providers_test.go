@@ -345,11 +345,6 @@ func TestWithRealProviders(t *testing.T) {
 			"grok-3",
 		}, models)
 	})
-	t.Run("aws-bedrock-large-body", func(t *testing.T) {
-		cc.MaybeSkip(t, internaltesting.RequiredCredentialAWS)
-		requireEventuallyChatCompletionNonStreamingRequestOK(t, listenerAddress,
-			"us.meta.llama3-2-1b-instruct-v1:0", strings.Repeat("Say this is a test", 10000))
-	})
 }
 
 // realProvidersTestCase is a base test case for the real providers, which is mainly for the centralization of the

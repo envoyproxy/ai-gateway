@@ -683,9 +683,10 @@ func TestHandleToolCallRequest_UnknownBackend(t *testing.T) {
 	}
 
 	params := &mcp.CallToolParams{Name: "unknown-backend__unknown-tool"}
+	httpReq := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 	rr := httptest.NewRecorder()
 
-	err := proxy.handleToolCallRequest(t.Context(), s, rr, &jsonrpc.Request{}, params, nil, http.Header{})
+	err := proxy.handleToolCallRequest(t.Context(), s, rr, &jsonrpc.Request{}, params, nil, httpReq)
 	require.Error(t, err)
 
 	require.Equal(t, http.StatusNotFound, rr.Code)
@@ -713,9 +714,10 @@ func TestHandleToolCallRequest_BackendError(t *testing.T) {
 	}
 
 	params := &mcp.CallToolParams{Name: "backend1__test-tool"}
+	httpReq := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 	rr := httptest.NewRecorder()
 
-	err := proxy.handleToolCallRequest(t.Context(), s, rr, &jsonrpc.Request{}, params, nil, http.Header{})
+	err := proxy.handleToolCallRequest(t.Context(), s, rr, &jsonrpc.Request{}, params, nil, httpReq)
 	require.Error(t, err)
 
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
@@ -766,12 +768,13 @@ func TestHandleToolCallRequest_InvalidToolName(t *testing.T) {
 	// Use a tool that is in the allowed list (unknown_tool is in backend1's selector)
 	// but doesn't actually exist on the MCP server
 	params := &mcp.CallToolParams{Name: "backend1__unknown_tool"}
+	httpReq := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 	rr := httptest.NewRecorder()
 
 	id := mustJSONRPCRequestID()
 	req := &jsonrpc.Request{ID: id, Method: "tools/call"}
 
-	err := proxy.handleToolCallRequest(t.Context(), s, rr, req, params, nil, http.Header{})
+	err := proxy.handleToolCallRequest(t.Context(), s, rr, req, params, nil, httpReq)
 	// JSON-RPC errors are application-level errors that should be returned for proper metrics tracking,
 	// but they're not treated as span exceptions since the protocol worked correctly.
 	require.Error(t, err)
@@ -829,12 +832,13 @@ func TestHandleToolCallRequest_ToolResultWithIsError(t *testing.T) {
 	}
 
 	params := &mcp.CallToolParams{Name: "backend1__test-tool"}
+	httpReq := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 	rr := httptest.NewRecorder()
 
 	id := mustJSONRPCRequestID()
 	req := &jsonrpc.Request{ID: id, Method: "tools/call"}
 
-	err := proxy.handleToolCallRequest(t.Context(), s, rr, req, params, nil, http.Header{})
+	err := proxy.handleToolCallRequest(t.Context(), s, rr, req, params, nil, httpReq)
 	// isError: true means the tool executed successfully but returned an error result.
 	// An error is returned for proper metrics tracking, but it's treated as an application-level
 	// error (not a span exception) since the protocol worked correctly and the LLM needs to see these errors.
