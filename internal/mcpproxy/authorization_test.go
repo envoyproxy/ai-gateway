@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -45,7 +46,7 @@ func TestAuthorizeRequest(t *testing.T) {
 		auth          *filterapi.MCPRouteAuthorization
 		backend       string
 		tool          string
-		args          map[string]any
+		args          mcp.Params
 		host          string
 		headers       http.Header
 		mcpMethod     string
@@ -60,13 +61,13 @@ func TestAuthorizeRequest(t *testing.T) {
 				Rules: []filterapi.MCPRouteAuthorizationRule{
 					{
 						Action: "Allow",
-						CEL:    ptr.To(`request.host.startsWith("api.") && request.mcp.backend == "backend1" && request.mcp.params.mode == "fast" && request.headers["x-tenant"] == "t-123"`),
+						CEL:    ptr.To(`request.host.startsWith("api.") && request.mcp.backend == "backend1" && request.mcp.params.arguments.mode == "fast" && request.headers["x-tenant"] == "t-123"`),
 					},
 				},
 			},
 			backend:       "backend1",
 			tool:          "tool1",
-			args:          map[string]any{"mode": "fast"},
+			args:          &mcp.CallToolParams{Arguments: map[string]any{"mode": "fast"}},
 			host:          "api.example.com",
 			headers:       http.Header{"X-Tenant": []string{"t-123"}},
 			expectAllowed: true,
@@ -78,13 +79,13 @@ func TestAuthorizeRequest(t *testing.T) {
 				Rules: []filterapi.MCPRouteAuthorizationRule{
 					{
 						Action: "Allow",
-						CEL:    ptr.To(`request.host.startsWith("api.") && request.mcp.backend == "backend1" && request.mcp.params.mode == "fast" && request.headers["x-tenant"] == "t-123"`),
+						CEL:    ptr.To(`request.host.startsWith("api.") && request.mcp.backend == "backend1" && request.mcp.params.arguments.mode == "fast" && request.headers["x-tenant"] == "t-123"`),
 					},
 				},
 			},
 			backend:       "backend1",
 			tool:          "tool1",
-			args:          map[string]any{"mode": "fast"},
+			args:          &mcp.CallToolParams{Name: "p1", Arguments: map[string]any{"mode": "fast"}},
 			host:          "api.example.com",
 			headers:       http.Header{"X-Tenant": []string{"t-234"}},
 			expectAllowed: false,
@@ -127,8 +128,11 @@ func TestAuthorizeRequest(t *testing.T) {
 			headers: http.Header{"Authorization": []string{"Bearer " + makeToken("read")}},
 			backend: "backend1",
 			tool:    "tool1",
-			args: map[string]any{
-				"mode": "other",
+			args: &mcp.CallToolParams{
+				Name: "p1",
+				Arguments: map[string]any{
+					"mode": "other",
+				},
 			},
 			expectError:   true,
 			expectAllowed: false,
@@ -150,14 +154,19 @@ func TestAuthorizeRequest(t *testing.T) {
 								Tool:    "tool1",
 							}},
 						},
-						CEL: ptr.To(`request.method == "POST" && request.mcp.backend == "backend1" && request.mcp.tool == "tool1" && request.headers["x-tenant"] == "t-123" && request.mcp.params.flag == true`),
+						CEL: ptr.To(`request.method == "POST" && request.mcp.backend == "backend1" && request.mcp.tool == "tool1" && request.headers["x-tenant"] == "t-123" && request.mcp.params.arguments["flag"] == true`),
 					},
 				},
 			},
-			headers:       http.Header{"Authorization": []string{"Bearer " + makeToken("read", "write")}, "X-Tenant": []string{"t-123"}},
-			backend:       "backend1",
-			tool:          "tool1",
-			args:          map[string]any{"flag": true},
+			headers: http.Header{"Authorization": []string{"Bearer " + makeToken("read", "write")}, "X-Tenant": []string{"t-123"}},
+			backend: "backend1",
+			tool:    "tool1",
+			args: &mcp.CallToolParams{
+				Name: "p1",
+				Arguments: map[string]any{
+					"flag": true,
+				},
+			},
 			expectAllowed: true,
 		},
 		{
@@ -248,14 +257,19 @@ func TestAuthorizeRequest(t *testing.T) {
 								Tool:    "tool1",
 							}},
 						},
-						CEL: ptr.To(`int(request.mcp.params.count) >= 40 && int(request.mcp.params.count) < 50`),
+						CEL: ptr.To(`int(request.mcp.params.arguments["count"]) >= 40 && int(request.mcp.params.arguments["count"]) < 50`),
 					},
 				},
 			},
-			headers:       http.Header{"Authorization": []string{"Bearer " + makeToken("read")}},
-			backend:       "backend1",
-			tool:          "tool1",
-			args:          map[string]any{"count": 42},
+			headers: http.Header{"Authorization": []string{"Bearer " + makeToken("read")}},
+			backend: "backend1",
+			tool:    "tool1",
+			args: &mcp.CallToolParams{
+				Name: "p1",
+				Arguments: map[string]any{
+					"count": 42,
+				},
+			},
 			expectAllowed: true,
 			expectScopes:  nil,
 		},
@@ -275,17 +289,20 @@ func TestAuthorizeRequest(t *testing.T) {
 								Tool:    "tool1",
 							}},
 						},
-						CEL: ptr.To(`request.mcp.params["payload"] != null && request.mcp.params["payload"]["kind"] == "test" && request.mcp.params["payload"]["value"] == 123`),
+						CEL: ptr.To(`request.mcp.params.arguments["payload"] != null && request.mcp.params.arguments["payload"]["kind"] == "test" && request.mcp.params.arguments["payload"]["value"] == 123`),
 					},
 				},
 			},
 			headers: http.Header{"Authorization": []string{"Bearer " + makeToken("read")}},
 			backend: "backend1",
 			tool:    "tool1",
-			args: map[string]any{
-				"payload": map[string]any{
-					"kind":  "test",
-					"value": 123,
+			args: &mcp.CallToolParams{
+				Name: "p1",
+				Arguments: map[string]any{
+					"payload": map[string]any{
+						"kind":  "test",
+						"value": 123,
+					},
 				},
 			},
 			expectAllowed: true,
@@ -329,14 +346,14 @@ func TestAuthorizeRequest(t *testing.T) {
 								Tool:    "tool1",
 							}},
 						},
-						CEL: ptr.To(`request.mcp.params["mode"] == "fast"`),
+						CEL: ptr.To(`request.mcp.params.arguments["mode"] == "fast"`),
 					},
 				},
 			},
 			headers:       http.Header{"Authorization": []string{"Bearer " + makeToken("read")}},
 			backend:       "backend1",
 			tool:          "tool1",
-			args:          map[string]any{},
+			args:          &mcp.CallToolParams{Name: "p1", Arguments: map[string]any{}},
 			expectAllowed: false,
 			expectScopes:  nil,
 		},
@@ -463,7 +480,7 @@ func TestAuthorizeRequest(t *testing.T) {
 								Tool:    "listFiles",
 							}},
 						},
-						CEL: ptr.To(`request.mcp.params.folder == "restricted"`),
+						CEL: ptr.To(`request.mcp.params.arguments["folder"] == "restricted"`),
 					},
 					{
 						Action: "Allow",
@@ -482,8 +499,11 @@ func TestAuthorizeRequest(t *testing.T) {
 			headers: http.Header{"Authorization": []string{"Bearer " + makeToken("read")}},
 			backend: "backend1",
 			tool:    "listFiles",
-			args: map[string]any{
-				"folder": "restricted",
+			args: &mcp.CallToolParams{
+				Name: "p1",
+				Arguments: map[string]any{
+					"folder": "restricted",
+				},
 			},
 			expectAllowed: false,
 			expectScopes:  nil,
@@ -501,7 +521,7 @@ func TestAuthorizeRequest(t *testing.T) {
 								Tool:    "listFiles",
 							}},
 						},
-						CEL: ptr.To(`request.mcp.params.folder == "restricted"`),
+						CEL: ptr.To(`request.mcp.params.arguments["folder"] == "restricted"`),
 					},
 					{
 						Action: "Allow",
@@ -520,8 +540,11 @@ func TestAuthorizeRequest(t *testing.T) {
 			headers: http.Header{"Authorization": []string{"Bearer " + makeToken("read")}},
 			backend: "backend1",
 			tool:    "listFiles",
-			args: map[string]any{
-				"folder": "allowed",
+			args: &mcp.CallToolParams{
+				Name: "p1",
+				Arguments: map[string]any{
+					"folder": "allowed",
+				},
 			},
 			expectAllowed: true,
 			expectScopes:  nil,
@@ -693,6 +716,31 @@ func TestAuthorizeRequest(t *testing.T) {
 			tool:          "tool1",
 			expectAllowed: true,
 			expectScopes:  nil,
+		},
+		{
+			name: "opaque token denies with required scope challenge",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{
+								Scopes: []string{"read"},
+							},
+						},
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "tool1"}},
+						},
+					},
+				},
+			},
+			// Opaque tokens are not JWTs; parsing fails so no scopes are extracted.
+			headers:       http.Header{"Authorization": []string{"Bearer opaque-token"}},
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: false,
+			expectScopes:  []string{"read"},
 		},
 		{
 			name: "scope mismatch denies request even if claims match",

@@ -675,7 +675,7 @@ func (m *MCPProxy) handleToolCallRequest(ctx context.Context, s *session, w http
 			MCPMethod:  req.Method,
 			Backend:    backendName,
 			Tool:       toolName,
-			Params:     p.Arguments,
+			Params:     p,
 		})
 		if !allowed {
 			// Specify the minimum required scopes in the WWW-Authenticate header.

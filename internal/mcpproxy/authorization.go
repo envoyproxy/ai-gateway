@@ -6,6 +6,7 @@
 package mcpproxy
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -16,6 +17,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -45,7 +47,7 @@ type authorizationRequest struct {
 	MCPMethod  string
 	Backend    string
 	Tool       string
-	Params     any
+	Params     mcp.Params
 }
 
 // compileAuthorization compiles the MCPRouteAuthorization into a compiledAuthorization for efficient CEL evaluation.
@@ -119,11 +121,11 @@ func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, req au
 		// JWT verification is performed by Envoy before reaching here. So we only need to parse the token without verification.
 		if _, _, err := jwt.NewParser().ParseUnverified(token, claims); err != nil {
 			m.l.Info("failed to parse JWT token", slog.String("error", err.Error()))
+		} else {
+			scopeSet = sets.New(extractScopes(claims)...)
+			// Scopes are handled separately, remove them from the claims map to avoid interference.
+			delete(claims, "scope")
 		}
-		scopeSet = sets.New(extractScopes(claims)...)
-
-		// Scopes are handled separately, remove them from the claims map to avoid interference.
-		delete(claims, "scope")
 	}
 
 	var requiredScopesForChallenge []string
@@ -137,8 +139,12 @@ func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, req au
 			if celActivation == nil {
 				celActivation = buildCELActivation(req, claims, scopeSet)
 			}
-			match, ok := m.evalRuleCEL(rule, celActivation)
-			if !ok || !match {
+			match, err := m.evalRuleCEL(rule, celActivation)
+			if err != nil {
+				m.l.Error("failed to evaluate authorization CEL", slog.String("error", err.Error()), slog.String("expression", rule.celExpression))
+				continue
+			}
+			if !match {
 				continue
 			}
 		}
@@ -190,6 +196,7 @@ func buildCELActivation(req authorizationRequest, claims jwt.MapClaims, scopes s
 		headers[lk] = v[0]
 		headersAll[lk] = append([]string(nil), v...)
 	}
+
 	request := map[string]any{
 		"method":      req.HTTPMethod,
 		"host":        req.Host,
@@ -206,13 +213,33 @@ func buildCELActivation(req authorizationRequest, claims jwt.MapClaims, scopes s
 			"method":  req.MCPMethod,
 			"backend": req.Backend,
 			"tool":    req.Tool,
-			"params":  req.Params,
+			"params":  normalizeParams(req.Params),
 		},
 	}
 	// Only request is supported for now. Future expansions may include more context.
 	return map[string]any{
 		"request": request,
 	}
+}
+
+// CEL sees the Go value as it is and we need to normalize it to a map[string]any so that CEL can refer to fields by their
+// JSON tags (e.g. "arguments").
+func normalizeParams(params mcp.Params) any {
+	if params == nil {
+		return nil
+	}
+
+	data, err := json.Marshal(params)
+	if err != nil {
+		return params
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return params
+	}
+
+	return parsed
 }
 
 func bearerToken(header string) (string, error) {
@@ -256,24 +283,21 @@ func extractScopes(claims jwt.MapClaims) []string {
 	}
 }
 
-func (m *MCPProxy) evalRuleCEL(rule compiledAuthorizationRule, activation map[string]any) (bool, bool) {
-	if rule.celProgram == nil {
-		return true, true
-	}
+func (m *MCPProxy) evalRuleCEL(rule compiledAuthorizationRule, activation map[string]any) (bool, error) {
 	result, _, err := rule.celProgram.Eval(activation)
 	if err != nil {
 		m.l.Error("failed to evaluate authorization CEL", slog.String("error", err.Error()), slog.String("expression", rule.celExpression))
-		return false, false
+		return false, err
 	}
 
 	switch v := result.Value().(type) {
 	case bool:
-		return v, true
+		return v, nil
 	case types.Bool:
-		return bool(v), true
+		return bool(v), nil
 	default:
 		m.l.Error("authorization CEL did not return a boolean", slog.String("expression", rule.celExpression))
-		return false, false
+		return false, errors.New("authorization CEL did not return a boolean")
 	}
 }
 
