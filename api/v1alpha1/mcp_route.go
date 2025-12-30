@@ -284,7 +284,7 @@ type MCPRouteAuthorizationRule struct {
 	//	* request.headers: map of headers with lowercased keys, first value only. Type: map[string]string.
 	//	* request.headers_all: map of headers with lowercased keys, all values. Type: map[string][]string.
 	//	* request.path: request path such as /mcp. Type: string.
-	//	* request.auth.jwt.claims: JWT claims when a bearer JWT is present. Type: map[string]string.
+	//	* request.auth.jwt.claims: JWT claims when a bearer JWT is present. Type: map[string]any.
 	//	* request.auth.jwt.scopes: JWT scopes when a bearer JWT is present. Type: []string.
 	//	* request.mcp.method: MCP method such as tools/list or tools/call. Type: string.
 	//	* request.mcp.backend: upstream backend name (for example, "kiwi" or "github"). Type: string.

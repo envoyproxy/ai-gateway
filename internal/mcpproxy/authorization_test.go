@@ -826,6 +826,28 @@ func TestAuthorizeRequest(t *testing.T) {
 			expectScopes:  nil,
 		},
 		{
+			name: "matching nested jwt claim string array value via CEL",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						CEL:    ptr.To(`request.auth.jwt.claims["org"]["departments"].exists(d, d == "security")`),
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "tool1"}},
+						},
+					},
+				},
+			},
+			headers: http.Header{"Authorization": []string{"Bearer " + makeTokenWithClaims(jwt.MapClaims{
+				"org": map[string]any{"departments": []any{"engineering", "security"}},
+			})}},
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: true,
+			expectScopes:  nil,
+		},
+		{
 			name: "non-matching nested jwt claim string array value",
 			auth: &filterapi.MCPRouteAuthorization{
 				DefaultAction: "Deny",

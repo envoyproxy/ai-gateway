@@ -628,7 +628,7 @@ spec:
                                 map of headers with lowercased keys, all values. Type:
                                 map[string][]string.\n\t* request.path: request path
                                 such as /mcp. Type: string.\n\t* request.auth.jwt.claims:
-                                JWT claims when a bearer JWT is present. Type: map[string]string.\n\t*
+                                JWT claims when a bearer JWT is present. Type: map[string]any.\n\t*
                                 request.auth.jwt.scopes: JWT scopes when a bearer
                                 JWT is present. Type: []string.\n\t* request.mcp.method:
                                 MCP method such as tools/list or tools/call. Type:
