@@ -6,7 +6,6 @@
 package mcpproxy
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -21,6 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 type compiledAuthorization struct {

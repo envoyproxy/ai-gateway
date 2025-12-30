@@ -9,7 +9,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -23,6 +22,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	"github.com/openai/openai-go"
 	"github.com/stretchr/testify/require"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func Test_main(t *testing.T) {
