@@ -182,7 +182,7 @@ test-data-plane: build.extproc ## Run the integration tests for data plane witho
 	@echo "Ensure func-e is built and Envoy is installed"
 	@@$(GO_TOOL) func-e run --version >/dev/null 2>&1
 	@echo "Run Data Plane test"
-	@go test ./tests/data-plane/... $(GO_TEST_E2E_ARGS)
+	@go test ./tests/data-plane/...  -bench=. -benchtime=1x $(GO_TEST_E2E_ARGS) # Run the benchmark test case once for additional coverage.
 
 # This runs the end-to-end tests for MCP without controller or k8s at all.
 # It is useful for the fast iteration of the data plane MCP code.

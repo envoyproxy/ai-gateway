@@ -53,139 +53,55 @@ func BenchmarkChatCompletions(b *testing.B) {
 	largeRequest := createChatCompletionRequest(100000)  // ~6MB.
 	xlargeRequest := createChatCompletionRequest(500000) // ~30MB.
 
-	testCases := []struct {
-		name                 string
-		backend              string
-		requestBody          string
-		fakeResponseBodyType string
-	}{
-		{
-			name:                 "OpenAI - small",
-			backend:              "openai",
-			requestBody:          smallRequest,
-			fakeResponseBodyType: "small",
-		},
-		{
-			name:                 "OpenAI - medium",
-			backend:              "openai",
-			requestBody:          mediumRequest,
-			fakeResponseBodyType: "medium",
-		},
-		{
-			name:                 "OpenAI - large",
-			backend:              "openai",
-			requestBody:          largeRequest,
-			fakeResponseBodyType: "large",
-		},
-		{
-			name:                 "OpenAI - xlarge",
-			backend:              "openai",
-			requestBody:          xlargeRequest,
-			fakeResponseBodyType: "large",
-		},
-		{
-			name:                 "AWS_Bedrock - small",
-			backend:              "aws-bedrock",
-			requestBody:          smallRequest,
-			fakeResponseBodyType: "small",
-		},
-		{
-			name:                 "AWS_Bedrock - medium",
-			backend:              "aws-bedrock",
-			requestBody:          mediumRequest,
-			fakeResponseBodyType: "medium",
-		},
-		{
-			name:                 "AWS_Bedrock - large",
-			backend:              "aws-bedrock",
-			requestBody:          largeRequest,
-			fakeResponseBodyType: "large",
-		},
-		{
-			name:                 "AWS_Bedrock - xlarge",
-			backend:              "aws-bedrock",
-			requestBody:          xlargeRequest,
-			fakeResponseBodyType: "large",
-		},
-		{
-			name:                 "GCP_VertexAI - small",
-			backend:              "gcp-vertexai",
-			requestBody:          smallRequest,
-			fakeResponseBodyType: "small",
-		},
-		{
-			name:                 "GCP_VertexAI - medium",
-			backend:              "gcp-vertexai",
-			requestBody:          mediumRequest,
-			fakeResponseBodyType: "medium",
-		},
-		{
-			name:                 "GCP_VertexAI - large",
-			backend:              "gcp-vertexai",
-			requestBody:          largeRequest,
-			fakeResponseBodyType: "large",
-		},
-		{
-			name:                 "GCP_VertexAI - xlarge",
-			backend:              "gcp-vertexai",
-			requestBody:          xlargeRequest,
-			fakeResponseBodyType: "large",
-		},
-		{
-			name:                 "GCP_AnthropicAI - small",
-			backend:              "gcp-anthropicai",
-			requestBody:          smallRequest,
-			fakeResponseBodyType: "small",
-		},
-		{
-			name:                 "GCP_AnthropicAI - medium",
-			backend:              "gcp-anthropicai",
-			requestBody:          mediumRequest,
-			fakeResponseBodyType: "medium",
-		},
-		{
-			name:                 "GCP_AnthropicAI - large",
-			backend:              "gcp-anthropicai",
-			requestBody:          largeRequest,
-			fakeResponseBodyType: "large",
-		},
-		{
-			name:                 "GCP_AnthropicAI - xlarge",
-			backend:              "gcp-anthropicai",
-			requestBody:          xlargeRequest,
-			fakeResponseBodyType: "large",
-		},
-	}
+	for _, backend := range []string{
+		"openai",
+		"aws-bedrock",
+		"gcp-vertexai",
+		"gcp-anthropicai",
+	} {
+		b.Run(backend, func(b *testing.B) {
+			testCases := []struct {
+				name                 string
+				requestBody          string
+				fakeResponseBodyType string
+			}{
+				{name: "small", requestBody: smallRequest, fakeResponseBodyType: "small"},
+				{name: "medium", requestBody: mediumRequest, fakeResponseBodyType: "medium"},
+				{name: "large", requestBody: largeRequest, fakeResponseBodyType: "large"},
+				{name: "xlarge", requestBody: xlargeRequest, fakeResponseBodyType: "large"},
+			}
 
-	for _, tc := range testCases {
-		b.Run(tc.name, func(b *testing.B) {
-			listenerAddress := fmt.Sprintf("http://localhost:%d", listenerPort)
+			for _, tc := range testCases {
+				b.Run(tc.name, func(b *testing.B) {
+					listenerAddress := fmt.Sprintf("http://localhost:%d", listenerPort)
 
-			b.ResetTimer()
-			b.RunParallel(func(pb *testing.PB) {
-				req, err := http.NewRequestWithContext(context.Background(),
-					http.MethodPost, listenerAddress+"/v1/chat/completions", nil)
-				require.NoError(b, err)
+					b.ResetTimer()
+					b.RunParallel(func(pb *testing.PB) {
+						req, err := http.NewRequestWithContext(context.Background(),
+							http.MethodPost, listenerAddress+"/v1/chat/completions", nil)
+						require.NoError(b, err)
 
-				req.Header.Set("Content-Type", "application/json")
-				req.Header.Set("x-test-backend", tc.backend)
-				req.Header.Set(testupstreamlib.FakeResponseHeaderKey, tc.fakeResponseBodyType)
-				req.Header.Set(testupstreamlib.ResponseStatusKey, "200")
+						req.Header.Set("Content-Type", "application/json")
+						req.Header.Set("x-test-backend", backend)
+						req.Header.Set(testupstreamlib.FakeResponseHeaderKey, tc.fakeResponseBodyType)
+						req.Header.Set(testupstreamlib.ResponseStatusKey, "200")
 
-				for pb.Next() {
-					req.Body = io.NopCloser(strings.NewReader(tc.requestBody))
-					req.ContentLength = int64(len(tc.requestBody))
+						for pb.Next() {
+							req.Body = io.NopCloser(strings.NewReader(tc.requestBody))
+							req.ContentLength = int64(len(tc.requestBody))
 
-					resp, err := http.DefaultClient.Do(req)
-					require.NoError(b, err)
+							resp, err := http.DefaultClient.Do(req)
+							require.NoError(b, err)
 
-					_, err = io.ReadAll(resp.Body)
-					require.NoError(b, err)
-					resp.Body.Close()
+							_, err = io.ReadAll(resp.Body)
+							require.NoError(b, err)
+							resp.Body.Close()
 
-					require.Equal(b, http.StatusOK, resp.StatusCode)
-				}
-			})
+							require.Equal(b, http.StatusOK, resp.StatusCode)
+						}
+					})
+				})
+			}
 		})
 	}
 }
