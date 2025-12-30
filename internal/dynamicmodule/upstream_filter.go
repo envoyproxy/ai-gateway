@@ -52,6 +52,7 @@ type (
 		reqHeaders, resHeaders map[string]string
 		// cost is the cost of the request that is accumulated during the processing of the response.
 		costs metrics.TokenUsage
+		//responseBodyBuffer *bytes.Buffer
 	}
 )
 
@@ -254,7 +255,7 @@ func (f *upstreamFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(e s
 	forceBodyMutation := f.onRetry || f.routerFilter.forceBodyMutation
 
 	b := f.backend
-	newHeaders, newBody, err := f.translator.RequestBody(f.routerFilter.originalRequestBodyRaw,
+	newHeaders, newBody, err := f.translator.RequestBody(f.routerFilter.originalRequestBodyRaw.Bytes(),
 		f.routerFilter.originalRequestBody, forceBodyMutation)
 	if err != nil {
 		err = fmt.Errorf("failed to translate request body for upstream: %w", err)
@@ -279,7 +280,7 @@ func (f *upstreamFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(e s
 	}
 
 	if bm := b.Backend.BodyMutation; bm != nil {
-		originalRaw := f.routerFilter.originalRequestBodyRaw
+		originalRaw := f.routerFilter.originalRequestBodyRaw.Bytes()
 		mutator := bodymutator.NewBodyMutator(bm, originalRaw)
 		var mutatedBody []byte
 		if newBody == nil {
@@ -343,7 +344,7 @@ func (f *upstreamFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(e s
 
 	// Next is to do the upstream auth if needed.
 	if b.Handler != nil {
-		originalOrNewBody := f.routerFilter.originalRequestBodyRaw
+		originalOrNewBody := f.routerFilter.originalRequestBodyRaw.Bytes()
 		if newBody != nil {
 			originalOrNewBody = newBody
 		}
@@ -390,6 +391,12 @@ func (f *upstreamFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseHeaders
 			return fmt.Errorf("failed to set transformed header %s", h.Key())
 		}
 	}
+	//
+	//contentLengthStr, ok := f.resHeaders["content-length"]
+	//if ok {
+	//	contentLength, _ := strconv.Atoi(contentLengthStr)
+	//	f.responseBodyBuffer = bytes.NewBuffer(make([]byte, 0, contentLength))
+	//}
 	return nil
 }
 

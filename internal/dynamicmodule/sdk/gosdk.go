@@ -89,6 +89,7 @@ type BodyReader interface {
 	// Len returns the length of the body in bytes, regardless of how much has been read.
 	Len() int
 	io.Reader
+	io.WriterTo
 }
 
 // HTTPFilter is an interface that represents each Http request.

@@ -534,22 +534,38 @@ type bodyReader struct {
 
 // Read implements [io.Reader].
 func (b *bodyReader) Read(p []byte) (n int, err error) {
-	if b.index >= len(b.chunks) {
+	for n < len(p) && b.index < len(b.chunks) {
+		chunk := b.chunks[b.index]
+		chunkData := unsafe.Slice((*byte)(unsafe.Pointer(chunk.data)), chunk.length)
+
+		copied := copy(p[n:], chunkData[b.offset:])
+		n += copied
+		b.offset += copied
+
+		if b.offset >= int(chunk.length) {
+			b.index++
+			b.offset = 0
+		}
+	}
+
+	if n == 0 && b.index >= len(b.chunks) {
 		return 0, io.EOF
 	}
 
-	chunk := b.chunks[b.index]
-	if b.offset >= int(chunk.length) {
-		b.index++
-		b.offset = 0
-		if b.index >= len(b.chunks) {
-			return 0, io.EOF
-		}
-		chunk = b.chunks[b.index]
-	}
+	return n, nil
+}
 
-	n = copy(p, unsafe.Slice((*byte)(unsafe.Pointer(chunk.data)), chunk.length)[b.offset:])
-	b.offset += n
+func (b *bodyReader) WriteTo(w io.Writer) (n int64, err error) {
+	for b.index < len(b.chunks) {
+		chunk := b.chunks[b.index]
+		data := unsafe.Slice((*byte)(unsafe.Pointer(chunk.data)), chunk.length)[b.offset:]
+		m, err := w.Write(data)
+		n += int64(m)
+		if err != nil {
+			return n, err
+		}
+		b.index++
+	}
 	return n, nil
 }
 

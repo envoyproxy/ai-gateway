@@ -6,11 +6,12 @@
 package dynamicmodule
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -58,7 +59,7 @@ type (
 
 		originalRequestHeaders map[string]string
 		originalRequestBody    *ReqT
-		originalRequestBodyRaw []byte
+		originalRequestBodyRaw *bytes.Buffer
 		originalModel          internalapi.OriginalModel
 		forceBodyMutation      bool
 		stream                 bool
@@ -222,38 +223,45 @@ func (f *routerFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestHeaders(e 
 			slog.String("original_request_id", originalReqID))
 	}
 	f.internalRequestID = internalReqID
+	contentLengthRaw, _ := e.GetRequestHeader("content-length")
+	if f.debugLogEnabled {
+		f.logger.Debug("request headers received",
+			slog.String("content_length", contentLengthRaw),
+			slog.String("internal_request_id", internalReqID))
+	}
+	contentLength, _ := strconv.Atoi(contentLengthRaw)
+	f.originalRequestBodyRaw = bytes.NewBuffer(make([]byte, 0, contentLength))
 	return sdk.RequestHeadersStatusStopIteration // Do not invoke the subsequent filters but continue to the body phase on this filter.
 }
 
 // RequestBody implements [sdk.HTTPFilter].
 func (f *routerFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.RequestBodyStatus {
+	b, ok := e.GetReceivedRequestBody()
+	if !ok {
+		e.SendLocalReply(400, nil, []byte("failed to read request body"))
+		return sdk.RequestBodyStatusStopIterationAndBuffer
+	}
+	_, err := b.WriteTo(f.originalRequestBodyRaw)
+	if err != nil {
+		e.SendLocalReply(500, nil, []byte("failed to buffer request body: "+err.Error()))
+		return sdk.RequestBodyStatusStopIterationAndBuffer
+	}
 	if !endOfStream {
 		if f.debugLogEnabled {
 			f.logger.Debug("waiting for end of stream to parse request body")
 		}
 		return sdk.RequestBodyStatusStopIterationAndBuffer
 	}
-	b, ok := e.GetBufferedRequestBody()
-	if !ok {
-		e.SendLocalReply(400, nil, []byte("failed to read request body"))
-		return sdk.RequestBodyStatusStopIterationAndBuffer
-	}
-	raw, err := io.ReadAll(b)
-	if err != nil {
-		e.SendLocalReply(400, nil, []byte("failed to read request body: "+err.Error()))
-		return sdk.RequestBodyStatusStopIterationAndBuffer
-	}
 
-	f.originalRequestBodyRaw = raw
 	var maybeMutatedOriginalBodyRaw []byte
 	var ep EndpointSpecT
-	f.originalModel, f.originalRequestBody, f.stream, maybeMutatedOriginalBodyRaw, err = ep.ParseBody(raw, len(f.runtimeFilterConfig.RequestCosts) > 0)
+	f.originalModel, f.originalRequestBody, f.stream, maybeMutatedOriginalBodyRaw, err = ep.ParseBody(f.originalRequestBodyRaw.Bytes(), len(f.runtimeFilterConfig.RequestCosts) > 0)
 	if err != nil {
 		e.SendLocalReply(400, nil, []byte("failed to parse request body: "+err.Error()))
 		return sdk.RequestBodyStatusStopIterationAndBuffer
 	}
 	if len(maybeMutatedOriginalBodyRaw) > 0 {
-		f.originalRequestBodyRaw = maybeMutatedOriginalBodyRaw
+		f.originalRequestBodyRaw = bytes.NewBuffer(maybeMutatedOriginalBodyRaw)
 		f.forceBodyMutation = true
 	}
 	if f.debugLogEnabled {
@@ -274,7 +282,7 @@ func (f *routerFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(e sdk
 		f.originalRequestHeaders,
 		&headerMutationCarrier{e: e},
 		f.originalRequestBody,
-		f.originalRequestBodyRaw,
+		f.originalRequestBodyRaw.Bytes(),
 	)
 	e.ClearRouteCache()
 	return sdk.RequestBodyStatusContinue
