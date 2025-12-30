@@ -169,13 +169,13 @@ bool envoy_dynamic_module_callback_http_get_request_headers(
     uintptr_t filter_envoy_ptr,
     uintptr_t* result_headers);
 
-#cgo noescape envoy_dynamic_module_callback_http_get_request_headers_count
-#cgo nocallback envoy_dynamic_module_callback_http_get_request_headers_count
+#cgo noescape envoy_dynamic_module_callback_http_get_response_headers_count
+#cgo nocallback envoy_dynamic_module_callback_http_get_response_headers_count
 size_t envoy_dynamic_module_callback_http_get_response_headers_count(
 	uintptr_t filter_envoy_ptr);
 
-#cgo noescape envoy_dynamic_module_callback_http_get_request_headers
-#cgo nocallback envoy_dynamic_module_callback_http_get_request_headers
+#cgo noescape envoy_dynamic_module_callback_http_get_response_headers
+#cgo nocallback envoy_dynamic_module_callback_http_get_response_headers
 bool envoy_dynamic_module_callback_http_get_response_headers(
     uintptr_t filter_envoy_ptr,
     uintptr_t* result_headers);

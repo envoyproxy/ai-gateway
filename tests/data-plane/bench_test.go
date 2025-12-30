@@ -74,7 +74,7 @@ func benchmarkChatCompletions(b *testing.B) {
 			return
 		}
 		// Invoke the pprof endpoint :6060 and save CPU profile to cpu.prof.
-		resp, err := http.Get("http://localhost:6060/debug/pprof/profile?seconds=10")
+		resp, err := http.Get("http://localhost:6060/debug/pprof/profile?seconds=5")
 		if err != nil {
 			b.Logf("failed to get pprof profile: %v", err)
 			return
@@ -124,8 +124,8 @@ func benchmarkChatCompletions(b *testing.B) {
 	for _, backend := range []string{
 		"openai",
 		"aws-bedrock",
-		//"gcp-vertexai",
-		//"gcp-anthropicai",
+		"gcp-vertexai",
+		"gcp-anthropicai",
 	} {
 		b.Run(backend, func(b *testing.B) {
 			testCases := []struct {

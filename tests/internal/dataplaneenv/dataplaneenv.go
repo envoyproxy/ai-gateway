@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -272,7 +271,7 @@ func requireEnvoy(t testing.TB,
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := testsinternal.GoToolCmdContext(ctx, "func-e", "run",
 		"-c", envoyYamlPath,
-		"--concurrency", strconv.Itoa(max(runtime.NumCPU(), 2)),
+		//"--concurrency", strconv.Itoa(max(runtime.NumCPU(), 2)),
 		// This allows multiple Envoy instances to run in parallel.
 		"--base-id", strconv.Itoa(time.Now().Nanosecond()),
 		// Add debug logging for http.

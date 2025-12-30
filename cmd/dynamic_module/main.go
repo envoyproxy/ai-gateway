@@ -169,6 +169,6 @@ func startAdminServer(l *slog.Logger, address string, registry prometheus.Gather
 			l.Error("admin server failed: " + err.Error())
 		}
 	}()
-	// pprof.Run(context.Background())
+	//pprof.Run(context.Background())
 	return nil
 }
