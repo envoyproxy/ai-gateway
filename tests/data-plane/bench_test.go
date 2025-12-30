@@ -11,10 +11,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
 
@@ -32,6 +36,17 @@ import (
 //	$ go test ./tests/data-plane -run='^$' -timeout=20m -count=10 -bench='BenchmarkChatCompletions' . > new.txt
 //	$ benchstat old.txt new.txt
 func BenchmarkChatCompletions(b *testing.B) {
+	b.Run("extproc", func(b *testing.B) {
+		b.Setenv("TEST_WITH_DYNAMIC_MODULE", "")
+		benchmarkChatCompletions(b)
+	})
+	b.Run("dynamic_module", func(b *testing.B) {
+		b.Setenv("TEST_WITH_DYNAMIC_MODULE", "true")
+		benchmarkChatCompletions(b)
+	})
+}
+
+func benchmarkChatCompletions(b *testing.B) {
 	config := &filterapi.Config{
 		Version: version.Parse(),
 		Backends: []filterapi.Backend{
@@ -45,13 +60,66 @@ func BenchmarkChatCompletions(b *testing.B) {
 	configBytes, err := yaml.Marshal(config)
 	require.NoError(b, err)
 	env := startTestEnvironment(b, string(configBytes), false, false)
-	time.Sleep(5 * time.Second)
 
 	listenerPort := env.EnvoyListenerPort()
 	smallRequest := createChatCompletionRequest(100)     // ~6KB.
 	mediumRequest := createChatCompletionRequest(10000)  // ~600KB.
 	largeRequest := createChatCompletionRequest(100000)  // ~6MB.
 	xlargeRequest := createChatCompletionRequest(500000) // ~30MB.
+	profilingDone := sync.WaitGroup{}
+	profilingDone.Add(2)
+	go func() {
+		defer profilingDone.Done()
+		if true {
+			return
+		}
+		// Invoke the pprof endpoint :6060 and save CPU profile to cpu.prof.
+		resp, err := http.Get("http://localhost:6060/debug/pprof/profile?seconds=5")
+		if err != nil {
+			b.Logf("failed to get pprof profile: %v", err)
+			return
+		}
+		defer resp.Body.Close()
+
+		profileData, err := io.ReadAll(resp.Body)
+		if err != nil {
+			b.Logf("failed to read pprof profile response body: %v", err)
+			return
+		}
+
+		err = os.WriteFile(path.Join(internaltesting.FindProjectRoot(), "out", "cpu.prof"), profileData, 0644)
+		if err != nil {
+			b.Logf("failed to write pprof profile to file: %v", err)
+			return
+		}
+		b.Logf("pprof CPU profile saved to cpu.prof")
+	}()
+	go func() {
+		defer profilingDone.Done()
+		if true {
+			return
+		}
+		time.Sleep(3 * time.Second)
+		resp, err := http.Get("http://localhost:6060/debug/pprof/heap")
+		if err != nil {
+			b.Logf("failed to get pprof heap profile: %v", err)
+			return
+		}
+		defer resp.Body.Close()
+
+		profileData, err := io.ReadAll(resp.Body)
+		if err != nil {
+			b.Logf("failed to read pprof heap profile response body: %v", err)
+			return
+		}
+
+		err = os.WriteFile(path.Join(internaltesting.FindProjectRoot(), "out", "heap.prof"), profileData, 0644)
+		if err != nil {
+			b.Logf("failed to write pprof heap profile to file: %v", err)
+			return
+		}
+		b.Logf("pprof heap profile saved to heap.prof")
+	}()
 
 	for _, backend := range []string{
 		"openai",
@@ -104,6 +172,7 @@ func BenchmarkChatCompletions(b *testing.B) {
 			}
 		})
 	}
+	profilingDone.Wait()
 }
 
 func createChatCompletionRequest(numMessages int) string {

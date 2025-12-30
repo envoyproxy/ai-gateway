@@ -65,6 +65,41 @@ func BuildGoBinary(binaryName, packagePath string) (string, error) {
 	return binaryPath, nil
 }
 
+// BuildDynamicModuleOnDemand builds the dynamic module shared library.
+func BuildDynamicModuleOnDemand() error {
+	projectRoot := FindProjectRoot()
+	outputDir := filepath.Join(projectRoot, "out")
+
+	// Create output directory.
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	binaryPath := filepath.Join(outputDir, "libaigateway.so")
+
+	cmd := exec.Command("go", "build",
+		"-tags", "envoy",
+		"-buildmode=c-shared",
+		"-o", binaryPath,
+		"./cmd/dynamic_module",
+	)
+	cmd.Dir = projectRoot
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=1")
+	var stderr strings.Builder
+	cmd.Stdout = io.Discard
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to build %s: %w\nstderr: %s", binaryPath, err, stderr.String())
+	}
+
+	// Make executable.
+	if err := os.Chmod(binaryPath, 0o755); err != nil {
+		return fmt.Errorf("failed to make binary executable: %w", err)
+	}
+	return nil
+}
+
 // FindProjectRoot finds the root of the project by looking for go.mod.
 func FindProjectRoot() string {
 	dir, _ := os.Getwd()

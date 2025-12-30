@@ -166,6 +166,9 @@ jobs:
           TEST_SAMBANOVA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_SAMBANOVA_API_KEY }}
           TEST_DEEPINFRA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_DEEPINFRA_API_KEY }}
         run: make test-data-plane
+      - run: make test-data-plane
+        env:
+          TEST_WITH_DYNAMIC_MODULE: "true"
 
   test_data_plane_mcp:
     needs: changes

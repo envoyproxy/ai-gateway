@@ -177,7 +177,7 @@ test-crdcel: apigen ## Run the integration tests of CEL validation in CRD defini
 # Since this is an integration test, we don't use -race, as it takes a very long
 # time to complete. For concurrency issues, use normal unit tests and race them.
 .PHONY: test-data-plane
-test-data-plane: build.extproc ## Run the integration tests for data plane without controller or k8s at all.
+test-data-plane: build.extproc build-dynamic-module ## Run the integration tests for data plane without controller or k8s at all.
 	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
 	@echo "Ensure func-e is built and Envoy is installed"
 	@@$(GO_TOOL) func-e run --version >/dev/null 2>&1
@@ -273,6 +273,12 @@ build.%: ## Build a binary for the given command under the internal/cmd director
 .PHONE: build
 build: ## Build all binaries under cmd/ directory.
 	@$(foreach COMMAND_NAME,$(COMMANDS),$(MAKE) build.$(COMMAND_NAME);)
+
+# This builds the dynamic module filter for Envoy. This is the shared library that can be loaded by Envoy to run the AI Gateway filter.
+# TODO: multiple Envoy versions support with multiple platform builds.
+.PHONE: build-dynamic-module
+build-dynamic-module: ## Build the dynamic module for Envoy.
+	CGO_ENABLED=1 go build -tags "envoy" -buildmode=c-shared -o $(OUTPUT_DIR)/libaigateway.so ./cmd/dynamic_module
 
 # This builds the docker images for the controller, extproc and testupstream for the e2e tests.
 .PHONY: build-e2e
