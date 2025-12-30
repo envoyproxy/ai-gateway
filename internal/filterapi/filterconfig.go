@@ -19,12 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
-	"github.com/envoyproxy/ai-gateway/internal/version"
 )
-
-// DefaultConfig is the default configuration that can be used as a
-// fallback when the configuration is not explicitly provided.
-var DefaultConfig = ``
 
 // Config is the configuration for the Envoy AI Gateway filter.
 type Config struct {
@@ -269,14 +264,4 @@ func UnmarshalConfigYaml(path string) (*Config, error) {
 		return nil, err
 	}
 	return &cfg, nil
-}
-
-// MustLoadDefaultConfig loads the default configuration.
-// This panics if the configuration fails to be loaded.
-func MustLoadDefaultConfig() *Config {
-	cfg := Config{Version: version.Parse()}
-	if err := yaml.Unmarshal([]byte(DefaultConfig), &cfg); err != nil {
-		panic(err)
-	}
-	return &cfg
 }
