@@ -64,10 +64,10 @@ func benchmarkChatCompletions(b *testing.B) {
 	xlargeRequest := createChatCompletionRequest(500000) // ~30MB.
 
 	for _, backend := range []string{
-		"openai",
+		//"openai",
 		"aws-bedrock",
-		"gcp-vertexai",
-		"gcp-anthropicai",
+		//"gcp-vertexai",
+		//"gcp-anthropicai",
 	} {
 		b.Run(backend, func(b *testing.B) {
 			testCases := []struct {

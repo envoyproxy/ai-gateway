@@ -16,6 +16,7 @@ static_resources:
         socket_address:
           address: 0.0.0.0
           port_value: 1062
+      per_connection_buffer_limit_bytes: 52428800
       filter_chains:
         - filters:
             - name: envoy.filters.network.http_connection_manager
@@ -131,6 +132,7 @@ static_resources:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
   clusters:
     - name: openai
+      per_connection_buffer_limit_bytes: 52428800
       connect_timeout: 5s # Increase from 0.25s to prevent timeout issues
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
@@ -171,6 +173,7 @@ static_resources:
                       per_route_rule_backend_name: "openai"
     # Cluster for model override scenario - exactly the same as openai but with different backend name
     - name: openai-chat-override
+      per_connection_buffer_limit_bytes: 52428800
       connect_timeout: 5s # Increase from 0.25s to prevent timeout issues
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
@@ -211,6 +214,7 @@ static_resources:
                       per_route_rule_backend_name: "openai-chat-override"
     # Cluster for completions model override scenario - exactly the same as openai but with different backend name
     - name: openai-completions-override
+      per_connection_buffer_limit_bytes: 52428800
       connect_timeout: 5s # Increase from 0.25s to prevent timeout issues
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
@@ -251,6 +255,7 @@ static_resources:
                       per_route_rule_backend_name: "openai-completions-override"
     # Cluster for model override scenario - exactly the same as openai but with different backend name
     - name: openai-embeddings-override
+      per_connection_buffer_limit_bytes: 52428800
       connect_timeout: 5s # Increase from 0.25s to prevent timeout issues
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
@@ -291,6 +296,7 @@ static_resources:
                       per_route_rule_backend_name: "openai-embeddings-override"
     # Cluster for Azure OpenAI
     - name: azure-openai
+      per_connection_buffer_limit_bytes: 52428800
       connect_timeout: 5s # Increase from 0.25s to prevent timeout issues
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
@@ -331,6 +337,7 @@ static_resources:
                       per_route_rule_backend_name: "azure-openai"
     # Cluster for Azure model override scenario - exactly the same as azure-openai but with different backend name
     - name: azure-openai-chat-override
+      per_connection_buffer_limit_bytes: 52428800
       connect_timeout: 5s # Increase from 0.25s to prevent timeout issues
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
