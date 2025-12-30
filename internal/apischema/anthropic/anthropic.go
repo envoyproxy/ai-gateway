@@ -576,3 +576,20 @@ func (m *MessagesStreamChunk) UnmarshalJSON(data []byte) error {
 	}
 	return nil
 }
+
+// ErrorResponse represents an error response from the Anthropic API.
+// https://platform.claude.com/docs/en/api/errors
+type ErrorResponse struct {
+	Error     ErrorResponseMessage `json:"error"`
+	RequestID string               `json:"request_id"`
+	// Type is always "error".
+	Type string `json:"type"`
+}
+
+// ErrorResponseMessage represents the error message in an Anthropic API error response
+// which corresponds to the HTTP status code.
+// https://platform.claude.com/docs/en/api/errors#http-errors
+type ErrorResponseMessage struct {
+	Message string `json:"message"`
+	Type    string `json:"type"`
+}
