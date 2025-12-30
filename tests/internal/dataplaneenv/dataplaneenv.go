@@ -28,22 +28,11 @@ import (
 	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 )
 
-var (
-	// extprocBin holds the path to the compiled extproc binary.
-	extprocBin string
-
-	// TestupstreamBin holds the path to the compiled testupstream binary.
-	TestupstreamBin string
-)
+// extprocBin holds the path to the compiled extproc binary.
+var extprocBin string
 
 func init() {
 	var err error
-	TestupstreamBin, err = internaltesting.BuildGoBinaryOnDemand(
-		"TESTUPSTREAM_BIN", "testupstream", "./tests/internal/testupstreamlib/testupstream",
-	)
-	if err != nil {
-		panic(fmt.Sprintf("failed to build testupstream binary: %v", err))
-	}
 	extprocBin, err = internaltesting.BuildGoBinaryOnDemand("EXTPROC_BIN", "extproc", "./cmd/extproc")
 	if err != nil {
 		panic(fmt.Sprintf("failed to build extproc binary: %v", err))
