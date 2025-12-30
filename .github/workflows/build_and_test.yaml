@@ -165,7 +165,6 @@ jobs:
           TEST_GROK_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_GROK_API_KEY }}
           TEST_SAMBANOVA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_SAMBANOVA_API_KEY }}
           TEST_DEEPINFRA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_DEEPINFRA_API_KEY }}
-          TEST_GITHUB_ACCESS_TOKEN: ${{ secrets.TEST_GITHUB_ACCESS_TOKEN }}
         run: make test-data-plane
 
   test_data_plane_mcp:
@@ -193,6 +192,8 @@ jobs:
             ~/go/bin
           key: data-plane-tests-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
       - run: make test-data-plane-mcp
+        env:
+          TEST_GITHUB_ACCESS_TOKEN: ${{ secrets.TEST_GITHUB_ACCESS_TOKEN }}
 
   test_e2e:
     needs: changes
