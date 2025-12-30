@@ -138,7 +138,7 @@ func createChatCompletionRequest(numMessages, numBytes int) string {
 
 func Test_createChatCompletionRequest(t *testing.T) {
 	req := createChatCompletionRequest(3, 5)
-	require.Equal(t, 240, len(req))
+	require.Len(t, len(req), 240)
 }
 
 // BenchmarkEmbeddings benchmarks the embeddings endpoint.
