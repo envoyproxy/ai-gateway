@@ -48,10 +48,6 @@ func BenchmarkChatCompletions(b *testing.B) {
 	time.Sleep(5 * time.Second)
 
 	listenerPort := env.EnvoyListenerPort()
-	smallRequest := createChatCompletionRequest(100)     // ~6KB.
-	mediumRequest := createChatCompletionRequest(10000)  // ~600KB.
-	largeRequest := createChatCompletionRequest(100000)  // ~6MB.
-	xlargeRequest := createChatCompletionRequest(500000) // ~30MB.
 
 	for _, backend := range []string{
 		"openai",
@@ -65,10 +61,18 @@ func BenchmarkChatCompletions(b *testing.B) {
 				requestBody          string
 				fakeResponseBodyType string
 			}{
-				{name: "small", requestBody: smallRequest, fakeResponseBodyType: "small"},
-				{name: "medium", requestBody: mediumRequest, fakeResponseBodyType: "medium"},
-				{name: "large", requestBody: largeRequest, fakeResponseBodyType: "large"},
-				{name: "xlarge", requestBody: xlargeRequest, fakeResponseBodyType: "large"},
+				{name: "small/100-messages-large-messages", requestBody: createChatCompletionRequest(100, 1), fakeResponseBodyType: "small"},
+				{name: "medium/100-messages-large-messages", requestBody: createChatCompletionRequest(100, 100), fakeResponseBodyType: "medium"},
+				{name: "large/100-messages-large-messages", requestBody: createChatCompletionRequest(100, 10000), fakeResponseBodyType: "large"},
+				{name: "xlarge/100-messages-large-messages", requestBody: createChatCompletionRequest(100, 100000), fakeResponseBodyType: "large"},
+				{name: "small/10-messages-large-messages", requestBody: createChatCompletionRequest(10, 10), fakeResponseBodyType: "small"},
+				{name: "medium/10-messages-large-messages", requestBody: createChatCompletionRequest(10, 1000), fakeResponseBodyType: "medium"},
+				{name: "large/10-messages-large-messages", requestBody: createChatCompletionRequest(10, 100000), fakeResponseBodyType: "large"},
+				{name: "xlarge/10-messages-large-messages", requestBody: createChatCompletionRequest(10, 1000000), fakeResponseBodyType: "large"},
+				{name: "small/many-messages", requestBody: createChatCompletionRequest(100, 1), fakeResponseBodyType: "small"},
+				{name: "medium/many-messages", requestBody: createChatCompletionRequest(10000, 1), fakeResponseBodyType: "medium"},
+				{name: "large/many-messages", requestBody: createChatCompletionRequest(100000, 1), fakeResponseBodyType: "large"},
+				{name: "xlarge/many-messages", requestBody: createChatCompletionRequest(500000, 1), fakeResponseBodyType: "large"},
 			}
 
 			for _, tc := range testCases {
@@ -106,17 +110,35 @@ func BenchmarkChatCompletions(b *testing.B) {
 	}
 }
 
-func createChatCompletionRequest(numMessages int) string {
+// createChatCompletionRequest creates a chat completion request body with the specified
+// number of messages and bytes per message.
+//
+// Each "message" will contain a string of 'A's of length numBytes and each message will be
+// around numBytes + 55 bytes long in the final JSON.
+//
+// So, for example, createChatCompletionRequest(3, 5) will create a request body
+// with 3 messages, each containing 5 'A's, resulting in a request body of approximately
+// (5 + 55) * 3 = 180 bytes. The final template is 60 bytes long. So in total around 240 bytes.
+//
+// Total size = numMessages * (numBytes + 55) + 60
+func createChatCompletionRequest(numMessages, numBytes int) string {
 	var messages []string
 	for i := 0; i < numMessages; i++ {
-		messages = append(messages, fmt.Sprintf(`{"role": "user", "content": "This is message number %d."}`, i+1))
+		content := strings.Repeat("A", numBytes)
+		messages = append(messages, fmt.Sprintf(`{"role": "user", "content": "This is message number %s."}`, content))
 	}
-	largeRequestBody := fmt.Sprintf(`{
-		"model": "gpt-4",
-		"messages": [%s],
-		"max_tokens": 100
-	}`, strings.Join(messages, ","))
+	const template = `{
+	"model": "gpt-4",
+	"messages": [%s],
+	"max_tokens": 100
+}`
+	largeRequestBody := fmt.Sprintf(template, strings.Join(messages, ","))
 	return largeRequestBody
+}
+
+func Test_createChatCompletionRequest(t *testing.T) {
+	req := createChatCompletionRequest(3, 5)
+	require.Equal(t, 240, len(req))
 }
 
 // BenchmarkEmbeddings benchmarks the embeddings endpoint.
