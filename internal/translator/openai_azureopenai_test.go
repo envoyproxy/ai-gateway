@@ -7,13 +7,13 @@ package translator
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func TestOpenAIToAzureOpenAITranslatorV1ChatCompletion_RequestBody(t *testing.T) {

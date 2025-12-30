@@ -11,7 +11,6 @@ package openai
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -25,6 +24,7 @@ import (
 	"google.golang.org/genai"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 // Chat message role defined by the OpenAI API.

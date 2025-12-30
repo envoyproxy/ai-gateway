@@ -99,6 +99,10 @@ type SystemContentBlock struct {
 
 	// A system prompt for the model.
 	Text string `json:"text"`
+
+	// Cache point for prompt caching. Enables caching of preceding content.
+	// See https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html for more information.
+	CachePoint *CachePointBlock `json:"cachePoint,omitempty"`
 }
 
 // GuardrailConfiguration Configuration information for a guardrail that you use with the Converse
@@ -350,6 +354,10 @@ type ContentBlock struct {
 	// Required: No
 	// See https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ReasoningContentBlock.html for more information.
 	ReasoningContent *ReasoningContentBlock `json:"reasoningContent,omitempty"`
+
+	// Cache point for prompt caching. Enables caching of preceding content.
+	// See https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html for more information.
+	CachePoint *CachePointBlock `json:"cachePoint,omitempty"`
 }
 
 // ConverseMetrics Metrics for a call to Converse (https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html).
@@ -542,6 +550,10 @@ type ToolConfiguration struct {
 type Tool struct {
 	// The specification for the tool.
 	ToolSpec *ToolSpecification `json:"toolSpec"`
+
+	// Cache point for prompt caching. Enables caching of preceding content.
+	// See https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html for more information.
+	CachePoint *CachePointBlock `json:"cachePoint,omitempty"`
 }
 
 // ToolInputSchema The schema for the tool. The top level schema type must be an object.
@@ -563,4 +575,12 @@ type ToolSpecification struct {
 	//
 	// Name is a required field.
 	Name *string `json:"name"`
+}
+
+// CachePointBlock defines a cache checkpoint for prompt caching.
+// This allows AWS Bedrock models to cache content up to this point for reuse in subsequent requests.
+// See https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html for more information.
+type CachePointBlock struct {
+	// The type of cache point. Currently only "default" is supported.
+	Type string `json:"type"`
 }

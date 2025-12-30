@@ -8,7 +8,6 @@ package testopeninference
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -28,6 +27,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testopenai"
 )
 

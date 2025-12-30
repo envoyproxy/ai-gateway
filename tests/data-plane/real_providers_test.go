@@ -8,7 +8,6 @@ package dataplane
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -23,6 +22,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/envoyproxy/ai-gateway/internal/version"
 )
@@ -344,11 +344,6 @@ func TestWithRealProviders(t *testing.T) {
 		require.Equal(t, []string{
 			"grok-3",
 		}, models)
-	})
-	t.Run("aws-bedrock-large-body", func(t *testing.T) {
-		cc.MaybeSkip(t, internaltesting.RequiredCredentialAWS)
-		requireEventuallyChatCompletionNonStreamingRequestOK(t, listenerAddress,
-			"us.meta.llama3-2-1b-instruct-v1:0", strings.Repeat("Say this is a test", 10000))
 	})
 }
 

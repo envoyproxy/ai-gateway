@@ -3,13 +3,12 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-package main
+package testupstreamlib
 
 import (
 	"bufio"
 	"bytes"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -24,31 +23,28 @@ import (
 	"github.com/openai/openai-go"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
-func TestMain(m *testing.M) {
-	logger = log.New(io.Discard, "", 0)
-	os.Exit(m.Run())
-}
-
 func Test_main(t *testing.T) {
-	t.Setenv("TESTUPSTREAM_ID", "aaaaaaaaa")
-	t.Setenv("STREAMING_INTERVAL", "200ms")
+	s := &Server{
+		ID:     "aaaaaaaaa",
+		Logger: log.New(os.Stdout, "[testupstream] ", 0),
+	}
 
 	l, err := net.Listen("tcp", ":0") // nolint: gosec
 	require.NoError(t, err)
 	go func() {
 		defer l.Close()
-		doMain(l)
+		s.DoMain(t.Context(), l)
 	}()
 
 	t.Run("sse", func(t *testing.T) {
 		t.Parallel()
 		request, err := http.NewRequestWithContext(t.Context(), "GET", "http://"+l.Addr().String()+"/sse", strings.NewReader("some-body"))
 		require.NoError(t, err)
-		request.Header.Set(testupstreamlib.ResponseTypeKey, "sse")
-		request.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
+		request.Header.Set(ResponseTypeKey, "sse")
+		request.Header.Set(ResponseBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte(strings.Join([]string{"1", "2", "3", "4", "5"}, "\n"))))
 
 		now := time.Now()
@@ -93,10 +89,10 @@ func Test_main(t *testing.T) {
 			"http://"+l.Addr().String()+"/thisisrealpath", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
-		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
+		request.Header.Set(ExpectedPathHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("/foobar")))
 
-		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
+		request.Header.Set(ExpectedRequestBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
 
 		response, err := http.DefaultClient.Do(request)
@@ -118,9 +114,9 @@ func Test_main(t *testing.T) {
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("not expected request body")))
 		require.NoError(t, err)
 
-		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
+		request.Header.Set(ExpectedRequestBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
-		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
+		request.Header.Set(ExpectedPathHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("/")))
 
 		response, err := http.DefaultClient.Do(request)
@@ -141,9 +137,9 @@ func Test_main(t *testing.T) {
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
-		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
+		request.Header.Set(ExpectedPathHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("/")))
-		request.Header.Set(testupstreamlib.NonExpectedRequestHeadersKey,
+		request.Header.Set(NonExpectedRequestHeadersKey,
 			base64.StdEncoding.EncodeToString([]byte("x-foo")))
 		request.Header.Set("x-foo", "not-bar")
 
@@ -162,19 +158,19 @@ func Test_main(t *testing.T) {
 		require.NoError(t, err)
 
 		expectedHeaders := []byte("x-foo:bar,x-baz:qux")
-		request.Header.Set(testupstreamlib.ExpectedHeadersKey,
+		request.Header.Set(ExpectedHeadersKey,
 			base64.StdEncoding.EncodeToString(expectedHeaders))
-		request.Header.Set(testupstreamlib.ResponseStatusKey, "404")
+		request.Header.Set(ResponseStatusKey, "404")
 		request.Header.Set("x-foo", "bar")
 		request.Header.Set("x-baz", "qux")
 
-		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
+		request.Header.Set(ExpectedPathHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("/foobar")))
-		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
+		request.Header.Set(ExpectedRequestBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
-		request.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
+		request.Header.Set(ResponseBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("response body")))
-		request.Header.Set(testupstreamlib.ResponseHeadersKey,
+		request.Header.Set(ResponseHeadersKey,
 			base64.StdEncoding.EncodeToString([]byte("response_header:response_value")))
 
 		response, err := http.DefaultClient.Do(request)
@@ -200,12 +196,12 @@ func Test_main(t *testing.T) {
 				request, err := http.NewRequestWithContext(t.Context(), "GET",
 					"http://"+l.Addr().String()+"/v1/chat/completions", bytes.NewBuffer([]byte("expected request body")))
 				require.NoError(t, err)
-				request.Header.Set(testupstreamlib.ResponseTypeKey, eventType)
-				request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
+				request.Header.Set(ResponseTypeKey, eventType)
+				request.Header.Set(ExpectedPathHeaderKey,
 					base64.StdEncoding.EncodeToString([]byte("/v1/chat/completions")))
-				request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
+				request.Header.Set(ExpectedRequestBodyHeaderKey,
 					base64.StdEncoding.EncodeToString([]byte("expected request body")))
-				request.Header.Set(testupstreamlib.ResponseBodyHeaderKey, "09i,30qg9i4,gq03,gq0")
+				request.Header.Set(ResponseBodyHeaderKey, "09i,30qg9i4,gq03,gq0")
 
 				response, err := http.DefaultClient.Do(request)
 				require.NoError(t, err)
@@ -226,12 +222,12 @@ func Test_main(t *testing.T) {
 					"http://"+l.Addr().String()+"/v1/chat/completions", bytes.NewBuffer([]byte("expected request body")))
 				require.NoError(t, err)
 
-				request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
+				request.Header.Set(ExpectedPathHeaderKey,
 					base64.StdEncoding.EncodeToString([]byte("/v1/chat/completions")))
-				request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
+				request.Header.Set(ExpectedRequestBodyHeaderKey,
 					base64.StdEncoding.EncodeToString([]byte("expected request body")))
 				if isGzip {
-					request.Header.Set(testupstreamlib.ResponseTypeKey, "gzip")
+					request.Header.Set(ResponseTypeKey, "gzip")
 				}
 
 				response, err := http.DefaultClient.Do(request)
@@ -259,9 +255,9 @@ func Test_main(t *testing.T) {
 			"http://"+l.Addr().String()+"/v1/embeddings", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
-		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
+		request.Header.Set(ExpectedPathHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("/v1/embeddings")))
-		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
+		request.Header.Set(ExpectedRequestBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
 
 		response, err := http.DefaultClient.Do(request)
@@ -299,7 +295,7 @@ func Test_main(t *testing.T) {
 			"http://"+l.Addr().String()+"/foo", nil)
 		require.NoError(t, err)
 
-		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
+		request.Header.Set(ExpectedPathHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("/foo")))
 
 		response, err := http.DefaultClient.Do(request)
@@ -315,8 +311,8 @@ func Test_main(t *testing.T) {
 		t.Parallel()
 		request, err := http.NewRequestWithContext(t.Context(), "GET", "http://"+l.Addr().String()+"/", strings.NewReader("some-body"))
 		require.NoError(t, err)
-		request.Header.Set(testupstreamlib.ResponseTypeKey, "aws-event-stream")
-		request.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
+		request.Header.Set(ResponseTypeKey, "aws-event-stream")
+		request.Header.Set(ResponseBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte(strings.Join([]string{
 				"{\"contentBlockIndex\": 0, \"delta\":{\"text\":\"1\"}}",
 				"{\"contentBlockIndex\": 0, \"delta\":{\"text\":\"2\"}}",
@@ -363,11 +359,11 @@ func Test_main(t *testing.T) {
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
-		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
+		request.Header.Set(ExpectedPathHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("/")))
-		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
+		request.Header.Set(ExpectedRequestBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
-		request.Header.Set(testupstreamlib.ExpectedHostKey,
+		request.Header.Set(ExpectedHostKey,
 			base64.StdEncoding.EncodeToString([]byte("example.com")))
 
 		response, err := http.DefaultClient.Do(request)
@@ -384,11 +380,11 @@ func Test_main(t *testing.T) {
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
-		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
+		request.Header.Set(ExpectedPathHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("/")))
-		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
+		request.Header.Set(ExpectedRequestBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
-		request.Header.Set(testupstreamlib.ExpectedRawQueryHeaderKey, "alt=sse")
+		request.Header.Set(ExpectedRawQueryHeaderKey, "alt=sse")
 
 		response, err := http.DefaultClient.Do(request)
 		require.NoError(t, err)
@@ -409,9 +405,9 @@ func Test_main(t *testing.T) {
 		require.NoError(t, err)
 
 		request.Host = "localhost"
-		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
+		request.Header.Set(ExpectedRequestBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
-		request.Header.Set(testupstreamlib.ExpectedHostKey, "localhost")
+		request.Header.Set(ExpectedHostKey, "localhost")
 
 		response, err := http.DefaultClient.Do(request)
 		require.NoError(t, err)
@@ -427,11 +423,11 @@ func Test_main(t *testing.T) {
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
-		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
+		request.Header.Set(ExpectedPathHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("/")))
-		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
+		request.Header.Set(ExpectedRequestBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
-		request.Header.Set(testupstreamlib.ExpectedHeadersKey, "fewoamfwoajfum092um3f")
+		request.Header.Set(ExpectedHeadersKey, "fewoamfwoajfum092um3f")
 
 		response, err := http.DefaultClient.Do(request)
 		require.NoError(t, err)
@@ -447,11 +443,11 @@ func Test_main(t *testing.T) {
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
-		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
+		request.Header.Set(ExpectedPathHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("/")))
-		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
+		request.Header.Set(ExpectedRequestBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
-		request.Header.Set(testupstreamlib.ExpectedHeadersKey,
+		request.Header.Set(ExpectedHeadersKey,
 			base64.StdEncoding.EncodeToString([]byte("x-baz"))) // Missing value.
 
 		response, err := http.DefaultClient.Do(request)
@@ -468,11 +464,11 @@ func Test_main(t *testing.T) {
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
-		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
+		request.Header.Set(ExpectedPathHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("/")))
-		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
+		request.Header.Set(ExpectedRequestBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
-		request.Header.Set(testupstreamlib.ExpectedHeadersKey,
+		request.Header.Set(ExpectedHeadersKey,
 			base64.StdEncoding.EncodeToString([]byte("x-foo:bar,x-baz:qux")))
 
 		request.Header.Set("x-foo", "not-bar")
@@ -491,11 +487,11 @@ func Test_main(t *testing.T) {
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
-		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
+		request.Header.Set(ExpectedPathHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("/")))
-		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
+		request.Header.Set(ExpectedRequestBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
-		request.Header.Set(testupstreamlib.NonExpectedRequestHeadersKey, "fewoamfwoajfum092um3f")
+		request.Header.Set(NonExpectedRequestHeadersKey, "fewoamfwoajfum092um3f")
 
 		response, err := http.DefaultClient.Do(request)
 		require.NoError(t, err)
@@ -511,9 +507,9 @@ func Test_main(t *testing.T) {
 			"http://"+l.Addr().String()+"/v1/chat/completions", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
-		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
+		request.Header.Set(ExpectedRequestBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
-		request.Header.Set(testupstreamlib.ExpectedTestUpstreamIDKey, "aaaaaaaaa")
+		request.Header.Set(ExpectedTestUpstreamIDKey, "aaaaaaaaa")
 
 		response, err := http.DefaultClient.Do(request)
 		require.NoError(t, err)
@@ -529,9 +525,9 @@ func Test_main(t *testing.T) {
 			"http://"+l.Addr().String()+"/v1/chat/completions", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
-		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey,
+		request.Header.Set(ExpectedRequestBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("expected request body")))
-		request.Header.Set(testupstreamlib.ExpectedTestUpstreamIDKey, "bbbbbbbbb")
+		request.Header.Set(ExpectedTestUpstreamIDKey, "bbbbbbbbb")
 
 		response, err := http.DefaultClient.Do(request)
 		require.NoError(t, err)
@@ -547,7 +543,7 @@ func Test_main(t *testing.T) {
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
-		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey, "fewoamfwoajfum092um3f")
+		request.Header.Set(ExpectedPathHeaderKey, "fewoamfwoajfum092um3f")
 
 		response, err := http.DefaultClient.Do(request)
 		require.NoError(t, err)
@@ -563,7 +559,7 @@ func Test_main(t *testing.T) {
 			"http://"+l.Addr().String()+"/", bytes.NewBuffer([]byte("expected request body")))
 		require.NoError(t, err)
 
-		request.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey, "fewoamfwoajfum092um3f")
+		request.Header.Set(ExpectedRequestBodyHeaderKey, "fewoamfwoajfum092um3f")
 
 		response, err := http.DefaultClient.Do(request)
 		require.NoError(t, err)
@@ -581,8 +577,8 @@ func Test_main(t *testing.T) {
 		// This structure is designed to hit the `bytes.Split(expResponseBody, []byte("\n\n"))` logic.
 		ssePayload := "data: 1\n\ndata: 2"
 
-		request.Header.Set(testupstreamlib.ResponseTypeKey, "sse")
-		request.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
+		request.Header.Set(ResponseTypeKey, "sse")
+		request.Header.Set(ResponseBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte(ssePayload)))
 
 		now := time.Now()
@@ -618,10 +614,10 @@ func Test_main(t *testing.T) {
 		// The server is expected to split by "\n\n", find the empty block, and skip it.
 		ssePayload := "data: first\n\n\n\ndata: second"
 
-		request.Header.Set(testupstreamlib.ExpectedPathHeaderKey,
+		request.Header.Set(ExpectedPathHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte("/sse")))
-		request.Header.Set(testupstreamlib.ResponseTypeKey, "sse")
-		request.Header.Set(testupstreamlib.ResponseBodyHeaderKey,
+		request.Header.Set(ResponseTypeKey, "sse")
+		request.Header.Set(ResponseBodyHeaderKey,
 			base64.StdEncoding.EncodeToString([]byte(ssePayload)))
 
 		response, err := http.DefaultClient.Do(request)

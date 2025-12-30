@@ -6,7 +6,6 @@
 package translator
 
 import (
-	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -20,6 +19,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func TestOpenAIMessagesToGeminiContents(t *testing.T) {
@@ -1953,7 +1953,7 @@ func TestExtractToolCallsFromGeminiParts(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			calls, err := extractToolCallsFromGeminiParts(toolCalls, tt.input)
+			calls, err := extractToolCallsFromGeminiParts(toolCalls, tt.input, json.MarshalForDeterministicTesting)
 
 			if tt.wantErr {
 				require.Error(t, err)

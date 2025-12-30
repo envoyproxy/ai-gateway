@@ -6,11 +6,12 @@
 package translator
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	"google.golang.org/genai"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 // Constants for safety limits

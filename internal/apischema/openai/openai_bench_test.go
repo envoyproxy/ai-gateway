@@ -6,11 +6,12 @@
 package openai
 
 import (
-	"encoding/json"
 	"fmt"
 	"testing"
 
 	"github.com/openai/openai-go/v2"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 const (

@@ -10,19 +10,18 @@ import (
 	_ "embed"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/tests/internal/dataplaneenv"
+	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
 const (
@@ -155,13 +154,17 @@ func startTestEnvironment(t testing.TB, extprocConfig string, okToDumpLogOnFailu
 
 // requireUpstream starts the external processor with the given configuration.
 func requireUpstream(t testing.TB, out io.Writer, ports map[string]int) {
-	cmd := exec.CommandContext(t.Context(), dataplaneenv.TestupstreamBin) //nolint:gosec
-	cmd.Stdout = out
-	cmd.Stderr = out
-	cmd.Env = append(os.Environ(),
-		"TESTUPSTREAM_ID=extproc_test",
-		fmt.Sprintf("LISTENER_PORT=%d", ports["upstream"]))
-	require.NoError(t, cmd.Start(), "failed to start testupstream")
+	s := testupstreamlib.Server{ID: "extproc_test", Logger: log.New(out, "[testupstream] ", 0)}
+	l, err := net.Listen("tcp", ":"+strconv.Itoa(ports["upstream"])) // nolint: gosec
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = l.Close()
+	})
+	go func() {
+		s.DoMain(t.Context(), l)
+	}()
 }
 
 func listen(ctx context.Context, name string) (net.Listener, int) {

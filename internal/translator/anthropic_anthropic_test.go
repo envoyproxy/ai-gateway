@@ -6,7 +6,6 @@
 package translator
 
 import (
-	"encoding/json"
 	"strconv"
 	"strings"
 	"testing"
@@ -15,6 +14,7 @@ import (
 
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func TestAnthropicToAnthropic_RequestBody(t *testing.T) {
