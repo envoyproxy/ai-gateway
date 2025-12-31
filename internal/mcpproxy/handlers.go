@@ -11,7 +11,6 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -29,6 +28,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/version"
@@ -1117,7 +1117,7 @@ func (m *MCPProxy) handleResourcesSubscriptionRequest(ctx context.Context, s *se
 	return m.invokeAndProxyResponse(ctx, s, w, backend, cse, req)
 }
 
-var emptyJSONRPCMessage = json.RawMessage(`{}`)
+var emptyJSONRPCMessage = []byte(`{}`)
 
 func (m *MCPProxy) handlePing(_ context.Context, w http.ResponseWriter, req *jsonrpc.Request) (err error) {
 	encodedResp, _ := jsonrpc.EncodeMessage(&jsonrpc.Response{ID: req.ID, Result: emptyJSONRPCMessage})
@@ -1510,7 +1510,7 @@ func (m *MCPProxy) handlePromptListRequest(ctx context.Context, s *session, w ht
 func (m *MCPProxy) handleSetLoggingLevel(ctx context.Context, s *session, w http.ResponseWriter, originalRequest *jsonrpc.Request, p *mcp.SetLoggingLevelParams, span tracing.MCPSpan) error {
 	// TODO: maybe some backend doesn't support set logging level, so filter out such backends.
 	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, originalRequest, p, func(*session, []broadCastResponse[any]) any {
-		return emptyJSONRPCMessage
+		return struct{}{}
 	}, span)
 }
 

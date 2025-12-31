@@ -6,12 +6,13 @@
 package anthropic
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/tidwall/gjson"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 // MessagesRequest represents a request to the Anthropic Messages API.

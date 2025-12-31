@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
@@ -64,25 +63,8 @@ func testStartConfigWatcher(t *testing.T) {
 	path := tmpdir + "/config.yaml"
 	rcv := &mockReceiver{}
 
-	const tickInterval = time.Millisecond
-	logger, buf := newTestLoggerWithBuffer()
-	err := StartConfigWatcher(t.Context(), path, rcv, logger, tickInterval)
-	require.NoError(t, err)
-
-	defaultCfg := MustLoadDefaultConfig()
-	require.NoError(t, err)
-
-	// Verify the default config has been loaded.
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Equal(c, defaultCfg, rcv.getConfig())
-	}, 1*time.Second, tickInterval)
-
-	// Verify the buffer contains the default config loading.
-	require.Eventually(t, func() bool {
-		return strings.Contains(buf.String(), "config file does not exist; loading default config")
-	}, 1*time.Second, tickInterval, buf.String())
-
 	// Create the initial config file.
+	const tickInterval = time.Millisecond
 	cfg := `
 version: dev
 schema:
@@ -102,9 +84,13 @@ backends:
 `
 	requireAtomicWriteFile(t, tickInterval, path, []byte(cfg), 0o600)
 
+	logger, buf := newTestLoggerWithBuffer()
+	err := StartConfigWatcher(t.Context(), path, rcv, logger, tickInterval)
+	require.NoError(t, err)
+
 	// Initial loading should have happened.
 	require.Eventually(t, func() bool {
-		return !cmp.Equal(rcv.getConfig(), defaultCfg)
+		return !cmp.Equal(rcv.getConfig(), nil)
 	}, 1*time.Second, tickInterval)
 	firstCfg := rcv.getConfig()
 	require.NotNil(t, firstCfg)

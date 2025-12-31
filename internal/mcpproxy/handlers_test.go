@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"cmp"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -31,6 +30,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	"github.com/envoyproxy/ai-gateway/internal/tracing"
@@ -212,7 +212,7 @@ func TestServePOST_InitializeRequest(t *testing.T) {
 	initReq := &jsonrpc.Request{
 		Method: "initialize",
 		ID:     id,
-		Params: json.RawMessage(`{
+		Params: []byte(`{
     "protocolVersion": "2024-11-05",
     "capabilities": {
       "roots": {
@@ -279,7 +279,7 @@ func TestServePOST_JSONRPCRequest(t *testing.T) {
 		// expected body substring on non-200 status code, i.e. when expStatusCode != 200.
 		expBodyOnNonOKStatus string
 		params               any
-		validate             func(*testing.T, json.RawMessage)
+		validate             func(*testing.T, []byte)
 	}{
 		{
 			method:               "unknown-method",
@@ -309,7 +309,7 @@ func TestServePOST_JSONRPCRequest(t *testing.T) {
 			upstreamResponse: `{"jsonrpc":"2.0","id":"1","result":{"tools":[{"name":"my-tool"},{"name":"test-tool"}]}}`,
 			params:           &mcp.ListToolsParams{},
 			expStatusCode:    200,
-			validate: func(t *testing.T, raw json.RawMessage) {
+			validate: func(t *testing.T, raw []byte) {
 				var result mcp.ListToolsResult
 				require.NoError(t, json.Unmarshal(raw, &result))
 				require.Len(t, result.Tools, 1)
@@ -333,7 +333,7 @@ func TestServePOST_JSONRPCRequest(t *testing.T) {
 			upstreamResponse: `{"jsonrpc":"2.0","id":"1","result":{"prompts":[{"name":"my-prompt"}]}}`,
 			params:           &mcp.ListPromptsParams{},
 			expStatusCode:    200,
-			validate: func(t *testing.T, raw json.RawMessage) {
+			validate: func(t *testing.T, raw []byte) {
 				var result mcp.ListPromptsResult
 				require.NoError(t, json.Unmarshal(raw, &result))
 				require.Len(t, result.Prompts, 1)
@@ -351,7 +351,7 @@ func TestServePOST_JSONRPCRequest(t *testing.T) {
 			upstreamResponse: `{"jsonrpc":"2.0","id":"1","result":{"resources":[{"name":"my-resource"}]}}`,
 			params:           &mcp.ListResourcesParams{},
 			expStatusCode:    200,
-			validate: func(t *testing.T, raw json.RawMessage) {
+			validate: func(t *testing.T, raw []byte) {
 				var result mcp.ListResourcesResult
 				require.NoError(t, json.Unmarshal(raw, &result))
 				require.Len(t, result.Resources, 1)
@@ -363,7 +363,7 @@ func TestServePOST_JSONRPCRequest(t *testing.T) {
 			upstreamResponse: `{"jsonrpc":"2.0","id":"1","result":{"resourceTemplates":[{"name":"my-template"}]}}`,
 			params:           &mcp.ListResourceTemplatesParams{},
 			expStatusCode:    200,
-			validate: func(t *testing.T, raw json.RawMessage) {
+			validate: func(t *testing.T, raw []byte) {
 				var result mcp.ListResourceTemplatesResult
 				require.NoError(t, json.Unmarshal(raw, &result))
 				require.Len(t, result.ResourceTemplates, 1)
@@ -377,7 +377,7 @@ func TestServePOST_JSONRPCRequest(t *testing.T) {
 			params: &mcp.CompleteParams{
 				Ref: &mcp.CompleteReference{Name: "backend1__my-completion", Type: "ref/prompt"},
 			},
-			validate: func(t *testing.T, raw json.RawMessage) {
+			validate: func(t *testing.T, raw []byte) {
 				var result mcp.CompleteResult
 				require.NoError(t, json.Unmarshal(raw, &result))
 				fmt.Printf("Completion result: %+v\n", result)
@@ -461,7 +461,7 @@ func TestServePOST_JSONRPCRequest(t *testing.T) {
 			params:           &mcp.ReadResourceParams{URI: "backend1+file://my-resource"},
 			upstreamResponse: `{"jsonrpc":"2.0","id":"1","result":{"contents":[{"uri":"file://my-resource"}]}}`,
 			expStatusCode:    200,
-			validate: func(t *testing.T, raw json.RawMessage) {
+			validate: func(t *testing.T, raw []byte) {
 				var result mcp.ReadResourceResult
 				require.NoError(t, json.Unmarshal(raw, &result))
 				require.Len(t, result.Contents, 1)
@@ -862,7 +862,7 @@ func TestProxyResponseBody_JSONResponse(t *testing.T) {
 	proxy := newTestMCPProxy()
 
 	id := mustJSONRPCRequestID()
-	resp := &jsonrpc.Response{ID: id, Result: json.RawMessage(`{"test": "data"}`)}
+	resp := &jsonrpc.Response{ID: id, Result: []byte(`{"test": "data"}`)}
 	body, err := jsonrpc.EncodeMessage(resp)
 	require.NoError(t, err)
 
@@ -891,7 +891,7 @@ func TestProxyResponseBody_SSEResponse(t *testing.T) {
 	msg, err := jsonrpc.EncodeMessage(res)
 	require.NoError(t, err)
 
-	invalidSeverToClientReq := &jsonrpc.Request{Method: "roots/list", ID: id, Params: json.RawMessage(`{"invalid": "json"}`)}
+	invalidSeverToClientReq := &jsonrpc.Request{Method: "roots/list", ID: id, Params: []byte(`{"invalid": "json"}`)}
 	invalidReqBody, err := jsonrpc.EncodeMessage(invalidSeverToClientReq)
 	require.NoError(t, err)
 
@@ -936,7 +936,7 @@ func TestOnError(t *testing.T) {
 
 func TestRecordResponse(t *testing.T) {
 	t.Run("response", func(t *testing.T) {
-		msg := jsonrpc.Response{Result: json.RawMessage(`{"test": "data"}`)}
+		msg := jsonrpc.Response{Result: []byte(`{"test": "data"}`)}
 		proxy := newTestMCPProxy()
 		proxy.recordResponse(t.Context(), &msg)
 	})
@@ -980,7 +980,7 @@ func TestServePOST_NotificationsInitialized(t *testing.T) {
 	// Create notifications/initialized request.
 	req := &jsonrpc.Request{
 		Method: "notifications/initialized",
-		Params: json.RawMessage(`{}`),
+		Params: []byte(`{}`),
 	}
 	body, err := jsonrpc.EncodeMessage(req)
 	require.NoError(t, err)
@@ -1034,7 +1034,7 @@ func TestServePOST_InvalidToolCallParams(t *testing.T) {
 	// This should fail when trying to unmarshal into CallToolParams struct.
 	req := &jsonrpc.Request{
 		Method: "tools/call",
-		Params: json.RawMessage(`["invalid", "array", "params"]`), // array instead of object.
+		Params: []byte(`["invalid", "array", "params"]`), // array instead of object.
 	}
 	body, err := jsonrpc.EncodeMessage(req)
 	require.NoError(t, err)
@@ -1061,7 +1061,7 @@ func TestServePOST_InvalidPromptsGetParams(t *testing.T) {
 	// This should fail when trying to unmarshal into GetPromptParams struct.
 	req := &jsonrpc.Request{
 		Method: "prompts/get",
-		Params: json.RawMessage(`["invalid", "array", "params"]`), // array instead of object.
+		Params: []byte(`["invalid", "array", "params"]`), // array instead of object.
 	}
 	body, err := jsonrpc.EncodeMessage(req)
 	require.NoError(t, err)
@@ -1489,17 +1489,17 @@ func TestMCPProxy_maybeServerToClientRequestModify(t *testing.T) {
 		},
 		{
 			name:   "roots/list invalid param",
-			msg:    &jsonrpc.Request{Method: "roots/list", Params: json.RawMessage(`fewfwaf`)},
+			msg:    &jsonrpc.Request{Method: "roots/list", Params: []byte(`fewfwaf`)},
 			expErr: `failed to unmarshal roots/list params:`,
 		},
 		{
 			name:   "roots/list no id",
-			msg:    &jsonrpc.Request{Method: "roots/list", Params: json.RawMessage(`{"_meta": {"progressToken": 1345}}`)},
+			msg:    &jsonrpc.Request{Method: "roots/list", Params: []byte(`{"_meta": {"progressToken": 1345}}`)},
 			expErr: `missing id in the server->client request`,
 		},
 		{
 			name: "roots/list",
-			msg:  &jsonrpc.Request{ID: strID, Method: "roots/list", Params: json.RawMessage(`{"_meta": {"progressToken": 1345}}`)},
+			msg:  &jsonrpc.Request{ID: strID, Method: "roots/list", Params: []byte(`{"_meta": {"progressToken": 1345}}`)},
 			verify: func(t *testing.T, modified *jsonrpc.Request) {
 				params := &mcp.ListRootsParams{}
 				require.NoError(t, json.Unmarshal(modified.Params, params))
@@ -1511,7 +1511,7 @@ func TestMCPProxy_maybeServerToClientRequestModify(t *testing.T) {
 		},
 		{
 			name: "sampling/createMessage",
-			msg:  &jsonrpc.Request{ID: f64ID, Method: "sampling/createMessage", Params: json.RawMessage(`{"_meta": {"progressToken": "pt"}}`)},
+			msg:  &jsonrpc.Request{ID: f64ID, Method: "sampling/createMessage", Params: []byte(`{"_meta": {"progressToken": "pt"}}`)},
 			verify: func(t *testing.T, modified *jsonrpc.Request) {
 				params := &mcp.CreateMessageParams{}
 				require.NoError(t, json.Unmarshal(modified.Params, params))
@@ -1524,7 +1524,7 @@ func TestMCPProxy_maybeServerToClientRequestModify(t *testing.T) {
 		},
 		{
 			name: "elicitation/create",
-			msg:  &jsonrpc.Request{ID: f64ID, Method: "elicitation/create", Params: json.RawMessage(`{"_meta": {"progressToken": "pt"}}`)},
+			msg:  &jsonrpc.Request{ID: f64ID, Method: "elicitation/create", Params: []byte(`{"_meta": {"progressToken": "pt"}}`)},
 			verify: func(t *testing.T, modified *jsonrpc.Request) {
 				params := &mcp.CreateMessageParams{}
 				require.NoError(t, json.Unmarshal(modified.Params, params))
@@ -1761,13 +1761,13 @@ func Test_sendToAllBackendsAndAggregateResponsesImpl(t *testing.T) {
 	events := make(chan *sseEvent)
 	go func() {
 		for _, msg := range []jsonrpc.Message{
-			&jsonrpc.Response{ID: reqID, Result: json.RawMessage(`{"value": "foo"}`)},
+			&jsonrpc.Response{ID: reqID, Result: []byte(`{"value": "foo"}`)},
 			&jsonrpc.Request{Method: "notifications/roots/list_changed"},
 			// Empty result should be ignored.
 			&jsonrpc.Response{ID: reqID},
-			&jsonrpc.Response{ID: reqID, Result: json.RawMessage(`{"value": "bar"}`)},
+			&jsonrpc.Response{ID: reqID, Result: []byte(`{"value": "bar"}`)},
 			// Invalid result should be logged and ignored, not blocking the response.
-			&jsonrpc.Response{ID: reqID, Result: json.RawMessage(`invalidddddddddddddddddd`)},
+			&jsonrpc.Response{ID: reqID, Result: []byte(`invalidddddddddddddddddd`)},
 			// Error should be logged and ignored, not blocking the response.
 			&jsonrpc.Response{ID: reqID, Error: errors.New("some error")},
 		} {
@@ -1943,14 +1943,14 @@ func Test_checkToolCallError(t *testing.T) {
 		{
 			name:        "nil request",
 			req:         nil,
-			msg:         &jsonrpc.Response{Result: json.RawMessage(`{"isError": true}`)},
+			msg:         &jsonrpc.Response{Result: []byte(`{"isError": true}`)},
 			backendName: "backend1",
 			wantErr:     false,
 		},
 		{
 			name:        "not a tools/call request",
 			req:         &jsonrpc.Request{Method: "prompts/list"},
-			msg:         &jsonrpc.Response{Result: json.RawMessage(`{"isError": true}`)},
+			msg:         &jsonrpc.Response{Result: []byte(`{"isError": true}`)},
 			backendName: "backend1",
 			wantErr:     false,
 		},
@@ -1964,54 +1964,54 @@ func Test_checkToolCallError(t *testing.T) {
 		{
 			name:        "isError is false",
 			req:         &jsonrpc.Request{Method: "tools/call"},
-			msg:         &jsonrpc.Response{Result: json.RawMessage(`{"isError": false, "content": []}`)},
+			msg:         &jsonrpc.Response{Result: []byte(`{"isError": false, "content": []}`)},
 			backendName: "backend1",
 			wantErr:     false,
 		},
 		{
 			name:        "isError true with no content",
-			req:         &jsonrpc.Request{Method: "tools/call", Params: json.RawMessage(`{"name": "test-tool"}`)},
-			msg:         &jsonrpc.Response{Result: json.RawMessage(`{"isError": true, "content": []}`)},
+			req:         &jsonrpc.Request{Method: "tools/call", Params: []byte(`{"name": "test-tool"}`)},
+			msg:         &jsonrpc.Response{Result: []byte(`{"isError": true, "content": []}`)},
 			backendName: "backend1",
 			wantErr:     true,
 			errContains: "tool returned isError=true",
 		},
 		{
 			name:        "isError true with text content",
-			req:         &jsonrpc.Request{Method: "tools/call", Params: json.RawMessage(`{"name": "test-tool"}`)},
-			msg:         &jsonrpc.Response{Result: json.RawMessage(`{"isError": true, "content": [{"type": "text", "text": "missing required parameter: owner"}]}`)},
+			req:         &jsonrpc.Request{Method: "tools/call", Params: []byte(`{"name": "test-tool"}`)},
+			msg:         &jsonrpc.Response{Result: []byte(`{"isError": true, "content": [{"type": "text", "text": "missing required parameter: owner"}]}`)},
 			backendName: "backend1",
 			wantErr:     true,
 			errContains: "missing required parameter: owner",
 		},
 		{
 			name:        "isError true with multiple text contents",
-			req:         &jsonrpc.Request{Method: "tools/call", Params: json.RawMessage(`{"name": "test-tool"}`)},
-			msg:         &jsonrpc.Response{Result: json.RawMessage(`{"isError": true, "content": [{"type": "text", "text": "error 1"}, {"type": "text", "text": "error 2"}]}`)},
+			req:         &jsonrpc.Request{Method: "tools/call", Params: []byte(`{"name": "test-tool"}`)},
+			msg:         &jsonrpc.Response{Result: []byte(`{"isError": true, "content": [{"type": "text", "text": "error 1"}, {"type": "text", "text": "error 2"}]}`)},
 			backendName: "backend1",
 			wantErr:     true,
 			errContains: "error 1; error 2",
 		},
 		{
 			name:        "isError true with mixed content types",
-			req:         &jsonrpc.Request{Method: "tools/call", Params: json.RawMessage(`{"name": "test-tool"}`)},
-			msg:         &jsonrpc.Response{Result: json.RawMessage(`{"isError": true, "content": [{"type": "text", "text": "Error occurred"}, {"type": "text", "text": "Additional info"}]}`)},
+			req:         &jsonrpc.Request{Method: "tools/call", Params: []byte(`{"name": "test-tool"}`)},
+			msg:         &jsonrpc.Response{Result: []byte(`{"isError": true, "content": [{"type": "text", "text": "Error occurred"}, {"type": "text", "text": "Additional info"}]}`)},
 			backendName: "backend1",
 			wantErr:     true,
 			errContains: "Error occurred; Additional info",
 		},
 		{
 			name:        "isError true without tool name in params",
-			req:         &jsonrpc.Request{Method: "tools/call", Params: json.RawMessage(`{}`)},
-			msg:         &jsonrpc.Response{Result: json.RawMessage(`{"isError": true, "content": [{"type": "text", "text": "tool error"}]}`)},
+			req:         &jsonrpc.Request{Method: "tools/call", Params: []byte(`{}`)},
+			msg:         &jsonrpc.Response{Result: []byte(`{"isError": true, "content": [{"type": "text", "text": "tool error"}]}`)},
 			backendName: "backend1",
 			wantErr:     true,
 			errContains: "tool error",
 		},
 		{
 			name:        "isError true with invalid params",
-			req:         &jsonrpc.Request{Method: "tools/call", Params: json.RawMessage(`invalid json`)},
-			msg:         &jsonrpc.Response{Result: json.RawMessage(`{"isError": true, "content": [{"type": "text", "text": "tool error"}]}`)},
+			req:         &jsonrpc.Request{Method: "tools/call", Params: []byte(`invalid json`)},
+			msg:         &jsonrpc.Response{Result: []byte(`{"isError": true, "content": [{"type": "text", "text": "tool error"}]}`)},
 			backendName: "backend1",
 			wantErr:     true,
 			errContains: "tool error",

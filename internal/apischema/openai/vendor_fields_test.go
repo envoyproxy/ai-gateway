@@ -6,7 +6,6 @@
 package openai
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -16,6 +15,8 @@ import (
 	"github.com/openai/openai-go/v2/packages/param"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genai"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
@@ -143,7 +144,7 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 					"thinkingConfig":
 				}
 			}`),
-			expectedErrMsg: "invalid character",
+			expectedErrMsg: "Syntax error",
 		},
 		{
 			name: "Invalid vendor field type",
@@ -157,7 +158,7 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 				],
 				"generationConfig": "invalid_string_type"
 			}`),
-			expectedErrMsg: "cannot unmarshal string into Go struct field",
+			expectedErrMsg: "Mismatch type",
 		},
 		{
 			name: "Request with media resolution detail field",

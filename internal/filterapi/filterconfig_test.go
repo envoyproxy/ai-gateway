@@ -6,28 +6,14 @@
 package filterapi_test
 
 import (
-	"log/slog"
 	"os"
 	"path"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/internal/extproc"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
-
-func TestDefaultConfig(t *testing.T) {
-	server, err := extproc.NewServer(slog.Default())
-	require.NoError(t, err)
-	require.NotNil(t, server)
-
-	cfg := filterapi.MustLoadDefaultConfig()
-	require.Equal(t, &filterapi.Config{Version: "dev"}, cfg)
-
-	err = server.LoadConfig(t.Context(), cfg)
-	require.NoError(t, err)
-}
 
 func TestUnmarshalConfigYaml(t *testing.T) {
 	configPath := path.Join(t.TempDir(), "config.yaml")

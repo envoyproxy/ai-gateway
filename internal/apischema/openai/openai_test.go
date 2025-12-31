@@ -6,7 +6,6 @@
 package openai
 
 import (
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -17,6 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genai"
 	"k8s.io/utils/ptr"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func TestOpenAIChatCompletionContentPartUserUnionParamUnmarshal(t *testing.T) {

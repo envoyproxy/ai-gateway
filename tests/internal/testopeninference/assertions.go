@@ -7,7 +7,6 @@ package testopeninference
 
 import (
 	"cmp"
-	"encoding/json"
 	"reflect"
 	"regexp"
 	"slices"
@@ -19,6 +18,8 @@ import (
 	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/testing/protocmp"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 // RequireSpanEqual asserts that two spans are equal after normalizing variable fields
@@ -165,7 +166,7 @@ func normalizeJSON(s string) string {
 		return s
 	}
 	processedV := processValue(v)
-	b, err := json.Marshal(processedV)
+	b, err := json.MarshalForDeterministicTesting(processedV)
 	if err != nil {
 		return s
 	}
