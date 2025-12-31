@@ -6,7 +6,6 @@
 package translator
 
 import (
-	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -15,6 +14,7 @@ import (
 	"github.com/tidwall/sjson"
 
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 type alwaysErrReader struct{}

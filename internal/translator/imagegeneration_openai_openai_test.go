@@ -7,13 +7,13 @@ package translator
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func TestOpenAIToOpenAIImageTranslator_RequestBody_ModelOverrideAndPath(t *testing.T) {

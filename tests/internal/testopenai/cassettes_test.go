@@ -6,7 +6,6 @@
 package testopenai
 
 import (
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -15,6 +14,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 type cassetteTestCase[R any] struct {

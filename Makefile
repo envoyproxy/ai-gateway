@@ -31,7 +31,7 @@ HELM_CHART_VERSION ?= v0.0.0-latest
 # Arguments for go test. This can be used, for example, to run specific tests via
 # `GO_TEST_ARGS="-run TestName/foo/etc -v -race"`.
 GO_TEST_ARGS ?=
-# Arguments for go test in e2e tests in addition to GO_TEST_ARGS, applicable to test-e2e, test-extproc, and test-controller.
+# Arguments for go test in e2e tests in addition to GO_TEST_ARGS, applicable to test-e2e, test-data-plane, etc.
 GO_TEST_E2E_ARGS ?= -count=1 -timeout 30m
 
 ## help: Show this help info.
@@ -152,7 +152,7 @@ codegen: ## Generate typed client, listers, and informers for the API.
 # This runs the unit tests for the codebase, excluding the integration tests.
 .PHONY: test
 test: ## Run the unit tests for the codebase. This doesn't run the integration tests like test-* targets.
-	@PKGS=$$(go list ./... | grep -v -E "tests/controller|tests/crdcel|/tests/e2e|tests/extproc"); \
+	@PKGS=$$(go list ./... | grep -v -E "tests/controller|tests/crdcel|/tests/e2e|tests/data-plane"); \
 	  echo "Running unit tests for packages: $$PKGS"; \
 	  go test $(GO_TEST_ARGS) $$PKGS
 
@@ -171,21 +171,31 @@ test-crdcel: apigen ## Run the integration tests of CEL validation in CRD defini
 	echo "Run CEL Validation"
 	@go test ./tests/crdcel/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
 
-# This runs the end-to-end tests for extproc without controller or k8s at all.
-# It is useful for the fast iteration of the extproc code.
-#
-# This requires the extproc binary to be built as well as Envoy binary to be available in the PATH.
-# The EXTPROC_BIN environment variable is exported to tell tests to use the pre-built binary.
+# This runs the end-to-end tests for data plane without controller or k8s at all.
+# It is useful for the fast iteration of the data plane code.
 #
 # Since this is an integration test, we don't use -race, as it takes a very long
 # time to complete. For concurrency issues, use normal unit tests and race them.
-.PHONY: test-extproc # This requires the extproc binary to be built.
-test-extproc: build.extproc ## Run the integration tests for extproc without controller or k8s at all.
+.PHONY: test-data-plane
+test-data-plane: build.extproc ## Run the integration tests for data plane without controller or k8s at all.
 	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
 	@echo "Ensure func-e is built and Envoy is installed"
 	@@$(GO_TOOL) func-e run --version >/dev/null 2>&1
-	@echo "Run ExtProc test"
-	@EXTPROC_BIN=$(OUTPUT_DIR)/extproc-$(shell go env GOOS)-$(shell go env GOARCH) go test ./tests/extproc/... $(GO_TEST_E2E_ARGS)
+	@echo "Run Data Plane test"
+	@go test ./tests/data-plane/...  -bench=. -benchtime=1x $(GO_TEST_E2E_ARGS) # Run the benchmark test case once for additional coverage.
+
+# This runs the end-to-end tests for MCP without controller or k8s at all.
+# It is useful for the fast iteration of the data plane MCP code.
+#
+# Since this is an integration test, we don't use -race, as it takes a very long
+# time to complete. For concurrency issues, use normal unit tests and race them.
+.PHONY: test-data-plane-mcp
+test-data-plane-mcp: build.extproc ## Run the integration tests for MCP data plane without controller or k8s at all.
+	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
+	@echo "Ensure func-e is built and Envoy is installed"
+	@@$(GO_TOOL) func-e run --version >/dev/null 2>&1
+	@echo "Run Data Plane MCP test"
+	@go test ./tests/data-plane-mcp/... $(GO_TEST_E2E_ARGS)
 
 # This runs the end-to-end tests for the controller with EnvTest.
 #

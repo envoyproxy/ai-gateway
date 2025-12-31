@@ -1858,6 +1858,11 @@ Reference: https://modelcontextprotocol.io/specification/draft/basic/authorizati
   required="true"
   description="Target defines the authorization target for this rule.<br />If not specified, the rule will match all targets."
 /><ApiField
+  name="cel"
+  type="string"
+  required="false"
+  description="CEL specifies a Common Expression Language (CEL) expression evaluated for this rule.<br />The expression must return a boolean; evaluation errors or non-boolean results<br />are treated as `no match`.<br />Example CEL expressions:<br />	* `request.method == `POST``<br />	* `request.headers[`x-custom-header`] == `AllowedValue``<br />	* `request.mcp.tool in [`toolA`, `toolB`]`<br />Available attributes in the CEL expression:<br />	* request.method: HTTP method such as GET or POST. Type: string.<br />	* request.headers: map of headers with lowercased keys, first value only. Type: map[string]string.<br />	* request.headers_all: map of headers with lowercased keys, all values. Type: map[string][]string.<br />	* request.path: request path such as /mcp. Type: string.<br />	* request.auth.jwt.claims: JWT claims when a bearer JWT is present. Type: map[string]any.<br />	* request.auth.jwt.scopes: JWT scopes when a bearer JWT is present. Type: []string.<br />	* request.mcp.method: MCP method such as tools/list or tools/call. Type: string.<br />	* request.mcp.backend: upstream backend name (for example, `kiwi` or `github`). Type: string.<br />	* request.mcp.tool: tool name without backend prefix (for example, `list_issues`). Type: string.<br />	* request.mcp.params: parameters of the MCP method, including keys like `_meta` and `arguments`. Type: object.<br />Note: The CEL expression support is experimental, and the attributes<br />available to the expression may change in future releases."
+/><ApiField
   name="action"
   type="[AuthorizationAction](#authorizationaction)"
   required="false"
@@ -2159,11 +2164,6 @@ ToolCall represents a tool call in the MCP authorization target.
   type="string"
   required="true"
   description="Tool is the name of the tool."
-/><ApiField
-  name="when"
-  type="string"
-  required="false"
-  description="When is a CEL expression that must evaluate to true for the rule to match.<br />The expression is evaluated with a single variable `args` bound to the tool call arguments as a dynamic object.<br />Guard against missing fields with null checks (e.g., args[`foo`] != null && args[`foo`][`bar`] == `val`)."
 />
 
 

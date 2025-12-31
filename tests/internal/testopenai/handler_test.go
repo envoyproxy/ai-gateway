@@ -7,7 +7,6 @@ package testopenai
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -20,6 +19,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"gopkg.in/dnaeon/go-vcr.v4/pkg/cassette"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 var noopLogger = log.New(io.Discard, "[testopenai] ", 0)
