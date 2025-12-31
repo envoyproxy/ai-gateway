@@ -43,12 +43,12 @@ Choose your preferred provider and ensure you have:
 
 ## Provider-Specific Considerations
 
-| Feature             | Anthropic Direct | GCP Vertex AI | AWS Bedrock                                                                               |
-| ------------------- | ---------------- | ------------- | ----------------------------------------------------------------------------------------- |
-| Max Cache Points    | [4 per request](https://platform.claude.com/docs/en/build-with-claude/prompt-caching#when-to-use-multiple-breakpoints)         | 4 per request | [4 per request](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html) |
-| Min Token Threshold | 1,024+ tokens    | 1,024+ tokens | 1,024+ tokens                                                                             |
-| Billing Integration | Native           | Native        | Native                                                                                    |
-| Cache Types         | ephemeral        | ephemeral     | ephemeral                                                                                 |
+| Feature             | Anthropic Direct                                                                                                       | GCP Vertex AI | AWS Bedrock                                                                               |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------- | ----------------------------------------------------------------------------------------- |
+| Max Cache Points    | [4 per request](https://platform.claude.com/docs/en/build-with-claude/prompt-caching#when-to-use-multiple-breakpoints) | 4 per request | [4 per request](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html) |
+| Min Token Threshold | 1,024+ tokens                                                                                                          | 1,024+ tokens | 1,024+ tokens                                                                             |
+| Billing Integration | Native                                                                                                                 | Native        | Native                                                                                    |
+| Cache Types         | ephemeral                                                                                                              | ephemeral     | ephemeral                                                                                 |
 
 ## Example Requests
 
