@@ -16,6 +16,11 @@
     "url": "https://www.nutanix.com/"
   },
   {
+    "name": "Bloomberg",
+    "logoUrl": "/img/adopters/bloomberg.png",
+    "url": "https://www.TechAtBloomberg.com/opensource",
+
+  {
     "name": "Your Logo Here",
     "logoUrl": "/img/adopters/placeholder-company.svg",
     "description": "Add your logo to show support for the project",
