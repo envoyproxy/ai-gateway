@@ -24,9 +24,9 @@ spec:
       labels:
         {{- include "ai-gateway-helm.controller.selectorLabels" . | nindent 8 }}
     spec:
-      {{- with .Values.controller.imagePullSecrets }}
+      {{- with (include "ai-gateway-helm.controller.imagePullSecrets" .) }}
       imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
+        {{- . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "ai-gateway-helm.controller.serviceAccountName" . }}
       securityContext:
@@ -46,8 +46,8 @@ spec:
             - --extProcImage={{ .Values.extProc.image.repository }}:{{ .Values.extProc.image.tag | default .Chart.AppVersion }}
             - --extProcImagePullPolicy={{ .Values.extProc.imagePullPolicy }}
             - --extProcLogLevel={{ .Values.extProc.logLevel }}
-            {{- if .Values.extProc.imagePullSecrets }}
-            - --extProcImagePullSecrets={{ include "ai-gateway-helm.extProc.imagePullSecretsString" . }}
+            {{- with (include "ai-gateway-helm.extProc.imagePullSecretsString" .) }}
+            - --extProcImagePullSecrets={{ . }}
             {{- end }}
             {{- if .Values.controller.metricsRequestHeaderAttributes }}
             - --metricsRequestHeaderAttributes={{ .Values.controller.metricsRequestHeaderAttributes }}

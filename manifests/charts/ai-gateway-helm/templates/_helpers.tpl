@@ -113,9 +113,21 @@ Convert extraEnvVars array to semicolon-separated string for extProc
 Convert imagePullSecrets array to semicolon-separated string for extProc
 */}}
 {{- define "ai-gateway-helm.extProc.imagePullSecretsString" -}}
+{{- $src := default .Values.global.imagePullSecrets .Values.extProc.imagePullSecrets -}}
 {{- $secrets := list -}}
-{{- range .Values.extProc.imagePullSecrets -}}
+{{- range $src -}}
   {{- $secrets = append $secrets .name -}}
 {{- end -}}
 {{- join ";" $secrets -}}
 {{- end }}
+
+{{/*
+Returns controller imagePullSecrets if defined, otherwise falls back to global.imagePullSecrets.
+This returns YAML (not an object), intended to be used with `with (include ...)` in templates.
+*/}}
+{{- define "ai-gateway-helm.controller.imagePullSecrets" -}}
+{{- $src := default .Values.global.imagePullSecrets .Values.controller.imagePullSecrets -}}
+{{- if $src -}}
+{{- toYaml $src -}}
+{{- end -}}
+{{- end -}}
