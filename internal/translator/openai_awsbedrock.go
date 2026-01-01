@@ -237,10 +237,10 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 					Text: &textContentPart.Text,
 				}
 				chatMessage.Content = append(chatMessage.Content, block)
-				cachedBlock := getCachePoint(textContentPart.AnthropicContentFields)
-				if cachedBlock != nil {
+				cachePointBlock := getCachePoint(textContentPart.AnthropicContentFields)
+				if cachePointBlock != nil {
 					chatMessage.Content = append(chatMessage.Content, &awsbedrock.ContentBlock{
-						CachePoint: cachedBlock,
+						CachePoint: cachePointBlock,
 					})
 				}
 			} else if contentPart.OfImageURL != nil {
@@ -273,10 +273,10 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 					},
 				}
 				chatMessage.Content = append(chatMessage.Content, block)
-				cachedBlock := getCachePoint(imageContentPart.AnthropicContentFields)
-				if cachedBlock != nil {
+				cachePointBlock := getCachePoint(imageContentPart.AnthropicContentFields)
+				if cachePointBlock != nil {
 					chatMessage.Content = append(chatMessage.Content, &awsbedrock.ContentBlock{
-						CachePoint: cachedBlock,
+						CachePoint: cachePointBlock,
 					})
 				}
 			}
@@ -323,10 +323,10 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 					Text: content.Text,
 				}
 				contentBlocks = append(contentBlocks, block)
-				cachedBlock := getCachePoint(content.AnthropicContentFields)
-				if cachedBlock != nil {
+				cachePointBlock := getCachePoint(content.AnthropicContentFields)
+				if cachePointBlock != nil {
 					contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{
-						CachePoint: cachedBlock,
+						CachePoint: cachePointBlock,
 					})
 				}
 			}
@@ -344,10 +344,10 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 					},
 				}
 				contentBlocks = append(contentBlocks, block)
-				cachedBlock := getCachePoint(content.AnthropicContentFields)
-				if cachedBlock != nil {
+				cachePointBlock := getCachePoint(content.AnthropicContentFields)
+				if cachePointBlock != nil {
 					contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{
-						CachePoint: cachedBlock,
+						CachePoint: cachePointBlock,
 					})
 				}
 			}
@@ -361,10 +361,10 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 						},
 					}
 					contentBlocks = append(contentBlocks, block)
-					cachedBlock := getCachePoint(content.AnthropicContentFields)
-					if cachedBlock != nil {
+					cachePointBlock := getCachePoint(content.AnthropicContentFields)
+					if cachePointBlock != nil {
 						contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{
-							CachePoint: cachedBlock,
+							CachePoint: cachePointBlock,
 						})
 					}
 
@@ -380,10 +380,10 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 					Text: content.Refusal,
 				}
 				contentBlocks = append(contentBlocks, block)
-				cachedBlock := getCachePoint(content.AnthropicContentFields)
-				if cachedBlock != nil {
+				cachePointBlock := getCachePoint(content.AnthropicContentFields)
+				if cachePointBlock != nil {
 					contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{
-						CachePoint: cachedBlock,
+						CachePoint: cachePointBlock,
 					})
 				}
 			}
