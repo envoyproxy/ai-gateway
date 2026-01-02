@@ -203,7 +203,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			u.InputTokens,
 			u.OutputTokens,
 			u.CacheReadInputTokens,
-			u.CachedCreationInputTokens,
+			u.CacheCreationInputTokens,
 		)
 		// For message_start, we store the initial usage but don't add to the accumulated
 		// The message_delta event will contain the final totals
