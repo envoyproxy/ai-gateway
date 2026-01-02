@@ -7,7 +7,6 @@ package translator
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"strconv"
 	"testing"
@@ -17,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func Test_NewResponsesOpenAIToOpenAITranslator(t *testing.T) {

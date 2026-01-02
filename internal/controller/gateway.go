@@ -33,6 +33,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
+	"github.com/envoyproxy/ai-gateway/internal/version"
 )
 
 const (
@@ -309,7 +310,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	uuid string,
 ) error {
 	// Precondition: aiGatewayRoutes is not empty as we early return if it is empty.
-	ec := &filterapi.Config{UUID: uuid}
+	ec := &filterapi.Config{UUID: uuid, Version: version.Parse()}
 	var err error
 	llmCosts := map[string]struct{}{}
 	for i := range aiGatewayRoutes {
@@ -508,6 +509,7 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 
 				mcpRule := filterapi.MCPRouteAuthorizationRule{
 					Action: filterapi.AuthorizationAction(action),
+					CEL:    rule.CEL,
 				}
 
 				if rule.Source != nil {
@@ -537,7 +539,6 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 						tools[i] = filterapi.ToolCall{
 							Backend: tool.Backend,
 							Tool:    tool.Tool,
-							When:    tool.When,
 						}
 					}
 					mcpRule.Target = &filterapi.MCPAuthorizationTarget{

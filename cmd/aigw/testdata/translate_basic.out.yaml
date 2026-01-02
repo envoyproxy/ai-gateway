@@ -230,6 +230,7 @@ stringData:
       Name: some-cool-self-hosted-model
       OwnedBy: Envoy AI Gateway
     uuid: aigw-translate
+    version: dev
 ---
 apiVersion: v1
 kind: Secret

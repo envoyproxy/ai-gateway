@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -22,6 +23,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -273,6 +275,18 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		return fmt.Errorf("failed to get filter config secret: %w", err)
 	}
 
+	gatewayConfig := g.fetchGatewayConfig(ctx, gatewayName, gatewayNamespace)
+	var (
+		extProcSpec       *aigv1a1.GatewayConfigExtProc
+		kubernetesExtProc *egv1a1.KubernetesContainerSpec
+	)
+	if gatewayConfig != nil {
+		extProcSpec = gatewayConfig.Spec.ExtProc
+		if extProcSpec != nil {
+			kubernetesExtProc = extProcSpec.Kubernetes
+		}
+	}
+
 	// Now we construct the AI Gateway managed containers and volumes.
 	filterConfigSecretName := FilterConfigSecretPerGatewayName(gatewayName, gatewayNamespace)
 	filterConfigVolumeName := mutationNamePrefix + filterConfigSecretName
@@ -297,8 +311,7 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		podspec.ImagePullSecrets = append(podspec.ImagePullSecrets, g.extProcImagePullSecrets...)
 	}
 
-	// Currently, we have to set the resources for the extproc container at route level.
-	// We choose one of the routes to set the resources for the extproc container.
+	// TODO: remove after the next release v0.5.
 	var resources corev1.ResourceRequirements
 	for i := range routes.Items {
 		fc := routes.Items[i].Spec.FilterConfig
@@ -306,16 +319,44 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 			resources = *fc.ExternalProcessor.Resources
 		}
 	}
-	envVars := g.extProcExtraEnvVars
+
+	// GatewayConfig resources override route-scoped values when present.
+	if kubernetesExtProc != nil && kubernetesExtProc.Resources != nil {
+		resources = *kubernetesExtProc.Resources
+		g.logger.Info("using resources from GatewayConfig",
+			"gateway_name", gatewayName, "gatewayconfig_name", gatewayConfig.Name)
+	}
+
+	// Merge env vars with GatewayConfig overriding global.
+	envVars := g.mergeEnvVars(gatewayConfig)
+	image := g.resolveExtProcImage(extProcSpec)
+
 	const (
 		extProcAdminPort      = 1064
 		filterConfigMountPath = "/etc/filter-config"
 		filterConfigFullPath  = filterConfigMountPath + "/" + FilterConfigKeyInSecret
 	)
 	udsMountPath := filepath.Dir(g.udsPath)
+	securityContext := &corev1.SecurityContext{
+		AllowPrivilegeEscalation: ptr.To(false),
+		Capabilities: &corev1.Capabilities{
+			Drop: []corev1.Capability{"ALL"},
+		},
+		Privileged:   ptr.To(false),
+		RunAsGroup:   ptr.To(int64(65532)),
+		RunAsNonRoot: ptr.To(true),
+		RunAsUser:    ptr.To(int64(65532)),
+		SeccompProfile: &corev1.SeccompProfile{
+			Type: corev1.SeccompProfileTypeRuntimeDefault,
+		},
+	}
+	if kubernetesExtProc != nil && kubernetesExtProc.SecurityContext != nil {
+		securityContext = kubernetesExtProc.SecurityContext
+	}
+
 	container := corev1.Container{
 		Name:            extProcContainerName,
-		Image:           g.extProcImage,
+		Image:           image,
 		ImagePullPolicy: g.extProcImagePullPolicy,
 		Ports: []corev1.ContainerPort{
 			{Name: "aigw-admin", ContainerPort: extProcAdminPort},
@@ -334,21 +375,7 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 				ReadOnly:  true,
 			},
 		},
-		SecurityContext: &corev1.SecurityContext{
-			AllowPrivilegeEscalation: ptr.To(false),
-			Capabilities: &corev1.Capabilities{
-				Drop: []corev1.Capability{"ALL"},
-			},
-			Privileged: ptr.To(false),
-			// To allow the UDS to be reachable by the Envoy container, we need the group (not the user) to be the same.
-			// This group ID 65532 needs to be updated if the one of Envoy proxy has changed.
-			RunAsGroup:   ptr.To(int64(65532)),
-			RunAsNonRoot: ptr.To(true),
-			RunAsUser:    ptr.To(int64(55532)),
-			SeccompProfile: &corev1.SeccompProfile{
-				Type: corev1.SeccompProfileTypeRuntimeDefault,
-			},
-		},
+		SecurityContext: securityContext,
 		ReadinessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
@@ -364,6 +391,10 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 			FailureThreshold:    1,
 		},
 		Resources: resources,
+	}
+
+	if kubernetesExtProc != nil && len(kubernetesExtProc.VolumeMounts) > 0 {
+		container.VolumeMounts = append(container.VolumeMounts, kubernetesExtProc.VolumeMounts...)
 	}
 
 	if g.extProcAsSideCar {
@@ -386,4 +417,115 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		}
 	}
 	return nil
+}
+
+// fetchGatewayConfig returns the referenced GatewayConfig (if present).
+func (g *gatewayMutator) fetchGatewayConfig(ctx context.Context, gatewayName, gatewayNamespace string) *aigv1a1.GatewayConfig {
+	// Fetch the Gateway object.
+	var gateway gwapiv1.Gateway
+	if err := g.c.Get(ctx, client.ObjectKey{Name: gatewayName, Namespace: gatewayNamespace}, &gateway); err != nil {
+		if apierrors.IsNotFound(err) {
+			g.logger.Info("Gateway not found, using global default configuration",
+				"gateway_name", gatewayName, "gateway_namespace", gatewayNamespace)
+		} else {
+			g.logger.Error(err, "failed to get Gateway, using global default configuration",
+				"gateway_name", gatewayName, "gateway_namespace", gatewayNamespace)
+		}
+		return nil
+	}
+
+	configName, ok := gateway.Annotations[GatewayConfigAnnotationKey]
+	if !ok || configName == "" {
+		return nil
+	}
+
+	// Fetch the GatewayConfig (must be in same namespace as Gateway).
+	var gatewayConfig aigv1a1.GatewayConfig
+	if err := g.c.Get(ctx, client.ObjectKey{Name: configName, Namespace: gatewayNamespace}, &gatewayConfig); err != nil {
+		if apierrors.IsNotFound(err) {
+			g.logger.Info("GatewayConfig referenced by Gateway not found, using global defaults",
+				"gateway_name", gatewayName, "gatewayconfig_name", configName)
+		} else {
+			g.logger.Error(err, "failed to get GatewayConfig, using global defaults",
+				"gateway_name", gatewayName, "gatewayconfig_name", configName)
+		}
+		return nil
+	}
+
+	g.logger.Info("found GatewayConfig for Gateway",
+		"gateway_name", gatewayName, "gatewayconfig_name", configName)
+	return &gatewayConfig
+}
+
+// mergeEnvVars merges env vars; GatewayConfig overrides global while preserving order.
+func (g *gatewayMutator) mergeEnvVars(gatewayConfig *aigv1a1.GatewayConfig) []corev1.EnvVar {
+	result := make([]corev1.EnvVar, 0, len(g.extProcExtraEnvVars))
+	index := make(map[string]int, len(g.extProcExtraEnvVars))
+
+	// Add global env vars first (lowest precedence) preserving input order.
+	for _, env := range g.extProcExtraEnvVars {
+		result = append(result, env)
+		index[env.Name] = len(result) - 1
+	}
+
+	// Add GatewayConfig env vars (highest precedence) overriding in-place when names collide,
+	// otherwise append in the order they are defined.
+	if gatewayConfig != nil && gatewayConfig.Spec.ExtProc != nil && gatewayConfig.Spec.ExtProc.Kubernetes != nil {
+		for _, env := range gatewayConfig.Spec.ExtProc.Kubernetes.Env {
+			if i, ok := index[env.Name]; ok {
+				result[i] = env
+			} else {
+				result = append(result, env)
+				index[env.Name] = len(result) - 1
+			}
+		}
+	}
+
+	return result
+}
+
+// resolveExtProcImage chooses the extProc image honoring GatewayConfig overrides.
+func (g *gatewayMutator) resolveExtProcImage(extProc *aigv1a1.GatewayConfigExtProc) string {
+	if extProc == nil || extProc.Kubernetes == nil {
+		return g.extProcImage
+	}
+
+	kubernetesExtProc := extProc.Kubernetes
+	switch {
+	case kubernetesExtProc.Image != nil:
+		return *kubernetesExtProc.Image
+	case kubernetesExtProc.ImageRepository != nil:
+		return mergeImageWithRepository(g.extProcImage, *kubernetesExtProc.ImageRepository)
+	default:
+		return g.extProcImage
+	}
+}
+
+// mergeImageWithRepository reuses the tag or digest from baseImage when a repository override is provided.
+func mergeImageWithRepository(baseImage, repository string) string {
+	if repository == "" {
+		return baseImage
+	}
+
+	suffix := imageTagOrDigest(baseImage)
+	if suffix == "" {
+		return repository
+	}
+	return repository + suffix
+}
+
+// imageTagOrDigest extracts the tag (":vX") or digest ("@sha256:...") from an image reference.
+func imageTagOrDigest(image string) string {
+	if image == "" {
+		return ""
+	}
+	if idx := strings.Index(image, "@"); idx != -1 {
+		return image[idx:]
+	}
+	lastSlash := strings.LastIndex(image, "/")
+	lastColon := strings.LastIndex(image, ":")
+	if lastColon != -1 && lastColon > lastSlash {
+		return image[lastColon:]
+	}
+	return ""
 }

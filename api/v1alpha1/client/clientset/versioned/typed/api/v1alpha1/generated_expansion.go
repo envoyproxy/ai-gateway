@@ -13,4 +13,6 @@ type AIServiceBackendExpansion interface{}
 
 type BackendSecurityPolicyExpansion interface{}
 
+type GatewayConfigExpansion interface{}
+
 type MCPRouteExpansion interface{}

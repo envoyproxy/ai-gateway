@@ -26,6 +26,10 @@ linters:
               desc: use sigs.k8s.io/yaml instead
             - pkg: k8s.io/utils/pointer
               desc: use k8s.io/utils/ptr instead
+            - pkg: encoding/json
+              desc: use github.com/envoyproxy/ai-gateway/internal/json instead
+            - pkg: github.com/bytedance/sonic
+              desc: use github.com/envoyproxy/ai-gateway/internal/json instead
     govet:
       disable:
         - fieldalignment

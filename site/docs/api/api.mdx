@@ -21,6 +21,8 @@ API group.
 - [AIServiceBackendList](#aiservicebackendlist)
 - [BackendSecurityPolicy](#backendsecuritypolicy)
 - [BackendSecurityPolicyList](#backendsecuritypolicylist)
+- [GatewayConfig](#gatewayconfig)
+- [GatewayConfigList](#gatewayconfiglist)
 - [MCPRoute](#mcproute)
 - [MCPRouteList](#mcproutelist)
 
@@ -286,6 +288,103 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
 />
 
 
+#### GatewayConfig
+
+
+
+**Appears in:**
+- [GatewayConfigList](#gatewayconfiglist)
+
+GatewayConfig provides configuration for the AI Gateway external processor
+container that is deployed alongside the Gateway.
+
+A GatewayConfig is referenced by a Gateway via the annotation
+"aigateway.envoyproxy.io/gateway-config". The GatewayConfig must be in the
+same namespace as the Gateway that references it.
+
+This allows gateway-level configuration of the external processor, including
+environment variables (e.g., for tracing configuration) and resource requirements.
+
+Multiple Gateways can reference the same GatewayConfig to share configuration.
+
+Environment Variable Precedence:
+When merging environment variables, the following precedence applies (highest to lowest):
+ 1. GatewayConfig.Spec.ExtProc.Kubernetes.Env (this resource)
+ 2. Global controller flags (extProcExtraEnvVars)
+
+If the same environment variable name exists in both sources, the GatewayConfig
+value takes precedence.
+
+##### Fields
+
+<ApiField
+  name="apiVersion"
+  type="String"
+  required="true"
+  description="We are on version <code>aigateway.envoyproxy.io/v1alpha1</code> of the API."
+/>
+
+<ApiField
+  name="kind"
+  type="String"
+  required="true"
+  description="This is a <code>GatewayConfig</code> resource"
+/>
+
+<ApiField
+  name="metadata"
+  type="[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#objectmeta-v1-meta)"
+  required="true"
+  description="Refer to Kubernetes API documentation for fields of `metadata`."
+/><ApiField
+  name="spec"
+  type="[GatewayConfigSpec](#gatewayconfigspec)"
+  required="true"
+  description="Spec defines the configuration for the external processor."
+/><ApiField
+  name="status"
+  type="[GatewayConfigStatus](#gatewayconfigstatus)"
+  required="true"
+  description="Status defines the status of the GatewayConfig."
+/>
+
+
+#### GatewayConfigList
+
+
+
+
+GatewayConfigList contains a list of GatewayConfig.
+
+##### Fields
+
+<ApiField
+  name="apiVersion"
+  type="String"
+  required="true"
+  description="We are on version <code>aigateway.envoyproxy.io/v1alpha1</code> of the API."
+/>
+
+<ApiField
+  name="kind"
+  type="String"
+  required="true"
+  description="This is a <code>GatewayConfigList</code> resource"
+/>
+
+<ApiField
+  name="metadata"
+  type="[ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#listmeta-v1-meta)"
+  required="true"
+  description="Refer to Kubernetes API documentation for fields of `metadata`."
+/><ApiField
+  name="items"
+  type="[GatewayConfig](#gatewayconfig) array"
+  required="true"
+  description=""
+/>
+
+
 #### MCPRoute
 
 
@@ -400,6 +499,9 @@ MCPRouteList contains a list of MCPRoute.
 - [GCPServiceAccountImpersonationConfig](#gcpserviceaccountimpersonationconfig)
 - [GCPWorkloadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)
 - [GCPWorkloadIdentityProvider](#gcpworkloadidentityprovider)
+- [GatewayConfigExtProc](#gatewayconfigextproc)
+- [GatewayConfigSpec](#gatewayconfigspec)
+- [GatewayConfigStatus](#gatewayconfigstatus)
 - [HTTPBodyField](#httpbodyfield)
 - [HTTPBodyMutation](#httpbodymutation)
 - [HTTPHeaderMutation](#httpheadermutation)
@@ -468,7 +570,7 @@ MCPRouteList contains a list of MCPRoute.
   name="resources"
   type="[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#resourcerequirements-v1-core)"
   required="false"
-  description="Resources required by the external processor container.<br />More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/<br />Note: when multiple AIGatewayRoute resources are attached to the same Gateway, and each<br />AIGatewayRoute has a different resource configuration, the ai-gateway will pick one of them<br />to configure the resource requirements of the external processor container."
+  description="Resources required by the external processor container.<br />More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/<br />Deprecated: Use GatewayConfig for gateway-scoped resource configuration instead.<br />Configure resources using GatewayConfig.spec.extProc.resources and reference it<br />from the Gateway via the `aigateway.envoyproxy.io/gateway-config` annotation.<br />This field will be removed in a future version.<br />Note: when multiple AIGatewayRoute resources are attached to the same Gateway, and each<br />AIGatewayRoute has a different resource configuration, the ai-gateway will pick one of them<br />to configure the resource requirements of the external processor container."
 />
 
 
@@ -1343,6 +1445,69 @@ GCPCredentialsFile specifies the service account key json file to authenticate w
 
 
 
+#### GatewayConfigExtProc
+
+
+
+**Appears in:**
+- [GatewayConfigSpec](#gatewayconfigspec)
+
+GatewayConfigExtProc holds runtime-specific configuration for the external processor.
+
+##### Fields
+
+
+
+<ApiField
+  name="kubernetes"
+  type="[KubernetesContainerSpec](#kubernetescontainerspec)"
+  required="false"
+  description="Kubernetes defines the configuration for running the external processor as a Kubernetes container."
+/>
+
+
+#### GatewayConfigSpec
+
+
+
+**Appears in:**
+- [GatewayConfig](#gatewayconfig)
+
+GatewayConfigSpec defines the configuration for the AI Gateway.
+
+##### Fields
+
+
+
+<ApiField
+  name="extProc"
+  type="[GatewayConfigExtProc](#gatewayconfigextproc)"
+  required="false"
+  description="ExtProc defines the configuration for the external processor container."
+/>
+
+
+#### GatewayConfigStatus
+
+
+
+**Appears in:**
+- [GatewayConfig](#gatewayconfig)
+
+GatewayConfigStatus defines the observed state of GatewayConfig.
+
+##### Fields
+
+
+
+<ApiField
+  name="conditions"
+  type="[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#condition-v1-meta) array"
+  required="false"
+  description="Conditions describe the current conditions of the GatewayConfig."
+/>
+
+
 #### HTTPBodyField
 
 
@@ -1693,6 +1858,11 @@ Reference: https://modelcontextprotocol.io/specification/draft/basic/authorizati
   required="true"
   description="Target defines the authorization target for this rule.<br />If not specified, the rule will match all targets."
 /><ApiField
+  name="cel"
+  type="string"
+  required="false"
+  description="CEL specifies a Common Expression Language (CEL) expression evaluated for this rule.<br />The expression must return a boolean; evaluation errors or non-boolean results<br />are treated as `no match`.<br />Example CEL expressions:<br />	* `request.method == `POST``<br />	* `request.headers[`x-custom-header`] == `AllowedValue``<br />	* `request.mcp.tool in [`toolA`, `toolB`]`<br />Available attributes in the CEL expression:<br />	* request.method: HTTP method such as GET or POST. Type: string.<br />	* request.headers: map of headers with lowercased keys, first value only. Type: map[string]string.<br />	* request.headers_all: map of headers with lowercased keys, all values. Type: map[string][]string.<br />	* request.path: request path such as /mcp. Type: string.<br />	* request.auth.jwt.claims: JWT claims when a bearer JWT is present. Type: map[string]any.<br />	* request.auth.jwt.scopes: JWT scopes when a bearer JWT is present. Type: []string.<br />	* request.mcp.method: MCP method such as tools/list or tools/call. Type: string.<br />	* request.mcp.backend: upstream backend name (for example, `kiwi` or `github`). Type: string.<br />	* request.mcp.tool: tool name without backend prefix (for example, `list_issues`). Type: string.<br />	* request.mcp.params: parameters of the MCP method, including keys like `_meta` and `arguments`. Type: object.<br />Note: The CEL expression support is experimental, and the attributes<br />available to the expression may change in future releases."
+/><ApiField
   name="action"
   type="[AuthorizationAction](#authorizationaction)"
   required="false"
@@ -1994,11 +2164,6 @@ ToolCall represents a tool call in the MCP authorization target.
   type="string"
   required="true"
   description="Tool is the name of the tool."
-/><ApiField
-  name="when"
-  type="string"
-  required="false"
-  description="When is a CEL expression that must evaluate to true for the rule to match.<br />The expression is evaluated with a single variable `args` bound to the tool call arguments as a dynamic object.<br />Guard against missing fields with null checks (e.g., args[`foo`] != null && args[`foo`][`bar`] == `val`)."
 />
 
 

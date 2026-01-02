@@ -6,13 +6,13 @@
 package openai
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 // parseSSEToChunks converts raw SSE data to a slice of ChatCompletionResponseChunk objects.

@@ -6,7 +6,6 @@
 package anthropic
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -14,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"

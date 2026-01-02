@@ -14,6 +14,7 @@ import (
 
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func TestAnthropicToAnthropic_RequestBody(t *testing.T) {
@@ -151,4 +152,48 @@ data: {"type":"message_stop"       }`
 	expected = tokenUsageFrom(10, 1, 16, 26)
 	require.Equal(t, expected, tokenUsage)
 	require.Equal(t, "claude-sonnet-4-5-20250929", responseModel)
+}
+
+func TestAnthropicToAnthropic_ResponseError(t *testing.T) {
+	t.Run("json error", func(t *testing.T) {
+		translator := NewAnthropicToAnthropicTranslator("", "")
+		require.NotNil(t, translator)
+		hdrs, body, err := translator.ResponseError(map[string]string{
+			"content-type": "application/json",
+		}, strings.NewReader(`{"error":{"code":"invalid_request_error","message":"The model 'claude-unknown' does not exist."}}`))
+		require.Nil(t, hdrs)
+		require.Nil(t, body)
+		require.NoError(t, err)
+	})
+	for _, tc := range []struct {
+		statusCode int
+		expType    string
+	}{
+		{400, "invalid_request_error"},
+		{401, "authentication_error"},
+		{403, "permission_error"},
+		{404, "not_found_error"},
+		{429, "rate_limit_error"},
+		{500, "internal_server_error"},
+		{503, "service_unavailable_error"},
+	} {
+		t.Run("non-json error "+strconv.Itoa(tc.statusCode), func(t *testing.T) {
+			translator := NewAnthropicToAnthropicTranslator("", "")
+			require.NotNil(t, translator)
+			hdrs, body, err := translator.ResponseError(map[string]string{
+				"content-type": "text/plain",
+				":status":      strconv.Itoa(tc.statusCode),
+			}, strings.NewReader("Some error occurred"))
+			require.NoError(t, err)
+			require.Len(t, hdrs, 2)
+			require.Equal(t, "application/json", hdrs[0].Value())
+			require.Equal(t, strconv.Itoa(len(body)), hdrs[1].Value())
+			var resp anthropicschema.ErrorResponse
+			err = json.Unmarshal(body, &resp)
+			require.NoError(t, err)
+			require.Equal(t, "error", resp.Type)
+			require.Equal(t, tc.expType, resp.Error.Type)
+			require.Equal(t, "Some error occurred", resp.Error.Message)
+		})
+	}
 }

@@ -8,7 +8,6 @@ package translator
 import (
 	"cmp"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
 	"strconv"
@@ -25,6 +24,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )

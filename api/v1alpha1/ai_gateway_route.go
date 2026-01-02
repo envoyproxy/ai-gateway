@@ -400,6 +400,11 @@ type AIGatewayFilterConfigExternalProcessor struct {
 	// Resources required by the external processor container.
 	// More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
 	//
+	// Deprecated: Use GatewayConfig for gateway-scoped resource configuration instead.
+	// Configure resources using GatewayConfig.spec.extProc.resources and reference it
+	// from the Gateway via the "aigateway.envoyproxy.io/gateway-config" annotation.
+	// This field will be removed in a future version.
+	//
 	// Note: when multiple AIGatewayRoute resources are attached to the same Gateway, and each
 	// AIGatewayRoute has a different resource configuration, the ai-gateway will pick one of them
 	// to configure the resource requirements of the external processor container.

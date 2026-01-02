@@ -6,7 +6,6 @@
 package openai
 
 import (
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -17,6 +16,7 @@ import (
 	oteltrace "go.opentelemetry.io/otel/trace"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 )

@@ -185,7 +185,7 @@ func TestWithTestUpstream(t *testing.T) {
 	// This is a regression test that ensures that stream=true requests are processed in a streaming manner.
 	// https://github.com/envoyproxy/ai-gateway/pull/1026
 	//
-	// We have almost identical test in the tests/extproc.
+	// We have almost identical test in the tests/data-plane.
 	t.Run("stream non blocking", func(t *testing.T) {
 		fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
 		defer fwd.Kill()

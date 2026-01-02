@@ -7,7 +7,6 @@ package tokenprovider
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -23,6 +22,8 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func TestOidcTokenProvider_GetToken(t *testing.T) {

@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -213,6 +214,7 @@ func TestExtProcStartupMessage(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
 	require.NoError(t, os.WriteFile(configPath, []byte(`
+version: dev
 backends:
 - name: openai
   schema:
@@ -256,7 +258,13 @@ backends:
 		errCh <- Main(ctx, args, stderrW)
 	}()
 
-	// block until the context is canceled or an error occurs.
-	err := <-errCh
-	require.NoError(t, err)
+	timeout, cancelTimeout := context.WithTimeout(t.Context(), time.Second*3)
+	defer cancelTimeout()
+	select {
+	case <-ctx.Done():
+	case <-timeout.Done():
+		t.Fatal("timeout waiting for startup message")
+	case err := <-errCh:
+		require.NoError(t, err, "extproc exited with error before startup message")
+	}
 }

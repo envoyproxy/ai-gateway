@@ -7,7 +7,6 @@ package tracing
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -23,6 +22,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
