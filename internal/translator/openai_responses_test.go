@@ -246,6 +246,10 @@ func TestResponsesOpenAIToOpenAITranslator_ResponseBody(t *testing.T) {
 		cachedTokens, ok := tokenUsage.CachedInputTokens()
 		require.True(t, ok)
 		require.Equal(t, uint32(2), cachedTokens)
+
+		cachedWriteTokens, ok := tokenUsage.CachedWriteInputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(0), cachedWriteTokens)
 	})
 
 	t.Run("non-streaming response with fallback model", func(t *testing.T) {
@@ -358,6 +362,10 @@ data: [DONE]
 		cachedTokens, ok := tokenUsage.CachedInputTokens()
 		require.True(t, ok)
 		require.Equal(t, uint32(2), cachedTokens)
+
+		cachedWriteTokens, ok := tokenUsage.CachedWriteInputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(0), cachedWriteTokens)
 	})
 
 	t.Run("streaming response with fallback model", func(t *testing.T) {
@@ -453,6 +461,10 @@ data: [DONE]
 
 		cachedTokens, _ := tokenUsage.CachedInputTokens()
 		require.Equal(t, uint32(2), cachedTokens)
+
+		cachedWriteTokens, ok := tokenUsage.CachedWriteInputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(0), cachedWriteTokens)
 	})
 
 	t.Run("streaming read error", func(t *testing.T) {
@@ -541,6 +553,10 @@ func TestResponses_HandleNonStreamingResponse(t *testing.T) {
 
 		cachedTokens, _ := tokenUsage.CachedInputTokens()
 		require.Equal(t, uint32(2), cachedTokens)
+
+		cachedWriteTokens, ok := tokenUsage.CachedWriteInputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(0), cachedWriteTokens)
 	})
 
 	t.Run("invalid JSON", func(t *testing.T) {
@@ -602,6 +618,10 @@ data: [DONE]
 		cachedTokens, ok := tokenUsage.CachedInputTokens()
 		require.True(t, ok)
 		require.Equal(t, uint32(2), cachedTokens)
+
+		cachedWriteTokens, ok := tokenUsage.CachedWriteInputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(0), cachedWriteTokens)
 	})
 
 	t.Run("model extraction", func(t *testing.T) {
@@ -666,9 +686,11 @@ data: [DONE]
 		_, outputSet := tokenUsage.OutputTokens()
 		_, totalSet := tokenUsage.TotalTokens()
 		_, cachedSet := tokenUsage.CachedInputTokens()
+		_, cachedWriteSet := tokenUsage.CachedWriteInputTokens()
 
 		require.False(t, totalSet)
 		require.False(t, cachedSet)
+		require.False(t, cachedWriteSet)
 		require.False(t, inputSet)
 		require.False(t, outputSet)
 	})

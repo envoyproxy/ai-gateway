@@ -707,6 +707,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 				if usage.CacheReadInputTokens != nil {
 					tokenUsage.SetCachedInputTokens(uint32(*usage.CacheReadInputTokens)) //nolint:gosec
 				}
+				if usage.CacheWriteInputTokens != nil {
+					tokenUsage.SetCachedWriteInputTokens(uint32(*usage.CacheWriteInputTokens))
+				}
 			}
 			oaiEvent, ok := o.convertEvent(event)
 			if !ok {
@@ -749,11 +752,16 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 			PromptTokens:     bedrockResp.Usage.InputTokens,
 			CompletionTokens: bedrockResp.Usage.OutputTokens,
 		}
+		if openAIResp.Usage.PromptTokensDetails == nil {
+			openAIResp.Usage.PromptTokensDetails = &openai.PromptTokensDetails{}
+		}
 		if bedrockResp.Usage.CacheReadInputTokens != nil {
 			tokenUsage.SetCachedInputTokens(uint32(*bedrockResp.Usage.CacheReadInputTokens)) //nolint:gosec
-			openAIResp.Usage.PromptTokensDetails = &openai.PromptTokensDetails{
-				CachedTokens: *bedrockResp.Usage.CacheReadInputTokens,
-			}
+			openAIResp.Usage.PromptTokensDetails.CachedTokens = *bedrockResp.Usage.CacheReadInputTokens
+		}
+		if bedrockResp.Usage.CacheWriteInputTokens != nil {
+			tokenUsage.SetCachedWriteInputTokens(uint32(*bedrockResp.Usage.CacheWriteInputTokens)) //nolint:gosec
+			openAIResp.Usage.PromptTokensDetails.CachedWriteTokens = *bedrockResp.Usage.CacheWriteInputTokens
 		}
 	}
 

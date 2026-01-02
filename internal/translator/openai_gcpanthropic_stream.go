@@ -110,6 +110,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 		p.tokenUsage.SetTotalTokens(inputTokens + outputTokens)
 		totalTokens, _ := p.tokenUsage.TotalTokens()
 		cachedTokens, _ := p.tokenUsage.CachedInputTokens()
+		cachedWriteTokens, _ := p.tokenUsage.CachedWriteInputTokens()
 		finalChunk := openai.ChatCompletionResponseChunk{
 			ID:      p.activeMessageID,
 			Created: p.created,
@@ -120,7 +121,8 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 				CompletionTokens: int(outputTokens),
 				TotalTokens:      int(totalTokens),
 				PromptTokensDetails: &openai.PromptTokensDetails{
-					CachedTokens: int(cachedTokens),
+					CachedTokens:      int(cachedTokens),
+					CachedWriteTokens: int(cachedWriteTokens),
 				},
 			},
 			Model: p.requestModel,
@@ -289,12 +291,13 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if output, ok := usage.OutputTokens(); ok {
 			p.tokenUsage.AddOutputTokens(output)
 		}
-		// Update input tokens to include any cache tokens from delta
+		// Update input tokens to include read cache tokens from delta
 		if cached, ok := usage.CachedInputTokens(); ok {
 			p.tokenUsage.AddInputTokens(cached)
 			// Accumulate any additional cache tokens from delta
 			p.tokenUsage.AddCachedInputTokens(cached)
 		}
+		// Update input tokens to include write cache tokens from delta
 		if cached, ok := usage.CachedWriteInputTokens(); ok {
 			p.tokenUsage.AddInputTokens(cached)
 			// Accumulate any additional cache tokens from delta

@@ -1715,14 +1715,18 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 				expectedUsage = tokenUsageFrom(
 					int32(tt.output.Usage.PromptTokens), // nolint:gosec
 					-1,
+					-1,
 					int32(tt.output.Usage.CompletionTokens), // nolint:gosec
 					int32(tt.output.Usage.TotalTokens),      // nolint:gosec
 				)
 				if tt.input.Usage.CacheReadInputTokens != nil {
 					expectedUsage.SetCachedInputTokens(uint32(tt.output.Usage.PromptTokensDetails.CachedTokens)) //nolint:gosec
 				}
+				if tt.input.Usage.CacheWriteInputTokens != nil {
+					expectedUsage.SetCachedWriteInputTokens(uint32(tt.output.Usage.PromptTokensDetails.CachedWriteTokens)) //nolint:gosec
+				}
 			} else {
-				expectedUsage = tokenUsageFrom(-1, -1, -1, -1)
+				expectedUsage = tokenUsageFrom(-1, -1, -1, -1, -1)
 			}
 			require.Equal(t, expectedUsage, usedToken)
 		})

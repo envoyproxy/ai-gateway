@@ -542,7 +542,7 @@ func buildDynamicMetadata(config *filterapi.RuntimeConfig, costs *metrics.TokenU
 		case filterapi.LLMRequestCostTypeCEL:
 			in, _ := costs.InputTokens()
 			cachedIn, _ := costs.CachedInputTokens()
-			cachedWrite, _ := costs.CachedInputWriteTokens()
+			cachedWrite, _ := costs.CachedWriteInputTokens()
 			out, _ := costs.OutputTokens()
 			total, _ := costs.TotalTokens()
 			costU64, err := llmcostcel.EvaluateProgram(

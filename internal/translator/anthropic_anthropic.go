@@ -181,6 +181,9 @@ func (a *anthropicToAnthropicTranslator) updateTotalTokens() {
 		if _, cachedSet := a.streamingTokenUsage.CachedInputTokens(); !cachedSet {
 			a.streamingTokenUsage.SetCachedInputTokens(0)
 		}
+		if _, cachedSet := a.streamingTokenUsage.CachedWriteInputTokens(); !cachedSet {
+			a.streamingTokenUsage.SetCachedWriteInputTokens(0)
+		}
 	}
 
 	if inputSet && outputSet {
