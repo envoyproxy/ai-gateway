@@ -913,7 +913,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
         "total_tokens": 25
     }
 }`),
-			wantTokenUsage: tokenUsageFrom(10, 10, 0, 15, 25),
+			wantTokenUsage: tokenUsageFrom(10, 10, -1, 15, 25),
 		},
 		{
 			name: "response with safety ratings",
@@ -993,7 +993,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
         "total_tokens": 20
     }
 }`),
-			wantTokenUsage: tokenUsageFrom(8, 0, 0, 12, 20),
+			wantTokenUsage: tokenUsageFrom(8, 0, -1, 12, 20),
 		},
 		{
 			name: "empty response",
