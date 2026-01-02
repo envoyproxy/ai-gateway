@@ -853,14 +853,16 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 			return chunk, false
 		}
 		chunk.Usage = &openai.Usage{
-			TotalTokens:      event.Usage.TotalTokens,
-			PromptTokens:     event.Usage.InputTokens,
-			CompletionTokens: event.Usage.OutputTokens,
+			TotalTokens:         event.Usage.TotalTokens,
+			PromptTokens:        event.Usage.InputTokens,
+			CompletionTokens:    event.Usage.OutputTokens,
+			PromptTokensDetails: &openai.PromptTokensDetails{},
 		}
 		if event.Usage.CacheReadInputTokens != nil {
-			chunk.Usage.PromptTokensDetails = &openai.PromptTokensDetails{
-				CachedTokens: *event.Usage.CacheReadInputTokens,
-			}
+			chunk.Usage.PromptTokensDetails.CachedTokens = *event.Usage.CacheReadInputTokens
+		}
+		if event.Usage.CacheWriteInputTokens != nil {
+			chunk.Usage.PromptTokensDetails.CachedWriteTokens = *event.Usage.CacheWriteInputTokens
 		}
 	// messageStart event.
 	case awsbedrock.ConverseStreamEventTypeMessageStart.String():
