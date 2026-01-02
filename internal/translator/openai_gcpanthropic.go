@@ -833,7 +833,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 		usage.InputTokens,
 		usage.OutputTokens,
 		usage.CacheReadInputTokens,
-		usage.CachedCreationInputTokens,
+		usage.CacheCreationInputTokens,
 	)
 	inputTokens, _ := tokenUsage.InputTokens()
 	outputTokens, _ := tokenUsage.OutputTokens()
