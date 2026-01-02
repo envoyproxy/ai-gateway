@@ -135,10 +135,10 @@ func TestExtractLLMTokenUsageFromUsage(t *testing.T) {
 		{
 			name: "non-streaming response without cache",
 			usage: anthropic.Usage{
-				InputTokens:               150,
-				OutputTokens:              75,
-				CacheReadInputTokens:      0,
-				CachedCreationInputTokens: 0,
+				InputTokens:              150,
+				OutputTokens:             75,
+				CacheReadInputTokens:     0,
+				CacheCreationInputTokens: 0,
 			},
 			expectedInputTokens:          150,
 			expectedOutputTokens:         75,
@@ -149,10 +149,10 @@ func TestExtractLLMTokenUsageFromUsage(t *testing.T) {
 		{
 			name: "non-streaming response with cache read",
 			usage: anthropic.Usage{
-				InputTokens:               100,
-				OutputTokens:              50,
-				CacheReadInputTokens:      25,
-				CachedCreationInputTokens: 0,
+				InputTokens:              100,
+				OutputTokens:             50,
+				CacheReadInputTokens:     25,
+				CacheCreationInputTokens: 0,
 			},
 			expectedInputTokens:          125, // 100 + 0 + 25
 			expectedOutputTokens:         50,
@@ -163,10 +163,10 @@ func TestExtractLLMTokenUsageFromUsage(t *testing.T) {
 		{
 			name: "non-streaming response with both cache types",
 			usage: anthropic.Usage{
-				InputTokens:               90,
-				OutputTokens:              60,
-				CacheReadInputTokens:      15,
-				CachedCreationInputTokens: 10,
+				InputTokens:              90,
+				OutputTokens:             60,
+				CacheReadInputTokens:     15,
+				CacheCreationInputTokens: 10,
 			},
 			expectedInputTokens:          115, // 90 + 10 + 15
 			expectedOutputTokens:         60,
@@ -202,10 +202,10 @@ func TestExtractLLMTokenUsageFromDeltaUsage(t *testing.T) {
 		{
 			name: "message_delta event with final totals",
 			usage: anthropic.MessageDeltaUsage{
-				InputTokens:               250,
-				OutputTokens:              120,
-				CacheReadInputTokens:      30,
-				CachedCreationInputTokens: 0,
+				InputTokens:              250,
+				OutputTokens:             120,
+				CacheReadInputTokens:     30,
+				CacheCreationInputTokens: 0,
 			},
 			expectedInputTokens:          280, // 250 + 0 + 30
 			expectedOutputTokens:         120,
@@ -216,10 +216,10 @@ func TestExtractLLMTokenUsageFromDeltaUsage(t *testing.T) {
 		{
 			name: "message_delta event with only output tokens",
 			usage: anthropic.MessageDeltaUsage{
-				InputTokens:               0,
-				OutputTokens:              85,
-				CacheReadInputTokens:      0,
-				CachedCreationInputTokens: 0,
+				InputTokens:              0,
+				OutputTokens:             85,
+				CacheReadInputTokens:     0,
+				CacheCreationInputTokens: 0,
 			},
 			expectedInputTokens:          0,
 			expectedOutputTokens:         85,
@@ -230,10 +230,10 @@ func TestExtractLLMTokenUsageFromDeltaUsage(t *testing.T) {
 		{
 			name: "message_delta with cache creation tokens",
 			usage: anthropic.MessageDeltaUsage{
-				InputTokens:               150,
-				OutputTokens:              75,
-				CacheReadInputTokens:      10,
-				CachedCreationInputTokens: 5,
+				InputTokens:              150,
+				OutputTokens:             75,
+				CacheReadInputTokens:     10,
+				CacheCreationInputTokens: 5,
 			},
 			expectedInputTokens:          165, // 150 + 5 + 10
 			expectedOutputTokens:         75,
