@@ -95,7 +95,7 @@ func TestAnthropicToAnthropic_ResponseBody_non_streaming(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, headerMutation)
 	require.Nil(t, bodyMutation)
-	expected := tokenUsageFrom(9, 0, -1, 16, 25)
+	expected := tokenUsageFrom(9, 0, 0, 16, 25)
 	require.Equal(t, expected, tokenUsage)
 	require.Equal(t, "claude-sonnet-4-5-20250929", responseModel)
 }
