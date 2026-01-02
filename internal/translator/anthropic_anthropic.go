@@ -103,7 +103,7 @@ func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body 
 		int64(usage.InputTokens),
 		int64(usage.OutputTokens),
 		int64(usage.CacheReadInputTokens),
-		int64(usage.CachedCreationInputTokens),
+		int64(usage.CacheCreationInputTokens),
 	)
 	if span != nil {
 		span.RecordResponse(anthropicResp)

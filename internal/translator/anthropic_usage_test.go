@@ -248,7 +248,7 @@ func TestExtractLLMTokenUsageFromDeltaUsage(t *testing.T) {
 			result := metrics.ExtractTokenUsageFromAnthropic(tt.usage.InputTokens,
 				tt.usage.OutputTokens,
 				tt.usage.CacheReadInputTokens,
-				tt.usage.CachedCreationInputTokens,
+				tt.usage.CacheCreationInputTokens,
 			)
 			expected := tokenUsageFrom(tt.expectedInputTokens, int32(tt.expectedCachedTokens), int32(tt.expectedCachedCreationTokens), tt.expectedOutputTokens, tt.expectedTotalTokens)
 			assert.Equal(t, expected, result)
