@@ -913,7 +913,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
         "total_tokens": 25
     }
 }`),
-			wantTokenUsage: tokenUsageFrom(10, 10, -1, 15, 25),
+			wantTokenUsage: tokenUsageFrom(10, 10, 0, 15, 25),
 		},
 		{
 			name: "response with safety ratings",
@@ -993,7 +993,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
         "total_tokens": 20
     }
 }`),
-			wantTokenUsage: tokenUsageFrom(8, 0, -1, 12, 20),
+			wantTokenUsage: tokenUsageFrom(8, 0, 0, 12, 20),
 		},
 		{
 			name: "empty response",
@@ -1025,7 +1025,7 @@ data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_t
 
 data: [DONE]
 `),
-			wantTokenUsage: tokenUsageFrom(5, 0, -1, 3, 8),
+			wantTokenUsage: tokenUsageFrom(5, 0, 0, 3, 8),
 		},
 		{
 			name: "response with model version field",
@@ -1080,7 +1080,7 @@ data: [DONE]
         "total_tokens": 14
     }
 }`),
-			wantTokenUsage: tokenUsageFrom(6, 0, -1, 8, 14),
+			wantTokenUsage: tokenUsageFrom(6, 0, 0, 8, 14),
 		},
 
 		{
@@ -1214,7 +1214,7 @@ data: [DONE]
     }
 }`),
 
-			wantTokenUsage: tokenUsageFrom(10, 10, -1, 15, 25),
+			wantTokenUsage: tokenUsageFrom(10, 10, 0, 15, 25),
 		},
 		{
 			name: "stream chunks with thought summary",
@@ -1236,7 +1236,7 @@ data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_t
 
 data: [DONE]
 `),
-			wantTokenUsage: tokenUsageFrom(5, 0, -1, 3, 8),
+			wantTokenUsage: tokenUsageFrom(5, 0, 0, 3, 8),
 		},
 	}
 
