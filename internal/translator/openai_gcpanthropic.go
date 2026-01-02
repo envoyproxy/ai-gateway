@@ -833,13 +833,13 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 		usage.InputTokens,
 		usage.OutputTokens,
 		usage.CacheReadInputTokens,
-		usage.CacheCreationInputTokens,
+		usage.CachedCreationInputTokens,
 	)
 	inputTokens, _ := tokenUsage.InputTokens()
 	outputTokens, _ := tokenUsage.OutputTokens()
 	totalTokens, _ := tokenUsage.TotalTokens()
 	cachedTokens, _ := tokenUsage.CachedInputTokens()
-	cacheWriteTokens, _ := tokenUsage.CachedWriteInputTokens()
+	cacheWriteTokens, _ := tokenUsage.CachedCreationInputTokens()
 	openAIResp.Usage = openai.Usage{
 		CompletionTokens: int(outputTokens),
 		PromptTokens:     int(inputTokens),

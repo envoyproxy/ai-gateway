@@ -404,8 +404,8 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					fc.Type = filterapi.LLMRequestCostTypeInputToken
 				case aigv1a1.LLMRequestCostTypeCachedInputToken:
 					fc.Type = filterapi.LLMRequestCostTypeCachedInputToken
-				case aigv1a1.LLMRequestCostTypeCachedWriteInputToken:
-					fc.Type = filterapi.LLMRequestCostTypeCachedWriteInputToken
+				case aigv1a1.LLMRequestCostTypeCachedCreationInputToken:
+					fc.Type = filterapi.LLMRequestCostTypeCachedCreationInputToken
 				case aigv1a1.LLMRequestCostTypeOutputToken:
 					fc.Type = filterapi.LLMRequestCostTypeOutputToken
 				case aigv1a1.LLMRequestCostTypeTotalToken:

@@ -103,7 +103,7 @@ func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body 
 		int64(usage.InputTokens),
 		int64(usage.OutputTokens),
 		int64(usage.CacheReadInputTokens),
-		int64(usage.CacheCreationInputTokens),
+		int64(usage.CachedCreationInputTokens),
 	)
 	if span != nil {
 		span.RecordResponse(anthropicResp)
@@ -148,7 +148,7 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent(s tracing.M
 					int64(u.InputTokens),
 					int64(u.OutputTokens),
 					int64(u.CacheReadInputTokens),
-					int64(u.CacheCreationInputTokens),
+					int64(u.CachedCreationInputTokens),
 				)
 				// Override with message_start usage (contains input tokens and initial state)
 				a.streamingTokenUsage.Override(messageStartUsage)
@@ -181,8 +181,8 @@ func (a *anthropicToAnthropicTranslator) updateTotalTokens() {
 		if _, cachedSet := a.streamingTokenUsage.CachedInputTokens(); !cachedSet {
 			a.streamingTokenUsage.SetCachedInputTokens(0)
 		}
-		if _, cachedSet := a.streamingTokenUsage.CachedWriteInputTokens(); !cachedSet {
-			a.streamingTokenUsage.SetCachedWriteInputTokens(0)
+		if _, cachedSet := a.streamingTokenUsage.CachedCreationInputTokens(); !cachedSet {
+			a.streamingTokenUsage.SetCachedCreationInputTokens(0)
 		}
 	}
 

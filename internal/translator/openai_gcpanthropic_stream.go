@@ -110,7 +110,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 		p.tokenUsage.SetTotalTokens(inputTokens + outputTokens)
 		totalTokens, _ := p.tokenUsage.TotalTokens()
 		cachedTokens, _ := p.tokenUsage.CachedInputTokens()
-		cachedWriteTokens, _ := p.tokenUsage.CachedWriteInputTokens()
+		cachedCreationTokens, _ := p.tokenUsage.CachedCreationInputTokens()
 		finalChunk := openai.ChatCompletionResponseChunk{
 			ID:      p.activeMessageID,
 			Created: p.created,
@@ -121,8 +121,8 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 				CompletionTokens: int(outputTokens),
 				TotalTokens:      int(totalTokens),
 				PromptTokensDetails: &openai.PromptTokensDetails{
-					CachedTokens:      int(cachedTokens),
-					CachedWriteTokens: int(cachedWriteTokens),
+					CachedTokens:         int(cachedTokens),
+					CachedCreationTokens: int(cachedCreationTokens),
 				},
 			},
 			Model: p.requestModel,
@@ -203,7 +203,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			u.InputTokens,
 			u.OutputTokens,
 			u.CacheReadInputTokens,
-			u.CacheCreationInputTokens,
+			u.CachedCreationInputTokens,
 		)
 		// For message_start, we store the initial usage but don't add to the accumulated
 		// The message_delta event will contain the final totals
@@ -213,7 +213,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if cached, ok := usage.CachedInputTokens(); ok {
 			p.tokenUsage.SetCachedInputTokens(cached)
 		}
-		if cachedWrite, ok := usage.CachedWriteInputTokens(); ok {
+		if cachedCreation, ok := usage.CachedWriteInputTokens(); ok {
 			p.tokenUsage.SetCachedWriteInputTokens(cachedWrite)
 		}
 
@@ -285,7 +285,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			u.InputTokens,
 			u.OutputTokens,
 			u.CacheReadInputTokens,
-			u.CacheCreationInputTokens,
+			u.CachedCreationInputTokens,
 		)
 		// For message_delta, accumulate the incremental output tokens
 		if output, ok := usage.OutputTokens(); ok {

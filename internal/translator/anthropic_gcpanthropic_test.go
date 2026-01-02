@@ -570,7 +570,7 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases(t *te
 	}
 }
 
-func tokenUsageFrom(in, cachedInput, cachedWriteInput, out, total int32) metrics.TokenUsage {
+func tokenUsageFrom(in, cachedInput, cachedCreationInput, out, total int32) metrics.TokenUsage {
 	var usage metrics.TokenUsage
 	if in >= 0 {
 		usage.SetInputTokens(uint32(in))
@@ -578,8 +578,8 @@ func tokenUsageFrom(in, cachedInput, cachedWriteInput, out, total int32) metrics
 	if cachedInput >= 0 {
 		usage.SetCachedInputTokens(uint32(cachedInput))
 	}
-	if cachedWriteInput >= 0 {
-		usage.SetCachedWriteInputTokens(uint32(cachedWriteInput))
+	if cachedCreationInput >= 0 {
+		usage.SetCachedCreationInputTokens(uint32(cachedCreationInput))
 	}
 	if out >= 0 {
 		usage.SetOutputTokens(uint32(out))
@@ -638,7 +638,7 @@ data: {"type": "message_stop"}
 	outputTokens, outputSet := tokenUsage.OutputTokens()
 	totalTokens, totalSet := tokenUsage.TotalTokens()
 	cachedTokens, cachedSet := tokenUsage.CachedInputTokens()
-	cachedWriteTokens, cachedWriteSet := tokenUsage.CachedWriteInputTokens()
+	cachedCreationTokens, cachedWriteSet := tokenUsage.CachedWriteInputTokens()
 
 	// Assertions
 	assert.True(t, inputSet, "Input tokens should be set")
@@ -653,8 +653,8 @@ data: {"type": "message_stop"}
 	assert.True(t, cachedSet, "Cached tokens should be set")
 	assert.Equal(t, uint32(5), cachedTokens, "No cached tokens in this scenario")
 
-	assert.True(t, cachedWriteSet, "Cached write tokens should be set")
-	assert.Equal(t, uint32(1), cachedWriteTokens, "No cached write tokens in this scenario")
+	assert.True(t, cachedWriteSet, "cache creation tokens should be set")
+	assert.Equal(t, uint32(1), cachedWriteTokens, "No cache creation tokens in this scenario")
 
 	_, _, tokenUsage, _, err = translator.ResponseBody(nil, strings.NewReader(contentBlockStartChunk), false, nil)
 	require.NoError(t, err)
@@ -686,6 +686,6 @@ data: {"type": "message_stop"}
 	assert.True(t, cachedSet, "Cached tokens should be set")
 	assert.Equal(t, uint32(5), cachedTokens, "No cached tokens in this scenario")
 
-	assert.True(t, cachedWriteSet, "Cached write tokens should be set")
-	assert.Equal(t, uint32(1), cachedWriteTokens, "No cached write tokens in this scenario")
+	assert.True(t, cachedWriteSet, "cache creation tokens should be set")
+	assert.Equal(t, uint32(1), cachedWriteTokens, "No cache creation tokens in this scenario")
 }

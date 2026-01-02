@@ -141,8 +141,8 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]str
 	tokenUsage.SetOutputTokens(uint32(resp.Usage.CompletionTokens)) //nolint:gosec
 	tokenUsage.SetTotalTokens(uint32(resp.Usage.TotalTokens))       //nolint:gosec
 	if resp.Usage.PromptTokensDetails != nil {
-		tokenUsage.SetCachedInputTokens(uint32(resp.Usage.PromptTokensDetails.CachedTokens))           //nolint:gosec
-		tokenUsage.SetCachedWriteInputTokens(uint32(resp.Usage.PromptTokensDetails.CachedWriteTokens)) //nolint:gosec
+		tokenUsage.SetCachedInputTokens(uint32(resp.Usage.PromptTokensDetails.CachedTokens))                 //nolint:gosec
+		tokenUsage.SetCachedCreationInputTokens(uint32(resp.Usage.PromptTokensDetails.CachedCreationTokens)) //nolint:gosec
 	}
 	// Fallback to request model for test or non-compliant OpenAI backends
 	responseModel = cmp.Or(resp.Model, o.requestModel)

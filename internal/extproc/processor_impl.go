@@ -533,7 +533,7 @@ func buildDynamicMetadata(config *filterapi.RuntimeConfig, costs *metrics.TokenU
 			cost, _ = costs.InputTokens()
 		case filterapi.LLMRequestCostTypeCachedInputToken:
 			cost, _ = costs.CachedInputTokens()
-		case filterapi.LLMRequestCostTypeCachedWriteInputToken:
+		case filterapi.LLMRequestCostTypeCachedCreationInputToken:
 			cost, _ = costs.CachedWriteInputTokens()
 		case filterapi.LLMRequestCostTypeOutputToken:
 			cost, _ = costs.OutputTokens()

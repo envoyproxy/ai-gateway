@@ -170,8 +170,8 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(_ map[strin
 		tokenUsage.SetOutputTokens(uint32(gcpResp.UsageMetadata.CandidatesTokenCount))         //nolint:gosec
 		tokenUsage.SetTotalTokens(uint32(gcpResp.UsageMetadata.TotalTokenCount))               //nolint:gosec
 		tokenUsage.SetCachedInputTokens(uint32(gcpResp.UsageMetadata.CachedContentTokenCount)) //nolint:gosec
-		// Gemini does not return cached write input tokens, set to 0.
-		tokenUsage.SetCachedWriteInputTokens(0)
+		// Gemini does not return cache creation input tokens, set to 0.
+		tokenUsage.SetCachedCreationInputTokens(0)
 	}
 
 	if span != nil {

@@ -1474,8 +1474,8 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 					PromptTokens:     10,
 					CompletionTokens: 20,
 					PromptTokensDetails: &openai.PromptTokensDetails{
-						CachedTokens:      5,
-						CachedWriteTokens: 7,
+						CachedTokens:         5,
+						CachedCreationTokens: 7,
 					},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{

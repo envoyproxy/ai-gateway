@@ -71,10 +71,10 @@ func TestRecordTokenUsage(t *testing.T) {
 			attribute.Key(genaiAttributeResponseModel).String("test-model"),
 		}
 		// gen_ai.token.type values - https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/#common-attributes
-		inputAttrs            = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput))...)
-		outputAttrs           = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeOutput))...)
-		cachedInputAttrs      = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeCachedInput))...)
-		cachedWriteInputAttrs = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeCachedWriteInput))...)
+		inputAttrs               = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput))...)
+		outputAttrs              = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeOutput))...)
+		cachedInputAttrs         = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeCachedInput))...)
+		cachedCreationInputAttrs = attribute.NewSet(append(attrs, attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeCachedCreationInput))...)
 	)
 
 	pm.SetOriginalModel("test-model")
@@ -82,7 +82,7 @@ func TestRecordTokenUsage(t *testing.T) {
 	pm.SetResponseModel("test-model")
 	pm.SetBackend(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}})
 	pm.RecordTokenUsage(t.Context(), TokenUsage{
-		inputTokens: 10, cachedInputTokens: 8, cachedWriteInputTokens: 2, outputTokens: 5,
+		inputTokens: 10, cachedInputTokens: 8, cachedCreationInputTokens: 2, outputTokens: 5,
 		inputTokenSet: true, cachedInputTokenSet: true, outputTokenSet: true,
 	}, nil)
 
@@ -94,7 +94,7 @@ func TestRecordTokenUsage(t *testing.T) {
 	assert.Equal(t, uint64(1), count)
 	assert.Equal(t, 8.0, sum)
 
-	count, sum = testotel.GetHistogramValues(t, mr, genaiMetricClientTokenUsage, cachedWriteInputAttrs)
+	count, sum = testotel.GetHistogramValues(t, mr, genaiMetricClientTokenUsage, cachedCreationInputAttrs)
 	assert.Equal(t, uint64(1), count)
 	assert.Equal(t, 2.0, sum)
 

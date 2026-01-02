@@ -179,7 +179,7 @@ func (o *openAIToOpenAITranslatorV1Responses) extractUsageFromBufferEvent(span t
 				tokenUsage.SetOutputTokens(uint32(respComplEvent.Response.Usage.OutputTokens))                         // #nosec G115
 				tokenUsage.SetTotalTokens(uint32(respComplEvent.Response.Usage.TotalTokens))                           // #nosec G115
 				tokenUsage.SetCachedInputTokens(uint32(respComplEvent.Response.Usage.InputTokensDetails.CachedTokens)) // #nosec G115
-				// Openai does not support cached write response.
+				// Openai does not support cache creation response.
 				tokenUsage.SetCachedWriteInputTokens(uint32(0)) // #nosec G115
 			}
 			// Record streaming chunk to span if tracing is enabled.

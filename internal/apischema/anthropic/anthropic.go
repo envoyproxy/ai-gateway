@@ -437,7 +437,7 @@ const (
 // so we use float64 to be able to unmarshal both 1234 and 1234.0 without errors.
 type Usage struct {
 	// The number of input tokens used to create the cache entry.
-	CacheCreationInputTokens float64 `json:"cache_creation_input_tokens"`
+	CachedCreationInputTokens float64 `json:"cache_creation_input_tokens"`
 	// The number of input tokens read from the cache.
 	CacheReadInputTokens float64 `json:"cache_read_input_tokens"`
 	// The number of input tokens which were used.
