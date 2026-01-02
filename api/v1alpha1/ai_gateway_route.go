@@ -108,7 +108,7 @@ type AIGatewayRouteSpec struct {
 	//	  type: TotalToken
 	//	- metadataKey: llm_cached_input_token
 	//	  type: CachedInputToken
-	// - metadataKey: llm_cache_creation_input_token
+	// - metadataKey: llm_cached_creation_input_token
 	//    type: CachedCreationInputToken
 	// ```
 	// Then, with the following BackendTrafficPolicy of Envoy Gateway, you can have three

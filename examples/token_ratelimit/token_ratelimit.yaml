@@ -51,7 +51,7 @@ spec:
       type: InputToken
     - metadataKey: llm_cached_input_token
       type: CachedInputToken
-    - metadataKey: llm_cache_creation_input_token
+    - metadataKey: llm_cached_creation_input_token
       type: CachedCreationInputToken
     - metadataKey: llm_output_token
       type: OutputToken

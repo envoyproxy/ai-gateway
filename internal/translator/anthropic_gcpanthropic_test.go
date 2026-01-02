@@ -611,7 +611,7 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingFullScenario(t 
 	// 3. message_delta at the end provides output_tokens=5 but no input_tokens
 	// 4. message_stop ends the stream
 	messageStartChunk := `event: message_start
-data: {"type": "message_start", "message": {"id": "msg_123", "type": "message", "role": "assistant", "content": [], "model": "claude-3-sonnet-20240229", "usage": {"input_tokens": 15, "cache_read_input_tokens": 5,  "cache_creation_input_tokens": 1, "output_tokens": 0}}}
+data: {"type": "message_start", "message": {"id": "msg_123", "type": "message", "role": "assistant", "content": [], "model": "claude-3-sonnet-20240229", "usage": {"input_tokens": 15, "cache_read_input_tokens": 5,  "cached_creation_input_tokens": 1, "output_tokens": 0}}}
 `
 	contentBlockStartChunk := `event: content_block_start
 data: {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}

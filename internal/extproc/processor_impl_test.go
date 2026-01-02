@@ -275,7 +275,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 						{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"}},
 						{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeInputToken, MetadataKey: "input_token_usage"}},
 						{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCachedInputToken, MetadataKey: "cached_input_token_usage"}},
-						{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCachedCreationInputToken, MetadataKey: "cache_creation_input_token_usage"}},
+						{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCachedCreationInputToken, MetadataKey: "cached_creation_input_token_usage"}},
 						{
 							CELProg:        celProgInt,
 							LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCEL, MetadataKey: "cel_int"},
@@ -312,7 +312,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		require.Equal(t, float64(1), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
 			GetStructValue().Fields["cached_input_token_usage"].GetNumberValue())
 		require.Equal(t, float64(3), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
-			GetStructValue().Fields["cache_creation_input_token_usage"].GetNumberValue())
+			GetStructValue().Fields["cached_creation_input_token_usage"].GetNumberValue())
 		require.Equal(t, float64(54321), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
 			GetStructValue().Fields["cel_int"].GetNumberValue())
 		require.Equal(t, float64(9999), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].

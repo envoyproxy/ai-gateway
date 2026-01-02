@@ -26,7 +26,7 @@ func TestNewProgram(t *testing.T) {
 		require.NoError(t, err)
 	})
 	t.Run("variables", func(t *testing.T) {
-		prog, err := NewProgram("model == 'cool_model' ?  (input_tokens - cached_input_tokens - cache_creation_input_tokens) * output_tokens  : total_tokens")
+		prog, err := NewProgram("model == 'cool_model' ?  (input_tokens - cached_input_tokens - cached_creation_input_tokens) * output_tokens  : total_tokens")
 		require.NoError(t, err)
 		v, err := EvaluateProgram(prog, "cool_model", "cool_backend", 200, 100, 1, 2, 3)
 		require.NoError(t, err)

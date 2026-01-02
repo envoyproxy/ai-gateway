@@ -19,8 +19,8 @@ const (
 	celModelNameKey                 = "model"
 	celBackendKey                   = "backend"
 	celInputTokensKey               = "input_tokens"
-	celCachedInputTokensKey         = "cached_input_tokens"         // #nosec G101
-	celCachedCreationInputTokensKey = "cache_creation_input_tokens" // #nosec G101
+	celCachedInputTokensKey         = "cached_input_tokens"          // #nosec G101
+	celCachedCreationInputTokensKey = "cached_creation_input_tokens" // #nosec G101
 	celOutputTokensKey              = "output_tokens"
 	celTotalTokensKey               = "total_tokens"
 )

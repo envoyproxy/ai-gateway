@@ -261,7 +261,7 @@ func (u *TokenUsage) Override(other TokenUsage) {
 
 // ExtractTokenUsageFromAnthropic extracts the correct token usage from Anthropic API response.
 // According to Claude API documentation, total input tokens is the summation of:
-// input_tokens + cache_creation_input_tokens + cache_read_input_tokens
+// input_tokens + cached_creation_input_tokens + cache_read_input_tokens
 //
 // This function works for both streaming and non-streaming responses by accepting
 // the common usage fields that exist in all Anthropic usage structures.

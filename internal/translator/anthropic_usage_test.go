@@ -282,7 +282,7 @@ func TestExtractLLMTokenUsage_ClaudeAPIDocumentationCompliance(t *testing.T) {
 	t.Run("claude API documentation example", func(t *testing.T) {
 		// This test verifies compliance with Claude API documentation:
 		// "Total input tokens in a request is the summation of input_tokens,
-		// cache_creation_input_tokens, and cache_read_input_tokens".
+		// cached_creation_input_tokens, and cache_read_input_tokens".
 
 		inputTokens := int64(100)
 		cachedCreationTokens := int64(20)
@@ -297,7 +297,7 @@ func TestExtractLLMTokenUsage_ClaudeAPIDocumentationCompliance(t *testing.T) {
 		inputTokensVal, ok := result.InputTokens()
 		assert.True(t, ok)
 		assert.Equal(t, expectedTotalInput, inputTokensVal,
-			"InputTokens should be sum of input_tokens + cache_creation_input_tokens + cache_read_input_tokens")
+			"InputTokens should be sum of input_tokens + cached_creation_input_tokens + cache_read_input_tokens")
 
 		cachedTokens, ok := result.CachedInputTokens()
 		assert.True(t, ok)
@@ -307,7 +307,7 @@ func TestExtractLLMTokenUsage_ClaudeAPIDocumentationCompliance(t *testing.T) {
 		cachedCreationTokens, ok := result.CachedCreationInputTokens()
 		assert.True(t, ok)
 		assert.Equal(t, cachedCreationTokens, cachedCreationTokens,
-			"CachedCreationInputTokens should be cache_creation_input_tokens")
+			"CachedCreationInputTokens should be cached_creation_input_tokens")
 
 		// Total tokens should be input + output.
 		expectedTotal := expectedTotalInput + uint32(outputTokens)

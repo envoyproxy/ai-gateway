@@ -114,7 +114,7 @@ type LLMRequestCost struct {
 	//	* backend: the backend name in the form of "name.namespace". Type: string.
 	//	* input_tokens: the number of input tokens. Type: unsigned integer.
 	//	* cached_input_tokens: the number of cached read input tokens. Type: unsigned integer.
-	//	* cache_creation_input_tokens: the number of cache creation input tokens. Type: unsigned integer.
+	//	* cached_creation_input_tokens: the number of cache creation input tokens. Type: unsigned integer.
 	//	* output_tokens: the number of output tokens. Type: unsigned integer.
 	//	* total_tokens: the total number of tokens. Type: unsigned integer.
 	//
@@ -122,7 +122,7 @@ type LLMRequestCost struct {
 	//
 	// 	* "model == 'llama' ?  input_tokens + output_token * 0.5 : total_tokens"
 	//	* "backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens"
-	//	* "backend == 'bar.default' ?  (input_tokens - cached_input_tokens) + cached_input_tokens * 0.1 + cache_creation_input_tokens * 1.25 + output_tokens : total_tokens"
+	//	* "backend == 'bar.default' ?  (input_tokens - cached_input_tokens) + cached_input_tokens * 0.1 + cached_creation_input_tokens * 1.25 + output_tokens : total_tokens"
 	//	* "input_tokens + output_tokens + total_tokens"
 	//	* "input_tokens * output_tokens"
 	//
