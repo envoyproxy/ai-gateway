@@ -166,7 +166,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 	} {
 		t.Run("error/"+tc.errLog, func(t *testing.T) {
 			var buf bytes.Buffer
-            s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
+			s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
 			err = s.maybeModifyCluster(tc.c)
 			require.NoError(t, err)
 			t.Logf("buf: %s", buf.String())
@@ -208,7 +208,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 			mmd.Fields[internalapi.InternalMetadataBackendNameKey].GetStringValue(),
 		)
 	})
-	
+
 	t.Run("skip backendRef with weight zero", func(t *testing.T) {
 		c := newFakeClient()
 
@@ -246,7 +246,11 @@ func Test_maybeModifyCluster(t *testing.T) {
 			},
 		}
 
-		s := New(c, logr.Discard(), udsPath, false)
+		var buf bytes.Buffer
+		s := New(c, logr.FromSlogHandler(
+			slog.NewTextHandler(&buf, &slog.HandlerOptions{}),
+		), udsPath, false)
+
 		err = s.maybeModifyCluster(cluster)
 		require.NoError(t, err)
 

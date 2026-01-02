@@ -207,16 +207,15 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) error {
 			s.log.Info("LoadAssignment is nil", "cluster_name", cluster.Name)
 			return nil
 		}
-    // Filter backendRefs with weight > 0 to match LoadAssignment endpoints.
-    // BackendRefs with weight=0 are intentionally skipped during endpoint construction.
-    activeBackendRefs := httpRouteRule.BackendRefs[:0]
-        for _, br := range httpRouteRule.BackendRefs {
-    	// Default weight is treated as > 0
-        	if br.Weight == nil || *br.Weight > 0 {
-     		activeBackendRefs = append(activeBackendRefs, br)
-    	    }
-        }
-
+		// Filter backendRefs with weight > 0 to match LoadAssignment endpoints.
+		// BackendRefs with weight=0 are intentionally skipped during endpoint construction.
+		activeBackendRefs := httpRouteRule.BackendRefs[:0]
+		for _, br := range httpRouteRule.BackendRefs {
+			// Default weight is treated as > 0
+			if br.Weight == nil || *br.Weight > 0 {
+				activeBackendRefs = append(activeBackendRefs, br)
+			}
+		}
 
 		if len(cluster.LoadAssignment.Endpoints) != len(activeBackendRefs) {
 			s.log.Info("LoadAssignment endpoints length does not match backend refs length",
