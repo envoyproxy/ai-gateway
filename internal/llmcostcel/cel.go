@@ -56,7 +56,7 @@ func NewProgram(expr string) (prog cel.Program, err error) {
 	}
 
 	// Sanity check by evaluating the expression with some dummy values.
-	_, err = EvaluateProgram(prog, "dummy", "dummy", 0, 0, 0, 0)
+	_, err = EvaluateProgram(prog, "dummy", "dummy", 0, 0, 0, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate CEL expression: %w", err)
 	}
