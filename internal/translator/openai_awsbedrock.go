@@ -708,7 +708,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 					tokenUsage.SetCachedInputTokens(uint32(*usage.CacheReadInputTokens)) //nolint:gosec
 				}
 				if usage.CacheWriteInputTokens != nil {
-					tokenUsage.SetCachedCreationInputTokens(uint32(*usage.CacheWriteInputTokens))
+					tokenUsage.SetCachedCreationInputTokens(uint32(*usage.CacheWriteInputTokens)) //nolint:gosec
 				}
 			}
 			oaiEvent, ok := o.convertEvent(event)

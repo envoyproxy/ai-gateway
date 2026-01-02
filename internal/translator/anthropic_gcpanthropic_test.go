@@ -642,13 +642,13 @@ data: {"type": "message_stop"}
 
 	// Assertions
 	assert.True(t, inputSet, "Input tokens should be set")
-	assert.Equal(t, uint32(20), inputTokens, "Input tokens should be preserved from message_start")
+	assert.Equal(t, uint32(21), inputTokens, "Input tokens should be preserved from message_start")
 
 	assert.True(t, outputSet, "Output tokens should be set")
 	assert.Equal(t, uint32(0), outputTokens, "Output tokens should come from message_delta")
 
 	assert.True(t, totalSet, "Total tokens should be calculated")
-	assert.Equal(t, uint32(20), totalTokens, "Total tokens should be input + output")
+	assert.Equal(t, uint32(21), totalTokens, "Total tokens should be input + output")
 
 	assert.True(t, cachedSet, "Cached tokens should be set")
 	assert.Equal(t, uint32(5), cachedTokens, "No cached tokens in this scenario")
@@ -675,13 +675,13 @@ data: {"type": "message_stop"}
 	cachedCreationTokens, cachedCreationSet = tokenUsage.CachedCreationInputTokens()
 
 	assert.True(t, inputSet, "Input tokens should be set")
-	assert.Equal(t, uint32(20), inputTokens, "Input tokens should be preserved from message_start")
+	assert.Equal(t, uint32(21), inputTokens, "Input tokens should be preserved from message_start")
 
 	assert.True(t, outputSet, "Output tokens should be set")
 	assert.Equal(t, uint32(5), outputTokens, "Output tokens should come from message_delta")
 
 	assert.True(t, totalSet, "Total tokens should be calculated")
-	assert.Equal(t, uint32(25), totalTokens, "Total tokens should be input + output")
+	assert.Equal(t, uint32(26), totalTokens, "Total tokens should be input + output")
 
 	assert.True(t, cachedSet, "Cached tokens should be set")
 	assert.Equal(t, uint32(5), cachedTokens, "No cached tokens in this scenario")

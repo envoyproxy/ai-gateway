@@ -171,7 +171,7 @@ func TestExtractLLMTokenUsageFromUsage(t *testing.T) {
 			expectedInputTokens:          115, // 90 + 10 + 15
 			expectedOutputTokens:         60,
 			expectedTotalTokens:          175, // 115 + 60
-			expectedCachedTokens:         25,  // 15
+			expectedCachedTokens:         15,  // 15
 			expectedCachedCreationTokens: 10,  // 10
 		},
 	}
@@ -301,12 +301,12 @@ func TestExtractLLMTokenUsage_ClaudeAPIDocumentationCompliance(t *testing.T) {
 
 		cachedTokens, ok := result.CachedInputTokens()
 		assert.True(t, ok)
-		assert.Equal(t, cacheReadTokens, cachedTokens,
+		assert.Equal(t, uint32(cacheReadTokens), cachedTokens,
 			"CachedInputTokens should be  cache_read_input_tokens")
 
 		cachedCreationTokens, ok := result.CachedCreationInputTokens()
 		assert.True(t, ok)
-		assert.Equal(t, cachedCreationTokens, cachedCreationTokens,
+		assert.Equal(t, uint32(cachedWriteTokens), cachedCreationTokens,
 			"CachedCreationInputTokens should be cache_creation_input_tokens")
 
 		// Total tokens should be input + output.
