@@ -148,7 +148,7 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent(s tracing.M
 					int64(u.InputTokens),
 					int64(u.OutputTokens),
 					int64(u.CacheReadInputTokens),
-					int64(u.CachedCreationInputTokens),
+					int64(u.CacheCreationInputTokens),
 				)
 				// Override with message_start usage (contains input tokens and initial state)
 				a.streamingTokenUsage.Override(messageStartUsage)

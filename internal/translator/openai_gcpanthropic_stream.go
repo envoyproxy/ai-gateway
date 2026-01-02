@@ -285,7 +285,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			u.InputTokens,
 			u.OutputTokens,
 			u.CacheReadInputTokens,
-			u.CachedCreationInputTokens,
+			u.CacheCreationInputTokens,
 		)
 		// For message_delta, accumulate the incremental output tokens
 		if output, ok := usage.OutputTokens(); ok {
