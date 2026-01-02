@@ -300,7 +300,7 @@ func TestLabels_SetModel_RequestAndResponseDiffer(t *testing.T) {
 	pm.SetRequestModel("req-model")
 	pm.SetResponseModel("res-model")
 	pm.RecordTokenUsage(t.Context(), TokenUsage{
-		inputTokens: 2, cachedInputTokens: 1, cachedWriteInputTokens: 6, outputTokens: 3,
+		inputTokens: 2, cachedInputTokens: 1, cachedCreationInputTokens: 6, outputTokens: 3,
 		inputTokenSet: true, cachedInputTokenSet: true, outputTokenSet: true,
 	}, nil)
 
@@ -328,15 +328,15 @@ func TestLabels_SetModel_RequestAndResponseDiffer(t *testing.T) {
 	assert.Equal(t, uint64(1), count)
 	assert.Equal(t, 1.0, sum)
 
-	cachedWriteInputAttrs := attribute.NewSet(
+	cachedCreationInputAttrs := attribute.NewSet(
 		attribute.Key(genaiAttributeOperationName).String(string(GenAIOperationCompletion)),
 		attribute.Key(genaiAttributeProviderName).String(genaiProviderOpenAI),
 		attribute.Key(genaiAttributeOriginalModel).String("orig-model"),
 		attribute.Key(genaiAttributeRequestModel).String("req-model"),
 		attribute.Key(genaiAttributeResponseModel).String("res-model"),
-		attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeCachedWriteInput),
+		attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeCachedCreationInput),
 	)
-	count, sum = getHistogramValues(t, mr, genaiMetricClientTokenUsage, cachedWriteInputAttrs)
+	count, sum = getHistogramValues(t, mr, genaiMetricClientTokenUsage, cachedCreationInputAttrs)
 	assert.Equal(t, uint64(1), count)
 	assert.Equal(t, 6.0, sum)
 

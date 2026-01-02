@@ -183,7 +183,7 @@ func TestExtractLLMTokenUsageFromUsage(t *testing.T) {
 				tt.usage.CacheReadInputTokens,
 				tt.usage.CachedCreationInputTokens,
 			)
-			expected := tokenUsageFrom(tt.expectedInputTokens, int32(tt.expectedCachedTokens), int32(tt.expectedCachedWriteTokens), tt.expectedOutputTokens, tt.expectedTotalTokens)
+			expected := tokenUsageFrom(tt.expectedInputTokens, int32(tt.expectedCachedTokens), int32(tt.expectedCachedCreationTokens), tt.expectedOutputTokens, tt.expectedTotalTokens)
 			assert.Equal(t, expected, result)
 		})
 	}
@@ -191,13 +191,13 @@ func TestExtractLLMTokenUsageFromUsage(t *testing.T) {
 
 func TestExtractLLMTokenUsageFromDeltaUsage(t *testing.T) {
 	tests := []struct {
-		name                      string
-		usage                     anthropic.MessageDeltaUsage
-		expectedInputTokens       int32
-		expectedOutputTokens      int32
-		expectedTotalTokens       int32
-		expectedCachedTokens      uint32
-		expectedCachedWriteTokens uint32
+		name                         string
+		usage                        anthropic.MessageDeltaUsage
+		expectedInputTokens          int32
+		expectedOutputTokens         int32
+		expectedTotalTokens          int32
+		expectedCachedTokens         uint32
+		expectedCachedCreationTokens uint32
 	}{
 		{
 			name: "message_delta event with final totals",
@@ -207,11 +207,11 @@ func TestExtractLLMTokenUsageFromDeltaUsage(t *testing.T) {
 				CacheReadInputTokens:      30,
 				CachedCreationInputTokens: 0,
 			},
-			expectedInputTokens:       280, // 250 + 0 + 30
-			expectedOutputTokens:      120,
-			expectedTotalTokens:       400, // 280 + 120
-			expectedCachedTokens:      30,  // 30
-			expectedCachedWriteTokens: 0,
+			expectedInputTokens:          280, // 250 + 0 + 30
+			expectedOutputTokens:         120,
+			expectedTotalTokens:          400, // 280 + 120
+			expectedCachedTokens:         30,  // 30
+			expectedCachedCreationTokens: 0,
 		},
 		{
 			name: "message_delta event with only output tokens",
@@ -221,11 +221,11 @@ func TestExtractLLMTokenUsageFromDeltaUsage(t *testing.T) {
 				CacheReadInputTokens:      0,
 				CachedCreationInputTokens: 0,
 			},
-			expectedInputTokens:       0,
-			expectedOutputTokens:      85,
-			expectedTotalTokens:       85,
-			expectedCachedTokens:      0,
-			expectedCachedWriteTokens: 0,
+			expectedInputTokens:          0,
+			expectedOutputTokens:         85,
+			expectedTotalTokens:          85,
+			expectedCachedTokens:         0,
+			expectedCachedCreationTokens: 0,
 		},
 		{
 			name: "message_delta with cache creation tokens",
@@ -235,11 +235,11 @@ func TestExtractLLMTokenUsageFromDeltaUsage(t *testing.T) {
 				CacheReadInputTokens:      10,
 				CachedCreationInputTokens: 5,
 			},
-			expectedInputTokens:       165, // 150 + 5 + 10
-			expectedOutputTokens:      75,
-			expectedTotalTokens:       240, // 165 + 75
-			expectedCachedTokens:      10,  // 10
-			expectedCachedWriteTokens: 5,   // 5
+			expectedInputTokens:          165, // 150 + 5 + 10
+			expectedOutputTokens:         75,
+			expectedTotalTokens:          240, // 165 + 75
+			expectedCachedTokens:         10,  // 10
+			expectedCachedCreationTokens: 5,   // 5
 		},
 	}
 
@@ -250,7 +250,7 @@ func TestExtractLLMTokenUsageFromDeltaUsage(t *testing.T) {
 				tt.usage.CacheReadInputTokens,
 				tt.usage.CachedCreationInputTokens,
 			)
-			expected := tokenUsageFrom(tt.expectedInputTokens, int32(tt.expectedCachedTokens), int32(tt.expectedCachedWriteTokens), tt.expectedOutputTokens, tt.expectedTotalTokens)
+			expected := tokenUsageFrom(tt.expectedInputTokens, int32(tt.expectedCachedTokens), int32(tt.expectedCachedCreationTokens), tt.expectedOutputTokens, tt.expectedTotalTokens)
 			assert.Equal(t, expected, result)
 		})
 	}
@@ -304,10 +304,10 @@ func TestExtractLLMTokenUsage_ClaudeAPIDocumentationCompliance(t *testing.T) {
 		assert.Equal(t, cacheReadTokens, cachedTokens,
 			"CachedInputTokens should be  cache_read_input_tokens")
 
-		cachedWriteTokens, ok := result.CachedWriteInputTokens()
+		cachedCreationTokens, ok := result.CachedCreationInputTokens()
 		assert.True(t, ok)
-		assert.Equal(t, cachedCreationTokens, cachedWriteTokens,
-			"CachedWriteInputTokens should be cache_creation_input_tokens")
+		assert.Equal(t, cachedCreationTokens, cachedCreationTokens,
+			"CachedCreationInputTokens should be cache_creation_input_tokens")
 
 		// Total tokens should be input + output.
 		expectedTotal := expectedTotalInput + uint32(outputTokens)

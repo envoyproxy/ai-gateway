@@ -611,7 +611,7 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingFullScenario(t 
 	// 3. message_delta at the end provides output_tokens=5 but no input_tokens
 	// 4. message_stop ends the stream
 	messageStartChunk := `event: message_start
-data: {"type": "message_start", "message": {"id": "msg_123", "type": "message", "role": "assistant", "content": [], "model": "claude-3-sonnet-20240229", "usage": {"input_tokens": 15, "cache_read_input_tokens": 5,  "cache_write_input_tokens": 1, "output_tokens": 0}}}
+data: {"type": "message_start", "message": {"id": "msg_123", "type": "message", "role": "assistant", "content": [], "model": "claude-3-sonnet-20240229", "usage": {"input_tokens": 15, "cache_read_input_tokens": 5,  "cache_creation_input_tokens": 1, "output_tokens": 0}}}
 `
 	contentBlockStartChunk := `event: content_block_start
 data: {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
@@ -638,7 +638,7 @@ data: {"type": "message_stop"}
 	outputTokens, outputSet := tokenUsage.OutputTokens()
 	totalTokens, totalSet := tokenUsage.TotalTokens()
 	cachedTokens, cachedSet := tokenUsage.CachedInputTokens()
-	cachedCreationTokens, cachedWriteSet := tokenUsage.CachedWriteInputTokens()
+	cachedCreationTokens, cachedCreationSet := tokenUsage.CachedCreationInputTokens()
 
 	// Assertions
 	assert.True(t, inputSet, "Input tokens should be set")
@@ -653,8 +653,8 @@ data: {"type": "message_stop"}
 	assert.True(t, cachedSet, "Cached tokens should be set")
 	assert.Equal(t, uint32(5), cachedTokens, "No cached tokens in this scenario")
 
-	assert.True(t, cachedWriteSet, "cache creation tokens should be set")
-	assert.Equal(t, uint32(1), cachedWriteTokens, "No cache creation tokens in this scenario")
+	assert.True(t, cachedCreationSet, "cache creation tokens should be set")
+	assert.Equal(t, uint32(1), cachedCreationTokens, "No cache creation tokens in this scenario")
 
 	_, _, tokenUsage, _, err = translator.ResponseBody(nil, strings.NewReader(contentBlockStartChunk), false, nil)
 	require.NoError(t, err)
@@ -672,7 +672,7 @@ data: {"type": "message_stop"}
 	outputTokens, outputSet = tokenUsage.OutputTokens()
 	totalTokens, totalSet = tokenUsage.TotalTokens()
 	cachedTokens, cachedSet = tokenUsage.CachedInputTokens()
-	cachedWriteTokens, cachedWriteSet = tokenUsage.CachedWriteInputTokens()
+	cachedCreationTokens, cachedCreationSet = tokenUsage.CachedCreationInputTokens()
 
 	assert.True(t, inputSet, "Input tokens should be set")
 	assert.Equal(t, uint32(20), inputTokens, "Input tokens should be preserved from message_start")
@@ -686,6 +686,6 @@ data: {"type": "message_stop"}
 	assert.True(t, cachedSet, "Cached tokens should be set")
 	assert.Equal(t, uint32(5), cachedTokens, "No cached tokens in this scenario")
 
-	assert.True(t, cachedWriteSet, "cache creation tokens should be set")
-	assert.Equal(t, uint32(1), cachedWriteTokens, "No cache creation tokens in this scenario")
+	assert.True(t, cachedCreationSet, "cache creation tokens should be set")
+	assert.Equal(t, uint32(1), cachedCreationTokens, "No cache creation tokens in this scenario")
 }

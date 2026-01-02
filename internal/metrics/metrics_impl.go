@@ -148,10 +148,10 @@ func (b *metricsImpl) RecordTokenUsage(ctx context.Context, usage TokenUsage, re
 			metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeCachedInput)),
 		)
 	}
-	if cachedCreationInputTokens, ok := usage.CachedWriteInputTokens(); ok {
-		b.metrics.tokenUsage.Record(ctx, float64(cachedWriteInputTokens),
+	if cachedCreationInputTokens, ok := usage.CachedCreationInputTokens(); ok {
+		b.metrics.tokenUsage.Record(ctx, float64(cachedCreationInputTokens),
 			metric.WithAttributeSet(attrs),
-			metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeCachedWriteInput)),
+			metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeCachedCreationInput)),
 		)
 	}
 	if outputTokens, ok := usage.OutputTokens(); ok {

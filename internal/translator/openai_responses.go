@@ -128,11 +128,11 @@ func (o *openAIToOpenAITranslatorV1Responses) handleNonStreamingResponse(body io
 
 	// TODO: Add reasoning token usage
 	if resp.Usage != nil {
-		tokenUsage.SetInputTokens(uint32(resp.Usage.InputTokens))                                     // #nosec G115
-		tokenUsage.SetOutputTokens(uint32(resp.Usage.OutputTokens))                                   // #nosec G115
-		tokenUsage.SetTotalTokens(uint32(resp.Usage.TotalTokens))                                     // #nosec G115
-		tokenUsage.SetCachedInputTokens(uint32(resp.Usage.InputTokensDetails.CachedTokens))           // #nosec G115
-		tokenUsage.SetCachedWriteInputTokens(uint32(resp.Usage.InputTokensDetails.CachedWriteTokens)) // #nosec G115
+		tokenUsage.SetInputTokens(uint32(resp.Usage.InputTokens))                                           // #nosec G115
+		tokenUsage.SetOutputTokens(uint32(resp.Usage.OutputTokens))                                         // #nosec G115
+		tokenUsage.SetTotalTokens(uint32(resp.Usage.TotalTokens))                                           // #nosec G115
+		tokenUsage.SetCachedInputTokens(uint32(resp.Usage.InputTokensDetails.CachedTokens))                 // #nosec G115
+		tokenUsage.SetCachedCreationInputTokens(uint32(resp.Usage.InputTokensDetails.CachedCreationTokens)) // #nosec G115
 	}
 
 	// Record non-streaming response to span if tracing is enabled.
@@ -180,7 +180,7 @@ func (o *openAIToOpenAITranslatorV1Responses) extractUsageFromBufferEvent(span t
 				tokenUsage.SetTotalTokens(uint32(respComplEvent.Response.Usage.TotalTokens))                           // #nosec G115
 				tokenUsage.SetCachedInputTokens(uint32(respComplEvent.Response.Usage.InputTokensDetails.CachedTokens)) // #nosec G115
 				// Openai does not support cache creation response.
-				tokenUsage.SetCachedWriteInputTokens(uint32(0)) // #nosec G115
+				tokenUsage.SetCachedCreationInputTokens(uint32(0)) // #nosec G115
 			}
 			// Record streaming chunk to span if tracing is enabled.
 			if span != nil {

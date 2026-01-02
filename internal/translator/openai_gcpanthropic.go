@@ -845,8 +845,8 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 		PromptTokens:     int(inputTokens),
 		TotalTokens:      int(totalTokens),
 		PromptTokensDetails: &openai.PromptTokensDetails{
-			CachedTokens:      int(cachedTokens),
-			CachedWriteTokens: int(cacheWriteTokens),
+			CachedTokens:         int(cachedTokens),
+			CachedCreationTokens: int(cacheWriteTokens),
 		},
 	}
 

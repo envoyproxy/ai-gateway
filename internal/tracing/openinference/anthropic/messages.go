@@ -215,7 +215,7 @@ func buildResponseAttributes(resp *anthropic.MessagesResponse, config *openinfer
 	)
 	input, _ := cost.InputTokens()
 	cacheRead, _ := cost.CachedInputTokens()
-	cacheCreation, _ := cost.CachedWriteInputTokens()
+	cacheCreation, _ := cost.CachedCreationInputTokens()
 	output, _ := cost.OutputTokens()
 	total, _ := cost.TotalTokens()
 

@@ -1725,7 +1725,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 					expectedUsage.SetCachedInputTokens(uint32(tt.output.Usage.PromptTokensDetails.CachedTokens)) //nolint:gosec
 				}
 				if tt.input.Usage.CacheWriteInputTokens != nil {
-					expectedUsage.SetCachedWriteInputTokens(uint32(tt.output.Usage.PromptTokensDetails.CachedWriteTokens)) //nolint:gosec
+					expectedUsage.SetCachedCreationInputTokens(uint32(tt.output.Usage.PromptTokensDetails.CachedCreationTokens)) //nolint:gosec
 				}
 			} else {
 				expectedUsage = tokenUsageFrom(-1, -1, -1, -1, -1)

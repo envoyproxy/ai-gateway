@@ -77,8 +77,8 @@ var (
 		Usage: &openai.ResponseUsage{
 			InputTokens: 100,
 			InputTokensDetails: openai.ResponseUsageInputTokensDetails{
-				CachedTokens:      10,
-				CachedWriteTokens: 50,
+				CachedTokens:         10,
+				CachedCreationTokens: 50,
 			},
 			OutputTokens: 25,
 			TotalTokens:  125,
@@ -202,7 +202,7 @@ func TestResponsesRecorder_RecordResponse(t *testing.T) {
 			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
 		},
 		{
-			name:   "response with cache write",
+			name:   "response with cache creation",
 			resp:   responseWithCacheWrite,
 			config: &openinference.TraceConfig{},
 			expectedAttrs: []attribute.KeyValue{
