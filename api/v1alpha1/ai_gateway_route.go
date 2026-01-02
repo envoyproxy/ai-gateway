@@ -108,6 +108,8 @@ type AIGatewayRouteSpec struct {
 	//	  type: TotalToken
 	//	- metadataKey: llm_cached_input_token
 	//	  type: CachedInputToken
+	// - metadataKey: llm_cached_write_input_token
+	//    type: CachedWriteInputToken
 	// ```
 	// Then, with the following BackendTrafficPolicy of Envoy Gateway, you can have three
 	// rate limit buckets for each unique x-user-id header value. One bucket is for the input token,

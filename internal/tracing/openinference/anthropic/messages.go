@@ -214,13 +214,15 @@ func buildResponseAttributes(resp *anthropic.MessagesResponse, config *openinfer
 		int64(u.CacheCreationInputTokens),
 	)
 	input, _ := cost.InputTokens()
-	cache, _ := cost.CachedInputTokens()
+	cacheRead, _ := cost.CachedInputTokens()
+	cacheCreation, _ := cost.CachedIWritenputTokens()
 	output, _ := cost.OutputTokens()
 	total, _ := cost.TotalTokens()
 
 	attrs = append(attrs,
 		attribute.Int(openinference.LLMTokenCountPrompt, int(input)),
-		attribute.Int(openinference.LLMTokenCountPromptCacheHit, int(cache)),
+		attribute.Int(openinference.LLMTokenCountPromptCacheHit, int(cacheRead)),
+		attribute.Int(openinference.LLMTokenCountPromptCacheWrite, int(cacheCreation)),
 		attribute.Int(openinference.LLMTokenCountCompletion, int(output)),
 		attribute.Int(openinference.LLMTokenCountTotal, int(total)),
 	)

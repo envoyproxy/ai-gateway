@@ -211,6 +211,9 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if cached, ok := usage.CachedInputTokens(); ok {
 			p.tokenUsage.SetCachedInputTokens(cached)
 		}
+		if cachedWrite, ok := usage.CachedWriteInputTokens(); ok {
+			p.tokenUsage.SetCachedWriteInputTokens(cachedWrite)
+		}
 
 		// reset the toolIndex for each message
 		p.toolIndex = -1
@@ -291,6 +294,11 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			p.tokenUsage.AddInputTokens(cached)
 			// Accumulate any additional cache tokens from delta
 			p.tokenUsage.AddCachedInputTokens(cached)
+		}
+		if cached, ok := usage.CachedWriteInputTokens(); ok {
+			p.tokenUsage.AddInputTokens(cached)
+			// Accumulate any additional cache tokens from delta
+			p.tokenUsage.AddCachedWriteInputTokens(cached)
 		}
 		if event.Delta.StopReason != "" {
 			p.stopReason = event.Delta.StopReason

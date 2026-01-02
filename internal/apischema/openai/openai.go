@@ -1382,6 +1382,8 @@ type PromptTokensDetails struct {
 	AudioTokens int `json:"audio_tokens,omitzero"`
 	// Cached tokens present in the prompt.
 	CachedTokens int `json:"cached_tokens,omitzero"`
+	// Tokens written to the cache.
+	CachedWriteTokens int `json:"cached_write_tokens,omitzero"`
 }
 
 // ChatCompletionResponseChunk is described in the OpenAI API documentation:
@@ -2535,6 +2537,9 @@ type ResponseUsageInputTokensDetails struct {
 	// The number of tokens that were retrieved from the cache.
 	// [More on prompt caching](https://platform.openai.com/docs/guides/prompt-caching).
 	CachedTokens int64 `json:"cached_tokens"`
+
+	// The number of tokens that were written to the cache.
+	CachedWriteTokens int64 `json:"cached_write_tokens"`
 }
 
 // A detailed breakdown of the output tokens.
@@ -2547,6 +2552,9 @@ type ResponseUsageOutputTokensDetails struct {
 type ResponseTokensDetails struct {
 	// CachedTokens: Number of cached tokens.
 	CachedTokens int `json:"cached_tokens,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// CachedWriteTokens: number of tokens that were written to the cache.
+	CachedWriteTokens int64 `json:"cached_write_tokens"` //nolint:tagliatelle
 
 	// ReasoningTokens: Number of reasoning tokens (for reasoning models).
 	ReasoningTokens int `json:"reasoning_tokens,omitempty"` //nolint:tagliatelle //follow openai api
