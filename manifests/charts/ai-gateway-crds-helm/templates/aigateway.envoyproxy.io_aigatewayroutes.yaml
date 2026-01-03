@@ -173,16 +173,18 @@ spec:
                   metadataKey: llm_input_token\n\t  type: InputToken\n\t- metadataKey:
                   llm_output_token\n\t  type: OutputToken\n\t- metadataKey: llm_total_token\n\t
                   \ type: TotalToken\n\t- metadataKey: llm_cached_input_token\n\t
-                  \ type: CachedInputToken\n```\nThen, with the following BackendTrafficPolicy
-                  of Envoy Gateway, you can have three\nrate limit buckets for each
-                  unique x-user-id header value. One bucket is for the input token,\nthe
-                  other is for the output token, and the last one is for the total
-                  token.\nEach bucket will be reduced by the corresponding token usage
-                  captured by the AI Gateway filter.\n\n```yaml\n\tapiVersion: gateway.envoyproxy.io/v1alpha1\n\tkind:
-                  BackendTrafficPolicy\n\tmetadata:\n\t  name: some-example-token-rate-limit\n\t
-                  \ namespace: default\n\tspec:\n\t  targetRefs:\n\t  - group: gateway.networking.k8s.io\n\t
-                  \    kind: HTTPRoute\n\t     name: usage-rate-limit\n\t  rateLimit:\n\t
-                  \   type: Global\n\t    global:\n\t      rules:\n\t        - clientSelectors:\n\t
+                  \ type: CachedInputToken\n- metadataKey: llm_cache_creation_input_token\n
+                  \  type: CacheCreationInputToken\n```\nThen, with the following
+                  BackendTrafficPolicy of Envoy Gateway, you can have three\nrate
+                  limit buckets for each unique x-user-id header value. One bucket
+                  is for the input token,\nthe other is for the output token, and
+                  the last one is for the total token.\nEach bucket will be reduced
+                  by the corresponding token usage captured by the AI Gateway filter.\n\n```yaml\n\tapiVersion:
+                  gateway.envoyproxy.io/v1alpha1\n\tkind: BackendTrafficPolicy\n\tmetadata:\n\t
+                  \ name: some-example-token-rate-limit\n\t  namespace: default\n\tspec:\n\t
+                  \ targetRefs:\n\t  - group: gateway.networking.k8s.io\n\t     kind:
+                  HTTPRoute\n\t     name: usage-rate-limit\n\t  rateLimit:\n\t    type:
+                  Global\n\t    global:\n\t      rules:\n\t        - clientSelectors:\n\t
                   \           # Do the rate limiting based on the x-user-id header.\n\t
                   \           - headers:\n\t                - name: x-user-id\n\t
                   \                 type: Distinct\n\t          limit:\n\t            #
@@ -227,15 +229,17 @@ spec:
                         Type: string.\n\t* backend: the backend name in the form of
                         \"name.namespace\". Type: string.\n\t* input_tokens: the number
                         of input tokens. Type: unsigned integer.\n\t* cached_input_tokens:
-                        the number of cached input tokens. Type: unsigned integer.\n\t*
-                        output_tokens: the number of output tokens. Type: unsigned
-                        integer.\n\t* total_tokens: the total number of tokens. Type:
-                        unsigned integer.\n\nFor example, the following expressions
-                        are valid:\n\n\t* \"model == 'llama' ?  input_tokens + output_token
-                        * 0.5 : total_tokens\"\n\t* \"backend == 'foo.default' ?  input_tokens
-                        + output_tokens : total_tokens\"\n\t* \"backend == 'bar.default'
-                        ?  (input_tokens - cached_input_tokens) + cached_input_tokens
-                        * 0.1 + output_tokens : total_tokens\"\n\t* \"input_tokens
+                        the number of cached read input tokens. Type: unsigned integer.\n\t*
+                        cache_creation_input_tokens: the number of cache creation
+                        input tokens. Type: unsigned integer.\n\t* output_tokens:
+                        the number of output tokens. Type: unsigned integer.\n\t*
+                        total_tokens: the total number of tokens. Type: unsigned integer.\n\nFor
+                        example, the following expressions are valid:\n\n\t* \"model
+                        == 'llama' ?  input_tokens + output_token * 0.5 : total_tokens\"\n\t*
+                        \"backend == 'foo.default' ?  input_tokens + output_tokens
+                        : total_tokens\"\n\t* \"backend == 'bar.default' ?  (input_tokens
+                        - cached_input_tokens) + cached_input_tokens * 0.1 + cache_creation_input_tokens
+                        * 1.25 + output_tokens : total_tokens\"\n\t* \"input_tokens
                         + output_tokens + total_tokens\"\n\t* \"input_tokens * output_tokens\""
                       type: string
                     metadataKey:
@@ -246,11 +250,12 @@ spec:
                       description: |-
                         Type specifies the type of the request cost. The default is "OutputToken",
                         and it uses "output token" as the cost. The other types are "InputToken", "TotalToken",
-                        and "CEL".
+                        "CachedInputToken", "CacheCreationInputToken", and "CEL".
                       enum:
                       - OutputToken
                       - InputToken
                       - CachedInputToken
+                      - CacheCreationInputToken
                       - TotalToken
                       - CEL
                       type: string

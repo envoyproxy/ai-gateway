@@ -234,20 +234,14 @@ func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataBTP(ctx context
 				},
 				Response: &egv1a1.CustomResponse{
 					StatusCode: ptr.To(http.StatusUnauthorized),
-					Body: &egv1a1.CustomResponseBody{
-						Type:   ptr.To(egv1a1.ResponseValueTypeInline),
-						Inline: ptr.To(wwwAuthenticateValue),
-					},
-					// TODO: use Header when supported in Envoy Gateway. https://github.com/envoyproxy/gateway/pull/6308.
-					// For now, use Body to set the WWW-Authenticate header value, and we move it to Header in the extension server.
-					/*Header: &gwapiv1.HTTPHeaderFilter{
+					Header: &gwapiv1.HTTPHeaderFilter{
 						Set: []gwapiv1.HTTPHeader{
 							{
 								Name:  "WWW-Authenticate",
 								Value: wwwAuthenticateValue,
 							},
 						},
-					},*/
+					},
 				},
 			},
 		},

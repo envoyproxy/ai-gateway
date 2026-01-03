@@ -98,7 +98,7 @@ type SystemContentBlock struct {
 	GuardContent *GuardrailConverseContentBlock `json:"guardContent,omitempty"`
 
 	// A system prompt for the model.
-	Text string `json:"text"`
+	Text *string `json:"text,omitempty"`
 
 	// Cache point for prompt caching. Enables caching of preceding content.
 	// See https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html for more information.

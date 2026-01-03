@@ -124,7 +124,9 @@ func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, req au
 		} else {
 			scopeSet = sets.New(extractScopes(claims)...)
 			// Scopes are handled separately, remove them from the claims map to avoid interference.
+			// "scp" is also removed as it is a common alias for "scope" (e.g. Azure AD, Okta).
 			delete(claims, "scope")
+			delete(claims, "scp")
 		}
 	}
 
@@ -259,28 +261,29 @@ func bearerToken(header string) (string, error) {
 	return token, nil
 }
 
+// extractScopes extracts scopes from the "scope" claim (standard) or "scp" claim (common in Microsoft/Okta).
 func extractScopes(claims jwt.MapClaims) []string {
-	raw, ok := claims["scope"]
-	if !ok {
-		return nil
-	}
+	var scopes []string
+	for _, key := range []string{"scope", "scp"} {
+		raw, ok := claims[key]
+		if !ok {
+			continue
+		}
 
-	switch v := raw.(type) {
-	case string:
-		return strings.Fields(v)
-	case []string:
-		return v
-	case []interface{}:
-		scopes := make([]string, 0, len(v))
-		for _, item := range v {
-			if s, ok := item.(string); ok && s != "" {
-				scopes = append(scopes, s)
+		switch v := raw.(type) {
+		case string:
+			scopes = append(scopes, strings.Fields(v)...)
+		case []string:
+			scopes = append(scopes, v...)
+		case []interface{}:
+			for _, item := range v {
+				if s, ok := item.(string); ok && s != "" {
+					scopes = append(scopes, s)
+				}
 			}
 		}
-		return scopes
-	default:
-		return nil
 	}
+	return scopes
 }
 
 func (m *MCPProxy) evalRuleCEL(rule compiledAuthorizationRule, activation map[string]any) (bool, error) {

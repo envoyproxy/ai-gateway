@@ -16,12 +16,13 @@ import (
 )
 
 const (
-	celModelNameKey         = "model"
-	celBackendKey           = "backend"
-	celInputTokensKey       = "input_tokens"
-	celCachedInputTokensKey = "cached_input_tokens" // #nosec G101
-	celOutputTokensKey      = "output_tokens"
-	celTotalTokensKey       = "total_tokens"
+	celModelNameKey                = "model"
+	celBackendKey                  = "backend"
+	celInputTokensKey              = "input_tokens"
+	celCachedInputTokensKey        = "cached_input_tokens"         // #nosec G101
+	celCacheCreationInputTokensKey = "cache_creation_input_tokens" // #nosec G101
+	celOutputTokensKey             = "output_tokens"
+	celTotalTokensKey              = "total_tokens"
 )
 
 var env *cel.Env
@@ -33,6 +34,7 @@ func init() {
 		cel.Variable(celBackendKey, cel.StringType),
 		cel.Variable(celInputTokensKey, cel.UintType),
 		cel.Variable(celCachedInputTokensKey, cel.UintType),
+		cel.Variable(celCacheCreationInputTokensKey, cel.UintType),
 		cel.Variable(celOutputTokensKey, cel.UintType),
 		cel.Variable(celTotalTokensKey, cel.UintType),
 	)
@@ -54,7 +56,7 @@ func NewProgram(expr string) (prog cel.Program, err error) {
 	}
 
 	// Sanity check by evaluating the expression with some dummy values.
-	_, err = EvaluateProgram(prog, "dummy", "dummy", 0, 0, 0, 0)
+	_, err = EvaluateProgram(prog, "dummy", "dummy", 0, 0, 0, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate CEL expression: %w", err)
 	}
@@ -62,14 +64,15 @@ func NewProgram(expr string) (prog cel.Program, err error) {
 }
 
 // EvaluateProgram evaluates the given CEL program with the given variables.
-func EvaluateProgram(prog cel.Program, modelName, backend string, inputTokens, cachedInputTokens, outputTokens, totalTokens uint32) (uint64, error) {
+func EvaluateProgram(prog cel.Program, modelName, backend string, inputTokens, cachedInputTokens, cacheCreationInputTokens, outputTokens, totalTokens uint32) (uint64, error) {
 	out, _, err := prog.Eval(map[string]any{
-		celModelNameKey:         modelName,
-		celBackendKey:           backend,
-		celInputTokensKey:       inputTokens,
-		celCachedInputTokensKey: cachedInputTokens,
-		celOutputTokensKey:      outputTokens,
-		celTotalTokensKey:       totalTokens,
+		celModelNameKey:                modelName,
+		celBackendKey:                  backend,
+		celInputTokensKey:              inputTokens,
+		celCachedInputTokensKey:        cachedInputTokens,
+		celCacheCreationInputTokensKey: cacheCreationInputTokens,
+		celOutputTokensKey:             outputTokens,
+		celTotalTokensKey:              totalTokens,
 	})
 	if err != nil || out == nil {
 		return 0, fmt.Errorf("failed to evaluate CEL expression: %w", err)
