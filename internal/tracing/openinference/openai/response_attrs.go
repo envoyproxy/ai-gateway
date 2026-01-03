@@ -58,7 +58,7 @@ func buildResponseAttributes(resp *openai.ChatCompletionResponse, config *openin
 			attrs = append(attrs,
 				attribute.Int(openinference.LLMTokenCountPromptAudio, td.AudioTokens),
 				attribute.Int(openinference.LLMTokenCountPromptCacheHit, td.CachedTokens),
-				attribute.Int(openinference.LLMTokenCountPromptCacheWrite, td.CachedCreationTokens),
+				attribute.Int(openinference.LLMTokenCountPromptCacheWrite, td.CacheCreationTokens),
 			)
 		}
 	}
@@ -194,8 +194,8 @@ func buildResponsesResponseAttributes(resp *openai.Response, _ *openinference.Tr
 		if resp.Usage.InputTokensDetails.CachedTokens > 0 {
 			attrs = append(attrs, attribute.Int(openinference.LLMTokenCountPromptCacheHit, int(resp.Usage.InputTokensDetails.CachedTokens)))
 		}
-		if resp.Usage.InputTokensDetails.CachedCreationTokens > 0 {
-			attrs = append(attrs, attribute.Int(openinference.LLMTokenCountPromptCacheWrite, int(resp.Usage.InputTokensDetails.CachedCreationTokens)))
+		if resp.Usage.InputTokensDetails.CacheCreationTokens > 0 {
+			attrs = append(attrs, attribute.Int(openinference.LLMTokenCountPromptCacheWrite, int(resp.Usage.InputTokensDetails.CacheCreationTokens)))
 		}
 	}
 

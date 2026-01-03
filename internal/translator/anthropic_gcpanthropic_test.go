@@ -570,7 +570,7 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases(t *te
 	}
 }
 
-func tokenUsageFrom(in, cachedInput, cachedCreationInput, out, total int32) metrics.TokenUsage {
+func tokenUsageFrom(in, cachedInput, cacheCreationInput, out, total int32) metrics.TokenUsage {
 	var usage metrics.TokenUsage
 	if in >= 0 {
 		usage.SetInputTokens(uint32(in))
@@ -578,8 +578,8 @@ func tokenUsageFrom(in, cachedInput, cachedCreationInput, out, total int32) metr
 	if cachedInput >= 0 {
 		usage.SetCachedInputTokens(uint32(cachedInput))
 	}
-	if cachedCreationInput >= 0 {
-		usage.SetCachedCreationInputTokens(uint32(cachedCreationInput))
+	if cacheCreationInput >= 0 {
+		usage.SetCacheCreationInputTokens(uint32(cacheCreationInput))
 	}
 	if out >= 0 {
 		usage.SetOutputTokens(uint32(out))
@@ -638,7 +638,7 @@ data: {"type": "message_stop"}
 	outputTokens, outputSet := tokenUsage.OutputTokens()
 	totalTokens, totalSet := tokenUsage.TotalTokens()
 	cachedTokens, cachedSet := tokenUsage.CachedInputTokens()
-	cachedCreationTokens, cachedCreationSet := tokenUsage.CachedCreationInputTokens()
+	cacheCreationTokens, cacheCreationSet := tokenUsage.CacheCreationInputTokens()
 
 	// Assertions
 	assert.True(t, inputSet, "Input tokens should be set")
@@ -653,8 +653,8 @@ data: {"type": "message_stop"}
 	assert.True(t, cachedSet, "Cached tokens should be set")
 	assert.Equal(t, uint32(5), cachedTokens, "No cached tokens in this scenario")
 
-	assert.True(t, cachedCreationSet, "cache creation tokens should be set")
-	assert.Equal(t, uint32(1), cachedCreationTokens, "No cache creation tokens in this scenario")
+	assert.True(t, cacheCreationSet, "cache creation tokens should be set")
+	assert.Equal(t, uint32(1), cacheCreationTokens, "No cache creation tokens in this scenario")
 
 	_, _, tokenUsage, _, err = translator.ResponseBody(nil, strings.NewReader(contentBlockStartChunk), false, nil)
 	require.NoError(t, err)
@@ -672,7 +672,7 @@ data: {"type": "message_stop"}
 	outputTokens, outputSet = tokenUsage.OutputTokens()
 	totalTokens, totalSet = tokenUsage.TotalTokens()
 	cachedTokens, cachedSet = tokenUsage.CachedInputTokens()
-	cachedCreationTokens, cachedCreationSet = tokenUsage.CachedCreationInputTokens()
+	cacheCreationTokens, cacheCreationSet = tokenUsage.CacheCreationInputTokens()
 
 	assert.True(t, inputSet, "Input tokens should be set")
 	assert.Equal(t, uint32(21), inputTokens, "Input tokens should be preserved from message_start")
@@ -686,6 +686,6 @@ data: {"type": "message_stop"}
 	assert.True(t, cachedSet, "Cached tokens should be set")
 	assert.Equal(t, uint32(5), cachedTokens, "No cached tokens in this scenario")
 
-	assert.True(t, cachedCreationSet, "cache creation tokens should be set")
-	assert.Equal(t, uint32(1), cachedCreationTokens, "No cache creation tokens in this scenario")
+	assert.True(t, cacheCreationSet, "cache creation tokens should be set")
+	assert.Equal(t, uint32(1), cacheCreationTokens, "No cache creation tokens in this scenario")
 }

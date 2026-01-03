@@ -173,8 +173,8 @@ spec:
                   metadataKey: llm_input_token\n\t  type: InputToken\n\t- metadataKey:
                   llm_output_token\n\t  type: OutputToken\n\t- metadataKey: llm_total_token\n\t
                   \ type: TotalToken\n\t- metadataKey: llm_cached_input_token\n\t
-                  \ type: CachedInputToken\n- metadataKey: llm_cached_creation_input_token\n
-                  \  type: CachedCreationInputToken\n```\nThen, with the following
+                  \ type: CachedInputToken\n- metadataKey: llm_cache_creation_input_token\n
+                  \  type: CacheCreationInputToken\n```\nThen, with the following
                   BackendTrafficPolicy of Envoy Gateway, you can have three\nrate
                   limit buckets for each unique x-user-id header value. One bucket
                   is for the input token,\nthe other is for the output token, and
@@ -230,7 +230,7 @@ spec:
                         \"name.namespace\". Type: string.\n\t* input_tokens: the number
                         of input tokens. Type: unsigned integer.\n\t* cached_input_tokens:
                         the number of cached read input tokens. Type: unsigned integer.\n\t*
-                        cached_creation_input_tokens: the number of cache creation
+                        cache_creation_input_tokens: the number of cache creation
                         input tokens. Type: unsigned integer.\n\t* output_tokens:
                         the number of output tokens. Type: unsigned integer.\n\t*
                         total_tokens: the total number of tokens. Type: unsigned integer.\n\nFor
@@ -238,7 +238,7 @@ spec:
                         == 'llama' ?  input_tokens + output_token * 0.5 : total_tokens\"\n\t*
                         \"backend == 'foo.default' ?  input_tokens + output_tokens
                         : total_tokens\"\n\t* \"backend == 'bar.default' ?  (input_tokens
-                        - cached_input_tokens) + cached_input_tokens * 0.1 + cached_creation_input_tokens
+                        - cached_input_tokens) + cached_input_tokens * 0.1 + cache_creation_input_tokens
                         * 1.25 + output_tokens : total_tokens\"\n\t* \"input_tokens
                         + output_tokens + total_tokens\"\n\t* \"input_tokens * output_tokens\""
                       type: string
@@ -250,12 +250,12 @@ spec:
                       description: |-
                         Type specifies the type of the request cost. The default is "OutputToken",
                         and it uses "output token" as the cost. The other types are "InputToken", "TotalToken",
-                        "CachedInputToken", "CachedCreationInputToken", and "CEL".
+                        "CachedInputToken", "CacheCreationInputToken", and "CEL".
                       enum:
                       - OutputToken
                       - InputToken
                       - CachedInputToken
-                      - CachedCreationInputToken
+                      - CacheCreationInputToken
                       - TotalToken
                       - CEL
                       type: string

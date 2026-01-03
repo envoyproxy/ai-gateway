@@ -16,88 +16,88 @@ import (
 
 func TestExtractLLMTokenUsage(t *testing.T) {
 	tests := []struct {
-		name                         string
-		inputTokens                  int64
-		outputTokens                 int64
-		cacheReadTokens              int64
-		cachedCreationTokens         int64
-		expectedInputTokens          uint32
-		expectedOutputTokens         uint32
-		expectedTotalTokens          uint32
-		expectedCachedTokens         uint32
-		expectedCachedCreationTokens uint32
+		name                        string
+		inputTokens                 int64
+		outputTokens                int64
+		cacheReadTokens             int64
+		cacheCreationTokens         int64
+		expectedInputTokens         uint32
+		expectedOutputTokens        uint32
+		expectedTotalTokens         uint32
+		expectedCachedTokens        uint32
+		expectedCacheCreationTokens uint32
 	}{
 		{
-			name:                         "basic usage without cache",
-			inputTokens:                  100,
-			outputTokens:                 50,
-			cacheReadTokens:              0,
-			cachedCreationTokens:         0,
-			expectedInputTokens:          100,
-			expectedOutputTokens:         50,
-			expectedTotalTokens:          150,
-			expectedCachedTokens:         0,
-			expectedCachedCreationTokens: 0,
+			name:                        "basic usage without cache",
+			inputTokens:                 100,
+			outputTokens:                50,
+			cacheReadTokens:             0,
+			cacheCreationTokens:         0,
+			expectedInputTokens:         100,
+			expectedOutputTokens:        50,
+			expectedTotalTokens:         150,
+			expectedCachedTokens:        0,
+			expectedCacheCreationTokens: 0,
 		},
 		{
-			name:                         "usage with cache read tokens",
-			inputTokens:                  80,
-			outputTokens:                 30,
-			cacheReadTokens:              20,
-			cachedCreationTokens:         0,
-			expectedInputTokens:          100, // 80 + 0 + 20
-			expectedOutputTokens:         30,
-			expectedTotalTokens:          130, // 100 + 30
-			expectedCachedTokens:         20,  // 20
-			expectedCachedCreationTokens: 0,
+			name:                        "usage with cache read tokens",
+			inputTokens:                 80,
+			outputTokens:                30,
+			cacheReadTokens:             20,
+			cacheCreationTokens:         0,
+			expectedInputTokens:         100, // 80 + 0 + 20
+			expectedOutputTokens:        30,
+			expectedTotalTokens:         130, // 100 + 30
+			expectedCachedTokens:        20,  // 20
+			expectedCacheCreationTokens: 0,
 		},
 		{
-			name:                         "usage with cache creation tokens",
-			inputTokens:                  60,
-			outputTokens:                 40,
-			cacheReadTokens:              0,
-			cachedCreationTokens:         15,
-			expectedInputTokens:          75, // 60 + 15 + 0
-			expectedOutputTokens:         40,
-			expectedTotalTokens:          115, // 75 + 40
-			expectedCachedTokens:         0,   // 0
-			expectedCachedCreationTokens: 15,  // 15
+			name:                        "usage with cache creation tokens",
+			inputTokens:                 60,
+			outputTokens:                40,
+			cacheReadTokens:             0,
+			cacheCreationTokens:         15,
+			expectedInputTokens:         75, // 60 + 15 + 0
+			expectedOutputTokens:        40,
+			expectedTotalTokens:         115, // 75 + 40
+			expectedCachedTokens:        0,   // 0
+			expectedCacheCreationTokens: 15,  // 15
 		},
 		{
-			name:                         "usage with both cache types",
-			inputTokens:                  70,
-			outputTokens:                 25,
-			cacheReadTokens:              10,
-			cachedCreationTokens:         5,
-			expectedInputTokens:          85, // 70 + 5 + 10
-			expectedOutputTokens:         25,
-			expectedTotalTokens:          110, // 85 + 25
-			expectedCachedTokens:         10,  // 10
-			expectedCachedCreationTokens: 5,   // 5
+			name:                        "usage with both cache types",
+			inputTokens:                 70,
+			outputTokens:                25,
+			cacheReadTokens:             10,
+			cacheCreationTokens:         5,
+			expectedInputTokens:         85, // 70 + 5 + 10
+			expectedOutputTokens:        25,
+			expectedTotalTokens:         110, // 85 + 25
+			expectedCachedTokens:        10,  // 10
+			expectedCacheCreationTokens: 5,   // 5
 		},
 		{
-			name:                         "zero values",
-			inputTokens:                  0,
-			outputTokens:                 0,
-			cacheReadTokens:              0,
-			cachedCreationTokens:         0,
-			expectedInputTokens:          0,
-			expectedOutputTokens:         0,
-			expectedTotalTokens:          0,
-			expectedCachedTokens:         0,
-			expectedCachedCreationTokens: 0,
+			name:                        "zero values",
+			inputTokens:                 0,
+			outputTokens:                0,
+			cacheReadTokens:             0,
+			cacheCreationTokens:         0,
+			expectedInputTokens:         0,
+			expectedOutputTokens:        0,
+			expectedTotalTokens:         0,
+			expectedCachedTokens:        0,
+			expectedCacheCreationTokens: 0,
 		},
 		{
-			name:                         "large values",
-			inputTokens:                  100000,
-			outputTokens:                 50000,
-			cacheReadTokens:              25000,
-			cachedCreationTokens:         15000,
-			expectedInputTokens:          140000, // 100000 + 15000 + 25000
-			expectedOutputTokens:         50000,
-			expectedTotalTokens:          190000, // 140000 + 50000
-			expectedCachedTokens:         25000,  // 25000
-			expectedCachedCreationTokens: 15000,
+			name:                        "large values",
+			inputTokens:                 100000,
+			outputTokens:                50000,
+			cacheReadTokens:             25000,
+			cacheCreationTokens:         15000,
+			expectedInputTokens:         140000, // 100000 + 15000 + 25000
+			expectedOutputTokens:        50000,
+			expectedTotalTokens:         190000, // 140000 + 50000
+			expectedCachedTokens:        25000,  // 25000
+			expectedCacheCreationTokens: 15000,
 		},
 	}
 
@@ -107,15 +107,15 @@ func TestExtractLLMTokenUsage(t *testing.T) {
 				tt.inputTokens,
 				tt.outputTokens,
 				tt.cacheReadTokens,
-				tt.cachedCreationTokens,
+				tt.cacheCreationTokens,
 			)
 
 			expected := tokenUsageFrom(
-				int32(tt.expectedInputTokens),          // nolint:gosec
-				int32(tt.expectedCachedTokens),         // nolint:gosec
-				int32(tt.expectedCachedCreationTokens), // nolint:gosec
-				int32(tt.expectedOutputTokens),         // nolint:gosec
-				int32(tt.expectedTotalTokens),          // nolint:gosec
+				int32(tt.expectedInputTokens),         // nolint:gosec
+				int32(tt.expectedCachedTokens),        // nolint:gosec
+				int32(tt.expectedCacheCreationTokens), // nolint:gosec
+				int32(tt.expectedOutputTokens),        // nolint:gosec
+				int32(tt.expectedTotalTokens),         // nolint:gosec
 			)
 			assert.Equal(t, expected, result)
 		})
@@ -124,13 +124,13 @@ func TestExtractLLMTokenUsage(t *testing.T) {
 
 func TestExtractLLMTokenUsageFromUsage(t *testing.T) {
 	tests := []struct {
-		name                         string
-		usage                        anthropic.Usage
-		expectedInputTokens          int32
-		expectedOutputTokens         int32
-		expectedTotalTokens          int32
-		expectedCachedTokens         uint32
-		expectedCachedCreationTokens uint32
+		name                        string
+		usage                       anthropic.Usage
+		expectedInputTokens         int32
+		expectedOutputTokens        int32
+		expectedTotalTokens         int32
+		expectedCachedTokens        uint32
+		expectedCacheCreationTokens uint32
 	}{
 		{
 			name: "non-streaming response without cache",
@@ -140,11 +140,11 @@ func TestExtractLLMTokenUsageFromUsage(t *testing.T) {
 				CacheReadInputTokens:     0,
 				CacheCreationInputTokens: 0,
 			},
-			expectedInputTokens:          150,
-			expectedOutputTokens:         75,
-			expectedTotalTokens:          225,
-			expectedCachedTokens:         0,
-			expectedCachedCreationTokens: 0,
+			expectedInputTokens:         150,
+			expectedOutputTokens:        75,
+			expectedTotalTokens:         225,
+			expectedCachedTokens:        0,
+			expectedCacheCreationTokens: 0,
 		},
 		{
 			name: "non-streaming response with cache read",
@@ -154,11 +154,11 @@ func TestExtractLLMTokenUsageFromUsage(t *testing.T) {
 				CacheReadInputTokens:     25,
 				CacheCreationInputTokens: 0,
 			},
-			expectedInputTokens:          125, // 100 + 0 + 25
-			expectedOutputTokens:         50,
-			expectedTotalTokens:          175, // 125 + 50
-			expectedCachedTokens:         25,  // 25
-			expectedCachedCreationTokens: 0,   // 0
+			expectedInputTokens:         125, // 100 + 0 + 25
+			expectedOutputTokens:        50,
+			expectedTotalTokens:         175, // 125 + 50
+			expectedCachedTokens:        25,  // 25
+			expectedCacheCreationTokens: 0,   // 0
 		},
 		{
 			name: "non-streaming response with both cache types",
@@ -168,11 +168,11 @@ func TestExtractLLMTokenUsageFromUsage(t *testing.T) {
 				CacheReadInputTokens:     15,
 				CacheCreationInputTokens: 10,
 			},
-			expectedInputTokens:          115, // 90 + 10 + 15
-			expectedOutputTokens:         60,
-			expectedTotalTokens:          175, // 115 + 60
-			expectedCachedTokens:         15,  // 15
-			expectedCachedCreationTokens: 10,  // 10
+			expectedInputTokens:         115, // 90 + 10 + 15
+			expectedOutputTokens:        60,
+			expectedTotalTokens:         175, // 115 + 60
+			expectedCachedTokens:        15,  // 15
+			expectedCacheCreationTokens: 10,  // 10
 		},
 	}
 
@@ -183,7 +183,7 @@ func TestExtractLLMTokenUsageFromUsage(t *testing.T) {
 				tt.usage.CacheReadInputTokens,
 				tt.usage.CacheCreationInputTokens,
 			)
-			expected := tokenUsageFrom(tt.expectedInputTokens, int32(tt.expectedCachedTokens), int32(tt.expectedCachedCreationTokens), tt.expectedOutputTokens, tt.expectedTotalTokens) // nolint:gosec
+			expected := tokenUsageFrom(tt.expectedInputTokens, int32(tt.expectedCachedTokens), int32(tt.expectedCacheCreationTokens), tt.expectedOutputTokens, tt.expectedTotalTokens) // nolint:gosec
 			assert.Equal(t, expected, result)
 		})
 	}
@@ -191,13 +191,13 @@ func TestExtractLLMTokenUsageFromUsage(t *testing.T) {
 
 func TestExtractLLMTokenUsageFromDeltaUsage(t *testing.T) {
 	tests := []struct {
-		name                         string
-		usage                        anthropic.MessageDeltaUsage
-		expectedInputTokens          int32
-		expectedOutputTokens         int32
-		expectedTotalTokens          int32
-		expectedCachedTokens         uint32
-		expectedCachedCreationTokens uint32
+		name                        string
+		usage                       anthropic.MessageDeltaUsage
+		expectedInputTokens         int32
+		expectedOutputTokens        int32
+		expectedTotalTokens         int32
+		expectedCachedTokens        uint32
+		expectedCacheCreationTokens uint32
 	}{
 		{
 			name: "message_delta event with final totals",
@@ -207,11 +207,11 @@ func TestExtractLLMTokenUsageFromDeltaUsage(t *testing.T) {
 				CacheReadInputTokens:     30,
 				CacheCreationInputTokens: 0,
 			},
-			expectedInputTokens:          280, // 250 + 0 + 30
-			expectedOutputTokens:         120,
-			expectedTotalTokens:          400, // 280 + 120
-			expectedCachedTokens:         30,  // 30
-			expectedCachedCreationTokens: 0,
+			expectedInputTokens:         280, // 250 + 0 + 30
+			expectedOutputTokens:        120,
+			expectedTotalTokens:         400, // 280 + 120
+			expectedCachedTokens:        30,  // 30
+			expectedCacheCreationTokens: 0,
 		},
 		{
 			name: "message_delta event with only output tokens",
@@ -221,11 +221,11 @@ func TestExtractLLMTokenUsageFromDeltaUsage(t *testing.T) {
 				CacheReadInputTokens:     0,
 				CacheCreationInputTokens: 0,
 			},
-			expectedInputTokens:          0,
-			expectedOutputTokens:         85,
-			expectedTotalTokens:          85,
-			expectedCachedTokens:         0,
-			expectedCachedCreationTokens: 0,
+			expectedInputTokens:         0,
+			expectedOutputTokens:        85,
+			expectedTotalTokens:         85,
+			expectedCachedTokens:        0,
+			expectedCacheCreationTokens: 0,
 		},
 		{
 			name: "message_delta with cache creation tokens",
@@ -235,11 +235,11 @@ func TestExtractLLMTokenUsageFromDeltaUsage(t *testing.T) {
 				CacheReadInputTokens:     10,
 				CacheCreationInputTokens: 5,
 			},
-			expectedInputTokens:          165, // 150 + 5 + 10
-			expectedOutputTokens:         75,
-			expectedTotalTokens:          240, // 165 + 75
-			expectedCachedTokens:         10,  // 10
-			expectedCachedCreationTokens: 5,   // 5
+			expectedInputTokens:         165, // 150 + 5 + 10
+			expectedOutputTokens:        75,
+			expectedTotalTokens:         240, // 165 + 75
+			expectedCachedTokens:        10,  // 10
+			expectedCacheCreationTokens: 5,   // 5
 		},
 	}
 
@@ -250,7 +250,7 @@ func TestExtractLLMTokenUsageFromDeltaUsage(t *testing.T) {
 				tt.usage.CacheReadInputTokens,
 				tt.usage.CacheCreationInputTokens,
 			)
-			expected := tokenUsageFrom(tt.expectedInputTokens, int32(tt.expectedCachedTokens), int32(tt.expectedCachedCreationTokens), tt.expectedOutputTokens, tt.expectedTotalTokens) // nolint:gosec
+			expected := tokenUsageFrom(tt.expectedInputTokens, int32(tt.expectedCachedTokens), int32(tt.expectedCacheCreationTokens), tt.expectedOutputTokens, tt.expectedTotalTokens) // nolint:gosec
 			assert.Equal(t, expected, result)
 		})
 	}
@@ -304,10 +304,10 @@ func TestExtractLLMTokenUsage_ClaudeAPIDocumentationCompliance(t *testing.T) {
 		assert.Equal(t, uint32(cacheReadTokens), cachedTokens,
 			"CachedInputTokens should be  cache_read_input_tokens")
 
-		cachedCreationTokens, ok := result.CachedCreationInputTokens()
+		cacheCreationTokens, ok := result.CacheCreationInputTokens()
 		assert.True(t, ok)
-		assert.Equal(t, uint32(cachedWriteTokens), cachedCreationTokens,
-			"CachedCreationInputTokens should be cache_creation_input_tokens")
+		assert.Equal(t, uint32(cachedWriteTokens), cacheCreationTokens,
+			"CacheCreationInputTokens should be cache_creation_input_tokens")
 
 		// Total tokens should be input + output.
 		expectedTotal := expectedTotalInput + uint32(outputTokens)

@@ -107,7 +107,7 @@ func verifyPrometheusTokenUsage(t *testing.T, metric *dto.MetricFamily, expected
 	t.Helper()
 	require.NotNil(t, metric)
 	require.Len(t, metric.Metric, 4)
-	var inputMetric, cachedInputMetric, cachedCreationInputMetric, outputMetric *dto.Metric
+	var inputMetric, cachedInputMetric, cacheCreationInputMetric, outputMetric *dto.Metric
 	for _, m := range metric.Metric {
 		for _, label := range m.Label {
 			if *label.Name == "gen_ai_token_type" {
@@ -116,8 +116,8 @@ func verifyPrometheusTokenUsage(t *testing.T, metric *dto.MetricFamily, expected
 					inputMetric = m
 				case "cached_input":
 					cachedInputMetric = m
-				case "cached_creation_input":
-					cachedCreationInputMetric = m
+				case "cache_creation_input":
+					cacheCreationInputMetric = m
 				case "output":
 					outputMetric = m
 				}
@@ -127,7 +127,7 @@ func verifyPrometheusTokenUsage(t *testing.T, metric *dto.MetricFamily, expected
 	}
 	require.NotNil(t, inputMetric, "Input metric not found")
 	require.NotNil(t, cachedInputMetric, "Cached Input metric not found")
-	require.NotNil(t, cachedCreationInputMetric, "Cached Creation Input metric not found")
+	require.NotNil(t, cacheCreationInputMetric, "Cached Creation Input metric not found")
 	require.NotNil(t, outputMetric, "Output metric not found")
 
 	type testCase struct {
@@ -139,7 +139,7 @@ func verifyPrometheusTokenUsage(t *testing.T, metric *dto.MetricFamily, expected
 	cases := []testCase{
 		{inputMetric, "input", 8},
 		{cachedInputMetric, "cached_input", 0},
-		{cachedCreationInputMetric, "cached_creation_input", 0},
+		{cacheCreationInputMetric, "cache_creation_input", 0},
 		{outputMetric, "output", 377},
 	}
 

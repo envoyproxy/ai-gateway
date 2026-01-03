@@ -197,7 +197,7 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 					{MetadataKey: "bar", Type: aigv1a1.LLMRequestCostTypeOutputToken},
 					{MetadataKey: "baz", Type: aigv1a1.LLMRequestCostTypeTotalToken},
 					{MetadataKey: "qux", Type: aigv1a1.LLMRequestCostTypeCachedInputToken},
-					{MetadataKey: "zoo", Type: aigv1a1.LLMRequestCostTypeCachedCreationInputToken},
+					{MetadataKey: "zoo", Type: aigv1a1.LLMRequestCostTypeCacheCreationInputToken},
 				},
 			},
 		},
@@ -280,7 +280,7 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		require.Equal(t, filterapi.LLMRequestCostTypeOutputToken, fc.LLMRequestCosts[1].Type)
 		require.Equal(t, filterapi.LLMRequestCostTypeTotalToken, fc.LLMRequestCosts[2].Type)
 		require.Equal(t, filterapi.LLMRequestCostTypeCachedInputToken, fc.LLMRequestCosts[3].Type)
-		require.Equal(t, filterapi.LLMRequestCostTypeCachedCreationInputToken, fc.LLMRequestCosts[4].Type)
+		require.Equal(t, filterapi.LLMRequestCostTypeCacheCreationInputToken, fc.LLMRequestCosts[4].Type)
 		require.Equal(t, filterapi.LLMRequestCostTypeCEL, fc.LLMRequestCosts[5].Type)
 		require.Equal(t, `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`, fc.LLMRequestCosts[5].CEL)
 		require.Len(t, fc.Models, 1)

@@ -110,7 +110,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 		p.tokenUsage.SetTotalTokens(inputTokens + outputTokens)
 		totalTokens, _ := p.tokenUsage.TotalTokens()
 		cachedTokens, _ := p.tokenUsage.CachedInputTokens()
-		cachedCreationTokens, _ := p.tokenUsage.CachedCreationInputTokens()
+		cacheCreationTokens, _ := p.tokenUsage.CacheCreationInputTokens()
 		finalChunk := openai.ChatCompletionResponseChunk{
 			ID:      p.activeMessageID,
 			Created: p.created,
@@ -121,8 +121,8 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 				CompletionTokens: int(outputTokens),
 				TotalTokens:      int(totalTokens),
 				PromptTokensDetails: &openai.PromptTokensDetails{
-					CachedTokens:         int(cachedTokens),
-					CachedCreationTokens: int(cachedCreationTokens),
+					CachedTokens:        int(cachedTokens),
+					CacheCreationTokens: int(cacheCreationTokens),
 				},
 			},
 			Model: p.requestModel,
@@ -213,8 +213,8 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if cached, ok := usage.CachedInputTokens(); ok {
 			p.tokenUsage.SetCachedInputTokens(cached)
 		}
-		if cachedCreation, ok := usage.CachedCreationInputTokens(); ok {
-			p.tokenUsage.SetCachedCreationInputTokens(cachedCreation)
+		if cacheCreation, ok := usage.CacheCreationInputTokens(); ok {
+			p.tokenUsage.SetCacheCreationInputTokens(cacheCreation)
 		}
 
 		// reset the toolIndex for each message
@@ -298,10 +298,10 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			p.tokenUsage.AddCachedInputTokens(cached)
 		}
 		// Update input tokens to include write cache tokens from delta
-		if cached, ok := usage.CachedCreationInputTokens(); ok {
+		if cached, ok := usage.CacheCreationInputTokens(); ok {
 			p.tokenUsage.AddInputTokens(cached)
 			// Accumulate any additional cache tokens from delta
-			p.tokenUsage.AddCachedCreationInputTokens(cached)
+			p.tokenUsage.AddCacheCreationInputTokens(cached)
 		}
 		if event.Delta.StopReason != "" {
 			p.stopReason = event.Delta.StopReason

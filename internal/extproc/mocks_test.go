@@ -171,17 +171,17 @@ func (m *mockMetricsFactory) NewMetrics() metrics.Metrics {
 
 // mockMetrics implements [metrics.Metrics] for testing.
 type mockMetrics struct {
-	requestStart                  time.Time
-	originalModel                 string
-	requestModel                  string
-	responseModel                 string
-	backend                       string
-	requestSuccessCount           int
-	requestErrorCount             int
-	inputTokenCount               int
-	cachedInputTokenCount         int
-	cachedCreationInputTokenCount int
-	outputTokenCount              int
+	requestStart                 time.Time
+	originalModel                string
+	requestModel                 string
+	responseModel                string
+	backend                      string
+	requestSuccessCount          int
+	requestErrorCount            int
+	inputTokenCount              int
+	cachedInputTokenCount        int
+	cacheCreationInputTokenCount int
+	outputTokenCount             int
 	// streamingOutputTokens tracks the cumulative output tokens recorded via RecordTokenLatency.
 	streamingOutputTokens int
 	timeToFirstToken      float64
@@ -219,8 +219,8 @@ func (m *mockMetrics) RecordTokenUsage(_ context.Context, usage metrics.TokenUsa
 	if cachedInput, ok := usage.CachedInputTokens(); ok {
 		m.cachedInputTokenCount += int(cachedInput)
 	}
-	if cachedCreationInput, ok := usage.CachedCreationInputTokens(); ok {
-		m.cachedCreationInputTokenCount += int(cachedCreationInput)
+	if cacheCreationInput, ok := usage.CacheCreationInputTokens(); ok {
+		m.cacheCreationInputTokenCount += int(cacheCreationInput)
 	}
 	if output, ok := usage.OutputTokens(); ok {
 		m.outputTokenCount += int(output)
@@ -285,7 +285,7 @@ func (m *mockMetrics) RequireRequestFailure(t *testing.T) {
 func (m *mockMetrics) RequireTokensRecorded(t *testing.T, expectedInput, expectedCachedInput, expectedWriteCachedInput, expectedOutput int) {
 	require.Equal(t, expectedInput, m.inputTokenCount)
 	require.Equal(t, expectedCachedInput, m.cachedInputTokenCount)
-	require.Equal(t, expectedWriteCachedInput, m.cachedCreationInputTokenCount)
+	require.Equal(t, expectedWriteCachedInput, m.cacheCreationInputTokenCount)
 	require.Equal(t, expectedOutput, m.outputTokenCount)
 }
 

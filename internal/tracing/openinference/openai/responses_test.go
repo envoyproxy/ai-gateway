@@ -77,8 +77,8 @@ var (
 		Usage: &openai.ResponseUsage{
 			InputTokens: 100,
 			InputTokensDetails: openai.ResponseUsageInputTokensDetails{
-				CachedTokens:         10,
-				CachedCreationTokens: 50,
+				CachedTokens:        10,
+				CacheCreationTokens: 50,
 			},
 			OutputTokens: 25,
 			TotalTokens:  125,

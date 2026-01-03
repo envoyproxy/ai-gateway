@@ -598,11 +598,11 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 			require.NoError(t, err)
 
 			expectedTokenUsage := tokenUsageFrom(
-				int32(tt.expectedOpenAIResponse.Usage.PromptTokens),                             // nolint:gosec
-				int32(tt.expectedOpenAIResponse.Usage.PromptTokensDetails.CachedTokens),         // nolint:gosec
-				int32(tt.expectedOpenAIResponse.Usage.PromptTokensDetails.CachedCreationTokens), // nolint:gosec
-				int32(tt.expectedOpenAIResponse.Usage.CompletionTokens),                         // nolint:gosec
-				int32(tt.expectedOpenAIResponse.Usage.TotalTokens),                              // nolint:gosec
+				int32(tt.expectedOpenAIResponse.Usage.PromptTokens),                            // nolint:gosec
+				int32(tt.expectedOpenAIResponse.Usage.PromptTokensDetails.CachedTokens),        // nolint:gosec
+				int32(tt.expectedOpenAIResponse.Usage.PromptTokensDetails.CacheCreationTokens), // nolint:gosec
+				int32(tt.expectedOpenAIResponse.Usage.CompletionTokens),                        // nolint:gosec
+				int32(tt.expectedOpenAIResponse.Usage.TotalTokens),                             // nolint:gosec
 			)
 			require.Equal(t, expectedTokenUsage, usedToken)
 
