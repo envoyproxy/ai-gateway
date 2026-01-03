@@ -38,6 +38,8 @@ The following backends support extension fields:
 - **Supported Fields**:
   - `safetySettings`: Configure the safety settings for gemini models that translates to `SafetySetting`. [Gemini Docs](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/multimodal/configure-safety-filters)
   - `thinking`: Configure thinking process for reasoning models that automatically translates to `generationConfig.thinkingConfig`. [Gemini Docs](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/thinking)
+- **Supported Tools**:
+  - `google_search`: Enable Google Search grounding for Gemini models. Configuration options vary by platform: `exclude_domains` and `blocking_confidence` are Vertex AI only, while `time_range_filter` is Gemini API only. [Google Search Grounding Docs](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/grounding/grounding-with-google-search)
 
 ### GCP Anthropic
 
@@ -99,6 +101,52 @@ For more fine-grained control or provider-specific features, you can use the ven
     {
       "category": "HARM_CATEGORY_HARASSMENT",
       "threshold": "BLOCK_ONLY_HIGH"
+    }
+  ]
+}
+```
+
+### Using Google Search Grounding
+
+To enable Google Search grounding for Gemini models, add `google_search` to the tools array.
+
+For basic usage without configuration options:
+
+```json
+{
+  "model": "gemini-2.0-flash",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What are the latest developments in quantum computing?"
+    }
+  ],
+  "tools": [
+    {
+      "type": "google_search"
+    }
+  ]
+}
+```
+
+For Vertex AI, you can add filtering options:
+
+```json
+{
+  "model": "gemini-2.0-flash",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What are the latest developments in quantum computing?"
+    }
+  ],
+  "tools": [
+    {
+      "type": "google_search",
+      "google_search": {
+        "exclude_domains": ["example.com"],
+        "blocking_confidence": "BLOCK_LOW_AND_ABOVE"
+      }
     }
   ]
 }
