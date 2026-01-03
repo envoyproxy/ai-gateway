@@ -127,7 +127,7 @@ func verifyPrometheusTokenUsage(t *testing.T, metric *dto.MetricFamily, expected
 	}
 	require.NotNil(t, inputMetric, "Input metric not found")
 	require.NotNil(t, cachedInputMetric, "Cached Input metric not found")
-	require.NotNil(t, cacheCreationInputMetric, "Cached Creation Input metric not found")
+	require.NotNil(t, cacheCreationInputMetric, "Cache Creation Input metric not found")
 	require.NotNil(t, outputMetric, "Output metric not found")
 
 	type testCase struct {
