@@ -11,6 +11,8 @@ import (
 	"log/slog"
 	"os"
 	"time"
+
+	"github.com/envoyproxy/ai-gateway/internal/version"
 )
 
 // ConfigReceiver is an interface that can receive *Config updates.
@@ -21,17 +23,17 @@ type ConfigReceiver interface {
 }
 
 type configWatcher struct {
-	lastMod         time.Time
-	path            string
-	rcv             ConfigReceiver
-	l               *slog.Logger
-	usingDefaultCfg bool
+	lastMod    time.Time
+	path       string
+	rcv        ConfigReceiver
+	l          *slog.Logger
+	versionStr string
 }
 
 // StartConfigWatcher starts a watcher for the given path and Receiver.
 // Periodically checks the file for changes and calls the Receiver's UpdateConfig method.
 func StartConfigWatcher(ctx context.Context, path string, rcv ConfigReceiver, l *slog.Logger, tick time.Duration) error {
-	cw := &configWatcher{rcv: rcv, l: l, path: path}
+	cw := &configWatcher{rcv: rcv, l: l, path: path, versionStr: version.Parse()}
 
 	if err := cw.loadConfig(ctx); err != nil {
 		return fmt.Errorf("failed to load initial config: %w", err)
@@ -61,38 +63,28 @@ func (cw *configWatcher) watch(ctx context.Context, tick time.Duration) {
 	}
 }
 
-// loadConfig loads a new config from the given path and updates the Receiver by
-// calling the [Receiver.Load].
+// loadConfig loads a new config from the given path and updates the ConfigReceiver by
+// calling the [ConfigReceiver.Load].
 func (cw *configWatcher) loadConfig(ctx context.Context) error {
 	var cfg *Config
 	stat, err := os.Stat(cw.path)
-	switch {
-	case err != nil && os.IsNotExist(err):
-		// If the file does not exist, do not fail (which could lead to the extproc process to terminate).
-		// Instead, load the default configuration and keep running unconfigured.
-		cfg = MustLoadDefaultConfig()
-	case err != nil:
+	if err != nil {
 		return err
 	}
 
-	if cfg != nil {
-		if cw.usingDefaultCfg { // Do not re-reload the same thing on every tick.
-			return nil
-		}
-		cw.l.Info("config file does not exist; loading default config", slog.String("path", cw.path))
-		cw.lastMod = time.Now()
-		cw.usingDefaultCfg = true
-	} else {
-		cw.usingDefaultCfg = false
-		if stat.ModTime().Sub(cw.lastMod) <= 0 {
-			return nil
-		}
-		cw.l.Info("loading a new config", slog.String("path", cw.path))
-		cw.lastMod = stat.ModTime()
-		cfg, err = UnmarshalConfigYaml(cw.path)
-		if err != nil {
-			return err
-		}
+	if stat.ModTime().Sub(cw.lastMod) <= 0 {
+		return nil
+	}
+	cw.l.Info("loading a new config", slog.String("path", cw.path))
+	cw.lastMod = stat.ModTime()
+	cfg, err = UnmarshalConfigYaml(cw.path)
+	if err != nil {
+		return err
+	}
+
+	if cfg.Version != cw.versionStr {
+		return fmt.Errorf(`config version mismatch: expected %q, got %q. Likely in the middle of rolling update`,
+			cw.versionStr, cfg.Version)
 	}
 
 	if err = cw.rcv.LoadConfig(ctx, cfg); err != nil {

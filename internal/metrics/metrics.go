@@ -149,8 +149,10 @@ type TokenUsage struct {
 	totalTokens uint32
 	// CachedInputTokens is the total number of tokens read from cache.
 	cachedInputTokens uint32
+	// CacheCreationInputTokens is the total number of tokens written to cache.
+	cacheCreationInputTokens uint32
 
-	inputTokenSet, outputTokenSet, totalTokenSet, cachedInputTokenSet bool
+	inputTokenSet, outputTokenSet, totalTokenSet, cachedInputTokenSet, cacheCreationInputTokenSet bool
 }
 
 // InputTokens returns the number of input tokens and whether it was set.
@@ -171,6 +173,11 @@ func (u *TokenUsage) TotalTokens() (uint32, bool) {
 // CachedInputTokens returns the number of cached input tokens and whether it was set.
 func (u *TokenUsage) CachedInputTokens() (uint32, bool) {
 	return u.cachedInputTokens, u.cachedInputTokenSet
+}
+
+// CacheCreationInputTokens returns the number of cache creation input tokens and whether it was set.
+func (u *TokenUsage) CacheCreationInputTokens() (uint32, bool) {
+	return u.cacheCreationInputTokens, u.cacheCreationInputTokenSet
 }
 
 // SetInputTokens sets the number of input tokens and marks the field as set.
@@ -197,6 +204,12 @@ func (u *TokenUsage) SetCachedInputTokens(tokens uint32) {
 	u.cachedInputTokenSet = true
 }
 
+// SetCacheCreationInputTokens sets the number of cache creation input tokens and marks the field as set.
+func (u *TokenUsage) SetCacheCreationInputTokens(tokens uint32) {
+	u.cacheCreationInputTokens = tokens
+	u.cacheCreationInputTokenSet = true
+}
+
 // AddInputTokens increments the recorded input tokens and marks the field as set.
 func (u *TokenUsage) AddInputTokens(tokens uint32) {
 	u.inputTokenSet = true
@@ -213,6 +226,12 @@ func (u *TokenUsage) AddOutputTokens(tokens uint32) {
 func (u *TokenUsage) AddCachedInputTokens(tokens uint32) {
 	u.cachedInputTokenSet = true
 	u.cachedInputTokens += tokens
+}
+
+// AddCacheCreationInputTokens increments the recorded cache creation input tokens and marks the field as set.
+func (u *TokenUsage) AddCacheCreationInputTokens(tokens uint32) {
+	u.cacheCreationInputTokenSet = true
+	u.cacheCreationInputTokens += tokens
 }
 
 // Override updates the TokenUsage fields with values from another TokenUsage instance.
@@ -234,6 +253,10 @@ func (u *TokenUsage) Override(other TokenUsage) {
 		u.cachedInputTokens = other.cachedInputTokens
 		u.cachedInputTokenSet = true
 	}
+	if other.cacheCreationInputTokenSet {
+		u.cacheCreationInputTokens = other.cacheCreationInputTokens
+		u.cacheCreationInputTokenSet = true
+	}
 }
 
 // ExtractTokenUsageFromAnthropic extracts the correct token usage from Anthropic API response.
@@ -246,13 +269,11 @@ func ExtractTokenUsageFromAnthropic(inputTokens, outputTokens, cacheReadTokens, 
 	// Calculate total input tokens as per Anthropic API documentation
 	totalInputTokens := inputTokens + cacheCreationTokens + cacheReadTokens
 
-	// Cache tokens include both read and creation tokens
-	totalCachedTokens := cacheReadTokens + cacheCreationTokens
-
 	var usage TokenUsage
-	usage.SetInputTokens(uint32(totalInputTokens))                //nolint:gosec
-	usage.SetOutputTokens(uint32(outputTokens))                   //nolint:gosec
-	usage.SetTotalTokens(uint32(totalInputTokens + outputTokens)) //nolint:gosec
-	usage.SetCachedInputTokens(uint32(totalCachedTokens))         //nolint:gosec
+	usage.SetInputTokens(uint32(totalInputTokens))                 //nolint:gosec
+	usage.SetOutputTokens(uint32(outputTokens))                    //nolint:gosec
+	usage.SetTotalTokens(uint32(totalInputTokens + outputTokens))  //nolint:gosec
+	usage.SetCachedInputTokens(uint32(cacheReadTokens))            //nolint:gosec
+	usage.SetCacheCreationInputTokens(uint32(cacheCreationTokens)) //nolint:gosec
 	return usage
 }

@@ -8,7 +8,6 @@ package mcpproxy
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -23,6 +22,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
@@ -270,7 +270,7 @@ func (m *MCPProxy) initializeSession(ctx context.Context, routeName filterapi.MC
 	// Need to invoke "notifications/initialized" to complete the initialization.
 	{
 		// Send the notifications/initialized request to the MCP backend listener.
-		mcpReq := &jsonrpc.Request{Method: "notifications/initialized", Params: json.RawMessage(`{}`)}
+		mcpReq := &jsonrpc.Request{Method: "notifications/initialized", Params: emptyJSONRPCMessage}
 		resp, err := m.invokeJSONRPCRequest(ctx, routeName, backend, &compositeSessionEntry{
 			sessionID: gatewayToMCPServerSessionID(sessionID),
 		}, mcpReq)

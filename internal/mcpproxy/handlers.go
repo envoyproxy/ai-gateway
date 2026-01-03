@@ -11,7 +11,6 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -29,6 +28,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/version"
@@ -372,7 +372,7 @@ func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
 				onErrorResponse(w, http.StatusBadRequest, "invalid params")
 				return
 			}
-			err = m.handleToolCallRequest(ctx, s, w, msg, params.(*mcp.CallToolParams), span, r.Header)
+			err = m.handleToolCallRequest(ctx, s, w, msg, params.(*mcp.CallToolParams), span, r)
 		case "tools/list":
 			params = &mcp.ListToolsParams{}
 			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, params, r.Header)
@@ -635,7 +635,7 @@ func (m *MCPProxy) handleClientToServerResponse(ctx context.Context, s *session,
 	return m.proxyResponseBody(ctx, s, w, resp, nil, backend)
 }
 
-func (m *MCPProxy) handleToolCallRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.CallToolParams, span tracing.MCPSpan, headers http.Header) error {
+func (m *MCPProxy) handleToolCallRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.CallToolParams, span tracing.MCPSpan, r *http.Request) error {
 	backendName, toolName, err := upstreamResourceName(p.Name)
 	if err != nil {
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid tool name %s: %v", p.Name, err))
@@ -663,7 +663,20 @@ func (m *MCPProxy) handleToolCallRequest(ctx context.Context, s *session, w http
 
 	// Enforce authentication if required by the route.
 	if route.authorization != nil {
-		allowed, requiredScopes := m.authorizeRequest(route.authorization, headers, backendName, toolName, p.Arguments)
+		httpPath := ""
+		if r.URL != nil {
+			httpPath = r.URL.Path
+		}
+		allowed, requiredScopes := m.authorizeRequest(route.authorization, authorizationRequest{
+			Headers:    r.Header,
+			HTTPMethod: r.Method,
+			Host:       r.Host,
+			HTTPPath:   httpPath,
+			MCPMethod:  req.Method,
+			Backend:    backendName,
+			Tool:       toolName,
+			Params:     p,
+		})
 		if !allowed {
 			// Specify the minimum required scopes in the WWW-Authenticate header.
 			// Reference: https://mcp.mintlify.app/specification/2025-11-25/basic/authorization#runtime-insufficient-scope-errors
@@ -1104,7 +1117,7 @@ func (m *MCPProxy) handleResourcesSubscriptionRequest(ctx context.Context, s *se
 	return m.invokeAndProxyResponse(ctx, s, w, backend, cse, req)
 }
 
-var emptyJSONRPCMessage = json.RawMessage(`{}`)
+var emptyJSONRPCMessage = []byte(`{}`)
 
 func (m *MCPProxy) handlePing(_ context.Context, w http.ResponseWriter, req *jsonrpc.Request) (err error) {
 	encodedResp, _ := jsonrpc.EncodeMessage(&jsonrpc.Response{ID: req.ID, Result: emptyJSONRPCMessage})
@@ -1497,7 +1510,7 @@ func (m *MCPProxy) handlePromptListRequest(ctx context.Context, s *session, w ht
 func (m *MCPProxy) handleSetLoggingLevel(ctx context.Context, s *session, w http.ResponseWriter, originalRequest *jsonrpc.Request, p *mcp.SetLoggingLevelParams, span tracing.MCPSpan) error {
 	// TODO: maybe some backend doesn't support set logging level, so filter out such backends.
 	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, originalRequest, p, func(*session, []broadCastResponse[any]) any {
-		return emptyJSONRPCMessage
+		return struct{}{}
 	}, span)
 }
 

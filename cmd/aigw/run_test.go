@@ -23,6 +23,7 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/version"
 )
 
 // TestRun verifies that the main run function starts up correctly without making any actual requests.
@@ -109,7 +110,7 @@ func Test_mustStartExtProc(t *testing.T) {
 		adminPort:       1064,
 		extProcLauncher: func(context.Context, []string, io.Writer) error { return mockErr },
 	}
-	done := runCtx.mustStartExtProc(t.Context(), filterapi.MustLoadDefaultConfig())
+	done := runCtx.mustStartExtProc(t.Context(), &filterapi.Config{Version: version.Parse()})
 	require.ErrorIs(t, <-done, mockErr)
 }
 
@@ -129,7 +130,7 @@ func Test_mustStartExtProc_withHeaderAttributes(t *testing.T) {
 		},
 	}
 
-	done := runCtx.mustStartExtProc(t.Context(), filterapi.MustLoadDefaultConfig())
+	done := runCtx.mustStartExtProc(t.Context(), &filterapi.Config{Version: version.Parse()})
 	<-done // Wait for completion
 
 	// Verify both metrics and tracing flags are set

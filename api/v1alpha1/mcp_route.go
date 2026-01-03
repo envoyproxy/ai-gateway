@@ -269,6 +269,36 @@ type MCPRouteAuthorizationRule struct {
 	// +kubebuilder:validation:Optional
 	Target *MCPAuthorizationTarget `json:"target,omitempty"`
 
+	// CEL specifies a Common Expression Language (CEL) expression evaluated for this rule.
+	// The expression must return a boolean; evaluation errors or non-boolean results
+	// are treated as "no match".
+	//
+	// Example CEL expressions:
+	//	* `request.method == "POST"`
+	//	* `request.headers["x-custom-header"] == "AllowedValue"`
+	//	* `request.mcp.tool in ["toolA", "toolB"]`
+	//
+	// Available attributes in the CEL expression:
+	//
+	//	* request.method: HTTP method such as GET or POST. Type: string.
+	//	* request.headers: map of headers with lowercased keys, first value only. Type: map[string]string.
+	//	* request.headers_all: map of headers with lowercased keys, all values. Type: map[string][]string.
+	//	* request.path: request path such as /mcp. Type: string.
+	//	* request.auth.jwt.claims: JWT claims when a bearer JWT is present. Type: map[string]any.
+	//	* request.auth.jwt.scopes: JWT scopes when a bearer JWT is present. Type: []string.
+	//	* request.mcp.method: MCP method such as tools/list or tools/call. Type: string.
+	//	* request.mcp.backend: upstream backend name (for example, "kiwi" or "github"). Type: string.
+	//	* request.mcp.tool: tool name without backend prefix (for example, "list_issues"). Type: string.
+	//	* request.mcp.params: parameters of the MCP method, including keys like "_meta" and "arguments". Type: object.
+	//
+	// Note: The CEL expression support is experimental, and the attributes
+	// available to the expression may change in future releases.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxLength=4096
+	// +optional
+	CEL *string `json:"cel,omitempty"`
+
 	// Action is the authorization decision for matching requests. If unspecified, defaults to Allow.
 	//
 	// +kubebuilder:validation:Optional
@@ -332,15 +362,6 @@ type ToolCall struct {
 	//
 	// +kubebuilder:validation:Required
 	Tool string `json:"tool"`
-
-	// When is a CEL expression that must evaluate to true for the rule to match.
-	// The expression is evaluated with a single variable "args" bound to the tool call arguments as a dynamic object.
-	// Guard against missing fields with null checks (e.g., args["foo"] != null && args["foo"]["bar"] == "val").
-	//
-	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:MaxLength=4096
-	// +optional
-	When *string `json:"when,omitempty"`
 }
 
 // JWKS defines how to obtain JSON Web Key Sets (JWKS) either from a remote HTTP/HTTPS endpoint or from a local source.

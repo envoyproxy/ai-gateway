@@ -6,12 +6,12 @@
 package bodymutator
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func TestBodyMutator_Mutate_Set(t *testing.T) {

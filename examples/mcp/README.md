@@ -38,7 +38,7 @@ Then, you can use the MCP Inspector to interact with the MCP Proxy:
 ```
 $ npx @modelcontextprotocol/inspector --cli http://localhost:1975/mcp --transport http --method 'tools/list' | jq '.tools[] | .name'
 "context7__resolve-library-id"
-"context7__get-library-docs"
+"context7__query-docs"
 "github__pull_request_read"
 "kiwi__search-flight"
 ```

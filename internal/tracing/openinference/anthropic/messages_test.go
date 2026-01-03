@@ -6,7 +6,6 @@
 package anthropic
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -16,6 +15,7 @@ import (
 	oteltrace "go.opentelemetry.io/otel/trace"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 )
@@ -326,6 +326,7 @@ func TestMessageRecorder_RecordResponse(t *testing.T) {
 				attribute.String(openinference.OutputMessageToolCallAttribute(1, 0, openinference.ToolCallFunctionArguments), `{"timezone":"UTC"}`),
 				attribute.Int(openinference.LLMTokenCountPrompt, 10),
 				attribute.Int(openinference.LLMTokenCountPromptCacheHit, 0),
+				attribute.Int(openinference.LLMTokenCountPromptCacheWrite, 0),
 				attribute.Int(openinference.LLMTokenCountCompletion, 5),
 				attribute.Int(openinference.LLMTokenCountTotal, 15),
 			},

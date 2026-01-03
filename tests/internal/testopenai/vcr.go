@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"embed"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -23,6 +22,8 @@ import (
 	"gopkg.in/dnaeon/go-vcr.v4/pkg/cassette"
 	"gopkg.in/dnaeon/go-vcr.v4/pkg/recorder"
 	"gopkg.in/yaml.v3" //nolint:depguard // sigs.k8s.io/yaml breaks Duration unmarshaling in cassettes
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 var (

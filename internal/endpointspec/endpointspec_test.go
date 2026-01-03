@@ -6,7 +6,6 @@
 package endpointspec
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/openai/openai-go/v2/packages/param"
@@ -16,6 +15,7 @@ import (
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func TestChatCompletionsEndpointSpec_ParseBody(t *testing.T) {

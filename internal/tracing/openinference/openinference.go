@@ -160,6 +160,11 @@ const (
 	// and cost savings from cached prompts.
 	LLMTokenCountPromptCacheHit = "llm.token_count.prompt_details.cache_read" // #nosec G101
 
+	// LLMTokenCountPromptCacheWrite represents the number of prompt tokens
+	// created to cache (cache write). This enables tracking of cache efficiency
+	// and cost savings from cached prompts.
+	LLMTokenCountPromptCacheWrite = "llm.token_count.prompt_details.cache_creation" // #nosec G101
+
 	// LLMTokenCountPromptAudio represents the number of audio tokens in the prompt.
 	// Used for multimodal models that support audio input.
 	LLMTokenCountPromptAudio = "llm.token_count.prompt_details.audio" // #nosec G101

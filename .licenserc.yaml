@@ -34,8 +34,8 @@ header:
     - LICENSE
     - CODEOWNERS
     - pre-commit.sh
-    - tests/extproc/testdata/server.key
-    - tests/extproc/testdata/server.crt
+    - "**/*/server.key"
+    - "**/*/server.crt"
     - .env.ollama
     - "**/.env*"
     - tests/internal/testopenai/cassettes

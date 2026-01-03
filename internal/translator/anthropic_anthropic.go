@@ -8,15 +8,16 @@ package translator
 import (
 	"bytes"
 	"cmp"
-	"encoding/json"
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 
 	"github.com/tidwall/sjson"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
@@ -180,6 +181,9 @@ func (a *anthropicToAnthropicTranslator) updateTotalTokens() {
 		if _, cachedSet := a.streamingTokenUsage.CachedInputTokens(); !cachedSet {
 			a.streamingTokenUsage.SetCachedInputTokens(0)
 		}
+		if _, cachedSet := a.streamingTokenUsage.CacheCreationInputTokens(); !cachedSet {
+			a.streamingTokenUsage.SetCacheCreationInputTokens(0)
+		}
 	}
 
 	if inputSet && outputSet {
@@ -188,12 +192,52 @@ func (a *anthropicToAnthropicTranslator) updateTotalTokens() {
 }
 
 // ResponseError implements [AnthropicMessagesTranslator] for Anthropic to AWS Bedrock Anthropic translation.
-func (a *anthropicToAnthropicTranslator) ResponseError(map[string]string, io.Reader) (
+func (a *anthropicToAnthropicTranslator) ResponseError(respHeaders map[string]string, r io.Reader) (
 	newHeaders []internalapi.Header,
 	mutatedBody []byte,
 	err error,
 ) {
-	// TODO: implement the non-anthropic error conversion logic here. For now, we just return the original error
-	// 	from the upstream as-is.
+	statusCode := respHeaders[statusHeaderName]
+	if !strings.Contains(respHeaders[contentTypeHeaderName], jsonContentType) {
+		buf, err := io.ReadAll(r)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to read error body: %w", err)
+		}
+		var typ string
+		switch statusCode {
+		case "400":
+			typ = "invalid_request_error"
+		case "401":
+			typ = "authentication_error"
+		case "403":
+			typ = "permission_error"
+		case "404":
+			typ = "not_found_error"
+		case "413":
+			typ = "request_too_large"
+		case "429":
+			typ = "rate_limit_error"
+		case "500":
+			typ = "internal_server_error"
+		case "503":
+			typ = "service_unavailable_error"
+		case "529":
+			typ = "overloaded_error"
+		default:
+			typ = "internal_server_error"
+		}
+		anthropicError := anthropic.ErrorResponse{
+			Type:  "error", // Always "error" at the top level.
+			Error: anthropic.ErrorResponseMessage{Type: typ, Message: string(buf)},
+		}
+		mutatedBody, err = json.Marshal(anthropicError)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to marshal error body: %w", err)
+		}
+		newHeaders = append(newHeaders,
+			internalapi.Header{contentTypeHeaderName, jsonContentType},
+			internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(mutatedBody))},
+		)
+	}
 	return
 }

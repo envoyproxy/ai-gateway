@@ -21,12 +21,15 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
-// DefaultConfig is the default configuration that can be used as a
-// fallback when the configuration is not explicitly provided.
-var DefaultConfig = ``
-
 // Config is the configuration for the Envoy AI Gateway filter.
 type Config struct {
+	// Version is the version of the AI Gateway, e.g., "v0.4.0" derived from internal/version package.
+	// This is to ensure compatibility between the filter and the AI Gateway management plane.
+	//
+	// When there's discrepancy between the version set here (by the controller) and the version of the extproc
+	// filter binary, which can happen during rolling upgrade, the filter will not load the configuration,
+	// and keep working with the previous configuration.
+	Version string `json:"version,omitempty"`
 	// UUID is the unique identifier of the filter configuration assigned by the AI Gateway when the configuration is updated.
 	UUID string `json:"uuid,omitempty"`
 	// LLMRequestCost configures the cost of each LLM-related request. Optional. If this is provided, the filter will populate
@@ -76,8 +79,10 @@ const (
 	LLMRequestCostTypeOutputToken LLMRequestCostType = "OutputToken"
 	// LLMRequestCostTypeInputToken specifies that the request cost is calculated from the input token.
 	LLMRequestCostTypeInputToken LLMRequestCostType = "InputToken"
-	// LLMRequestCostTypeCachedInputToken specifies that the request cost is calculated from the cached input token.
+	// LLMRequestCostTypeCachedInputToken specifies that the request cost is calculated from the cached read input token.
 	LLMRequestCostTypeCachedInputToken LLMRequestCostType = "CachedInputToken"
+	// LLMRequestCostTypeCacheCreationInputToken specifies that the request cost is calculated from the cache creation input token.
+	LLMRequestCostTypeCacheCreationInputToken LLMRequestCostType = "CacheCreationInputToken"
 	// LLMRequestCostTypeTotalToken specifies that the request cost is calculated from the total token.
 	LLMRequestCostTypeTotalToken LLMRequestCostType = "TotalToken"
 	// LLMRequestCostTypeCEL specifies that the request cost is calculated from the CEL expression.
@@ -261,14 +266,4 @@ func UnmarshalConfigYaml(path string) (*Config, error) {
 		return nil, err
 	}
 	return &cfg, nil
-}
-
-// MustLoadDefaultConfig loads the default configuration.
-// This panics if the configuration fails to be loaded.
-func MustLoadDefaultConfig() *Config {
-	var cfg Config
-	if err := yaml.Unmarshal([]byte(DefaultConfig), &cfg); err != nil {
-		panic(err)
-	}
-	return &cfg
 }

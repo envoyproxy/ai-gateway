@@ -8,7 +8,6 @@ package translator
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
@@ -17,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -27,6 +28,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
@@ -134,10 +136,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				InferenceConfig: &awsbedrock.InferenceConfiguration{},
 				System: []*awsbedrock.SystemContentBlock{
 					{
-						Text: "from-system",
+						Text: ptr.To("from-system"),
 					},
 					{
-						Text: "from-developer",
+						Text: ptr.To("from-developer"),
 					},
 				},
 				Messages: []*awsbedrock.Message{
@@ -272,10 +274,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				InferenceConfig: &awsbedrock.InferenceConfiguration{},
 				System: []*awsbedrock.SystemContentBlock{
 					{
-						Text: "from-system",
+						Text: ptr.To("from-system"),
 					},
 					{
-						Text: "from-developer",
+						Text: ptr.To("from-developer"),
 					},
 				},
 				Messages: []*awsbedrock.Message{
@@ -342,7 +344,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				InferenceConfig: &awsbedrock.InferenceConfiguration{},
 				System: []*awsbedrock.SystemContentBlock{
 					{
-						Text: "from-system",
+						Text: ptr.To("from-system"),
 					},
 				},
 				Messages: []*awsbedrock.Message{
@@ -1445,10 +1447,11 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			name: "basic_testing",
 			input: awsbedrock.ConverseResponse{
 				Usage: &awsbedrock.TokenUsage{
-					InputTokens:          10,
-					OutputTokens:         20,
-					TotalTokens:          30,
-					CacheReadInputTokens: ptr.To(5),
+					InputTokens:           10,
+					OutputTokens:          20,
+					TotalTokens:           30,
+					CacheReadInputTokens:  ptr.To(5),
+					CacheWriteInputTokens: ptr.To(7),
 				},
 				Output: &awsbedrock.ConverseOutput{
 					Message: awsbedrock.Message{
@@ -1471,7 +1474,8 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 					PromptTokens:     10,
 					CompletionTokens: 20,
 					PromptTokensDetails: &openai.PromptTokensDetails{
-						CachedTokens: 5,
+						CachedTokens:        5,
+						CacheCreationTokens: 7,
 					},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{
@@ -1713,14 +1717,18 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 				expectedUsage = tokenUsageFrom(
 					int32(tt.output.Usage.PromptTokens), // nolint:gosec
 					-1,
+					-1,
 					int32(tt.output.Usage.CompletionTokens), // nolint:gosec
 					int32(tt.output.Usage.TotalTokens),      // nolint:gosec
 				)
 				if tt.input.Usage.CacheReadInputTokens != nil {
 					expectedUsage.SetCachedInputTokens(uint32(tt.output.Usage.PromptTokensDetails.CachedTokens)) //nolint:gosec
 				}
+				if tt.input.Usage.CacheWriteInputTokens != nil {
+					expectedUsage.SetCacheCreationInputTokens(uint32(tt.output.Usage.PromptTokensDetails.CacheCreationTokens)) //nolint:gosec
+				}
 			} else {
-				expectedUsage = tokenUsageFrom(-1, -1, -1, -1)
+				expectedUsage = tokenUsageFrom(-1, -1, -1, -1, -1)
 			}
 			require.Equal(t, expectedUsage, usedToken)
 		})
@@ -2314,4 +2322,166 @@ func TestResponseModel_AWSBedrock(t *testing.T) {
 	outputTokens, ok := tokenUsage.OutputTokens()
 	require.True(t, ok)
 	require.Equal(t, uint32(5), outputTokens)
+}
+
+func TestOpenAIToAWSBedrockTranslator_CacheControl(t *testing.T) {
+	tests := []struct {
+		name         string
+		input        openai.ChatCompletionRequest
+		expectedJSON string
+	}{
+		{
+			name: "cache control on user text message",
+			input: openai.ChatCompletionRequest{
+				Model: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Role: openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: []openai.ChatCompletionContentPartUserUnionParam{
+									{
+										OfText: &openai.ChatCompletionContentPartTextParam{
+											Type: "text",
+											Text: "Cache this content",
+											AnthropicContentFields: &openai.AnthropicContentFields{
+												CacheControl: anthropic.CacheControlEphemeralParam{
+													Type: constant.ValueOf[constant.Ephemeral](),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedJSON: `{"inferenceConfig":{},"messages":[{"content":[{"text":"Cache this content"},{"cachePoint":{"type":"default"}}],"role":"user"}]}`,
+		},
+		{
+			name: "cache control on system message",
+			input: openai.ChatCompletionRequest{
+				Model: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfSystem: &openai.ChatCompletionSystemMessageParam{
+							Role: openai.ChatMessageRoleSystem,
+							Content: openai.ContentUnion{
+								Value: []openai.ChatCompletionContentPartTextParam{
+									{
+										Type: "text",
+										Text: "You are a helpful assistant",
+										AnthropicContentFields: &openai.AnthropicContentFields{
+											CacheControl: anthropic.CacheControlEphemeralParam{
+												Type: constant.ValueOf[constant.Ephemeral](),
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedJSON: `{"inferenceConfig":{},"messages":[],"system":[{"text":"You are a helpful assistant"},{"cachePoint":{"type":"default"}}]}`,
+		},
+		{
+			name: "cache control on tool definition",
+			input: openai.ChatCompletionRequest{
+				Model: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Role: openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: "Test message",
+							},
+						},
+					},
+				},
+				Tools: []openai.Tool{
+					{
+						Type: openai.ToolTypeFunction,
+						Function: &openai.FunctionDefinition{
+							Name:        "get_weather",
+							Description: "Get weather information",
+							Parameters:  map[string]interface{}{"type": "object"},
+							AnthropicContentFields: &openai.AnthropicContentFields{
+								CacheControl: anthropic.CacheControlEphemeralParam{
+									Type: constant.ValueOf[constant.Ephemeral](),
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedJSON: `{"inferenceConfig":{},"messages":[{"content":[{"text":"Test message"}],"role":"user"}],"toolConfig":{"tools":[{"toolSpec":{"description":"Get weather information","inputSchema":{"json":{"type":"object"}},"name":"get_weather"},"cachePoint":{"type":"default"}}]}}`,
+		},
+		{
+			name: "no cache control",
+			input: openai.ChatCompletionRequest{
+				Model: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Role: openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: "No cache",
+							},
+						},
+					},
+				},
+			},
+			expectedJSON: `{"inferenceConfig":{},"messages":[{"content":[{"text":"No cache"}],"role":"user"}]}`, // Should not contain cachePoint
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			translator := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
+			_, body, err := translator.RequestBody(nil, &test.input, false)
+			require.NoError(t, err)
+			require.Equal(t, test.expectedJSON, string(body))
+		})
+	}
+}
+
+func TestCacheControlHelpers(t *testing.T) {
+	t.Run("isCacheEnabled", func(t *testing.T) {
+		// Test with nil fields
+		require.False(t, isCacheEnabled(nil))
+
+		// Test with empty fields
+		require.False(t, isCacheEnabled(&openai.AnthropicContentFields{}))
+
+		// Test with ephemeral cache control
+		require.True(t, isCacheEnabled(&openai.AnthropicContentFields{
+			CacheControl: anthropic.CacheControlEphemeralParam{Type: constant.ValueOf[constant.Ephemeral]()},
+		}))
+
+		// Test with non-ephemeral cache control
+		require.False(t, isCacheEnabled(&openai.AnthropicContentFields{
+			CacheControl: anthropic.CacheControlEphemeralParam{Type: "other"},
+		}))
+	})
+
+	t.Run("getCachePoint", func(t *testing.T) {
+		// Test with cache control enabled
+		cachePoint := getCachePoint(&openai.AnthropicContentFields{
+			CacheControl: anthropic.CacheControlEphemeralParam{Type: constant.ValueOf[constant.Ephemeral]()},
+		})
+		require.NotNil(t, cachePoint)
+		require.Equal(t, "default", cachePoint.Type)
+
+		// Test with no cache control
+		cachePoint2 := getCachePoint(nil)
+		require.Nil(t, cachePoint2)
+
+		// Test with non-ephemeral cache control
+		cachePoint3 := getCachePoint(&openai.AnthropicContentFields{
+			CacheControl: anthropic.CacheControlEphemeralParam{Type: "other"},
+		})
+		require.Nil(t, cachePoint3)
+	})
 }

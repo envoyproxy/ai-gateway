@@ -6,7 +6,6 @@
 package extproc
 
 import (
-	"encoding/json"
 	"log/slog"
 	"testing"
 	"time"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func TestModels_ProcessRequestHeaders(t *testing.T) {

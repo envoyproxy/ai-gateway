@@ -7,7 +7,6 @@ package translator
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"strconv"
 	"testing"
@@ -17,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func Test_NewResponsesOpenAIToOpenAITranslator(t *testing.T) {
@@ -246,6 +246,10 @@ func TestResponsesOpenAIToOpenAITranslator_ResponseBody(t *testing.T) {
 		cachedTokens, ok := tokenUsage.CachedInputTokens()
 		require.True(t, ok)
 		require.Equal(t, uint32(2), cachedTokens)
+
+		cacheCreationTokens, ok := tokenUsage.CacheCreationInputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(0), cacheCreationTokens)
 	})
 
 	t.Run("non-streaming response with fallback model", func(t *testing.T) {
@@ -358,6 +362,10 @@ data: [DONE]
 		cachedTokens, ok := tokenUsage.CachedInputTokens()
 		require.True(t, ok)
 		require.Equal(t, uint32(2), cachedTokens)
+
+		cacheCreationTokens, ok := tokenUsage.CacheCreationInputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(0), cacheCreationTokens)
 	})
 
 	t.Run("streaming response with fallback model", func(t *testing.T) {
@@ -453,6 +461,10 @@ data: [DONE]
 
 		cachedTokens, _ := tokenUsage.CachedInputTokens()
 		require.Equal(t, uint32(2), cachedTokens)
+
+		cacheCreationTokens, ok := tokenUsage.CacheCreationInputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(0), cacheCreationTokens)
 	})
 
 	t.Run("streaming read error", func(t *testing.T) {
@@ -541,6 +553,10 @@ func TestResponses_HandleNonStreamingResponse(t *testing.T) {
 
 		cachedTokens, _ := tokenUsage.CachedInputTokens()
 		require.Equal(t, uint32(2), cachedTokens)
+
+		cacheCreationTokens, ok := tokenUsage.CacheCreationInputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(0), cacheCreationTokens)
 	})
 
 	t.Run("invalid JSON", func(t *testing.T) {
@@ -602,6 +618,10 @@ data: [DONE]
 		cachedTokens, ok := tokenUsage.CachedInputTokens()
 		require.True(t, ok)
 		require.Equal(t, uint32(2), cachedTokens)
+
+		cacheCreationTokens, ok := tokenUsage.CacheCreationInputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(0), cacheCreationTokens)
 	})
 
 	t.Run("model extraction", func(t *testing.T) {
@@ -666,9 +686,11 @@ data: [DONE]
 		_, outputSet := tokenUsage.OutputTokens()
 		_, totalSet := tokenUsage.TotalTokens()
 		_, cachedSet := tokenUsage.CachedInputTokens()
+		_, cacheCreationSet := tokenUsage.CacheCreationInputTokens()
 
 		require.False(t, totalSet)
 		require.False(t, cachedSet)
+		require.False(t, cacheCreationSet)
 		require.False(t, inputSet)
 		require.False(t, outputSet)
 	})

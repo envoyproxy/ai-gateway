@@ -15,8 +15,8 @@ import (
 	"strings"
 )
 
-// BuildGoBinaryOnDemand builds the extproc binary unless EXTPROC_BIN is set.
-// If EXTPROC_BIN environment variable is set, it will use that path instead.
+// BuildGoBinaryOnDemand builds the extproc binary unless "env" is set.
+// If `env` environment variable is set, it will use that path instead.
 func BuildGoBinaryOnDemand(env, binaryName, packagePath string) (string, error) {
 	if envPath := os.Getenv(env); envPath != "" {
 		if !filepath.IsAbs(envPath) {

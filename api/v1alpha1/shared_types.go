@@ -100,9 +100,9 @@ type LLMRequestCost struct {
 	MetadataKey string `json:"metadataKey"`
 	// Type specifies the type of the request cost. The default is "OutputToken",
 	// and it uses "output token" as the cost. The other types are "InputToken", "TotalToken",
-	// and "CEL".
+	// "CachedInputToken", "CacheCreationInputToken", and "CEL".
 	//
-	// +kubebuilder:validation:Enum=OutputToken;InputToken;CachedInputToken;TotalToken;CEL
+	// +kubebuilder:validation:Enum=OutputToken;InputToken;CachedInputToken;CacheCreationInputToken;TotalToken;CEL
 	Type LLMRequestCostType `json:"type"`
 	// CEL is the CEL expression to calculate the cost of the request.
 	// The CEL expression must return a signed or unsigned integer. If the
@@ -113,7 +113,8 @@ type LLMRequestCost struct {
 	//	* model: the model name extracted from the request content. Type: string.
 	//	* backend: the backend name in the form of "name.namespace". Type: string.
 	//	* input_tokens: the number of input tokens. Type: unsigned integer.
-	//	* cached_input_tokens: the number of cached input tokens. Type: unsigned integer.
+	//	* cached_input_tokens: the number of cached read input tokens. Type: unsigned integer.
+	//	* cache_creation_input_tokens: the number of cache creation input tokens. Type: unsigned integer.
 	//	* output_tokens: the number of output tokens. Type: unsigned integer.
 	//	* total_tokens: the total number of tokens. Type: unsigned integer.
 	//
@@ -121,7 +122,7 @@ type LLMRequestCost struct {
 	//
 	// 	* "model == 'llama' ?  input_tokens + output_token * 0.5 : total_tokens"
 	//	* "backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens"
-	//	* "backend == 'bar.default' ?  (input_tokens - cached_input_tokens) + cached_input_tokens * 0.1 + output_tokens : total_tokens"
+	//	* "backend == 'bar.default' ?  (input_tokens - cached_input_tokens) + cached_input_tokens * 0.1 + cache_creation_input_tokens * 1.25 + output_tokens : total_tokens"
 	//	* "input_tokens + output_tokens + total_tokens"
 	//	* "input_tokens * output_tokens"
 	//
@@ -137,6 +138,8 @@ const (
 	LLMRequestCostTypeInputToken LLMRequestCostType = "InputToken"
 	// LLMRequestCostTypeCachedInputToken is the cost type of the cached input token.
 	LLMRequestCostTypeCachedInputToken LLMRequestCostType = "CachedInputToken"
+	// LLMRequestCostTypeCacheCreationInputToken is the cost type of the cached input token.
+	LLMRequestCostTypeCacheCreationInputToken LLMRequestCostType = "CacheCreationInputToken"
 	// LLMRequestCostTypeOutputToken is the cost type of the output token.
 	LLMRequestCostTypeOutputToken LLMRequestCostType = "OutputToken"
 	// LLMRequestCostTypeTotalToken is the cost type of the total token.

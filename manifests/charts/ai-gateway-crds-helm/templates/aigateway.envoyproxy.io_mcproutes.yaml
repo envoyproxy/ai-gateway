@@ -613,6 +613,36 @@ spec:
                               - Allow
                               - Deny
                               type: string
+                            cel:
+                              description: "CEL specifies a Common Expression Language
+                                (CEL) expression evaluated for this rule.\nThe expression
+                                must return a boolean; evaluation errors or non-boolean
+                                results\nare treated as \"no match\".\n\nExample CEL
+                                expressions:\n\t* `request.method == \"POST\"`\n\t*
+                                `request.headers[\"x-custom-header\"] == \"AllowedValue\"`\n\t*
+                                `request.mcp.tool in [\"toolA\", \"toolB\"]`\n\nAvailable
+                                attributes in the CEL expression:\n\n\t* request.method:
+                                HTTP method such as GET or POST. Type: string.\n\t*
+                                request.headers: map of headers with lowercased keys,
+                                first value only. Type: map[string]string.\n\t* request.headers_all:
+                                map of headers with lowercased keys, all values. Type:
+                                map[string][]string.\n\t* request.path: request path
+                                such as /mcp. Type: string.\n\t* request.auth.jwt.claims:
+                                JWT claims when a bearer JWT is present. Type: map[string]any.\n\t*
+                                request.auth.jwt.scopes: JWT scopes when a bearer
+                                JWT is present. Type: []string.\n\t* request.mcp.method:
+                                MCP method such as tools/list or tools/call. Type:
+                                string.\n\t* request.mcp.backend: upstream backend
+                                name (for example, \"kiwi\" or \"github\"). Type:
+                                string.\n\t* request.mcp.tool: tool name without backend
+                                prefix (for example, \"list_issues\"). Type: string.\n\t*
+                                request.mcp.params: parameters of the MCP method,
+                                including keys like \"_meta\" and \"arguments\". Type:
+                                object.\n\nNote: The CEL expression support is experimental,
+                                and the attributes\navailable to the expression may
+                                change in future releases."
+                              maxLength: 4096
+                              type: string
                             source:
                               description: |-
                                 Source defines the authorization source for this rule.
@@ -707,13 +737,6 @@ spec:
                                         type: string
                                       tool:
                                         description: Tool is the name of the tool.
-                                        type: string
-                                      when:
-                                        description: |-
-                                          When is a CEL expression that must evaluate to true for the rule to match.
-                                          The expression is evaluated with a single variable "args" bound to the tool call arguments as a dynamic object.
-                                          Guard against missing fields with null checks (e.g., args["foo"] != null && args["foo"]["bar"] == "val").
-                                        maxLength: 4096
                                         type: string
                                     required:
                                     - backend

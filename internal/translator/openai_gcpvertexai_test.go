@@ -7,7 +7,6 @@ package translator
 
 import (
 	"bytes"
-	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
@@ -24,6 +23,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
@@ -913,7 +913,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
         "total_tokens": 25
     }
 }`),
-			wantTokenUsage: tokenUsageFrom(10, 10, 15, 25),
+			wantTokenUsage: tokenUsageFrom(10, 10, -1, 15, 25),
 		},
 		{
 			name: "response with safety ratings",
@@ -993,7 +993,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
         "total_tokens": 20
     }
 }`),
-			wantTokenUsage: tokenUsageFrom(8, 0, 12, 20),
+			wantTokenUsage: tokenUsageFrom(8, 0, -1, 12, 20),
 		},
 		{
 			name: "empty response",
@@ -1005,7 +1005,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			wantError:      false,
 			wantHeaderMut:  []internalapi.Header{{contentLengthHeaderName, "28"}},
 			wantBodyMut:    []byte(`{"object":"chat.completion"}`),
-			wantTokenUsage: tokenUsageFrom(-1, -1, -1, -1),
+			wantTokenUsage: tokenUsageFrom(-1, -1, -1, -1, -1),
 		},
 		{
 			name: "single stream chunk response",
@@ -1025,7 +1025,7 @@ data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_t
 
 data: [DONE]
 `),
-			wantTokenUsage: tokenUsageFrom(5, 0, 3, 8),
+			wantTokenUsage: tokenUsageFrom(5, 0, -1, 3, 8), // Does not support cache creation.
 		},
 		{
 			name: "response with model version field",
@@ -1080,7 +1080,7 @@ data: [DONE]
         "total_tokens": 14
     }
 }`),
-			wantTokenUsage: tokenUsageFrom(6, 0, 8, 14),
+			wantTokenUsage: tokenUsageFrom(6, 0, -1, 8, 14), // Does not support Cache Creation.
 		},
 
 		{
@@ -1149,7 +1149,7 @@ data: [DONE]
         "total_tokens": 20
     }
 }`),
-			wantTokenUsage: tokenUsageFrom(8, 0, 12, 20),
+			wantTokenUsage: tokenUsageFrom(8, 0, -1, 12, 20), // Does not support Cache Creation.
 		},
 		{
 			name: "response with thought summary",
@@ -1214,7 +1214,7 @@ data: [DONE]
     }
 }`),
 
-			wantTokenUsage: tokenUsageFrom(10, 10, 15, 25),
+			wantTokenUsage: tokenUsageFrom(10, 10, -1, 15, 25), // Does not support Cache Creation.
 		},
 		{
 			name: "stream chunks with thought summary",
@@ -1236,7 +1236,7 @@ data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_t
 
 data: [DONE]
 `),
-			wantTokenUsage: tokenUsageFrom(5, 0, 3, 8),
+			wantTokenUsage: tokenUsageFrom(5, 0, -1, 3, 8), // Does not support Cache Creation.
 		},
 	}
 
@@ -1355,7 +1355,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody(t *
 			print(bodyStr)
 			require.Contains(t, bodyStr, "data: ")
 			require.Contains(t, bodyStr, "chat.completion.chunk")
-			require.Equal(t, tokenUsageFrom(-1, -1, -1, -1), tokenUsage) // No usage in this test chunk.
+			require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1), tokenUsage) // No usage in this test chunk.
 		})
 	}
 }
@@ -1607,7 +1607,7 @@ func TestExtractToolCallsFromGeminiPartsStream(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			o := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
-			calls, err := o.extractToolCallsFromGeminiPartsStream(toolCalls, tt.input)
+			calls, err := o.extractToolCallsFromGeminiPartsStream(toolCalls, tt.input, json.MarshalForDeterministicTesting)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -1644,11 +1644,11 @@ func TestExtractToolCallsStreamVsNonStream(t *testing.T) {
 	o := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
 
 	// Get results from both functions
-	streamCalls, err := o.extractToolCallsFromGeminiPartsStream(toolCallsStream, parts)
+	streamCalls, err := o.extractToolCallsFromGeminiPartsStream(toolCallsStream, parts, json.MarshalForDeterministicTesting)
 	require.NoError(t, err)
 	require.Len(t, streamCalls, 1)
 
-	nonStreamCalls, err := extractToolCallsFromGeminiParts(toolCalls, parts)
+	nonStreamCalls, err := extractToolCallsFromGeminiParts(toolCalls, parts, json.MarshalForDeterministicTesting)
 	require.NoError(t, err)
 	require.Len(t, nonStreamCalls, 1)
 
@@ -1657,7 +1657,7 @@ func TestExtractToolCallsStreamVsNonStream(t *testing.T) {
 
 	// Verify function name and arguments are the same
 	assert.Equal(t, nonStreamCall.Function.Name, streamCall.Function.Name)
-	assert.Equal(t, nonStreamCall.Function.Arguments, streamCall.Function.Arguments)
+	assert.JSONEq(t, nonStreamCall.Function.Arguments, streamCall.Function.Arguments)
 	assert.Equal(t, openai.ChatCompletionMessageToolCallTypeFunction, streamCall.Type)
 
 	// Verify differences:
@@ -1708,7 +1708,7 @@ func TestExtractToolCallsStreamIndexing(t *testing.T) {
 	}
 	o := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
 
-	calls, err := o.extractToolCallsFromGeminiPartsStream(toolCalls, parts)
+	calls, err := o.extractToolCallsFromGeminiPartsStream(toolCalls, parts, json.MarshalForDeterministicTesting)
 	require.NoError(t, err)
 	require.Len(t, calls, 3)
 

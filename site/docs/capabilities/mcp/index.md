@@ -165,7 +165,7 @@ spec:
       toolSelector:
         include:
           - resolve-library-id
-          - get-library-docs
+          - query-docs
 ```
 
 :::note
@@ -208,7 +208,7 @@ Clients will see all tools with prefixed names:
 - `github__issue_read`
 - `github__list_issues`
 - `context7__resolve-library-id`
-- `context7__get-library-docs`
+- `context7__query-docs`
 
 ### OAuth Authentication
 
