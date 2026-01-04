@@ -1447,11 +1447,8 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			name: "basic_testing",
 			input: awsbedrock.ConverseResponse{
 				Usage: &awsbedrock.TokenUsage{
-					InputTokens:           10,
-					OutputTokens:          20,
-					TotalTokens:           30,
-					CacheReadInputTokens:  ptr.To(5),
-					CacheWriteInputTokens: ptr.To(7),
+					CacheWriteInputTokens: ptr.To[int64](7),
+					CacheReadInputTokens: ptr.To[int64](5),
 				},
 				Output: &awsbedrock.ConverseOutput{
 					Message: awsbedrock.Message{
@@ -1470,8 +1467,8 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)),
 				Object:  "chat.completion",
 				Usage: openai.Usage{
-					TotalTokens:      30,
-					PromptTokens:     10,
+					TotalTokens:      35,
+					PromptTokens:     15,
 					CompletionTokens: 20,
 					PromptTokensDetails: &openai.PromptTokensDetails{
 						CachedTokens:        5,
@@ -1921,7 +1918,7 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 					InputTokens:          10,
 					OutputTokens:         20,
 					TotalTokens:          30,
-					CacheReadInputTokens: ptr.To(5),
+					CacheReadInputTokens: ptr.To[int64](5),
 				},
 			},
 			out: &openai.ChatCompletionResponseChunk{

@@ -701,15 +701,8 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 		for i := range o.events {
 			event := &o.events[i]
 			if usage := event.Usage; usage != nil {
-				tokenUsage.SetInputTokens(uint32(usage.InputTokens))   //nolint:gosec
-				tokenUsage.SetOutputTokens(uint32(usage.OutputTokens)) //nolint:gosec
-				tokenUsage.SetTotalTokens(uint32(usage.TotalTokens))   //nolint:gosec
-				if usage.CacheReadInputTokens != nil {
-					tokenUsage.SetCachedInputTokens(uint32(*usage.CacheReadInputTokens)) //nolint:gosec
-				}
-				if usage.CacheWriteInputTokens != nil {
-					tokenUsage.SetCacheCreationInputTokens(uint32(*usage.CacheWriteInputTokens)) //nolint:gosec
-				}
+				tokenUsage = metrics.ExtractTokenUsageFromExplicitCaching(usage.InputTokens, usage.OutputTokens,
+					usage.CacheReadInputTokens, usage.CacheWriteInputTokens)
 			}
 			oaiEvent, ok := o.convertEvent(event)
 			if !ok {
@@ -744,13 +737,15 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 	}
 	// Convert token usage.
 	if bedrockResp.Usage != nil {
-		tokenUsage.SetInputTokens(uint32(bedrockResp.Usage.InputTokens))   //nolint:gosec
-		tokenUsage.SetOutputTokens(uint32(bedrockResp.Usage.OutputTokens)) //nolint:gosec
-		tokenUsage.SetTotalTokens(uint32(bedrockResp.Usage.TotalTokens))   //nolint:gosec
+		tokenUsage = metrics.ExtractTokenUsageFromExplicitCaching(bedrockResp.Usage.InputTokens, bedrockResp.Usage.OutputTokens,
+			bedrockResp.Usage.CacheReadInputTokens, bedrockResp.Usage.CacheWriteInputTokens)
+		totalTokens, _ := tokenUsage.TotalTokens()
+		inputTokens, _ := tokenUsage.InputTokens()
+		outputTokens, _ := tokenUsage.OutputTokens()
 		openAIResp.Usage = openai.Usage{
-			TotalTokens:      bedrockResp.Usage.TotalTokens,
-			PromptTokens:     bedrockResp.Usage.InputTokens,
-			CompletionTokens: bedrockResp.Usage.OutputTokens,
+			TotalTokens:      int(totalTokens),
+			PromptTokens:     int(inputTokens),
+			CompletionTokens: int(outputTokens),
 		}
 		if bedrockResp.Usage.CacheReadInputTokens != nil || bedrockResp.Usage.CacheWriteInputTokens != nil {
 			openAIResp.Usage.PromptTokensDetails = &openai.PromptTokensDetails{}
@@ -852,10 +847,15 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 		if event.Usage == nil {
 			return chunk, false
 		}
+		tokenUsage := metrics.ExtractTokenUsageFromExplicitCaching(event.Usage.InputTokens, event.Usage.OutputTokens,
+			event.Usage.CacheReadInputTokens, event.Usage.CacheWriteInputTokens)
+		totalTokens, _ := tokenUsage.TotalTokens()
+		inputTokens, _ := tokenUsage.InputTokens()
+		outputTokens, _ := tokenUsage.OutputTokens()
 		chunk.Usage = &openai.Usage{
-			TotalTokens:      event.Usage.TotalTokens,
-			PromptTokens:     event.Usage.InputTokens,
-			CompletionTokens: event.Usage.OutputTokens,
+			TotalTokens:      int(totalTokens),
+			PromptTokens:     int(inputTokens),
+			CompletionTokens: int(outputTokens),
 		}
 		if event.Usage.CacheReadInputTokens != nil || event.Usage.CacheWriteInputTokens != nil {
 			chunk.Usage.PromptTokensDetails = &openai.PromptTokensDetails{}
