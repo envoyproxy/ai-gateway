@@ -209,7 +209,7 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) error {
 		}
 		// Filter backendRefs with weight > 0 to match LoadAssignment endpoints.
 		// BackendRefs with weight=0 are intentionally skipped during endpoint construction.
-		activeBackendRefs := httpRouteRule.BackendRefs[:0]
+		activeBackendRefs := make([]aigv1a1.AIGatewayRouteRuleBackendRef, 0, len(httpRouteRule.BackendRefs))
 		for _, br := range httpRouteRule.BackendRefs {
 			// Default weight is treated as > 0
 			if br.Weight == nil || *br.Weight > 0 {
