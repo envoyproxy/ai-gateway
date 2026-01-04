@@ -83,7 +83,7 @@ Envoy AI Gateway uses the Kubernetes Gateway API for routing configuration. The 
 
 ### Custom Resource Definitions (CRDs)
 
-All current releases use the `v1alpha1` API version for AI Gateway CRDs. See [API Documentation](/docs/api/api) for details on available resources.
+All current releases use the `v1alpha1` API version for AI Gateway CRDs. See [API Documentation](/docs/api/) for details on available resources.
 
 ## Additional Notes
 
