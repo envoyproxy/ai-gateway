@@ -80,7 +80,7 @@ func TestOpenAIToOpenAIImageTranslator_ResponseBody_OK(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, hm)
 	require.Nil(t, bm)
-	require.Equal(t, tokenUsageFrom(-1, -1, -1, -1), usage)
+	require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1), usage)
 	require.Empty(t, responseModel)
 }
 
@@ -192,5 +192,5 @@ func TestOpenAIToOpenAIImageTranslator_ResponseBody_Usage(t *testing.T) {
 	buf, _ := json.Marshal(resp)
 	_, _, usage, _, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true, nil)
 	require.NoError(t, err)
-	require.Equal(t, tokenUsageFrom(40, -1, 60, 100), usage)
+	require.Equal(t, tokenUsageFrom(40, -1, -1, 60, 100), usage)
 }

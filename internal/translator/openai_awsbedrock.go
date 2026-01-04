@@ -234,10 +234,15 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 			if contentPart.OfText != nil {
 				textContentPart := contentPart.OfText
 				block := &awsbedrock.ContentBlock{
-					Text:       &textContentPart.Text,
-					CachePoint: getCachePoint(textContentPart.AnthropicContentFields),
+					Text: &textContentPart.Text,
 				}
 				chatMessage.Content = append(chatMessage.Content, block)
+				cachePointBlock := getCachePoint(textContentPart.AnthropicContentFields)
+				if cachePointBlock != nil {
+					chatMessage.Content = append(chatMessage.Content, &awsbedrock.ContentBlock{
+						CachePoint: cachePointBlock,
+					})
+				}
 			} else if contentPart.OfImageURL != nil {
 				imageContentPart := contentPart.OfImageURL
 				contentType, b, err := parseDataURI(imageContentPart.ImageURL.URL)
@@ -266,9 +271,14 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 							Bytes: b, // Decoded data as bytes.
 						},
 					},
-					CachePoint: getCachePoint(imageContentPart.AnthropicContentFields),
 				}
 				chatMessage.Content = append(chatMessage.Content, block)
+				cachePointBlock := getCachePoint(imageContentPart.AnthropicContentFields)
+				if cachePointBlock != nil {
+					chatMessage.Content = append(chatMessage.Content, &awsbedrock.ContentBlock{
+						CachePoint: cachePointBlock,
+					})
+				}
 			}
 		}
 		return chatMessage, nil
@@ -310,10 +320,15 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 		case openai.ChatCompletionAssistantMessageParamContentTypeText:
 			if content.Text != nil {
 				block := &awsbedrock.ContentBlock{
-					Text:       content.Text,
-					CachePoint: getCachePoint(content.AnthropicContentFields),
+					Text: content.Text,
 				}
 				contentBlocks = append(contentBlocks, block)
+				cachePointBlock := getCachePoint(content.AnthropicContentFields)
+				if cachePointBlock != nil {
+					contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{
+						CachePoint: cachePointBlock,
+					})
+				}
 			}
 		case openai.ChatCompletionAssistantMessageParamContentTypeThinking:
 			if content.Text != nil {
@@ -327,9 +342,14 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 					ReasoningContent: &awsbedrock.ReasoningContentBlock{
 						ReasoningText: reasoningText,
 					},
-					CachePoint: getCachePoint(content.AnthropicContentFields),
 				}
 				contentBlocks = append(contentBlocks, block)
+				cachePointBlock := getCachePoint(content.AnthropicContentFields)
+				if cachePointBlock != nil {
+					contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{
+						CachePoint: cachePointBlock,
+					})
+				}
 			}
 		case openai.ChatCompletionAssistantMessageParamContentTypeRedactedThinking:
 			if content.RedactedContent != nil {
@@ -339,9 +359,15 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 						ReasoningContent: &awsbedrock.ReasoningContentBlock{
 							RedactedContent: v,
 						},
-						CachePoint: getCachePoint(content.AnthropicContentFields),
 					}
 					contentBlocks = append(contentBlocks, block)
+					cachePointBlock := getCachePoint(content.AnthropicContentFields)
+					if cachePointBlock != nil {
+						contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{
+							CachePoint: cachePointBlock,
+						})
+					}
+
 				case string:
 					return nil, fmt.Errorf("AWS Bedrock does not support string format for RedactedContent, expected []byte")
 				default:
@@ -351,10 +377,15 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 		case openai.ChatCompletionAssistantMessageParamContentTypeRefusal:
 			if content.Refusal != nil {
 				block := &awsbedrock.ContentBlock{
-					Text:       content.Refusal,
-					CachePoint: getCachePoint(content.AnthropicContentFields),
+					Text: content.Refusal,
 				}
 				contentBlocks = append(contentBlocks, block)
+				cachePointBlock := getCachePoint(content.AnthropicContentFields)
+				if cachePointBlock != nil {
+					contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{
+						CachePoint: cachePointBlock,
+					})
+				}
 			}
 		}
 	}
@@ -385,17 +416,22 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 ) error {
 	if v, ok := openAiMessage.Content.Value.(string); ok {
 		*bedrockSystem = append(*bedrockSystem, &awsbedrock.SystemContentBlock{
-			Text: v,
+			Text: &v,
 		})
 	} else if contents, ok := openAiMessage.Content.Value.([]openai.ChatCompletionContentPartTextParam); ok {
 		for i := range contents {
 			contentPart := &contents[i]
 			textContentPart := contentPart.Text
 			block := &awsbedrock.SystemContentBlock{
-				Text:       textContentPart,
-				CachePoint: getCachePoint(contentPart.AnthropicContentFields),
+				Text: &textContentPart,
 			}
 			*bedrockSystem = append(*bedrockSystem, block)
+			cacheBlock := getCachePoint(contentPart.AnthropicContentFields)
+			if cacheBlock != nil {
+				*bedrockSystem = append(*bedrockSystem, &awsbedrock.SystemContentBlock{
+					CachePoint: cacheBlock,
+				})
+			}
 		}
 	} else {
 		return fmt.Errorf("unexpected content type for system message")
@@ -483,7 +519,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 
 			if text, ok := message.Content.Value.(string); ok {
 				bedrockReq.System = append(bedrockReq.System, &awsbedrock.SystemContentBlock{
-					Text: text,
+					Text: &text,
 				})
 			} else {
 				if contents, ok := message.Content.Value.([]openai.ChatCompletionContentPartTextParam); ok {
@@ -491,10 +527,15 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 						contentPart := &contents[i]
 						textContentPart := contentPart.Text
 						block := &awsbedrock.SystemContentBlock{
-							Text:       textContentPart,
-							CachePoint: getCachePoint(contentPart.AnthropicContentFields),
+							Text: &textContentPart,
 						}
 						bedrockReq.System = append(bedrockReq.System, block)
+						cacheBlock := getCachePoint(contentPart.AnthropicContentFields)
+						if cacheBlock != nil {
+							bedrockReq.System = append(bedrockReq.System, &awsbedrock.SystemContentBlock{
+								CachePoint: cacheBlock,
+							})
+						}
 					}
 				} else {
 					return fmt.Errorf("unexpected content type for developer message")
@@ -502,7 +543,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 			}
 		case msg.OfTool != nil:
 			toolMessage := msg.OfTool
-			// Bedrock does not support tool role, merging to the user role.
+			// Bedrock does not support a tool role, merging to the user role.
 			bedrockMessage, err := o.openAIMessageToBedrockMessageRoleTool(toolMessage, awsbedrock.ConversationRoleUser)
 			if err != nil {
 				return err
@@ -666,6 +707,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 				if usage.CacheReadInputTokens != nil {
 					tokenUsage.SetCachedInputTokens(uint32(*usage.CacheReadInputTokens)) //nolint:gosec
 				}
+				if usage.CacheWriteInputTokens != nil {
+					tokenUsage.SetCacheCreationInputTokens(uint32(*usage.CacheWriteInputTokens)) //nolint:gosec
+				}
 			}
 			oaiEvent, ok := o.convertEvent(event)
 			if !ok {
@@ -708,11 +752,16 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 			PromptTokens:     bedrockResp.Usage.InputTokens,
 			CompletionTokens: bedrockResp.Usage.OutputTokens,
 		}
+		if bedrockResp.Usage.CacheReadInputTokens != nil || bedrockResp.Usage.CacheWriteInputTokens != nil {
+			openAIResp.Usage.PromptTokensDetails = &openai.PromptTokensDetails{}
+		}
 		if bedrockResp.Usage.CacheReadInputTokens != nil {
 			tokenUsage.SetCachedInputTokens(uint32(*bedrockResp.Usage.CacheReadInputTokens)) //nolint:gosec
-			openAIResp.Usage.PromptTokensDetails = &openai.PromptTokensDetails{
-				CachedTokens: *bedrockResp.Usage.CacheReadInputTokens,
-			}
+			openAIResp.Usage.PromptTokensDetails.CachedTokens = *bedrockResp.Usage.CacheReadInputTokens
+		}
+		if bedrockResp.Usage.CacheWriteInputTokens != nil {
+			tokenUsage.SetCacheCreationInputTokens(uint32(*bedrockResp.Usage.CacheWriteInputTokens)) //nolint:gosec
+			openAIResp.Usage.PromptTokensDetails.CacheCreationTokens = *bedrockResp.Usage.CacheWriteInputTokens
 		}
 	}
 
@@ -808,10 +857,14 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 			PromptTokens:     event.Usage.InputTokens,
 			CompletionTokens: event.Usage.OutputTokens,
 		}
+		if event.Usage.CacheReadInputTokens != nil || event.Usage.CacheWriteInputTokens != nil {
+			chunk.Usage.PromptTokensDetails = &openai.PromptTokensDetails{}
+		}
 		if event.Usage.CacheReadInputTokens != nil {
-			chunk.Usage.PromptTokensDetails = &openai.PromptTokensDetails{
-				CachedTokens: *event.Usage.CacheReadInputTokens,
-			}
+			chunk.Usage.PromptTokensDetails.CachedTokens = *event.Usage.CacheReadInputTokens
+		}
+		if event.Usage.CacheWriteInputTokens != nil {
+			chunk.Usage.PromptTokensDetails.CacheCreationTokens = *event.Usage.CacheWriteInputTokens
 		}
 	// messageStart event.
 	case awsbedrock.ConverseStreamEventTypeMessageStart.String():
