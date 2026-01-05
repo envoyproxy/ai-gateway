@@ -25,6 +25,10 @@ Advanced inference optimization capabilities for AI/LLM workloads:
 - **[HTTPRoute + InferencePool](./inference/httproute-inferencepool.md)**: Basic inference routing with standard Gateway API
 - **[AIGatewayRoute + InferencePool](./inference/aigatewayroute-inferencepool.md)**: Advanced AI-specific routing with enhanced features
 
+## Gateway Configuration
+
+- **[GatewayConfig](./gateway-config.md)**: Gateway-scoped configuration for the external processor (env vars, resources, shared settings)
+
 ## Traffic Management
 
 Comprehensive traffic handling and routing capabilities:

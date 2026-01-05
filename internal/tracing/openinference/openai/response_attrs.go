@@ -58,6 +58,7 @@ func buildResponseAttributes(resp *openai.ChatCompletionResponse, config *openin
 			attrs = append(attrs,
 				attribute.Int(openinference.LLMTokenCountPromptAudio, td.AudioTokens),
 				attribute.Int(openinference.LLMTokenCountPromptCacheHit, td.CachedTokens),
+				attribute.Int(openinference.LLMTokenCountPromptCacheWrite, td.CacheCreationTokens),
 			)
 		}
 	}
@@ -164,6 +165,37 @@ func buildCompletionResponseAttributes(resp *openai.CompletionResponse, config *
 		}
 		if tt := u.TotalTokens; tt > 0 {
 			attrs = append(attrs, attribute.Int(openinference.LLMTokenCountTotal, tt))
+		}
+	}
+
+	return attrs
+}
+
+// buildResponsesResponseAttributes builds OpenTelemetry attributes for responses responses.
+func buildResponsesResponseAttributes(resp *openai.Response, _ *openinference.TraceConfig) []attribute.KeyValue {
+	// TODO: Add more detailed response attributes
+	var attrs []attribute.KeyValue
+
+	if resp.Model != "" {
+		attrs = append(attrs, attribute.String(openinference.LLMModelName, resp.Model))
+	}
+
+	// Add token usage if available
+	if resp.Usage != nil {
+		if resp.Usage.InputTokens > 0 {
+			attrs = append(attrs, attribute.Int(openinference.LLMTokenCountPrompt, int(resp.Usage.InputTokens)))
+		}
+		if resp.Usage.OutputTokens > 0 {
+			attrs = append(attrs, attribute.Int(openinference.LLMTokenCountCompletion, int(resp.Usage.OutputTokens)))
+		}
+		if resp.Usage.TotalTokens > 0 {
+			attrs = append(attrs, attribute.Int(openinference.LLMTokenCountTotal, int(resp.Usage.TotalTokens)))
+		}
+		if resp.Usage.InputTokensDetails.CachedTokens > 0 {
+			attrs = append(attrs, attribute.Int(openinference.LLMTokenCountPromptCacheHit, int(resp.Usage.InputTokensDetails.CachedTokens)))
+		}
+		if resp.Usage.InputTokensDetails.CacheCreationTokens > 0 {
+			attrs = append(attrs, attribute.Int(openinference.LLMTokenCountPromptCacheWrite, int(resp.Usage.InputTokensDetails.CacheCreationTokens)))
 		}
 	}
 

@@ -6,6 +6,7 @@
 package mcpproxy
 
 import (
+	"cmp"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,15 +14,18 @@ import (
 	"testing"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
-func strPtr(s string) *string { return &s }
-
 func TestAuthorizeRequest(t *testing.T) {
-	makeToken := func(scopes ...string) string {
+	makeTokenWithClaims := func(extraClaims jwt.MapClaims, scopes ...string) string {
 		claims := jwt.MapClaims{}
+		for k, v := range extraClaims {
+			claims[k] = v
+		}
 		if len(scopes) > 0 {
 			claims["scope"] = scopes
 		}
@@ -30,20 +34,191 @@ func TestAuthorizeRequest(t *testing.T) {
 		return signed
 	}
 
+	makeToken := func(scopes ...string) string {
+		return makeTokenWithClaims(jwt.MapClaims{}, scopes...)
+	}
+
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	proxy := &MCPProxy{l: logger}
 
 	tests := []struct {
 		name          string
 		auth          *filterapi.MCPRouteAuthorization
-		header        string
 		backend       string
 		tool          string
-		args          map[string]any
+		args          mcp.Params
+		host          string
+		headers       http.Header
+		mcpMethod     string
 		expectError   bool
 		expectAllowed bool
 		expectScopes  []string
 	}{
+		{
+			name: "rule CEL matches all conditions",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						CEL:    ptr.To(`request.host.startsWith("api.") && request.mcp.backend == "backend1" && request.mcp.params.arguments.mode == "fast" && request.headers["x-tenant"] == "t-123"`),
+					},
+				},
+			},
+			backend:       "backend1",
+			tool:          "tool1",
+			args:          &mcp.CallToolParams{Arguments: map[string]any{"mode": "fast"}},
+			host:          "api.example.com",
+			headers:       http.Header{"X-Tenant": []string{"t-123"}},
+			expectAllowed: true,
+		},
+		{
+			name: "rule CEL non match falls back to default deny",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						CEL:    ptr.To(`request.host.startsWith("api.") && request.mcp.backend == "backend1" && request.mcp.params.arguments.mode == "fast" && request.headers["x-tenant"] == "t-123"`),
+					},
+				},
+			},
+			backend:       "backend1",
+			tool:          "tool1",
+			args:          &mcp.CallToolParams{Name: "p1", Arguments: map[string]any{"mode": "fast"}},
+			host:          "api.example.com",
+			headers:       http.Header{"X-Tenant": []string{"t-234"}},
+			expectAllowed: false,
+		},
+		{
+			name: "rule CEL returns non boolean treated as non match",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						CEL:    ptr.To(`10`),
+					},
+				},
+			},
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: false,
+		},
+		{
+			name: "invalid CEL denies",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{Scopes: []string{"read"}},
+						},
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{
+								Backend: "backend1",
+								Tool:    "tool1",
+							}},
+						},
+						CEL: ptr.To(`invalid syntax here`),
+					},
+				},
+			},
+			headers: http.Header{"Authorization": []string{"Bearer " + makeToken("read")}},
+			backend: "backend1",
+			tool:    "tool1",
+			args: &mcp.CallToolParams{
+				Name: "p1",
+				Arguments: map[string]any{
+					"mode": "other",
+				},
+			},
+			expectError:   true,
+			expectAllowed: false,
+			expectScopes:  nil,
+		},
+		{
+			name: "rule with source target and CEL all match",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{Scopes: []string{"read", "write"}},
+						},
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{
+								Backend: "backend1",
+								Tool:    "tool1",
+							}},
+						},
+						CEL: ptr.To(`request.method == "POST" && request.mcp.backend == "backend1" && request.mcp.tool == "tool1" && request.headers["x-tenant"] == "t-123" && request.mcp.params.arguments["flag"] == true`),
+					},
+				},
+			},
+			headers: http.Header{"Authorization": []string{"Bearer " + makeToken("read", "write")}, "X-Tenant": []string{"t-123"}},
+			backend: "backend1",
+			tool:    "tool1",
+			args: &mcp.CallToolParams{
+				Name: "p1",
+				Arguments: map[string]any{
+					"flag": true,
+				},
+			},
+			expectAllowed: true,
+		},
+		{
+			name: "source target match but CEL does not",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{Scopes: []string{"read"}},
+						},
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{
+								Backend: "backend1",
+								Tool:    "tool1",
+							}},
+						},
+						CEL: ptr.To(`request.method == "GET"`),
+					},
+				},
+			},
+			headers:       http.Header{"Authorization": []string{"Bearer " + makeToken("read")}},
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: false,
+		},
+		{
+			name: "CEL match but source target do not",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{Scopes: []string{"write"}},
+						},
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{
+								Backend: "backend2",
+								Tool:    "tool2",
+							}},
+						},
+						CEL: ptr.To(`request.method == "POST"`),
+					},
+				},
+			},
+			headers:       http.Header{"Authorization": []string{"Bearer " + makeToken("write")}},
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: false,
+		},
 		{
 			name: "matching tool and scope",
 			auth: &filterapi.MCPRouteAuthorization{
@@ -60,40 +235,9 @@ func TestAuthorizeRequest(t *testing.T) {
 					},
 				},
 			},
-			header:        "Bearer " + makeToken("read", "write"),
+			headers:       http.Header{"Authorization": []string{"Bearer " + makeToken("read", "write")}},
 			backend:       "backend1",
 			tool:          "tool1",
-			expectAllowed: true,
-			expectScopes:  nil,
-		},
-		{
-			name: "matching tool scope and arguments CEL",
-			auth: &filterapi.MCPRouteAuthorization{
-				DefaultAction: "Deny",
-				Rules: []filterapi.MCPRouteAuthorizationRule{
-					{
-						Action: "Allow",
-						Source: &filterapi.MCPAuthorizationSource{
-							JWT: filterapi.JWTSource{Scopes: []string{"read"}},
-						},
-						Target: &filterapi.MCPAuthorizationTarget{
-							Tools: []filterapi.ToolCall{{
-								Backend: "backend1",
-								Tool:    "tool1",
-								When:    strPtr(`args.mode in ["fast", "slow"] && args.user.matches("u-[0-9]+") && args.debug == true`),
-							}},
-						},
-					},
-				},
-			},
-			header:  "Bearer " + makeToken("read"),
-			backend: "backend1",
-			tool:    "tool1",
-			args: map[string]any{
-				"mode":  "fast",
-				"user":  "u-123",
-				"debug": true,
-			},
 			expectAllowed: true,
 			expectScopes:  nil,
 		},
@@ -111,16 +255,21 @@ func TestAuthorizeRequest(t *testing.T) {
 							Tools: []filterapi.ToolCall{{
 								Backend: "backend1",
 								Tool:    "tool1",
-								When:    strPtr(`int(args.count) >= 40 && int(args.count) < 50`),
 							}},
 						},
+						CEL: ptr.To(`int(request.mcp.params.arguments["count"]) >= 40 && int(request.mcp.params.arguments["count"]) < 50`),
 					},
 				},
 			},
-			header:        "Bearer " + makeToken("read"),
-			backend:       "backend1",
-			tool:          "tool1",
-			args:          map[string]any{"count": 42},
+			headers: http.Header{"Authorization": []string{"Bearer " + makeToken("read")}},
+			backend: "backend1",
+			tool:    "tool1",
+			args: &mcp.CallToolParams{
+				Name: "p1",
+				Arguments: map[string]any{
+					"count": 42,
+				},
+			},
 			expectAllowed: true,
 			expectScopes:  nil,
 		},
@@ -138,19 +287,22 @@ func TestAuthorizeRequest(t *testing.T) {
 							Tools: []filterapi.ToolCall{{
 								Backend: "backend1",
 								Tool:    "tool1",
-								When:    strPtr(`args["payload"] != null && args["payload"]["kind"] == "test" && args["payload"]["value"] == 123`),
 							}},
 						},
+						CEL: ptr.To(`request.mcp.params.arguments["payload"] != null && request.mcp.params.arguments["payload"]["kind"] == "test" && request.mcp.params.arguments["payload"]["value"] == 123`),
 					},
 				},
 			},
-			header:  "Bearer " + makeToken("read"),
+			headers: http.Header{"Authorization": []string{"Bearer " + makeToken("read")}},
 			backend: "backend1",
 			tool:    "tool1",
-			args: map[string]any{
-				"payload": map[string]any{
-					"kind":  "test",
-					"value": 123,
+			args: &mcp.CallToolParams{
+				Name: "p1",
+				Arguments: map[string]any{
+					"payload": map[string]any{
+						"kind":  "test",
+						"value": 123,
+					},
 				},
 			},
 			expectAllowed: true,
@@ -172,128 +324,11 @@ func TestAuthorizeRequest(t *testing.T) {
 					},
 				},
 			},
-			header:        "Bearer " + makeToken("read"),
+			headers:       http.Header{"Authorization": []string{"Bearer " + makeToken("read")}},
 			backend:       "backend1",
 			tool:          "tool1",
 			expectAllowed: false,
 			expectScopes:  []string{"read", "write"},
-		},
-		{
-			name: "arguments CEL mismatch denied",
-			auth: &filterapi.MCPRouteAuthorization{
-				DefaultAction: "Deny",
-				Rules: []filterapi.MCPRouteAuthorizationRule{
-					{
-						Action: "Allow",
-						Source: &filterapi.MCPAuthorizationSource{
-							JWT: filterapi.JWTSource{Scopes: []string{"read"}},
-						},
-						Target: &filterapi.MCPAuthorizationTarget{
-							Tools: []filterapi.ToolCall{{
-								Backend: "backend1",
-								Tool:    "tool1",
-								When:    strPtr(`args.mode in ["fast", "slow"]`),
-							}},
-						},
-					},
-				},
-			},
-			header:  "Bearer " + makeToken("read"),
-			backend: "backend1",
-			tool:    "tool1",
-			args: map[string]any{
-				"mode": "other",
-			},
-			expectAllowed: false,
-			expectScopes:  nil,
-		},
-		{
-			name: "arguments CEL failed evaluation denies",
-			auth: &filterapi.MCPRouteAuthorization{
-				DefaultAction: "Deny",
-				Rules: []filterapi.MCPRouteAuthorizationRule{
-					{
-						Action: "Allow",
-						Source: &filterapi.MCPAuthorizationSource{
-							JWT: filterapi.JWTSource{Scopes: []string{"read"}},
-						},
-						Target: &filterapi.MCPAuthorizationTarget{
-							Tools: []filterapi.ToolCall{{
-								Backend: "backend1",
-								Tool:    "tool1",
-								When:    strPtr(`args.nonExistingField in ["fast", "slow"]`),
-							}},
-						},
-					},
-				},
-			},
-			header:  "Bearer " + makeToken("read"),
-			backend: "backend1",
-			tool:    "tool1",
-			args: map[string]any{
-				"mode": "other",
-			},
-			expectAllowed: false,
-			expectScopes:  nil,
-		},
-		{
-			name: "arguments CEL returns non-boolean denies",
-			auth: &filterapi.MCPRouteAuthorization{
-				DefaultAction: "Deny",
-				Rules: []filterapi.MCPRouteAuthorizationRule{
-					{
-						Action: "Allow",
-						Source: &filterapi.MCPAuthorizationSource{
-							JWT: filterapi.JWTSource{Scopes: []string{"read"}},
-						},
-						Target: &filterapi.MCPAuthorizationTarget{
-							Tools: []filterapi.ToolCall{{
-								Backend: "backend1",
-								Tool:    "tool1",
-								When:    strPtr(`args.mode`),
-							}},
-						},
-					},
-				},
-			},
-			header:  "Bearer " + makeToken("read"),
-			backend: "backend1",
-			tool:    "tool1",
-			args: map[string]any{
-				"mode": "other",
-			},
-			expectAllowed: false,
-			expectScopes:  nil,
-		},
-		{
-			name: "arguments invalid CEL denies",
-			auth: &filterapi.MCPRouteAuthorization{
-				DefaultAction: "Deny",
-				Rules: []filterapi.MCPRouteAuthorizationRule{
-					{
-						Action: "Allow",
-						Source: &filterapi.MCPAuthorizationSource{
-							JWT: filterapi.JWTSource{Scopes: []string{"read"}},
-						},
-						Target: &filterapi.MCPAuthorizationTarget{
-							Tools: []filterapi.ToolCall{{
-								Backend: "backend1",
-								Tool:    "tool1",
-								When:    strPtr(`invalid syntax here`),
-							}},
-						},
-					},
-				},
-			},
-			header:  "Bearer " + makeToken("read"),
-			backend: "backend1",
-			tool:    "tool1",
-			args: map[string]any{
-				"mode": "other",
-			},
-			expectError:   true,
-			expectAllowed: false,
-			expectScopes:  nil,
 		},
 		{
 			name: "missing argument denies when required",
@@ -309,16 +344,16 @@ func TestAuthorizeRequest(t *testing.T) {
 							Tools: []filterapi.ToolCall{{
 								Backend: "backend1",
 								Tool:    "tool1",
-								When:    strPtr(`args["mode"] == "fast"`),
 							}},
 						},
+						CEL: ptr.To(`request.mcp.params.arguments["mode"] == "fast"`),
 					},
 				},
 			},
-			header:        "Bearer " + makeToken("read"),
+			headers:       http.Header{"Authorization": []string{"Bearer " + makeToken("read")}},
 			backend:       "backend1",
 			tool:          "tool1",
-			args:          map[string]any{},
+			args:          &mcp.CallToolParams{Name: "p1", Arguments: map[string]any{}},
 			expectAllowed: false,
 			expectScopes:  nil,
 		},
@@ -338,7 +373,7 @@ func TestAuthorizeRequest(t *testing.T) {
 					},
 				},
 			},
-			header:        "Bearer " + makeToken("read", "write"),
+			headers:       http.Header{"Authorization": []string{"Bearer " + makeToken("read", "write")}},
 			backend:       "backend1",
 			tool:          "other-tool",
 			expectAllowed: false,
@@ -360,7 +395,7 @@ func TestAuthorizeRequest(t *testing.T) {
 					},
 				},
 			},
-			header:        "Bearer " + makeToken("foo", "bar"),
+			headers:       http.Header{"Authorization": []string{"Bearer " + makeToken("foo", "bar")}},
 			backend:       "backend1",
 			tool:          "other-tool",
 			expectAllowed: false,
@@ -382,7 +417,6 @@ func TestAuthorizeRequest(t *testing.T) {
 					},
 				},
 			},
-			header:        "",
 			backend:       "backend1",
 			tool:          "tool1",
 			expectAllowed: false,
@@ -404,7 +438,7 @@ func TestAuthorizeRequest(t *testing.T) {
 					},
 				},
 			},
-			header:        "Bearer invalid.token.here",
+			headers:       http.Header{"Authorization": []string{"Bearer invalid.token.here"}},
 			backend:       "backend1",
 			tool:          "tool1",
 			expectAllowed: false,
@@ -427,7 +461,7 @@ func TestAuthorizeRequest(t *testing.T) {
 					},
 				},
 			},
-			header:        "Bearer " + makeToken("alpha"),
+			headers:       http.Header{"Authorization": []string{"Bearer " + makeToken("alpha")}},
 			backend:       "backend1",
 			tool:          "tool1",
 			expectAllowed: false,
@@ -444,9 +478,9 @@ func TestAuthorizeRequest(t *testing.T) {
 							Tools: []filterapi.ToolCall{{
 								Backend: "backend1",
 								Tool:    "listFiles",
-								When:    strPtr(`args.folder == "restricted"`),
 							}},
 						},
+						CEL: ptr.To(`request.mcp.params.arguments["folder"] == "restricted"`),
 					},
 					{
 						Action: "Allow",
@@ -462,11 +496,14 @@ func TestAuthorizeRequest(t *testing.T) {
 					},
 				},
 			},
-			header:  "Bearer " + makeToken("read"),
+			headers: http.Header{"Authorization": []string{"Bearer " + makeToken("read")}},
 			backend: "backend1",
 			tool:    "listFiles",
-			args: map[string]any{
-				"folder": "restricted",
+			args: &mcp.CallToolParams{
+				Name: "p1",
+				Arguments: map[string]any{
+					"folder": "restricted",
+				},
 			},
 			expectAllowed: false,
 			expectScopes:  nil,
@@ -482,9 +519,9 @@ func TestAuthorizeRequest(t *testing.T) {
 							Tools: []filterapi.ToolCall{{
 								Backend: "backend1",
 								Tool:    "listFiles",
-								When:    strPtr(`args.folder == "restricted"`),
 							}},
 						},
+						CEL: ptr.To(`request.mcp.params.arguments["folder"] == "restricted"`),
 					},
 					{
 						Action: "Allow",
@@ -500,11 +537,14 @@ func TestAuthorizeRequest(t *testing.T) {
 					},
 				},
 			},
-			header:  "Bearer " + makeToken("read"),
+			headers: http.Header{"Authorization": []string{"Bearer " + makeToken("read")}},
 			backend: "backend1",
 			tool:    "listFiles",
-			args: map[string]any{
-				"folder": "allowed",
+			args: &mcp.CallToolParams{
+				Name: "p1",
+				Arguments: map[string]any{
+					"folder": "allowed",
+				},
 			},
 			expectAllowed: true,
 			expectScopes:  nil,
@@ -514,7 +554,6 @@ func TestAuthorizeRequest(t *testing.T) {
 			auth: &filterapi.MCPRouteAuthorization{
 				DefaultAction: "Deny",
 			},
-			header:        "",
 			backend:       "backend1",
 			tool:          "tool1",
 			expectAllowed: false,
@@ -525,7 +564,6 @@ func TestAuthorizeRequest(t *testing.T) {
 			auth: &filterapi.MCPRouteAuthorization{
 				DefaultAction: "Allow",
 			},
-			header:        "",
 			backend:       "backend1",
 			tool:          "tool1",
 			expectAllowed: true,
@@ -541,7 +579,6 @@ func TestAuthorizeRequest(t *testing.T) {
 					},
 				},
 			},
-			header:        "",
 			backend:       "backend1",
 			tool:          "tool1",
 			expectAllowed: true,
@@ -557,7 +594,6 @@ func TestAuthorizeRequest(t *testing.T) {
 					},
 				},
 			},
-			header:        "",
 			backend:       "backend1",
 			tool:          "tool1",
 			expectAllowed: false,
@@ -579,7 +615,6 @@ func TestAuthorizeRequest(t *testing.T) {
 					},
 				},
 			},
-			header:        "",
 			backend:       "backend1",
 			tool:          "tool1",
 			expectAllowed: true,
@@ -598,19 +633,340 @@ func TestAuthorizeRequest(t *testing.T) {
 					},
 				},
 			},
-			header:        "Bearer " + makeToken("read"),
+			headers:       http.Header{"Authorization": []string{"Bearer " + makeToken("read")}},
 			backend:       "backend1",
 			tool:          "tool1",
 			expectAllowed: true,
 			expectScopes:  nil,
 		},
+		{
+			name: "claims mismatch denies request",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{
+								Scopes: []string{"read"},
+								Claims: []filterapi.JWTClaim{{
+									Name:      "tenant",
+									ValueType: filterapi.JWTClaimValueTypeString,
+									Values:    []string{"acme", "globex"},
+								}},
+							},
+						},
+					},
+				},
+			},
+			headers:       http.Header{"Authorization": []string{"Bearer " + makeTokenWithClaims(jwt.MapClaims{"tenant": "other"}, "read")}},
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: false,
+			expectScopes:  nil,
+		},
+		{
+			name: "claims match allows request - first value",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{
+								Scopes: []string{"read"},
+								Claims: []filterapi.JWTClaim{{
+									Name:      "tenant",
+									ValueType: filterapi.JWTClaimValueTypeString,
+									Values:    []string{"acme", "globex"},
+								}},
+							},
+						},
+					},
+				},
+			},
+			headers:       http.Header{"Authorization": []string{"Bearer " + makeTokenWithClaims(jwt.MapClaims{"tenant": "acme"}, "read")}},
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: true,
+			expectScopes:  nil,
+		},
+		{
+			name: "claims match allows request - second value",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{
+								Scopes: []string{"read"},
+								Claims: []filterapi.JWTClaim{{
+									Name:      "tenant",
+									ValueType: filterapi.JWTClaimValueTypeString,
+									Values:    []string{"acme", "globex"},
+								}},
+							},
+						},
+					},
+				},
+			},
+			headers:       http.Header{"Authorization": []string{"Bearer " + makeTokenWithClaims(jwt.MapClaims{"tenant": "globex"}, "read")}},
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: true,
+			expectScopes:  nil,
+		},
+		{
+			name: "opaque token denies with required scope challenge",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{
+								Scopes: []string{"read"},
+							},
+						},
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "tool1"}},
+						},
+					},
+				},
+			},
+			// Opaque tokens are not JWTs; parsing fails so no scopes are extracted.
+			headers:       http.Header{"Authorization": []string{"Bearer opaque-token"}},
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: false,
+			expectScopes:  []string{"read"},
+		},
+		{
+			name: "scope mismatch denies request even if claims match",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{
+								Scopes: []string{"admin"},
+								Claims: []filterapi.JWTClaim{{
+									Name:      "tenant",
+									ValueType: filterapi.JWTClaimValueTypeString,
+									Values:    []string{"acme", "globex"},
+								}},
+							},
+						},
+					},
+				},
+			},
+			headers:       http.Header{"Authorization": []string{"Bearer " + makeTokenWithClaims(jwt.MapClaims{"tenant": "acme"}, "read")}},
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: false,
+			expectScopes:  []string{"admin"},
+		},
+		{
+			name: "scope and claims match allows request",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{
+								Scopes: []string{"admin"},
+								Claims: []filterapi.JWTClaim{
+									{
+										Name:      "tenant",
+										ValueType: filterapi.JWTClaimValueTypeString,
+										Values:    []string{"acme", "globex"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			headers:       http.Header{"Authorization": []string{"Bearer " + makeTokenWithClaims(jwt.MapClaims{"tenant": "acme"}, "admin")}},
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: true,
+		},
+		{
+			name: "matching nested jwt claim string array value",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{
+								Claims: []filterapi.JWTClaim{{
+									Name:      "org.departments",
+									ValueType: filterapi.JWTClaimValueTypeStringArray,
+									Values:    []string{"security", "hr"},
+								}},
+							},
+						},
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "tool1"}},
+						},
+					},
+				},
+			},
+			headers: http.Header{"Authorization": []string{"Bearer " + makeTokenWithClaims(jwt.MapClaims{
+				"org": map[string]any{"departments": []any{"engineering", "security"}},
+			})}},
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: true,
+			expectScopes:  nil,
+		},
+		{
+			name: "matching nested jwt claim string array value via CEL",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						CEL:    ptr.To(`request.auth.jwt.claims["org"]["departments"].exists(d, d == "security")`),
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "tool1"}},
+						},
+					},
+				},
+			},
+			headers: http.Header{"Authorization": []string{"Bearer " + makeTokenWithClaims(jwt.MapClaims{
+				"org": map[string]any{"departments": []any{"engineering", "security"}},
+			})}},
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: true,
+			expectScopes:  nil,
+		},
+		{
+			name: "non-matching nested jwt claim string array value",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{
+								Claims: []filterapi.JWTClaim{{
+									Name:      "org.departments",
+									ValueType: filterapi.JWTClaimValueTypeStringArray,
+									Values:    []string{"operations", "hr"},
+								}},
+							},
+						},
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "tool1"}},
+						},
+					},
+				},
+			},
+			headers: http.Header{"Authorization": []string{"Bearer " + makeTokenWithClaims(jwt.MapClaims{
+				"org": map[string]any{"departments": []any{"engineering", "security"}},
+			})}},
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: false,
+			expectScopes:  nil,
+		},
+		{
+			name: "matching nested jwt claim string array single value",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{
+								Claims: []filterapi.JWTClaim{{
+									Name:      "org.departments",
+									ValueType: filterapi.JWTClaimValueTypeStringArray,
+									Values:    []string{"operations", "hr", "engineering"},
+								}},
+							},
+						},
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "tool1"}},
+						},
+					},
+				},
+			},
+			headers: http.Header{"Authorization": []string{"Bearer " + makeTokenWithClaims(jwt.MapClaims{
+				"org": map[string]any{"departments": "engineering"},
+			})}},
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: true,
+			expectScopes:  nil,
+		},
+		{
+			name: "complex matching nested jwt claims",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{
+								Scopes: []string{"admin"},
+								Claims: []filterapi.JWTClaim{
+									{
+										Name:      "tenant",
+										ValueType: filterapi.JWTClaimValueTypeString,
+										Values:    []string{"acme", "globex"},
+									},
+									{
+										Name:      "org.departments",
+										ValueType: filterapi.JWTClaimValueTypeStringArray,
+										Values:    []string{"operations", "engineering"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			headers:       http.Header{"Authorization": []string{"Bearer " + makeTokenWithClaims(jwt.MapClaims{"tenant": "acme", "org": map[string]any{"departments": []any{"engineering", "hr"}}}, "admin")}},
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: true,
+		},
+		{
+			name: "scp claim used as scopes",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{Scopes: []string{"read"}},
+						},
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "tool1"}},
+						},
+					},
+				},
+			},
+			headers:       http.Header{"Authorization": []string{"Bearer " + makeTokenWithClaims(jwt.MapClaims{"scp": "read"})}},
+			backend:       "backend1",
+			tool:          "tool1",
+			expectAllowed: true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			headers := http.Header{}
-			if tt.header != "" {
-				headers.Set("Authorization", tt.header)
+			headers := tt.headers
+			if headers == nil {
+				headers = http.Header{}
 			}
 			compiled, err := compileAuthorization(tt.auth)
 			if (err != nil) != tt.expectError {
@@ -619,7 +975,16 @@ func TestAuthorizeRequest(t *testing.T) {
 			if err != nil {
 				return
 			}
-			allowed, requiredScopes := proxy.authorizeRequest(compiled, headers, tt.backend, tt.tool, tt.args)
+			allowed, requiredScopes := proxy.authorizeRequest(compiled, authorizationRequest{
+				Headers:    headers,
+				HTTPMethod: cmp.Or(tt.mcpMethod, http.MethodPost),
+				Host:       tt.host,
+				HTTPPath:   "/mcp",
+				MCPMethod:  cmp.Or(tt.mcpMethod, "tools/call"),
+				Backend:    tt.backend,
+				Tool:       tt.tool,
+				Params:     tt.args,
+			})
 			if allowed != tt.expectAllowed {
 				t.Fatalf("expected %v, got %v", tt.expectAllowed, allowed)
 			}
@@ -642,24 +1007,15 @@ func TestBuildInsufficientScopeHeader(t *testing.T) {
 	})
 }
 
-func TestCompileAuthorizationInvalidExpression(t *testing.T) {
+func TestCompileAuthorizationInvalidRuleCEL(t *testing.T) {
 	_, err := compileAuthorization(&filterapi.MCPRouteAuthorization{
 		Rules: []filterapi.MCPRouteAuthorizationRule{
 			{
-				Source: &filterapi.MCPAuthorizationSource{
-					JWT: filterapi.JWTSource{Scopes: []string{"read"}},
-				},
-				Target: &filterapi.MCPAuthorizationTarget{
-					Tools: []filterapi.ToolCall{{
-						Backend: "backend1",
-						Tool:    "tool1",
-						When:    strPtr("args."),
-					}},
-				},
+				CEL: ptr.To("request."),
 			},
 		},
 	})
 	if err == nil {
-		t.Fatalf("expected compile error for invalid CEL expression")
+		t.Fatalf("expected compile error for invalid rule CEL expression")
 	}
 }

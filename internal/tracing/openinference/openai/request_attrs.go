@@ -6,13 +6,13 @@
 package openai
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 )
 
@@ -315,6 +315,29 @@ func buildCompletionRequestAttributes(req *openai.CompletionRequest, body []byte
 		case [][]int64:
 		}
 	}
+
+	return attrs
+}
+
+// buildResponsesRequestAttributes builds OpenTelemetry attributes for responses requests.
+func buildResponsesRequestAttributes(req *openai.ResponseRequest, body []byte, config *openinference.TraceConfig) []attribute.KeyValue {
+	// TODO: Add more detailed request attributes.
+	attrs := []attribute.KeyValue{
+		attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+		attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+	}
+
+	if req.Model != "" {
+		attrs = append(attrs, attribute.String(openinference.LLMModelName, req.Model))
+	}
+
+	// TODO: Improve input recording based on actual input type.
+	bodyString := openinference.RedactedValue
+	if !config.HideInputs {
+		bodyString = string(body)
+	}
+	attrs = append(attrs, attribute.String(openinference.InputValue, bodyString))
+	attrs = append(attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
 
 	return attrs
 }

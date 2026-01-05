@@ -68,11 +68,22 @@ spec:
             tools:
               - backend: mcp-backend-authorization
                 tool: echo
-                when: args.text.matches("^Hello, .*!$")
+          cel: request.mcp.params.arguments.text.matches("^Hello, .*!$") && request.headers["x-tenant"] == "t-123"
         - source:
             jwt:
               scopes:
                 - sum
+              claims:
+                - name: tenant
+                  valueType: String
+                  values:
+                    - acme
+                    - globex
+                - name: org.departments
+                  valueType: StringArray
+                  values:
+                    - engineering
+                    - development
           target:
             tools:
               - backend: mcp-backend-authorization

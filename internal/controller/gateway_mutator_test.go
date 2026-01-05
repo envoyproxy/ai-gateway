@@ -10,20 +10,47 @@ import (
 	"strconv"
 	"testing"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
+
+// testGatewayConfig is a GatewayConfig used for testing.
+var testGatewayConfig = &aigv1a1.GatewayConfig{
+	ObjectMeta: metav1.ObjectMeta{
+		Name: "test-gateway-config",
+	},
+	Spec: aigv1a1.GatewayConfigSpec{
+		ExtProc: &aigv1a1.GatewayConfigExtProc{
+			Kubernetes: &egv1a1.KubernetesContainerSpec{
+				Image: ptr.To("gcr.io/custom/extproc:v2"),
+				Env: []corev1.EnvVar{
+					{Name: "LOG_LEVEL", Value: "debug"}, // Overrides global
+					{Name: "CONFIG_VAR", Value: "config-value"},
+				},
+				Resources: &corev1.ResourceRequirements{
+					Requests: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("200m"),
+						corev1.ResourceMemory: resource.MustParse("256Mi"),
+					},
+				},
+			},
+		},
+	},
+}
 
 func TestGatewayMutator_Default(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
@@ -55,6 +82,7 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 		extprocTest                    func(t *testing.T, container corev1.Container)
 		podTest                        func(t *testing.T, pod corev1.Pod)
 		needMCP                        bool
+		gatewayConfig                  *aigv1a1.GatewayConfig
 	}{
 		{
 			name: "basic extproc container",
@@ -207,6 +235,28 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 				require.Equal(t, expectedSecrets, pod.Spec.ImagePullSecrets)
 			},
 		},
+		{
+			name:                "with GatewayConfig",
+			extProcExtraEnvVars: "GLOBAL_VAR=global-value;LOG_LEVEL=info",
+			gatewayConfig:       testGatewayConfig,
+			extprocTest: func(t *testing.T, container corev1.Container) {
+				// GatewayConfig env vars override global env vars
+				require.Equal(t, []corev1.EnvVar{
+					{Name: "GLOBAL_VAR", Value: "global-value"},
+					{Name: "LOG_LEVEL", Value: "debug"}, // GatewayConfig overrides global
+					{Name: "CONFIG_VAR", Value: "config-value"},
+				}, container.Env)
+				// GatewayConfig image override
+				require.Equal(t, "gcr.io/custom/extproc:v2", container.Image)
+				// GatewayConfig resources
+				require.NotNil(t, container.Resources)
+				require.NotNil(t, container.Resources.Requests)
+				cpuReq := container.Resources.Requests[corev1.ResourceCPU]
+				memReq := container.Resources.Requests[corev1.ResourceMemory]
+				require.Equal(t, resource.MustParse("200m"), cpuReq)
+				require.Equal(t, resource.MustParse("256Mi"), memReq)
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -247,6 +297,30 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 										Group: ptr.To(gwapiv1a2.Group("gateway.networking.k8s.io")),
 									},
 								},
+							},
+						})
+						require.NoError(t, err)
+					}
+
+					// Create Gateway and GatewayConfig if configured for this test case
+					if tt.gatewayConfig != nil {
+						// Create GatewayConfig
+						gatewayConfig := tt.gatewayConfig.DeepCopy()
+						gatewayConfig.Namespace = gwNamespace
+						err = fakeClient.Create(t.Context(), gatewayConfig)
+						require.NoError(t, err)
+
+						// Create Gateway with GatewayConfig annotation
+						err = fakeClient.Create(t.Context(), &gwapiv1.Gateway{
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      gwName,
+								Namespace: gwNamespace,
+								Annotations: map[string]string{
+									GatewayConfigAnnotationKey: tt.gatewayConfig.Name,
+								},
+							},
+							Spec: gwapiv1.GatewaySpec{
+								GatewayClassName: "test-class",
 							},
 						})
 						require.NoError(t, err)
@@ -474,6 +548,155 @@ func TestParseImagePullSecrets(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, tt.want, got)
 			}
+		})
+	}
+}
+
+func TestGatewayMutator_mergeEnvVars(t *testing.T) {
+	tests := []struct {
+		name          string
+		globalEnvVars string
+		gatewayConfig *aigv1a1.GatewayConfig
+		expectedEnvs  map[string]string
+	}{
+		{
+			name:          "global env vars only",
+			globalEnvVars: "GLOBAL_VAR=global-value;LOG_LEVEL=info",
+			gatewayConfig: nil,
+			expectedEnvs: map[string]string{
+				"GLOBAL_VAR": "global-value",
+				"LOG_LEVEL":  "info",
+			},
+		},
+		{
+			name:          "GatewayConfig env vars only",
+			globalEnvVars: "",
+			gatewayConfig: &aigv1a1.GatewayConfig{
+				Spec: aigv1a1.GatewayConfigSpec{
+					ExtProc: &aigv1a1.GatewayConfigExtProc{
+						Kubernetes: &egv1a1.KubernetesContainerSpec{
+							Env: []corev1.EnvVar{
+								{Name: "CONFIG_VAR", Value: "config-value"},
+								{Name: "LOG_LEVEL", Value: "debug"},
+							},
+						},
+					},
+				},
+			},
+			expectedEnvs: map[string]string{
+				"CONFIG_VAR": "config-value",
+				"LOG_LEVEL":  "debug",
+			},
+		},
+		{
+			name:          "GatewayConfig overrides global",
+			globalEnvVars: "LOG_LEVEL=info;GLOBAL_ONLY=global",
+			gatewayConfig: &aigv1a1.GatewayConfig{
+				Spec: aigv1a1.GatewayConfigSpec{
+					ExtProc: &aigv1a1.GatewayConfigExtProc{
+						Kubernetes: &egv1a1.KubernetesContainerSpec{
+							Env: []corev1.EnvVar{
+								{Name: "LOG_LEVEL", Value: "debug"},
+								{Name: "CONFIG_ONLY", Value: "config"},
+							},
+						},
+					},
+				},
+			},
+			expectedEnvs: map[string]string{
+				"LOG_LEVEL":   "debug",  // GatewayConfig overrides global
+				"GLOBAL_ONLY": "global", // global only
+				"CONFIG_ONLY": "config", // config only
+			},
+		},
+		{
+			name:          "GatewayConfig with nil ExtProc",
+			globalEnvVars: "GLOBAL_VAR=global-value",
+			gatewayConfig: &aigv1a1.GatewayConfig{
+				Spec: aigv1a1.GatewayConfigSpec{
+					ExtProc: nil,
+				},
+			},
+			expectedEnvs: map[string]string{
+				"GLOBAL_VAR": "global-value",
+			},
+		},
+		{
+			name:          "empty both",
+			globalEnvVars: "",
+			gatewayConfig: nil,
+			expectedEnvs:  map[string]string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeClient := requireNewFakeClientWithIndexes(t)
+			fakeKube := fake2.NewClientset()
+			g := newTestGatewayMutator(fakeClient, fakeKube, "", "", "", tt.globalEnvVars, "", false)
+
+			result := g.mergeEnvVars(tt.gatewayConfig)
+
+			// Convert result to map for easier comparison.
+			resultMap := make(map[string]string)
+			for _, env := range result {
+				resultMap[env.Name] = env.Value
+			}
+
+			require.Equal(t, tt.expectedEnvs, resultMap)
+		})
+	}
+}
+
+func TestGatewayMutator_resolveExtProcImage(t *testing.T) {
+	tests := []struct {
+		name     string
+		base     string
+		extProc  *aigv1a1.GatewayConfigExtProc
+		expected string
+	}{
+		{
+			name:     "nil spec uses base image",
+			base:     "docker.io/envoyproxy/ai-gateway-extproc:latest",
+			extProc:  nil,
+			expected: "docker.io/envoyproxy/ai-gateway-extproc:latest",
+		},
+		{
+			name: "explicit image override",
+			base: "docker.io/envoyproxy/ai-gateway-extproc:latest",
+			extProc: &aigv1a1.GatewayConfigExtProc{
+				Kubernetes: &egv1a1.KubernetesContainerSpec{
+					Image: ptr.To("gcr.io/custom/extproc:v2"),
+				},
+			},
+			expected: "gcr.io/custom/extproc:v2",
+		},
+		{
+			name: "repository override reuses tag",
+			base: "docker.io/envoyproxy/ai-gateway-extproc:latest",
+			extProc: &aigv1a1.GatewayConfigExtProc{
+				Kubernetes: &egv1a1.KubernetesContainerSpec{
+					ImageRepository: ptr.To("gcr.io/custom/extproc"),
+				},
+			},
+			expected: "gcr.io/custom/extproc:latest",
+		},
+		{
+			name: "repository override keeps digest",
+			base: "docker.io/envoyproxy/ai-gateway-extproc@sha256:deadbeef",
+			extProc: &aigv1a1.GatewayConfigExtProc{
+				Kubernetes: &egv1a1.KubernetesContainerSpec{
+					ImageRepository: ptr.To("gcr.io/custom/extproc"),
+				},
+			},
+			expected: "gcr.io/custom/extproc@sha256:deadbeef",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := &gatewayMutator{extProcImage: tt.base}
+			require.Equal(t, tt.expected, g.resolveExtProcImage(tt.extProc))
 		})
 	}
 }

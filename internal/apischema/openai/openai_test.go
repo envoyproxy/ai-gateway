@@ -6,7 +6,6 @@
 package openai
 
 import (
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -17,6 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genai"
 	"k8s.io/utils/ptr"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func TestOpenAIChatCompletionContentPartUserUnionParamUnmarshal(t *testing.T) {
@@ -1741,26 +1742,30 @@ func TestPromptTokensDetails(t *testing.T) {
 		{
 			name: "with text tokens",
 			details: PromptTokensDetails{
-				TextTokens:   15,
-				AudioTokens:  8,
-				CachedTokens: 384,
+				TextTokens:          15,
+				AudioTokens:         8,
+				CachedTokens:        384,
+				CacheCreationTokens: 10,
 			},
 			expected: `{
 				"text_tokens": 15,
 				"audio_tokens": 8,
-				"cached_tokens": 384
+				"cached_tokens": 384,
+				"cache_creation_input_tokens": 10
 			}`,
 		},
 		{
 			name: "with zero text tokens omitted",
 			details: PromptTokensDetails{
-				TextTokens:   0,
-				AudioTokens:  8,
-				CachedTokens: 384,
+				TextTokens:          0,
+				AudioTokens:         8,
+				CachedTokens:        384,
+				CacheCreationTokens: 10,
 			},
 			expected: `{
 				"audio_tokens": 8,
-				"cached_tokens": 384
+				"cached_tokens": 384,
+				"cache_creation_input_tokens": 10
 			}`,
 		},
 	}
@@ -1817,8 +1822,9 @@ func TestChatCompletionResponseUsage(t *testing.T) {
 					RejectedPredictionTokens: 0,
 				},
 				PromptTokensDetails: &PromptTokensDetails{
-					AudioTokens:  8,
-					CachedTokens: 384,
+					AudioTokens:         8,
+					CachedTokens:        384,
+					CacheCreationTokens: 13,
 				},
 			},
 			expected: `{
@@ -1831,7 +1837,8 @@ func TestChatCompletionResponseUsage(t *testing.T) {
 				},
 				"prompt_tokens_details": {
 					"audio_tokens": 8,
-					"cached_tokens": 384
+					"cached_tokens": 384,
+					"cache_creation_input_tokens": 13
 				}
 			}`,
 		},
@@ -1849,9 +1856,10 @@ func TestChatCompletionResponseUsage(t *testing.T) {
 					RejectedPredictionTokens: 0,
 				},
 				PromptTokensDetails: &PromptTokensDetails{
-					TextTokens:   15,
-					AudioTokens:  8,
-					CachedTokens: 384,
+					TextTokens:          15,
+					AudioTokens:         8,
+					CachedTokens:        384,
+					CacheCreationTokens: 21,
 				},
 			},
 			expected: `{
@@ -1866,7 +1874,8 @@ func TestChatCompletionResponseUsage(t *testing.T) {
 				"prompt_tokens_details": {
 					"text_tokens": 15,
 					"audio_tokens": 8,
-					"cached_tokens": 384
+					"cached_tokens": 384,
+					"cache_creation_input_tokens": 21
 				}
 			}`,
 		},

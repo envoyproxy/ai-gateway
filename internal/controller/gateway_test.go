@@ -197,6 +197,7 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 					{MetadataKey: "bar", Type: aigv1a1.LLMRequestCostTypeOutputToken},
 					{MetadataKey: "baz", Type: aigv1a1.LLMRequestCostTypeTotalToken},
 					{MetadataKey: "qux", Type: aigv1a1.LLMRequestCostTypeCachedInputToken},
+					{MetadataKey: "zoo", Type: aigv1a1.LLMRequestCostTypeCacheCreationInputToken},
 				},
 			},
 		},
@@ -273,13 +274,15 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		require.True(t, ok)
 		var fc filterapi.Config
 		require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
-		require.Len(t, fc.LLMRequestCosts, 5)
+		require.Equal(t, "dev", fc.Version)
+		require.Len(t, fc.LLMRequestCosts, 6)
 		require.Equal(t, filterapi.LLMRequestCostTypeInputToken, fc.LLMRequestCosts[0].Type)
 		require.Equal(t, filterapi.LLMRequestCostTypeOutputToken, fc.LLMRequestCosts[1].Type)
 		require.Equal(t, filterapi.LLMRequestCostTypeTotalToken, fc.LLMRequestCosts[2].Type)
 		require.Equal(t, filterapi.LLMRequestCostTypeCachedInputToken, fc.LLMRequestCosts[3].Type)
-		require.Equal(t, filterapi.LLMRequestCostTypeCEL, fc.LLMRequestCosts[4].Type)
-		require.Equal(t, `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`, fc.LLMRequestCosts[4].CEL)
+		require.Equal(t, filterapi.LLMRequestCostTypeCacheCreationInputToken, fc.LLMRequestCosts[4].Type)
+		require.Equal(t, filterapi.LLMRequestCostTypeCEL, fc.LLMRequestCosts[5].Type)
+		require.Equal(t, `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`, fc.LLMRequestCosts[5].CEL)
 		require.Len(t, fc.Models, 1)
 		require.Equal(t, "mymodel", fc.Models[0].Name)
 
@@ -879,16 +882,16 @@ func Test_schemaToFilterAPI(t *testing.T) {
 		{
 			// Backward compatible case.
 			in:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("v123")},
-			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v123"},
+			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v123", Version: "v123"},
 		},
 		{
 			// Backward compatible case.
 			in:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI},
-			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1"},
+			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1", Version: "v1"},
 		},
 		{
 			in:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Prefix: ptr.To("v1/foo")},
-			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1/foo"},
+			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1/foo", Version: "v1/foo"},
 		},
 		{
 			in:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaAWSBedrock},

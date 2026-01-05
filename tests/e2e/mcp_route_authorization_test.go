@@ -27,8 +27,9 @@ import (
 
 // bearerTokenTransport injects a bearer token into outgoing requests.
 type bearerTokenTransport struct {
-	token string
-	base  http.RoundTripper
+	token   string
+	headers map[string]string
+	base    http.RoundTripper
 }
 
 // RoundTrip implements [http.RoundTripper.RoundTrip].
@@ -38,6 +39,9 @@ func (t *bearerTokenTransport) RoundTrip(req *http.Request) (*http.Response, err
 		base = http.DefaultTransport
 	}
 	req.Header.Set("Authorization", "Bearer "+t.token)
+	for k, v := range t.headers {
+		req.Header.Set(k, v)
+	}
 	return base.RoundTrip(req)
 }
 
@@ -56,8 +60,13 @@ func TestMCPRouteAuthorization(t *testing.T) {
 
 	client := mcp.NewClient(&mcp.Implementation{Name: "demo-http-client", Version: "0.1.0"}, nil)
 
-	t.Run("allow rules with matching scopes", func(t *testing.T) {
-		token := makeSignedJWT(t, "sum")
+	t.Run("allow rules with matching scopes and claims", func(t *testing.T) {
+		token := makeSignedJWTWithClaims(t, jwt.MapClaims{
+			"tenant": "acme",
+			"org": map[string]any{
+				"departments": []any{"engineering", "operations"},
+			},
+		}, "sum")
 		authHTTPClient := &http.Client{
 			Timeout: 10 * time.Second,
 			Transport: &bearerTokenTransport{
@@ -76,8 +85,13 @@ func TestMCPRouteAuthorization(t *testing.T) {
 		requireSumToolResult(ctx, t, sess, 41, 1, "42")
 	})
 
-	t.Run("matching scopes and arguments", func(t *testing.T) {
-		token := makeSignedJWT(t, "echo")
+	t.Run("access denied with matching scopes and mismatching claims", func(t *testing.T) {
+		token := makeSignedJWTWithClaims(t, jwt.MapClaims{
+			"tenant": "acme",
+			"org": map[string]any{
+				"departments": []any{"hr"},
+			},
+		}, "sum")
 		authHTTPClient := &http.Client{
 			Timeout: 10 * time.Second,
 			Transport: &bearerTokenTransport{
@@ -93,7 +107,31 @@ func TestMCPRouteAuthorization(t *testing.T) {
 			_ = sess.Close()
 		})
 
-		const hello = "Hello, world!" // Should match the argument regex "^Hello, .*!$"
+		_, err := sess.CallTool(ctx, &mcp.CallToolParams{
+			Name:      "mcp-backend-authorization__" + testmcp.ToolSum.Tool.Name,
+			Arguments: testmcp.ToolSumArgs{A: 41, B: 1},
+		})
+		require.Error(t, err)
+		errMsg := strings.ToLower(err.Error())
+		require.Contains(t, errMsg, "forbidden", "unexpected error: %v", err)
+	})
+
+	t.Run("matching scopes, arguments, and headers", func(t *testing.T) {
+		token := makeSignedJWT(t, "echo")
+		authHTTPClient := &http.Client{
+			Timeout:   10 * time.Second,
+			Transport: &bearerTokenTransport{token: token, headers: map[string]string{"x-tenant": "t-123"}},
+		}
+
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		sess := requireConnectMCP(ctx, t, client, fmt.Sprintf("%s/mcp-authorization", fwd.Address()), authHTTPClient)
+		t.Cleanup(func() {
+			_ = sess.Close()
+		})
+
+		const hello = "Hello, world!" // Should match the CEL expression on params + header
 		res, err := sess.CallTool(ctx, &mcp.CallToolParams{
 			Name:      "mcp-backend-authorization__" + testmcp.ToolEcho.Tool.Name,
 			Arguments: testmcp.ToolEchoArgs{Text: hello},
@@ -106,13 +144,11 @@ func TestMCPRouteAuthorization(t *testing.T) {
 		require.Equal(t, hello, txt.Text)
 	})
 
-	t.Run("matching scopes and mismatched arguments", func(t *testing.T) {
+	t.Run("matching scopes and mismatched arguments or headers", func(t *testing.T) {
 		token := makeSignedJWT(t, "echo")
 		authHTTPClient := &http.Client{
-			Timeout: 10 * time.Second,
-			Transport: &bearerTokenTransport{
-				token: token,
-			},
+			Timeout:   10 * time.Second,
+			Transport: &bearerTokenTransport{token: token, headers: map[string]string{"x-tenant": "t-123"}},
 		}
 
 		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
@@ -123,7 +159,7 @@ func TestMCPRouteAuthorization(t *testing.T) {
 			_ = sess.Close()
 		})
 
-		const hello = "hello, world!" // Should match the argument regex "^Hello, .*!$"
+		const hello = "hello, world!" // Should fail CEL due to lowercase h
 		_, err := sess.CallTool(ctx, &mcp.CallToolParams{
 			Name:      "mcp-backend-authorization__" + testmcp.ToolEcho.Tool.Name,
 			Arguments: testmcp.ToolEchoArgs{Text: hello},
@@ -163,10 +199,8 @@ func TestMCPRouteAuthorization(t *testing.T) {
 	t.Run("WWW-Authenticate on insufficient scope", func(t *testing.T) {
 		token := makeSignedJWT(t, "sum") // only sum scope; echo requires echo
 		authHTTPClient := &http.Client{
-			Timeout: 10 * time.Second,
-			Transport: &bearerTokenTransport{
-				token: token,
-			},
+			Timeout:   10 * time.Second,
+			Transport: &bearerTokenTransport{token: token},
 		}
 
 		routeHeader := "default/mcp-route-authorization-default-deny"
@@ -186,6 +220,7 @@ func TestMCPRouteAuthorization(t *testing.T) {
 		require.NoError(t, err)
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-tenant", "t-123")
 		req.Header.Set("mcp-session-id", sess.ID())
 		req.Header.Set("x-ai-eg-mcp-route", routeHeader)
 
@@ -284,17 +319,15 @@ func requireSumToolResult(ctx context.Context, t *testing.T, sess *mcp.ClientSes
 
 func makeSignedJWT(t *testing.T, scopes ...string) string {
 	t.Helper()
+	return makeSignedJWTWithClaims(t, jwt.MapClaims{}, scopes...)
+}
 
-	claims := jwt.MapClaims{
-		"iss":        "https://auth-server.example.com",
-		"aud":        "mcp-test",
-		"sub":        "robin",
-		"client_id":  "my_mcp_gateway",
-		"scope":      strings.Join(scopes, " "),
-		"exp":        time.Now().Add(30 * time.Minute).Unix(),
-		"iat":        time.Now().Unix(),
-		"auth_time":  time.Now().Unix(),
-		"token_type": "Bearer",
+func makeSignedJWTWithClaims(t *testing.T, claims jwt.MapClaims, scopes ...string) string {
+	t.Helper()
+
+	if len(scopes) > 0 {
+		claims["scope"] = strings.Join(scopes, " ")
+		claims["exp"] = time.Now().Add(30 * time.Minute).Unix()
 	}
 
 	key := jwkPrivateKey(t)

@@ -33,6 +33,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
+	"github.com/envoyproxy/ai-gateway/internal/version"
 )
 
 const (
@@ -165,6 +166,8 @@ func schemaToFilterAPI(schema aigv1a1.VersionedAPISchema, l logr.Logger) filtera
 				"Please set 'prefix' field explicitly as this use of 'version' field will be removed in future releases.",
 			)
 		}
+		// This is for backward compatibility. TODO: remove this after v0.5.0 release.
+		ret.Version = ret.Prefix
 	} else {
 		ret.Version = ptr.Deref(schema.Version, "")
 	}
@@ -305,7 +308,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	uuid string,
 ) error {
 	// Precondition: aiGatewayRoutes is not empty as we early return if it is empty.
-	ec := &filterapi.Config{UUID: uuid}
+	ec := &filterapi.Config{UUID: uuid, Version: version.Parse()}
 	var err error
 	llmCosts := map[string]struct{}{}
 	for i := range aiGatewayRoutes {
@@ -340,7 +343,11 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				b.ModelNameOverride = backendRef.ModelNameOverride
 				if backendRef.IsInferencePool() {
 					// We assume that InferencePools are all OpenAI schema.
-					b.Schema = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1"}
+					b.Schema = filterapi.VersionedAPISchema{
+						Name: filterapi.APISchemaOpenAI,
+						// This is for backward compatibility. TODO: Remove the 'version' field usage after v0.5.0 release.
+						Version: "v1", Prefix: "v1",
+					}
 				} else {
 					var backendObj *aigv1a1.AIServiceBackend
 					var bsp *aigv1a1.BackendSecurityPolicy
@@ -397,6 +404,8 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					fc.Type = filterapi.LLMRequestCostTypeInputToken
 				case aigv1a1.LLMRequestCostTypeCachedInputToken:
 					fc.Type = filterapi.LLMRequestCostTypeCachedInputToken
+				case aigv1a1.LLMRequestCostTypeCacheCreationInputToken:
+					fc.Type = filterapi.LLMRequestCostTypeCacheCreationInputToken
 				case aigv1a1.LLMRequestCostTypeOutputToken:
 					fc.Type = filterapi.LLMRequestCostTypeOutputToken
 				case aigv1a1.LLMRequestCostTypeTotalToken:
@@ -500,6 +509,7 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 
 				mcpRule := filterapi.MCPRouteAuthorizationRule{
 					Action: filterapi.AuthorizationAction(action),
+					CEL:    rule.CEL,
 				}
 
 				if rule.Source != nil {
@@ -507,9 +517,18 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 					for i, scope := range rule.Source.JWT.Scopes {
 						scopes[i] = string(scope)
 					}
+					claims := make([]filterapi.JWTClaim, len(rule.Source.JWT.Claims))
+					for i, claim := range rule.Source.JWT.Claims {
+						claims[i] = filterapi.JWTClaim{
+							Name:      claim.Name,
+							ValueType: filterapi.JWTClaimValueType(ptr.Deref(claim.ValueType, egv1a1.JWTClaimValueTypeString)),
+							Values:    append([]string(nil), claim.Values...),
+						}
+					}
 					mcpRule.Source = &filterapi.MCPAuthorizationSource{
 						JWT: filterapi.JWTSource{
 							Scopes: scopes,
+							Claims: claims,
 						},
 					}
 				}
@@ -520,7 +539,6 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 						tools[i] = filterapi.ToolCall{
 							Backend: tool.Backend,
 							Tool:    tool.Tool,
-							When:    tool.When,
 						}
 					}
 					mcpRule.Target = &filterapi.MCPAuthorizationTarget{
