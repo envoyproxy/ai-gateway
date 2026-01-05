@@ -6,7 +6,6 @@
 package anthropic
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -14,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
@@ -214,13 +214,15 @@ func buildResponseAttributes(resp *anthropic.MessagesResponse, config *openinfer
 		int64(u.CacheCreationInputTokens),
 	)
 	input, _ := cost.InputTokens()
-	cache, _ := cost.CachedInputTokens()
+	cacheRead, _ := cost.CachedInputTokens()
+	cacheCreation, _ := cost.CacheCreationInputTokens()
 	output, _ := cost.OutputTokens()
 	total, _ := cost.TotalTokens()
 
 	attrs = append(attrs,
 		attribute.Int(openinference.LLMTokenCountPrompt, int(input)),
-		attribute.Int(openinference.LLMTokenCountPromptCacheHit, int(cache)),
+		attribute.Int(openinference.LLMTokenCountPromptCacheHit, int(cacheRead)),
+		attribute.Int(openinference.LLMTokenCountPromptCacheWrite, int(cacheCreation)),
 		attribute.Int(openinference.LLMTokenCountCompletion, int(output)),
 		attribute.Int(openinference.LLMTokenCountTotal, int(total)),
 	)

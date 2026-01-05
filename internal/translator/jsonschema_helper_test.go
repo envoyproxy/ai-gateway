@@ -6,13 +6,14 @@
 package translator
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genai"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func TestJsonSchemaDeepCopyMapStringAny(t *testing.T) {

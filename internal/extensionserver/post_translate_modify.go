@@ -156,7 +156,7 @@ func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTra
 //
 // 4. Configures special handling for InferencePool clusters (ORIGINAL_DST type).
 //
-// The resulting configuration is similar to the envoy.yaml files in tests/extproc.
+// The resulting configuration is similar to the envoy.yaml files in tests/data-plane/.
 // Only clusters with names matching the AIGatewayRoute pattern are modified.
 func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) error {
 	// Parse cluster name to extract AIGatewayRoute information.
@@ -409,7 +409,14 @@ func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, 
 	listenerNameToRouteNames := make(map[string][]string)
 	listenerNameToListener := make(map[string]*listenerv3.Listener)
 	for _, listener := range listeners {
-		if strings.HasPrefix(listener.Name, "envoy-gateway") {
+		// Skips two special listeners used for stats and readiness probes created by Envoy Gateway.
+		// https://github.com/envoyproxy/gateway/blob/e7c0e3430f20fd104454dc62f51b5352cde3b26a/internal/xds/bootstrap/bootstrap.yaml.tpl#L89
+		// https://github.com/envoyproxy/gateway/blob/e7c0e3430f20fd104454dc62f51b5352cde3b26a/internal/xds/translator/listener_ready.go#L76
+		//
+		// This assumes that EG keeps the same naming convention, but even if not, the latest EG e2e test will catch any issue.
+		//
+		// The "normal" user-created listeners will have "${gateway obj namespace}-${gateway obj name}-..." format.
+		if strings.HasPrefix(listener.Name, "envoy-gateway-proxy-stats-") || strings.HasPrefix(listener.Name, "envoy-gateway-proxy-ready-") {
 			continue
 		}
 		listenerNameToRouteNames[listener.Name] = findListenerRouteConfigs(listener)

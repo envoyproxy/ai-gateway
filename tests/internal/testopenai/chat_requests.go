@@ -6,11 +6,10 @@
 package testopenai
 
 import (
-	"encoding/json"
-
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 // ChatCassettes returns a slice of all cassettes for chat completions.

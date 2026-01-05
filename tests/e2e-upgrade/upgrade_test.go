@@ -193,6 +193,10 @@ func TestUpgrade(t *testing.T) {
 			time.Sleep(tc.runningAfterUpgrade)
 			t.Logf("Request count after upgrade: %d", phase.requestCounts.Load())
 
+			t.Log("Breaking filter config secret to simulate config change during control plane upgrade for the future versions")
+			breakFilterConfig(t)
+			time.Sleep(30 * time.Second)
+
 			// Stop request goroutines and wait for clean shutdown before checking failures.
 			cancelRequests()
 			wg.Wait()
@@ -296,6 +300,24 @@ func makeRequest(t *testing.T, ipAddress string, phase string) error {
 		return fmt.Errorf("[%s] unexpected status code %d: body=%s", phase, resp.StatusCode, string(body))
 	}
 	return nil
+}
+
+// breakFilterConfig modifies the filter config secret to contain an invalid configuration, which should be
+// ignored by the running pods.
+func breakFilterConfig(t *testing.T) {
+	newEncodedConfig := base64.StdEncoding.EncodeToString([]byte(`
+version: some-nonexistent-version # The version mismatch should cause the filter to ignore this config.
+foo: bar
+`))
+
+	// Patch the secret with the broken config.
+	patch := fmt.Sprintf(`{"data":{"filter-config.yaml":"%s"}}`, newEncodedConfig)
+	patchCmd := e2elib.Kubectl(t.Context(), "patch", "secret",
+		"upgrade-test-default", // The name and namespace of the Gateway in testdata/manifest.yaml.
+		"-n", e2elib.EnvoyGatewayNamespace, "--type=merge", "-p", patch)
+	patchCmd.Stdout = nil
+	patchCmd.Stderr = nil
+	require.NoError(t, patchCmd.Run(), "failed to patch filter config secret")
 }
 
 // monitorPods periodically checks the status of pods with the given label selector

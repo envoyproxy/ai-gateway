@@ -58,6 +58,34 @@ var (
 	}
 	basicResponseRespBody = mustJSON(basicResponseResp)
 
+	responseWithCacheWrite = &openai.Response{
+		ID:    "resp-456",
+		Model: openai.ModelGPT5Nano,
+		Output: []responses.ResponseOutputItemUnion{
+			{
+				ID:   "msg_02",
+				Type: "message",
+				Role: "assistant",
+				Content: []responses.ResponseOutputMessageContentUnion{
+					{
+						Type: "output_text",
+						Text: "This response includes cache write tokens.",
+					},
+				},
+			},
+		},
+		Usage: &openai.ResponseUsage{
+			InputTokens: 100,
+			InputTokensDetails: openai.ResponseUsageInputTokensDetails{
+				CachedTokens:        10,
+				CacheCreationTokens: 50,
+			},
+			OutputTokens: 25,
+			TotalTokens:  125,
+		},
+	}
+	responseWithCacheWriteBody = mustJSON(responseWithCacheWrite)
+
 	responseReqWithStreaming = &openai.ResponseRequest{
 		Model: openai.ModelGPT5Nano,
 		Input: responses.ResponseNewParamsInputUnion{
@@ -170,6 +198,21 @@ func TestResponsesRecorder_RecordResponse(t *testing.T) {
 				attribute.Int(openinference.LLMTokenCountTotal, 30),
 				attribute.Int(openinference.LLMTokenCountPromptCacheHit, 2),
 				attribute.String(openinference.OutputValue, string(basicResponseRespBody)),
+			},
+			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
+		},
+		{
+			name:   "response with cache creation",
+			resp:   responseWithCacheWrite,
+			config: &openinference.TraceConfig{},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
+				attribute.Int(openinference.LLMTokenCountPrompt, 100),
+				attribute.Int(openinference.LLMTokenCountCompletion, 25),
+				attribute.Int(openinference.LLMTokenCountTotal, 125),
+				attribute.Int(openinference.LLMTokenCountPromptCacheHit, 10),
+				attribute.Int(openinference.LLMTokenCountPromptCacheWrite, 50),
+				attribute.String(openinference.OutputValue, string(responseWithCacheWriteBody)),
 			},
 			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
 		},

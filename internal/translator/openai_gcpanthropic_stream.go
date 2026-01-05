@@ -7,7 +7,6 @@ package translator
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"time"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
@@ -110,6 +110,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 		p.tokenUsage.SetTotalTokens(inputTokens + outputTokens)
 		totalTokens, _ := p.tokenUsage.TotalTokens()
 		cachedTokens, _ := p.tokenUsage.CachedInputTokens()
+		cacheCreationTokens, _ := p.tokenUsage.CacheCreationInputTokens()
 		finalChunk := openai.ChatCompletionResponseChunk{
 			ID:      p.activeMessageID,
 			Created: p.created,
@@ -120,7 +121,8 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 				CompletionTokens: int(outputTokens),
 				TotalTokens:      int(totalTokens),
 				PromptTokensDetails: &openai.PromptTokensDetails{
-					CachedTokens: int(cachedTokens),
+					CachedTokens:        int(cachedTokens),
+					CacheCreationTokens: int(cacheCreationTokens),
 				},
 			},
 			Model: p.requestModel,
@@ -211,6 +213,9 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if cached, ok := usage.CachedInputTokens(); ok {
 			p.tokenUsage.SetCachedInputTokens(cached)
 		}
+		if cacheCreation, ok := usage.CacheCreationInputTokens(); ok {
+			p.tokenUsage.SetCacheCreationInputTokens(cacheCreation)
+		}
 
 		// reset the toolIndex for each message
 		p.toolIndex = -1
@@ -286,11 +291,17 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if output, ok := usage.OutputTokens(); ok {
 			p.tokenUsage.AddOutputTokens(output)
 		}
-		// Update input tokens to include any cache tokens from delta
+		// Update input tokens to include read cache tokens from delta
 		if cached, ok := usage.CachedInputTokens(); ok {
 			p.tokenUsage.AddInputTokens(cached)
 			// Accumulate any additional cache tokens from delta
 			p.tokenUsage.AddCachedInputTokens(cached)
+		}
+		// Update input tokens to include write cache tokens from delta
+		if cached, ok := usage.CacheCreationInputTokens(); ok {
+			p.tokenUsage.AddInputTokens(cached)
+			// Accumulate any additional cache tokens from delta
+			p.tokenUsage.AddCacheCreationInputTokens(cached)
 		}
 		if event.Delta.StopReason != "" {
 			p.stopReason = event.Delta.StopReason

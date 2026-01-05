@@ -6,13 +6,13 @@
 package openai
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 )
 

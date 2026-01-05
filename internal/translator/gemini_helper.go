@@ -7,7 +7,6 @@ package translator
 
 import (
 	"cmp"
-	"encoding/json"
 	"fmt"
 	"maps"
 	"mime"
@@ -22,6 +21,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 const (
@@ -685,7 +685,7 @@ func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate, responseMode
 			}
 
 			// Extract tool calls if any.
-			toolCalls, err = extractToolCallsFromGeminiParts(toolCalls, candidate.Content.Parts)
+			toolCalls, err = extractToolCallsFromGeminiParts(toolCalls, candidate.Content.Parts, json.Marshal)
 			if err != nil {
 				return nil, fmt.Errorf("error extracting tool calls: %w", err)
 			}
@@ -755,12 +755,13 @@ func geminiFinishReasonToOpenAI[T toolCallSlice](reason genai.FinishReason, tool
 
 // extractTextAndThoughtSummaryFromGeminiParts extracts thought summary and text from Gemini parts.
 func extractTextAndThoughtSummaryFromGeminiParts(parts []*genai.Part, responseMode geminiResponseMode) (string, string) {
-	text := ""
-	thoughtSummary := ""
+	var textBuilder strings.Builder
+	var thoughtBuilder strings.Builder
+
 	for _, part := range parts {
 		if part != nil && part.Text != "" {
 			if part.Thought {
-				thoughtSummary += part.Text
+				thoughtBuilder.WriteString(part.Text)
 			} else {
 				if responseMode == responseModeRegex {
 					// GCP doesn't natively support REGEX response modes, so we instead express them as json schema.
@@ -770,22 +771,23 @@ func extractTextAndThoughtSummaryFromGeminiParts(parts []*genai.Part, responseMo
 					part.Text = strings.TrimPrefix(part.Text, "\"")
 					part.Text = strings.TrimSuffix(part.Text, "\"")
 				}
-				text += part.Text
+				textBuilder.WriteString(part.Text)
 			}
 		}
 	}
-	return thoughtSummary, text
+	return thoughtBuilder.String(), textBuilder.String()
 }
 
 // extractToolCallsFromGeminiParts extracts tool calls from Gemini parts.
-func extractToolCallsFromGeminiParts(toolCalls []openai.ChatCompletionMessageToolCallParam, parts []*genai.Part) ([]openai.ChatCompletionMessageToolCallParam, error) {
+func extractToolCallsFromGeminiParts(toolCalls []openai.ChatCompletionMessageToolCallParam, parts []*genai.Part, argsMarshaler json.Marshaler,
+) ([]openai.ChatCompletionMessageToolCallParam, error) {
 	for _, part := range parts {
 		if part == nil || part.FunctionCall == nil {
 			continue
 		}
 
 		// Convert function call arguments to JSON string.
-		args, err := json.Marshal(part.FunctionCall.Args)
+		args, err := argsMarshaler(part.FunctionCall.Args)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal function arguments: %w", err)
 		}
