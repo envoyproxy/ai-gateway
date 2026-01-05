@@ -182,6 +182,7 @@ func TestBuildResponseAttributes(t *testing.T) {
 				attribute.Int(openinference.LLMTokenCountPrompt, 9),
 				attribute.Int(openinference.LLMTokenCountPromptAudio, 0),
 				attribute.Int(openinference.LLMTokenCountPromptCacheHit, 0),
+				attribute.Int(openinference.LLMTokenCountPromptCacheWrite, 0),
 				attribute.Int(openinference.LLMTokenCountCompletion, 9),
 				attribute.Int(openinference.LLMTokenCountCompletionAudio, 0),
 				attribute.Int(openinference.LLMTokenCountCompletionReasoning, 0),
