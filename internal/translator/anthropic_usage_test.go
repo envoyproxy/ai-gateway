@@ -288,14 +288,14 @@ func TestExtractLLMTokenUsage_ClaudeAPIDocumentationCompliance(t *testing.T) {
 		// cache_creation_input_tokens, and cache_read_input_tokens".
 
 		inputTokens := int64(100)
-		cachedWriteTokens := int64(20)
+		cacheCreationTokens := int64(20)
 		cacheReadTokens := int64(30)
 		outputTokens := int64(50)
 
 		result := metrics.ExtractTokenUsageFromExplicitCaching(inputTokens, outputTokens, &cacheReadTokens, &cacheCreationTokens)
 
 		// Total input should be sum of all input token types.
-		expectedTotalInputInt := inputTokens + cachedWriteTokens + cacheReadTokens
+		expectedTotalInputInt := inputTokens + cacheCreationTokens + cacheReadTokens
 		expectedTotalInput := uint32(expectedTotalInputInt) // #nosec G115 - test values are small and safe
 		inputTokensVal, ok := result.InputTokens()
 		assert.True(t, ok)
@@ -307,9 +307,9 @@ func TestExtractLLMTokenUsage_ClaudeAPIDocumentationCompliance(t *testing.T) {
 		assert.Equal(t, uint32(cacheReadTokens), cachedTokens,
 			"CachedInputTokens should be  cache_read_input_tokens")
 
-		cacheCreationTokens, ok := result.CacheCreationInputTokens()
+		cacheCreationResult, ok := result.CacheCreationInputTokens()
 		assert.True(t, ok)
-		assert.Equal(t, uint32(cachedWriteTokens), cacheCreationTokens,
+		assert.Equal(t, uint32(cacheCreationTokens), cacheCreationResult,
 			"CacheCreationInputTokens should be cache_creation_input_tokens")
 
 		// Total tokens should be input + output.
