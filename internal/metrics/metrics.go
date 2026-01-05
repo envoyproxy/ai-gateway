@@ -268,15 +268,14 @@ func (u *TokenUsage) Override(other TokenUsage) {
 func ExtractTokenUsageFromExplicitCaching(inputTokens, outputTokens int64, cacheReadTokens, cacheCreationTokens *int64) TokenUsage {
 	var usage TokenUsage
 	totalInputTokens := inputTokens
-	totalCachedTokens := 0
 	// Calculate total input tokens including both cache write/reads tokens to unify the usage response for both explicit and implicit caching
 	if cacheCreationTokens != nil {
 		totalInputTokens += *cacheCreationTokens
+		usage.SetCacheCreationInputTokens(uint32(*cacheCreationTokens)) //nolint:gosec
 	}
 	if cacheReadTokens != nil {
-		totalCachedTokens += int(*cacheReadTokens)
 		totalInputTokens += *cacheReadTokens
-		usage.SetCachedInputTokens(uint32(totalCachedTokens)) //nolint:gosec
+		usage.SetCachedInputTokens(uint32(*cacheReadTokens)) //nolint:gosec
 	}
 	usage.SetInputTokens(uint32(totalInputTokens))                //nolint:gosec
 	usage.SetOutputTokens(uint32(outputTokens))                   //nolint:gosec
