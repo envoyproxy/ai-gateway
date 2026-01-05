@@ -2016,7 +2016,8 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 				require.False(t, ok)
 			} else {
 				// Use require.True and cmp.Equal with the options
-				require.True(t, cmp.Equal(*tc.out, *chunk, ignoreDynamicFields), "The ChatCompletionResponseChunk structs should be equal ignoring the ID and Created field")
+				require.True(t, cmp.Equal(*tc.out, *chunk, ignoreDynamicFields),
+					"The ChatCompletionResponseChunk structs should be equal ignoring the ID and Created field")
 			}
 		})
 	}

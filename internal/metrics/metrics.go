@@ -259,16 +259,16 @@ func (u *TokenUsage) Override(other TokenUsage) {
 	}
 }
 
-// ExtractTokenUsageFromExplicitCaching extracts the correct token usage from upstream token usage response.
-// For Anthropic Claude models or AWS Bedrock models, total input tokens is the summation of:
+// ExtractTokenUsageFromExplicitCaching extracts the correct token usage from upstream Anthropic or AWS Bedrock token usage response.
+// The total input tokens is the summation of:
 // input_tokens + cache_creation_input_tokens + cache_read_input_tokens
+// This is to unify the usage response returned by envoy ai gateway for both explicit and implicit caching.
 //
 // This function works for both streaming and non-streaming responses by accepting
 // the common usage fields that exist from anthropic or AWS bedrock usage structures.
 func ExtractTokenUsageFromExplicitCaching(inputTokens, outputTokens int64, cacheReadTokens, cacheCreationTokens *int64) TokenUsage {
 	var usage TokenUsage
 	totalInputTokens := inputTokens
-	// Calculate total input tokens including both cache write/reads tokens to unify the usage response for both explicit and implicit caching
 	if cacheCreationTokens != nil {
 		totalInputTokens += *cacheCreationTokens
 		usage.SetCacheCreationInputTokens(uint32(*cacheCreationTokens)) //nolint:gosec
