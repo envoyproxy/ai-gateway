@@ -259,21 +259,26 @@ func (u *TokenUsage) Override(other TokenUsage) {
 	}
 }
 
-// ExtractTokenUsageFromAnthropic extracts the correct token usage from Anthropic API response.
-// According to Claude API documentation, total input tokens is the summation of:
+// ExtractTokenUsageFromExplicitCaching extracts the correct token usage from upstream Anthropic or AWS Bedrock token usage response.
+// The total input tokens is the summation of:
 // input_tokens + cache_creation_input_tokens + cache_read_input_tokens
+// This is to unify the usage response returned by envoy ai gateway for both explicit and implicit caching.
 //
 // This function works for both streaming and non-streaming responses by accepting
-// the common usage fields that exist in all Anthropic usage structures.
-func ExtractTokenUsageFromAnthropic(inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens int64) TokenUsage {
-	// Calculate total input tokens as per Anthropic API documentation
-	totalInputTokens := inputTokens + cacheCreationTokens + cacheReadTokens
-
+// the common usage fields that exist from anthropic or AWS bedrock usage structures.
+func ExtractTokenUsageFromExplicitCaching(inputTokens, outputTokens int64, cacheReadTokens, cacheCreationTokens *int64) TokenUsage {
 	var usage TokenUsage
-	usage.SetInputTokens(uint32(totalInputTokens))                 //nolint:gosec
-	usage.SetOutputTokens(uint32(outputTokens))                    //nolint:gosec
-	usage.SetTotalTokens(uint32(totalInputTokens + outputTokens))  //nolint:gosec
-	usage.SetCachedInputTokens(uint32(cacheReadTokens))            //nolint:gosec
-	usage.SetCacheCreationInputTokens(uint32(cacheCreationTokens)) //nolint:gosec
+	totalInputTokens := inputTokens
+	if cacheCreationTokens != nil {
+		totalInputTokens += *cacheCreationTokens
+		usage.SetCacheCreationInputTokens(uint32(*cacheCreationTokens)) //nolint:gosec
+	}
+	if cacheReadTokens != nil {
+		totalInputTokens += *cacheReadTokens
+		usage.SetCachedInputTokens(uint32(*cacheReadTokens)) //nolint:gosec
+	}
+	usage.SetInputTokens(uint32(totalInputTokens))                //nolint:gosec
+	usage.SetOutputTokens(uint32(outputTokens))                   //nolint:gosec
+	usage.SetTotalTokens(uint32(totalInputTokens + outputTokens)) //nolint:gosec
 	return usage
 }
