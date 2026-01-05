@@ -26,6 +26,11 @@
     "url": "https://alan.de/"
   },
   {
+    "name": "LY Corporation",
+    "logoUrl": "/img/adopters/ly-corporation.png",
+    "url": "https://www.lycorp.co.jp/en/"
+  },
+  {
     "name": "Your Logo Here",
     "logoUrl": "/img/adopters/placeholder-company.svg",
     "description": "Add your logo to show support for the project",
