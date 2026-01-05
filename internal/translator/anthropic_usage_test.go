@@ -6,11 +6,11 @@
 package translator
 
 import (
-	"k8s.io/utils/ptr"
 	"testing"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/stretchr/testify/assert"
+	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
@@ -304,16 +304,16 @@ func TestExtractLLMTokenUsage_ClaudeAPIDocumentationCompliance(t *testing.T) {
 
 		cachedTokens, ok := result.CachedInputTokens()
 		assert.True(t, ok)
-		assert.Equal(t, uint32(cacheReadTokens), cachedTokens,
+		assert.Equal(t, uint32(cacheReadTokens), cachedTokens, // #nosec G115 - test values are small and safe
 			"CachedInputTokens should be  cache_read_input_tokens")
 
 		cacheCreationResult, ok := result.CacheCreationInputTokens()
 		assert.True(t, ok)
-		assert.Equal(t, uint32(cacheCreationTokens), cacheCreationResult,
+		assert.Equal(t, uint32(cacheCreationTokens), cacheCreationResult, // #nosec G115 - test values are small and safe
 			"CacheCreationInputTokens should be cache_creation_input_tokens")
 
 		// Total tokens should be input + output.
-		expectedTotal := expectedTotalInput + uint32(outputTokens)
+		expectedTotal := expectedTotalInput + uint32(outputTokens) // #nosec G115 - test values are small and safe
 		totalTokens, ok := result.TotalTokens()
 		assert.True(t, ok)
 		assert.Equal(t, expectedTotal, totalTokens,
