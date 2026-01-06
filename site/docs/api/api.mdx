@@ -604,9 +604,12 @@ QuotaPolicyList contains a list of QuotaPolicy
 - [MCPRouteSpec](#mcproutespec)
 - [MCPRouteStatus](#mcproutestatus)
 - [MCPToolFilter](#mcptoolfilter)
+- [PerModelQuota](#permodelquota)
 - [ProtectedResourceMetadata](#protectedresourcemetadata)
 - [QuotaPolicySpec](#quotapolicyspec)
 - [QuotaPolicyStatus](#quotapolicystatus)
+- [QuotaRule](#quotarule)
+- [QuotaValue](#quotavalue)
 - [ToolCall](#toolcall)
 - [VersionedAPISchema](#versionedapischema)
 
@@ -1733,7 +1736,6 @@ Scopes and claims are AND-ed: when both are specified, both sets must match.
 
 **Appears in:**
 - [AIGatewayRouteSpec](#aigatewayroutespec)
-- [QuotaPolicySpec](#quotapolicyspec)
 
 LLMRequestCost configures each request cost.
 
@@ -2177,6 +2179,37 @@ MCPToolFilter filters tools using include patterns with exact matches or regular
 />
 
 
+#### PerModelQuota
+
+
+
+**Appears in:**
+- [QuotaPolicySpec](#quotapolicyspec)
+
+
+
+##### Fields
+
+
+
+<ApiField
+  name="modelName"
+  type="string"
+  required="true"
+  description="Model name for which the quota is specified."
+/><ApiField
+  name="costExpression"
+  type="string"
+  required="false"
+  description="CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.<br />If no expression is specified the `total_tokens` value is used.<br />For example:<br /> * `input_tokens + cached_input_tokens * 0.1 + output_tokens * 6`"
+/><ApiField
+  name="rules"
+  type="[QuotaRule](#quotarule) array"
+  required="false"
+  description="Rules are a list of client selectors and quotas. If a request<br />matches multiple rules, each of their associated quotas get applied, so a<br />single request might burn down the quota for multiple rules<br />if selected. The quota service will return a logical OR of the individual<br />quota checks of all matching rules. For example, if a request<br />matches two rules, one has available quota and one not, the final decision will be<br />to allow the request."
+/>
+
+
 #### ProtectedResourceMetadata
 
 
@@ -2246,10 +2279,10 @@ QuotaPolicySpec specifies rules for computing token based costs of requests.
   required="false"
   description="TargetRefs are the names of the AIServiceBackend resources this QuotaPolicy is being attached to.<br />Attaching multiple QuotaPolicies to the same AIServiceBackend is invalid and will result in an error<br />during the reconciliation of AIServiceBackend."
 /><ApiField
-  name="llmRequestCosts"
-  type="[LLMRequestCost](#llmrequestcost) array"
-  required="false"
-  description="LLMRequestCosts specifies how to capture the cost of the LLM-related request, notably the token usage.<br />The AI Gateway filter will capture each specified number and store it in the Envoy's dynamic<br />metadata per HTTP request. The namespaced key is `io.envoy.ai_gateway`,<br />For example, let's say we have the following LLMRequestCosts configuration:<br />```yaml<br />	llmRequestCosts:<br />	- metadataKey: llm_input_token<br />	  type: InputToken<br />	- metadataKey: llm_output_token<br />	  type: OutputToken<br />	- metadataKey: llm_total_token<br />	  type: TotalToken<br />	- metadataKey: llm_cached_input_token<br />	  type: CachedInputToken<br />```<br />The token costs computed using this policy are debited from the quota specificed by the BackendTrafficPolicy<br />attached to the same AIServiceBackend. In the BackendTrafficPolicy you can have multiple buckets<br />tracking quot ausage for each distinct x-user-id header value. Quota can be specified in terms of total (input + output)<br />token counts or just the output or onput token counts.<br />Each bucket will be reduced by the corresponding token usage captured by the AI Gateway filter.<br />```yaml<br />	apiVersion: gateway.envoyproxy.io/v1alpha1<br />	kind: BackendTrafficPolicy<br />	metadata:<br />	  name: some-example-token-rate-limit<br />	  namespace: default<br />	spec:<br />	  targetRefs:<br />	  - group: gateway.networking.k8s.io<br />	     kind: HTTPRoute<br />	     name: usage-rate-limit<br />	  rateLimit:<br />	    type: Global<br />	    global:<br />	      rules:<br />	        - clientSelectors:<br />	            # Do the rate limiting based on the x-user-id header.<br />	            - headers:<br />	                - name: x-user-id<br />	                  type: Distinct<br />	          limit:<br />	            # Configures the number of `tokens` allowed per hour.<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              # Setting the request cost to zero allows to only check the rate limit budget,<br />	              # and not consume the budget on the request path.<br />	              number: 0<br />	            # This specifies the cost of the response retrieved from the dynamic metadata set by the AI Gateway filter.<br />	            # The extracted value will be used to consume the rate limit budget, and subsequent requests will be rate limited<br />	            # if the budget is exhausted.<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_total_token<br />```<br />Note that when multiple AIGatewayRoute resources are attached to the same Gateway, and<br />different costs are configured for the same metadata key, the ai-gateway will pick one of them<br />to configure the metadata key in the generated HTTPRoute, and ignore the rest."
+  name="perModelQuotas"
+  type="[PerModelQuota](#permodelquota) array"
+  required="true"
+  description="PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this<br />policy is attached."
 />
 
 
@@ -2271,6 +2304,63 @@ QuotaPolicyStatus contains the conditions by the reconciliation result.
   type="[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#condition-v1-meta) array"
   required="true"
   description="Conditions is the list of conditions by the reconciliation result.<br />Currently, at most one condition is set.<br />Known .status.conditions.type are: `Accepted`, `NotAccepted`."
+/>
+
+
+#### QuotaRule
+
+
+
+**Appears in:**
+- [PerModelQuota](#permodelquota)
+
+
+
+##### Fields
+
+
+
+<ApiField
+  name="clientSelectors"
+  type="RateLimitSelectCondition array"
+  required="false"
+  description="ClientSelectors holds the list of conditions to select<br />specific clients using attributes from the traffic flow.<br />All individual select conditions must hold True for this rule<br />and its limit to be applied.<br />If no client selectors are specified, the rule applies to all traffic of<br />the targeted AIServiceBackend."
+/><ApiField
+  name="quota"
+  type="[QuotaValue](#quotavalue)"
+  required="true"
+  description="Quota value for given client selectors.<br />This quota is applied for traffic flows when the selectors<br />compute to True, causing the request to be counted towards the limit.<br />A response with 429 HTTP status code is sent back to the client when<br />the selected requests have reached the quota."
+/><ApiField
+  name="shadowMode"
+  type="boolean"
+  required="false"
+  description="ShadowMode indicates whether this quota rule runs in shadow mode.<br />When enabled, all quota checks are performed (cache lookups,<br />counter updates, telemetry generation), but the outcome is never enforced.<br />The request always succeeds, even if the configured quota is exceeded."
+/>
+
+
+#### QuotaValue
+
+
+
+**Appears in:**
+- [QuotaRule](#quotarule)
+
+QuotaValue defines the quota limits using sliding window.
+
+##### Fields
+
+
+
+<ApiField
+  name="tokens"
+  type="integer"
+  required="true"
+  description="Number of tokens alloted for a specified time window."
+/><ApiField
+  name="duration"
+  type="string"
+  required="true"
+  description="Time window. The suffix is used to specify units. The following<br />suffixes are supported:<br />* s - seconds (the default unit)<br />* m - minutes<br />* h - hours"
 />
 
 

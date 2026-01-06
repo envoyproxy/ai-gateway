@@ -6,6 +6,7 @@
 package v1alpha1
 
 import (
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
@@ -38,76 +39,77 @@ type QuotaPolicySpec struct {
 	// +kubebuilder:validation:MaxItems=16
 	// +kubebuilder:validation:XValidation:rule="self.all(ref, ref.group == 'aigateway.envoyproxy.io' && ref.kind == 'AIServiceBackend')", message="targetRefs must reference AIServiceBackend resources"
 	TargetRefs []gwapiv1a2.LocalPolicyTargetReference `json:"targetRefs,omitempty"`
+	// PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this
+	// policy is attached.
+	PerModelQuotas []PerModelQuota `json:"perModelQuotas,omitempty"`
+}
 
-	// LLMRequestCosts specifies how to capture the cost of the LLM-related request, notably the token usage.
-	// The AI Gateway filter will capture each specified number and store it in the Envoy's dynamic
-	// metadata per HTTP request. The namespaced key is "io.envoy.ai_gateway",
+type PerModelQuota struct {
+	// Model name for which the quota is specified.
 	//
-	// For example, let's say we have the following LLMRequestCosts configuration:
-	// ```yaml
-	//	llmRequestCosts:
-	//	- metadataKey: llm_input_token
-	//	  type: InputToken
-	//	- metadataKey: llm_output_token
-	//	  type: OutputToken
-	//	- metadataKey: llm_total_token
-	//	  type: TotalToken
-	//	- metadataKey: llm_cached_input_token
-	//	  type: CachedInputToken
-	// ```
-	// The token costs computed using this policy are debited from the quota specificed by the BackendTrafficPolicy
-	// attached to the same AIServiceBackend. In the BackendTrafficPolicy you can have multiple buckets
-	// tracking quot ausage for each distinct x-user-id header value. Quota can be specified in terms of total (input + output)
-	// token counts or just the output or onput token counts.
-	// Each bucket will be reduced by the corresponding token usage captured by the AI Gateway filter.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	ModelName string `json:"modelName"`
+
+	// CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.
+	// If no expression is specified the "total_tokens" value is used.
+	// For example:
 	//
-	// ```yaml
-	//	apiVersion: gateway.envoyproxy.io/v1alpha1
-	//	kind: BackendTrafficPolicy
-	//	metadata:
-	//	  name: some-example-token-rate-limit
-	//	  namespace: default
-	//	spec:
-	//	  targetRefs:
-	//	  - group: gateway.networking.k8s.io
-	//	     kind: HTTPRoute
-	//	     name: usage-rate-limit
-	//	  rateLimit:
-	//	    type: Global
-	//	    global:
-	//	      rules:
-	//	        - clientSelectors:
-	//	            # Do the rate limiting based on the x-user-id header.
-	//	            - headers:
-	//	                - name: x-user-id
-	//	                  type: Distinct
-	//	          limit:
-	//	            # Configures the number of "tokens" allowed per hour.
-	//	            requests: 10000
-	//	            unit: Hour
-	//	          cost:
-	//	            request:
-	//	              from: Number
-	//	              # Setting the request cost to zero allows to only check the rate limit budget,
-	//	              # and not consume the budget on the request path.
-	//	              number: 0
-	//	            # This specifies the cost of the response retrieved from the dynamic metadata set by the AI Gateway filter.
-	//	            # The extracted value will be used to consume the rate limit budget, and subsequent requests will be rate limited
-	//	            # if the budget is exhausted.
-	//	            response:
-	//	              from: Metadata
-	//	              metadata:
-	//	                namespace: io.envoy.ai_gateway
-	//	                key: llm_total_token
-	// ```
-	//
-	// Note that when multiple AIGatewayRoute resources are attached to the same Gateway, and
-	// different costs are configured for the same metadata key, the ai-gateway will pick one of them
-	// to configure the metadata key in the generated HTTPRoute, and ignore the rest.
+	//  * "input_tokens + cached_input_tokens * 0.1 + output_tokens * 6"
 	//
 	// +optional
-	// +kubebuilder:validation:MaxItems=36
-	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
+	CostExpression *string `json:"costExpression,omitempty"`
+
+	// Rules are a list of client selectors and quotas. If a request
+	// matches multiple rules, each of their associated quotas get applied, so a
+	// single request might burn down the quota for multiple rules
+	// if selected. The quota service will return a logical OR of the individual
+	// quota checks of all matching rules. For example, if a request
+	// matches two rules, one has available quota and one not, the final decision will be
+	// to allow the request.
+	//
+	// +optional
+	// +kubebuilder:validation:MaxItems=128
+	Rules []QuotaRule `json:"rules"`
+}
+
+type QuotaRule struct {
+	// ClientSelectors holds the list of conditions to select
+	// specific clients using attributes from the traffic flow.
+	// All individual select conditions must hold True for this rule
+	// and its limit to be applied.
+	//
+	// If no client selectors are specified, the rule applies to all traffic of
+	// the targeted AIServiceBackend.
+	//
+	// +optional
+	// +kubebuilder:validation:MaxItems=8
+	ClientSelectors []egv1a1.RateLimitSelectCondition `json:"clientSelectors,omitempty"`
+	// Quota value for given client selectors.
+	// This quota is applied for traffic flows when the selectors
+	// compute to True, causing the request to be counted towards the limit.
+	// A response with 429 HTTP status code is sent back to the client when
+	// the selected requests have exceeded the quota.
+	Quota QuotaValue `json:"quota"`
+	// ShadowMode indicates whether this quota rule runs in shadow mode.
+	// When enabled, all quota checks are performed (cache lookups,
+	// counter updates, telemetry generation), but the outcome is never enforced.
+	// The request always succeeds, even if the configured quota is exceeded.
+	//
+	// +optional
+	ShadowMode *bool `json:"shadowMode,omitempty"`
+}
+
+// QuotaValue defines the quota limits using sliding window.
+type QuotaValue struct {
+	// Number of tokens alloted for a specified time window.
+	Tokens uint `json:"tokens"`
+	// Time window. The suffix is used to specify units. The following
+	// suffixes are supported:
+	// * s - seconds (the default unit)
+	// * m - minutes
+	// * h - hours
+	Duration string `json:"duration"`
 }
 
 // QuotaPolicyList contains a list of QuotaPolicy
