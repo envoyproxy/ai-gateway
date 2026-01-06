@@ -63,10 +63,6 @@ func (s *Server) maybeGenerateResourcesForMCPGateway(req *egextension.PostTransl
 
 	// Modify routes with mcp-gateway-generated annotation to use mcpproxy-cluster.
 	s.modifyMCPGatewayGeneratedCluster(req.Clusters)
-
-	// TODO: remove this step once Envoy Gateway supports this natively in the BackendTrafficPolicy ResponseOverride.
-	// https://github.com/envoyproxy/gateway/pull/6308
-	s.modifyMCPOAuthCustomResponseRoute(req.Routes)
 	return nil
 }
 
@@ -370,66 +366,4 @@ func (s *Server) isMCPBackendHTTPFilter(filter *httpconnectionmanagerv3.HttpFilt
 	}
 
 	return false
-}
-
-func (s *Server) modifyMCPOAuthCustomResponseRoute(routes []*routev3.RouteConfiguration) {
-	for _, r := range routes {
-		if r == nil {
-			continue
-		}
-
-		for _, vh := range r.VirtualHosts {
-			if vh == nil {
-				continue
-			}
-
-			for _, route := range vh.Routes {
-				if route == nil {
-					continue
-				}
-
-				if route.GetDirectResponse() == nil || route.GetMatch() == nil {
-					continue
-				}
-
-				path := route.GetMatch().GetPath()
-				if isWellKnownOAuthPath(path) {
-					s.log.V(6).Info("Adding CORS headers to MCP OAuth route", "routeName", route.Name, "path", path)
-					// add CORS headers.
-					// CORS filter won't work with direct response, so we add the headers directly to the route.
-					// TODO: remove this step once Envoy Gateway supports this natively in the BackendTrafficPolicy ResponseOverride.
-					route.ResponseHeadersToAdd = append(route.ResponseHeadersToAdd, &corev3.HeaderValueOption{
-						Header: &corev3.HeaderValue{
-							Key:   "Access-Control-Allow-Origin",
-							Value: "*",
-						},
-					})
-					route.ResponseHeadersToAdd = append(route.ResponseHeadersToAdd, &corev3.HeaderValueOption{
-						Header: &corev3.HeaderValue{
-							Key:   "Access-Control-Allow-Methods",
-							Value: "GET",
-						},
-					})
-					route.ResponseHeadersToAdd = append(route.ResponseHeadersToAdd, &corev3.HeaderValueOption{
-						Header: &corev3.HeaderValue{
-							Key:   "Access-Control-Allow-Headers",
-							Value: "mcp-protocol-version",
-						},
-					})
-				}
-			}
-		}
-	}
-}
-
-const (
-	oauthProtectedResourcePath   = "/.well-known/oauth-protected-resource"
-	oauthAuthorizationServerPath = "/.well-known/oauth-authorization-server"
-	oidcAuthorizationServerPath  = "/.well-known/openid-configuration"
-)
-
-func isWellKnownOAuthPath(path string) bool {
-	return strings.Contains(path, oauthProtectedResourcePath) ||
-		strings.Contains(path, oauthAuthorizationServerPath) ||
-		strings.Contains(path, oidcAuthorizationServerPath)
 }

@@ -207,11 +207,13 @@ func buildResponseAttributes(resp *anthropic.MessagesResponse, config *openinfer
 
 	// Token counts are considered metadata and are still included even when output content is hidden.
 	u := resp.Usage
-	cost := metrics.ExtractTokenUsageFromAnthropic(
+	cacheReadTokens := int64(u.CacheReadInputTokens)
+	cacheCreationTokens := int64(u.CacheCreationInputTokens)
+	cost := metrics.ExtractTokenUsageFromExplicitCaching(
 		int64(u.InputTokens),
 		int64(u.OutputTokens),
-		int64(u.CacheReadInputTokens),
-		int64(u.CacheCreationInputTokens),
+		&cacheReadTokens,
+		&cacheCreationTokens,
 	)
 	input, _ := cost.InputTokens()
 	cacheRead, _ := cost.CachedInputTokens()
