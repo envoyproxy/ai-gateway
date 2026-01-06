@@ -235,7 +235,7 @@ spec:
                               This quota is applied for traffic flows when the selectors
                               compute to True, causing the request to be counted towards the limit.
                               A response with 429 HTTP status code is sent back to the client when
-                              the selected requests have reached the quota.
+                              the selected requests have exceeded the quota.
                             properties:
                               duration:
                                 description: |-

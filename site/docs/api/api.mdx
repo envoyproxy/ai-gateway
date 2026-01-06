@@ -2334,7 +2334,7 @@ QuotaPolicyStatus contains the conditions by the reconciliation result.
   name="quota"
   type="[QuotaValue](#quotavalue)"
   required="true"
-  description="Quota value for given client selectors.<br />This quota is applied for traffic flows when the selectors<br />compute to True, causing the request to be counted towards the limit.<br />A response with 429 HTTP status code is sent back to the client when<br />the selected requests have reached the quota."
+  description="Quota value for given client selectors.<br />This quota is applied for traffic flows when the selectors<br />compute to True, causing the request to be counted towards the limit.<br />A response with 429 HTTP status code is sent back to the client when<br />the selected requests have exceeded the quota."
 /><ApiField
   name="shadowMode"
   type="boolean"
