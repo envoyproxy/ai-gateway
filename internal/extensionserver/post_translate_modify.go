@@ -219,7 +219,7 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) error {
 
 		if len(cluster.LoadAssignment.Endpoints) != len(activeBackendRefs) {
 			s.log.Info("LoadAssignment endpoints length does not match backend refs length",
-				"cluster_name", cluster.Name, "active_backend_refs_length", len(activeBackendRefs), "backend_refs_length", len(activeBackendRefs))
+				"cluster_name", cluster.Name, "endpoints_length", len(cluster.LoadAssignment.Endpoints), "backend_refs_length", len(httpRouteRule.BackendRefs), "active_backend_refs_length", len(activeBackendRefs))
 			return nil
 		}
 		// Populate the metadata for each endpoint in the LoadAssignment.
