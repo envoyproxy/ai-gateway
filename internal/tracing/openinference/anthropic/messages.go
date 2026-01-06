@@ -207,20 +207,24 @@ func buildResponseAttributes(resp *anthropic.MessagesResponse, config *openinfer
 
 	// Token counts are considered metadata and are still included even when output content is hidden.
 	u := resp.Usage
-	cost := metrics.ExtractTokenUsageFromAnthropic(
+	cacheReadTokens := int64(u.CacheReadInputTokens)
+	cacheCreationTokens := int64(u.CacheCreationInputTokens)
+	cost := metrics.ExtractTokenUsageFromExplicitCaching(
 		int64(u.InputTokens),
 		int64(u.OutputTokens),
-		int64(u.CacheReadInputTokens),
-		int64(u.CacheCreationInputTokens),
+		&cacheReadTokens,
+		&cacheCreationTokens,
 	)
 	input, _ := cost.InputTokens()
-	cache, _ := cost.CachedInputTokens()
+	cacheRead, _ := cost.CachedInputTokens()
+	cacheCreation, _ := cost.CacheCreationInputTokens()
 	output, _ := cost.OutputTokens()
 	total, _ := cost.TotalTokens()
 
 	attrs = append(attrs,
 		attribute.Int(openinference.LLMTokenCountPrompt, int(input)),
-		attribute.Int(openinference.LLMTokenCountPromptCacheHit, int(cache)),
+		attribute.Int(openinference.LLMTokenCountPromptCacheHit, int(cacheRead)),
+		attribute.Int(openinference.LLMTokenCountPromptCacheWrite, int(cacheCreation)),
 		attribute.Int(openinference.LLMTokenCountCompletion, int(output)),
 		attribute.Int(openinference.LLMTokenCountTotal, int(total)),
 	)

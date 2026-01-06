@@ -110,6 +110,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 		p.tokenUsage.SetTotalTokens(inputTokens + outputTokens)
 		totalTokens, _ := p.tokenUsage.TotalTokens()
 		cachedTokens, _ := p.tokenUsage.CachedInputTokens()
+		cacheCreationTokens, _ := p.tokenUsage.CacheCreationInputTokens()
 		finalChunk := openai.ChatCompletionResponseChunk{
 			ID:      p.activeMessageID,
 			Created: p.created,
@@ -120,7 +121,8 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 				CompletionTokens: int(outputTokens),
 				TotalTokens:      int(totalTokens),
 				PromptTokensDetails: &openai.PromptTokensDetails{
-					CachedTokens: int(cachedTokens),
+					CachedTokens:        int(cachedTokens),
+					CacheCreationTokens: int(cacheCreationTokens),
 				},
 			},
 			Model: p.requestModel,
@@ -197,11 +199,11 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		p.activeMessageID = event.Message.ID
 		p.created = openai.JSONUNIXTime(time.Now())
 		u := event.Message.Usage
-		usage := metrics.ExtractTokenUsageFromAnthropic(
+		usage := metrics.ExtractTokenUsageFromExplicitCaching(
 			u.InputTokens,
 			u.OutputTokens,
-			u.CacheReadInputTokens,
-			u.CacheCreationInputTokens,
+			&u.CacheReadInputTokens,
+			&u.CacheCreationInputTokens,
 		)
 		// For message_start, we store the initial usage but don't add to the accumulated
 		// The message_delta event will contain the final totals
@@ -210,6 +212,9 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		}
 		if cached, ok := usage.CachedInputTokens(); ok {
 			p.tokenUsage.SetCachedInputTokens(cached)
+		}
+		if cacheCreation, ok := usage.CacheCreationInputTokens(); ok {
+			p.tokenUsage.SetCacheCreationInputTokens(cacheCreation)
 		}
 
 		// reset the toolIndex for each message
@@ -276,21 +281,27 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			return nil, fmt.Errorf("unmarshal message_delta: %w", err)
 		}
 		u := event.Usage
-		usage := metrics.ExtractTokenUsageFromAnthropic(
+		usage := metrics.ExtractTokenUsageFromExplicitCaching(
 			u.InputTokens,
 			u.OutputTokens,
-			u.CacheReadInputTokens,
-			u.CacheCreationInputTokens,
+			&u.CacheReadInputTokens,
+			&u.CacheCreationInputTokens,
 		)
 		// For message_delta, accumulate the incremental output tokens
 		if output, ok := usage.OutputTokens(); ok {
 			p.tokenUsage.AddOutputTokens(output)
 		}
-		// Update input tokens to include any cache tokens from delta
+		// Update input tokens to include read cache tokens from delta
 		if cached, ok := usage.CachedInputTokens(); ok {
 			p.tokenUsage.AddInputTokens(cached)
 			// Accumulate any additional cache tokens from delta
 			p.tokenUsage.AddCachedInputTokens(cached)
+		}
+		// Update input tokens to include write cache tokens from delta
+		if cached, ok := usage.CacheCreationInputTokens(); ok {
+			p.tokenUsage.AddInputTokens(cached)
+			// Accumulate any additional cache tokens from delta
+			p.tokenUsage.AddCacheCreationInputTokens(cached)
 		}
 		if event.Delta.StopReason != "" {
 			p.stopReason = event.Delta.StopReason

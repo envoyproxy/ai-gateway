@@ -19,12 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
-	"github.com/envoyproxy/ai-gateway/internal/version"
 )
-
-// DefaultConfig is the default configuration that can be used as a
-// fallback when the configuration is not explicitly provided.
-var DefaultConfig = ``
 
 // Config is the configuration for the Envoy AI Gateway filter.
 type Config struct {
@@ -84,8 +79,10 @@ const (
 	LLMRequestCostTypeOutputToken LLMRequestCostType = "OutputToken"
 	// LLMRequestCostTypeInputToken specifies that the request cost is calculated from the input token.
 	LLMRequestCostTypeInputToken LLMRequestCostType = "InputToken"
-	// LLMRequestCostTypeCachedInputToken specifies that the request cost is calculated from the cached input token.
+	// LLMRequestCostTypeCachedInputToken specifies that the request cost is calculated from the cached read input token.
 	LLMRequestCostTypeCachedInputToken LLMRequestCostType = "CachedInputToken"
+	// LLMRequestCostTypeCacheCreationInputToken specifies that the request cost is calculated from the cache creation input token.
+	LLMRequestCostTypeCacheCreationInputToken LLMRequestCostType = "CacheCreationInputToken"
 	// LLMRequestCostTypeTotalToken specifies that the request cost is calculated from the total token.
 	LLMRequestCostTypeTotalToken LLMRequestCostType = "TotalToken"
 	// LLMRequestCostTypeCEL specifies that the request cost is calculated from the CEL expression.
@@ -269,14 +266,4 @@ func UnmarshalConfigYaml(path string) (*Config, error) {
 		return nil, err
 	}
 	return &cfg, nil
-}
-
-// MustLoadDefaultConfig loads the default configuration.
-// This panics if the configuration fails to be loaded.
-func MustLoadDefaultConfig() *Config {
-	cfg := Config{Version: version.Parse()}
-	if err := yaml.Unmarshal([]byte(DefaultConfig), &cfg); err != nil {
-		panic(err)
-	}
-	return &cfg
 }

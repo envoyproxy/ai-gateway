@@ -596,63 +596,63 @@ func Test_buildWWWAuthenticateHeaderValue(t *testing.T) {
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "https://api.example.com/mcp/v1",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp/v1"`,
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp/v1"`,
 		},
 		{
 			name: "https URL without path",
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "https://api.example.com",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource"`,
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource"`,
 		},
 		{
 			name: "https URL with trailing slash",
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "https://api.example.com/mcp/",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp"`,
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp"`,
 		},
 		{
 			name: "http URL with path",
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "http://api.example.com/mcp/v1",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="http://api.example.com/.well-known/oauth-protected-resource/mcp/v1"`,
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="http://api.example.com/.well-known/oauth-protected-resource/mcp/v1"`,
 		},
 		{
 			name: "http URL without path",
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "http://api.example.com",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="http://api.example.com/.well-known/oauth-protected-resource"`,
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="http://api.example.com/.well-known/oauth-protected-resource"`,
 		},
 		{
 			name: "http URL with trailing slash",
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "http://api.example.com/mcp/",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="http://api.example.com/.well-known/oauth-protected-resource/mcp"`,
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="http://api.example.com/.well-known/oauth-protected-resource/mcp"`,
 		},
 		{
 			name: "URL with port number https",
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "https://api.example.com:8080/mcp",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com:8080/.well-known/oauth-protected-resource/mcp"`,
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="https://api.example.com:8080/.well-known/oauth-protected-resource/mcp"`,
 		},
 		{
 			name: "URL with port number http",
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "http://api.example.com:8080/mcp",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="http://api.example.com:8080/.well-known/oauth-protected-resource/mcp"`,
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="http://api.example.com:8080/.well-known/oauth-protected-resource/mcp"`,
 		},
 		{
 			name: "complex path with multiple segments",
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "https://api.example.com/v1/mcp/endpoint",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/v1/mcp/endpoint"`,
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/v1/mcp/endpoint"`,
 		},
 		{
 			name: "with empty scopes supported",
@@ -660,7 +660,7 @@ func Test_buildWWWAuthenticateHeaderValue(t *testing.T) {
 				Resource:        "https://api.example.com/mcp",
 				ScopesSupported: []string{},
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp"`,
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp"`,
 		},
 		{
 			name: "with single scope supported",
@@ -668,7 +668,7 @@ func Test_buildWWWAuthenticateHeaderValue(t *testing.T) {
 				Resource:        "https://api.example.com/mcp",
 				ScopesSupported: []string{"read"},
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp", scope="read"`,
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp", scope="read"`,
 		},
 		{
 			name: "with multiple scopes supported",
@@ -676,7 +676,7 @@ func Test_buildWWWAuthenticateHeaderValue(t *testing.T) {
 				Resource:        "https://api.example.com/mcp",
 				ScopesSupported: []string{"read", "write"},
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp", scope="read write"`,
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp", scope="read write"`,
 		},
 	}
 

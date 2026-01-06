@@ -136,10 +136,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				InferenceConfig: &awsbedrock.InferenceConfiguration{},
 				System: []*awsbedrock.SystemContentBlock{
 					{
-						Text: "from-system",
+						Text: ptr.To("from-system"),
 					},
 					{
-						Text: "from-developer",
+						Text: ptr.To("from-developer"),
 					},
 				},
 				Messages: []*awsbedrock.Message{
@@ -274,10 +274,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				InferenceConfig: &awsbedrock.InferenceConfiguration{},
 				System: []*awsbedrock.SystemContentBlock{
 					{
-						Text: "from-system",
+						Text: ptr.To("from-system"),
 					},
 					{
-						Text: "from-developer",
+						Text: ptr.To("from-developer"),
 					},
 				},
 				Messages: []*awsbedrock.Message{
@@ -344,7 +344,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				InferenceConfig: &awsbedrock.InferenceConfiguration{},
 				System: []*awsbedrock.SystemContentBlock{
 					{
-						Text: "from-system",
+						Text: ptr.To("from-system"),
 					},
 				},
 				Messages: []*awsbedrock.Message{
@@ -1447,10 +1447,11 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			name: "basic_testing",
 			input: awsbedrock.ConverseResponse{
 				Usage: &awsbedrock.TokenUsage{
-					InputTokens:          10,
-					OutputTokens:         20,
-					TotalTokens:          30,
-					CacheReadInputTokens: ptr.To(5),
+					InputTokens:           10,
+					OutputTokens:          20,
+					TotalTokens:           30,
+					CacheWriteInputTokens: ptr.To[int64](7),
+					CacheReadInputTokens:  ptr.To[int64](5),
 				},
 				Output: &awsbedrock.ConverseOutput{
 					Message: awsbedrock.Message{
@@ -1469,11 +1470,12 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)),
 				Object:  "chat.completion",
 				Usage: openai.Usage{
-					TotalTokens:      30,
-					PromptTokens:     10,
+					TotalTokens:      42,
+					PromptTokens:     22,
 					CompletionTokens: 20,
 					PromptTokensDetails: &openai.PromptTokensDetails{
-						CachedTokens: 5,
+						CachedTokens:        5,
+						CacheCreationTokens: 7,
 					},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{
@@ -1715,14 +1717,18 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 				expectedUsage = tokenUsageFrom(
 					int32(tt.output.Usage.PromptTokens), // nolint:gosec
 					-1,
+					-1,
 					int32(tt.output.Usage.CompletionTokens), // nolint:gosec
 					int32(tt.output.Usage.TotalTokens),      // nolint:gosec
 				)
 				if tt.input.Usage.CacheReadInputTokens != nil {
 					expectedUsage.SetCachedInputTokens(uint32(tt.output.Usage.PromptTokensDetails.CachedTokens)) //nolint:gosec
 				}
+				if tt.input.Usage.CacheWriteInputTokens != nil {
+					expectedUsage.SetCacheCreationInputTokens(uint32(tt.output.Usage.PromptTokensDetails.CacheCreationTokens)) //nolint:gosec
+				}
 			} else {
-				expectedUsage = tokenUsageFrom(-1, -1, -1, -1)
+				expectedUsage = tokenUsageFrom(-1, -1, -1, -1, -1)
 			}
 			require.Equal(t, expectedUsage, usedToken)
 		})
@@ -1896,7 +1902,7 @@ func TestOpenAIToAWSBedrockTranslatorExtractAmazonEventStreamEvents(t *testing.T
 			strings.Join(texts, ""),
 		)
 		require.NotNil(t, usage)
-		require.Equal(t, 461, usage.TotalTokens)
+		require.Equal(t, int64(461), usage.TotalTokens)
 	})
 }
 
@@ -1915,7 +1921,7 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 					InputTokens:          10,
 					OutputTokens:         20,
 					TotalTokens:          30,
-					CacheReadInputTokens: ptr.To(5),
+					CacheReadInputTokens: ptr.To[int64](5),
 				},
 			},
 			out: &openai.ChatCompletionResponseChunk{
@@ -1924,8 +1930,8 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)), // 0 nanoseconds
 				Object:  "chat.completion.chunk",
 				Usage: &openai.Usage{
-					TotalTokens:      30,
-					PromptTokens:     10,
+					TotalTokens:      35,
+					PromptTokens:     15,
 					CompletionTokens: 20,
 					PromptTokensDetails: &openai.PromptTokensDetails{
 						CachedTokens: 5,
@@ -2010,7 +2016,8 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 				require.False(t, ok)
 			} else {
 				// Use require.True and cmp.Equal with the options
-				require.True(t, cmp.Equal(*tc.out, *chunk, ignoreDynamicFields), "The ChatCompletionResponseChunk structs should be equal ignoring the ID and Created field")
+				require.True(t, cmp.Equal(*tc.out, *chunk, ignoreDynamicFields),
+					"The ChatCompletionResponseChunk structs should be equal ignoring the ID and Created field")
 			}
 		})
 	}
@@ -2351,7 +2358,7 @@ func TestOpenAIToAWSBedrockTranslator_CacheControl(t *testing.T) {
 					},
 				},
 			},
-			expectedJSON: `"cachePoint":{"type":"default"}`,
+			expectedJSON: `{"inferenceConfig":{},"messages":[{"content":[{"text":"Cache this content"},{"cachePoint":{"type":"default"}}],"role":"user"}]}`,
 		},
 		{
 			name: "cache control on system message",
@@ -2378,7 +2385,7 @@ func TestOpenAIToAWSBedrockTranslator_CacheControl(t *testing.T) {
 					},
 				},
 			},
-			expectedJSON: `"cachePoint":{"type":"default"}`,
+			expectedJSON: `{"inferenceConfig":{},"messages":[],"system":[{"text":"You are a helpful assistant"},{"cachePoint":{"type":"default"}}]}`,
 		},
 		{
 			name: "cache control on tool definition",
@@ -2410,7 +2417,7 @@ func TestOpenAIToAWSBedrockTranslator_CacheControl(t *testing.T) {
 					},
 				},
 			},
-			expectedJSON: `"cachePoint":{"type":"default"}`,
+			expectedJSON: `{"inferenceConfig":{},"messages":[{"content":[{"text":"Test message"}],"role":"user"}],"toolConfig":{"tools":[{"toolSpec":{"description":"Get weather information","inputSchema":{"json":{"type":"object"}},"name":"get_weather"},"cachePoint":{"type":"default"}}]}}`,
 		},
 		{
 			name: "no cache control",
@@ -2427,7 +2434,7 @@ func TestOpenAIToAWSBedrockTranslator_CacheControl(t *testing.T) {
 					},
 				},
 			},
-			expectedJSON: ``, // Should not contain cachePoint
+			expectedJSON: `{"inferenceConfig":{},"messages":[{"content":[{"text":"No cache"}],"role":"user"}]}`, // Should not contain cachePoint
 		},
 	}
 
@@ -2436,13 +2443,7 @@ func TestOpenAIToAWSBedrockTranslator_CacheControl(t *testing.T) {
 			translator := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
 			_, body, err := translator.RequestBody(nil, &test.input, false)
 			require.NoError(t, err)
-
-			bodyStr := string(body)
-			if test.expectedJSON != "" {
-				require.Contains(t, bodyStr, test.expectedJSON, "Expected JSON should be present in request body")
-			} else {
-				require.NotContains(t, bodyStr, "cachePoint", "No cachePoint should be present in request body")
-			}
+			require.Equal(t, test.expectedJSON, string(body))
 		})
 	}
 }

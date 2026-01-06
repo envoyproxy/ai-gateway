@@ -492,7 +492,8 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 
 	t.Run("listener with envoy-gateway prefix is skipped", func(_ *testing.T) {
 		listeners := []*listenerv3.Listener{
-			createListener("envoy-gateway-listener", "route-config"),
+			createListener("envoy-gateway-proxy-stats-", "route-config"),
+			createListener("envoy-gateway-proxy-ready-", "route-config"),
 			createListener("normal-listener", "route-config"),
 		}
 		routes := []*routev3.RouteConfiguration{
