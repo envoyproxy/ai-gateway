@@ -56,7 +56,7 @@ func TestPublicMCPServers(t *testing.T) {
 
 	env := dataplaneenv.StartTestEnvironment(t,
 		func(_ testing.TB, _ io.Writer, _ map[string]int) {}, map[string]int{"backend_listener": 9999},
-		string(config), nil, envoyConfig, true, true, 120*time.Second,
+		string(config), nil, envoyConfig, true, true, 120*time.Second, false,
 	)
 
 	url := fmt.Sprintf("http://localhost:%d%s", env.EnvoyListenerPort(), defaultMCPPath)
