@@ -23,10 +23,10 @@ import (
 	"testing"
 	"time"
 
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testmcp"
 )
 
