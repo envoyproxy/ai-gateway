@@ -195,7 +195,7 @@ func (m *MCPProxy) initializeSession(ctx context.Context, routeName filterapi.MC
 			return nil, fmt.Errorf("failed to send MCP initialize request: %w", err)
 		}
 		defer func() {
-			_ = resp.Body.Close()
+			ensureHTTPConnectionReused(resp)
 		}()
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -278,7 +278,7 @@ func (m *MCPProxy) initializeSession(ctx context.Context, routeName filterapi.MC
 			return nil, fmt.Errorf("failed to send MCP notifications/initialized request: %w", err)
 		}
 		defer func() {
-			_ = resp.Body.Close()
+			ensureHTTPConnectionReused(resp)
 		}()
 		if resp.StatusCode != http.StatusAccepted {
 			body, _ := io.ReadAll(resp.Body)
@@ -341,4 +341,15 @@ func mustJSONRPCRequestID() jsonrpc.ID {
 		panic(err)
 	}
 	return id
+}
+
+// ensureHTTPConnectionReused reads and closes the response body to allow connection reuse.
+// The following comment is on [http.Response.Body]:
+//
+//	The default HTTP client's Transport may not
+//	reuse HTTP/1.x "keep-alive" TCP connections if the Body is
+//	not read to completion and closed.
+func ensureHTTPConnectionReused(resp *http.Response) {
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
 }

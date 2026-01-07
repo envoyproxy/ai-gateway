@@ -86,7 +86,7 @@ func (s *session) Close() error {
 			)
 			continue
 		}
-		_ = resp.Body.Close()
+		ensureHTTPConnectionReused(resp)
 		if status := resp.StatusCode; (status < 200 || status >= 300) &&
 			// E.g., learn-microsoft returns 405 Method Not Allowed for DELETE requests even though the session ID exists.
 			status != http.StatusMethodNotAllowed &&
