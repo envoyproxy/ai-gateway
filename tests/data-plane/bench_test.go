@@ -61,18 +61,15 @@ func BenchmarkChatCompletions(b *testing.B) {
 				requestBody          string
 				fakeResponseBodyType string
 			}{
-				{name: "small/100-messages-large-messages", requestBody: createChatCompletionRequest(100, 1), fakeResponseBodyType: "small"},
-				{name: "medium/100-messages-large-messages", requestBody: createChatCompletionRequest(100, 100), fakeResponseBodyType: "medium"},
-				{name: "large/100-messages-large-messages", requestBody: createChatCompletionRequest(100, 10000), fakeResponseBodyType: "large"},
-				{name: "xlarge/100-messages-large-messages", requestBody: createChatCompletionRequest(100, 100000), fakeResponseBodyType: "large"},
-				{name: "small/10-messages-large-messages", requestBody: createChatCompletionRequest(10, 10), fakeResponseBodyType: "small"},
-				{name: "medium/10-messages-large-messages", requestBody: createChatCompletionRequest(10, 1000), fakeResponseBodyType: "medium"},
-				{name: "large/10-messages-large-messages", requestBody: createChatCompletionRequest(10, 100000), fakeResponseBodyType: "large"},
-				{name: "xlarge/10-messages-large-messages", requestBody: createChatCompletionRequest(10, 1000000), fakeResponseBodyType: "large"},
-				{name: "small/many-messages", requestBody: createChatCompletionRequest(100, 1), fakeResponseBodyType: "small"},
-				{name: "medium/many-messages", requestBody: createChatCompletionRequest(10000, 1), fakeResponseBodyType: "medium"},
-				{name: "large/many-messages", requestBody: createChatCompletionRequest(100000, 1), fakeResponseBodyType: "large"},
-				{name: "xlarge/many-messages", requestBody: createChatCompletionRequest(500000, 1), fakeResponseBodyType: "large"},
+				{name: "10-messages/10-byte-per-message/small-response", requestBody: createChatCompletionRequest(10, 10), fakeResponseBodyType: "small"},
+				{name: "10-messages/1000-bytes-per-message/mediaum-response", requestBody: createChatCompletionRequest(10, 1000), fakeResponseBodyType: "medium"},
+				{name: "10-messages/100000-bytes-per-message/large-response", requestBody: createChatCompletionRequest(10, 100000), fakeResponseBodyType: "large"},
+				{name: "10-messages/1000000-bytes-per-message/large-response", requestBody: createChatCompletionRequest(10, 1000000), fakeResponseBodyType: "large"},
+				{name: "1000-messages/1-byte-per-message/small-response", requestBody: createChatCompletionRequest(1000, 1), fakeResponseBodyType: "small"},
+				{name: "1000-messages/100-bytes-per-message/mediaum-response", requestBody: createChatCompletionRequest(1000, 100), fakeResponseBodyType: "medium"},
+				{name: "1000-messages/10000-bytes-per-message/large-response", requestBody: createChatCompletionRequest(1000, 10000), fakeResponseBodyType: "large"},
+				{name: "100000-messages/1-byte-per-message/large-response", requestBody: createChatCompletionRequest(100000, 1), fakeResponseBodyType: "large"},
+				{name: "500000-messages/1-byte-per-message/large-response", requestBody: createChatCompletionRequest(500000, 1), fakeResponseBodyType: "large"},
 			}
 
 			for _, tc := range testCases {
@@ -130,7 +127,7 @@ func createChatCompletionRequest(numMessages, numBytes int) string {
 	const template = `{
 	"model": "gpt-4",
 	"messages": [%s],
-	"max_tokens": 100
+	"max_completion_tokens": 100
 }`
 	largeRequestBody := fmt.Sprintf(template, strings.Join(messages, ","))
 	return largeRequestBody
