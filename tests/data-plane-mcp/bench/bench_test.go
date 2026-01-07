@@ -101,10 +101,11 @@ func BenchmarkMCP(b *testing.B) {
 
 		b.Run(tc.Name, func(b *testing.B) {
 			mcpClient := mcp.NewClient(&mcp.Implementation{Name: "bench-http-client", Version: "0.1.0"}, nil)
-			cs, err := mcpClient.Connect(b.Context(), &mcp.StreamableClientTransport{Endpoint: tc.TestAddr}, nil)
-			if err != nil {
-				b.Fatalf("Failed to connect server: %v", err)
-			}
+			var cs *mcp.ClientSession
+			internaltesting.RequireEventuallyNoError(b, func() (err error) {
+				cs, err = mcpClient.Connect(b.Context(), &mcp.StreamableClientTransport{Endpoint: tc.TestAddr}, nil)
+				return err
+			}, 10*time.Second, 500*time.Millisecond, "failed to connect to MCP server at %s", tc.TestAddr)
 
 			tools, err := cs.ListTools(b.Context(), &mcp.ListToolsParams{})
 			if err != nil {
