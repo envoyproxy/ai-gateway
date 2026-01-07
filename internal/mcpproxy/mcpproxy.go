@@ -37,6 +37,7 @@ type MCPProxy struct {
 	sessionCrypto      SessionCrypto
 	tracer             tracing.MCPTracer
 	toolChangeSignaler changeSignaler // signals tool changes to active sessions.
+	client             http.Client
 }
 
 // NewMCPProxy creates a new MCPProxy instance.
@@ -58,6 +59,7 @@ func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracing.M
 				tracer:             tracer,
 				sessionCrypto:      sessionCrypto,
 				toolChangeSignaler: toolChangeSignaler,
+				client:             http.Client{}, // No timeout as it's enforced at Envoy level.
 			}
 
 			switch r.Method {
@@ -314,9 +316,8 @@ func (m *MCPProxy) invokeJSONRPCRequest(ctx context.Context, routeName filterapi
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
-	client := http.Client{Timeout: 10 * time.Second}
 
-	resp, err := client.Do(req)
+	resp, err := m.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send MCP notifications/initialized request: %w", err)
 	}
