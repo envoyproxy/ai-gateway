@@ -190,7 +190,7 @@ test-data-plane: build.extproc ## Run the integration tests for data plane witho
 # Since this is an integration test, we don't use -race, as it takes a very long
 # time to complete. For concurrency issues, use normal unit tests and race them.
 .PHONY: test-data-plane-mcp
-test-data-plane-mcp: build.extproc ## Run the integration tests for MCP data plane without controller or k8s at all.
+test-data-plane-mcp: build.extproc  build.aigw ## Run the integration tests for MCP data plane without controller or k8s at all.
 	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
 	@echo "Ensure func-e is built and Envoy is installed"
 	@@$(GO_TOOL) func-e run --version >/dev/null 2>&1
