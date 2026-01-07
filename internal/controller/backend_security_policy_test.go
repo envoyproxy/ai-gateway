@@ -1270,3 +1270,152 @@ func TestGetBSPGeneratedSecretName(t *testing.T) {
 		})
 	}
 }
+
+func TestBackendSecurityPolicyController_ManagedIdentity(t *testing.T) {
+	t.Run("Azure managed identity authentication", func(t *testing.T) {
+		eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
+		fakeClient := requireNewFakeClientWithIndexes(t)
+		c := NewBackendSecurityPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
+
+		namespace := "default"
+		bspName := "azure-mi-bsp"
+		asbName := "azure-mi-asb"
+
+		// Create AIServiceBackend.
+		asb := &aigv1a1.AIServiceBackend{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      asbName,
+				Namespace: namespace,
+			},
+		}
+		require.NoError(t, fakeClient.Create(context.Background(), asb))
+
+		// Create BackendSecurityPolicy with user-assigned managed identity.
+		bsp := &aigv1a1.BackendSecurityPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      bspName,
+				Namespace: namespace,
+			},
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
+					{
+						Group: "aigateway.envoyproxy.io",
+						Kind:  "AIServiceBackend",
+						Name:  gwapiv1.ObjectName(asbName),
+					},
+				},
+				Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
+				AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
+					ClientID:           "test-user-assigned-mi-client-id",
+					TenantID:           "test-tenant-id",
+					UseManagedIdentity: ptr.To(true),
+				},
+			},
+		}
+		require.NoError(t, fakeClient.Create(context.Background(), bsp))
+
+		// Reconcile - expect it to succeed (token provider creation will fail but that's expected in test).
+		res, err := c.Reconcile(context.Background(), reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      bspName,
+				Namespace: namespace,
+			},
+		})
+		require.NoError(t, err)
+		require.Positive(t, res.RequeueAfter) // Should requeue for token rotation.
+
+		// Verify AIServiceBackend event was sent.
+		select {
+		case event := <-eventCh.Ch:
+			receivedASB := event.Object.(*aigv1a1.AIServiceBackend)
+			require.Equal(t, asbName, receivedASB.Name)
+			require.Equal(t, namespace, receivedASB.Namespace)
+		case <-time.After(time.Second):
+			t.Fatal("expected AIServiceBackend event")
+		}
+	})
+
+	t.Run("Azure system-assigned managed identity authentication", func(t *testing.T) {
+		eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
+		fakeClient := requireNewFakeClientWithIndexes(t)
+		c := NewBackendSecurityPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
+
+		namespace := "default"
+		bspName := "azure-system-mi-bsp"
+		asbName := "azure-system-mi-asb"
+
+		// Create AIServiceBackend.
+		asb := &aigv1a1.AIServiceBackend{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      asbName,
+				Namespace: namespace,
+			},
+		}
+		require.NoError(t, fakeClient.Create(context.Background(), asb))
+
+		// Create BackendSecurityPolicy with system-assigned managed identity (no clientID).
+		bsp := &aigv1a1.BackendSecurityPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      bspName,
+				Namespace: namespace,
+			},
+			Spec: aigv1a1.BackendSecurityPolicySpec{
+				TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
+					{
+						Group: "aigateway.envoyproxy.io",
+						Kind:  "AIServiceBackend",
+						Name:  gwapiv1.ObjectName(asbName),
+					},
+				},
+				Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
+				AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
+					// No ClientID for system-assigned managed identity.
+					TenantID:           "test-tenant-id",
+					UseManagedIdentity: ptr.To(true),
+				},
+			},
+		}
+		require.NoError(t, fakeClient.Create(context.Background(), bsp))
+
+		// Reconcile - expect it to succeed.
+		res, err := c.Reconcile(context.Background(), reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      bspName,
+				Namespace: namespace,
+			},
+		})
+		require.NoError(t, err)
+		require.Positive(t, res.RequeueAfter) // Should requeue for token rotation.
+
+		// Verify AIServiceBackend event was sent.
+		select {
+		case event := <-eventCh.Ch:
+			receivedASB := event.Object.(*aigv1a1.AIServiceBackend)
+			require.Equal(t, asbName, receivedASB.Name)
+			require.Equal(t, namespace, receivedASB.Namespace)
+		case <-time.After(time.Second):
+			t.Fatal("expected AIServiceBackend event")
+		}
+	})
+}
+
+func TestGetBackendSecurityPolicyAuthOIDC_ManagedIdentity(t *testing.T) {
+	// Azure managed identity should not return OIDC.
+	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+		Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
+		AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
+			ClientID:           "client-id",
+			TenantID:           "tenant-id",
+			UseManagedIdentity: ptr.To(true),
+		},
+	}))
+
+	// Azure managed identity should not return OIDC even with empty clientID (system-assigned).
+	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+		Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
+		AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
+			TenantID:           "tenant-id",
+			UseManagedIdentity: ptr.To(true),
+		},
+	}))
+}

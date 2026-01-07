@@ -1106,8 +1106,9 @@ BackendSecurityPolicyAzureAPIKey specifies the Azure OpenAI API key.
 - [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
 
 BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
-Only one of ClientSecretRef or OIDCExchangeToken must be specified. Credentials will not be generated if
-neither are set.
+One of ClientSecretRef, OIDCExchangeToken, or UseManagedIdentity must be specified.
+When UseManagedIdentity is true, neither ClientSecretRef nor OIDCExchangeToken should be set.
+Otherwise, exactly one of ClientSecretRef or OIDCExchangeToken must be specified.
 
 ##### Fields
 
@@ -1116,8 +1117,8 @@ neither are set.
 <ApiField
   name="clientID"
   type="string"
-  required="true"
-  description="ClientID is a unique identifier for an application in Azure."
+  required="false"
+  description="ClientID is a unique identifier for an application in Azure.<br />This field is optional when using system-assigned managed identity,<br />but required for user-assigned managed identity and other authentication methods."
 /><ApiField
   name="tenantID"
   type="string"
@@ -1133,6 +1134,11 @@ neither are set.
   type="[AzureOIDCExchangeToken](#azureoidcexchangetoken)"
   required="false"
   description="OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be<br />used to obtain temporary credentials to access Azure."
+/><ApiField
+  name="useManagedIdentity"
+  type="boolean"
+  required="false"
+  description="UseManagedIdentity enables Azure Managed Identity authentication.<br />When set to true, the gateway will use DefaultAzureCredential which supports:<br />- Environment variables (AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_CLIENT_SECRET, AZURE_FEDERATED_TOKEN_FILE)<br />- AKS Workload Identity (via service account annotations)<br />- System-assigned managed identity (when clientID is not specified)<br />- User-assigned managed identity (when clientID is specified)"
 />
 
 
