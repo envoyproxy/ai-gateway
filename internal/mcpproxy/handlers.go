@@ -628,7 +628,7 @@ func (m *MCPProxy) handleClientToServerResponse(ctx context.Context, s *session,
 		return err
 	}
 	defer func() {
-		_ = resp.Body.Close()
+		ensureHTTPConnectionReused(resp)
 	}()
 	copyProxyHeaders(resp, w)
 	w.Header().Set(sessionIDHeader, string(s.clientGatewaySessionID()))
@@ -1334,7 +1334,7 @@ func (m *MCPProxy) invokeAndProxyResponse(ctx context.Context, s *session, w htt
 		return err
 	}
 	defer func() {
-		_ = resp.Body.Close()
+		ensureHTTPConnectionReused(resp)
 	}()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, err := io.ReadAll(resp.Body)

@@ -37,6 +37,7 @@ type MCPProxy struct {
 	sessionCrypto      SessionCrypto
 	tracer             tracing.MCPTracer
 	toolChangeSignaler changeSignaler // signals tool changes to active sessions.
+	client             http.Client
 }
 
 // NewMCPProxy creates a new MCPProxy instance.
@@ -58,6 +59,7 @@ func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracing.M
 				tracer:             tracer,
 				sessionCrypto:      sessionCrypto,
 				toolChangeSignaler: toolChangeSignaler,
+				client:             http.Client{}, // No timeout as it's enforced at Envoy level.
 			}
 
 			switch r.Method {
@@ -195,7 +197,7 @@ func (m *MCPProxy) initializeSession(ctx context.Context, routeName filterapi.MC
 			return nil, fmt.Errorf("failed to send MCP initialize request: %w", err)
 		}
 		defer func() {
-			_ = resp.Body.Close()
+			ensureHTTPConnectionReused(resp)
 		}()
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -278,7 +280,7 @@ func (m *MCPProxy) initializeSession(ctx context.Context, routeName filterapi.MC
 			return nil, fmt.Errorf("failed to send MCP notifications/initialized request: %w", err)
 		}
 		defer func() {
-			_ = resp.Body.Close()
+			ensureHTTPConnectionReused(resp)
 		}()
 		if resp.StatusCode != http.StatusAccepted {
 			body, _ := io.ReadAll(resp.Body)
@@ -314,9 +316,8 @@ func (m *MCPProxy) invokeJSONRPCRequest(ctx context.Context, routeName filterapi
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
-	client := http.Client{Timeout: 10 * time.Second}
 
-	resp, err := client.Do(req)
+	resp, err := m.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send MCP notifications/initialized request: %w", err)
 	}
@@ -341,4 +342,15 @@ func mustJSONRPCRequestID() jsonrpc.ID {
 		panic(err)
 	}
 	return id
+}
+
+// ensureHTTPConnectionReused reads and closes the response body to allow connection reuse.
+// The following comment is on [http.Response.Body]:
+//
+//	The default HTTP client's Transport may not
+//	reuse HTTP/1.x "keep-alive" TCP connections if the Body is
+//	not read to completion and closed.
+func ensureHTTPConnectionReused(resp *http.Response) {
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
 }
