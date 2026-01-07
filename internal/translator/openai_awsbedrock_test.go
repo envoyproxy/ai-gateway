@@ -1450,8 +1450,8 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 					InputTokens:           10,
 					OutputTokens:          20,
 					TotalTokens:           30,
-					CacheReadInputTokens:  ptr.To(5),
-					CacheWriteInputTokens: ptr.To(7),
+					CacheWriteInputTokens: ptr.To[int64](7),
+					CacheReadInputTokens:  ptr.To[int64](5),
 				},
 				Output: &awsbedrock.ConverseOutput{
 					Message: awsbedrock.Message{
@@ -1470,8 +1470,8 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)),
 				Object:  "chat.completion",
 				Usage: openai.Usage{
-					TotalTokens:      30,
-					PromptTokens:     10,
+					TotalTokens:      42,
+					PromptTokens:     22,
 					CompletionTokens: 20,
 					PromptTokensDetails: &openai.PromptTokensDetails{
 						CachedTokens:        5,
@@ -1902,7 +1902,7 @@ func TestOpenAIToAWSBedrockTranslatorExtractAmazonEventStreamEvents(t *testing.T
 			strings.Join(texts, ""),
 		)
 		require.NotNil(t, usage)
-		require.Equal(t, 461, usage.TotalTokens)
+		require.Equal(t, int64(461), usage.TotalTokens)
 	})
 }
 
@@ -1921,7 +1921,7 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 					InputTokens:          10,
 					OutputTokens:         20,
 					TotalTokens:          30,
-					CacheReadInputTokens: ptr.To(5),
+					CacheReadInputTokens: ptr.To[int64](5),
 				},
 			},
 			out: &openai.ChatCompletionResponseChunk{
@@ -1930,8 +1930,8 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)), // 0 nanoseconds
 				Object:  "chat.completion.chunk",
 				Usage: &openai.Usage{
-					TotalTokens:      30,
-					PromptTokens:     10,
+					TotalTokens:      35,
+					PromptTokens:     15,
 					CompletionTokens: 20,
 					PromptTokensDetails: &openai.PromptTokensDetails{
 						CachedTokens: 5,
@@ -2016,7 +2016,8 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 				require.False(t, ok)
 			} else {
 				// Use require.True and cmp.Equal with the options
-				require.True(t, cmp.Equal(*tc.out, *chunk, ignoreDynamicFields), "The ChatCompletionResponseChunk structs should be equal ignoring the ID and Created field")
+				require.True(t, cmp.Equal(*tc.out, *chunk, ignoreDynamicFields),
+					"The ChatCompletionResponseChunk structs should be equal ignoring the ID and Created field")
 			}
 		})
 	}

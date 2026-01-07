@@ -13,7 +13,7 @@ This guide provides an overview of the MCP Gateway capabilities and how to confi
 Envoy AI Gateway's MCP support allows you to:
 
 - **Aggregate multiple MCP servers** into a single unified endpoint
-- **Apply security policies** including OAuth authentication and upstream API key injection
+- **Apply security policies** including OAuth authentication, fine-grained access control over the tool access, and upstream API key injection
 - **Filter tools** to control which capabilities are exposed to clients
 - **Leverage Envoy's networking** for load balancing, rate limiting, circuit breaking, and observability
 
@@ -24,7 +24,7 @@ The MCP Gateway acts as a transparent proxy between MCP clients (AI agents like 
 | Feature                                | Description                                                                                                                                                                                                                                                         |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Streamable HTTP Transport**          | Full support for MCP's streamable HTTP transport, aligning with the [June 2025 MCP spec](https://modelcontextprotocol.io/specification/2025-06-18).<br/>Efficient handling of stateful sessions and multi-part JSON-RPC messaging over persistent HTTP connections. |
-| **OAuth Authorization**                | Native enforcement of [OAuth authentication flows](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization) for AI agents and services bridging via MCP.                                                                                       |
+| **Fine-Grained Authorization**         | Native enforcement of [OAuth authentication flows](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization).<br/>Implement granular access control using JWT claims, scopes, and CEL expressions.                                              |
 | **Server Multiplexing & Tool Routing** | Route tool calls to the right MCP backends, aggregating and filtering available tools based on gateway policy.<br/>Dynamically merge streaming notifications from multiple MCP servers into a unified interface.                                                    |
 | **Upstream Authentication**            | Built-in upstream authentication primitives to securely connect to external MCP servers using API keys and header injection.                                                                                                                                        |
 | **Full MCP Spec Coverage**             | Complete [June 2025 MCP spec](https://modelcontextprotocol.io/specification/2025-06-18) compliance, including support for tool calls, notifications, prompts, resources, and bi-directional server-to-client requests.                                              |
@@ -271,6 +271,99 @@ sequenceDiagram
     G->>G: Verify token (JWKS)
     Note over G: Token validated
     G->>C: MCP response
+```
+
+### Authorization Policies
+
+Envoy AI Gateway supports fine-grained access control over tool access using a combination of:
+
+- **JWT Scopes & Claims**: Validate standard OAuth2 scopes and custom claims
+- **Tool Selection**: Restrict access to specific tools
+- **CEL Expressions**: Flexible, advanced matching using Common Expression Language (CEL)
+
+#### Configuration Structure
+
+Authorization is configured in the `MCPRoute` resource under `spec.securityPolicy.authorization`.
+
+```yaml
+spec:
+  securityPolicy:
+    authorization:
+      rules:
+        - source:
+            jwt:
+              scopes: ["read"]
+          target:
+            tools:
+              - backend: "github"
+                tool: "list_issues"
+```
+
+#### Rule Evaluation
+
+Rules are evaluated in order. The first rule that matches the request (Target, Source, and CEL) determines the action (Allow/Deny). If no rules match, the `defaultAction` is applied.
+
+#### Matchers
+
+| Matcher    | Description                                                                                                                                                         |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Target** | Matches specific tools. Can filter by `backend` and `tool` name.                                                                                                    |
+| **Source** | Matches JWT properties. <br/>`scopes`: List of required scopes (all must be present).<br/>`claims`: Key-value pairs. Arrays in claims match if _any_ value matches. |
+| **CEL**    | Advanced expression evaluated against the request context.                                                                                                          |
+
+#### CEL Context
+
+The following variables are available in CEL expressions:
+
+| Variable              | Description                                    |
+| --------------------- | ---------------------------------------------- |
+| `request.method`      | HTTP method (e.g., "POST")                     |
+| `request.host`        | Host header value                              |
+| `request.path`        | URL path                                       |
+| `request.headers`     | Map of headers (lowercased keys, single value) |
+| `request.auth.jwt`    | Parsed JWT `{claims: ..., scopes: [...]}`      |
+| `request.mcp.method`  | MCP JSON-RPC method (e.g., "tools/call")       |
+| `request.mcp.backend` | Target backend name                            |
+| `request.mcp.tool`    | Target tool name (for tool calls)              |
+| `request.mcp.params`  | Parsed JSON-RPC parameters                     |
+
+#### Examples
+
+**Comprehensive Policy Example**
+
+This example demonstrates various matching strategies including token scopes, claims, tool targeting, and CEL expressions.
+
+```yaml
+authorization:
+  rules:
+    - source:
+        jwt:
+          scopes:
+            - echo
+      target:
+        tools:
+          - backend: mcp-backend
+            tool: echo
+      cel: request.mcp.params.arguments.text.matches("^Hello, .*!$") && request.headers["x-tenant"] == "t-123"
+    - source:
+        jwt:
+          scopes:
+            - sum
+          claims:
+            - name: tenant
+              valueType: String
+              values:
+                - acme
+                - globex
+            - name: org.departments
+              valueType: StringArray
+              values:
+                - engineering
+                - development
+      target:
+        tools:
+          - backend: mcp-backend
+            tool: sum
 ```
 
 ## See Also
