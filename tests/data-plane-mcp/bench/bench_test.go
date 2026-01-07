@@ -6,7 +6,7 @@
 // 1. Build AIGW
 //  	make clean build.aigw
 // 2. Run the bench test
-//   	go test -timeout=15m -run='^$' -bench=. ./tests/bench/...
+//   	go test -timeout=15m -run='^$' -bench=. ./tests/data-plane-mcp/bench/...
 
 package bench
 
@@ -16,12 +16,14 @@ import (
 	"net"
 	"net/url"
 	"os/exec"
+	"path"
 	"runtime"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 
@@ -34,7 +36,7 @@ const (
 	aigwPort      = 1975
 )
 
-var aigwBinary = fmt.Sprintf("../../out/aigw-%s-%s", runtime.GOOS, runtime.GOARCH)
+var aigwBinary = path.Join(internaltesting.FindProjectRoot(), fmt.Sprintf("/out/aigw-%s-%s", runtime.GOOS, runtime.GOARCH))
 
 type MCPBenchCase struct {
 	Name        string

@@ -139,7 +139,7 @@ Instead of paying the cost of managing, scaling, and querying a database for eve
 The best way to decide if this architecture meets your needs is to test it against your specific performance and security requirements.
 
 1. **Configure an MCP route in Envoy AI Gateway:** Point your agent at AIGW and **experiment with encryption tuning.**
-2. **Run the benchmark harness** that you can [find here](https://github.com/envoyproxy/ai-gateway/blob/main/tests/bench/bench_test.go) in the Envoy AI Gateway repo.
+2. **Run the benchmark harness** that you can [find here](https://github.com/envoyproxy/ai-gateway/blob/main/tests/data-plane-mcp/bench/bench_test.go) in the Envoy AI Gateway repo.
 
 ```shell
 # Clone the repo and build the latest CLI
@@ -148,7 +148,7 @@ cd ai-gateway
 make build.aigw
 
 # Run the benchmarks
-go test -timeout=15m -run='^$' -bench=. -count=10 ./tests/bench/...
+go test -timeout=15m -run='^$' -bench=. -count=10 ./tests/data-plane-mcp/bench/...
 ```
 
 3. **Share your experience:** Open an issue or join the community channels.
