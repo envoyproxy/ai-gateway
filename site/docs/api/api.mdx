@@ -2200,8 +2200,8 @@ MCPToolFilter filters tools using include patterns with exact matches or regular
 <ApiField
   name="modelName"
   type="string"
-  required="true"
-  description="Model name for which the quota is specified."
+  required="false"
+  description="Model name for which the quota is specified. If the name is empty the quota rule is applied to all models<br />served by the backend."
 /><ApiField
   name="costExpression"
   type="string"

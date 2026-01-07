@@ -69,8 +69,9 @@ spec:
                          * "input_tokens + cached_input_tokens * 0.1 + output_tokens * 6"
                       type: string
                     modelName:
-                      description: Model name for which the quota is specified.
-                      minLength: 1
+                      description: |-
+                        Model name for which the quota is specified. If the name is empty the quota rule is applied to all models
+                        served by the backend.
                       type: string
                     rules:
                       description: |-
@@ -265,9 +266,8 @@ spec:
                         type: object
                       maxItems: 128
                       type: array
-                  required:
-                  - modelName
                   type: object
+                maxItems: 128
                 type: array
               targetRefs:
                 description: |-

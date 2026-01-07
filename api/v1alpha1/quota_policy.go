@@ -41,15 +41,17 @@ type QuotaPolicySpec struct {
 	TargetRefs []gwapiv1a2.LocalPolicyTargetReference `json:"targetRefs,omitempty"`
 	// PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this
 	// policy is attached.
+	//
+	// +kubebuilder:validation:MaxItems=128
 	PerModelQuotas []PerModelQuota `json:"perModelQuotas,omitempty"`
 }
 
 type PerModelQuota struct {
-	// Model name for which the quota is specified.
+	// Model name for which the quota is specified. If the name is empty the quota rule is applied to all models
+	// served by the backend.
 	//
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
-	ModelName string `json:"modelName"`
+	// +optional
+	ModelName *string `json:"modelName"`
 
 	// CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.
 	// If no expression is specified the "total_tokens" value is used.
