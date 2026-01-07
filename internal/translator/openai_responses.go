@@ -12,7 +12,6 @@ import (
 	"io"
 	"path"
 	"strconv"
-	"strings"
 
 	"github.com/tidwall/sjson"
 
@@ -192,35 +191,6 @@ func (o *openAIToOpenAITranslatorV1Responses) extractUsageFromBufferEvent(span t
 }
 
 // ResponseError implements [OpenAIResponsesTranslator.ResponseError].
-// For OpenAI to OpenAI translation, we don't need to mutate error responses.
-// The error format is already in OpenAI format.
-// If connection fails the error body is translated to OpenAI error type for events such as HTTP 503 or 504.
-func (o *openAIToOpenAITranslatorV1Responses) ResponseError(respHeaders map[string]string, body io.Reader) (
-	newHeaders []internalapi.Header, newBody []byte, err error,
-) {
-	statusCode := respHeaders[statusHeaderName]
-	if v, ok := respHeaders[contentTypeHeaderName]; ok && !strings.Contains(v, jsonContentType) {
-		var openaiError openai.Error
-		buf, err := io.ReadAll(body)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to read error body: %w", err)
-		}
-		openaiError = openai.Error{
-			Type: "error",
-			Error: openai.ErrorType{
-				Type:    openAIBackendError,
-				Message: string(buf),
-				Code:    &statusCode,
-			},
-		}
-		newBody, err = json.Marshal(openaiError)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to marshal error body: %w", err)
-		}
-		newHeaders = append(newHeaders,
-			internalapi.Header{contentTypeHeaderName, jsonContentType},
-			internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(newBody))},
-		)
-	}
-	return
+func (o *openAIToOpenAITranslatorV1Responses) ResponseError(respHeaders map[string]string, body io.Reader) ([]internalapi.Header, []byte, error) {
+	return convertErrorOpenAIToOpenAIError(respHeaders, body)
 }
