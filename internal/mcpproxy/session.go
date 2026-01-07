@@ -55,7 +55,6 @@ func (s *session) Close() error {
 			// Stateless backend, nothing to do.
 			continue
 		}
-		httpClient := &http.Client{}
 		// Make DELETE request to the MCP server to close the session.
 		backend, err := s.proxy.getBackendForRoute(s.route, backendName)
 		if err != nil {
@@ -77,7 +76,7 @@ func (s *session) Close() error {
 		}
 		addMCPHeaders(req, nil, s.route, backendName)
 		req.Header.Set(sessionIDHeader, sessionID.String())
-		resp, err := httpClient.Do(req)
+		resp, err := s.proxy.client.Do(req)
 		if err != nil {
 			s.proxy.l.Error("failed to send DELETE request to MCP server to close session",
 				slog.String("backend", backendName),
@@ -86,7 +85,7 @@ func (s *session) Close() error {
 			)
 			continue
 		}
-		_ = resp.Body.Close()
+		ensureHTTPConnectionReused(resp)
 		if status := resp.StatusCode; (status < 200 || status >= 300) &&
 			// E.g., learn-microsoft returns 405 Method Not Allowed for DELETE requests even though the session ID exists.
 			status != http.StatusMethodNotAllowed &&
@@ -348,7 +347,6 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *s
 	req.Header.Set("Accept", "text/event-stream, application/json")
 	req.Header.Set("Accept-encoding", "gzip, br, zstd, deflate")
 
-	client := http.Client{Timeout: 1200 * time.Second} // Reduce and support for reconnect.
 	if lastEventID := cse.lastEventID; lastEventID != "" {
 		req.Header.Set(lastEventIDHeader, lastEventID)
 	}
@@ -372,7 +370,7 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *s
 		}
 		s.proxy.l.Debug("sending MCP request", args...)
 	}
-	httpResp, err := client.Do(req)
+	httpResp, err := s.proxy.client.Do(req)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return nil
