@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"path"
-	"strconv"
 
 	"github.com/tidwall/sjson"
 
@@ -66,39 +65,8 @@ func (o *openAIToOpenAIImageGenerationTranslator) RequestBody(original []byte, p
 // ResponseError implements [ImageGenerationTranslator.ResponseError]
 // For OpenAI based backend we return the OpenAI error type as is.
 // If connection fails the error body is translated to OpenAI error type for events such as HTTP 503 or 504.
-func (o *openAIToOpenAIImageGenerationTranslator) ResponseError(respHeaders map[string]string, body io.Reader) (
-	newHeaders []internalapi.Header, newBody []byte, err error,
-) {
-	statusCode := respHeaders[statusHeaderName]
-	// Read the upstream error body regardless of content-type. Some backends may mislabel it.
-	buf, err := io.ReadAll(body)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read error body: %w", err)
-	}
-	// If upstream already returned JSON, preserve it as-is.
-	if json.Valid(buf) {
-		return nil, nil, nil
-	}
-	// Otherwise, wrap the plain-text (or non-JSON) error into OpenAI REST error schema.
-	openaiError := struct {
-		Error openai.ErrorType `json:"error"`
-	}{
-		Error: openai.ErrorType{
-			Type:    openAIBackendError,
-			Message: string(buf),
-			Code:    &statusCode,
-		},
-	}
-	newBody, err = json.Marshal(openaiError)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal error body: %w", err)
-	}
-	// Ensure downstream sees a JSON error payload
-	newHeaders = []internalapi.Header{
-		{contentTypeHeaderName, jsonContentType},
-		{contentLengthHeaderName, strconv.Itoa(len(newBody))},
-	}
-	return
+func (o *openAIToOpenAIImageGenerationTranslator) ResponseError(respHeaders map[string]string, body io.Reader) ([]internalapi.Header, []byte, error) {
+	return convertErrorOpenAIToOpenAIError(respHeaders, body)
 }
 
 // ResponseHeaders implements [ImageGenerationTranslator.ResponseHeaders].

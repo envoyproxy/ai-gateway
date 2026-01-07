@@ -369,7 +369,11 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 		if isGzip {
 			w.Header().Set("content-encoding", "gzip")
 		}
-		w.Header().Set("content-type", "application/json")
+		// The content-type header might have been already set via ResponseHeadersKey.
+		// If not, set it to application/json by default.
+		if w.Header().Get("content-type") == "" {
+			w.Header().Set("content-type", "application/json")
+		}
 		var responseBody []byte
 		if expResponseBody := r.Header.Get(ResponseBodyHeaderKey); expResponseBody == "" {
 			// If the expected response body is not set, get the fake response if the path is known.
