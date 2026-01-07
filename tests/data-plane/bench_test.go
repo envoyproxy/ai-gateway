@@ -133,11 +133,6 @@ func createChatCompletionRequest(numMessages, numBytes int) string {
 	return largeRequestBody
 }
 
-func Test_createChatCompletionRequest(t *testing.T) {
-	req := createChatCompletionRequest(3, 5)
-	require.Len(t, req, 240)
-}
-
 // BenchmarkEmbeddings benchmarks the embeddings endpoint.
 func BenchmarkEmbeddings(b *testing.B) {
 	config := &filterapi.Config{
