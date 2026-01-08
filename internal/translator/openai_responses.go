@@ -149,12 +149,12 @@ func (o *openAIToOpenAITranslatorV1Responses) extractUsageFromBufferEvent(span t
 	for event := range bytes.SplitSeq(chunks, []byte("\n\n")) {
 		for line := range bytes.SplitSeq(event, []byte("\n")) {
 			// Look for lines starting with "data: "
-			if !bytes.HasPrefix(line, dataPrefix) {
+			if !bytes.HasPrefix(line, sseDataPrefix) {
 				continue
 			}
 
-			data := bytes.TrimPrefix(line, dataPrefix)
-			if len(data) == 0 || bytes.Equal(data, []byte("[DONE]")) {
+			data := bytes.TrimPrefix(line, sseDataPrefix)
+			if len(data) == 0 || bytes.Equal(data, sseDoneMessage) {
 				continue
 			}
 

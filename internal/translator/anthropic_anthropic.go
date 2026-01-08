@@ -125,11 +125,11 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent(s tracing.M
 		}
 		line := a.buffered[:i]
 		a.buffered = a.buffered[i+1:]
-		if !bytes.HasPrefix(line, dataPrefix) {
+		if !bytes.HasPrefix(line, sseDataPrefix) {
 			continue
 		}
 		eventUnion := &anthropic.MessagesStreamChunk{}
-		if err := json.Unmarshal(bytes.TrimPrefix(line, dataPrefix), eventUnion); err != nil {
+		if err := json.Unmarshal(bytes.TrimPrefix(line, sseDataPrefix), eventUnion); err != nil {
 			continue
 		}
 		if s != nil {

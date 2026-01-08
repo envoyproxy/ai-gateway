@@ -718,7 +718,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 		}
 
 		if endOfStream {
-			newBody = append(newBody, []byte("data: [DONE]\n")...)
+			newBody = append(newBody, sseDoneFullLine...)
 		}
 		return
 	}
