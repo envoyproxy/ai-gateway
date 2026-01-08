@@ -59,10 +59,11 @@ func TestRun_enabled(t *testing.T) {
 		}
 		return nil
 	}, 3*time.Second, 100*time.Millisecond)
+	cancel()
 	internaltesting.RequireEventuallyNoError(t, func() error {
 		logs := buf.String()
-		if !strings.Contains(logs, "starting pprof server on port 6060") {
-			return fmt.Errorf("pprof server did not start, logs: %s", logs)
+		if !strings.Contains(logs, "pprof server shut down gracefully") {
+			return fmt.Errorf("pprof server did not shut down gracefully, logs: %s", logs)
 		}
 		return nil
 	}, 3*time.Second, 100*time.Millisecond)
