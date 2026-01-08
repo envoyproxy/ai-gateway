@@ -24,7 +24,7 @@ jobs:
           - command_name: "extproc"
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Build ${{ matrix.target.command_name }} Docker image
         run: |
