@@ -25,6 +25,18 @@ import (
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
+	inferencemeshv1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
+)
+
+const (
+	// aiServiceBackendGroup is the API group for AIServiceBackend resources.
+	aiServiceBackendGroup = "aigateway.envoyproxy.io"
+	// aiServiceBackendKind is the kind for AIServiceBackend resources.
+	aiServiceBackendKind = "AIServiceBackend"
+	// inferencePoolGroup is the API group for InferencePool resources.
+	inferencePoolGroup = "inference.networking.k8s.io"
+	// inferencePoolKind is the kind for InferencePool resources.
+	inferencePoolKind = "InferencePool"
 )
 
 const (
@@ -47,14 +59,16 @@ type BackendSecurityPolicyController struct {
 	kube                      kubernetes.Interface
 	logger                    logr.Logger
 	aiServiceBackendEventChan chan event.GenericEvent
+	inferencePoolEventChan    chan event.GenericEvent
 }
 
-func NewBackendSecurityPolicyController(client client.Client, kube kubernetes.Interface, logger logr.Logger, aiServiceBackendEventChan chan event.GenericEvent) *BackendSecurityPolicyController {
+func NewBackendSecurityPolicyController(client client.Client, kube kubernetes.Interface, logger logr.Logger, aiServiceBackendEventChan chan event.GenericEvent, inferencePoolEventChan chan event.GenericEvent) *BackendSecurityPolicyController {
 	return &BackendSecurityPolicyController{
 		client:                    client,
 		kube:                      kube,
 		logger:                    logger,
 		aiServiceBackendEventChan: aiServiceBackendEventChan,
+		inferencePoolEventChan:    inferencePoolEventChan,
 	}
 }
 
@@ -314,30 +328,41 @@ func backendSecurityPolicyKey(namespace, name string) string {
 }
 
 func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1.BackendSecurityPolicy) error {
-	// Handle both old and new patterns.
-	var allAIServiceBackends []aigv1a1.AIServiceBackend
-
 	for _, targetRef := range bsp.Spec.TargetRefs {
-		var aiBackend aigv1a1.AIServiceBackend
-		err := c.client.Get(ctx, client.ObjectKey{
-			Name:      string(targetRef.Name),
-			Namespace: bsp.Namespace, // targetRefs are local to the policy's namespace.
-		}, &aiBackend)
-		if err != nil {
-			if client.IgnoreNotFound(err) != nil {
-				return fmt.Errorf("failed to get targeted AIServiceBackend %s: %w", targetRef.Name, err)
+		switch {
+		case targetRef.Group == aiServiceBackendGroup && targetRef.Kind == aiServiceBackendKind:
+			var aiBackend aigv1a1.AIServiceBackend
+			err := c.client.Get(ctx, client.ObjectKey{
+				Name:      string(targetRef.Name),
+				Namespace: bsp.Namespace, // targetRefs are local to the policy's namespace.
+			}, &aiBackend)
+			if err != nil {
+				if client.IgnoreNotFound(err) != nil {
+					return fmt.Errorf("failed to get targeted AIServiceBackend %s: %w", targetRef.Name, err)
+				}
+				c.logger.Info("Targeted AIServiceBackend not found", "name", string(targetRef.Name), "namespace", bsp.Namespace)
+				continue
 			}
-			c.logger.Info("Targeted AIServiceBackend not found", "name", string(targetRef.Name), "namespace", bsp.Namespace)
-			continue
+			c.logger.Info("Syncing AIServiceBackend", "namespace", aiBackend.Namespace, "name", aiBackend.Name)
+			c.aiServiceBackendEventChan <- event.GenericEvent{Object: &aiBackend}
+		case targetRef.Group == inferencePoolGroup && targetRef.Kind == inferencePoolKind:
+			var inferencePool inferencemeshv1.InferencePool
+			err := c.client.Get(ctx, client.ObjectKey{
+				Name:      string(targetRef.Name),
+				Namespace: bsp.Namespace, // targetRefs are local to the policy's namespace.
+			}, &inferencePool)
+			if err != nil {
+				if client.IgnoreNotFound(err) != nil {
+					return fmt.Errorf("failed to get targeted InferencePool %s: %w", targetRef.Name, err)
+				}
+				c.logger.Info("Targeted InferencePool not found", "name", string(targetRef.Name), "namespace", bsp.Namespace)
+				continue
+			}
+			c.logger.Info("Syncing InferencePool", "namespace", inferencePool.Namespace, "name", inferencePool.Name)
+			c.inferencePoolEventChan <- event.GenericEvent{Object: &inferencePool}
 		}
-		allAIServiceBackends = append(allAIServiceBackends, aiBackend)
 	}
 
-	for i := range allAIServiceBackends {
-		aiBackend := &allAIServiceBackends[i]
-		c.logger.Info("Syncing AIServiceBackend", "namespace", aiBackend.Namespace, "name", aiBackend.Name)
-		c.aiServiceBackendEventChan <- event.GenericEvent{Object: aiBackend}
-	}
 	return nil
 }
 
