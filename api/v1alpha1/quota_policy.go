@@ -32,8 +32,6 @@ type QuotaPolicy struct {
 // QuotaPolicySpec specifies rules for computing token based costs of requests.
 type QuotaPolicySpec struct {
 	// TargetRefs are the names of the AIServiceBackend resources this QuotaPolicy is being attached to.
-	// Attaching multiple QuotaPolicies to the same AIServiceBackend is invalid and will result in an error
-	// during the reconciliation of AIServiceBackend.
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=16

@@ -270,10 +270,8 @@ spec:
                 maxItems: 128
                 type: array
               targetRefs:
-                description: |-
-                  TargetRefs are the names of the AIServiceBackend resources this QuotaPolicy is being attached to.
-                  Attaching multiple QuotaPolicies to the same AIServiceBackend is invalid and will result in an error
-                  during the reconciliation of AIServiceBackend.
+                description: TargetRefs are the names of the AIServiceBackend resources
+                  this QuotaPolicy is being attached to.
                 items:
                   description: |-
                     LocalPolicyTargetReference identifies an API object to apply a direct or
