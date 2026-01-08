@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"testing"
@@ -33,7 +34,9 @@ func TestRun_disabled(t *testing.T) {
 func TestRun_enabled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	Run(ctx)
+	buf := internaltesting.CaptureOutput("")[0]
+	l := log.New(buf, "", 0)
+	run(ctx, l)
 	// Use eventually to avoid flake when the server is not yet started by the time we access it.
 	internaltesting.RequireEventuallyNoError(t, func() error {
 		resp, err := http.Get("http://localhost:6060/debug/pprof/cmdline")
@@ -53,6 +56,13 @@ func TestRun_enabled(t *testing.T) {
 		// Test binary name should be present in the cmdline output.
 		if !strings.Contains(string(body), "pprof.test") {
 			return fmt.Errorf("unexpected body: %s", string(body))
+		}
+		return nil
+	}, 3*time.Second, 100*time.Millisecond)
+	internaltesting.RequireEventuallyNoError(t, func() error {
+		logs := buf.String()
+		if !strings.Contains(logs, "starting pprof server on port 6060") {
+			return fmt.Errorf("pprof server did not start, logs: %s", logs)
 		}
 		return nil
 	}, 3*time.Second, 100*time.Millisecond)
