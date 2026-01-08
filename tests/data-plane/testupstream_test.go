@@ -169,7 +169,7 @@ func TestWithTestUpstream(t *testing.T) {
 			responseStatus:  strconv.Itoa(http.StatusServiceUnavailable),
 			responseBody:    `backend timeout`,
 			expStatus:       http.StatusServiceUnavailable,
-			expResponseBody: `{"error":{"type":"OpenAIBackendError","message":"backend timeout","code":"503"}}`,
+			expResponseBody: `{"error":{"type":"OpenAIBackendError","message":"backend timeout","code":"503"},"type":"error"}`,
 		},
 		{
 			name:            "unknown path",

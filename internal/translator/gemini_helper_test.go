@@ -8,6 +8,7 @@ package translator
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -1624,6 +1625,128 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 						{
 							Name:        "get_weather",
 							Description: "Get current weather",
+							Parameters: &genai.Schema{
+								Type: "object",
+								Properties: map[string]*genai.Schema{
+									"a": {Type: "integer"},
+									"b": {Type: "integer"},
+								},
+								Required: []string{"a", "b"},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "google search tool only - no config",
+			openaiTools: []openai.Tool{
+				{
+					Type: openai.ToolTypeGoogleSearch,
+				},
+			},
+			parametersJSONSchemaAvailable: false,
+			expected: []genai.Tool{
+				{
+					GoogleSearch: &genai.GoogleSearch{},
+				},
+			},
+		},
+		{
+			name: "google search tool with exclude domains",
+			openaiTools: []openai.Tool{
+				{
+					Type: openai.ToolTypeGoogleSearch,
+					GoogleSearch: &openai.GCPGoogleSearchConfig{
+						ExcludeDomains: []string{"example.com", "test.com"},
+					},
+				},
+			},
+			parametersJSONSchemaAvailable: false,
+			expected: []genai.Tool{
+				{
+					GoogleSearch: &genai.GoogleSearch{
+						ExcludeDomains: []string{"example.com", "test.com"},
+					},
+				},
+			},
+		},
+		{
+			name: "google search tool with all options",
+			openaiTools: []openai.Tool{
+				{
+					Type: openai.ToolTypeGoogleSearch,
+					GoogleSearch: &openai.GCPGoogleSearchConfig{
+						ExcludeDomains:     []string{"spam.com"},
+						BlockingConfidence: "BLOCK_MEDIUM_AND_ABOVE",
+					},
+				},
+			},
+			parametersJSONSchemaAvailable: false,
+			expected: []genai.Tool{
+				{
+					GoogleSearch: &genai.GoogleSearch{
+						ExcludeDomains:     []string{"spam.com"},
+						BlockingConfidence: genai.PhishBlockThresholdBlockMediumAndAbove,
+					},
+				},
+			},
+		},
+		{
+			name: "google search tool with time range filter",
+			openaiTools: []openai.Tool{
+				{
+					Type: openai.ToolTypeGoogleSearch,
+					GoogleSearch: &openai.GCPGoogleSearchConfig{
+						TimeRangeFilter: &openai.GCPTimeRangeFilter{
+							StartTime: "2024-01-01T00:00:00Z",
+							EndTime:   "2024-12-31T23:59:59Z",
+						},
+					},
+				},
+			},
+			parametersJSONSchemaAvailable: false,
+			expected: []genai.Tool{
+				{
+					GoogleSearch: &genai.GoogleSearch{
+						TimeRangeFilter: &genai.Interval{
+							StartTime: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+							EndTime:   time.Date(2024, 12, 31, 23, 59, 59, 0, time.UTC),
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "mixed function and google search tools",
+			openaiTools: []openai.Tool{
+				{
+					Type: openai.ToolTypeFunction,
+					Function: &openai.FunctionDefinition{
+						Name:        "search_products",
+						Description: "Search for products",
+						Parameters:  funcParams,
+					},
+				},
+				{
+					Type: openai.ToolTypeGoogleSearch,
+					GoogleSearch: &openai.GCPGoogleSearchConfig{
+						ExcludeDomains: []string{"competitor.com"},
+					},
+				},
+			},
+			parametersJSONSchemaAvailable: false,
+			expected: []genai.Tool{
+				{
+					GoogleSearch: &genai.GoogleSearch{
+						ExcludeDomains: []string{"competitor.com"},
+					},
+				},
+				{
+					FunctionDeclarations: []*genai.FunctionDeclaration{
+						{
+							Name:        "search_products",
+							Description: "Search for products",
 							Parameters: &genai.Schema{
 								Type: "object",
 								Properties: map[string]*genai.Schema{

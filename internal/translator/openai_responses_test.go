@@ -727,7 +727,7 @@ func TestResponsesOpenAIToOpenAITranslator_ResponseError(t *testing.T) {
 				":status": "500",
 			},
 			input:         bytes.NewBuffer([]byte("internal error")),
-			expectHeaders: 0,
+			expectHeaders: 2,
 		},
 	}
 

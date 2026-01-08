@@ -6,7 +6,7 @@
 // 1. Build AIGW
 //  	make clean build.aigw
 // 2. Run the bench test
-//   	go test -timeout=15m -run='^$' -bench=. ./tests/bench/...
+//   	go test -timeout=15m -run='^$' -bench=. ./tests/data-plane-mcp/bench/...
 
 package bench
 
@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/url"
 	"os/exec"
+	"path"
 	"runtime"
 	"strings"
 	"syscall"
@@ -25,6 +26,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testmcp"
 )
 
@@ -34,7 +36,7 @@ const (
 	aigwPort      = 1975
 )
 
-var aigwBinary = fmt.Sprintf("../../out/aigw-%s-%s", runtime.GOOS, runtime.GOARCH)
+var aigwBinary = path.Join(internaltesting.FindProjectRoot(), fmt.Sprintf("/out/aigw-%s-%s", runtime.GOOS, runtime.GOARCH))
 
 type MCPBenchCase struct {
 	Name        string
@@ -99,10 +101,11 @@ func BenchmarkMCP(b *testing.B) {
 
 		b.Run(tc.Name, func(b *testing.B) {
 			mcpClient := mcp.NewClient(&mcp.Implementation{Name: "bench-http-client", Version: "0.1.0"}, nil)
-			cs, err := mcpClient.Connect(b.Context(), &mcp.StreamableClientTransport{Endpoint: tc.TestAddr}, nil)
-			if err != nil {
-				b.Fatalf("Failed to connect server: %v", err)
-			}
+			var cs *mcp.ClientSession
+			internaltesting.RequireEventuallyNoError(b, func() (err error) {
+				cs, err = mcpClient.Connect(b.Context(), &mcp.StreamableClientTransport{Endpoint: tc.TestAddr}, nil)
+				return err
+			}, 10*time.Second, 500*time.Millisecond, "failed to connect to MCP server at %s", tc.TestAddr)
 
 			tools, err := cs.ListTools(b.Context(), &mcp.ListToolsParams{})
 			if err != nil {
