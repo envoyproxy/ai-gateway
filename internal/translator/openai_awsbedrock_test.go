@@ -1323,7 +1323,8 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_ResponseBody(t *
 		openaiChunks := getChatCompletionResponseChunk(results)
 
 		var normalizedResults []byte
-		for _, oaichunk := range openaiChunks {
+		for i := range openaiChunks {
+			oaichunk := &openaiChunks[i]
 			oaichunk.ID = "123"
 			oaichunk.Created = openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)) // 0 nanoseconds
 			// oaichunk.Model = "claude-sonnet-4"

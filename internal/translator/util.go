@@ -60,8 +60,8 @@ func systemMsgToDeveloperMsg(msg openai.ChatCompletionSystemMessageParam) openai
 	}
 }
 
-// serializeOpenAIChatCompletionChunk serializes a ChatCompletionResponseChunk, this is common for all chat completion request
-func serializeOpenAIChatCompletionChunk(chunk openai.ChatCompletionResponseChunk, buf *[]byte) error {
+// serialize a ChatCompletionResponseChunk, this is common for all chat completion request
+func serializeOpenAIChatCompletionChunk(chunk *openai.ChatCompletionResponseChunk, buf *[]byte) error {
 	var chunkBytes []byte
 	chunkBytes, err := json.Marshal(chunk)
 	if err != nil {

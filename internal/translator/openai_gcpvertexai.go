@@ -141,8 +141,8 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(_ map[strin
 	}
 
 	// Non-streaming logic.
-	var gcpResp genai.GenerateContentResponse
-	if err = json.NewDecoder(body).Decode(&gcpResp); err != nil {
+	gcpResp := &genai.GenerateContentResponse{}
+	if err = json.NewDecoder(body).Decode(gcpResp); err != nil {
 		return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("error decoding GCP response: %w", err)
 	}
 
@@ -191,12 +191,13 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(
 		return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("error parsing GCP streaming chunks: %w", err)
 	}
 
-	for _, chunk := range chunks {
+	for i := range chunks {
+		chunk := &chunks[i]
 		// Convert GCP chunk to OpenAI chunk.
 		openAIChunk := o.convertGCPChunkToOpenAI(chunk)
 
 		// Serialize to SSE format as expected by OpenAI API.
-		err := serializeOpenAIChatCompletionChunk(*openAIChunk, &newBody)
+		err := serializeOpenAIChatCompletionChunk(openAIChunk, &newBody)
 		if err != nil {
 			return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("error marshaling OpenAI chunk: %w", err)
 		}
@@ -210,7 +211,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(
 			// Convert usage to pointer if available.
 			usage := ptr.To(geminiUsageToOpenAIUsage(chunk.UsageMetadata))
 
-			usageChunk := openai.ChatCompletionResponseChunk{
+			usageChunk := &openai.ChatCompletionResponseChunk{
 				ID:      chunk.ResponseID,
 				Created: openai.JSONUNIXTime(chunk.CreateTime),
 				Object:  "chat.completion.chunk",
@@ -227,7 +228,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(
 			}
 
 			if span != nil {
-				span.RecordResponseChunk(&usageChunk)
+				span.RecordResponseChunk(usageChunk)
 			}
 
 			if chunk.UsageMetadata.PromptTokenCount >= 0 {
@@ -400,7 +401,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiCandidatesToOpenAI
 }
 
 // convertGCPChunkToOpenAI converts a GCP streaming chunk to OpenAI streaming format.
-func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) convertGCPChunkToOpenAI(chunk genai.GenerateContentResponse) *openai.ChatCompletionResponseChunk {
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) convertGCPChunkToOpenAI(chunk *genai.GenerateContentResponse) *openai.ChatCompletionResponseChunk {
 	// Convert candidates to OpenAI choices for streaming.
 	choices, err := o.geminiCandidatesToOpenAIStreamingChoices(chunk.Candidates)
 	if err != nil {
@@ -517,7 +518,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) applyVendorSpecificField
 	}
 }
 
-func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMessage(gcr genai.GenerateContentResponse, responseModel string) (*openai.ChatCompletionResponse, error) {
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMessage(gcr *genai.GenerateContentResponse, responseModel string) (*openai.ChatCompletionResponse, error) {
 	// Convert candidates to OpenAI choices.
 	choices, err := geminiCandidatesToOpenAIChoices(gcr.Candidates, o.responseMode)
 	if err != nil {

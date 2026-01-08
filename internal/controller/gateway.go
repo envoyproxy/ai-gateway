@@ -469,7 +469,8 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 	mc := &filterapi.MCPConfig{
 		BackendListenerAddr: fmt.Sprintf("http://127.0.0.1:%d", internalapi.MCPBackendListenerPort),
 	}
-	for _, route := range mcpRoutes {
+	for i := range mcpRoutes {
+		route := &mcpRoutes[i]
 		mcpRoute := filterapi.MCPRoute{
 			Name:     fmt.Sprintf("%s/%s", route.Namespace, route.Name),
 			Backends: []filterapi.MCPBackend{},
@@ -696,7 +697,8 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 	uuid string,
 ) error {
 	rollout := true
-	for _, pod := range pods {
+	for i := range pods {
+		pod := &pods[i]
 		// Get the pod spec and check if it has the extproc container.
 		podSpec := pod.Spec
 		if c.extProcAsSideCar {
@@ -728,7 +730,8 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 	}
 
 	if rollout {
-		for _, dep := range deployments {
+		for i := range deployments {
+			dep := &deployments[i]
 			c.logger.Info("rolling out deployment", "namespace", dep.Namespace, "name", dep.Name)
 			_, err := c.kube.AppsV1().Deployments(dep.Namespace).Patch(ctx, dep.Name, types.MergePatchType,
 				fmt.Appendf(nil,
@@ -739,7 +742,8 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 			}
 		}
 
-		for _, daemonSet := range daemonSets {
+		for i := range daemonSets {
+			daemonSet := &daemonSets[i]
 			c.logger.Info("rolling out daemonSet", "namespace", daemonSet.Namespace, "name", daemonSet.Name)
 			_, err := c.kube.AppsV1().DaemonSets(daemonSet.Namespace).Patch(ctx, daemonSet.Name, types.MergePatchType,
 				fmt.Appendf(nil,

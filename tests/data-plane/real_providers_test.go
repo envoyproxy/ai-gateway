@@ -369,7 +369,8 @@ func requireEventuallyChatCompletionNonStreamingRequestOK(t *testing.T, listener
 			return false
 		}
 		nonEmptyCompletion := false
-		for _, choice := range chatCompletion.Choices {
+		for i := range chatCompletion.Choices {
+			choice := &chatCompletion.Choices[i]
 			t.Logf("choice: %s", choice.Message.Content)
 			if choice.Message.Content != "" {
 				nonEmptyCompletion = true

@@ -153,7 +153,7 @@ func (c *cmdRun) Validate() error {
 }
 
 type (
-	runFn         func(context.Context, cmdRun, *runOpts, io.Writer, io.Writer) error
+	runFn         func(context.Context, *cmdRun, *runOpts, io.Writer, io.Writer) error
 	healthcheckFn func(context.Context, io.Writer, io.Writer) error
 )
 
@@ -189,7 +189,7 @@ func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn
 	case "version":
 		_, _ = fmt.Fprintf(stdout, "Envoy AI Gateway CLI: %s\n", version.Parse())
 	case "run", "run <path>":
-		err = rf(ctx, c.Run, c.Run.runOpts, stdout, stderr)
+		err = rf(ctx, &c.Run, c.Run.runOpts, stdout, stderr)
 		if err != nil {
 			log.Fatalf("Error running: %v", err)
 		}
