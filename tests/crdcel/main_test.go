@@ -184,12 +184,13 @@ func TestBackendSecurityPolicies(t *testing.T) {
 		{name: "targetrefs_multiple.yaml"},
 		{
 			name:   "targetrefs_invalid_kind.yaml",
-			expErr: "targetRefs must reference AIServiceBackend resources",
+			expErr: "targetRefs must reference AIServiceBackend or InferencePool resources",
 		},
 		{
 			name:   "targetrefs_invalid_group.yaml",
-			expErr: "targetRefs must reference AIServiceBackend resources",
+			expErr: "targetRefs must reference AIServiceBackend or InferencePool resources",
 		},
+		{name: "targetrefs_mixed.yaml"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data, err := testdata.ReadFile(path.Join("testdata/backendsecuritypolicies", tc.name))
