@@ -24,14 +24,14 @@ jobs:
           - command_name: "extproc"
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Build ${{ matrix.target.command_name }} Docker image
         run: |
           make docker-build.${{ matrix.target.command_name }} TAG=${{ github.sha }}
 
       - name: Run Trivy vulnerability scanner for ${{ matrix.target.command_name }}
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@22438a435773de8c97dc0958cc0b823c45b064ac # master
         with:
           image-ref: docker.io/envoyproxy/ai-gateway-${{ matrix.target.command_name }}:${{ github.sha }}
           format: "table"
