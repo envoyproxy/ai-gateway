@@ -101,7 +101,7 @@ type Options struct {
 // This blocks until the manager is stopped.
 //
 // Note: this is tested with envtest, hence the test exists outside of this package. See /tests/controller_test.go.
-func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Config, logger logr.Logger, options Options) (err error) {
+func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Config, logger logr.Logger, options *Options) (err error) {
 	c := mgr.GetClient()
 	indexer := mgr.GetFieldIndexer()
 	if err = ApplyIndexing(ctx, indexer.IndexField); err != nil {

@@ -82,7 +82,7 @@ func getChatCompletionResponseChunk(body []byte) []openai.ChatCompletionResponse
 }
 
 // serialize a ChatCompletionResponseChunk, this is common for all chat completion request
-func serializeOpenAIChatCompletionChunk(chunk openai.ChatCompletionResponseChunk, buf *[]byte) error {
+func serializeOpenAIChatCompletionChunk(chunk *openai.ChatCompletionResponseChunk, buf *[]byte) error {
 	var chunkBytes []byte
 	chunkBytes, err := json.Marshal(chunk)
 	if err != nil {

@@ -72,8 +72,10 @@ func (r *ImageGenerationRecorder) RecordResponse(span trace.Span, resp *openai.I
 		}
 	}
 	// Match ChatCompletion recorder: include output MIME type and value
-	attrs = append(attrs, attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON))
-	attrs = append(attrs, attribute.String(openinference.OutputValue, bodyString))
+	attrs = append(attrs,
+		attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
+		attribute.String(openinference.OutputValue, bodyString),
+	)
 	span.SetAttributes(attrs...)
 	span.SetStatus(codes.Ok, "")
 }
@@ -93,8 +95,10 @@ func buildImageGenerationRequestAttributes(_ *openai.ImageGenerationRequest, bod
 	if config.HideInputs {
 		attrs = append(attrs, attribute.String(openinference.InputValue, openinference.RedactedValue))
 	} else {
-		attrs = append(attrs, attribute.String(openinference.InputValue, body))
-		attrs = append(attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
+		attrs = append(attrs,
+			attribute.String(openinference.InputValue, body),
+			attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+		)
 	}
 
 	if !config.HideLLMInvocationParameters {

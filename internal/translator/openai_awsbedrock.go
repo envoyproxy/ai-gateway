@@ -708,7 +708,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 			if !ok {
 				continue
 			}
-			err = serializeOpenAIChatCompletionChunk(*oaiEvent, &newBody)
+			err = serializeOpenAIChatCompletionChunk(oaiEvent, &newBody)
 			if err != nil {
 				panic(fmt.Errorf("failed to marshal event: %w", err))
 			}

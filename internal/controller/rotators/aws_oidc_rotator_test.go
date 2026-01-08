@@ -164,7 +164,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			stsClient:                      mockSTS,
 			backendSecurityPolicyNamespace: policyNameSpace,
 			backendSecurityPolicyName:      policyName,
-			oidc:                           oidc,
+			oidc:                           &oidc,
 			region:                         awsRegion,
 			roleArn:                        awsRoleArn,
 		}
@@ -195,7 +195,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			stsClient:                      mockSTS,
 			backendSecurityPolicyNamespace: policyNameSpace,
 			backendSecurityPolicyName:      policyName,
-			oidc:                           oidc,
+			oidc:                           &oidc,
 			region:                         awsRegion,
 			roleArn:                        awsRoleArn,
 		}
@@ -232,7 +232,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			stsClient:                      mockSTS,
 			backendSecurityPolicyNamespace: policyNameSpace,
 			backendSecurityPolicyName:      policyName,
-			oidc:                           oidc,
+			oidc:                           &oidc,
 			region:                         awsRegion,
 			roleArn:                        awsRoleArn,
 		}
@@ -273,7 +273,7 @@ func TestAWS_OIDCRotator(t *testing.T) {
 			stsClient:                      mockSTS,
 			backendSecurityPolicyNamespace: policyNameSpace,
 			backendSecurityPolicyName:      policyName,
-			oidc:                           oidc,
+			oidc:                           &oidc,
 			region:                         awsRegion,
 			roleArn:                        awsRoleArn,
 		}

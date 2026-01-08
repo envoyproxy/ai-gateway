@@ -975,7 +975,7 @@ func TestAuthorizeRequest(t *testing.T) {
 			if err != nil {
 				return
 			}
-			allowed, requiredScopes := proxy.authorizeRequest(compiled, authorizationRequest{
+			allowed, requiredScopes := proxy.authorizeRequest(compiled, &authorizationRequest{
 				Headers:    headers,
 				HTTPMethod: cmp.Or(tt.mcpMethod, http.MethodPost),
 				Host:       tt.host,

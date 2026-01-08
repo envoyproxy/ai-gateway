@@ -99,8 +99,10 @@ func buildRerankRequestAttributes(req *cohereschema.RerankV2Request, body []byte
 	if config.HideInputs {
 		attrs = append(attrs, attribute.String(openinference.InputValue, openinference.RedactedValue))
 	} else {
-		attrs = append(attrs, attribute.String(openinference.InputValue, string(body)))
-		attrs = append(attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
+		attrs = append(attrs,
+			attribute.String(openinference.InputValue, string(body)),
+			attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+		)
 	}
 
 	// No reranker-specific invocation_parameters attribute is used; model/top_k captured above.

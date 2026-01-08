@@ -315,7 +315,8 @@ func (c *InferencePoolController) gatewayEventHandler(ctx context.Context, obj c
 	}
 
 	var requests []reconcile.Request
-	for _, pool := range inferencePools.Items {
+	for i := range inferencePools.Items {
+		pool := &inferencePools.Items[i]
 		// Check if this Gateway references the InferencePool.
 		if c.gatewayReferencesInferencePool(ctx, gateway, pool.Name, pool.Namespace) {
 			requests = append(requests, reconcile.Request{
