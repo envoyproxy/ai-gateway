@@ -418,8 +418,7 @@ jobs:
       - test_e2e_inference_extension
       - test_data_plane
       - test_data_plane_mcp
-      # It's very flaky now so skipping for now.
-      # - test_e2e_aigw
+      - test_e2e_aigw
     # We need this to run always to force-fail (and not skip) if any needed
     # job has failed. Otherwise, a skipped job will not fail the workflow.
     if: always()
