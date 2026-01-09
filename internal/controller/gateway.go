@@ -684,10 +684,9 @@ func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, 
 		policy := &backendSecurityPolicyList.Items[i]
 		for _, target := range policy.Spec.TargetRefs {
 			if string(target.Name) == name &&
-				(string(target.Group) == "" || string(target.Group) == aiServiceBackendGroup) &&
-				(string(target.Kind) == "" || string(target.Kind) == aiServiceBackendKind) {
+				target.Group == aiServiceBackendGroup &&
+				target.Kind == aiServiceBackendKind {
 				matchingBSPs = append(matchingBSPs, policy)
-				break
 			}
 		}
 	}
@@ -723,10 +722,9 @@ func (c *GatewayController) getBSPForInferencePool(ctx context.Context, namespac
 		bsp := &bspList.Items[i]
 		for _, target := range bsp.Spec.TargetRefs {
 			if string(target.Name) == name &&
-				(string(target.Group) == inferencePoolGroup) &&
-				(string(target.Kind) == inferencePoolKind) {
+				target.Group == inferencePoolGroup &&
+				target.Kind == inferencePoolKind {
 				matchingBSPs = append(matchingBSPs, bsp)
-				break
 			}
 		}
 	}
