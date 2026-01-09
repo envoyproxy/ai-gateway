@@ -246,11 +246,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Note: this is to simply ensure that the controller working as expected with or without
-        # extproc being inserted as a k8s sidecar (init container with the restartPolicy=always).
-        # On newer k8s versions (v1.33+), that is always enabled by default, so we only need to test
-        # on older versions. After v1.32 reaches EOL, we can remove the older k8s versions from here.
         k8s-version:
+          - v1.35.0
+          - v1.34.3
           - v1.33.4
           - v1.32.8
     steps:
