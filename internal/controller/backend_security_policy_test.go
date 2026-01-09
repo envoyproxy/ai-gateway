@@ -30,9 +30,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	inferencemeshv1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
-	inferencemeshv1alpha1 "sigs.k8s.io/gateway-api-inference-extension/api/v1alpha1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
@@ -42,7 +42,7 @@ import (
 
 func TestBackendSecurityController_Reconcile(t *testing.T) {
 	aiServiceBackendEventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
-	inferencePoolEventCh := internaltesting.NewControllerEventChan[*inferencemeshv1alpha1.InferencePool]()
+	inferencePoolEventCh := internaltesting.NewControllerEventChan[*inferencemeshv1.InferencePool]()
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	c := NewBackendSecurityPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, aiServiceBackendEventCh.Ch, inferencePoolEventCh.Ch)
 	backendSecurityPolicyName := "mybackendSecurityPolicy"
@@ -93,7 +93,7 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 	require.Contains(t, bsp.Finalizers, aiGatewayControllerFinalizer, "Finalizer should be added")
 
 	// Test targeting an InferencePool.
-	inferencePool := &inferencemeshv1alpha1.InferencePool{
+	inferencePool := &inferencemeshv1.InferencePool{
 		ObjectMeta: metav1.ObjectMeta{Name: "bar", Namespace: "default"},
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), inferencePool))

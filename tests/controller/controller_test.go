@@ -41,6 +41,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
+	inferencemeshv1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 )
 
 func TestMain(m *testing.M) {
@@ -466,12 +467,13 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 	c, cfg, k := testsinternal.NewEnvTest(t)
 
 	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
+	eventChPool := internaltesting.NewControllerEventChan[*inferencemeshv1.InferencePool]()
 	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
 	mgr, err := ctrl.NewManager(cfg, opt)
 	require.NoError(t, err)
 	require.NoError(t, controller.ApplyIndexing(t.Context(), mgr.GetFieldIndexer().IndexField))
 
-	pc := controller.NewBackendSecurityPolicyController(mgr.GetClient(), k, defaultLogger(), eventCh.Ch)
+	pc := controller.NewBackendSecurityPolicyController(mgr.GetClient(), k, defaultLogger(), eventCh.Ch, eventChPool.Ch)
 	err = controller.TypedControllerBuilderForCRD(mgr, &aigv1a1.BackendSecurityPolicy{}).Complete(pc)
 	require.NoError(t, err)
 
