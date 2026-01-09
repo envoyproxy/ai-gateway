@@ -162,9 +162,6 @@ func TestPublicMCPServers(t *testing.T) {
 					Arguments: tc.params,
 				})
 				require.NoError(t, err)
-				encoded, err := json.MarshalIndent(resp, "", "  ")
-				require.NoError(t, err)
-				t.Logf("[[response]]\n%s", string(encoded))
 				require.False(t, resp.IsError)
 			})
 		}
