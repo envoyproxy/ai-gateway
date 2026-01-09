@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/config"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
@@ -466,12 +467,13 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 	c, cfg, k := testsinternal.NewEnvTest(t)
 
 	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
+	eventChPool := internaltesting.NewControllerEventChan[*gwaiev1.InferencePool]()
 	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
 	mgr, err := ctrl.NewManager(cfg, opt)
 	require.NoError(t, err)
 	require.NoError(t, controller.ApplyIndexing(t.Context(), mgr.GetFieldIndexer().IndexField))
 
-	pc := controller.NewBackendSecurityPolicyController(mgr.GetClient(), k, defaultLogger(), eventCh.Ch)
+	pc := controller.NewBackendSecurityPolicyController(mgr.GetClient(), k, defaultLogger(), eventCh.Ch, eventChPool.Ch)
 	err = controller.TypedControllerBuilderForCRD(mgr, &aigv1a1.BackendSecurityPolicy{}).Complete(pc)
 	require.NoError(t, err)
 

@@ -154,8 +154,9 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	}
 
 	backendSecurityPolicyEventChan := make(chan event.GenericEvent, 100)
+	inferencePoolEventChan := make(chan event.GenericEvent, 100)
 	backendSecurityPolicyC := NewBackendSecurityPolicyController(c, kubernetes.NewForConfigOrDie(config), logger.
-		WithName("backend-security-policy"), aiServiceBackendEventChan)
+		WithName("backend-security-policy"), aiServiceBackendEventChan, inferencePoolEventChan)
 	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.BackendSecurityPolicy{}).
 		WatchesRawSource(source.Channel(
 			backendSecurityPolicyEventChan,
@@ -182,11 +183,15 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	} else {
 		// CRD exists, create the controller.
 		inferencePoolC := NewInferencePoolController(c, kubernetes.NewForConfigOrDie(config), logger.
-			WithName("inference-pool"))
+			WithName("inference-pool"), inferencePoolEventChan)
 		if err = TypedControllerBuilderForCRD(mgr, &gwaiev1.InferencePool{}).
 			Watches(&gwapiv1.Gateway{}, handler.EnqueueRequestsFromMapFunc(inferencePoolC.gatewayEventHandler)).
 			Watches(&aigv1a1.AIGatewayRoute{}, handler.EnqueueRequestsFromMapFunc(inferencePoolC.aiGatewayRouteEventHandler)).
 			Watches(&gwapiv1.HTTPRoute{}, handler.EnqueueRequestsFromMapFunc(inferencePoolC.httpRouteEventHandler)).
+			WatchesRawSource(source.Channel(
+				inferencePoolEventChan,
+				&handler.EnqueueRequestForObject{},
+			)).
 			Complete(inferencePoolC); err != nil {
 			return fmt.Errorf("failed to create controller for InferencePool: %w", err)
 		}
