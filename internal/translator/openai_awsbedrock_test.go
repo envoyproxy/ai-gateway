@@ -1490,10 +1490,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 				},
 			},
 			output: openai.ChatCompletionResponse{
-				ID:      "123",
-				Model:   "claude-sonnet-4",
-				Created: openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)),
-				Object:  "chat.completion",
+				ID:          "123",
+				Model:       "claude-sonnet-4",
+				Created:     openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)),
+				Object:      "chat.completion",
 				ServiceTier: "default",
 				Usage: openai.Usage{
 					TotalTokens:      42,
