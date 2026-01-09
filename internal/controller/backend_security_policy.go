@@ -133,11 +133,11 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 
 	switch bsp.Spec.Type {
 	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
-		oidc := getBackendSecurityPolicyAuthOIDC(bsp.Spec)
+		oidc := getBackendSecurityPolicyAuthOIDC(&bsp.Spec)
 		if oidc != nil {
 			region := bsp.Spec.AWSCredentials.Region
 			roleArn := bsp.Spec.AWSCredentials.OIDCExchangeToken.AwsRoleArn
-			rotator, err = rotators.NewAWSOIDCRotator(ctx, c.client, nil, c.kube, c.logger, bsp.Namespace, bsp.Name, preRotationWindow, *oidc, roleArn, region)
+			rotator, err = rotators.NewAWSOIDCRotator(ctx, c.client, nil, c.kube, c.logger, bsp.Namespace, bsp.Name, preRotationWindow, oidc, roleArn, region)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
@@ -150,7 +150,7 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		var provider tokenprovider.TokenProvider
 		options := policy.TokenRequestOptions{Scopes: []string{azureScopeURL}}
 
-		oidc := getBackendSecurityPolicyAuthOIDC(bsp.Spec)
+		oidc := getBackendSecurityPolicyAuthOIDC(&bsp.Spec)
 		if oidc != nil {
 			var oidcProvider tokenprovider.TokenProvider
 			oidcProvider, err = tokenprovider.NewOidcTokenProvider(ctx, c.client, oidc)
@@ -194,7 +194,7 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		if err = validateGCPCredentialsParams(bsp.Spec.GCPCredentials); err != nil {
 			return ctrl.Result{}, fmt.Errorf("invalid GCP credentials configuration: %w", err)
 		}
-		oidc := getBackendSecurityPolicyAuthOIDC(bsp.Spec)
+		oidc := getBackendSecurityPolicyAuthOIDC(&bsp.Spec)
 		if oidc != nil {
 			// Create the OIDC token provider that will be used to get tokens from the OIDC provider.
 			var oidcProvider tokenprovider.TokenProvider
@@ -202,7 +202,7 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 			if err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to initialize OIDC provider: %w", err)
 			}
-			rotator, err = rotators.NewGCPOIDCTokenRotator(c.client, c.logger, *bsp, preRotationWindow, oidcProvider)
+			rotator, err = rotators.NewGCPOIDCTokenRotator(c.client, c.logger, bsp, preRotationWindow, oidcProvider)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
@@ -303,7 +303,7 @@ func (c *BackendSecurityPolicyController) executeRotation(ctx context.Context, r
 }
 
 // getBackendSecurityPolicyAuthOIDC returns the backendSecurityPolicy's OIDC pointer or nil.
-func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *egv1a1.OIDC {
+func getBackendSecurityPolicyAuthOIDC(spec *aigv1a1.BackendSecurityPolicySpec) *egv1a1.OIDC {
 	switch spec.Type {
 	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
 		if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {

@@ -87,20 +87,20 @@ type mockTranslator struct {
 }
 
 // RequestBody implements [translator.OpenAIChatCompletionTranslator].
-func (m mockTranslator) RequestBody(_ []byte, body *openai.ChatCompletionRequest, forceRequestBodyMutation bool) (newHeaders []internalapi.Header, newBody []byte, err error) {
+func (m *mockTranslator) RequestBody(_ []byte, body *openai.ChatCompletionRequest, forceRequestBodyMutation bool) (newHeaders []internalapi.Header, newBody []byte, err error) {
 	require.Equal(m.t, m.expRequestBody, body)
 	require.Equal(m.t, m.expForceRequestBodyMutation, forceRequestBodyMutation)
 	return m.retHeaderMutation, m.retBodyMutation, m.retErr
 }
 
 // ResponseHeaders implements [translator.OpenAIChatCompletionTranslator].
-func (m mockTranslator) ResponseHeaders(headers map[string]string) (newHeaders []internalapi.Header, err error) {
+func (m *mockTranslator) ResponseHeaders(headers map[string]string) (newHeaders []internalapi.Header, err error) {
 	require.Equal(m.t, m.expHeaders, headers)
 	return m.retHeaderMutation, m.retErr
 }
 
 // ResponseError implements [translator.OpenAIChatCompletionTranslator].
-func (m mockTranslator) ResponseError(_ map[string]string, body io.Reader) (newHeaders []internalapi.Header, newBody []byte, err error) {
+func (m *mockTranslator) ResponseError(_ map[string]string, body io.Reader) (newHeaders []internalapi.Header, newBody []byte, err error) {
 	if m.expResponseBody != nil {
 		buf, err := io.ReadAll(body)
 		require.NoError(m.t, err)
@@ -110,7 +110,7 @@ func (m mockTranslator) ResponseError(_ map[string]string, body io.Reader) (newH
 }
 
 // ResponseBody implements [translator.OpenAIChatCompletionTranslator].
-func (m mockTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracing.ChatCompletionSpan) (newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error) {
+func (m *mockTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracing.ChatCompletionSpan) (newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error) {
 	if m.expResponseBody != nil {
 		buf, err := io.ReadAll(body)
 		require.NoError(m.t, err)

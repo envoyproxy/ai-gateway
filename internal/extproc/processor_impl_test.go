@@ -434,7 +434,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				someBody := bodyFromModel(t, "some-model", tc.stream, nil)
 				var body openai.ChatCompletionRequest
 				require.NoError(t, json.Unmarshal(someBody, &body))
-				tr := mockTranslator{t: t, retErr: errors.New("test error"), expRequestBody: &body}
+				tr := &mockTranslator{t: t, retErr: errors.New("test error"), expRequestBody: &body}
 				mm := &mockMetrics{}
 				p := &chatCompletionProcessorUpstreamFilter{
 					parent: &chatCompletionProcessorRouterFilter{
@@ -469,7 +469,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 					expBody.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
 				}
 
-				mt := mockTranslator{
+				mt := &mockTranslator{
 					t: t, expRequestBody: &expBody, retHeaderMutation: headerMut,
 					retBodyMutation: bodyMut, expForceRequestBodyMutation: tc.forcedIncludeUsage,
 				}

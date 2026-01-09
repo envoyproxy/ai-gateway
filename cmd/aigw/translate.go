@@ -55,20 +55,25 @@ func translate(ctx context.Context, paths []string, output, stderr io.Writer) er
 	}
 
 	// Emit the translated objects.
-	for _, httpRoute := range httpRoutes.Items {
-		mustWriteObj(&httpRoute.TypeMeta, &httpRoute, output)
+	for i := range httpRoutes.Items {
+		httpRoute := &httpRoutes.Items[i]
+		mustWriteObj(&httpRoute.TypeMeta, httpRoute, output)
 	}
-	for _, extensionPolicy := range extensionPolicies.Items {
-		mustWriteObj(&extensionPolicy.TypeMeta, &extensionPolicy, output)
+	for i := range extensionPolicies.Items {
+		extensionPolicy := &extensionPolicies.Items[i]
+		mustWriteObj(&extensionPolicy.TypeMeta, extensionPolicy, output)
 	}
-	for _, backend := range backends.Items {
-		mustWriteObj(&backend.TypeMeta, &backend, output)
+	for i := range backends.Items {
+		backend := &backends.Items[i]
+		mustWriteObj(&backend.TypeMeta, backend, output)
 	}
-	for _, filter := range httpRouteFilter.Items {
-		mustWriteObj(&filter.TypeMeta, &filter, output)
+	for i := range httpRouteFilter.Items {
+		filter := &httpRouteFilter.Items[i]
+		mustWriteObj(&filter.TypeMeta, filter, output)
 	}
-	for _, secret := range secrets.Items {
-		mustWriteObj(&secret.TypeMeta, &secret, output)
+	for i := range secrets.Items {
+		secret := &secrets.Items[i]
+		mustWriteObj(&secret.TypeMeta, secret, output)
 	}
 	for _, secret := range originalSecrets {
 		mustWriteObj(&secret.TypeMeta, secret, output)
@@ -76,11 +81,13 @@ func translate(ctx context.Context, paths []string, output, stderr io.Writer) er
 	for _, gateway := range originalGateways {
 		mustWriteObj(&gateway.TypeMeta, gateway, output)
 	}
-	for _, btp := range backendTrafficPolicies.Items {
-		mustWriteObj(&btp.TypeMeta, &btp, output)
+	for i := range backendTrafficPolicies.Items {
+		btp := &backendTrafficPolicies.Items[i]
+		mustWriteObj(&btp.TypeMeta, btp, output)
 	}
-	for _, sp := range securityPolicies.Items {
-		mustWriteObj(&sp.TypeMeta, &sp, output)
+	for i := range securityPolicies.Items {
+		sp := &securityPolicies.Items[i]
+		mustWriteObj(&sp.TypeMeta, sp, output)
 	}
 	return nil
 }

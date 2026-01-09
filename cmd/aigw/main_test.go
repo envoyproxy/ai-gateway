@@ -88,25 +88,25 @@ Flags:
 		{
 			name:         "run no arg",
 			args:         []string{"run"},
-			rf:           func(context.Context, cmdRun, *runOpts, io.Writer, io.Writer) error { return nil },
+			rf:           func(context.Context, *cmdRun, *runOpts, io.Writer, io.Writer) error { return nil },
 			expPanicCode: ptr.To(80),
 		},
 		{
 			name: "run with OpenAI env",
 			args: []string{"run"},
 			env:  map[string]string{"OPENAI_API_KEY": "dummy-key"},
-			rf:   func(context.Context, cmdRun, *runOpts, io.Writer, io.Writer) error { return nil },
+			rf:   func(context.Context, *cmdRun, *runOpts, io.Writer, io.Writer) error { return nil },
 		},
 		{
 			name: "run with Anthropic env",
 			args: []string{"run"},
 			env:  map[string]string{"ANTHROPIC_API_KEY": "dummy-key"},
-			rf:   func(context.Context, cmdRun, *runOpts, io.Writer, io.Writer) error { return nil },
+			rf:   func(context.Context, *cmdRun, *runOpts, io.Writer, io.Writer) error { return nil },
 		},
 		{
 			name: "run help",
 			args: []string{"run", "--help"},
-			rf:   func(context.Context, cmdRun, *runOpts, io.Writer, io.Writer) error { return nil },
+			rf:   func(context.Context, *cmdRun, *runOpts, io.Writer, io.Writer) error { return nil },
 			expOut: `Usage: aigw run [<path>] [flags]
 
 Run the AI Gateway locally for given configuration.
@@ -145,7 +145,7 @@ Flags:
 		{
 			name: "run with path",
 			args: []string{"run", "./path"},
-			rf: func(_ context.Context, c cmdRun, _ *runOpts, _, _ io.Writer) error {
+			rf: func(_ context.Context, c *cmdRun, _ *runOpts, _, _ io.Writer) error {
 				abs, err := filepath.Abs("./path")
 				require.NoError(t, err)
 				require.Equal(t, abs, c.Path)

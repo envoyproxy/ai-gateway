@@ -155,8 +155,6 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]str
 	return
 }
 
-var dataPrefix = []byte("data: ")
-
 // extractUsageFromBufferEvent extracts the token usage from the buffered event.
 // It scans complete lines and returns the latest usage found in this batch.
 func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent(span tracing.ChatCompletionSpan) (tokenUsage metrics.TokenUsage) {
@@ -167,11 +165,11 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent(s
 		}
 		line := o.buffered[:i]
 		o.buffered = o.buffered[i+1:]
-		if !bytes.HasPrefix(line, dataPrefix) {
+		if !bytes.HasPrefix(line, sseDataPrefix) {
 			continue
 		}
 		event := &openai.ChatCompletionResponseChunk{}
-		if err := json.Unmarshal(bytes.TrimPrefix(line, dataPrefix), event); err != nil {
+		if err := json.Unmarshal(bytes.TrimPrefix(line, sseDataPrefix), event); err != nil {
 			continue
 		}
 		if span != nil {

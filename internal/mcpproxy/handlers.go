@@ -667,7 +667,7 @@ func (m *MCPProxy) handleToolCallRequest(ctx context.Context, s *session, w http
 		if r.URL != nil {
 			httpPath = r.URL.Path
 		}
-		allowed, requiredScopes := m.authorizeRequest(route.authorization, authorizationRequest{
+		allowed, requiredScopes := m.authorizeRequest(route.authorization, &authorizationRequest{
 			Headers:    r.Header,
 			HTTPMethod: r.Method,
 			Host:       r.Host,
@@ -714,7 +714,7 @@ func copyProxyHeaders(resp *http.Response, w http.ResponseWriter) {
 	isJSONResponse := resp.Header.Get("Content-Type") == "application/json"
 	for k, v := range resp.Header {
 		// Skip content-length header for non JSON response since we might modify the response.
-		if !isJSONResponse && strings.ToLower(k) == "content-length" {
+		if !isJSONResponse && strings.EqualFold(k, "content-length") {
 			continue
 		}
 
@@ -1179,7 +1179,7 @@ func extractSubject(r *http.Request) string {
 		return ""
 	}
 	parts := strings.SplitN(authzHeader, " ", 2)
-	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+	if !strings.EqualFold(parts[0], "bearer") {
 		return ""
 	}
 

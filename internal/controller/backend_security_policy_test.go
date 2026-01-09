@@ -377,7 +377,7 @@ func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 
 	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL)
 	rotator, err := rotators.NewAWSOIDCRotator(ctx, cl, &mockSTSClient{time.Now().Add(time.Hour)}, fake2.NewClientset(), ctrl.Log, bspNamespace, bsp.Name, preRotationWindow,
-		oidc, "placeholder", "us-east-1")
+		&oidc, "placeholder", "us-east-1")
 	require.NoError(t, err)
 
 	// Ensure aws credentials secret do not exist.
@@ -417,10 +417,10 @@ func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 
 func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *testing.T) {
 	// API Key type does not support OIDC.
-	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{Type: aigv1a1.BackendSecurityPolicyTypeAPIKey}))
+	require.Nil(t, getBackendSecurityPolicyAuthOIDC(&aigv1a1.BackendSecurityPolicySpec{Type: aigv1a1.BackendSecurityPolicyTypeAPIKey}))
 
 	// Azure type supports OIDC type but OIDC needs to be defined.
-	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+	require.Nil(t, getBackendSecurityPolicyAuthOIDC(&aigv1a1.BackendSecurityPolicySpec{
 		Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
 		AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
 			ClientID:        "client-id",
@@ -430,7 +430,7 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 	}))
 
 	// Azure type with OIDC defined.
-	oidcAzure := getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+	oidcAzure := getBackendSecurityPolicyAuthOIDC(&aigv1a1.BackendSecurityPolicySpec{
 		Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
 		AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
 			ClientID: "client-id",
@@ -449,7 +449,7 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 	require.Equal(t, "some-client-id", *oidcAzure.ClientID)
 
 	// AWS type supports OIDC type but OIDC needs to be defined.
-	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+	require.Nil(t, getBackendSecurityPolicyAuthOIDC(&aigv1a1.BackendSecurityPolicySpec{
 		Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
 		AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
 			CredentialsFile: &aigv1a1.AWSCredentialsFile{},
@@ -457,7 +457,7 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 	}))
 
 	// AWS type with OIDC defined.
-	oidcAWS := getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+	oidcAWS := getBackendSecurityPolicyAuthOIDC(&aigv1a1.BackendSecurityPolicySpec{
 		Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
 		AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
 			OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
@@ -473,7 +473,7 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 	require.Equal(t, "some-client-id", *oidcAWS.ClientID)
 
 	// GCP type with OIDC defined.
-	oidcGCP := getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+	oidcGCP := getBackendSecurityPolicyAuthOIDC(&aigv1a1.BackendSecurityPolicySpec{
 		Type: aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
 		GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 			ProjectName: "fake-project-name",
@@ -761,7 +761,7 @@ func TestBackendSecurityPolicyController_ExecutionRotation(t *testing.T) {
 		ctrl.Log, bspNamespace,
 		bsp.Name,
 		preRotationWindow,
-		oidc,
+		&oidc,
 		"placeholder",
 		"us-east-1",
 	)

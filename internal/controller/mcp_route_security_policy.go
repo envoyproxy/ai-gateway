@@ -807,7 +807,8 @@ func (c *MCPRouteController) tryGetBackendsForJWKS(ctx context.Context, jwksURL 
 	hostname := u.Hostname()
 
 	var backendRefs []egv1a1.BackendRef
-	for _, btp := range backendTLSPolicies.Items {
+	for i := range backendTLSPolicies.Items {
+		btp := &backendTLSPolicies.Items[i]
 		if string(btp.Spec.Validation.Hostname) == hostname {
 			for _, ref := range btp.Spec.TargetRefs {
 				backendRefs = append(backendRefs, egv1a1.BackendRef{

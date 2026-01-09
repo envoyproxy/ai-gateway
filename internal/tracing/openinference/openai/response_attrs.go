@@ -27,7 +27,8 @@ func buildResponseAttributes(resp *openai.ChatCompletionResponse, config *openin
 
 	// Note: compound match here is from Python OpenInference OpenAI config.py.
 	if !config.HideOutputs && !config.HideOutputMessages {
-		for i, choice := range resp.Choices {
+		for i := range resp.Choices {
+			choice := &resp.Choices[i]
 			attrs = append(attrs, attribute.String(openinference.OutputMessageAttribute(i, openinference.MessageRole), choice.Message.Role))
 
 			if choice.Message.Content != nil && *choice.Message.Content != "" {
