@@ -235,7 +235,7 @@ func translateCustomResourceObjects(
 	}
 
 	bspC := controller.NewBackendSecurityPolicyController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
-		make(chan event.GenericEvent))
+		make(chan event.GenericEvent), make(chan event.GenericEvent))
 	aisbC := controller.NewAIServiceBackendController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
 		make(chan event.GenericEvent))
 	airC := controller.NewAIGatewayRouteController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
