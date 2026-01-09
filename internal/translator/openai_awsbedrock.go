@@ -108,6 +108,10 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, ope
 	bedrockReq.InferenceConfig.Temperature = openAIReq.Temperature
 	bedrockReq.InferenceConfig.TopP = openAIReq.TopP
 
+	if openAIReq.ServiceTier != "" {
+		bedrockReq.ServiceTier = &awsbedrock.ServiceTier{Type: openAIReq.ServiceTier}
+	}
+
 	bedrockReq.InferenceConfig.MaxTokens = cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens)
 
 	if openAIReq.Stop.OfString.Valid() {
@@ -735,6 +739,11 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 		Choices: make([]openai.ChatCompletionResponseChoice, 0),
 		ID:      o.responseID,
 	}
+
+	if bedrockResp.ServiceTier != nil {
+		openAIResp.ServiceTier = bedrockResp.ServiceTier.Type
+	}
+
 	// Convert token usage.
 	if bedrockResp.Usage != nil {
 		tokenUsage = metrics.ExtractTokenUsageFromExplicitCaching(bedrockResp.Usage.InputTokens, bedrockResp.Usage.OutputTokens,

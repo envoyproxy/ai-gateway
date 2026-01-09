@@ -975,11 +975,12 @@ type ChatCompletionRequest struct {
 	// If set to 'auto', then the request will be processed with the service tier configured in the Project settings. Unless otherwise configured, the Project will use 'default'.
 	// If set to 'default', then the request will be processed with the standard pricing and performance for the selected model.
 	// If set to 'flex' or 'priority', then the request will be processed with the corresponding service tier.
+	// Includes support for bedrock's 'reserved' service_tier.
 	// When the service_tier parameter is set, the response body will include the service_tier value based on the processing mode actually used to serve the request.
 	// This response value may be different from the value set in the parameter.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-service_tier
-	// Any of "auto", "default", "flex", "scale", "priority".
-	ServiceTier openai.ChatCompletionNewParamsServiceTier `json:"service_tier,omitzero"`
+	// Any of "auto", "default", "flex", "scale", "priority" (and "reserved" for bedrock).
+	ServiceTier string `json:"service_tier,omitzero"`
 
 	// Constrains the verbosity of the model's response. Lower values will result in
 	// more concise responses, while higher values will result in more verbose
