@@ -21,11 +21,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
-	inferencemeshv1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 )
 
 const (
@@ -346,7 +346,7 @@ func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.
 			c.logger.Info("Syncing AIServiceBackend", "namespace", aiBackend.Namespace, "name", aiBackend.Name)
 			c.aiServiceBackendEventChan <- event.GenericEvent{Object: &aiBackend}
 		case targetRef.Group == inferencePoolGroup && targetRef.Kind == inferencePoolKind:
-			var inferencePool inferencemeshv1.InferencePool
+			var inferencePool gwaiev1.InferencePool
 			err := c.client.Get(ctx, client.ObjectKey{
 				Name:      string(targetRef.Name),
 				Namespace: bsp.Namespace, // targetRefs are local to the policy's namespace.
