@@ -81,11 +81,13 @@ func TestServer_List(t *testing.T) {
 func TestServer_processMsg(t *testing.T) {
 	t.Run("unknown request type", func(t *testing.T) {
 		s, p := requireNewServerWithMockProcessor(t)
-		_, err := s.processMsg(t.Context(), slog.Default(), p, &extprocv3.ProcessingRequest{}, "test-req-id", false)
+		ctx := context.WithValue(t.Context(), loggerContextKey, slog.Default())
+		_, err := s.processMsg(ctx, p, &extprocv3.ProcessingRequest{}, "test-req-id", false)
 		require.ErrorContains(t, err, "unknown request type")
 	})
 	t.Run("request headers", func(t *testing.T) {
 		s, p := requireNewServerWithMockProcessor(t)
+		ctx := context.WithValue(t.Context(), loggerContextKey, slog.Default())
 
 		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}}}
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}
@@ -95,13 +97,14 @@ func TestServer_processMsg(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{Headers: hm}},
 		}
-		resp, err := s.processMsg(t.Context(), slog.Default(), p, req, "test-req-id", false)
+		resp, err := s.processMsg(ctx, p, req, "test-req-id", false)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
 	})
 	t.Run("request body", func(t *testing.T) {
 		s, p := requireNewServerWithMockProcessor(t)
+		ctx := context.WithValue(t.Context(), loggerContextKey, slog.Default())
 
 		reqBody := &extprocv3.HttpBody{}
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestBody{}}
@@ -111,13 +114,14 @@ func TestServer_processMsg(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_RequestBody{RequestBody: reqBody},
 		}
-		resp, err := s.processMsg(t.Context(), slog.Default(), p, req, "test-req-id", false)
+		resp, err := s.processMsg(ctx, p, req, "test-req-id", false)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
 	})
 	t.Run("response headers", func(t *testing.T) {
 		s, p := requireNewServerWithMockProcessor(t)
+		ctx := context.WithValue(t.Context(), loggerContextKey, slog.Default())
 
 		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}}}
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{}}
@@ -127,13 +131,14 @@ func TestServer_processMsg(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_ResponseHeaders{ResponseHeaders: &extprocv3.HttpHeaders{Headers: hm}},
 		}
-		resp, err := s.processMsg(t.Context(), slog.Default(), p, req, "test-req-id", false)
+		resp, err := s.processMsg(ctx, p, req, "test-req-id", false)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
 	})
 	t.Run("error response headers", func(t *testing.T) {
 		s, p := requireNewServerWithMockProcessor(t)
+		ctx := context.WithValue(t.Context(), loggerContextKey, slog.Default())
 
 		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":status", Value: "504"}}}
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{}}
@@ -143,13 +148,14 @@ func TestServer_processMsg(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_ResponseHeaders{ResponseHeaders: &extprocv3.HttpHeaders{Headers: hm}},
 		}
-		resp, err := s.processMsg(t.Context(), slog.Default(), p, req, "test-req-id", false)
+		resp, err := s.processMsg(ctx, p, req, "test-req-id", false)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
 	})
 	t.Run("response body", func(t *testing.T) {
 		s, p := requireNewServerWithMockProcessor(t)
+		ctx := context.WithValue(t.Context(), loggerContextKey, slog.Default())
 
 		reqBody := &extprocv3.HttpBody{}
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseBody{}}
@@ -159,7 +165,7 @@ func TestServer_processMsg(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_ResponseBody{ResponseBody: reqBody},
 		}
-		resp, err := s.processMsg(t.Context(), slog.Default(), p, req, "test-req-id", false)
+		resp, err := s.processMsg(ctx, p, req, "test-req-id", false)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
@@ -466,9 +472,10 @@ func Test_filterSensitiveBodyForLogging(t *testing.T) {
 			},
 		},
 	}
-	filtered := filterSensitiveRequestBodyForLogging(resp, logger, []string{"authorization"})
+	rb := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+	filtered := redactProcessingResponseRequestBody(rb, logger, []string{"authorization"})
 	require.NotNil(t, filtered)
-	filteredMutation := filtered.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response.GetHeaderMutation()
+	filteredMutation := filtered.RequestBody.Response.GetHeaderMutation()
 	require.Equal(t, []string{"x-envoy-original-path"}, filteredMutation.GetRemoveHeaders())
 	require.Equal(t, []*corev3.HeaderValueOption{
 		{Header: &corev3.HeaderValue{Key: ":path", RawValue: []byte("/model/some-random-model/converse")}},
@@ -483,15 +490,204 @@ func Test_filterSensitiveBodyForLogging(t *testing.T) {
 	}, originalMutation.GetSetHeaders())
 	require.Contains(t, buf.String(), "filtering sensitive header")
 
-	t.Run("do nothing for immediate response", func(t *testing.T) {
-		resp := &extprocv3.ProcessingResponse{
-			Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-				ImmediateResponse: &extprocv3.ImmediateResponse{},
+	t.Run("handle nil response", func(t *testing.T) {
+		filtered := redactProcessingResponseRequestBody(nil, logger, []string{"authorization"})
+		require.NotNil(t, filtered)
+		require.Equal(t, &extprocv3.ProcessingResponse_RequestBody{}, filtered)
+	})
+}
+
+func Test_redactProcessingResponseResponseBody(t *testing.T) {
+	buf := internaltesting.CaptureOutput("test")[0]
+	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+	resp := &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_ResponseBody{
+			ResponseBody: &extprocv3.BodyResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation: &extprocv3.HeaderMutation{
+						SetHeaders: []*corev3.HeaderValueOption{
+							{Header: &corev3.HeaderValue{
+								Key:      "content-type",
+								RawValue: []byte("application/json"),
+							}},
+							{Header: &corev3.HeaderValue{
+								Key:      "x-api-key",
+								RawValue: []byte("sk-secret123"),
+							}},
+							{Header: &corev3.HeaderValue{
+								Key:      "Authorization",
+								RawValue: []byte("Bearer token-abc"),
+							}},
+						},
+						RemoveHeaders: []string{"x-envoy-upstream-service-time"},
+					},
+					BodyMutation: &extprocv3.BodyMutation{
+						Mutation: &extprocv3.BodyMutation_Body{
+							Body: []byte(`{"response": "AI generated content"}`),
+						},
+					},
+				},
+			},
+		},
+	}
+	rb := resp.Response.(*extprocv3.ProcessingResponse_ResponseBody)
+	filtered := redactProcessingResponseResponseBody(rb, logger, []string{"authorization", "x-api-key"})
+	require.NotNil(t, filtered)
+	filteredMutation := filtered.ResponseBody.Response.GetHeaderMutation()
+	require.Equal(t, []string{"x-envoy-upstream-service-time"}, filteredMutation.GetRemoveHeaders())
+	require.Equal(t, []*corev3.HeaderValueOption{
+		{Header: &corev3.HeaderValue{Key: "content-type", RawValue: []byte("application/json")}},
+		{Header: &corev3.HeaderValue{Key: "x-api-key", RawValue: []byte("[REDACTED]")}},
+		{Header: &corev3.HeaderValue{Key: "Authorization", RawValue: []byte("[REDACTED]")}},
+	}, filteredMutation.GetSetHeaders())
+	// Original one should not be modified, otherwise it will be an unexpected behavior.
+	originalMutation := resp.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response.GetHeaderMutation()
+	require.Equal(t, []string{"x-envoy-upstream-service-time"}, originalMutation.GetRemoveHeaders())
+	require.Equal(t, []*corev3.HeaderValueOption{
+		{Header: &corev3.HeaderValue{Key: "content-type", RawValue: []byte("application/json")}},
+		{Header: &corev3.HeaderValue{Key: "x-api-key", RawValue: []byte("sk-secret123")}},
+		{Header: &corev3.HeaderValue{Key: "Authorization", RawValue: []byte("Bearer token-abc")}},
+	}, originalMutation.GetSetHeaders())
+	require.Contains(t, buf.String(), "filtering sensitive header")
+
+	// Verify body content is redacted
+	filteredBodyMutation := filtered.ResponseBody.Response.GetBodyMutation()
+	require.NotNil(t, filteredBodyMutation)
+	bodyBytes := filteredBodyMutation.GetBody()
+	require.NotNil(t, bodyBytes)
+	bodyStr := string(bodyBytes)
+	require.Contains(t, bodyStr, "[REDACTED LENGTH=")
+	require.Contains(t, bodyStr, "HASH=")
+	require.NotContains(t, bodyStr, "AI generated content") // Original content should not be present
+	// Original body should not be modified
+	originalBodyMutation := resp.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response.GetBodyMutation()
+	require.JSONEq(t, `{"response": "AI generated content"}`, string(originalBodyMutation.GetBody()))
+
+	t.Run("handle nil response", func(t *testing.T) {
+		filtered := redactProcessingResponseResponseBody(nil, logger, []string{"authorization"})
+		require.NotNil(t, filtered)
+		require.Equal(t, &extprocv3.ProcessingResponse_ResponseBody{}, filtered)
+	})
+
+	t.Run("handle nil body mutation", func(t *testing.T) {
+		respWithoutBody := &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_ResponseBody{
+				ResponseBody: &extprocv3.BodyResponse{
+					Response: &extprocv3.CommonResponse{
+						HeaderMutation: &extprocv3.HeaderMutation{
+							SetHeaders: []*corev3.HeaderValueOption{
+								{Header: &corev3.HeaderValue{Key: "content-type", RawValue: []byte("text/plain")}},
+							},
+						},
+						BodyMutation: nil,
+					},
+				},
 			},
 		}
-		filtered := filterSensitiveRequestBodyForLogging(resp, logger, []string{"authorization"})
+		rb := respWithoutBody.Response.(*extprocv3.ProcessingResponse_ResponseBody)
+		filtered := redactProcessingResponseResponseBody(rb, logger, []string{})
 		require.NotNil(t, filtered)
-		require.Equal(t, resp, filtered)
+		require.Nil(t, filtered.ResponseBody.Response.GetBodyMutation())
+	})
+
+	t.Run("handle empty body", func(t *testing.T) {
+		respWithEmptyBody := &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_ResponseBody{
+				ResponseBody: &extprocv3.BodyResponse{
+					Response: &extprocv3.CommonResponse{
+						BodyMutation: &extprocv3.BodyMutation{
+							Mutation: &extprocv3.BodyMutation_Body{
+								Body: []byte{},
+							},
+						},
+					},
+				},
+			},
+		}
+		rb := respWithEmptyBody.Response.(*extprocv3.ProcessingResponse_ResponseBody)
+		filtered := redactProcessingResponseResponseBody(rb, logger, []string{})
+		require.NotNil(t, filtered)
+		bodyMutation := filtered.ResponseBody.Response.GetBodyMutation()
+		require.NotNil(t, bodyMutation)
+		// Empty body should not be redacted
+		require.Equal(t, []byte{}, bodyMutation.GetBody())
+	})
+}
+
+func Test_redactBodyMutation(t *testing.T) {
+	t.Run("redact body content with hash", func(t *testing.T) {
+		originalBody := []byte(`{"choices": [{"message": {"content": "This is sensitive AI generated content with personal information"}}]}`)
+		bodyMutation := &extprocv3.BodyMutation{
+			Mutation: &extprocv3.BodyMutation_Body{
+				Body: originalBody,
+			},
+		}
+
+		redacted := redactBodyMutation(bodyMutation)
+		require.NotNil(t, redacted)
+		redactedBody := redacted.GetBody()
+		require.NotNil(t, redactedBody)
+
+		redactedStr := string(redactedBody)
+		require.Contains(t, redactedStr, "[REDACTED LENGTH=")
+		require.Contains(t, redactedStr, "HASH=")
+		require.NotContains(t, redactedStr, "sensitive AI generated content")
+		require.NotContains(t, redactedStr, "personal information")
+
+		// Verify it contains the expected length
+		expectedLen := len(originalBody)
+		require.Contains(t, redactedStr, fmt.Sprintf("LENGTH=%d", expectedLen))
+
+		// Verify original is not modified
+		require.Equal(t, originalBody, bodyMutation.GetBody())
+	})
+
+	t.Run("handle nil body mutation", func(t *testing.T) {
+		redacted := redactBodyMutation(nil)
+		require.Nil(t, redacted)
+	})
+
+	t.Run("handle empty body", func(t *testing.T) {
+		bodyMutation := &extprocv3.BodyMutation{
+			Mutation: &extprocv3.BodyMutation_Body{
+				Body: []byte{},
+			},
+		}
+
+		redacted := redactBodyMutation(bodyMutation)
+		require.NotNil(t, redacted)
+		// Empty body should be returned as-is, not redacted
+		require.Equal(t, []byte{}, redacted.GetBody())
+	})
+
+	t.Run("handle ClearBody mutation", func(t *testing.T) {
+		bodyMutation := &extprocv3.BodyMutation{
+			Mutation: &extprocv3.BodyMutation_ClearBody{
+				ClearBody: true,
+			},
+		}
+
+		redacted := redactBodyMutation(bodyMutation)
+		require.NotNil(t, redacted)
+		// ClearBody should be returned as-is
+		require.Equal(t, bodyMutation, redacted)
+	})
+
+	t.Run("verify hash consistency", func(t *testing.T) {
+		originalBody := []byte("test content")
+		bodyMutation := &extprocv3.BodyMutation{
+			Mutation: &extprocv3.BodyMutation_Body{
+				Body: originalBody,
+			},
+		}
+
+		// Redact twice and verify same hash
+		redacted1 := redactBodyMutation(bodyMutation)
+		redacted2 := redactBodyMutation(bodyMutation)
+
+		require.Equal(t, redacted1.GetBody(), redacted2.GetBody())
 	})
 }
 

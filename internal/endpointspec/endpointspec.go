@@ -9,6 +9,7 @@ package endpointspec
 
 import (
 	"fmt"
+	"hash/crc32"
 
 	"github.com/tidwall/sjson"
 
@@ -60,6 +61,20 @@ type (
 		// * translator: The selected translator of type Translator[ReqT, RespT, RespChunkT].
 		// * err: An error if translator selection fails.
 		GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.Translator[ReqT, tracingapi.Span[RespT, RespChunkT]], error)
+		// RedactSensitiveInfoFromRequest creates a redacted copy of the request for safe debug logging.
+		// Sensitive content (messages, images, audio, tool parameters, etc.) is replaced with placeholders
+		// containing length and hash information to aid in debugging cache hits/misses and correlation.
+		//
+		// The returned request preserves the structure but removes actual sensitive data, making it
+		// safe to include in logs. It should NOT be used for actual AI provider requests.
+		//
+		// Parameters:
+		// * req: The original request to redact.
+		//
+		// Returns:
+		// * redactedReq: A copy with sensitive fields replaced by [REDACTED LENGTH=n HASH=xxxx] placeholders.
+		// * err: An error if redaction fails (implementation-specific).
+		RedactSensitiveInfoFromRequest(req *ReqT) (redactedReq *ReqT, err error)
 	}
 	// ChatCompletionsEndpointSpec implements EndpointSpec for /v1/chat/completions.
 	ChatCompletionsEndpointSpec struct{}
@@ -125,6 +140,59 @@ func (ChatCompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISc
 	}
 }
 
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (ChatCompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.ChatCompletionRequest) (redactedReq *openai.ChatCompletionRequest, err error) {
+	// Create a shallow copy of the request
+	redacted := *req
+
+	// Redact all message content (user prompts, assistant responses, system messages, etc.)
+	redacted.Messages = make([]openai.ChatCompletionMessageParamUnion, len(req.Messages))
+	for i, msg := range req.Messages {
+		redacted.Messages[i] = redactMessage(msg)
+	}
+
+	// Redact tool definitions (function descriptions and parameter schemas may contain sensitive information)
+	if len(req.Tools) > 0 {
+		redacted.Tools = make([]openai.Tool, len(req.Tools))
+		for i, tool := range req.Tools {
+			redacted.Tools[i] = tool
+			if tool.Function != nil {
+				redactedFunc := *tool.Function
+				redactedFunc.Description = redactString(redactedFunc.Description)
+				// Redact parameters by replacing with a placeholder map to preserve type safety
+				// while hiding sensitive schema information
+				if redactedFunc.Parameters != nil {
+					hash := computeContentHash(fmt.Sprintf("%v", redactedFunc.Parameters))
+					redactedFunc.Parameters = map[string]any{
+						"_redacted": fmt.Sprintf("REDACTED HASH=%s", hash),
+					}
+				}
+				redacted.Tools[i].Function = &redactedFunc
+			}
+		}
+	}
+
+	// Redact prediction content if present (cached prompts, prefill content)
+	if req.PredictionContent != nil {
+		redactedPrediction := *req.PredictionContent
+		redactedPrediction.Content = redactContentUnion(req.PredictionContent.Content)
+		redacted.PredictionContent = &redactedPrediction
+	}
+
+	// Redact response format schema (may contain sensitive structure information)
+	if req.ResponseFormat != nil {
+		redacted.ResponseFormat = redactResponseFormat(req.ResponseFormat)
+	}
+
+	// Redact guided JSON schema (contains raw JSON schema definition)
+	if len(req.GuidedJSON) > 0 {
+		hash := computeContentHash(string(req.GuidedJSON))
+		redacted.GuidedJSON = []byte(fmt.Sprintf(`{"_redacted":"REDACTED LENGTH=%d HASH=%s"}`, len(req.GuidedJSON), hash))
+	}
+
+	return &redacted, nil
+}
+
 // ParseBody implements [EndpointSpec.ParseBody].
 func (CompletionsEndpointSpec) ParseBody(
 	body []byte,
@@ -145,6 +213,12 @@ func (CompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (CompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.CompletionRequest) (redactedReq *openai.CompletionRequest, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
 }
 
 // ParseBody implements [EndpointSpec.ParseBody].
@@ -173,6 +247,12 @@ func (EmbeddingsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema,
 	}
 }
 
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (EmbeddingsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.EmbeddingRequest) (redactedReq *openai.EmbeddingRequest, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
+}
+
 func (ImageGenerationEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
@@ -192,6 +272,12 @@ func (ImageGenerationEndpointSpec) GetTranslator(schema filterapi.VersionedAPISc
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (ImageGenerationEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.ImageGenerationRequest) (redactedReq *openai.ImageGenerationRequest, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
 }
 
 // ParseBody implements [EndpointSpec.ParseBody].
@@ -214,6 +300,12 @@ func (ResponsesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, 
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (ResponsesEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.ResponseRequest) (redactedReq *openai.ResponseRequest, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
 }
 
 // ParseBody implements [EndpointSpec.ParseBody].
@@ -250,6 +342,12 @@ func (MessagesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, m
 	}
 }
 
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (MessagesEndpointSpec) RedactSensitiveInfoFromRequest(req *anthropic.MessagesRequest) (redactedReq *anthropic.MessagesRequest, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
+}
+
 // ParseBody implements [EndpointSpec.ParseBody].
 func (RerankEndpointSpec) ParseBody(
 	body []byte,
@@ -270,4 +368,243 @@ func (RerankEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, mod
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (RerankEndpointSpec) RedactSensitiveInfoFromRequest(req *cohereschema.RerankV2Request) (redactedReq *cohereschema.RerankV2Request, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
+}
+
+// computeContentHash computes a fast, non-cryptographic hash for content uniqueness tracking.
+// This hash is used for debugging purposes, particularly for:
+// - Tracking cache hits/misses by correlating identical content across requests
+// - Identifying duplicate or similar requests without exposing actual content
+// - Debugging issues by matching redacted logs to specific content patterns
+//
+// We use CRC32 instead of cryptographic hashes (SHA256) because:
+// - Much faster computation (important when redacting large messages with many parts)
+// - Sufficient collision resistance for debugging and uniqueness tracking
+// - Not used for security purposes, only for correlation and debugging
+//
+// Returns an 8-character hex string representation of the CRC32 hash.
+func computeContentHash(s string) string {
+	return fmt.Sprintf("%08x", crc32.ChecksumIEEE([]byte(s)))
+}
+
+// redactString replaces sensitive string content with a placeholder containing length and hash.
+// The hash allows correlating logs with specific content for debugging without exposing
+// the actual sensitive data.
+//
+// Format: [REDACTED LENGTH=n HASH=xxxxxxxx]
+//
+// Example: "secret API key 12345" becomes "[REDACTED LENGTH=19 HASH=a3f5e8c2]"
+func redactString(s string) string {
+	if s == "" {
+		return ""
+	}
+	hash := computeContentHash(s)
+	return fmt.Sprintf("[REDACTED LENGTH=%d HASH=%s]", len(s), hash)
+}
+
+// redactMessage redacts sensitive content from a chat message while preserving its type and structure.
+// This dispatches to role-specific redaction functions based on the message type.
+func redactMessage(msg openai.ChatCompletionMessageParamUnion) openai.ChatCompletionMessageParamUnion {
+	switch {
+	case msg.OfUser != nil:
+		return redactUserMessage(msg)
+	case msg.OfAssistant != nil:
+		return redactAssistantMessage(msg)
+	case msg.OfSystem != nil:
+		return redactSystemMessage(msg)
+	case msg.OfDeveloper != nil:
+		return redactDeveloperMessage(msg)
+	case msg.OfTool != nil:
+		return redactToolMessage(msg)
+	default:
+		return msg
+	}
+}
+
+// redactUserMessage redacts content from a user message, including text, images, audio, and files.
+func redactUserMessage(msg openai.ChatCompletionMessageParamUnion) openai.ChatCompletionMessageParamUnion {
+	redactedMsg := *msg.OfUser
+	redactedMsg.Content = redactStringOrUserRoleContentUnion(msg.OfUser.Content)
+	return openai.ChatCompletionMessageParamUnion{OfUser: &redactedMsg}
+}
+
+// redactAssistantMessage redacts content from an assistant message, including message text and tool call arguments.
+func redactAssistantMessage(msg openai.ChatCompletionMessageParamUnion) openai.ChatCompletionMessageParamUnion {
+	redactedMsg := *msg.OfAssistant
+	redactedMsg.Content = redactStringOrAssistantRoleContentUnion(msg.OfAssistant.Content)
+	// Redact tool call arguments (may contain sensitive data extracted from user messages)
+	if len(msg.OfAssistant.ToolCalls) > 0 {
+		redactedMsg.ToolCalls = make([]openai.ChatCompletionMessageToolCallParam, len(msg.OfAssistant.ToolCalls))
+		for i, tc := range msg.OfAssistant.ToolCalls {
+			redactedToolCall := tc
+			redactedToolCall.Function.Name = redactString(tc.Function.Name)
+			redactedToolCall.Function.Arguments = redactString(tc.Function.Arguments)
+			redactedMsg.ToolCalls[i] = redactedToolCall
+		}
+	}
+	return openai.ChatCompletionMessageParamUnion{OfAssistant: &redactedMsg}
+}
+
+// redactSystemMessage redacts content from a system message.
+func redactSystemMessage(msg openai.ChatCompletionMessageParamUnion) openai.ChatCompletionMessageParamUnion {
+	redactedMsg := *msg.OfSystem
+	redactedMsg.Content = redactContentUnion(msg.OfSystem.Content)
+	return openai.ChatCompletionMessageParamUnion{OfSystem: &redactedMsg}
+}
+
+// redactDeveloperMessage redacts content from a developer message.
+func redactDeveloperMessage(msg openai.ChatCompletionMessageParamUnion) openai.ChatCompletionMessageParamUnion {
+	redactedMsg := *msg.OfDeveloper
+	redactedMsg.Content = redactContentUnion(msg.OfDeveloper.Content)
+	return openai.ChatCompletionMessageParamUnion{OfDeveloper: &redactedMsg}
+}
+
+// redactToolMessage redacts content from a tool message.
+func redactToolMessage(msg openai.ChatCompletionMessageParamUnion) openai.ChatCompletionMessageParamUnion {
+	redactedMsg := *msg.OfTool
+	redactedMsg.Content = redactContentUnion(msg.OfTool.Content)
+	return openai.ChatCompletionMessageParamUnion{OfTool: &redactedMsg}
+}
+
+// redactContentUnion redacts content from a ContentUnion, handling both string and structured content parts.
+func redactContentUnion(content openai.ContentUnion) openai.ContentUnion {
+	switch v := content.Value.(type) {
+	case string:
+		return openai.ContentUnion{Value: redactString(v)}
+	case []openai.ChatCompletionContentPartTextParam:
+		redactedParts := make([]openai.ChatCompletionContentPartTextParam, len(v))
+		for i, part := range v {
+			redactedPart := part
+			redactedPart.Text = redactString(part.Text)
+			redactedParts[i] = redactedPart
+		}
+		return openai.ContentUnion{Value: redactedParts}
+	default:
+		return content
+	}
+}
+
+// redactStringOrUserRoleContentUnion redacts content from a StringOrUserRoleContentUnion.
+func redactStringOrUserRoleContentUnion(content openai.StringOrUserRoleContentUnion) openai.StringOrUserRoleContentUnion {
+	switch v := content.Value.(type) {
+	case string:
+		return openai.StringOrUserRoleContentUnion{Value: redactString(v)}
+	case []openai.ChatCompletionContentPartUserUnionParam:
+		redactedParts := make([]openai.ChatCompletionContentPartUserUnionParam, len(v))
+		for i, part := range v {
+			redactedParts[i] = redactUserContentPart(part)
+		}
+		return openai.StringOrUserRoleContentUnion{Value: redactedParts}
+	default:
+		return content
+	}
+}
+
+// redactStringOrAssistantRoleContentUnion redacts content from a StringOrAssistantRoleContentUnion.
+func redactStringOrAssistantRoleContentUnion(content openai.StringOrAssistantRoleContentUnion) openai.StringOrAssistantRoleContentUnion {
+	switch v := content.Value.(type) {
+	case string:
+		return openai.StringOrAssistantRoleContentUnion{Value: redactString(v)}
+	case []openai.ChatCompletionAssistantMessageParamContent:
+		redactedParts := make([]openai.ChatCompletionAssistantMessageParamContent, len(v))
+		for i, part := range v {
+			redactedPart := part
+			if part.Text != nil {
+				redactedText := redactString(*part.Text)
+				redactedPart.Text = &redactedText
+			}
+			if part.Refusal != nil {
+				redactedRefusal := redactString(*part.Refusal)
+				redactedPart.Refusal = &redactedRefusal
+			}
+			redactedParts[i] = redactedPart
+		}
+		return openai.StringOrAssistantRoleContentUnion{Value: redactedParts}
+	case openai.ChatCompletionAssistantMessageParamContent:
+		redactedPart := v
+		if v.Text != nil {
+			redactedText := redactString(*v.Text)
+			redactedPart.Text = &redactedText
+		}
+		if v.Refusal != nil {
+			redactedRefusal := redactString(*v.Refusal)
+			redactedPart.Refusal = &redactedRefusal
+		}
+		return openai.StringOrAssistantRoleContentUnion{Value: redactedPart}
+	default:
+		return content
+	}
+}
+
+// redactResponseFormat redacts schema information from response format while preserving the type.
+// JSON schema details may contain sensitive structure information about the application's data model.
+func redactResponseFormat(format *openai.ChatCompletionResponseFormatUnion) *openai.ChatCompletionResponseFormatUnion {
+	redactedFormat := *format
+
+	// Only JSON schema contains potentially sensitive schema information
+	if format.OfJSONSchema != nil {
+		redactedJSONSchema := *format.OfJSONSchema
+		redactedInnerSchema := redactedJSONSchema.JSONSchema
+
+		// Redact the schema name and description (may reveal internal structure)
+		redactedInnerSchema.Name = redactString(redactedInnerSchema.Name)
+		if redactedInnerSchema.Description != "" {
+			redactedInnerSchema.Description = redactString(redactedInnerSchema.Description)
+		}
+
+		// Redact the actual JSON schema (contains sensitive data model structure)
+		if len(redactedInnerSchema.Schema) > 0 {
+			hash := computeContentHash(string(redactedInnerSchema.Schema))
+			redactedInnerSchema.Schema = []byte(fmt.Sprintf(`{"_redacted":"REDACTED LENGTH=%d HASH=%s"}`, len(redactedInnerSchema.Schema), hash))
+		}
+
+		redactedJSONSchema.JSONSchema = redactedInnerSchema
+		redactedFormat.OfJSONSchema = &redactedJSONSchema
+	}
+
+	// OfText and OfJSONObject don't contain sensitive schema information, just type indicators
+	return &redactedFormat
+}
+
+// redactUserContentPart redacts sensitive content from a user message content part.
+// Handles multiple content types: text, images (URLs or base64), audio, and file attachments.
+func redactUserContentPart(part openai.ChatCompletionContentPartUserUnionParam) openai.ChatCompletionContentPartUserUnionParam {
+	redacted := part
+
+	// Redact plain text content
+	if part.OfText != nil {
+		redactedText := *part.OfText
+		redactedText.Text = redactString(part.OfText.Text)
+		redacted.OfText = &redactedText
+	}
+
+	// Redact image URLs (may be data URLs with embedded base64 image data)
+	if part.OfImageURL != nil {
+		redactedImage := *part.OfImageURL
+		redactedImage.ImageURL.URL = redactString(part.OfImageURL.ImageURL.URL)
+		redacted.OfImageURL = &redactedImage
+	}
+
+	// Redact audio data (typically base64-encoded audio)
+	if part.OfInputAudio != nil {
+		redactedAudio := *part.OfInputAudio
+		redactedAudio.InputAudio.Data = redactString(part.OfInputAudio.InputAudio.Data)
+		redacted.OfInputAudio = &redactedAudio
+	}
+
+	// Redact file attachments (may contain sensitive documents or data)
+	if part.OfFile != nil {
+		redactedFile := *part.OfFile
+		if part.OfFile.File.FileData != "" {
+			redactedFile.File.FileData = redactString(part.OfFile.File.FileData)
+		}
+		redacted.OfFile = &redactedFile
+	}
+
+	return redacted
 }
