@@ -79,16 +79,19 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(original []byte, 
 // ResponseError implements [OpenAIChatCompletionTranslator.ResponseError]
 // For OpenAI based backend we return the OpenAI error type as is.
 // If connection fails the error body is translated to OpenAI error type for events such as HTTP 503 or 504.
-func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseError(respHeaders map[string]string, body io.Reader) (
-	newHeaders []internalapi.Header, newBody []byte, err error,
-) {
-	statusCode := respHeaders[statusHeaderName]
-	if v, ok := respHeaders[contentTypeHeaderName]; ok && !strings.Contains(v, jsonContentType) {
+func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseError(respHeaders map[string]string, body io.Reader) ([]internalapi.Header, []byte, error) {
+	return convertErrorOpenAIToOpenAIError(respHeaders, body)
+}
+
+// convertErrorOpenAIToOpenAIError implements ResponseError conversion logic for OpenAI to OpenAI translation.
+func convertErrorOpenAIToOpenAIError(respHeaders map[string]string, body io.Reader) (newHeaders []internalapi.Header, newBody []byte, err error) {
+	if !strings.Contains(respHeaders[contentTypeHeaderName], jsonContentType) {
 		var openaiError openai.Error
 		buf, err := io.ReadAll(body)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to read error body: %w", err)
 		}
+		statusCode := respHeaders[statusHeaderName]
 		openaiError = openai.Error{
 			Type: "error",
 			Error: openai.ErrorType{
@@ -152,8 +155,6 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]str
 	return
 }
 
-var dataPrefix = []byte("data: ")
-
 // extractUsageFromBufferEvent extracts the token usage from the buffered event.
 // It scans complete lines and returns the latest usage found in this batch.
 func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent(span tracing.ChatCompletionSpan) (tokenUsage metrics.TokenUsage) {
@@ -164,11 +165,11 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent(s
 		}
 		line := o.buffered[:i]
 		o.buffered = o.buffered[i+1:]
-		if !bytes.HasPrefix(line, dataPrefix) {
+		if !bytes.HasPrefix(line, sseDataPrefix) {
 			continue
 		}
 		event := &openai.ChatCompletionResponseChunk{}
-		if err := json.Unmarshal(bytes.TrimPrefix(line, dataPrefix), event); err != nil {
+		if err := json.Unmarshal(bytes.TrimPrefix(line, sseDataPrefix), event); err != nil {
 			continue
 		}
 		if span != nil {

@@ -182,7 +182,7 @@ test-data-plane: build.extproc ## Run the integration tests for data plane witho
 	@echo "Ensure func-e is built and Envoy is installed"
 	@@$(GO_TOOL) func-e run --version >/dev/null 2>&1
 	@echo "Run Data Plane test"
-	@go test ./tests/data-plane/...  -bench=. -benchtime=1x $(GO_TEST_E2E_ARGS) # Run the benchmark test case once for additional coverage.
+	@go test ./tests/data-plane/... -bench=. -benchtime=1x $(GO_TEST_E2E_ARGS) # Run the benchmark test case once for additional coverage.
 
 # This runs the end-to-end tests for MCP without controller or k8s at all.
 # It is useful for the fast iteration of the data plane MCP code.
@@ -190,12 +190,12 @@ test-data-plane: build.extproc ## Run the integration tests for data plane witho
 # Since this is an integration test, we don't use -race, as it takes a very long
 # time to complete. For concurrency issues, use normal unit tests and race them.
 .PHONY: test-data-plane-mcp
-test-data-plane-mcp: build.extproc ## Run the integration tests for MCP data plane without controller or k8s at all.
+test-data-plane-mcp: build.extproc build.aigw ## Run the integration tests for MCP data plane without controller or k8s at all.
 	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
 	@echo "Ensure func-e is built and Envoy is installed"
 	@@$(GO_TOOL) func-e run --version >/dev/null 2>&1
 	@echo "Run Data Plane MCP test"
-	@go test ./tests/data-plane-mcp/... $(GO_TEST_E2E_ARGS)
+	@go test ./tests/data-plane-mcp/... -bench=. -benchtime=1x $(GO_TEST_E2E_ARGS) # Run the benchmark test case once to ensure the bench code is runnable.
 
 # This runs the end-to-end tests for the controller with EnvTest.
 #
@@ -367,6 +367,9 @@ helm-test: helm-package  ## Test the helm chart with a dummy version.
 	@$(GO_TOOL) helm show chart ${HELM_CHART_PATH} | grep -q "appVersion: ${TAG}"
 	@$(GO_TOOL) helm template ${HELM_CHART_PATH} | grep -q "docker.io/envoyproxy/ai-gateway-extproc:${TAG}"
 	@$(GO_TOOL) helm template ${HELM_CHART_PATH} | grep -q "docker.io/envoyproxy/ai-gateway-controller:${TAG}"
+	@$(GO_TOOL) helm template ${HELM_CHART_PATH} --set global.imagePullSecrets[0].name=testsecret | grep -q "imagePullSecrets:"
+	@$(GO_TOOL) helm template ${HELM_CHART_PATH} --set global.imagePullSecrets[0].name=testsecret | grep -q "name: testsecret"
+	@$(GO_TOOL) helm template ${HELM_CHART_PATH} --set global.imagePullSecrets[0].name=testsecret | grep -q -- "extProcImagePullSecrets=testsecret"
 
 # This pushes the helm chart to the OCI registry, requiring the access to the registry endpoint.
 .PHONY: helm-push

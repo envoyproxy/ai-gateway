@@ -31,12 +31,12 @@ jobs:
           - macos-latest
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+      - uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v5
         with:
           cache: false
           go-version-file: go.mod
-      - uses: actions/cache@v4
+      - uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
         with:
           path: |
             ~/.cache/go-build

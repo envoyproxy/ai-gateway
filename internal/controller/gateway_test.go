@@ -932,7 +932,7 @@ func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: bspName, Namespace: backend.Namespace},
 		Spec: aigv1a1.BackendSecurityPolicySpec{
 			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
-				{Name: gwapiv1.ObjectName(backend.Name)},
+				{Name: gwapiv1.ObjectName(backend.Name), Kind: aiServiceBackendKind, Group: aiServiceBackendGroup},
 			},
 		},
 	}
@@ -951,8 +951,8 @@ func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "bsp-bar-target-refs", Namespace: backend.Namespace},
 		Spec: aigv1a1.BackendSecurityPolicySpec{
 			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
-				{Name: gwapiv1.ObjectName(backend.Name)},
-				{Name: gwapiv1.ObjectName("non-existent-backend")},
+				{Name: gwapiv1.ObjectName(backend.Name), Kind: aiServiceBackendKind, Group: aiServiceBackendGroup},
+				{Name: gwapiv1.ObjectName("non-existent-backend"), Kind: aiServiceBackendKind, Group: aiServiceBackendGroup},
 			},
 		},
 	}

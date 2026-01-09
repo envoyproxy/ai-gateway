@@ -315,12 +315,11 @@ func buildResourceMetadataURL(metadata *aigv1a1.ProtectedResourceMetadata) strin
 
 // buildWWWAuthenticateHeaderValue constructs the WWW-Authenticate header value according to RFC 9728.
 // References:
-// * https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization#authorization-server-location
+// * https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization#protected-resource-metadata-discovery-requirements
 // * https://datatracker.ietf.org/doc/html/rfc9728#name-www-authenticate-response
 func buildWWWAuthenticateHeaderValue(metadata *aigv1a1.ProtectedResourceMetadata) string {
 	resourceMetadataURL := buildResourceMetadataURL(metadata)
-	// Build the basic Bearer challenge.
-	headerValue := `Bearer error="invalid_request", error_description="No access token was provided in this request"`
+	headerValue := `Bearer error="invalid_token", error_description="The access token is missing or invalid"`
 
 	// Add resource_metadata as per RFC 9728 Section 5.1.
 	headerValue = fmt.Sprintf(`%s, resource_metadata="%s"`, headerValue, resourceMetadataURL)
@@ -808,7 +807,8 @@ func (c *MCPRouteController) tryGetBackendsForJWKS(ctx context.Context, jwksURL 
 	hostname := u.Hostname()
 
 	var backendRefs []egv1a1.BackendRef
-	for _, btp := range backendTLSPolicies.Items {
+	for i := range backendTLSPolicies.Items {
+		btp := &backendTLSPolicies.Items[i]
 		if string(btp.Spec.Validation.Hostname) == hostname {
 			for _, ref := range btp.Spec.TargetRefs {
 				backendRefs = append(backendRefs, egv1a1.BackendRef{

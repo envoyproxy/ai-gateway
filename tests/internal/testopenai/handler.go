@@ -329,7 +329,7 @@ func splitSSEEvents(body string) []string {
 }
 
 // matchRequest checks if an HTTP request matches a cassette request.
-func (h *cassetteHandler) matchRequest(r *http.Request, i cassette.Request, body []byte, cassetteName string) bool {
+func (h *cassetteHandler) matchRequest(r *http.Request, i cassette.Request, body []byte, cassetteName string) bool { //nolint:gocritic
 	// Match method.
 	if r.Method != i.Method {
 		return false

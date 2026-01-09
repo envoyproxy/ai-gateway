@@ -48,10 +48,6 @@ func BenchmarkChatCompletions(b *testing.B) {
 	time.Sleep(5 * time.Second)
 
 	listenerPort := env.EnvoyListenerPort()
-	smallRequest := createChatCompletionRequest(100)     // ~6KB.
-	mediumRequest := createChatCompletionRequest(10000)  // ~600KB.
-	largeRequest := createChatCompletionRequest(100000)  // ~6MB.
-	xlargeRequest := createChatCompletionRequest(500000) // ~30MB.
 
 	for _, backend := range []string{
 		"openai",
@@ -65,10 +61,15 @@ func BenchmarkChatCompletions(b *testing.B) {
 				requestBody          string
 				fakeResponseBodyType string
 			}{
-				{name: "small", requestBody: smallRequest, fakeResponseBodyType: "small"},
-				{name: "medium", requestBody: mediumRequest, fakeResponseBodyType: "medium"},
-				{name: "large", requestBody: largeRequest, fakeResponseBodyType: "large"},
-				{name: "xlarge", requestBody: xlargeRequest, fakeResponseBodyType: "large"},
+				{name: "10-messages/10-byte-per-message/small-response", requestBody: createChatCompletionRequest(10, 10), fakeResponseBodyType: "small"},
+				{name: "10-messages/1000-bytes-per-message/mediaum-response", requestBody: createChatCompletionRequest(10, 1000), fakeResponseBodyType: "medium"},
+				{name: "10-messages/100000-bytes-per-message/large-response", requestBody: createChatCompletionRequest(10, 100000), fakeResponseBodyType: "large"},
+				{name: "10-messages/1000000-bytes-per-message/large-response", requestBody: createChatCompletionRequest(10, 1000000), fakeResponseBodyType: "large"},
+				{name: "1000-messages/1-byte-per-message/small-response", requestBody: createChatCompletionRequest(1000, 1), fakeResponseBodyType: "small"},
+				{name: "1000-messages/100-bytes-per-message/mediaum-response", requestBody: createChatCompletionRequest(1000, 100), fakeResponseBodyType: "medium"},
+				{name: "1000-messages/10000-bytes-per-message/large-response", requestBody: createChatCompletionRequest(1000, 10000), fakeResponseBodyType: "large"},
+				{name: "100000-messages/1-byte-per-message/large-response", requestBody: createChatCompletionRequest(100000, 1), fakeResponseBodyType: "large"},
+				{name: "500000-messages/1-byte-per-message/large-response", requestBody: createChatCompletionRequest(500000, 1), fakeResponseBodyType: "large"},
 			}
 
 			for _, tc := range testCases {
@@ -106,16 +107,29 @@ func BenchmarkChatCompletions(b *testing.B) {
 	}
 }
 
-func createChatCompletionRequest(numMessages int) string {
+// createChatCompletionRequest creates a chat completion request body with the specified
+// number of messages and bytes per message.
+//
+// Each "message" will contain a string of 'A's of length numBytes and each message will be
+// around numBytes + 55 bytes long in the final JSON.
+//
+// So, for example, createChatCompletionRequest(3, 5) will create a request body
+// with 3 messages, each containing 5 'A's, resulting in a request body of approximately
+// (5 + 55) * 3 = 180 bytes. The final template is 60 bytes long. So in total around 240 bytes.
+//
+// Total size = numMessages * (numBytes + 55) + 60
+func createChatCompletionRequest(numMessages, numBytes int) string {
 	var messages []string
 	for i := 0; i < numMessages; i++ {
-		messages = append(messages, fmt.Sprintf(`{"role": "user", "content": "This is message number %d."}`, i+1))
+		content := strings.Repeat("A", numBytes)
+		messages = append(messages, fmt.Sprintf(`{"role": "user", "content": "This is message number %s."}`, content))
 	}
-	largeRequestBody := fmt.Sprintf(`{
-		"model": "gpt-4",
-		"messages": [%s],
-		"max_tokens": 100
-	}`, strings.Join(messages, ","))
+	const template = `{
+	"model": "gpt-4",
+	"messages": [%s],
+	"max_completion_tokens": 100
+}`
+	largeRequestBody := fmt.Sprintf(template, strings.Join(messages, ","))
 	return largeRequestBody
 }
 

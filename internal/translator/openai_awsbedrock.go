@@ -712,7 +712,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 			if !ok {
 				continue
 			}
-			err = serializeOpenAIChatCompletionChunk(*oaiEvent, &newBody)
+			err = serializeOpenAIChatCompletionChunk(oaiEvent, &newBody)
 			if err != nil {
 				panic(fmt.Errorf("failed to marshal event: %w", err))
 			}
@@ -722,7 +722,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 		}
 
 		if endOfStream {
-			newBody = append(newBody, []byte("data: [DONE]\n")...)
+			newBody = append(newBody, sseDoneFullLine...)
 		}
 		return
 	}

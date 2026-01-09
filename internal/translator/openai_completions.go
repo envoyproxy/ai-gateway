@@ -141,12 +141,12 @@ func (o *openAIToOpenAITranslatorV1Completion) extractUsageFromBufferEvent(span 
 		}
 		line := o.buffered[:i]
 		o.buffered = o.buffered[i+1:]
-		if !bytes.HasPrefix(line, dataPrefix) {
+		if !bytes.HasPrefix(line, sseDataPrefix) {
 			continue
 		}
-		data := bytes.TrimPrefix(line, dataPrefix)
+		data := bytes.TrimPrefix(line, sseDataPrefix)
 		// Skip the [DONE] marker
-		if bytes.Equal(data, []byte("[DONE]")) {
+		if bytes.Equal(data, sseDoneMessage) {
 			continue
 		}
 		// The OpenAPI spec says "Note: both the streamed and non-streamed response objects

@@ -294,21 +294,21 @@ func Test_parseAndValidateFlags_watchNamespaces(t *testing.T) {
 
 func TestSetupCache(t *testing.T) {
 	t.Run("default", func(t *testing.T) {
-		c := setupCache(flags{})
+		c := setupCache(&flags{})
 
 		require.NotNil(t, c.DefaultTransform)
 		require.Nil(t, c.DefaultNamespaces)
 	})
 
 	t.Run("empty watch namespaces", func(t *testing.T) {
-		c := setupCache(flags{watchNamespaces: []string{}})
+		c := setupCache(&flags{watchNamespaces: []string{}})
 
 		require.NotNil(t, c.DefaultTransform)
 		require.Nil(t, c.DefaultNamespaces)
 	})
 
 	t.Run("watch namespaces", func(t *testing.T) {
-		c := setupCache(flags{watchNamespaces: []string{"default", "envoy-ai-gateway-system"}})
+		c := setupCache(&flags{watchNamespaces: []string{"default", "envoy-ai-gateway-system"}})
 
 		require.NotNil(t, c.DefaultTransform)
 		require.Equal(t, map[string]cache.Config{

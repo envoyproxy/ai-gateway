@@ -191,7 +191,7 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if string(expectedBody) != string(requestBody) {
+		if !bytes.Equal(expectedBody, requestBody) {
 			s.logAndSendError(w, http.StatusBadRequest, "unexpected request body: got %s, expected %s", string(requestBody), string(expectedBody))
 			return
 		}
@@ -369,7 +369,11 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 		if isGzip {
 			w.Header().Set("content-encoding", "gzip")
 		}
-		w.Header().Set("content-type", "application/json")
+		// The content-type header might have been already set via ResponseHeadersKey.
+		// If not, set it to application/json by default.
+		if w.Header().Get("content-type") == "" {
+			w.Header().Set("content-type", "application/json")
+		}
 		var responseBody []byte
 		if expResponseBody := r.Header.Get(ResponseBodyHeaderKey); expResponseBody == "" {
 			// If the expected response body is not set, get the fake response if the path is known.
@@ -557,29 +561,29 @@ func newChatCompletionsLargeFakeResponse(count int) []byte {
 	return []byte(fmt.Sprintf(template, largeContent.String()))
 }
 
-func newAWSBedrockBenchmarkResponse(count int) []byte {
+func newAWSBedrockBenchmarkResponse(numBytes int) []byte {
 	const template = `{"output": {"message": {"content": [%s], "role": "assistant"}}, "stopReason": "end_turn", "usage": {"inputTokens": 1, "outputTokens": 2, "totalTokens": 3}}`
 	var contentParts []string
-	for i := 0; i < count; i++ {
-		contentParts = append(contentParts, `{"text": "This is part `+strconv.Itoa(i+1)+` of a large benchmark response from AWS Bedrock."}`)
+	for i := 0; i < 10; i++ {
+		contentParts = append(contentParts, fmt.Sprintf(`{"text": "%s"}`, strings.Repeat("A", numBytes)))
 	}
 	return []byte(fmt.Sprintf(template, strings.Join(contentParts, ", ")))
 }
 
-func newGCPVertexAIBenchmarkResponse(count int) []byte {
+func newGCPVertexAIBenchmarkResponse(numBytes int) []byte {
 	const template = `{"candidates": [{"content": {"parts": [%s], "role": "model"}, "finishReason": "STOP"}], "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 2, "totalTokenCount": 3}}`
 	var contentParts []string
-	for i := 0; i < count; i++ {
-		contentParts = append(contentParts, `{"type": "text", "text": "This is part `+strconv.Itoa(i+1)+` of a large benchmark response from GCP Vertex AI."}`)
+	for i := 0; i < 10; i++ {
+		contentParts = append(contentParts, fmt.Sprintf(`{"type": "text", "text": "%s"}`, strings.Repeat("B", numBytes)))
 	}
 	return []byte(fmt.Sprintf(template, strings.Join(contentParts, ", ")))
 }
 
-func newGCPAnthropicAIBenchmarkResponse(count int) []byte {
+func newGCPAnthropicAIBenchmarkResponse(numBytes int) []byte {
 	const template = `{"id": "msg_benchmark", "type": "message", "role": "assistant", "stop_reason": "end_turn", "content": [%s], "usage": {"input_tokens": 1, "output_tokens": 2}}`
 	var contentParts []string
-	for i := 0; i < count; i++ {
-		contentParts = append(contentParts, `{"type": "text", "text": "This is part `+strconv.Itoa(i+1)+` of a large benchmark response from GCP Anthropic AI."}`)
+	for i := 0; i < 10; i++ {
+		contentParts = append(contentParts, fmt.Sprintf(`{"type": "text", "text": "%s"}`, strings.Repeat("C", numBytes)))
 	}
 	return []byte(fmt.Sprintf(template, strings.Join(contentParts, ", ")))
 }

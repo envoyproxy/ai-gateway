@@ -89,12 +89,14 @@ func TestPublicMCPServers(t *testing.T) {
 		}
 
 		if githubConfigured {
-			exps = append(exps, "github__issue_read")
-			exps = append(exps, "github__pull_request_read")
-			exps = append(exps, "github__list_issues")
-			exps = append(exps, "github__list_pull_requests")
-			exps = append(exps, "github__search_issues")
-			exps = append(exps, "github__search_pull_requests")
+			exps = append(exps,
+				"github__issue_read",
+				"github__pull_request_read",
+				"github__list_issues",
+				"github__list_pull_requests",
+				"github__search_issues",
+				"github__search_pull_requests",
+			)
 		}
 
 		// Do not use ElementsMatch so we can ensure there are no unexpected tools.

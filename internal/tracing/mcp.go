@@ -128,9 +128,11 @@ func getMCPParamsAsAttributes(p mcp.Params) []attribute.KeyValue {
 	switch params := p.(type) {
 	case *mcp.InitializeParams:
 		if params.ClientInfo != nil {
-			attrs = append(attrs, attribute.String("mcp.client.name", params.ClientInfo.Name))
-			attrs = append(attrs, attribute.String("mcp.client.title", params.ClientInfo.Title))
-			attrs = append(attrs, attribute.String("mcp.client.version", params.ClientInfo.Version))
+			attrs = append(attrs,
+				attribute.String("mcp.client.name", params.ClientInfo.Name),
+				attribute.String("mcp.client.title", params.ClientInfo.Title),
+				attribute.String("mcp.client.version", params.ClientInfo.Version),
+			)
 		}
 	case *mcp.CallToolParams:
 		attrs = append(attrs, attribute.String("mcp.tool.name", params.Name))

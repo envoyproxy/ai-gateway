@@ -60,7 +60,7 @@ func (p *anthropicStreamParser) writeChunk(eventBlock []byte, buf *[]byte) error
 		return err
 	}
 	if chunk != nil {
-		err := serializeOpenAIChatCompletionChunk(*chunk, buf)
+		err := serializeOpenAIChatCompletionChunk(chunk, buf)
 		if err != nil {
 			return err
 		}
@@ -111,7 +111,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 		totalTokens, _ := p.tokenUsage.TotalTokens()
 		cachedTokens, _ := p.tokenUsage.CachedInputTokens()
 		cacheCreationTokens, _ := p.tokenUsage.CacheCreationInputTokens()
-		finalChunk := openai.ChatCompletionResponseChunk{
+		finalChunk := &openai.ChatCompletionResponseChunk{
 			ID:      p.activeMessageID,
 			Created: p.created,
 			Object:  "chat.completion.chunk",

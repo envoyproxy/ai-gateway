@@ -89,7 +89,7 @@ func parseWatchNamespaces(s string) []string {
 
 // parseAndValidateFlags parses the command-line arguments provided in args,
 // validates them, and returns the parsed configuration.
-func parseAndValidateFlags(args []string) (flags, error) {
+func parseAndValidateFlags(args []string) (*flags, error) {
 	fs := flag.NewFlagSet("AI Gateway Controller", flag.ContinueOnError)
 
 	extProcLogLevelPtr := fs.String(
@@ -203,31 +203,31 @@ func parseAndValidateFlags(args []string) (flags, error) {
 
 	if err := fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
-		return flags{}, err
+		return nil, err
 	}
 
 	var slogLevel slog.Level
 	if err := slogLevel.UnmarshalText([]byte(*extProcLogLevelPtr)); err != nil {
 		err = fmt.Errorf("invalid external processor log level: %q", *extProcLogLevelPtr)
-		return flags{}, err
+		return nil, err
 	}
 
 	var zapLogLevel zapcore.Level
 	if err := zapLogLevel.UnmarshalText([]byte(*logLevelPtr)); err != nil {
 		err = fmt.Errorf("invalid log level: %q", *logLevelPtr)
-		return flags{}, err
+		return nil, err
 	}
 
 	extProcPullPolicy, err := parsePullPolicy(*extProcImagePullPolicyPtr)
 	if err != nil {
-		return flags{}, err
+		return nil, err
 	}
 
 	// Validate metrics header attributes if provided.
 	if *metricsRequestHeaderAttributes != "" {
 		_, err := internalapi.ParseRequestHeaderAttributeMapping(*metricsRequestHeaderAttributes)
 		if err != nil {
-			return flags{}, fmt.Errorf("invalid metrics header attributes: %w", err)
+			return nil, fmt.Errorf("invalid metrics header attributes: %w", err)
 		}
 	}
 
@@ -235,14 +235,14 @@ func parseAndValidateFlags(args []string) (flags, error) {
 	if *spanRequestHeaderAttributes != "" {
 		_, err := internalapi.ParseRequestHeaderAttributeMapping(*spanRequestHeaderAttributes)
 		if err != nil {
-			return flags{}, fmt.Errorf("invalid tracing header attributes: %w", err)
+			return nil, fmt.Errorf("invalid tracing header attributes: %w", err)
 		}
 	}
 
 	// Validate endpoint prefixes if provided.
 	if *endpointPrefixes != "" {
 		if _, err := internalapi.ParseEndpointPrefixes(*endpointPrefixes); err != nil {
-			return flags{}, fmt.Errorf("invalid endpoint prefixes: %w", err)
+			return nil, fmt.Errorf("invalid endpoint prefixes: %w", err)
 		}
 	}
 
@@ -250,7 +250,7 @@ func parseAndValidateFlags(args []string) (flags, error) {
 	if *extProcExtraEnvVars != "" {
 		_, err := controller.ParseExtraEnvVars(*extProcExtraEnvVars)
 		if err != nil {
-			return flags{}, fmt.Errorf("invalid extProc extra env vars: %w", err)
+			return nil, fmt.Errorf("invalid extProc extra env vars: %w", err)
 		}
 	}
 
@@ -258,18 +258,18 @@ func parseAndValidateFlags(args []string) (flags, error) {
 	if *extProcImagePullSecrets != "" {
 		_, err := controller.ParseImagePullSecrets(*extProcImagePullSecrets)
 		if err != nil {
-			return flags{}, fmt.Errorf("invalid extProc image pull secrets: %w", err)
+			return nil, fmt.Errorf("invalid extProc image pull secrets: %w", err)
 		}
 	}
 
 	if *mcpSessionEncryptionIterations <= 0 {
-		return flags{}, fmt.Errorf("mcp session encryption iterations must be positive: %d", *mcpSessionEncryptionIterations)
+		return nil, fmt.Errorf("mcp session encryption iterations must be positive: %d", *mcpSessionEncryptionIterations)
 	}
 	if *mcpFallbackSessionEncryptionSeed != "" && *mcpFallbackSessionEncryptionIterations <= 0 {
-		return flags{}, fmt.Errorf("mcp fallback session encryption iterations must be positive: %d", *mcpFallbackSessionEncryptionIterations)
+		return nil, fmt.Errorf("mcp fallback session encryption iterations must be positive: %d", *mcpFallbackSessionEncryptionIterations)
 	}
 
-	return flags{
+	return &flags{
 		extProcLogLevel:                        *extProcLogLevelPtr,
 		extProcImage:                           *extProcImagePtr,
 		extProcImagePullPolicy:                 extProcPullPolicy,
@@ -365,7 +365,7 @@ func main() {
 	}()
 
 	// Start the controller.
-	if err := controller.StartControllers(ctx, mgr, k8sConfig, ctrl.Log.WithName("controller"), controller.Options{
+	if err := controller.StartControllers(ctx, mgr, k8sConfig, ctrl.Log.WithName("controller"), &controller.Options{
 		ExtProcImage:                           parsedFlags.extProcImage,
 		ExtProcImagePullPolicy:                 parsedFlags.extProcImagePullPolicy,
 		ExtProcLogLevel:                        parsedFlags.extProcLogLevel,
@@ -419,7 +419,7 @@ func maybePatchAdmissionWebhook(ctx context.Context, cli client.Client, bundlePa
 }
 
 // setupCache sets up the cache options based on the provided flags.
-func setupCache(f flags) cache.Options {
+func setupCache(f *flags) cache.Options {
 	var namespaceCacheConfig map[string]cache.Config
 	if len(f.watchNamespaces) > 0 {
 		namespaceCacheConfig = make(map[string]cache.Config, len(f.watchNamespaces))

@@ -1077,11 +1077,27 @@ const (
 	ToolTypeFunction            ToolType = "function"
 	ToolTypeImageGeneration     ToolType = "image_generation"
 	ToolTypeEnterpriseWebSearch ToolType = "enterprise_search"
+	ToolTypeGoogleSearch        ToolType = "google_search"
 )
 
+// GCPGoogleSearchConfig contains GCP-specific configuration for Google Search grounding.
+// https://pkg.go.dev/google.golang.org/genai#GoogleSearch
+type GCPGoogleSearchConfig struct {
+	ExcludeDomains     []string            `json:"exclude_domains,omitempty"`     //nolint:tagliatelle
+	BlockingConfidence string              `json:"blocking_confidence,omitempty"` //nolint:tagliatelle
+	TimeRangeFilter    *GCPTimeRangeFilter `json:"time_range_filter,omitempty"`   //nolint:tagliatelle
+}
+
+// GCPTimeRangeFilter filters search results to a specific time range.
+type GCPTimeRangeFilter struct {
+	StartTime string `json:"start_time,omitempty"` //nolint:tagliatelle
+	EndTime   string `json:"end_time,omitempty"`   //nolint:tagliatelle
+}
+
 type Tool struct {
-	Type     ToolType            `json:"type"`
-	Function *FunctionDefinition `json:"function,omitempty"`
+	Type         ToolType               `json:"type"`
+	Function     *FunctionDefinition    `json:"function,omitempty"`
+	GoogleSearch *GCPGoogleSearchConfig `json:"google_search,omitempty"` //nolint:tagliatelle
 }
 
 // ToolChoiceType represents the type of tool choice.

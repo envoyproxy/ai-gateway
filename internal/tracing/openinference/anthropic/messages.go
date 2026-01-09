@@ -113,8 +113,10 @@ func buildRequestAttributes(req *anthropic.MessagesRequest, body string, config 
 	if config.HideInputs {
 		attrs = append(attrs, attribute.String(openinference.InputValue, openinference.RedactedValue))
 	} else {
-		attrs = append(attrs, attribute.String(openinference.InputValue, body))
-		attrs = append(attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
+		attrs = append(attrs,
+			attribute.String(openinference.InputValue, body),
+			attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+		)
 	}
 
 	if !config.HideLLMInvocationParameters {

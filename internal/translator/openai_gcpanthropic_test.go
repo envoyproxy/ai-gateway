@@ -387,7 +387,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 			expectedOpenAIResponse: openai.ChatCompletionResponse{
 				ID:      "msg_01XYZ123",
 				Model:   "claude-3-5-sonnet-20241022",
-				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)),
+				Created: openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)),
 				Object:  "chat.completion",
 				Usage: openai.Usage{
 					PromptTokens:     15,
@@ -423,7 +423,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 			expectedOpenAIResponse: openai.ChatCompletionResponse{
 				ID:      "msg_01XYZ123",
 				Model:   "claude-3-5-sonnet-20241022",
-				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)),
+				Created: openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)),
 				Object:  "chat.completion",
 				Usage: openai.Usage{
 					PromptTokens: 35, CompletionTokens: 15, TotalTokens: 50,
@@ -467,7 +467,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 			expectedOpenAIResponse: openai.ChatCompletionResponse{
 				ID:      "msg_01XYZ123",
 				Model:   "claude-3-5-sonnet-20241022",
-				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)),
+				Created: openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)),
 				Object:  "chat.completion",
 				Usage: openai.Usage{
 					PromptTokens:     10,
@@ -500,7 +500,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 			expectedOpenAIResponse: openai.ChatCompletionResponse{
 				ID:      "msg_01XYZ456",
 				Model:   "claude-3-5-sonnet-20241022",
-				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)),
+				Created: openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)),
 				Object:  "chat.completion",
 				Usage: openai.Usage{
 					PromptTokens:     18,
@@ -545,7 +545,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 			expectedOpenAIResponse: openai.ChatCompletionResponse{
 				ID:      "msg_01XYZ789",
 				Model:   "claude-3-5-sonnet-20241022",
-				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)),
+				Created: openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)),
 				Object:  "chat.completion",
 				Usage: openai.Usage{
 					PromptTokens:     13,
