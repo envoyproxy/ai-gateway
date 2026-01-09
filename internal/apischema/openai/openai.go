@@ -987,7 +987,8 @@ type ChatCompletionRequest struct {
 	// When the service_tier parameter is set, the response body will include the service_tier value based on the processing mode actually used to serve the request.
 	// This response value may be different from the value set in the parameter.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-service_tier
-	// Any of "auto", "default", "flex", "scale", "priority", "reserved".
+	// Any of "auto", "default", "flex", "scale", "priority" for OpenAI.
+	// Any of "reserved", "default", "flex", "priority" for AWS Bedrock.
 	ServiceTier string `json:"service_tier,omitzero"`
 
 	// Constrains the verbosity of the model's response. Lower values will result in
