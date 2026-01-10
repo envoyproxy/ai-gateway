@@ -75,9 +75,6 @@ func TestPublicMCPServers(t *testing.T) {
 		t.Logf("tools/list response: %+v", resp)
 		var names []string
 		for _, tool := range resp.Tools {
-			schemastring, err := json.MarshalIndent(tool.InputSchema, "", "  ")
-			require.NoError(t, err)
-			t.Logf("[tool=%s]%s\n\n%s\n", tool.Name, schemastring, tool.Description)
 			names = append(names, tool.Name)
 		}
 
@@ -165,9 +162,6 @@ func TestPublicMCPServers(t *testing.T) {
 					Arguments: tc.params,
 				})
 				require.NoError(t, err)
-				encoded, err := json.MarshalIndent(resp, "", "  ")
-				require.NoError(t, err)
-				t.Logf("[[response]]\n%s", string(encoded))
 				require.False(t, resp.IsError)
 			})
 		}

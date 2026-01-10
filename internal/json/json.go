@@ -20,8 +20,6 @@ var (
 	NewEncoder = sonicjson.ConfigDefault.NewEncoder
 	// NewDecoder is equivalent to encoding/json.NewDecoder.
 	NewDecoder = sonicjson.ConfigDefault.NewDecoder
-	// MarshalIndent is equivalent to encoding/json.MarshalIndent.
-	MarshalIndent = sonicjson.ConfigDefault.MarshalIndent
 	// MarshalForDeterministicTesting marshals a value to JSON in a deterministic way for testing.
 	// The normal sonic configuration does not guarantee deterministic output in terms of field order.
 	// It panics if called outside of tests.
