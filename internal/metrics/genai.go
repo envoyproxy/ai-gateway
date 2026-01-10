@@ -43,8 +43,8 @@ const (
 	genaiProviderAnthropic    = "anthropic"
 	genaiProviderCohere       = "cohere"
 
-	genaiTokenTypeInput = "input"
-	genaiTokenTypeOutput                         = "output"
+	genaiTokenTypeInput  = "input"
+	genaiTokenTypeOutput = "output"
 	// "cached_input" is not yet part of the spec but has been proposed:
 	// https://github.com/open-telemetry/semantic-conventions/issues/1959
 	//
