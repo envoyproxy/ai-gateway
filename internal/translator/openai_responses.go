@@ -19,7 +19,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // NewResponsesOpenAIToOpenAITranslator implements [OpenAIResponsesTranslator] for OpenAI to OpenAI translation for responses.
@@ -86,7 +86,7 @@ func (o *openAIToOpenAITranslatorV1Responses) ResponseHeaders(map[string]string)
 // ResponseBody implements [OpenAIResponsesTranslator.ResponseBody].
 // OpenAI responses support model virtualization through automatic routing and resolution,
 // so we return the actual model from the response body which may differ from the requested model.
-func (o *openAIToOpenAITranslatorV1Responses) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracing.ResponsesSpan) (
+func (o *openAIToOpenAITranslatorV1Responses) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracingapi.ResponsesSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	if o.stream {
@@ -99,7 +99,7 @@ func (o *openAIToOpenAITranslatorV1Responses) ResponseBody(_ map[string]string, 
 }
 
 // handleStreamingResponse handles streaming responses from the Responses API.
-func (o *openAIToOpenAITranslatorV1Responses) handleStreamingResponse(body io.Reader, span tracing.ResponsesSpan) (
+func (o *openAIToOpenAITranslatorV1Responses) handleStreamingResponse(body io.Reader, span tracingapi.ResponsesSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	// Buffer the incoming SSE data
@@ -114,7 +114,7 @@ func (o *openAIToOpenAITranslatorV1Responses) handleStreamingResponse(body io.Re
 }
 
 // handleNonStreamingResponse handles non-streaming responses from the Responses API.
-func (o *openAIToOpenAITranslatorV1Responses) handleNonStreamingResponse(body io.Reader, span tracing.ResponsesSpan) (
+func (o *openAIToOpenAITranslatorV1Responses) handleNonStreamingResponse(body io.Reader, span tracingapi.ResponsesSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	var resp openai.Response
@@ -143,7 +143,7 @@ func (o *openAIToOpenAITranslatorV1Responses) handleNonStreamingResponse(body io
 
 // extractUsageFromBufferEvent extracts the token usage and model from the buffered SSE events.
 // It scans complete lines and returns the latest usage found in response.completed event.
-func (o *openAIToOpenAITranslatorV1Responses) extractUsageFromBufferEvent(span tracing.ResponsesSpan, chunks []byte) (tokenUsage metrics.TokenUsage) {
+func (o *openAIToOpenAITranslatorV1Responses) extractUsageFromBufferEvent(span tracingapi.ResponsesSpan, chunks []byte) (tokenUsage metrics.TokenUsage) {
 	// Parse SSE events from the buffered data
 	// SSE format: "data: {json}\n\n"
 	for event := range bytes.SplitSeq(chunks, []byte("\n\n")) {

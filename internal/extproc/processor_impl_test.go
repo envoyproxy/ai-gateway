@@ -28,7 +28,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 func TestNewFactory(t *testing.T) {

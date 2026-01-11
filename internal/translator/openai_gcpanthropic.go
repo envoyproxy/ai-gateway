@@ -26,7 +26,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // currently a requirement for GCP Vertex / Anthropic API https://docs.anthropic.com/en/api/claude-on-vertex-ai
@@ -803,7 +803,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseHeaders(_ map[s
 // GCP Anthropic uses deterministic model mapping without virtualization, where the requested model
 // is exactly what gets executed. The response does not contain a model field, so we return
 // the request model that was originally sent.
-func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
+func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracingapi.ChatCompletionSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	// If a stream parser was initialized, this is a streaming request.

@@ -12,8 +12,8 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/json"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // CompletionRecorder implements recorders for OpenInference completions spans.
@@ -21,22 +21,22 @@ type CompletionRecorder struct {
 	traceConfig *openinference.TraceConfig
 }
 
-// NewCompletionRecorderFromEnv creates an api.CompletionRecorder
+// NewCompletionRecorderFromEnv creates an tracingapi.CompletionRecorder
 // from environment variables using the OpenInference configuration specification.
 //
 // See: https://github.com/Arize-ai/openinference/blob/main/spec/semantic_conventions.md#completions-api-legacy-text-completion
-func NewCompletionRecorderFromEnv() tracing.CompletionRecorder {
+func NewCompletionRecorderFromEnv() tracingapi.CompletionRecorder {
 	return NewCompletionRecorder(nil)
 }
 
-// NewCompletionRecorder creates a tracing.CompletionRecorder with the
+// NewCompletionRecorder creates a tracingapi.CompletionRecorder with the
 // given config using the OpenInference configuration specification.
 //
 // Parameters:
 //   - config: configuration for redaction. Defaults to NewTraceConfigFromEnv().
 //
 // See: https://github.com/Arize-ai/openinference/blob/main/spec/semantic_conventions.md#completions-api-legacy-text-completion
-func NewCompletionRecorder(config *openinference.TraceConfig) tracing.CompletionRecorder {
+func NewCompletionRecorder(config *openinference.TraceConfig) tracingapi.CompletionRecorder {
 	if config == nil {
 		config = openinference.NewTraceConfigFromEnv()
 	}
@@ -47,22 +47,22 @@ func NewCompletionRecorder(config *openinference.TraceConfig) tracing.Completion
 // OpenInference.
 var startOptsCompletion = []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKindInternal)}
 
-// StartParams implements the same method as defined in tracing.CompletionRecorder.
+// StartParams implements the same method as defined in tracingapi.CompletionRecorder.
 func (r *CompletionRecorder) StartParams(*openai.CompletionRequest, []byte) (spanName string, opts []trace.SpanStartOption) {
 	return "Completion", startOptsCompletion
 }
 
-// RecordRequest implements the same method as defined in tracing.CompletionRecorder.
+// RecordRequest implements the same method as defined in tracingapi.CompletionRecorder.
 func (r *CompletionRecorder) RecordRequest(span trace.Span, req *openai.CompletionRequest, body []byte) {
 	span.SetAttributes(buildCompletionRequestAttributes(req, body, r.traceConfig)...)
 }
 
-// RecordResponseOnError implements the same method as defined in tracing.CompletionRecorder.
+// RecordResponseOnError implements the same method as defined in tracingapi.CompletionRecorder.
 func (r *CompletionRecorder) RecordResponseOnError(span trace.Span, statusCode int, body []byte) {
 	openinference.RecordResponseError(span, statusCode, string(body))
 }
 
-// RecordResponseChunks implements the same method as defined in tracing.CompletionRecorder.
+// RecordResponseChunks implements the same method as defined in tracingapi.CompletionRecorder.
 // For completions, streaming chunks are full CompletionResponse objects (not deltas like chat).
 // This method aggregates chunks into a single response for recording.
 func (r *CompletionRecorder) RecordResponseChunks(span trace.Span, chunks []*openai.CompletionResponse) {
@@ -128,7 +128,7 @@ func (r *CompletionRecorder) RecordResponseChunks(span trace.Span, chunks []*ope
 	r.RecordResponse(span, &aggregated)
 }
 
-// RecordResponse implements the same method as defined in tracing.CompletionRecorder.
+// RecordResponse implements the same method as defined in tracingapi.CompletionRecorder.
 func (r *CompletionRecorder) RecordResponse(span trace.Span, resp *openai.CompletionResponse) {
 	// Add response attributes.
 	attrs := buildCompletionResponseAttributes(resp, r.traceConfig)

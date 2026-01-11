@@ -21,7 +21,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 

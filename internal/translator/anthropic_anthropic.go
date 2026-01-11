@@ -20,7 +20,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // NewAnthropicToAnthropicTranslator creates a passthrough translator for Anthropic.
@@ -77,7 +77,7 @@ func (a *anthropicToAnthropicTranslator) ResponseHeaders(_ map[string]string) (
 }
 
 // ResponseBody implements [AnthropicMessagesTranslator.ResponseBody].
-func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracing.MessageSpan) (
+func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracingapi.MessageSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	if a.stream {
@@ -115,7 +115,7 @@ func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body 
 
 // extractUsageFromBufferEvent extracts the token usage from the buffered event.
 // It scans complete lines and accumulates usage from all events in this batch.
-func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent(s tracing.MessageSpan) {
+func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent(s tracingapi.MessageSpan) {
 	for {
 		i := bytes.IndexByte(a.buffered, '\n')
 		if i == -1 {

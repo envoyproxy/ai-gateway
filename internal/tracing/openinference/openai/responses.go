@@ -12,8 +12,8 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/json"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // ResponsesRecorder implements recorders for OpenInference responses spans.
@@ -21,22 +21,22 @@ type ResponsesRecorder struct {
 	traceConfig *openinference.TraceConfig
 }
 
-// NewResponsesRecorderFromEnv creates an api.ResponsesRecorder
+// NewResponsesRecorderFromEnv creates an tracingapi.ResponsesRecorder
 // from environment variables using the OpenInference configuration specification.
 //
 // See: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
-func NewResponsesRecorderFromEnv() tracing.ResponsesRecorder {
+func NewResponsesRecorderFromEnv() tracingapi.ResponsesRecorder {
 	return NewResponsesRecorder(nil)
 }
 
-// NewResponsesRecorder creates a tracing.ResponsesRecorder with the
+// NewResponsesRecorder creates a tracingapi.ResponsesRecorder with the
 // given config using the OpenInference configuration specification.
 //
 // Parameters:
 //   - config: configuration for redaction. Defaults to NewTraceConfigFromEnv().
 //
 // See: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
-func NewResponsesRecorder(config *openinference.TraceConfig) tracing.ResponsesRecorder {
+func NewResponsesRecorder(config *openinference.TraceConfig) tracingapi.ResponsesRecorder {
 	if config == nil {
 		config = openinference.NewTraceConfigFromEnv()
 	}
@@ -47,17 +47,17 @@ func NewResponsesRecorder(config *openinference.TraceConfig) tracing.ResponsesRe
 // OpenInference.
 var responsesStartOpts = []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKindInternal)}
 
-// StartParams implements the same method as defined in tracing.ResponsesRecorder.
+// StartParams implements the same method as defined in tracingapi.ResponsesRecorder.
 func (r *ResponsesRecorder) StartParams(*openai.ResponseRequest, []byte) (spanName string, opts []trace.SpanStartOption) {
 	return "Responses", responsesStartOpts
 }
 
-// RecordRequest implements the same method as defined in tracing.ResponsesRecorder.
+// RecordRequest implements the same method as defined in tracingapi.ResponsesRecorder.
 func (r *ResponsesRecorder) RecordRequest(span trace.Span, req *openai.ResponseRequest, body []byte) {
 	span.SetAttributes(buildResponsesRequestAttributes(req, body, r.traceConfig)...)
 }
 
-// RecordResponseChunks implements the same method as defined in tracing.ResponsesRecorder.
+// RecordResponseChunks implements the same method as defined in tracingapi.ResponsesRecorder.
 func (r *ResponsesRecorder) RecordResponseChunks(span trace.Span, chunks []*openai.ResponseStreamEventUnion) {
 	if len(chunks) > 0 {
 		span.AddEvent("First Token Stream Event")
@@ -77,12 +77,12 @@ func (r *ResponsesRecorder) RecordResponseChunks(span trace.Span, chunks []*open
 	}
 }
 
-// RecordResponseOnError implements the same method as defined in tracing.ResponsesRecorder.
+// RecordResponseOnError implements the same method as defined in tracingapi.ResponsesRecorder.
 func (r *ResponsesRecorder) RecordResponseOnError(span trace.Span, statusCode int, body []byte) {
 	openinference.RecordResponseError(span, statusCode, string(body))
 }
 
-// RecordResponse implements the same method as defined in tracing.ResponsesRecorder.
+// RecordResponse implements the same method as defined in tracingapi.ResponsesRecorder.
 func (r *ResponsesRecorder) RecordResponse(span trace.Span, resp *openai.Response) {
 	// Add response attributes.
 	attrs := buildResponsesResponseAttributes(resp, r.traceConfig)

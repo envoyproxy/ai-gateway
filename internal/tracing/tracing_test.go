@@ -22,8 +22,8 @@ import (
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // clearEnv clears any OTEL configuration that could exist in the environment.

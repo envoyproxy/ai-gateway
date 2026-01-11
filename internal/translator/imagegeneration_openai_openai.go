@@ -17,7 +17,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // NewImageGenerationOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI image generation translation.
@@ -75,7 +75,7 @@ func (o *openAIToOpenAIImageGenerationTranslator) ResponseHeaders(map[string]str
 }
 
 // ResponseBody implements [ImageGenerationTranslator.ResponseBody].
-func (o *openAIToOpenAIImageGenerationTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracing.ImageGenerationSpan) (
+func (o *openAIToOpenAIImageGenerationTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracingapi.ImageGenerationSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
 	// Decode using OpenAI SDK v2 schema to avoid drift.

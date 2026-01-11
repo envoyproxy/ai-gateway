@@ -17,7 +17,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // NewEmbeddingOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI translation for embeddings.
@@ -67,7 +67,7 @@ func (o *openAIToOpenAITranslatorV1Embedding) ResponseHeaders(map[string]string)
 // OpenAI embeddings support model virtualization through automatic routing and resolution,
 // so we return the actual model from the response body which may differ from the requested model
 // (e.g., request "text-embedding-3-small" → response with specific version).
-func (o *openAIToOpenAITranslatorV1Embedding) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracing.EmbeddingsSpan) (
+func (o *openAIToOpenAITranslatorV1Embedding) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracingapi.EmbeddingsSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
 	var resp openai.EmbeddingResponse

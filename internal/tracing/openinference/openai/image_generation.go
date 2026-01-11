@@ -14,32 +14,32 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/json"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // ImageGenerationRecorder implements recorders for OpenInference image generation spans.
 type ImageGenerationRecorder struct {
-	tracing.NoopChunkRecorder[struct{}]
+	tracingapi.NoopChunkRecorder[struct{}]
 	traceConfig *openinference.TraceConfig
 }
 
-// NewImageGenerationRecorderFromEnv creates an api.ImageGenerationRecorder
+// NewImageGenerationRecorderFromEnv creates an tracingapi.ImageGenerationRecorder
 // from environment variables using the OpenInference configuration specification.
 //
 // See: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
-func NewImageGenerationRecorderFromEnv() tracing.ImageGenerationRecorder {
+func NewImageGenerationRecorderFromEnv() tracingapi.ImageGenerationRecorder {
 	return NewImageGenerationRecorder(nil)
 }
 
-// NewImageGenerationRecorder creates a tracing.ImageGenerationRecorder with the
+// NewImageGenerationRecorder creates a tracingapi.ImageGenerationRecorder with the
 // given config using the OpenInference configuration specification.
 //
 // Parameters:
 //   - config: configuration for redaction. Defaults to NewTraceConfigFromEnv().
 //
 // See: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
-func NewImageGenerationRecorder(config *openinference.TraceConfig) tracing.ImageGenerationRecorder {
+func NewImageGenerationRecorder(config *openinference.TraceConfig) tracingapi.ImageGenerationRecorder {
 	if config == nil {
 		config = openinference.NewTraceConfigFromEnv()
 	}
@@ -50,17 +50,17 @@ func NewImageGenerationRecorder(config *openinference.TraceConfig) tracing.Image
 // OpenInference.
 var imageGenStartOpts = []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKindInternal)}
 
-// StartParams implements the same method as defined in tracing.ImageGenerationRecorder.
+// StartParams implements the same method as defined in tracingapi.ImageGenerationRecorder.
 func (r *ImageGenerationRecorder) StartParams(*openai.ImageGenerationRequest, []byte) (spanName string, opts []trace.SpanStartOption) {
 	return "ImagesResponse", imageGenStartOpts
 }
 
-// RecordRequest implements the same method as defined in tracing.ImageGenerationRecorder.
+// RecordRequest implements the same method as defined in tracingapi.ImageGenerationRecorder.
 func (r *ImageGenerationRecorder) RecordRequest(span trace.Span, req *openai.ImageGenerationRequest, body []byte) {
 	span.SetAttributes(buildImageGenerationRequestAttributes(req, string(body), r.traceConfig)...)
 }
 
-// RecordResponse implements the same method as defined in tracing.ImageGenerationRecorder.
+// RecordResponse implements the same method as defined in tracingapi.ImageGenerationRecorder.
 func (r *ImageGenerationRecorder) RecordResponse(span trace.Span, resp *openai.ImageGenerationResponse) {
 	// Set output attributes.
 	var attrs []attribute.KeyValue
@@ -80,7 +80,7 @@ func (r *ImageGenerationRecorder) RecordResponse(span trace.Span, resp *openai.I
 	span.SetStatus(codes.Ok, "")
 }
 
-// RecordResponseOnError implements the same method as defined in tracing.ImageGenerationRecorder.
+// RecordResponseOnError implements the same method as defined in tracingapi.ImageGenerationRecorder.
 func (r *ImageGenerationRecorder) RecordResponseOnError(span trace.Span, statusCode int, body []byte) {
 	openinference.RecordResponseError(span, statusCode, string(body))
 }

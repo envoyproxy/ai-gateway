@@ -15,28 +15,28 @@ import (
 
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // spanFactory is a function type that creates a new SpanT given a trace.Span and a Recorder.
-type spanFactory[ReqT any, RespT any, RespChunkT any] func(trace.Span, tracing.SpanRecorder[ReqT, RespT, RespChunkT]) tracing.Span[RespT, RespChunkT]
+type spanFactory[ReqT any, RespT any, RespChunkT any] func(trace.Span, tracingapi.SpanRecorder[ReqT, RespT, RespChunkT]) tracingapi.Span[RespT, RespChunkT]
 
 // requestTracerImpl implements RequestTracer for various request and span types.
 type requestTracerImpl[ReqT any, RespT any, RespChunkT any] struct {
 	tracer           trace.Tracer
 	propagator       propagation.TextMapPropagator
-	recorder         tracing.SpanRecorder[ReqT, RespT, RespChunkT]
+	recorder         tracingapi.SpanRecorder[ReqT, RespT, RespChunkT]
 	headerAttributes map[string]string
 	newSpan          spanFactory[ReqT, RespT, RespChunkT]
 }
 
 var (
-	_ tracing.ChatCompletionTracer  = (*chatCompletionTracer)(nil)
-	_ tracing.EmbeddingsTracer      = (*embeddingsTracer)(nil)
-	_ tracing.CompletionTracer      = (*completionTracer)(nil)
-	_ tracing.ImageGenerationTracer = (*imageGenerationTracer)(nil)
-	_ tracing.ResponsesTracer       = (*responsesTracer)(nil)
-	_ tracing.RerankTracer          = (*rerankTracer)(nil)
+	_ tracingapi.ChatCompletionTracer  = (*chatCompletionTracer)(nil)
+	_ tracingapi.EmbeddingsTracer      = (*embeddingsTracer)(nil)
+	_ tracingapi.CompletionTracer      = (*completionTracer)(nil)
+	_ tracingapi.ImageGenerationTracer = (*imageGenerationTracer)(nil)
+	_ tracingapi.ResponsesTracer       = (*responsesTracer)(nil)
+	_ tracingapi.RerankTracer          = (*rerankTracer)(nil)
 )
 
 type (
@@ -51,12 +51,12 @@ type (
 func newRequestTracer[ReqT any, RespT any, RespChunkT any](
 	tracer trace.Tracer,
 	propagator propagation.TextMapPropagator,
-	recorder tracing.SpanRecorder[ReqT, RespT, RespChunkT],
+	recorder tracingapi.SpanRecorder[ReqT, RespT, RespChunkT],
 	headerAttributes map[string]string,
 	newSpan spanFactory[ReqT, RespT, RespChunkT],
-) tracing.RequestTracer[ReqT, RespT, RespChunkT] {
+) tracingapi.RequestTracer[ReqT, RespT, RespChunkT] {
 	if _, ok := tracer.(noop.Tracer); ok {
-		return tracing.NoopTracer[ReqT, RespT, RespChunkT]{}
+		return tracingapi.NoopTracer[ReqT, RespT, RespChunkT]{}
 	}
 	return &requestTracerImpl[ReqT, RespT, RespChunkT]{
 		tracer:           tracer,
@@ -73,14 +73,14 @@ func (t *requestTracerImpl[ReqT, RespT, ChunkT]) StartSpanAndInjectHeaders(
 	carrier propagation.TextMapCarrier,
 	req *ReqT,
 	body []byte,
-) tracing.Span[RespT, ChunkT] {
+) tracingapi.Span[RespT, ChunkT] {
 	parentCtx := t.propagator.Extract(ctx, propagation.MapCarrier(headers))
 	spanName, opts := t.recorder.StartParams(req, body)
 	newCtx, span := t.tracer.Start(parentCtx, spanName, opts...)
 
 	t.propagator.Inject(newCtx, carrier)
 
-	var zero tracing.Span[RespT, ChunkT]
+	var zero tracingapi.Span[RespT, ChunkT]
 	if !span.IsRecording() {
 		return zero
 	}
@@ -102,85 +102,85 @@ func (t *requestTracerImpl[ReqT, RespT, ChunkT]) StartSpanAndInjectHeaders(
 	return t.newSpan(span, t.recorder)
 }
 
-func newChatCompletionTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.ChatCompletionRecorder, headerAttributes map[string]string) tracing.ChatCompletionTracer {
+func newChatCompletionTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracingapi.ChatCompletionRecorder, headerAttributes map[string]string) tracingapi.ChatCompletionTracer {
 	return newRequestTracer(
 		tracer,
 		propagator,
 		recorder,
 		headerAttributes,
-		func(span trace.Span, recorder tracing.ChatCompletionRecorder) tracing.ChatCompletionSpan {
+		func(span trace.Span, recorder tracingapi.ChatCompletionRecorder) tracingapi.ChatCompletionSpan {
 			return &chatCompletionSpan{span: span, recorder: recorder}
 		},
 	)
 }
 
-func newEmbeddingsTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.EmbeddingsRecorder, headerAttributes map[string]string) tracing.EmbeddingsTracer {
+func newEmbeddingsTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracingapi.EmbeddingsRecorder, headerAttributes map[string]string) tracingapi.EmbeddingsTracer {
 	return newRequestTracer(
 		tracer,
 		propagator,
 		recorder,
 		headerAttributes,
-		func(span trace.Span, recorder tracing.EmbeddingsRecorder) tracing.EmbeddingsSpan {
+		func(span trace.Span, recorder tracingapi.EmbeddingsRecorder) tracingapi.EmbeddingsSpan {
 			return &embeddingsSpan{span: span, recorder: recorder}
 		},
 	)
 }
 
-func newCompletionTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.CompletionRecorder, headerAttributes map[string]string) tracing.CompletionTracer {
+func newCompletionTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracingapi.CompletionRecorder, headerAttributes map[string]string) tracingapi.CompletionTracer {
 	return newRequestTracer(
 		tracer,
 		propagator,
 		recorder,
 		headerAttributes,
-		func(span trace.Span, recorder tracing.CompletionRecorder) tracing.CompletionSpan {
+		func(span trace.Span, recorder tracingapi.CompletionRecorder) tracingapi.CompletionSpan {
 			return &completionSpan{span: span, recorder: recorder}
 		},
 	)
 }
 
-func newImageGenerationTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.ImageGenerationRecorder) tracing.ImageGenerationTracer {
+func newImageGenerationTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracingapi.ImageGenerationRecorder) tracingapi.ImageGenerationTracer {
 	return newRequestTracer(
 		tracer,
 		propagator,
 		recorder,
 		nil,
-		func(span trace.Span, recorder tracing.ImageGenerationRecorder) tracing.ImageGenerationSpan {
+		func(span trace.Span, recorder tracingapi.ImageGenerationRecorder) tracingapi.ImageGenerationSpan {
 			return &imageGenerationSpan{span: span, recorder: recorder}
 		},
 	)
 }
 
-func newResponsesTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.ResponsesRecorder, headerAttributes map[string]string) tracing.ResponsesTracer {
+func newResponsesTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracingapi.ResponsesRecorder, headerAttributes map[string]string) tracingapi.ResponsesTracer {
 	return newRequestTracer(
 		tracer,
 		propagator,
 		recorder,
 		headerAttributes,
-		func(span trace.Span, recorder tracing.ResponsesRecorder) tracing.ResponsesSpan {
+		func(span trace.Span, recorder tracingapi.ResponsesRecorder) tracingapi.ResponsesSpan {
 			return &responsesSpan{span: span, recorder: recorder}
 		},
 	)
 }
 
-func newRerankTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.RerankRecorder, headerAttributes map[string]string) tracing.RerankTracer {
+func newRerankTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracingapi.RerankRecorder, headerAttributes map[string]string) tracingapi.RerankTracer {
 	return newRequestTracer(
 		tracer,
 		propagator,
 		recorder,
 		headerAttributes,
-		func(span trace.Span, recorder tracing.RerankRecorder) tracing.RerankSpan {
+		func(span trace.Span, recorder tracingapi.RerankRecorder) tracingapi.RerankSpan {
 			return &rerankSpan{span: span, recorder: recorder}
 		},
 	)
 }
 
-func newMessageTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracing.MessageRecorder, headerAttributes map[string]string) tracing.MessageTracer {
+func newMessageTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracingapi.MessageRecorder, headerAttributes map[string]string) tracingapi.MessageTracer {
 	return newRequestTracer(
 		tracer,
 		propagator,
 		recorder,
 		headerAttributes,
-		func(span trace.Span, recorder tracing.MessageRecorder) tracing.MessageSpan {
+		func(span trace.Span, recorder tracingapi.MessageRecorder) tracingapi.MessageSpan {
 			return &messageSpan{span: span, recorder: recorder}
 		},
 	)

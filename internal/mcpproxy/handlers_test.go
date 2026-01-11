@@ -34,7 +34,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	"github.com/envoyproxy/ai-gateway/internal/tracing"
-	tracingapi "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	tracingapi "github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 func newTestMCPProxy() *MCPProxy {

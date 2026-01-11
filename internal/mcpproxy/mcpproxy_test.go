@@ -20,7 +20,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 var (

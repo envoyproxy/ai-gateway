@@ -16,8 +16,8 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
+	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 var (

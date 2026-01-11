@@ -20,7 +20,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // NewChatCompletionOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI translation.
@@ -121,7 +121,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseHeaders(map[string]st
 // OpenAI supports model virtualization through automatic routing and resolution,
 // so we return the actual model from the response body which may differ from the requested model
 // (e.g., request "gpt-4o" → response "gpt-4o-2024-08-06").
-func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracing.ChatCompletionSpan) (
+func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracingapi.ChatCompletionSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	if o.stream {
@@ -157,7 +157,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]str
 
 // extractUsageFromBufferEvent extracts the token usage from the buffered event.
 // It scans complete lines and returns the latest usage found in this batch.
-func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent(span tracing.ChatCompletionSpan) (tokenUsage metrics.TokenUsage) {
+func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent(span tracingapi.ChatCompletionSpan) (tokenUsage metrics.TokenUsage) {
 	for {
 		i := bytes.IndexByte(o.buffered, '\n')
 		if i == -1 {

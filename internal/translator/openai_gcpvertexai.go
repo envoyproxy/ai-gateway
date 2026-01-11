@@ -20,7 +20,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 const (
@@ -133,7 +133,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseHeaders(_ map[st
 // GCP Vertex AI uses deterministic model mapping without virtualization, where the requested model
 // is exactly what gets executed. The response does not contain a model field, so we return
 // the request model that was originally sent.
-func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracingapi.ChatCompletionSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	if o.stream {
@@ -181,7 +181,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(_ map[strin
 }
 
 // handleStreamingResponse handles streaming responses from GCP Gemini API.
-func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(body io.Reader, endOfStream bool, span tracingapi.ChatCompletionSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	responseModel = o.requestModel

@@ -18,21 +18,21 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/envoyproxy/ai-gateway/internal/lang"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
-// Ensure mcpSpan implements [tracing.MCPSpan].
-var _ tracing.MCPSpan = (*mcpSpan)(nil)
+// Ensure mcpSpan implements [tracingapi.MCPSpan].
+var _ tracingapi.MCPSpan = (*mcpSpan)(nil)
 
-// Ensure mcpTracer implements [tracing.MCPTracer].
-var _ tracing.MCPTracer = (*mcpTracer)(nil)
+// Ensure mcpTracer implements [tracingapi.MCPTracer].
+var _ tracingapi.MCPTracer = (*mcpTracer)(nil)
 
-// mcpSpan is an implementation of [tracing.MCPSpan].
+// mcpSpan is an implementation of [tracingapi.MCPSpan].
 type mcpSpan struct {
 	span trace.Span
 }
 
-// RecordRouteToBackend implements [tracing.MCPSpan.RecordRouteToBackend].
+// RecordRouteToBackend implements [tracingapi.MCPSpan.RecordRouteToBackend].
 func (s mcpSpan) RecordRouteToBackend(backend string, sessionID string, isNew bool) {
 	s.span.AddEvent("route to backend", trace.WithAttributes(
 		attribute.String("mcp.backend.name", backend),
@@ -41,7 +41,7 @@ func (s mcpSpan) RecordRouteToBackend(backend string, sessionID string, isNew bo
 	))
 }
 
-// EndSpanOnError implements [tracing.MCPSpan.EndSpanOnError].
+// EndSpanOnError implements [tracingapi.MCPSpan.EndSpanOnError].
 func (s mcpSpan) EndSpanOnError(errType string, err error) {
 	s.span.AddEvent("exception", trace.WithAttributes(
 		attribute.String("exception.type", errType),
@@ -51,20 +51,20 @@ func (s mcpSpan) EndSpanOnError(errType string, err error) {
 	s.span.End()
 }
 
-// EndSpan implements [tracing.MCPSpan.EndSpan].
+// EndSpan implements [tracingapi.MCPSpan.EndSpan].
 func (s mcpSpan) EndSpan() {
 	s.span.SetStatus(codes.Ok, "")
 	s.span.End()
 }
 
-// mcpTracer is an implementation of [tracing.MCPTracer].
+// mcpTracer is an implementation of [tracingapi.MCPTracer].
 type mcpTracer struct {
 	tracer            trace.Tracer
 	propagator        propagation.TextMapPropagator
 	attributeMappings map[string]string
 }
 
-func newMCPTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, attributeMappings map[string]string) tracing.MCPTracer {
+func newMCPTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, attributeMappings map[string]string) tracingapi.MCPTracer {
 	return mcpTracer{
 		tracer:            tracer,
 		propagator:        propagator,
@@ -72,8 +72,8 @@ func newMCPTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator,
 	}
 }
 
-// StartSpanAndInjectMeta implements [tracing.MCPTracer.StartSpanAndInjectMeta].
-func (m mcpTracer) StartSpanAndInjectMeta(ctx context.Context, req *jsonrpc.Request, param mcp.Params, headers http.Header) tracing.MCPSpan {
+// StartSpanAndInjectMeta implements [tracingapi.MCPTracer.StartSpanAndInjectMeta].
+func (m mcpTracer) StartSpanAndInjectMeta(ctx context.Context, req *jsonrpc.Request, param mcp.Params, headers http.Header) tracingapi.MCPSpan {
 	attrs := []attribute.KeyValue{
 		attribute.String("mcp.protocol.version", "2025-06-18"),
 		attribute.String("mcp.transport", "http"),

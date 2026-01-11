@@ -24,7 +24,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
@@ -45,7 +45,7 @@ import (
 // * ProcessorFactory: A factory function to create processors based on the configuration.
 func NewFactory[ReqT any, RespT any, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]](
 	f metrics.Factory,
-	tracer tracing.RequestTracer[ReqT, RespT, RespChunkT],
+	tracer tracingapi.RequestTracer[ReqT, RespT, RespChunkT],
 	_ EndpointSpecT, // This is a type marker to bind EndpointSpecT without specifying ReqT, RespT, RespChunkT explicitly.
 ) ProcessorFactory {
 	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
@@ -82,9 +82,9 @@ type (
 		originalModel          internalapi.OriginalModel
 		forceBodyMutation      bool
 		// tracer is the tracer used for requests.
-		tracer tracing.RequestTracer[ReqT, RespT, RespChunkT]
+		tracer tracingapi.RequestTracer[ReqT, RespT, RespChunkT]
 		// span is the tracing span for this request, created in ProcessRequestBody.
-		span tracing.Span[RespT, RespChunkT]
+		span tracingapi.Span[RespT, RespChunkT]
 		// upstreamFilterCount is the number of upstream filters that have been processed.
 		// This is used to determine if the request is a retry request.
 		upstreamFilterCount int
@@ -100,7 +100,7 @@ type (
 		requestHeaders    map[string]string
 		responseHeaders   map[string]string
 		responseEncoding  string
-		translator        translator.Translator[ReqT, tracing.Span[RespT, RespChunkT]]
+		translator        translator.Translator[ReqT, tracingapi.Span[RespT, RespChunkT]]
 		modelNameOverride internalapi.ModelNameOverride
 		headerMutator     *headermutator.HeaderMutator
 		bodyMutator       *bodymutator.BodyMutator
@@ -117,7 +117,7 @@ func newRouterProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.
 	config *filterapi.RuntimeConfig,
 	requestHeaders map[string]string,
 	logger *slog.Logger,
-	tracer tracing.RequestTracer[ReqT, RespT, RespChunkT],
+	tracer tracingapi.RequestTracer[ReqT, RespT, RespChunkT],
 ) *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT] {
 	return &routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]{
 		config:            config,

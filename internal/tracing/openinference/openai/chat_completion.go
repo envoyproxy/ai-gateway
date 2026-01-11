@@ -14,8 +14,8 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/json"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // ChatCompletionRecorder implements recorders for OpenInference chat completion spans.
@@ -23,22 +23,22 @@ type ChatCompletionRecorder struct {
 	traceConfig *openinference.TraceConfig
 }
 
-// NewChatCompletionRecorderFromEnv creates an api.ChatCompletionRecorder
+// NewChatCompletionRecorderFromEnv creates an tracingapi.ChatCompletionRecorder
 // from environment variables using the OpenInference configuration specification.
 //
 // See: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
-func NewChatCompletionRecorderFromEnv() tracing.ChatCompletionRecorder {
+func NewChatCompletionRecorderFromEnv() tracingapi.ChatCompletionRecorder {
 	return NewChatCompletionRecorder(nil)
 }
 
-// NewChatCompletionRecorder creates a tracing.ChatCompletionRecorder with the
+// NewChatCompletionRecorder creates a tracingapi.ChatCompletionRecorder with the
 // given config using the OpenInference configuration specification.
 //
 // Parameters:
 //   - config: configuration for redaction. Defaults to NewTraceConfigFromEnv().
 //
 // See: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
-func NewChatCompletionRecorder(config *openinference.TraceConfig) tracing.ChatCompletionRecorder {
+func NewChatCompletionRecorder(config *openinference.TraceConfig) tracingapi.ChatCompletionRecorder {
 	if config == nil {
 		config = openinference.NewTraceConfigFromEnv()
 	}
@@ -49,17 +49,17 @@ func NewChatCompletionRecorder(config *openinference.TraceConfig) tracing.ChatCo
 // OpenInference.
 var startOpts = []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKindInternal)}
 
-// StartParams implements the same method as defined in tracing.ChatCompletionRecorder.
+// StartParams implements the same method as defined in tracingapi.ChatCompletionRecorder.
 func (r *ChatCompletionRecorder) StartParams(*openai.ChatCompletionRequest, []byte) (spanName string, opts []trace.SpanStartOption) {
 	return "ChatCompletion", startOpts
 }
 
-// RecordRequest implements the same method as defined in tracing.ChatCompletionRecorder.
+// RecordRequest implements the same method as defined in tracingapi.ChatCompletionRecorder.
 func (r *ChatCompletionRecorder) RecordRequest(span trace.Span, chatReq *openai.ChatCompletionRequest, body []byte) {
 	span.SetAttributes(buildRequestAttributes(chatReq, string(body), r.traceConfig)...)
 }
 
-// RecordResponseChunks implements the same method as defined in tracing.ChatCompletionRecorder.
+// RecordResponseChunks implements the same method as defined in tracingapi.ChatCompletionRecorder.
 func (r *ChatCompletionRecorder) RecordResponseChunks(span trace.Span, chunks []*openai.ChatCompletionResponseChunk) {
 	if len(chunks) > 0 {
 		span.AddEvent("First Token Stream Event")
@@ -68,12 +68,12 @@ func (r *ChatCompletionRecorder) RecordResponseChunks(span trace.Span, chunks []
 	r.RecordResponse(span, converted)
 }
 
-// RecordResponseOnError implements the same method as defined in tracing.ChatCompletionRecorder.
+// RecordResponseOnError implements the same method as defined in tracingapi.ChatCompletionRecorder.
 func (r *ChatCompletionRecorder) RecordResponseOnError(span trace.Span, statusCode int, body []byte) {
 	openinference.RecordResponseError(span, statusCode, string(body))
 }
 
-// RecordResponse implements the same method as defined in tracing.ChatCompletionRecorder.
+// RecordResponse implements the same method as defined in tracingapi.ChatCompletionRecorder.
 func (r *ChatCompletionRecorder) RecordResponse(span trace.Span, resp *openai.ChatCompletionResponse) {
 	// Set output attributes.
 	var attrs []attribute.KeyValue
