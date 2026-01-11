@@ -17,7 +17,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 var (
@@ -240,4 +240,4 @@ func TestImageGenerationRecorder_RecordResponseOnError(t *testing.T) {
 	}
 }
 
-var _ tracing.ImageGenerationRecorder = (*ImageGenerationRecorder)(nil)
+var _ tracingapi.ImageGenerationRecorder = (*ImageGenerationRecorder)(nil)
