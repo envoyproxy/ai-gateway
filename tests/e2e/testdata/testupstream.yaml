@@ -52,6 +52,8 @@ spec:
       kind: Gateway
       group: gateway.networking.k8s.io
   rules:
+    # The backend refs with weight zero should be ignored by the extension server.
+    # See https://github.com/envoyproxy/ai-gateway/issues/1664
     - matches:
         - headers:
             - type: Exact
@@ -65,7 +67,14 @@ spec:
               name: x-ai-eg-model
               value: another-cool-model
       backendRefs:
+        - name: translation-testupstream-cool-model-backend
+          weight: 0
         - name: translation-testupstream-another-cool-model-backend
+          weight: 100
+        - name: translation-testupstream-cool-model-backend
+          weight: 0
+        - name: translation-testupstream-cool-model-backend
+          weight: 0
     - matches:
         - headers:
             - type: Exact
@@ -73,6 +82,8 @@ spec:
               value: whatever-model
       backendRefs:
         - name: translation-testupstream-cool-model-backend
+        - name: translation-testupstream-another-cool-model-backend
+          weight: 0
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend

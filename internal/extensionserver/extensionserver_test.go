@@ -122,6 +122,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 				{
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
 						{Name: "aaa", Priority: ptr.To[uint32](0)},
+						{Name: "to-be-ignored", Weight: ptr.To[int32](0)},
 						{Name: "bbb", Priority: ptr.To[uint32](1)},
 					},
 				},
@@ -144,10 +145,6 @@ func Test_maybeModifyCluster(t *testing.T) {
 		{c: &clusterv3.Cluster{
 			Name: "httproute/ns/myroute/rule/0",
 		}, errLog: `LoadAssignment is nil`},
-		{c: &clusterv3.Cluster{
-			Name:           "httproute/ns/myroute/rule/0",
-			LoadAssignment: &endpointv3.ClusterLoadAssignment{},
-		}, errLog: `LoadAssignment endpoints length does not match backend refs length`},
 	} {
 		t.Run("error/"+tc.errLog, func(t *testing.T) {
 			var buf bytes.Buffer
