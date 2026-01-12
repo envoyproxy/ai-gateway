@@ -210,6 +210,8 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) error {
 		// Populate the metadata for each endpoint in the LoadAssignment.
 		var lbEndpointIndex int
 		for i, backendRef := range httpRouteRule.BackendRefs {
+			// The weight of 0 means this backend is disabled and is not included in the LoadAssignment by EG,
+			// so we skip it here.
 			if backendRef.Weight != nil && *backendRef.Weight == 0 {
 				continue
 			}
