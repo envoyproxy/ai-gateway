@@ -66,6 +66,10 @@ spec:
               value: another-cool-model
       backendRefs:
         - name: translation-testupstream-another-cool-model-backend
+        # This should be ignored since weight is 0 by the extension server.
+        # See https://github.com/envoyproxy/ai-gateway/issues/1664
+        - name: translation-testupstream-cool-model-backend
+          weight: 0
     - matches:
         - headers:
             - type: Exact
@@ -73,6 +77,10 @@ spec:
               value: whatever-model
       backendRefs:
         - name: translation-testupstream-cool-model-backend
+        # This should be ignored since weight is 0 by the extension server.
+        # See https://github.com/envoyproxy/ai-gateway/issues/1664
+        - name: translation-testupstream-another-cool-model-backend
+          weight: 0
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
