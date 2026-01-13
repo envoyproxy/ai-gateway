@@ -1316,7 +1316,7 @@ Only one type of BackendSecurityPolicy can be defined.
   name="targetRefs"
   type="[LocalPolicyTargetReference](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1alpha2.LocalPolicyTargetReference) array"
   required="false"
-  description="TargetRefs are the names of the AIServiceBackend resources this BackendSecurityPolicy is being attached to.<br />Attaching multiple BackendSecurityPolicies to the same AIServiceBackend is invalid and will result in an error<br />during the reconciliation of AIServiceBackend."
+  description="TargetRefs are the names of the AIServiceBackend or InferencePool resources this BackendSecurityPolicy is being attached to.<br />Attaching multiple BackendSecurityPolicies to the same resource is invalid and will result in an error<br />during the reconciliation of the resource."
 /><ApiField
   name="type"
   type="[BackendSecurityPolicyType](#backendsecuritypolicytype)"

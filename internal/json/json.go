@@ -3,7 +3,7 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-package json
+package json // nolint: revive
 
 import (
 	"testing"
@@ -20,8 +20,6 @@ var (
 	NewEncoder = sonicjson.ConfigDefault.NewEncoder
 	// NewDecoder is equivalent to encoding/json.NewDecoder.
 	NewDecoder = sonicjson.ConfigDefault.NewDecoder
-	// MarshalIndent is equivalent to encoding/json.MarshalIndent.
-	MarshalIndent = sonicjson.ConfigDefault.MarshalIndent
 	// MarshalForDeterministicTesting marshals a value to JSON in a deterministic way for testing.
 	// The normal sonic configuration does not guarantee deterministic output in terms of field order.
 	// It panics if called outside of tests.

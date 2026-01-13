@@ -370,7 +370,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 				Stop: openai.ChatCompletionNewParamsStopUnion{
 					OfStringArray: []string{"\n", "stop"},
 				},
-				ServiceTier:     openai.ChatCompletionNewParamsServiceTierFlex,
+				ServiceTier:     "flex",
 				Verbosity:       openai.ChatCompletionNewParamsVerbosityLow,
 				ReasoningEffort: openai.ReasoningEffortLow,
 			},

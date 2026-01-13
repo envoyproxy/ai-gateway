@@ -207,14 +207,16 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) error {
 			s.log.Info("LoadAssignment is nil", "cluster_name", cluster.Name)
 			return nil
 		}
-		if len(cluster.LoadAssignment.Endpoints) != len(httpRouteRule.BackendRefs) {
-			s.log.Info("LoadAssignment endpoints length does not match backend refs length",
-				"cluster_name", cluster.Name, "endpoints_length", len(cluster.LoadAssignment.Endpoints), "backend_refs_length", len(httpRouteRule.BackendRefs))
-			return nil
-		}
 		// Populate the metadata for each endpoint in the LoadAssignment.
-		for i, endpoints := range cluster.LoadAssignment.Endpoints {
-			backendRef := httpRouteRule.BackendRefs[i]
+		var lbEndpointIndex int
+		for i, backendRef := range httpRouteRule.BackendRefs {
+			// The weight of 0 means this backend is disabled and is not included in the LoadAssignment by EG,
+			// so we skip it here.
+			if backendRef.Weight != nil && *backendRef.Weight == 0 {
+				continue
+			}
+			endpoints := cluster.LoadAssignment.Endpoints[lbEndpointIndex]
+			lbEndpointIndex++
 			name := backendRef.Name
 			namespace := aigwRoute.Namespace
 			if backendRef.Priority != nil {

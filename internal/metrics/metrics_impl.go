@@ -87,8 +87,20 @@ func (b *metricsImpl) SetBackend(backend *filterapi.Backend) {
 	switch backend.Schema.Name {
 	case filterapi.APISchemaOpenAI:
 		b.backend = genaiProviderOpenAI
+	case filterapi.APISchemaAzureOpenAI:
+		b.backend = genaiProviderAzureOpenAI
 	case filterapi.APISchemaAWSBedrock:
 		b.backend = genaiProviderAWSBedrock
+	case filterapi.APISchemaAWSAnthropic:
+		b.backend = genaiProviderAWSAnthropic
+	case filterapi.APISchemaGCPVertexAI:
+		b.backend = genaiProviderGCPVertexAI
+	case filterapi.APISchemaGCPAnthropic:
+		b.backend = genaiProviderGCPAnthropic
+	case filterapi.APISchemaAnthropic:
+		b.backend = genaiProviderAnthropic
+	case filterapi.APISchemaCohere:
+		b.backend = genaiProviderCohere
 	default:
 		b.backend = backend.Name
 	}

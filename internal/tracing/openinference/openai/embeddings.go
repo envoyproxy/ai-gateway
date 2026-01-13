@@ -12,32 +12,32 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/json"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // EmbeddingsRecorder implements recorders for OpenInference embeddings spans.
 type EmbeddingsRecorder struct {
-	tracing.NoopChunkRecorder[struct{}]
+	tracingapi.NoopChunkRecorder[struct{}]
 	traceConfig *openinference.TraceConfig
 }
 
-// NewEmbeddingsRecorderFromEnv creates an api.EmbeddingsRecorder
+// NewEmbeddingsRecorderFromEnv creates an tracingapi.EmbeddingsRecorder
 // from environment variables using the OpenInference configuration specification.
 //
 // See: https://github.com/Arize-ai/openinference/blob/main/spec/embedding_spans.md
-func NewEmbeddingsRecorderFromEnv() tracing.EmbeddingsRecorder {
+func NewEmbeddingsRecorderFromEnv() tracingapi.EmbeddingsRecorder {
 	return NewEmbeddingsRecorder(nil)
 }
 
-// NewEmbeddingsRecorder creates a tracing.EmbeddingsRecorder with the
+// NewEmbeddingsRecorder creates a tracingapi.EmbeddingsRecorder with the
 // given config using the OpenInference configuration specification.
 //
 // Parameters:
 //   - config: configuration for redaction. Defaults to NewTraceConfigFromEnv().
 //
 // See: https://github.com/Arize-ai/openinference/blob/main/spec/embedding_spans.md
-func NewEmbeddingsRecorder(config *openinference.TraceConfig) tracing.EmbeddingsRecorder {
+func NewEmbeddingsRecorder(config *openinference.TraceConfig) tracingapi.EmbeddingsRecorder {
 	if config == nil {
 		config = openinference.NewTraceConfigFromEnv()
 	}
@@ -48,22 +48,22 @@ func NewEmbeddingsRecorder(config *openinference.TraceConfig) tracing.Embeddings
 // OpenInference.
 var startOptsEmbeddings = []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKindInternal)}
 
-// StartParams implements the same method as defined in tracing.EmbeddingsRecorder.
+// StartParams implements the same method as defined in tracingapi.EmbeddingsRecorder.
 func (r *EmbeddingsRecorder) StartParams(*openai.EmbeddingRequest, []byte) (spanName string, opts []trace.SpanStartOption) {
 	return "CreateEmbeddings", startOptsEmbeddings
 }
 
-// RecordRequest implements the same method as defined in tracing.EmbeddingsRecorder.
+// RecordRequest implements the same method as defined in tracingapi.EmbeddingsRecorder.
 func (r *EmbeddingsRecorder) RecordRequest(span trace.Span, embReq *openai.EmbeddingRequest, body []byte) {
 	span.SetAttributes(buildEmbeddingsRequestAttributes(embReq, body, r.traceConfig)...)
 }
 
-// RecordResponseOnError implements the same method as defined in tracing.EmbeddingsRecorder.
+// RecordResponseOnError implements the same method as defined in tracingapi.EmbeddingsRecorder.
 func (r *EmbeddingsRecorder) RecordResponseOnError(span trace.Span, statusCode int, body []byte) {
 	openinference.RecordResponseError(span, statusCode, string(body))
 }
 
-// RecordResponse implements the same method as defined in tracing.EmbeddingsRecorder.
+// RecordResponse implements the same method as defined in tracingapi.EmbeddingsRecorder.
 func (r *EmbeddingsRecorder) RecordResponse(span trace.Span, resp *openai.EmbeddingResponse) {
 	// Add response attributes.
 	attrs := buildEmbeddingsResponseAttributes(resp, r.traceConfig)

@@ -24,7 +24,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // MCPProxy serves /mcp endpoint.
@@ -35,13 +35,13 @@ type MCPProxy struct {
 	metrics            metrics.MCPMetrics
 	l                  *slog.Logger
 	sessionCrypto      SessionCrypto
-	tracer             tracing.MCPTracer
+	tracer             tracingapi.MCPTracer
 	toolChangeSignaler changeSignaler // signals tool changes to active sessions.
 	client             http.Client
 }
 
 // NewMCPProxy creates a new MCPProxy instance.
-func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracing.MCPTracer, sessionCrypto SessionCrypto) (*ProxyConfig, *http.ServeMux, error) {
+func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracingapi.MCPTracer, sessionCrypto SessionCrypto) (*ProxyConfig, *http.ServeMux, error) {
 	toolChangeSignaler := newMultiWatcherSignaler() // used to signal changes to all active sessions.
 	cfg := &ProxyConfig{toolChangeSignaler: toolChangeSignaler}
 	mux := http.NewServeMux()
@@ -78,7 +78,7 @@ func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracing.M
 
 // newSession creates a new session for a downstream client.
 // It multiplexes the initialize request to all backends defined in the MCPRoute associated with the downstream request.
-func (m *MCPProxy) newSession(ctx context.Context, p *mcp.InitializeParams, routeName filterapi.MCPRouteName, subject string, span tracing.MCPSpan) (*session, error) {
+func (m *MCPProxy) newSession(ctx context.Context, p *mcp.InitializeParams, routeName filterapi.MCPRouteName, subject string, span tracingapi.MCPSpan) (*session, error) {
 	m.l.Debug("creating new MCP session")
 
 	var (

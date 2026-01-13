@@ -25,7 +25,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 const (
@@ -275,7 +275,7 @@ func getHeartbeatInterval(def time.Duration) time.Duration {
 
 // sendToAllBackends sends an HTTP request to all backends in this session and returns a channel that streams
 // the response events from all backends.
-func (s *session) sendToAllBackends(ctx context.Context, httpMethod string, request *jsonrpc.Request, span tracing.MCPSpan) <-chan *sseEvent {
+func (s *session) sendToAllBackends(ctx context.Context, httpMethod string, request *jsonrpc.Request, span tracingapi.MCPSpan) <-chan *sseEvent {
 	var (
 		logger      = s.proxy.l
 		backendMsgs = make(chan *sseEvent, 200)

@@ -73,7 +73,7 @@ var (
 
 // requestMatcher creates a custom matcher function that compares HTTP requests with cassette recordings.
 // It performs semantic comparison for JSON bodies and ignores specified headers like tracing headers.
-func requestMatcher(httpReq *http.Request, cassReq cassette.Request) bool {
+func requestMatcher(httpReq *http.Request, cassReq cassette.Request) bool { // nolint:gocritic
 	// Basic method and URL matching.
 	if httpReq.Method != cassReq.Method {
 		return false

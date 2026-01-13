@@ -23,7 +23,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // NewChatCompletionOpenAIToAWSBedrockTranslator implements [Factory] for OpenAI to AWS Bedrock translation.
@@ -107,6 +107,10 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, ope
 	bedrockReq.InferenceConfig = &awsbedrock.InferenceConfiguration{}
 	bedrockReq.InferenceConfig.Temperature = openAIReq.Temperature
 	bedrockReq.InferenceConfig.TopP = openAIReq.TopP
+
+	if openAIReq.ServiceTier != "" {
+		bedrockReq.ServiceTier = &awsbedrock.ServiceTier{Type: openAIReq.ServiceTier}
+	}
 
 	bedrockReq.InferenceConfig.MaxTokens = cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens)
 
@@ -684,7 +688,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseError(respHeaders
 // AWS Bedrock uses static model execution without virtualization, where the requested model
 // is exactly what gets executed. The response does not contain a model field, so we return
 // the request model that was originally sent.
-func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
+func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracingapi.ChatCompletionSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	responseModel = o.requestModel
@@ -708,7 +712,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 			if !ok {
 				continue
 			}
-			err = serializeOpenAIChatCompletionChunk(*oaiEvent, &newBody)
+			err = serializeOpenAIChatCompletionChunk(oaiEvent, &newBody)
 			if err != nil {
 				panic(fmt.Errorf("failed to marshal event: %w", err))
 			}
@@ -718,7 +722,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 		}
 
 		if endOfStream {
-			newBody = append(newBody, []byte("data: [DONE]\n")...)
+			newBody = append(newBody, sseDoneFullLine...)
 		}
 		return
 	}
@@ -735,6 +739,11 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 		Choices: make([]openai.ChatCompletionResponseChoice, 0),
 		ID:      o.responseID,
 	}
+
+	if bedrockResp.ServiceTier != nil {
+		openAIResp.ServiceTier = bedrockResp.ServiceTier.Type
+	}
+
 	// Convert token usage.
 	if bedrockResp.Usage != nil {
 		tokenUsage = metrics.ExtractTokenUsageFromExplicitCaching(bedrockResp.Usage.InputTokens, bedrockResp.Usage.OutputTokens,

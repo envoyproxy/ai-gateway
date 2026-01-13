@@ -8,7 +8,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.3
+    controller-gen.kubebuilder.io/version: v0.20.0
   labels:
     gateway.networking.k8s.io/policy: direct
   name: backendsecuritypolicies.aigateway.envoyproxy.io
@@ -4788,9 +4788,9 @@ spec:
                     || (has(self.workloadIdentityFederationConfig) && !has(self.credentialsFile))
               targetRefs:
                 description: |-
-                  TargetRefs are the names of the AIServiceBackend resources this BackendSecurityPolicy is being attached to.
-                  Attaching multiple BackendSecurityPolicies to the same AIServiceBackend is invalid and will result in an error
-                  during the reconciliation of AIServiceBackend.
+                  TargetRefs are the names of the AIServiceBackend or InferencePool resources this BackendSecurityPolicy is being attached to.
+                  Attaching multiple BackendSecurityPolicies to the same resource is invalid and will result in an error
+                  during the reconciliation of the resource.
                 items:
                   description: |-
                     LocalPolicyTargetReference identifies an API object to apply a direct or
@@ -4823,9 +4823,11 @@ spec:
                 maxItems: 16
                 type: array
                 x-kubernetes-validations:
-                - message: targetRefs must reference AIServiceBackend resources
-                  rule: self.all(ref, ref.group == 'aigateway.envoyproxy.io' && ref.kind
-                    == 'AIServiceBackend')
+                - message: targetRefs must reference AIServiceBackend or InferencePool
+                    resources
+                  rule: self.all(ref, (ref.group == 'aigateway.envoyproxy.io' && ref.kind
+                    == 'AIServiceBackend') || (ref.group == 'inference.networking.k8s.io'
+                    && ref.kind == 'InferencePool'))
               type:
                 description: Type specifies the type of the backend security policy.
                 enum:

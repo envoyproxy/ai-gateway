@@ -18,7 +18,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/internal/json"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
@@ -129,9 +128,7 @@ func TestMCP_standalone(t *testing.T) {
 					Arguments: tc.params,
 				})
 				require.NoError(t, err)
-				encoded, err := json.MarshalIndent(resp, "", "  ")
-				require.NoError(t, err)
-				require.False(t, resp.IsError, "[[response]]\n%s", string(encoded))
+				require.False(t, resp.IsError, "[[response]]\n%v", resp)
 			})
 		}
 	})

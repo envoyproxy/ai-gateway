@@ -341,6 +341,10 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				b := filterapi.Backend{}
 				b.Name = internalapi.PerRouteRuleRefBackendName(aiGatewayRoute.Namespace, backendRef.Name, aiGatewayRoute.Name, ruleIndex, backendRefIndex)
 				b.ModelNameOverride = backendRef.ModelNameOverride
+
+				var bsp *aigv1a1.BackendSecurityPolicy
+				backendNamespace := backendRef.GetNamespace(aiGatewayRoute.Namespace)
+
 				if backendRef.IsInferencePool() {
 					// We assume that InferencePools are all OpenAI schema.
 					b.Schema = filterapi.VersionedAPISchema{
@@ -348,10 +352,16 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 						// This is for backward compatibility. TODO: Remove the 'version' field usage after v0.5.0 release.
 						Version: "v1", Prefix: "v1",
 					}
+
+					bsp, err = c.getBSPForInferencePool(ctx, backendNamespace, backendRef.Name)
+					if err != nil {
+						c.logger.Error(err, "failed to get backend security policy for inference pool",
+							"backend_name", backendRef.Name, "aigatewayroute", aiGatewayRoute.Name,
+							"namespace", backendNamespace)
+						continue
+					}
 				} else {
 					var backendObj *aigv1a1.AIServiceBackend
-					var bsp *aigv1a1.BackendSecurityPolicy
-					backendNamespace := backendRef.GetNamespace(aiGatewayRoute.Namespace)
 					backendObj, bsp, err = c.backendWithMaybeBSP(ctx, backendNamespace, backendRef.Name)
 					if err != nil {
 						c.logger.Error(err, "failed to get backend or backend security policy. Skipping this backend.",
@@ -377,14 +387,15 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					b.BodyMutation = bodyMutationToFilterAPI(mergedBodyMutation)
 
 					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema, c.logger)
-					if bsp != nil {
-						b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, bsp)
-						if err != nil {
-							c.logger.Error(err, "failed to get backend auth from backend security policy. Skipping this backend.",
-								"backend_name", backendRef.Name, "backend_security_policy", bsp.Name,
-								"aigatewayroute", aiGatewayRoute.Name, "namespace", aiGatewayRoute.Namespace)
-							continue
-						}
+				}
+
+				if bsp != nil {
+					b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, bsp)
+					if err != nil {
+						c.logger.Error(err, "failed to get backend auth from backend security policy. Skipping this backend.",
+							"backend_name", backendRef.Name, "backend_security_policy", bsp.Name,
+							"aigatewayroute", aiGatewayRoute.Name, "namespace", aiGatewayRoute.Namespace)
+						continue
 					}
 				}
 
@@ -469,7 +480,8 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) *filterapi.MCPConfig {
 	mc := &filterapi.MCPConfig{
 		BackendListenerAddr: fmt.Sprintf("http://127.0.0.1:%d", internalapi.MCPBackendListenerPort),
 	}
-	for _, route := range mcpRoutes {
+	for i := range mcpRoutes {
+		route := &mcpRoutes[i]
 		mcpRoute := filterapi.MCPRoute{
 			Name:     fmt.Sprintf("%s/%s", route.Namespace, route.Name),
 			Backends: []filterapi.MCPBackend{},
@@ -667,10 +679,23 @@ func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, 
 		client.MatchingFields{k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy: key}); err != nil {
 		return nil, nil, fmt.Errorf("failed to list BackendSecurityPolicies for backend %s: %w", name, err)
 	}
-	switch len(backendSecurityPolicyList.Items) {
+
+	var matchingBSPs []*aigv1a1.BackendSecurityPolicy
+	for i := range backendSecurityPolicyList.Items {
+		policy := &backendSecurityPolicyList.Items[i]
+		for _, target := range policy.Spec.TargetRefs {
+			if string(target.Name) == name &&
+				target.Group == aiServiceBackendGroup &&
+				target.Kind == aiServiceBackendKind {
+				matchingBSPs = append(matchingBSPs, policy)
+			}
+		}
+	}
+
+	switch len(matchingBSPs) {
 	case 0:
 	case 1:
-		bsp = &backendSecurityPolicyList.Items[0]
+		bsp = matchingBSPs[0]
 	default:
 		// We reject the case of multiple BackendSecurityPolicies for the same backend since that could be potentially
 		// a security issue. API is clearly documented to allow only one BackendSecurityPolicy per backend.
@@ -678,10 +703,40 @@ func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, 
 		// Same validation happens in the AIServiceBackend controller, but it might be the case that a new BackendSecurityPolicy
 		// is created after the AIServiceBackend's reconciliation.
 		c.logger.Info("multiple BackendSecurityPolicies found for backend", "backend_name", name, "backend_namespace", namespace,
-			"count", len(backendSecurityPolicyList.Items))
+			"count", len(matchingBSPs))
 		return nil, nil, fmt.Errorf("multiple BackendSecurityPolicies found for backend %s", name)
 	}
 	return
+}
+
+// getBSPForInferencePool retrieves the BackendSecurityPolicy for a given InferencePool if it exists.
+func (c *GatewayController) getBSPForInferencePool(ctx context.Context, namespace, name string) (*aigv1a1.BackendSecurityPolicy, error) {
+	var bspList aigv1a1.BackendSecurityPolicyList
+	key := fmt.Sprintf("%s.%s", name, namespace)
+	if err := c.client.List(ctx, &bspList, client.InNamespace(namespace),
+		client.MatchingFields{k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy: key}); err != nil {
+		return nil, fmt.Errorf("failed to list BackendSecurityPolicies for inference pool %s: %w", name, err)
+	}
+
+	var matchingBSPs []*aigv1a1.BackendSecurityPolicy
+	for i := range bspList.Items {
+		bsp := &bspList.Items[i]
+		for _, target := range bsp.Spec.TargetRefs {
+			if string(target.Name) == name &&
+				target.Group == inferencePoolGroup &&
+				target.Kind == inferencePoolKind {
+				matchingBSPs = append(matchingBSPs, bsp)
+			}
+		}
+	}
+
+	if len(matchingBSPs) == 0 {
+		return nil, nil
+	}
+	if len(matchingBSPs) > 1 {
+		return nil, fmt.Errorf("multiple BackendSecurityPolicies found for inference pool %s in namespace %s", name, namespace)
+	}
+	return matchingBSPs[0], nil
 }
 
 // annotateGatewayPods annotates the pods of GW with the new uuid to propagate the filter config Secret update faster.
@@ -696,7 +751,8 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 	uuid string,
 ) error {
 	rollout := true
-	for _, pod := range pods {
+	for i := range pods {
+		pod := &pods[i]
 		// Get the pod spec and check if it has the extproc container.
 		podSpec := pod.Spec
 		if c.extProcAsSideCar {
@@ -728,7 +784,8 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 	}
 
 	if rollout {
-		for _, dep := range deployments {
+		for i := range deployments {
+			dep := &deployments[i]
 			c.logger.Info("rolling out deployment", "namespace", dep.Namespace, "name", dep.Name)
 			_, err := c.kube.AppsV1().Deployments(dep.Namespace).Patch(ctx, dep.Name, types.MergePatchType,
 				fmt.Appendf(nil,
@@ -739,7 +796,8 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 			}
 		}
 
-		for _, daemonSet := range daemonSets {
+		for i := range daemonSets {
+			daemonSet := &daemonSets[i]
 			c.logger.Info("rolling out daemonSet", "namespace", daemonSet.Namespace, "name", daemonSet.Name)
 			_, err := c.kube.AppsV1().DaemonSets(daemonSet.Namespace).Patch(ctx, daemonSet.Name, types.MergePatchType,
 				fmt.Appendf(nil,

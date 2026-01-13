@@ -31,6 +31,11 @@
     "url": "https://www.lycorp.co.jp/en/"
   },
   {
+    "name": "National Research Platform",
+    "logoUrl": "/img/adopters/nrp.png",
+    "url": "https://nrp.ai"
+  },
+  {
     "name": "Your Logo Here",
     "logoUrl": "/img/adopters/placeholder-company.svg",
     "description": "Add your logo to show support for the project",

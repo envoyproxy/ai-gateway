@@ -970,16 +970,26 @@ type ChatCompletionRequest struct {
 	// Any of "minimal", "low", "medium", "high".
 	ReasoningEffort openai.ReasoningEffort `json:"reasoning_effort,omitzero"`
 
-	// ServiceTier:string or null - Defaults to auto
+	// ServiceTier:string or null
 	// Specifies the processing type used for serving the request.
-	// If set to 'auto', then the request will be processed with the service tier configured in the Project settings. Unless otherwise configured, the Project will use 'default'.
-	// If set to 'default', then the request will be processed with the standard pricing and performance for the selected model.
-	// If set to 'flex' or 'priority', then the request will be processed with the corresponding service tier.
+	//
+	// For OpenAI requests:
+	//   Defaults to auto for openai
+	//   If set to 'auto', then the request will be processed with the service tier configured in the Project settings. Unless otherwise configured, the Project will use 'default'.
+	//   If set to 'default', then the request will be processed with the standard pricing and performance for the selected model.
+	//   If set to 'flex' or 'priority', then the request will be processed with the corresponding service tier.
+	//
+	// For AWS Bedrock requests:
+	//   If set to 'default', then the request will be processed with the standard pricing and performance for the selected model.
+	//   If set to 'reserved', 'flex', or 'priority', then the request will be processed with the corresponding service tier.
+	//   Models that do not support the selected service tier will return a 400 error.
+	//
 	// When the service_tier parameter is set, the response body will include the service_tier value based on the processing mode actually used to serve the request.
 	// This response value may be different from the value set in the parameter.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-service_tier
-	// Any of "auto", "default", "flex", "scale", "priority".
-	ServiceTier openai.ChatCompletionNewParamsServiceTier `json:"service_tier,omitzero"`
+	// Any of "auto", "default", "flex", "scale", "priority" for OpenAI.
+	// Any of "reserved", "default", "flex", "priority" for AWS Bedrock.
+	ServiceTier string `json:"service_tier,omitzero"`
 
 	// Constrains the verbosity of the model's response. Lower values will result in
 	// more concise responses, while higher values will result in more verbose

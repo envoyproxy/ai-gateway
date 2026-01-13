@@ -32,6 +32,25 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
+const releaseDateUnix = 1731679200 // Represents 2024-11-15 09:00:00 UTC
+
+func getChatCompletionResponseChunk(body []byte) []openai.ChatCompletionResponseChunk {
+	lines := bytes.Split(body, []byte("\n\n"))
+
+	chunks := []openai.ChatCompletionResponseChunk{}
+	for _, line := range lines {
+		// Remove "data: " prefix from SSE format if present.
+		line = bytes.TrimPrefix(line, []byte("data: "))
+
+		// Try to parse as JSON.
+		var chunk openai.ChatCompletionResponseChunk
+		if err := json.Unmarshal(line, &chunk); err == nil {
+			chunks = append(chunks, chunk)
+		}
+	}
+	return chunks
+}
+
 func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -408,6 +427,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				Model:       "gpt-4o",
 				MaxTokens:   ptr.To(int64(10)),
 				TopP:        ptr.To(float64(1)),
+				ServiceTier: "reserved",
 				Temperature: ptr.To(0.7),
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
@@ -449,6 +469,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 					TopP:        ptr.To(float64(1)),
 					Temperature: ptr.To(0.7),
 				},
+				ServiceTier: &awsbedrock.ServiceTier{Type: "reserved"},
 				Messages: []*awsbedrock.Message{
 					{
 						Role: openai.ChatMessageRoleUser,
@@ -490,7 +511,8 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 		{
 			name: "test auto tool choice",
 			input: openai.ChatCompletionRequest{
-				Model: "gpt-4o",
+				Model:       "gpt-4o",
+				ServiceTier: "default",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
 						OfUser: &openai.ChatCompletionUserMessageParam{
@@ -514,6 +536,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 			},
 			output: awsbedrock.ConverseInput{
 				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				ServiceTier:     &awsbedrock.ServiceTier{Type: "default"},
 				Messages: []*awsbedrock.Message{
 					{
 						Role: openai.ChatMessageRoleUser,
@@ -1304,9 +1327,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_ResponseBody(t *
 		openaiChunks := getChatCompletionResponseChunk(results)
 
 		var normalizedResults []byte
-		for _, oaichunk := range openaiChunks {
+		for i := range openaiChunks {
+			oaichunk := &openaiChunks[i]
 			oaichunk.ID = "123"
-			oaichunk.Created = openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)) // 0 nanoseconds
+			oaichunk.Created = openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)) // 0 nanoseconds
 			// oaichunk.Model = "claude-sonnet-4"
 			err := serializeOpenAIChatCompletionChunk(oaichunk, &normalizedResults)
 			require.NoError(t, err)
@@ -1453,6 +1477,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 					CacheWriteInputTokens: ptr.To[int64](7),
 					CacheReadInputTokens:  ptr.To[int64](5),
 				},
+				ServiceTier: &awsbedrock.ServiceTier{Type: "default"},
 				Output: &awsbedrock.ConverseOutput{
 					Message: awsbedrock.Message{
 						Role: "assistant",
@@ -1465,10 +1490,11 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 				},
 			},
 			output: openai.ChatCompletionResponse{
-				ID:      "123",
-				Model:   "claude-sonnet-4",
-				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)),
-				Object:  "chat.completion",
+				ID:          "123",
+				Model:       "claude-sonnet-4",
+				Created:     openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)),
+				Object:      "chat.completion",
+				ServiceTier: "default",
 				Usage: openai.Usage{
 					TotalTokens:      42,
 					PromptTokens:     22,
@@ -1498,7 +1524,8 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 					OutputTokens: 20,
 					TotalTokens:  30,
 				},
-				StopReason: ptr.To("stop_sequence"),
+				ServiceTier: &awsbedrock.ServiceTier{Type: "reserved"},
+				StopReason:  ptr.To("stop_sequence"),
 				Output: &awsbedrock.ConverseOutput{
 					Message: awsbedrock.Message{
 						Role: awsbedrock.ConversationRoleAssistant,
@@ -1511,13 +1538,14 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			output: openai.ChatCompletionResponse{
 				ID:      "123",
 				Model:   "claude-sonnet-4",
-				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)),
+				Created: openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)),
 				Object:  "chat.completion",
 				Usage: openai.Usage{
 					TotalTokens:      30,
 					PromptTokens:     10,
 					CompletionTokens: 20,
 				},
+				ServiceTier: "reserved",
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
 						Index:        0,
@@ -1556,7 +1584,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			output: openai.ChatCompletionResponse{
 				ID:      "123",
 				Model:   "claude-sonnet-4",
-				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)),
+				Created: openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)),
 				Object:  "chat.completion",
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
@@ -1605,7 +1633,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			output: openai.ChatCompletionResponse{
 				ID:      "123",
 				Model:   "claude-sonnet-4",
-				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)),
+				Created: openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)),
 				Object:  "chat.completion",
 				Usage: openai.Usage{
 					TotalTokens:      30,
@@ -1659,7 +1687,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			output: openai.ChatCompletionResponse{
 				ID:      "123",
 				Model:   "claude-sonnet-4",
-				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)),
+				Created: openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)),
 				Object:  "chat.completion",
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
@@ -1704,7 +1732,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 			require.NoError(t, err)
 			chatCompletion.ID = "123"
 			chatCompletion.Model = "claude-sonnet-4"
-			chatCompletion.Created = openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0))
+			chatCompletion.Created = openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0))
 			normalizedBody, normalizedErr := json.Marshal(chatCompletion)
 			require.NoError(t, normalizedErr)
 
@@ -1927,7 +1955,7 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 			out: &openai.ChatCompletionResponseChunk{
 				ID:      "123",
 				Model:   "claude-sonnet-4",
-				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)), // 0 nanoseconds
+				Created: openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)), // 0 nanoseconds
 				Object:  "chat.completion.chunk",
 				Usage: &openai.Usage{
 					TotalTokens:      35,
@@ -1948,7 +1976,7 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 			out: &openai.ChatCompletionResponseChunk{
 				ID:      "123",
 				Model:   "claude-sonnet-4",
-				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)), // 0 nanoseconds
+				Created: openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)), // 0 nanoseconds
 				Object:  "chat.completion.chunk",
 				Choices: []openai.ChatCompletionResponseChunkChoice{
 					{
@@ -1969,7 +1997,7 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 			out: &openai.ChatCompletionResponseChunk{
 				ID:      "123",
 				Model:   "claude-sonnet-4",
-				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)), // 0 nanoseconds
+				Created: openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)), // 0 nanoseconds
 				Object:  "chat.completion.chunk",
 				Choices: []openai.ChatCompletionResponseChunkChoice{
 					{
@@ -1993,7 +2021,7 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 			out: &openai.ChatCompletionResponseChunk{
 				ID:      "123",
 				Model:   "claude-sonnet-4",
-				Created: openai.JSONUNIXTime(time.Unix(ReleaseDateUnix, 0)), // 0 nanoseconds
+				Created: openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)), // 0 nanoseconds
 				Object:  "chat.completion.chunk",
 				Choices: []openai.ChatCompletionResponseChunkChoice{
 					{

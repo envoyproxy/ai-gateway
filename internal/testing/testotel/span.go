@@ -9,7 +9,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 )
 
-// MockSpan is a mock implementation of api.ChatCompletionSpan for testing purposes.
+// MockSpan is a mock implementation of tracingapi.ChatCompletionSpan for testing purposes.
 type MockSpan struct {
 	Resp          *openai.ChatCompletionResponse
 	RespChunks    []*openai.ChatCompletionResponseChunk
@@ -18,23 +18,23 @@ type MockSpan struct {
 	EndSpanCalled bool
 }
 
-// RecordResponseChunk implements api.ChatCompletionSpan.
+// RecordResponseChunk implements tracingapi.ChatCompletionSpan.
 func (s *MockSpan) RecordResponseChunk(resp *openai.ChatCompletionResponseChunk) {
 	s.RespChunks = append(s.RespChunks, resp)
 }
 
-// RecordResponse implements api.ChatCompletionSpan.
+// RecordResponse implements tracingapi.ChatCompletionSpan.
 func (s *MockSpan) RecordResponse(resp *openai.ChatCompletionResponse) {
 	s.Resp = resp
 }
 
-// EndSpanOnError implements api.ChatCompletionSpan.
+// EndSpanOnError implements tracingapi.ChatCompletionSpan.
 func (s *MockSpan) EndSpanOnError(statusCode int, body []byte) {
 	s.ErrorStatus = statusCode
 	s.ErrBody = string(body)
 }
 
-// EndSpan implements api.ChatCompletionSpan.
+// EndSpan implements tracingapi.ChatCompletionSpan.
 func (s *MockSpan) EndSpan() {
 	s.EndSpanCalled = true
 }

@@ -14,28 +14,28 @@ import (
 
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/json"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // RerankRecorder implements recorders for Cohere Rerank spans.
 type RerankRecorder struct {
-	tracing.NoopChunkRecorder[struct{}]
+	tracingapi.NoopChunkRecorder[struct{}]
 	traceConfig *openinference.TraceConfig
 }
 
-// NewRerankRecorderFromEnv creates an api.RerankRecorder from environment variables
+// NewRerankRecorderFromEnv creates an tracingapi.RerankRecorder from environment variables
 // using the OpenInference configuration specification.
-func NewRerankRecorderFromEnv() tracing.RerankRecorder {
+func NewRerankRecorderFromEnv() tracingapi.RerankRecorder {
 	return NewRerankRecorder(nil)
 }
 
-// NewRerankRecorder creates a tracing.RerankRecorder with the given config using
+// NewRerankRecorder creates a tracingapi.RerankRecorder with the given config using
 // the OpenInference configuration specification.
 //
 // Parameters:
 //   - config: configuration for redaction. Defaults to NewTraceConfigFromEnv().
-func NewRerankRecorder(config *openinference.TraceConfig) tracing.RerankRecorder {
+func NewRerankRecorder(config *openinference.TraceConfig) tracingapi.RerankRecorder {
 	if config == nil {
 		config = openinference.NewTraceConfigFromEnv()
 	}
@@ -45,22 +45,22 @@ func NewRerankRecorder(config *openinference.TraceConfig) tracing.RerankRecorder
 // startOptsRerank sets trace.SpanKindInternal as that's the span kind used in OpenInference.
 var startOptsRerank = []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKindInternal)}
 
-// StartParams implements the same method as defined in tracing.RerankRecorder.
+// StartParams implements the same method as defined in tracingapi.RerankRecorder.
 func (r *RerankRecorder) StartParams(*cohereschema.RerankV2Request, []byte) (spanName string, opts []trace.SpanStartOption) {
 	return "Rerank", startOptsRerank
 }
 
-// RecordRequest implements the same method as defined in tracing.RerankRecorder.
+// RecordRequest implements the same method as defined in tracingapi.RerankRecorder.
 func (r *RerankRecorder) RecordRequest(span trace.Span, req *cohereschema.RerankV2Request, body []byte) {
 	span.SetAttributes(buildRerankRequestAttributes(req, body, r.traceConfig)...)
 }
 
-// RecordResponseOnError implements the same method as defined in tracing.RerankRecorder.
+// RecordResponseOnError implements the same method as defined in tracingapi.RerankRecorder.
 func (r *RerankRecorder) RecordResponseOnError(span trace.Span, statusCode int, body []byte) {
 	openinference.RecordResponseError(span, statusCode, string(body))
 }
 
-// RecordResponse implements the same method as defined in tracing.RerankRecorder.
+// RecordResponse implements the same method as defined in tracingapi.RerankRecorder.
 func (r *RerankRecorder) RecordResponse(span trace.Span, resp *cohereschema.RerankV2Response) {
 	// Build response attributes (excluding output.value) similar to embeddings.
 	attrs := buildRerankResponseAttributes(resp, r.traceConfig)
@@ -99,8 +99,10 @@ func buildRerankRequestAttributes(req *cohereschema.RerankV2Request, body []byte
 	if config.HideInputs {
 		attrs = append(attrs, attribute.String(openinference.InputValue, openinference.RedactedValue))
 	} else {
-		attrs = append(attrs, attribute.String(openinference.InputValue, string(body)))
-		attrs = append(attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
+		attrs = append(attrs,
+			attribute.String(openinference.InputValue, string(body)),
+			attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+		)
 	}
 
 	// No reranker-specific invocation_parameters attribute is used; model/top_k captured above.

@@ -37,8 +37,10 @@ func buildRequestAttributes(chatRequest *openai.ChatCompletionRequest, body stri
 	if config.HideInputs {
 		attrs = append(attrs, attribute.String(openinference.InputValue, openinference.RedactedValue))
 	} else {
-		attrs = append(attrs, attribute.String(openinference.InputValue, body))
-		attrs = append(attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
+		attrs = append(attrs,
+			attribute.String(openinference.InputValue, body),
+			attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+		)
 	}
 
 	if !config.HideLLMInvocationParameters {
@@ -226,8 +228,10 @@ func buildEmbeddingsRequestAttributes(embRequest *openai.EmbeddingRequest, body 
 	if config.HideInputs {
 		attrs = append(attrs, attribute.String(openinference.InputValue, openinference.RedactedValue))
 	} else {
-		attrs = append(attrs, attribute.String(openinference.InputValue, string(body)))
-		attrs = append(attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
+		attrs = append(attrs,
+			attribute.String(openinference.InputValue, string(body)),
+			attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+		)
 	}
 
 	if !config.HideLLMInvocationParameters {
@@ -286,8 +290,10 @@ func buildCompletionRequestAttributes(req *openai.CompletionRequest, body []byte
 	if config.HideInputs {
 		attrs = append(attrs, attribute.String(openinference.InputValue, openinference.RedactedValue))
 	} else {
-		attrs = append(attrs, attribute.String(openinference.InputValue, string(body)))
-		attrs = append(attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
+		attrs = append(attrs,
+			attribute.String(openinference.InputValue, string(body)),
+			attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+		)
 	}
 
 	if !config.HideLLMInvocationParameters {
@@ -336,8 +342,10 @@ func buildResponsesRequestAttributes(req *openai.ResponseRequest, body []byte, c
 	if !config.HideInputs {
 		bodyString = string(body)
 	}
-	attrs = append(attrs, attribute.String(openinference.InputValue, bodyString))
-	attrs = append(attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
+	attrs = append(attrs,
+		attribute.String(openinference.InputValue, bodyString),
+		attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+	)
 
 	return attrs
 }

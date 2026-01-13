@@ -626,3 +626,74 @@ func TestRecordTokenLatency_MultipleChunksFormula(t *testing.T) {
 		assert.InDelta(t, expected, sum, 1e-9)
 	})
 }
+
+func TestSetBackendProviderName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		schema           filterapi.APISchemaName
+		backendName      string
+		expectedProvider string
+	}{
+		{
+			name:             "OpenAI schema",
+			schema:           filterapi.APISchemaOpenAI,
+			expectedProvider: "openai",
+		},
+		{
+			name:             "Azure OpenAI schema",
+			schema:           filterapi.APISchemaAzureOpenAI,
+			expectedProvider: "azure.openai",
+		},
+		{
+			name:             "AWS Bedrock schema",
+			schema:           filterapi.APISchemaAWSBedrock,
+			expectedProvider: "aws.bedrock",
+		},
+		{
+			name:             "AWS Anthropic schema",
+			schema:           filterapi.APISchemaAWSAnthropic,
+			expectedProvider: "aws.anthropic",
+		},
+		{
+			name:             "GCP Vertex AI schema",
+			schema:           filterapi.APISchemaGCPVertexAI,
+			expectedProvider: "gcp.vertex_ai",
+		},
+		{
+			name:             "GCP Anthropic schema",
+			schema:           filterapi.APISchemaGCPAnthropic,
+			expectedProvider: "gcp.anthropic",
+		},
+		{
+			name:             "Anthropic schema",
+			schema:           filterapi.APISchemaAnthropic,
+			expectedProvider: "anthropic",
+		},
+		{
+			name:             "Cohere schema",
+			schema:           filterapi.APISchemaCohere,
+			expectedProvider: "cohere",
+		},
+		{
+			name:             "Unknown schema falls back to backend name",
+			schema:           "UnknownSchema",
+			backendName:      "my-custom-backend",
+			expectedProvider: "my-custom-backend",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			pm := &metricsImpl{}
+			backend := &filterapi.Backend{
+				Name:   tc.backendName,
+				Schema: filterapi.VersionedAPISchema{Name: tc.schema},
+			}
+			pm.SetBackend(backend)
+			assert.Equal(t, tc.expectedProvider, pm.backend)
+		})
+	}
+}

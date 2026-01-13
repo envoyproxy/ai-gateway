@@ -22,8 +22,8 @@ import (
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // clearEnv clears any OTEL configuration that could exist in the environment.
@@ -126,7 +126,7 @@ func TestNewTracingFromEnv_DisabledByEnv(t *testing.T) {
 
 			result, err := NewTracingFromEnv(t.Context(), io.Discard, nil)
 			require.NoError(t, err)
-			require.IsType(t, tracing.NoopTracing{}, result)
+			require.IsType(t, tracingapi.NoopTracing{}, result)
 		})
 	}
 }
@@ -182,10 +182,10 @@ func TestNewTracingFromEnv_EndpointHierarchy(t *testing.T) {
 			require.NoError(t, err)
 
 			if tt.expectActive {
-				_, isNoop := result.(tracing.NoopTracing)
+				_, isNoop := result.(tracingapi.NoopTracing)
 				require.False(t, isNoop, "expected active tracing")
 			} else {
-				require.IsType(t, tracing.NoopTracing{}, result)
+				require.IsType(t, tracingapi.NoopTracing{}, result)
 			}
 
 			_ = result.Shutdown(context.Background())
@@ -251,13 +251,13 @@ func TestNewTracingFromEnv_ConsoleExporter(t *testing.T) {
 			})
 
 			if tt.expectNoop {
-				_, ok := result.(tracing.NoopTracing)
+				_, ok := result.(tracingapi.NoopTracing)
 				require.True(t, ok, "expected NoopTracing")
 				return
 			}
 
 			// Verify it's not noop.
-			_, ok := result.(tracing.NoopTracing)
+			_, ok := result.(tracingapi.NoopTracing)
 			require.False(t, ok, "expected non-noop tracing")
 
 			// For console exporter, create a span and verify output.
@@ -515,7 +515,7 @@ func TestNewTracingFromEnv_ChatCompletion_Redaction(t *testing.T) {
 	}
 }
 
-func newTracingFromEnvForTest(t *testing.T, stdout io.Writer) (*testotel.OTLPCollector, tracing.Tracing) {
+func newTracingFromEnvForTest(t *testing.T, stdout io.Writer) (*testotel.OTLPCollector, tracingapi.Tracing) {
 	collector := testotel.StartOTLPCollector()
 	t.Cleanup(collector.Close)
 	collector.SetEnv(t.Setenv)
@@ -715,7 +715,7 @@ func TestNewTracingFromEnv_Embeddings_Redaction(t *testing.T) {
 }
 
 // startCompletionsSpan is a test helper that creates a span with a basic request.
-func startCompletionsSpan(t *testing.T, tracing tracing.Tracing, carrier propagation.MapCarrier) tracing.ChatCompletionSpan {
+func startCompletionsSpan(t *testing.T, tracing tracingapi.Tracing, carrier propagation.MapCarrier) tracingapi.ChatCompletionSpan {
 	if carrier == nil {
 		carrier = propagation.MapCarrier{}
 	}
@@ -725,8 +725,8 @@ func startCompletionsSpan(t *testing.T, tracing tracing.Tracing, carrier propaga
 }
 
 func TestTracingImpl_Getters_ImageGenerationAndRerank(t *testing.T) {
-	ig := tracing.NoopTracer[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]{}
-	rr := tracing.NoopTracer[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]{}
+	ig := tracingapi.NoopTracer[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]{}
+	rr := tracingapi.NoopTracer[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]{}
 
 	ti := &tracingImpl{
 		imageGenerationTracer: ig,
