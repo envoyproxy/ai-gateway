@@ -674,10 +674,9 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 				Namespace: egNamespace,
 				Labels:    labels,
 			},
-			Spec: corev1.PodSpec{
-				// This indicates that the pod has extproc.
-				Containers: []corev1.Container{{Name: mutationNamePrefix + "foo"}},
-			},
+			Spec: corev1.PodSpec{InitContainers: []corev1.Container{
+				{Name: extProcContainerName, Image: c.extProcImage},
+			}},
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 		hasEffectiveRoute := true
