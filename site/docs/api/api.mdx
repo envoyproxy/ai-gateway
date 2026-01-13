@@ -606,6 +606,8 @@ QuotaPolicyList contains a list of QuotaPolicy
 - [MCPToolFilter](#mcptoolfilter)
 - [PerModelQuota](#permodelquota)
 - [ProtectedResourceMetadata](#protectedresourcemetadata)
+- [QuotaBucketMode](#quotabucketmode)
+- [QuotaDefinition](#quotadefinition)
 - [QuotaPolicySpec](#quotapolicyspec)
 - [QuotaPolicyStatus](#quotapolicystatus)
 - [QuotaRule](#quotarule)
@@ -2200,18 +2202,13 @@ MCPToolFilter filters tools using include patterns with exact matches or regular
 <ApiField
   name="modelName"
   type="string"
-  required="false"
-  description="Model name for which the quota is specified. If the name is empty the quota rule is applied to all models<br />served by the backend."
+  required="true"
+  description="Model name for which the quota is specified."
 /><ApiField
-  name="costExpression"
-  type="string"
-  required="false"
-  description="CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.<br />If no expression is specified the `total_tokens` value is used.<br />For example:<br /> * `input_tokens + cached_input_tokens * 0.1 + output_tokens * 6`"
-/><ApiField
-  name="rules"
-  type="[QuotaRule](#quotarule) array"
-  required="false"
-  description="Rules are a list of client selectors and quotas. If a request<br />matches multiple rules, each of their associated quotas get applied, so a<br />single request might burn down the quota for multiple rules<br />if selected. The quota service will return a logical OR of the individual<br />quota checks of all matching rules. For example, if a request<br />matches two rules, one has available quota and one not, the final decision will be<br />to allow the request."
+  name="quota"
+  type="[QuotaDefinition](#quotadefinition)"
+  required="true"
+  description="Expression for computing request cost and rules for matching requests to quota buckets."
 />
 
 
@@ -2265,6 +2262,67 @@ References:
 />
 
 
+#### QuotaBucketMode
+
+**Underlying type:** string
+
+**Appears in:**
+- [QuotaDefinition](#quotadefinition)
+
+QuotaBucketMode specifies whether global and per request buckets values are exclusive or inclusive.
+
+
+
+##### Possible Values
+
+<ApiField
+  name="Shared"
+  type="enum"
+  required="false"
+  description=""
+/><ApiField
+  name="Exclusive"
+  type="enum"
+  required="false"
+  description=""
+/>
+#### QuotaDefinition
+
+
+
+**Appears in:**
+- [PerModelQuota](#permodelquota)
+- [QuotaPolicySpec](#quotapolicyspec)
+
+QuotaDefinition specified expression for computing request cost and rules for matching requests to quota buckets.
+
+##### Fields
+
+
+
+<ApiField
+  name="costExpression"
+  type="string"
+  required="false"
+  description="CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.<br />If no expression is specified the `total_tokens` value is used.<br />For example:<br /> * `input_tokens + cached_input_tokens * 0.1 + output_tokens * 6`"
+/><ApiField
+  name="mode"
+  type="[QuotaBucketMode](#quotabucketmode)"
+  required="true"
+  description="The `Mode` determines how quota is charged to the `GlobalBucket` and matching `BucketRules`.<br />In the `exclusive` mode the quota is charged to matching BucketRules or the GlobalBucket<br />if no BucketRules match the request. The request is denied if all matching buckets are out of quota.<br />In the `shared` mode the quota is charged to all matching `BucketRules` AND the `GlobalBucket`<br />and request is allowed only if the quota is available in all matching buckets."
+/><ApiField
+  name="globalBucket"
+  type="[QuotaValue](#quotavalue)"
+  required="false"
+  description="Quota applicable to all traffic. This value can be overridden for specific classes of requests<br />using the `BucketRules` configuration."
+/><ApiField
+  name="bucketRules"
+  type="[QuotaRule](#quotarule) array"
+  required="false"
+  description="BucketRules are a list of client selectors and quotas. If a request<br />matches multiple rules, each of their associated quotas get applied, so a<br />single request might burn down the quota for multiple rules."
+/>
+
+
 #### QuotaPolicySpec
 
 
@@ -2284,9 +2342,14 @@ QuotaPolicySpec specifies rules for computing token based costs of requests.
   required="false"
   description="TargetRefs are the names of the AIServiceBackend resources this QuotaPolicy is being attached to."
 /><ApiField
+  name="serviceQuota"
+  type="[QuotaDefinition](#quotadefinition)"
+  required="false"
+  description="Quota for all models served by AIServiceBackend(s). This value can be overridden for specific models using the `PerModelQuotas`<br />configuration."
+/><ApiField
   name="perModelQuotas"
   type="[PerModelQuota](#permodelquota) array"
-  required="true"
+  required="false"
   description="PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this<br />policy is attached."
 />
 
@@ -2317,7 +2380,7 @@ QuotaPolicyStatus contains the conditions by the reconciliation result.
 
 
 **Appears in:**
-- [PerModelQuota](#permodelquota)
+- [QuotaDefinition](#quotadefinition)
 
 
 
@@ -2348,6 +2411,7 @@ QuotaPolicyStatus contains the conditions by the reconciliation result.
 
 
 **Appears in:**
+- [QuotaDefinition](#quotadefinition)
 - [QuotaRule](#quotarule)
 
 QuotaValue defines the quota limits using sliding window.
@@ -2357,10 +2421,10 @@ QuotaValue defines the quota limits using sliding window.
 
 
 <ApiField
-  name="tokens"
+  name="limit"
   type="integer"
   required="true"
-  description="Number of tokens alloted for a specified time window."
+  description="The limit alloted for a specified time window."
 /><ApiField
   name="duration"
   type="string"

@@ -37,20 +37,34 @@ type QuotaPolicySpec struct {
 	// +kubebuilder:validation:MaxItems=16
 	// +kubebuilder:validation:XValidation:rule="self.all(ref, ref.group == 'aigateway.envoyproxy.io' && ref.kind == 'AIServiceBackend')", message="targetRefs must reference AIServiceBackend resources"
 	TargetRefs []gwapiv1a2.LocalPolicyTargetReference `json:"targetRefs,omitempty"`
+	// Quota for all models served by AIServiceBackend(s). This value can be overridden for specific models using the "PerModelQuotas"
+	// configuration.
+	//
+	// +optional
+	ServiceQuota QuotaDefinition `json:"serviceQuota,omitempty"`
 	// PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this
 	// policy is attached.
 	//
 	// +kubebuilder:validation:MaxItems=128
+	// +optional
 	PerModelQuotas []PerModelQuota `json:"perModelQuotas,omitempty"`
 }
 
 type PerModelQuota struct {
-	// Model name for which the quota is specified. If the name is empty the quota rule is applied to all models
-	// served by the backend.
+	// Model name for which the quota is specified.
 	//
-	// +optional
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	ModelName *string `json:"modelName"`
 
+	// Expression for computing request cost and rules for matching requests to quota buckets.
+	//
+	// +kubebuilder:validation:Required
+	Quota QuotaDefinition `json:"quota"`
+}
+
+// QuotaDefinition specified expression for computing request cost and rules for matching requests to quota buckets.
+type QuotaDefinition struct {
 	// CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.
 	// If no expression is specified the "total_tokens" value is used.
 	// For example:
@@ -59,19 +73,34 @@ type PerModelQuota struct {
 	//
 	// +optional
 	CostExpression *string `json:"costExpression,omitempty"`
-
-	// Rules are a list of client selectors and quotas. If a request
-	// matches multiple rules, each of their associated quotas get applied, so a
-	// single request might burn down the quota for multiple rules
-	// if selected. The quota service will return a logical OR of the individual
-	// quota checks of all matching rules. For example, if a request
-	// matches two rules, one has available quota and one not, the final decision will be
-	// to allow the request.
+	// The "Mode" determines how quota is charged to the "GlobalBucket" and matching "BucketRules".
+	// In the "exclusive" mode the quota is charged to matching BucketRules or the GlobalBucket
+	// if no BucketRules match the request. The request is denied if all matching buckets are out of quota.
+	// In the "shared" mode the quota is charged to all matching "BucketRules" AND the "GlobalBucket"
+	// and request is allowed only if the quota is available in all matching buckets.
+	Mode QuotaBucketMode `json:"mode"`
+	// Quota applicable to all traffic. This value can be overridden for specific classes of requests
+	// using the "BucketRules" configuration.
 	//
 	// +optional
-	// +kubebuilder:validation:MaxItems=128
-	Rules []QuotaRule `json:"rules"`
+	GlobalBucket QuotaValue `json:"globalBucket"`
+	// BucketRules are a list of client selectors and quotas. If a request
+	// matches multiple rules, each of their associated quotas get applied, so a
+	// single request might burn down the quota for multiple rules.
+	//
+	// +optional
+	BucketRules []QuotaRule `json:"bucketRules"`
 }
+
+// QuotaBucketMode specifies whether global and per request buckets values are exclusive or inclusive.
+//
+// +kubebuilder:validation:Enum=Exclusive;Shared
+type QuotaBucketMode string
+
+const (
+	QuoteBucketModeShared    QuotaBucketMode = "Shared"
+	QuoteBucketModeExclusive QuotaBucketMode = "Exclusive"
+)
 
 type QuotaRule struct {
 	// ClientSelectors holds the list of conditions to select
@@ -102,8 +131,8 @@ type QuotaRule struct {
 
 // QuotaValue defines the quota limits using sliding window.
 type QuotaValue struct {
-	// Number of tokens alloted for a specified time window.
-	Tokens uint `json:"tokens"`
+	// The limit alloted for a specified time window.
+	Limit uint `json:"limit"`
 	// Time window. The suffix is used to specify units. The following
 	// suffixes are supported:
 	// * s - seconds (the default unit)
