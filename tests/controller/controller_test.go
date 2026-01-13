@@ -33,6 +33,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/config"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
@@ -859,4 +862,197 @@ func TestSecretController(t *testing.T) {
 
 func defaultLogger() logr.Logger {
 	return logr.FromSlogHandler(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{}))
+}
+
+// TestRaceCondition_RouteBeforeBackend_FullRecovery is an integration test that verifies
+// the system recovers correctly when an AIGatewayRoute is created BEFORE its AIServiceBackend.
+//
+// This scenario occurs in GitOps deployments (e.g., FluxCD) where resource application order
+// is non-deterministic. The test verifies:
+// 1. Route initial reconciliation fails when backend doesn't exist (NotAccepted status)
+// 2. Backend creation triggers re-reconciliation of dependent routes via event channel
+// 3. Route becomes Accepted and HTTPRoute is created after backend exists
+func TestRaceCondition_RouteBeforeBackend_FullRecovery(t *testing.T) {
+	c, cfg, k := testsinternal.NewEnvTest(t)
+
+	// Set up event channels - matching the pattern in StartControllers
+	gatewayEventChan := make(chan event.GenericEvent, 100)
+	aiGatewayRouteEventChan := make(chan event.GenericEvent, 100)
+
+	opt := ctrl.Options{
+		Scheme:         c.Scheme(),
+		LeaderElection: false,
+		Controller:     config.Controller{SkipNameValidation: ptr.To(true)},
+	}
+	mgr, err := ctrl.NewManager(cfg, opt)
+	require.NoError(t, err)
+	require.NoError(t, controller.ApplyIndexing(t.Context(), mgr.GetFieldIndexer().IndexField))
+
+	// Create both controllers - this tests the full controller interaction
+	// The route controller sends events to gatewayEventChan (which we don't need to watch in this test)
+	// The backend controller sends events to aiGatewayRouteEventChan to trigger route re-reconciliation
+	rc := controller.NewAIGatewayRouteController(mgr.GetClient(), k, defaultLogger(), gatewayEventChan, "/v1")
+	bc := controller.NewAIServiceBackendController(mgr.GetClient(), k, defaultLogger(), aiGatewayRouteEventChan)
+
+	// Set up the route controller to be triggered by events from the backend controller
+	// This matches how StartControllers wires things together
+	err = controller.TypedControllerBuilderForCRD(mgr, &aigv1a1.AIGatewayRoute{}).
+		WatchesRawSource(source.Channel(
+			aiGatewayRouteEventChan,
+			&handler.EnqueueRequestForObject{},
+		)).
+		Complete(rc)
+	require.NoError(t, err)
+
+	err = controller.TypedControllerBuilderForCRD(mgr, &aigv1a1.AIServiceBackend{}).Complete(bc)
+	require.NoError(t, err)
+
+	const (
+		routeName      = "race-test-route"
+		backendName    = "race-test-backend"
+		namespace      = "default"
+		gatewayName    = "test-gateway"
+	)
+
+	// Create a Gateway for the route to reference
+	err = c.Create(t.Context(), &gwapiv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{Name: gatewayName, Namespace: namespace},
+		Spec: gwapiv1.GatewaySpec{
+			GatewayClassName: "test-class",
+			Listeners: []gwapiv1.Listener{
+				{Name: "http", Port: 8080, Protocol: "HTTP"},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// Start the manager
+	go func() { require.NoError(t, mgr.Start(t.Context())) }()
+	require.True(t, mgr.GetCache().WaitForCacheSync(t.Context()))
+
+	// STEP 1: Create the AIGatewayRoute BEFORE the backend exists
+	// This simulates the race condition in GitOps deployments
+	route := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: routeName, Namespace: namespace},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			ParentRefs: []gwapiv1a2.ParentReference{
+				{
+					Name:  gatewayName,
+					Kind:  ptr.To(gwapiv1a2.Kind("Gateway")),
+					Group: ptr.To(gwapiv1a2.Group("gateway.networking.k8s.io")),
+				},
+			},
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{Name: backendName, Weight: ptr.To[int32](1)},
+					},
+				},
+			},
+		},
+	}
+	err = c.Create(t.Context(), route)
+	require.NoError(t, err)
+
+	// STEP 2: Verify the route is initially NotAccepted (backend doesn't exist)
+	t.Run("route initially NotAccepted", func(t *testing.T) {
+		require.Eventually(t, func() bool {
+			var r aigv1a1.AIGatewayRoute
+			if err := c.Get(t.Context(), client.ObjectKey{Name: routeName, Namespace: namespace}, &r); err != nil {
+				t.Logf("waiting for route: %v", err)
+				return false
+			}
+			if len(r.Status.Conditions) == 0 {
+				t.Log("waiting for status conditions")
+				return false
+			}
+			if r.Status.Conditions[0].Type != aigv1a1.ConditionTypeNotAccepted {
+				t.Logf("expected NotAccepted, got: %s", r.Status.Conditions[0].Type)
+				return false
+			}
+			t.Logf("Route correctly shows NotAccepted: %s", r.Status.Conditions[0].Message)
+			return true
+		}, 30*time.Second, 200*time.Millisecond, "Route should be NotAccepted when backend doesn't exist")
+	})
+
+	// STEP 3: Verify HTTPRoute does NOT exist yet
+	t.Run("HTTPRoute not created yet", func(t *testing.T) {
+		var httpRoute gwapiv1.HTTPRoute
+		err := c.Get(t.Context(), client.ObjectKey{Name: routeName, Namespace: namespace}, &httpRoute)
+		require.Error(t, err, "HTTPRoute should not exist when backend is missing")
+	})
+
+	// STEP 4: Now create the backend - this should trigger re-reconciliation of the route
+	backend := &aigv1a1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: backendName, Namespace: namespace},
+		Spec: aigv1a1.AIServiceBackendSpec{
+			APISchema: defaultSchema,
+			BackendRef: gwapiv1.BackendObjectReference{
+				Name:  gwapiv1.ObjectName("actual-service"),
+				Kind:  ptr.To(gwapiv1.Kind("Backend")),
+				Group: ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
+			},
+		},
+	}
+	err = c.Create(t.Context(), backend)
+	require.NoError(t, err)
+
+	// STEP 5: Verify the route becomes Accepted after backend is created
+	// The backend controller sends an event to trigger route re-reconciliation
+	t.Run("route becomes Accepted after backend creation", func(t *testing.T) {
+		require.Eventually(t, func() bool {
+			var r aigv1a1.AIGatewayRoute
+			if err := c.Get(t.Context(), client.ObjectKey{Name: routeName, Namespace: namespace}, &r); err != nil {
+				t.Logf("waiting for route: %v", err)
+				return false
+			}
+			if len(r.Status.Conditions) == 0 {
+				t.Log("waiting for status conditions")
+				return false
+			}
+			if r.Status.Conditions[0].Type != aigv1a1.ConditionTypeAccepted {
+				t.Logf("waiting for Accepted, currently: %s - %s",
+					r.Status.Conditions[0].Type, r.Status.Conditions[0].Message)
+				return false
+			}
+			t.Log("Route successfully recovered to Accepted status!")
+			return true
+		}, 30*time.Second, 200*time.Millisecond, "Route should become Accepted after backend is created")
+	})
+
+	// STEP 6: Verify HTTPRoute is now created
+	t.Run("HTTPRoute created after recovery", func(t *testing.T) {
+		require.Eventually(t, func() bool {
+			var httpRoute gwapiv1.HTTPRoute
+			if err := c.Get(t.Context(), client.ObjectKey{Name: routeName, Namespace: namespace}, &httpRoute); err != nil {
+				t.Logf("waiting for HTTPRoute: %v", err)
+				return false
+			}
+			// Verify HTTPRoute has the expected backend reference
+			if len(httpRoute.Spec.Rules) == 0 {
+				t.Log("HTTPRoute has no rules yet")
+				return false
+			}
+			if len(httpRoute.Spec.Rules[0].BackendRefs) == 0 {
+				t.Log("HTTPRoute first rule has no backend refs")
+				return false
+			}
+			t.Logf("HTTPRoute created with backend: %s", httpRoute.Spec.Rules[0].BackendRefs[0].Name)
+			return true
+		}, 30*time.Second, 200*time.Millisecond, "HTTPRoute should be created with backend reference")
+	})
+
+	// STEP 7: Verify backend is also Accepted
+	t.Run("backend is Accepted", func(t *testing.T) {
+		require.Eventually(t, func() bool {
+			var b aigv1a1.AIServiceBackend
+			if err := c.Get(t.Context(), client.ObjectKey{Name: backendName, Namespace: namespace}, &b); err != nil {
+				return false
+			}
+			if len(b.Status.Conditions) == 0 {
+				return false
+			}
+			return b.Status.Conditions[0].Type == aigv1a1.ConditionTypeAccepted
+		}, 30*time.Second, 200*time.Millisecond)
+	})
 }

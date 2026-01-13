@@ -850,3 +850,298 @@ func TestAIGatewayRouteController_SameNamespaceBackend_NoReferenceGrantNeeded(t 
 	require.Len(t, updatedRoute.Status.Conditions, 1)
 	require.Equal(t, aigv1a1.ConditionTypeAccepted, updatedRoute.Status.Conditions[0].Type)
 }
+
+// Race Condition Tests
+// These tests verify the controller behavior when AIGatewayRoute and AIServiceBackend
+// are created in different orders, which can happen due to GitOps/FluxCD reconciliation timing.
+
+func TestAIGatewayRouteController_Reconcile_RouteBeforeBackend_RecoveryAfterBackendCreation(t *testing.T) {
+	// This test verifies that when an AIGatewayRoute is created BEFORE its AIServiceBackend,
+	// the route can recover and become Accepted after the backend is created and a
+	// re-reconciliation is triggered.
+	//
+	// This is the key race condition scenario that can occur with GitOps deployments.
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch, "/v1")
+
+	// Step 1: Create the AIGatewayRoute first (before the backend exists)
+	route := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "race-route", Namespace: "default"},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{Name: "race-backend", Weight: ptr.To[int32](1)},
+					},
+				},
+			},
+		},
+	}
+	err := fakeClient.Create(t.Context(), route)
+	require.NoError(t, err)
+
+	// Step 2: First reconcile should FAIL because backend doesn't exist
+	_, err = c.Reconcile(t.Context(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Namespace: "default", Name: "race-route"},
+	})
+	require.Error(t, err, "Expected error when backend doesn't exist")
+	require.Contains(t, err.Error(), "AIServiceBackend", "Error should mention missing backend")
+
+	// Verify status is NotAccepted
+	var routeAfterFirstReconcile aigv1a1.AIGatewayRoute
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "race-route"}, &routeAfterFirstReconcile)
+	require.NoError(t, err)
+	require.Len(t, routeAfterFirstReconcile.Status.Conditions, 1)
+	require.Equal(t, aigv1a1.ConditionTypeNotAccepted, routeAfterFirstReconcile.Status.Conditions[0].Type,
+		"Route should be NotAccepted when backend is missing")
+
+	// Step 3: Now create the backend
+	backend := &aigv1a1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "race-backend", Namespace: "default"},
+		Spec: aigv1a1.AIServiceBackendSpec{
+			APISchema: aigv1a1.VersionedAPISchema{
+				Name:    aigv1a1.APISchemaOpenAI,
+				Version: ptr.To("v1"),
+			},
+			BackendRef: gwapiv1.BackendObjectReference{
+				Name: "actual-service",
+			},
+		},
+	}
+	err = fakeClient.Create(t.Context(), backend)
+	require.NoError(t, err)
+
+	// Step 4: Re-reconcile should now SUCCEED
+	_, err = c.Reconcile(t.Context(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Namespace: "default", Name: "race-route"},
+	})
+	require.NoError(t, err, "Reconcile should succeed after backend is created")
+
+	// Verify status is now Accepted
+	var routeAfterRecovery aigv1a1.AIGatewayRoute
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "race-route"}, &routeAfterRecovery)
+	require.NoError(t, err)
+	require.Len(t, routeAfterRecovery.Status.Conditions, 1)
+	require.Equal(t, aigv1a1.ConditionTypeAccepted, routeAfterRecovery.Status.Conditions[0].Type,
+		"Route should be Accepted after backend is created and re-reconciled")
+
+	// Verify HTTPRoute was created
+	var httpRoute gwapiv1.HTTPRoute
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "race-route"}, &httpRoute)
+	require.NoError(t, err, "HTTPRoute should be created after successful reconciliation")
+	require.True(t, len(httpRoute.Spec.Rules) > 0, "HTTPRoute should have rules")
+}
+
+func TestAIGatewayRouteController_Reconcile_BackendBeforeRoute_Success(t *testing.T) {
+	// This test verifies the happy path: when AIServiceBackend is created BEFORE
+	// the AIGatewayRoute, reconciliation succeeds on the first attempt.
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch, "/v1")
+
+	// Step 1: Create the backend FIRST
+	backend := &aigv1a1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "happy-backend", Namespace: "default"},
+		Spec: aigv1a1.AIServiceBackendSpec{
+			APISchema: aigv1a1.VersionedAPISchema{
+				Name:    aigv1a1.APISchemaOpenAI,
+				Version: ptr.To("v1"),
+			},
+			BackendRef: gwapiv1.BackendObjectReference{
+				Name: "actual-service",
+			},
+		},
+	}
+	err := fakeClient.Create(t.Context(), backend)
+	require.NoError(t, err)
+
+	// Step 2: Then create the route
+	route := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "happy-route", Namespace: "default"},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{Name: "happy-backend", Weight: ptr.To[int32](1)},
+					},
+				},
+			},
+		},
+	}
+	err = fakeClient.Create(t.Context(), route)
+	require.NoError(t, err)
+
+	// Step 3: First reconcile should succeed immediately
+	_, err = c.Reconcile(t.Context(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Namespace: "default", Name: "happy-route"},
+	})
+	require.NoError(t, err, "Reconcile should succeed when backend exists before route")
+
+	// Verify status is Accepted
+	var updatedRoute aigv1a1.AIGatewayRoute
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "happy-route"}, &updatedRoute)
+	require.NoError(t, err)
+	require.Len(t, updatedRoute.Status.Conditions, 1)
+	require.Equal(t, aigv1a1.ConditionTypeAccepted, updatedRoute.Status.Conditions[0].Type,
+		"Route should be Accepted when backend exists")
+
+	// Verify HTTPRoute was created
+	var httpRoute gwapiv1.HTTPRoute
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "happy-route"}, &httpRoute)
+	require.NoError(t, err, "HTTPRoute should be created")
+	require.True(t, len(httpRoute.Spec.Rules) > 0, "HTTPRoute should have rules")
+}
+
+func TestAIGatewayRouteController_Reconcile_MultipleBackends_PartialAvailability(t *testing.T) {
+	// This test verifies behavior when a route references multiple backends,
+	// but only some of them exist. The reconciliation should fail until ALL
+	// backends are available.
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch, "/v1")
+
+	// Create only ONE of the two required backends
+	backend1 := &aigv1a1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "backend-one", Namespace: "default"},
+		Spec: aigv1a1.AIServiceBackendSpec{
+			APISchema: aigv1a1.VersionedAPISchema{
+				Name:    aigv1a1.APISchemaOpenAI,
+				Version: ptr.To("v1"),
+			},
+			BackendRef: gwapiv1.BackendObjectReference{Name: "service-one"},
+		},
+	}
+	err := fakeClient.Create(t.Context(), backend1)
+	require.NoError(t, err)
+
+	// Create route referencing TWO backends (one exists, one doesn't)
+	route := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "multi-backend-route", Namespace: "default"},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{Name: "backend-one", Weight: ptr.To[int32](50)},
+						{Name: "backend-two", Weight: ptr.To[int32](50)}, // This one doesn't exist
+					},
+				},
+			},
+		},
+	}
+	err = fakeClient.Create(t.Context(), route)
+	require.NoError(t, err)
+
+	// Reconcile should FAIL because backend-two doesn't exist
+	_, err = c.Reconcile(t.Context(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Namespace: "default", Name: "multi-backend-route"},
+	})
+	require.Error(t, err, "Should fail when any backend is missing")
+	require.Contains(t, err.Error(), "backend-two", "Error should mention the missing backend")
+
+	// Verify status is NotAccepted
+	var routeAfterFirstReconcile aigv1a1.AIGatewayRoute
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "multi-backend-route"}, &routeAfterFirstReconcile)
+	require.NoError(t, err)
+	require.Equal(t, aigv1a1.ConditionTypeNotAccepted, routeAfterFirstReconcile.Status.Conditions[0].Type)
+
+	// Now create the missing backend
+	backend2 := &aigv1a1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "backend-two", Namespace: "default"},
+		Spec: aigv1a1.AIServiceBackendSpec{
+			APISchema: aigv1a1.VersionedAPISchema{
+				Name:    aigv1a1.APISchemaOpenAI,
+				Version: ptr.To("v1"),
+			},
+			BackendRef: gwapiv1.BackendObjectReference{Name: "service-two"},
+		},
+	}
+	err = fakeClient.Create(t.Context(), backend2)
+	require.NoError(t, err)
+
+	// Re-reconcile should now succeed
+	_, err = c.Reconcile(t.Context(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Namespace: "default", Name: "multi-backend-route"},
+	})
+	require.NoError(t, err, "Reconcile should succeed when all backends exist")
+
+	// Verify status is now Accepted
+	var routeAfterRecovery aigv1a1.AIGatewayRoute
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "multi-backend-route"}, &routeAfterRecovery)
+	require.NoError(t, err)
+	require.Equal(t, aigv1a1.ConditionTypeAccepted, routeAfterRecovery.Status.Conditions[0].Type)
+
+	// Verify HTTPRoute has both backend references
+	var httpRoute gwapiv1.HTTPRoute
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "multi-backend-route"}, &httpRoute)
+	require.NoError(t, err)
+	// First rule should have 2 backend refs
+	require.Len(t, httpRoute.Spec.Rules[0].BackendRefs, 2, "HTTPRoute should reference both backends")
+}
+
+func TestAIGatewayRouteController_Reconcile_BackendDeletedAfterRouteCreation(t *testing.T) {
+	// This test verifies behavior when a backend is deleted AFTER a route
+	// was successfully created and accepted.
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch, "/v1")
+
+	// Step 1: Create backend first
+	backend := &aigv1a1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "ephemeral-backend", Namespace: "default"},
+		Spec: aigv1a1.AIServiceBackendSpec{
+			APISchema: aigv1a1.VersionedAPISchema{
+				Name:    aigv1a1.APISchemaOpenAI,
+				Version: ptr.To("v1"),
+			},
+			BackendRef: gwapiv1.BackendObjectReference{Name: "ephemeral-service"},
+		},
+	}
+	err := fakeClient.Create(t.Context(), backend)
+	require.NoError(t, err)
+
+	// Step 2: Create route
+	route := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "orphaned-route", Namespace: "default"},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{Name: "ephemeral-backend", Weight: ptr.To[int32](1)},
+					},
+				},
+			},
+		},
+	}
+	err = fakeClient.Create(t.Context(), route)
+	require.NoError(t, err)
+
+	// Step 3: Initial reconcile should succeed
+	_, err = c.Reconcile(t.Context(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Namespace: "default", Name: "orphaned-route"},
+	})
+	require.NoError(t, err)
+
+	// Verify route is Accepted
+	var acceptedRoute aigv1a1.AIGatewayRoute
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "orphaned-route"}, &acceptedRoute)
+	require.NoError(t, err)
+	require.Equal(t, aigv1a1.ConditionTypeAccepted, acceptedRoute.Status.Conditions[0].Type)
+
+	// Step 4: Delete the backend
+	err = fakeClient.Delete(t.Context(), backend)
+	require.NoError(t, err)
+
+	// Step 5: Re-reconcile should FAIL because backend no longer exists
+	_, err = c.Reconcile(t.Context(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Namespace: "default", Name: "orphaned-route"},
+	})
+	require.Error(t, err, "Reconcile should fail when backend is deleted")
+
+	// Verify status changed to NotAccepted
+	var orphanedRoute aigv1a1.AIGatewayRoute
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "orphaned-route"}, &orphanedRoute)
+	require.NoError(t, err)
+	require.Equal(t, aigv1a1.ConditionTypeNotAccepted, orphanedRoute.Status.Conditions[0].Type,
+		"Route should become NotAccepted when backend is deleted")
+}
