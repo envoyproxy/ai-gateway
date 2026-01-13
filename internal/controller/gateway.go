@@ -458,7 +458,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 			if _, err = c.kube.CoreV1().Secrets(configSecretNamespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
 				return false, fmt.Errorf("failed to create secret %s: %w", configSecretName, err)
 			}
-			return
+			return hasEffectiveRoute, nil
 		}
 		return false, fmt.Errorf("failed to get secret %s: %w", configSecretName, err)
 	}
@@ -467,11 +467,15 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	if _, err := c.kube.CoreV1().Secrets(configSecretNamespace).Update(ctx, secret, metav1.UpdateOptions{}); err != nil {
 		return false, fmt.Errorf("failed to update secret %s: %w", secret.Name, err)
 	}
-	return
+	return hasEffectiveRoute, nil
 }
 
 // reconcileFilterConfigSecretForMCPGateway updates the filter config secret for the external processor.
 func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) (_ *filterapi.MCPConfig, hasEffectiveRoute bool) {
+	if len(mcpRoutes) == 0 {
+		return nil, false
+	}
+
 	mc := &filterapi.MCPConfig{
 		BackendListenerAddr: fmt.Sprintf("http://127.0.0.1:%d", internalapi.MCPBackendListenerPort),
 	}
