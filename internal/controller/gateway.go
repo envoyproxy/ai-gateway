@@ -302,19 +302,18 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	aiGatewayRoutes []aigv1a1.AIGatewayRoute,
 	mcpRoutes []aigv1a1.MCPRoute,
 	uuid string,
-) (effective bool, _ error) {
+) (hasEffectiveRoute bool, _ error) {
 	// Precondition: aiGatewayRoutes is not empty as we early return if it is empty.
 	ec := &filterapi.Config{UUID: uuid, Version: version.Parse()}
 	var err error
 	llmCosts := map[string]struct{}{}
-	var effectiveAIGatewayRoute bool
 	for i := range aiGatewayRoutes {
 		aiGatewayRoute := &aiGatewayRoutes[i]
 		if !aiGatewayRoute.GetDeletionTimestamp().IsZero() {
 			c.logger.Info("AIGatewayRoute is being deleted, skipping extproc secret update", "namespace", aiGatewayRoutes[i].Namespace, "name", aiGatewayRoutes[i].Name)
 			continue
 		}
-		effectiveAIGatewayRoute = true
+		hasEffectiveRoute = true
 		spec := aiGatewayRoute.Spec
 		for ruleIndex := range spec.Rules {
 			rule := &spec.Rules[ruleIndex]
@@ -440,6 +439,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	// Configuration for MCP processor.
 	var effectiveMCPRoute bool
 	ec.MCPConfig, effectiveMCPRoute = mcpConfig(mcpRoutes)
+	hasEffectiveRoute = hasEffectiveRoute || effectiveMCPRoute
 
 	marshaled, err := yaml.Marshal(ec)
 	if err != nil {
@@ -458,7 +458,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 			if _, err = c.kube.CoreV1().Secrets(configSecretNamespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
 				return false, fmt.Errorf("failed to create secret %s: %w", configSecretName, err)
 			}
-			return effectiveAIGatewayRoute || effectiveMCPRoute, nil
+			return
 		}
 		return false, fmt.Errorf("failed to get secret %s: %w", configSecretName, err)
 	}
@@ -467,7 +467,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	if _, err := c.kube.CoreV1().Secrets(configSecretNamespace).Update(ctx, secret, metav1.UpdateOptions{}); err != nil {
 		return false, fmt.Errorf("failed to update secret %s: %w", secret.Name, err)
 	}
-	return effectiveAIGatewayRoute || effectiveMCPRoute, nil
+	return
 }
 
 // reconcileFilterConfigSecretForMCPGateway updates the filter config secret for the external processor.
