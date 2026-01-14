@@ -580,6 +580,9 @@ spec:
                     x-kubernetes-validations:
                     - message: Either image or imageRepository can be set.
                       rule: '!has(self.image) || !has(self.imageRepository)'
+                  logLevel:
+                    description: LogLevel for the external processor.
+                    type: string
                 type: object
             type: object
           status:

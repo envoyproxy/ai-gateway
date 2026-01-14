@@ -69,6 +69,11 @@ type GatewayConfigExtProc struct {
 	//
 	// +optional
 	Kubernetes *egv1a1.KubernetesContainerSpec `json:"kubernetes,omitempty"`
+
+	// LogLevel for the external processor.
+	//
+	//+optional
+	LogLevel *string `json:"logLevel,omitempty"`
 }
 
 // GatewayConfigStatus defines the observed state of GatewayConfig.
