@@ -294,7 +294,6 @@ func (s *Server) processMsg(ctx context.Context, l *slog.Logger, p Processor, re
 		if s.debugLogEnabled {
 			l.Debug("response body processing", slog.Any("request", req))
 		}
-		fmt.Println(base64.StdEncoding.EncodeToString(value.ResponseBody.GetBody()))
 		resp, err := p.ProcessResponseBody(ctx, value.ResponseBody)
 		if s.debugLogEnabled {
 			l.Debug("response body processed", slog.Any("response", resp))
