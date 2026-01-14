@@ -135,32 +135,35 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent(s tracingap
 		if s != nil {
 			s.RecordResponseChunk(eventUnion)
 		}
+		a.reflectStreamingEvent(eventUnion)
+	}
+}
 
-		switch {
-		case eventUnion.MessageStart != nil:
-			message := eventUnion.MessageStart
-			// Store the response model for future batches
-			if message.Model != "" {
-				a.streamingResponseModel = message.Model
-			}
-			// Extract usage from message_start event - this sets the baseline input tokens
-			if u := message.Usage; u != nil {
-				messageStartUsage := metrics.ExtractTokenUsageFromExplicitCaching(
-					int64(u.InputTokens),
-					int64(u.OutputTokens),
-					ptr.To(int64(u.CacheReadInputTokens)),
-					ptr.To(int64(u.CacheCreationInputTokens)),
-				)
-				// Override with message_start usage (contains input tokens and initial state)
-				a.streamingTokenUsage.Override(messageStartUsage)
-			}
-		case eventUnion.MessageDelta != nil:
-			u := eventUnion.MessageDelta.Usage
-			// message_delta events provide final counts for specific token types
-			// Update output tokens from message_delta (final count)
-			if u.OutputTokens >= 0 {
-				a.streamingTokenUsage.SetOutputTokens(uint32(u.OutputTokens)) //nolint:gosec
-			}
+func (a *anthropicToAnthropicTranslator) reflectStreamingEvent(eventUnion *anthropic.MessagesStreamChunk) {
+	switch {
+	case eventUnion.MessageStart != nil:
+		message := eventUnion.MessageStart
+		// Store the response model for future batches
+		if message.Model != "" {
+			a.streamingResponseModel = message.Model
+		}
+		// Extract usage from message_start event - this sets the baseline input tokens
+		if u := message.Usage; u != nil {
+			messageStartUsage := metrics.ExtractTokenUsageFromExplicitCaching(
+				int64(u.InputTokens),
+				int64(u.OutputTokens),
+				ptr.To(int64(u.CacheReadInputTokens)),
+				ptr.To(int64(u.CacheCreationInputTokens)),
+			)
+			// Override with message_start usage (contains input tokens and initial state)
+			a.streamingTokenUsage.Override(messageStartUsage)
+		}
+	case eventUnion.MessageDelta != nil:
+		u := eventUnion.MessageDelta.Usage
+		// message_delta events provide final counts for specific token types
+		// Update output tokens from message_delta (final count)
+		if u.OutputTokens >= 0 {
+			a.streamingTokenUsage.SetOutputTokens(uint32(u.OutputTokens)) //nolint:gosec
 		}
 	}
 }

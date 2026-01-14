@@ -137,7 +137,12 @@ func TestWithRealProviders(t *testing.T) {
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					cc.MaybeSkip(t, tc.required)
-					requireEventuallyMessagesNonStreamingRequestOK(t, listenerAddress, tc.modelName)
+					t.Run("non-streaming", func(t *testing.T) {
+						requireEventuallyMessagesRequestOK(t, listenerAddress, tc.modelName, false)
+					})
+					t.Run("streaming", func(t *testing.T) {
+						requireEventuallyMessagesRequestOK(t, listenerAddress, tc.modelName, true)
+					})
 				})
 			}
 		})
@@ -380,12 +385,40 @@ func requireEventuallyChatCompletionNonStreamingRequestOK(t *testing.T, listener
 	}, realProvidersEventuallyTimeout, realProvidersEventuallyInterval)
 }
 
-func requireEventuallyMessagesNonStreamingRequestOK(t *testing.T, listenerAddress, modelName string) {
+func requireEventuallyMessagesRequestOK(t *testing.T, listenerAddress, modelName string, streaming bool) {
 	client := anthropic.NewClient(
 		anthropicoption.WithAPIKey("dummy"),
 		anthropicoption.WithBaseURL(listenerAddress+"/anthropic/"),
 	)
 	internaltesting.RequireEventuallyNoError(t, func() error {
+		if streaming {
+			stream := client.Messages.NewStreaming(t.Context(), anthropic.MessageNewParams{
+				MaxTokens: 1024,
+				Messages: []anthropic.MessageParam{
+					anthropic.NewUserMessage(anthropic.NewTextBlock("Say hi!")),
+				},
+				Model: anthropic.Model(modelName),
+			})
+			var contentBuilder strings.Builder
+			for stream.Next() {
+				chunk := stream.Current()
+				fmt.Printf("chunk: %+v\n", chunk)
+				if eventVariant, ok := chunk.AsAny().(anthropic.ContentBlockDeltaEvent); ok {
+					if deltaVariant, ok := eventVariant.Delta.AsAny().(anthropic.TextDelta); ok {
+						contentBuilder.WriteString(deltaVariant.Text)
+					}
+				}
+			}
+			if err := stream.Err(); err != nil {
+				t.Logf("messages streaming error: %v", err)
+				return fmt.Errorf("messages streaming error: %w", err)
+			}
+			if contentBuilder.Len() == 0 {
+				return fmt.Errorf("empty message content in streaming response")
+			}
+			t.Logf("streaming response: %+v", contentBuilder.String())
+			return nil
+		}
 		message, err := client.Messages.New(t.Context(), anthropic.MessageNewParams{
 			MaxTokens: 1024,
 			Messages: []anthropic.MessageParam{
