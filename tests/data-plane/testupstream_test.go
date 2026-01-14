@@ -69,15 +69,15 @@ func TestWithTestUpstream(t *testing.T) {
 			testUpstreamBodyMutationAnthropicBackend,
 			{
 				Name: "testupstream-openai-5xx", Schema: openAISchema, HeaderMutation: &filterapi.HTTPHeaderMutation{
-					Set: []filterapi.HTTPHeader{{Name: testupstreamlib.ResponseStatusKey, Value: "500"}},
-				},
+				Set: []filterapi.HTTPHeader{{Name: testupstreamlib.ResponseStatusKey, Value: "500"}},
+			},
 				ModelNameOverride: "bad-model",
 			},
 			{
 				Name:   "testupstream-anthropic",
 				Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic}, Auth: &filterapi.BackendAuth{
-					AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: "anthropic-api-key"},
-				},
+				AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: "anthropic-api-key"},
+			},
 			},
 		},
 		Models: []filterapi.Model{
@@ -1017,34 +1017,34 @@ data: {"type":"message_stop"       }
 {"bytes":"eyJ0eXBlIjoibWVzc2FnZV9zdG9wIiwiYW1hem9uLWJlZHJvY2staW52b2NhdGlvbk1ldHJpY3MiOnsiaW5wdXRUb2tlbkNvdW50IjoxMCwib3V0cHV0VG9rZW5Db3VudCI6MTUsImludm9jYXRpb25MYXRlbmN5IjoxNzk4LCJmaXJzdEJ5dGVMYXRlbmN5IjoxNTA3fX0=","p":"ab"}
 `,
 			expStatus: http.StatusOK,
-			expResponseBody: `event:message_start
+			expResponseBody: `event: message_start
 data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_bdrk_012GBPzpcoMCLP1b2pcJsSHk","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":1}}}
 
-event:content_block_start
+event: content_block_start
 data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
 
-event:content_block_delta
+event: content_block_delta
 data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}
 
-event:content_block_delta
+event: content_block_delta
 data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"!"}}
 
-event:content_block_delta
+event: content_block_delta
 data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" "}}
 
-event:content_block_delta
+event: content_block_delta
 data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"👋 How"}}
 
-event:content_block_delta
+event: content_block_delta
 data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" are you doing today?"}}
 
-event:content_block_stop
+event: content_block_stop
 data: {"type":"content_block_stop","index":0}
 
-event:message_delta
+event: message_delta
 data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":15}}
 
-event:message_stop
+event: message_stop
 data: {"type":"message_stop","amazon-bedrock-invocationMetrics":{"inputTokenCount":10,"outputTokenCount":15,"invocationLatency":1798,"firstByteLatency":1507}}
 
 `,
