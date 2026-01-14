@@ -402,7 +402,6 @@ func requireEventuallyMessagesRequestOK(t *testing.T, listenerAddress, modelName
 			var contentBuilder strings.Builder
 			for stream.Next() {
 				chunk := stream.Current()
-				fmt.Printf("chunk: %+v\n", chunk)
 				if eventVariant, ok := chunk.AsAny().(anthropic.ContentBlockDeltaEvent); ok {
 					if deltaVariant, ok := eventVariant.Delta.AsAny().(anthropic.TextDelta); ok {
 						contentBuilder.WriteString(deltaVariant.Text)

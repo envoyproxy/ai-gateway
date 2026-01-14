@@ -76,8 +76,7 @@ func TestWithTestUpstream(t *testing.T) {
 			{
 				Name:   "testupstream-anthropic",
 				Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic}, Auth: &filterapi.BackendAuth{
-				AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: "anthropic-api-key"},
-			},
+				AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: "anthropic-api-key"}},
 			},
 		},
 		Models: []filterapi.Model{
