@@ -53,11 +53,13 @@ func TestGatewayController_Reconcile(t *testing.T) {
 		})
 		require.NoError(t, err)
 
+		// With no routes AND no pods/deployments, the controller requeues
+		// waiting for the gateway infrastructure to be ready.
 		res, err := c.Reconcile(t.Context(), ctrl.Request{
 			NamespacedName: client.ObjectKey{Name: "gw", Namespace: namespace},
 		})
 		require.NoError(t, err)
-		require.Equal(t, ctrl.Result{}, res)
+		require.Equal(t, ctrl.Result{RequeueAfter: 5 * time.Second}, res)
 	})
 	// Create a Gateway with attached AIGatewayRoutes.
 	const okGwName = "ok-gw"

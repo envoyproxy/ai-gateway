@@ -111,11 +111,8 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return mcpRoutes.Items[i].CreationTimestamp.Before(&mcpRoutes.Items[j].CreationTimestamp)
 	})
 
-	if len(aiRoutes.Items) == 0 && len(mcpRoutes.Items) == 0 {
-		// This means that the gateway is not attached to any AIGatewayRoute or MCPRoute.
-		c.logger.Info("No AIGatewayRoute or MCPRoute attached to the Gateway", "namespace", gw.Namespace, "name", gw.Name)
-		return ctrl.Result{}, nil
-	}
+	// Note: We intentionally do NOT return early when there are no routes.
+	// We must update the filter config to empty state to clear any stale backends/models.
 
 	namespace, pods, deployments, daemonSets, err := c.getObjectsForGateway(ctx, gw)
 	if err != nil {
@@ -307,7 +304,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	mcpRoutes []aigv1a1.MCPRoute,
 	uuid string,
 ) error {
-	// Precondition: aiGatewayRoutes is not empty as we early return if it is empty.
+	// Note: aiGatewayRoutes and mcpRoutes may be empty, in which case the config will have empty backends/models.
 	ec := &filterapi.Config{UUID: uuid, Version: version.Parse()}
 	var err error
 	llmCosts := map[string]struct{}{}
