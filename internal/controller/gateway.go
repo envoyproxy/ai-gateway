@@ -49,7 +49,7 @@ const (
 // to check if the pods of the gateway deployment need to be rolled out.
 func NewGatewayController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
-	extProcImage string, standAlone bool, uuidFn func() string, extProcAsSideCar bool,
+	extProcImage string, extProcLogLevel string, standAlone bool, uuidFn func() string, extProcAsSideCar bool,
 ) *GatewayController {
 	uf := uuidFn
 	if uf == nil {
@@ -60,6 +60,7 @@ func NewGatewayController(
 		kube:             kube,
 		logger:           logger,
 		extProcImage:     extProcImage,
+		extProcLogLevel:  extProcLogLevel,
 		standAlone:       standAlone,
 		uuidFn:           uf,
 		extProcAsSideCar: extProcAsSideCar,
@@ -68,10 +69,11 @@ func NewGatewayController(
 
 // GatewayController implements reconcile.TypedReconciler for gwapiv1.Gateway.
 type GatewayController struct {
-	client       client.Client
-	kube         kubernetes.Interface
-	logger       logr.Logger
-	extProcImage string // The image of the external processor sidecar container.
+	client          client.Client
+	kube            kubernetes.Interface
+	logger          logr.Logger
+	extProcImage    string // The image of the external processor sidecar container.
+	extProcLogLevel string // The log level for the extproc container.
 	// standAlone indicates whether the controller is running in standalone mode.
 	standAlone bool
 	uuidFn     func() string // Function to generate a new UUID for the filter config.
@@ -764,6 +766,13 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 				// If there's an extproc sidecar container with the current target image, we don't need to roll out the deployment.
 				if podSpec.InitContainers[i].Name == extProcContainerName && podSpec.InitContainers[i].Image == c.extProcImage {
 					hasSideCar = true
+					for j := range podSpec.InitContainers[i].Args {
+						// logLevel arg should be indexed 2 based on gateway_mutator.go, but we check all args to be safe.
+						if j > 0 && podSpec.InitContainers[i].Args[j-1] == "-logLevel" && podSpec.InitContainers[i].Args[j] != c.extProcLogLevel {
+							hasSideCar = false
+							break
+						}
+					}
 					break
 				}
 			}
@@ -772,6 +781,12 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 				// If there's an extproc container with the current target image, we don't need to roll out the deployment.
 				if podSpec.Containers[i].Name == extProcContainerName && podSpec.Containers[i].Image == c.extProcImage {
 					hasSideCar = true
+					for j := range podSpec.Containers[i].Args {
+						if j > 0 && podSpec.Containers[i].Args[j-1] == "-logLevel" && podSpec.Containers[i].Args[j] != c.extProcLogLevel {
+							hasSideCar = false
+							break
+						}
+					}
 					break
 				}
 			}
