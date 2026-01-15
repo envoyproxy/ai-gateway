@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 580">
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#333"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="580" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="450" y="30" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#333">Flow 2: Automatic Caching (Multi-Region)</text>
+
+  <!-- Lifeline labels -->
+  <text x="100" y="60" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#1976d2">Client</text>
+  <text x="300" y="60" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#388e3c">ai-gateway</text>
+  <text x="550" y="60" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#f57c00">Cache Service</text>
+  <text x="780" y="60" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#7b1fa2">Vertex AI</text>
+
+  <!-- Lifelines -->
+  <line x1="100" y1="75" x2="100" y2="540" stroke="#999" stroke-width="1" stroke-dasharray="5,5"/>
+  <line x1="300" y1="75" x2="300" y2="540" stroke="#999" stroke-width="1" stroke-dasharray="5,5"/>
+  <line x1="550" y1="75" x2="550" y2="540" stroke="#999" stroke-width="1" stroke-dasharray="5,5"/>
+  <line x1="780" y1="75" x2="780" y2="540" stroke="#999" stroke-width="1" stroke-dasharray="5,5"/>
+
+  <!-- Step 1: Client to ai-gateway -->
+  <line x1="100" y1="100" x2="290" y2="100" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="195" y="90" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#333">POST /v1/chat/completions</text>
+  <text x="195" y="115" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#666">(with cache_control)</text>
+
+  <!-- Step 2: ai-gateway to Cache Service -->
+  <line x1="300" y1="160" x2="540" y2="160" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="420" y="150" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#333">POST /v1/cache/resolve</text>
+  <text x="420" y="175" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#666">X-Cache-Regions: us-central1,us-east1</text>
+
+  <!-- Parallel cache creation box -->
+  <rect x="520" y="195" width="120" height="45" rx="4" fill="#fff3e0" stroke="#f57c00" stroke-width="1" stroke-dasharray="3,3"/>
+  <text x="580" y="215" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#f57c00">parallel cache</text>
+  <text x="580" y="230" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#f57c00">create/check</text>
+
+  <!-- Step 3: Cache Service response -->
+  <line x1="550" y1="270" x2="310" y2="270" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="430" y="255" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#333">{caches: {us-central1: "...", us-east1: "..."}}</text>
+  <text x="430" y="285" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#666">messages: [...]</text>
+
+  <!-- Routing decision box -->
+  <rect x="240" y="310" width="120" height="40" rx="4" fill="#e8f5e9" stroke="#388e3c" stroke-width="1" stroke-dasharray="3,3"/>
+  <text x="300" y="328" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#388e3c">Route based on</text>
+  <text x="300" y="342" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#388e3c">quota/weight → us-east1</text>
+
+  <!-- Step 4: ai-gateway to Vertex AI -->
+  <line x1="300" y1="380" x2="770" y2="380" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="535" y="370" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#333">POST generateContent (us-east1)</text>
+  <text x="535" y="395" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#666">(with cachedContent for us-east1)</text>
+
+  <!-- Step 5: Vertex AI response -->
+  <line x1="780" y1="440" x2="310" y2="440" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="545" y="430" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#333">Response (usageMetadata)</text>
+
+  <!-- Step 6: ai-gateway to Client -->
+  <line x1="300" y1="500" x2="110" y2="500" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="205" y="490" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#333">Response (OpenAI format)</text>
+</svg>
