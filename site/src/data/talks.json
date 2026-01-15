@@ -6,7 +6,7 @@
         "event": "KubeCon Europe 2026",
         "speaker": "Xiaolin Lin (Bloomberg), Aaron Choo (Bloomberg)",
         "description": "This session examines how financial institutions navigate the complex security and governance requirements of GenAI by building resilient infrastructure that spans cloud and on-premise environments. It details Bloomberg's production implementation of the Envoy AI Gateway, showcasing how features like intelligent routing and secure authentication enable the safe, scalable delivery of real-time AI traffic."
-    }
+    },
     {
         "date": "2025-11-13",
         "title": "Inference Awakens: Tools for the Age of GenAI",
