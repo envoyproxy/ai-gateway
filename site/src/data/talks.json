@@ -2,7 +2,7 @@
     {
         "date": "2026-03-23",
         "title": "Scaling LLMs at Bloomberg Using Envoy AI Gateway: A Hybrid Cloud Approach",
-        "url": "https://events.linuxfoundation.org/kubecon-cloudnativecon-europe/co-located-events/cncf-hosted-co-located-schedule/",
+        "url": "https://colocatedeventseu2026.sched.com/event/2DY8Z/scaling-llms-at-bloomberg-using-envoy-ai-gateway-a-hybrid-cloud-approach-xiaolin-lin-bloomberg",
         "event": "KubeCon Europe 2026",
         "speaker": "Xiaolin Lin (Bloomberg), Aaron Choo (Bloomberg)",
         "description": "This session examines how financial institutions navigate the complex security and governance requirements of GenAI by building resilient infrastructure that spans cloud and on-premise environments. It details Bloomberg's production implementation of the Envoy AI Gateway, showcasing how features like intelligent routing and secure authentication enable the safe, scalable delivery of real-time AI traffic."
