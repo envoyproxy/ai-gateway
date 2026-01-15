@@ -18,7 +18,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // NewCompletionOpenAIToOpenAITranslator implements [Factory] for OpenAI to OpenAI translation for completions.
@@ -76,7 +76,7 @@ func (o *openAIToOpenAITranslatorV1Completion) ResponseHeaders(map[string]string
 // ResponseBody implements [OpenAICompletionTranslator.ResponseBody].
 // OpenAI completions support model virtualization through automatic routing and resolution,
 // so we return the actual model from the response body which may differ from the requested model.
-func (o *openAIToOpenAITranslatorV1Completion) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracing.CompletionSpan) (
+func (o *openAIToOpenAITranslatorV1Completion) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracingapi.CompletionSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
 	// For streaming, just pass through and extract metadata from SSE chunks
@@ -133,7 +133,7 @@ func (o *openAIToOpenAITranslatorV1Completion) ResponseBody(_ map[string]string,
 // extractUsageFromBufferEvent extracts the token usage and model from the buffered SSE events.
 // It scans complete lines and returns the latest usage found in this batch.
 // It also records each parsed chunk to the tracing span if provided.
-func (o *openAIToOpenAITranslatorV1Completion) extractUsageFromBufferEvent(span tracing.CompletionSpan) (tokenUsage metrics.TokenUsage) {
+func (o *openAIToOpenAITranslatorV1Completion) extractUsageFromBufferEvent(span tracingapi.CompletionSpan) (tokenUsage metrics.TokenUsage) {
 	for {
 		i := bytes.IndexByte(o.buffered, '\n')
 		if i == -1 {
@@ -141,12 +141,12 @@ func (o *openAIToOpenAITranslatorV1Completion) extractUsageFromBufferEvent(span 
 		}
 		line := o.buffered[:i]
 		o.buffered = o.buffered[i+1:]
-		if !bytes.HasPrefix(line, dataPrefix) {
+		if !bytes.HasPrefix(line, sseDataPrefix) {
 			continue
 		}
-		data := bytes.TrimPrefix(line, dataPrefix)
+		data := bytes.TrimPrefix(line, sseDataPrefix)
 		// Skip the [DONE] marker
-		if bytes.Equal(data, []byte("[DONE]")) {
+		if bytes.Equal(data, sseDoneMessage) {
 			continue
 		}
 		// The OpenAPI spec says "Note: both the streamed and non-streamed response objects
@@ -171,7 +171,8 @@ func (o *openAIToOpenAITranslatorV1Completion) extractUsageFromBufferEvent(span 
 			tokenUsage.SetOutputTokens(uint32(usage.CompletionTokens)) //nolint:gosec
 			tokenUsage.SetTotalTokens(uint32(usage.TotalTokens))       //nolint:gosec
 			if usage.PromptTokensDetails != nil {
-				tokenUsage.SetCachedInputTokens(uint32(usage.PromptTokensDetails.CachedTokens)) //nolint:gosec
+				tokenUsage.SetCachedInputTokens(uint32(usage.PromptTokensDetails.CachedTokens))               //nolint:gosec
+				tokenUsage.SetCacheCreationInputTokens(uint32(usage.PromptTokensDetails.CacheCreationTokens)) //nolint:gosec
 			}
 			// Do not mark buffering done; keep scanning to return the latest usage in this batch.
 		}

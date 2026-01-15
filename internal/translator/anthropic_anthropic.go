@@ -14,12 +14,13 @@ import (
 	"strings"
 
 	"github.com/tidwall/sjson"
+	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // NewAnthropicToAnthropicTranslator creates a passthrough translator for Anthropic.
@@ -76,7 +77,7 @@ func (a *anthropicToAnthropicTranslator) ResponseHeaders(_ map[string]string) (
 }
 
 // ResponseBody implements [AnthropicMessagesTranslator.ResponseBody].
-func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracing.MessageSpan) (
+func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracingapi.MessageSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	if a.stream {
@@ -99,11 +100,11 @@ func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body 
 		return nil, nil, tokenUsage, responseModel, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 	usage := anthropicResp.Usage
-	tokenUsage = metrics.ExtractTokenUsageFromAnthropic(
+	tokenUsage = metrics.ExtractTokenUsageFromExplicitCaching(
 		int64(usage.InputTokens),
 		int64(usage.OutputTokens),
-		int64(usage.CacheReadInputTokens),
-		int64(usage.CacheCreationInputTokens),
+		ptr.To(int64(usage.CacheReadInputTokens)),
+		ptr.To(int64(usage.CacheCreationInputTokens)),
 	)
 	if span != nil {
 		span.RecordResponse(anthropicResp)
@@ -114,7 +115,7 @@ func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body 
 
 // extractUsageFromBufferEvent extracts the token usage from the buffered event.
 // It scans complete lines and accumulates usage from all events in this batch.
-func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent(s tracing.MessageSpan) {
+func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent(s tracingapi.MessageSpan) {
 	for {
 		i := bytes.IndexByte(a.buffered, '\n')
 		if i == -1 {
@@ -124,42 +125,45 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent(s tracing.M
 		}
 		line := a.buffered[:i]
 		a.buffered = a.buffered[i+1:]
-		if !bytes.HasPrefix(line, dataPrefix) {
+		if !bytes.HasPrefix(line, sseDataPrefix) {
 			continue
 		}
 		eventUnion := &anthropic.MessagesStreamChunk{}
-		if err := json.Unmarshal(bytes.TrimPrefix(line, dataPrefix), eventUnion); err != nil {
+		if err := json.Unmarshal(bytes.TrimPrefix(line, sseDataPrefix), eventUnion); err != nil {
 			continue
 		}
 		if s != nil {
 			s.RecordResponseChunk(eventUnion)
 		}
+		a.reflectStreamingEvent(eventUnion)
+	}
+}
 
-		switch {
-		case eventUnion.MessageStart != nil:
-			message := eventUnion.MessageStart
-			// Store the response model for future batches
-			if message.Model != "" {
-				a.streamingResponseModel = message.Model
-			}
-			// Extract usage from message_start event - this sets the baseline input tokens
-			if u := message.Usage; u != nil {
-				messageStartUsage := metrics.ExtractTokenUsageFromAnthropic(
-					int64(u.InputTokens),
-					int64(u.OutputTokens),
-					int64(u.CacheReadInputTokens),
-					int64(u.CacheCreationInputTokens),
-				)
-				// Override with message_start usage (contains input tokens and initial state)
-				a.streamingTokenUsage.Override(messageStartUsage)
-			}
-		case eventUnion.MessageDelta != nil:
-			u := eventUnion.MessageDelta.Usage
-			// message_delta events provide final counts for specific token types
-			// Update output tokens from message_delta (final count)
-			if u.OutputTokens >= 0 {
-				a.streamingTokenUsage.SetOutputTokens(uint32(u.OutputTokens)) //nolint:gosec
-			}
+func (a *anthropicToAnthropicTranslator) reflectStreamingEvent(eventUnion *anthropic.MessagesStreamChunk) {
+	switch {
+	case eventUnion.MessageStart != nil:
+		message := eventUnion.MessageStart
+		// Store the response model for future batches
+		if message.Model != "" {
+			a.streamingResponseModel = message.Model
+		}
+		// Extract usage from message_start event - this sets the baseline input tokens
+		if u := message.Usage; u != nil {
+			messageStartUsage := metrics.ExtractTokenUsageFromExplicitCaching(
+				int64(u.InputTokens),
+				int64(u.OutputTokens),
+				ptr.To(int64(u.CacheReadInputTokens)),
+				ptr.To(int64(u.CacheCreationInputTokens)),
+			)
+			// Override with message_start usage (contains input tokens and initial state)
+			a.streamingTokenUsage.Override(messageStartUsage)
+		}
+	case eventUnion.MessageDelta != nil:
+		u := eventUnion.MessageDelta.Usage
+		// message_delta events provide final counts for specific token types
+		// Update output tokens from message_delta (final count)
+		if u.OutputTokens >= 0 {
+			a.streamingTokenUsage.SetOutputTokens(uint32(u.OutputTokens)) //nolint:gosec
 		}
 	}
 }
@@ -180,6 +184,9 @@ func (a *anthropicToAnthropicTranslator) updateTotalTokens() {
 	if outputSet {
 		if _, cachedSet := a.streamingTokenUsage.CachedInputTokens(); !cachedSet {
 			a.streamingTokenUsage.SetCachedInputTokens(0)
+		}
+		if _, cachedSet := a.streamingTokenUsage.CacheCreationInputTokens(); !cachedSet {
+			a.streamingTokenUsage.SetCacheCreationInputTokens(0)
 		}
 	}
 

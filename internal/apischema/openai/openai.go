@@ -970,16 +970,26 @@ type ChatCompletionRequest struct {
 	// Any of "minimal", "low", "medium", "high".
 	ReasoningEffort openai.ReasoningEffort `json:"reasoning_effort,omitzero"`
 
-	// ServiceTier:string or null - Defaults to auto
+	// ServiceTier:string or null
 	// Specifies the processing type used for serving the request.
-	// If set to 'auto', then the request will be processed with the service tier configured in the Project settings. Unless otherwise configured, the Project will use 'default'.
-	// If set to 'default', then the request will be processed with the standard pricing and performance for the selected model.
-	// If set to 'flex' or 'priority', then the request will be processed with the corresponding service tier.
+	//
+	// For OpenAI requests:
+	//   Defaults to auto for openai
+	//   If set to 'auto', then the request will be processed with the service tier configured in the Project settings. Unless otherwise configured, the Project will use 'default'.
+	//   If set to 'default', then the request will be processed with the standard pricing and performance for the selected model.
+	//   If set to 'flex' or 'priority', then the request will be processed with the corresponding service tier.
+	//
+	// For AWS Bedrock requests:
+	//   If set to 'default', then the request will be processed with the standard pricing and performance for the selected model.
+	//   If set to 'reserved', 'flex', or 'priority', then the request will be processed with the corresponding service tier.
+	//   Models that do not support the selected service tier will return a 400 error.
+	//
 	// When the service_tier parameter is set, the response body will include the service_tier value based on the processing mode actually used to serve the request.
 	// This response value may be different from the value set in the parameter.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-service_tier
-	// Any of "auto", "default", "flex", "scale", "priority".
-	ServiceTier openai.ChatCompletionNewParamsServiceTier `json:"service_tier,omitzero"`
+	// Any of "auto", "default", "flex", "scale", "priority" for OpenAI.
+	// Any of "reserved", "default", "flex", "priority" for AWS Bedrock.
+	ServiceTier string `json:"service_tier,omitzero"`
 
 	// Constrains the verbosity of the model's response. Lower values will result in
 	// more concise responses, while higher values will result in more verbose
@@ -1076,11 +1086,27 @@ const (
 	ToolTypeFunction            ToolType = "function"
 	ToolTypeImageGeneration     ToolType = "image_generation"
 	ToolTypeEnterpriseWebSearch ToolType = "enterprise_search"
+	ToolTypeGoogleSearch        ToolType = "google_search"
 )
 
+// GCPGoogleSearchConfig contains GCP-specific configuration for Google Search grounding.
+// https://pkg.go.dev/google.golang.org/genai#GoogleSearch
+type GCPGoogleSearchConfig struct {
+	ExcludeDomains     []string            `json:"exclude_domains,omitempty"`     //nolint:tagliatelle
+	BlockingConfidence string              `json:"blocking_confidence,omitempty"` //nolint:tagliatelle
+	TimeRangeFilter    *GCPTimeRangeFilter `json:"time_range_filter,omitempty"`   //nolint:tagliatelle
+}
+
+// GCPTimeRangeFilter filters search results to a specific time range.
+type GCPTimeRangeFilter struct {
+	StartTime string `json:"start_time,omitempty"` //nolint:tagliatelle
+	EndTime   string `json:"end_time,omitempty"`   //nolint:tagliatelle
+}
+
 type Tool struct {
-	Type     ToolType            `json:"type"`
-	Function *FunctionDefinition `json:"function,omitempty"`
+	Type         ToolType               `json:"type"`
+	Function     *FunctionDefinition    `json:"function,omitempty"`
+	GoogleSearch *GCPGoogleSearchConfig `json:"google_search,omitempty"` //nolint:tagliatelle
 }
 
 // ToolChoiceType represents the type of tool choice.
@@ -1382,6 +1408,8 @@ type PromptTokensDetails struct {
 	AudioTokens int `json:"audio_tokens,omitzero"`
 	// Cached tokens present in the prompt.
 	CachedTokens int `json:"cached_tokens,omitzero"`
+	// Tokens written to the cache.
+	CacheCreationTokens int `json:"cache_creation_input_tokens,omitzero"`
 }
 
 // ChatCompletionResponseChunk is described in the OpenAI API documentation:
@@ -2535,6 +2563,9 @@ type ResponseUsageInputTokensDetails struct {
 	// The number of tokens that were retrieved from the cache.
 	// [More on prompt caching](https://platform.openai.com/docs/guides/prompt-caching).
 	CachedTokens int64 `json:"cached_tokens"`
+
+	// The number of tokens that were written to the cache.
+	CacheCreationTokens int64 `json:"cache_creation_input_tokens"`
 }
 
 // A detailed breakdown of the output tokens.
@@ -2547,6 +2578,9 @@ type ResponseUsageOutputTokensDetails struct {
 type ResponseTokensDetails struct {
 	// CachedTokens: Number of cached tokens.
 	CachedTokens int `json:"cached_tokens,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// CacheCreationTokens: number of tokens that were written to the cache.
+	CacheCreationTokens int64 `json:"cache_creation_input_tokens"` //nolint:tagliatelle
 
 	// ReasoningTokens: Number of reasoning tokens (for reasoning models).
 	ReasoningTokens int `json:"reasoning_tokens,omitempty"` //nolint:tagliatelle //follow openai api

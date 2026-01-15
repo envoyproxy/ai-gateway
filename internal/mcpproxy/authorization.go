@@ -97,7 +97,7 @@ func compileAuthorization(auth *filterapi.MCPRouteAuthorization) (*compiledAutho
 }
 
 // authorizeRequest authorizes the request based on the given MCPRouteAuthorization configuration.
-func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, req authorizationRequest) (bool, []string) {
+func (m *mcpRequestContext) authorizeRequest(authorization *compiledAuthorization, req *authorizationRequest) (bool, []string) {
 	if authorization == nil {
 		return true, nil
 	}
@@ -133,7 +133,8 @@ func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, req au
 	var requiredScopesForChallenge []string
 	var celActivation map[string]any
 
-	for _, rule := range authorization.Rules {
+	for i := range authorization.Rules {
+		rule := &authorization.Rules[i]
 		action := rule.Action == filterapi.AuthorizationActionAllow
 
 		// Evaluate CEL expression if present.
@@ -183,7 +184,7 @@ func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, req au
 	return defaultAction, requiredScopesForChallenge
 }
 
-func buildCELActivation(req authorizationRequest, claims jwt.MapClaims, scopes sets.Set[string]) map[string]any {
+func buildCELActivation(req *authorizationRequest, claims jwt.MapClaims, scopes sets.Set[string]) map[string]any {
 	// Normalize headers to lowercased keys to align with Envoy's behavior.
 	// Expose both single-value and multi-value header views for CEL.
 	// - request.headers: lowercased keys, first value only.
@@ -286,7 +287,7 @@ func extractScopes(claims jwt.MapClaims) []string {
 	return scopes
 }
 
-func (m *MCPProxy) evalRuleCEL(rule compiledAuthorizationRule, activation map[string]any) (bool, error) {
+func (m *mcpRequestContext) evalRuleCEL(rule *compiledAuthorizationRule, activation map[string]any) (bool, error) {
 	result, _, err := rule.celProgram.Eval(activation)
 	if err != nil {
 		m.l.Error("failed to evaluate authorization CEL", slog.String("error", err.Error()), slog.String("expression", rule.celExpression))
@@ -304,7 +305,7 @@ func (m *MCPProxy) evalRuleCEL(rule compiledAuthorizationRule, activation map[st
 	}
 }
 
-func (m *MCPProxy) toolMatches(backend, tool string, tools []filterapi.ToolCall) bool {
+func (m *mcpRequestContext) toolMatches(backend, tool string, tools []filterapi.ToolCall) bool {
 	// Empty tools means all tools match.
 	if len(tools) == 0 {
 		return true

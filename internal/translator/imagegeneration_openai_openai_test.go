@@ -7,7 +7,6 @@ package translator
 
 import (
 	"bytes"
-	"io"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -80,7 +79,7 @@ func TestOpenAIToOpenAIImageTranslator_ResponseBody_OK(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, hm)
 	require.Nil(t, bm)
-	require.Equal(t, tokenUsageFrom(-1, -1, -1, -1), usage)
+	require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1), usage)
 	require.Empty(t, responseModel)
 }
 
@@ -104,20 +103,6 @@ func TestOpenAIToOpenAIImageTranslator_ResponseError_JSONPassthrough(t *testing.
 	// Already JSON — should be passed through (no mutation)
 	hm, bm, err := tr.ResponseError(headers, bytes.NewReader([]byte(`{"error":"msg"}`)))
 	require.NoError(t, err)
-	require.Nil(t, hm)
-	require.Nil(t, bm)
-}
-
-type errReader struct{}
-
-func (errReader) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }
-
-func TestOpenAIToOpenAIImageTranslator_ResponseError_ReadError(t *testing.T) {
-	tr := NewImageGenerationOpenAIToOpenAITranslator("v1", "")
-	headers := map[string]string{statusHeaderName: "503"}
-	hm, bm, err := tr.ResponseError(headers, errReader{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "failed to read error body")
 	require.Nil(t, hm)
 	require.Nil(t, bm)
 }
@@ -192,5 +177,5 @@ func TestOpenAIToOpenAIImageTranslator_ResponseBody_Usage(t *testing.T) {
 	buf, _ := json.Marshal(resp)
 	_, _, usage, _, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(buf), true, nil)
 	require.NoError(t, err)
-	require.Equal(t, tokenUsageFrom(40, -1, 60, 100), usage)
+	require.Equal(t, tokenUsageFrom(40, -1, -1, 60, 100), usage)
 }

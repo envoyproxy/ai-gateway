@@ -28,7 +28,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 func TestNewFactory(t *testing.T) {
@@ -38,7 +38,7 @@ func TestNewFactory(t *testing.T) {
 	t.Run("router", func(t *testing.T) {
 		t.Parallel()
 
-		factory := NewFactory(nil, tracing.NoopChatCompletionTracer{}, endpointspec.ChatCompletionsEndpointSpec{})
+		factory := NewFactory(nil, tracingapi.NoopChatCompletionTracer{}, endpointspec.ChatCompletionsEndpointSpec{})
 		proc, err := factory(cfg, headers, slog.Default(), false)
 		require.NoError(t, err)
 		require.IsType(t, &chatCompletionProcessorRouterFilter{}, proc)
@@ -53,7 +53,7 @@ func TestNewFactory(t *testing.T) {
 	t.Run("upstream", func(t *testing.T) {
 		t.Parallel()
 
-		factory := NewFactory(&mockMetricsFactory{}, tracing.NoopChatCompletionTracer{}, endpointspec.ChatCompletionsEndpointSpec{})
+		factory := NewFactory(&mockMetricsFactory{}, tracingapi.NoopChatCompletionTracer{}, endpointspec.ChatCompletionsEndpointSpec{})
 		proc, err := factory(cfg, headers, slog.Default(), true)
 		require.NoError(t, err)
 		require.IsType(t, &chatCompletionProcessorUpstreamFilter{}, proc)
@@ -70,12 +70,12 @@ type (
 )
 
 type mockTracer struct {
-	tracing.NoopChatCompletionTracer
+	tracingapi.NoopChatCompletionTracer
 	startSpanCalled bool
-	returnedSpan    tracing.ChatCompletionSpan
+	returnedSpan    tracingapi.ChatCompletionSpan
 }
 
-func (m *mockTracer) StartSpanAndInjectHeaders(_ context.Context, _ map[string]string, carrier propagation.TextMapCarrier, _ *openai.ChatCompletionRequest, _ []byte) tracing.ChatCompletionSpan {
+func (m *mockTracer) StartSpanAndInjectHeaders(_ context.Context, _ map[string]string, carrier propagation.TextMapCarrier, _ *openai.ChatCompletionRequest, _ []byte) tracingapi.ChatCompletionSpan {
 	m.startSpanCalled = true
 	carrier.Set("tracing-header", "1")
 	if m.returnedSpan != nil {
@@ -87,7 +87,7 @@ func (m *mockTracer) StartSpanAndInjectHeaders(_ context.Context, _ map[string]s
 func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 	t.Run("body parser error", func(t *testing.T) {
 		p := &chatCompletionProcessorRouterFilter{
-			tracer: tracing.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+			tracer: tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
 			config: &filterapi.RuntimeConfig{},
 		}
 		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: []byte("nonjson")})
@@ -100,7 +100,7 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 			config:         &filterapi.RuntimeConfig{},
 			requestHeaders: headers,
 			logger:         slog.Default(),
-			tracer:         tracing.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+			tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
 		}
 		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, nil)})
 		require.NoError(t, err)
@@ -159,7 +159,7 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 				},
 				requestHeaders: headers,
 				logger:         slog.Default(),
-				tracer:         tracing.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+				tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
 			}
 			resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", true, opt)})
 			require.NoError(t, err)
@@ -259,6 +259,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		mt.retUsedToken.SetOutputTokens(123)
 		mt.retUsedToken.SetInputTokens(1)
 		mt.retUsedToken.SetCachedInputTokens(1)
+		mt.retUsedToken.SetCacheCreationInputTokens(3)
 
 		celProgInt, err := llmcostcel.NewProgram("54321")
 		require.NoError(t, err)
@@ -274,6 +275,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 						{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"}},
 						{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeInputToken, MetadataKey: "input_token_usage"}},
 						{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCachedInputToken, MetadataKey: "cached_input_token_usage"}},
+						{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCacheCreationInputToken, MetadataKey: "cache_creation_input_token_usage"}},
 						{
 							CELProg:        celProgInt,
 							LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCEL, MetadataKey: "cel_int"},
@@ -309,6 +311,8 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 			GetStructValue().Fields["input_token_usage"].GetNumberValue())
 		require.Equal(t, float64(1), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
 			GetStructValue().Fields["cached_input_token_usage"].GetNumberValue())
+		require.Equal(t, float64(3), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
+			GetStructValue().Fields["cache_creation_input_token_usage"].GetNumberValue())
 		require.Equal(t, float64(54321), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
 			GetStructValue().Fields["cel_int"].GetNumberValue())
 		require.Equal(t, float64(9999), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
@@ -371,6 +375,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		mt.expResponseBody = final
 		mt.retUsedToken.SetInputTokens(5)
 		mt.retUsedToken.SetCachedInputTokens(3)
+		mt.retUsedToken.SetCacheCreationInputTokens(21)
 		mt.retUsedToken.SetOutputTokens(138)
 		mt.retUsedToken.SetTotalTokens(143)
 		_, err = p.ProcessResponseBody(t.Context(), final)
@@ -379,6 +384,8 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		require.Equal(t, 5, mm.inputTokenCount)
 		require.Equal(t, 138, mm.outputTokenCount)
 		require.Equal(t, 138, mm.streamingOutputTokens) // accumulated output tokens from stream
+		require.Equal(t, 3, mm.cachedInputTokenCount)
+		require.Equal(t, 21, mm.cacheCreationInputTokenCount)
 	})
 }
 
@@ -427,7 +434,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				someBody := bodyFromModel(t, "some-model", tc.stream, nil)
 				var body openai.ChatCompletionRequest
 				require.NoError(t, json.Unmarshal(someBody, &body))
-				tr := mockTranslator{t: t, retErr: errors.New("test error"), expRequestBody: &body}
+				tr := &mockTranslator{t: t, retErr: errors.New("test error"), expRequestBody: &body}
 				mm := &mockMetrics{}
 				p := &chatCompletionProcessorUpstreamFilter{
 					parent: &chatCompletionProcessorRouterFilter{
@@ -462,7 +469,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 					expBody.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
 				}
 
-				mt := mockTranslator{
+				mt := &mockTranslator{
 					t: t, expRequestBody: &expBody, retHeaderMutation: headerMut,
 					retBodyMutation: bodyMut, expForceRequestBodyMutation: tc.forcedIncludeUsage,
 				}

@@ -23,7 +23,7 @@ services:
     container_name: otel-tui
     profiles: ["otel-tui"]
     ports:
-      - "4318:4318"
+      - "4317:4317"
     stdin_open: true
     tty: true
 
@@ -35,7 +35,8 @@ services:
     container_name: phoenix
     profiles: ["phoenix"] # Only start when explicitly requested
     ports:
-      - "6006:6006"
+      - "4317:4317" # OTLP gRPC
+      - "6006:6006" # Web UI
     environment:
       PHOENIX_ENABLE_AUTH: "false"
 

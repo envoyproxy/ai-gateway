@@ -75,9 +75,6 @@ func TestPublicMCPServers(t *testing.T) {
 		t.Logf("tools/list response: %+v", resp)
 		var names []string
 		for _, tool := range resp.Tools {
-			schemastring, err := json.MarshalIndent(tool.InputSchema, "", "  ")
-			require.NoError(t, err)
-			t.Logf("[tool=%s]%s\n\n%s\n", tool.Name, schemastring, tool.Description)
 			names = append(names, tool.Name)
 		}
 
@@ -89,12 +86,14 @@ func TestPublicMCPServers(t *testing.T) {
 		}
 
 		if githubConfigured {
-			exps = append(exps, "github__issue_read")
-			exps = append(exps, "github__pull_request_read")
-			exps = append(exps, "github__list_issues")
-			exps = append(exps, "github__list_pull_requests")
-			exps = append(exps, "github__search_issues")
-			exps = append(exps, "github__search_pull_requests")
+			exps = append(exps,
+				"github__issue_read",
+				"github__pull_request_read",
+				"github__list_issues",
+				"github__list_pull_requests",
+				"github__search_issues",
+				"github__search_pull_requests",
+			)
 		}
 
 		// Do not use ElementsMatch so we can ensure there are no unexpected tools.
@@ -163,9 +162,6 @@ func TestPublicMCPServers(t *testing.T) {
 					Arguments: tc.params,
 				})
 				require.NoError(t, err)
-				encoded, err := json.MarshalIndent(resp, "", "  ")
-				require.NoError(t, err)
-				t.Logf("[[response]]\n%s", string(encoded))
 				require.False(t, resp.IsError)
 			})
 		}

@@ -326,6 +326,7 @@ func TestMessageRecorder_RecordResponse(t *testing.T) {
 				attribute.String(openinference.OutputMessageToolCallAttribute(1, 0, openinference.ToolCallFunctionArguments), `{"timezone":"UTC"}`),
 				attribute.Int(openinference.LLMTokenCountPrompt, 10),
 				attribute.Int(openinference.LLMTokenCountPromptCacheHit, 0),
+				attribute.Int(openinference.LLMTokenCountPromptCacheWrite, 0),
 				attribute.Int(openinference.LLMTokenCountCompletion, 5),
 				attribute.Int(openinference.LLMTokenCountTotal, 15),
 			},

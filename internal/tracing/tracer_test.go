@@ -23,7 +23,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/json"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 var (
@@ -40,9 +40,9 @@ var (
 	}
 )
 
-type tracerConstructor[ReqT any, RespT, RespChunkT any] func(oteltrace.Tracer, propagation.TextMapPropagator, map[string]string) tracing.RequestTracer[ReqT, RespT, RespChunkT]
+type tracerConstructor[ReqT any, RespT, RespChunkT any] func(oteltrace.Tracer, propagation.TextMapPropagator, map[string]string) tracingapi.RequestTracer[ReqT, RespT, RespChunkT]
 
-var chatCompletionTracerCtor = func(tr oteltrace.Tracer, prop propagation.TextMapPropagator, headerAttrs map[string]string) tracing.ChatCompletionTracer {
+var chatCompletionTracerCtor = func(tr oteltrace.Tracer, prop propagation.TextMapPropagator, headerAttrs map[string]string) tracingapi.ChatCompletionTracer {
 	return newChatCompletionTracer(tr, prop, testChatCompletionRecorder{}, headerAttrs)
 }
 
@@ -56,7 +56,7 @@ type requestTracerLifecycleTest[ReqT any, RespT, RespChunkT any] struct {
 	expectedAttrs    []attribute.KeyValue
 	expectedTraceID  string
 	expectedSpanType any
-	recordAndEnd     func(span tracing.Span[RespT, RespChunkT])
+	recordAndEnd     func(span tracingapi.Span[RespT, RespChunkT])
 	assertAttrs      func(*testing.T, []attribute.KeyValue)
 }
 
@@ -99,7 +99,7 @@ func testNoopTracer[ReqT any, RespT, RespChunkT any](t *testing.T, name string, 
 	t.Run(name, func(t *testing.T) {
 		noopTracer := noop.Tracer{}
 		tracer := ctor(noopTracer, autoprop.NewTextMapPropagator(), nil)
-		require.IsType(t, tracing.NoopTracer[ReqT, RespT, RespChunkT]{}, tracer)
+		require.IsType(t, tracingapi.NoopTracer[ReqT, RespT, RespChunkT]{}, tracer)
 
 		headers := map[string]string{}
 		carrier := propagation.MapCarrier{}
@@ -216,7 +216,7 @@ func TestChatCompletionTracer_StartSpanAndInjectHeaders(t *testing.T) {
 				expectedAttrs:    tt.expectedAttrs,
 				expectedTraceID:  tt.expectedTraceID,
 				expectedSpanType: (*chatCompletionSpan)(nil),
-				recordAndEnd: func(span tracing.ChatCompletionSpan) {
+				recordAndEnd: func(span tracingapi.ChatCompletionSpan) {
 					span.RecordResponse(respBody)
 					span.EndSpan()
 				},
@@ -257,7 +257,7 @@ func TestRequestTracer_HeaderAttributeMapping(t *testing.T) {
 			reqBody:          reqBody,
 			expectedSpanName: spanName,
 			expectedSpanType: (*chatCompletionSpan)(nil),
-			recordAndEnd: func(span tracing.ChatCompletionSpan) {
+			recordAndEnd: func(span tracingapi.ChatCompletionSpan) {
 				span.EndSpan()
 			},
 			assertAttrs: func(t *testing.T, attrs []attribute.KeyValue) {
@@ -400,10 +400,10 @@ func (testChatCompletionRecorder) RecordResponse(span oteltrace.Span, resp *open
 	span.SetAttributes(attribute.Int("respBodyLen", len(body)))
 }
 
-var _ tracing.EmbeddingsRecorder = testEmbeddingsRecorder{}
+var _ tracingapi.EmbeddingsRecorder = testEmbeddingsRecorder{}
 
 type testEmbeddingsRecorder struct {
-	tracing.NoopChunkRecorder[struct{}]
+	tracingapi.NoopChunkRecorder[struct{}]
 }
 
 func (testEmbeddingsRecorder) RecordResponseOnError(span oteltrace.Span, statusCode int, body []byte) {
@@ -463,7 +463,7 @@ func (testCompletionRecorder) RecordResponse(span oteltrace.Span, resp *openai.C
 
 // Mock recorder for testing image generation span
 type testImageGenerationRecorder struct {
-	tracing.NoopChunkRecorder[struct{}]
+	tracingapi.NoopChunkRecorder[struct{}]
 }
 
 func (r testImageGenerationRecorder) StartParams(_ *openai.ImageGenerationRequest, _ []byte) (string, []oteltrace.SpanStartOption) {
@@ -494,7 +494,7 @@ func (r testImageGenerationRecorder) RecordResponseOnError(span oteltrace.Span, 
 }
 
 type testRerankTracerRecorder struct {
-	tracing.NoopChunkRecorder[struct{}]
+	tracingapi.NoopChunkRecorder[struct{}]
 }
 
 func (testRerankTracerRecorder) StartParams(*cohere.RerankV2Request, []byte) (string, []oteltrace.SpanStartOption) {
@@ -523,7 +523,7 @@ func (testRerankTracerRecorder) RecordResponseOnError(span oteltrace.Span, statu
 
 // Mock recorder for testing responses span
 type testResponsesRecorder struct {
-	tracing.NoopChunkRecorder[struct{}]
+	tracingapi.NoopChunkRecorder[struct{}]
 }
 
 func (r testResponsesRecorder) StartParams(_ *openai.ResponseRequest, _ []byte) (string, []oteltrace.SpanStartOption) {

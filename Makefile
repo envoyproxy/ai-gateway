@@ -10,9 +10,6 @@
 
 GO_TOOL := go tool -modfile=tools/go.mod
 
-# The list of commands that can be built.
-COMMANDS := controller extproc
-
 # This is the package that contains the version information for the build.
 VERSION_STRING:=$(shell git describe --tags --long)
 VERSION_PACKAGE := github.com/envoyproxy/ai-gateway/internal/version
@@ -178,11 +175,10 @@ test-crdcel: apigen ## Run the integration tests of CEL validation in CRD defini
 # time to complete. For concurrency issues, use normal unit tests and race them.
 .PHONY: test-data-plane
 test-data-plane: build.extproc ## Run the integration tests for data plane without controller or k8s at all.
-	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
 	@echo "Ensure func-e is built and Envoy is installed"
 	@@$(GO_TOOL) func-e run --version >/dev/null 2>&1
 	@echo "Run Data Plane test"
-	@go test ./tests/data-plane/...  -bench=. -benchtime=1x $(GO_TEST_E2E_ARGS) # Run the benchmark test case once for additional coverage.
+	@go test ./tests/data-plane/... -bench=. -benchtime=1x $(GO_TEST_E2E_ARGS) # Run the benchmark test case once for additional coverage.
 
 # This runs the end-to-end tests for MCP without controller or k8s at all.
 # It is useful for the fast iteration of the data plane MCP code.
@@ -190,12 +186,11 @@ test-data-plane: build.extproc ## Run the integration tests for data plane witho
 # Since this is an integration test, we don't use -race, as it takes a very long
 # time to complete. For concurrency issues, use normal unit tests and race them.
 .PHONY: test-data-plane-mcp
-test-data-plane-mcp: build.extproc ## Run the integration tests for MCP data plane without controller or k8s at all.
-	@$(MAKE) build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib
+test-data-plane-mcp: build.extproc build.aigw ## Run the integration tests for MCP data plane without controller or k8s at all.
 	@echo "Ensure func-e is built and Envoy is installed"
 	@@$(GO_TOOL) func-e run --version >/dev/null 2>&1
 	@echo "Run Data Plane MCP test"
-	@go test ./tests/data-plane-mcp/... $(GO_TEST_E2E_ARGS)
+	@go test ./tests/data-plane-mcp/... -bench=. -benchtime=1x $(GO_TEST_E2E_ARGS) # Run the benchmark test case once to ensure the bench code is runnable.
 
 # This runs the end-to-end tests for the controller with EnvTest.
 #
@@ -266,18 +261,11 @@ build.%: ## Build a binary for the given command under the internal/cmd director
 		done; \
 	done
 
-# This builds binaries for all commands under cmd/ directory. All options for `build.%` apply.
-#
-# Example:
-# - `make build`
-.PHONE: build
-build: ## Build all binaries under cmd/ directory.
-	@$(foreach COMMAND_NAME,$(COMMANDS),$(MAKE) build.$(COMMAND_NAME);)
-
 # This builds the docker images for the controller, extproc and testupstream for the e2e tests.
 .PHONY: build-e2e
 build-e2e: ## Build the docker images for the controller, extproc and testupstream for the e2e tests.
-	@$(MAKE) docker-build DOCKER_BUILD_ARGS="--load"
+	@$(MAKE) docker-build.controller DOCKER_BUILD_ARGS="--load"
+	@$(MAKE) docker-build.extproc DOCKER_BUILD_ARGS="--load"
 	@$(MAKE) docker-build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib DOCKER_BUILD_ARGS="--load"
 	@$(MAKE) docker-build.testmcpserver CMD_PATH_PREFIX=tests/internal/testmcp DOCKER_BUILD_ARGS="--load"
 	@$(MAKE) docker-build.testextauthserver CMD_PATH_PREFIX=tests/internal/testextauth DOCKER_BUILD_ARGS="--load"
@@ -319,16 +307,6 @@ docker-build.%: ## Build a docker image for a given command.
 		--build-arg COMMAND_NAME=$(*) \
 		$(PLATFORMS) $(DOCKER_BUILD_ARGS)
 
-# This builds docker images for all commands under cmd/ directory. All options for `docker-build.%` apply.
-#
-# Example:
-# - `make docker-build`
-# - `make docker-build ENABLE_MULTI_PLATFORMS=true DOCKER_BUILD_ARGS="--load"`
-# - `make docker-build ENABLE_MULTI_PLATFORMS=true DOCKER_BUILD_ARGS="--push" TAG=v1.2.3`
-.PHONE: docker-build
-docker-build: ## Build docker images for all commands under cmd/ directory.
-	@$(foreach COMMAND_NAME,$(COMMANDS),$(MAKE) docker-build.$(COMMAND_NAME);)
-
 HELM_DIR := ./manifests/charts/ai-gateway-helm ./manifests/charts/ai-gateway-crds-helm
 
 # This clears all built artifacts and installed binaries.
@@ -367,6 +345,9 @@ helm-test: helm-package  ## Test the helm chart with a dummy version.
 	@$(GO_TOOL) helm show chart ${HELM_CHART_PATH} | grep -q "appVersion: ${TAG}"
 	@$(GO_TOOL) helm template ${HELM_CHART_PATH} | grep -q "docker.io/envoyproxy/ai-gateway-extproc:${TAG}"
 	@$(GO_TOOL) helm template ${HELM_CHART_PATH} | grep -q "docker.io/envoyproxy/ai-gateway-controller:${TAG}"
+	@$(GO_TOOL) helm template ${HELM_CHART_PATH} --set global.imagePullSecrets[0].name=testsecret | grep -q "imagePullSecrets:"
+	@$(GO_TOOL) helm template ${HELM_CHART_PATH} --set global.imagePullSecrets[0].name=testsecret | grep -q "name: testsecret"
+	@$(GO_TOOL) helm template ${HELM_CHART_PATH} --set global.imagePullSecrets[0].name=testsecret | grep -q -- "extProcImagePullSecrets=testsecret"
 
 # This pushes the helm chart to the OCI registry, requiring the access to the registry endpoint.
 .PHONY: helm-push

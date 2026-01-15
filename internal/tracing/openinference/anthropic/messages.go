@@ -15,8 +15,8 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // MessageRecorder implements recorders for OpenInference chat completion spans.
@@ -24,22 +24,22 @@ type MessageRecorder struct {
 	traceConfig *openinference.TraceConfig
 }
 
-// NewMessageRecorderFromEnv creates an api.MessageRecorder
+// NewMessageRecorderFromEnv creates an tracingapi.MessageRecorder
 // from environment variables using the OpenInference configuration specification.
 //
 // See: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
-func NewMessageRecorderFromEnv() tracing.MessageRecorder {
+func NewMessageRecorderFromEnv() tracingapi.MessageRecorder {
 	return NewMessageRecorder(nil)
 }
 
-// NewMessageRecorder creates a tracing.MessageRecorder with the
+// NewMessageRecorder creates a tracingapi.MessageRecorder with the
 // given config using the OpenInference configuration specification.
 //
 // Parameters:
 //   - config: configuration for redaction. Defaults to NewTraceConfigFromEnv().
 //
 // See: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
-func NewMessageRecorder(config *openinference.TraceConfig) tracing.MessageRecorder {
+func NewMessageRecorder(config *openinference.TraceConfig) tracingapi.MessageRecorder {
 	if config == nil {
 		config = openinference.NewTraceConfigFromEnv()
 	}
@@ -50,17 +50,17 @@ func NewMessageRecorder(config *openinference.TraceConfig) tracing.MessageRecord
 // OpenInference.
 var startOpts = []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKindInternal)}
 
-// StartParams implements the same method as defined in tracing.MessageRecorder.
+// StartParams implements the same method as defined in tracingapi.MessageRecorder.
 func (r *MessageRecorder) StartParams(*anthropic.MessagesRequest, []byte) (spanName string, opts []trace.SpanStartOption) {
 	return "Message", startOpts
 }
 
-// RecordRequest implements the same method as defined in tracing.MessageRecorder.
+// RecordRequest implements the same method as defined in tracingapi.MessageRecorder.
 func (r *MessageRecorder) RecordRequest(span trace.Span, chatReq *anthropic.MessagesRequest, body []byte) {
 	span.SetAttributes(buildRequestAttributes(chatReq, string(body), r.traceConfig)...)
 }
 
-// RecordResponseChunks implements the same method as defined in tracing.MessageRecorder.
+// RecordResponseChunks implements the same method as defined in tracingapi.MessageRecorder.
 func (r *MessageRecorder) RecordResponseChunks(span trace.Span, chunks []*anthropic.MessagesStreamChunk) {
 	if len(chunks) > 0 {
 		span.AddEvent("First Token Stream Event")
@@ -69,12 +69,12 @@ func (r *MessageRecorder) RecordResponseChunks(span trace.Span, chunks []*anthro
 	r.RecordResponse(span, converted)
 }
 
-// RecordResponseOnError implements the same method as defined in tracing.MessageRecorder.
+// RecordResponseOnError implements the same method as defined in tracingapi.MessageRecorder.
 func (r *MessageRecorder) RecordResponseOnError(span trace.Span, statusCode int, body []byte) {
 	openinference.RecordResponseError(span, statusCode, string(body))
 }
 
-// RecordResponse implements the same method as defined in tracing.MessageRecorder.
+// RecordResponse implements the same method as defined in tracingapi.MessageRecorder.
 func (r *MessageRecorder) RecordResponse(span trace.Span, resp *anthropic.MessagesResponse) {
 	// Set output attributes.
 	var attrs []attribute.KeyValue
@@ -113,8 +113,10 @@ func buildRequestAttributes(req *anthropic.MessagesRequest, body string, config 
 	if config.HideInputs {
 		attrs = append(attrs, attribute.String(openinference.InputValue, openinference.RedactedValue))
 	} else {
-		attrs = append(attrs, attribute.String(openinference.InputValue, body))
-		attrs = append(attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
+		attrs = append(attrs,
+			attribute.String(openinference.InputValue, body),
+			attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+		)
 	}
 
 	if !config.HideLLMInvocationParameters {
@@ -207,20 +209,24 @@ func buildResponseAttributes(resp *anthropic.MessagesResponse, config *openinfer
 
 	// Token counts are considered metadata and are still included even when output content is hidden.
 	u := resp.Usage
-	cost := metrics.ExtractTokenUsageFromAnthropic(
+	cacheReadTokens := int64(u.CacheReadInputTokens)
+	cacheCreationTokens := int64(u.CacheCreationInputTokens)
+	cost := metrics.ExtractTokenUsageFromExplicitCaching(
 		int64(u.InputTokens),
 		int64(u.OutputTokens),
-		int64(u.CacheReadInputTokens),
-		int64(u.CacheCreationInputTokens),
+		&cacheReadTokens,
+		&cacheCreationTokens,
 	)
 	input, _ := cost.InputTokens()
-	cache, _ := cost.CachedInputTokens()
+	cacheRead, _ := cost.CachedInputTokens()
+	cacheCreation, _ := cost.CacheCreationInputTokens()
 	output, _ := cost.OutputTokens()
 	total, _ := cost.TotalTokens()
 
 	attrs = append(attrs,
 		attribute.Int(openinference.LLMTokenCountPrompt, int(input)),
-		attribute.Int(openinference.LLMTokenCountPromptCacheHit, int(cache)),
+		attribute.Int(openinference.LLMTokenCountPromptCacheHit, int(cacheRead)),
+		attribute.Int(openinference.LLMTokenCountPromptCacheWrite, int(cacheCreation)),
 		attribute.Int(openinference.LLMTokenCountCompletion, int(output)),
 		attribute.Int(openinference.LLMTokenCountTotal, int(total)),
 	)

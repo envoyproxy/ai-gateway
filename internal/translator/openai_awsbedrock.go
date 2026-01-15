@@ -23,7 +23,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // NewChatCompletionOpenAIToAWSBedrockTranslator implements [Factory] for OpenAI to AWS Bedrock translation.
@@ -107,6 +107,10 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, ope
 	bedrockReq.InferenceConfig = &awsbedrock.InferenceConfiguration{}
 	bedrockReq.InferenceConfig.Temperature = openAIReq.Temperature
 	bedrockReq.InferenceConfig.TopP = openAIReq.TopP
+
+	if openAIReq.ServiceTier != "" {
+		bedrockReq.ServiceTier = &awsbedrock.ServiceTier{Type: openAIReq.ServiceTier}
+	}
 
 	bedrockReq.InferenceConfig.MaxTokens = cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens)
 
@@ -684,7 +688,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseError(respHeaders
 // AWS Bedrock uses static model execution without virtualization, where the requested model
 // is exactly what gets executed. The response does not contain a model field, so we return
 // the request model that was originally sent.
-func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracing.ChatCompletionSpan) (
+func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracingapi.ChatCompletionSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	responseModel = o.requestModel
@@ -701,18 +705,14 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 		for i := range o.events {
 			event := &o.events[i]
 			if usage := event.Usage; usage != nil {
-				tokenUsage.SetInputTokens(uint32(usage.InputTokens))   //nolint:gosec
-				tokenUsage.SetOutputTokens(uint32(usage.OutputTokens)) //nolint:gosec
-				tokenUsage.SetTotalTokens(uint32(usage.TotalTokens))   //nolint:gosec
-				if usage.CacheReadInputTokens != nil {
-					tokenUsage.SetCachedInputTokens(uint32(*usage.CacheReadInputTokens)) //nolint:gosec
-				}
+				tokenUsage = metrics.ExtractTokenUsageFromExplicitCaching(usage.InputTokens, usage.OutputTokens,
+					usage.CacheReadInputTokens, usage.CacheWriteInputTokens)
 			}
 			oaiEvent, ok := o.convertEvent(event)
 			if !ok {
 				continue
 			}
-			err = serializeOpenAIChatCompletionChunk(*oaiEvent, &newBody)
+			err = serializeOpenAIChatCompletionChunk(oaiEvent, &newBody)
 			if err != nil {
 				panic(fmt.Errorf("failed to marshal event: %w", err))
 			}
@@ -722,7 +722,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 		}
 
 		if endOfStream {
-			newBody = append(newBody, []byte("data: [DONE]\n")...)
+			newBody = append(newBody, sseDoneFullLine...)
 		}
 		return
 	}
@@ -739,21 +739,33 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 		Choices: make([]openai.ChatCompletionResponseChoice, 0),
 		ID:      o.responseID,
 	}
+
+	if bedrockResp.ServiceTier != nil {
+		openAIResp.ServiceTier = bedrockResp.ServiceTier.Type
+	}
+
 	// Convert token usage.
 	if bedrockResp.Usage != nil {
-		tokenUsage.SetInputTokens(uint32(bedrockResp.Usage.InputTokens))   //nolint:gosec
-		tokenUsage.SetOutputTokens(uint32(bedrockResp.Usage.OutputTokens)) //nolint:gosec
-		tokenUsage.SetTotalTokens(uint32(bedrockResp.Usage.TotalTokens))   //nolint:gosec
+		tokenUsage = metrics.ExtractTokenUsageFromExplicitCaching(bedrockResp.Usage.InputTokens, bedrockResp.Usage.OutputTokens,
+			bedrockResp.Usage.CacheReadInputTokens, bedrockResp.Usage.CacheWriteInputTokens)
+		totalTokens, _ := tokenUsage.TotalTokens()
+		inputTokens, _ := tokenUsage.InputTokens()
+		outputTokens, _ := tokenUsage.OutputTokens()
 		openAIResp.Usage = openai.Usage{
-			TotalTokens:      bedrockResp.Usage.TotalTokens,
-			PromptTokens:     bedrockResp.Usage.InputTokens,
-			CompletionTokens: bedrockResp.Usage.OutputTokens,
+			TotalTokens:      int(totalTokens),
+			PromptTokens:     int(inputTokens),
+			CompletionTokens: int(outputTokens),
+		}
+		if bedrockResp.Usage.CacheReadInputTokens != nil || bedrockResp.Usage.CacheWriteInputTokens != nil {
+			openAIResp.Usage.PromptTokensDetails = &openai.PromptTokensDetails{}
 		}
 		if bedrockResp.Usage.CacheReadInputTokens != nil {
 			tokenUsage.SetCachedInputTokens(uint32(*bedrockResp.Usage.CacheReadInputTokens)) //nolint:gosec
-			openAIResp.Usage.PromptTokensDetails = &openai.PromptTokensDetails{
-				CachedTokens: *bedrockResp.Usage.CacheReadInputTokens,
-			}
+			openAIResp.Usage.PromptTokensDetails.CachedTokens = int(*bedrockResp.Usage.CacheReadInputTokens)
+		}
+		if bedrockResp.Usage.CacheWriteInputTokens != nil {
+			tokenUsage.SetCacheCreationInputTokens(uint32(*bedrockResp.Usage.CacheWriteInputTokens)) //nolint:gosec
+			openAIResp.Usage.PromptTokensDetails.CacheCreationTokens = int(*bedrockResp.Usage.CacheWriteInputTokens)
 		}
 	}
 
@@ -844,15 +856,24 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 		if event.Usage == nil {
 			return chunk, false
 		}
+		tokenUsage := metrics.ExtractTokenUsageFromExplicitCaching(event.Usage.InputTokens, event.Usage.OutputTokens,
+			event.Usage.CacheReadInputTokens, event.Usage.CacheWriteInputTokens)
+		totalTokens, _ := tokenUsage.TotalTokens()
+		inputTokens, _ := tokenUsage.InputTokens()
+		outputTokens, _ := tokenUsage.OutputTokens()
 		chunk.Usage = &openai.Usage{
-			TotalTokens:      event.Usage.TotalTokens,
-			PromptTokens:     event.Usage.InputTokens,
-			CompletionTokens: event.Usage.OutputTokens,
+			TotalTokens:      int(totalTokens),
+			PromptTokens:     int(inputTokens),
+			CompletionTokens: int(outputTokens),
+		}
+		if event.Usage.CacheReadInputTokens != nil || event.Usage.CacheWriteInputTokens != nil {
+			chunk.Usage.PromptTokensDetails = &openai.PromptTokensDetails{}
 		}
 		if event.Usage.CacheReadInputTokens != nil {
-			chunk.Usage.PromptTokensDetails = &openai.PromptTokensDetails{
-				CachedTokens: *event.Usage.CacheReadInputTokens,
-			}
+			chunk.Usage.PromptTokensDetails.CachedTokens = int(*event.Usage.CacheReadInputTokens)
+		}
+		if event.Usage.CacheWriteInputTokens != nil {
+			chunk.Usage.PromptTokensDetails.CacheCreationTokens = int(*event.Usage.CacheWriteInputTokens)
 		}
 	// messageStart event.
 	case awsbedrock.ConverseStreamEventTypeMessageStart.String():

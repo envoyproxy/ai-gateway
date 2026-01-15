@@ -21,7 +21,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
@@ -87,20 +87,20 @@ type mockTranslator struct {
 }
 
 // RequestBody implements [translator.OpenAIChatCompletionTranslator].
-func (m mockTranslator) RequestBody(_ []byte, body *openai.ChatCompletionRequest, forceRequestBodyMutation bool) (newHeaders []internalapi.Header, newBody []byte, err error) {
+func (m *mockTranslator) RequestBody(_ []byte, body *openai.ChatCompletionRequest, forceRequestBodyMutation bool) (newHeaders []internalapi.Header, newBody []byte, err error) {
 	require.Equal(m.t, m.expRequestBody, body)
 	require.Equal(m.t, m.expForceRequestBodyMutation, forceRequestBodyMutation)
 	return m.retHeaderMutation, m.retBodyMutation, m.retErr
 }
 
 // ResponseHeaders implements [translator.OpenAIChatCompletionTranslator].
-func (m mockTranslator) ResponseHeaders(headers map[string]string) (newHeaders []internalapi.Header, err error) {
+func (m *mockTranslator) ResponseHeaders(headers map[string]string) (newHeaders []internalapi.Header, err error) {
 	require.Equal(m.t, m.expHeaders, headers)
 	return m.retHeaderMutation, m.retErr
 }
 
 // ResponseError implements [translator.OpenAIChatCompletionTranslator].
-func (m mockTranslator) ResponseError(_ map[string]string, body io.Reader) (newHeaders []internalapi.Header, newBody []byte, err error) {
+func (m *mockTranslator) ResponseError(_ map[string]string, body io.Reader) (newHeaders []internalapi.Header, newBody []byte, err error) {
 	if m.expResponseBody != nil {
 		buf, err := io.ReadAll(body)
 		require.NoError(m.t, err)
@@ -110,7 +110,7 @@ func (m mockTranslator) ResponseError(_ map[string]string, body io.Reader) (newH
 }
 
 // ResponseBody implements [translator.OpenAIChatCompletionTranslator].
-func (m mockTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracing.ChatCompletionSpan) (newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error) {
+func (m *mockTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracingapi.ChatCompletionSpan) (newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error) {
 	if m.expResponseBody != nil {
 		buf, err := io.ReadAll(body)
 		require.NoError(m.t, err)
@@ -171,16 +171,17 @@ func (m *mockMetricsFactory) NewMetrics() metrics.Metrics {
 
 // mockMetrics implements [metrics.Metrics] for testing.
 type mockMetrics struct {
-	requestStart          time.Time
-	originalModel         string
-	requestModel          string
-	responseModel         string
-	backend               string
-	requestSuccessCount   int
-	requestErrorCount     int
-	inputTokenCount       int
-	cachedInputTokenCount int
-	outputTokenCount      int
+	requestStart                 time.Time
+	originalModel                string
+	requestModel                 string
+	responseModel                string
+	backend                      string
+	requestSuccessCount          int
+	requestErrorCount            int
+	inputTokenCount              int
+	cachedInputTokenCount        int
+	cacheCreationInputTokenCount int
+	outputTokenCount             int
 	// streamingOutputTokens tracks the cumulative output tokens recorded via RecordTokenLatency.
 	streamingOutputTokens int
 	timeToFirstToken      float64
@@ -217,6 +218,9 @@ func (m *mockMetrics) RecordTokenUsage(_ context.Context, usage metrics.TokenUsa
 	}
 	if cachedInput, ok := usage.CachedInputTokens(); ok {
 		m.cachedInputTokenCount += int(cachedInput)
+	}
+	if cacheCreationInput, ok := usage.CacheCreationInputTokens(); ok {
+		m.cacheCreationInputTokenCount += int(cacheCreationInput)
 	}
 	if output, ok := usage.OutputTokens(); ok {
 		m.outputTokenCount += int(output)
@@ -278,9 +282,10 @@ func (m *mockMetrics) RequireRequestFailure(t *testing.T) {
 	require.Equal(t, 1, m.requestErrorCount)
 }
 
-func (m *mockMetrics) RequireTokensRecorded(t *testing.T, expectedInput, expectedCachedInput, expectedOutput int) {
+func (m *mockMetrics) RequireTokensRecorded(t *testing.T, expectedInput, expectedCachedInput, expectedWriteCachedInput, expectedOutput int) {
 	require.Equal(t, expectedInput, m.inputTokenCount)
 	require.Equal(t, expectedCachedInput, m.cachedInputTokenCount)
+	require.Equal(t, expectedWriteCachedInput, m.cacheCreationInputTokenCount)
 	require.Equal(t, expectedOutput, m.outputTokenCount)
 }
 

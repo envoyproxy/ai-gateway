@@ -15,7 +15,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 const (
@@ -76,19 +76,19 @@ type Translator[ReqT any, SpanT any] interface {
 
 type (
 	// OpenAIChatCompletionTranslator translates the OpenAI's /chat/completions endpoint.
-	OpenAIChatCompletionTranslator = Translator[openai.ChatCompletionRequest, tracing.ChatCompletionSpan]
+	OpenAIChatCompletionTranslator = Translator[openai.ChatCompletionRequest, tracingapi.ChatCompletionSpan]
 	// OpenAIEmbeddingTranslator translates the OpenAI's /embeddings endpoint.
-	OpenAIEmbeddingTranslator = Translator[openai.EmbeddingRequest, tracing.EmbeddingsSpan]
+	OpenAIEmbeddingTranslator = Translator[openai.EmbeddingRequest, tracingapi.EmbeddingsSpan]
 	// OpenAICompletionTranslator translates the OpenAI's /completions endpoint.
-	OpenAICompletionTranslator = Translator[openai.CompletionRequest, tracing.CompletionSpan]
+	OpenAICompletionTranslator = Translator[openai.CompletionRequest, tracingapi.CompletionSpan]
 	// CohereRerankTranslator translates the Cohere's /v2/rerank endpoint.
-	CohereRerankTranslator = Translator[cohereschema.RerankV2Request, tracing.RerankSpan]
+	CohereRerankTranslator = Translator[cohereschema.RerankV2Request, tracingapi.RerankSpan]
 	// AnthropicMessagesTranslator translates the Anthropic's /messages endpoint.
-	AnthropicMessagesTranslator = Translator[anthropicschema.MessagesRequest, tracing.MessageSpan]
+	AnthropicMessagesTranslator = Translator[anthropicschema.MessagesRequest, tracingapi.MessageSpan]
 	// OpenAIImageGenerationTranslator translates the OpenAI's /images/generations endpoint.
-	OpenAIImageGenerationTranslator = Translator[openai.ImageGenerationRequest, tracing.ImageGenerationSpan]
+	OpenAIImageGenerationTranslator = Translator[openai.ImageGenerationRequest, tracingapi.ImageGenerationSpan]
 	// OpenAIResponsesTranslator translates the OpenAI's /responses endpoint.
-	OpenAIResponsesTranslator = Translator[openai.ResponseRequest, tracing.ResponsesSpan]
+	OpenAIResponsesTranslator = Translator[openai.ResponseRequest, tracingapi.ResponsesSpan]
 )
 
 // sjsonOptions are the options used for sjson operations in the translator.

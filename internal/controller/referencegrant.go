@@ -14,10 +14,6 @@ import (
 )
 
 const (
-	// aiServiceBackendGroup is the API group for AIServiceBackend.
-	aiServiceBackendGroup = "aigateway.envoyproxy.io"
-	// aiServiceBackendKind is the kind for AIServiceBackend.
-	aiServiceBackendKind = "AIServiceBackend"
 	// aiGatewayRouteKind is the kind for AIGatewayRoute.
 	aiGatewayRouteKind = "AIGatewayRoute"
 )

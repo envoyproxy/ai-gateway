@@ -5,6 +5,17 @@
 
 # Default values for ai-gateway-helm.
 
+# Global values shared across this chart and its subcharts (umbrella charts can set these once).
+global:
+  # global.imagePullSecrets -- references to pre-created imagePullSecrets in the target namespace
+  # Precedence: component-specific values win. If `controller.imagePullSecrets` or
+  # `extProc.imagePullSecrets` are set (non-empty), those are used; otherwise this
+  # `global.imagePullSecrets` value is used as a fallback (values are not merged).
+  # Example:
+  # imagePullSecrets:
+  #   - name: regcred
+  imagePullSecrets: []
+
 # Global configuration for the endpoints supported by the AI Gateway.
 endpointConfig:
   # The prefix for all the routes served by the AI Gateway. Defaulting to "/". All the generated routes will have this prefix.

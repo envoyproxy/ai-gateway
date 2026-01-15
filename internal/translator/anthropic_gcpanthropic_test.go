@@ -467,7 +467,7 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_ZeroTokenUsage(t *testin
 	_, _, tokenUsage, _, err := translator.ResponseBody(respHeaders, bodyReader, true, nil)
 	require.NoError(t, err)
 
-	expected := tokenUsageFrom(0, 0, 0, 0)
+	expected := tokenUsageFrom(0, 0, 0, 0, 0)
 	assert.Equal(t, expected, tokenUsage)
 }
 
@@ -482,31 +482,31 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingTokenUsage(t *t
 			name:          "regular streaming chunk without usage",
 			chunk:         "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" to me.\"}}\n\n",
 			endOfStream:   false,
-			expectedUsage: tokenUsageFrom(-1, -1, -1, -1),
+			expectedUsage: tokenUsageFrom(-1, -1, -1, -1, -1),
 		},
 		{
 			name:          "message_delta chunk with token usage",
 			chunk:         "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":84}}\n\n",
 			endOfStream:   false,
-			expectedUsage: tokenUsageFrom(0, 0, 84, 84),
+			expectedUsage: tokenUsageFrom(0, 0, 0, 84, 84),
 		},
 		{
 			name:          "message_stop chunk without usage",
 			chunk:         "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
 			endOfStream:   false,
-			expectedUsage: tokenUsageFrom(-1, -1, -1, -1),
+			expectedUsage: tokenUsageFrom(-1, -1, -1, -1, -1),
 		},
 		{
 			name:          "invalid json chunk",
 			chunk:         "event: invalid\ndata: {\"invalid\": \"json\"}\n\n",
 			endOfStream:   false,
-			expectedUsage: tokenUsageFrom(-1, -1, -1, -1),
+			expectedUsage: tokenUsageFrom(-1, -1, -1, -1, -1),
 		},
 		{
 			name:          "message_delta with decimal output_tokens",
 			chunk:         "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":42.0}}\n\n",
 			endOfStream:   false,
-			expectedUsage: tokenUsageFrom(0, 0, 42, 42),
+			expectedUsage: tokenUsageFrom(0, 0, 0, 42, 42),
 		},
 	}
 
@@ -545,12 +545,12 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases(t *te
 		{
 			name:          "message_delta without usage field",
 			chunk:         "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n",
-			expectedUsage: tokenUsageFrom(0, 0, 0, 0),
+			expectedUsage: tokenUsageFrom(0, 0, 0, 0, 0),
 		},
 		{
 			name:          "invalid json in data",
 			chunk:         "event: message_start\ndata: {invalid json}\n\n",
-			expectedUsage: tokenUsageFrom(-1, -1, -1, -1),
+			expectedUsage: tokenUsageFrom(-1, -1, -1, -1, -1),
 		},
 	}
 
@@ -570,13 +570,16 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases(t *te
 	}
 }
 
-func tokenUsageFrom(in, cachedInput, out, total int32) metrics.TokenUsage {
+func tokenUsageFrom(in, cachedInput, cacheCreationInput, out, total int32) metrics.TokenUsage {
 	var usage metrics.TokenUsage
 	if in >= 0 {
 		usage.SetInputTokens(uint32(in))
 	}
 	if cachedInput >= 0 {
 		usage.SetCachedInputTokens(uint32(cachedInput))
+	}
+	if cacheCreationInput >= 0 {
+		usage.SetCacheCreationInputTokens(uint32(cacheCreationInput))
 	}
 	if out >= 0 {
 		usage.SetOutputTokens(uint32(out))
@@ -608,7 +611,7 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingFullScenario(t 
 	// 3. message_delta at the end provides output_tokens=5 but no input_tokens
 	// 4. message_stop ends the stream
 	messageStartChunk := `event: message_start
-data: {"type": "message_start", "message": {"id": "msg_123", "type": "message", "role": "assistant", "content": [], "model": "claude-3-sonnet-20240229", "usage": {"input_tokens": 15, "cache_read_input_tokens": 5, "output_tokens": 0}}}
+data: {"type": "message_start", "message": {"id": "msg_123", "type": "message", "role": "assistant", "content": [], "model": "claude-3-sonnet-20240229", "usage": {"input_tokens": 15, "cache_read_input_tokens": 5,  "cache_creation_input_tokens": 1, "output_tokens": 0}}}
 `
 	contentBlockStartChunk := `event: content_block_start
 data: {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
@@ -635,19 +638,23 @@ data: {"type": "message_stop"}
 	outputTokens, outputSet := tokenUsage.OutputTokens()
 	totalTokens, totalSet := tokenUsage.TotalTokens()
 	cachedTokens, cachedSet := tokenUsage.CachedInputTokens()
+	cacheCreationTokens, cacheCreationSet := tokenUsage.CacheCreationInputTokens()
 
 	// Assertions
 	assert.True(t, inputSet, "Input tokens should be set")
-	assert.Equal(t, uint32(20), inputTokens, "Input tokens should be preserved from message_start")
+	assert.Equal(t, uint32(21), inputTokens, "Input tokens should be preserved from message_start")
 
 	assert.True(t, outputSet, "Output tokens should be set")
 	assert.Equal(t, uint32(0), outputTokens, "Output tokens should come from message_delta")
 
 	assert.True(t, totalSet, "Total tokens should be calculated")
-	assert.Equal(t, uint32(20), totalTokens, "Total tokens should be input + output")
+	assert.Equal(t, uint32(21), totalTokens, "Total tokens should be input + output")
 
 	assert.True(t, cachedSet, "Cached tokens should be set")
 	assert.Equal(t, uint32(5), cachedTokens, "No cached tokens in this scenario")
+
+	assert.True(t, cacheCreationSet, "cache creation tokens should be set")
+	assert.Equal(t, uint32(1), cacheCreationTokens, "No cache creation tokens in this scenario")
 
 	_, _, tokenUsage, _, err = translator.ResponseBody(nil, strings.NewReader(contentBlockStartChunk), false, nil)
 	require.NoError(t, err)
@@ -665,16 +672,20 @@ data: {"type": "message_stop"}
 	outputTokens, outputSet = tokenUsage.OutputTokens()
 	totalTokens, totalSet = tokenUsage.TotalTokens()
 	cachedTokens, cachedSet = tokenUsage.CachedInputTokens()
+	cacheCreationTokens, cacheCreationSet = tokenUsage.CacheCreationInputTokens()
 
 	assert.True(t, inputSet, "Input tokens should be set")
-	assert.Equal(t, uint32(20), inputTokens, "Input tokens should be preserved from message_start")
+	assert.Equal(t, uint32(21), inputTokens, "Input tokens should be preserved from message_start")
 
 	assert.True(t, outputSet, "Output tokens should be set")
 	assert.Equal(t, uint32(5), outputTokens, "Output tokens should come from message_delta")
 
 	assert.True(t, totalSet, "Total tokens should be calculated")
-	assert.Equal(t, uint32(25), totalTokens, "Total tokens should be input + output")
+	assert.Equal(t, uint32(26), totalTokens, "Total tokens should be input + output")
 
 	assert.True(t, cachedSet, "Cached tokens should be set")
 	assert.Equal(t, uint32(5), cachedTokens, "No cached tokens in this scenario")
+
+	assert.True(t, cacheCreationSet, "cache creation tokens should be set")
+	assert.Equal(t, uint32(1), cacheCreationTokens, "No cache creation tokens in this scenario")
 }

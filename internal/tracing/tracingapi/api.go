@@ -3,9 +3,9 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-// Package api provides types for OpenTelemetry tracing support, notably to
+// Package tracingapi provides types for OpenTelemetry tracing support, notably to
 // reduce chance of cyclic imports. No implementations besides no-op are here.
-package api
+package tracingapi
 
 import (
 	"context"

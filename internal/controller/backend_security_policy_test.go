@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
@@ -40,9 +41,10 @@ import (
 )
 
 func TestBackendSecurityController_Reconcile(t *testing.T) {
-	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
+	aiServiceBackendEventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
+	inferencePoolEventCh := internaltesting.NewControllerEventChan[*gwaiev1.InferencePool]()
 	fakeClient := requireNewFakeClientWithIndexes(t)
-	c := NewBackendSecurityPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
+	c := NewBackendSecurityPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, aiServiceBackendEventCh.Ch, inferencePoolEventCh.Ch)
 	backendSecurityPolicyName := "mybackendSecurityPolicy"
 	namespace := "default"
 
@@ -68,7 +70,7 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
 				{
 					Kind:  "AIServiceBackend",
-					Group: "aigw.envoyproxy.io",
+					Group: "aigateway.envoyproxy.io",
 					Name:  gwapiv1.ObjectName(asb.Name),
 				},
 			},
@@ -78,7 +80,7 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 	res, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendSecurityPolicyName}})
 	require.NoError(t, err)
 	require.False(t, res.Requeue)
-	items := eventCh.RequireItemsEventually(t, 1)
+	items := aiServiceBackendEventCh.RequireItemsEventually(t, 1)
 	require.Len(t, items, 1)
 	require.Equal(t, asb, items[0])
 
@@ -89,6 +91,36 @@ func TestBackendSecurityController_Reconcile(t *testing.T) {
 	require.Equal(t, aigv1a1.ConditionTypeAccepted, bsp.Status.Conditions[0].Type)
 	require.Equal(t, "BackendSecurityPolicy reconciled successfully", bsp.Status.Conditions[0].Message)
 	require.Contains(t, bsp.Finalizers, aiGatewayControllerFinalizer, "Finalizer should be added")
+
+	// Test targeting an InferencePool.
+	inferencePool := &gwaiev1.InferencePool{
+		ObjectMeta: metav1.ObjectMeta{Name: "bar", Namespace: "default"},
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), inferencePool))
+
+	bspInferencePool := &aigv1a1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "bsp-inference-pool", Namespace: namespace},
+		Spec: aigv1a1.BackendSecurityPolicySpec{
+			Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
+			APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{
+				SecretRef: &gwapiv1.SecretObjectReference{Name: "mysecret"},
+			},
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
+				{
+					Kind:  "InferencePool",
+					Group: "inference.networking.k8s.io",
+					Name:  gwapiv1.ObjectName(inferencePool.Name),
+				},
+			},
+		},
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), bspInferencePool))
+	res, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: bspInferencePool.Name}})
+	require.NoError(t, err)
+	require.False(t, res.Requeue)
+	inferencePoolItems := inferencePoolEventCh.RequireItemsEventually(t, 1)
+	require.Len(t, inferencePoolItems, 1)
+	require.Equal(t, inferencePool, inferencePoolItems[0])
 
 	// Test the case where the BackendSecurityPolicy is being deleted.
 	err = fakeClient.Delete(t.Context(), &aigv1a1.BackendSecurityPolicy{ObjectMeta: metav1.ObjectMeta{Name: backendSecurityPolicyName, Namespace: namespace}})
@@ -119,7 +151,7 @@ func (m *mockSTSClient) AssumeRoleWithWebIdentity(_ context.Context, _ *sts.Assu
 func TestBackendSecurityPolicyController_Reconcile_SyncError(t *testing.T) {
 	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	fakeClient := requireNewFakeClientWithIndexes(t)
-	c := NewBackendSecurityPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
+	c := NewBackendSecurityPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch, nil)
 
 	// Create a BackendSecurityPolicy with invalid spec to trigger sync error.
 	bsp := &aigv1a1.BackendSecurityPolicy{
@@ -154,7 +186,7 @@ func TestBackendSecurityPolicyController_Reconcile_SyncError(t *testing.T) {
 func TestBackendSecurityPolicyController_ReconcileOIDC_Fail(t *testing.T) {
 	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch, nil)
 	bspName := "mybackendSecurityPolicy"
 	bspNamespace := "default"
 
@@ -198,7 +230,7 @@ func TestBackendSecurityPolicyController_RotateCredential(t *testing.T) {
 
 	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch, nil)
 	bspName := "mybackendSecurityPolicy"
 	bspNamespace := "default"
 
@@ -345,7 +377,7 @@ func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 
 	ctx := oidcv3.InsecureIssuerURLContext(t.Context(), discoveryServer.URL)
 	rotator, err := rotators.NewAWSOIDCRotator(ctx, cl, &mockSTSClient{time.Now().Add(time.Hour)}, fake2.NewClientset(), ctrl.Log, bspNamespace, bsp.Name, preRotationWindow,
-		oidc, "placeholder", "us-east-1")
+		&oidc, "placeholder", "us-east-1")
 	require.NoError(t, err)
 
 	// Ensure aws credentials secret do not exist.
@@ -385,10 +417,10 @@ func TestBackendSecurityPolicyController_RotateExpiredCredential(t *testing.T) {
 
 func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *testing.T) {
 	// API Key type does not support OIDC.
-	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{Type: aigv1a1.BackendSecurityPolicyTypeAPIKey}))
+	require.Nil(t, getBackendSecurityPolicyAuthOIDC(&aigv1a1.BackendSecurityPolicySpec{Type: aigv1a1.BackendSecurityPolicyTypeAPIKey}))
 
 	// Azure type supports OIDC type but OIDC needs to be defined.
-	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+	require.Nil(t, getBackendSecurityPolicyAuthOIDC(&aigv1a1.BackendSecurityPolicySpec{
 		Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
 		AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
 			ClientID:        "client-id",
@@ -398,7 +430,7 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 	}))
 
 	// Azure type with OIDC defined.
-	oidcAzure := getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+	oidcAzure := getBackendSecurityPolicyAuthOIDC(&aigv1a1.BackendSecurityPolicySpec{
 		Type: aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
 		AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{
 			ClientID: "client-id",
@@ -417,7 +449,7 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 	require.Equal(t, "some-client-id", *oidcAzure.ClientID)
 
 	// AWS type supports OIDC type but OIDC needs to be defined.
-	require.Nil(t, getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+	require.Nil(t, getBackendSecurityPolicyAuthOIDC(&aigv1a1.BackendSecurityPolicySpec{
 		Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
 		AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
 			CredentialsFile: &aigv1a1.AWSCredentialsFile{},
@@ -425,7 +457,7 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 	}))
 
 	// AWS type with OIDC defined.
-	oidcAWS := getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+	oidcAWS := getBackendSecurityPolicyAuthOIDC(&aigv1a1.BackendSecurityPolicySpec{
 		Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
 		AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
 			OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{
@@ -441,7 +473,7 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 	require.Equal(t, "some-client-id", *oidcAWS.ClientID)
 
 	// GCP type with OIDC defined.
-	oidcGCP := getBackendSecurityPolicyAuthOIDC(aigv1a1.BackendSecurityPolicySpec{
+	oidcGCP := getBackendSecurityPolicyAuthOIDC(&aigv1a1.BackendSecurityPolicySpec{
 		Type: aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
 		GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
 			ProjectName: "fake-project-name",
@@ -467,7 +499,7 @@ func TestBackendSecurityPolicyController_GetBackendSecurityPolicyAuthOIDC(t *tes
 func TestNewBackendSecurityPolicyController_ReconcileAzureMissingSecret(t *testing.T) {
 	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch, nil)
 	bspName := "my-azure-backend-security-policy"
 	tenantID := "some-tenant-id"
 	clientID := "some-client-id"
@@ -494,7 +526,7 @@ func TestNewBackendSecurityPolicyController_ReconcileAzureMissingSecret(t *testi
 func TestNewBackendSecurityPolicyController_ReconcileAzureMissingSecretData(t *testing.T) {
 	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch, nil)
 	bspName := "my-azure-backend-security-policy"
 	tenantID := "some-tenant-id"
 	clientID := "some-client-id"
@@ -532,7 +564,7 @@ func TestNewBackendSecurityPolicyController_ReconcileAzureMissingSecretData(t *t
 func TestNewBackendSecurityPolicyController_RotateCredentialInvalidType(t *testing.T) {
 	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch, nil)
 	bspName := "some-backend-security-policy"
 	bspNamespace := "default"
 
@@ -559,7 +591,7 @@ func TestNewBackendSecurityPolicyController_RotateCredentialInvalidType(t *testi
 func TestNewBackendSecurityPolicyController_RotateCredentialAwsCredentialFile(t *testing.T) {
 	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch, nil)
 	bspName := "some-backend-security-policy"
 	bspNamespace := "default"
 
@@ -582,7 +614,7 @@ func TestNewBackendSecurityPolicyController_RotateCredentialAwsCredentialFile(t 
 func TestNewBackendSecurityPolicyController_RotateCredentialGcpCredentialFile(t *testing.T) {
 	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch, nil)
 	bspName := "gcp-backend-security-policy"
 	bspNamespace := "default"
 
@@ -609,7 +641,7 @@ func TestNewBackendSecurityPolicyController_RotateCredentialGcpCredentialFile(t 
 func TestNewBackendSecurityPolicyController_RotateCredentialAzureIncorrectSecretRef(t *testing.T) {
 	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch, nil)
 
 	tenantID := "some-tenant-id"
 	clientID := "some-client-id"
@@ -662,7 +694,7 @@ func TestBackendSecurityPolicyController_ExecutionRotation(t *testing.T) {
 
 	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch, nil)
 	bspNamespace := "default"
 	bspName := "some-back-end-security-policy"
 	oidcSecretName := "oidcClientSecret"
@@ -729,7 +761,7 @@ func TestBackendSecurityPolicyController_ExecutionRotation(t *testing.T) {
 		ctrl.Log, bspNamespace,
 		bsp.Name,
 		preRotationWindow,
-		oidc,
+		&oidc,
 		"placeholder",
 		"us-east-1",
 	)
@@ -896,7 +928,7 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials(t *test
 		},
 	}
 
-	c := NewBackendSecurityPolicyController(fake.NewFakeClient(), fake2.NewClientset(), ctrl.Log, nil)
+	c := NewBackendSecurityPolicyController(fake.NewFakeClient(), fake2.NewClientset(), ctrl.Log, nil, nil)
 
 	for _, tt := range validationTests {
 		bsp := &aigv1a1.BackendSecurityPolicy{
@@ -927,7 +959,7 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials(t *test
 func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_OIDC(t *testing.T) {
 	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch, nil)
 	bspName := "gcp-oidc-policy"
 	bspNamespace := "default"
 
@@ -990,7 +1022,7 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_OIDC(t 
 func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_CredentialsFile(t *testing.T) {
 	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch, nil)
 	bspName := "gcp-sa-policy"
 	bspNamespace := "default"
 
@@ -1053,7 +1085,7 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_Credent
 func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_MissingSecret(t *testing.T) {
 	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch, nil)
 	bspName := "gcp-missing-secret-policy"
 	bspNamespace := "default"
 
@@ -1086,7 +1118,7 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_Missing
 func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_MissingSecretKey(t *testing.T) {
 	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
 	cl := fake.NewClientBuilder().WithScheme(Scheme).Build()
-	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
+	c := NewBackendSecurityPolicyController(cl, fake2.NewClientset(), ctrl.Log, eventCh.Ch, nil)
 	bspName := "gcp-missing-key-policy"
 	bspNamespace := "default"
 

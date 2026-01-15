@@ -4,10 +4,10 @@ title: The Reality and Performance of MCP Traffic Routing with Envoy AI Gateway
 authors: [nacx, missberg]
 tags: [features]
 description: In this article explore how Envoy AI Gateway handles stateful MCP sessions, keeps performance competitive, and stays aligned with the broader Envoy ecosystem.
-image: ./images/mcp-routing-feature.png
+image: /img/blog/mcp-routing-feature.png
 ---
 
-![](images/mcp-routing-feature.png)
+![](/img/blog/mcp-routing-feature.png)
 
 Envoy AI Gateway (AIGW) provides a production-ready bridge between AI agents and their tools by handling Model Context Protocol (MCP) traffic. As teams adopt MCP, questions about scale, performance, and architecture naturally arise.
 
@@ -69,7 +69,7 @@ Instead of maintaining persistent session mappings in a centralized session stor
 2. **Secure session encoding:** The gateway builds a compact description of these upstream sessions and wraps it into a safe, self-contained client session ID. This ensures the map is tamper-proof and that the client cannot see the internal topology.
 3. **Routing:** The client receives this session ID. On subsequent requests, the client returns it. Any gateway replica can decode it and immediately route traffic to the correct upstream servers.
 
-![](images/mcp-routing.png)
+![](/img/blog/mcp-routing.png)
 
 :::tip Tune performance to your needs
 This design allows Envoy AI Gateway users to configure further and tune performance to meet their needs.
@@ -94,7 +94,7 @@ The benchmarks measure the time taken to call a simple “echo” tool directly 
 
 :::note Analysis of Proxy Performance with Session Encryption
 _Average execution time in milliseconds (lower is better)_
-![](images/mcp-routing-benchmark-chart.png)
+![](/img/blog/mcp-routing-benchmark-chart.png)
 :::
 
 :::tip
@@ -107,7 +107,7 @@ You can run these benchmarks yourself to explore how configuring encryption sett
 
 When designing this, we faced a binary architectural choice: **Keep state in the gateway** or **Encode state in the client**.
 
-![](images/mcp-routing-options.png)
+![](/img/blog/mcp-routing-options.png)
 
 ### The Alternative We Rejected: Centralized State
 
@@ -139,7 +139,7 @@ Instead of paying the cost of managing, scaling, and querying a database for eve
 The best way to decide if this architecture meets your needs is to test it against your specific performance and security requirements.
 
 1. **Configure an MCP route in Envoy AI Gateway:** Point your agent at AIGW and **experiment with encryption tuning.**
-2. **Run the benchmark harness** that you can [find here](https://github.com/envoyproxy/ai-gateway/blob/main/tests/bench/bench_test.go) in the Envoy AI Gateway repo.
+2. **Run the benchmark harness** that you can [find here](https://github.com/envoyproxy/ai-gateway/blob/main/tests/data-plane-mcp/bench/bench_test.go) in the Envoy AI Gateway repo.
 
 ```shell
 # Clone the repo and build the latest CLI
@@ -148,7 +148,7 @@ cd ai-gateway
 make build.aigw
 
 # Run the benchmarks
-go test -timeout=15m -run='^$' -bench=. -count=10 ./tests/bench/...
+go test -timeout=15m -run='^$' -bench=. -count=10 ./tests/data-plane-mcp/bench/...
 ```
 
 3. **Share your experience:** Open an issue or join the community channels.

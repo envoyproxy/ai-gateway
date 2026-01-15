@@ -87,8 +87,20 @@ func (b *metricsImpl) SetBackend(backend *filterapi.Backend) {
 	switch backend.Schema.Name {
 	case filterapi.APISchemaOpenAI:
 		b.backend = genaiProviderOpenAI
+	case filterapi.APISchemaAzureOpenAI:
+		b.backend = genaiProviderAzureOpenAI
 	case filterapi.APISchemaAWSBedrock:
 		b.backend = genaiProviderAWSBedrock
+	case filterapi.APISchemaAWSAnthropic:
+		b.backend = genaiProviderAWSAnthropic
+	case filterapi.APISchemaGCPVertexAI:
+		b.backend = genaiProviderGCPVertexAI
+	case filterapi.APISchemaGCPAnthropic:
+		b.backend = genaiProviderGCPAnthropic
+	case filterapi.APISchemaAnthropic:
+		b.backend = genaiProviderAnthropic
+	case filterapi.APISchemaCohere:
+		b.backend = genaiProviderCohere
 	default:
 		b.backend = backend.Name
 	}
@@ -146,6 +158,12 @@ func (b *metricsImpl) RecordTokenUsage(ctx context.Context, usage TokenUsage, re
 		b.metrics.tokenUsage.Record(ctx, float64(cachedInputTokens),
 			metric.WithAttributeSet(attrs),
 			metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeCachedInput)),
+		)
+	}
+	if cacheCreationInputTokens, ok := usage.CacheCreationInputTokens(); ok {
+		b.metrics.tokenUsage.Record(ctx, float64(cacheCreationInputTokens),
+			metric.WithAttributeSet(attrs),
+			metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeCacheCreationInput)),
 		)
 	}
 	if outputTokens, ok := usage.OutputTokens(); ok {

@@ -11,26 +11,26 @@ import (
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 type span[RespT, ChunkT any] struct {
 	span     trace.Span
-	recorder tracing.SpanResponseRecorder[RespT, ChunkT]
+	recorder tracingapi.SpanResponseRecorder[RespT, ChunkT]
 	chunks   []*ChunkT
 }
 
-// RecordResponseChunk implements [tracing.Span.RecordResponseChunk]
+// RecordResponseChunk implements [tracingapi.Span.RecordResponseChunk]
 func (s *span[RespT, ChunkT]) RecordResponseChunk(resp *ChunkT) {
 	s.chunks = append(s.chunks, resp)
 }
 
-// RecordResponse implements [tracing.Span.RecordResponse]
+// RecordResponse implements [tracingapi.Span.RecordResponse]
 func (s *span[RespT, ChunkT]) RecordResponse(resp *RespT) {
 	s.recorder.RecordResponse(s.span, resp)
 }
 
-// EndSpan implements [tracing.Span.EndSpan]
+// EndSpan implements [tracingapi.Span.EndSpan]
 func (s *span[RespT, ChunkT]) EndSpan() {
 	if len(s.chunks) > 0 {
 		s.recorder.RecordResponseChunks(s.span, s.chunks)
@@ -38,7 +38,7 @@ func (s *span[RespT, ChunkT]) EndSpan() {
 	s.span.End()
 }
 
-// EndSpanOnError implements [tracing.Span.EndSpanOnError]
+// EndSpanOnError implements [tracingapi.Span.EndSpanOnError]
 func (s *span[RespT, ChunkT]) EndSpanOnError(statusCode int, body []byte) {
 	s.recorder.RecordResponseOnError(s.span, statusCode, body)
 	s.span.End()

@@ -39,7 +39,7 @@ func TestAuthorizeRequest(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	proxy := &MCPProxy{l: logger}
+	proxy := &mcpRequestContext{ProxyConfig: &ProxyConfig{l: logger}}
 
 	tests := []struct {
 		name          string
@@ -975,7 +975,7 @@ func TestAuthorizeRequest(t *testing.T) {
 			if err != nil {
 				return
 			}
-			allowed, requiredScopes := proxy.authorizeRequest(compiled, authorizationRequest{
+			allowed, requiredScopes := proxy.authorizeRequest(compiled, &authorizationRequest{
 				Headers:    headers,
 				HTTPMethod: cmp.Or(tt.mcpMethod, http.MethodPost),
 				Host:       tt.host,

@@ -34,47 +34,49 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	"github.com/envoyproxy/ai-gateway/internal/tracing"
-	tracingapi "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	tracingapi "github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
-func newTestMCPProxy() *MCPProxy {
+func newTestMCPProxy() *mcpRequestContext {
 	return newTestMCPProxyWithTracer(noopTracer)
 }
 
-func newTestMCPProxyWithTracer(t tracingapi.MCPTracer) *MCPProxy {
+func newTestMCPProxyWithTracer(t tracingapi.MCPTracer) *mcpRequestContext {
 	// reduce the iterations for faster tests. The default is a good tradeoff between security
 	// and performance, but for the tests we can use fewer iterations to make tests faster.
 	sessionCrypto := NewPBKDF2AesGcmSessionCrypto("test", 100)
 
-	return &MCPProxy{
-		sessionCrypto:      sessionCrypto,
-		toolChangeSignaler: newMultiWatcherSignaler(),
-		mcpProxyConfig: &mcpProxyConfig{
-			backendListenerAddr: "http://test-backend",
-			routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
-				"test-route": {
-					toolSelectors: map[filterapi.MCPBackendName]*toolSelector{
-						"backend1": {include: map[string]struct{}{"test-tool": {}}},
+	return &mcpRequestContext{
+		metrics: stubMetrics{},
+		ProxyConfig: &ProxyConfig{
+			sessionCrypto:      sessionCrypto,
+			toolChangeSignaler: newMultiWatcherSignaler(),
+			mcpProxyConfig: &mcpProxyConfig{
+				backendListenerAddr: "http://test-backend",
+				routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
+					"test-route": {
+						toolSelectors: map[filterapi.MCPBackendName]*toolSelector{
+							"backend1": {include: map[string]struct{}{"test-tool": {}}},
+						},
+						backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
+							"backend1": {Name: "backend1", Path: "/mcp"},
+							"backend2": {Name: "backend2", Path: "/"},
+						},
 					},
-					backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
-						"backend1": {Name: "backend1", Path: "/mcp"},
-						"backend2": {Name: "backend2", Path: "/"},
-					},
-				},
-				"test-route-another": {
-					backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
-						"backend3": {Name: "backend3", Path: "/mcp"},
+					"test-route-another": {
+						backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
+							"backend3": {Name: "backend3", Path: "/mcp"},
+						},
 					},
 				},
 			},
+			tracer: t,
+			l:      slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})),
 		},
-		metrics: stubMetrics{},
-		tracer:  t,
-		l:       slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})),
 	}
 }
 
-func newTestMCPProxyWithOTEL(mr *sdkmetric.ManualReader, tracer tracingapi.MCPTracer) *MCPProxy {
+func newTestMCPProxyWithOTEL(mr *sdkmetric.ManualReader, tracer tracingapi.MCPTracer) *mcpRequestContext {
 	mcpProxy := newTestMCPProxyWithTracer(tracer)
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(mr)).Meter("test")
 	mcpProxy.metrics = metrics.NewMCP(meter, nil)
@@ -678,7 +680,7 @@ func TestServePOST_UnsupportedMethod(t *testing.T) {
 func TestHandleToolCallRequest_UnknownBackend(t *testing.T) {
 	proxy := newTestMCPProxy()
 	s := &session{
-		proxy:              proxy,
+		reqCtx:             proxy,
 		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{},
 	}
 
@@ -704,7 +706,7 @@ func TestHandleToolCallRequest_BackendError(t *testing.T) {
 	proxy := newTestMCPProxy()
 	proxy.backendListenerAddr = backendServer.URL
 	s := &session{
-		proxy: proxy,
+		reqCtx: proxy,
 		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
 			"backend1": {
 				sessionID: "test-session",
@@ -748,15 +750,15 @@ func TestHandleToolCallRequest_InvalidToolName(t *testing.T) {
 	}))
 	t.Cleanup(backendServer.Close)
 
-	proxy := newTestMCPProxy()
-	proxy.backendListenerAddr = backendServer.URL
+	reqCtx := newTestMCPProxy()
+	reqCtx.backendListenerAddr = backendServer.URL
 
 	// Add "unknown_tool" to the allowed list for backend1
 	// This simulates a tool being in the config but not actually on the MCP server
-	proxy.routes["test-route"].toolSelectors["backend1"].include["unknown_tool"] = struct{}{}
+	reqCtx.routes["test-route"].toolSelectors["backend1"].include["unknown_tool"] = struct{}{}
 
 	s := &session{
-		proxy: proxy,
+		reqCtx: reqCtx,
 		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
 			"backend1": {
 				sessionID: "test-session",
@@ -774,7 +776,7 @@ func TestHandleToolCallRequest_InvalidToolName(t *testing.T) {
 	id := mustJSONRPCRequestID()
 	req := &jsonrpc.Request{ID: id, Method: "tools/call"}
 
-	err := proxy.handleToolCallRequest(t.Context(), s, rr, req, params, nil, httpReq)
+	err := reqCtx.handleToolCallRequest(t.Context(), s, rr, req, params, nil, httpReq)
 	// JSON-RPC errors are application-level errors that should be returned for proper metrics tracking,
 	// but they're not treated as span exceptions since the protocol worked correctly.
 	require.Error(t, err)
@@ -822,7 +824,7 @@ func TestHandleToolCallRequest_ToolResultWithIsError(t *testing.T) {
 	proxy := newTestMCPProxy()
 	proxy.backendListenerAddr = backendServer.URL
 	s := &session{
-		proxy: proxy,
+		reqCtx: proxy,
 		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
 			"backend1": {
 				sessionID: "test-session",
@@ -1224,7 +1226,7 @@ func TestExtractSubject(t *testing.T) {
 	})
 }
 
-func secureID(t *testing.T, proxy *MCPProxy, sessionID string) string {
+func secureID(t *testing.T, proxy *mcpRequestContext, sessionID string) string {
 	secure, err := proxy.sessionCrypto.Encrypt(sessionID)
 	require.NoError(t, err)
 	return secure
@@ -1287,7 +1289,7 @@ func TestMCPProxy_handleCompletionComplete(t *testing.T) {
 	} {
 		rr := httptest.NewRecorder()
 		err := proxy.handleCompletionComplete(t.Context(), &session{
-			proxy: proxy,
+			reqCtx: proxy,
 			perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
 				"backend1": {sessionID: "test-session"},
 			},
@@ -1326,7 +1328,7 @@ func TestMCPPRoxy_handleSetLoggingLevel(t *testing.T) {
 	proxy.backendListenerAddr = testServer.URL
 	rr := httptest.NewRecorder()
 	s := &session{
-		proxy: proxy,
+		reqCtx: proxy,
 		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
 			"backend": {sessionID: "test-session"},
 		},
@@ -1367,7 +1369,7 @@ func TestMCPPRoxy_handleResourceReadRequest(t *testing.T) {
 	proxy.backendListenerAddr = testServer.URL
 	rr := httptest.NewRecorder()
 	s := &session{
-		proxy:              proxy,
+		reqCtx:             proxy,
 		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{"backend1": {sessionID: "test-session"}},
 		route:              "test-route",
 	}
@@ -1451,7 +1453,7 @@ func TestMCPProxy_handleClientToServerNotificationsProgress(t *testing.T) {
 
 			rr := httptest.NewRecorder()
 			s := &session{
-				proxy:              proxy,
+				reqCtx:             proxy,
 				perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{"backend1": {sessionID: "test-session"}},
 				route:              "test-route",
 			}
@@ -1641,7 +1643,7 @@ func TestMCPProxy_handleClientToServerResponse(t *testing.T) {
 
 			rr := httptest.NewRecorder()
 			err := proxy.handleClientToServerResponse(t.Context(), &session{
-				proxy:              proxy,
+				reqCtx:             proxy,
 				perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{"backend1": {sessionID: "test-session"}},
 				route:              "test-route",
 			}, rr, tc.msg)
@@ -1680,7 +1682,7 @@ func TestMCPServer_handleNotificationsRootsListChanged(t *testing.T) {
 	req := &jsonrpc.Request{ID: reqID, Method: "notifications/roots/list_changed", Params: emptyJSONRPCMessage}
 	rr := httptest.NewRecorder()
 	err = proxy.handleNotificationsRootsListChanged(t.Context(), &session{
-		proxy:              proxy,
+		reqCtx:             proxy,
 		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{"test-backend": {sessionID: ""}},
 	}, rr, req, nil)
 	require.NoError(t, err)
@@ -1733,7 +1735,7 @@ func TestMCPServer_handleResourcesSubscriptionRequest(t *testing.T) {
 			req := &jsonrpc.Request{ID: reqID, Method: tc.name, Params: emptyJSONRPCMessage}
 			rr := httptest.NewRecorder()
 			s := &session{
-				proxy:              proxy,
+				reqCtx:             proxy,
 				perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{"backend1": {sessionID: "a"}},
 				route:              "test-route",
 			}

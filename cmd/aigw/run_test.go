@@ -38,7 +38,7 @@ func TestRun(t *testing.T) {
 	defer cancel()
 
 	opts := testRunOpts(t, func(context.Context, []string, io.Writer) error { return nil })
-	require.NoError(t, run(ctx, cmdRun{Debug: true}, opts, os.Stdout, os.Stderr))
+	require.NoError(t, run(ctx, &cmdRun{Debug: true}, opts, os.Stdout, os.Stderr))
 }
 
 func TestRunExtprocStartFailure(t *testing.T) {
@@ -50,7 +50,7 @@ func TestRunExtprocStartFailure(t *testing.T) {
 	mockErr := errors.New("mock extproc error")
 	go func() {
 		opts := testRunOpts(t, func(context.Context, []string, io.Writer) error { return mockErr })
-		errChan <- run(ctx, cmdRun{}, opts, os.Stdout, io.Discard)
+		errChan <- run(ctx, &cmdRun{}, opts, os.Stdout, io.Discard)
 	}()
 
 	select {

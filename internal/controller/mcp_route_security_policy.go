@@ -247,6 +247,8 @@ func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataBTP(ctx context
 		},
 	}
 
+	ensureCORSHeaders(backendTrafficPolicy.Spec.ResponseOverride[0].Response.Header)
+
 	// Target the HTTPRoute MCP proxy rule only.
 	backendTrafficPolicy.Spec.TargetRefs = []gwapiv1.LocalPolicyTargetReferenceWithSectionName{
 		{
@@ -313,12 +315,11 @@ func buildResourceMetadataURL(metadata *aigv1a1.ProtectedResourceMetadata) strin
 
 // buildWWWAuthenticateHeaderValue constructs the WWW-Authenticate header value according to RFC 9728.
 // References:
-// * https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization#authorization-server-location
+// * https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization#protected-resource-metadata-discovery-requirements
 // * https://datatracker.ietf.org/doc/html/rfc9728#name-www-authenticate-response
 func buildWWWAuthenticateHeaderValue(metadata *aigv1a1.ProtectedResourceMetadata) string {
 	resourceMetadataURL := buildResourceMetadataURL(metadata)
-	// Build the basic Bearer challenge.
-	headerValue := `Bearer error="invalid_request", error_description="No access token was provided in this request"`
+	headerValue := `Bearer error="invalid_token", error_description="The access token is missing or invalid"`
 
 	// Add resource_metadata as per RFC 9728 Section 5.1.
 	headerValue = fmt.Sprintf(`%s, resource_metadata="%s"`, headerValue, resourceMetadataURL)
@@ -370,8 +371,10 @@ func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataHRF(ctx context
 				Type:   ptr.To(egv1a1.ResponseValueTypeInline),
 				Inline: ptr.To(metadataJSON),
 			},
+			Header: &gwapiv1.HTTPHeaderFilter{},
 		},
 	}
+	ensureCORSHeaders(httpRouteFilter.Spec.DirectResponse.Header)
 
 	if existingFilter {
 		c.logger.Info("Updating HTTPRouteFilter", "namespace", httpRouteFilter.Namespace, "name", httpRouteFilter.Name)
@@ -388,8 +391,24 @@ func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataHRF(ctx context
 	return nil
 }
 
-// ensureOAuthAuthServerMetadataHTTPRouteFilter ensures that the HTTPRouteFilter resource exists with direct response for OAuth authorization server metadata.
-func (c *MCPRouteController) ensureOAuthAuthServerMetadataHTTPRouteFilter(ctx context.Context, mcpRoute *aigv1a1.MCPRoute) error {
+// ensureCORSHeaders ensures that the HTTPHeaderFilter resource exists with CORS headers.
+// This is required by the MCP inspector, which is running in the browser on a different origin.
+func ensureCORSHeaders(httpHeaderFilter *gwapiv1.HTTPHeaderFilter) {
+	// Add CORS headers.
+	httpHeaderFilter.Set = append(httpHeaderFilter.Set, gwapiv1.HTTPHeader{
+		Name:  "Access-Control-Allow-Origin",
+		Value: "*",
+	}, gwapiv1.HTTPHeader{
+		Name:  "Access-Control-Allow-Methods",
+		Value: "GET",
+	}, gwapiv1.HTTPHeader{
+		Name:  "Access-Control-Allow-Headers",
+		Value: "mcp-protocol-version",
+	})
+}
+
+// ensureOAuthAuthServerMetadataHRF ensures that the HTTPRouteFilter resource exists with direct response for OAuth authorization server metadata.
+func (c *MCPRouteController) ensureOAuthAuthServerMetadataHRF(ctx context.Context, mcpRoute *aigv1a1.MCPRoute) error {
 	var httpRouteFilter egv1a1.HTTPRouteFilter
 	authServerFilterName := oauthAuthServerMetadataFilterName(mcpRoute.Name)
 	err := c.client.Get(ctx, client.ObjectKey{Name: authServerFilterName, Namespace: mcpRoute.Namespace}, &httpRouteFilter)
@@ -423,8 +442,10 @@ func (c *MCPRouteController) ensureOAuthAuthServerMetadataHTTPRouteFilter(ctx co
 				Type:   ptr.To(egv1a1.ResponseValueTypeInline),
 				Inline: ptr.To(metadataJSON),
 			},
+			Header: &gwapiv1.HTTPHeaderFilter{},
 		},
 	}
+	ensureCORSHeaders(httpRouteFilter.Spec.DirectResponse.Header)
 
 	if existingFilter {
 		c.logger.Info("Updating AuthServer HTTPRouteFilter", "namespace", httpRouteFilter.Namespace, "name", httpRouteFilter.Name)
@@ -556,7 +577,7 @@ func (c *MCPRouteController) ensureOAuthResources(ctx context.Context, mcpRoute 
 	}
 
 	// Create HTTPRouteFilter for OAuth authorization server metadata endpoint.
-	if hrfErr := c.ensureOAuthAuthServerMetadataHTTPRouteFilter(ctx, mcpRoute); hrfErr != nil {
+	if hrfErr := c.ensureOAuthAuthServerMetadataHRF(ctx, mcpRoute); hrfErr != nil {
 		return fmt.Errorf("failed to ensure AuthServer HTTPRouteFilter: %w", hrfErr)
 	}
 	return nil
@@ -786,7 +807,8 @@ func (c *MCPRouteController) tryGetBackendsForJWKS(ctx context.Context, jwksURL 
 	hostname := u.Hostname()
 
 	var backendRefs []egv1a1.BackendRef
-	for _, btp := range backendTLSPolicies.Items {
+	for i := range backendTLSPolicies.Items {
+		btp := &backendTLSPolicies.Items[i]
 		if string(btp.Spec.Validation.Hostname) == hostname {
 			for _, ref := range btp.Spec.TargetRefs {
 				backendRefs = append(backendRefs, egv1a1.BackendRef{

@@ -20,12 +20,12 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 var (
-	_ tracing.MCPSpan   = (*fakeSpan)(nil)
-	_ tracing.MCPTracer = (*fakeTracer)(nil)
+	_ tracingapi.MCPSpan   = (*fakeSpan)(nil)
+	_ tracingapi.MCPTracer = (*fakeTracer)(nil)
 )
 
 type fakeSpan struct {
@@ -49,14 +49,14 @@ type fakeTracer struct {
 	span *fakeSpan
 }
 
-func (f *fakeTracer) StartSpanAndInjectMeta(context.Context, *jsonrpc.Request, mcp.Params, http.Header) tracing.MCPSpan {
+func (f *fakeTracer) StartSpanAndInjectMeta(context.Context, *jsonrpc.Request, mcp.Params, http.Header) tracingapi.MCPSpan {
 	if f.span == nil {
 		f.span = &fakeSpan{}
 	}
 	return f.span
 }
 
-var noopTracer = tracing.NoopMCPTracer{}
+var noopTracer = tracingapi.NoopMCPTracer{}
 
 func TestNewMCPProxy(t *testing.T) {
 	l := slog.Default()

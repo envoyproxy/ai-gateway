@@ -18,68 +18,68 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference/openai"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
-var _ tracing.Tracing = (*tracingImpl)(nil)
+var _ tracingapi.Tracing = (*tracingImpl)(nil)
 
 type tracingImpl struct {
-	chatCompletionTracer  tracing.ChatCompletionTracer
-	completionTracer      tracing.CompletionTracer
-	imageGenerationTracer tracing.ImageGenerationTracer
-	embeddingsTracer      tracing.EmbeddingsTracer
-	responsesTracer       tracing.ResponsesTracer
-	rerankTracer          tracing.RerankTracer
-	messageTracer         tracing.MessageTracer
-	mcpTracer             tracing.MCPTracer
+	chatCompletionTracer  tracingapi.ChatCompletionTracer
+	completionTracer      tracingapi.CompletionTracer
+	imageGenerationTracer tracingapi.ImageGenerationTracer
+	embeddingsTracer      tracingapi.EmbeddingsTracer
+	responsesTracer       tracingapi.ResponsesTracer
+	rerankTracer          tracingapi.RerankTracer
+	messageTracer         tracingapi.MessageTracer
+	mcpTracer             tracingapi.MCPTracer
 	// shutdown is nil when we didn't create tp.
 	shutdown func(context.Context) error
 }
 
-// ChatCompletionTracer implements the same method as documented on api.Tracing.
-func (t *tracingImpl) ChatCompletionTracer() tracing.ChatCompletionTracer {
+// ChatCompletionTracer implements the same method as documented on tracingapi.Tracing.
+func (t *tracingImpl) ChatCompletionTracer() tracingapi.ChatCompletionTracer {
 	return t.chatCompletionTracer
 }
 
-// CompletionTracer implements the same method as documented on api.Tracing.
-func (t *tracingImpl) CompletionTracer() tracing.CompletionTracer {
+// CompletionTracer implements the same method as documented on tracingapi.Tracing.
+func (t *tracingImpl) CompletionTracer() tracingapi.CompletionTracer {
 	return t.completionTracer
 }
 
-// EmbeddingsTracer implements the same method as documented on api.Tracing.
-func (t *tracingImpl) EmbeddingsTracer() tracing.EmbeddingsTracer {
+// EmbeddingsTracer implements the same method as documented on tracingapi.Tracing.
+func (t *tracingImpl) EmbeddingsTracer() tracingapi.EmbeddingsTracer {
 	return t.embeddingsTracer
 }
 
-// ImageGenerationTracer implements the same method as documented on api.Tracing.
-func (t *tracingImpl) ImageGenerationTracer() tracing.ImageGenerationTracer {
+// ImageGenerationTracer implements the same method as documented on tracingapi.Tracing.
+func (t *tracingImpl) ImageGenerationTracer() tracingapi.ImageGenerationTracer {
 	return t.imageGenerationTracer
 }
 
-// ResponsesTracer implements the same method as documented on api.Tracing.
-func (t *tracingImpl) ResponsesTracer() tracing.ResponsesTracer {
+// ResponsesTracer implements the same method as documented on tracingapi.Tracing.
+func (t *tracingImpl) ResponsesTracer() tracingapi.ResponsesTracer {
 	return t.responsesTracer
 }
 
-// RerankTracer implements the same method as documented on api.Tracing.
-func (t *tracingImpl) RerankTracer() tracing.RerankTracer {
+// RerankTracer implements the same method as documented on tracingapi.Tracing.
+func (t *tracingImpl) RerankTracer() tracingapi.RerankTracer {
 	return t.rerankTracer
 }
 
-// MCPTracer implements the same method as documented on api.Tracing.
-func (t *tracingImpl) MCPTracer() tracing.MCPTracer {
+// MCPTracer implements the same method as documented on tracingapi.Tracing.
+func (t *tracingImpl) MCPTracer() tracingapi.MCPTracer {
 	return t.mcpTracer
 }
 
-// MessageTracer implements the same method as documented on api.Tracing.
-func (t *tracingImpl) MessageTracer() tracing.MessageTracer {
+// MessageTracer implements the same method as documented on tracingapi.Tracing.
+func (t *tracingImpl) MessageTracer() tracingapi.MessageTracer {
 	return t.messageTracer
 }
 
-// Shutdown implements the same method as documented on api.Tracing.
+// Shutdown implements the same method as documented on tracingapi.Tracing.
 func (t *tracingImpl) Shutdown(ctx context.Context) error {
 	if t.shutdown != nil {
 		return t.shutdown(ctx)
@@ -95,16 +95,16 @@ func (t *tracingImpl) Shutdown(ctx context.Context) error {
 //     If nil, no header mapping is applied.
 //
 // Returns a tracing graph that is noop when disabled.
-func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMapping map[string]string) (tracing.Tracing, error) {
+func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMapping map[string]string) (tracingapi.Tracing, error) {
 	// Return no-op tracing if disabled.
 	if os.Getenv("OTEL_SDK_DISABLED") == "true" {
-		return tracing.NoopTracing{}, nil
+		return tracingapi.NoopTracing{}, nil
 	}
 
 	// Check for traces-specific exporter first.
 	exporter := os.Getenv("OTEL_TRACES_EXPORTER")
 	if exporter == "none" {
-		return tracing.NoopTracing{}, nil
+		return tracingapi.NoopTracing{}, nil
 	}
 
 	// If no traces-specific exporter is set, check if OTLP endpoints are configured.
@@ -118,7 +118,7 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 
 		if !hasOTLPEndpoint {
 			// No tracing configured.
-			return tracing.NoopTracing{}, nil
+			return tracingapi.NoopTracing{}, nil
 		}
 		// Fall through to use autoexport which will handle OTLP configuration.
 	}

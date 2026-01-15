@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	openaisdk "github.com/openai/openai-go/v2"
@@ -102,7 +103,7 @@ func openAIMessagesToGeminiContents(messages []openai.ChatCompletionMessageParam
 				gcpParts = nil
 			}
 			msg := msgUnion.OfAssistant
-			assistantParts, toolCalls, err := assistantMsgToGeminiParts(*msg)
+			assistantParts, toolCalls, err := assistantMsgToGeminiParts(msg)
 			if err != nil {
 				return nil, nil, fmt.Errorf("error converting assistant message: %w", err)
 			}
@@ -253,7 +254,7 @@ func toolMsgToGeminiParts(msg openai.ChatCompletionToolMessageParam, knownToolCa
 }
 
 // assistantMsgToGeminiParts converts OpenAI assistant message to Gemini Parts and known tool calls.
-func assistantMsgToGeminiParts(msg openai.ChatCompletionAssistantMessageParam) ([]*genai.Part, map[string]string, error) {
+func assistantMsgToGeminiParts(msg *openai.ChatCompletionAssistantMessageParam) ([]*genai.Part, map[string]string, error) {
 	var parts []*genai.Part
 
 	// Handle tool calls in the assistant message.
@@ -403,6 +404,20 @@ func openAIToolsToGeminiTools(openaiTools []openai.Tool, parametersJSONSchemaAva
 			genaiTools = append(genaiTools, genai.Tool{
 				EnterpriseWebSearch: &genai.EnterpriseWebSearch{},
 			})
+		case openai.ToolTypeGoogleSearch:
+			gs := &genai.GoogleSearch{}
+			if tool.GoogleSearch != nil {
+				gs.ExcludeDomains = tool.GoogleSearch.ExcludeDomains
+				if tool.GoogleSearch.BlockingConfidence != "" {
+					gs.BlockingConfidence = genai.PhishBlockThreshold(tool.GoogleSearch.BlockingConfidence)
+				}
+				if tool.GoogleSearch.TimeRangeFilter != nil {
+					gs.TimeRangeFilter = openAITimeRangeFilterToGemini(tool.GoogleSearch.TimeRangeFilter)
+				}
+			}
+			genaiTools = append(genaiTools, genai.Tool{
+				GoogleSearch: gs,
+			})
 		default:
 			return nil, fmt.Errorf("unsupported tool type: %s", tool.Type)
 		}
@@ -420,6 +435,24 @@ func openAIToolsToGeminiTools(openaiTools []openai.Tool, parametersJSONSchemaAva
 	}
 
 	return genaiTools, nil
+}
+
+func openAITimeRangeFilterToGemini(filter *openai.GCPTimeRangeFilter) *genai.Interval {
+	if filter == nil {
+		return nil
+	}
+	interval := &genai.Interval{}
+	if filter.StartTime != "" {
+		if t, err := time.Parse(time.RFC3339, filter.StartTime); err == nil {
+			interval.StartTime = t
+		}
+	}
+	if filter.EndTime != "" {
+		if t, err := time.Parse(time.RFC3339, filter.EndTime); err == nil {
+			interval.EndTime = t
+		}
+	}
+	return interval
 }
 
 // openAIToolChoiceToGeminiToolConfig converts OpenAI tool_choice to Gemini ToolConfig.

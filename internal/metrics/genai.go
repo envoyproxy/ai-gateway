@@ -31,16 +31,27 @@ const (
 	GenAIOperationImageGeneration GenAIOperation = "image_generation"
 	GenAIOperationResponses       GenAIOperation = "responses"
 	GenAIOperationRerank          GenAIOperation = "rerank"
-	genaiProviderOpenAI                          = "openai"
-	genaiProviderAWSBedrock                      = "aws.bedrock"
-	genaiTokenTypeInput                          = "input"
-	genaiTokenTypeOutput                         = "output"
+
+	// Provider names according to the Semantic Conventions for Generative AI Metrics.
+	// See: https://opentelemetry.io/docs/specs/semconv/attributes-registry/gen-ai/
+	genaiProviderOpenAI       = "openai"
+	genaiProviderAzureOpenAI  = "azure.openai"
+	genaiProviderAWSBedrock   = "aws.bedrock"
+	genaiProviderAWSAnthropic = "aws.anthropic"
+	genaiProviderGCPVertexAI  = "gcp.vertex_ai"
+	genaiProviderGCPAnthropic = "gcp.anthropic"
+	genaiProviderAnthropic    = "anthropic"
+	genaiProviderCohere       = "cohere"
+
+	genaiTokenTypeInput  = "input"
+	genaiTokenTypeOutput = "output"
 	// "cached_input" is not yet part of the spec but has been proposed:
 	// https://github.com/open-telemetry/semantic-conventions/issues/1959
 	//
 	// However, the spec says "a custom value MAY be used.", so we can use it now.
-	genaiTokenTypeCachedInput = "cached_input"
-	genaiErrorTypeFallback    = "_OTHER"
+	genaiTokenTypeCachedInput        = "cached_input"
+	genaiTokenTypeCacheCreationInput = "cache_creation_input"
+	genaiErrorTypeFallback           = "_OTHER"
 )
 
 // GenAIOperation represents the type of generative AI operation i.e. the endpoint being called.
