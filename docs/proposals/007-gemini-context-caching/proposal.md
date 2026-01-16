@@ -41,7 +41,7 @@ GCP Vertex AI provides a [Context Caching API](https://cloud.google.com/vertex-a
 - Cached content must be a contiguous block of messages
 - Cached content always appears as a prefix (before non-cached messages)
 - Minimum token threshold applies (varies by model, see [GCP documentation](https://cloud.google.com/vertex-ai/docs/context-cache/context-cache-overview) for model-specific limits)
-- Cache has a TTL (default 1 hour, configurable)
+- Cache has a TTL (GCP default is 1 hour; this proposal defaults to 5 minutes for shorter-lived conversation caches)
 - **Cache is regional** - a cache created in `us-central1` cannot be used from `us-east1`
 
 ## Architecture
@@ -50,14 +50,14 @@ GCP Vertex AI provides a [Context Caching API](https://cloud.google.com/vertex-a
 
 **Components:**
 
-1. **ai-gateway (Envoy)**: Receives OpenAI-format requests, detects cache markers, calls cache service with region list from compound model config, translates to Gemini format with `cachedContent` field.
+1. **ai-gateway (Envoy)**: Receives OpenAI-format requests, detects cache markers, routes to a backend (region already selected), calls cache service with the selected region, translates to Gemini format with `cachedContent` field.
 
 2. **Cache Service**: External HTTP microservice that:
-   - Receives messages marked for caching and target regions
+   - Receives messages marked for caching and target region
    - Generates a deterministic cache key from content
-   - Checks if cache exists in each region (via Google API)
-   - Creates cache in regions where it doesn't exist (in parallel)
-   - Returns region-to-cache-name mapping and filtered messages
+   - Checks if cache exists in the region (via Google API)
+   - Creates cache if it doesn't exist
+   - Returns cache name and filtered messages
 
 ## Schema Extensions
 
@@ -94,32 +94,71 @@ Reuse the existing `cache_control` field on message content items (Anthropic-sty
 | Field | Type | Description |
 |-------|------|-------------|
 | `type` | string | Must be `"ephemeral"` |
-| `ttl` | string | Optional. Cache TTL in seconds format (e.g., `"3600s"`). Defaults to 1 hour. |
+| `ttl` | string | Optional. Cache TTL in seconds format (e.g., `"3600s"`). Defaults to 5 minutes (`"300s"`). |
 
 **Rules:**
-- Only the first contiguous block of messages with `cache_control` is cached
-- Non-contiguous cache markers are ignored (messages after a gap are not cached)
-- All messages in the cached block are sent to cache service; remaining messages are sent to Gemini with the cache reference
+- Find the **last** message with `cache_control` - this is the cache breakpoint
+- Everything from the beginning up to and including the breakpoint is cached
+- Everything after the breakpoint is sent as non-cached content
+- Only one cache breakpoint is used per request (the last marker wins)
+- The TTL from the breakpoint message is used for the cache (if multiple markers have different TTLs, the last one wins)
 
-**Example: Non-contiguous markers**
+**Cache Prefix:**
+
+Following Anthropic's semantics, caching references the full prefix - `tools`, `system`, and `messages` (in that order) up to and including the block designated with `cache_control`.
+
+For example:
+- `cache_control` on a user message → caches: tools + system + messages up to that point
+- `cache_control` on system → caches: tools + system
+
+Place `cache_control` on the last item you want included in the cache. As conversations grow, moving the marker to a later message creates a new, larger cache.
+
+**Example: Cache breakpoint**
 
 ```json
 {
   "messages": [
-    {"role": "system", "content": [{"type": "text", "text": "...", "cache_control": {"type": "ephemeral"}}]},
-    {"role": "user", "content": [{"type": "text", "text": "...", "cache_control": {"type": "ephemeral"}}]},
+    {"role": "system", "content": [{"type": "text", "text": "..."}]},
+    {"role": "user", "content": [{"type": "text", "text": "..."}]},
     {"role": "assistant", "content": "..."},
     {"role": "user", "content": [{"type": "text", "text": "...", "cache_control": {"type": "ephemeral"}}]},
+    {"role": "assistant", "content": "..."},
     {"role": "user", "content": "Latest question"}
   ]
 }
 ```
 
 Result:
-- Messages 0-1 are cached (contiguous block)
-- Message 2 breaks the chain (no `cache_control`)
-- Message 3's `cache_control` is **ignored** (after gap)
-- Messages 2-4 are sent as non-cached content
+- Messages 0-3 are cached (everything up to and including the last `cache_control` marker)
+- Messages 4-5 are sent as non-cached content
+
+**Example: Growing conversation**
+
+Turn 1 - cache system prompt and context:
+```json
+{
+  "messages": [
+    {"role": "system", "content": [{"type": "text", "text": "...", "cache_control": {"type": "ephemeral"}}]},
+    {"role": "user", "content": "First question"}
+  ]
+}
+```
+→ Cache: message 0 | Non-cached: message 1
+
+Turn 3 - extend cache to include conversation history:
+```json
+{
+  "messages": [
+    {"role": "system", "content": [{"type": "text", "text": "..."}]},
+    {"role": "user", "content": "First question"},
+    {"role": "assistant", "content": "First answer"},
+    {"role": "user", "content": [{"type": "text", "text": "Second question", "cache_control": {"type": "ephemeral"}}]},
+    {"role": "assistant", "content": "Second answer"},
+    {"role": "user", "content": "Third question"}
+  ]
+}
+```
+→ Cache: messages 0-3 (new cache created) | Non-cached: messages 4-5
 
 ### Request: Explicit Cache Name (Pre-cached Content)
 
@@ -186,7 +225,7 @@ The cache service requires:
 **Headers:**
 | Header | Required | Description |
 |--------|----------|-------------|
-| `X-Cache-Regions` | No | Comma-separated list of regions (e.g., `us-central1,us-east1`). If omitted, cache service resolves automatically. |
+| `X-Cache-Region` | Yes | Target region for cache operations (e.g., `us-central1`). |
 
 **Body:**
 
@@ -236,10 +275,7 @@ The request body is the OpenAI-format request, passed through from ai-gateway:
 
 ```json
 {
-  "caches": {
-    "us-central1": "projects/.../locations/us-central1/cachedContents/abc123",
-    "us-east1": "projects/.../locations/us-east1/cachedContents/xyz789"
-  },
+  "cached_content": "projects/.../locations/us-central1/cachedContents/abc123",
   "messages": [
     {
       "role": "user",
@@ -248,8 +284,7 @@ The request body is the OpenAI-format request, passed through from ai-gateway:
   ],
   "cache_metadata": {
     "cache_key": "a1b2c3d4e5f6...",
-    "created_regions": ["us-east1"],
-    "existing_regions": ["us-central1"],
+    "created": true,
     "token_count": 32768,
     "expire_time": "2024-01-15T11:00:00Z"
   }
@@ -259,11 +294,10 @@ The request body is the OpenAI-format request, passed through from ai-gateway:
 **Response Fields:**
 | Field | Type | Description |
 |-------|------|-------------|
-| `caches` | object | Map of region → Google cache resource name |
+| `cached_content` | string | Google cache resource name |
 | `messages` | array | Filtered messages (non-cached portion only) |
 | `cache_metadata.cache_key` | string | Deterministic key generated from content |
-| `cache_metadata.created_regions` | array | Regions where cache was newly created |
-| `cache_metadata.existing_regions` | array | Regions where cache already existed |
+| `cache_metadata.created` | boolean | Whether the cache was newly created (true) or already existed (false) |
 | `cache_metadata.token_count` | integer | Number of tokens in the cached content |
 | `cache_metadata.expire_time` | string | Cache expiration timestamp (RFC 3339) |
 
@@ -280,14 +314,15 @@ Google's list endpoint only returns non-expired caches, ensuring accuracy.
 ### Cache Service Internal Flow
 
 ```
-1. Extract cached messages (first contiguous block with cache_control)
-2. Generate cache key from: hash(messages + tools)
-3. For each region (in parallel):
-   a. List caches from Google API
-   b. Search for matching displayName
-   c. If found: add to existing_regions
-   d. If not found: create cache, add to created_regions
-4. Return caches map + filtered messages + metadata
+1. Find the last message with cache_control (the breakpoint)
+2. Build cached prefix following hierarchy: tools + system + messages[0:breakpoint+1]
+3. Remaining non-cached content: messages[breakpoint+1:]
+4. Generate cache key from: hash(tools + system + cached_messages)
+5. List caches from Google API for the target region
+6. Search for matching displayName
+7. If found: return existing cache name (created: false)
+8. If not found: create cache, return new cache name (created: true)
+9. Return cached_content + non_cached messages + metadata
 ```
 
 ## Request Flow
@@ -296,9 +331,11 @@ Google's list endpoint only returns non-expired caches, ensuring accuracy.
 
 ![Flow 1: Single Region](context-caching-flow1-single-region.svg)
 
-### Flow 2: Automatic Caching - Multi-Region (Compound Model)
+### Flow 2: Automatic Caching - Compound Model (Lazy Multi-Region)
 
 ![Flow 2: Multi-Region](context-caching-flow2-multi-region.svg)
+
+Note: Each request calls the cache service with a single region (the one selected by load balancing). Caches are created lazily in each region as traffic is routed there.
 
 ### Flow 3: Explicit Cache (Pre-cached)
 
@@ -308,33 +345,34 @@ Google's list endpoint only returns non-expired caches, ensuring accuracy.
 
 ### Overview
 
-When ai-gateway is configured with compound models that span multiple regions (for load balancing based on quota), the cache service creates caches in all specified regions. This ensures that regardless of which region the request is ultimately routed to, a cache is available.
+When ai-gateway is configured with compound models that span multiple regions (for load balancing based on quota), caches are created on-demand as requests are routed to each region. The cache service handles one region at a time based on where the request is routed.
+
+### Behavior
+
+1. Request arrives at ai-gateway with cache markers
+2. ai-gateway selects a backend (e.g., `us-central1`) based on load balancing
+3. ai-gateway calls cache service with the selected region
+4. Cache is created/retrieved for that region only
+5. Subsequent requests routed to other regions will create caches in those regions on first use
+
+This "lazy" approach means caches are only created in regions that actually receive traffic, avoiding unnecessary storage costs in unused regions.
 
 ### Cost Implications
 
-Multi-region caching multiplies storage costs:
-- **Single region**: 1x cache storage cost
-- **N regions**: Nx cache storage cost
+With compound models, caches may be created in multiple regions over time:
+- Each region incurs separate cache storage costs
+- First request to each region pays full token price + cache write cost
+- Subsequent requests to that region benefit from cached tokens
 
 Users should be aware of this when configuring compound models with caching enabled. Consider:
-- Limiting caching to single-region model configurations for cost-sensitive workloads
-- Using explicit `cachedContent` with pre-created caches in specific regions
+- Using explicit `cachedContent` with pre-created caches for predictable costs
 - Monitoring cache storage costs via GCP billing
-
-### Region Configuration
-
-Target regions can be determined in two ways:
-
-1. **Explicit**: ai-gateway passes `regions` array in the request (e.g., user or gateway configuration specifies regions)
-2. **Automatic**: If `regions` is omitted, the cache service resolves regions automatically by querying an external models API or using its own configuration
-
-This flexibility allows users to explicitly control caching regions when needed, while providing automatic resolution for standard compound model configurations.
 
 ## Token Metrics
 
 ### Cache Creation (from Cache Service)
 
-When cache is created, `cache_metadata.token_count` provides the tokens written to cache. The `created_regions` and `existing_regions` fields indicate which regions incurred write costs.
+When cache is created, `cache_metadata.token_count` provides the tokens written to cache. The `cache_metadata.created` field indicates whether this request incurred a cache write cost.
 
 ### Cache Usage (from Gemini Response)
 
@@ -343,10 +381,10 @@ Gemini's response includes `usageMetadata`:
 ```json
 {
   "usageMetadata": {
-    "promptTokenCount": 150,
-    "cachedContentTokenCount": 32768,
+    "promptTokenCount": 100,
+    "cachedContentTokenCount": 99,
     "candidatesTokenCount": 50,
-    "totalTokenCount": 32818
+    "totalTokenCount": 150
   }
 }
 ```
@@ -356,15 +394,17 @@ Map to OpenAI format:
 ```json
 {
   "usage": {
-    "prompt_tokens": 150,
+    "prompt_tokens": 100,
     "completion_tokens": 50,
-    "total_tokens": 200,
+    "total_tokens": 150,
     "prompt_tokens_details": {
-      "cached_tokens": 32768
+      "cached_tokens": 99
     }
   }
 }
 ```
+
+Note: `prompt_tokens` is the total input tokens (cached + non-cached). `cached_tokens` indicates how many of those were served from cache.
 
 ## Error Handling
 
@@ -381,33 +421,10 @@ Map to OpenAI format:
 | Condition | HTTP Status | Error Code |
 |-----------|-------------|------------|
 | Invalid message format | 400 | `invalid_request` |
-| No regions specified | 400 | `missing_regions` |
+| Missing region header | 400 | `missing_region` |
 | GCP authentication failure | 401 | `gcp_auth_error` |
 | Cache creation failed (e.g., below minimum tokens) | 422 | `cache_creation_failed` |
-| Partial region failure | 207 | `partial_success` |
 | Google API error | 502 | `upstream_error` |
-
-### Partial Region Failure
-
-If cache creation succeeds in some regions but fails in others, the cache service returns a `207 Multi-Status` response:
-
-```json
-{
-  "caches": {
-    "us-central1": "projects/.../cachedContents/abc123"
-  },
-  "messages": [...],
-  "errors": {
-    "us-east1": {
-      "code": "cache_creation_failed",
-      "message": "Content below minimum token threshold"
-    }
-  },
-  "cache_metadata": {...}
-}
-```
-
-ai-gateway should fail the request entirely for predictable behavior. Users can retry or adjust their caching strategy.
 
 ### Fallback Behavior
 
@@ -437,11 +454,26 @@ This bypasses the cache service entirely.
 
 ### Option 2: Direct Cache Service Call
 
-Users can call the cache service's `/v1/cache/resolve` endpoint directly to pre-warm caches:
+Users can call the cache service's `/v1/cache/resolve` endpoint directly to pre-warm caches in specific regions:
 
 ```bash
+# Pre-warm cache in us-central1
 curl -X POST https://cache-service/v1/cache/resolve \
-  -H "X-Cache-Regions: us-central1,us-east1" \
+  -H "X-Cache-Region: us-central1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gemini-1.5-pro",
+    "messages": [
+      {
+        "role": "system",
+        "content": [{"type": "text", "text": "...", "cache_control": {"type": "ephemeral"}}]
+      }
+    ]
+  }'
+
+# Pre-warm cache in us-east1 (separate call)
+curl -X POST https://cache-service/v1/cache/resolve \
+  -H "X-Cache-Region: us-east1" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gemini-1.5-pro",
@@ -454,16 +486,16 @@ curl -X POST https://cache-service/v1/cache/resolve \
   }'
 ```
 
-The response contains the cache names for each region, which can be used in subsequent requests via the `cachedContent` field, or relied upon for automatic cache hits when using the same content with cache markers.
+The response contains the cache name for the specified region. Users can make parallel calls to pre-warm multiple regions, then use the returned cache names via `cachedContent` or rely on automatic cache hits when using the same content with cache markers.
 
 ## Cost Calculation
 
 ### Cache Write Cost
 
-When cache is created (`created_regions` is not empty), the cache service returns `token_count`. ai-gateway calculates cache write cost:
+When cache is created (`cache_metadata.created` is true), the cache service returns `token_count`. ai-gateway calculates cache write cost:
 
 ```
-cache_write_cost = token_count × cache_write_rate × len(created_regions)
+cache_write_cost = token_count × cache_write_rate  (only when created == true)
 ```
 
 ### Cache Read Cost
@@ -482,7 +514,7 @@ total_cost = cache_write_cost + cache_read_cost + standard_input_cost + output_c
 
 ### Implementation Consideration: Request/Response Phase Data Sharing
 
-Cache write cost data (`token_count`, `created_regions`) is obtained during the **request phase** (from cache service response), but cost calculation happens during the **response phase** (after Gemini responds).
+Cache write cost data (`token_count`, `created`) is obtained during the **request phase** (from cache service response), but cost calculation happens during the **response phase** (after Gemini responds).
 
 The implementation must preserve cache write data across phases. Possible approaches:
 
