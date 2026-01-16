@@ -282,6 +282,114 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 	}
 }
 
+// TestGatewayController_reconcileFilterConfigSecret_PerBackendLLMRequestCosts tests that each backend
+// gets its own copy of the route's LLMRequestCosts. This is the key fix for Issue #1688 where
+// different routes need different CEL calculation formulas for the same metadataKey.
+func TestGatewayController_reconcileFilterConfigSecret_PerBackendLLMRequestCosts(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+	c := NewGatewayController(fakeClient, kube, ctrl.Log,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	const gwNamespace = "ns"
+	// Create two routes with DIFFERENT CEL expressions for the SAME metadataKey.
+	// This is the core scenario of Issue #1688.
+	routes := []aigv1a1.AIGatewayRoute{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "free-model-route", Namespace: gwNamespace},
+			Spec: aigv1a1.AIGatewayRouteSpec{
+				Rules: []aigv1a1.AIGatewayRouteRule{
+					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "free-backend"}}},
+				},
+				LLMRequestCosts: []aigv1a1.LLMRequestCost{
+					// Free model: cost is always 0
+					{MetadataKey: "billing_charges", Type: aigv1a1.LLMRequestCostTypeCEL, CEL: ptr.To("0")},
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "paid-model-route", Namespace: gwNamespace},
+			Spec: aigv1a1.AIGatewayRouteSpec{
+				Rules: []aigv1a1.AIGatewayRouteRule{
+					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "paid-backend"}}},
+				},
+				LLMRequestCosts: []aigv1a1.LLMRequestCost{
+					// Paid model: cost calculation based on tokens
+					{MetadataKey: "billing_charges", Type: aigv1a1.LLMRequestCostTypeCEL, CEL: ptr.To("input_tokens + output_tokens")},
+				},
+			},
+		},
+	}
+
+	// Create corresponding AIServiceBackends.
+	for _, backend := range []*aigv1a1.AIServiceBackend{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "free-backend", Namespace: gwNamespace},
+			Spec: aigv1a1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "paid-backend", Namespace: gwNamespace},
+			Spec: aigv1a1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+			},
+		},
+	} {
+		err := fakeClient.Create(t.Context(), backend)
+		require.NoError(t, err)
+	}
+
+	const someNamespace = "some-namespace"
+	configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid")
+	require.NoError(t, err)
+	require.True(t, effective, "expected filter config to be effective")
+
+	secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
+	require.NoError(t, err)
+	configStr, ok := secret.StringData[FilterConfigKeyInSecret]
+	require.True(t, ok)
+	var fc filterapi.Config
+	require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
+
+	// Verify we have two backends.
+	require.Len(t, fc.Backends, 2, "expected 2 backends")
+
+	// Find backends by name (order may vary).
+	var freeBackend, paidBackend *filterapi.Backend
+	for i := range fc.Backends {
+		if fc.Backends[i].Name != "" && len(fc.Backends[i].LLMRequestCosts) > 0 {
+			switch fc.Backends[i].LLMRequestCosts[0].CEL {
+			case "0":
+				freeBackend = &fc.Backends[i]
+			case "input_tokens + output_tokens":
+				paidBackend = &fc.Backends[i]
+			}
+		}
+	}
+
+	// Verify free backend has its own LLMRequestCosts with CEL "0".
+	require.NotNil(t, freeBackend, "free backend should exist")
+	require.Len(t, freeBackend.LLMRequestCosts, 1, "free backend should have 1 cost")
+	require.Equal(t, "billing_charges", freeBackend.LLMRequestCosts[0].MetadataKey)
+	require.Equal(t, filterapi.LLMRequestCostTypeCEL, freeBackend.LLMRequestCosts[0].Type)
+	require.Equal(t, "0", freeBackend.LLMRequestCosts[0].CEL)
+
+	// Verify paid backend has its own LLMRequestCosts with different CEL expression.
+	require.NotNil(t, paidBackend, "paid backend should exist")
+	require.Len(t, paidBackend.LLMRequestCosts, 1, "paid backend should have 1 cost")
+	require.Equal(t, "billing_charges", paidBackend.LLMRequestCosts[0].MetadataKey)
+	require.Equal(t, filterapi.LLMRequestCostTypeCEL, paidBackend.LLMRequestCosts[0].Type)
+	require.Equal(t, "input_tokens + output_tokens", paidBackend.LLMRequestCosts[0].CEL)
+
+	// The global LLMRequestCosts should still have the first occurrence of each metadataKey
+	// (for backward compatibility).
+	require.Len(t, fc.LLMRequestCosts, 1, "global costs should have 1 entry (first occurrence of billing_charges)")
+	require.Equal(t, "billing_charges", fc.LLMRequestCosts[0].MetadataKey)
+}
+
 func TestGatewayController_reconcileFilterConfigSecret_SkipsDeletedRoutes(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()

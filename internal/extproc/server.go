@@ -370,7 +370,7 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 			internalReqID, backendName)
 	}
 
-	if err := p.SetBackend(ctx, backend.Backend, backend.Handler, routerProcessor); err != nil {
+	if err := p.SetBackend(ctx, backend, routerProcessor); err != nil {
 		return status.Errorf(codes.Internal, "cannot set backend: %v", err)
 	}
 	return nil

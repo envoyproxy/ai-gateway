@@ -202,6 +202,41 @@ func bodyMutationToFilterAPI(m *aigv1a1.HTTPBodyMutation) *filterapi.HTTPBodyMut
 	return ret
 }
 
+// llmRequestCostsToFilterAPI converts aigv1a1.LLMRequestCost slice to filterapi.LLMRequestCost slice.
+func llmRequestCostsToFilterAPI(costs []aigv1a1.LLMRequestCost) ([]filterapi.LLMRequestCost, error) {
+	result := make([]filterapi.LLMRequestCost, 0, len(costs))
+	for _, cost := range costs {
+		fc := filterapi.LLMRequestCost{MetadataKey: cost.MetadataKey}
+		switch cost.Type {
+		case aigv1a1.LLMRequestCostTypeInputToken:
+			fc.Type = filterapi.LLMRequestCostTypeInputToken
+		case aigv1a1.LLMRequestCostTypeCachedInputToken:
+			fc.Type = filterapi.LLMRequestCostTypeCachedInputToken
+		case aigv1a1.LLMRequestCostTypeCacheCreationInputToken:
+			fc.Type = filterapi.LLMRequestCostTypeCacheCreationInputToken
+		case aigv1a1.LLMRequestCostTypeOutputToken:
+			fc.Type = filterapi.LLMRequestCostTypeOutputToken
+		case aigv1a1.LLMRequestCostTypeTotalToken:
+			fc.Type = filterapi.LLMRequestCostTypeTotalToken
+		case aigv1a1.LLMRequestCostTypeCEL:
+			fc.Type = filterapi.LLMRequestCostTypeCEL
+			if cost.CEL != nil {
+				expr := *cost.CEL
+				// Sanity check the CEL expression.
+				_, err := llmcostcel.NewProgram(expr)
+				if err != nil {
+					return nil, fmt.Errorf("invalid CEL expression: %w", err)
+				}
+				fc.CEL = expr
+			}
+		default:
+			return nil, fmt.Errorf("unknown request cost type: %s", cost.Type)
+		}
+		result = append(result, fc)
+	}
+	return result, nil
+}
+
 // mergeBodyMutations merges route-level and backend-level BodyMutation with route-level taking precedence.
 // Returns the merged BodyMutation where route-level operations override backend-level operations for conflicting body fields.
 func mergeBodyMutations(routeLevel, backendLevel *aigv1a1.HTTPBodyMutation) *aigv1a1.HTTPBodyMutation {
@@ -396,6 +431,14 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 							"aigatewayroute", aiGatewayRoute.Name, "namespace", aiGatewayRoute.Namespace)
 						continue
 					}
+				}
+
+				// Assign the route's LLMRequestCosts to this backend.
+				// This ensures each backend has its own cost calculation configuration,
+				// allowing different routes to use different CEL expressions for the same metadataKey.
+				b.LLMRequestCosts, err = llmRequestCostsToFilterAPI(aiGatewayRoute.Spec.LLMRequestCosts)
+				if err != nil {
+					return false, fmt.Errorf("failed to convert LLMRequestCosts for route %s: %w", aiGatewayRoute.Name, err)
 				}
 
 				ec.Backends = append(ec.Backends, b)

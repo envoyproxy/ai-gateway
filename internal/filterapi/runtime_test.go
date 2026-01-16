@@ -65,3 +65,68 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.Equal(t, config.Models, rc.DeclaredModels)
 	})
 }
+
+// TestNewRuntimeConfig_BackendLevelLLMRequestCosts tests that backend-level LLMRequestCosts are
+// properly compiled into RuntimeRequestCosts. This is part of the fix for Issue #1688.
+func TestNewRuntimeConfig_BackendLevelLLMRequestCosts(t *testing.T) {
+	config := &Config{
+		// Global costs for backward compatibility
+		LLMRequestCosts: []LLMRequestCost{
+			{MetadataKey: "global_key", Type: LLMRequestCostTypeOutputToken},
+		},
+		Backends: []Backend{
+			{
+				Name:   "free-backend",
+				Schema: VersionedAPISchema{Name: APISchemaOpenAI},
+				// Backend-specific costs
+				LLMRequestCosts: []LLMRequestCost{
+					{MetadataKey: "billing", Type: LLMRequestCostTypeCEL, CEL: "0"},
+				},
+			},
+			{
+				Name:   "paid-backend",
+				Schema: VersionedAPISchema{Name: APISchemaOpenAI},
+				// Backend-specific costs with different CEL expression
+				LLMRequestCosts: []LLMRequestCost{
+					{MetadataKey: "billing", Type: LLMRequestCostTypeCEL, CEL: "input_tokens * uint(2) + output_tokens * uint(3)"},
+				},
+			},
+		},
+	}
+
+	rc, err := NewRuntimeConfig(t.Context(), config, nil)
+	require.NoError(t, err)
+	require.NotNil(t, rc)
+
+	// Verify global costs are still compiled.
+	require.Len(t, rc.RequestCosts, 1)
+	require.Equal(t, LLMRequestCostTypeOutputToken, rc.RequestCosts[0].Type)
+	require.Equal(t, "global_key", rc.RequestCosts[0].MetadataKey)
+
+	// Verify free-backend has its own costs compiled.
+	freeBackend, ok := rc.Backends["free-backend"]
+	require.True(t, ok, "free-backend should exist")
+	require.Len(t, freeBackend.RequestCosts, 1)
+	require.Equal(t, LLMRequestCostTypeCEL, freeBackend.RequestCosts[0].Type)
+	require.Equal(t, "billing", freeBackend.RequestCosts[0].MetadataKey)
+	require.NotNil(t, freeBackend.RequestCosts[0].CELProg)
+
+	// Evaluate the CEL program for free-backend (should always return 0).
+	val, err := llmcostcel.EvaluateProgram(freeBackend.RequestCosts[0].CELProg, "", "", 100, 0, 0, 50, 150)
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), val, "free-backend CEL should return 0")
+
+	// Verify paid-backend has its own costs compiled.
+	paidBackend, ok := rc.Backends["paid-backend"]
+	require.True(t, ok, "paid-backend should exist")
+	require.Len(t, paidBackend.RequestCosts, 1)
+	require.Equal(t, LLMRequestCostTypeCEL, paidBackend.RequestCosts[0].Type)
+	require.Equal(t, "billing", paidBackend.RequestCosts[0].MetadataKey)
+	require.NotNil(t, paidBackend.RequestCosts[0].CELProg)
+
+	// Evaluate the CEL program for paid-backend.
+	// input_tokens * uint(2) + output_tokens * uint(3) = 100 * 2 + 50 * 3 = 200 + 150 = 350
+	val, err = llmcostcel.EvaluateProgram(paidBackend.RequestCosts[0].CELProg, "", "", 100, 0, 0, 50, 150)
+	require.NoError(t, err)
+	require.Equal(t, uint64(350), val, "paid-backend CEL should calculate correctly")
+}
