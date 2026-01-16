@@ -20,6 +20,9 @@ render:
     - name: ExtProc
       package: github.com/envoyproxy/gateway/api/v1alpha1
       link: https://gateway.envoyproxy.io/docs/api/extension_types/#extproc
+    - name: KubernetesContainerSpec
+      package: github.com/envoyproxy/gateway/api/v1alpha1
+      link: https://gateway.envoyproxy.io/docs/api/extension_types/#kubernetescontainerspec
     - name: LocalJWKS
       package: github.com/envoyproxy/gateway/api/v1alpha1
       link: https://gateway.envoyproxy.io/docs/api/extension_types/#localjwks

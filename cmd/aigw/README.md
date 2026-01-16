@@ -134,7 +134,7 @@ traces and metrics in real-time.
 The `.env.otel.otel-tui` file is already provided and will be used automatically
 when you set `COMPOSE_PROFILES=otel-tui`. This also starts the otel-tui service.
 
-This configures the OTLP endpoint to otel-tui on port 4318.
+This configures the OTLP gRPC endpoint to otel-tui on port 4317.
 
 </details>
 

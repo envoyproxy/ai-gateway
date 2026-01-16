@@ -110,7 +110,7 @@ func checkToolCallError(req *jsonrpc.Request, msg *jsonrpc.Response, backendName
 	}
 }
 
-func (m *MCPProxy) serveGET(w http.ResponseWriter, r *http.Request) {
+func (m *mcpRequestContext) serveGET(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.Header.Get(sessionIDHeader)
 	lastEventID := r.Header.Get(lastEventIDHeader)
 	if sessionID == "" {
@@ -144,7 +144,7 @@ func (m *MCPProxy) serveGET(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (m *MCPProxy) serverDELETE(w http.ResponseWriter, r *http.Request) {
+func (m *mcpRequestContext) serverDELETE(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.Header.Get(sessionIDHeader)
 	if sessionID == "" {
 		m.l.Error("missing session ID in DELETE request")
@@ -177,7 +177,7 @@ func doNotForwardResponseToBackends(msg *jsonrpc.Response) bool {
 		strings.HasPrefix(str, envoyAIGatewayServerToClientToolsChangedRequestIDPrefix))
 }
 
-func (m *MCPProxy) servePOST(w http.ResponseWriter, r *http.Request) {
+func (m *mcpRequestContext) servePOST(w http.ResponseWriter, r *http.Request) {
 	var (
 		ctx              = r.Context()
 		startAt          = time.Now()
@@ -493,7 +493,7 @@ func errorType(err error) metrics.MCPErrorType {
 }
 
 // handleInitializeRequest handles the "initialize" JSON-RPC method.
-func (m *MCPProxy) handleInitializeRequest(ctx context.Context, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.InitializeParams, route, subject string, span tracingapi.MCPSpan) error {
+func (m *mcpRequestContext) handleInitializeRequest(ctx context.Context, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.InitializeParams, route, subject string, span tracingapi.MCPSpan) error {
 	m.metrics.RecordClientCapabilities(ctx, p.Capabilities, p)
 	s, err := m.newSession(ctx, p, route, subject, span)
 	if err != nil {
@@ -544,7 +544,7 @@ func (m *MCPProxy) handleInitializeRequest(ctx context.Context, w http.ResponseW
 //
 // The idea is that the request ID is constructed in maybeServerToClientRequestModify to include the original request ID, type, backend name and path prefix.
 // So here we need to parse the ID and restore the original ID before sending it to the backend.
-func (m *MCPProxy) handleClientToServerResponse(ctx context.Context, s *session, w http.ResponseWriter, res *jsonrpc.Response) error {
+func (m *mcpRequestContext) handleClientToServerResponse(ctx context.Context, s *session, w http.ResponseWriter, res *jsonrpc.Response) error {
 	clientToServer, ok := res.ID.Raw().(string)
 	// We should've modified the server->client request ID to include the backend name.
 	if !ok {
@@ -635,7 +635,7 @@ func (m *MCPProxy) handleClientToServerResponse(ctx context.Context, s *session,
 	return m.proxyResponseBody(ctx, s, w, resp, nil, backend)
 }
 
-func (m *MCPProxy) handleToolCallRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.CallToolParams, span tracingapi.MCPSpan, r *http.Request) error {
+func (m *mcpRequestContext) handleToolCallRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.CallToolParams, span tracingapi.MCPSpan, r *http.Request) error {
 	backendName, toolName, err := upstreamResourceName(p.Name)
 	if err != nil {
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid tool name %s: %v", p.Name, err))
@@ -727,7 +727,7 @@ func copyProxyHeaders(resp *http.Response, w http.ResponseWriter) {
 	}
 }
 
-func (m *MCPProxy) proxyResponseBody(ctx context.Context, s *session, w http.ResponseWriter, resp *http.Response,
+func (m *mcpRequestContext) proxyResponseBody(ctx context.Context, s *session, w http.ResponseWriter, resp *http.Response,
 	req *jsonrpc.Request, backend filterapi.MCPBackend,
 ) error {
 	if resp.Header.Get("Content-Type") == "application/json" {
@@ -848,7 +848,7 @@ func (m *MCPProxy) proxyResponseBody(ctx context.Context, s *session, w http.Res
 // https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/progress#progress
 const progressTokenMetadataKey = "progressToken"
 
-func (m *MCPProxy) maybeUpdateProgressTokenMetadata(ctx context.Context, meta mcp.Meta, backendName filterapi.MCPBackendName) bool {
+func (m *mcpRequestContext) maybeUpdateProgressTokenMetadata(ctx context.Context, meta mcp.Meta, backendName filterapi.MCPBackendName) bool {
 	// TODO: maybe enctrypt/sign the progress token to prevent tampering just like session/event ID.
 	originalPt, ok := meta[progressTokenMetadataKey]
 	if !ok {
@@ -882,7 +882,7 @@ func (m *MCPProxy) maybeUpdateProgressTokenMetadata(ctx context.Context, meta mc
 }
 
 // maybeResponseModify modifies the client->server response to include the backend name where needed.
-func (m *MCPProxy) maybeResponseModify(_ context.Context, req *jsonrpc.Request, msg *jsonrpc.Response, backend filterapi.MCPBackendName) error {
+func (m *mcpRequestContext) maybeResponseModify(_ context.Context, req *jsonrpc.Request, msg *jsonrpc.Response, backend filterapi.MCPBackendName) error {
 	if req.Method != "resources/read" || msg.Result == nil {
 		return nil
 	}
@@ -903,7 +903,7 @@ func (m *MCPProxy) maybeResponseModify(_ context.Context, req *jsonrpc.Request, 
 // so that we can route the client->server response back to the correct backend.
 //
 // This essentially prepares the request for the future invocation of handleClientToServerResponse.
-func (m *MCPProxy) maybeServerToClientRequestModify(ctx context.Context, msg *jsonrpc.Request, backend filterapi.MCPBackendName) error {
+func (m *mcpRequestContext) maybeServerToClientRequestModify(ctx context.Context, msg *jsonrpc.Request, backend filterapi.MCPBackendName) error {
 	switch msg.Method {
 	case "roots/list":
 		if msg.Params != nil {
@@ -979,7 +979,7 @@ func (m *MCPProxy) maybeServerToClientRequestModify(ctx context.Context, msg *js
 	return nil
 }
 
-func (m *MCPProxy) recordResponse(ctx context.Context, rawMsg jsonrpc.Message) {
+func (m *mcpRequestContext) recordResponse(ctx context.Context, rawMsg jsonrpc.Message) {
 	switch msg := rawMsg.(type) {
 	case *jsonrpc.Response:
 		if m.l.Enabled(ctx, slog.LevelDebug) {
@@ -1021,11 +1021,11 @@ func (m *MCPProxy) recordResponse(ctx context.Context, rawMsg jsonrpc.Message) {
 	}
 }
 
-func (m *MCPProxy) mcpEndpointForBackend(backend filterapi.MCPBackend) string {
+func (m *mcpRequestContext) mcpEndpointForBackend(backend filterapi.MCPBackend) string {
 	return m.backendListenerAddr + backend.Path
 }
 
-func (m *MCPProxy) handleResourceReadRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ReadResourceParams) error {
+func (m *mcpRequestContext) handleResourceReadRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ReadResourceParams) error {
 	backendName, resourceName, err := upstreamResourceURI(p.URI)
 	if err != nil {
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid resource name %s: %v", p.URI, err))
@@ -1054,16 +1054,16 @@ func (m *MCPProxy) handleResourceReadRequest(ctx context.Context, s *session, w 
 }
 
 // handleResourcesSubscribeRequest handles the "resources/subscribe" JSON-RPC method.
-func (m *MCPProxy) handleResourcesSubscribeRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.SubscribeParams, span tracingapi.MCPSpan) error {
+func (m *mcpRequestContext) handleResourcesSubscribeRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.SubscribeParams, span tracingapi.MCPSpan) error {
 	return m.handleResourcesSubscriptionRequest(ctx, s, w, req, p, span)
 }
 
 // handleResourcesUnsubscribeRequest handles the "resources/unsubscribe" JSON-RPC method.
-func (m *MCPProxy) handleResourcesUnsubscribeRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.UnsubscribeParams, span tracingapi.MCPSpan) error {
+func (m *mcpRequestContext) handleResourcesUnsubscribeRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.UnsubscribeParams, span tracingapi.MCPSpan) error {
 	return m.handleResourcesSubscriptionRequest(ctx, s, w, req, p, span)
 }
 
-func (m *MCPProxy) handleResourcesSubscriptionRequest(ctx context.Context, s *session, w http.ResponseWriter,
+func (m *mcpRequestContext) handleResourcesSubscriptionRequest(ctx context.Context, s *session, w http.ResponseWriter,
 	req *jsonrpc.Request, p interface{}, // *mcp.SubscribeParams or *mcp.UnsubscribeParams.
 	span tracingapi.MCPSpan,
 ) error {
@@ -1119,7 +1119,7 @@ func (m *MCPProxy) handleResourcesSubscriptionRequest(ctx context.Context, s *se
 
 var emptyJSONRPCMessage = []byte(`{}`)
 
-func (m *MCPProxy) handlePing(_ context.Context, w http.ResponseWriter, req *jsonrpc.Request) (err error) {
+func (m *mcpRequestContext) handlePing(_ context.Context, w http.ResponseWriter, req *jsonrpc.Request) (err error) {
 	encodedResp, _ := jsonrpc.EncodeMessage(&jsonrpc.Response{ID: req.ID, Result: emptyJSONRPCMessage})
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -1189,7 +1189,7 @@ func extractSubject(r *http.Request) string {
 }
 
 // handlePromptGetRequest handles the "prompts/get" JSON-RPC method.
-func (m *MCPProxy) handlePromptGetRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.GetPromptParams) error {
+func (m *mcpRequestContext) handlePromptGetRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.GetPromptParams) error {
 	backendName, promptName, err := upstreamResourceName(p.Name)
 	if err != nil {
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid prompt name %s: %v", p.Name, err))
@@ -1217,7 +1217,7 @@ func (m *MCPProxy) handlePromptGetRequest(ctx context.Context, s *session, w htt
 	return m.invokeAndProxyResponse(ctx, s, w, backend, cse, req)
 }
 
-func (m *MCPProxy) handleCompletionComplete(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, param *mcp.CompleteParams, span tracingapi.MCPSpan) error {
+func (m *mcpRequestContext) handleCompletionComplete(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, param *mcp.CompleteParams, span tracingapi.MCPSpan) error {
 	// Either one of Name or URI is non-empty, depending on the Ref.Type.
 	// https://modelcontextprotocol.io/specification/2025-06-18/server/utilities/completion#reference-types
 	var (
@@ -1255,7 +1255,7 @@ func (m *MCPProxy) handleCompletionComplete(ctx context.Context, s *session, w h
 // handleClientToServerNotificationsProgress handles client-to-server progress notifications that require routing to a specific backend.
 //
 // The progressToken contains the backend name and path prefix, so we can use that to route the notification to the correct backend.
-func (m *MCPProxy) handleClientToServerNotificationsProgress(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ProgressNotificationParams, span tracingapi.MCPSpan) error {
+func (m *mcpRequestContext) handleClientToServerNotificationsProgress(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ProgressNotificationParams, span tracingapi.MCPSpan) error {
 	pt, ok := p.ProgressToken.(string)
 	if !ok {
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid progressToken type %T", p.ProgressToken))
@@ -1327,7 +1327,7 @@ func (m *MCPProxy) handleClientToServerNotificationsProgress(ctx context.Context
 
 // invokeAndProxyResponse invokes the given JSON-RPC request to the given backend and proxies the response back to the client
 // via w ResponseWriter.
-func (m *MCPProxy) invokeAndProxyResponse(ctx context.Context, s *session, w http.ResponseWriter, backend filterapi.MCPBackend, sess *compositeSessionEntry, req *jsonrpc.Request) error {
+func (m *mcpRequestContext) invokeAndProxyResponse(ctx context.Context, s *session, w http.ResponseWriter, backend filterapi.MCPBackend, sess *compositeSessionEntry, req *jsonrpc.Request) error {
 	resp, err := m.invokeJSONRPCRequest(ctx, s.route, backend, sess, req)
 	if err != nil {
 		onErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("call to %s failed: %v", backend.Name, err))
@@ -1380,7 +1380,7 @@ type (
 // JSON-RPC methods that require sending the request to all backends and aggregating the responses.
 //
 // The mergeFn is used to merge the responses from all backends into a single response that will be sent back to the client.
-func sendToAllBackendsAndAggregateResponses[responseType any, paramsType mcp.Params](ctx context.Context, m *MCPProxy, w http.ResponseWriter, s *session, request *jsonrpc.Request, p paramsType, mergeFn broadCastResponseMergeFn[responseType], span tracingapi.MCPSpan) error {
+func sendToAllBackendsAndAggregateResponses[responseType any, paramsType mcp.Params](ctx context.Context, m *mcpRequestContext, w http.ResponseWriter, s *session, request *jsonrpc.Request, p paramsType, mergeFn broadCastResponseMergeFn[responseType], span tracingapi.MCPSpan) error {
 	encoded, _ := json.Marshal(p)
 	request.Params = encoded
 	backendMsgs := s.sendToAllBackends(ctx, http.MethodPost, request, span)
@@ -1388,7 +1388,7 @@ func sendToAllBackendsAndAggregateResponses[responseType any, paramsType mcp.Par
 }
 
 // sendToAllBackendsAndAggregateResponsesImpl is the implementation of sendToAllBackendsAndAggregateResponses for better testability.
-func sendToAllBackendsAndAggregateResponsesImpl[responseType any](ctx context.Context, events <-chan *sseEvent, m *MCPProxy, w http.ResponseWriter, s *session, request *jsonrpc.Request, mergeFn broadCastResponseMergeFn[responseType]) error {
+func sendToAllBackendsAndAggregateResponsesImpl[responseType any](ctx context.Context, events <-chan *sseEvent, m *mcpRequestContext, w http.ResponseWriter, s *session, request *jsonrpc.Request, mergeFn broadCastResponseMergeFn[responseType]) error {
 	logger := m.l.With(slog.String("method", request.Method), slog.String("client_gateway_session_id", string(s.clientGatewaySessionID())))
 
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -1464,7 +1464,7 @@ func sendToAllBackendsAndAggregateResponsesImpl[responseType any](ctx context.Co
 }
 
 // parseParamsAndMaybeStartSpan parses the params from the JSON-RPC request and starts a tracing span if params is non-nil.
-func parseParamsAndMaybeStartSpan[paramType mcp.Params](ctx context.Context, m *MCPProxy, req *jsonrpc.Request, p paramType, headers http.Header) (tracingapi.MCPSpan, error) {
+func parseParamsAndMaybeStartSpan[paramType mcp.Params](ctx context.Context, m *mcpRequestContext, req *jsonrpc.Request, p paramType, headers http.Header) (tracingapi.MCPSpan, error) {
 	if req.Params == nil {
 		return nil, nil
 	}
@@ -1481,33 +1481,33 @@ func parseParamsAndMaybeStartSpan[paramType mcp.Params](ctx context.Context, m *
 // handleToolsListRequest handles the "tools/list" JSON-RPC method.
 //
 // This aggregates and returns the list of tools from all backends.
-func (m *MCPProxy) handleToolsListRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ListToolsParams, span tracingapi.MCPSpan) error {
+func (m *mcpRequestContext) handleToolsListRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ListToolsParams, span tracingapi.MCPSpan) error {
 	// TODO: use cursor for pagination, but in spec it's "SHOULD" not "MUST".
 	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, req, p, m.mergeToolsList, span)
 }
 
 // handleResourceListRequest handles the "resources/list" JSON-RPC method.
 // This aggregates and returns the list of resources from all backends.
-func (m *MCPProxy) handleResourceListRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ListResourcesParams, span tracingapi.MCPSpan) error {
+func (m *mcpRequestContext) handleResourceListRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ListResourcesParams, span tracingapi.MCPSpan) error {
 	// TODO: use cursor for pagination, but in spec it's "SHOULD" not "MUST".
 	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, req, p, m.mergeResourceList, span)
 }
 
 // handleResourcesTemplatesListRequest handles the "resources/templates/list" JSON-RPC method.
-func (m *MCPProxy) handleResourcesTemplatesListRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ListResourceTemplatesParams, span tracingapi.MCPSpan) error {
+func (m *mcpRequestContext) handleResourcesTemplatesListRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ListResourceTemplatesParams, span tracingapi.MCPSpan) error {
 	// TODO: use cursor for pagination, but in spec it's "SHOULD" not "MUST".
 	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, req, p, m.mergeResourcesTemplateList, span)
 }
 
 // handlePromptListRequest handles the "prompts/list" JSON-RPC method.
 // This aggregates and returns the list of prompts from all backends.
-func (m *MCPProxy) handlePromptListRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ListPromptsParams, span tracingapi.MCPSpan) error {
+func (m *mcpRequestContext) handlePromptListRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ListPromptsParams, span tracingapi.MCPSpan) error {
 	// TODO: use cursor for pagination, but in spec it's "SHOULD" not "MUST".
 	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, req, p, m.mergePromptsList, span)
 }
 
 // handleSetLoggingLevel handles the "logging/setLevel" JSON-RPC method.
-func (m *MCPProxy) handleSetLoggingLevel(ctx context.Context, s *session, w http.ResponseWriter, originalRequest *jsonrpc.Request, p *mcp.SetLoggingLevelParams, span tracingapi.MCPSpan) error {
+func (m *mcpRequestContext) handleSetLoggingLevel(ctx context.Context, s *session, w http.ResponseWriter, originalRequest *jsonrpc.Request, p *mcp.SetLoggingLevelParams, span tracingapi.MCPSpan) error {
 	// TODO: maybe some backend doesn't support set logging level, so filter out such backends.
 	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, originalRequest, p, func(*session, []broadCastResponse[any]) any {
 		return struct{}{}
@@ -1515,7 +1515,7 @@ func (m *MCPProxy) handleSetLoggingLevel(ctx context.Context, s *session, w http
 }
 
 // mergeToolsList merges the list of tools from all backends and prepare the response message to be sent back to the client.
-func (m *MCPProxy) mergeToolsList(s *session, responses []broadCastResponse[mcp.ListToolsResult]) mcp.ListToolsResult {
+func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResponse[mcp.ListToolsResult]) mcp.ListToolsResult {
 	resp := mcp.ListToolsResult{}
 	route := m.routes[s.route]
 	if route == nil {
@@ -1541,7 +1541,7 @@ func (m *MCPProxy) mergeToolsList(s *session, responses []broadCastResponse[mcp.
 }
 
 // mergeResourceList merges the list of resources from all backends and prepare the response message to be sent back to the client.
-func (m *MCPProxy) mergeResourceList(_ *session, responses []broadCastResponse[mcp.ListResourcesResult]) mcp.ListResourcesResult {
+func (m *mcpRequestContext) mergeResourceList(_ *session, responses []broadCastResponse[mcp.ListResourcesResult]) mcp.ListResourcesResult {
 	// Aggregate the resources from all responses with some logic to match the actual proxy behavior.
 	// TODO: do we need a more sophisticated merging logic here?
 	// TODO: how to handle NextCursor?
@@ -1557,7 +1557,7 @@ func (m *MCPProxy) mergeResourceList(_ *session, responses []broadCastResponse[m
 }
 
 // mergeResourcesTemplateList merges the list of resource templates from all backends and prepare the response message to be sent back to the client.
-func (m *MCPProxy) mergeResourcesTemplateList(_ *session, responses []broadCastResponse[mcp.ListResourceTemplatesResult]) mcp.ListResourceTemplatesResult {
+func (m *mcpRequestContext) mergeResourcesTemplateList(_ *session, responses []broadCastResponse[mcp.ListResourceTemplatesResult]) mcp.ListResourceTemplatesResult {
 	resp := mcp.ListResourceTemplatesResult{ResourceTemplates: make([]*mcp.ResourceTemplate, 0)}
 	for _, r := range responses {
 		for _, res := range r.res.ResourceTemplates {
@@ -1570,7 +1570,7 @@ func (m *MCPProxy) mergeResourcesTemplateList(_ *session, responses []broadCastR
 }
 
 // mergePromptsList merges the list of prompts from all backends and prepare the response message to be sent back to the client.
-func (m *MCPProxy) mergePromptsList(_ *session, responses []broadCastResponse[mcp.ListPromptsResult]) mcp.ListPromptsResult {
+func (m *mcpRequestContext) mergePromptsList(_ *session, responses []broadCastResponse[mcp.ListPromptsResult]) mcp.ListPromptsResult {
 	// Aggregate the resources from all responses with some logic to match the actual proxy behavior.
 	aggregatedResponse := mcp.ListPromptsResult{Prompts: make([]*mcp.Prompt, 0)}
 	for _, r := range responses {
@@ -1583,7 +1583,7 @@ func (m *MCPProxy) mergePromptsList(_ *session, responses []broadCastResponse[mc
 }
 
 // handleNotificationsRootsListChanged handles the "notifications/roots/list_changed" JSON-RPC method.
-func (m *MCPProxy) handleNotificationsRootsListChanged(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, span tracingapi.MCPSpan) error {
+func (m *mcpRequestContext) handleNotificationsRootsListChanged(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, span tracingapi.MCPSpan) error {
 	// Since notifications request doesn't expect a response, we can just send the request to all backends and return 202 Accepted per the spec.
 	eventChan := s.sendToAllBackends(ctx, http.MethodPost, req, span)
 	w.Header().Set(sessionIDHeader, string(s.clientGatewaySessionID()))

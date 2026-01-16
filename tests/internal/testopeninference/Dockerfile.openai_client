@@ -11,6 +11,7 @@ RUN python -m pip install --upgrade pip
 RUN pip install openai \
     opentelemetry-sdk \
     opentelemetry-exporter-otlp-proto-http \
+    opentelemetry-exporter-otlp-proto-grpc \
     opentelemetry-distro \
     opentelemetry-instrumentation-httpx \
     openinference-instrumentation-openai

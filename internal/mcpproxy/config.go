@@ -8,20 +8,28 @@ package mcpproxy
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"maps"
+	"net/http"
 	"regexp"
 	"slices"
 	"strings"
 	"sync"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 type (
 	// ProxyConfig holds the main MCP proxy configuration.
+	// This implements [filterapi.ConfigReceiver] to gets the up-to-date configuration.
 	ProxyConfig struct {
 		*mcpProxyConfig
 		toolChangeSignaler changeSignaler // signals tool changes to active sessions.
+		l                  *slog.Logger
+		sessionCrypto      SessionCrypto
+		tracer             tracingapi.MCPTracer
+		client             http.Client
 	}
 
 	mcpProxyConfig struct {

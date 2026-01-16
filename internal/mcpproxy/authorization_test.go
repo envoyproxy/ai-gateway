@@ -39,7 +39,7 @@ func TestAuthorizeRequest(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	proxy := &MCPProxy{l: logger}
+	proxy := &mcpRequestContext{ProxyConfig: &ProxyConfig{l: logger}}
 
 	tests := []struct {
 		name          string

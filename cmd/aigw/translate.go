@@ -245,7 +245,7 @@ func translateCustomResourceObjects(
 		make(chan event.GenericEvent),
 	)
 	gwC := controller.NewGatewayController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
-		"docker.io/envoyproxy/ai-gateway-extproc:latest", true, func() string {
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "debug", true, func() string {
 			return "aigw-translate"
 		}, false,
 	)

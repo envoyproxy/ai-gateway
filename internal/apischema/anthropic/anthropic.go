@@ -449,6 +449,7 @@ type Usage struct {
 // MessagesStreamChunk represents a single event in the streaming response from the Anthropic Messages API.
 // https://docs.claude.com/en/docs/build-with-claude/streaming
 type MessagesStreamChunk struct {
+	Type MessagesStreamChunkType
 	// MessageStart is present if the event type is "message_start" or "message_delta".
 	MessageStart *MessagesStreamChunkMessageStart
 	// MessageDelta is present if the event type is "message_delta".
@@ -532,6 +533,7 @@ func (m *MessagesStreamChunk) UnmarshalJSON(data []byte) error {
 	if !eventType.Exists() {
 		return fmt.Errorf("missing type field in stream event")
 	}
+	m.Type = MessagesStreamChunkType(eventType.String())
 	switch typ := MessagesStreamChunkType(eventType.String()); typ {
 	case MessagesStreamChunkTypeMessageStart:
 		messageBytes := gjson.GetBytes(data, "message")

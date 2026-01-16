@@ -99,7 +99,7 @@ func TestSession_Close(t *testing.T) {
 	proxy := newTestMCPProxy()
 	proxy.backendListenerAddr = server.URL
 	s := &session{
-		proxy: proxy,
+		reqCtx: proxy,
 		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
 			"backend1": {
 				sessionID: "s1",
@@ -143,8 +143,8 @@ func TestHandleNotificationsPerBackend_SSE(t *testing.T) {
 	}))
 	defer server.Close()
 	l := slog.Default()
-	proxy := &MCPProxy{mcpProxyConfig: &mcpProxyConfig{backendListenerAddr: server.URL}, l: l, metrics: stubMetrics{}}
-	s := &session{proxy: proxy}
+	proxy := &mcpRequestContext{metrics: stubMetrics{}, ProxyConfig: &ProxyConfig{mcpProxyConfig: &mcpProxyConfig{backendListenerAddr: server.URL}, l: l}}
+	s := &session{reqCtx: proxy}
 	ch := make(chan *sseEvent, 10)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
@@ -218,7 +218,7 @@ func TestSession_StreamNotifications(t *testing.T) {
 			proxy.backendListenerAddr = srv.URL
 
 			s := &session{
-				proxy: proxy,
+				reqCtx: proxy,
 				perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
 					"backend1": {
 						sessionID: "s1",
@@ -254,8 +254,8 @@ func TestNotifyToolsChanged(t *testing.T) {
 			mcpProxyConfig:     proxy.mcpProxyConfig,
 		}
 		s = &session{
-			proxy: proxy,
-			route: "test-route",
+			reqCtx: proxy,
+			route:  "test-route",
 			perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
 				"backend1": {sessionID: "s1"},
 			},
@@ -308,8 +308,8 @@ func TestSendRequestPerBackend_ErrorStatus(t *testing.T) {
 	}))
 	defer server.Close()
 	l := slog.Default()
-	proxy := &MCPProxy{mcpProxyConfig: &mcpProxyConfig{backendListenerAddr: server.URL}, l: l, metrics: stubMetrics{}}
-	s := &session{proxy: proxy}
+	proxy := &mcpRequestContext{ProxyConfig: &ProxyConfig{mcpProxyConfig: &mcpProxyConfig{backendListenerAddr: server.URL}, l: l}, metrics: stubMetrics{}}
+	s := &session{reqCtx: proxy}
 	ch := make(chan *sseEvent, 1)
 	cse := &compositeSessionEntry{
 		sessionID: "sess1",
@@ -327,8 +327,8 @@ func TestSendRequestPerBackend_EOF(t *testing.T) {
 	}))
 	defer server.Close()
 	l := slog.Default()
-	proxy := &MCPProxy{mcpProxyConfig: &mcpProxyConfig{backendListenerAddr: server.URL}, l: l, metrics: stubMetrics{}}
-	s := &session{proxy: proxy}
+	proxy := &mcpRequestContext{ProxyConfig: &ProxyConfig{mcpProxyConfig: &mcpProxyConfig{backendListenerAddr: server.URL}, l: l}, metrics: stubMetrics{}}
+	s := &session{reqCtx: proxy}
 	ch := make(chan *sseEvent, 1)
 	err2 := s.sendRequestPerBackend(t.Context(), ch, "route1", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
 		sessionID: "sess1",
