@@ -84,7 +84,7 @@ func (ChatCompletionsEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *openai.ChatCompletionRequest, bool, []byte, error) {
 	var req openai.ChatCompletionRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		return "", nil, false, nil, fmt.Errorf("failed to unmarshal chat completion request: %w", err)
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/chat/completions", internalapi.ErrMalformedRequest)
 	}
 	var mutatedBody []byte
 	if req.Stream && costConfigured && (req.StreamOptions == nil || !req.StreamOptions.IncludeUsage) {
@@ -101,7 +101,7 @@ func (ChatCompletionsEndpointSpec) ParseBody(
 			ReplaceInPlace: true,
 		})
 		if err != nil {
-			return "", nil, false, nil, fmt.Errorf("failed to set stream_options: %w", err)
+			return "", nil, false, nil, fmt.Errorf("%w: failed to set stream_options.include_usage", internalapi.ErrMalformedRequest)
 		}
 	}
 	return req.Model, &req, req.Stream, mutatedBody, nil
@@ -132,7 +132,7 @@ func (CompletionsEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *openai.CompletionRequest, bool, []byte, error) {
 	var openAIReq openai.CompletionRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
-		return "", nil, false, nil, fmt.Errorf("failed to unmarshal completion request: %w", err)
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/completions", internalapi.ErrMalformedRequest)
 	}
 	return openAIReq.Model, &openAIReq, openAIReq.Stream, nil, nil
 }
@@ -154,7 +154,7 @@ func (EmbeddingsEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *openai.EmbeddingRequest, bool, []byte, error) {
 	var openAIReq openai.EmbeddingRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
-		return "", nil, false, nil, fmt.Errorf("failed to unmarshal embedding request: %w", err)
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/embeddings", internalapi.ErrMalformedRequest)
 	}
 	return openAIReq.Model, &openAIReq, false, nil, nil
 }
@@ -177,7 +177,7 @@ func (ImageGenerationEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *openai.ImageGenerationRequest, bool, []byte, error) {
 	var openAIReq openai.ImageGenerationRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
-		return "", nil, false, nil, fmt.Errorf("failed to unmarshal image generation request: %w", err)
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/images/generations", internalapi.ErrMalformedRequest)
 	}
 	return openAIReq.Model, &openAIReq, false, nil, nil
 }
@@ -199,7 +199,7 @@ func (ResponsesEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *openai.ResponseRequest, bool, []byte, error) {
 	var openAIReq openai.ResponseRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
-		return "", nil, false, nil, fmt.Errorf("failed to unmarshal responses request: %w", err)
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/responses", internalapi.ErrMalformedRequest)
 	}
 	return openAIReq.Model, &openAIReq, openAIReq.Stream, nil, nil
 }
@@ -221,12 +221,12 @@ func (MessagesEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *anthropic.MessagesRequest, bool, []byte, error) {
 	var anthropicReq anthropic.MessagesRequest
 	if err := json.Unmarshal(body, &anthropicReq); err != nil {
-		return "", nil, false, nil, fmt.Errorf("failed to unmarshal Anthropic Messages body: %w", err)
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/messages", internalapi.ErrMalformedRequest)
 	}
 
 	model := anthropicReq.Model
 	if model == "" {
-		return "", nil, false, nil, fmt.Errorf("model field is required in Anthropic request")
+		return "", nil, false, nil, fmt.Errorf("%w: model field is required", internalapi.ErrInvalidRequestBody)
 	}
 
 	stream := anthropicReq.Stream
@@ -255,7 +255,7 @@ func (RerankEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *cohereschema.RerankV2Request, bool, []byte, error) {
 	var req cohereschema.RerankV2Request
 	if err := json.Unmarshal(body, &req); err != nil {
-		return "", nil, false, nil, fmt.Errorf("failed to unmarshal rerank request: %w", err)
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v2/rerank", internalapi.ErrMalformedRequest)
 	}
 	return req.Model, &req, false, nil, nil
 }
