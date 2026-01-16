@@ -130,3 +130,24 @@ func TestNewRuntimeConfig_BackendLevelLLMRequestCosts(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(350), val, "paid-backend CEL should calculate correctly")
 }
+
+// TestNewRuntimeConfig_BackendLevelInvalidCEL tests that invalid CEL in backend-level LLMRequestCosts
+// returns an error during runtime config creation.
+func TestNewRuntimeConfig_BackendLevelInvalidCEL(t *testing.T) {
+	config := &Config{
+		Backends: []Backend{
+			{
+				Name:   "backend-with-invalid-cel",
+				Schema: VersionedAPISchema{Name: APISchemaOpenAI},
+				LLMRequestCosts: []LLMRequestCost{
+					// Invalid CEL expression - syntax error
+					{MetadataKey: "cost", Type: LLMRequestCostTypeCEL, CEL: "invalid syntax ((("},
+				},
+			},
+		},
+	}
+
+	_, err := NewRuntimeConfig(t.Context(), config, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "cannot create CEL program for backend")
+}

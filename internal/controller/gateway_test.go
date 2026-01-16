@@ -390,6 +390,47 @@ func TestGatewayController_reconcileFilterConfigSecret_PerBackendLLMRequestCosts
 	require.Equal(t, "billing_charges", fc.LLMRequestCosts[0].MetadataKey)
 }
 
+// TestGatewayController_reconcileFilterConfigSecret_InvalidCELExpression tests that invalid CEL
+// expressions in LLMRequestCosts cause an error during reconciliation.
+func TestGatewayController_reconcileFilterConfigSecret_InvalidCELExpression(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+	c := NewGatewayController(fakeClient, kube, ctrl.Log,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	const gwNamespace = "ns"
+	routes := []aigv1a1.AIGatewayRoute{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "route-with-invalid-cel", Namespace: gwNamespace},
+			Spec: aigv1a1.AIGatewayRouteSpec{
+				Rules: []aigv1a1.AIGatewayRouteRule{
+					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "test-backend"}}},
+				},
+				LLMRequestCosts: []aigv1a1.LLMRequestCost{
+					// Invalid CEL expression - syntax error
+					{MetadataKey: "cost", Type: aigv1a1.LLMRequestCostTypeCEL, CEL: ptr.To("invalid syntax (((")},
+				},
+			},
+		},
+	}
+
+	// Create the backend
+	err := fakeClient.Create(t.Context(), &aigv1a1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-backend", Namespace: gwNamespace},
+		Spec: aigv1a1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+		},
+	})
+	require.NoError(t, err)
+
+	const someNamespace = "some-namespace"
+	configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
+	_, err = c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid CEL expression")
+}
+
 func TestGatewayController_reconcileFilterConfigSecret_SkipsDeletedRoutes(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
