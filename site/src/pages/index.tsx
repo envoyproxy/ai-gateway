@@ -6,6 +6,7 @@ import Layout from '@theme/Layout';
 import HomepageFeatures from '@site/src/components/HomepageFeatures';
 import LLMProviders from '@site/src/components/LLMProviders';
 import Adopters from '@site/src/components/Adopters';
+import LatestBlogs from '@site/src/components/LatestBlogs';
 
 function HomepageHeader() {
   const {siteConfig} = useDocusaurusContext();
@@ -40,6 +41,7 @@ export default function Home(): React.ReactElement {
       <HomepageHeader />
       <main>
         <HomepageFeatures />
+        <LatestBlogs />
         <LLMProviders />
         <Adopters />
       </main>

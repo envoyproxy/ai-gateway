@@ -782,7 +782,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 
 		// Check the deployment's pod template has the annotation.
-		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment1", metav1.GetOptions{})
+		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment2", metav1.GetOptions{})
 		require.NoError(t, err)
 		require.Equal(t, "some-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
 
@@ -795,7 +795,55 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, v2Container, logLevel)
 		require.NoError(t, err)
 
-		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment1", metav1.GetOptions{})
+		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment2", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "some-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
+	})
+
+	t.Run("pod with extproc but different log level", func(t *testing.T) {
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod4",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: corev1.PodSpec{Containers: []corev1.Container{
+				// The old v1 container image is used here to simulate the pod without extproc.
+				{Name: extProcContainerName, Image: v2Container, Args: []string{"-log-level", "debug"}},
+			}},
+		}
+		_, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), pod, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		// We also need to create a parent deployment for the pod.
+		deployment, err := kube.AppsV1().Deployments(egNamespace).Create(t.Context(), &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "deployment3",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}}},
+		}, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true)
+		require.NoError(t, err)
+
+		// Check the deployment's pod template has the annotation.
+		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment3", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "some-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
+
+		// Simulate the pod's container args is updated to the new log level.
+		pod.Spec.Containers[0].Args = []string{"-log-level", logLevel}
+		pod, err = kube.CoreV1().Pods(egNamespace).Update(t.Context(), pod, metav1.UpdateOptions{})
+		require.NoError(t, err)
+
+		// Call annotateGatewayPods again but the deployment's pod template should not be updated again.
+		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true)
+		require.NoError(t, err)
+
+		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment3", metav1.GetOptions{})
 		require.NoError(t, err)
 		require.Equal(t, "some-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
 	})
@@ -878,7 +926,7 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 
 		// Check the deployment's pod template has the annotation.
-		deployment, err := kube.AppsV1().DaemonSets(egNamespace).Get(t.Context(), "deployment1", metav1.GetOptions{})
+		deployment, err := kube.AppsV1().DaemonSets(egNamespace).Get(t.Context(), "deployment2", metav1.GetOptions{})
 		require.NoError(t, err)
 		require.Equal(t, "some-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
 
@@ -891,7 +939,55 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, v2Container, logLevel)
 		require.NoError(t, err)
 
-		deployment, err = kube.AppsV1().DaemonSets(egNamespace).Get(t.Context(), "deployment1", metav1.GetOptions{})
+		deployment, err = kube.AppsV1().DaemonSets(egNamespace).Get(t.Context(), "deployment2", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "some-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
+	})
+
+	t.Run("pod with extproc but different log level", func(t *testing.T) {
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod4",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: corev1.PodSpec{Containers: []corev1.Container{
+				// The old v1 container image is used here to simulate the pod without extproc.
+				{Name: extProcContainerName, Image: v2Container, Args: []string{"-log-level", "debug"}},
+			}},
+		}
+		_, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), pod, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		// We also need to create a parent DaemonSet for the pod.
+		dss, err := kube.AppsV1().DaemonSets(egNamespace).Create(t.Context(), &appsv1.DaemonSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "deployment3",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: appsv1.DaemonSetSpec{Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}}},
+		}, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true)
+		require.NoError(t, err)
+
+		// Check the deployment's pod template has the annotation.
+		deployment, err := kube.AppsV1().DaemonSets(egNamespace).Get(t.Context(), "deployment3", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "some-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
+
+		// Simulate the pod's container log level is updated to the new version.
+		pod.Spec.Containers[0].Args = []string{"-log-level", logLevel}
+		pod, err = kube.CoreV1().Pods(egNamespace).Update(t.Context(), pod, metav1.UpdateOptions{})
+		require.NoError(t, err)
+
+		// Call annotateGatewayPods again, but the deployment's pod template should not be updated again.
+		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true)
+		require.NoError(t, err)
+
+		deployment, err = kube.AppsV1().DaemonSets(egNamespace).Get(t.Context(), "deployment3", metav1.GetOptions{})
 		require.NoError(t, err)
 		require.Equal(t, "some-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
 	})

@@ -77,6 +77,10 @@ const config: Config = {
 
   themes: ['@docusaurus/theme-mermaid'],
 
+  plugins: [
+    './src/plugins/latestBlogsPlugin.ts',
+  ],
+
   presets: [
     [
       'classic',

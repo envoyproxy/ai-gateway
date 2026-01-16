@@ -25,7 +25,8 @@ services:
     image: arizephoenix/phoenix:latest
     container_name: phoenix
     ports:
-      - "6006:6006"
+      - "4317:4317" # OTLP gRPC
+      - "6006:6006" # Web UI
     environment:
       PHOENIX_ENABLE_AUTH: "false"
 
@@ -41,7 +42,8 @@ services:
       - extproc-target:/app
       - ./extproc.yaml:/etc/extproc/config.yaml:ro
     environment:
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:6006
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_BSP_SCHEDULE_DELAY=100
       - OTEL_METRIC_EXPORT_INTERVAL=100
     # ExtProc ports (internal to Docker network, consumed by Envoy):
@@ -92,7 +94,7 @@ services:
     environment:
       - OPENAI_BASE_URL=http://envoy:1062/v1
       - OPENAI_API_KEY=unused
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:6006
-      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_BSP_SCHEDULE_DELAY=100
       - OTEL_METRIC_EXPORT_INTERVAL=100

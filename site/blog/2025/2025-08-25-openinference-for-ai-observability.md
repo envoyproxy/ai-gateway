@@ -3,11 +3,11 @@ slug: openinference-for-ai-observability
 title: Enhancing AI Gateway Observability - OpenTelemetry Tracing Arrives in Envoy AI Gateway
 authors: [missberg, codefromthecrypt]
 tags: [features]
-image: ./images/openinference-feature.png
+image: /img/blog/openinference-feature.png
 description: Envoy AI Gateway v0.3 introduces OpenTelemetry tracing with OpenInference conventions, providing complete visibility into LLM application behavior beyond metrics.Understand not just what happened, but why.
 ---
 
-![Hero feature image of title.](images/openinference-feature.png)
+![Hero feature image of title.](/img/blog/openinference-feature.png)
 
 Aggregated metrics like latency, error rates, and throughput on their own won't reveal the source of _why_ a system's output was wrong, slow, or expensive.
 
@@ -44,11 +44,11 @@ This OpenTelemetry approach uses spans and works well with common tracing system
 
 ## How it All Fits Together: Envoy AI Gateway OpenTelemetry Tracing Architecture
 
-![Diagram showing how it all fits together](images/Envoy%20AI%20gateway%20+%20Phoenix.drawio.png)
+![Diagram showing how it all fits together](/img/blog/Envoy%20AI%20gateway%20+%20Phoenix.drawio.png)
 
 Here's an example of a simple trace that includes both application and gateway spans, shown in Arize Phoenix:
 
-![Screenshot of Phoenix UI](images/phoenix.webp)
+![Screenshot of Phoenix UI](/img/blog/phoenix.webp)
 
 ## Capture and Evaluate your Traffic: LLM Evaluation
 
