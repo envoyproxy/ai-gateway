@@ -19,7 +19,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/version"
-	"github.com/envoyproxy/ai-gateway/tests/internal/dataplaneenv"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/dataplaneenv"
 )
 
 func TestPublicMCPServers(t *testing.T) {

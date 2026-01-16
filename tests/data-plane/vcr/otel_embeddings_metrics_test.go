@@ -13,8 +13,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/tests/internal/testopenai"
-	"github.com/envoyproxy/ai-gateway/tests/internal/testopeninference"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/testopenai"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/testopeninference"
 )
 
 // otelEmbeddingsMetricsTestCase defines the expected behavior for each cassette.

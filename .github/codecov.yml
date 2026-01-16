@@ -16,6 +16,5 @@ ignore:
   - "examples"
   - "api/v1alpha1/client"
   - "**/zz_generated.*.go"
-  - "internal/testing"
-  - "tests/internal"
+  - "tests/testsinternal"
   - "internal/controller/controller.go"

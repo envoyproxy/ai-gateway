@@ -17,7 +17,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal"
 )
 
 func TestRun_disabled(t *testing.T) {
@@ -34,11 +34,11 @@ func TestRun_disabled(t *testing.T) {
 func TestRun_enabled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	buf := internaltesting.CaptureOutput("")[0]
+	buf := testsinternal.CaptureOutput("")[0]
 	l := log.New(buf, "", 0)
 	run(ctx, l)
 	// Use eventually to avoid flake when the server is not yet started by the time we access it.
-	internaltesting.RequireEventuallyNoError(t, func() error {
+	testsinternal.RequireEventuallyNoError(t, func() error {
 		resp, err := http.Get("http://localhost:6060/debug/pprof/cmdline")
 		if err != nil {
 			return err
@@ -60,7 +60,7 @@ func TestRun_enabled(t *testing.T) {
 		return nil
 	}, 3*time.Second, 100*time.Millisecond)
 	cancel()
-	internaltesting.RequireEventuallyNoError(t, func() error {
+	testsinternal.RequireEventuallyNoError(t, func() error {
 		logs := buf.String()
 		if !strings.Contains(logs, "pprof server shut down gracefully") {
 			return fmt.Errorf("pprof server did not shut down gracefully, logs: %s", logs)

@@ -23,7 +23,7 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal"
 )
 
 // requireNewFakeClientForGatewayConfig creates a fake client for GatewayConfig tests.
@@ -49,7 +49,7 @@ func (c *errorListClient) List(ctx context.Context, list client.ObjectList, opts
 
 func TestGatewayConfigController_Reconcile(t *testing.T) {
 	fakeClient := requireNewFakeClientForGatewayConfig(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewGatewayConfigController(fakeClient, ctrl.Log, eventCh.Ch)
 
 	// Create a GatewayConfig.
@@ -94,7 +94,7 @@ func TestGatewayConfigController_Reconcile(t *testing.T) {
 
 func TestGatewayConfigController_NotifyGateways(t *testing.T) {
 	fakeClient := requireNewFakeClientForGatewayConfig(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewGatewayConfigController(fakeClient, ctrl.Log, eventCh.Ch)
 
 	// Create a GatewayConfig.
@@ -167,7 +167,7 @@ func TestGatewayConfigController_NotifyGateways(t *testing.T) {
 
 func TestGatewayConfigController_MultipleGatewaysReferencing(t *testing.T) {
 	fakeClient := requireNewFakeClientForGatewayConfig(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewGatewayConfigController(fakeClient, ctrl.Log, eventCh.Ch)
 
 	// Create a GatewayConfig.
@@ -232,7 +232,7 @@ func TestGatewayConfigController_MultipleGatewaysReferencing(t *testing.T) {
 
 func TestGatewayConfigController_DeletionDoesNotBlock(t *testing.T) {
 	fakeClient := requireNewFakeClientForGatewayConfig(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewGatewayConfigController(fakeClient, ctrl.Log, eventCh.Ch)
 
 	deletionTime := metav1.NewTime(time.Now())
@@ -284,7 +284,7 @@ func TestGatewayConfigController_DeletionDoesNotBlock(t *testing.T) {
 
 func TestGatewayConfigController_ReconcileNotFound(t *testing.T) {
 	fakeClient := requireNewFakeClientForGatewayConfig(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewGatewayConfigController(fakeClient, ctrl.Log, eventCh.Ch)
 
 	result, err := c.Reconcile(t.Context(), reconcile.Request{
@@ -297,7 +297,7 @@ func TestGatewayConfigController_ReconcileNotFound(t *testing.T) {
 
 func TestGatewayConfigController_ListErrorSetsNotAcceptedStatus(t *testing.T) {
 	fakeClient := requireNewFakeClientForGatewayConfig(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	errClient := &errorListClient{
 		Client:  fakeClient,
 		listErr: errors.New("list failure"),
@@ -330,7 +330,7 @@ func TestGatewayConfigController_ListErrorSetsNotAcceptedStatus(t *testing.T) {
 
 func TestGatewayConfigController_GatewayReferencesNonExistingConfig(t *testing.T) {
 	fakeClient := requireNewFakeClientForGatewayConfig(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewGatewayConfigController(fakeClient, ctrl.Log, eventCh.Ch)
 
 	// Create a Gateway that references a GatewayConfig that doesn't exist (e.g., user made a typo).

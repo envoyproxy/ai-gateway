@@ -18,7 +18,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/e2elib"
 )
 
 // Test_Examples_ProviderFallback tests the basic example in the examples/provider_fallback directory.

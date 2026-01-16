@@ -1,0 +1,89 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+---
+version: 2
+interactions:
+  - id: 0
+    request:
+      proto: HTTP/1.1
+      proto_major: 1
+      proto_minor: 1
+      content_length: 384
+      host: api.openai.com
+      body: "{\n  \"max_tokens\": 25,\n  \"model\": \"babbage-002\",\n  \"prompt\": [\n    755,\n    16178,\n    1471,\n    997,\n    262,\n    422,\n    308,\n    2717,\n    220,\n    16,\n    512,\n    286,\n    471,\n    308,\n    198,\n    262,\n    775,\n    512,\n    286,\n    471,\n    16178,\n    1471,\n    12,\n    16,\n    8,\n    489,\n    16178,\n    1471,\n    12,\n    17,\n    8\n  ],\n  \"temperature\": 0.5,\n  \"top_p\": 0.9\n}"
+      headers:
+        Accept-Encoding:
+          - gzip
+        Content-Length:
+          - "384"
+        Content-Type:
+          - application/json
+        User-Agent:
+          - Go-http-client/1.1
+      url: https://api.openai.com/v1/completions
+      method: POST
+    response:
+      proto: HTTP/2.0
+      proto_major: 2
+      proto_minor: 0
+      content_length: 422
+      body: "{\n  \"choices\": [\n    {\n      \"finish_reason\": \"length\",\n      \"index\": 0,\n      \"logprobs\": null,\n      \"text\": \" + fib(n-3) + fib(n-4)\\n\\nprint fib(1000)\\nprint fib(1000000)\\n\"\n    }\n  ],\n  \"created\": 1759117373,\n  \"id\": \"cmpl-CKz4nFKJDGUt78k1Kkp0oZqXDOn4u\",\n  \"model\": \"babbage:2023-07-21-v2\",\n  \"object\": \"text_completion\",\n  \"usage\": {\n    \"completion_tokens\": 25,\n    \"prompt_tokens\": 31,\n    \"total_tokens\": 56\n  }\n}"
+      headers:
+        Access-Control-Allow-Origin:
+          - "*"
+        Access-Control-Expose-Headers:
+          - X-Request-ID
+        Alt-Svc:
+          - h3=":443"; ma=86400
+        Cache-Control:
+          - no-cache, must-revalidate
+        Cf-Cache-Status:
+          - DYNAMIC
+        Cf-Ray:
+          - 98687918db550646-KUL
+        Content-Length:
+          - "422"
+        Content-Type:
+          - application/json
+        Date:
+          - Mon, 29 Sep 2025 03:42:53 GMT
+        Openai-Model:
+          - babbage:2023-07-21-v2
+        Openai-Processing-Ms:
+          - "167"
+        Openai-Project:
+          - proj_KYenqYOfeZsnXEVK8dXVBhez
+        Openai-Version:
+          - "2020-10-01"
+        Server:
+          - cloudflare
+        Strict-Transport-Security:
+          - max-age=31536000; includeSubDomains; preload
+        Via:
+          - envoy-router-7464cfc689-8zgzs
+        X-Content-Type-Options:
+          - nosniff
+        X-Envoy-Upstream-Service-Time:
+          - "404"
+        X-Openai-Proxy-Wasm:
+          - v0.1
+        X-Ratelimit-Limit-Requests:
+          - "3000"
+        X-Ratelimit-Limit-Tokens:
+          - "250000"
+        X-Ratelimit-Remaining-Requests:
+          - "2999"
+        X-Ratelimit-Remaining-Tokens:
+          - "249968"
+        X-Ratelimit-Reset-Requests:
+          - 20ms
+        X-Ratelimit-Reset-Tokens:
+          - 7ms
+        X-Request-Id:
+          - req_f15613fa88874e50894aef731d6b00ba
+      status: 200 OK
+      code: 200
+      duration: 1.16847075s

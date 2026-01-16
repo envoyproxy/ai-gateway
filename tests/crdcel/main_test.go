@@ -14,14 +14,14 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/envtest"
 )
 
 //go:embed testdata
 var testdata embed.FS
 
 func TestAIGatewayRoutes(t *testing.T) {
-	c, _, _ := testsinternal.NewEnvTest(t)
+	c, _, _ := envtest.NewEnvTest(t)
 	ctx := t.Context()
 
 	for _, tc := range []struct {
@@ -73,7 +73,7 @@ func TestAIGatewayRoutes(t *testing.T) {
 }
 
 func TestAIServiceBackends(t *testing.T) {
-	c, _, _ := testsinternal.NewEnvTest(t)
+	c, _, _ := envtest.NewEnvTest(t)
 	ctx := t.Context()
 
 	for _, tc := range []struct {
@@ -109,7 +109,7 @@ func TestAIServiceBackends(t *testing.T) {
 }
 
 func TestBackendSecurityPolicies(t *testing.T) {
-	c, _, _ := testsinternal.NewEnvTest(t)
+	c, _, _ := envtest.NewEnvTest(t)
 	ctx := t.Context()
 
 	for _, tc := range []struct {
@@ -212,7 +212,7 @@ func TestBackendSecurityPolicies(t *testing.T) {
 }
 
 func TestMCPRoutes(t *testing.T) {
-	c, _, _ := testsinternal.NewEnvTest(t)
+	c, _, _ := envtest.NewEnvTest(t)
 	ctx := t.Context()
 
 	for _, tc := range []struct {

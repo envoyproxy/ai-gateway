@@ -26,7 +26,7 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 	"k8s.io/apimachinery/pkg/util/sets"
 
-	"github.com/envoyproxy/ai-gateway/tests/internal/testmcp"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/testmcp"
 )
 
 const (

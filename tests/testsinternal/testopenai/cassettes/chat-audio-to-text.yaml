@@ -1,0 +1,136 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+---
+version: 2
+interactions:
+  - id: 0
+    request:
+      proto: HTTP/1.1
+      proto_major: 1
+      proto_minor: 1
+      content_length: 1887
+      host: api.openai.com
+      body: |-
+        {
+          "messages": [
+            {
+              "content": [
+                {
+                  "text": "Answer in up to 5 words: What do you hear in this audio?",
+                  "type": "text"
+                },
+                {
+                  "input_audio": {
+                    "data": "UklGRlwEAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YTgEAADY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2CcnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2CcnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2CcnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2CcnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2NgnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycn2NjY2NjY2NjY2CcnJycnJycnJyfY2NjY2NjY2NjYJycnJycnJycnJ9jY2NjY2NjY2NgnJycnJycnJycnv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/v0BAQEBAv7+/v79AQEBAQL+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAv7+/v79AQEBAQL+/v7+/QEBAQEC/v7+/v0BAQEBAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA=",
+                    "format": "wav"
+                  },
+                  "type": "input_audio"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "model": "gpt-4o-audio-preview"
+        }
+      headers:
+        Accept-Encoding:
+          - gzip
+        Content-Length:
+          - "1887"
+        Content-Type:
+          - application/json
+        User-Agent:
+          - Go-http-client/1.1
+      url: https://api.openai.com/v1/chat/completions
+      method: POST
+    response:
+      proto: HTTP/2.0
+      proto_major: 2
+      proto_minor: 0
+      content_length: 939
+      body: |-
+        {
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "annotations": [],
+                "content": "Please play the audio, and I'll describe what I hear in up to five words.",
+                "refusal": null,
+                "role": "assistant"
+              }
+            }
+          ],
+          "created": 1755133878,
+          "id": "chatcmpl-C4GmsUaSG4ATqnzO0EmAo8RVj0QKm",
+          "model": "gpt-4o-audio-preview-2025-06-03",
+          "object": "chat.completion",
+          "service_tier": "default",
+          "system_fingerprint": "fp_0611516fca",
+          "usage": {
+            "completion_tokens": 17,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": 0,
+              "text_tokens": 17
+            },
+            "prompt_tokens": 28,
+            "prompt_tokens_details": {
+              "audio_tokens": 1,
+              "cached_tokens": 0,
+              "image_tokens": 0,
+              "text_tokens": 27
+            },
+            "total_tokens": 45
+          }
+        }
+      headers:
+        Access-Control-Expose-Headers:
+          - X-Request-ID
+        Alt-Svc:
+          - h3=":443"; ma=86400
+        Cf-Cache-Status:
+          - DYNAMIC
+        Cf-Ray:
+          - 96ec93d06f76e4fe-JHB
+        Content-Type:
+          - application/json
+        Date:
+          - Thu, 14 Aug 2025 01:11:19 GMT
+        Openai-Processing-Ms:
+          - "1001"
+        Openai-Project:
+          - proj_KYenqYOfeZsnXEVK8dXVBhez
+        Openai-Version:
+          - "2020-10-01"
+        Server:
+          - cloudflare
+        Strict-Transport-Security:
+          - max-age=31536000; includeSubDomains; preload
+        X-Content-Type-Options:
+          - nosniff
+        X-Envoy-Upstream-Service-Time:
+          - "1033"
+        X-Ratelimit-Limit-Requests:
+          - "500"
+        X-Ratelimit-Limit-Tokens:
+          - "30000"
+        X-Ratelimit-Remaining-Requests:
+          - "499"
+        X-Ratelimit-Remaining-Tokens:
+          - "29984"
+        X-Ratelimit-Reset-Requests:
+          - 120ms
+        X-Ratelimit-Reset-Tokens:
+          - 32ms
+        X-Request-Id:
+          - req_fb279192787a4ffbb14986f1fa5e5929
+      status: 200 OK
+      code: 200
+      duration: 1.393544875s

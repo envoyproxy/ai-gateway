@@ -40,8 +40,8 @@ import (
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
-	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/envtest"
 )
 
 func TestMain(m *testing.M) {
@@ -52,7 +52,7 @@ var defaultSchema = aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Ve
 
 // TestStartControllers tests the [controller.StartControllers] function.
 func TestStartControllers(t *testing.T) {
-	c, cfg, _ := testsinternal.NewEnvTest(t)
+	c, cfg, _ := envtest.NewEnvTest(t)
 	opts := controller.Options{
 		ExtProcImage:           "envoyproxy/ai-gateway-extproc:foo",
 		EnableLeaderElection:   false,
@@ -208,7 +208,7 @@ func TestStartControllers(t *testing.T) {
 }
 
 func TestNamespaceScopedCache(t *testing.T) {
-	_, cfg, _ := testsinternal.NewEnvTest(t)
+	_, cfg, _ := envtest.NewEnvTest(t)
 	opts := controller.Options{EnableLeaderElection: false, DisableMutatingWebhook: true}
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
@@ -283,9 +283,9 @@ func TestNamespaceScopedCache(t *testing.T) {
 }
 
 func TestAIGatewayRouteController(t *testing.T) {
-	c, cfg, k := testsinternal.NewEnvTest(t)
+	c, cfg, k := envtest.NewEnvTest(t)
 
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	rc := controller.NewAIGatewayRouteController(c, k, defaultLogger(), eventCh.Ch, "/foobar/")
 
 	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
@@ -464,10 +464,10 @@ func TestAIGatewayRouteController(t *testing.T) {
 }
 
 func TestBackendSecurityPolicyController(t *testing.T) {
-	c, cfg, k := testsinternal.NewEnvTest(t)
+	c, cfg, k := envtest.NewEnvTest(t)
 
-	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
-	eventChPool := internaltesting.NewControllerEventChan[*gwaiev1.InferencePool]()
+	eventCh := testsinternal.NewControllerEventChan[*aigv1a1.AIServiceBackend]()
+	eventChPool := testsinternal.NewControllerEventChan[*gwaiev1.InferencePool]()
 	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
 	mgr, err := ctrl.NewManager(cfg, opt)
 	require.NoError(t, err)
@@ -626,9 +626,9 @@ func TestBackendSecurityPolicyController(t *testing.T) {
 }
 
 func TestAIServiceBackendController(t *testing.T) {
-	c, cfg, k := testsinternal.NewEnvTest(t)
+	c, cfg, k := envtest.NewEnvTest(t)
 
-	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.AIGatewayRoute]()
+	eventCh := testsinternal.NewControllerEventChan[*aigv1a1.AIGatewayRoute]()
 
 	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
 	mgr, err := ctrl.NewManager(cfg, opt)
@@ -779,13 +779,13 @@ func TestAIServiceBackendController(t *testing.T) {
 }
 
 func TestSecretController(t *testing.T) {
-	c, cfg, k := testsinternal.NewEnvTest(t)
+	c, cfg, k := envtest.NewEnvTest(t)
 
 	opt := ctrl.Options{Scheme: c.Scheme(), LeaderElection: false, Controller: config.Controller{SkipNameValidation: ptr.To(true)}}
 	mgr, err := ctrl.NewManager(cfg, opt)
 	require.NoError(t, err)
 
-	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.BackendSecurityPolicy]()
+	eventCh := testsinternal.NewControllerEventChan[*aigv1a1.BackendSecurityPolicy]()
 	sc := controller.NewSecretController(mgr.GetClient(), k, defaultLogger(), eventCh.Ch)
 	const secretName, secretNamespace = "mysecret", "default"
 

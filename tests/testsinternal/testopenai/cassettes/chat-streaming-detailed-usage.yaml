@@ -1,0 +1,100 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+---
+version: 2
+interactions:
+  - id: 0
+    request:
+      proto: HTTP/1.1
+      proto_major: 1
+      proto_minor: 1
+      content_length: 253
+      host: api.openai.com
+      body: |-
+        {
+          "max_completion_tokens": 100,
+          "messages": [
+            {
+              "content": "Hello, I'm a developer!",
+              "role": "developer"
+            }
+          ],
+          "model": "gpt-5-nano",
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          },
+          "temperature": 1
+        }
+      headers:
+        Accept-Encoding:
+          - gzip
+        Content-Length:
+          - "253"
+        Content-Type:
+          - application/json
+        User-Agent:
+          - Go-http-client/1.1
+      url: https://api.openai.com/v1/chat/completions
+      method: POST
+    response:
+      proto: HTTP/2.0
+      proto_major: 2
+      proto_minor: 0
+      content_length: 1129
+      body: |+
+        data: {"id":"chatcmpl-C4Hq5a6K3RaPMymUv70btQNYv6SvY","object":"chat.completion.chunk","created":1755137921,"model":"gpt-5-nano-2025-08-07","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"finish_reason":null}],"usage":null,"obfuscation":"WuQNX"}
+
+        data: {"id":"chatcmpl-C4Hq5a6K3RaPMymUv70btQNYv6SvY","object":"chat.completion.chunk","created":1755137921,"model":"gpt-5-nano-2025-08-07","service_tier":"default","system_fingerprint":null,"choices":[{"index":0,"delta":{},"finish_reason":"length"}],"usage":null,"obfuscation":"IPio8PDeczEmdPr"}
+
+        data: {"id":"chatcmpl-C4Hq5a6K3RaPMymUv70btQNYv6SvY","object":"chat.completion.chunk","created":1755137921,"model":"gpt-5-nano-2025-08-07","service_tier":"default","system_fingerprint":null,"choices":[],"usage":{"prompt_tokens":12,"completion_tokens":100,"total_tokens":112,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":100,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}},"obfuscation":"t9"}
+
+        data: [DONE]
+
+      headers:
+        Access-Control-Expose-Headers:
+          - X-Request-ID
+        Alt-Svc:
+          - h3=":443"; ma=86400
+        Cf-Cache-Status:
+          - DYNAMIC
+        Cf-Ray:
+          - 96ecf68898d7dc3d-KUL
+        Content-Type:
+          - text/event-stream; charset=utf-8
+        Date:
+          - Thu, 14 Aug 2025 02:18:43 GMT
+        Openai-Processing-Ms:
+          - "1207"
+        Openai-Project:
+          - proj_KYenqYOfeZsnXEVK8dXVBhez
+        Openai-Version:
+          - "2020-10-01"
+        Server:
+          - cloudflare
+        Strict-Transport-Security:
+          - max-age=31536000; includeSubDomains; preload
+        X-Content-Type-Options:
+          - nosniff
+        X-Envoy-Upstream-Service-Time:
+          - "1289"
+        X-Ratelimit-Limit-Requests:
+          - "500"
+        X-Ratelimit-Limit-Tokens:
+          - "200000"
+        X-Ratelimit-Remaining-Requests:
+          - "499"
+        X-Ratelimit-Remaining-Tokens:
+          - "199992"
+        X-Ratelimit-Reset-Requests:
+          - 120ms
+        X-Ratelimit-Reset-Tokens:
+          - 2ms
+        X-Request-Id:
+          - req_0b2a28d2d6414b5a94c1c7933cf7c1a6
+      status: 200 OK
+      code: 200
+      duration: 1.957657916s

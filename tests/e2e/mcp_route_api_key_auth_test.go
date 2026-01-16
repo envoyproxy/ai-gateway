@@ -16,7 +16,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/e2elib"
 )
 
 // mcpAPIKeyTransport injects an API key header into outgoing requests.

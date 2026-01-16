@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/tests/internal/testopenai"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/testopenai"
 )
 
 func TestOpenAIImageGeneration(t *testing.T) {

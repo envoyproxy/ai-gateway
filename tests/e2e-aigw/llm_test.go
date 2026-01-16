@@ -13,7 +13,7 @@ import (
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal"
 )
 
 func TestAIGWRun_LLM(t *testing.T) {
@@ -21,7 +21,7 @@ func TestAIGWRun_LLM(t *testing.T) {
 
 	ctx := t.Context()
 
-	internaltesting.RequireEventuallyNoError(t, func() error {
+	testsinternal.RequireEventuallyNoError(t, func() error {
 		t.Logf("model to use: %q", ollamaModel)
 		client := openai.NewClient(option.WithBaseURL("http://localhost:1975/v1/"))
 		chatReq := openai.ChatCompletionNewParams{

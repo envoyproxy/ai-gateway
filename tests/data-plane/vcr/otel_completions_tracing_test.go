@@ -15,8 +15,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/tests/internal/testopenai"
-	"github.com/envoyproxy/ai-gateway/tests/internal/testopeninference"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/testopenai"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/testopeninference"
 )
 
 func TestOtelOpenAICompletions_span(t *testing.T) {

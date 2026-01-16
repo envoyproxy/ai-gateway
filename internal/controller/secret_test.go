@@ -20,11 +20,11 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal"
 )
 
 func TestSecretController_Reconcile(t *testing.T) {
-	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.BackendSecurityPolicy]()
+	eventCh := testsinternal.NewControllerEventChan[*aigv1a1.BackendSecurityPolicy]()
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	c := NewSecretController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
 

@@ -18,8 +18,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
-	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/e2elib"
 )
 
 // TestOTELTracingWithConsoleExporter verifies that OTEL environment variables

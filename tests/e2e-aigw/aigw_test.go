@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tetratelabs/func-e/experimental/admin"
 
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal"
 )
 
 var (
@@ -35,8 +35,8 @@ var localOllamaEnv = []string{
 func TestMain(m *testing.M) {
 	var err error
 	if aigwBin, err = buildAigwOnDemand(); err == nil {
-		if ollamaModel, err = internaltesting.GetOllamaModel(internaltesting.ThinkingModel); err == nil {
-			err = internaltesting.CheckIfOllamaReady(ollamaModel)
+		if ollamaModel, err = testsinternal.GetOllamaModel(testsinternal.ThinkingModel); err == nil {
+			err = testsinternal.CheckIfOllamaReady(ollamaModel)
 		}
 	}
 	if err != nil {
@@ -67,7 +67,7 @@ func TestAIGWRun_AdminEndpoints(t *testing.T) {
 		fmt.Sprintf("http://localhost:%d/stats", adminPort): statusOK,
 	} {
 		t.Logf("Waiting for endpoint %q to be available...", endpoint)
-		internaltesting.RequireEventuallyNoError(t, func() error {
+		testsinternal.RequireEventuallyNoError(t, func() error {
 			return checkEndpointAvailable(t.Context(), endpoint, condition)
 		}, 120*time.Second, 2*time.Second, "endpoint %q never became available", endpoint)
 	}
@@ -76,7 +76,7 @@ func TestAIGWRun_AdminEndpoints(t *testing.T) {
 // buildAigwOnDemand builds the aigw binary unless AIGW_BIN is set.
 // If AIGW_BIN environment variable is set, it will use that path instead.
 func buildAigwOnDemand() (string, error) {
-	return internaltesting.BuildGoBinaryOnDemand("AIGW_BIN", "aigw", "./cmd/aigw")
+	return testsinternal.BuildGoBinaryOnDemand("AIGW_BIN", "aigw", "./cmd/aigw")
 }
 
 // startAIGWCLI starts the aigw CLI as a subprocess with the given config file.
@@ -99,7 +99,7 @@ func startAIGWCLI(t *testing.T, aigwBin string, env []string, arg ...string) (ad
 	}
 
 	// Capture logs, only dump on failure.
-	buffers := internaltesting.DumpLogsOnFail(t, "aigw Stdout", "aigw Stderr")
+	buffers := testsinternal.DumpLogsOnFail(t, "aigw Stdout", "aigw Stderr")
 
 	t.Logf("Starting aigw with args: %v", arg)
 	// Note: do not pass t.Context() to CommandContext, as it's canceled
@@ -152,7 +152,7 @@ func startAIGWCLI(t *testing.T, aigwBin string, env []string, arg ...string) (ad
 
 	// Wait for MCP endpoint to become available
 	t.Log("Waiting for MCP endpoint to be available...")
-	internaltesting.RequireEventuallyNoError(t, func() error {
+	testsinternal.RequireEventuallyNoError(t, func() error {
 		return checkEndpointAvailable(t.Context(),
 			fmt.Sprintf("http://localhost:%d/mcp", gatewayPort),
 			func(r *http.Response) bool { return r.StatusCode < 500 },

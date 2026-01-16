@@ -14,7 +14,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/json"
-	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/testotel"
 )
 
 func TestChatCompletionSpan_RecordResponseChunk(t *testing.T) {

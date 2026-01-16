@@ -23,8 +23,8 @@ import (
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/json"
-	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
-	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/e2elib"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/testupstreamlib"
 )
 
 // userIDAttribute is the attribute used for user ID in otel span and metrics.

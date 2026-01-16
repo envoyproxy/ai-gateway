@@ -1,0 +1,91 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+---
+version: 2
+interactions:
+  - id: 0
+    request:
+      proto: HTTP/1.1
+      proto_major: 1
+      proto_minor: 1
+      content_length: 45
+      host: api.openai.com
+      body: |-
+        {
+          "messages": [],
+          "model": "gpt-5-nano"
+        }
+      headers:
+        Accept-Encoding:
+          - gzip
+        Content-Length:
+          - "45"
+        Content-Type:
+          - application/json
+        User-Agent:
+          - Go-http-client/1.1
+      url: https://api.openai.com/v1/chat/completions
+      method: POST
+    response:
+      proto: HTTP/2.0
+      proto_major: 2
+      proto_minor: 0
+      content_length: 232
+      body: |-
+        {
+          "error": {
+            "code": "empty_array",
+            "message": "Invalid 'messages': empty array. Expected an array with minimum length 1, but got an empty array instead.",
+            "param": "messages",
+            "type": "invalid_request_error"
+          }
+        }
+      headers:
+        Access-Control-Expose-Headers:
+          - X-Request-ID
+        Alt-Svc:
+          - h3=":443"; ma=86400
+        Cf-Cache-Status:
+          - DYNAMIC
+        Cf-Ray:
+          - 96ec930f5a0ae4fe-JHB
+        Content-Length:
+          - "232"
+        Content-Type:
+          - application/json
+        Date:
+          - Thu, 14 Aug 2025 01:10:47 GMT
+        Openai-Processing-Ms:
+          - "7"
+        Openai-Project:
+          - proj_KYenqYOfeZsnXEVK8dXVBhez
+        Openai-Version:
+          - "2020-10-01"
+        Server:
+          - cloudflare
+        Strict-Transport-Security:
+          - max-age=31536000; includeSubDomains; preload
+        X-Content-Type-Options:
+          - nosniff
+        X-Envoy-Upstream-Service-Time:
+          - "41"
+        X-Ratelimit-Limit-Requests:
+          - "500"
+        X-Ratelimit-Limit-Tokens:
+          - "200000"
+        X-Ratelimit-Remaining-Requests:
+          - "499"
+        X-Ratelimit-Remaining-Tokens:
+          - "199999"
+        X-Ratelimit-Reset-Requests:
+          - 120ms
+        X-Ratelimit-Reset-Tokens:
+          - 0s
+        X-Request-Id:
+          - req_c8581ad40f2c494682c45001d68b9047
+      status: 400 Bad Request
+      code: 400
+      duration: 339.474084ms

@@ -20,12 +20,12 @@ import (
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal"
 )
 
 func TestAIServiceBackendController_Reconcile(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
-	eventChan := internaltesting.NewControllerEventChan[*aigv1a1.AIGatewayRoute]()
+	eventChan := testsinternal.NewControllerEventChan[*aigv1a1.AIGatewayRoute]()
 	c := NewAIServiceBackendController(fakeClient, fake2.NewClientset(), ctrl.Log, eventChan.Ch)
 	originals := []*aigv1a1.AIGatewayRoute{
 		{
@@ -92,7 +92,7 @@ func TestAIServiceBackendController_Reconcile(t *testing.T) {
 
 func TestAIServiceBackendController_Reconcile_error_with_multiple_bsps(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
-	eventChan := internaltesting.NewControllerEventChan[*aigv1a1.AIGatewayRoute]()
+	eventChan := testsinternal.NewControllerEventChan[*aigv1a1.AIGatewayRoute]()
 	c := NewAIServiceBackendController(fakeClient, fake2.NewClientset(), ctrl.Log, eventChan.Ch)
 
 	const backendName, namespace = "mybackend", "default"

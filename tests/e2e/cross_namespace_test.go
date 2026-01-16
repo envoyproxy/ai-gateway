@@ -16,7 +16,7 @@ import (
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/e2elib"
 )
 
 // TestCrossNamespace tests AIGatewayRoute with cross-namespace references.

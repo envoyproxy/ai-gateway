@@ -26,7 +26,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal"
 )
 
 func requireNewServerWithMockProcessor(t *testing.T) (*Server, *mockProcessor) {
@@ -440,7 +440,7 @@ func Test_filterSensitiveHeadersForLogging(t *testing.T) {
 }
 
 func Test_filterSensitiveBodyForLogging(t *testing.T) {
-	buf := internaltesting.CaptureOutput("test")[0]
+	buf := testsinternal.CaptureOutput("test")[0]
 	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	}))

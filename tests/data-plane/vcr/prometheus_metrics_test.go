@@ -18,7 +18,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/tests/internal/testopenai"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/testopenai"
 )
 
 // TestPrometheusMetrics verifies that metrics are properly exported via Prometheus

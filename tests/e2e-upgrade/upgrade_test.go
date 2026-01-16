@@ -23,8 +23,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
-	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/e2elib"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/testupstreamlib"
 )
 
 const egSelector = "gateway.envoyproxy.io/owning-gateway-name=upgrade-test"

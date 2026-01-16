@@ -8,7 +8,7 @@ package e2e
 import (
 	"testing"
 
-	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/e2elib"
 )
 
 func TestMain(m *testing.M) {

@@ -25,7 +25,7 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal"
 )
 
 // Helper: fake client configured for MCP tests with status subresource enabled.
@@ -42,7 +42,7 @@ func requireNewFakeClientWithIndexesForMCP(t *testing.T) client.Client {
 
 func TestMCPRouteController_Reconcile(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesForMCP(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewMCPRouteController(fakeClient, fakekube.NewClientset(), ctrl.Log, eventCh.Ch)
 
 	// Create target Gateway referenced by ParentRefs.
@@ -164,7 +164,7 @@ func TestMCPRouteController_Reconcile(t *testing.T) {
 
 func Test_newHTTPRoute_MCP_PathAndBackendsAndMetadata(t *testing.T) {
 	c := requireNewFakeClientWithIndexesForMCP(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	ctrlr := NewMCPRouteController(c, nil, logr.Discard(), eventCh.Ch)
 
 	httpRoute := &gwapiv1.HTTPRoute{ObjectMeta: metav1.ObjectMeta{Name: "mcp-route", Namespace: "ns"}}
@@ -200,7 +200,7 @@ func Test_newHTTPRoute_MCP_PathAndBackendsAndMetadata(t *testing.T) {
 
 func Test_newHTTPRoute_MCPOauth(t *testing.T) {
 	c := requireNewFakeClientWithIndexesForMCP(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	ctrlr := NewMCPRouteController(c, nil, logr.Discard(), eventCh.Ch)
 
 	httpRoute := &gwapiv1.HTTPRoute{ObjectMeta: metav1.ObjectMeta{Name: "mcp-route", Namespace: "ns"}}
@@ -253,14 +253,14 @@ func TestMCPRouteController_updateMCPRouteStatus(t *testing.T) {
 
 func TestMCPRouteController_syncGateway_notFound(t *testing.T) { // coverage for not-found branch.
 	fakeClient := requireNewFakeClientWithIndexesForMCP(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	s := NewMCPRouteController(fakeClient, fakekube.NewClientset(), logr.Discard(), eventCh.Ch)
 	s.syncGateway(context.Background(), "ns", "non-exist")
 }
 
 func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 	c := requireNewFakeClientWithIndexesForMCP(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	kubeClient := fakekube.NewClientset(&corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: "some-secret", Namespace: "default"},
 		Data:       map[string][]byte{"apiKey": []byte("secretvalue")},
@@ -333,7 +333,7 @@ func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 
 func TestMCPRouteController_ensureMCPBackendRefHTTPFilter(t *testing.T) {
 	c := requireNewFakeClientWithIndexesForMCP(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	ctrlr := NewMCPRouteController(c, fakekube.NewClientset(
 		&corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: "test-secret", Namespace: "default"},
@@ -377,7 +377,7 @@ func TestMCPRouteController_ensureMCPBackendRefHTTPFilter(t *testing.T) {
 
 func TestMCPRouteController_syncGateways_NamespaceCrossReference(t *testing.T) {
 	c := requireNewFakeClientWithIndexesForMCP(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 
 	gateway1 := &gwapiv1.Gateway{
 		ObjectMeta: metav1.ObjectMeta{Name: "gateway1", Namespace: "default"},

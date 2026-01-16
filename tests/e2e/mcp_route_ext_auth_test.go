@@ -16,8 +16,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
-	"github.com/envoyproxy/ai-gateway/tests/internal/testextauth"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/e2elib"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/testextauth"
 )
 
 // extAuthzTransport injects a header used by the Ext Authz server to make access decisions

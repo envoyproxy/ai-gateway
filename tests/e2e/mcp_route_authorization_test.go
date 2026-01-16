@@ -21,8 +21,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
-	"github.com/envoyproxy/ai-gateway/tests/internal/testmcp"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/e2elib"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/testmcp"
 )
 
 // bearerTokenTransport injects a bearer token into outgoing requests.

@@ -16,7 +16,7 @@ import (
 	metricsv1 "go.opentelemetry.io/proto/otlp/metrics/v1"
 	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
 
-	"github.com/envoyproxy/ai-gateway/tests/internal/testopenai"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/testopenai"
 )
 
 // otelCompletionMetricsTestCase defines the expected behavior for each cassette.

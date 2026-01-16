@@ -19,7 +19,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/require"
 
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal"
 )
 
 // mockReceiver is a mock implementation of Receiver.
@@ -43,8 +43,8 @@ func (m *mockReceiver) getConfig() *Config {
 }
 
 // newTestLoggerWithBuffer creates a new logger with a buffer for testing and asserting the output.
-func newTestLoggerWithBuffer() (*slog.Logger, internaltesting.OutBuffer) {
-	buf := internaltesting.CaptureOutput("test")[0]
+func newTestLoggerWithBuffer() (*slog.Logger, testsinternal.OutBuffer) {
+	buf := testsinternal.CaptureOutput("test")[0]
 	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	}))

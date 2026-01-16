@@ -16,7 +16,7 @@ import (
 	v1 "sigs.k8s.io/gateway-api/conformance/apis/v1"
 	"sigs.k8s.io/gateway-api/conformance/utils/config"
 
-	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/e2elib"
 )
 
 func TestGatewayAPIInferenceExtension(t *testing.T) {

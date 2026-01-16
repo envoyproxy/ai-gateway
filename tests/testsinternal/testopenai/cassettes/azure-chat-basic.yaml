@@ -1,0 +1,72 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+---
+version: 2
+interactions:
+  - id: 0
+    request:
+      proto: HTTP/1.1
+      proto_major: 1
+      proto_minor: 1
+      content_length: 108
+      host: resource-name.cognitiveservices.azure.com
+      body: "{\n  \"messages\": [\n    {\n      \"content\": \"Hello!\",\n      \"role\": \"user\"\n    }\n  ],\n  \"model\": \"gpt-5-nano\"\n}"
+      form:
+        api-version:
+          - 2024-12-01-preview
+      headers:
+        Accept-Encoding:
+          - gzip
+        Content-Length:
+          - "108"
+        Content-Type:
+          - application/json
+        User-Agent:
+          - Go-http-client/1.1
+      url: https://resource-name.cognitiveservices.azure.com/openai/deployments/gpt-5-nano/chat/completions
+      method: POST
+    response:
+      proto: HTTP/2.0
+      proto_major: 2
+      proto_minor: 0
+      content_length: 1214
+      body: "{\n  \"choices\": [\n    {\n      \"content_filter_results\": {},\n      \"finish_reason\": \"stop\",\n      \"index\": 0,\n      \"logprobs\": null,\n      \"message\": {\n        \"annotations\": [],\n        \"content\": \"Hi there! How can I help today? I can answer questions, brainstorm ideas, write or edit text, explain concepts, help with coding, plan projects, translate languages, or just chat. What would you like to do? If you’re not sure, tell me a topic you’re curious about and I’ll give you a quick rundown.\",\n        \"refusal\": null,\n        \"role\": \"assistant\"\n      }\n    }\n  ],\n  \"created\": 1759396891,\n  \"id\": \"chatcmpl-CM9n9OhFOl4lSSFwarLEIMnPrNWSP\",\n  \"model\": \"gpt-5-nano-2025-08-07\",\n  \"object\": \"chat.completion\",\n  \"prompt_filter_results\": [\n    {\n      \"content_filter_results\": {},\n      \"prompt_index\": 0\n    }\n  ],\n  \"system_fingerprint\": null,\n  \"usage\": {\n    \"completion_tokens\": 271,\n    \"completion_tokens_details\": {\n      \"accepted_prediction_tokens\": 0,\n      \"audio_tokens\": 0,\n      \"reasoning_tokens\": 192,\n      \"rejected_prediction_tokens\": 0\n    },\n    \"prompt_tokens\": 8,\n    \"prompt_tokens_details\": {\n      \"audio_tokens\": 0,\n      \"cached_tokens\": 0\n    },\n    \"total_tokens\": 279\n  }\n}"
+      headers:
+        Apim-Request-Id:
+          - 8f2cae43-720b-42c3-9ca7-44a99a6ca1b1
+        Azureml-Model-Session:
+          - d016-20250930181259
+        Content-Length:
+          - "1214"
+        Content-Type:
+          - application/json
+        Date:
+          - Thu, 02 Oct 2025 09:21:33 GMT
+        Strict-Transport-Security:
+          - max-age=31536000; includeSubDomains; preload
+        X-Accel-Buffering:
+          - "no"
+        X-Content-Type-Options:
+          - nosniff
+        X-Ms-Deployment-Name:
+          - gpt-5-nano
+        X-Ms-Rai-Invoked:
+          - "true"
+        X-Ms-Region:
+          - East US 2
+        X-Ratelimit-Limit-Requests:
+          - "100"
+        X-Ratelimit-Limit-Tokens:
+          - "100000"
+        X-Ratelimit-Remaining-Requests:
+          - "99"
+        X-Ratelimit-Remaining-Tokens:
+          - "99998"
+        X-Request-Id:
+          - c44b65e2-6f05-4899-abbe-9cfe79d74b26
+      status: 200 OK
+      code: 200
+      duration: 3.139796083s

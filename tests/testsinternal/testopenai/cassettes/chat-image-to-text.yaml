@@ -1,0 +1,138 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+---
+version: 2
+interactions:
+  - id: 0
+    request:
+      proto: HTTP/1.1
+      proto_major: 1
+      proto_minor: 1
+      content_length: 555
+      host: api.openai.com
+      body: |-
+        {
+          "messages": [
+            {
+              "content": [
+                {
+                  "text": "Answer in up to 5 words: What's in this image?",
+                  "type": "text"
+                },
+                {
+                  "image_url": {
+                    "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAXElEQVR42mNgoAkofv8fBVOkmQyD/sPwn1UlYAzlE6cZpgGmGZlPkgHYDCHKCcia0AwgHlCm+c+f/9gwabajG0CsK+DOxmIA8YZQ6gXkhISG6W8ALj7RtuMTgwMA0WTdqiU1ensAAAAASUVORK5CYII="
+                  },
+                  "type": "image_url"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "model": "gpt-5-nano"
+        }
+      headers:
+        Accept-Encoding:
+          - gzip
+        Content-Length:
+          - "555"
+        Content-Type:
+          - application/json
+        User-Agent:
+          - Go-http-client/1.1
+      url: https://api.openai.com/v1/chat/completions
+      method: POST
+    response:
+      proto: HTTP/2.0
+      proto_major: 2
+      proto_minor: 0
+      content_length: 804
+      body: |-
+        {
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "annotations": [],
+                "content": "A tiny blue cartoon character.",
+                "refusal": null,
+                "role": "assistant"
+              }
+            }
+          ],
+          "created": 1755133869,
+          "id": "chatcmpl-C4Gmj9b5BeLuDR5fgSeYUQobtSGV3",
+          "model": "gpt-5-nano-2025-08-07",
+          "object": "chat.completion",
+          "service_tier": "default",
+          "system_fingerprint": null,
+          "usage": {
+            "completion_tokens": 719,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 704,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens": 22,
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cached_tokens": 0
+            },
+            "total_tokens": 741
+          }
+        }
+      headers:
+        Access-Control-Expose-Headers:
+          - X-Request-ID
+        Alt-Svc:
+          - h3=":443"; ma=86400
+        Cf-Cache-Status:
+          - DYNAMIC
+        Cf-Ray:
+          - 96ec939ccfdbe4fe-JHB
+        Content-Type:
+          - application/json
+        Date:
+          - Thu, 14 Aug 2025 01:11:13 GMT
+        Openai-Processing-Ms:
+          - "3439"
+        Openai-Project:
+          - proj_KYenqYOfeZsnXEVK8dXVBhez
+        Openai-Version:
+          - "2020-10-01"
+        Server:
+          - cloudflare
+        Strict-Transport-Security:
+          - max-age=31536000; includeSubDomains; preload
+        X-Content-Type-Options:
+          - nosniff
+        X-Envoy-Upstream-Service-Time:
+          - "3458"
+        X-Ratelimit-Limit-Input-Images:
+          - "50000"
+        X-Ratelimit-Limit-Requests:
+          - "500"
+        X-Ratelimit-Limit-Tokens:
+          - "200000"
+        X-Ratelimit-Remaining-Input-Images:
+          - "49999"
+        X-Ratelimit-Remaining-Requests:
+          - "499"
+        X-Ratelimit-Remaining-Tokens:
+          - "199221"
+        X-Ratelimit-Reset-Input-Images:
+          - 1ms
+        X-Ratelimit-Reset-Requests:
+          - 120ms
+        X-Ratelimit-Reset-Tokens:
+          - 233ms
+        X-Request-Id:
+          - req_479962c042ac4c4587f7990f51a6b447
+      status: 200 OK
+      code: 200
+      duration: 3.731928208s

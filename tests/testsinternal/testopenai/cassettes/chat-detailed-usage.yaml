@@ -1,0 +1,123 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+---
+version: 2
+interactions:
+  - id: 0
+    request:
+      proto: HTTP/1.1
+      proto_major: 1
+      proto_minor: 1
+      content_length: 182
+      host: api.openai.com
+      body: |-
+        {
+          "max_completion_tokens": 100,
+          "messages": [
+            {
+              "content": "Hello, I'm a developer!",
+              "role": "developer"
+            }
+          ],
+          "model": "gpt-5-nano",
+          "temperature": 1
+        }
+      headers:
+        Accept-Encoding:
+          - gzip
+        Content-Length:
+          - "182"
+        Content-Type:
+          - application/json
+        User-Agent:
+          - Go-http-client/1.1
+      url: https://api.openai.com/v1/chat/completions
+      method: POST
+    response:
+      proto: HTTP/2.0
+      proto_major: 2
+      proto_minor: 0
+      content_length: 776
+      body: |-
+        {
+          "choices": [
+            {
+              "finish_reason": "length",
+              "index": 0,
+              "message": {
+                "annotations": [],
+                "content": "",
+                "refusal": null,
+                "role": "assistant"
+              }
+            }
+          ],
+          "created": 1755137737,
+          "id": "chatcmpl-C4Hn7cxHHDt210R3NWm4trTgiLkrA",
+          "model": "gpt-5-nano-2025-08-07",
+          "object": "chat.completion",
+          "service_tier": "default",
+          "system_fingerprint": null,
+          "usage": {
+            "completion_tokens": 100,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "audio_tokens": 0,
+              "reasoning_tokens": 100,
+              "rejected_prediction_tokens": 0
+            },
+            "prompt_tokens": 12,
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cached_tokens": 0
+            },
+            "total_tokens": 112
+          }
+        }
+      headers:
+        Access-Control-Expose-Headers:
+          - X-Request-ID
+        Alt-Svc:
+          - h3=":443"; ma=86400
+        Cf-Cache-Status:
+          - DYNAMIC
+        Cf-Ray:
+          - 96ecf2093a1d13f6-JHB
+        Content-Type:
+          - application/json
+        Date:
+          - Thu, 14 Aug 2025 02:15:38 GMT
+        Openai-Processing-Ms:
+          - "1013"
+        Openai-Project:
+          - proj_KYenqYOfeZsnXEVK8dXVBhez
+        Openai-Version:
+          - "2020-10-01"
+        Server:
+          - cloudflare
+        Strict-Transport-Security:
+          - max-age=31536000; includeSubDomains; preload
+        X-Content-Type-Options:
+          - nosniff
+        X-Envoy-Upstream-Service-Time:
+          - "1113"
+        X-Ratelimit-Limit-Requests:
+          - "500"
+        X-Ratelimit-Limit-Tokens:
+          - "200000"
+        X-Ratelimit-Remaining-Requests:
+          - "499"
+        X-Ratelimit-Remaining-Tokens:
+          - "199992"
+        X-Ratelimit-Reset-Requests:
+          - 120ms
+        X-Ratelimit-Reset-Tokens:
+          - 2ms
+        X-Request-Id:
+          - req_b9e28cc31d1b41368ca8bb084d7a95ef
+      status: 200 OK
+      code: 200
+      duration: 1.703186542s

@@ -23,10 +23,10 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
-	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	"github.com/envoyproxy/ai-gateway/internal/version"
-	"github.com/envoyproxy/ai-gateway/tests/internal/dataplaneenv"
-	"github.com/envoyproxy/ai-gateway/tests/internal/testmcp"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/dataplaneenv"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/testmcp"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/testotel"
 )
 
 // envoyConfig is the embedded Envoy configuration template.

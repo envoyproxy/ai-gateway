@@ -19,9 +19,9 @@ import (
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
-	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
-	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/e2elib"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/testupstreamlib"
 )
 
 // TestWithTestUpstream tests the end-to-end functionality of the AI Gateway with the testupstream server.
@@ -256,7 +256,7 @@ func TestWithTestUpstream(t *testing.T) {
 	t.Run("secret update propagation", func(t *testing.T) {
 		const secretName = "translation-testupstream-default"
 		// Verify that the apiKey still exists in the filter-config.yaml secret with the existing value.
-		internaltesting.RequireEventuallyNoError(t, func() error {
+		testsinternal.RequireEventuallyNoError(t, func() error {
 			secret, err := extractFilterConfigFromSecret(t.Context(), secretName)
 			if err != nil {
 				return err
@@ -280,7 +280,7 @@ stringData:
 		require.NoError(t, e2elib.KubectlApplyManifestStdin(t.Context(), secretUpdated))
 
 		// Verify that the new apiKey is propagated to the filter-config.yaml secret.
-		internaltesting.RequireEventuallyNoError(t, func() error {
+		testsinternal.RequireEventuallyNoError(t, func() error {
 			secret, err := extractFilterConfigFromSecret(t.Context(), secretName)
 			if err != nil {
 				return err

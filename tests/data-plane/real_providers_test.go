@@ -23,8 +23,8 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/envoyproxy/ai-gateway/internal/version"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal"
 )
 
 // Real providers test cases require the real credentials to be set in the environment. So,
@@ -37,7 +37,7 @@ const (
 
 // TestRealProviders tests the end-to-end flow of the external processor with Envoy and real providers.
 func TestWithRealProviders(t *testing.T) {
-	cc := internaltesting.RequireNewCredentialsContext()
+	cc := testsinternal.RequireNewCredentialsContext()
 
 	config := &filterapi.Config{
 		Version: version.Parse(),
@@ -102,14 +102,14 @@ func TestWithRealProviders(t *testing.T) {
 	t.Run("health-checking", func(t *testing.T) {
 		t.Run("chat/completions", func(t *testing.T) {
 			for _, tc := range []realProvidersTestCase{
-				{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
-				{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: internaltesting.RequiredCredentialAWS},
-				{name: "azure-openai", modelName: "o1", required: internaltesting.RequiredCredentialAzure},
-				{name: "gemini", modelName: "gemini-2.0-flash-lite", required: internaltesting.RequiredCredentialGemini},
-				{name: "groq", modelName: "llama-3.1-8b-instant", required: internaltesting.RequiredCredentialGroq},
-				{name: "grok", modelName: "grok-3", required: internaltesting.RequiredCredentialGrok},
-				{name: "sambanova", modelName: "Meta-Llama-3.1-8B-Instruct", required: internaltesting.RequiredCredentialSambaNova},
-				{name: "deepinfra", modelName: "meta-llama/Meta-Llama-3-8B-Instruct", required: internaltesting.RequiredCredentialDeepInfra},
+				{name: "openai", modelName: "gpt-4o-mini", required: testsinternal.RequiredCredentialOpenAI},
+				{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: testsinternal.RequiredCredentialAWS},
+				{name: "azure-openai", modelName: "o1", required: testsinternal.RequiredCredentialAzure},
+				{name: "gemini", modelName: "gemini-2.0-flash-lite", required: testsinternal.RequiredCredentialGemini},
+				{name: "groq", modelName: "llama-3.1-8b-instant", required: testsinternal.RequiredCredentialGroq},
+				{name: "grok", modelName: "grok-3", required: testsinternal.RequiredCredentialGrok},
+				{name: "sambanova", modelName: "Meta-Llama-3.1-8B-Instruct", required: testsinternal.RequiredCredentialSambaNova},
+				{name: "deepinfra", modelName: "meta-llama/Meta-Llama-3-8B-Instruct", required: testsinternal.RequiredCredentialDeepInfra},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					cc.MaybeSkip(t, tc.required)
@@ -119,10 +119,10 @@ func TestWithRealProviders(t *testing.T) {
 		})
 		t.Run("embeddings", func(t *testing.T) {
 			for _, tc := range []realProvidersTestCase{
-				{name: "openai", modelName: "text-embedding-3-small", required: internaltesting.RequiredCredentialOpenAI},
-				{name: "gemini", modelName: "gemini-embedding-001", required: internaltesting.RequiredCredentialGemini},
-				{name: "sambanova", modelName: "E5-Mistral-7B-Instruct", required: internaltesting.RequiredCredentialSambaNova},
-				{name: "deepinfra", modelName: "BAAI/bge-base-en-v1.5", required: internaltesting.RequiredCredentialDeepInfra},
+				{name: "openai", modelName: "text-embedding-3-small", required: testsinternal.RequiredCredentialOpenAI},
+				{name: "gemini", modelName: "gemini-embedding-001", required: testsinternal.RequiredCredentialGemini},
+				{name: "sambanova", modelName: "E5-Mistral-7B-Instruct", required: testsinternal.RequiredCredentialSambaNova},
+				{name: "deepinfra", modelName: "BAAI/bge-base-en-v1.5", required: testsinternal.RequiredCredentialDeepInfra},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					cc.MaybeSkip(t, tc.required)
@@ -132,8 +132,8 @@ func TestWithRealProviders(t *testing.T) {
 		})
 		t.Run("messages", func(t *testing.T) {
 			for _, tc := range []realProvidersTestCase{
-				{name: "anthropic", modelName: "claude-sonnet-4-5", required: internaltesting.RequiredCredentialAnthropic},
-				{name: "anthropic-aws-bedrock", modelName: "global.anthropic.claude-sonnet-4-5-20250929-v1:0", required: internaltesting.RequiredCredentialAWS},
+				{name: "anthropic", modelName: "claude-sonnet-4-5", required: testsinternal.RequiredCredentialAnthropic},
+				{name: "anthropic-aws-bedrock", modelName: "global.anthropic.claude-sonnet-4-5-20250929-v1:0", required: testsinternal.RequiredCredentialAWS},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					cc.MaybeSkip(t, tc.required)
@@ -152,7 +152,7 @@ func TestWithRealProviders(t *testing.T) {
 	// If the used token is set correctly in the metadata, it should be logged in the access log.
 
 	t.Run("check-used-token-metadata-access-log", func(t *testing.T) {
-		cc.MaybeSkip(t, internaltesting.RequiredCredentialOpenAI|internaltesting.RequiredCredentialAWS)
+		cc.MaybeSkip(t, testsinternal.RequiredCredentialOpenAI|testsinternal.RequiredCredentialAWS)
 		// Since the access log might not be written immediately, we wait for the log to be written.
 		require.Eventually(t, func() bool {
 			accessLog := env.EnvoyStdout()
@@ -187,8 +187,8 @@ func TestWithRealProviders(t *testing.T) {
 	t.Run("streaming", func(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
 		for _, tc := range []realProvidersTestCase{
-			{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
-			{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: internaltesting.RequiredCredentialAWS},
+			{name: "openai", modelName: "gpt-4o-mini", required: testsinternal.RequiredCredentialOpenAI},
+			{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: testsinternal.RequiredCredentialAWS},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				cc.MaybeSkip(t, tc.required)
@@ -238,9 +238,9 @@ func TestWithRealProviders(t *testing.T) {
 	t.Run("uses tool in response", func(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress+"/v1/"), option.WithMaxRetries(0))
 		for _, tc := range []realProvidersTestCase{
-			{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
-			{name: "aws-bedrock", modelName: "us.anthropic.claude-3-5-sonnet-20240620-v1:0", required: internaltesting.RequiredCredentialAWS},
-			{name: "gemini", modelName: "gemini-2.0-flash-lite", required: internaltesting.RequiredCredentialGemini},
+			{name: "openai", modelName: "gpt-4o-mini", required: testsinternal.RequiredCredentialOpenAI},
+			{name: "aws-bedrock", modelName: "us.anthropic.claude-3-5-sonnet-20240620-v1:0", required: testsinternal.RequiredCredentialAWS},
+			{name: "gemini", modelName: "gemini-2.0-flash-lite", required: testsinternal.RequiredCredentialGemini},
 		} {
 			t.Run(tc.modelName, func(t *testing.T) {
 				cc.MaybeSkip(t, tc.required)
@@ -357,7 +357,7 @@ func TestWithRealProviders(t *testing.T) {
 type realProvidersTestCase struct {
 	name      string
 	modelName string
-	required  internaltesting.RequiredCredential
+	required  testsinternal.RequiredCredential
 }
 
 func requireEventuallyChatCompletionNonStreamingRequestOK(t *testing.T, listenerAddress, modelName, msg string) {
@@ -390,7 +390,7 @@ func requireEventuallyMessagesRequestOK(t *testing.T, listenerAddress, modelName
 		anthropicoption.WithAPIKey("dummy"),
 		anthropicoption.WithBaseURL(listenerAddress+"/anthropic/"),
 	)
-	internaltesting.RequireEventuallyNoError(t, func() error {
+	testsinternal.RequireEventuallyNoError(t, func() error {
 		if streaming {
 			stream := client.Messages.NewStreaming(t.Context(), anthropic.MessageNewParams{
 				MaxTokens: 1024,

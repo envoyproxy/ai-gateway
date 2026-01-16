@@ -1,0 +1,63 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+---
+version: 2
+interactions:
+  - id: 0
+    request:
+      proto: HTTP/1.1
+      proto_major: 1
+      proto_minor: 1
+      content_length: 142
+      host: api.openai.com
+      body: "{\n  \"model\": \"babbage-002-wrong\",\n  \"prompt\": \"def fib(n):\\n    if n <= 1:\\n        return n\\n    else:\\n        return fib(n-1) + fib(n-2)\"\n}"
+      headers:
+        Accept-Encoding:
+          - gzip
+        Content-Length:
+          - "142"
+        Content-Type:
+          - application/json
+        User-Agent:
+          - Go-http-client/1.1
+      url: https://api.openai.com/v1/completions
+      method: POST
+    response:
+      proto: HTTP/2.0
+      proto_major: 2
+      proto_minor: 0
+      content_length: 223
+      body: "{\n    \"error\": {\n        \"message\": \"The model `babbage-002-wrong` does not exist or you do not have access to it.\",\n        \"type\": \"invalid_request_error\",\n        \"param\": null,\n        \"code\": \"model_not_found\"\n    }\n}\n"
+      headers:
+        Alt-Svc:
+          - h3=":443"; ma=86400
+        Cf-Cache-Status:
+          - DYNAMIC
+        Cf-Ray:
+          - 986879775c3e0646-KUL
+        Content-Length:
+          - "223"
+        Content-Type:
+          - application/json; charset=utf-8
+        Date:
+          - Mon, 29 Sep 2025 03:43:07 GMT
+        Server:
+          - cloudflare
+        Strict-Transport-Security:
+          - max-age=31536000; includeSubDomains; preload
+        Vary:
+          - Origin
+        X-Content-Type-Options:
+          - nosniff
+        X-Envoy-Upstream-Service-Time:
+          - "77"
+        X-Openai-Proxy-Wasm:
+          - v0.1
+        X-Request-Id:
+          - req_974b6133828f43e3a90ea7934588b0bd
+      status: 404 Not Found
+      code: 404
+      duration: 353.499875ms

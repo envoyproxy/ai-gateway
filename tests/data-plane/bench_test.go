@@ -20,7 +20,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/version"
-	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/testupstreamlib"
 )
 
 // BenchmarkChatCompletions benchmarks the chat/completions endpoint for various backends.

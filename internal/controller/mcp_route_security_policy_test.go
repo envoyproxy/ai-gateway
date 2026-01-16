@@ -25,7 +25,7 @@ import (
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal"
 )
 
 func setupOAuthTestServer() *httptest.Server {
@@ -333,7 +333,7 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fakeClient := requireNewFakeClientWithIndexesForMCP(t)
-			eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+			eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 			c := NewMCPRouteController(fakeClient, nil, logr.Discard(), eventCh.Ch)
 
 			err := fakeClient.Create(t.Context(), tt.mcpRoute)
@@ -418,7 +418,7 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 
 func TestMCPRouteControllerCleanupSecurityPolicyResources(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesForMCP(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewMCPRouteController(fakeClient, nil, logr.Discard(), eventCh.Ch)
 
 	mcpRoute := &aigv1a1.MCPRoute{
@@ -496,7 +496,7 @@ func TestMCPRouteControllerCleanupSecurityPolicyResources(t *testing.T) {
 
 func TestMCPRouteController_syncMCPRouteSecurityPolicy_DisableOAuthKeepsAPIKey(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesForMCP(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewMCPRouteController(fakeClient, nil, logr.Discard(), eventCh.Ch)
 
 	securityPolicy := &aigv1a1.MCPRouteSecurityPolicy{

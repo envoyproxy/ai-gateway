@@ -23,8 +23,8 @@ import (
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
-	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/e2elib"
 )
 
 // TestExamplesBasic tests the basic example in examples/basic directory.
@@ -50,7 +50,7 @@ func Test_Examples_Basic(t *testing.T) {
 	//
 	// A test case will be skipped if the corresponding environment variable is not set.
 	t.Run("with credentials", func(t *testing.T) {
-		cc := internaltesting.RequireNewCredentialsContext()
+		cc := testsinternal.RequireNewCredentialsContext()
 
 		// Replace the placeholders with the actual credentials and apply the manifests.
 		openAIManifest, err := os.ReadFile(manifestDir + "/openai.yaml")
@@ -82,8 +82,8 @@ func Test_Examples_Basic(t *testing.T) {
 
 		// Cohere v2 rerank test using Cohere SDK routed via gateway
 		t.Run("cohere_v2_rerank", func(t *testing.T) {
-			cc.MaybeSkip(t, internaltesting.RequiredCredentialCohere)
-			internaltesting.RequireEventuallyNoError(t, func() error {
+			cc.MaybeSkip(t, testsinternal.RequiredCredentialCohere)
+			testsinternal.RequireEventuallyNoError(t, func() error {
 				fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
 				defer fwd.Kill()
 
@@ -117,8 +117,8 @@ func Test_Examples_Basic(t *testing.T) {
 		})
 
 		t.Run("anthropic", func(t *testing.T) {
-			cc.MaybeSkip(t, internaltesting.RequiredCredentialAnthropic)
-			internaltesting.RequireEventuallyNoError(t, func() error {
+			cc.MaybeSkip(t, testsinternal.RequiredCredentialAnthropic)
+			testsinternal.RequireEventuallyNoError(t, func() error {
 				fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
 				defer fwd.Kill()
 
@@ -178,7 +178,7 @@ func (tc examplesBasicChatCompletionsTestCase) run(t *testing.T, egSelector stri
 		if tc.skip {
 			t.Skip("skipped due to missing credentials")
 		}
-		internaltesting.RequireEventuallyNoError(t, func() error {
+		testsinternal.RequireEventuallyNoError(t, func() error {
 			fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
 			defer fwd.Kill()
 

@@ -20,8 +20,8 @@ import (
 	"time"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
-	"github.com/envoyproxy/ai-gateway/tests/internal/dataplaneenv"
-	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/dataplaneenv"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/testupstreamlib"
 )
 
 const (

@@ -18,7 +18,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/json"
-	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/testotel"
 )
 
 // TestResponseModel_OpenAIStreaming tests that OpenAI streaming returns the actual model version

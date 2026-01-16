@@ -27,12 +27,12 @@ import (
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal"
 )
 
 func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch, "/v1")
 
 	err := fakeClient.Create(t.Context(), &gwapiv1.Gateway{ObjectMeta: metav1.ObjectMeta{Name: "mytarget", Namespace: "default"}})
@@ -73,7 +73,7 @@ func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 func TestAIGatewayRouteController_Reconcile_SyncError(t *testing.T) {
 	// Test error path where syncAIGatewayRoute fails.
 	fakeClient := requireNewFakeClientWithIndexes(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch, "/v1")
 
 	// Create a route without creating the filter to cause sync error.
@@ -120,7 +120,7 @@ func requireNewFakeClientWithIndexes(t *testing.T) client.Client {
 func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), eventCh.Ch, "/")
 	require.NotNil(t, s)
 
@@ -203,7 +203,7 @@ func Test_newHTTPRoute(t *testing.T) {
 				defaultTimeout gwapiv1.Duration = "60s"
 			)
 			fakeClient := requireNewFakeClientWithIndexes(t)
-			eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+			eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 			s := NewAIGatewayRouteController(fakeClient, nil, logr.Discard(), eventCh.Ch, "/")
 			httpRoute := &gwapiv1.HTTPRoute{
 				ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: ns},
@@ -347,7 +347,7 @@ func Test_newHTTPRoute(t *testing.T) {
 func TestAIGatewayRouteController_updateAIGatewayRouteStatus(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), eventCh.Ch, "/v1")
 
 	r := &aigv1a1.AIGatewayRoute{
@@ -393,7 +393,7 @@ func Test_buildPriorityAnnotation(t *testing.T) {
 func TestAIGatewayRouteController_backend(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewAIGatewayRouteController(fakeClient, kube, ctrl.Log, eventCh.Ch, "/v1")
 
 	// Test successful backend retrieval.
@@ -418,7 +418,7 @@ func TestAIGatewayRouteController_backend(t *testing.T) {
 func TestAIGatewayRouterController_syncGateway_notFound(t *testing.T) { // This is mostly for coverage.
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), eventCh.Ch, "/v1")
 	s.syncGateway(t.Context(), "ns", "non-exist")
 }
@@ -557,7 +557,7 @@ func Test_newHTTPRoute_LabelAndAnnotationPropagation(t *testing.T) {
 
 func TestAIGatewayRouteController_syncGateways_NamespaceDetermination(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 
 	// Create test gateways in different namespaces.
 	gateway1 := &gwapiv1.Gateway{
@@ -619,7 +619,7 @@ func TestAIGatewayRouteController_syncGateways_NamespaceDetermination(t *testing
 
 func TestAIGatewayRouteController_CrossNamespaceBackend_WithReferenceGrant(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch, "/v1")
 
 	// Create backend in backend-ns namespace
@@ -718,7 +718,7 @@ func TestAIGatewayRouteController_CrossNamespaceBackend_WithReferenceGrant(t *te
 
 func TestAIGatewayRouteController_CrossNamespaceBackend_WithoutReferenceGrant(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch, "/v1")
 
 	// Create backend in backend-ns namespace
@@ -787,7 +787,7 @@ func TestAIGatewayRouteController_CrossNamespaceBackend_WithoutReferenceGrant(t 
 
 func TestAIGatewayRouteController_SameNamespaceBackend_NoReferenceGrantNeeded(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
-	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	eventCh := testsinternal.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch, "/v1")
 
 	// Create backend in same namespace as route

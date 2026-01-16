@@ -26,8 +26,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
-	"github.com/envoyproxy/ai-gateway/tests/internal/testmcp"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/testmcp"
 )
 
 const (
@@ -36,7 +36,7 @@ const (
 	aigwPort      = 1975
 )
 
-var aigwBinary = path.Join(internaltesting.FindProjectRoot(), fmt.Sprintf("/out/aigw-%s-%s", runtime.GOOS, runtime.GOARCH))
+var aigwBinary = path.Join(testsinternal.FindProjectRoot(), fmt.Sprintf("/out/aigw-%s-%s", runtime.GOOS, runtime.GOARCH))
 
 type MCPBenchCase struct {
 	Name        string
@@ -102,7 +102,7 @@ func BenchmarkMCP(b *testing.B) {
 		b.Run(tc.Name, func(b *testing.B) {
 			mcpClient := mcp.NewClient(&mcp.Implementation{Name: "bench-http-client", Version: "0.1.0"}, nil)
 			var cs *mcp.ClientSession
-			internaltesting.RequireEventuallyNoError(b, func() (err error) {
+			testsinternal.RequireEventuallyNoError(b, func() (err error) {
 				cs, err = mcpClient.Connect(b.Context(), &mcp.StreamableClientTransport{Endpoint: tc.TestAddr}, nil)
 				return err
 			}, 10*time.Second, 500*time.Millisecond, "failed to connect to MCP server at %s", tc.TestAddr)

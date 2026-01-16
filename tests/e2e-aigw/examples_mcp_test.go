@@ -18,11 +18,11 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal"
 )
 
 var (
-	examplesDir = path.Join(internaltesting.FindProjectRoot(), "examples", "mcp")
+	examplesDir = path.Join(testsinternal.FindProjectRoot(), "examples", "mcp")
 
 	// Adjust these as services update, as they can be added, removed or renamed
 

@@ -20,7 +20,7 @@ import (
 	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
 
 	"github.com/envoyproxy/ai-gateway/internal/json"
-	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/testotel"
 )
 
 // otelTestEnvironment holds all the services needed for OTEL tests.

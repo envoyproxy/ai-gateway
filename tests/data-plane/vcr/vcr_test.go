@@ -14,8 +14,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/tests/internal/dataplaneenv"
-	"github.com/envoyproxy/ai-gateway/tests/internal/testopenai"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/dataplaneenv"
+	"github.com/envoyproxy/ai-gateway/tests/testsinternal/testopenai"
 )
 
 //go:embed envoy.yaml
