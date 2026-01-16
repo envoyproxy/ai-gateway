@@ -51,9 +51,9 @@ func (a *anthropicToGCPAnthropicTranslator) RequestBody(raw []byte, req *anthrop
 	mutatedBody, _ := sjson.SetBytesOptions(raw, anthropicVersionKey, a.apiVersion, sjsonOptions)
 
 	// Remove the model field since GCP doesn't want it in the body.
-	// Note: Do not operate on raw here, as that would mutate the original request body.
-	// Hence, we do the SetBytesOptions above to create mutatedBody first.
-	newBody, _ = sjson.DeleteBytes(mutatedBody, "model")
+	newBody, _ = sjson.DeleteBytesOptions(mutatedBody, "model",
+		// It is safe to use sjsonOptionsInPlace here since we have already created a new mutatedBody above.
+		sjsonOptionsInPlace)
 
 	// Determine the GCP path based on whether streaming is requested.
 	specifier := "rawPredict"

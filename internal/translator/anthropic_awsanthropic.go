@@ -68,8 +68,10 @@ func (a *anthropicToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *an
 	}
 	// Remove the model field from the body as AWS Bedrock expects the model to be specified in the path.
 	// Otherwise, AWS complains "extra inputs are not permitted".
-	newBody, _ = sjson.DeleteBytes(newBody, "model")
-	newBody, _ = sjson.DeleteBytes(newBody, "stream")
+	//
+	// It is safe to use sjsonOptionsInPlace here since we have already created a new mutatedBody above.
+	newBody, _ = sjson.DeleteBytesOptions(newBody, "model", sjsonOptionsInPlace)
+	newBody, _ = sjson.DeleteBytesOptions(newBody, "stream", sjsonOptionsInPlace)
 
 	// Determine the AWS Bedrock path based on whether streaming is requested.
 	var pathTemplate string
