@@ -49,7 +49,7 @@ const (
 // to check if the pods of the gateway deployment need to be rolled out.
 func NewGatewayController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
-	extProcImage string, standAlone bool, uuidFn func() string, extProcAsSideCar bool,
+	extProcImage string, extProcLogLevel string, standAlone bool, uuidFn func() string, extProcAsSideCar bool,
 ) *GatewayController {
 	uf := uuidFn
 	if uf == nil {
@@ -60,6 +60,7 @@ func NewGatewayController(
 		kube:             kube,
 		logger:           logger,
 		extProcImage:     extProcImage,
+		extProcLogLevel:  extProcLogLevel,
 		standAlone:       standAlone,
 		uuidFn:           uf,
 		extProcAsSideCar: extProcAsSideCar,
@@ -68,10 +69,11 @@ func NewGatewayController(
 
 // GatewayController implements reconcile.TypedReconciler for gwapiv1.Gateway.
 type GatewayController struct {
-	client       client.Client
-	kube         kubernetes.Interface
-	logger       logr.Logger
-	extProcImage string // The image of the external processor sidecar container.
+	client          client.Client
+	kube            kubernetes.Interface
+	logger          logr.Logger
+	extProcImage    string // The image of the external processor sidecar container.
+	extProcLogLevel string // The log level for the extproc container.
 	// standAlone indicates whether the controller is running in standalone mode.
 	standAlone bool
 	uuidFn     func() string // Function to generate a new UUID for the filter config.
@@ -129,6 +131,32 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	uid := c.uuidFn()
 
+	// Set gateway config overrides.
+	configName, ok := gw.Annotations[GatewayConfigAnnotationKey]
+	extProcImage := c.extProcImage
+	extProcLogLevel := c.extProcLogLevel
+	if ok && configName != "" {
+		var gatewayConfig aigv1a1.GatewayConfig
+		if err = c.client.Get(ctx, client.ObjectKey{Name: configName, Namespace: namespace}, &gatewayConfig); err != nil {
+			if apierrors.IsNotFound(err) {
+				c.logger.Info("GatewayConfig referenced by Gateway not found, using global defaults",
+					"gateway_name", req.Name, "gatewayconfig_name", configName)
+			} else {
+				c.logger.Error(err, "failed to get GatewayConfig, using global defaults",
+					"gateway_name", req.Name, "gatewayconfig_name", configName)
+			}
+			return ctrl.Result{}, err
+		}
+		if extproc := gatewayConfig.Spec.ExtProc; extproc != nil {
+			if extproc.LogLevel != nil {
+				extProcLogLevel = *extproc.LogLevel
+			}
+			if extproc.Kubernetes != nil && extproc.Kubernetes.Image != nil {
+				extProcImage = *extproc.Kubernetes.Image
+			}
+		}
+	}
+
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
 	var hasEffectiveRoutes bool // indicates whether the filter config is effective (i.e., there is at least one active route).
@@ -140,7 +168,7 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// Finally, we need to annotate the pods of the gateway deployment with the new uuid to propagate the filter config Secret update faster.
 	// If the pod doesn't have the extproc container, it will roll out the deployment altogether which eventually ends up
 	// the mutation hook invoked.
-	if err := c.annotateGatewayPods(ctx, pods, deployments, daemonSets, uid, hasEffectiveRoutes); err != nil {
+	if err := c.annotateGatewayPods(ctx, pods, deployments, daemonSets, uid, hasEffectiveRoutes, extProcImage, extProcLogLevel); err != nil {
 		c.logger.Error(err, "Failed to annotate gateway pods", "namespace", gw.Namespace, "name", gw.Name)
 		return ctrl.Result{}, err
 	}
@@ -753,27 +781,32 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 	daemonSets []appsv1.DaemonSet,
 	uuid string,
 	hasEffectiveRoute bool,
+	extProcImage string,
+	extProcLogLevel string,
 ) error {
 	hasSideCar := false
 	for i := range pods {
 		pod := &pods[i]
 		// Get the pod spec and check if it has the extproc container.
 		podSpec := pod.Spec
+		var containers []corev1.Container
 		if c.extProcAsSideCar {
-			for i := range podSpec.InitContainers {
-				// If there's an extproc sidecar container with the current target image, we don't need to roll out the deployment.
-				if podSpec.InitContainers[i].Name == extProcContainerName && podSpec.InitContainers[i].Image == c.extProcImage {
-					hasSideCar = true
-					break
-				}
-			}
+			containers = podSpec.InitContainers
 		} else {
-			for i := range podSpec.Containers {
-				// If there's an extproc container with the current target image, we don't need to roll out the deployment.
-				if podSpec.Containers[i].Name == extProcContainerName && podSpec.Containers[i].Image == c.extProcImage {
-					hasSideCar = true
-					break
+			containers = podSpec.Containers
+		}
+
+		for i := range containers {
+			if containers[i].Name == extProcContainerName && containers[i].Image == extProcImage {
+				hasSideCar = true
+				for j := range containers[i].Args {
+					// logLevel arg should be indexed 2 based on gateway_mutator.go, but we check all args to be safe.
+					if j > 0 && containers[i].Args[j-1] == "-logLevel" && containers[i].Args[j] != extProcLogLevel {
+						hasSideCar = false
+						break
+					}
 				}
+				break
 			}
 		}
 
