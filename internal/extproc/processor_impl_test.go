@@ -407,11 +407,13 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend(t *testing.T) {
 		metrics:        mm,
 	}
 	r := &chatCompletionProcessorRouterFilter{}
-	err := p.SetBackend(t.Context(), &filterapi.Backend{
-		Name:              "some-backend",
-		Schema:            filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
-		ModelNameOverride: "ai_gateway_llm",
-	}, nil, r)
+	err := p.SetBackend(t.Context(), &filterapi.RuntimeBackend{
+		Backend: &filterapi.Backend{
+			Name:              "some-backend",
+			Schema:            filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
+			ModelNameOverride: "ai_gateway_llm",
+		},
+	}, r)
 	require.ErrorContains(t, err, "unsupported API schema: backend")
 	mm.RequireRequestFailure(t)
 	require.Zero(t, mm.inputTokenCount)
@@ -905,7 +907,10 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 			requestHeaders:         headers,
 		}
 
-		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		err := p.SetBackend(context.Background(), &filterapi.RuntimeBackend{
+			Backend: backend,
+			Handler: &mockBackendAuthHandler{},
+		}, rp)
 		require.NoError(t, err)
 
 		p.translator = &translator
@@ -966,7 +971,10 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 			upstreamFilterCount:    2,
 		}
 
-		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		err := p.SetBackend(context.Background(), &filterapi.RuntimeBackend{
+			Backend: backend,
+			Handler: &mockBackendAuthHandler{},
+		}, rp)
 		require.NoError(t, err)
 
 		require.NotNil(t, p.bodyMutator)

@@ -148,6 +148,9 @@ type Backend struct {
 	HeaderMutation *HTTPHeaderMutation `json:"httpHeaderMutation,omitempty"`
 	// Body mutations to be applied to the request before sending to the backend. Optional.
 	BodyMutation *HTTPBodyMutation `json:"httpBodyMutation,omitempty"`
+	// LLMRequestCosts configures the cost calculation for this backend. Optional.
+	// This allows different routes/backends to have different cost calculation formulas.
+	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
 }
 
 // BackendAuth corresponds partially to BackendSecurityPolicy in api/v1alpha1/api.go.
