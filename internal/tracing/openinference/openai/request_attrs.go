@@ -235,11 +235,17 @@ func buildEmbeddingsRequestAttributes(embRequest *openai.EmbeddingRequest, body 
 	}
 
 	if !config.HideLLMInvocationParameters {
+		// Extract parameters from the union type
+		model := embRequest.Model
+		encodingFormat := embRequest.EncodingFormat
+		dimensions := embRequest.Dimensions
+		user := embRequest.User
+
 		params := embeddingsInvocationParameters{
-			Model:          embRequest.Model,
-			EncodingFormat: embRequest.EncodingFormat,
-			Dimensions:     embRequest.Dimensions,
-			User:           embRequest.User,
+			Model:          model,
+			EncodingFormat: encodingFormat,
+			Dimensions:     dimensions,
+			User:           user,
 		}
 		if invocationParamsJSON, err := json.Marshal(params); err == nil {
 			attrs = append(attrs, attribute.String(openinference.EmbeddingInvocationParameters, string(invocationParamsJSON)))
@@ -254,16 +260,20 @@ func buildEmbeddingsRequestAttributes(embRequest *openai.EmbeddingRequest, body 
 	// 4. Azure deployments don't affect this (they only host OpenAI models with cl100k_base)
 	// Following OpenInference spec guidance to only record human-readable text.
 	if !config.HideInputs && !config.HideEmbeddingsText {
-		switch input := embRequest.Input.Value.(type) {
-		case string:
-			attrs = append(attrs, attribute.String(openinference.EmbeddingTextAttribute(0), input))
-		case []string:
-			for i, text := range input {
-				attrs = append(attrs, attribute.String(openinference.EmbeddingTextAttribute(i), text))
+		inputValue := embRequest.Input.Value
+
+		if inputValue != nil {
+			switch input := inputValue.(type) {
+			case string:
+				attrs = append(attrs, attribute.String(openinference.EmbeddingTextAttribute(0), input))
+			case []string:
+				for i, text := range input {
+					attrs = append(attrs, attribute.String(openinference.EmbeddingTextAttribute(i), text))
+				}
+			// Token inputs are not recorded to reduce span size.
+			case []int64:
+			case [][]int64:
 			}
-		// Token inputs are not recorded to reduce span size.
-		case []int64:
-		case [][]int64:
 		}
 	}
 

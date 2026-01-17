@@ -24,6 +24,19 @@ func unmarshalJSONNestedUnion(typ string, data []byte) (interface{}, error) {
 	case '"':
 		return unquoteOrUnmarshalJSONString(typ, data)
 
+	case '{':
+		// Single object with content/task_type/title
+		var item EmbeddingInputItem
+		err = json.Unmarshal(data, &item)
+		if err != nil {
+			return nil, fmt.Errorf("cannot unmarshal %s as EmbeddingInputItem: %w", typ, err)
+		}
+		// Validate that the content field is not empty
+		if item.Content == "" {
+			return nil, fmt.Errorf("invalid %s type (must be string, object, or array)", typ)
+		}
+		return item, nil
+
 	case '[':
 		// Array: skip to first element
 		idx++
@@ -39,12 +52,34 @@ func unmarshalJSONNestedUnion(typ string, data []byte) (interface{}, error) {
 		// Determine element type
 		switch data[idx] {
 		case '"':
+			// Check if this is a mixed array (strings and objects)
+			if isMixedArray(data) {
+				return unmarshalMixedArray(typ, data)
+			}
 			// []string
 			var strs []string
 			if err := json.Unmarshal(data, &strs); err != nil {
 				return nil, fmt.Errorf("cannot unmarshal %s as []string: %w", typ, err)
 			}
 			return strs, nil
+
+		case '{':
+			// Check if this is a mixed array (strings and objects)
+			if isMixedArray(data) {
+				return unmarshalMixedArray(typ, data)
+			}
+			// []EmbeddingInputItem
+			var items []EmbeddingInputItem
+			if err := json.Unmarshal(data, &items); err != nil {
+				return nil, fmt.Errorf("cannot unmarshal %s as []EmbeddingInputItem: %w", typ, err)
+			}
+			// Validate that all items have non-empty content
+			for _, item := range items {
+				if item.Content == "" {
+					return nil, fmt.Errorf("invalid %s array element", typ)
+				}
+			}
+			return items, nil
 
 		case '[':
 			// [][]int64
@@ -61,7 +96,7 @@ func unmarshalJSONNestedUnion(typ string, data []byte) (interface{}, error) {
 		}
 
 	default:
-		return nil, fmt.Errorf("invalid %s type (must be string or array)", typ)
+		return nil, fmt.Errorf("invalid %s type (must be string, object, or array)", typ)
 	}
 }
 
@@ -101,4 +136,87 @@ func unquoteOrUnmarshalJSONString(typ string, data []byte) (string, error) {
 		return "", fmt.Errorf("cannot unmarshal %s as string: %w", typ, err)
 	}
 	return str, nil
+}
+
+// isMixedArray checks if the array contains both strings and objects
+func isMixedArray(data []byte) bool {
+	var arr []json.RawMessage
+	if err := json.Unmarshal(data, &arr); err != nil {
+		return false
+	}
+
+	hasString := false
+	hasObject := false
+
+	for _, item := range arr {
+		trimmed := item
+		// Skip leading whitespace
+		idx := 0
+		for idx < len(trimmed) && (trimmed[idx] == ' ' || trimmed[idx] == '\t' || trimmed[idx] == '\n' || trimmed[idx] == '\r') {
+			idx++
+		}
+		if idx >= len(trimmed) {
+			continue
+		}
+
+		switch trimmed[idx] {
+		case '"':
+			hasString = true
+		case '{':
+			hasObject = true
+		}
+
+		// If we have both types, it's a mixed array
+		if hasString && hasObject {
+			return true
+		}
+	}
+
+	return false
+}
+
+// unmarshalMixedArray handles arrays with both strings and EmbeddingInputItem objects
+func unmarshalMixedArray(typ string, data []byte) (interface{}, error) {
+	var arr []json.RawMessage
+	if err := json.Unmarshal(data, &arr); err != nil {
+		return nil, fmt.Errorf("cannot unmarshal %s as mixed array: %w", typ, err)
+	}
+
+	result := make([]interface{}, len(arr))
+
+	for i, item := range arr {
+		// Skip leading whitespace
+		idx := 0
+		for idx < len(item) && (item[idx] == ' ' || item[idx] == '\t' || item[idx] == '\n' || item[idx] == '\r') {
+			idx++
+		}
+		if idx >= len(item) {
+			return nil, fmt.Errorf("empty element in mixed %s array", typ)
+		}
+
+		switch item[idx] {
+		case '"':
+			// String element
+			var str string
+			if err := json.Unmarshal(item, &str); err != nil {
+				return nil, fmt.Errorf("cannot unmarshal string element in mixed %s array: %w", typ, err)
+			}
+			result[i] = str
+		case '{':
+			// Object element
+			var embeddingItem EmbeddingInputItem
+			if err := json.Unmarshal(item, &embeddingItem); err != nil {
+				return nil, fmt.Errorf("cannot unmarshal object element in mixed %s array: %w", typ, err)
+			}
+			// Validate that the content field is not empty
+			if embeddingItem.Content == "" {
+				return nil, fmt.Errorf("invalid element type in mixed %s array", typ)
+			}
+			result[i] = embeddingItem
+		default:
+			return nil, fmt.Errorf("invalid element type in mixed %s array", typ)
+		}
+	}
+
+	return result, nil
 }
