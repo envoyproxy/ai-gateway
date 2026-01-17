@@ -7,9 +7,11 @@ package translator
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 	"google.golang.org/genai"
@@ -313,7 +315,9 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) parseGCPStreamingChunks(
 func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) extractToolCallsFromGeminiPartsStream(
 	toolCalls []openai.ChatCompletionChunkChoiceDeltaToolCall, parts []*genai.Part,
 	argsMarshaller json.Marshaler,
-) ([]openai.ChatCompletionChunkChoiceDeltaToolCall, error) {
+) ([]openai.ChatCompletionChunkChoiceDeltaToolCall, string, error) {
+	var signatureBuilder strings.Builder
+
 	for _, part := range parts {
 		if part == nil || part.FunctionCall == nil {
 			continue
@@ -322,7 +326,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) extractToolCallsFromGemi
 		// Convert function call arguments to JSON string.
 		args, err := argsMarshaller(part.FunctionCall.Args)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal function arguments: %w", err)
+			return nil, "", fmt.Errorf("failed to marshal function arguments: %w", err)
 		}
 
 		// Generate a random ID for the tool call.
@@ -340,14 +344,19 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) extractToolCallsFromGemi
 		// a new toolCall
 		o.toolCallIndex++
 
+		// Extract ThoughtSignature if present (only the first one)
+		if part.ThoughtSignature != nil && signatureBuilder.Len() == 0 {
+			signatureBuilder.WriteString(base64.StdEncoding.EncodeToString(part.ThoughtSignature))
+		}
+
 		toolCalls = append(toolCalls, toolCall)
 	}
 
 	if len(toolCalls) == 0 {
-		return nil, nil
+		return nil, "", nil
 	}
 
-	return toolCalls, nil
+	return toolCalls, signatureBuilder.String(), nil
 }
 
 // geminiCandidatesToOpenAIStreamingChoices converts Gemini candidates to OpenAI streaming choices.
@@ -373,10 +382,20 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiCandidatesToOpenAI
 			}
 
 			// Extract thought summary and text from parts for streaming (delta).
-			thoughtSummary, content := extractTextAndThoughtSummaryFromGeminiParts(candidate.Content.Parts, responseMode)
+			thoughtSummary, content, signature := extractTextAndThoughtSummaryFromGeminiParts(candidate.Content.Parts, responseMode)
 			if thoughtSummary != "" {
 				delta.ReasoningContent = &openai.StreamReasoningContent{
 					Text: thoughtSummary,
+				}
+			}
+			// the model can not respond with both tool calls and text, so it's safe to assign it directly.
+			if signature != "" {
+				if delta.ReasoningContent != nil {
+					delta.ReasoningContent.Signature = signature
+				} else {
+					delta.ReasoningContent = &openai.StreamReasoningContent{
+						Signature: signature,
+					}
 				}
 			}
 
@@ -385,11 +404,24 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiCandidatesToOpenAI
 			}
 
 			// Extract tool calls if any.
-			toolCalls, err = o.extractToolCallsFromGeminiPartsStream(toolCalls, candidate.Content.Parts, json.Marshal)
+			var toolCallSignature string
+			toolCalls, toolCallSignature, err = o.extractToolCallsFromGeminiPartsStream(toolCalls, candidate.Content.Parts, json.Marshal)
 			if err != nil {
 				return nil, fmt.Errorf("error extracting tool calls: %w", err)
 			}
 			delta.ToolCalls = toolCalls
+
+			// Handle signature from tool calls (if not already set from thought text)
+			if toolCallSignature != "" {
+				signature = toolCallSignature
+				if delta.ReasoningContent != nil {
+					delta.ReasoningContent.Signature = signature
+				} else {
+					delta.ReasoningContent = &openai.StreamReasoningContent{
+						Signature: signature,
+					}
+				}
+			}
 
 			choice.Delta = delta
 		}

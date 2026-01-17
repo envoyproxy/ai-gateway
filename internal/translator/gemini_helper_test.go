@@ -440,6 +440,101 @@ func TestAssistantMsgToGeminiParts(t *testing.T) {
 				"call_weather": "get_weather",
 			},
 		},
+		{
+			name: "thinking content with signature (no tool calls)",
+			msg: openai.ChatCompletionAssistantMessageParam{
+				Content: openai.StringOrAssistantRoleContentUnion{
+					Value: []openai.ChatCompletionAssistantMessageParamContent{
+						{
+							Type:      openai.ChatCompletionAssistantMessageParamContentTypeThinking,
+							Text:      ptr.To("Let me think step by step..."),
+							Signature: ptr.To("dGVzdHNpZ25hdHVyZQ=="), // "testsignature" in base64
+						},
+					},
+				},
+				Role: openai.ChatMessageRoleAssistant,
+			},
+			expectedParts: []*genai.Part{
+				{
+					Text:             "Let me think step by step...",
+					Thought:          true,
+					ThoughtSignature: []byte("testsignature"),
+				},
+			},
+			expectedToolCalls: map[string]string{},
+		},
+		{
+			name: "thinking content with signature and tool calls - signature on first tool call",
+			msg: openai.ChatCompletionAssistantMessageParam{
+				Content: openai.StringOrAssistantRoleContentUnion{
+					Value: []openai.ChatCompletionAssistantMessageParamContent{
+						{
+							Type:      openai.ChatCompletionAssistantMessageParamContentTypeThinking,
+							Text:      ptr.To("I need to call a function to get the weather"),
+							Signature: ptr.To("dGVzdHNpZ25hdHVyZQ=="), // "testsignature" in base64
+						},
+					},
+				},
+				Role: openai.ChatMessageRoleAssistant,
+				ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+					{
+						ID: ptr.To("call_weather"),
+						Function: openai.ChatCompletionMessageToolCallFunctionParam{
+							Name:      "get_weather",
+							Arguments: `{"location":"San Francisco"}`,
+						},
+						Type: openai.ChatCompletionMessageToolCallTypeFunction,
+					},
+					{
+						ID: ptr.To("call_time"),
+						Function: openai.ChatCompletionMessageToolCallFunctionParam{
+							Name:      "get_time",
+							Arguments: `{"timezone":"PST"}`,
+						},
+						Type: openai.ChatCompletionMessageToolCallTypeFunction,
+					},
+				},
+			},
+			expectedParts: []*genai.Part{
+				{
+					FunctionCall: &genai.FunctionCall{
+						Name: "get_weather",
+						Args: map[string]any{"location": "San Francisco"},
+					},
+					ThoughtSignature: []byte("testsignature"),
+				},
+				{
+					FunctionCall: &genai.FunctionCall{
+						Name: "get_time",
+						Args: map[string]any{"timezone": "PST"},
+					},
+				},
+				{
+					Text:    "I need to call a function to get the weather",
+					Thought: true,
+				},
+			},
+			expectedToolCalls: map[string]string{
+				"call_weather": "get_weather",
+				"call_time":    "get_time",
+			},
+		},
+		{
+			name: "thinking content with invalid base64 signature",
+			msg: openai.ChatCompletionAssistantMessageParam{
+				Content: openai.StringOrAssistantRoleContentUnion{
+					Value: []openai.ChatCompletionAssistantMessageParamContent{
+						{
+							Type:      openai.ChatCompletionAssistantMessageParamContentTypeThinking,
+							Text:      ptr.To("Let me think..."),
+							Signature: ptr.To("not-valid-base64!!!"),
+						},
+					},
+				},
+				Role: openai.ChatMessageRoleAssistant,
+			},
+			expectedErrorMsg: "failed to decode thought signature",
+		},
 	}
 
 	for _, tc := range tests {
@@ -2076,7 +2171,7 @@ func TestExtractToolCallsFromGeminiParts(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			calls, err := extractToolCallsFromGeminiParts(toolCalls, tt.input, json.MarshalForDeterministicTesting)
+			calls, _, err := extractToolCallsFromGeminiParts(toolCalls, tt.input, json.MarshalForDeterministicTesting)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -2176,6 +2271,7 @@ func TestExtractTextAndThoughtSummaryFromGeminiParts(t *testing.T) {
 		responseMode           geminiResponseMode
 		expectedThoughtSummary string
 		expectedText           string
+		expectedSignature      string
 	}{
 		{
 			name:                   "nil parts",
@@ -2252,12 +2348,15 @@ func TestExtractTextAndThoughtSummaryFromGeminiParts(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			thoughtSummary, text := extractTextAndThoughtSummaryFromGeminiParts(tc.parts, tc.responseMode)
+			thoughtSummary, text, signature := extractTextAndThoughtSummaryFromGeminiParts(tc.parts, tc.responseMode)
 			if thoughtSummary != tc.expectedThoughtSummary {
-				t.Errorf("thought summary result of extractTextAndThoughtSummaryFromGeminiParts() = %q, want %q", thoughtSummary, tc.expectedText)
+				t.Errorf("thought summary result of extractTextAndThoughtSummaryFromGeminiParts() = %q, want %q", thoughtSummary, tc.expectedThoughtSummary)
 			}
 			if text != tc.expectedText {
 				t.Errorf("text result of extractTextAndThoughtSummaryFromGeminiParts() = %q, want %q", text, tc.expectedText)
+			}
+			if signature != tc.expectedSignature {
+				t.Errorf("signature result of extractTextAndThoughtSummaryFromGeminiParts() = %q, want %q", signature, tc.expectedSignature)
 			}
 		})
 	}
