@@ -87,6 +87,15 @@ func TestReadConfig(t *testing.T) {
 			expectHostnames: []string{"api.openai.com"},
 			expectPort:      "443",
 		},
+		{
+			name: "configures OTEL access logs when OTLP endpoint is set",
+			envVars: map[string]string{
+				"OPENAI_API_KEY":              "test-key",
+				"OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4317",
+			},
+			expectHostnames: []string{"api.openai.com", "otel-collector"},
+			expectPort:      "4317",
+		},
 	}
 
 	for _, tt := range tests {

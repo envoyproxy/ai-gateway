@@ -169,7 +169,7 @@ This configures the OTLP gRPC endpoint to otel-tui on port 4317.
    <summary>For Console export</summary>
 
    ```bash
-   # View traces and metrics in aigw logs
+   # View traces, metrics and access logs in the aigw console output
    docker compose -f docker-compose-otel.yaml logs aigw | grep -E "(SpanContext|gen_ai)"
    ```
 

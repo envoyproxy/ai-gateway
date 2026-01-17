@@ -83,6 +83,7 @@ func TestAIGWRun_OTLPChatCompletions(t *testing.T) {
 
 	verifyTokenUsageMetrics(t, "chat", span, metrics, originalModel, responseModel)
 	verifyRequestDurationMetrics(t, "chat", span, metrics, originalModel, responseModel)
+	verifyAccessLog(t, env.collector, originalModel)
 }
 
 func verifyTokenUsageMetrics(t *testing.T, op string, span *tracev1.Span, metrics *metricsv1.ScopeMetrics, originalModel, responseModel string) {
@@ -242,6 +243,41 @@ func getAttributeStringMap(attrs []*commonv1.KeyValue) map[string]string {
 		if sv := attr.Value.GetStringValue(); sv != "" {
 			m[attr.Key] = sv
 		}
+	}
+	return m
+}
+
+// verifyAccessLog verifies that OTLP access logs are received with expected LLM attributes.
+func verifyAccessLog(t *testing.T, collector *testotel.OTLPCollector, expectedModel string) {
+	t.Helper()
+
+	resourceLogs := collector.TakeLog()
+	require.NotNil(t, resourceLogs, "expected access log to be received")
+	require.NotEmpty(t, resourceLogs.ScopeLogs, "expected scope logs")
+
+	scopeLogs := resourceLogs.ScopeLogs[0]
+	require.NotEmpty(t, scopeLogs.LogRecords, "expected log records")
+
+	logRecord := scopeLogs.LogRecords[0]
+
+	// Verify log body (text format) contains expected path.
+	logBody := logRecord.Body.GetStringValue()
+	require.Contains(t, logBody, "/v1/chat/completions", "log body should contain request path")
+	require.Contains(t, logBody, "model="+expectedModel, "log body should contain model")
+
+	// Verify log attributes (JSON fields) contain expected LLM fields.
+	attrs := getLogAttributeMap(logRecord.Attributes)
+	require.Equal(t, expectedModel, attrs["gen_ai.request.model"], "gen_ai.request.model attribute should match")
+	require.NotEmpty(t, attrs["gen_ai.provider.name"], "gen_ai.provider.name should be present")
+	require.NotEmpty(t, attrs["response_code"], "response_code should be present")
+	require.Equal(t, "200", attrs["response_code"], "response_code should be 200")
+}
+
+// getLogAttributeMap returns a map of log attribute key-value pairs.
+func getLogAttributeMap(attrs []*commonv1.KeyValue) map[string]string {
+	m := make(map[string]string)
+	for _, attr := range attrs {
+		m[attr.Key] = attr.Value.GetStringValue()
 	}
 	return m
 }
