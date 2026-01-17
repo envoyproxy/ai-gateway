@@ -7,11 +7,11 @@ package controller
 
 import (
 	"context"
-	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"strconv"
 	"testing"
 	"time"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/stretchr/testify/require"
@@ -155,7 +155,7 @@ func TestGatewayController_Reconcile(t *testing.T) {
 	require.NotNil(t, gwDeployment)
 	require.NotZero(t, gwDeployment.Annotations)
 	uuid := gwDeployment.Annotations[aigatewayUUIDAnnotationKey]
-	require.NotEqual(t, uuid, "")
+	require.NotEmpty(t, uuid)
 
 	// Add a gateway config and explicitly call reconcile.
 	gwConfig := &aigv1a1.GatewayConfig{
@@ -179,7 +179,7 @@ func TestGatewayController_Reconcile(t *testing.T) {
 	gwDeployment2, err := fakeKube.AppsV1().Deployments(namespace).Get(t.Context(), gwDeploymentName, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, gwDeployment2)
-	require.NotEqual(t, gwDeployment2.Annotations[aigatewayUUIDAnnotationKey], uuid)
+	require.NotEqual(t, uuid, gwDeployment2.Annotations[aigatewayUUIDAnnotationKey])
 }
 
 func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
@@ -860,7 +860,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
-		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true)
+		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, v2Container, logLevel)
 		require.NoError(t, err)
 
 		// Check the deployment's pod template has the annotation.
@@ -874,7 +874,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call annotateGatewayPods again but the deployment's pod template should not be updated again.
-		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true)
+		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, v2Container, logLevel)
 		require.NoError(t, err)
 
 		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment3", metav1.GetOptions{})
@@ -1004,7 +1004,7 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
-		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true)
+		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, v2Container, logLevel)
 		require.NoError(t, err)
 
 		// Check the deployment's pod template has the annotation.
@@ -1018,7 +1018,7 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call annotateGatewayPods again, but the deployment's pod template should not be updated again.
-		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true)
+		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, v2Container, logLevel)
 		require.NoError(t, err)
 
 		deployment, err = kube.AppsV1().DaemonSets(egNamespace).Get(t.Context(), "deployment3", metav1.GetOptions{})
