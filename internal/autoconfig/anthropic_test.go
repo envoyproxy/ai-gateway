@@ -10,9 +10,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 func TestPopulateAnthropicEnvConfig(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	tests := []struct {
 		name          string
 		envVars       map[string]string
@@ -94,10 +97,6 @@ func TestPopulateAnthropicEnvConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Clear any existing env vars first
-			t.Setenv("ANTHROPIC_API_KEY", "")
-			t.Setenv("ANTHROPIC_BASE_URL", "")
-
 			// Set test environment variables
 			for k, v := range tt.envVars {
 				t.Setenv(k, v)
