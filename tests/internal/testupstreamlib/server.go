@@ -455,7 +455,7 @@ func getFakeResponse(path string, headers http.Header) ([]byte, error) {
 			}
 			return fake, nil
 		}
-		const template = `{"choices":[{"message":{"role":"assistant", "content":"%s"}}]}`
+		const template = `{"choices": [{"index": 0,"message": {"role": "assistant","content": "%s"},"finish_reason": "stop"}],"usage": {"prompt_tokens": 1,"completion_tokens": 100,"total_tokens": 300}}`
 		msg := fmt.Sprintf(template,
 			//nolint:gosec
 			chatCompletionFakeResponses[rand.New(rand.NewSource(uint64(time.Now().UnixNano()))).
