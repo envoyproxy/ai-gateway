@@ -7,6 +7,7 @@ package controller
 
 import (
 	"context"
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"strconv"
 	"testing"
 	"time"
@@ -48,8 +49,9 @@ func TestGatewayController_Reconcile(t *testing.T) {
 	})
 	// Create a Gateway with attached AIGatewayRoutes.
 	const okGwName = "ok-gw"
+	const gwConfigName = "gw-config"
 	err := fakeClient.Create(t.Context(), &gwapiv1.Gateway{
-		ObjectMeta: metav1.ObjectMeta{Name: okGwName, Namespace: namespace},
+		ObjectMeta: metav1.ObjectMeta{Name: okGwName, Namespace: namespace, Annotations: map[string]string{GatewayConfigAnnotationKey: gwConfigName}},
 		Spec:       gwapiv1.GatewaySpec{},
 	})
 	require.NoError(t, err)
@@ -122,9 +124,10 @@ func TestGatewayController_Reconcile(t *testing.T) {
 	_, err = fakeKube.CoreV1().Pods(namespace).Create(t.Context(), pod, metav1.CreateOptions{})
 	require.NoError(t, err)
 
+	const gwDeploymentName = "gw-deployment"
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "gw-deployment",
+			Name:      gwDeploymentName,
 			Namespace: namespace,
 			Labels: map[string]string{
 				egOwningGatewayNameLabel:      okGwName,
@@ -146,6 +149,37 @@ func TestGatewayController_Reconcile(t *testing.T) {
 		Get(t.Context(), FilterConfigSecretPerGatewayName(okGwName, namespace), metav1.GetOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, secret)
+
+	gwDeployment, err := fakeKube.AppsV1().Deployments(namespace).Get(t.Context(), gwDeploymentName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, gwDeployment)
+	require.NotZero(t, gwDeployment.Annotations)
+	uuid := gwDeployment.Annotations[aigatewayUUIDAnnotationKey]
+	require.NotEqual(t, uuid, "")
+
+	// Add a gateway config and explicitly call reconcile.
+	gwConfig := &aigv1a1.GatewayConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: gwConfigName, Namespace: namespace},
+		Spec: aigv1a1.GatewayConfigSpec{
+			ExtProc: &aigv1a1.GatewayConfigExtProc{
+				LogLevel: ptr.To("debug"),
+				Kubernetes: &egv1a1.KubernetesContainerSpec{
+					Image: ptr.To("custom/extproc:image"),
+				},
+			},
+		},
+	}
+	err = fakeClient.Create(t.Context(), gwConfig)
+	require.NoError(t, err)
+
+	res, err = c.Reconcile(t.Context(), ctrl.Request{NamespacedName: client.ObjectKey{Name: okGwName, Namespace: namespace}})
+	require.NoError(t, err)
+	require.Equal(t, ctrl.Result{}, res)
+
+	gwDeployment2, err := fakeKube.AppsV1().Deployments(namespace).Get(t.Context(), gwDeploymentName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, gwDeployment2)
+	require.NotEqual(t, gwDeployment2.Annotations[aigatewayUUIDAnnotationKey], uuid)
 }
 
 func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
