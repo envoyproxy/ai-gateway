@@ -153,7 +153,7 @@ func TestGatewayController_Reconcile(t *testing.T) {
 	gwDeployment, err := fakeKube.AppsV1().Deployments(namespace).Get(t.Context(), gwDeploymentName, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, gwDeployment)
-	require.NotZero(t, gwDeployment.Annotations)
+	require.Empty(t, gwDeployment.Annotations)
 	uuid := gwDeployment.Annotations[aigatewayUUIDAnnotationKey]
 	require.NotEmpty(t, uuid)
 
