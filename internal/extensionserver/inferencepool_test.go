@@ -90,7 +90,7 @@ func TestBuildAndParseMetadata_RoundTrip(t *testing.T) {
 	assert.Equal(t, "test-pool", parsedPool.Name)
 	assert.Equal(t, "test-ns", parsedPool.Namespace)
 	assert.Equal(t, "test-picker", string(parsedPool.Spec.EndpointPickerRef.Name))
-	assert.Equal(t, int32(9090), int32(parsedPool.Spec.EndpointPickerRef.Port.Number))
+	assert.Equal(t, int32(9090), parsedPool.Spec.EndpointPickerRef.Port.Number)
 
 	// Verify restored annotations
 	extractedMode := parsedPool.Annotations[processingBodyModeAnnotation]
