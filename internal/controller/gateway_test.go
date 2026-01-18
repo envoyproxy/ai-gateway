@@ -51,7 +51,7 @@ func TestGatewayController_Reconcile(t *testing.T) {
 	const okGwName = "ok-gw"
 	const gwConfigName = "gw-config"
 	err := fakeClient.Create(t.Context(), &gwapiv1.Gateway{
-		ObjectMeta: metav1.ObjectMeta{Name: okGwName, Namespace: namespace, Annotations: map[string]string{GatewayConfigAnnotationKey: gwConfigName}},
+		ObjectMeta: metav1.ObjectMeta{Name: okGwName, Namespace: namespace},
 		Spec:       gwapiv1.GatewaySpec{},
 	})
 	require.NoError(t, err)
@@ -170,6 +170,12 @@ func TestGatewayController_Reconcile(t *testing.T) {
 		},
 	}
 	err = fakeClient.Create(t.Context(), gwConfig)
+	require.NoError(t, err)
+
+	err = fakeClient.Update(t.Context(), &gwapiv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{Name: okGwName, Namespace: namespace, Annotations: map[string]string{GatewayConfigAnnotationKey: gwConfigName}},
+		Spec:       gwapiv1.GatewaySpec{},
+	})
 	require.NoError(t, err)
 
 	res, err = c.Reconcile(t.Context(), ctrl.Request{NamespacedName: client.ObjectKey{Name: okGwName, Namespace: namespace}})

@@ -139,10 +139,10 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		var gatewayConfig aigv1a1.GatewayConfig
 		if err = c.client.Get(ctx, client.ObjectKey{Name: configName, Namespace: namespace}, &gatewayConfig); err != nil {
 			if apierrors.IsNotFound(err) {
-				c.logger.Info("GatewayConfig referenced by Gateway not found, using global defaults",
+				c.logger.Error("GatewayConfig referenced by Gateway not found",
 					"gateway_name", req.Name, "gatewayconfig_name", configName)
 			} else {
-				c.logger.Error(err, "failed to get GatewayConfig, using global defaults",
+				c.logger.Error(err, "failed to get GatewayConfig",
 					"gateway_name", req.Name, "gatewayconfig_name", configName)
 			}
 			return ctrl.Result{}, err
