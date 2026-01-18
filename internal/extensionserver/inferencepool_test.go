@@ -19,9 +19,9 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
-// TestExtractInferencePoolProperties_EdgeCases covers edge cases for property extraction
-// that might not be covered in the main extensionserver_test.go.
-func TestExtractInferencePoolProperties_EdgeCases(t *testing.T) {
+// TestPortForInferencePool_EdgeCases covers edge cases for port selection
+// in portForInferencePool, such as invalid or out-of-range ports.
+func TestPortForInferencePool_EdgeCases(t *testing.T) {
 	pool := &gwaiev1.InferencePool{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-pool",
