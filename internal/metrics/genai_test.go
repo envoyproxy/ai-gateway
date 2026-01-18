@@ -91,5 +91,11 @@ func TestGenAiConstants(t *testing.T) {
 	assert.Equal(t, "gen_ai.server.time_per_output_token", genaiMetricServerTimePerOutputToken)
 
 	assert.Equal(t, "openai", genaiProviderOpenAI)
+	assert.Equal(t, "azure.openai", genaiProviderAzureOpenAI)
 	assert.Equal(t, "aws.bedrock", genaiProviderAWSBedrock)
+	assert.Equal(t, "aws.anthropic", genaiProviderAWSAnthropic)
+	assert.Equal(t, "gcp.vertex_ai", genaiProviderGCPVertexAI)
+	assert.Equal(t, "gcp.anthropic", genaiProviderGCPAnthropic)
+	assert.Equal(t, "anthropic", genaiProviderAnthropic)
+	assert.Equal(t, "cohere", genaiProviderCohere)
 }
