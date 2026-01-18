@@ -153,8 +153,8 @@ func TestGatewayController_Reconcile(t *testing.T) {
 	gwDeployment, err := fakeKube.AppsV1().Deployments(namespace).Get(t.Context(), gwDeploymentName, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, gwDeployment)
-	require.Empty(t, gwDeployment.Annotations)
-	uuid := gwDeployment.Annotations[aigatewayUUIDAnnotationKey]
+	require.NotEmpty(t, gwDeployment.Spec.Template.Annotations)
+	uuid := gwDeployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey]
 	require.NotEmpty(t, uuid)
 
 	// Add a gateway config and explicitly call reconcile.
@@ -172,10 +172,12 @@ func TestGatewayController_Reconcile(t *testing.T) {
 	err = fakeClient.Create(t.Context(), gwConfig)
 	require.NoError(t, err)
 
-	err = fakeClient.Update(t.Context(), &gwapiv1.Gateway{
-		ObjectMeta: metav1.ObjectMeta{Name: okGwName, Namespace: namespace, Annotations: map[string]string{GatewayConfigAnnotationKey: gwConfigName}},
-		Spec:       gwapiv1.GatewaySpec{},
-	})
+	// Get the existing Gateway and update its annotations
+	existingGw := &gwapiv1.Gateway{}
+	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: okGwName, Namespace: namespace}, existingGw)
+	require.NoError(t, err)
+	existingGw.Annotations = map[string]string{GatewayConfigAnnotationKey: gwConfigName}
+	err = fakeClient.Update(t.Context(), existingGw)
 	require.NoError(t, err)
 
 	res, err = c.Reconcile(t.Context(), ctrl.Request{NamespacedName: client.ObjectKey{Name: okGwName, Namespace: namespace}})
@@ -185,7 +187,7 @@ func TestGatewayController_Reconcile(t *testing.T) {
 	gwDeployment2, err := fakeKube.AppsV1().Deployments(namespace).Get(t.Context(), gwDeploymentName, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, gwDeployment2)
-	require.NotEqual(t, uuid, gwDeployment2.Annotations[aigatewayUUIDAnnotationKey])
+	require.NotEqual(t, uuid, gwDeployment2.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
 }
 
 func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
