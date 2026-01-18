@@ -25,6 +25,7 @@ metadata:
   namespace: default
 spec:
   extProc:
+    logLevel: "info"
     kubernetes:
       env:
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
