@@ -370,6 +370,12 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					})
 				}
 			}
+			// Convert route's LLMRequestCosts once for all backends in this rule.
+			var routeLLMRequestCosts []filterapi.LLMRequestCost
+			routeLLMRequestCosts, err = llmRequestCostsToFilterAPI(aiGatewayRoute.Spec.LLMRequestCosts)
+			if err != nil {
+				return false, fmt.Errorf("failed to convert LLMRequestCosts for route %s: %w", aiGatewayRoute.Name, err)
+			}
 			for backendRefIndex := range rule.BackendRefs {
 				backendRef := &rule.BackendRefs[backendRefIndex]
 				b := filterapi.Backend{}
@@ -433,13 +439,10 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					}
 				}
 
-				// Assign the route's LLMRequestCosts to this backend.
+				// Assign the pre-converted route's LLMRequestCosts to this backend.
 				// This ensures each backend has its own cost calculation configuration,
 				// allowing different routes to use different CEL expressions for the same metadataKey.
-				b.LLMRequestCosts, err = llmRequestCostsToFilterAPI(aiGatewayRoute.Spec.LLMRequestCosts)
-				if err != nil {
-					return false, fmt.Errorf("failed to convert LLMRequestCosts for route %s: %w", aiGatewayRoute.Name, err)
-				}
+				b.LLMRequestCosts = routeLLMRequestCosts
 
 				ec.Backends = append(ec.Backends, b)
 			}
