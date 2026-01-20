@@ -278,7 +278,6 @@ func TestOTELTracingWithGatewayConfig(t *testing.T) {
 			{"OTEL_SERVICE_NAME", "ai-gateway-production"},
 			{"OTEL_TRACES_SAMPLER", "parentbased_traceidratio"},
 			{"OTEL_TRACES_SAMPLER_ARG", "0.1"},
-			{"LOG_LEVEL", "info"},
 			{"ENABLE_DEBUG_METRICS", "false"},
 		}
 
