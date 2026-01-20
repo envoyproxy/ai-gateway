@@ -1,8 +1,14 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
 package sdk
 
 import (
 	"sync"
 	"testing"
+	"unsafe"
 
 	"github.com/stretchr/testify/require"
 )
@@ -11,11 +17,14 @@ import (
 type noopHTTPFilterConfig struct{}
 
 // NewFilter implements [HTTPFilterConfig.NewFilter].
-func (n *noopHTTPFilterConfig) NewFilter(e EnvoyHTTPFilter) HTTPFilter {
+func (n *noopHTTPFilterConfig) NewFilter(EnvoyHTTPFilter) HTTPFilter {
 	return &NoopHTTPFilter{}
 }
 
 func TestMemoryManager_httpFilterConfig(t *testing.T) {
+	_ = memManager
+	_ = shardingSize
+
 	m := &memoryManager{}
 	config := &noopHTTPFilterConfig{}
 	c := m.pinHTTPFilterConfig(config)
@@ -45,7 +54,7 @@ func TestMemoryManager_httpFilter(t *testing.T) {
 		httpFilterLists:      make([]*pinedHTTPFilter, 1),
 		httpFilterListsMuxes: make([]sync.Mutex, 1),
 	}
-	f := &pinedHTTPFilterItem{filter: &NoopHTTPFilter{}}
+	f := &pinedHTTPFilterItem{filter: &NoopHTTPFilter{}, config: &noopHTTPFilterConfig{}}
 
 	pinned := m.pinHTTPFilter(f)
 	require.NotNil(t, pinned)
@@ -66,4 +75,9 @@ func TestMemoryManager_httpFilter(t *testing.T) {
 	m.unpinHTTPFilter(pinned2)
 	require.Equal(t, pinned, m.httpFilterLists[0])
 	require.Nil(t, pinned.prev)
+
+	// Test unpinning the last item
+	unwrappedFromUintptr := unwrapPinnedObject[pinedHTTPFilter](uintptr(unsafe.Pointer(pinned)))
+	require.NotNil(t, unwrappedFromUintptr)
+	require.Equal(t, pinned, unwrappedFromUintptr)
 }

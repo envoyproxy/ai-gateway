@@ -165,7 +165,11 @@ import (
 	"unsafe"
 )
 
-var version = append([]byte("4dae397a7c9ff0238d318d57ea656ce8b3fbff595787dcd7ee2ff5b79c9fe10f"), 0)
+var (
+	version                      = append([]byte("4dae397a7c9ff0238d318d57ea656ce8b3fbff595787dcd7ee2ff5b79c9fe10f"), 0)
+	unwrapPinnedHTTPFilterConfig = unwrapPinnedObject[pinedHTTPFilterConfig]
+	unwrapPinnedHTTPFilter       = unwrapPinnedObject[pinedHTTPFilter]
+)
 
 func init() {
 	logFunc = func(slevel slog.Level, message string) {

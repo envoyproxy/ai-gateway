@@ -1,3 +1,8 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
 package sdk
 
 import (
@@ -24,6 +29,6 @@ func TestNoopBodyReader(t *testing.T) {
 	require.Equal(t, err, io.EOF)
 	n64, err := reader.WriteTo(nil)
 	require.Equal(t, int64(0), n64)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Equal(t, 0, reader.Len())
 }

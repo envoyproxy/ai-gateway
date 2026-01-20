@@ -1,3 +1,8 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
 package sdk
 
 import (
@@ -13,7 +18,7 @@ func TestNewSlogLogger(t *testing.T) {
 	require.NotNil(t, s)
 }
 
-func newLogFuncWithBuffer(t *testing.T) (*slog.Logger, *bytes.Buffer) {
+func newLogFuncWithBuffer() (*slog.Logger, *bytes.Buffer) {
 	var logOutput bytes.Buffer
 	h := &handler{logFunc: func(slevel slog.Level, message string) {
 		logOutput.WriteString("[" + slevel.String() + "] " + message + "\n")
@@ -23,9 +28,9 @@ func newLogFuncWithBuffer(t *testing.T) (*slog.Logger, *bytes.Buffer) {
 }
 
 func TestHandler(t *testing.T) {
-	l, buf := newLogFuncWithBuffer(t)
-	require.True(t, l.Handler().Enabled(nil, slog.LevelInfo))
-	require.False(t, l.Handler().Enabled(nil, slog.LevelDebug-1))
+	l, buf := newLogFuncWithBuffer()
+	require.True(t, l.Handler().Enabled(t.Context(), slog.LevelInfo))
+	require.False(t, l.Handler().Enabled(t.Context(), slog.LevelDebug-1))
 
 	l.Debug("test")
 	require.Equal(t, "[DEBUG] test\n", buf.String())

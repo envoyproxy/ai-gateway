@@ -15,10 +15,7 @@ var memManager = memoryManager{
 	httpFilterListsMuxes: make([]sync.Mutex, shardingSize),
 }
 
-const (
-	shardingSize = 1 << 8
-	shardingMask = shardingSize - 1
-)
+const shardingSize = 1 << 8
 
 type (
 	// memoryManager manages the heap allocated objects.
@@ -71,11 +68,6 @@ func (m *memoryManager) unpinHTTPFilterConfig(filterConfig *pinedHTTPFilterConfi
 	}
 }
 
-// unwrapPinnedHTTPFilterConfig unwraps the pinned http filter config.
-func unwrapPinnedHTTPFilterConfig(raw uintptr) *pinedHTTPFilterConfig {
-	return (*pinedHTTPFilterConfig)(unsafe.Pointer(raw))
-}
-
 // pinHTTPFilter pins the http filter to the memory manager.
 func (m *memoryManager) pinHTTPFilter(filter *pinedHTTPFilterItem) *pinedHTTPFilter {
 	item := &pinedHTTPFilter{obj: filter, next: nil, prev: nil}
@@ -109,8 +101,8 @@ func (m *memoryManager) unpinHTTPFilter(filter *pinedHTTPFilter) {
 }
 
 // unwrapPinnedHTTPFilter unwraps the raw pointer to the pinned http filter.
-func unwrapPinnedHTTPFilter(raw uintptr) *pinedHTTPFilter {
-	return (*pinedHTTPFilter)(unsafe.Pointer(raw))
+func unwrapPinnedObject[T any](raw uintptr) *T {
+	return (*T)(unsafe.Pointer(raw))
 }
 
 func (m *memoryManager) shardingKey(key uintptr) uintptr {
