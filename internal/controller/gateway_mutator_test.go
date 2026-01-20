@@ -258,7 +258,7 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 				require.Equal(t, resource.MustParse("256Mi"), memReq)
 
 				for i, arg := range container.Args {
-					if i > 0 && container.Args[i-1] == "--logLevel" {
+					if i > 0 && container.Args[i-1] == "-logLevel" {
 						require.Equal(t, "debug", arg) // From GatewayConfig logLevel field
 					}
 				}
