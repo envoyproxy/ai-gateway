@@ -11,9 +11,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/openai/openai-go/v2/packages/param"
-	"github.com/openai/openai-go/v2/responses"
 	"github.com/stretchr/testify/require"
+	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/json"
@@ -53,8 +52,8 @@ func TestResponsesOpenAIToOpenAITranslator_RequestBody(t *testing.T) {
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o",
 			Stream: false,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi"}`)
@@ -76,8 +75,8 @@ func TestResponsesOpenAIToOpenAITranslator_RequestBody(t *testing.T) {
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o",
 			Stream: true,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","stream":true,"input":"Hi"}`)
@@ -96,8 +95,8 @@ func TestResponsesOpenAIToOpenAITranslator_RequestBody(t *testing.T) {
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o",
 			Stream: false,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi"}`)
@@ -124,8 +123,8 @@ func TestResponsesOpenAIToOpenAITranslator_RequestBody(t *testing.T) {
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o",
 			Stream: false,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 		original := []byte(`{"model":"gpt-4o", "input":"Hi"}`)
@@ -145,8 +144,8 @@ func TestResponsesOpenAIToOpenAITranslator_RequestBody(t *testing.T) {
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o",
 			Stream: false,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 
@@ -182,8 +181,8 @@ func TestResponsesOpenAIToOpenAITranslator_ResponseBody(t *testing.T) {
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o",
 			Stream: false,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi"}`)
@@ -258,8 +257,8 @@ func TestResponsesOpenAIToOpenAITranslator_ResponseBody(t *testing.T) {
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o",
 			Stream: false,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi"}`)
@@ -314,8 +313,8 @@ func TestResponsesOpenAIToOpenAITranslator_ResponseBody(t *testing.T) {
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o",
 			Stream: true,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi","stream":true}`)
@@ -374,8 +373,8 @@ data: [DONE]
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o-mini",
 			Stream: true,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 		original := []byte(`{"model":"gpt-4o-mini","input":"Hi","stream": true}`)
@@ -419,8 +418,8 @@ func TestResponses_HandleStreamingResponse(t *testing.T) {
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o",
 			Stream: true,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi","stream":true}`)
@@ -473,8 +472,8 @@ data: [DONE]
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o",
 			Stream: true,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi","stream":true}`)
@@ -497,8 +496,8 @@ func TestResponses_HandleNonStreamingResponse(t *testing.T) {
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o",
 			Stream: false,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi"`)

@@ -8,9 +8,8 @@ package endpointspec
 import (
 	"testing"
 
-	"github.com/openai/openai-go/v2/packages/param"
-	"github.com/openai/openai-go/v2/responses"
 	"github.com/stretchr/testify/require"
+	"k8s.io/utils/ptr"
 
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -284,8 +283,8 @@ func TestResponsesEndpointSpec_ParseBody(t *testing.T) {
 	})
 
 	t.Run("success", func(t *testing.T) {
-		req := openai.ResponseRequest{Model: "gpt-4o", Input: responses.ResponseNewParamsInputUnion{
-			OfString: param.Opt[string]{Value: "Hi"},
+		req := openai.ResponseRequest{Model: "gpt-4o", Input: openai.ResponseNewParamsInputUnion{
+			OfString: ptr.To("Hi"),
 		}, Stream: true}
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
