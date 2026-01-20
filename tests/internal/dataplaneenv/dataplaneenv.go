@@ -273,7 +273,6 @@ func requireEnvoy(t testing.TB,
 		"-c", envoyYamlPath,
 		// This allows multiple Envoy instances to run in parallel.
 		"--base-id", strconv.Itoa(time.Now().Nanosecond()),
-		// Add debug logging for http.
 		"--component-log-level", "http:warn,dynamic_modules:warn,ext_proc:warn",
 	)
 	// func-e will use the version specified in the project root's .envoy-version file.
