@@ -30,12 +30,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
-      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3
+      - uses: dorny/paths-filter@668c092af3649c4b664c54e4b704aa46782f6f7c
         id: changes
         with:
           filters: |
             code:
               - '!**/*.md'
+              - '!docs/**'
               - '!site/**'
               - '!netlify.toml'
           predicate-quantifier: every # Make the filters be AND-ed
