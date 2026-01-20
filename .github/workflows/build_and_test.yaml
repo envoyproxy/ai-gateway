@@ -156,7 +156,8 @@ jobs:
             ~/go/pkg/mod
             ~/go/bin
           key: data-plane-tests-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
-      - env:
+      - name: Test Data Plane with ExtProc
+        env:
           TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
           TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
           TEST_OPENAI_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_OPENAI_API_KEY }}
@@ -167,6 +168,10 @@ jobs:
           TEST_SAMBANOVA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_SAMBANOVA_API_KEY }}
           TEST_DEEPINFRA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_DEEPINFRA_API_KEY }}
         run: make test-data-plane
+      - name: Test Data Plane with Dynamic Module
+        run: make test-data-plane
+        env:
+          TEST_WITH_DYNAMIC_MODULE: "true"
 
   test_data_plane_mcp:
     needs: changes

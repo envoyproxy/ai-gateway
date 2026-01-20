@@ -32,6 +32,17 @@ import (
 //	$ go test ./tests/data-plane -run='^$' -timeout=20m -count=10 -bench='BenchmarkChatCompletions' . > new.txt
 //	$ benchstat old.txt new.txt
 func BenchmarkChatCompletions(b *testing.B) {
+	b.Run("extproc", func(b *testing.B) {
+		b.Setenv("TEST_WITH_DYNAMIC_MODULE", "")
+		benchmarkChatCompletions(b)
+	})
+	b.Run("dynamic_module", func(b *testing.B) {
+		b.Setenv("TEST_WITH_DYNAMIC_MODULE", "true")
+		benchmarkChatCompletions(b)
+	})
+}
+
+func benchmarkChatCompletions(b *testing.B) {
 	config := &filterapi.Config{
 		Version: version.Parse(),
 		Backends: []filterapi.Backend{
