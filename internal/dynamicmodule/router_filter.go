@@ -210,10 +210,7 @@ func (f *routerFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestHeaders(e 
 		return sdk.RequestHeadersStatusStopIteration
 	}
 	internalReqID := originalReqID + uuid.NewString()
-	if !e.SetDynamicMetadataString(internalapi.AIGatewayFilterMetadataNamespace, internalRequestIDMetadataKey, internalReqID) {
-		e.SendLocalReply(500, nil, []byte("failed to set x-internal-request-id metadata"))
-		return sdk.RequestHeadersStatusStopIteration
-	}
+	e.SetDynamicMetadataString(internalapi.AIGatewayFilterMetadataNamespace, internalRequestIDMetadataKey, internalReqID)
 	f.routerFilters.Lock.Lock()
 	f.routerFilters.Filters[internalReqID] = f
 	f.routerFilters.Lock.Unlock()
@@ -236,16 +233,17 @@ func (f *routerFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestHeaders(e 
 
 // RequestBody implements [sdk.HTTPFilter].
 func (f *routerFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.RequestBodyStatus {
-	b, ok := e.GetReceivedRequestBody()
-	if !ok {
-		e.SendLocalReply(400, nil, []byte("failed to read request body"))
-		return sdk.RequestBodyStatusStopIterationAndBuffer
+	if b, ok := e.GetReceivedRequestBody(); ok {
+		_, err := b.WriteTo(f.originalRequestBodyRaw)
+		if err != nil {
+			if f.debugLogEnabled {
+				f.logger.Debug("failed to buffer request body", slog.String("error", err.Error()))
+			}
+			e.SendLocalReply(500, nil, []byte("failed to buffer request body: "+err.Error()))
+			return sdk.RequestBodyStatusStopIterationAndBuffer
+		}
 	}
-	_, err := b.WriteTo(f.originalRequestBodyRaw)
-	if err != nil {
-		e.SendLocalReply(500, nil, []byte("failed to buffer request body: "+err.Error()))
-		return sdk.RequestBodyStatusStopIterationAndBuffer
-	}
+
 	if !endOfStream {
 		if f.debugLogEnabled {
 			f.logger.Debug("waiting for end of stream to parse request body")
@@ -255,8 +253,12 @@ func (f *routerFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(e sdk
 
 	var maybeMutatedOriginalBodyRaw []byte
 	var ep EndpointSpecT
+	var err error
 	f.originalModel, f.originalRequestBody, f.stream, maybeMutatedOriginalBodyRaw, err = ep.ParseBody(f.originalRequestBodyRaw.Bytes(), len(f.runtimeFilterConfig.RequestCosts) > 0)
 	if err != nil {
+		if f.debugLogEnabled {
+			f.logger.Debug("failed to parse request body", slog.String("error", err.Error()))
+		}
 		e.SendLocalReply(400, nil, []byte("failed to parse request body: "+err.Error()))
 		return sdk.RequestBodyStatusStopIterationAndBuffer
 	}

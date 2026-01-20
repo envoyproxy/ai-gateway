@@ -414,7 +414,7 @@ func (f *upstreamFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBodyImp
 				f.logger.Debug("no received response body to process",
 					slog.Bool("end_of_stream", endOfStream))
 			}
-			return nil
+			body = sdk.NoopBodyReader()
 		}
 	} else {
 		body, ok = e.GetBufferedResponseBody()
@@ -445,12 +445,11 @@ func (f *upstreamFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBodyImp
 		}
 		if f.routerFilter.stream {
 			cur, ok := e.GetReceivedResponseBody()
-			if !ok {
-				return errors.New("failed to get current response body for replacement")
-			}
-			ok = e.DrainReceivedResponseBody(cur.Len())
-			if !ok {
-				return errors.New("failed to drain current received response body for replacement")
+			if ok {
+				ok = e.DrainReceivedResponseBody(cur.Len())
+				if !ok {
+					return errors.New("failed to drain current received response body for replacement")
+				}
 			}
 			ok = e.AppendReceivedResponseBody(newBody)
 			if !ok {

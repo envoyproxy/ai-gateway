@@ -77,19 +77,43 @@ type EnvoyHTTPFilter interface {
 	// GetUpstreamHostMetadataString gets the upstream host metadata value for the given namespace and key. Returns the value and true if the value is found.
 	GetUpstreamHostMetadataString(namespace string, key string) (string, bool)
 	// SetDynamicMetadataString sets the dynamic metadata value for the given namespace and key. Returns true if the value is set successfully.
-	SetDynamicMetadataString(namespace string, key string, value string) bool
+	SetDynamicMetadataString(namespace string, key string, value string)
 	// SetDynamicMetadataNumber sets the dynamic metadata value for the given namespace and key. Returns true if the value is set successfully.
-	SetDynamicMetadataNumber(namespace string, key string, value float64) bool
+	SetDynamicMetadataNumber(namespace string, key string, value float64)
 
 	// ClearRouteCache clears the route cache for the current request.
 	ClearRouteCache()
 }
 
+// BodyReader is an interface that represents the body of a request or response.
 type BodyReader interface {
 	// Len returns the length of the body in bytes, regardless of how much has been read.
 	Len() int
 	io.Reader
 	io.WriterTo
+}
+
+// NoopBodyReader returns a no-op BodyReader that has zero length and always returns EOF on Read.
+func NoopBodyReader() BodyReader {
+	return &noopBodyReader{}
+}
+
+// noopBodyReader is a no-op implementation of the BodyReader interface.
+type noopBodyReader struct{}
+
+// Len implements [BodyReader.Len].
+func (r *noopBodyReader) Len() int {
+	return 0
+}
+
+// Read implements [io.Reader.Read].
+func (r *noopBodyReader) Read([]byte) (int, error) {
+	return 0, io.EOF
+}
+
+// WriteTo implements [io.WriterTo.WriteTo].
+func (r *noopBodyReader) WriteTo(io.Writer) (n int64, err error) {
+	return
 }
 
 // HTTPFilter is an interface that represents each Http request.
