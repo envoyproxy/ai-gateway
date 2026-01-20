@@ -273,10 +273,6 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Anthropic, "/v1/messages"), extproc.NewFactory(
 		messagesMetricsFactory, tracing.MessageTracer(), endpointspec.MessagesEndpointSpec{}))
 
-	if watchErr := filterapi.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); watchErr != nil {
-		return fmt.Errorf("failed to start config watcher: %w", watchErr)
-	}
-
 	// Create and register gRPC server with ExternalProcessorServer (the service Envoy calls).
 	if err = filterapi.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {
 		return fmt.Errorf("failed to start config watcher: %w", err)
