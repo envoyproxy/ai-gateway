@@ -6,7 +6,6 @@
 package openai
 
 import (
-	"fmt"
 	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -14,6 +13,8 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // llmInvocationParameters is the representation of LLMInvocationParameters,
@@ -194,7 +195,7 @@ func buildRequestAttributes(chatRequest *openai.ChatCompletionRequest, body stri
 	for i, tool := range chatRequest.Tools {
 		if toolJSON, err := json.Marshal(tool); err == nil {
 			attrs = append(attrs,
-				attribute.String(fmt.Sprintf("%s.%d.tool.json_schema", openinference.LLMTools, i), string(toolJSON)),
+				attribute.String(openinference.InputToolsAttribute(i), string(toolJSON)),
 			)
 		}
 	}
@@ -325,9 +326,19 @@ func buildCompletionRequestAttributes(req *openai.CompletionRequest, body []byte
 	return attrs
 }
 
+// responsesInvocationParameters is the representation of LLMInvocationParameters for responses,
+// which includes all parameters except input, instructions and tools, which have their
+// own attributes.
+// See: openinference-instrumentation-openai _responses_api.py.
+type responsesInvocationParameters struct {
+	openai.ResponseRequest
+	Tools        []openai.ResponseToolUnion         `json:"tools,omitzero"`
+	Instructions string                             `json:"instructions,omitzero"`
+	Input        openai.ResponseNewParamsInputUnion `json:"input,omitzero"`
+}
+
 // buildResponsesRequestAttributes builds OpenTelemetry attributes for responses requests.
 func buildResponsesRequestAttributes(req *openai.ResponseRequest, body []byte, config *openinference.TraceConfig) []attribute.KeyValue {
-	// TODO: Add more detailed request attributes.
 	attrs := []attribute.KeyValue{
 		attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 		attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
@@ -337,15 +348,378 @@ func buildResponsesRequestAttributes(req *openai.ResponseRequest, body []byte, c
 		attrs = append(attrs, attribute.String(openinference.LLMModelName, req.Model))
 	}
 
-	// TODO: Improve input recording based on actual input type.
-	bodyString := openinference.RedactedValue
-	if !config.HideInputs {
-		bodyString = string(body)
+	if config.HideInputs {
+		attrs = append(attrs, attribute.String(openinference.InputValue, openinference.RedactedValue))
+	} else {
+		// Redact images if hide input images is true OR if base64 image max length is set
+		modifiedBody, err := redactImageFromResponseRequestParameters(body, config.HideInputImages, config.Base64ImageMaxLength)
+		if err == nil {
+			attrs = append(attrs, attribute.String(openinference.InputValue, string(modifiedBody)))
+		}
 	}
-	attrs = append(attrs,
-		attribute.String(openinference.InputValue, bodyString),
-		attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-	)
+	attrs = append(attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
 
+	if !config.HideLLMInvocationParameters {
+		if invocationParamsJSON, err := json.Marshal(responsesInvocationParameters{
+			ResponseRequest: *req,
+		}); err == nil {
+			attrs = append(attrs, attribute.String(openinference.LLMInvocationParameters, string(invocationParamsJSON)))
+		}
+	}
+
+	if !config.HideInputs && !config.HideInputMessages {
+		messageIndex := 0
+		if req.Instructions != "" {
+			attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageRole), "system"))
+			if config.HideInputText {
+				attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageContent), openinference.RedactedValue))
+			} else {
+				attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageContent), req.Instructions))
+			}
+			messageIndex++
+		}
+		switch {
+		case req.Input.OfString != nil:
+			attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageRole), "user"))
+			if config.HideInputText {
+				attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageContent), openinference.RedactedValue))
+			} else {
+				attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageContent), *req.Input.OfString))
+			}
+		case req.Input.OfInputItemList != nil:
+			for i := range req.Input.OfInputItemList {
+				attrs = handleInputItemUnionAttrs(&req.Input.OfInputItemList[i], attrs, config, messageIndex)
+				messageIndex++
+			}
+		}
+	}
+
+	// Add indexed attributes for each tool.
+	for i, tool := range req.Tools {
+		if toolJSON, err := json.Marshal(tool); err == nil {
+			attrs = append(attrs,
+				attribute.String(openinference.InputToolsAttribute(i), string(toolJSON)),
+			)
+		}
+	}
+	return attrs
+}
+
+func redactImageFromResponseRequestParameters(requestJSON []byte, hideInputImages bool, base64ImageMaxLength int) ([]byte, error) {
+	// Return if hide input image or base64 image max length is not set
+	if !hideInputImages || base64ImageMaxLength <= 0 {
+		return requestJSON, nil
+	}
+
+	modifiedJSON := make([]byte, len(requestJSON))
+	// deep copy to avoid mutating original body
+	copy(modifiedJSON, requestJSON)
+
+	// Iterate over input[]
+	gjson.GetBytes(requestJSON, "input").ForEach(func(_, inputItem gjson.Result) bool {
+
+		content := inputItem.Get("content")
+		// skip if content is not array
+		if !content.IsArray() {
+			return true
+		}
+
+		// Iterate over content[]
+		content.ForEach(func(_, contentItem gjson.Result) bool {
+
+			if contentItem.Get("type").String() != "input_image" {
+				return true
+			}
+
+			imageURL := contentItem.Get("image_url")
+			if !imageURL.Exists() || imageURL.Type != gjson.String {
+				return true
+			}
+
+			url := imageURL.String()
+
+			shouldRedact := hideInputImages ||
+				(isBase64URL(url) && len(url) > base64ImageMaxLength)
+
+			if shouldRedact {
+				// Build JSON path dynamically
+				path := contentItem.Path("image_url")
+				var err error
+				modifiedJSON, err = sjson.SetBytesOptions(modifiedJSON, path, openinference.RedactedValue, &sjson.Options{ReplaceInPlace: true, Optimistic: true})
+				if err != nil {
+					return false
+				}
+			}
+
+			return true
+		})
+
+		return true
+	})
+
+	return modifiedJSON, nil
+}
+
+func handleInputItemUnionAttrs(item *openai.ResponseInputItemUnionParam, attrs []attribute.KeyValue, config *openinference.TraceConfig, index int) []attribute.KeyValue {
+	switch {
+	case item.OfMessage != nil:
+		attrs = setEasyInputMsgAttrs(item.OfMessage, attrs, config, index)
+	case item.OfInputMessage != nil:
+		attrs = setInputMsgAttrs(item.OfInputMessage, attrs, config, index)
+	case item.OfOutputMessage != nil:
+		attrs = setOutputMsgAttrs(item.OfOutputMessage, attrs, config, index)
+	case item.OfFileSearchCall != nil:
+		attrs = setFileSearchCallAttrs(item.OfFileSearchCall, attrs, config, index)
+	case item.OfComputerCall != nil:
+		attrs = setComputerCallAttrs(item.OfComputerCall, attrs, config, index)
+	case item.OfComputerCallOutput != nil:
+		attrs = setComputerCallOutputAttrs(item.OfComputerCallOutput, attrs, config, index)
+	case item.OfWebSearchCall != nil:
+		attrs = setWebSearchCallAttrs(item.OfWebSearchCall, attrs, config, index)
+	case item.OfFunctionCall != nil:
+		attrs = setFunctionCallAttrs(item.OfFunctionCall, attrs, config, index)
+	case item.OfFunctionCallOutput != nil:
+		attrs = setFunctionCallOutputAttrs(item.OfFunctionCallOutput, attrs, config, index)
+	case item.OfReasoning != nil:
+		attrs = setReasoningAttrs(item.OfReasoning, attrs, config, index)
+	case item.OfCustomToolCall != nil:
+		attrs = setCustomToolCallAttrs(item.OfCustomToolCall, attrs, config, index)
+	case item.OfCustomToolCallOutput != nil:
+		attrs = setCustomToolCallOutputAttrs(item.OfCustomToolCallOutput, attrs, config, index)
+	case item.OfCompaction != nil:
+		// TODO: Handle compaction response
+		// https://github.com/Arize-ai/openinference/blob/f6561ca5a169f13d5b40120311b782348550b5ac/python/instrumentation/openinference-instrumentation-openai/src/openinference/instrumentation/openai/_attributes/_responses_api.py#L462
+	case item.OfImageGenerationCall != nil:
+		// TODO: Handle image generation call
+		// https://github.com/Arize-ai/openinference/blob/f6561ca5a169f13d5b40120311b782348550b5ac/python/instrumentation/openinference-instrumentation-openai/src/openinference/instrumentation/openai/_attributes/_responses_api.py#L426
+	case item.OfCodeInterpreterCall != nil:
+		// TODO: Handle code interpreter call
+		// https://github.com/Arize-ai/openinference/blob/f6561ca5a169f13d5b40120311b782348550b5ac/python/instrumentation/openinference-instrumentation-openai/src/openinference/instrumentation/openai/_attributes/_responses_api.py#L429
+	case item.OfLocalShellCall != nil:
+		// TODO: Handle local shell call
+		// https://github.com/Arize-ai/openinference/blob/f6561ca5a169f13d5b40120311b782348550b5ac/python/instrumentation/openinference-instrumentation-openai/src/openinference/instrumentation/openai/_attributes/_responses_api.py#L432
+	case item.OfLocalShellCallOutput != nil:
+		// TODO: Handle local shell call output
+		// https://github.com/Arize-ai/openinference/blob/f6561ca5a169f13d5b40120311b782348550b5ac/python/instrumentation/openinference-instrumentation-openai/src/openinference/instrumentation/openai/_attributes/_responses_api.py#L435
+	case item.OfShellCall != nil:
+		// TODO: Handle shell call
+		// https://github.com/Arize-ai/openinference/blob/f6561ca5a169f13d5b40120311b782348550b5ac/python/instrumentation/openinference-instrumentation-openai/src/openinference/instrumentation/openai/_attributes/_responses_api.py#L450
+	case item.OfShellCallOutput != nil:
+		// TODO: Handle shell call output
+		// https://github.com/Arize-ai/openinference/blob/f6561ca5a169f13d5b40120311b782348550b5ac/python/instrumentation/openinference-instrumentation-openai/src/openinference/instrumentation/openai/_attributes/_responses_api.py#L453
+	case item.OfApplyPatchCall != nil:
+		// TODO: Handle patch call
+		// https://github.com/Arize-ai/openinference/blob/f6561ca5a169f13d5b40120311b782348550b5ac/python/instrumentation/openinference-instrumentation-openai/src/openinference/instrumentation/openai/_attributes/_responses_api.py#L456
+	case item.OfApplyPatchCallOutput != nil:
+		// TODO: Handle patch call output
+		// https://github.com/Arize-ai/openinference/blob/f6561ca5a169f13d5b40120311b782348550b5ac/python/instrumentation/openinference-instrumentation-openai/src/openinference/instrumentation/openai/_attributes/_responses_api.py#L459
+	case item.OfMcpListTools != nil:
+		// TODO: Handle mcp list tools
+		// https://github.com/Arize-ai/openinference/blob/f6561ca5a169f13d5b40120311b782348550b5ac/python/instrumentation/openinference-instrumentation-openai/src/openinference/instrumentation/openai/_attributes/_responses_api.py#L438
+	case item.OfMcpApprovalRequest != nil:
+		// TODO: Handle mcp approval request
+		// https://github.com/Arize-ai/openinference/blob/f6561ca5a169f13d5b40120311b782348550b5ac/python/instrumentation/openinference-instrumentation-openai/src/openinference/instrumentation/openai/_attributes/_responses_api.py#L441
+	case item.OfMcpApprovalResponse != nil:
+		// TODO: Handle mcp approval response
+		// https://github.com/Arize-ai/openinference/blob/f6561ca5a169f13d5b40120311b782348550b5ac/python/instrumentation/openinference-instrumentation-openai/src/openinference/instrumentation/openai/_attributes/_responses_api.py#L444
+	case item.OfMcpCall != nil:
+		// TODO: Handle mcp call
+		// https://github.com/Arize-ai/openinference/blob/f6561ca5a169f13d5b40120311b782348550b5ac/python/instrumentation/openinference-instrumentation-openai/src/openinference/instrumentation/openai/_attributes/_responses_api.py#L447
+	}
+	return attrs
+}
+
+func setEasyInputMsgAttrs(input *openai.EasyInputMessageParam, attrs []attribute.KeyValue, config *openinference.TraceConfig, index int) []attribute.KeyValue {
+	attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(index, openinference.MessageRole), input.Role))
+	switch {
+	case input.Content.OfString != nil:
+		if config.HideInputText {
+			attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(index, openinference.MessageContent), openinference.RedactedValue))
+		} else {
+			attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(index, openinference.MessageContent), *input.Content.OfString))
+		}
+	case len(input.Content.OfInputItemContentList) != 0:
+		attrs = setInputMsgContentAttrs(input.Content.OfInputItemContentList, attrs, config, index)
+	}
+	return attrs
+}
+
+func setInputMsgAttrs(input *openai.ResponseInputItemMessageParam, attrs []attribute.KeyValue, config *openinference.TraceConfig, index int) []attribute.KeyValue {
+	attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(index, openinference.MessageRole), input.Role))
+	attrs = setInputMsgContentAttrs(input.Content, attrs, config, index)
+	return attrs
+}
+
+func setInputMsgContentAttrs(content []openai.ResponseInputContentUnionParam, attrs []attribute.KeyValue, config *openinference.TraceConfig, index int) []attribute.KeyValue {
+	for i, part := range content {
+		switch {
+		case part.OfInputText != nil:
+			attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "type"), "text"))
+			if config.HideInputText {
+				attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "text"), openinference.RedactedValue))
+			} else {
+				attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "text"), part.OfInputText.Text))
+			}
+		case part.OfInputImage != nil:
+			attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "type"), "image"))
+			if config.HideInputImages {
+				attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "image.image.url"), openinference.RedactedValue))
+			} else {
+				attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "image.image.url"), part.OfInputImage.ImageURL))
+			}
+		case part.OfInputFile != nil:
+			// TODO: Handle input file
+			// refer https://github.com/Arize-ai/openinference/blob/586a6a0289541cf98845d2c7f8a9941912240ea7/python/instrumentation/openinference-instrumentation-openai/src/openinference/instrumentation/openai/_attributes/_responses_api.py#L81
+		}
+	}
+	return attrs
+}
+
+func setOutputMsgAttrs(output *openai.ResponseOutputMessage, attrs []attribute.KeyValue, config *openinference.TraceConfig, index int) []attribute.KeyValue {
+	attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(index, openinference.MessageRole), output.Role))
+	for i, part := range output.Content {
+		switch {
+		case part.OfOutputText != nil:
+			attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "type"), "text"))
+			if config.HideInputText {
+				attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "text"), openinference.RedactedValue))
+			} else {
+				attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "text"), part.OfOutputText.Text))
+			}
+		case part.OfRefusal != nil:
+			attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "type"), "text"))
+			if config.HideInputImages {
+				attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "text"), openinference.RedactedValue))
+			} else {
+				attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "text"), part.OfRefusal.Refusal))
+			}
+		}
+	}
+	return attrs
+}
+
+func setFileSearchCallAttrs(f *openai.ResponseFileSearchToolCall, attrs []attribute.KeyValue, config *openinference.TraceConfig, messageIndex int) []attribute.KeyValue {
+	attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageRole), "assistant"))
+	if config.HideInputText {
+		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), openinference.RedactedValue),
+			attribute.String(openinference.ToolCallFunctionName, openinference.RedactedValue))
+	} else {
+		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), f.ID),
+			attribute.String(openinference.ToolCallFunctionName, f.Type))
+	}
+	return attrs
+}
+
+func setComputerCallAttrs(c *openai.ResponseComputerToolCall, attrs []attribute.KeyValue, config *openinference.TraceConfig, messageIndex int) []attribute.KeyValue {
+	attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageRole), "assistant"))
+	if config.HideInputText {
+		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), openinference.RedactedValue))
+	} else {
+		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), c.CallID))
+	}
+	return attrs
+}
+
+func setComputerCallOutputAttrs(c *openai.ResponseInputItemComputerCallOutputParam, attrs []attribute.KeyValue, config *openinference.TraceConfig, messageIndex int) []attribute.KeyValue {
+	attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageRole), "tool"))
+	if config.HideInputText {
+		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), openinference.RedactedValue))
+	} else {
+		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), c.CallID))
+	}
+	return attrs
+}
+
+func setWebSearchCallAttrs(w *openai.ResponseFunctionWebSearch, attrs []attribute.KeyValue, config *openinference.TraceConfig, messageIndex int) []attribute.KeyValue {
+	attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageRole), "assistant"))
+	if config.HideInputText {
+		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), openinference.RedactedValue),
+			attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallFunctionName), openinference.RedactedValue))
+	} else {
+		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), w.ID),
+			attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallFunctionName), w.Type))
+	}
+	return attrs
+}
+
+func setFunctionCallAttrs(f *openai.ResponseFunctionToolCall, attrs []attribute.KeyValue, config *openinference.TraceConfig, messageIndex int) []attribute.KeyValue {
+	attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageRole), "assistant"))
+	if config.HideInputText {
+		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), openinference.RedactedValue),
+			attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+			attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallFunctionArguments), openinference.RedactedValue),
+		)
+	} else {
+		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), f.CallID),
+			attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallFunctionName), f.Name),
+			attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallFunctionArguments), f.Arguments),
+		)
+	}
+	return attrs
+}
+
+func setFunctionCallOutputAttrs(f *openai.ResponseInputItemFunctionCallOutputParam, attrs []attribute.KeyValue, config *openinference.TraceConfig, messageIndex int) []attribute.KeyValue {
+	attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageRole), "tool"))
+	if config.HideInputText {
+		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), openinference.RedactedValue),
+			attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageContent), openinference.RedactedValue),
+		)
+	} else {
+		// output can be str or complex type - serialize complex types to JSON
+		content, err := json.Marshal(f.Output)
+		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), f.CallID))
+		if err != nil {
+			attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageContent), string(content)))
+		}
+	}
+	return attrs
+}
+
+func setReasoningAttrs(r *openai.ResponseReasoningItem, attrs []attribute.KeyValue, config *openinference.TraceConfig, messageIndex int) []attribute.KeyValue {
+	attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageRole), "assistant"))
+	for i, summary := range r.Summary {
+		if summary.Type == "summary_text" {
+			if config.HideInputText {
+				attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(messageIndex, i, "type"), "text"),
+					attribute.String(openinference.InputMessageContentAttribute(messageIndex, i, "text"), openinference.RedactedValue))
+			} else {
+				attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(messageIndex, i, "type"), "text"),
+					attribute.String(openinference.InputMessageContentAttribute(messageIndex, i, "text"), summary.Text))
+			}
+		}
+	}
+	return attrs
+}
+
+func setCustomToolCallAttrs(c *openai.ResponseCustomToolCall, attrs []attribute.KeyValue, config *openinference.TraceConfig, messageIndex int) []attribute.KeyValue {
+	attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageRole), "assistant"))
+	if config.HideInputText {
+		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), openinference.RedactedValue),
+			attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+			attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallFunctionArguments), openinference.RedactedValue),
+		)
+	} else {
+		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), c.CallID),
+			attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallFunctionName), c.Name),
+			attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallFunctionArguments), c.Input),
+		)
+	}
+	return attrs
+}
+
+func setCustomToolCallOutputAttrs(c *openai.ResponseCustomToolCallOutputParam, attrs []attribute.KeyValue, config *openinference.TraceConfig, messageIndex int) []attribute.KeyValue {
+	attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageRole), "tool"))
+	if config.HideInputText {
+		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), openinference.RedactedValue),
+			attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageContent), openinference.RedactedValue),
+		)
+	} else {
+		// output can be str or complex type - serialize complex types to JSON
+		content, err := json.Marshal(c.Output)
+		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), c.CallID))
+		if err != nil {
+			attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageContent), string(content)))
+		}
+	}
 	return attrs
 }
