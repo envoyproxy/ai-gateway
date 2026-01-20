@@ -2,6 +2,47 @@
 # SPDX-License-Identifier: Apache-2.0
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
+{{- define "aigw.llmAccessLogFields" }}              # LLM specific fields. Dynamic metadata expressions must match
+              # the ones defined in the AIGatewayRoute llmRequestCosts field or
+              # header-mapped attributes via OTEL_*_REQUEST_HEADER_ATTRIBUTES.
+              gen_ai.request.model: "%REQ(X-AI-EG-MODEL)%"
+              gen_ai.response.model: "%DYNAMIC_METADATA(io.envoy.ai_gateway:model_name_override)%"
+              gen_ai.provider.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:backend_name)%"
+              gen_ai.usage.input_tokens: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_input_token)%"
+              gen_ai.usage.output_tokens: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_output_token)%"
+              session.id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:session.id)%"
+{{- end }}
+
+{{- define "aigw.mcpAccessLogFields" }}              # MCP specific fields
+              jsonrpc.request.id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_request_id)%"
+              mcp.session.id: "%REQ(MCP-SESSION-ID)%"
+              mcp.method.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_method)%"
+              session.id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:session.id)%"
+              mcp.provider.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)%"
+{{- end }}
+
+{{- define "aigw.commonAccessLogFields" }}              # Common fields
+              start_time: "%START_TIME%"
+              method: "%REQ(:METHOD)%"
+              request.path: "%REQ(:PATH)%"
+              x-envoy-origin-path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
+              response_code: "%RESPONSE_CODE%"
+              connection_termination_details: "%CONNECTION_TERMINATION_DETAILS%"
+              upstream_transport_failure_reason: "%UPSTREAM_TRANSPORT_FAILURE_REASON%"
+              bytes_received: "%BYTES_RECEIVED%"
+              bytes_sent: "%BYTES_SENT%"
+              duration: "%DURATION%"
+              x-envoy-upstream-service-time: "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
+              x-forwarded-for: "%REQ(X-FORWARDED-FOR)%"
+              user-agent: "%REQ(USER-AGENT)%"
+              x-request-id: "%REQ(X-REQUEST-ID)%"
+              upstream_host: "%UPSTREAM_HOST%"
+              upstream_cluster: "%UPSTREAM_CLUSTER%"
+              upstream_local_address: "%UPSTREAM_LOCAL_ADDRESS%"
+              downstream_local_address: "%DOWNSTREAM_LOCAL_ADDRESS%"
+              downstream_remote_address: "%DOWNSTREAM_REMOTE_ADDRESS%"
+{{- end }}
+
 {{- if .MCPBackendRefs }}
 
 # Configuration for Envoy AI Gateway with MCP servers
@@ -58,47 +99,31 @@ spec:
   telemetry:
     accessLog:
       settings:
-        - sinks:
+        - matches:
+            # MCP metadata only exists on backend-listener requests, which do not carry /mcp paths.
+            # Match LLM by x-ai-eg-model and MCP by x-ai-eg-mcp-backend.
+            - "request.headers['x-ai-eg-model'] != ''"
+          sinks:
             - type: File
               file:
                 path: /dev/stdout
           format:
             type: JSON
             json:
-{{- if or .OpenAI .Anthropic }}
-              # LLM specific fields. The properties in the dynamic metadata
-              # expressions must match the ones defined in the AIGatewayRoute
-              # llmRequestCosts field.
-              genai_model_name: "%REQ(X-AI-EG-MODEL)%"
-              genai_model_name_override: "%DYNAMIC_METADATA(io.envoy.ai_gateway:model_name_override)%"
-              genai_backend_name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:backend_name)%"
-              genai_tokens_input: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_input_token)%"
-              genai_tokens_output: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_output_token)%"
-{{- end }}
-{{- if .MCPBackendRefs }}
-              # MCP specific fields
-              mcp_request_id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_request_id)%"
-              mcp_session_id: "%REQ(MCP-SESSION-ID)%"
-              mcp_method: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_method)%"
-              mcp_backend: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)%"
-{{- end }}
-              # A few default fields
-              start_time: "%START_TIME%"
-              method: "%REQ(:METHOD)%"
-              x-envoy-origin-path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
-              response_code: "%RESPONSE_CODE%"
-              connection_termination_details: "%CONNECTION_TERMINATION_DETAILS%"
-              upstream_transport_failure_reason: "%UPSTREAM_TRANSPORT_FAILURE_REASON%"
-              bytes_received: "%BYTES_RECEIVED%"
-              bytes_sent: "%BYTES_SENT%"
-              duration: "%DURATION%"
-              user-agent: "%REQ(USER-AGENT)%"
-              x-request-id: "%REQ(X-REQUEST-ID)%"
-              upstream_host: "%UPSTREAM_HOST%"
-              upstream_cluster: "%UPSTREAM_CLUSTER%"
-              upstream_local_address: "%UPSTREAM_LOCAL_ADDRESS%"
-              downstream_local_address: "%DOWNSTREAM_LOCAL_ADDRESS%"
-              downstream_remote_address: "%DOWNSTREAM_REMOTE_ADDRESS%"
+{{ template "aigw.llmAccessLogFields" . }}
+{{ template "aigw.commonAccessLogFields" . }}
+        - matches:
+            - "request.headers['x-ai-eg-mcp-backend'] != ''"
+          sinks:
+            - type: File
+              file:
+                path: /dev/stdout
+          format:
+            type: JSON
+            json:
+{{ template "aigw.mcpAccessLogFields" . }}
+{{ template "aigw.commonAccessLogFields" . }}
+
 ---
 {{- if .OpenAI }}
 apiVersion: aigateway.envoyproxy.io/v1alpha1

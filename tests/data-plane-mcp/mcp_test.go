@@ -6,11 +6,13 @@
 package dataplanemcp
 
 import (
+	"bufio"
 	"context"
 	_ "embed"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -26,8 +28,31 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 	"k8s.io/apimachinery/pkg/util/sets"
 
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testmcp"
 )
+
+type accessLogLine struct {
+	Method           string `json:"method"`
+	SessionID        any    `json:"session.id"`
+	MCPProviderName  any    `json:"mcp.provider.name"`
+	MCPMethodName    any    `json:"mcp.method.name"`
+	JSONRPCRequestID any    `json:"jsonrpc.request.id"`
+}
+
+func accessLogHasLine(accessLog string, predicate func(line accessLogLine) bool) bool {
+	scanner := bufio.NewScanner(strings.NewReader(accessLog))
+	for scanner.Scan() {
+		var line accessLogLine
+		if err := json.Unmarshal(scanner.Bytes(), &line); err != nil {
+			continue
+		}
+		if predicate(line) {
+			return true
+		}
+	}
+	return false
+}
 
 const (
 	defaultMCPBackend                  = "default-mcp-backend"
@@ -92,6 +117,68 @@ func TestMCP_differentPath(t *testing.T) {
 	})
 }
 
+func TestMCPAccessLogMetadata(t *testing.T) {
+	env := requireNewMCPEnv(t, false, 1200*time.Second, defaultMCPPath, "-logRequestHeaderAttributes", "x-session-id:session.id")
+	session := env.newSession(t)
+
+	const sessionID = "session-123"
+	_, err := session.session.CallTool(t.Context(), &mcp.CallToolParams{
+		Meta: mcp.Meta{
+			"x-session-id": sessionID,
+		},
+		Name:      defaultMCPBackendResourcePrefix + testmcp.ToolEcho.Tool.Name,
+		Arguments: testmcp.ToolEchoArgs{Text: "log test"},
+	})
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return accessLogHasLine(env.env.EnvoyStdout(), func(line accessLogLine) bool {
+			if line.SessionID != sessionID {
+				return false
+			}
+			if line.MCPProviderName != defaultMCPBackend {
+				return false
+			}
+			if line.MCPMethodName != "tools/call" {
+				return false
+			}
+			return line.JSONRPCRequestID != nil
+		})
+	}, 15*time.Second, 500*time.Millisecond)
+}
+
+func TestMCPAccessLogStreamGET(t *testing.T) {
+	env := requireNewMCPEnv(t, false, 1200*time.Second, defaultMCPPath, "-logRequestHeaderAttributes", "x-session-id:session.id")
+	session := env.newSession(t)
+	sessionID := session.session.ID()
+
+	req, err := http.NewRequest(http.MethodGet, env.baseURL, nil)
+	require.NoError(t, err)
+	req.Header.Set("Accept", "text/event-stream")
+	// MCP GET requires Mcp-Session-Id for the stream; X-Session-Id is the log-mapping header.
+	req.Header.Set("Mcp-Session-Id", sessionID)
+	req.Header.Set("X-Session-Id", sessionID)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+
+	require.Eventually(t, func() bool {
+		return accessLogHasLine(env.env.EnvoyStdout(), func(line accessLogLine) bool {
+			if line.Method != "GET" {
+				return false
+			}
+			if line.SessionID != sessionID {
+				return false
+			}
+			if line.MCPMethodName != nil {
+				return false
+			}
+			return line.JSONRPCRequestID == nil
+		})
+	}, 15*time.Second, 500*time.Millisecond)
+}
+
 func testListTools(t *testing.T, m *mcpEnv) {
 	s := m.newSession(t)
 	tools, err := s.session.ListTools(t.Context(), &mcp.ListToolsParams{})
@@ -148,7 +235,7 @@ func testToolChangeNotifications(t *testing.T, m *mcpEnv) {
 		}
 		require.NotNil(t, req)
 		require.NotNil(t, req.Params)
-		require.IsTypef(t, &mcp.ToolListChangedParams{}, req.Params, "expected ToolListChangedParams, got %T", req.Params)
+		require.IsTypef(t, &mcp.ToolListChangedParams{}, req.Params, "expected ToolListChangedParams, actual %T", req.Params)
 	}
 
 	t.Run("tool add", func(t *testing.T) {
@@ -407,7 +494,7 @@ func testPromptChangeNotifications(t *testing.T, m *mcpEnv) {
 	}
 	require.NotNil(t, req)
 	require.NotNil(t, req.Params)
-	require.IsTypef(t, &mcp.PromptListChangedParams{}, req.Params, "expected PromptListChangedParams, got %T", req.Params)
+	require.IsTypef(t, &mcp.PromptListChangedParams{}, req.Params, "expected PromptListChangedParams, actual %T", req.Params)
 
 	// Verify the prompt was updated.
 	list, err = s.session.ListPrompts(t.Context(), &mcp.ListPromptsParams{})
@@ -519,7 +606,7 @@ func testResourceSubscribe(t *testing.T, m *mcpEnv) {
 	}
 	require.NotNil(t, req)
 	require.NotNil(t, req.Params)
-	require.IsTypef(t, &mcp.ResourceUpdatedNotificationParams{}, req.Params, "expected ResourceUpdatedNotificationRequest, got %T", req.Params)
+	require.IsTypef(t, &mcp.ResourceUpdatedNotificationParams{}, req.Params, "expected ResourceUpdatedNotificationRequest, actual %T", req.Params)
 	// Expect the notification to have the prefixed URI, which is what the MCP client always sees as the resource URI.
 	require.Equal(t, req.Params.URI, defaultMCPBackendResourceURIPrefix+testmcp.DummyResource.URI)
 
@@ -590,7 +677,7 @@ func testResourceListChangeNotifications(t *testing.T, m *mcpEnv) {
 	}
 	require.NotNil(t, req)
 	require.NotNil(t, req.Params)
-	require.IsTypef(t, &mcp.ResourceListChangedParams{}, req.Params, "expected ResourceListChangedParams, got %T", req.Params)
+	require.IsTypef(t, &mcp.ResourceListChangedParams{}, req.Params, "expected ResourceListChangedParams, actual %T", req.Params)
 
 	// Verify the resource was added.
 	list, err = s.session.ListResources(t.Context(), &mcp.ListResourcesParams{})
@@ -678,7 +765,7 @@ func testSamplingCreateMessage(t *testing.T, m *mcpEnv) {
 	}
 	require.NotNil(t, req)
 	require.NotNil(t, req.Params)
-	require.IsTypef(t, &mcp.CreateMessageParams{}, req.Params, "expected CreateMessageParams, got %T", req.Params)
+	require.IsTypef(t, &mcp.CreateMessageParams{}, req.Params, "expected CreateMessageParams, actual %T", req.Params)
 
 	// The gateway encodes progress tokens as: base64(original)__<type>__<backend-name>
 	// where type is 's' for string, 'i' for int, 'f' for float.
@@ -706,7 +793,7 @@ func testElicit(t *testing.T, m *mcpEnv) {
 	}
 	require.NotNil(t, req)
 	require.NotNil(t, req.Params)
-	require.IsTypef(t, &mcp.ElicitParams{}, req.Params, "expected ElicitParams, got %T", req.Params)
+	require.IsTypef(t, &mcp.ElicitParams{}, req.Params, "expected ElicitParams, actual %T", req.Params)
 	// Elicit requests from server-to-client do not create spans in the gateway.
 	// These are server-initiated requests handled without tracing.
 }

@@ -9,6 +9,8 @@ package internalapi
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
@@ -17,6 +19,10 @@ import (
 const (
 	// EnvoyAIGatewayHeaderPrefix is the prefix for special headers used by AI Gateway, either for internal or external use.
 	EnvoyAIGatewayHeaderPrefix = "x-ai-eg-"
+	// EnvoyOriginalPathHeader is the Envoy header used to preserve the original request path.
+	EnvoyOriginalPathHeader = "x-envoy-original-path"
+	// OriginalPathHeader is the AI Gateway header used to preserve the original request path.
+	OriginalPathHeader = EnvoyAIGatewayHeaderPrefix + "original-path"
 	// InternalEndpointMetadataNamespace is the namespace used for the dynamic metadata for internal use.
 	InternalEndpointMetadataNamespace = "aigateway.envoy.io"
 	// InternalMetadataBackendNameKey is the key used to store the backend name
@@ -130,6 +136,41 @@ func ParseRequestHeaderAttributeMapping(s string) (map[string]string, error) {
 	}
 
 	return result, nil
+}
+
+// MergeRequestHeaderAttributeMappings merges two header-to-attribute mappings.
+// Keys in override replace keys in base.
+func MergeRequestHeaderAttributeMappings(base, override map[string]string) map[string]string {
+	if len(base) == 0 && len(override) == 0 {
+		return nil
+	}
+	merged := make(map[string]string, len(base)+len(override))
+	maps.Copy(merged, base)
+	maps.Copy(merged, override)
+	return merged
+}
+
+// FormatRequestHeaderAttributeMapping formats a header-to-attribute mapping into a stable, comma-separated string.
+// The output is sorted by header name to make it deterministic for tests and configs.
+func FormatRequestHeaderAttributeMapping(m map[string]string) string {
+	if len(m) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	var b strings.Builder
+	for i, k := range keys {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		_, _ = b.WriteString(k)
+		b.WriteByte(':')
+		_, _ = b.WriteString(m[k])
+	}
+	return b.String()
 }
 
 // EndpointPrefixes represents well-known endpoint prefixes that AI Gateway supports.

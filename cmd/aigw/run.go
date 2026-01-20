@@ -174,7 +174,16 @@ func run(ctx context.Context, c *cmdRun, o *runOpts, stdout, stderr io.Writer) e
 		return fmt.Errorf("failed to listen: %w", err)
 	}
 	s := grpc.NewServer()
-	extSrv := extensionserver.New(fakeClient, ctrl.Log, o.extprocUDSPath, true)
+	baseLogAttrs, err := internalapi.ParseRequestHeaderAttributeMapping(os.Getenv("OTEL_AIGW_REQUEST_HEADER_ATTRIBUTES"))
+	if err != nil {
+		return fmt.Errorf("invalid OTEL_AIGW_REQUEST_HEADER_ATTRIBUTES: %w", err)
+	}
+	overrideLogAttrs, err := internalapi.ParseRequestHeaderAttributeMapping(os.Getenv("OTEL_AIGW_LOG_REQUEST_HEADER_ATTRIBUTES"))
+	if err != nil {
+		return fmt.Errorf("invalid OTEL_AIGW_LOG_REQUEST_HEADER_ATTRIBUTES: %w", err)
+	}
+	logRequestHeaderAttributes := internalapi.MergeRequestHeaderAttributeMappings(baseLogAttrs, overrideLogAttrs)
+	extSrv := extensionserver.New(fakeClient, ctrl.Log, o.extprocUDSPath, true, logRequestHeaderAttributes)
 	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
 
@@ -379,11 +388,33 @@ func (runCtx *runCmdContext) mustStartExtProc(
 		args = append(args, "--logLevel", "warn")
 	}
 
-	if metricsAttrs := os.Getenv("OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES"); metricsAttrs != "" {
+	baseAttrs, err := internalapi.ParseRequestHeaderAttributeMapping(os.Getenv("OTEL_AIGW_REQUEST_HEADER_ATTRIBUTES"))
+	if err != nil {
+		return errDone(fmt.Errorf("invalid OTEL_AIGW_REQUEST_HEADER_ATTRIBUTES: %w", err))
+	}
+	metricsOverrideAttrs, err := internalapi.ParseRequestHeaderAttributeMapping(os.Getenv("OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES"))
+	if err != nil {
+		return errDone(fmt.Errorf("invalid OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES: %w", err))
+	}
+	metricsAttrs := internalapi.FormatRequestHeaderAttributeMapping(internalapi.MergeRequestHeaderAttributeMappings(baseAttrs, metricsOverrideAttrs))
+	if metricsAttrs != "" {
 		args = append(args, "-metricsRequestHeaderAttributes", metricsAttrs)
 	}
-	if spanAttrs := os.Getenv("OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES"); spanAttrs != "" {
+	spanOverrideAttrs, err := internalapi.ParseRequestHeaderAttributeMapping(os.Getenv("OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES"))
+	if err != nil {
+		return errDone(fmt.Errorf("invalid OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES: %w", err))
+	}
+	spanAttrs := internalapi.FormatRequestHeaderAttributeMapping(internalapi.MergeRequestHeaderAttributeMappings(baseAttrs, spanOverrideAttrs))
+	if spanAttrs != "" {
 		args = append(args, "-spanRequestHeaderAttributes", spanAttrs)
+	}
+	logOverrideAttrs, err := internalapi.ParseRequestHeaderAttributeMapping(os.Getenv("OTEL_AIGW_LOG_REQUEST_HEADER_ATTRIBUTES"))
+	if err != nil {
+		return errDone(fmt.Errorf("invalid OTEL_AIGW_LOG_REQUEST_HEADER_ATTRIBUTES: %w", err))
+	}
+	logAttrs := internalapi.FormatRequestHeaderAttributeMapping(internalapi.MergeRequestHeaderAttributeMappings(baseAttrs, logOverrideAttrs))
+	if logAttrs != "" {
+		args = append(args, "-logRequestHeaderAttributes", logAttrs)
 	}
 
 	done := make(chan error)
@@ -394,6 +425,13 @@ func (runCtx *runCmdContext) mustStartExtProc(
 		}
 		close(done)
 	}()
+	return done
+}
+
+func errDone(err error) <-chan error {
+	done := make(chan error, 1)
+	done <- err
+	close(done)
 	return done
 }
 

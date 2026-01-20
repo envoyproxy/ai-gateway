@@ -26,6 +26,10 @@ static_resources:
                   - name: access_log_stdout
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+                      log_format:
+                        json_format:
+                          session.id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:session.id)%"
+                          mcp.provider.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)%"
                 route_config:
                   name: local_route
                   virtual_hosts:
