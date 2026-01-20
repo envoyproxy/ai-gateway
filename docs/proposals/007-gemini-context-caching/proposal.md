@@ -23,6 +23,7 @@
 This proposal introduces context caching support for GCP Vertex AI (Gemini) in the Envoy AI Gateway. Context caching allows users to cache large, frequently-used content (system prompts, documents, few-shot examples) to reduce costs and latency on subsequent requests.
 
 The implementation introduces:
+
 1. A new external cache service that manages Google's `cachedContents` API
 2. Schema extensions to support cache markers on messages and explicit cache names
 3. Integration with the existing ai-gateway translation pipeline
@@ -38,6 +39,7 @@ GCP Vertex AI provides a [Context Caching API](https://cloud.google.com/vertex-a
 - Long conversation prefixes
 
 **Constraints:**
+
 - Cached content must be a contiguous block of messages
 - Cached content always appears as a prefix (before non-cached messages)
 - Minimum token threshold applies (varies by model, see [GCP documentation](https://cloud.google.com/vertex-ai/docs/context-cache/context-cache-overview) for model-specific limits)
@@ -97,6 +99,7 @@ Reuse the existing `cache_control` field on message content items (Anthropic-sty
 | `ttl` | string | Optional. Cache TTL in seconds format (e.g., `"3600s"`). Defaults to 5 minutes (`"300s"`). |
 
 **Rules:**
+
 - Find the **last** message with `cache_control` - this is the cache breakpoint
 - Everything from the beginning up to and including the breakpoint is cached
 - Everything after the breakpoint is sent as non-cached content
@@ -108,6 +111,7 @@ Reuse the existing `cache_control` field on message content items (Anthropic-sty
 Following Anthropic's semantics, caching references the full prefix - `tools`, `system`, and `messages` (in that order) up to and including the block designated with `cache_control`.
 
 For example:
+
 - `cache_control` on a user message → caches: tools + system + messages up to that point
 - `cache_control` on system → caches: tools + system
 
@@ -118,46 +122,78 @@ Place `cache_control` on the last item you want included in the cache. As conver
 ```json
 {
   "messages": [
-    {"role": "system", "content": [{"type": "text", "text": "..."}]},
-    {"role": "user", "content": [{"type": "text", "text": "..."}]},
-    {"role": "assistant", "content": "..."},
-    {"role": "user", "content": [{"type": "text", "text": "...", "cache_control": {"type": "ephemeral"}}]},
-    {"role": "assistant", "content": "..."},
-    {"role": "user", "content": "Latest question"}
+    { "role": "system", "content": [{ "type": "text", "text": "..." }] },
+    { "role": "user", "content": [{ "type": "text", "text": "..." }] },
+    { "role": "assistant", "content": "..." },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "...",
+          "cache_control": { "type": "ephemeral" }
+        }
+      ]
+    },
+    { "role": "assistant", "content": "..." },
+    { "role": "user", "content": "Latest question" }
   ]
 }
 ```
 
 Result:
+
 - Messages 0-3 are cached (everything up to and including the last `cache_control` marker)
 - Messages 4-5 are sent as non-cached content
 
 **Example: Growing conversation**
 
 Turn 1 - cache system prompt and context:
+
 ```json
 {
   "messages": [
-    {"role": "system", "content": [{"type": "text", "text": "...", "cache_control": {"type": "ephemeral"}}]},
-    {"role": "user", "content": "First question"}
+    {
+      "role": "system",
+      "content": [
+        {
+          "type": "text",
+          "text": "...",
+          "cache_control": { "type": "ephemeral" }
+        }
+      ]
+    },
+    { "role": "user", "content": "First question" }
   ]
 }
 ```
+
 → Cache: message 0 | Non-cached: message 1
 
 Turn 3 - extend cache to include conversation history:
+
 ```json
 {
   "messages": [
-    {"role": "system", "content": [{"type": "text", "text": "..."}]},
-    {"role": "user", "content": "First question"},
-    {"role": "assistant", "content": "First answer"},
-    {"role": "user", "content": [{"type": "text", "text": "Second question", "cache_control": {"type": "ephemeral"}}]},
-    {"role": "assistant", "content": "Second answer"},
-    {"role": "user", "content": "Third question"}
+    { "role": "system", "content": [{ "type": "text", "text": "..." }] },
+    { "role": "user", "content": "First question" },
+    { "role": "assistant", "content": "First answer" },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Second question",
+          "cache_control": { "type": "ephemeral" }
+        }
+      ]
+    },
+    { "role": "assistant", "content": "Second answer" },
+    { "role": "user", "content": "Third question" }
   ]
 }
 ```
+
 → Cache: messages 0-3 (new cache created) | Non-cached: messages 4-5
 
 ### Request: Explicit Cache Name (Pre-cached Content)
@@ -166,14 +202,14 @@ Extend `GCPVertexAIVendorFields` to support explicit cache names for pre-cached 
 
 ```go
 type GCPVertexAIVendorFields struct {
-    // ...existing fields...
+	// ...existing fields...
 
-    // CachedContent specifies a pre-existing cache to use.
-    // Format: "projects/{project}/locations/{location}/cachedContents/{cache_id}"
-    //
-    // When provided, cache markers on messages are ignored and the cache service
-    // is not called. The request is sent directly to Gemini with this cache reference.
-    CachedContent string `json:"cachedContent,omitzero"`
+	// CachedContent specifies a pre-existing cache to use.
+	// Format: "projects/{project}/locations/{location}/cachedContents/{cache_id}"
+	//
+	// When provided, cache markers on messages are ignored and the cache service
+	// is not called. The request is sent directly to Gemini with this cache reference.
+	CachedContent string `json:"cachedContent,omitzero"`
 }
 ```
 
@@ -217,6 +253,7 @@ POST /v1/cache/resolve
 ### Authentication
 
 The cache service requires:
+
 - **Inbound**: Reuse JWT token from the OpenAI request (passed through by ai-gateway)
 - **Outbound**: GCP credentials to call Google's `cachedContents` API
 
@@ -304,6 +341,7 @@ The request body is the OpenAI-format request, passed through from ai-gateway:
 ### Cache Lookup Strategy
 
 The cache service checks for existing caches by:
+
 1. Listing caches from Google's `cachedContents` API (per region)
 2. Matching by `displayName` (which stores the generated cache key)
 
@@ -360,11 +398,13 @@ This "lazy" approach means caches are only created in regions that actually rece
 ### Cost Implications
 
 With compound models, caches may be created in multiple regions over time:
+
 - Each region incurs separate cache storage costs
 - First request to each region pays full token price + cache write cost
 - Subsequent requests to that region benefit from cached tokens
 
 Users should be aware of this when configuring compound models with caching enabled. Consider:
+
 - Using explicit `cachedContent` with pre-created caches for predictable costs
 - Monitoring cache storage costs via GCP billing
 
@@ -410,25 +450,26 @@ Note: `prompt_tokens` is the total input tokens (cached + non-cached). `cached_t
 
 ### ai-gateway Errors
 
-| Condition | HTTP Status | Error Code |
-|-----------|-------------|------------|
-| Both cache markers and `cachedContent` provided | 400 | `invalid_cache_config` |
-| Cache service unavailable | 502 | `cache_service_unavailable` |
-| Cache service timeout | 504 | `cache_service_timeout` |
+| Condition                                       | HTTP Status | Error Code                  |
+| ----------------------------------------------- | ----------- | --------------------------- |
+| Both cache markers and `cachedContent` provided | 400         | `invalid_cache_config`      |
+| Cache service unavailable                       | 502         | `cache_service_unavailable` |
+| Cache service timeout                           | 504         | `cache_service_timeout`     |
 
 ### Cache Service Errors
 
-| Condition | HTTP Status | Error Code |
-|-----------|-------------|------------|
-| Invalid message format | 400 | `invalid_request` |
-| Missing region header | 400 | `missing_region` |
-| GCP authentication failure | 401 | `gcp_auth_error` |
-| Cache creation failed (e.g., below minimum tokens) | 422 | `cache_creation_failed` |
-| Google API error | 502 | `upstream_error` |
+| Condition                                          | HTTP Status | Error Code              |
+| -------------------------------------------------- | ----------- | ----------------------- |
+| Invalid message format                             | 400         | `invalid_request`       |
+| Missing region header                              | 400         | `missing_region`        |
+| GCP authentication failure                         | 401         | `gcp_auth_error`        |
+| Cache creation failed (e.g., below minimum tokens) | 422         | `cache_creation_failed` |
+| Google API error                                   | 502         | `upstream_error`        |
 
 ### Fallback Behavior
 
 If cache service fails completely, ai-gateway should:
+
 1. Log the error with details
 2. Return error to client (fail fast, no silent fallback)
 
@@ -445,7 +486,7 @@ Users create caches directly via GCP's `cachedContents` API and pass the cache n
 ```json
 {
   "model": "gemini-1.5-pro",
-  "messages": [{"role": "user", "content": "Summarize the document."}],
+  "messages": [{ "role": "user", "content": "Summarize the document." }],
   "cachedContent": "projects/my-project/locations/us-central1/cachedContents/abc123"
 }
 ```
@@ -537,11 +578,13 @@ An async mode could be introduced where:
 3. Subsequent requests use the cache once ready
 
 **Request format** (potential):
+
 ```
 X-Cache-Mode: async
 ```
 
 **Response would include status**:
+
 ```json
 {
   "cache_metadata": {
@@ -551,6 +594,7 @@ X-Cache-Mode: async
 ```
 
 **Considerations**:
+
 - Cache service needs to track "in-progress" state to avoid duplicate creations
 - Cost tracking becomes complex as cache write happens after LLM response
 - May require callback or polling mechanism for write cost attribution
