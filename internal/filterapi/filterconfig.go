@@ -41,6 +41,12 @@ type Config struct {
 	Models []Model `json:"models,omitempty"`
 	// MCPConfig is the configuration for the MCPRoute implementations.
 	MCPConfig *MCPConfig `json:"mcpConfig,omitempty"`
+	// EnableRedaction controls whether sensitive information is redacted in debug logs.
+	// When enabled, request/response content, API keys, and other sensitive data are
+	// replaced with [REDACTED LENGTH=n HASH=xxxx] placeholders in logs.
+	// Only takes effect when log level is set to debug.
+	// Default: false (preserves original logging behavior before redaction was introduced)
+	EnableRedaction bool `json:"enableRedaction,omitempty"`
 }
 
 // Model corresponds to the OpenAI model object in the OpenAI-compatible APIs

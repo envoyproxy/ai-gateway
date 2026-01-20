@@ -41,6 +41,7 @@ func TestServer_LoadConfig(t *testing.T) {
 					CreatedAt: now,
 				},
 			},
+			EnableRedaction: true,
 		}
 		rc, err := NewRuntimeConfig(t.Context(), config, func(_ context.Context, b *BackendAuth) (BackendAuthHandler, error) {
 			require.NotNil(t, b)
@@ -63,5 +64,6 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), val)
 		require.Equal(t, config.Models, rc.DeclaredModels)
+		require.True(t, rc.EnableRedaction)
 	})
 }

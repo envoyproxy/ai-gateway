@@ -176,12 +176,14 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
 
-	if r.debugLogEnabled {
-		// Use the request-scoped logger from context if available, otherwise fall back to processor logger
-		logger := loggerFromContext(ctx)
-		if logger == nil {
-			logger = r.logger
-		}
+	// Use the request-scoped logger from context if available, otherwise fall back to processor logger
+	logger := loggerFromContext(ctx)
+	if logger == nil {
+		logger = r.logger
+	}
+
+	// Only log parsed request body when redaction is enabled
+	if r.debugLogEnabled && r.config != nil && r.config.EnableRedaction {
 		if redactedBody, err := r.eh.RedactSensitiveInfoFromRequest(body); err != nil {
 			logger.Warn("failed to redact sensitive info from request, ignoring and continuing", slog.Any("error", err))
 		} else {

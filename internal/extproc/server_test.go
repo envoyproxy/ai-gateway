@@ -445,7 +445,7 @@ func Test_filterSensitiveHeadersForLogging(t *testing.T) {
 	require.Contains(t, hm.Headers, &corev3.HeaderValue{Key: "authorization", Value: "sensitive"})
 }
 
-func Test_filterSensitiveBodyForLogging(t *testing.T) {
+func Test_filterRequestBodyResponseHeaders(t *testing.T) {
 	buf := internaltesting.CaptureOutput("test")[0]
 	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
@@ -473,7 +473,7 @@ func Test_filterSensitiveBodyForLogging(t *testing.T) {
 		},
 	}
 	rb := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
-	filtered := redactProcessingResponseRequestBody(rb, logger, []string{"authorization"})
+	filtered := redactRequestBodyResponse(rb, logger, []string{"authorization"}, false)
 	require.NotNil(t, filtered)
 	filteredMutation := filtered.RequestBody.Response.GetHeaderMutation()
 	require.Equal(t, []string{"x-envoy-original-path"}, filteredMutation.GetRemoveHeaders())
@@ -491,13 +491,82 @@ func Test_filterSensitiveBodyForLogging(t *testing.T) {
 	require.Contains(t, buf.String(), "filtering sensitive header")
 
 	t.Run("handle nil response", func(t *testing.T) {
-		filtered := redactProcessingResponseRequestBody(nil, logger, []string{"authorization"})
+		filtered := redactRequestBodyResponse(nil, logger, []string{"authorization"}, false)
 		require.NotNil(t, filtered)
 		require.Equal(t, &extprocv3.ProcessingResponse_RequestBody{}, filtered)
 	})
 }
 
-func Test_redactProcessingResponseResponseBody(t *testing.T) {
+func Test_redactRequestBodyResponseFull(t *testing.T) {
+	buf := internaltesting.CaptureOutput("test")[0]
+	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+	resp := &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestBody{
+			RequestBody: &extprocv3.BodyResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation: &extprocv3.HeaderMutation{
+						SetHeaders: []*corev3.HeaderValueOption{
+							{Header: &corev3.HeaderValue{
+								Key:      ":path",
+								RawValue: []byte("/model/some-random-model/converse"),
+							}},
+							{Header: &corev3.HeaderValue{
+								Key:      "Authorization",
+								RawValue: []byte("sensitive"),
+							}},
+						},
+						RemoveHeaders: []string{"x-envoy-original-path"},
+					},
+					BodyMutation: &extprocv3.BodyMutation{
+						Mutation: &extprocv3.BodyMutation_Body{
+							Body: []byte(`{"model":"gpt-4","messages":[{"role":"user","content":"secret prompt"}]}`),
+						},
+					},
+				},
+			},
+		},
+	}
+	rb := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+	filtered := redactRequestBodyResponse(rb, logger, []string{"authorization"}, true)
+	require.NotNil(t, filtered)
+
+	// Verify headers are redacted
+	filteredMutation := filtered.RequestBody.Response.GetHeaderMutation()
+	require.Equal(t, []string{"x-envoy-original-path"}, filteredMutation.GetRemoveHeaders())
+	require.Equal(t, []*corev3.HeaderValueOption{
+		{Header: &corev3.HeaderValue{Key: ":path", RawValue: []byte("/model/some-random-model/converse")}},
+		{Header: &corev3.HeaderValue{Key: "Authorization", RawValue: []byte("[REDACTED]")}},
+	}, filteredMutation.GetSetHeaders())
+
+	// Verify body is redacted
+	filteredBodyMutation := filtered.RequestBody.Response.GetBodyMutation()
+	require.NotNil(t, filteredBodyMutation)
+	bodyBytes := filteredBodyMutation.GetBody()
+	require.NotNil(t, bodyBytes)
+	bodyStr := string(bodyBytes)
+	require.Contains(t, bodyStr, "[REDACTED LENGTH=")
+	require.Contains(t, bodyStr, "HASH=")
+	require.NotContains(t, bodyStr, "secret prompt") // Original content should not be present
+
+	// Original one should not be modified
+	originalMutation := resp.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response.GetHeaderMutation()
+	require.Equal(t, []*corev3.HeaderValueOption{
+		{Header: &corev3.HeaderValue{Key: ":path", RawValue: []byte("/model/some-random-model/converse")}},
+		{Header: &corev3.HeaderValue{Key: "Authorization", RawValue: []byte("sensitive")}},
+	}, originalMutation.GetSetHeaders())
+	originalBodyMutation := resp.Response.(*extprocv3.ProcessingResponse_RequestBody).RequestBody.Response.GetBodyMutation()
+	require.JSONEq(t, `{"model":"gpt-4","messages":[{"role":"user","content":"secret prompt"}]}`, string(originalBodyMutation.GetBody()))
+
+	t.Run("handle nil response", func(t *testing.T) {
+		filtered := redactRequestBodyResponse(nil, logger, []string{"authorization"}, true)
+		require.NotNil(t, filtered)
+		require.Equal(t, &extprocv3.ProcessingResponse_RequestBody{}, filtered)
+	})
+}
+
+func Test_redactResponseBodyResponseFull(t *testing.T) {
 	buf := internaltesting.CaptureOutput("test")[0]
 	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
@@ -533,7 +602,7 @@ func Test_redactProcessingResponseResponseBody(t *testing.T) {
 		},
 	}
 	rb := resp.Response.(*extprocv3.ProcessingResponse_ResponseBody)
-	filtered := redactProcessingResponseResponseBody(rb, logger, []string{"authorization", "x-api-key"})
+	filtered := redactResponseBodyResponseFull(rb, logger, []string{"authorization", "x-api-key"})
 	require.NotNil(t, filtered)
 	filteredMutation := filtered.ResponseBody.Response.GetHeaderMutation()
 	require.Equal(t, []string{"x-envoy-upstream-service-time"}, filteredMutation.GetRemoveHeaders())
@@ -566,7 +635,7 @@ func Test_redactProcessingResponseResponseBody(t *testing.T) {
 	require.JSONEq(t, `{"response": "AI generated content"}`, string(originalBodyMutation.GetBody()))
 
 	t.Run("handle nil response", func(t *testing.T) {
-		filtered := redactProcessingResponseResponseBody(nil, logger, []string{"authorization"})
+		filtered := redactResponseBodyResponseFull(nil, logger, []string{"authorization"})
 		require.NotNil(t, filtered)
 		require.Equal(t, &extprocv3.ProcessingResponse_ResponseBody{}, filtered)
 	})
@@ -587,7 +656,7 @@ func Test_redactProcessingResponseResponseBody(t *testing.T) {
 			},
 		}
 		rb := respWithoutBody.Response.(*extprocv3.ProcessingResponse_ResponseBody)
-		filtered := redactProcessingResponseResponseBody(rb, logger, []string{})
+		filtered := redactResponseBodyResponseFull(rb, logger, []string{})
 		require.NotNil(t, filtered)
 		require.Nil(t, filtered.ResponseBody.Response.GetBodyMutation())
 	})
@@ -607,7 +676,7 @@ func Test_redactProcessingResponseResponseBody(t *testing.T) {
 			},
 		}
 		rb := respWithEmptyBody.Response.(*extprocv3.ProcessingResponse_ResponseBody)
-		filtered := redactProcessingResponseResponseBody(rb, logger, []string{})
+		filtered := redactResponseBodyResponseFull(rb, logger, []string{})
 		require.NotNil(t, filtered)
 		bodyMutation := filtered.ResponseBody.Response.GetBodyMutation()
 		require.NotNil(t, bodyMutation)

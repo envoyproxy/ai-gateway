@@ -279,18 +279,27 @@ func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.Pro
 			}
 		}
 		if s.debugLogEnabled {
-			rh := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
-			redactedResp := redactProcessingResponseRequestHeaders(rh, s.logger, sensitiveHeaderKeys)
-			l.Debug("request headers processed", slog.Any("response", redactedResp))
+			var logContent any
+			if s.config != nil && s.config.EnableRedaction {
+				rh := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
+				logContent = redactProcessingResponseRequestHeaders(rh, s.logger, sensitiveHeaderKeys)
+			} else {
+				logContent = resp
+			}
+			l.Debug("request headers processed", slog.Any("response", logContent))
 		}
 		return resp, nil
 	case *extprocv3.ProcessingRequest_RequestBody:
+		if s.debugLogEnabled && s.config != nil && !s.config.EnableRedaction {
+			l.Debug("request body processing", slog.Any("request", req))
+		}
 		resp, err := p.ProcessRequestBody(ctx, value.RequestBody)
 		// If the DEBUG log level is enabled, filter the sensitive data before logging.
 		if s.debugLogEnabled {
 			rb := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
-			filteredBody := redactProcessingResponseRequestBody(rb, l, sensitiveHeaderKeys)
-			l.Debug("request body processed", slog.Any("response", filteredBody))
+			redactBody := s.config != nil && s.config.EnableRedaction
+			logContent := redactRequestBodyResponse(rb, l, sensitiveHeaderKeys, redactBody)
+			l.Debug("request body processed", slog.Any("response", logContent))
 		}
 		if err != nil {
 			return nil, fmt.Errorf("cannot process request body: %w", err)
@@ -310,7 +319,7 @@ func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.Pro
 		}
 		return resp, nil
 	case *extprocv3.ProcessingRequest_ResponseBody:
-		if s.debugLogEnabled {
+		if s.debugLogEnabled && s.config != nil && !s.config.EnableRedaction {
 			l.Debug("response body processing", slog.Any("request", req))
 		}
 		resp, err := p.ProcessResponseBody(ctx, value.ResponseBody)
@@ -320,15 +329,18 @@ func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.Pro
 
 		// If the DEBUG log level is enabled, filter the sensitive data before logging.
 		if l.Enabled(ctx, slog.LevelDebug) && resp != nil && resp.Response != nil {
-			var filteredBody any
-			switch val := resp.Response.(type) {
-			case *extprocv3.ProcessingResponse_ResponseBody:
-				filteredBody = redactProcessingResponseResponseBody(val, l, sensitiveHeaderKeys)
-			case *extprocv3.ProcessingResponse_ImmediateResponse:
-				// Immediate response doesn't need to be filtered.
-				filteredBody = val
+			var logContent any
+			if s.config != nil && s.config.EnableRedaction {
+				switch val := resp.Response.(type) {
+				case *extprocv3.ProcessingResponse_ResponseBody:
+					logContent = redactResponseBodyResponseFull(val, l, sensitiveHeaderKeys)
+				case *extprocv3.ProcessingResponse_ImmediateResponse:
+					logContent = val
+				}
+			} else {
+				logContent = resp
 			}
-			l.Debug("response body processed", slog.Any("response", filteredBody))
+			l.Debug("response body processed", slog.Any("response", logContent))
 		}
 
 		return resp, nil
@@ -512,13 +524,11 @@ func redactBodyMutation(bodyMutation *extprocv3.BodyMutation) *extprocv3.BodyMut
 	}
 }
 
-// redactProcessingResponseResponseBody creates a safe-to-log copy of the response body processing response.
-// This is used exclusively for debug logging - the original response is never modified to ensure
-// the actual AI provider response flows through unchanged.
-//
-// Both headers (API keys, auth tokens) and body content (AI-generated text, images, etc.) are redacted
-// to prevent sensitive data from appearing in logs.
-func redactProcessingResponseResponseBody(resp *extprocv3.ProcessingResponse_ResponseBody, logger *slog.Logger, sensitiveKeys []string) *extprocv3.ProcessingResponse_ResponseBody {
+// redactResponseBodyResponseFull creates a safe-to-log copy with headers AND body redacted.
+// This is used exclusively for debug logging when enableRedaction is true.
+// The original response is never modified to ensure the actual AI provider response flows through unchanged.
+// Both headers (API keys, auth tokens) and body content (AI-generated text, images, etc.) are redacted.
+func redactResponseBodyResponseFull(resp *extprocv3.ProcessingResponse_ResponseBody, logger *slog.Logger, sensitiveKeys []string) *extprocv3.ProcessingResponse_ResponseBody {
 	if resp == nil {
 		return &extprocv3.ProcessingResponse_ResponseBody{}
 	}
@@ -537,23 +547,27 @@ func redactProcessingResponseResponseBody(resp *extprocv3.ProcessingResponse_Res
 	}
 }
 
-// redactProcessingResponseRequestBody creates a safe-to-log copy of the request body processing response.
-// This is used exclusively for debug logging - the original response is never modified to ensure
-// backend authentication headers and request mutations flow through correctly.
-//
-// Primarily redacts headers (API keys, auth tokens). Body content redaction is handled separately
-// in processor_impl.go by calling EndpointSpec.RedactSensitiveInfoFromRequest on the parsed request.
-func redactProcessingResponseRequestBody(resp *extprocv3.ProcessingResponse_RequestBody, logger *slog.Logger, sensitiveKeys []string) *extprocv3.ProcessingResponse_RequestBody {
+// redactRequestBodyResponse creates a safe-to-log copy of the request body response.
+// When redactBody is false, only headers are filtered while body content is logged as-is for debugging.
+// When redactBody is true, both headers (API keys, auth tokens) and body content are redacted for production-safe logging.
+func redactRequestBodyResponse(resp *extprocv3.ProcessingResponse_RequestBody, logger *slog.Logger, sensitiveKeys []string, redactBody bool) *extprocv3.ProcessingResponse_RequestBody {
 	if resp == nil {
 		return &extprocv3.ProcessingResponse_RequestBody{}
 	}
 
 	originalHeaderMutation := resp.RequestBody.Response.GetHeaderMutation()
+	var bodyMutation *extprocv3.BodyMutation
+	if redactBody {
+		bodyMutation = redactBodyMutation(resp.RequestBody.Response.GetBodyMutation())
+	} else {
+		bodyMutation = resp.RequestBody.Response.GetBodyMutation()
+	}
+
 	return &extprocv3.ProcessingResponse_RequestBody{
 		RequestBody: &extprocv3.BodyResponse{
 			Response: &extprocv3.CommonResponse{
 				HeaderMutation:  redactHeaderMutation(originalHeaderMutation, logger, sensitiveKeys),
-				BodyMutation:    resp.RequestBody.Response.GetBodyMutation(),
+				BodyMutation:    bodyMutation,
 				ClearRouteCache: resp.RequestBody.Response.GetClearRouteCache(),
 			},
 		},
