@@ -3,8 +3,6 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-//go:build envoy
-
 package sdk
 
 import (
@@ -12,7 +10,10 @@ import (
 	"unsafe"
 )
 
-var memManager memoryManager
+var memManager = memoryManager{
+	httpFilterLists:      make([]*pinedHTTPFilter, shardingSize),
+	httpFilterListsMuxes: make([]sync.Mutex, shardingSize),
+}
 
 const (
 	shardingSize = 1 << 8
@@ -22,11 +23,13 @@ const (
 type (
 	// memoryManager manages the heap allocated objects.
 	// It is used to pin the objects to the heap to avoid them being garbage collected by the Go runtime.
+	//
+	// This will be unnecessary from v1.38 by leveraging https://github.com/envoyproxy/envoy/pull/42818
 	memoryManager struct {
 		// httpFilterConfigs holds a linked lists of HTTPFilter.
 		httpFilterConfigs    *pinedHTTPFilterConfig
-		httpFilterLists      [shardingSize]*pinedHTTPFilter
-		httpFilterListsMuxes [shardingSize]sync.Mutex
+		httpFilterLists      []*pinedHTTPFilter
+		httpFilterListsMuxes []sync.Mutex
 	}
 
 	// pinedHTTPFilterConfig holds a pinned HTTPFilter managed by the memory manager.
@@ -76,7 +79,7 @@ func unwrapPinnedHTTPFilterConfig(raw uintptr) *pinedHTTPFilterConfig {
 // pinHTTPFilter pins the http filter to the memory manager.
 func (m *memoryManager) pinHTTPFilter(filter *pinedHTTPFilterItem) *pinedHTTPFilter {
 	item := &pinedHTTPFilter{obj: filter, next: nil, prev: nil}
-	index := shardingKey(uintptr(unsafe.Pointer(item)))
+	index := m.shardingKey(uintptr(unsafe.Pointer(item)))
 	mux := &m.httpFilterListsMuxes[index]
 	mux.Lock()
 	defer mux.Unlock()
@@ -90,7 +93,7 @@ func (m *memoryManager) pinHTTPFilter(filter *pinedHTTPFilterItem) *pinedHTTPFil
 
 // unpinHTTPFilter unpins the http filter from the memory manager.
 func (m *memoryManager) unpinHTTPFilter(filter *pinedHTTPFilter) {
-	index := shardingKey(uintptr(unsafe.Pointer(filter)))
+	index := m.shardingKey(uintptr(unsafe.Pointer(filter)))
 	mux := &m.httpFilterListsMuxes[index]
 	mux.Lock()
 	defer mux.Unlock()
@@ -110,8 +113,8 @@ func unwrapPinnedHTTPFilter(raw uintptr) *pinedHTTPFilter {
 	return (*pinedHTTPFilter)(unsafe.Pointer(raw))
 }
 
-func shardingKey(key uintptr) uintptr {
-	return splitmix64(key) & shardingMask
+func (m *memoryManager) shardingKey(key uintptr) uintptr {
+	return splitmix64(key) & uintptr(len(m.httpFilterListsMuxes)-1)
 }
 
 func splitmix64(x uintptr) uintptr {

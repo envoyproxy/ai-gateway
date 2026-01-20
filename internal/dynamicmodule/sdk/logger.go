@@ -15,7 +15,7 @@ import (
 
 // NewSlogLogger creates a new slog.Logger that routes logs to Envoy's logging system.
 func NewSlogLogger() *slog.Logger {
-	h := &handler{}
+	h := &handler{logFunc: logFunc}
 	return slog.New(h)
 }
 
@@ -31,9 +31,10 @@ var (
 
 // handler implements [slog.Handler].
 type handler struct {
-	mu     sync.Mutex // protects state below (simple approach)
-	attrs  []slog.Attr
-	groups []string
+	mu      sync.Mutex // protects state below (simple approach)
+	attrs   []slog.Attr
+	groups  []string
+	logFunc func(slevel slog.Level, message string)
 }
 
 // Enabled implements [slog.Handler].
@@ -64,7 +65,7 @@ func (h *handler) Handle(_ context.Context, r slog.Record) error { // nolint:goc
 		renderAttrs(&b, groups, attrs)
 	}
 
-	logFunc(r.Level, b.String())
+	h.logFunc(r.Level, b.String())
 	return nil
 }
 
@@ -88,6 +89,7 @@ func (h *handler) clone() *handler {
 	h2 := &handler{}
 	h2.attrs = append([]slog.Attr(nil), h.attrs...)
 	h2.groups = append([]string(nil), h.groups...)
+	h2.logFunc = h.logFunc
 	return h2
 }
 
@@ -100,19 +102,6 @@ func renderAttrs(b *strings.Builder, groups []string, attrs []slog.Attr) {
 	for i, a := range attrs {
 		if i > 0 {
 			b.WriteString(" ")
-		}
-
-		// Handle nested groups in attrs: slog.Group("k", ...)
-		if a.Value.Kind() == slog.KindGroup {
-			// Render group as prefix + groupname.key=value ...
-			gs := a.Value.Group()
-			// Temporarily extend prefix
-			if a.Key != "" {
-				renderAttrs(b, append(groups, a.Key), gs)
-			} else {
-				renderAttrs(b, groups, gs)
-			}
-			continue
 		}
 
 		fmt.Fprintf(b, "%s%s=%s", prefix, a.Key, a.Value)
