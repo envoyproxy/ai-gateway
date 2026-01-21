@@ -21,7 +21,7 @@ type (
 	// memoryManager manages the heap allocated objects.
 	// It is used to pin the objects to the heap to avoid them being garbage collected by the Go runtime.
 	//
-	// This will be unnecessary from v1.38 by leveraging https://github.com/envoyproxy/envoy/pull/42818
+	// This can be made lock-free from v1.38 by leveraging https://github.com/envoyproxy/envoy/pull/42818
 	memoryManager struct {
 		// httpFilterConfigs holds a linked lists of HTTPFilter.
 		httpFilterConfigs    *pinedHTTPFilterConfig

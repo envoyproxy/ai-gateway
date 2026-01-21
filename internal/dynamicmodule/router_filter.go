@@ -292,6 +292,9 @@ func (f *routerFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(e sdk
 
 // ResponseHeaders implements [sdk.HTTPFilter].
 func (f *routerFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseHeaders(e sdk.EnvoyHTTPFilter, _ bool) sdk.ResponseHeadersStatus {
+	// Ideally we should handle the upstream specific logic at the upstream filter layer.
+	// However, because of the bug in Envoy's upstream filter handling, we cannot do that until it is fixed.
+	// So, we embark the upstream filter logic here for now.
 	if f.upstreamFilter == nil {
 		return sdk.ResponseHeadersStatusContinue
 	}
@@ -314,6 +317,9 @@ func (f *routerFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseHeaders(e
 
 // ResponseBody implements [sdk.HTTPFilter].
 func (f *routerFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBody(e sdk.EnvoyHTTPFilter, endOfStream bool) sdk.ResponseBodyStatus {
+	// Ideally we should handle the upstream specific logic at the upstream filter layer.
+	// However, because of the bug in Envoy's upstream filter handling, we cannot do that until it is fixed.
+	// So, we embark the upstream filter logic here for now.
 	if f.upstreamFilter == nil {
 		return sdk.ResponseBodyStatusContinue
 	}

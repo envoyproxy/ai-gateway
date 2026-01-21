@@ -68,6 +68,8 @@ type Env struct {
 }
 
 // RouterFilters holds the instantiated router filters keyed on the request-id.
+//
+// This can be made lock-free from v1.38 by leveraging https://github.com/envoyproxy/envoy/pull/42818
 type RouterFilters struct {
 	Filters map[string]RouterFilterItem
 	Lock    sync.RWMutex
