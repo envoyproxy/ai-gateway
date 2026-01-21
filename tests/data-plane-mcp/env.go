@@ -88,25 +88,25 @@ func requireNewMCPEnv(t *testing.T, forceJSONResponse bool, writeTimeout time.Du
 			{
 				Name: "test-route",
 				Backends: []filterapi.MCPBackend{
-					{Name: "dumb-mcp-backend", Path: "/mcp"},
-					{Name: "default-mcp-backend", Path: "/mcp"},
+					{Name: "dumb-mcp-backend"},
+					{Name: "default-mcp-backend"},
 				},
 			},
 			{
 				Name: "yet-another-route",
 				Backends: []filterapi.MCPBackend{
 					{
-						Name: "default-mcp-backend", Path: "/mcp",
+						Name: "default-mcp-backend",
 						// This shouldn't affect any other routes.
 						ToolSelector: &filterapi.MCPToolSelector{Include: []string{"non-existent"}},
 					},
-					{Name: "dumb-mcp-backend", Path: "/mcp"},
+					{Name: "dumb-mcp-backend"},
 				},
 			},
 			{
 				Name: "awesome-route",
 				Backends: []filterapi.MCPBackend{
-					{Name: "dumb-mcp-backend", Path: "/mcp"},
+					{Name: "dumb-mcp-backend"},
 				},
 			},
 		},

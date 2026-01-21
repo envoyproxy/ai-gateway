@@ -1767,6 +1767,7 @@ MCPAuthorizationTarget defines the target of an authorization rule.
 - [MCPBackendSecurityPolicy](#mcpbackendsecuritypolicy)
 
 MCPBackendAPIKey defines the configuration for the API Key Authentication to a backend.
+When both `header` and `query` are unspecified, the API key will be injected into the "Authorization" header by default.
 
 ##### Fields
 
@@ -1786,7 +1787,12 @@ MCPBackendAPIKey defines the configuration for the API Key Authentication to a b
   name="header"
   type="string"
   required="false"
-  description="Header is the HTTP header to inject the API key into. If not specified,<br />defaults to `Authorization`.<br />When the header is `Authorization`, the injected header value will be<br />prefixed with `Bearer `."
+  description="Header is the HTTP header to inject the API key into. If not specified,<br />defaults to `Authorization`.<br />When the header is `Authorization`, the injected header value will be<br />prefixed with `Bearer `.<br />Either one of Header or QueryParam can be specified to inject the API key."
+/><ApiField
+  name="query"
+  type="string"
+  required="false"
+  description="QueryParam is the HTTP query parameter to inject the API key into.<br />For example, if QueryParam is set to `api_key`, and the API key is `mysecretkey`, the request URL will be modified to include<br />`?api_key=mysecretkey`.<br />Either one of Header or QueryParam can be specified to inject the API key."
 />
 
 

@@ -34,8 +34,8 @@ type (
 	}
 
 	mcpProxyConfig struct {
-		backendListenerAddr string
-		routes              map[filterapi.MCPRouteName]*mcpProxyConfigRoute // route name -> backends of that route.
+		backendListenerURL string
+		routes             map[filterapi.MCPRouteName]*mcpProxyConfigRoute // route name -> backends of that route.
 	}
 
 	mcpProxyConfigRoute struct {
@@ -137,7 +137,7 @@ func (p *ProxyConfig) LoadConfig(_ context.Context, config *filterapi.Config) er
 	}
 
 	// Talk to the backend MCP listener on the local Envoy instance.
-	newConfig.backendListenerAddr = mcpConfig.BackendListenerAddr
+	newConfig.backendListenerURL = mcpConfig.BackendListenerAddr + "/"
 
 	// Build a map of routes to backends.
 	// Each route has its own set of backends. For a given downstream request,

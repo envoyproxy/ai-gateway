@@ -97,7 +97,7 @@ func TestSession_Close(t *testing.T) {
 	}))
 	defer server.Close()
 	proxy := newTestMCPProxy()
-	proxy.backendListenerAddr = server.URL
+	proxy.backendListenerURL = server.URL
 	s := &session{
 		reqCtx: proxy,
 		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
@@ -173,7 +173,7 @@ func TestHandleNotificationsPerBackend_SSE(t *testing.T) {
 	}))
 	defer server.Close()
 	l := slog.Default()
-	proxy := &mcpRequestContext{metrics: stubMetrics{}, ProxyConfig: &ProxyConfig{mcpProxyConfig: &mcpProxyConfig{backendListenerAddr: server.URL}, l: l}}
+	proxy := &mcpRequestContext{metrics: stubMetrics{}, ProxyConfig: &ProxyConfig{mcpProxyConfig: &mcpProxyConfig{backendListenerURL: server.URL}, l: l}}
 	s := &session{reqCtx: proxy}
 	ch := make(chan *sseEvent, 10)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
@@ -245,7 +245,7 @@ func TestSession_StreamNotifications(t *testing.T) {
 			}))
 			defer srv.Close()
 			proxy := newTestMCPProxy()
-			proxy.backendListenerAddr = srv.URL
+			proxy.backendListenerURL = srv.URL
 
 			s := &session{
 				reqCtx: proxy,
@@ -305,7 +305,7 @@ func TestNotifyToolsChanged(t *testing.T) {
 			)
 		}
 	}))
-	proxy.backendListenerAddr = srv.URL
+	proxy.backendListenerURL = srv.URL
 
 	t.Run("no tool changes by default", func(t *testing.T) {
 		rr := httptest.NewRecorder()
@@ -338,7 +338,7 @@ func TestSendRequestPerBackend_ErrorStatus(t *testing.T) {
 	}))
 	defer server.Close()
 	l := slog.Default()
-	proxy := &mcpRequestContext{ProxyConfig: &ProxyConfig{mcpProxyConfig: &mcpProxyConfig{backendListenerAddr: server.URL}, l: l}, metrics: stubMetrics{}}
+	proxy := &mcpRequestContext{ProxyConfig: &ProxyConfig{mcpProxyConfig: &mcpProxyConfig{backendListenerURL: server.URL}, l: l}, metrics: stubMetrics{}}
 	s := &session{reqCtx: proxy}
 	ch := make(chan *sseEvent, 1)
 	cse := &compositeSessionEntry{
@@ -357,7 +357,7 @@ func TestSendRequestPerBackend_EOF(t *testing.T) {
 	}))
 	defer server.Close()
 	l := slog.Default()
-	proxy := &mcpRequestContext{ProxyConfig: &ProxyConfig{mcpProxyConfig: &mcpProxyConfig{backendListenerAddr: server.URL}, l: l}, metrics: stubMetrics{}}
+	proxy := &mcpRequestContext{ProxyConfig: &ProxyConfig{mcpProxyConfig: &mcpProxyConfig{backendListenerURL: server.URL}, l: l}, metrics: stubMetrics{}}
 	s := &session{reqCtx: proxy}
 	ch := make(chan *sseEvent, 1)
 	err2 := s.sendRequestPerBackend(t.Context(), ch, "route1", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
