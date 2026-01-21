@@ -102,7 +102,9 @@ func (m *memoryManager) unpinHTTPFilter(filter *pinedHTTPFilter) {
 
 // unwrapPinnedHTTPFilter unwraps the raw pointer to the pinned http filter.
 func unwrapPinnedObject[T any](raw uintptr) *T {
-	return (*T)(unsafe.Pointer(raw))
+	// See comments in https://github.com/wazero/wazero/blob/3ec1e028c8cbda984a71bf72321008723ebdcb51/internal/engine/wazevo/wazevoapi/ptr.go#L8-L12
+	var wrapped *uintptr = &raw
+	return *(**T)(unsafe.Pointer(wrapped))
 }
 
 func (m *memoryManager) shardingKey(key uintptr) uintptr {
