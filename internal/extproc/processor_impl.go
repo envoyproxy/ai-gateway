@@ -15,6 +15,8 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
@@ -165,6 +167,18 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespons
 func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	originalModel, body, stream, mutatedOriginalBody, err := r.eh.ParseBody(rawBody.Body, len(r.config.RequestCosts) > 0)
 	if err != nil {
+		if userFacingErr := internalapi.GetUserFacingError(err); userFacingErr != nil {
+			// return to user as 400 -  e.g., "malformed request: failed to parse JSON for /v1/chat/completions"
+			return &extprocv3.ProcessingResponse{
+				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+					ImmediateResponse: &extprocv3.ImmediateResponse{
+						Status:     &typev3.HttpStatus{Code: typev3.StatusCode(400)},
+						Body:       []byte(userFacingErr.Error()),
+						GrpcStatus: &extprocv3.GrpcStatus{Status: uint32(codes.InvalidArgument)},
+					},
+				},
+			}, fmt.Errorf("failed to parse request body: %w", err)
+		}
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
 	if mutatedOriginalBody != nil {
@@ -243,6 +257,18 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 	forceBodyMutation := u.onRetry() || u.parent.forceBodyMutation
 	newHeaders, newBody, err := u.translator.RequestBody(u.parent.originalRequestBodyRaw, u.parent.originalRequestBody, forceBodyMutation)
 	if err != nil {
+		if userFacingErr := internalapi.GetUserFacingError(err); userFacingErr != nil {
+			// return to user as 422 -  e.g., "invalid request body: tool_choice type not supported"
+			return &extprocv3.ProcessingResponse{
+				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+					ImmediateResponse: &extprocv3.ImmediateResponse{
+						Status:     &typev3.HttpStatus{Code: typev3.StatusCode(422)},
+						Body:       []byte(userFacingErr.Error()),
+						GrpcStatus: &extprocv3.GrpcStatus{Status: uint32(codes.InvalidArgument)},
+					},
+				},
+			}, fmt.Errorf("failed to transform request: %w", err)
+		}
 		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
 

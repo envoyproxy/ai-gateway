@@ -79,7 +79,7 @@ func anthropicToOpenAIFinishReason(stopReason anthropic.StopReason) (openai.Chat
 // Returns an error if the value is greater than 1.0.
 func validateTemperatureForAnthropic(temp *float64) error {
 	if temp != nil && (*temp < 0.0 || *temp > 1.0) {
-		return fmt.Errorf(tempNotSupportedError, *temp)
+		return fmt.Errorf("%w: temperature must be between 0.0 and 1.0", internalapi.ErrInvalidRequestBody)
 	}
 	return nil
 }
@@ -121,7 +121,7 @@ func translateAnthropicToolChoice(openAIToolChoice *openai.ChatCompletionToolCho
 			toolChoice = anthropic.ToolChoiceUnionParam{OfTool: &anthropic.ToolChoiceToolParam{Name: choice}}
 			toolChoice.OfTool.DisableParallelToolUse = disableParallelToolUse
 		default:
-			return anthropic.ToolChoiceUnionParam{}, fmt.Errorf("unsupported tool_choice value: %s", choice)
+			return anthropic.ToolChoiceUnionParam{}, fmt.Errorf("%w: unsupported tool_choice value '%s'", internalapi.ErrInvalidRequestBody, choice)
 		}
 	case openai.ChatCompletionNamedToolChoice:
 		if choice.Type == openai.ToolTypeFunction && choice.Function.Name != "" {
@@ -134,7 +134,7 @@ func translateAnthropicToolChoice(openAIToolChoice *openai.ChatCompletionToolCho
 			}
 		}
 	default:
-		return anthropic.ToolChoiceUnionParam{}, fmt.Errorf("unsupported tool_choice type: %T", openAIToolChoice)
+		return anthropic.ToolChoiceUnionParam{}, fmt.Errorf("%w: tool_choice type not supported", internalapi.ErrInvalidRequestBody)
 	}
 	return toolChoice, nil
 }
@@ -163,7 +163,7 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 			if openAITool.Function.Parameters != nil {
 				paramsMap, ok := openAITool.Function.Parameters.(map[string]any)
 				if !ok {
-					err = fmt.Errorf("failed to cast tool parameters to map[string]interface{}")
+					err = fmt.Errorf("%w: tool parameters must be a JSON object", internalapi.ErrInvalidRequestBody)
 					return
 				}
 
@@ -173,10 +173,10 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 				// If the paramsMap contains $refs we need to dereference them
 				var dereferencedParamsMap any
 				if dereferencedParamsMap, err = jsonSchemaDereference(paramsMap); err != nil {
-					return nil, anthropic.ToolChoiceUnionParam{}, fmt.Errorf("failed to dereference tool parameters: %w", err)
+					return nil, anthropic.ToolChoiceUnionParam{}, fmt.Errorf("invalid JSON schema in tool parameters: %w", err)
 				}
 				if paramsMap, ok = dereferencedParamsMap.(map[string]any); !ok {
-					return nil, anthropic.ToolChoiceUnionParam{}, fmt.Errorf("failed to cast dereferenced tool parameters to map[string]interface{}")
+					return nil, anthropic.ToolChoiceUnionParam{}, fmt.Errorf("%w: tool parameters must be a JSON object", internalapi.ErrInvalidRequestBody)
 				}
 
 				var typeVal string
@@ -240,7 +240,7 @@ func convertImageContentToAnthropic(imageURL string, fields *openai.AnthropicCon
 	case strings.HasPrefix(imageURL, "data:"):
 		contentType, data, err := parseDataURI(imageURL)
 		if err != nil {
-			return anthropic.ContentBlockParamUnion{}, fmt.Errorf("failed to parse image URL: %w", err)
+			return anthropic.ContentBlockParamUnion{}, fmt.Errorf("%w: invalid image data URI", internalapi.ErrInvalidRequestBody)
 		}
 		base64Data := base64.StdEncoding.EncodeToString(data)
 		if contentType == string(constant.ValueOf[constant.ApplicationPDF]()) {
@@ -254,7 +254,7 @@ func convertImageContentToAnthropic(imageURL string, fields *openai.AnthropicCon
 			imgBlock.OfImage.CacheControl = cacheControlParam
 			return imgBlock, nil
 		}
-		return anthropic.ContentBlockParamUnion{}, fmt.Errorf("invalid media_type for image '%s'", contentType)
+		return anthropic.ContentBlockParamUnion{}, fmt.Errorf("%w: invalid media_type for image '%s'", internalapi.ErrInvalidRequestBody, contentType)
 	case strings.HasSuffix(strings.ToLower(imageURL), ".pdf"):
 		docBlock := anthropic.NewDocumentBlock(anthropic.URLPDFSourceParam{URL: imageURL})
 		docBlock.OfDocument.CacheControl = cacheControlParam
@@ -291,9 +291,9 @@ func convertContentPartsToAnthropic(parts []openai.ChatCompletionContentPartUser
 			resultContent = append(resultContent, block)
 
 		case contentPart.OfInputAudio != nil:
-			return nil, fmt.Errorf("input audio content not supported yet")
+			return nil, fmt.Errorf("%w: input audio content not supported yet", internalapi.ErrInvalidRequestBody)
 		case contentPart.OfFile != nil:
-			return nil, fmt.Errorf("file content not supported yet")
+			return nil, fmt.Errorf("%w: file content not supported yet", internalapi.ErrInvalidRequestBody)
 		}
 	}
 	return resultContent, nil
@@ -334,10 +334,10 @@ func openAIToAnthropicContent(content any) ([]anthropic.ContentBlockParamUnion, 
 			}
 			return contentBlocks, nil
 		default:
-			return nil, fmt.Errorf("unsupported ContentUnion value type: %T", val)
+			return nil, fmt.Errorf("%w: message 'content' must be a string or an array", internalapi.ErrInvalidRequestBody)
 		}
 	}
-	return nil, fmt.Errorf("unsupported OpenAI content type: %T", content)
+	return nil, fmt.Errorf("%w: message 'content' must be a string or an array", internalapi.ErrInvalidRequestBody)
 }
 
 // extractSystemPromptFromDeveloperMsg flattens content and checks for cache flags.
@@ -405,13 +405,13 @@ func processAssistantContent(content openai.ChatCompletionAssistantMessageParamC
 				redactedThinkingBlock := anthropic.NewRedactedThinkingBlock(v)
 				return &redactedThinkingBlock, nil
 			case []byte:
-				return nil, fmt.Errorf("GCP Anthropic does not support []byte format for RedactedContent, expected string")
+				return nil, fmt.Errorf("%w: redacted_content must be a string in GCP", internalapi.ErrInvalidRequestBody)
 			default:
-				return nil, fmt.Errorf("unsupported RedactedContent type: %T, expected string", v)
+				return nil, fmt.Errorf("%w: redacted_content must be a string in GCP", internalapi.ErrInvalidRequestBody)
 			}
 		}
 	default:
-		return nil, fmt.Errorf("content type not supported: %v", content.Type)
+		return nil, fmt.Errorf("%w: message 'content' must be a string or an array", internalapi.ErrInvalidRequestBody)
 	}
 	return nil, nil
 }
@@ -582,7 +582,7 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 			}
 			anthropicMessages = append(anthropicMessages, anthropicMsg)
 		default:
-			err = fmt.Errorf("unsupported OpenAI role type: %s", msg.ExtractMessgaeRole())
+			err = fmt.Errorf("%w: unsupported role type: %s", internalapi.ErrInvalidRequestBody, msg.ExtractMessgaeRole())
 			return
 		}
 	}
@@ -617,7 +617,7 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest) (params *anth
 	// 1. Handle simple parameters and defaults.
 	maxTokens := cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens)
 	if maxTokens == nil {
-		err = fmt.Errorf("the maximum number of tokens must be set for Anthropic, got nil instead")
+		err = fmt.Errorf("%w: max_tokens or max_completion_tokens is required", internalapi.ErrInvalidRequestBody)
 		return
 	}
 
@@ -695,12 +695,12 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 ) {
 	params, err := buildAnthropicParams(openAIReq)
 	if err != nil {
-		return
+		return nil, nil, err
 	}
 
 	body, err := json.Marshal(params)
 	if err != nil {
-		return
+		return nil, nil, fmt.Errorf("failed to marshal params: %w", err)
 	}
 
 	o.requestModel = openAIReq.Model
