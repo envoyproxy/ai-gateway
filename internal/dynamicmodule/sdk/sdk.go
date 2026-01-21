@@ -135,22 +135,27 @@ type HTTPFilter interface {
 // NoopHTTPFilter is a no-op implementation of the HTTPFilter interface.
 type NoopHTTPFilter struct{}
 
+// RequestHeaders implements [HTTPFilter.RequestHeaders].
 func (f NoopHTTPFilter) RequestHeaders(EnvoyHTTPFilter, bool) RequestHeadersStatus {
 	return RequestHeadersStatusContinue
 }
 
+// RequestBody implements [HTTPFilter.RequestBody].
 func (f NoopHTTPFilter) RequestBody(EnvoyHTTPFilter, bool) RequestBodyStatus {
 	return RequestBodyStatusContinue
 }
 
+// ResponseHeaders implements [HTTPFilter.ResponseHeaders].
 func (f NoopHTTPFilter) ResponseHeaders(EnvoyHTTPFilter, bool) ResponseHeadersStatus {
 	return ResponseHeadersStatusContinue
 }
 
+// ResponseBody implements [HTTPFilter.ResponseBody].
 func (f NoopHTTPFilter) ResponseBody(EnvoyHTTPFilter, bool) ResponseBodyStatus {
 	return ResponseBodyStatusContinue
 }
 
+// OnDestroy implements [HTTPFilter.OnDestroy].
 func (f NoopHTTPFilter) OnDestroy() {}
 
 // RequestHeadersStatus is the return value of the HTTPFilter.RequestHeaders.

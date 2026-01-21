@@ -3,7 +3,7 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-//go:build envoy && cgo
+//go:build envoy_v137 && cgo
 
 package sdk
 

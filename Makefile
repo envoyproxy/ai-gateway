@@ -265,7 +265,7 @@ build.%: ## Build a binary for the given command under the internal/cmd director
 # TODO: multiple Envoy versions support with multiple platform builds.
 .PHONE: build-dynamic-module
 build-dynamic-module: ## Build the dynamic module for Envoy.
-	CGO_ENABLED=1 go build -tags "envoy" -buildmode=c-shared -o $(OUTPUT_DIR)/libaigateway.so ./cmd/dynamic_module
+	CGO_ENABLED=1 go build -tags "envoy_v137" -buildmode=c-shared -o $(OUTPUT_DIR)/libaigateway.so ./cmd/dynamic_module
 
 # This builds the docker images for the controller, extproc and testupstream for the e2e tests.
 .PHONY: build-e2e
