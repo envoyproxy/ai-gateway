@@ -23,3 +23,5 @@ exclude:
     - internal/testing/
     # TODO: Remove this exclusion.
     - internal/controller/controller.go
+    # TODO: Remove this exclusion after the implementation is stabilized.
+    - internal/dynamicmodule/

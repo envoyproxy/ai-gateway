@@ -21,13 +21,25 @@ import (
 //go:embed envoy.yaml
 var envoyConfig string
 
+//go:embed envoy_dynamic_module.yaml
+var envoyConfigWithDynamicModules string
+
 //go:embed extproc.yaml
 var extprocConfig string
 
 func startTestEnvironment(t *testing.T, extprocEnv []string) *dataplaneenv.TestEnvironment {
+	if dm := os.Getenv("TEST_WITH_DYNAMIC_MODULE") != ""; dm {
+		t.Log("Starting test environment with dynamic modules")
+		return dataplaneenv.StartTestEnvironment(t,
+			requireUpstream, map[string]int{"upstream": 11434},
+			extprocConfig, extprocEnv, envoyConfigWithDynamicModules, true, false, 120*time.Second,
+			dm,
+		)
+	}
+	t.Log("Starting test environment with extproc binary")
 	return dataplaneenv.StartTestEnvironment(t,
 		requireUpstream, map[string]int{"upstream": 11434},
-		extprocConfig, extprocEnv, envoyConfig, true, false, 120*time.Second,
+		extprocConfig, extprocEnv, envoyConfig, true, false, 120*time.Second, false,
 	)
 }
 

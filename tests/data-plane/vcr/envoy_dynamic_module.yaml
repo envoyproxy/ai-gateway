@@ -1,0 +1,378 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+admin:
+  address:
+    socket_address:
+      address: 127.0.0.1
+      port_value: 9901
+
+static_resources:
+  listeners:
+    - name: listener_0
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 1062
+      per_connection_buffer_limit_bytes: 52428800
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_http
+                access_log:
+                  - name: access_log_stdout
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+                route_config:
+                  name: local_route
+                  virtual_hosts:
+                    - name: backend
+                      domains: ["*"]
+                      routes:
+                        # These paths must match those registered in cmd/extproc/mainlib/main.go
+                        # x-test-backend=openai-chat-override allows us to test model name override.
+                        - match:
+                            path: "/v1/chat/completions"
+                            headers:
+                              - name: x-test-backend
+                                string_match:
+                                  exact: openai-chat-override
+                          route:
+                            cluster: openai-chat-override
+                        # X-Cassette-Name=azure-chat-basic with x-test-backend=azure-openai-chat-override for model override
+                        - match:
+                            path: "/v1/chat/completions"
+                            headers:
+                              - name: X-Cassette-Name
+                                string_match:
+                                  exact: azure-chat-basic
+                              - name: x-test-backend
+                                string_match:
+                                  exact: azure-openai-chat-override
+                          route:
+                            cluster: azure-openai-chat-override
+                        # X-Cassette-Name=azure-chat-basic routes to Azure backend
+                        - match:
+                            path: "/v1/chat/completions"
+                            headers:
+                              - name: X-Cassette-Name
+                                string_match:
+                                  exact: azure-chat-basic
+                          route:
+                            cluster: azure-openai
+                        # Default route for chat completions
+                        - match:
+                            path: "/v1/chat/completions"
+                          route:
+                            cluster: openai
+                        # x-test-backend=openai-completions-override allows us to test model name override for completions.
+                        - match:
+                            path: "/v1/completions"
+                            headers:
+                              - name: x-test-backend
+                                string_match:
+                                  exact: openai-completions-override
+                          route:
+                            cluster: openai-completions-override
+                        # Default route for completions (legacy endpoint)
+                        - match:
+                            path: "/v1/completions"
+                          route:
+                            cluster: openai
+                        # x-test-backend=openai-chat-override allows us to test model name override.
+                        - match:
+                            path: "/v1/embeddings"
+                            headers:
+                              - name: x-test-backend
+                                string_match:
+                                  exact: openai-embeddings-override
+                          route:
+                            cluster: openai-embeddings-override
+                        # Default route for embeddings
+                        - match:
+                            path: "/v1/embeddings"
+                          route:
+                            cluster: openai
+                        - match:
+                            path: "/v1/images/generations"
+                          route:
+                            cluster: openai
+                        - match:
+                            path: "/v1/models"
+                          route:
+                            cluster: openai
+                        - match:
+                            prefix: "/"
+                          direct_response:
+                            status: 404
+                            body:
+                              inline_string: "not forwarding paths except in cmd/extproc/mainlib/main.go"
+                          typed_per_filter_config:
+                            envoy.filters.http.ext_proc:
+                              "@type": type.googleapis.com/envoy.config.route.v3.FilterConfig
+                              disabled: true
+                http_filters:
+                  # ROUTER FILTER (HTTP Connection Manager Level)
+                  # Enabled only on AIGatewayRoute paths (/v1/chat/completions, /v1/completions, /v1/embeddings, /v1/models).
+                  # Extracts model name (embeddings/chat/completions), or return a direct response (/models).
+                  # Configured by insertRouterLevelAIGatewayExtProc() in post_translate_modify.go
+                  - name: ai_gateway.upstream
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_modules.v3.DynamicModuleFilter
+                      dynamic_module_config:
+                        name: aigateway
+                        do_not_close: true
+                      filter_name: ai_gateway.router
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  clusters:
+    - name: openai
+      per_connection_buffer_limit_bytes: 52428800
+      connect_timeout: 5s # Increase from 0.25s to prevent timeout issues
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http_protocol_options: {}
+          http_filters:
+            # UPSTREAM FILTER (Cluster Level)
+            # Applied to clusters referenced by AIServiceBackend resources.
+            # Transforms OpenAI format to backend format (e.g. AWS Bedrock, Azure OpenAI, GCP Vertex).
+            # Injects auth from BackendSecurityPolicy and converts responses back to OpenAI.
+            # Configured by maybeModifyCluster() in post_translate_modify.go
+            - name: ai_gateway.upstream
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_modules.v3.DynamicModuleFilter
+                dynamic_module_config:
+                  name: aigateway
+                  do_not_close: true
+                filter_name: ai_gateway.upstream
+            - name: envoy.filters.http.upstream_codec
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
+      load_assignment:
+        cluster_name: openai
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: host.docker.internal
+                      port_value: 11434
+                # Add metadata in prod set by XDS: xds.upstream_host_metadata
+                metadata:
+                  filter_metadata:
+                    aigateway.envoy.io:
+                      per_route_rule_backend_name: "openai"
+    # Cluster for model override scenario - exactly the same as openai but with different backend name
+    - name: openai-chat-override
+      per_connection_buffer_limit_bytes: 52428800
+      connect_timeout: 5s # Increase from 0.25s to prevent timeout issues
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http_protocol_options: {}
+          http_filters:
+            # UPSTREAM FILTER (Cluster Level)
+            # Applied to clusters referenced by AIServiceBackend resources.
+            # Transforms OpenAI format to backend format (e.g. AWS Bedrock, Azure OpenAI, GCP Vertex).
+            # Injects auth from BackendSecurityPolicy and converts responses back to OpenAI.
+            # Configured by maybeModifyCluster() in post_translate_modify.go
+            - name: ai_gateway.upstream
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_modules.v3.DynamicModuleFilter
+                dynamic_module_config:
+                  name: aigateway
+                  do_not_close: true
+                filter_name: ai_gateway.upstream
+            - name: envoy.filters.http.upstream_codec
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
+      load_assignment:
+        cluster_name: openai-chat-override
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: host.docker.internal
+                      port_value: 11434
+                # Add metadata in prod set by XDS: xds.upstream_host_metadata
+                metadata:
+                  filter_metadata:
+                    aigateway.envoy.io:
+                      per_route_rule_backend_name: "openai-chat-override"
+    # Cluster for completions model override scenario - exactly the same as openai but with different backend name
+    - name: openai-completions-override
+      per_connection_buffer_limit_bytes: 52428800
+      connect_timeout: 5s # Increase from 0.25s to prevent timeout issues
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http_protocol_options: {}
+          http_filters:
+            # UPSTREAM FILTER (Cluster Level)
+            # Applied to clusters referenced by AIServiceBackend resources.
+            # Transforms OpenAI format to backend format (e.g. AWS Bedrock, Azure OpenAI, GCP Vertex).
+            # Injects auth from BackendSecurityPolicy and converts responses back to OpenAI.
+            # Configured by maybeModifyCluster() in post_translate_modify.go
+            - name: ai_gateway.upstream
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_modules.v3.DynamicModuleFilter
+                dynamic_module_config:
+                  name: aigateway
+                  do_not_close: true
+                filter_name: ai_gateway.upstream
+            - name: envoy.filters.http.upstream_codec
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
+      load_assignment:
+        cluster_name: openai-completions-override
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: host.docker.internal
+                      port_value: 11434
+                # Add metadata in prod set by XDS: xds.upstream_host_metadata
+                metadata:
+                  filter_metadata:
+                    aigateway.envoy.io:
+                      per_route_rule_backend_name: "openai-completions-override"
+    # Cluster for model override scenario - exactly the same as openai but with different backend name
+    - name: openai-embeddings-override
+      per_connection_buffer_limit_bytes: 52428800
+      connect_timeout: 5s # Increase from 0.25s to prevent timeout issues
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http_protocol_options: {}
+          http_filters:
+            # UPSTREAM FILTER (Cluster Level)
+            # Applied to clusters referenced by AIServiceBackend resources.
+            # Transforms OpenAI format to backend format (e.g. AWS Bedrock, Azure OpenAI, GCP Vertex).
+            # Injects auth from BackendSecurityPolicy and converts responses back to OpenAI.
+            # Configured by maybeModifyCluster() in post_translate_modify.go
+            - name: ai_gateway.upstream
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_modules.v3.DynamicModuleFilter
+                dynamic_module_config:
+                  name: aigateway
+                  do_not_close: true
+                filter_name: ai_gateway.upstream
+            - name: envoy.filters.http.upstream_codec
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
+      load_assignment:
+        cluster_name: openai-embeddings-override
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: host.docker.internal
+                      port_value: 11434
+                # Add metadata in prod set by XDS: xds.upstream_host_metadata
+                metadata:
+                  filter_metadata:
+                    aigateway.envoy.io:
+                      per_route_rule_backend_name: "openai-embeddings-override"
+    # Cluster for Azure OpenAI
+    - name: azure-openai
+      per_connection_buffer_limit_bytes: 52428800
+      connect_timeout: 5s # Increase from 0.25s to prevent timeout issues
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http_protocol_options: {}
+          http_filters:
+            # UPSTREAM FILTER (Cluster Level)
+            # Applied to clusters referenced by AIServiceBackend resources.
+            # Transforms OpenAI format to backend format (e.g. AWS Bedrock, Azure OpenAI, GCP Vertex).
+            # Injects auth from BackendSecurityPolicy and converts responses back to OpenAI.
+            # Configured by maybeModifyCluster() in post_translate_modify.go
+            - name: ai_gateway.upstream
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_modules.v3.DynamicModuleFilter
+                dynamic_module_config:
+                  name: aigateway
+                  do_not_close: true
+                filter_name: ai_gateway.upstream
+            - name: envoy.filters.http.upstream_codec
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
+      load_assignment:
+        cluster_name: azure-openai
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: host.docker.internal
+                      port_value: 11434
+                # Add metadata in prod set by XDS: xds.upstream_host_metadata
+                metadata:
+                  filter_metadata:
+                    aigateway.envoy.io:
+                      per_route_rule_backend_name: "azure-openai"
+    # Cluster for Azure model override scenario - exactly the same as azure-openai but with different backend name
+    - name: azure-openai-chat-override
+      per_connection_buffer_limit_bytes: 52428800
+      connect_timeout: 5s # Increase from 0.25s to prevent timeout issues
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http_protocol_options: {}
+          http_filters:
+            # UPSTREAM FILTER (Cluster Level)
+            # Applied to clusters referenced by AIServiceBackend resources.
+            # Transforms OpenAI format to backend format (e.g. AWS Bedrock, Azure OpenAI, GCP Vertex).
+            # Injects auth from BackendSecurityPolicy and converts responses back to OpenAI.
+            # Configured by maybeModifyCluster() in post_translate_modify.go
+            - name: ai_gateway.upstream
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_modules.v3.DynamicModuleFilter
+                dynamic_module_config:
+                  name: aigateway
+                  do_not_close: true
+                filter_name: ai_gateway.upstream
+            - name: envoy.filters.http.upstream_codec
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
+      load_assignment:
+        cluster_name: azure-openai-chat-override
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: host.docker.internal
+                      port_value: 11434
+                # Add metadata in prod set by XDS: xds.upstream_host_metadata
+                metadata:
+                  filter_metadata:
+                    aigateway.envoy.io:
+                      per_route_rule_backend_name: "azure-openai-chat-override"
