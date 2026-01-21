@@ -298,7 +298,7 @@ func (f *routerFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseHeaders(e
 	if f.upstreamFilter == nil {
 		return sdk.ResponseHeadersStatusContinue
 	}
-	if err := f.upstreamFilter.ResponseHeadersImpl(e, false); err != nil {
+	if err := f.upstreamFilter.responseHeadersImpl(e, false); err != nil {
 		f.logger.Error("response headers error", slog.String("error", err.Error()))
 		e.SendLocalReply(500, nil, []byte("internal server error"))
 		return sdk.ResponseHeadersStatusStopIteration
@@ -345,7 +345,7 @@ func (f *routerFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBody(e sd
 		return sdk.ResponseBodyStatusContinue
 	}
 
-	if err := f.upstreamFilter.ResponseBodyImpl(e, endOfStream); err != nil {
+	if err := f.upstreamFilter.responseBodyImpl(e, endOfStream); err != nil {
 		f.logger.Error("response body handling failed", slog.String("error", err.Error()))
 		e.SendLocalReply(500, nil, []byte("internal server error"))
 		return sdk.ResponseBodyStatusStopIterationAndBuffer

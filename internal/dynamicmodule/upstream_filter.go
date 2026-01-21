@@ -371,15 +371,19 @@ func (f *upstreamFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) RequestBody(e s
 
 // ResponseHeaders implements [sdk.HTTPFilter].
 func (f *upstreamFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseHeaders(sdk.EnvoyHTTPFilter, bool) sdk.ResponseHeadersStatus {
+	// See the comment in router filter's ResponseHeaders method as to why we do nothing here.
 	return sdk.ResponseHeadersStatusContinue
 }
 
 // ResponseBody implements [sdk.HTTPFilter].
 func (f *upstreamFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBody(sdk.EnvoyHTTPFilter, bool) sdk.ResponseBodyStatus {
+	// See the comment in router filter's ResponseBody method as to why we do nothing here.
 	return sdk.ResponseBodyStatusContinue
 }
 
-func (f *upstreamFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseHeadersImpl(e sdk.EnvoyHTTPFilter, _ bool) error {
+// responseHeadersImpl is called by the router filter when response headers are received.
+// See the comment in router filter's ResponseHeaders method for details.
+func (f *upstreamFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) responseHeadersImpl(e sdk.EnvoyHTTPFilter, _ bool) error {
 	f.resHeaders = multiValueHeadersToSingleValue(e.GetResponseHeaders())
 	headers, err := f.translator.ResponseHeaders(f.resHeaders)
 	if err != nil {
@@ -393,7 +397,9 @@ func (f *upstreamFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseHeaders
 	return nil
 }
 
-func (f *upstreamFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) ResponseBodyImpl(e sdk.EnvoyHTTPFilter, endOfStream bool) (err error) {
+// responseBodyImpl is called by the router filter when response body is received.
+// See the comment in router filter's ResponseBody method for details.
+func (f *upstreamFilter[ReqT, RespT, RespChunkT, EndpointSpecT]) responseBodyImpl(e sdk.EnvoyHTTPFilter, endOfStream bool) (err error) {
 	defer func() {
 		ctx := context.Background()
 		if err != nil {

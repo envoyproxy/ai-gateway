@@ -19,3 +19,4 @@ ignore:
   - "internal/testing"
   - "tests/internal"
   - "internal/controller/controller.go"
+  - "internal/dynamicmodule/*.go"
