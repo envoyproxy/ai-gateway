@@ -309,13 +309,12 @@ docker-build.%: ## Build a docker image for a given command.
 
 HELM_DIR := ./manifests/charts/ai-gateway-helm ./manifests/charts/ai-gateway-crds-helm
 
-# This clears all built artifacts and installed binaries.
+# This clears all built artifacts.
 #
 # Whenever you run into issues with the target like `precommit` or `test`, try running this target.
 .PHONY: clean
-clean: ## Clears all built artifacts and installed binaries.
+clean: ## Clears all built artifacts.
 	rm -rf $(OUTPUT_DIR)
-	rm -rf $(LOCALBIN)
 
 ##@ Helm
 
