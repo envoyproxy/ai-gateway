@@ -588,7 +588,7 @@ func setOutputMsgAttrs(output *openai.ResponseOutputMessage, attrs []attribute.K
 			}
 		case part.OfRefusal != nil:
 			attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "type"), "text"))
-			if config.HideInputImages {
+			if config.HideInputText {
 				attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "text"), openinference.RedactedValue))
 			} else {
 				attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "text"), part.OfRefusal.Refusal))
@@ -602,16 +602,17 @@ func setFileSearchCallAttrs(f *openai.ResponseFileSearchToolCall, attrs []attrib
 	attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageRole), "assistant"))
 	if config.HideInputText {
 		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), openinference.RedactedValue),
-			attribute.String(openinference.ToolCallFunctionName, openinference.RedactedValue))
+			attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallFunctionName), openinference.RedactedValue))
 	} else {
 		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), f.ID),
-			attribute.String(openinference.ToolCallFunctionName, f.Type))
+			attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallFunctionName), f.Type))
 	}
 	return attrs
 }
 
 func setComputerCallAttrs(c *openai.ResponseComputerToolCall, attrs []attribute.KeyValue, config *openinference.TraceConfig, messageIndex int) []attribute.KeyValue {
-	attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageRole), "assistant"))
+	attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageRole), "assistant"),
+		attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.MessageRole), "tool"))
 	if config.HideInputText {
 		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), openinference.RedactedValue))
 	} else {
@@ -623,9 +624,9 @@ func setComputerCallAttrs(c *openai.ResponseComputerToolCall, attrs []attribute.
 func setComputerCallOutputAttrs(c *openai.ResponseInputItemComputerCallOutputParam, attrs []attribute.KeyValue, config *openinference.TraceConfig, messageIndex int) []attribute.KeyValue {
 	attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageRole), "tool"))
 	if config.HideInputText {
-		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), openinference.RedactedValue))
+		attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.ToolCallID), openinference.RedactedValue))
 	} else {
-		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), c.CallID))
+		attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.ToolCallID), c.CallID))
 	}
 	return attrs
 }
@@ -661,14 +662,13 @@ func setFunctionCallAttrs(f *openai.ResponseFunctionToolCall, attrs []attribute.
 func setFunctionCallOutputAttrs(f *openai.ResponseInputItemFunctionCallOutputParam, attrs []attribute.KeyValue, config *openinference.TraceConfig, messageIndex int) []attribute.KeyValue {
 	attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageRole), "tool"))
 	if config.HideInputText {
-		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), openinference.RedactedValue),
+		attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.ToolCallID), openinference.RedactedValue),
 			attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageContent), openinference.RedactedValue),
 		)
 	} else {
+		attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.ToolCallID), f.CallID))
 		// output can be str or complex type - serialize complex types to JSON
-		content, err := json.Marshal(f.Output)
-		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), f.CallID))
-		if err != nil {
+		if content, err := json.Marshal(f.Output); err == nil {
 			attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageContent), string(content)))
 		}
 	}
@@ -701,8 +701,10 @@ func setCustomToolCallAttrs(c *openai.ResponseCustomToolCall, attrs []attribute.
 	} else {
 		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), c.CallID),
 			attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallFunctionName), c.Name),
-			attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallFunctionArguments), c.Input),
 		)
+		if data, err := json.Marshal(map[string]string{"input": c.Input}); err == nil {
+			attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallFunctionArguments), string(data)))
+		}
 	}
 	return attrs
 }
@@ -710,14 +712,13 @@ func setCustomToolCallAttrs(c *openai.ResponseCustomToolCall, attrs []attribute.
 func setCustomToolCallOutputAttrs(c *openai.ResponseCustomToolCallOutputParam, attrs []attribute.KeyValue, config *openinference.TraceConfig, messageIndex int) []attribute.KeyValue {
 	attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageRole), "tool"))
 	if config.HideInputText {
-		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), openinference.RedactedValue),
+		attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.ToolCallID), openinference.RedactedValue),
 			attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageContent), openinference.RedactedValue),
 		)
 	} else {
+		attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.ToolCallID), c.CallID))
 		// output can be str or complex type - serialize complex types to JSON
-		content, err := json.Marshal(c.Output)
-		attrs = append(attrs, attribute.String(openinference.InputMessageToolCallAttribute(messageIndex, 0, openinference.ToolCallID), c.CallID))
-		if err != nil {
+		if content, err := json.Marshal(c.Output); err == nil {
 			attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageContent), string(content)))
 		}
 	}
