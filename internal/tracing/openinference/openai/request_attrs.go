@@ -8,13 +8,13 @@ package openai
 import (
 	"strings"
 
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
-	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 )
 
 // llmInvocationParameters is the representation of LLMInvocationParameters,
@@ -417,7 +417,6 @@ func redactImageFromResponseRequestParameters(requestJSON []byte, hideInputImage
 
 	// Iterate over input[]
 	gjson.GetBytes(requestJSON, "input").ForEach(func(_, inputItem gjson.Result) bool {
-
 		content := inputItem.Get("content")
 		// skip if content is not array
 		if !content.IsArray() {
@@ -426,7 +425,6 @@ func redactImageFromResponseRequestParameters(requestJSON []byte, hideInputImage
 
 		// Iterate over content[]
 		content.ForEach(func(_, contentItem gjson.Result) bool {
-
 			if contentItem.Get("type").String() != "input_image" {
 				return true
 			}
