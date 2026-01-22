@@ -6,6 +6,7 @@
 package openai
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -60,7 +61,8 @@ var (
 		Usage: &openai.ResponseUsage{
 			InputTokens: 20,
 			InputTokensDetails: openai.ResponseUsageInputTokensDetails{
-				CachedTokens: 2,
+				CachedTokens:        2,
+				CacheCreationTokens: 4,
 			},
 			OutputTokens: 10,
 			TotalTokens:  30,
@@ -169,6 +171,9 @@ func TestResponsesRecorder_RecordRequest(t *testing.T) {
 				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(basicResponseReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, fmt.Sprintf("{\"model\":\"%s\"}", basicResponseReq.Model)),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "user"),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), *basicResponseReq.Input.OfString),
 			},
 		},
 		{
@@ -181,6 +186,9 @@ func TestResponsesRecorder_RecordRequest(t *testing.T) {
 				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(responseReqWithStreamingBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, fmt.Sprintf("{\"model\":\"%s\",\"stream\":true}", responseReqWithStreaming.Model)),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "user"),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), *responseReqWithStreaming.Input.OfString),
 			},
 		},
 	}
@@ -214,12 +222,17 @@ func TestResponsesRecorder_RecordResponse(t *testing.T) {
 			resp:   basicResponseResp,
 			config: &openinference.TraceConfig{},
 			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
 				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.Int(openinference.LLMTokenCountPrompt, 20),
 				attribute.Int(openinference.LLMTokenCountCompletion, 10),
 				attribute.Int(openinference.LLMTokenCountTotal, 30),
 				attribute.Int(openinference.LLMTokenCountPromptCacheHit, 2),
+				attribute.Int(openinference.LLMTokenCountPromptCacheWrite, 4),
 				attribute.String(openinference.OutputValue, string(basicResponseRespBody)),
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "text"), basicResponseResp.Output[0].OfOutputMessage.Content[0].OfOutputText.Text),
 			},
 			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
 		},
@@ -228,6 +241,7 @@ func TestResponsesRecorder_RecordResponse(t *testing.T) {
 			resp:   responseWithCacheWrite,
 			config: &openinference.TraceConfig{},
 			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
 				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.Int(openinference.LLMTokenCountPrompt, 100),
 				attribute.Int(openinference.LLMTokenCountCompletion, 25),
@@ -235,6 +249,9 @@ func TestResponsesRecorder_RecordResponse(t *testing.T) {
 				attribute.Int(openinference.LLMTokenCountPromptCacheHit, 10),
 				attribute.Int(openinference.LLMTokenCountPromptCacheWrite, 50),
 				attribute.String(openinference.OutputValue, string(responseWithCacheWriteBody)),
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "text"), responseWithCacheWrite.Output[0].OfOutputMessage.Content[0].OfOutputText.Text),
 			},
 			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
 		},
@@ -420,8 +437,6 @@ func TestResponsesRecorder_WithConfig_HideInputs(t *testing.T) {
 				attribute.String(openinference.InputValue, openinference.RedactedValue),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
 				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
-				attribute.String("llm.input_messages.1.message.role", "user"),
-				attribute.String("llm.input_messages.1.message.content", "Hi"),
 			},
 		},
 		{
@@ -434,8 +449,8 @@ func TestResponsesRecorder_WithConfig_HideInputs(t *testing.T) {
 				attribute.String(openinference.InputValue, string(basicResponseReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
 				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
-				attribute.String("llm.input_messages.1.message.role", "user"),
-				attribute.String("llm.input_messages.1.message.content", "Hi"),
+				attribute.String("llm.input_messages.0.message.role", "user"),
+				attribute.String("llm.input_messages.0.message.content", "Hi"),
 			},
 		},
 	}

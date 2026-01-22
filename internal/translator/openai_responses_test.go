@@ -426,7 +426,7 @@ func TestResponses_HandleStreamingResponse(t *testing.T) {
 		_, _, err := translator.RequestBody(original, req, false)
 		require.NoError(t, err)
 
-		sseChunks := `data: {"type":"response.created","response":{"model":"gpt-4o-2024-11-20"}}
+		sseChunks := `data: {"type":"response.created","response":{"id":"resp_67c9fdcecf488190bdd9a0409de3a1ec07b8b0ad4e5eb654","object":"response","created_at":1741487325,"status":"in_progress","model":"gpt-4o-2024-11-20","output":[],"parallel_tool_calls":true,"store":true,"temperature":1.0,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_p":1.0,"truncation":"disabled"},"sequence_number": 1}
 
 data: {"type":"response.output_item.added","output_index":0,"item":{"id":"msg_67c9fdcf37fc8190ba82116e33fb28c507b8b0ad4e5eb654","type":"message","status":"in_progress","role":"assistant","content":[]}}
 
@@ -787,6 +787,7 @@ func TestResponsesOpenAIToOpenAITranslatorWithModelOverride(t *testing.T) {
 				OutputTokens: 5,
 				TotalTokens:  15,
 			},
+			Text: openai.ResponseTextConfig{Format: openai.ResponseFormatTextConfigUnionParam{OfText: &openai.ResponseFormatTextParam{Type: "text"}}},
 		}
 
 		body, err := json.Marshal(resp)
