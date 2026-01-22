@@ -63,6 +63,12 @@ type flags struct {
 	mcpFallbackSessionEncryptionIterations int
 	watchNamespaces                        []string
 	cacheSyncTimeout                       time.Duration
+	// extProcRedisAddr is the Redis server address for response caching (e.g., "redis:6379").
+	extProcRedisAddr string
+	// extProcRedisTLS enables TLS for Redis connections.
+	extProcRedisTLS bool
+	// extProcRedisPassword is the password for Redis authentication.
+	extProcRedisPassword string
 }
 
 // parsePullPolicy parses string into a k8s PullPolicy.
@@ -200,6 +206,12 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		"Optional fallback seed used for MCP session key rotation")
 	mcpFallbackSessionEncryptionIterations := fs.Int("mcpFallbackSessionEncryptionIterations", 100_000,
 		"Number of iterations used in the fallback PBKDF2 key derivation for MCP session encryption.")
+	extProcRedisAddr := fs.String("extProcRedisAddr", "",
+		"Redis server address for response caching (e.g., redis:6379). If empty, response caching is disabled.")
+	extProcRedisTLS := fs.Bool("extProcRedisTLS", false,
+		"Enable TLS for Redis connections.")
+	extProcRedisPassword := fs.String("extProcRedisPassword", "",
+		"Password for Redis authentication.")
 
 	if err := fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
@@ -294,6 +306,9 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		mcpFallbackSessionEncryptionSeed:       *mcpFallbackSessionEncryptionSeed,
 		mcpSessionEncryptionIterations:         *mcpSessionEncryptionIterations,
 		mcpFallbackSessionEncryptionIterations: *mcpFallbackSessionEncryptionIterations,
+		extProcRedisAddr:                       *extProcRedisAddr,
+		extProcRedisTLS:                        *extProcRedisTLS,
+		extProcRedisPassword:                   *extProcRedisPassword,
 	}, nil
 }
 
@@ -382,6 +397,9 @@ func main() {
 		MCPSessionEncryptionIterations:         parsedFlags.mcpSessionEncryptionIterations,
 		MCPFallbackSessionEncryptionSeed:       parsedFlags.mcpFallbackSessionEncryptionSeed,
 		MCPFallbackSessionEncryptionIterations: parsedFlags.mcpFallbackSessionEncryptionIterations,
+		ExtProcRedisAddr:                       parsedFlags.extProcRedisAddr,
+		ExtProcRedisTLS:                        parsedFlags.extProcRedisTLS,
+		ExtProcRedisPassword:                   parsedFlags.extProcRedisPassword,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}

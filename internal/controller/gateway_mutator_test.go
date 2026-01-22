@@ -378,6 +378,7 @@ func newTestGatewayMutator(fakeClient client.Client, fakeKube *fake2.Clientset, 
 		fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
 		"info", "/tmp/extproc.sock", metricsRequestHeaderAttributes, spanRequestHeaderAttributes, "/v1", endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets, 512*1024*1024,
 		sidecar, "seed", 100, "fallback", 200,
+		"", false, "", // Redis config (empty for tests)
 	)
 }
 
