@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-// CacheDirectives holds parsed Cache-Control header directives.
-type CacheDirectives struct {
+// Directives holds parsed Cache-Control header directives.
+type Directives struct {
 	// NoCache indicates the response should not be served from cache without revalidation.
 	// For requests: bypass cache lookup but still cache the response.
 	// For responses: treat as no-store for simplicity (no revalidation support).
@@ -38,9 +38,9 @@ type CacheDirectives struct {
 //   - private: do not store in shared cache
 //   - max-age=N: use N seconds as TTL
 //
-// Example: "no-cache, max-age=3600" -> CacheDirectives{NoCache: true, MaxAge: 1h}
-func ParseCacheControl(value string) CacheDirectives {
-	var d CacheDirectives
+// Example: "no-cache, max-age=3600" -> Directives{NoCache: true, MaxAge: 1h}
+func ParseCacheControl(value string) Directives {
+	var d Directives
 	if value == "" {
 		return d
 	}
@@ -74,12 +74,12 @@ func ParseCacheControl(value string) CacheDirectives {
 
 // ShouldSkipCacheLookup returns true if the request Cache-Control directives
 // indicate that cache lookup should be skipped.
-func (d CacheDirectives) ShouldSkipCacheLookup() bool {
+func (d Directives) ShouldSkipCacheLookup() bool {
 	return d.NoStore || d.NoCache
 }
 
 // ShouldSkipCacheStore returns true if the directives indicate that
 // the response should not be stored in cache.
-func (d CacheDirectives) ShouldSkipCacheStore() bool {
+func (d Directives) ShouldSkipCacheStore() bool {
 	return d.NoStore || d.NoCache || d.Private
 }

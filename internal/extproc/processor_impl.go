@@ -695,7 +695,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 }
 
 // storeInCacheWithTTL stores the buffered response in the cache asynchronously with the specified TTL.
-func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) storeInCacheWithTTL(ctx context.Context, ttl time.Duration) {
+func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) storeInCacheWithTTL(_ context.Context, ttl time.Duration) {
 	if u.responseBuffer.Len() == 0 {
 		return
 	}

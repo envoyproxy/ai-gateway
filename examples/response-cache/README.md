@@ -54,8 +54,8 @@ metadata:
 spec:
   responseCache:
     enabled: true
-    ttl: 1h                      # Cache TTL (default: 1h)
-    respectCacheControl: true    # Honor HTTP Cache-Control headers (default: true)
+    ttl: 1h # Cache TTL (default: 1h)
+    respectCacheControl: true # Honor HTTP Cache-Control headers (default: true)
   # ... rest of config
 ```
 
@@ -78,18 +78,18 @@ When `respectCacheControl: true` (default), the gateway honors standard HTTP Cac
 
 ### Request Headers (Client Control)
 
-| Header | Behavior |
-|--------|----------|
+| Header                    | Behavior                                          |
+| ------------------------- | ------------------------------------------------- |
 | `Cache-Control: no-cache` | Bypass cache lookup, but still cache the response |
-| `Cache-Control: no-store` | Bypass cache entirely (no lookup, no store) |
+| `Cache-Control: no-store` | Bypass cache entirely (no lookup, no store)       |
 
 ### Response Headers (Backend Control)
 
-| Header | Behavior |
-|--------|----------|
-| `Cache-Control: no-store` | Do not cache this response |
-| `Cache-Control: no-cache` | Do not cache this response |
-| `Cache-Control: private` | Do not cache (shared cache should not store) |
+| Header                     | Behavior                                           |
+| -------------------------- | -------------------------------------------------- |
+| `Cache-Control: no-store`  | Do not cache this response                         |
+| `Cache-Control: no-cache`  | Do not cache this response                         |
+| `Cache-Control: private`   | Do not cache (shared cache should not store)       |
 | `Cache-Control: max-age=N` | Use N seconds as TTL instead of configured default |
 
 ### Examples

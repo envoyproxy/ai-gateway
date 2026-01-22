@@ -613,6 +613,7 @@ QuotaPolicyList contains a list of QuotaPolicy
 - [QuotaRule](#quotarule)
 - [QuotaValue](#quotavalue)
 - [ServiceQuotaDefinition](#servicequotadefinition)
+- [ResponseCacheConfig](#responsecacheconfig)
 - [ToolCall](#toolcall)
 - [VersionedAPISchema](#versionedapischema)
 
@@ -849,6 +850,12 @@ AIGatewayRouteSpec details the AIGatewayRoute configuration.
   type="[LLMRequestCost](#llmrequestcost) array"
   required="false"
   description="LLMRequestCosts specifies how to capture the cost of the LLM-related request, notably the token usage.<br />The AI Gateway filter will capture each specified number and store it in the Envoy's dynamic<br />metadata per HTTP request. The namespaced key is `io.envoy.ai_gateway`,<br />For example, let's say we have the following LLMRequestCosts configuration:<br />```yaml<br />	llmRequestCosts:<br />	- metadataKey: llm_input_token<br />	  type: InputToken<br />	- metadataKey: llm_output_token<br />	  type: OutputToken<br />	- metadataKey: llm_total_token<br />	  type: TotalToken<br />	- metadataKey: llm_cached_input_token<br />	  type: CachedInputToken<br />- metadataKey: llm_cache_creation_input_token<br />   type: CacheCreationInputToken<br />```<br />Then, with the following BackendTrafficPolicy of Envoy Gateway, you can have three<br />rate limit buckets for each unique x-tenant-id header value. One bucket is for the input token,<br />the other is for the output token, and the last one is for the total token.<br />Each bucket will be reduced by the corresponding token usage captured by the AI Gateway filter.<br />```yaml<br />	apiVersion: gateway.envoyproxy.io/v1alpha1<br />	kind: BackendTrafficPolicy<br />	metadata:<br />	  name: some-example-token-rate-limit<br />	  namespace: default<br />	spec:<br />	  targetRefs:<br />	  - group: gateway.networking.k8s.io<br />	     kind: HTTPRoute<br />	     name: usage-rate-limit<br />	  rateLimit:<br />	    type: Global<br />	    global:<br />	      rules:<br />	        - clientSelectors:<br />	            # Do the rate limiting based on the x-tenant-id header.<br />	            - headers:<br />	                - name: x-tenant-id<br />	                  type: Distinct<br />	          limit:<br />	            # Configures the number of `tokens` allowed per hour.<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              # Setting the request cost to zero allows to only check the rate limit budget,<br />	              # and not consume the budget on the request path.<br />	              number: 0<br />	            # This specifies the cost of the response retrieved from the dynamic metadata set by the AI Gateway filter.<br />	            # The extracted value will be used to consume the rate limit budget, and subsequent requests will be rate limited<br />	            # if the budget is exhausted.<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_input_token<br />	        - clientSelectors:<br />	            - headers:<br />	                - name: x-tenant-id<br />	                  type: Distinct<br />	          limit:<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              number: 0<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_output_token<br />	        - clientSelectors:<br />	            - headers:<br />	                - name: x-tenant-id<br />	                  type: Distinct<br />	          limit:<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              number: 0<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_total_token<br />```<br />Note that when multiple AIGatewayRoute resources are attached to the same Gateway, and<br />different costs are configured for the same metadata key, the ai-gateway will pick one of them<br />to configure the metadata key in the generated HTTPRoute, and ignore the rest."
+  description="LLMRequestCosts specifies how to capture the cost of the LLM-related request, notably the token usage.<br />The AI Gateway filter will capture each specified number and store it in the Envoy's dynamic<br />metadata per HTTP request. The namespaced key is `io.envoy.ai_gateway`,<br />For example, let's say we have the following LLMRequestCosts configuration:<br />```yaml<br />	llmRequestCosts:<br />	- metadataKey: llm_input_token<br />	  type: InputToken<br />	- metadataKey: llm_output_token<br />	  type: OutputToken<br />	- metadataKey: llm_total_token<br />	  type: TotalToken<br />	- metadataKey: llm_cached_input_token<br />	  type: CachedInputToken<br />- metadataKey: llm_cache_creation_input_token<br />   type: CacheCreationInputToken<br />```<br />Then, with the following BackendTrafficPolicy of Envoy Gateway, you can have three<br />rate limit buckets for each unique x-user-id header value. One bucket is for the input token,<br />the other is for the output token, and the last one is for the total token.<br />Each bucket will be reduced by the corresponding token usage captured by the AI Gateway filter.<br />```yaml<br />	apiVersion: gateway.envoyproxy.io/v1alpha1<br />	kind: BackendTrafficPolicy<br />	metadata:<br />	  name: some-example-token-rate-limit<br />	  namespace: default<br />	spec:<br />	  targetRefs:<br />	  - group: gateway.networking.k8s.io<br />	     kind: HTTPRoute<br />	     name: usage-rate-limit<br />	  rateLimit:<br />	    type: Global<br />	    global:<br />	      rules:<br />	        - clientSelectors:<br />	            # Do the rate limiting based on the x-user-id header.<br />	            - headers:<br />	                - name: x-user-id<br />	                  type: Distinct<br />	          limit:<br />	            # Configures the number of `tokens` allowed per hour.<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              # Setting the request cost to zero allows to only check the rate limit budget,<br />	              # and not consume the budget on the request path.<br />	              number: 0<br />	            # This specifies the cost of the response retrieved from the dynamic metadata set by the AI Gateway filter.<br />	            # The extracted value will be used to consume the rate limit budget, and subsequent requests will be rate limited<br />	            # if the budget is exhausted.<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_input_token<br />	        - clientSelectors:<br />	            - headers:<br />	                - name: x-user-id<br />	                  type: Distinct<br />	          limit:<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              number: 0<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_output_token<br />	        - clientSelectors:<br />	            - headers:<br />	                - name: x-user-id<br />	                  type: Distinct<br />	          limit:<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              number: 0<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_total_token<br />```<br />Note that when multiple AIGatewayRoute resources are attached to the same Gateway, and<br />different costs are configured for the same metadata key, the ai-gateway will pick one of them<br />to configure the metadata key in the generated HTTPRoute, and ignore the rest."
+/><ApiField
+  name="responseCache"
+  type="[ResponseCacheConfig](#responsecacheconfig)"
+  required="false"
+  description="ResponseCache configures response caching for this route.<br />When enabled, responses are cached in Redis and returned for identical requests,<br />reducing latency and costs for repeated LLM calls.<br />Requires Redis to be configured globally via extproc flags (--redisAddr).<br />If Redis is not configured, this setting is ignored."
 />
 
 
@@ -2463,6 +2470,38 @@ QuotaValue defines the quota limits using sliding window.
   type="[QuotaValue](#quotavalue)"
   required="true"
   description="Quota value applicable to all requests.<br />A response with 429 HTTP status code is sent back to the client when<br />the selected requests have exceeded the quota."
+/>
+
+
+#### ResponseCacheConfig
+
+
+
+**Appears in:**
+- [AIGatewayRouteSpec](#aigatewayroutespec)
+
+ResponseCacheConfig configures response caching for an AIGatewayRoute.
+
+##### Fields
+
+
+
+<ApiField
+  name="enabled"
+  type="boolean"
+  required="false"
+  description="Enabled controls whether response caching is active for this route.<br />When true, responses are cached and returned for identical requests.<br />Default is false."
+/><ApiField
+  name="ttl"
+  type="[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#duration-v1-meta)"
+  required="false"
+  description="TTL is the time-to-live for cached responses.<br />After this duration, cached responses expire and new requests will be forwarded to the backend.<br />Default is 1 hour."
+/><ApiField
+  name="respectCacheControl"
+  type="boolean"
+  required="false"
+  defaultValue="true"
+  description="RespectCacheControl controls whether HTTP Cache-Control headers are honored.<br />When true (default), request and response Cache-Control headers can override caching behavior:<br />Request headers:<br />  - Cache-Control: no-cache - Bypass cache lookup, but still cache the response<br />  - Cache-Control: no-store - Bypass cache entirely (no lookup, no store)<br />Response headers:<br />  - Cache-Control: no-store - Do not cache this response<br />  - Cache-Control: no-cache - Do not cache this response (treated as no-store)<br />  - Cache-Control: private - Do not cache (shared cache should not store)<br />  - Cache-Control: max-age=N - Use N seconds as TTL instead of configured default<br />When false, Cache-Control headers are ignored and caching behavior is determined<br />solely by the Enabled and TTL fields."
 />
 
 

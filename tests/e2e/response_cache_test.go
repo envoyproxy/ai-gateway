@@ -6,6 +6,7 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -59,7 +60,7 @@ func TestResponseCache(t *testing.T) {
 	const modelName = "cache-test-model"
 	const fakeResponseBody = `{"choices":[{"message":{"content":"This is a cached response.","role":"assistant"}}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`
 
-	makeRequest := func(body string, headers map[string]string) (*http.Response, []byte, error) {
+	makeRequest := func(body string, headers map[string]string) (http.Header, []byte, error) {
 		fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
 		defer fwd.Kill()
 
@@ -84,7 +85,10 @@ func TestResponseCache(t *testing.T) {
 		if err != nil {
 			return nil, nil, err
 		}
-		return resp, respBody, nil
+		if resp.StatusCode != http.StatusOK {
+			return nil, nil, fmt.Errorf("unexpected status %d, body: %s", resp.StatusCode, respBody)
+		}
+		return resp.Header, respBody, nil
 	}
 
 	t.Run("cache_miss_then_hit", func(t *testing.T) {
@@ -94,15 +98,12 @@ func TestResponseCache(t *testing.T) {
 
 		internaltesting.RequireEventuallyNoError(t, func() error {
 			// First request - should be a cache miss.
-			resp1, body1, err := makeRequest(requestBody, nil)
+			headers1, body1, err := makeRequest(requestBody, nil)
 			if err != nil {
 				return fmt.Errorf("first request failed: %w", err)
 			}
-			if resp1.StatusCode != http.StatusOK {
-				return fmt.Errorf("first request: unexpected status %d, body: %s", resp1.StatusCode, body1)
-			}
 
-			cacheHeader1 := resp1.Header.Get("x-aigw-cache")
+			cacheHeader1 := headers1.Get("x-aigw-cache")
 			t.Logf("First request cache header: %s", cacheHeader1)
 			if cacheHeader1 != "miss" {
 				return fmt.Errorf("first request: expected cache miss, got %q", cacheHeader1)
@@ -112,22 +113,19 @@ func TestResponseCache(t *testing.T) {
 			time.Sleep(100 * time.Millisecond)
 
 			// Second request with same body - should be a cache hit.
-			resp2, body2, err := makeRequest(requestBody, nil)
+			headers2, body2, err := makeRequest(requestBody, nil)
 			if err != nil {
 				return fmt.Errorf("second request failed: %w", err)
 			}
-			if resp2.StatusCode != http.StatusOK {
-				return fmt.Errorf("second request: unexpected status %d, body: %s", resp2.StatusCode, body2)
-			}
 
-			cacheHeader2 := resp2.Header.Get("x-aigw-cache")
+			cacheHeader2 := headers2.Get("x-aigw-cache")
 			t.Logf("Second request cache header: %s", cacheHeader2)
 			if cacheHeader2 != "hit" {
 				return fmt.Errorf("second request: expected cache hit, got %q", cacheHeader2)
 			}
 
 			// Verify the response bodies are the same.
-			if string(body1) != string(body2) {
+			if !bytes.Equal(body1, body2) {
 				return fmt.Errorf("response bodies differ: first=%s, second=%s", body1, body2)
 			}
 
@@ -142,27 +140,21 @@ func TestResponseCache(t *testing.T) {
 
 		internaltesting.RequireEventuallyNoError(t, func() error {
 			// First request.
-			resp1, body1, err := makeRequest(requestBody1, nil)
+			headers1, _, err := makeRequest(requestBody1, nil)
 			if err != nil {
 				return fmt.Errorf("first request failed: %w", err)
 			}
-			if resp1.StatusCode != http.StatusOK {
-				return fmt.Errorf("first request: unexpected status %d, body: %s", resp1.StatusCode, body1)
-			}
-			if resp1.Header.Get("x-aigw-cache") != "miss" {
+			if headers1.Get("x-aigw-cache") != "miss" {
 				return fmt.Errorf("first request: expected cache miss")
 			}
 
 			// Second request with different body - should also be a cache miss.
-			resp2, body2, err := makeRequest(requestBody2, nil)
+			headers2, _, err := makeRequest(requestBody2, nil)
 			if err != nil {
 				return fmt.Errorf("second request failed: %w", err)
 			}
-			if resp2.StatusCode != http.StatusOK {
-				return fmt.Errorf("second request: unexpected status %d, body: %s", resp2.StatusCode, body2)
-			}
-			if resp2.Header.Get("x-aigw-cache") != "miss" {
-				return fmt.Errorf("second request: expected cache miss for different request, got %q", resp2.Header.Get("x-aigw-cache"))
+			if headers2.Get("x-aigw-cache") != "miss" {
+				return fmt.Errorf("second request: expected cache miss for different request, got %q", headers2.Get("x-aigw-cache"))
 			}
 
 			return nil
@@ -175,30 +167,24 @@ func TestResponseCache(t *testing.T) {
 
 		internaltesting.RequireEventuallyNoError(t, func() error {
 			// First request - cache miss, stores in cache.
-			resp1, body1, err := makeRequest(requestBody, nil)
+			headers1, _, err := makeRequest(requestBody, nil)
 			if err != nil {
 				return fmt.Errorf("first request failed: %w", err)
 			}
-			if resp1.StatusCode != http.StatusOK {
-				return fmt.Errorf("first request: unexpected status %d, body: %s", resp1.StatusCode, body1)
-			}
-			if resp1.Header.Get("x-aigw-cache") != "miss" {
+			if headers1.Get("x-aigw-cache") != "miss" {
 				return fmt.Errorf("first request: expected cache miss")
 			}
 
 			time.Sleep(100 * time.Millisecond)
 
 			// Second request with Cache-Control: no-cache - should bypass cache lookup but still store.
-			resp2, body2, err := makeRequest(requestBody, map[string]string{"Cache-Control": "no-cache"})
+			headers2, _, err := makeRequest(requestBody, map[string]string{"Cache-Control": "no-cache"})
 			if err != nil {
 				return fmt.Errorf("second request failed: %w", err)
 			}
-			if resp2.StatusCode != http.StatusOK {
-				return fmt.Errorf("second request: unexpected status %d, body: %s", resp2.StatusCode, body2)
-			}
 			// With no-cache, the cache lookup is skipped, so it should be a miss.
-			if resp2.Header.Get("x-aigw-cache") != "miss" {
-				return fmt.Errorf("second request with no-cache: expected cache miss, got %q", resp2.Header.Get("x-aigw-cache"))
+			if headers2.Get("x-aigw-cache") != "miss" {
+				return fmt.Errorf("second request with no-cache: expected cache miss, got %q", headers2.Get("x-aigw-cache"))
 			}
 
 			return nil
@@ -211,31 +197,25 @@ func TestResponseCache(t *testing.T) {
 
 		internaltesting.RequireEventuallyNoError(t, func() error {
 			// First request with Cache-Control: no-store - should not store in cache.
-			resp1, body1, err := makeRequest(requestBody, map[string]string{"Cache-Control": "no-store"})
+			headers1, _, err := makeRequest(requestBody, map[string]string{"Cache-Control": "no-store"})
 			if err != nil {
 				return fmt.Errorf("first request failed: %w", err)
 			}
-			if resp1.StatusCode != http.StatusOK {
-				return fmt.Errorf("first request: unexpected status %d, body: %s", resp1.StatusCode, body1)
-			}
 			// With no-store, the response should not be cached.
-			if resp1.Header.Get("x-aigw-cache") != "miss" {
-				return fmt.Errorf("first request with no-store: expected cache miss, got %q", resp1.Header.Get("x-aigw-cache"))
+			if headers1.Get("x-aigw-cache") != "miss" {
+				return fmt.Errorf("first request with no-store: expected cache miss, got %q", headers1.Get("x-aigw-cache"))
 			}
 
 			time.Sleep(100 * time.Millisecond)
 
 			// Second request without no-store - should still be a miss because first request didn't store.
-			resp2, body2, err := makeRequest(requestBody, nil)
+			headers2, _, err := makeRequest(requestBody, nil)
 			if err != nil {
 				return fmt.Errorf("second request failed: %w", err)
 			}
-			if resp2.StatusCode != http.StatusOK {
-				return fmt.Errorf("second request: unexpected status %d, body: %s", resp2.StatusCode, body2)
-			}
 			// Should be a miss because the first request with no-store didn't cache.
-			if resp2.Header.Get("x-aigw-cache") != "miss" {
-				return fmt.Errorf("second request: expected cache miss (no-store prevented caching), got %q", resp2.Header.Get("x-aigw-cache"))
+			if headers2.Get("x-aigw-cache") != "miss" {
+				return fmt.Errorf("second request: expected cache miss (no-store prevented caching), got %q", headers2.Get("x-aigw-cache"))
 			}
 
 			return nil
