@@ -2358,14 +2358,6 @@ type ResponseFormatTextParam struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseFormatTextParam) MarshalJSON() ([]byte, error) {
-	if r.Type == "" {
-		r.Type = "text"
-	}
-	type alias ResponseFormatTextParam
-	return json.Marshal(alias(r))
-}
-
 // JSON Schema response format. Used to generate structured JSON responses. Learn
 // more about
 // [Structured Outputs](https://platform.openai.com/docs/guides/structured-outputs).
@@ -2388,17 +2380,7 @@ type ResponseFormatTextJSONSchemaConfigParam struct {
 	// how to respond in the format.
 	Description string `json:"description,omitzero"`
 	// The type of response format being defined. Always `json_schema`.
-	//
-	// This field can be elided, and will marshal its zero value as "json_schema".
 	Type string `json:"type"`
-}
-
-func (r ResponseFormatTextJSONSchemaConfigParam) MarshalJSON() ([]byte, error) {
-	if r.Type == "" {
-		r.Type = "json_schema"
-	}
-	type alias ResponseFormatTextJSONSchemaConfigParam
-	return json.Marshal(alias(r))
 }
 
 // JSON object response format. An older method of generating JSON responses. Using
@@ -2407,14 +2389,6 @@ func (r ResponseFormatTextJSONSchemaConfigParam) MarshalJSON() ([]byte, error) {
 type ResponseFormatJSONObjectParam struct {
 	// The type of response format being defined. Always `json_object`.
 	Type string `json:"type"`
-}
-
-func (r ResponseFormatJSONObjectParam) MarshalJSON() ([]byte, error) {
-	if r.Type == "" {
-		r.Type = "json_object"
-	}
-	type alias ResponseFormatJSONObjectParam
-	return json.Marshal(alias(r))
 }
 
 // Reasoning configuration for reasoning models.
@@ -2556,7 +2530,7 @@ type ResponseToolUnion struct {
 	OfApplyPatch       *ApplyPatchToolParam
 }
 
-func (t ResponseToolUnion) MarshalJSON() ([]byte, error) {
+func (t ResponseToolUnion) MarshalJSON() ([]byte, error) { // nolint:gocritic
 	switch {
 	case t.OfFunction != nil:
 		return json.Marshal(t.OfFunction)
@@ -2684,17 +2658,7 @@ type FunctionToolParam struct {
 	// call the function.
 	Description string `json:"description,omitzero"`
 	// The type of the function tool. Always `function`.
-	//
-	// This field can be elided, and will marshal its zero value as "function".
 	Type string `json:"type"`
-}
-
-func (f FunctionToolParam) MarshalJSON() ([]byte, error) {
-	type Alias FunctionToolParam
-	if f.Type == "" {
-		f.Type = "function"
-	}
-	return json.Marshal(Alias(f))
 }
 
 // A tool that searches for relevant content from uploaded files. Learn more about
@@ -2713,17 +2677,7 @@ type FileSearchToolParam struct {
 	// Ranking options for search.
 	RankingOptions FileSearchToolRankingOptionsParam `json:"ranking_options,omitzero"`
 	// The type of the file search tool. Always `file_search`.
-	//
-	// This field can be elided, and will marshal its zero value as "file_search".
 	Type string `json:"type"`
-}
-
-func (f FileSearchToolParam) MarshalJSON() ([]byte, error) {
-	type alias FileSearchToolParam
-	if f.Type == "" {
-		f.Type = "file_search"
-	}
-	return json.Marshal((alias)(f))
 }
 
 // A union type for different file search tool filters.
@@ -2937,18 +2891,7 @@ type ComputerToolParam struct {
 	// Any of "windows", "mac", "linux", "ubuntu", "browser".
 	Environment string `json:"environment,omitzero"`
 	// The type of the computer use tool. Always `computer_use_preview`.
-	//
-	// This field can be elided, and will marshal its zero value as
-	// "computer_use_preview".
 	Type string `json:"type,omitzero"`
-}
-
-func (f ComputerToolParam) MarshalJSON() ([]byte, error) {
-	type alias ComputerToolParam
-	if f.Type == "" {
-		f.Type = "computer_use_preview"
-	}
-	return json.Marshal((alias)(f))
 }
 
 // Search the Internet for sources related to the prompt. Learn more about the
@@ -2993,17 +2936,7 @@ type WebSearchToolUserLocationParam struct {
 	// user, e.g. `America/Los_Angeles`.
 	Timezone string `json:"timezone,omitzero"`
 	// The type of location approximation. Always `approximate`.
-	//
-	// Any of "approximate".
 	Type string `json:"type,omitzero"`
-}
-
-func (f WebSearchToolUserLocationParam) MarshalJSON() ([]byte, error) {
-	type alias WebSearchToolUserLocationParam
-	if f.Type == "" {
-		f.Type = "approximate"
-	}
-	return json.Marshal((alias)(f))
 }
 
 // Give the model access to additional tools via remote Model Context Protocol
@@ -3051,17 +2984,7 @@ type ToolMcpParam struct {
 	// "connector_outlookcalendar", "connector_outlookemail", "connector_sharepoint".
 	ConnectorID string `json:"connector_id,omitzero"`
 	// The type of the MCP tool. Always `mcp`.
-	//
-	// This field can be elided, and will marshal its zero value as "mcp".
 	Type string `json:"type"`
-}
-
-func (f ToolMcpParam) MarshalJSON() ([]byte, error) {
-	type alias ToolMcpParam
-	if f.Type == "" {
-		f.Type = "mcp"
-	}
-	return json.Marshal((alias)(f))
 }
 
 // A union type for specifying allowed MCP server tools.
@@ -3176,17 +3099,7 @@ type ToolCodeInterpreterParam struct {
 	// optional `memory_limit` setting.
 	Container ToolCodeInterpreterContainerUnionParam `json:"container,omitzero"`
 	// The type of the code interpreter tool. Always `code_interpreter`.
-	//
-	// This field can be elided, and will marshal its zero value as "code_interpreter".
 	Type string `json:"type"`
-}
-
-func (f ToolCodeInterpreterParam) MarshalJSON() ([]byte, error) {
-	type alias ToolCodeInterpreterParam
-	if f.Type == "" {
-		f.Type = "code_interpreter"
-	}
-	return json.Marshal((alias)(f))
 }
 
 // A union type for different code interpreter container parameters.
@@ -3201,9 +3114,6 @@ func (t ToolCodeInterpreterContainerUnionParam) MarshalJSON() ([]byte, error) {
 	case t.OfString != nil:
 		return json.Marshal(t.OfString)
 	case t.OfCodeInterpreterToolAuto != nil:
-		if t.OfCodeInterpreterToolAuto.Type == "" {
-			t.OfCodeInterpreterToolAuto.Type = "auto"
-		}
 		return json.Marshal(t.OfCodeInterpreterToolAuto)
 	default:
 		return nil, errors.New("no container to marshal in ToolCodeInterpreterContainerUnionParam")
@@ -3238,17 +3148,7 @@ type ToolCodeInterpreterContainerCodeInterpreterContainerAutoParam struct {
 	// An optional list of uploaded files to make available to your code.
 	FileIDs []string `json:"file_ids,omitzero"`
 	// Always `auto`.
-	//
-	// This field can be elided, and will marshal its zero value as "auto".
 	Type string `json:"type"`
-}
-
-func (f ToolCodeInterpreterContainerCodeInterpreterContainerAutoParam) MarshalJSON() ([]byte, error) {
-	type alias ToolCodeInterpreterContainerCodeInterpreterContainerAutoParam
-	if f.Type == "" {
-		f.Type = "auto"
-	}
-	return json.Marshal((alias)(f))
 }
 
 // A tool that generates images using a model like `gpt-image-1`.
@@ -3299,17 +3199,7 @@ type ToolImageGenerationParam struct {
 	// Any of "1024x1024", "1024x1536", "1536x1024", "auto".
 	Size string `json:"size,omitzero"`
 	// The type of the image generation tool. Always `image_generation`.
-	//
-	// This field can be elided, and will marshal its zero value as "image_generation".
 	Type string `json:"type"`
-}
-
-func (f ToolImageGenerationParam) MarshalJSON() ([]byte, error) {
-	type alias ToolImageGenerationParam
-	if f.Type == "" {
-		f.Type = "image_generation"
-	}
-	return json.Marshal((alias)(f))
 }
 
 // Optional mask for inpainting. Contains `image_url` (string, optional) and
@@ -3327,26 +3217,10 @@ type ToolLocalShellParam struct {
 	Type string `json:"type"`
 }
 
-func (f ToolLocalShellParam) MarshalJSON() ([]byte, error) {
-	type alias ToolLocalShellParam
-	if f.Type == "" {
-		f.Type = "local_shell"
-	}
-	return json.Marshal((alias)(f))
-}
-
 // A tool that allows the model to execute shell commands.
 type FunctionShellToolParam struct {
 	// The type of the shell tool. Always `shell`.
 	Type string `json:"type"`
-}
-
-func (f FunctionShellToolParam) MarshalJSON() ([]byte, error) {
-	type alias FunctionShellToolParam
-	if f.Type == "" {
-		f.Type = "shell"
-	}
-	return json.Marshal((alias)(f))
 }
 
 // A custom tool that processes input using a specified format. Learn more about
@@ -3361,17 +3235,7 @@ type CustomToolParam struct {
 	// The input format for the custom tool. Default is unconstrained text.
 	Format CustomToolInputFormatUnionParam `json:"format,omitzero"`
 	// The type of the custom tool. Always `custom`.
-	//
-	// This field can be elided, and will marshal its zero value as "custom".
 	Type string `json:"type"`
-}
-
-func (f CustomToolParam) MarshalJSON() ([]byte, error) {
-	type alias CustomToolParam
-	if f.Type == "" {
-		f.Type = "custom"
-	}
-	return json.Marshal((alias)(f))
 }
 
 // A union type for different custom tool input format parameters.
@@ -3384,14 +3248,8 @@ type CustomToolInputFormatUnionParam struct {
 func (c CustomToolInputFormatUnionParam) MarshalJSON() ([]byte, error) {
 	switch {
 	case c.OfText != nil:
-		if c.OfText.Type == "" {
-			c.OfText.Type = "text"
-		}
 		return json.Marshal(c.OfText)
 	case c.OfGrammar != nil:
-		if c.OfGrammar.Type == "" {
-			c.OfGrammar.Type = "grammar"
-		}
 		return json.Marshal(c.OfGrammar)
 	default:
 		return nil, errors.New("no format to marshal in CustomToolInputFormatUnionParam")
@@ -3425,14 +3283,6 @@ type CustomToolInputFormatTextParam struct {
 	Type string `json:"type"`
 }
 
-func (f CustomToolInputFormatTextParam) MarshalJSON() ([]byte, error) {
-	type alias CustomToolInputFormatTextParam
-	if f.Type == "" {
-		f.Type = "text"
-	}
-	return json.Marshal((alias)(f))
-}
-
 // A grammar defined by the user.
 //
 // The properties Definition, Syntax, Type are required.
@@ -3444,17 +3294,7 @@ type CustomToolInputFormatGrammarParam struct {
 	// Any of "lark", "regex".
 	Syntax string `json:"syntax,omitzero"`
 	// Grammar format. Always `grammar`.
-	//
-	// This field can be elided, and will marshal its zero value as "grammar".
 	Type string `json:"type"`
-}
-
-func (f CustomToolInputFormatGrammarParam) MarshalJSON() ([]byte, error) {
-	type alias CustomToolInputFormatGrammarParam
-	if f.Type == "" {
-		f.Type = "grammar"
-	}
-	return json.Marshal((alias)(f))
 }
 
 // This tool searches the web for relevant results to use in a response. Learn more
@@ -3492,31 +3332,13 @@ type WebSearchPreviewToolUserLocationParam struct {
 	// user, e.g. `America/Los_Angeles`.
 	Timezone string `json:"timezone,omitzero"`
 	// The type of location approximation. Always `approximate`.
-	//
-	// This field can be elided, and will marshal its zero value as "approximate".
 	Type string `json:"type"`
-}
-
-func (w WebSearchPreviewToolUserLocationParam) MarshalJSON() ([]byte, error) {
-	if w.Type == "" {
-		w.Type = "approximate"
-	}
-	type alias WebSearchPreviewToolUserLocationParam
-	return json.Marshal(alias(w))
 }
 
 // Allows the assistant to create, delete, or update files using unified diffs.
 type ApplyPatchToolParam struct {
 	// The type of the tool. Always `apply_patch`.
 	Type string `json:"type"`
-}
-
-func (w ApplyPatchToolParam) MarshalJSON() ([]byte, error) {
-	if w.Type == "" {
-		w.Type = "apply_patch"
-	}
-	type alias ApplyPatchToolParam
-	return json.Marshal(alias(w))
 }
 
 // A text input to the model.
@@ -3526,17 +3348,7 @@ type ResponseInputTextParam struct {
 	// The text input to the model.
 	Text string `json:"text"`
 	// The type of the input item. Always `input_text`.
-	//
-	// This field can be elided, and will marshal its zero value as "input_text".
 	Type string `json:"type"`
-}
-
-func (r ResponseInputTextParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInputTextParam
-	if r.Type == "" {
-		r.Type = "input_text"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // An image input to the model. Learn about
@@ -3555,17 +3367,7 @@ type ResponseInputImageParam struct {
 	// encoded image in a data URL.
 	ImageURL string `json:"image_url,omitzero"`
 	// The type of the input item. Always `input_image`.
-	//
-	// This field can be elided, and will marshal its zero value as "input_image".
 	Type string `json:"type"`
-}
-
-func (r ResponseInputImageParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInputImageParam
-	if r.Type == "" {
-		r.Type = "input_image"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A file input to the model.
@@ -3581,17 +3383,7 @@ type ResponseInputFileParam struct {
 	// The name of the file to be sent to the model.
 	Filename string `json:"filename,omitzero"`
 	// The type of the input item. Always `input_file`.
-	//
-	// This field can be elided, and will marshal its zero value as "input_file".
 	Type string `json:"type"`
-}
-
-func (r ResponseInputFileParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInputFileParam
-	if r.Type == "" {
-		r.Type = "input_file"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // ResponseNewParamsConversationUnion is a union type for different conversation parameters.
@@ -3703,7 +3495,7 @@ type ResponseInputItemUnionParam struct {
 	OfItemReference        *ResponseInputItemItemReferenceParam
 }
 
-func (r ResponseInputItemUnionParam) MarshalJSON() ([]byte, error) {
+func (r ResponseInputItemUnionParam) MarshalJSON() ([]byte, error) { // nolint:gocritic
 	switch {
 	case r.OfMessage != nil:
 		return json.Marshal(r.OfMessage)
@@ -3952,17 +3744,7 @@ type EasyInputMessageParam struct {
 	// Any of "user", "assistant", "system", "developer".
 	Role string `json:"role,omitzero"`
 	// The type of the message input. Always `message`.
-	//
-	// Any of "message".
 	Type string `json:"type,omitzero"`
-}
-
-func (r EasyInputMessageParam) MarshalJSON() ([]byte, error) {
-	type Alias EasyInputMessageParam
-	if r.Type == "" {
-		r.Type = "message"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // EasyInputMessageContentUnionParam is a union type for different message content parameters.
@@ -4069,17 +3851,7 @@ type ResponseInputItemMessageParam struct {
 	// Any of "in_progress", "completed", "incomplete".
 	Status string `json:"status,omitzero"`
 	// The type of the message input. Always set to `message`.
-	//
-	// Any of "message".
 	Type string `json:"type,omitzero"`
-}
-
-func (r ResponseInputItemMessageParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInputItemMessageParam
-	if r.Type == "" {
-		r.Type = "message"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // An output message from the model.
@@ -4096,24 +3868,9 @@ type ResponseOutputMessage struct {
 	// Any of "in_progress", "completed", "incomplete".
 	Status string `json:"status,omitzero"`
 	// The role of the output message. Always `assistant`.
-	//
-	// This field can be elided, and will marshal its zero value as "assistant".
 	Role string `json:"role"`
 	// The type of the output message. Always `message`.
-	//
-	// This field can be elided, and will marshal its zero value as "message".
 	Type string `json:"type"`
-}
-
-func (r ResponseOutputMessage) MarshalJSON() ([]byte, error) {
-	type Alias ResponseOutputMessage
-	if r.Role == "" {
-		r.Role = "assistant"
-	}
-	if r.Type == "" {
-		r.Type = "message"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // ResponseOutputMessageContentUnion is a union type for different output message content parameters.
@@ -4165,17 +3922,7 @@ type ResponseOutputTextParam struct {
 	Text     string                           `json:"text"`
 	Logprobs []ResponseOutputTextLogprobParam `json:"logprobs,omitzero"`
 	// The type of the output text. Always `output_text`.
-	//
-	// This field can be elided, and will marshal its zero value as "output_text".
 	Type string `json:"type"`
-}
-
-func (r ResponseOutputTextParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseOutputTextParam
-	if r.Type == "" {
-		r.Type = "output_text"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // The log probability of a token.
@@ -4265,17 +4012,7 @@ type ResponseOutputTextAnnotationFileCitationParam struct {
 	// The index of the file in the list of files.
 	Index int64 `json:"index"`
 	// The type of the file citation. Always `file_citation`.
-	//
-	// This field can be elided, and will marshal its zero value as "file_citation".
 	Type string `json:"type"`
-}
-
-func (r ResponseOutputTextAnnotationFileCitationParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseOutputTextAnnotationFileCitationParam
-	if r.Type == "" {
-		r.Type = "file_citation"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A citation for a web resource used to generate a model response.
@@ -4291,17 +4028,7 @@ type ResponseOutputTextAnnotationURLCitationParam struct {
 	// The URL of the web resource.
 	URL string `json:"url"`
 	// The type of the URL citation. Always `url_citation`.
-	//
-	// This field can be elided, and will marshal its zero value as "url_citation".
 	Type string `json:"type"`
-}
-
-func (r ResponseOutputTextAnnotationURLCitationParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseOutputTextAnnotationURLCitationParam
-	if r.Type == "" {
-		r.Type = "url_citation"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A citation for a container file used to generate a model response.
@@ -4320,18 +4047,7 @@ type ResponseOutputTextAnnotationContainerFileCitationParam struct {
 	// The index of the first character of the container file citation in the message.
 	StartIndex int64 `json:"start_index"`
 	// The type of the container file citation. Always `container_file_citation`.
-	//
-	// This field can be elided, and will marshal its zero value as
-	// "container_file_citation".
 	Type string `json:"type"`
-}
-
-func (r ResponseOutputTextAnnotationContainerFileCitationParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseOutputTextAnnotationContainerFileCitationParam
-	if r.Type == "" {
-		r.Type = "container_file_citation"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A path to a file.
@@ -4343,17 +4059,7 @@ type ResponseOutputTextAnnotationFilePathParam struct {
 	// The index of the file in the list of files.
 	Index int64 `json:"index"`
 	// The type of the file path. Always `file_path`.
-	//
-	// This field can be elided, and will marshal its zero value as "file_path".
 	Type string `json:"type"`
-}
-
-func (r ResponseOutputTextAnnotationFilePathParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseOutputTextAnnotationFilePathParam
-	if r.Type == "" {
-		r.Type = "file_path"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A refusal from the model.
@@ -4363,17 +4069,7 @@ type ResponseOutputRefusalParam struct {
 	// The refusal explanation from the model.
 	Refusal string `json:"refusal"`
 	// The type of the refusal. Always `refusal`.
-	//
-	// This field can be elided, and will marshal its zero value as "refusal".
 	Type string `json:"type"`
-}
-
-func (r ResponseOutputRefusalParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseOutputRefusalParam
-	if r.Type == "" {
-		r.Type = "refusal"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // The results of a file search tool call. See the
@@ -4394,17 +4090,7 @@ type ResponseFileSearchToolCall struct {
 	// The results of the file search tool call.
 	Results []ResponseFileSearchToolCallResultParam `json:"results,omitzero"`
 	// The type of the file search tool call. Always `file_search_call`.
-	//
-	// This field can be elided, and will marshal its zero value as "file_search_call".
 	Type string `json:"type"`
-}
-
-func (r ResponseFileSearchToolCall) MarshalJSON() ([]byte, error) {
-	type Alias ResponseFileSearchToolCall
-	if r.Type == "" {
-		r.Type = "file_search_call"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 type ResponseFileSearchToolCallResultParam struct {
@@ -4491,17 +4177,7 @@ type ResponseComputerToolCall struct {
 	// Any of "in_progress", "completed", "incomplete".
 	Status string `json:"status,omitzero"`
 	// The type of the computer call. Always `computer_call`.
-	//
-	// Any of "computer_call".
 	Type string `json:"type,omitzero"`
-}
-
-func (r ResponseComputerToolCall) MarshalJSON() ([]byte, error) {
-	type Alias ResponseComputerToolCall
-	if r.Type == "" {
-		r.Type = "computer_call"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // ResponseComputerToolCallActionUnionParam is a union type for different computer tool call action parameters.
@@ -4620,17 +4296,7 @@ type ResponseComputerToolCallActionClickParam struct {
 	// The y-coordinate where the click occurred.
 	Y int64 `json:"y"`
 	// Specifies the event type. For a click action, this property is always `click`.
-	//
-	// This field can be elided, and will marshal its zero value as "click".
 	Type string `json:"type"`
-}
-
-func (r ResponseComputerToolCallActionClickParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseComputerToolCallActionClickParam
-	if r.Type == "" {
-		r.Type = "click"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A double click action.
@@ -4643,17 +4309,7 @@ type ResponseComputerToolCallActionDoubleClickParam struct {
 	Y int64 `json:"y"`
 	// Specifies the event type. For a double click action, this property is always set
 	// to `double_click`.
-	//
-	// This field can be elided, and will marshal its zero value as "double_click".
 	Type string `json:"type"`
-}
-
-func (r ResponseComputerToolCallActionDoubleClickParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseComputerToolCallActionDoubleClickParam
-	if r.Type == "" {
-		r.Type = "double_click"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A drag action.
@@ -4674,17 +4330,7 @@ type ResponseComputerToolCallActionDragParam struct {
 	Path []ResponseComputerToolCallActionDragPathParam `json:"path,omitzero"`
 	// Specifies the event type. For a drag action, this property is always set to
 	// `drag`.
-	//
-	// This field can be elided, and will marshal its zero value as "drag".
 	Type string `json:"type"`
-}
-
-func (r ResponseComputerToolCallActionDragParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseComputerToolCallActionDragParam
-	if r.Type == "" {
-		r.Type = "drag"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // An x/y coordinate pair, e.g. `{ x: 100, y: 200 }`.
@@ -4706,17 +4352,7 @@ type ResponseComputerToolCallActionKeypressParam struct {
 	Keys []string `json:"keys,omitzero"`
 	// Specifies the event type. For a keypress action, this property is always set to
 	// `keypress`.
-	//
-	// This field can be elided, and will marshal its zero value as "keypress".
 	Type string `json:"type"`
-}
-
-func (r ResponseComputerToolCallActionKeypressParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseComputerToolCallActionKeypressParam
-	if r.Type == "" {
-		r.Type = "keypress"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A mouse move action.
@@ -4729,17 +4365,7 @@ type ResponseComputerToolCallActionMoveParam struct {
 	Y int64 `json:"y"`
 	// Specifies the event type. For a move action, this property is always set to
 	// `move`.
-	//
-	// This field can be elided, and will marshal its zero value as "move".
 	Type string `json:"type"`
-}
-
-func (r ResponseComputerToolCallActionMoveParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseComputerToolCallActionMoveParam
-	if r.Type == "" {
-		r.Type = "move"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A screenshot action.
@@ -4747,14 +4373,6 @@ type ResponseComputerToolCallActionScreenshotParam struct {
 	// Specifies the event type. For a screenshot action, this property is always set
 	// to `screenshot`.
 	Type string `json:"type"`
-}
-
-func (r ResponseComputerToolCallActionScreenshotParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseComputerToolCallActionScreenshotParam
-	if r.Type == "" {
-		r.Type = "screenshot"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A scroll action.
@@ -4771,17 +4389,7 @@ type ResponseComputerToolCallActionScrollParam struct {
 	Y int64 `json:"y"`
 	// Specifies the event type. For a scroll action, this property is always set to
 	// `scroll`.
-	//
-	// This field can be elided, and will marshal its zero value as "scroll".
 	Type string `json:"type"`
-}
-
-func (r ResponseComputerToolCallActionScrollParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseComputerToolCallActionScrollParam
-	if r.Type == "" {
-		r.Type = "scroll"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // An action to type in text.
@@ -4792,17 +4400,7 @@ type ResponseComputerToolCallActionTypeParam struct {
 	Text string `json:"text"`
 	// Specifies the event type. For a type action, this property is always set to
 	// `type`.
-	//
-	// This field can be elided, and will marshal its zero value as "type".
 	Type string `json:"type"`
-}
-
-func (r ResponseComputerToolCallActionTypeParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseComputerToolCallActionTypeParam
-	if r.Type == "" {
-		r.Type = "type"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A wait action.
@@ -4813,14 +4411,6 @@ type ResponseComputerToolCallActionWaitParam struct {
 	// Specifies the event type. For a wait action, this property is always set to
 	// `wait`.
 	Type string `json:"type"`
-}
-
-func (r ResponseComputerToolCallActionWaitParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseComputerToolCallActionWaitParam
-	if r.Type == "" {
-		r.Type = "wait"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A pending safety check for the computer call.
@@ -4854,18 +4444,7 @@ type ResponseInputItemComputerCallOutputParam struct {
 	// Any of "in_progress", "completed", "incomplete".
 	Status string `json:"status,omitzero"`
 	// The type of the computer tool call output. Always `computer_call_output`.
-	//
-	// This field can be elided, and will marshal its zero value as
-	// "computer_call_output".
 	Type string `json:"type"`
-}
-
-func (r ResponseInputItemComputerCallOutputParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInputItemComputerCallOutputParam
-	if r.Type == "" {
-		r.Type = "computer_call_output"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A computer screenshot image used with the computer use tool.
@@ -4878,18 +4457,7 @@ type ResponseComputerToolCallOutputScreenshotParam struct {
 	ImageURL string `json:"image_url,omitzero"`
 	// Specifies the event type. For a computer screenshot, this property is always set
 	// to `computer_screenshot`.
-	//
-	// This field can be elided, and will marshal its zero value as
-	// "computer_screenshot".
 	Type string `json:"type"`
-}
-
-func (r ResponseComputerToolCallOutputScreenshotParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseComputerToolCallOutputScreenshotParam
-	if r.Type == "" {
-		r.Type = "computer_screenshot"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A pending safety check for the computer call.
@@ -4920,17 +4488,7 @@ type ResponseFunctionWebSearch struct {
 	// Any of "in_progress", "searching", "completed", "failed".
 	Status string `json:"status,omitzero"`
 	// The type of the web search tool call. Always `web_search_call`.
-	//
-	// This field can be elided, and will marshal its zero value as "web_search_call".
 	Type string `json:"type"`
-}
-
-func (r ResponseFunctionWebSearch) MarshalJSON() ([]byte, error) {
-	type Alias ResponseFunctionWebSearch
-	if r.Type == "" {
-		r.Type = "web_search_call"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // ResponseFunctionWebSearchActionUnionParam is a union type for different web search action parameters.
@@ -4989,18 +4547,8 @@ type ResponseFunctionWebSearchActionSearchParam struct {
 	Query string `json:"query"`
 	// The sources used in the search.
 	Sources []ResponseFunctionWebSearchActionSearchSourceParam `json:"sources,omitzero"`
-	// The action type.
-	//
-	// This field can be elided, and will marshal its zero value as "search".
+	// The action type. Always "search".
 	Type string `json:"type"`
-}
-
-func (r ResponseFunctionWebSearchActionSearchParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseFunctionWebSearchActionSearchParam
-	if r.Type == "" {
-		r.Type = "search"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A source used in the search.
@@ -5010,17 +4558,7 @@ type ResponseFunctionWebSearchActionSearchSourceParam struct {
 	// The URL of the source.
 	URL string `json:"url"`
 	// The type of source. Always `url`.
-	//
-	// This field can be elided, and will marshal its zero value as "url".
 	Type string `json:"type"`
-}
-
-func (r ResponseFunctionWebSearchActionSearchSourceParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseFunctionWebSearchActionSearchSourceParam
-	if r.Type == "" {
-		r.Type = "url"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Action type "open_page" - Opens a specific URL from search results.
@@ -5029,18 +4567,8 @@ func (r ResponseFunctionWebSearchActionSearchSourceParam) MarshalJSON() ([]byte,
 type ResponseFunctionWebSearchActionOpenPageParam struct {
 	// The URL opened by the model.
 	URL string `json:"url"`
-	// The action type.
-	//
-	// This field can be elided, and will marshal its zero value as "open_page".
+	// The action type. Always "open_page".
 	Type string `json:"type"`
-}
-
-func (r ResponseFunctionWebSearchActionOpenPageParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseFunctionWebSearchActionOpenPageParam
-	if r.Type == "" {
-		r.Type = "open_page"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Action type "find": Searches for a pattern within a loaded page.
@@ -5052,17 +4580,7 @@ type ResponseFunctionWebSearchActionFindParam struct {
 	// The URL of the page searched for the pattern.
 	URL string `json:"url"`
 	// The action type.
-	//
-	// This field can be elided, and will marshal its zero value as "find".
 	Type string `json:"type"`
-}
-
-func (r ResponseFunctionWebSearchActionFindParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseFunctionWebSearchActionFindParam
-	if r.Type == "" {
-		r.Type = "find"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A tool call to run a function. See the
@@ -5085,17 +4603,7 @@ type ResponseFunctionToolCall struct {
 	// Any of "in_progress", "completed", "incomplete".
 	Status string `json:"status,omitzero"`
 	// The type of the function tool call. Always `function_call`.
-	//
-	// This field can be elided, and will marshal its zero value as "function_call".
 	Type string `json:"type"`
-}
-
-func (r ResponseFunctionToolCall) MarshalJSON() ([]byte, error) {
-	type Alias ResponseFunctionToolCall
-	if r.Type == "" {
-		r.Type = "function_call"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // The output of a function tool call.
@@ -5115,18 +4623,7 @@ type ResponseInputItemFunctionCallOutputParam struct {
 	// Any of "in_progress", "completed", "incomplete".
 	Status string `json:"status,omitzero"`
 	// The type of the function tool call output. Always `function_call_output`.
-	//
-	// This field can be elided, and will marshal its zero value as
-	// "function_call_output".
 	Type string `json:"type"`
-}
-
-func (r ResponseInputItemFunctionCallOutputParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInputItemFunctionCallOutputParam
-	if r.Type == "" {
-		r.Type = "function_call_output"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // ResponseInputItemFunctionCallOutputOutputUnionParam is a union type for different function call output parameters.
@@ -5148,14 +4645,14 @@ func (r ResponseInputItemFunctionCallOutputOutputUnionParam) MarshalJSON() ([]by
 }
 
 func (r *ResponseInputItemFunctionCallOutputOutputUnionParam) UnmarshalJSON(data []byte) error {
-	switch {
-	case data[0] == '"':
+	switch data[0] {
+	case '"':
 		var s string
 		if err := json.Unmarshal(data, &s); err != nil {
 			return err
 		}
 		r.OfString = &s
-	case data[0] == '[':
+	case '[':
 		var arr []ResponseFunctionCallOutputItemUnionParam
 		if err := json.Unmarshal(data, &arr); err != nil {
 			return err
@@ -5222,17 +4719,7 @@ type ResponseInputTextContentParam struct {
 	// The text input to the model.
 	Text string `json:"text"`
 	// The type of the input item. Always `input_text`.
-	//
-	// This field can be elided, and will marshal its zero value as "input_text".
 	Type string `json:"type"`
-}
-
-func (r ResponseInputTextContentParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInputTextContentParam
-	if r.Type == "" {
-		r.Type = "input_text"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // An image input to the model. Learn about
@@ -5251,17 +4738,7 @@ type ResponseInputImageContentParam struct {
 	// Any of "low", "high", "auto".
 	Detail string `json:"detail,omitzero"`
 	// The type of the input item. Always `input_image`.
-	//
-	// This field can be elided, and will marshal its zero value as "input_image".
 	Type string `json:"type"`
-}
-
-func (r ResponseInputImageContentParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInputImageContentParam
-	if r.Type == "" {
-		r.Type = "input_image"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A file input to the model.
@@ -5277,17 +4754,7 @@ type ResponseInputFileContentParam struct {
 	// The name of the file to be sent to the model.
 	Filename string `json:"filename,omitzero"`
 	// The type of the input item. Always `input_file`.
-	//
-	// This field can be elided, and will marshal its zero value as "input_file".
 	Type string `json:"type"`
-}
-
-func (r ResponseInputFileContentParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInputFileContentParam
-	if r.Type == "" {
-		r.Type = "input_file"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A description of the chain of thought used by a reasoning model while generating
@@ -5312,17 +4779,7 @@ type ResponseReasoningItem struct {
 	// Any of "in_progress", "completed", "incomplete".
 	Status string `json:"status,omitzero"`
 	// The type of the object. Always `reasoning`.
-	//
-	// This field can be elided, and will marshal its zero value as "reasoning".
 	Type string `json:"type"`
-}
-
-func (r ResponseReasoningItem) MarshalJSON() ([]byte, error) {
-	type Alias ResponseReasoningItem
-	if r.Type == "" {
-		r.Type = "reasoning"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A summary text from the model.
@@ -5332,17 +4789,7 @@ type ResponseReasoningItemSummaryParam struct {
 	// A summary of the reasoning output from the model so far.
 	Text string `json:"text"`
 	// The type of the object. Always `summary_text`.
-	//
-	// This field can be elided, and will marshal its zero value as "summary_text".
 	Type string `json:"type"`
-}
-
-func (r ResponseReasoningItemSummaryParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseReasoningItemSummaryParam
-	if r.Type == "" {
-		r.Type = "summary_text"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Reasoning text from the model.
@@ -5352,17 +4799,7 @@ type ResponseReasoningItemContentParam struct {
 	// The reasoning text from the model.
 	Text string `json:"text"`
 	// The type of the reasoning text. Always `reasoning_text`.
-	//
-	// This field can be elided, and will marshal its zero value as "reasoning_text".
 	Type string `json:"type"`
-}
-
-func (r ResponseReasoningItemContentParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseReasoningItemContentParam
-	if r.Type == "" {
-		r.Type = "reasoning_text"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A compaction item generated by the
@@ -5374,17 +4811,7 @@ type ResponseCompactionItemParam struct {
 	// The ID of the compaction item.
 	ID string `json:"id,omitzero"`
 	// The type of the item. Always `compaction`.
-	//
-	// This field can be elided, and will marshal its zero value as "compaction".
 	Type string `json:"type"`
-}
-
-func (r ResponseCompactionItemParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseCompactionItemParam
-	if r.Type == "" {
-		r.Type = "compaction"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // An image generation request made by the model.
@@ -5400,18 +4827,7 @@ type ResponseInputItemImageGenerationCallParam struct {
 	// Any of "in_progress", "completed", "generating", "failed".
 	Status string `json:"status,omitzero"`
 	// The type of the image generation call. Always `image_generation_call`.
-	//
-	// This field can be elided, and will marshal its zero value as
-	// "image_generation_call".
 	Type string `json:"type"`
-}
-
-func (r ResponseInputItemImageGenerationCallParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInputItemImageGenerationCallParam
-	if r.Type == "" {
-		r.Type = "image_generation_call"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A tool call to run code.
@@ -5433,18 +4849,7 @@ type ResponseCodeInterpreterToolCallParam struct {
 	// Any of "in_progress", "completed", "incomplete", "interpreting", "failed".
 	Status string `json:"status,omitzero"`
 	// The type of the code interpreter tool call. Always `code_interpreter_call`.
-	//
-	// This field can be elided, and will marshal its zero value as
-	// "code_interpreter_call".
 	Type string `json:"type"`
-}
-
-func (r ResponseCodeInterpreterToolCallParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseCodeInterpreterToolCallParam
-	if r.Type == "" {
-		r.Type = "code_interpreter_call"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // ResponseCodeInterpreterToolCallOutputUnionParam is a union type for different code interpreter tool call output parameters.
@@ -5493,17 +4898,7 @@ type ResponseCodeInterpreterToolCallOutputLogsParam struct {
 	// The logs output from the code interpreter.
 	Logs string `json:"logs"`
 	// The type of the output. Always `logs`.
-	//
-	// This field can be elided, and will marshal its zero value as "logs".
 	Type string `json:"type"`
-}
-
-func (r ResponseCodeInterpreterToolCallOutputLogsParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseCodeInterpreterToolCallOutputLogsParam
-	if r.Type == "" {
-		r.Type = "logs"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // The image output from the code interpreter.
@@ -5513,17 +4908,7 @@ type ResponseCodeInterpreterToolCallOutputImageParam struct {
 	// The URL of the image output from the code interpreter.
 	URL string `json:"url"`
 	// The type of the output. Always `image`.
-	//
-	// This field can be elided, and will marshal its zero value as "image".
 	Type string `json:"type"`
-}
-
-func (r ResponseCodeInterpreterToolCallOutputImageParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseCodeInterpreterToolCallOutputImageParam
-	if r.Type == "" {
-		r.Type = "image"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A tool call to run a command on the local shell.
@@ -5541,17 +4926,7 @@ type ResponseInputItemLocalShellCallParam struct {
 	// Any of "in_progress", "completed", "incomplete".
 	Status string `json:"status,omitzero"`
 	// The type of the local shell call. Always `local_shell_call`.
-	//
-	// This field can be elided, and will marshal its zero value as "local_shell_call".
 	Type string `json:"type"`
-}
-
-func (r ResponseInputItemLocalShellCallParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInputItemLocalShellCallParam
-	if r.Type == "" {
-		r.Type = "local_shell_call"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Execute a shell command on the server.
@@ -5569,17 +4944,7 @@ type ResponseInputItemLocalShellCallActionParam struct {
 	// Optional working directory to run the command in.
 	WorkingDirectory string `json:"working_directory,omitzero"`
 	// The type of the local shell action. Always `exec`.
-	//
-	// This field can be elided, and will marshal its zero value as "exec".
 	Type string `json:"type"`
-}
-
-func (r ResponseInputItemLocalShellCallActionParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInputItemLocalShellCallActionParam
-	if r.Type == "" {
-		r.Type = "exec"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // The output of a local shell tool call.
@@ -5595,18 +4960,7 @@ type ResponseInputItemLocalShellCallOutputParam struct {
 	// Any of "in_progress", "completed", "incomplete".
 	Status string `json:"status,omitzero"`
 	// The type of the local shell tool call output. Always `local_shell_call_output`.
-	//
-	// This field can be elided, and will marshal its zero value as
-	// "local_shell_call_output".
 	Type string `json:"type"`
-}
-
-func (r ResponseInputItemLocalShellCallOutputParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInputItemLocalShellCallOutputParam
-	if r.Type == "" {
-		r.Type = "local_shell_call_output"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A tool representing a request to execute one or more shell commands.
@@ -5626,17 +4980,7 @@ type ResponseInputItemShellCallParam struct {
 	// Any of "in_progress", "completed", "incomplete".
 	Status string `json:"status,omitzero"`
 	// The type of the item. Always `shell_call`.
-	//
-	// This field can be elided, and will marshal its zero value as "shell_call".
 	Type string `json:"type"`
-}
-
-func (r ResponseInputItemShellCallParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInputItemShellCallParam
-	if r.Type == "" {
-		r.Type = "shell_call"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // The shell commands and limits that describe how to run the tool call.
@@ -5668,18 +5012,7 @@ type ResponseInputItemShellCallOutputParam struct {
 	// output.
 	MaxOutputLength *int64 `json:"max_output_length,omitempty"`
 	// The type of the item. Always `shell_call_output`.
-	//
-	// This field can be elided, and will marshal its zero value as
-	// "shell_call_output".
 	Type string `json:"type"`
-}
-
-func (r ResponseInputItemShellCallOutputParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInputItemShellCallOutputParam
-	if r.Type == "" {
-		r.Type = "shell_call_output"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Captured stdout and stderr for a portion of a shell tool call output.
@@ -5740,14 +5073,6 @@ type ResponseFunctionShellCallOutputContentOutcomeTimeoutParam struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseFunctionShellCallOutputContentOutcomeTimeoutParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseFunctionShellCallOutputContentOutcomeTimeoutParam
-	if r.Type == "" {
-		r.Type = "timeout"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Indicates that the shell commands finished and returned an exit code.
 //
 // The properties ExitCode, Type are required.
@@ -5755,17 +5080,7 @@ type ResponseFunctionShellCallOutputOutputContentOutcomeExitParam struct {
 	// The exit code returned by the shell process.
 	ExitCode int64 `json:"exit_code"`
 	// The outcome type. Always `exit`.
-	//
-	// This field can be elided, and will marshal its zero value as "exit".
 	Type string `json:"type"`
-}
-
-func (r ResponseFunctionShellCallOutputOutputContentOutcomeExitParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseFunctionShellCallOutputOutputContentOutcomeExitParam
-	if r.Type == "" {
-		r.Type = "exit"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A tool call representing a request to create, delete, or update files using diff
@@ -5786,17 +5101,7 @@ type ResponseInputItemApplyPatchCallParam struct {
 	// via API.
 	ID string `json:"id,omitzero"`
 	// The type of the item. Always `apply_patch_call`.
-	//
-	// This field can be elided, and will marshal its zero value as "apply_patch_call".
 	Type string `json:"type"`
-}
-
-func (r ResponseInputItemApplyPatchCallParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInputItemApplyPatchCallParam
-	if r.Type == "" {
-		r.Type = "apply_patch_call"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // ResponseInputItemApplyPatchCallOperationUnionParam is a union type for different apply patch call operation parameters.
@@ -5856,17 +5161,7 @@ type ResponseInputItemApplyPatchCallOperationCreateFileParam struct {
 	// Path of the file to create relative to the workspace root.
 	Path string `json:"path"`
 	// The operation type. Always `create_file`.
-	//
-	// This field can be elided, and will marshal its zero value as "create_file".
 	Type string `json:"type"`
-}
-
-func (r ResponseInputItemApplyPatchCallOperationCreateFileParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInputItemApplyPatchCallOperationCreateFileParam
-	if r.Type == "" {
-		r.Type = "create_file"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Instruction for deleting an existing file via the apply_patch tool.
@@ -5876,17 +5171,7 @@ type ResponseInputItemApplyPatchCallOperationDeleteFileParam struct {
 	// Path of the file to delete relative to the workspace root.
 	Path string `json:"path"`
 	// The operation type. Always `delete_file`.
-	//
-	// This field can be elided, and will marshal its zero value as "delete_file".
 	Type string `json:"type"`
-}
-
-func (r ResponseInputItemApplyPatchCallOperationDeleteFileParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInputItemApplyPatchCallOperationDeleteFileParam
-	if r.Type == "" {
-		r.Type = "delete_file"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Instruction for updating an existing file via the apply_patch tool.
@@ -5898,17 +5183,7 @@ type ResponseInputItemApplyPatchCallOperationUpdateFileParam struct {
 	// Path of the file to update relative to the workspace root.
 	Path string `json:"path"`
 	// The operation type. Always `update_file`.
-	//
-	// This field can be elided, and will marshal its zero value as "update_file".
 	Type string `json:"type"`
-}
-
-func (r ResponseInputItemApplyPatchCallOperationUpdateFileParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInputItemApplyPatchCallOperationUpdateFileParam
-	if r.Type == "" {
-		r.Type = "update_file"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // The streamed output emitted by an apply patch tool call.
@@ -5928,18 +5203,7 @@ type ResponseInputItemApplyPatchCallOutputParam struct {
 	// or errors).
 	Output string `json:"output,omitzero"`
 	// The type of the item. Always `apply_patch_call_output`.
-	//
-	// This field can be elided, and will marshal its zero value as
-	// "apply_patch_call_output".
 	Type string `json:"type"`
-}
-
-func (r ResponseInputItemApplyPatchCallOutputParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInputItemApplyPatchCallOutputParam
-	if r.Type == "" {
-		r.Type = "apply_patch_call_output"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A list of tools available on an MCP server.
@@ -5955,17 +5219,7 @@ type ResponseMcpListTools struct {
 	// Error message if the server could not list tools.
 	Error string `json:"error,omitzero"`
 	// The type of the item. Always `mcp_list_tools`.
-	//
-	// This field can be elided, and will marshal its zero value as "mcp_list_tools".
 	Type string `json:"type"`
-}
-
-func (r ResponseMcpListTools) MarshalJSON() ([]byte, error) {
-	type Alias ResponseMcpListTools
-	if r.Type == "" {
-		r.Type = "mcp_list_tools"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A tool available on an MCP server.
@@ -5995,18 +5249,7 @@ type ResponseMcpApprovalRequest struct {
 	// The label of the MCP server making the request.
 	ServerLabel string `json:"server_label"`
 	// The type of the item. Always `mcp_approval_request`.
-	//
-	// This field can be elided, and will marshal its zero value as
-	// "mcp_approval_request".
 	Type string `json:"type"`
-}
-
-func (r ResponseMcpApprovalRequest) MarshalJSON() ([]byte, error) {
-	type Alias ResponseMcpApprovalRequest
-	if r.Type == "" {
-		r.Type = "mcp_approval_request"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A response to an MCP approval request.
@@ -6022,18 +5265,7 @@ type ResponseInputItemMcpApprovalResponseParam struct {
 	// Optional reason for the decision.
 	Reason string `json:"reason,omitzero"`
 	// The type of the item. Always `mcp_approval_response`.
-	//
-	// This field can be elided, and will marshal its zero value as
-	// "mcp_approval_response".
 	Type string `json:"type"`
-}
-
-func (r ResponseInputItemMcpApprovalResponseParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInputItemMcpApprovalResponseParam
-	if r.Type == "" {
-		r.Type = "mcp_approval_response"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // An invocation of a tool on an MCP server.
@@ -6062,17 +5294,7 @@ type ResponseMcpCall struct {
 	// Any of "in_progress", "completed", "incomplete", "calling", "failed".
 	Status string `json:"status,omitzero"`
 	// The type of the item. Always `mcp_call`.
-	//
-	// This field can be elided, and will marshal its zero value as "mcp_call".
 	Type string `json:"type"`
-}
-
-func (r ResponseMcpCall) MarshalJSON() ([]byte, error) {
-	type Alias ResponseMcpCall
-	if r.Type == "" {
-		r.Type = "mcp_call"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // The output of a custom tool call from your code, being sent back to the model.
@@ -6087,18 +5309,7 @@ type ResponseCustomToolCallOutputParam struct {
 	// The unique ID of the custom tool call output in the OpenAI platform.
 	ID string `json:"id,omitzero"`
 	// The type of the custom tool call output. Always `custom_tool_call_output`.
-	//
-	// This field can be elided, and will marshal its zero value as
-	// "custom_tool_call_output".
 	Type string `json:"type"`
-}
-
-func (r ResponseCustomToolCallOutputParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseCustomToolCallOutputParam
-	if r.Type == "" {
-		r.Type = "custom_tool_call_output"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // ResponseCustomToolCallOutputOutputUnionParam is a union type for different custom tool call output parameters.
@@ -6198,17 +5409,7 @@ type ResponseCustomToolCall struct {
 	// The unique ID of the custom tool call in the OpenAI platform.
 	ID string `json:"id,omitzero"`
 	// The type of the custom tool call. Always `custom_tool_call`.
-	//
-	// This field can be elided, and will marshal its zero value as "custom_tool_call".
 	Type string `json:"type"`
-}
-
-func (r ResponseCustomToolCall) MarshalJSON() ([]byte, error) {
-	type Alias ResponseCustomToolCall
-	if r.Type == "" {
-		r.Type = "custom_tool_call"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // An internal identifier for an item to reference.
@@ -6218,17 +5419,7 @@ type ResponseInputItemItemReferenceParam struct {
 	// The ID of the item to reference.
 	ID string `json:"id"`
 	// The type of item to reference. Always `item_reference`.
-	//
-	// Any of "item_reference".
 	Type string `json:"type,omitzero"`
-}
-
-func (r ResponseInputItemItemReferenceParam) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInputItemItemReferenceParam
-	if r.Type == "" {
-		r.Type = "item_reference"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // ResponseToolChoiceUnion is a union type for tool choice configuration in Responses API.
@@ -6363,17 +5554,7 @@ type ToolChoiceAllowed struct {
 	// ```
 	Tools []map[string]any `json:"tools,omitzero"`
 	// Allowed tool configuration type. Always `allowed_tools`.
-	//
-	// This field can be elided, and will marshal its zero value as "allowed_tools".
 	Type string `json:"type,omitzero"`
-}
-
-func (t ToolChoiceAllowed) MarshalJSON() ([]byte, error) {
-	type alias ToolChoiceAllowed
-	if t.Type == "" {
-		t.Type = "allowed_tools"
-	}
-	return json.Marshal((alias)(t))
 }
 
 // Indicates that the model should use a built-in tool to generate a response.
@@ -6405,17 +5586,7 @@ type ToolChoiceFunction struct {
 	// The name of the function to call.
 	Name string `json:"name"`
 	// For function calling, the type is always `function`.
-	//
-	// This field can be elided, and will marshal its zero value as "function".
 	Type string `json:"type,omitzero"`
-}
-
-func (t ToolChoiceFunction) MarshalJSON() ([]byte, error) {
-	type alias ToolChoiceFunction
-	if t.Type == "" {
-		t.Type = "function"
-	}
-	return json.Marshal((alias)(t))
 }
 
 // Use this option to force the model to call a specific tool on a remote MCP
@@ -6428,17 +5599,7 @@ type ToolChoiceMcp struct {
 	// The name of the tool to call on the server.
 	Name string `json:"name,omitzero"`
 	// For MCP tools, the type is always `mcp`.
-	//
-	// This field can be elided, and will marshal its zero value as "mcp".
 	Type string `json:"type,omitzero"`
-}
-
-func (t ToolChoiceMcp) MarshalJSON() ([]byte, error) {
-	type alias ToolChoiceMcp
-	if t.Type == "" {
-		t.Type = "mcp"
-	}
-	return json.Marshal((alias)(t))
 }
 
 // Use this option to force the model to call a specific custom tool.
@@ -6448,17 +5609,7 @@ type ToolChoiceCustom struct {
 	// The name of the custom tool to call.
 	Name string `json:"name"`
 	// For custom tool calling, the type is always `custom`.
-	//
-	// This field can be elided, and will marshal its zero value as "custom".
 	Type string `json:"type,omitzero"`
-}
-
-func (t ToolChoiceCustom) MarshalJSON() ([]byte, error) {
-	type alias ToolChoiceCustom
-	if t.Type == "" {
-		t.Type = "custom"
-	}
-	return json.Marshal((alias)(t))
 }
 
 // Forces the model to call the apply_patch tool when executing a tool call.
@@ -6467,26 +5618,10 @@ type ToolChoiceApplyPatch struct {
 	Type string `json:"type"`
 }
 
-func (t ToolChoiceApplyPatch) MarshalJSON() ([]byte, error) {
-	type alias ToolChoiceApplyPatch
-	if t.Type == "" {
-		t.Type = "apply_patch"
-	}
-	return json.Marshal((alias)(t))
-}
-
 // Forces the model to call the shell tool when a tool call is required.
 type ToolChoiceShell struct {
 	// The tool to call. Always `shell`.
 	Type string `json:"type,omitzero"`
-}
-
-func (t ToolChoiceShell) MarshalJSON() ([]byte, error) {
-	type alias ToolChoiceShell
-	if t.Type == "" {
-		t.Type = "shell"
-	}
-	return json.Marshal((alias)(t))
 }
 
 // Response represents a response from the /v1/responses endpoint.
@@ -6535,7 +5670,7 @@ type Response struct {
 	Output []ResponseOutputItemUnion `json:"output"`
 
 	// Whether to allow the model to run tool calls in parallel.
-	ParallelToolCalls bool `json:"parallel_tool_calls"`
+	ParallelToolCalls *bool `json:"parallel_tool_calls"`
 
 	// What sampling temperature to use, between 0 and 2. Higher values like 0.8 will
 	// make the output more random, while lower values like 0.2 will make it more
@@ -6679,7 +5814,7 @@ type Response struct {
 // [string], [[]ResponseInputItemUnion].
 type ResponseInstructionsUnion struct {
 	// This field will be present if the value is a [string] instead of an object.
-	OfString string
+	OfString *string
 	// This field will be present if the value is a [[]ResponseInputItemUnion] instead
 	// of an object.
 	OfInputItemList []ResponseInputItemUnionParam
@@ -6687,7 +5822,7 @@ type ResponseInstructionsUnion struct {
 
 func (r ResponseInstructionsUnion) MarshalJSON() ([]byte, error) {
 	switch {
-	case r.OfString != "":
+	case r.OfString != nil:
 		return json.Marshal(r.OfString)
 	case r.OfInputItemList != nil:
 		return json.Marshal(r.OfInputItemList)
@@ -6703,7 +5838,7 @@ func (r *ResponseInstructionsUnion) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &str); err != nil {
 			return err
 		}
-		r.OfString = str
+		r.OfString = &str
 		return nil
 	}
 	var arr []ResponseInputItemUnionParam
@@ -6735,7 +5870,7 @@ type ResponseOutputItemUnion struct {
 	OfCustomToolCall       *ResponseCustomToolCall
 }
 
-func (r ResponseOutputItemUnion) MarshalJSON() ([]byte, error) {
+func (r ResponseOutputItemUnion) MarshalJSON() ([]byte, error) { // nolint:gocritic
 	switch {
 	case r.OfOutputMessage != nil:
 		return json.Marshal(r.OfOutputMessage)
@@ -6782,113 +5917,113 @@ func (r *ResponseOutputItemUnion) UnmarshalJSON(data []byte) error {
 	typ := gjson.GetBytes(data, "type")
 	switch typ.String() {
 	case "message":
-		var msg *ResponseOutputMessage
-		if err := json.Unmarshal(data, msg); err != nil {
+		var msg ResponseOutputMessage
+		if err := json.Unmarshal(data, &msg); err != nil {
 			return err
 		}
-		r.OfOutputMessage = msg
+		r.OfOutputMessage = &msg
 	case "file_search_call":
-		var f *ResponseFileSearchToolCall
-		if err := json.Unmarshal(data, f); err != nil {
+		var f ResponseFileSearchToolCall
+		if err := json.Unmarshal(data, &f); err != nil {
 			return err
 		}
-		r.OfFileSearchCall = f
+		r.OfFileSearchCall = &f
 	case "function_call":
-		var f *ResponseFunctionToolCall
-		if err := json.Unmarshal(data, f); err != nil {
+		var f ResponseFunctionToolCall
+		if err := json.Unmarshal(data, &f); err != nil {
 			return err
 		}
-		r.OfFunctionCall = f
+		r.OfFunctionCall = &f
 	case "web_search_call":
-		var w *ResponseFunctionWebSearch
-		if err := json.Unmarshal(data, w); err != nil {
+		var w ResponseFunctionWebSearch
+		if err := json.Unmarshal(data, &w); err != nil {
 			return err
 		}
-		r.OfWebSearchCall = w
+		r.OfWebSearchCall = &w
 	case "computer_call":
-		var c *ResponseComputerToolCall
-		if err := json.Unmarshal(data, c); err != nil {
+		var c ResponseComputerToolCall
+		if err := json.Unmarshal(data, &c); err != nil {
 			return err
 		}
-		r.OfComputerCall = c
+		r.OfComputerCall = &c
 	case "reasoning":
-		var rr *ResponseReasoningItem
-		if err := json.Unmarshal(data, rr); err != nil {
+		var rr ResponseReasoningItem
+		if err := json.Unmarshal(data, &rr); err != nil {
 			return err
 		}
-		r.OfReasoning = rr
+		r.OfReasoning = &rr
 	case "compaction":
-		var c *ResponseCompactionItem
-		if err := json.Unmarshal(data, c); err != nil {
+		var c ResponseCompactionItem
+		if err := json.Unmarshal(data, &c); err != nil {
 			return err
 		}
-		r.OfCompaction = c
+		r.OfCompaction = &c
 	case "image_generation_call":
-		var i *ResponseOutputItemImageGenerationCall
-		if err := json.Unmarshal(data, i); err != nil {
+		var i ResponseOutputItemImageGenerationCall
+		if err := json.Unmarshal(data, &i); err != nil {
 			return err
 		}
-		r.OfImageGenerationCall = i
+		r.OfImageGenerationCall = &i
 	case "code_interpreter_call":
-		var c *ResponseCodeInterpreterToolCall
-		if err := json.Unmarshal(data, c); err != nil {
+		var c ResponseCodeInterpreterToolCall
+		if err := json.Unmarshal(data, &c); err != nil {
 			return err
 		}
-		r.OfCodeInterpreterCall = c
+		r.OfCodeInterpreterCall = &c
 	case "local_shell_call":
-		var l *ResponseOutputItemLocalShellCall
-		if err := json.Unmarshal(data, l); err != nil {
+		var l ResponseOutputItemLocalShellCall
+		if err := json.Unmarshal(data, &l); err != nil {
 			return err
 		}
-		r.OfLocalShellCall = l
+		r.OfLocalShellCall = &l
 	case "shell_call":
-		var s *ResponseFunctionShellToolCall
-		if err := json.Unmarshal(data, s); err != nil {
+		var s ResponseFunctionShellToolCall
+		if err := json.Unmarshal(data, &s); err != nil {
 			return err
 		}
-		r.OfShellCall = s
+		r.OfShellCall = &s
 	case "shell_call_output":
-		var s *ResponseFunctionShellToolCallOutput
+		var s ResponseFunctionShellToolCallOutput
 		if err := json.Unmarshal(data, s); err != nil {
 			return err
 		}
-		r.OfShellCallOutput = s
+		r.OfShellCallOutput = &s
 	case "apply_patch_call":
-		var p *ResponseApplyPatchToolCall
-		if err := json.Unmarshal(data, p); err != nil {
+		var p ResponseApplyPatchToolCall
+		if err := json.Unmarshal(data, &p); err != nil {
 			return err
 		}
-		r.OfApplyPatchCall = p
+		r.OfApplyPatchCall = &p
 	case "apply_patch_call_output":
-		var p *ResponseApplyPatchToolCallOutput
-		if err := json.Unmarshal(data, p); err != nil {
+		var p ResponseApplyPatchToolCallOutput
+		if err := json.Unmarshal(data, &p); err != nil {
 			return err
 		}
-		r.OfApplyPatchCallOutput = p
+		r.OfApplyPatchCallOutput = &p
 	case "mcp_call":
-		var m *ResponseMcpCall
-		if err := json.Unmarshal(data, m); err != nil {
+		var m ResponseMcpCall
+		if err := json.Unmarshal(data, &m); err != nil {
 			return err
 		}
-		r.OfMcpCall = m
+		r.OfMcpCall = &m
 	case "mcp_list_tools":
-		var m *ResponseMcpListTools
-		if err := json.Unmarshal(data, m); err != nil {
+		var m ResponseMcpListTools
+		if err := json.Unmarshal(data, &m); err != nil {
 			return err
 		}
-		r.OfMcpListTools = m
+		r.OfMcpListTools = &m
 	case "mcp_approval_request":
-		var m *ResponseMcpApprovalRequest
-		if err := json.Unmarshal(data, m); err != nil {
+		var m ResponseMcpApprovalRequest
+		if err := json.Unmarshal(data, &m); err != nil {
 			return err
 		}
-		r.OfMcpApprovalRequest = m
+		r.OfMcpApprovalRequest = &m
 	case "custom_tool_call":
-		var c *ResponseCustomToolCall
-		if err := json.Unmarshal(data, c); err != nil {
+		var c ResponseCustomToolCall
+		if err := json.Unmarshal(data, &c); err != nil {
 			return err
 		}
-		r.OfCustomToolCall = c
+		r.OfCustomToolCall = &c
 	default:
 		return fmt.Errorf("unknown type field value '%s' for response output item union", typ.String())
 	}
@@ -6906,14 +6041,6 @@ type ResponseCompactionItem struct {
 	CreatedBy string `json:"created_by"`
 }
 
-func (r ResponseCompactionItem) MarshalJSON() ([]byte, error) {
-	type alias ResponseCompactionItem
-	if r.Type == "" {
-		r.Type = "compaction"
-	}
-	return json.Marshal((alias)(r))
-}
-
 // An image generation request made by the model.
 type ResponseOutputItemImageGenerationCall struct {
 	// The unique ID of the image generation call.
@@ -6926,14 +6053,6 @@ type ResponseOutputItemImageGenerationCall struct {
 	Status string `json:"status"`
 	// The type of the image generation call. Always `image_generation_call`.
 	Type string `json:"type"`
-}
-
-func (r ResponseOutputItemImageGenerationCall) MarshalJSON() ([]byte, error) {
-	type alias ResponseOutputItemImageGenerationCall
-	if r.Type == "" {
-		r.Type = "image_generation_call"
-	}
-	return json.Marshal((alias)(r))
 }
 
 // A tool call to run a command on the local shell.
@@ -6952,14 +6071,6 @@ type ResponseOutputItemLocalShellCall struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseOutputItemLocalShellCall) MarshalJSON() ([]byte, error) {
-	type alias ResponseOutputItemLocalShellCall
-	if r.Type == "" {
-		r.Type = "local_shell_call"
-	}
-	return json.Marshal((alias)(r))
-}
-
 // Execute a shell command on the server.
 type ResponseOutputItemLocalShellCallAction struct {
 	// The command to run.
@@ -6974,14 +6085,6 @@ type ResponseOutputItemLocalShellCallAction struct {
 	User string `json:"user"`
 	// Optional working directory to run the command in.
 	WorkingDirectory string `json:"working_directory"`
-}
-
-func (r ResponseOutputItemLocalShellCallAction) MarshalJSON() ([]byte, error) {
-	type alias ResponseOutputItemLocalShellCallAction
-	if r.Type == "" {
-		r.Type = "exec"
-	}
-	return json.Marshal((alias)(r))
 }
 
 // The output of a shell tool call.
@@ -6999,14 +6102,6 @@ type ResponseFunctionShellToolCallOutput struct {
 	// The type of the shell call output. Always `shell_call_output`.
 	Type      string `json:"type"`
 	CreatedBy string `json:"created_by"`
-}
-
-func (r ResponseFunctionShellToolCallOutput) MarshalJSON() ([]byte, error) {
-	type alias ResponseFunctionShellToolCallOutput
-	if r.Type == "" {
-		r.Type = "shell_call_output"
-	}
-	return json.Marshal((alias)(r))
 }
 
 // The content of a shell call output.
@@ -7043,17 +6138,17 @@ func (r *ResponseFunctionShellToolCallOutputOutputOutcomeUnion) Unmarshal(data [
 	typ := gjson.GetBytes(data, "type")
 	switch typ.String() {
 	case "timeout":
-		var t *ResponseFunctionShellToolCallOutputOutputOutcomeTimeout
-		if err := json.Unmarshal(data, t); err != nil {
+		var t ResponseFunctionShellToolCallOutputOutputOutcomeTimeout
+		if err := json.Unmarshal(data, &t); err != nil {
 			return err
 		}
-		r.OfResponseFunctionShellToolCallOutputOutputOutcomeTimeout = t
+		r.OfResponseFunctionShellToolCallOutputOutputOutcomeTimeout = &t
 	case "exit":
-		var e *ResponseFunctionShellToolCallOutputOutputOutcomeExit
-		if err := json.Unmarshal(data, e); err != nil {
+		var e ResponseFunctionShellToolCallOutputOutputOutcomeExit
+		if err := json.Unmarshal(data, &e); err != nil {
 			return err
 		}
-		r.OfResponseFunctionShellToolCallOutputOutputOutcomeExit = e
+		r.OfResponseFunctionShellToolCallOutputOutputOutcomeExit = &e
 	default:
 		return fmt.Errorf("unknown type field value '%s' for ResponseFunctionShellToolCallOutputOutputOutcome", typ.String())
 	}
@@ -7066,28 +6161,12 @@ type ResponseFunctionShellToolCallOutputOutputOutcomeTimeout struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseFunctionShellToolCallOutputOutputOutcomeTimeout) MarshalJSON() ([]byte, error) {
-	type Alias ResponseFunctionShellToolCallOutputOutputOutcomeTimeout
-	if r.Type == "" {
-		r.Type = "timeout"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Indicates that the shell commands finished and returned an exit code.
 type ResponseFunctionShellToolCallOutputOutputOutcomeExit struct {
 	// Exit code from the shell process.
 	ExitCode int64 `json:"exit_code"`
 	// The outcome type. Always `exit`.
 	Type string `json:"type"`
-}
-
-func (r ResponseFunctionShellToolCallOutputOutputOutcomeExit) MarshalJSON() ([]byte, error) {
-	type alias ResponseFunctionShellToolCallOutputOutputOutcomeExit
-	if r.Type == "" {
-		r.Type = "exit"
-	}
-	return json.Marshal((alias)(r))
 }
 
 // A tool call that applies file diffs by creating, deleting, or updating files.
@@ -7108,14 +6187,6 @@ type ResponseApplyPatchToolCall struct {
 	Type string `json:"type"`
 	// The ID of the entity that created this tool call.
 	CreatedBy string `json:"created_by"`
-}
-
-func (r ResponseApplyPatchToolCall) MarshalJSON() ([]byte, error) {
-	type alias ResponseApplyPatchToolCall
-	if r.Type == "" {
-		r.Type = "apply_patch_call"
-	}
-	return json.Marshal((alias)(r))
 }
 
 // ResponseApplyPatchToolCallOperationUnion contains all possible properties and
@@ -7145,23 +6216,23 @@ func (r *ResponseApplyPatchToolCallOperationUnion) UnmarshalJSON(data []byte) er
 	typ := gjson.GetBytes(data, "type")
 	switch typ.String() {
 	case "create_file":
-		var c *ResponseApplyPatchToolCallOperationCreateFile
-		if err := json.Unmarshal(data, c); err != nil {
+		var c ResponseApplyPatchToolCallOperationCreateFile
+		if err := json.Unmarshal(data, &c); err != nil {
 			return err
 		}
-		r.OfResponseApplyPatchToolCallOperationCreateFile = c
+		r.OfResponseApplyPatchToolCallOperationCreateFile = &c
 	case "delete_file":
-		var d *ResponseApplyPatchToolCallOperationDeleteFile
-		if err := json.Unmarshal(data, d); err != nil {
+		var d ResponseApplyPatchToolCallOperationDeleteFile
+		if err := json.Unmarshal(data, &d); err != nil {
 			return err
 		}
-		r.OfResponseApplyPatchToolCallOperationDeleteFile = d
+		r.OfResponseApplyPatchToolCallOperationDeleteFile = &d
 	case "update_file":
-		var u *ResponseApplyPatchToolCallOperationUpdateFile
-		if err := json.Unmarshal(data, u); err != nil {
+		var u ResponseApplyPatchToolCallOperationUpdateFile
+		if err := json.Unmarshal(data, &u); err != nil {
 			return err
 		}
-		r.OfResponseApplyPatchToolCallOperationUpdateFile = u
+		r.OfResponseApplyPatchToolCallOperationUpdateFile = &u
 	default:
 		return fmt.Errorf("unknown type field value '%s' for ResponseApplyPatchToolCallOperation", typ.String())
 	}
@@ -7178,28 +6249,12 @@ type ResponseApplyPatchToolCallOperationCreateFile struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseApplyPatchToolCallOperationCreateFile) MarshalJSON() ([]byte, error) {
-	type alias ResponseApplyPatchToolCallOperationCreateFile
-	if r.Type == "" {
-		r.Type = "create_file"
-	}
-	return json.Marshal((alias)(r))
-}
-
 // Instruction describing how to delete a file via the apply_patch tool.
 type ResponseApplyPatchToolCallOperationDeleteFile struct {
 	// Path of the file to delete.
 	Path string `json:"path"`
 	// Delete the specified file. Always "delete_file"
 	Type string `json:"type"`
-}
-
-func (r ResponseApplyPatchToolCallOperationDeleteFile) MarshalJSON() ([]byte, error) {
-	type alias ResponseApplyPatchToolCallOperationDeleteFile
-	if r.Type == "" {
-		r.Type = "delete_file"
-	}
-	return json.Marshal((alias)(r))
 }
 
 // Instruction describing how to update a file via the apply_patch tool.
@@ -7210,14 +6265,6 @@ type ResponseApplyPatchToolCallOperationUpdateFile struct {
 	Path string `json:"path"`
 	// Update an existing file with the provided diff. Always "update_file"
 	Type string `json:"type"`
-}
-
-func (r ResponseApplyPatchToolCallOperationUpdateFile) MarshalJSON() ([]byte, error) {
-	type alias ResponseApplyPatchToolCallOperationUpdateFile
-	if r.Type == "" {
-		r.Type = "update_file"
-	}
-	return json.Marshal((alias)(r))
 }
 
 // The output emitted by an apply patch tool call.
@@ -7239,14 +6286,6 @@ type ResponseApplyPatchToolCallOutput struct {
 	Output string `json:"output"`
 }
 
-func (r ResponseApplyPatchToolCallOutput) MarshalJSON() ([]byte, error) {
-	type alias ResponseApplyPatchToolCallOutput
-	if r.Type == "" {
-		r.Type = "apply_patch_call_output"
-	}
-	return json.Marshal((alias)(r))
-}
-
 // A tool call that executes one or more shell commands in a managed environment.
 type ResponseFunctionShellToolCall struct {
 	// The unique ID of the shell tool call. Populated when this item is returned via
@@ -7265,14 +6304,6 @@ type ResponseFunctionShellToolCall struct {
 	Type string `json:"type"`
 	// The ID of the entity that created this tool call.
 	CreatedBy string `json:"created_by"`
-}
-
-func (r ResponseFunctionShellToolCall) MarshalJSON() ([]byte, error) {
-	type alias ResponseFunctionShellToolCall
-	if r.Type == "" {
-		r.Type = "shell_call"
-	}
-	return json.Marshal((alias)(r))
 }
 
 // The shell commands and limits that describe how to run the tool call.
@@ -7462,7 +6493,7 @@ type ResponseStreamEventUnion struct {
 	OfResponseCustomToolCallInputDone    *ResponseCustomToolCallInputDoneEvent
 }
 
-func (r ResponseStreamEventUnion) MarshalJSON() ([]byte, error) {
+func (r ResponseStreamEventUnion) MarshalJSON() ([]byte, error) { // nolint:gocritic
 	switch {
 	case r.OfAudioDelta != nil:
 		return json.Marshal(r.OfAudioDelta)
@@ -8026,14 +7057,6 @@ type ResponseAudioDeltaEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseAudioDeltaEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseAudioDeltaEvent
-	if r.Type == "" {
-		r.Type = "response.audio.delta"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when the audio response is complete.
 type ResponseAudioDoneEvent struct {
 	// The sequence number of the delta.
@@ -8041,14 +7064,6 @@ type ResponseAudioDoneEvent struct {
 	// The type of the event. Always `response.audio.done`.
 	Type string `json:"type"`
 	// JSON contains metadata for fields, check presence with [respjson.Field.Valid].
-}
-
-func (r ResponseAudioDoneEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseAudioDoneEvent
-	if r.Type == "" {
-		r.Type = "response.audio.done"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Emitted when there is a partial transcript of audio.
@@ -8061,28 +7076,12 @@ type ResponseAudioTranscriptDeltaEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseAudioTranscriptDeltaEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseAudioTranscriptDeltaEvent
-	if r.Type == "" {
-		r.Type = "response.audio.transcript.delta"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when the full audio transcript is completed.
 type ResponseAudioTranscriptDoneEvent struct {
 	// The sequence number of this event.
 	SequenceNumber int64 `json:"sequence_number"`
 	// The type of the event. Always `response.audio.transcript.done`.
 	Type string `json:"type"`
-}
-
-func (r ResponseAudioTranscriptDoneEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseAudioTranscriptDoneEvent
-	if r.Type == "" {
-		r.Type = "response.audio.transcript.done"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Emitted when a partial code snippet is streamed by the code interpreter.
@@ -8100,14 +7099,6 @@ type ResponseCodeInterpreterCallCodeDeltaEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseCodeInterpreterCallCodeDeltaEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseCodeInterpreterCallCodeDeltaEvent
-	if r.Type == "" {
-		r.Type = "response.code_interpreter_call_code.delta"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when the code snippet is finalized by the code interpreter.
 type ResponseCodeInterpreterCallCodeDoneEvent struct {
 	// The final code snippet output by the code interpreter.
@@ -8120,14 +7111,6 @@ type ResponseCodeInterpreterCallCodeDoneEvent struct {
 	SequenceNumber int64 `json:"sequence_number"`
 	// The type of the event. Always `response.code_interpreter_call_code.done`.
 	Type string `json:"type"`
-}
-
-func (r ResponseCodeInterpreterCallCodeDoneEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseCodeInterpreterCallCodeDoneEvent
-	if r.Type == "" {
-		r.Type = "response.code_interpreter_call_code.done"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Emitted when the code interpreter call is completed.
@@ -8143,14 +7126,6 @@ type ResponseCodeInterpreterCallCompletedEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseCodeInterpreterCallCompletedEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseCodeInterpreterCallCompletedEvent
-	if r.Type == "" {
-		r.Type = "response.code_interpreter_call.completed"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when a code interpreter call is in progress.
 type ResponseCodeInterpreterCallInProgressEvent struct {
 	// The unique identifier of the code interpreter tool call item.
@@ -8164,14 +7139,6 @@ type ResponseCodeInterpreterCallInProgressEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseCodeInterpreterCallInProgressEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseCodeInterpreterCallInProgressEvent
-	if r.Type == "" {
-		r.Type = "response.code_interpreter_call.in_progress"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when the code interpreter is actively interpreting the code snippet.
 type ResponseCodeInterpreterCallInterpretingEvent struct {
 	// The unique identifier of the code interpreter tool call item.
@@ -8183,14 +7150,6 @@ type ResponseCodeInterpreterCallInterpretingEvent struct {
 	SequenceNumber int64 `json:"sequence_number"`
 	// The type of the event. Always `response.code_interpreter_call.interpreting`.
 	Type string `json:"type"`
-}
-
-func (r ResponseCodeInterpreterCallInterpretingEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseCodeInterpreterCallInterpretingEvent
-	if r.Type == "" {
-		r.Type = "response.code_interpreter_call.interpreting"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A tool call to run code.
@@ -8211,14 +7170,6 @@ type ResponseCodeInterpreterToolCall struct {
 	Status string `json:"status"`
 	// The type of the code interpreter tool call. Always `code_interpreter_call`.
 	Type string `json:"type"`
-}
-
-func (r ResponseCodeInterpreterToolCall) MarshalJSON() ([]byte, error) {
-	type Alias ResponseCodeInterpreterToolCall
-	if r.Type == "" {
-		r.Type = "code_interpreter_call"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // ResponseCodeInterpreterToolCallOutputUnion contains all possible properties and
@@ -8271,28 +7222,12 @@ type ResponseCodeInterpreterToolCallOutputLogs struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseCodeInterpreterToolCallOutputLogs) MarshalJSON() ([]byte, error) {
-	type Alias ResponseCodeInterpreterToolCallOutputLogs
-	if r.Type == "" {
-		r.Type = "logs"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // The image output from the code interpreter.
 type ResponseCodeInterpreterToolCallOutputImage struct {
 	// The type of the output. Always `image`.
 	Type string `json:"type"`
 	// The URL of the image output from the code interpreter.
 	URL string `json:"url"`
-}
-
-func (r ResponseCodeInterpreterToolCallOutputImage) MarshalJSON() ([]byte, error) {
-	type Alias ResponseCodeInterpreterToolCallOutputImage
-	if r.Type == "" {
-		r.Type = "image"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Emitted when a new content part is added.
@@ -8309,14 +7244,6 @@ type ResponseContentPartAddedEvent struct {
 	SequenceNumber int64 `json:"sequence_number"`
 	// The type of the event. Always `response.content_part.added`.
 	Type string `json:"type"`
-}
-
-func (r ResponseContentPartAddedEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseContentPartAddedEvent
-	if r.Type == "" {
-		r.Type = "response.content_part.added"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // ResponseContentPartAddedEventPartUnion contains all possible properties and
@@ -8379,14 +7306,6 @@ type ResponseContentPartAddedEventPartReasoningText struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseContentPartAddedEventPartReasoningText) MarshalJSON() ([]byte, error) {
-	type Alias ResponseContentPartAddedEventPartReasoningText
-	if r.Type == "" {
-		r.Type = "reasoning_text"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when a content part is done.
 type ResponseContentPartDoneEvent struct {
 	// The index of the content part that is done.
@@ -8401,14 +7320,6 @@ type ResponseContentPartDoneEvent struct {
 	SequenceNumber int64 `json:"sequence_number"`
 	// The type of the event. Always `response.content_part.done`.
 	Type string `json:"type"`
-}
-
-func (r ResponseContentPartDoneEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseContentPartDoneEvent
-	if r.Type == "" {
-		r.Type = "response.content_part.done"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // ResponseContentPartDoneEventPartUnion contains all possible properties and
@@ -8471,14 +7382,6 @@ type ResponseContentPartDoneEventPartReasoningText struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseContentPartDoneEventPartReasoningText) MarshalJSON() ([]byte, error) {
-	type Alias ResponseContentPartDoneEventPartReasoningText
-	if r.Type == "" {
-		r.Type = "reasoning_text"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // An event that is emitted when a response is created.
 type ResponseCreatedEvent struct {
 	// The response that was created.
@@ -8487,14 +7390,6 @@ type ResponseCreatedEvent struct {
 	SequenceNumber int64 `json:"sequence_number"`
 	// The type of the event. Always `response.created`.
 	Type string `json:"type"`
-}
-
-func (r ResponseCreatedEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseCreatedEvent
-	if r.Type == "" {
-		r.Type = "response.created"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Emitted when an error occurs.
@@ -8511,14 +7406,6 @@ type ResponseErrorEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseErrorEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseErrorEvent
-	if r.Type == "" {
-		r.Type = "error"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // An event that is emitted when a response fails.
 type ResponseFailedEvent struct {
 	// The response that failed.
@@ -8527,14 +7414,6 @@ type ResponseFailedEvent struct {
 	SequenceNumber int64 `json:"sequence_number"`
 	// The type of the event. Always `response.failed`.
 	Type string `json:"type"`
-}
-
-func (r ResponseFailedEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseFailedEvent
-	if r.Type == "" {
-		r.Type = "response.failed"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Emitted when a file search call is completed (results found).
@@ -8549,14 +7428,6 @@ type ResponseFileSearchCallCompletedEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseFileSearchCallCompletedEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseFileSearchCallCompletedEvent
-	if r.Type == "" {
-		r.Type = "response.file_search_call.completed"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when a file search call is initiated.
 type ResponseFileSearchCallInProgressEvent struct {
 	// The ID of the output item that the file search call is initiated.
@@ -8567,14 +7438,6 @@ type ResponseFileSearchCallInProgressEvent struct {
 	SequenceNumber int64 `json:"sequence_number"`
 	// The type of the event. Always `response.file_search_call.in_progress`.
 	Type string `json:"type"`
-}
-
-func (r ResponseFileSearchCallInProgressEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseFileSearchCallInProgressEvent
-	if r.Type == "" {
-		r.Type = "response.file_search_call.in_progress"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Emitted when a file search is currently searching.
@@ -8589,14 +7452,6 @@ type ResponseFileSearchCallSearchingEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseFileSearchCallSearchingEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseFileSearchCallSearchingEvent
-	if r.Type == "" {
-		r.Type = "response.file_search_call.searching"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when there is a partial function-call arguments delta.
 type ResponseFunctionCallArgumentsDeltaEvent struct {
 	// The function-call arguments delta that is added.
@@ -8609,14 +7464,6 @@ type ResponseFunctionCallArgumentsDeltaEvent struct {
 	SequenceNumber int64 `json:"sequence_number"`
 	// The type of the event. Always `response.function_call_arguments.delta`.
 	Type string `json:"type"`
-}
-
-func (r ResponseFunctionCallArgumentsDeltaEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseFunctionCallArgumentsDeltaEvent
-	if r.Type == "" {
-		r.Type = "response.function_call_arguments.delta"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Emitted when function-call arguments are finalized.
@@ -8635,14 +7482,6 @@ type ResponseFunctionCallArgumentsDoneEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseFunctionCallArgumentsDoneEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseFunctionCallArgumentsDoneEvent
-	if r.Type == "" {
-		r.Type = "response.function_call_arguments.done"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when the response is in progress.
 type ResponseInProgressEvent struct {
 	// The response that is in progress.
@@ -8651,14 +7490,6 @@ type ResponseInProgressEvent struct {
 	SequenceNumber int64 `json:"sequence_number"`
 	// The type of the event. Always `response.in_progress`.
 	Type string `json:"type"`
-}
-
-func (r ResponseInProgressEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseInProgressEvent
-	if r.Type == "" {
-		r.Type = "response.in_progress"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Emitted when the model response is complete.
@@ -8671,14 +7502,6 @@ type ResponseCompletedEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseCompletedEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseCompletedEvent
-	if r.Type == "" {
-		r.Type = "response.completed"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // An event that is emitted when a response finishes as incomplete.
 type ResponseIncompleteEvent struct {
 	// The response that was incomplete.
@@ -8687,14 +7510,6 @@ type ResponseIncompleteEvent struct {
 	SequenceNumber int64 `json:"sequence_number"`
 	// The type of the event. Always `response.incomplete`.
 	Type string `json:"type"`
-}
-
-func (r ResponseIncompleteEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseIncompleteEvent
-	if r.Type == "" {
-		r.Type = "response.incomplete"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Emitted when a new output item is added.
@@ -8709,14 +7524,6 @@ type ResponseOutputItemAddedEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseOutputItemAddedEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseOutputItemAddedEvent
-	if r.Type == "" {
-		r.Type = "response.output_item.added"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when an output item is marked done.
 type ResponseOutputItemDoneEvent struct {
 	// The output item that was marked done.
@@ -8727,14 +7534,6 @@ type ResponseOutputItemDoneEvent struct {
 	SequenceNumber int64 `json:"sequence_number"`
 	// The type of the event. Always `response.output_item.done`.
 	Type string `json:"type"`
-}
-
-func (r ResponseOutputItemDoneEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseOutputItemDoneEvent
-	if r.Type == "" {
-		r.Type = "response.output_item.done"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Emitted when a new reasoning summary part is added.
@@ -8753,28 +7552,12 @@ type ResponseReasoningSummaryPartAddedEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseReasoningSummaryPartAddedEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseReasoningSummaryPartAddedEvent
-	if r.Type == "" {
-		r.Type = "response.reasoning_summary_part.added"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // The summary part that was added.
 type ResponseReasoningSummaryPartAddedEventPart struct {
 	// The text of the summary part.
 	Text string `json:"text"`
 	// The type of the summary part. Always `summary_text`.
 	Type string `json:"type"`
-}
-
-func (r ResponseReasoningSummaryPartAddedEventPart) MarshalJSON() ([]byte, error) {
-	type Alias ResponseReasoningSummaryPartAddedEventPart
-	if r.Type == "" {
-		r.Type = "summary_text"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Emitted when a reasoning summary part is completed.
@@ -8793,28 +7576,12 @@ type ResponseReasoningSummaryPartDoneEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseReasoningSummaryPartDoneEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseReasoningSummaryPartDoneEvent
-	if r.Type == "" {
-		r.Type = "response.reasoning_summary_part.done"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // The completed summary part.
 type ResponseReasoningSummaryPartDoneEventPart struct {
 	// The text of the summary part.
 	Text string `json:"text"`
 	// The type of the summary part. Always `summary_text`.
 	Type string `json:"type"`
-}
-
-func (r ResponseReasoningSummaryPartDoneEventPart) MarshalJSON() ([]byte, error) {
-	type Alias ResponseReasoningSummaryPartDoneEventPart
-	if r.Type == "" {
-		r.Type = "summary_text"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Emitted when a delta is added to a reasoning summary text.
@@ -8833,14 +7600,6 @@ type ResponseReasoningSummaryTextDeltaEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseReasoningSummaryTextDeltaEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseReasoningSummaryTextDeltaEvent
-	if r.Type == "" {
-		r.Type = "response.reasoning_summary_text.delta"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when a reasoning summary text is completed.
 type ResponseReasoningSummaryTextDoneEvent struct {
 	// The ID of the item this summary text is associated with.
@@ -8855,14 +7614,6 @@ type ResponseReasoningSummaryTextDoneEvent struct {
 	Text string `json:"text"`
 	// The type of the event. Always `response.reasoning_summary_text.done`.
 	Type string `json:"type"`
-}
-
-func (r ResponseReasoningSummaryTextDoneEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseReasoningSummaryTextDoneEvent
-	if r.Type == "" {
-		r.Type = "response.reasoning_summary_text.done"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Emitted when a delta is added to a reasoning text.
@@ -8881,14 +7632,6 @@ type ResponseReasoningTextDeltaEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseReasoningTextDeltaEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseReasoningTextDeltaEvent
-	if r.Type == "" {
-		r.Type = "response.reasoning_text.delta"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when a reasoning text is completed.
 type ResponseReasoningTextDoneEvent struct {
 	// The index of the reasoning content part.
@@ -8903,14 +7646,6 @@ type ResponseReasoningTextDoneEvent struct {
 	Text string `json:"text"`
 	// The type of the event. Always `response.reasoning_text.done`.
 	Type string `json:"type"`
-}
-
-func (r ResponseReasoningTextDoneEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseReasoningTextDoneEvent
-	if r.Type == "" {
-		r.Type = "response.reasoning_text.done"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Emitted when there is a partial refusal text.
@@ -8929,14 +7664,6 @@ type ResponseRefusalDeltaEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseRefusalDeltaEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseRefusalDeltaEvent
-	if r.Type == "" {
-		r.Type = "response.refusal.delta"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when refusal text is finalized.
 type ResponseRefusalDoneEvent struct {
 	// The index of the content part that the refusal text is finalized.
@@ -8951,14 +7678,6 @@ type ResponseRefusalDoneEvent struct {
 	SequenceNumber int64 `json:"sequence_number"`
 	// The type of the event. Always `response.refusal.done`.
 	Type string `json:"type"`
-}
-
-func (r ResponseRefusalDoneEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseRefusalDoneEvent
-	if r.Type == "" {
-		r.Type = "response.refusal.done"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Emitted when there is an additional text delta.
@@ -8977,14 +7696,6 @@ type ResponseTextDeltaEvent struct {
 	SequenceNumber int64 `json:"sequence_number"`
 	// The type of the event. Always `response.output_text.delta`.
 	Type string `json:"type"`
-}
-
-func (r ResponseTextDeltaEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseTextDeltaEvent
-	if r.Type == "" {
-		r.Type = "response.output_text.delta"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // A logprob is the logarithmic probability that the model assigns to producing a
@@ -9024,14 +7735,6 @@ type ResponseTextDoneEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseTextDoneEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseTextDoneEvent
-	if r.Type == "" {
-		r.Type = "response.output_text.done"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // A logprob is the logarithmic probability that the model assigns to producing a
 // particular token at a given position in the sequence. Less-negative (higher)
 // logprob values indicate greater model confidence in that token choice.
@@ -9063,14 +7766,6 @@ type ResponseWebSearchCallCompletedEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseWebSearchCallCompletedEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseWebSearchCallCompletedEvent
-	if r.Type == "" {
-		r.Type = "response.web_search_call.completed"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when a web search call is initiated.
 type ResponseWebSearchCallInProgressEvent struct {
 	// Unique ID for the output item associated with the web search call.
@@ -9083,14 +7778,6 @@ type ResponseWebSearchCallInProgressEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseWebSearchCallInProgressEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseWebSearchCallInProgressEvent
-	if r.Type == "" {
-		r.Type = "response.web_search_call.in_progress"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when a web search call is executing.
 type ResponseWebSearchCallSearchingEvent struct {
 	// Unique ID for the output item associated with the web search call.
@@ -9101,14 +7788,6 @@ type ResponseWebSearchCallSearchingEvent struct {
 	SequenceNumber int64 `json:"sequence_number"`
 	// The type of the event. Always `response.web_search_call.searching`.
 	Type string `json:"type"`
-}
-
-func (r ResponseWebSearchCallSearchingEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseWebSearchCallSearchingEvent
-	if r.Type == "" {
-		r.Type = "response.web_search_call.searching"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Emitted when an image generation tool call has completed and the final image is
@@ -9124,14 +7803,6 @@ type ResponseImageGenCallCompletedEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseImageGenCallCompletedEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseImageGenCallCompletedEvent
-	if r.Type == "" {
-		r.Type = "response.image_generation_call.completed"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when an image generation tool call is actively generating an image
 // (intermediate state).
 type ResponseImageGenCallGeneratingEvent struct {
@@ -9145,14 +7816,6 @@ type ResponseImageGenCallGeneratingEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseImageGenCallGeneratingEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseImageGenCallGeneratingEvent
-	if r.Type == "" {
-		r.Type = "response.image_generation_call.generating"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when an image generation tool call is in progress.
 type ResponseImageGenCallInProgressEvent struct {
 	// The unique identifier of the image generation item being processed.
@@ -9163,14 +7826,6 @@ type ResponseImageGenCallInProgressEvent struct {
 	SequenceNumber int64 `json:"sequence_number"`
 	// The type of the event. Always 'response.image_generation_call.in_progress'.
 	Type string `json:"type"`
-}
-
-func (r ResponseImageGenCallInProgressEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseImageGenCallInProgressEvent
-	if r.Type == "" {
-		r.Type = "response.image_generation_call.in_progress"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Emitted when a partial image is available during image generation streaming.
@@ -9190,14 +7845,6 @@ type ResponseImageGenCallPartialImageEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseImageGenCallPartialImageEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseImageGenCallPartialImageEvent
-	if r.Type == "" {
-		r.Type = "response.image_generation_call.partial_image"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when there is a delta (partial update) to the arguments of an MCP tool
 // call.
 type ResponseMcpCallArgumentsDeltaEvent struct {
@@ -9214,14 +7861,6 @@ type ResponseMcpCallArgumentsDeltaEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseMcpCallArgumentsDeltaEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseMcpCallArgumentsDeltaEvent
-	if r.Type == "" {
-		r.Type = "response.mcp_call_arguments.delta"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when the arguments for an MCP tool call are finalized.
 type ResponseMcpCallArgumentsDoneEvent struct {
 	// A JSON string containing the finalized arguments for the MCP tool call.
@@ -9236,14 +7875,6 @@ type ResponseMcpCallArgumentsDoneEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseMcpCallArgumentsDoneEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseMcpCallArgumentsDoneEvent
-	if r.Type == "" {
-		r.Type = "response.mcp_call_arguments.done"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when an MCP tool call has completed successfully.
 type ResponseMcpCallCompletedEvent struct {
 	// The ID of the MCP tool call item that completed.
@@ -9254,14 +7885,6 @@ type ResponseMcpCallCompletedEvent struct {
 	SequenceNumber int64 `json:"sequence_number"`
 	// The type of the event. Always 'response.mcp_call.completed'.
 	Type string `json:"type"`
-}
-
-func (r ResponseMcpCallCompletedEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseMcpCallCompletedEvent
-	if r.Type == "" {
-		r.Type = "response.mcp_call.completed"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Emitted when an MCP tool call has failed.
@@ -9276,14 +7899,6 @@ type ResponseMcpCallFailedEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseMcpCallFailedEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseMcpCallFailedEvent
-	if r.Type == "" {
-		r.Type = "response.mcp_call.failed"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when an MCP tool call is in progress.
 type ResponseMcpCallInProgressEvent struct {
 	// The unique identifier of the MCP tool call item being processed.
@@ -9294,14 +7909,6 @@ type ResponseMcpCallInProgressEvent struct {
 	SequenceNumber int64 `json:"sequence_number"`
 	// The type of the event. Always 'response.mcp_call.in_progress'.
 	Type string `json:"type"`
-}
-
-func (r ResponseMcpCallInProgressEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseMcpCallInProgressEvent
-	if r.Type == "" {
-		r.Type = "response.mcp_call.in_progress"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Emitted when the list of available MCP tools has been successfully retrieved.
@@ -9316,14 +7923,6 @@ type ResponseMcpListToolsCompletedEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseMcpListToolsCompletedEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseMcpListToolsCompletedEvent
-	if r.Type == "" {
-		r.Type = "response.mcp_list_tools.completed"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when the attempt to list available MCP tools has failed.
 type ResponseMcpListToolsFailedEvent struct {
 	// The ID of the MCP tool call item that failed.
@@ -9334,14 +7933,6 @@ type ResponseMcpListToolsFailedEvent struct {
 	SequenceNumber int64 `json:"sequence_number"`
 	// The type of the event. Always 'response.mcp_list_tools.failed'.
 	Type string `json:"type"`
-}
-
-func (r ResponseMcpListToolsFailedEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseMcpListToolsFailedEvent
-	if r.Type == "" {
-		r.Type = "response.mcp_list_tools.failed"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Emitted when the system is in the process of retrieving the list of available
@@ -9355,14 +7946,6 @@ type ResponseMcpListToolsInProgressEvent struct {
 	SequenceNumber int64 `json:"sequence_number"`
 	// The type of the event. Always 'response.mcp_list_tools.in_progress'.
 	Type string `json:"type"`
-}
-
-func (r ResponseMcpListToolsInProgressEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseMcpListToolsInProgressEvent
-	if r.Type == "" {
-		r.Type = "response.mcp_list_tools.in_progress"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Emitted when an annotation is added to output text content.
@@ -9383,14 +7966,6 @@ type ResponseOutputTextAnnotationAddedEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseOutputTextAnnotationAddedEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseOutputTextAnnotationAddedEvent
-	if r.Type == "" {
-		r.Type = "response.output_text.annotation.added"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Emitted when a response is queued and waiting to be processed.
 type ResponseQueuedEvent struct {
 	// The full response object that is queued.
@@ -9399,14 +7974,6 @@ type ResponseQueuedEvent struct {
 	SequenceNumber int64 `json:"sequence_number"`
 	// The type of the event. Always 'response.queued'.
 	Type string `json:"type"`
-}
-
-func (r ResponseQueuedEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseQueuedEvent
-	if r.Type == "" {
-		r.Type = "response.queued"
-	}
-	return json.Marshal((Alias)(r))
 }
 
 // Event representing a delta (partial update) to the input of a custom tool call.
@@ -9423,14 +7990,6 @@ type ResponseCustomToolCallInputDeltaEvent struct {
 	Type string `json:"type"`
 }
 
-func (r ResponseCustomToolCallInputDeltaEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseCustomToolCallInputDeltaEvent
-	if r.Type == "" {
-		r.Type = "response.custom_tool_call_input.delta"
-	}
-	return json.Marshal((Alias)(r))
-}
-
 // Event indicating that input for a custom tool call is complete.
 type ResponseCustomToolCallInputDoneEvent struct {
 	// The complete input data for the custom tool call.
@@ -9443,12 +8002,4 @@ type ResponseCustomToolCallInputDoneEvent struct {
 	SequenceNumber int64 `json:"sequence_number"`
 	// The event type identifier. Always response.custom_tool_call_input.done
 	Type string `json:"type"`
-}
-
-func (r ResponseCustomToolCallInputDoneEvent) MarshalJSON() ([]byte, error) {
-	type Alias ResponseCustomToolCallInputDoneEvent
-	if r.Type == "" {
-		r.Type = "response.custom_tool_call_input.done"
-	}
-	return json.Marshal((Alias)(r))
 }
