@@ -61,14 +61,49 @@ spec:
 
 ### ExtProc Redis Configuration
 
-The ext_proc needs Redis connection flags. When using the AI Gateway CLI or Helm chart,
-configure Redis via:
+The ext_proc needs Redis connection configuration. There are two ways to configure this:
+
+#### Option 1: Using a Secret (Recommended for Production)
+
+Store Redis credentials in a Kubernetes Secret:
 
 ```bash
-# CLI flags
+kubectl create secret generic redis-cache-secret \
+  --from-literal=addr=redis.redis-system.svc.cluster.local:6379 \
+  --from-literal=password=your-redis-password
+```
+
+Then reference it in your Helm values:
+
+```yaml
+extProc:
+  redis:
+    secretRef:
+      name: redis-cache-secret
+    tls: false # Set to true if Redis requires TLS
+```
+
+#### Option 2: Direct Values (Development/Testing)
+
+For simple setups, configure Redis directly in Helm values:
+
+```yaml
+extProc:
+  redis:
+    addr: "redis.redis-system.svc.cluster.local:6379"
+    password: "" # Leave empty if no auth required
+    tls: false
+```
+
+#### CLI Usage
+
+When using the AI Gateway CLI directly:
+
+```bash
+# Basic usage
 aigw run --redisAddr=redis.redis-system.svc.cluster.local:6379
 
-# Or with TLS and password
+# With TLS and password
 aigw run --redisAddr=redis:6379 --redisTLS=true --redisPassword=secret
 ```
 

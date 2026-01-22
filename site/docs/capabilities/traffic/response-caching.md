@@ -45,10 +45,45 @@ kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/ex
 
 ### 2. Configure ExtProc Redis Connection
 
-When running the AI Gateway, configure the Redis connection:
+Configure the Redis connection for the AI Gateway. There are two approaches:
+
+#### Option A: Using a Secret (Recommended for Production)
+
+Store Redis credentials securely in a Kubernetes Secret:
 
 ```bash
-# Using the CLI
+kubectl create secret generic redis-cache-secret \
+  --from-literal=addr=redis.redis-system.svc.cluster.local:6379 \
+  --from-literal=password=your-redis-password
+```
+
+Then reference the secret in your Helm values:
+
+```yaml
+extProc:
+  redis:
+    secretRef:
+      name: redis-cache-secret
+    tls: false # Set to true if Redis requires TLS
+```
+
+#### Option B: Direct Values (Development/Testing)
+
+For simple setups without authentication, configure Redis directly:
+
+```yaml
+extProc:
+  redis:
+    addr: "redis.redis-system.svc.cluster.local:6379"
+    tls: false
+```
+
+#### CLI Usage
+
+When using the AI Gateway CLI directly:
+
+```bash
+# Basic usage
 aigw run --redisAddr=redis.redis-system.svc.cluster.local:6379
 
 # With TLS and authentication
