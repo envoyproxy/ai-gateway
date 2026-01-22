@@ -436,6 +436,17 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				llmCosts[cost.MetadataKey] = struct{}{}
 			}
 		}
+
+		// Translate ResponseCache configuration (only use the first non-nil config found)
+		if ec.ResponseCache == nil && aiGatewayRoute.Spec.ResponseCache != nil {
+			rc := aiGatewayRoute.Spec.ResponseCache
+			ec.ResponseCache = &filterapi.ResponseCacheConfig{
+				Enabled: rc.Enabled,
+			}
+			if rc.TTL != nil {
+				ec.ResponseCache.TTL = rc.TTL.Duration
+			}
+		}
 	}
 
 	// Configuration for MCP processor.
