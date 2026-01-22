@@ -63,15 +63,25 @@ extProc:
   extraEnvVars: []
 
   # Redis configuration for response caching.
-  # When redis.addr is set, the extProc will use Redis for caching LLM responses.
+  # When redis.addr or redis.secretRef.name is set, the extProc will use Redis for caching LLM responses.
   redis:
     # Redis server address (e.g., "redis.redis-system.svc.cluster.local:6379").
-    # If empty, response caching is disabled.
+    # If empty and secretRef is not set, response caching is disabled.
     addr: ""
     # Enable TLS for Redis connections.
     tls: false
     # Password for Redis authentication. Leave empty if no authentication is required.
+    # For production, use secretRef instead to avoid storing passwords in values.
     password: ""
+    # Secret reference for Redis configuration (takes precedence over direct values above).
+    # The secret should contain keys: addr (required), password (optional).
+    # Example secret creation:
+    #   kubectl create secret generic redis-cache-secret \
+    #     --from-literal=addr=redis.redis-system.svc.cluster.local:6379 \
+    #     --from-literal=password=your-redis-password
+    secretRef:
+      # Name of the secret containing Redis configuration.
+      name: ""
 
 controller:
   logLevel: info

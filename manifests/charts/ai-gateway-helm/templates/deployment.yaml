@@ -83,7 +83,13 @@ spec:
             {{- if .Values.extProc.extraEnvVars }}
             - --extProcExtraEnvVars={{ include "ai-gateway-helm.extProc.envVarsString" . }}
             {{- end }}
-            {{- if .Values.extProc.redis.addr }}
+            {{- if .Values.extProc.redis.secretRef.name }}
+            - --extProcRedisAddr=$(EXTPROC_REDIS_ADDR)
+            {{- if .Values.extProc.redis.tls }}
+            - --extProcRedisTLS=true
+            {{- end }}
+            - --extProcRedisPassword=$(EXTPROC_REDIS_PASSWORD)
+            {{- else if .Values.extProc.redis.addr }}
             - --extProcRedisAddr={{ .Values.extProc.redis.addr }}
             {{- if .Values.extProc.redis.tls }}
             - --extProcRedisTLS=true
@@ -120,6 +126,19 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+          {{- if .Values.extProc.redis.secretRef.name }}
+            - name: EXTPROC_REDIS_ADDR
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.extProc.redis.secretRef.name }}
+                  key: addr
+            - name: EXTPROC_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.extProc.redis.secretRef.name }}
+                  key: password
+                  optional: true
+          {{- end }}
           {{- if .Values.controller.podEnv }}
           {{- range $key, $val := .Values.controller.podEnv }}
             - name: {{ $key }}
