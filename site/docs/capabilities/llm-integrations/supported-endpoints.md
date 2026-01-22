@@ -176,14 +176,31 @@ curl -H "Content-Type: application/json" \
 **Supported Providers:**
 
 - OpenAI
+- GCP VertexAI (Gemini and Imagen models)
 - Any OpenAI-compatible provider that supports image generations
+
+**Supported VertexAI Models:**
+
+- **Gemini Models**: `gemini-2.5-flash-image` (up to 1,024px), `gemini-3-pro-image-preview` (up to 4,096px)
+- **Imagen Models**: `imagen-4.0-generate-001`, `imagen-4.0-fast-generate-001`, `imagen-4.0-ultra-generate-001`, `imagen-3.0-generate-002`
 
 **Example:**
 
 ```bash
+# OpenAI example
 curl -H "Content-Type: application/json" \
   -d '{
     "model": "gpt-image-1",
+    "prompt": "a serene mountain landscape at sunrise in watercolor",
+    "size": "1024x1024",
+    "n": 1
+  }' \
+  $GATEWAY_URL/v1/images/generations
+
+# VertexAI Gemini example
+curl -H "Content-Type: application/json" \
+  -d '{
+    "model": "gemini-2.5-flash-image",
     "prompt": "a serene mountain landscape at sunrise in watercolor",
     "size": "1024x1024",
     "n": 1
