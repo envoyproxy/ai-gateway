@@ -326,7 +326,12 @@ func (m *mcpRequestContext) servePOST(w http.ResponseWriter, r *http.Request) {
 				onErrorResponse(w, http.StatusInternalServerError, "missing route header")
 				return
 			}
-			err = m.handleInitializeRequest(ctx, w, msg, params.(*mcp.InitializeParams), route, extractSubject(r), span)
+			// Extract JWT claim headers configured for this route to forward to backends.
+			var claimHeaders map[string]string
+			if routeConfig := m.routes[route]; routeConfig != nil {
+				claimHeaders = extractClaimHeaders(r, routeConfig.claimToHeaders)
+			}
+			err = m.handleInitializeRequest(ctx, w, msg, params.(*mcp.InitializeParams), route, extractSubject(r), claimHeaders, span)
 		case "notifications/initialized":
 			// According to the MCP spec, when the server receives a JSON-RPC response or notification from the client
 			// and accepts it, the server MUST return HTTP 202 Accepted with an empty body.
@@ -493,9 +498,9 @@ func errorType(err error) metrics.MCPErrorType {
 }
 
 // handleInitializeRequest handles the "initialize" JSON-RPC method.
-func (m *mcpRequestContext) handleInitializeRequest(ctx context.Context, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.InitializeParams, route, subject string, span tracingapi.MCPSpan) error {
+func (m *mcpRequestContext) handleInitializeRequest(ctx context.Context, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.InitializeParams, route, subject string, claimHeaders map[string]string, span tracingapi.MCPSpan) error {
 	m.metrics.RecordClientCapabilities(ctx, p.Capabilities, p)
-	s, err := m.newSession(ctx, p, route, subject, span)
+	s, err := m.newSession(ctx, p, route, subject, claimHeaders, span)
 	if err != nil {
 		m.l.Error("failed to create new session", slog.String("error", err.Error()))
 		onErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("failed to create new session: %v", err))
@@ -1186,6 +1191,91 @@ func extractSubject(r *http.Request) string {
 	var claims jwt.RegisteredClaims
 	_, _, _ = jwt.NewParser().ParseUnverified(parts[1], &claims)
 	return claims.Subject
+}
+
+// extractClaimHeaders extracts JWT claims from the Authorization header and maps them to HTTP headers.
+// This is used for forwarding user identity to backend MCP servers.
+// The function assumes the JWT has already been validated by the gateway's security policy.
+func extractClaimHeaders(r *http.Request, claimToHeaders []filterapi.ClaimToHeader) map[string]string {
+	if len(claimToHeaders) == 0 {
+		return nil
+	}
+
+	authzHeader := r.Header.Get("Authorization")
+	if authzHeader == "" {
+		return nil
+	}
+	parts := strings.SplitN(authzHeader, " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
+		return nil
+	}
+
+	// Parse JWT without validation (already validated by security policy).
+	var claims jwt.MapClaims
+	_, _, err := jwt.NewParser().ParseUnverified(parts[1], &claims)
+	if err != nil {
+		return nil
+	}
+
+	result := make(map[string]string)
+	for _, mapping := range claimToHeaders {
+		if value := getNestedClaim(claims, mapping.Claim); value != "" {
+			result[mapping.Header] = value
+		}
+	}
+	return result
+}
+
+// getNestedClaim extracts a claim value using dot notation for nested claims.
+// For example, "realm_access.roles" would access claims["realm_access"]["roles"].
+// Array values are JSON-encoded, other values are converted to strings.
+func getNestedClaim(claims jwt.MapClaims, path string) string {
+	parts := strings.Split(path, ".")
+	var current interface{} = map[string]interface{}(claims)
+
+	for _, part := range parts {
+		switch v := current.(type) {
+		case map[string]interface{}:
+			current = v[part]
+		case jwt.MapClaims:
+			current = v[part]
+		default:
+			return ""
+		}
+		if current == nil {
+			return ""
+		}
+	}
+
+	// Convert the final value to string.
+	switch v := current.(type) {
+	case string:
+		return v
+	case float64:
+		// JSON numbers are decoded as float64.
+		if v == float64(int64(v)) {
+			return fmt.Sprintf("%d", int64(v))
+		}
+		return fmt.Sprintf("%v", v)
+	case bool:
+		return fmt.Sprintf("%t", v)
+	case []interface{}:
+		// Encode arrays as JSON.
+		encoded, err := json.Marshal(v)
+		if err != nil {
+			return ""
+		}
+		return string(encoded)
+	case map[string]interface{}:
+		// Encode objects as JSON.
+		encoded, err := json.Marshal(v)
+		if err != nil {
+			return ""
+		}
+		return string(encoded)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }
 
 // handlePromptGetRequest handles the "prompts/get" JSON-RPC method.

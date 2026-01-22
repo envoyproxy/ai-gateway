@@ -134,7 +134,8 @@ func extractMetaFromJSONRPCMessage(msg jsonrpc.Message) map[string]any {
 
 // newSession creates a new session for a downstream client.
 // It multiplexes the initialize request to all backends defined in the MCPRoute associated with the downstream request.
-func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializeParams, routeName filterapi.MCPRouteName, subject string, span tracingapi.MCPSpan) (*session, error) {
+// claimHeaders contains JWT claims extracted from the request to be forwarded to backends.
+func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializeParams, routeName filterapi.MCPRouteName, subject string, claimHeaders map[string]string, span tracingapi.MCPSpan) (*session, error) {
 	m.l.Debug("creating new MCP session")
 
 	var (
@@ -198,7 +199,7 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt session ID: %w", err)
 	}
-	return &session{reqCtx: m, id: secureClientToGatewaySessionID(encrypted)}, nil
+	return &session{reqCtx: m, id: secureClientToGatewaySessionID(encrypted), claimHeaders: claimHeaders}, nil
 }
 
 // sessionFromID returns the session with the given ID, or error if not found or invalid.

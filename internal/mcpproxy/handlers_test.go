@@ -1226,6 +1226,195 @@ func TestExtractSubject(t *testing.T) {
 	})
 }
 
+func TestExtractClaimHeaders(t *testing.T) {
+	// This JWT has claims: {"sub":"user123","email":"user@example.com","name":"Test User","realm_access":{"roles":["admin","user"]},"custom_array":["a","b"]}
+	// Header: {"alg":"none","typ":"JWT"}
+	testToken := "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJ1c2VyMTIzIiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUuY29tIiwibmFtZSI6IlRlc3QgVXNlciIsInJlYWxtX2FjY2VzcyI6eyJyb2xlcyI6WyJhZG1pbiIsInVzZXIiXX0sImN1c3RvbV9hcnJheSI6WyJhIiwiYiJdfQ."
+
+	tests := []struct {
+		name           string
+		claimToHeaders []filterapi.ClaimToHeader
+		wantHeaders    map[string]string
+	}{
+		{
+			name: "extract simple string claims",
+			claimToHeaders: []filterapi.ClaimToHeader{
+				{Claim: "sub", Header: "X-User-Id"},
+				{Claim: "email", Header: "X-User-Email"},
+			},
+			wantHeaders: map[string]string{
+				"X-User-Id":    "user123",
+				"X-User-Email": "user@example.com",
+			},
+		},
+		{
+			name: "extract nested claim",
+			claimToHeaders: []filterapi.ClaimToHeader{
+				{Claim: "realm_access.roles", Header: "X-User-Roles"},
+			},
+			wantHeaders: map[string]string{
+				"X-User-Roles": `["admin","user"]`,
+			},
+		},
+		{
+			name: "extract array claim",
+			claimToHeaders: []filterapi.ClaimToHeader{
+				{Claim: "custom_array", Header: "X-Custom-Array"},
+			},
+			wantHeaders: map[string]string{
+				"X-Custom-Array": `["a","b"]`,
+			},
+		},
+		{
+			name: "missing claim returns empty result",
+			claimToHeaders: []filterapi.ClaimToHeader{
+				{Claim: "nonexistent", Header: "X-Missing"},
+			},
+			wantHeaders: map[string]string{},
+		},
+		{
+			name: "mixed existing and missing claims",
+			claimToHeaders: []filterapi.ClaimToHeader{
+				{Claim: "sub", Header: "X-User-Id"},
+				{Claim: "nonexistent", Header: "X-Missing"},
+			},
+			wantHeaders: map[string]string{
+				"X-User-Id": "user123",
+			},
+		},
+		{
+			name:           "empty claim mappings",
+			claimToHeaders: []filterapi.ClaimToHeader{},
+			wantHeaders:    nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest("GET", "/mcp", nil)
+			require.NoError(t, err)
+			req.Header.Set("Authorization", "Bearer "+testToken)
+
+			result := extractClaimHeaders(req, tt.claimToHeaders)
+			require.Equal(t, tt.wantHeaders, result)
+		})
+	}
+
+	t.Run("no auth header", func(t *testing.T) {
+		req, err := http.NewRequest("GET", "/mcp", nil)
+		require.NoError(t, err)
+		result := extractClaimHeaders(req, []filterapi.ClaimToHeader{
+			{Claim: "sub", Header: "X-User-Id"},
+		})
+		require.Nil(t, result)
+	})
+
+	t.Run("invalid bearer token", func(t *testing.T) {
+		req, err := http.NewRequest("GET", "/mcp", nil)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer invalid-jwt")
+		result := extractClaimHeaders(req, []filterapi.ClaimToHeader{
+			{Claim: "sub", Header: "X-User-Id"},
+		})
+		require.Nil(t, result)
+	})
+
+	t.Run("basic auth ignored", func(t *testing.T) {
+		req, err := http.NewRequest("GET", "/mcp", nil)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
+		result := extractClaimHeaders(req, []filterapi.ClaimToHeader{
+			{Claim: "sub", Header: "X-User-Id"},
+		})
+		require.Nil(t, result)
+	})
+}
+
+func TestGetNestedClaim(t *testing.T) {
+	// Test the getNestedClaim function with various claim types.
+	tests := []struct {
+		name   string
+		claims map[string]interface{}
+		path   string
+		want   string
+	}{
+		{
+			name:   "simple string claim",
+			claims: map[string]interface{}{"sub": "user123"},
+			path:   "sub",
+			want:   "user123",
+		},
+		{
+			name:   "nested string claim",
+			claims: map[string]interface{}{"outer": map[string]interface{}{"inner": "value"}},
+			path:   "outer.inner",
+			want:   "value",
+		},
+		{
+			name:   "deeply nested claim",
+			claims: map[string]interface{}{"a": map[string]interface{}{"b": map[string]interface{}{"c": "deep"}}},
+			path:   "a.b.c",
+			want:   "deep",
+		},
+		{
+			name:   "integer claim",
+			claims: map[string]interface{}{"count": float64(42)},
+			path:   "count",
+			want:   "42",
+		},
+		{
+			name:   "float claim",
+			claims: map[string]interface{}{"rate": float64(3.14)},
+			path:   "rate",
+			want:   "3.14",
+		},
+		{
+			name:   "boolean claim",
+			claims: map[string]interface{}{"active": true},
+			path:   "active",
+			want:   "true",
+		},
+		{
+			name:   "array claim",
+			claims: map[string]interface{}{"roles": []interface{}{"admin", "user"}},
+			path:   "roles",
+			want:   `["admin","user"]`,
+		},
+		{
+			name:   "object claim",
+			claims: map[string]interface{}{"metadata": map[string]interface{}{"key": "value"}},
+			path:   "metadata",
+			want:   `{"key":"value"}`,
+		},
+		{
+			name:   "missing top-level claim",
+			claims: map[string]interface{}{"sub": "user"},
+			path:   "nonexistent",
+			want:   "",
+		},
+		{
+			name:   "missing nested claim",
+			claims: map[string]interface{}{"outer": map[string]interface{}{"inner": "value"}},
+			path:   "outer.missing",
+			want:   "",
+		},
+		{
+			name:   "path through non-object",
+			claims: map[string]interface{}{"sub": "user"},
+			path:   "sub.inner",
+			want:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Convert to jwt.MapClaims.
+			result := getNestedClaim(tt.claims, tt.path)
+			require.Equal(t, tt.want, result)
+		})
+	}
+}
+
 func secureID(t *testing.T, proxy *mcpRequestContext, sessionID string) string {
 	secure, err := proxy.sessionCrypto.Encrypt(sessionID)
 	require.NoError(t, err)
