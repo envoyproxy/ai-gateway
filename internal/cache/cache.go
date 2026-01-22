@@ -51,6 +51,11 @@ type RedisCache struct {
 	client *redis.Client
 }
 
+// newRedisCacheWithClient creates a RedisCache with a provided client (for testing).
+func newRedisCacheWithClient(client *redis.Client) *RedisCache {
+	return &RedisCache{client: client}
+}
+
 // NewRedisCache creates a new Redis cache client.
 func NewRedisCache(cfg RedisConfig) (*RedisCache, error) {
 	opts := &redis.Options{
