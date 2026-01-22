@@ -23,9 +23,9 @@ metadata:
 spec:
   gatewayClassName: eg
   listeners:
-  - name: http
-    protocol: HTTP
-    port: 8080
+    - name: http
+      protocol: HTTP
+      port: 8080
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute
@@ -34,9 +34,9 @@ metadata:
   namespace: default
 spec:
   parentRefs:
-  - name: ai-gateway-with-cache
-    kind: Gateway
-    group: gateway.networking.k8s.io
+    - name: ai-gateway-with-cache
+      kind: Gateway
+      group: gateway.networking.k8s.io
   # Response caching configuration
   responseCache:
     # Enable response caching for this route
@@ -52,13 +52,13 @@ spec:
     #   - Response "Cache-Control: max-age=N" overrides TTL
     respectCacheControl: true
   rules:
-  - matches:
-    - headers:
-      - type: Exact
-        name: x-ai-eg-model
-        value: gpt-4o-mini
-    backendRefs:
-    - name: openai-backend
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: gpt-4o-mini
+      backendRefs:
+        - name: openai-backend
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
@@ -80,9 +80,9 @@ metadata:
   namespace: default
 spec:
   targetRefs:
-  - group: aigateway.envoyproxy.io
-    kind: AIServiceBackend
-    name: openai-backend
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: openai-backend
   type: APIKey
   apiKey:
     secretRef:
@@ -96,9 +96,9 @@ metadata:
   namespace: default
 spec:
   endpoints:
-  - fqdn:
-      hostname: api.openai.com
-      port: 443
+    - fqdn:
+        hostname: api.openai.com
+        port: 443
 ---
 apiVersion: gateway.networking.k8s.io/v1alpha3
 kind: BackendTLSPolicy
@@ -107,9 +107,9 @@ metadata:
   namespace: default
 spec:
   targetRefs:
-  - group: gateway.envoyproxy.io
-    kind: Backend
-    name: openai-backend
+    - group: gateway.envoyproxy.io
+      kind: Backend
+      name: openai-backend
   validation:
     wellKnownCACertificates: System
     hostname: api.openai.com

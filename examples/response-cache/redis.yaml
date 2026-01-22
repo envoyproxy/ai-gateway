@@ -24,8 +24,8 @@ metadata:
     app: redis
 spec:
   ports:
-  - name: redis
-    port: 6379
+    - name: redis
+      port: 6379
   selector:
     app: redis
 ---
@@ -45,17 +45,17 @@ spec:
         app: redis
     spec:
       containers:
-      - image: redis:alpine
-        imagePullPolicy: IfNotPresent
-        name: redis
-        ports:
-        - name: redis
-          containerPort: 6379
-        resources:
-          requests:
-            memory: "64Mi"
-            cpu: "50m"
-          limits:
-            memory: "256Mi"
-            cpu: "200m"
+        - image: redis:alpine
+          imagePullPolicy: IfNotPresent
+          name: redis
+          ports:
+            - name: redis
+              containerPort: 6379
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
       restartPolicy: Always

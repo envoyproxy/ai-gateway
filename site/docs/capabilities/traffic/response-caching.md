@@ -67,8 +67,8 @@ metadata:
 spec:
   responseCache:
     enabled: true
-    ttl: 1h                      # Cache TTL (default: 1h)
-    respectCacheControl: true    # Honor HTTP Cache-Control headers (default: true)
+    ttl: 1h # Cache TTL (default: 1h)
+    respectCacheControl: true # Honor HTTP Cache-Control headers (default: true)
   parentRefs:
     - name: my-gateway
       kind: Gateway
@@ -85,11 +85,11 @@ spec:
 
 ### Configuration Options
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | boolean | `false` | Enable response caching for this route |
-| `ttl` | duration | `1h` | Time-to-live for cached responses |
-| `respectCacheControl` | boolean | `true` | Honor HTTP Cache-Control headers |
+| Field                 | Type     | Default | Description                            |
+| --------------------- | -------- | ------- | -------------------------------------- |
+| `enabled`             | boolean  | `false` | Enable response caching for this route |
+| `ttl`                 | duration | `1h`    | Time-to-live for cached responses      |
+| `respectCacheControl` | boolean  | `true`  | Honor HTTP Cache-Control headers       |
 
 ## HTTP Cache-Control Support
 
@@ -99,20 +99,20 @@ When `respectCacheControl: true` (default), the gateway honors standard HTTP Cac
 
 Clients can control caching behavior per-request:
 
-| Header | Behavior |
-|--------|----------|
+| Header                    | Behavior                                          |
+| ------------------------- | ------------------------------------------------- |
 | `Cache-Control: no-cache` | Bypass cache lookup, but still cache the response |
-| `Cache-Control: no-store` | Bypass cache entirely (no lookup, no store) |
+| `Cache-Control: no-store` | Bypass cache entirely (no lookup, no store)       |
 
 ### Response Headers (Backend Control)
 
 Backend responses can control whether they should be cached:
 
-| Header | Behavior |
-|--------|----------|
-| `Cache-Control: no-store` | Do not cache this response |
-| `Cache-Control: no-cache` | Do not cache this response |
-| `Cache-Control: private` | Do not cache (shared cache should not store) |
+| Header                     | Behavior                                           |
+| -------------------------- | -------------------------------------------------- |
+| `Cache-Control: no-store`  | Do not cache this response                         |
+| `Cache-Control: no-cache`  | Do not cache this response                         |
+| `Cache-Control: private`   | Do not cache (shared cache should not store)       |
 | `Cache-Control: max-age=N` | Use N seconds as TTL instead of configured default |
 
 ### Disabling Cache-Control Support
@@ -124,7 +124,7 @@ spec:
   responseCache:
     enabled: true
     ttl: 30m
-    respectCacheControl: false  # Ignore Cache-Control headers
+    respectCacheControl: false # Ignore Cache-Control headers
 ```
 
 ## Making Requests
@@ -168,10 +168,10 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 
 The gateway adds a response header to indicate cache status:
 
-| Header | Value | Meaning |
-|--------|-------|---------|
-| `x-aigw-cache` | `hit` | Response served from cache |
-| `x-aigw-cache` | `miss` | Response from backend |
+| Header         | Value  | Meaning                    |
+| -------------- | ------ | -------------------------- |
+| `x-aigw-cache` | `hit`  | Response served from cache |
+| `x-aigw-cache` | `miss` | Response from backend      |
 
 Use this header to monitor cache effectiveness.
 
@@ -193,12 +193,12 @@ Use this header to monitor cache effectiveness.
 
 ### TTL Guidelines
 
-| Use Case | Recommended TTL |
-|----------|-----------------|
-| Static reference data | 24h - 7d |
-| General knowledge queries | 1h - 24h |
-| Semi-dynamic content | 5m - 1h |
-| Frequently changing data | Disable caching |
+| Use Case                  | Recommended TTL |
+| ------------------------- | --------------- |
+| Static reference data     | 24h - 7d        |
+| General knowledge queries | 1h - 24h        |
+| Semi-dynamic content      | 5m - 1h         |
+| Frequently changing data  | Disable caching |
 
 ## Limitations
 

@@ -16,46 +16,46 @@ func TestParseCacheControl(t *testing.T) {
 	tests := []struct {
 		name     string
 		value    string
-		expected CacheDirectives
+		expected Directives
 	}{
 		{
 			name:     "empty string",
 			value:    "",
-			expected: CacheDirectives{},
+			expected: Directives{},
 		},
 		{
 			name:     "no-cache",
 			value:    "no-cache",
-			expected: CacheDirectives{NoCache: true},
+			expected: Directives{NoCache: true},
 		},
 		{
 			name:     "no-store",
 			value:    "no-store",
-			expected: CacheDirectives{NoStore: true},
+			expected: Directives{NoStore: true},
 		},
 		{
 			name:     "private",
 			value:    "private",
-			expected: CacheDirectives{Private: true},
+			expected: Directives{Private: true},
 		},
 		{
 			name:  "max-age",
 			value: "max-age=3600",
-			expected: CacheDirectives{
+			expected: Directives{
 				MaxAge: durationPtr(time.Hour),
 			},
 		},
 		{
 			name:  "max-age zero",
 			value: "max-age=0",
-			expected: CacheDirectives{
+			expected: Directives{
 				MaxAge: durationPtr(0),
 			},
 		},
 		{
 			name:  "multiple directives",
 			value: "no-cache, max-age=3600",
-			expected: CacheDirectives{
+			expected: Directives{
 				NoCache: true,
 				MaxAge:  durationPtr(time.Hour),
 			},
@@ -63,7 +63,7 @@ func TestParseCacheControl(t *testing.T) {
 		{
 			name:  "all directives",
 			value: "no-cache, no-store, private, max-age=60",
-			expected: CacheDirectives{
+			expected: Directives{
 				NoCache: true,
 				NoStore: true,
 				Private: true,
@@ -73,7 +73,7 @@ func TestParseCacheControl(t *testing.T) {
 		{
 			name:  "case insensitive",
 			value: "No-Cache, NO-STORE, Private, Max-Age=120",
-			expected: CacheDirectives{
+			expected: Directives{
 				NoCache: true,
 				NoStore: true,
 				Private: true,
@@ -83,7 +83,7 @@ func TestParseCacheControl(t *testing.T) {
 		{
 			name:  "with whitespace",
 			value: "  no-cache  ,  max-age=300  ",
-			expected: CacheDirectives{
+			expected: Directives{
 				NoCache: true,
 				MaxAge:  durationPtr(5 * time.Minute),
 			},
@@ -91,17 +91,17 @@ func TestParseCacheControl(t *testing.T) {
 		{
 			name:     "invalid max-age",
 			value:    "max-age=invalid",
-			expected: CacheDirectives{},
+			expected: Directives{},
 		},
 		{
 			name:     "negative max-age",
 			value:    "max-age=-100",
-			expected: CacheDirectives{},
+			expected: Directives{},
 		},
 		{
 			name:     "unknown directives ignored",
 			value:    "public, must-revalidate, no-cache",
-			expected: CacheDirectives{NoCache: true},
+			expected: Directives{NoCache: true},
 		},
 	}
 
@@ -121,35 +121,35 @@ func TestParseCacheControl(t *testing.T) {
 	}
 }
 
-func TestCacheDirectives_ShouldSkipCacheLookup(t *testing.T) {
+func TestDirectives_ShouldSkipCacheLookup(t *testing.T) {
 	tests := []struct {
 		name       string
-		directives CacheDirectives
+		directives Directives
 		expected   bool
 	}{
 		{
 			name:       "empty",
-			directives: CacheDirectives{},
+			directives: Directives{},
 			expected:   false,
 		},
 		{
 			name:       "no-cache",
-			directives: CacheDirectives{NoCache: true},
+			directives: Directives{NoCache: true},
 			expected:   true,
 		},
 		{
 			name:       "no-store",
-			directives: CacheDirectives{NoStore: true},
+			directives: Directives{NoStore: true},
 			expected:   true,
 		},
 		{
 			name:       "private only",
-			directives: CacheDirectives{Private: true},
+			directives: Directives{Private: true},
 			expected:   false,
 		},
 		{
 			name:       "max-age only",
-			directives: CacheDirectives{MaxAge: durationPtr(time.Hour)},
+			directives: Directives{MaxAge: durationPtr(time.Hour)},
 			expected:   false,
 		},
 	}
@@ -161,35 +161,35 @@ func TestCacheDirectives_ShouldSkipCacheLookup(t *testing.T) {
 	}
 }
 
-func TestCacheDirectives_ShouldSkipCacheStore(t *testing.T) {
+func TestDirectives_ShouldSkipCacheStore(t *testing.T) {
 	tests := []struct {
 		name       string
-		directives CacheDirectives
+		directives Directives
 		expected   bool
 	}{
 		{
 			name:       "empty",
-			directives: CacheDirectives{},
+			directives: Directives{},
 			expected:   false,
 		},
 		{
 			name:       "no-cache",
-			directives: CacheDirectives{NoCache: true},
+			directives: Directives{NoCache: true},
 			expected:   true,
 		},
 		{
 			name:       "no-store",
-			directives: CacheDirectives{NoStore: true},
+			directives: Directives{NoStore: true},
 			expected:   true,
 		},
 		{
 			name:       "private",
-			directives: CacheDirectives{Private: true},
+			directives: Directives{Private: true},
 			expected:   true,
 		},
 		{
 			name:       "max-age only",
-			directives: CacheDirectives{MaxAge: durationPtr(time.Hour)},
+			directives: Directives{MaxAge: durationPtr(time.Hour)},
 			expected:   false,
 		},
 	}

@@ -34,7 +34,7 @@ func TestHashBody(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := HashBody(tt.body)
-			require.True(t, len(result) > len(KeyPrefix), "hash should be longer than prefix")
+			require.Greater(t, len(result), len(KeyPrefix), "hash should be longer than prefix")
 			require.Contains(t, result, KeyPrefix, "hash should contain prefix")
 
 			// Verify determinism
