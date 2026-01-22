@@ -101,6 +101,12 @@ type Options struct {
 	MCPFallbackSessionEncryptionIterations int
 	// EndpointPrefixes is the comma-separated key-value pairs for endpoint prefixes.
 	EndpointPrefixes string
+	// ExtProcRedisAddr is the Redis server address for response caching (e.g., "redis:6379").
+	ExtProcRedisAddr string
+	// ExtProcRedisTLS enables TLS for Redis connections.
+	ExtProcRedisTLS bool
+	// ExtProcRedisPassword is the password for Redis authentication.
+	ExtProcRedisPassword string
 }
 
 // StartControllers starts the controllers for the AI Gateway.
@@ -262,6 +268,9 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.MCPSessionEncryptionIterations,
 			options.MCPFallbackSessionEncryptionSeed,
 			options.MCPFallbackSessionEncryptionIterations,
+			options.ExtProcRedisAddr,
+			options.ExtProcRedisTLS,
+			options.ExtProcRedisPassword,
 		))
 		mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{Handler: h})
 	}

@@ -598,6 +598,16 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	// Remove content-encoding header if original body encoded but was mutated in the processor.
 	headerMutation = removeContentEncodingIfNeeded(headerMutation, bodyMutation, decodingResult.isEncoded)
 
+	// Add x-aigw-cache: miss header if caching is enabled and this is not a cache hit
+	if u.parent.isCacheEnabled() && !u.parent.cacheHit {
+		if headerMutation == nil {
+			headerMutation = &extprocv3.HeaderMutation{}
+		}
+		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+			Header: &corev3.HeaderValue{Key: "x-aigw-cache", RawValue: []byte("miss")},
+		})
+	}
+
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ResponseBody{
 			ResponseBody: &extprocv3.BodyResponse{

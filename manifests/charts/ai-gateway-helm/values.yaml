@@ -62,6 +62,17 @@ extProc:
   ##
   extraEnvVars: []
 
+  # Redis configuration for response caching.
+  # When redis.addr is set, the extProc will use Redis for caching LLM responses.
+  redis:
+    # Redis server address (e.g., "redis.redis-system.svc.cluster.local:6379").
+    # If empty, response caching is disabled.
+    addr: ""
+    # Enable TLS for Redis connections.
+    tls: false
+    # Password for Redis authentication. Leave empty if no authentication is required.
+    password: ""
+
 controller:
   logLevel: info
   nameOverride: ""
@@ -90,7 +101,6 @@ controller:
   # Set to "" to disable the default.
   # Example: "x-forwarded-proto:url.scheme,x-tenant-id:tenant.id"
   logRequestHeaderAttributes: null
-
 
   # -- Service Account --
   serviceAccount:
@@ -159,21 +169,21 @@ controller:
   service:
     type: ClusterIP
     ports:
-      - name: mutating-webhook
-        protocol: TCP
-        port: 9443
-        appProtocol: http
-        targetPort: 9443
-      - name: grpc
-        protocol: TCP
-        port: 1063
-        appProtocol: grpc
-        targetPort: 1063
-      - name: http-metrics
-        protocol: TCP
-        appProtocol: http
-        port: 9090
-        targetPort: 9090
+    - name: mutating-webhook
+      protocol: TCP
+      port: 9443
+      appProtocol: http
+      targetPort: 9443
+    - name: grpc
+      protocol: TCP
+      port: 1063
+      appProtocol: grpc
+      targetPort: 1063
+    - name: http-metrics
+      protocol: TCP
+      appProtocol: http
+      port: 9090
+      targetPort: 9090
 
   mutatingWebhook:
     # The secret that contains the CA certificate and the server certificate for the webhook server.
@@ -246,4 +256,4 @@ controller:
 # Configuration for the Envoy Gateway component that AI Gateway relies on to program Envoy.
 envoyGateway:
   # The namespace where the Envoy Gateway controller is installed.
-  namespace : envoy-gateway-system
+  namespace: envoy-gateway-system

@@ -83,6 +83,15 @@ spec:
             {{- if .Values.extProc.extraEnvVars }}
             - --extProcExtraEnvVars={{ include "ai-gateway-helm.extProc.envVarsString" . }}
             {{- end }}
+            {{- if .Values.extProc.redis.addr }}
+            - --extProcRedisAddr={{ .Values.extProc.redis.addr }}
+            {{- if .Values.extProc.redis.tls }}
+            - --extProcRedisTLS=true
+            {{- end }}
+            {{- if .Values.extProc.redis.password }}
+            - --extProcRedisPassword={{ .Values.extProc.redis.password }}
+            {{- end }}
+            {{- end }}
             - --tlsCertDir=/certs
             - --tlsCertName={{ .Values.controller.mutatingWebhook.tlsCertName }}
             - --tlsKeyName={{ .Values.controller.mutatingWebhook.tlsKeyName }}
