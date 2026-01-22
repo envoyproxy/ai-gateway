@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -1730,8 +1731,8 @@ func Test_upstreamProcessor_ProcessResponseBody_CacheStoreError(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Verify store was attempted (the error is logged but doesn't affect the response)
-	require.True(t, mockCache.setCalled, "cache store should have been attempted")
-	require.Equal(t, "test-cache-key", mockCache.setKey)
+	require.True(t, mockCache.SetCalled(), "cache store should have been attempted")
+	require.Equal(t, "test-cache-key", mockCache.SetKey())
 }
 
 func Test_upstreamProcessor_ProcessResponseBody_CacheMissHeader(t *testing.T) {
@@ -1819,7 +1820,7 @@ func Test_upstreamProcessor_ProcessResponseBody_ResponseCacheControl(t *testing.
 		time.Sleep(50 * time.Millisecond)
 
 		// Cache store should NOT have been called due to no-store
-		require.False(t, mockCache.setCalled, "cache store should be skipped for no-store")
+		require.False(t, mockCache.SetCalled(), "cache store should be skipped for no-store")
 	})
 
 	t.Run("private skips cache store", func(t *testing.T) {
@@ -1854,7 +1855,7 @@ func Test_upstreamProcessor_ProcessResponseBody_ResponseCacheControl(t *testing.
 		require.NoError(t, err)
 
 		time.Sleep(50 * time.Millisecond)
-		require.False(t, mockCache.setCalled, "cache store should be skipped for private")
+		require.False(t, mockCache.SetCalled(), "cache store should be skipped for private")
 	})
 
 	t.Run("max-age overrides configured TTL", func(t *testing.T) {
@@ -1889,7 +1890,7 @@ func Test_upstreamProcessor_ProcessResponseBody_ResponseCacheControl(t *testing.
 		require.NoError(t, err)
 
 		time.Sleep(50 * time.Millisecond)
-		require.True(t, mockCache.setCalled, "cache store should be called")
+		require.True(t, mockCache.SetCalled(), "cache store should be called")
 		// Note: We can't easily verify the TTL used since it's passed to the async goroutine
 	})
 
@@ -1925,7 +1926,7 @@ func Test_upstreamProcessor_ProcessResponseBody_ResponseCacheControl(t *testing.
 		require.NoError(t, err)
 
 		time.Sleep(50 * time.Millisecond)
-		require.True(t, mockCache.setCalled, "cache store should be called when RespectCacheControl is false")
+		require.True(t, mockCache.SetCalled(), "cache store should be called when RespectCacheControl is false")
 	})
 }
 
@@ -1998,9 +1999,9 @@ func Test_upstreamProcessor_ProcessResponseBody_BuffersResponse(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Verify cache was called with the response body
-	require.True(t, mockCache.setCalled)
-	require.Equal(t, "test-key", mockCache.setKey)
-	require.Equal(t, responseBody, mockCache.setValue)
+	require.True(t, mockCache.SetCalled())
+	require.Equal(t, "test-key", mockCache.SetKey())
+	require.Equal(t, responseBody, mockCache.SetValue())
 }
 
 func Test_upstreamProcessor_ProcessResponseBody_SkipsCacheOnCacheHit(t *testing.T) {
@@ -2035,7 +2036,7 @@ func Test_upstreamProcessor_ProcessResponseBody_SkipsCacheOnCacheHit(t *testing.
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
-	require.False(t, mockCache.setCalled, "cache store should be skipped on cache hit")
+	require.False(t, mockCache.SetCalled(), "cache store should be skipped on cache hit")
 }
 
 func Test_upstreamProcessor_ProcessResponseBody_SkipsCacheWhenSkipCacheStoreSet(t *testing.T) {
@@ -2070,11 +2071,13 @@ func Test_upstreamProcessor_ProcessResponseBody_SkipsCacheWhenSkipCacheStoreSet(
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
-	require.False(t, mockCache.setCalled, "cache store should be skipped when skipCacheStore is set")
+	require.False(t, mockCache.SetCalled(), "cache store should be skipped when skipCacheStore is set")
 }
 
 // mockCacheImpl is a mock implementation of cache.Cache for testing.
+// It is thread-safe to support async cache operations.
 type mockCacheImpl struct {
+	mu          sync.Mutex
 	getResponse []byte
 	getFound    bool
 	getErr      error
@@ -2085,10 +2088,14 @@ type mockCacheImpl struct {
 }
 
 func (m *mockCacheImpl) Get(_ context.Context, _ string) ([]byte, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.getResponse, m.getFound, m.getErr
 }
 
 func (m *mockCacheImpl) Set(_ context.Context, key string, value []byte, _ time.Duration) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.setCalled = true
 	m.setKey = key
 	m.setValue = value
@@ -2097,4 +2104,25 @@ func (m *mockCacheImpl) Set(_ context.Context, key string, value []byte, _ time.
 
 func (m *mockCacheImpl) Close() error {
 	return nil
+}
+
+// SetCalled returns whether Set was called (thread-safe).
+func (m *mockCacheImpl) SetCalled() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.setCalled
+}
+
+// SetKey returns the key passed to Set (thread-safe).
+func (m *mockCacheImpl) SetKey() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.setKey
+}
+
+// SetValue returns the value passed to Set (thread-safe).
+func (m *mockCacheImpl) SetValue() []byte {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.setValue
 }
