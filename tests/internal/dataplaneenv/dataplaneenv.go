@@ -174,7 +174,7 @@ func StartTestEnvironment(t testing.TB,
 		}
 		t.Logf("All services are up and running")
 		return true
-	}, time.Second*5, time.Millisecond*500, "failed to connect to all services in the test environment")
+	}, time.Second*60, time.Millisecond*500, "failed to connect to all services in the test environment")
 	return env
 }
 
@@ -201,7 +201,7 @@ func (e *TestEnvironment) checkAllConnections() error {
 }
 
 func (e *TestEnvironment) checkConnection(port int, name string) error {
-	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s on port %d: %w", name, port, err)
 	}

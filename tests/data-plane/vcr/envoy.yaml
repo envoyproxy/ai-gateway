@@ -160,7 +160,7 @@ static_resources:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 message_timeout: 5s # Increase timeout from default 200ms to 5s
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND" # Transform request format and inject auth headers
                   request_body_mode: "NONE" # Body already processed by router filter
@@ -185,7 +185,7 @@ static_resources:
                     socket_address:
                       address: host.docker.internal
                       port_value: 11434
-                # Add metadata in prod set by XDS: xds.upstream_host_metadata
+                # Add metadata in prod set by XDS: xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 metadata:
                   filter_metadata:
                     aigateway.envoy.io:
@@ -211,7 +211,7 @@ static_resources:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 message_timeout: 5s # Increase timeout from default 200ms to 5s
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND" # Transform request format and inject auth headers
                   request_body_mode: "NONE" # Body already processed by router filter
@@ -236,7 +236,7 @@ static_resources:
                     socket_address:
                       address: host.docker.internal
                       port_value: 11434
-                # Add metadata in prod set by XDS: xds.upstream_host_metadata
+                # Add metadata in prod set by XDS: xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 metadata:
                   filter_metadata:
                     aigateway.envoy.io:
@@ -262,7 +262,7 @@ static_resources:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 message_timeout: 5s # Increase timeout from default 200ms to 5s
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND" # Transform request format and inject auth headers
                   request_body_mode: "NONE" # Body already processed by router filter
@@ -287,7 +287,7 @@ static_resources:
                     socket_address:
                       address: host.docker.internal
                       port_value: 11434
-                # Add metadata in prod set by XDS: xds.upstream_host_metadata
+                # Add metadata in prod set by XDS: xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 metadata:
                   filter_metadata:
                     aigateway.envoy.io:
@@ -313,7 +313,7 @@ static_resources:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 message_timeout: 5s # Increase timeout from default 200ms to 5s
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND" # Transform request format and inject auth headers
                   request_body_mode: "NONE" # Body already processed by router filter
@@ -338,7 +338,7 @@ static_resources:
                     socket_address:
                       address: host.docker.internal
                       port_value: 11434
-                # Add metadata in prod set by XDS: xds.upstream_host_metadata
+                # Add metadata in prod set by XDS: xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 metadata:
                   filter_metadata:
                     aigateway.envoy.io:
@@ -364,7 +364,7 @@ static_resources:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 message_timeout: 5s # Increase timeout from default 200ms to 5s
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND" # Transform request format and inject auth headers
                   request_body_mode: "NONE" # Body already processed by router filter
@@ -389,7 +389,7 @@ static_resources:
                     socket_address:
                       address: host.docker.internal
                       port_value: 11434
-                # Add metadata in prod set by XDS: xds.upstream_host_metadata
+                # Add metadata in prod set by XDS: xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 metadata:
                   filter_metadata:
                     aigateway.envoy.io:
@@ -415,7 +415,7 @@ static_resources:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 message_timeout: 5s # Increase timeout from default 200ms to 5s
                 request_attributes:
-                  - xds.upstream_host_metadata
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 processing_mode:
                   request_header_mode: "SEND" # Transform request format and inject auth headers
                   request_body_mode: "NONE" # Body already processed by router filter
@@ -440,7 +440,7 @@ static_resources:
                     socket_address:
                       address: host.docker.internal
                       port_value: 11434
-                # Add metadata in prod set by XDS: xds.upstream_host_metadata
+                # Add metadata in prod set by XDS: xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                 metadata:
                   filter_metadata:
                     aigateway.envoy.io:

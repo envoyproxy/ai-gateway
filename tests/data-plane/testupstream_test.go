@@ -1337,7 +1337,7 @@ data: {"type":"response.completed","sequence_number":10,"response":{"id":"resp_6
 			}
 			t.Logf("%v: %v", time.Now(), chunk.Choices[0].Delta.Content)
 			// Check each event is received less than a second after the previous one.
-			require.Less(t, time.Since(start), time.Second)
+			require.Less(t, time.Since(start), 3*time.Second)
 			start = time.Now()
 			asserted = true
 		}

@@ -7,6 +7,7 @@ package translator
 
 import (
 	"cmp"
+	"encoding/base64"
 	"fmt"
 	"maps"
 	"mime"
@@ -256,16 +257,42 @@ func toolMsgToGeminiParts(msg openai.ChatCompletionToolMessageParam, knownToolCa
 // assistantMsgToGeminiParts converts OpenAI assistant message to Gemini Parts and known tool calls.
 func assistantMsgToGeminiParts(msg *openai.ChatCompletionAssistantMessageParam) ([]*genai.Part, map[string]string, error) {
 	var parts []*genai.Part
+	var thoughtSignature []byte // Collect signature from thinking content
+
+	// First pass: scan content to find thinking signature
+	if v, ok := msg.Content.Value.([]openai.ChatCompletionAssistantMessageParamContent); ok {
+		for _, contPart := range v {
+			if contPart.Type == openai.ChatCompletionAssistantMessageParamContentTypeThinking {
+				if contPart.Signature != nil && *contPart.Signature != "" {
+					// Decode base64 signature
+					sigBytes, err := base64.StdEncoding.DecodeString(*contPart.Signature)
+					if err != nil {
+						return nil, nil, fmt.Errorf("failed to decode thought signature: %w", err)
+					}
+					thoughtSignature = sigBytes
+					break // Only use first signature
+				}
+			}
+		}
+	}
 
 	// Handle tool calls in the assistant message.
 	knownToolCalls := make(map[string]string)
-	for _, toolCall := range msg.ToolCalls {
+	for i, toolCall := range msg.ToolCalls {
 		knownToolCalls[*toolCall.ID] = toolCall.Function.Name
 		var parsedArgs map[string]any
 		if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &parsedArgs); err != nil {
 			return nil, nil, fmt.Errorf("function arguments should be valid json string. failed to parse function arguments: %w", err)
 		}
-		parts = append(parts, genai.NewPartFromFunctionCall(toolCall.Function.Name, parsedArgs))
+
+		funcCallPart := genai.NewPartFromFunctionCall(toolCall.Function.Name, parsedArgs)
+
+		// According to https://ai.google.dev/gemini-api/docs/thought-signatures, if the model generates parallel function calls in a response, the thought_signature is attached only to the first functionCall part. Subsequent  functionCall parts in the same response will not contain a signature.
+		if i == 0 && thoughtSignature != nil {
+			funcCallPart.ThoughtSignature = thoughtSignature
+		}
+
+		parts = append(parts, funcCallPart)
 	}
 
 	// Handle content in the assistant message.
@@ -285,6 +312,16 @@ func assistantMsgToGeminiParts(msg *openai.ChatCompletionAssistantMessageParam) 
 				if contPart.Text != nil && *contPart.Text != "" {
 					thoughtPart := genai.NewPartFromText(*contPart.Text)
 					thoughtPart.Thought = true
+
+					// Only attach signature to thought part if there are NO tool calls
+					if len(msg.ToolCalls) == 0 && contPart.Signature != nil && *contPart.Signature != "" {
+						sigBytes, err := base64.StdEncoding.DecodeString(*contPart.Signature)
+						if err != nil {
+							return nil, nil, fmt.Errorf("failed to decode thought signature: %w", err)
+						}
+						thoughtPart.ThoughtSignature = sigBytes
+					}
+
 					parts = append(parts, thoughtPart)
 				}
 			case openai.ChatCompletionAssistantMessageParamContentTypeRefusal:
@@ -701,7 +738,7 @@ func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate, responseMode
 				Role: openai.ChatMessageRoleAssistant,
 			}
 			// Extract thought summary and text from parts.
-			thoughtSummary, content := extractTextAndThoughtSummaryFromGeminiParts(candidate.Content.Parts, responseMode)
+			thoughtSummary, content, signature := extractTextAndThoughtSummaryFromGeminiParts(candidate.Content.Parts, responseMode)
 			if thoughtSummary != "" {
 				message.ReasoningContent = &openai.ReasoningContentUnion{
 					Value: &openai.ReasoningContent{
@@ -713,16 +750,54 @@ func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate, responseMode
 					},
 				}
 			}
+			if signature != "" {
+				if message.ReasoningContent != nil {
+					if rc, ok := message.ReasoningContent.Value.(*openai.ReasoningContent); ok && rc != nil && rc.ReasoningContent != nil && rc.ReasoningContent.ReasoningText != nil {
+						rc.ReasoningContent.ReasoningText.Signature = signature
+					}
+				} else {
+					message.ReasoningContent = &openai.ReasoningContentUnion{
+						Value: &openai.ReasoningContent{
+							ReasoningContent: &awsbedrock.ReasoningContentBlock{
+								ReasoningText: &awsbedrock.ReasoningTextBlock{
+									Signature: signature,
+								},
+							},
+						},
+					}
+				}
+			}
 			if content != "" {
 				message.Content = &content
 			}
 
 			// Extract tool calls if any.
-			toolCalls, err = extractToolCallsFromGeminiParts(toolCalls, candidate.Content.Parts, json.Marshal)
+			var toolCallSignature string
+			toolCalls, toolCallSignature, err = extractToolCallsFromGeminiParts(toolCalls, candidate.Content.Parts, json.Marshal)
 			if err != nil {
 				return nil, fmt.Errorf("error extracting tool calls: %w", err)
 			}
 			message.ToolCalls = toolCalls
+
+			// when the model responds with tool calls, it should not respond with a text at the same time. Thus, we do not need to merge them together
+			if toolCallSignature != "" {
+				signature = toolCallSignature
+				if message.ReasoningContent != nil {
+					if rc, ok := message.ReasoningContent.Value.(*openai.ReasoningContent); ok && rc != nil && rc.ReasoningContent != nil && rc.ReasoningContent.ReasoningText != nil {
+						rc.ReasoningContent.ReasoningText.Signature = signature
+					}
+				} else {
+					message.ReasoningContent = &openai.ReasoningContentUnion{
+						Value: &openai.ReasoningContent{
+							ReasoningContent: &awsbedrock.ReasoningContentBlock{
+								ReasoningText: &awsbedrock.ReasoningTextBlock{
+									Signature: signature,
+								},
+							},
+						},
+					}
+				}
+			}
 
 			// If there's no content but there are tool calls, set content to nil.
 			if content == "" && len(toolCalls) > 0 {
@@ -787,9 +862,10 @@ func geminiFinishReasonToOpenAI[T toolCallSlice](reason genai.FinishReason, tool
 }
 
 // extractTextAndThoughtSummaryFromGeminiParts extracts thought summary and text from Gemini parts.
-func extractTextAndThoughtSummaryFromGeminiParts(parts []*genai.Part, responseMode geminiResponseMode) (string, string) {
+func extractTextAndThoughtSummaryFromGeminiParts(parts []*genai.Part, responseMode geminiResponseMode) (string, string, string) {
 	var textBuilder strings.Builder
 	var thoughtBuilder strings.Builder
+	var signatureBuilder strings.Builder
 
 	for _, part := range parts {
 		if part != nil && part.Text != "" {
@@ -804,16 +880,23 @@ func extractTextAndThoughtSummaryFromGeminiParts(parts []*genai.Part, responseMo
 					part.Text = strings.TrimPrefix(part.Text, "\"")
 					part.Text = strings.TrimSuffix(part.Text, "\"")
 				}
+				// ThoughtSignature is only appended with Thought as False
+				if part.ThoughtSignature != nil {
+					signatureBuilder.WriteString(base64.StdEncoding.EncodeToString(part.ThoughtSignature))
+				}
 				textBuilder.WriteString(part.Text)
 			}
 		}
 	}
-	return thoughtBuilder.String(), textBuilder.String()
+	return thoughtBuilder.String(), textBuilder.String(), signatureBuilder.String()
 }
 
-// extractToolCallsFromGeminiParts extracts tool calls from Gemini parts.
+// extractToolCallsFromGeminiParts extracts tool calls and thought signature from Gemini parts.
+// Returns: (toolCalls, signature, error)
 func extractToolCallsFromGeminiParts(toolCalls []openai.ChatCompletionMessageToolCallParam, parts []*genai.Part, argsMarshaler json.Marshaler,
-) ([]openai.ChatCompletionMessageToolCallParam, error) {
+) ([]openai.ChatCompletionMessageToolCallParam, string, error) {
+	var signatureBuilder strings.Builder
+
 	for _, part := range parts {
 		if part == nil || part.FunctionCall == nil {
 			continue
@@ -822,7 +905,7 @@ func extractToolCallsFromGeminiParts(toolCalls []openai.ChatCompletionMessageToo
 		// Convert function call arguments to JSON string.
 		args, err := argsMarshaler(part.FunctionCall.Args)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal function arguments: %w", err)
+			return nil, "", fmt.Errorf("failed to marshal function arguments: %w", err)
 		}
 
 		// Generate a random ID for the tool call.
@@ -838,13 +921,18 @@ func extractToolCallsFromGeminiParts(toolCalls []openai.ChatCompletionMessageToo
 		}
 
 		toolCalls = append(toolCalls, toolCall)
+
+		// Extract ThoughtSignature if present (only the first one)
+		if part.ThoughtSignature != nil && signatureBuilder.Len() == 0 {
+			signatureBuilder.WriteString(base64.StdEncoding.EncodeToString(part.ThoughtSignature))
+		}
 	}
 
 	if len(toolCalls) == 0 {
-		return nil, nil
+		return nil, "", nil
 	}
 
-	return toolCalls, nil
+	return toolCalls, signatureBuilder.String(), nil
 }
 
 // geminiUsageToOpenAIUsage converts Gemini usage metadata to OpenAI usage.
