@@ -58,4 +58,9 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "200m"
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 1
+            periodSeconds: 2
       restartPolicy: Always

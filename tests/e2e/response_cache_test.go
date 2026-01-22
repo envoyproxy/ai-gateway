@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -34,8 +35,26 @@ func TestResponseCache(t *testing.T) {
 		_ = e2elib.KubectlDeleteManifest(context.Background(), redisManifest)
 	})
 
-	// Wait for Redis to be ready.
+	// Wait for Redis to be ready and verify it's actually accepting connections.
 	e2elib.RequireWaitForPodReady(t, "redis-system", "app=redis")
+
+	// Verify Redis is actually accepting connections by running redis-cli ping.
+	// This ensures the Redis service is fully ready before we configure AI Gateway.
+	internaltesting.RequireEventuallyNoError(t, func() error {
+		// Use exec.CommandContext directly instead of e2elib.Kubectl because
+		// Kubectl sets Stdout/Stderr which conflicts with CombinedOutput().
+		cmd := exec.CommandContext(ctx, "kubectl", "exec", "-n", "redis-system", "deploy/redis", "--",
+			"redis-cli", "ping")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("redis-cli ping failed: %w, output: %s", err, string(out))
+		}
+		if !strings.Contains(string(out), "PONG") {
+			return fmt.Errorf("redis-cli ping did not return PONG: %s", string(out))
+		}
+		return nil
+	}, 60*time.Second, 2*time.Second)
+	t.Log("Redis is ready and accepting connections")
 
 	// Upgrade AI Gateway with Redis configuration.
 	// This will restart the controller with the Redis address configured.
@@ -57,9 +76,10 @@ func TestResponseCache(t *testing.T) {
 		})
 	})
 
-	// Wait a bit for the webhook to be fully ready after the controller restart.
+	// Wait for the webhook to be fully ready after the controller restart.
 	// The controller deployment being ready doesn't guarantee the webhook is immediately serving.
-	time.Sleep(5 * time.Second)
+	// On some Envoy Gateway versions (e.g., 1.6.0), there may be additional delays.
+	time.Sleep(10 * time.Second)
 
 	// Apply the test manifest.
 	const manifest = "testdata/response_cache.yaml"
@@ -71,27 +91,14 @@ func TestResponseCache(t *testing.T) {
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=response-cache-test"
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
 
-	// Debug: Print the ext_proc container args to verify Redis config is present
-	t.Log("Checking ext_proc container args for Redis configuration...")
-	debugCmd := e2elib.Kubectl(ctx, "get", "pod", "-n", e2elib.EnvoyGatewayNamespace,
-		"-l", egSelector, "-o", "jsonpath={.items[0].spec.containers[?(@.name=='ai-gateway-extproc')].args}")
-	debugOutput, debugErr := debugCmd.Output()
-	if debugErr != nil {
-		t.Logf("Warning: Failed to get ext_proc args: %v", debugErr)
-	} else {
-		t.Logf("ext_proc container args: %s", string(debugOutput))
-	}
+	// Wait for the testupstream deployment to be ready.
+	e2elib.RequireWaitForPodReady(t, "default", "app=response-cache-testupstream")
 
-	// Debug: Check if the filter config secret contains ResponseCache configuration
-	t.Log("Checking filter config secret for ResponseCache configuration...")
-	secretCmd := e2elib.Kubectl(ctx, "get", "secret", "-n", e2elib.EnvoyGatewayNamespace,
-		"-l", "app.kubernetes.io/managed-by=envoy-ai-gateway", "-o", "jsonpath={.items[*].data.config\\.yaml}")
-	secretOutput, secretErr := secretCmd.Output()
-	if secretErr != nil {
-		t.Logf("Warning: Failed to get filter config secret: %v", secretErr)
-	} else {
-		t.Logf("Filter config secret (base64): %s", string(secretOutput))
-	}
+	// Debug: Print the ext_proc container args to verify Redis config is passed.
+	debugCmd := e2elib.Kubectl(ctx, "get", "pods", "-n", e2elib.EnvoyGatewayNamespace, "-l", egSelector,
+		"-o", "jsonpath={.items[0].spec.containers[?(@.name=='ai-gateway-extproc')].args}")
+	debugOut, _ := debugCmd.Output()
+	t.Logf("ext_proc container args: %s", string(debugOut))
 
 	const modelName = "cache-test-model"
 	const fakeResponseBody = `{"choices":[{"message":{"content":"This is a cached response.","role":"assistant"}}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`
@@ -140,10 +147,10 @@ func TestResponseCache(t *testing.T) {
 			}
 
 			cacheHeader1 := headers1.Get("x-aigw-cache")
-			t.Logf("First request cache header: %s", cacheHeader1)
 			if cacheHeader1 != "miss" {
-				return fmt.Errorf("first request: expected cache miss, got %q", cacheHeader1)
+				return fmt.Errorf("first request: expected cache miss, got %q (response body: %s)", cacheHeader1, string(body1))
 			}
+			t.Logf("First request cache header: %s", cacheHeader1)
 
 			// Small delay to ensure the response is cached.
 			time.Sleep(100 * time.Millisecond)
