@@ -78,9 +78,6 @@ func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracingap
 }
 
 func originalPathForRequest(r *http.Request) string {
-	if r == nil {
-		return ""
-	}
 	if r.RequestURI != "" {
 		return r.RequestURI
 	}
@@ -91,22 +88,19 @@ func originalPathForRequest(r *http.Request) string {
 }
 
 func setHeaderIfMissing(h http.Header, key, value string) {
-	if value == "" || h.Get(key) != "" {
+	if h.Get(key) != "" {
 		return
 	}
 	h.Set(key, value)
 }
 
 func (m *mcpRequestContext) applyOriginalPathHeaders(req *http.Request) {
-	if m == nil || req == nil {
-		return
-	}
 	setHeaderIfMissing(req.Header, internalapi.OriginalPathHeader, m.originalPath)
 	setHeaderIfMissing(req.Header, internalapi.EnvoyOriginalPathHeader, m.originalPath)
 }
 
 func (m *mcpRequestContext) applyLogHeaderMappings(req *http.Request, msg jsonrpc.Message) {
-	if m == nil || req == nil || len(m.logRequestHeaderAttributes) == 0 {
+	if req == nil || len(m.logRequestHeaderAttributes) == 0 {
 		return
 	}
 	meta := extractMetaFromJSONRPCMessage(msg)

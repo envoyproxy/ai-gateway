@@ -126,10 +126,6 @@ func Test_applyLogHeaderMappings(t *testing.T) {
 }
 
 func Test_originalPathForRequest(t *testing.T) {
-	t.Run("nil", func(t *testing.T) {
-		require.Empty(t, originalPathForRequest(nil))
-	})
-
 	t.Run("request uri preferred", func(t *testing.T) {
 		req := &http.Request{RequestURI: "/mcp?x=1"}
 		require.Equal(t, "/mcp?x=1", originalPathForRequest(req))

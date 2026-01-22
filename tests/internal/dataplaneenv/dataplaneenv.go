@@ -294,9 +294,7 @@ func requireExtProc(t testing.TB, out io.Writer, config string, env []string, ex
 		"-mcpWriteTimeout", mcpWriteTimeout.String(),
 		"-logLevel", "info",
 	}
-	if len(extraArgs) > 0 {
-		args = append(args, extraArgs...)
-	}
+	args = append(args, extraArgs...)
 	// Disable pprof for tests to avoid port conflicts.
 	env = append(env, fmt.Sprintf("%s=true", pprof.DisableEnvVarKey))
 	t.Logf("Starting ExtProc with args: %v", args)
