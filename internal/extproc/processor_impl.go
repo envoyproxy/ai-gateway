@@ -28,6 +28,10 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
+// LogRequestHeaderAttributes is the mapping of request headers to log as dynamic metadata attributes.
+// This is configured at the startup of the extproc server.
+var LogRequestHeaderAttributes map[string]string
+
 // NewFactory creates a ProcessorFactory with the given parameters.
 //
 // Type Parameters:
@@ -532,12 +536,11 @@ func buildContentLengthDynamicMetadataOnRequest(contentLength int) *structpb.Str
 }
 
 func buildRequestHeaderDynamicMetadata(requestHeaders map[string]string) *structpb.Struct {
-	attrs := getLogRequestHeaderAttributes()
-	if len(attrs) == 0 {
+	if len(LogRequestHeaderAttributes) == 0 {
 		return nil
 	}
-	fields := make(map[string]*structpb.Value, len(attrs))
-	for header, attr := range attrs {
+	fields := make(map[string]*structpb.Value, len(LogRequestHeaderAttributes))
+	for header, attr := range LogRequestHeaderAttributes {
 		value, ok := requestHeaders[header]
 		if !ok || value == "" {
 			continue

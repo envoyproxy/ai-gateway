@@ -460,8 +460,8 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				require.Equal(t, "some-model", mm.requestModel)
 			})
 			t.Run("ok", func(t *testing.T) {
-				SetLogRequestHeaderAttributes(map[string]string{"x-session-id": "session.id"})
-				t.Cleanup(func() { SetLogRequestHeaderAttributes(nil) })
+				LogRequestHeaderAttributes = map[string]string{"x-session-id": "session.id"}
+				t.Cleanup(func() { LogRequestHeaderAttributes = nil })
 				someBody := bodyFromModel(t, "some-model", tc.stream, nil)
 				headers := map[string]string{
 					":path":                               "/foo",

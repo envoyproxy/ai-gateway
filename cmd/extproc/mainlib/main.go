@@ -235,7 +235,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to parse access log header mapping: %w", err)
 	}
-	extproc.SetLogRequestHeaderAttributes(logRequestHeaderAttributes)
+	extproc.LogRequestHeaderAttributes = logRequestHeaderAttributes
 
 	// Parse endpoint prefixes and apply defaults for any missing values.
 	endpointPrefixes, err := internalapi.ParseEndpointPrefixes(flags.endpointPrefixes)
