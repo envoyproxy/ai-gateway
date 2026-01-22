@@ -46,6 +46,16 @@ func TestResponseCache(t *testing.T) {
 			"--set", "extProc.redis.addr=redis.redis-system.svc.cluster.local:6379",
 		},
 	}))
+	// Restore AI Gateway to original state (without Redis) after test completes.
+	// This is important because other tests in the e2e suite share the same cluster.
+	t.Cleanup(func() {
+		_ = e2elib.InstallOrUpgradeAIGateway(context.Background(), e2elib.AIGatewayHelmOption{
+			AdditionalArgs: []string{
+				"--set", "controller.metricsRequestHeaderAttributes=x-user-id:" + userIDAttribute,
+				"--set", "controller.spanRequestHeaderAttributes=x-user-id:" + userIDAttribute,
+			},
+		})
+	})
 
 	// Wait a bit for the webhook to be fully ready after the controller restart.
 	// The controller deployment being ready doesn't guarantee the webhook is immediately serving.
