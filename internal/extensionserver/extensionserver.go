@@ -37,19 +37,12 @@ const serverName = "envoy-gateway-extension-server"
 // New creates a new instance of the extension server that implements the EnvoyGatewayExtensionServer interface.
 func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAloneMode bool, logRequestHeaderAttributes map[string]string) *Server {
 	logger = logger.WithName(serverName)
-	var attrs map[string]string
-	if len(logRequestHeaderAttributes) > 0 {
-		attrs = make(map[string]string, len(logRequestHeaderAttributes))
-		for k, v := range logRequestHeaderAttributes {
-			attrs[k] = v
-		}
-	}
 	return &Server{
 		log:                        logger,
 		k8sClient:                  k8sClient,
 		udsPath:                    udsPath,
 		isStandAloneMode:           isStandAloneMode,
-		logRequestHeaderAttributes: attrs,
+		logRequestHeaderAttributes: logRequestHeaderAttributes,
 	}
 }
 
