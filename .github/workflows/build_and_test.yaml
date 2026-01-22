@@ -61,7 +61,7 @@ jobs:
         with:
           cache: false
           go-version-file: go.mod
-      - uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
+      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
         with:
           path: |
             ~/.cache/go-build
@@ -97,7 +97,7 @@ jobs:
         with:
           cache: false
           go-version-file: go.mod
-      - uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
+      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
         with:
           path: |
             ~/.cache/go-build
@@ -123,7 +123,7 @@ jobs:
         with:
           cache: false
           go-version-file: go.mod
-      - uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
+      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
         with:
           path: |
             ~/.cache/go-build
@@ -149,7 +149,7 @@ jobs:
         with:
           cache: false
           go-version-file: go.mod
-      - uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
+      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
         with:
           path: |
             ~/.cache/go-build
@@ -185,7 +185,7 @@ jobs:
         with:
           cache: false
           go-version-file: go.mod
-      - uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
+      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
         with:
           path: |
             ~/.cache/go-build
@@ -220,7 +220,7 @@ jobs:
         with:
           cache: false
           go-version-file: go.mod
-      - uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
+      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
         with:
           path: |
             ~/.cache/go-build
@@ -258,7 +258,7 @@ jobs:
         with:
           cache: false
           go-version-file: go.mod
-      - uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
+      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
         with:
           path: |
             ~/.cache/go-build
@@ -288,7 +288,7 @@ jobs:
         with:
           cache: false
           go-version-file: go.mod
-      - uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
+      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
         with:
           path: |
             ~/.cache/go-build
@@ -316,7 +316,7 @@ jobs:
         with:
           cache: false
           go-version-file: go.mod
-      - uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
+      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
         with:
           path: |
             ~/.cache/go-build
@@ -342,7 +342,7 @@ jobs:
         with:
           cache: false
           go-version-file: go.mod
-      - uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v4
+      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
         with:
           path: |
             ~/.cache/go-build
