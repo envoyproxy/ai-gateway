@@ -1651,6 +1651,88 @@ func Test_chatCompletionProcessorRouterFilter_shouldRespectCacheControl(t *testi
 	})
 }
 
+func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody_CacheLookupError(t *testing.T) {
+	// Test that cache lookup errors fail open - request proceeds to backend
+	mockCache := &mockCacheImpl{
+		getErr: errors.New("redis connection refused"),
+	}
+
+	headers := map[string]string{":path": "/v1/chat/completions"}
+	p := &chatCompletionProcessorRouterFilter{
+		config: &filterapi.RuntimeConfig{
+			ResponseCache: &filterapi.ResponseCacheConfig{
+				Enabled: true,
+			},
+		},
+		requestHeaders: headers,
+		logger:         slog.Default(),
+		tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+		cache:          mockCache,
+	}
+
+	resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, nil)})
+	require.NoError(t, err, "cache lookup error should not cause request failure")
+	require.NotNil(t, resp)
+
+	// Should return a normal RequestBody response (proceed to backend, not immediate response)
+	_, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+	require.True(t, ok, "expected RequestBody response when cache lookup fails - should fail open")
+	require.False(t, p.cacheHit, "should not be a cache hit when lookup fails")
+	require.NotEmpty(t, p.cacheKey, "cache key should still be computed")
+}
+
+func Test_upstreamProcessor_ProcessResponseBody_CacheStoreError(t *testing.T) {
+	// Test that cache store errors fail open - response is still returned to client
+	// The store happens asynchronously, so we verify:
+	// 1. Response is returned successfully
+	// 2. Store was attempted (setCalled will be true after goroutine runs)
+
+	mockCache := &mockCacheImpl{
+		setErr: errors.New("redis connection refused"),
+	}
+
+	inBody := &extprocv3.HttpBody{Body: []byte(`{"id":"test","choices":[]}`), EndOfStream: true}
+	mm := &mockMetrics{}
+	mt := &mockTranslator{t: t, expResponseBody: inBody}
+
+	parent := &chatCompletionProcessorRouterFilter{
+		config: &filterapi.RuntimeConfig{
+			ResponseCache: &filterapi.ResponseCacheConfig{
+				Enabled: true,
+				TTL:     time.Hour,
+			},
+		},
+		cacheKey:       "test-cache-key",
+		cacheHit:       false,
+		skipCacheStore: false,
+		logger:         slog.Default(),
+		cache:          mockCache,
+	}
+
+	p := &chatCompletionProcessorUpstreamFilter{
+		translator:      mt,
+		metrics:         mm,
+		responseHeaders: map[string]string{":status": "200"},
+		parent:          parent,
+	}
+
+	// Process response body - should succeed even though cache store will fail
+	resp, err := p.ProcessResponseBody(t.Context(), inBody)
+	require.NoError(t, err, "cache store error should not cause response failure")
+	require.NotNil(t, resp)
+
+	// Verify response is returned correctly
+	_, ok := resp.Response.(*extprocv3.ProcessingResponse_ResponseBody)
+	require.True(t, ok, "expected ResponseBody response")
+
+	// Give the async goroutine time to run
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify store was attempted (the error is logged but doesn't affect the response)
+	require.True(t, mockCache.setCalled, "cache store should have been attempted")
+	require.Equal(t, "test-cache-key", mockCache.setKey)
+}
+
 // mockCacheImpl is a mock implementation of cache.Cache for testing.
 type mockCacheImpl struct {
 	getResponse []byte
