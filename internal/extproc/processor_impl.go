@@ -124,6 +124,9 @@ type (
 		cacheKey string
 		// cacheHit indicates if this request was served from cache.
 		cacheHit bool
+		// skipCacheStore indicates that the response should not be stored in cache.
+		// Set when request Cache-Control: no-store is present.
+		skipCacheStore bool
 	}
 	// upstreamProcessor implements [Processor] for the upstream filter for the standard LLM endpoints.
 	//
@@ -285,15 +288,36 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 
 	r.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = originalModel
 
-	// Check cache if enabled
+	// Check cache if enabled, optionally respecting HTTP Cache-Control headers
 	if r.isCacheEnabled() {
 		r.cacheKey = cache.HashBody(rawBody.Body)
-		if cached, found, cacheErr := r.cache.Get(ctx, r.cacheKey); cacheErr != nil {
-			r.logger.Warn("cache lookup failed", slog.String("error", cacheErr.Error()))
-		} else if found {
-			r.cacheHit = true
-			r.logger.Debug("cache hit", slog.String("cache_key", r.cacheKey))
-			return r.buildCachedResponse(cached)
+		skipLookup := false
+
+		// Check request Cache-Control headers if configured to respect them
+		if r.shouldRespectCacheControl() {
+			reqCC := cache.ParseCacheControl(r.requestHeaders["cache-control"])
+
+			// If request has no-store, skip cache entirely (no lookup, no store)
+			if reqCC.NoStore {
+				r.skipCacheStore = true
+				skipLookup = true
+				r.logger.Debug("cache bypassed due to request Cache-Control: no-store")
+			} else if reqCC.NoCache {
+				// If request has no-cache, skip lookup but still cache the response
+				skipLookup = true
+				r.logger.Debug("cache lookup skipped due to request Cache-Control: no-cache")
+			}
+		}
+
+		// Normal cache lookup (unless skipped by Cache-Control)
+		if !skipLookup {
+			if cached, found, cacheErr := r.cache.Get(ctx, r.cacheKey); cacheErr != nil {
+				r.logger.Warn("cache lookup failed", slog.String("error", cacheErr.Error()))
+			} else if found {
+				r.cacheHit = true
+				r.logger.Debug("cache hit", slog.String("cache_key", r.cacheKey))
+				return r.buildCachedResponse(cached)
+			}
 		}
 	}
 
@@ -346,6 +370,11 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 // isCacheEnabled returns true if response caching is enabled for this request.
 func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) isCacheEnabled() bool {
 	return r.cache != nil && r.config.ResponseCache != nil && r.config.ResponseCache.Enabled
+}
+
+// shouldRespectCacheControl returns true if HTTP Cache-Control headers should be honored.
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) shouldRespectCacheControl() bool {
+	return r.config.ResponseCache != nil && r.config.ResponseCache.RespectCacheControl
 }
 
 // getCacheTTL returns the TTL for cached responses.
@@ -626,15 +655,37 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	}
 
 	// Store response in cache at end of stream
-	if body.EndOfStream && u.parent.isCacheEnabled() && !u.parent.cacheHit && u.parent.cacheKey != "" {
-		u.storeInCache(ctx)
+	if body.EndOfStream && u.parent.isCacheEnabled() && !u.parent.cacheHit && u.parent.cacheKey != "" && !u.parent.skipCacheStore {
+		ttl := u.parent.getCacheTTL()
+		shouldStore := true
+
+		// Check response Cache-Control headers if configured to respect them
+		if u.parent.shouldRespectCacheControl() {
+			respCC := cache.ParseCacheControl(u.responseHeaders["cache-control"])
+			if respCC.ShouldSkipCacheStore() {
+				shouldStore = false
+				u.parent.logger.Debug("cache store skipped due to response Cache-Control",
+					slog.Bool("no-store", respCC.NoStore),
+					slog.Bool("no-cache", respCC.NoCache),
+					slog.Bool("private", respCC.Private))
+			} else if respCC.MaxAge != nil {
+				// Use max-age from response if present
+				ttl = *respCC.MaxAge
+				u.parent.logger.Debug("using max-age from response Cache-Control",
+					slog.Duration("ttl", ttl))
+			}
+		}
+
+		if shouldStore {
+			u.storeInCacheWithTTL(ctx, ttl)
+		}
 	}
 
 	return resp, nil
 }
 
-// storeInCache stores the buffered response in the cache asynchronously.
-func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) storeInCache(ctx context.Context) {
+// storeInCacheWithTTL stores the buffered response in the cache asynchronously with the specified TTL.
+func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) storeInCacheWithTTL(ctx context.Context, ttl time.Duration) {
 	if u.responseBuffer.Len() == 0 {
 		return
 	}
@@ -643,7 +694,6 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) storeInCache
 	responseData := make([]byte, u.responseBuffer.Len())
 	copy(responseData, u.responseBuffer.Bytes())
 	cacheKey := u.parent.cacheKey
-	ttl := u.parent.getCacheTTL()
 	cacheInstance := u.parent.cache
 	logger := u.parent.logger
 
@@ -660,7 +710,8 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) storeInCache
 		} else {
 			logger.Debug("stored response in cache",
 				slog.String("cache_key", cacheKey),
-				slog.Int("size", len(responseData)))
+				slog.Int("size", len(responseData)),
+				slog.Duration("ttl", ttl))
 		}
 	}()
 }

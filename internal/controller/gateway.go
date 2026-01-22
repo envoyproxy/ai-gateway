@@ -442,6 +442,8 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 			rc := aiGatewayRoute.Spec.ResponseCache
 			ec.ResponseCache = &filterapi.ResponseCacheConfig{
 				Enabled: rc.Enabled,
+				// Default to true if not specified
+				RespectCacheControl: rc.RespectCacheControl == nil || *rc.RespectCacheControl,
 			}
 			if rc.TTL != nil {
 				ec.ResponseCache.TTL = rc.TTL.Duration

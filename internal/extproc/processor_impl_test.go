@@ -1511,6 +1511,146 @@ func Test_chatCompletionProcessorRouterFilter_isCacheEnabled(t *testing.T) {
 	})
 }
 
+func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody_CacheControl(t *testing.T) {
+	cachedResponse := []byte(`{"id":"cached","choices":[{"message":{"content":"cached response"}}]}`)
+
+	t.Run("request no-store bypasses cache entirely", func(t *testing.T) {
+		mockCache := &mockCacheImpl{
+			getResponse: cachedResponse,
+			getFound:    true,
+		}
+
+		headers := map[string]string{
+			":path":         "/v1/chat/completions",
+			"cache-control": "no-store",
+		}
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				ResponseCache: &filterapi.ResponseCacheConfig{
+					Enabled:             true,
+					RespectCacheControl: true,
+				},
+			},
+			requestHeaders: headers,
+			logger:         slog.Default(),
+			tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+			cache:          mockCache,
+		}
+
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, nil)})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Should NOT return cached response (bypass lookup)
+		_, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+		require.True(t, ok, "expected RequestBody response when no-store bypasses cache")
+		require.False(t, p.cacheHit)
+		require.True(t, p.skipCacheStore, "skipCacheStore should be true for no-store")
+	})
+
+	t.Run("request no-cache skips lookup but allows store", func(t *testing.T) {
+		mockCache := &mockCacheImpl{
+			getResponse: cachedResponse,
+			getFound:    true,
+		}
+
+		headers := map[string]string{
+			":path":         "/v1/chat/completions",
+			"cache-control": "no-cache",
+		}
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				ResponseCache: &filterapi.ResponseCacheConfig{
+					Enabled:             true,
+					RespectCacheControl: true,
+				},
+			},
+			requestHeaders: headers,
+			logger:         slog.Default(),
+			tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+			cache:          mockCache,
+		}
+
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, nil)})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Should NOT return cached response (skip lookup)
+		_, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+		require.True(t, ok, "expected RequestBody response when no-cache skips lookup")
+		require.False(t, p.cacheHit)
+		require.False(t, p.skipCacheStore, "skipCacheStore should be false for no-cache (still allow store)")
+	})
+
+	t.Run("cache-control ignored when RespectCacheControl is false", func(t *testing.T) {
+		mockCache := &mockCacheImpl{
+			getResponse: cachedResponse,
+			getFound:    true,
+		}
+
+		headers := map[string]string{
+			":path":         "/v1/chat/completions",
+			"cache-control": "no-store",
+		}
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				ResponseCache: &filterapi.ResponseCacheConfig{
+					Enabled:             true,
+					RespectCacheControl: false, // Ignore cache-control headers
+				},
+			},
+			requestHeaders: headers,
+			logger:         slog.Default(),
+			tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+			cache:          mockCache,
+		}
+
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, nil)})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Should return cached response (cache-control ignored)
+		ir, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
+		require.True(t, ok, "expected ImmediateResponse when cache-control is ignored")
+		require.Equal(t, cachedResponse, ir.ImmediateResponse.Body)
+		require.True(t, p.cacheHit)
+		require.False(t, p.skipCacheStore)
+	})
+}
+
+func Test_chatCompletionProcessorRouterFilter_shouldRespectCacheControl(t *testing.T) {
+	t.Run("true when enabled", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				ResponseCache: &filterapi.ResponseCacheConfig{
+					Enabled:             true,
+					RespectCacheControl: true,
+				},
+			},
+		}
+		require.True(t, p.shouldRespectCacheControl())
+	})
+
+	t.Run("false when disabled", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				ResponseCache: &filterapi.ResponseCacheConfig{
+					Enabled:             true,
+					RespectCacheControl: false,
+				},
+			},
+		}
+		require.False(t, p.shouldRespectCacheControl())
+	})
+
+	t.Run("false when no config", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{},
+		}
+		require.False(t, p.shouldRespectCacheControl())
+	})
+}
+
 // mockCacheImpl is a mock implementation of cache.Cache for testing.
 type mockCacheImpl struct {
 	getResponse []byte

@@ -432,6 +432,25 @@ spec:
 
                       Default is false.
                     type: boolean
+                  respectCacheControl:
+                    default: true
+                    description: |-
+                      RespectCacheControl controls whether HTTP Cache-Control headers are honored.
+                      When true (default), request and response Cache-Control headers can override caching behavior:
+
+                      Request headers:
+                        - Cache-Control: no-cache - Bypass cache lookup, but still cache the response
+                        - Cache-Control: no-store - Bypass cache entirely (no lookup, no store)
+
+                      Response headers:
+                        - Cache-Control: no-store - Do not cache this response
+                        - Cache-Control: no-cache - Do not cache this response (treated as no-store)
+                        - Cache-Control: private - Do not cache (shared cache should not store)
+                        - Cache-Control: max-age=N - Use N seconds as TTL instead of configured default
+
+                      When false, Cache-Control headers are ignored and caching behavior is determined
+                      solely by the Enabled and TTL fields.
+                    type: boolean
                   ttl:
                     description: |-
                       TTL is the time-to-live for cached responses.

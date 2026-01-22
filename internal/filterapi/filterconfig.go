@@ -51,6 +51,9 @@ type ResponseCacheConfig struct {
 	Enabled bool `json:"enabled"`
 	// TTL is the time-to-live for cached responses.
 	TTL time.Duration `json:"ttl,omitempty"`
+	// RespectCacheControl controls whether HTTP Cache-Control headers are honored.
+	// When true (default), request and response Cache-Control headers can override caching behavior.
+	RespectCacheControl bool `json:"respectCacheControl"`
 }
 
 // Model corresponds to the OpenAI model object in the OpenAI-compatible APIs
