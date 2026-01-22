@@ -301,7 +301,8 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 
 	extproc.LogRequestHeaderAttributes = logRequestHeaderAttributes
 
-	// Initialize response cache if Redis is configured
+	// Initialize response cache if Redis is configured.
+	// If Redis connection fails, we log a warning and continue without caching (fail open).
 	var responseCache cache.Cache
 	if flags.redisAddr != "" {
 		l.Info("Initializing Redis cache", "addr", flags.redisAddr, "tls", flags.redisTLS)
@@ -311,9 +312,12 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 			TLS:      flags.redisTLS,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to create Redis cache: %w", err)
+			l.Warn("Failed to connect to Redis cache, continuing without caching (fail open)",
+				"error", err, "addr", flags.redisAddr)
+			responseCache = nil
+		} else {
+			l.Info("Redis cache initialized successfully")
 		}
-		l.Info("Redis cache initialized successfully")
 	}
 
 	server, err := extproc.NewServer(l, flags.enableRedaction)
