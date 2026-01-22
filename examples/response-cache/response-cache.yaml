@@ -1,0 +1,115 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# This example demonstrates response caching with the AI Gateway.
+# Response caching stores LLM responses in Redis and returns cached responses
+# for identical requests, reducing latency and costs.
+#
+# Prerequisites:
+# 1. Deploy Redis: kubectl apply -f redis.yaml
+# 2. Configure ext_proc with --redisAddr=redis.redis-system.svc.cluster.local:6379
+# 3. Create the OpenAI API key secret (see below)
+#
+# To create the secret:
+#   kubectl create secret generic openai-api-key --from-literal=apiKey=YOUR_API_KEY
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: ai-gateway-with-cache
+  namespace: default
+spec:
+  gatewayClassName: eg
+  listeners:
+  - name: http
+    protocol: HTTP
+    port: 8080
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: openai-with-cache
+  namespace: default
+spec:
+  parentRefs:
+  - name: ai-gateway-with-cache
+    kind: Gateway
+    group: gateway.networking.k8s.io
+  # Response caching configuration
+  responseCache:
+    # Enable response caching for this route
+    enabled: true
+    # Cache TTL - responses expire after this duration
+    # Default is 1 hour if not specified
+    ttl: 30m
+    # Honor HTTP Cache-Control headers from requests and responses
+    # When true (default):
+    #   - Request "Cache-Control: no-cache" bypasses cache lookup
+    #   - Request "Cache-Control: no-store" bypasses cache entirely
+    #   - Response "Cache-Control: no-store/private" prevents caching
+    #   - Response "Cache-Control: max-age=N" overrides TTL
+    respectCacheControl: true
+  rules:
+  - matches:
+    - headers:
+      - type: Exact
+        name: x-ai-eg-model
+        value: gpt-4o-mini
+    backendRefs:
+    - name: openai-backend
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: openai-backend
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: openai-backend
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: openai-api-key
+  namespace: default
+spec:
+  targetRefs:
+  - group: aigateway.envoyproxy.io
+    kind: AIServiceBackend
+    name: openai-backend
+  type: APIKey
+  apiKey:
+    secretRef:
+      name: openai-api-key
+      namespace: default
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: openai-backend
+  namespace: default
+spec:
+  endpoints:
+  - fqdn:
+      hostname: api.openai.com
+      port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: openai-tls
+  namespace: default
+spec:
+  targetRefs:
+  - group: gateway.envoyproxy.io
+    kind: Backend
+    name: openai-backend
+  validation:
+    wellKnownCACertificates: System
+    hostname: api.openai.com
