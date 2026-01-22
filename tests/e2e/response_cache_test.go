@@ -47,6 +47,10 @@ func TestResponseCache(t *testing.T) {
 		},
 	}))
 
+	// Wait a bit for the webhook to be fully ready after the controller restart.
+	// The controller deployment being ready doesn't guarantee the webhook is immediately serving.
+	time.Sleep(5 * time.Second)
+
 	// Apply the test manifest.
 	const manifest = "testdata/response_cache.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(ctx, manifest))
@@ -56,6 +60,28 @@ func TestResponseCache(t *testing.T) {
 
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=response-cache-test"
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
+
+	// Debug: Print the ext_proc container args to verify Redis config is present
+	t.Log("Checking ext_proc container args for Redis configuration...")
+	debugCmd := e2elib.Kubectl(ctx, "get", "pod", "-n", e2elib.EnvoyGatewayNamespace,
+		"-l", egSelector, "-o", "jsonpath={.items[0].spec.containers[?(@.name=='ai-gateway-extproc')].args}")
+	debugOutput, debugErr := debugCmd.Output()
+	if debugErr != nil {
+		t.Logf("Warning: Failed to get ext_proc args: %v", debugErr)
+	} else {
+		t.Logf("ext_proc container args: %s", string(debugOutput))
+	}
+
+	// Debug: Check if the filter config secret contains ResponseCache configuration
+	t.Log("Checking filter config secret for ResponseCache configuration...")
+	secretCmd := e2elib.Kubectl(ctx, "get", "secret", "-n", e2elib.EnvoyGatewayNamespace,
+		"-l", "app.kubernetes.io/managed-by=envoy-ai-gateway", "-o", "jsonpath={.items[*].data.config\\.yaml}")
+	secretOutput, secretErr := secretCmd.Output()
+	if secretErr != nil {
+		t.Logf("Warning: Failed to get filter config secret: %v", secretErr)
+	} else {
+		t.Logf("Filter config secret (base64): %s", string(secretOutput))
+	}
 
 	const modelName = "cache-test-model"
 	const fakeResponseBody = `{"choices":[{"message":{"content":"This is a cached response.","role":"assistant"}}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`
