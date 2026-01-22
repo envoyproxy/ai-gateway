@@ -6,11 +6,13 @@
 package extproc
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"fmt"
 	"log/slog"
 	"strconv"
+	"time"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -20,6 +22,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
+	"github.com/envoyproxy/ai-gateway/internal/cache"
 	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
@@ -64,6 +67,23 @@ func NewFactory[ReqT any, RespT any, RespChunkT any, EndpointSpecT endpointspec.
 	}
 }
 
+// NewFactoryWithCache creates a ProcessorFactory with caching support.
+// This is similar to NewFactory but accepts a cache instance for response caching.
+func NewFactoryWithCache[ReqT any, RespT any, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]](
+	f metrics.Factory,
+	tracer tracingapi.RequestTracer[ReqT, RespT, RespChunkT],
+	_ EndpointSpecT,
+	responseCache cache.Cache,
+) ProcessorFactory {
+	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
+		logger = logger.With("isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
+		if !isUpstreamFilter {
+			return newRouterProcessorWithCache[ReqT, RespT, RespChunkT, EndpointSpecT](config, requestHeaders, logger, tracer, responseCache), nil
+		}
+		return newUpstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](requestHeaders, f.NewMetrics(), logger), nil
+	}
+}
+
 type (
 	// routerProcessor implements [Processor] for the router filter for the standard LLM endpoints.
 	routerProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]] struct {
@@ -98,6 +118,12 @@ type (
 		stream              bool
 		debugLogEnabled     bool
 		enableRedaction     bool
+		// cache is the response cache instance. May be nil if caching is disabled.
+		cache cache.Cache
+		// cacheKey is the computed cache key for this request.
+		cacheKey string
+		// cacheHit indicates if this request was served from cache.
+		cacheHit bool
 	}
 	// upstreamProcessor implements [Processor] for the upstream filter for the standard LLM endpoints.
 	//
@@ -119,6 +145,8 @@ type (
 		costs metrics.TokenUsage
 		// metrics tracking.
 		metrics metrics.Metrics
+		// responseBuffer accumulates response body chunks for caching streaming responses.
+		responseBuffer bytes.Buffer
 	}
 )
 
@@ -138,6 +166,23 @@ func newRouterProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.
 		forceBodyMutation: false,
 		debugLogEnabled:   debugLogEnabled,
 		enableRedaction:   enableRedaction,
+	}
+}
+
+func newRouterProcessorWithCache[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]](
+	config *filterapi.RuntimeConfig,
+	requestHeaders map[string]string,
+	logger *slog.Logger,
+	tracer tracingapi.RequestTracer[ReqT, RespT, RespChunkT],
+	responseCache cache.Cache,
+) *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT] {
+	return &routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]{
+		config:            config,
+		requestHeaders:    requestHeaders,
+		logger:            logger,
+		tracer:            tracer,
+		forceBodyMutation: false,
+		cache:             responseCache,
 	}
 }
 
@@ -240,6 +285,18 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 
 	r.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = originalModel
 
+	// Check cache if enabled
+	if r.isCacheEnabled() {
+		r.cacheKey = cache.HashBody(rawBody.Body)
+		if cached, found, cacheErr := r.cache.Get(ctx, r.cacheKey); cacheErr != nil {
+			r.logger.Warn("cache lookup failed", slog.String("error", cacheErr.Error()))
+		} else if found {
+			r.cacheHit = true
+			r.logger.Debug("cache hit", slog.String("cache_key", r.cacheKey))
+			return r.buildCachedResponse(cached)
+		}
+	}
+
 	var additionalHeaders []*corev3.HeaderValueOption
 	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
 		// Set the original model to the request header with the key `x-ai-eg-model`.
@@ -281,6 +338,37 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 					HeaderMutation:  headerMutation,
 					ClearRouteCache: true,
 				},
+			},
+		},
+	}, nil
+}
+
+// isCacheEnabled returns true if response caching is enabled for this request.
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) isCacheEnabled() bool {
+	return r.cache != nil && r.config.ResponseCache != nil && r.config.ResponseCache.Enabled
+}
+
+// getCacheTTL returns the TTL for cached responses.
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) getCacheTTL() time.Duration {
+	if r.config.ResponseCache != nil && r.config.ResponseCache.TTL > 0 {
+		return r.config.ResponseCache.TTL
+	}
+	return cache.DefaultTTL
+}
+
+// buildCachedResponse creates an immediate response from cached data.
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) buildCachedResponse(cachedBody []byte) (*extprocv3.ProcessingResponse, error) {
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+			ImmediateResponse: &extprocv3.ImmediateResponse{
+				Status: &typev3.HttpStatus{Code: typev3.StatusCode_OK},
+				Headers: &extprocv3.HeaderMutation{
+					SetHeaders: []*corev3.HeaderValueOption{
+						{Header: &corev3.HeaderValue{Key: "content-type", RawValue: []byte("application/json")}},
+						{Header: &corev3.HeaderValue{Key: "x-aigw-cache", RawValue: []byte("hit")}},
+					},
+				},
+				Body: cachedBody,
 			},
 		},
 	}, nil
@@ -492,6 +580,15 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		},
 	}
 
+	// Buffer response body for caching if enabled
+	if u.parent.isCacheEnabled() && !u.parent.cacheHit {
+		if mutatedBody := bodyMutation.GetBody(); mutatedBody != nil {
+			u.responseBuffer.Write(mutatedBody)
+		} else {
+			u.responseBuffer.Write(body.Body)
+		}
+	}
+
 	// Translator reports the latest cumulative token usage which we use to override existing costs.
 	u.costs.Override(tokenUsage)
 
@@ -527,7 +624,45 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	if body.EndOfStream && u.parent.span != nil {
 		u.parent.span.EndSpan()
 	}
+
+	// Store response in cache at end of stream
+	if body.EndOfStream && u.parent.isCacheEnabled() && !u.parent.cacheHit && u.parent.cacheKey != "" {
+		u.storeInCache(ctx)
+	}
+
 	return resp, nil
+}
+
+// storeInCache stores the buffered response in the cache asynchronously.
+func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) storeInCache(ctx context.Context) {
+	if u.responseBuffer.Len() == 0 {
+		return
+	}
+
+	// Make a copy of the buffer since we're storing asynchronously
+	responseData := make([]byte, u.responseBuffer.Len())
+	copy(responseData, u.responseBuffer.Bytes())
+	cacheKey := u.parent.cacheKey
+	ttl := u.parent.getCacheTTL()
+	cacheInstance := u.parent.cache
+	logger := u.parent.logger
+
+	// Store asynchronously to not block the response
+	go func() {
+		// Use a background context since the request context may be cancelled
+		storeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := cacheInstance.Set(storeCtx, cacheKey, responseData, ttl); err != nil {
+			logger.Warn("failed to store response in cache",
+				slog.String("cache_key", cacheKey),
+				slog.String("error", err.Error()))
+		} else {
+			logger.Debug("stored response in cache",
+				slog.String("cache_key", cacheKey),
+				slog.Int("size", len(responseData)))
+		}
+	}()
 }
 
 // SetBackend implements [Processor.SetBackend].

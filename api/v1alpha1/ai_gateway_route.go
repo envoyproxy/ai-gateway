@@ -195,6 +195,16 @@ type AIGatewayRouteSpec struct {
 	// +optional
 	// +kubebuilder:validation:MaxItems=36
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
+
+	// ResponseCache configures response caching for this route.
+	// When enabled, responses are cached in Redis and returned for identical requests,
+	// reducing latency and costs for repeated LLM calls.
+	//
+	// Requires Redis to be configured globally via extproc flags (--redisAddr).
+	// If Redis is not configured, this setting is ignored.
+	//
+	// +optional
+	ResponseCache *ResponseCacheConfig `json:"responseCache,omitempty"`
 }
 
 // AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayRoute.
@@ -465,6 +475,25 @@ type HTTPBodyMutation struct {
 	// +listType=set
 	// +kubebuilder:validation:MaxItems=16
 	Remove []string `json:"remove,omitempty"`
+}
+
+// ResponseCacheConfig configures response caching for an AIGatewayRoute.
+type ResponseCacheConfig struct {
+	// Enabled controls whether response caching is active for this route.
+	// When true, responses are cached and returned for identical requests.
+	//
+	// Default is false.
+	//
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// TTL is the time-to-live for cached responses.
+	// After this duration, cached responses expire and new requests will be forwarded to the backend.
+	//
+	// Default is 1 hour.
+	//
+	// +optional
+	TTL *metav1.Duration `json:"ttl,omitempty"`
 }
 
 // HTTPBodyField represents a JSON field name and value for body mutation

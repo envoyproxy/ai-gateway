@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/envoyproxy/ai-gateway/internal/cache"
 	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/extproc"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -60,6 +61,12 @@ type extProcFlags struct {
 	maxRecvMsgSize int
 	// endpointPrefixes is the comma-separated key-value pairs for endpoint prefixes.
 	endpointPrefixes string
+	// redisAddr is the Redis server address for response caching (e.g., "localhost:6379").
+	redisAddr string
+	// redisTLS enables TLS for the Redis connection.
+	redisTLS bool
+	// redisPassword is the Redis password (optional).
+	redisPassword string
 }
 
 func setOptionalString(dst **string) func(string) error {
@@ -138,6 +145,12 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		"Number of iterations used in the fallback PBKDF2 key derivation for MCP session encryption.")
 	fs.DurationVar(&flags.mcpWriteTimeout, "mcpWriteTimeout", 120*time.Second,
 		"The maximum duration before timing out writes of the MCP response")
+	fs.StringVar(&flags.redisAddr, "redisAddr", "",
+		"Redis server address for response caching (e.g., 'localhost:6379'). Optional - caching is disabled if not set.")
+	fs.BoolVar(&flags.redisTLS, "redisTLS", false,
+		"Enable TLS for the Redis connection.")
+	fs.StringVar(&flags.redisPassword, "redisPassword", "",
+		"Redis password for authentication. Optional.")
 
 	if err := fs.Parse(args); err != nil {
 		return extProcFlags{}, fmt.Errorf("failed to parse extProcFlags: %w", err)
@@ -288,16 +301,47 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 
 	extproc.LogRequestHeaderAttributes = logRequestHeaderAttributes
 
+	// Initialize response cache if Redis is configured
+	var responseCache cache.Cache
+	if flags.redisAddr != "" {
+		l.Info("Initializing Redis cache", "addr", flags.redisAddr, "tls", flags.redisTLS)
+		responseCache, err = cache.NewRedisCache(cache.RedisConfig{
+			Addr:     flags.redisAddr,
+			Password: flags.redisPassword,
+			TLS:      flags.redisTLS,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create Redis cache: %w", err)
+		}
+		l.Info("Redis cache initialized successfully")
+	}
+
 	server, err := extproc.NewServer(l, flags.enableRedaction)
 	if err != nil {
 		return fmt.Errorf("failed to create external processor server: %w", err)
 	}
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/chat/completions"), extproc.NewFactory(
-		chatCompletionMetricsFactory, tracing.ChatCompletionTracer(), endpointspec.ChatCompletionsEndpointSpec{}))
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/completions"), extproc.NewFactory(
-		completionMetricsFactory, tracing.CompletionTracer(), endpointspec.CompletionsEndpointSpec{}))
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/embeddings"), extproc.NewFactory(
-		embeddingsMetricsFactory, tracing.EmbeddingsTracer(), endpointspec.EmbeddingsEndpointSpec{}))
+
+	// Register processors with cache support for endpoints that benefit from caching
+	if responseCache != nil {
+		server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/chat/completions"), extproc.NewFactoryWithCache(
+			chatCompletionMetricsFactory, tracing.ChatCompletionTracer(), endpointspec.ChatCompletionsEndpointSpec{}, responseCache))
+		server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/completions"), extproc.NewFactoryWithCache(
+			completionMetricsFactory, tracing.CompletionTracer(), endpointspec.CompletionsEndpointSpec{}, responseCache))
+		server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/embeddings"), extproc.NewFactoryWithCache(
+			embeddingsMetricsFactory, tracing.EmbeddingsTracer(), endpointspec.EmbeddingsEndpointSpec{}, responseCache))
+		server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Anthropic, "/v1/messages"), extproc.NewFactoryWithCache(
+			messagesMetricsFactory, tracing.MessageTracer(), endpointspec.MessagesEndpointSpec{}, responseCache))
+	} else {
+		server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/chat/completions"), extproc.NewFactory(
+			chatCompletionMetricsFactory, tracing.ChatCompletionTracer(), endpointspec.ChatCompletionsEndpointSpec{}))
+		server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/completions"), extproc.NewFactory(
+			completionMetricsFactory, tracing.CompletionTracer(), endpointspec.CompletionsEndpointSpec{}))
+		server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/embeddings"), extproc.NewFactory(
+			embeddingsMetricsFactory, tracing.EmbeddingsTracer(), endpointspec.EmbeddingsEndpointSpec{}))
+		server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Anthropic, "/v1/messages"), extproc.NewFactory(
+			messagesMetricsFactory, tracing.MessageTracer(), endpointspec.MessagesEndpointSpec{}))
+	}
+	// These endpoints don't benefit from caching (responses endpoint, image generation, rerank, models)
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/responses"), extproc.NewFactory(
 		responsesMetricsFactory, tracing.ResponsesTracer(), endpointspec.ResponsesEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/audio/speech"), extproc.NewFactory(
@@ -307,8 +351,6 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Cohere, "/v2/rerank"), extproc.NewFactory(
 		rerankMetricsFactory, tracing.RerankTracer(), endpointspec.RerankEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/models"), extproc.NewModelsProcessor)
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Anthropic, "/v1/messages"), extproc.NewFactory(
-		messagesMetricsFactory, tracing.MessageTracer(), endpointspec.MessagesEndpointSpec{}))
 
 	// Create and register gRPC server with ExternalProcessorServer (the service Envoy calls).
 	if err = filterapi.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {
@@ -385,6 +427,11 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		}
 		if err := metricsShutdown(shutdownCtx); err != nil {
 			l.Error("Failed to shutdown metrics gracefully", "error", err)
+		}
+		if responseCache != nil {
+			if err := responseCache.Close(); err != nil {
+				l.Error("Failed to close response cache", "error", err)
+			}
 		}
 		if mcpServer != nil {
 			if err := mcpServer.Shutdown(shutdownCtx); err != nil {

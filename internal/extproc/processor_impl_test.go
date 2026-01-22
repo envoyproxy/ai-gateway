@@ -12,6 +12,7 @@ import (
 	"io"
 	"log/slog"
 	"testing"
+	"time"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -1344,4 +1345,194 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 		require.NotContains(t, retryResult, "model", "OpenAI 'model' field should NOT be present on retry")
 		require.Contains(t, retryResult, "messages", "Bedrock 'messages' field should be present on retry")
 	})
+}
+
+func TestNewFactoryWithCache(t *testing.T) {
+	cfg := &filterapi.RuntimeConfig{
+		ResponseCache: &filterapi.ResponseCacheConfig{
+			Enabled: true,
+		},
+	}
+	headers := map[string]string{"foo": "bar"}
+	mockCache := &mockCacheImpl{}
+
+	t.Run("router with cache", func(t *testing.T) {
+		t.Parallel()
+
+		factory := NewFactoryWithCache(nil, tracingapi.NoopChatCompletionTracer{}, endpointspec.ChatCompletionsEndpointSpec{}, mockCache)
+		proc, err := factory(cfg, headers, slog.Default(), false)
+		require.NoError(t, err)
+		require.IsType(t, &chatCompletionProcessorRouterFilter{}, proc)
+
+		router := proc.(*chatCompletionProcessorRouterFilter)
+		require.Equal(t, cfg, router.config)
+		require.Equal(t, mockCache, router.cache)
+	})
+
+	t.Run("upstream without cache", func(t *testing.T) {
+		t.Parallel()
+
+		factory := NewFactoryWithCache(&mockMetricsFactory{}, tracingapi.NoopChatCompletionTracer{}, endpointspec.ChatCompletionsEndpointSpec{}, mockCache)
+		proc, err := factory(cfg, headers, slog.Default(), true)
+		require.NoError(t, err)
+		require.IsType(t, &chatCompletionProcessorUpstreamFilter{}, proc)
+	})
+}
+
+func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody_CacheHit(t *testing.T) {
+	cachedResponse := []byte(`{"id":"cached","choices":[{"message":{"content":"cached response"}}]}`)
+	mockCache := &mockCacheImpl{
+		getResponse: cachedResponse,
+		getFound:    true,
+	}
+
+	headers := map[string]string{":path": "/v1/chat/completions"}
+	p := &chatCompletionProcessorRouterFilter{
+		config: &filterapi.RuntimeConfig{
+			ResponseCache: &filterapi.ResponseCacheConfig{
+				Enabled: true,
+			},
+		},
+		requestHeaders: headers,
+		logger:         slog.Default(),
+		tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+		cache:          mockCache,
+	}
+
+	resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, nil)})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Should return an immediate response with cached data
+	ir, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
+	require.True(t, ok, "expected ImmediateResponse for cache hit")
+	require.Equal(t, cachedResponse, ir.ImmediateResponse.Body)
+	require.True(t, p.cacheHit)
+}
+
+func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody_CacheMiss(t *testing.T) {
+	mockCache := &mockCacheImpl{
+		getFound: false,
+	}
+
+	headers := map[string]string{":path": "/v1/chat/completions"}
+	p := &chatCompletionProcessorRouterFilter{
+		config: &filterapi.RuntimeConfig{
+			ResponseCache: &filterapi.ResponseCacheConfig{
+				Enabled: true,
+			},
+		},
+		requestHeaders: headers,
+		logger:         slog.Default(),
+		tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+		cache:          mockCache,
+	}
+
+	resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, nil)})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Should return a normal RequestBody response (not immediate)
+	_, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+	require.True(t, ok, "expected RequestBody response for cache miss")
+	require.False(t, p.cacheHit)
+	require.NotEmpty(t, p.cacheKey)
+}
+
+func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody_CacheDisabled(t *testing.T) {
+	mockCache := &mockCacheImpl{
+		getResponse: []byte(`{"cached": true}`),
+		getFound:    true,
+	}
+
+	headers := map[string]string{":path": "/v1/chat/completions"}
+	p := &chatCompletionProcessorRouterFilter{
+		config: &filterapi.RuntimeConfig{
+			ResponseCache: &filterapi.ResponseCacheConfig{
+				Enabled: false, // Cache disabled
+			},
+		},
+		requestHeaders: headers,
+		logger:         slog.Default(),
+		tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+		cache:          mockCache,
+	}
+
+	resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, nil)})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Should return a normal RequestBody response even though cache has data
+	_, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+	require.True(t, ok, "expected RequestBody response when cache is disabled")
+	require.False(t, p.cacheHit)
+	require.Empty(t, p.cacheKey)
+}
+
+func Test_chatCompletionProcessorRouterFilter_isCacheEnabled(t *testing.T) {
+	mockCache := &mockCacheImpl{}
+
+	t.Run("enabled", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				ResponseCache: &filterapi.ResponseCacheConfig{Enabled: true},
+			},
+			cache: mockCache,
+		}
+		require.True(t, p.isCacheEnabled())
+	})
+
+	t.Run("disabled - no cache", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				ResponseCache: &filterapi.ResponseCacheConfig{Enabled: true},
+			},
+			cache: nil,
+		}
+		require.False(t, p.isCacheEnabled())
+	})
+
+	t.Run("disabled - no config", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{},
+			cache:  mockCache,
+		}
+		require.False(t, p.isCacheEnabled())
+	})
+
+	t.Run("disabled - enabled=false", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				ResponseCache: &filterapi.ResponseCacheConfig{Enabled: false},
+			},
+			cache: mockCache,
+		}
+		require.False(t, p.isCacheEnabled())
+	})
+}
+
+// mockCacheImpl is a mock implementation of cache.Cache for testing.
+type mockCacheImpl struct {
+	getResponse []byte
+	getFound    bool
+	getErr      error
+	setErr      error
+	setCalled   bool
+	setKey      string
+	setValue    []byte
+}
+
+func (m *mockCacheImpl) Get(_ context.Context, _ string) ([]byte, bool, error) {
+	return m.getResponse, m.getFound, m.getErr
+}
+
+func (m *mockCacheImpl) Set(_ context.Context, key string, value []byte, _ time.Duration) error {
+	m.setCalled = true
+	m.setKey = key
+	m.setValue = value
+	return m.setErr
+}
+
+func (m *mockCacheImpl) Close() error {
+	return nil
 }
