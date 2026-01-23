@@ -93,7 +93,7 @@ func run(ctx context.Context, c *cmdRun, o *runOpts, stdout, stderr io.Writer) e
 	// First, we need to create the self-signed certificates used for communication between the EG and Envoy.
 	// Certificates will be placed at ~/.config/envoy-gateway/certs, which is the default location used by Envoy Gateway.
 	certGenOut := &bytes.Buffer{}
-	certGen := root.GetRootCommand()
+	certGen := root.GetRootCommand(nil)
 	certGen.SetOut(certGenOut)
 	certGen.SetErr(certGenOut)
 	certGen.SetArgs([]string{"certgen", "--local"})
@@ -211,7 +211,7 @@ func run(ctx context.Context, c *cmdRun, o *runOpts, stdout, stderr io.Writer) e
 	// Now running the `envoy-gateway` CLI alternative below by passing `--config-path` to `egConfigPath`.
 	// Then the agent will read the resources from the file pointed inside the config and start the Envoy process.
 
-	server := root.GetRootCommand()
+	server := root.GetRootCommand(nil)
 	// TODO: enable the log by default after the issue is resolved: https://github.com/envoyproxy/gateway/issues/6596
 	if c.Debug {
 		server.SetOut(stdout)
