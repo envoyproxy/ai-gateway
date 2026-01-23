@@ -2694,7 +2694,7 @@ func (f FileSearchToolFiltersUnionParam) MarshalJSON() ([]byte, error) {
 	case f.OfCompoundFilter != nil:
 		return json.Marshal(f.OfCompoundFilter)
 	default:
-		return nil, errors.New("no filter to marshal in FileSearchToolFiltersUnionParam")
+		return nil, errors.New("no filesearch filter to marshal")
 	}
 }
 
@@ -2780,7 +2780,7 @@ func (c ComparisonFilterValueUnionParam) MarshalJSON() ([]byte, error) {
 	case c.OfComparisonFilterValueArray != nil:
 		return json.Marshal(c.OfComparisonFilterValueArray)
 	default:
-		return nil, errors.New("no value to marshal in ComparisonFilterValueUnionParam")
+		return nil, errors.New("no value to marshal in comparison filter")
 	}
 }
 
@@ -2812,7 +2812,7 @@ func (c *ComparisonFilterValueUnionParam) UnmarshalJSON(data []byte) error {
 		c.OfComparisonFilterValueArray = arr
 		return nil
 	}
-	return errors.New("cannot unmarshal ComparisonFilterValueUnionParam")
+	return errors.New("cannot unmarshal comparison filter value")
 }
 
 // A union type for different comparison filter array item values.
@@ -2848,7 +2848,7 @@ func (c *ComparisonFilterValueArrayItemUnionParam) UnmarshalJSON(data []byte) er
 		return nil
 	}
 
-	return errors.New("cannot unmarshal ComparisonFilterValueArrayItemUnionParam")
+	return errors.New("cannot unmarshal comparison filter value array item")
 }
 
 // Ranking options for search.
@@ -3001,7 +3001,7 @@ func (t ToolMcpAllowedToolsUnionParam) MarshalJSON() ([]byte, error) {
 	case t.OfMcpToolFilter != nil:
 		return json.Marshal(t.OfMcpToolFilter)
 	default:
-		return nil, errors.New("no allowed tools to marshal in ToolMcpAllowedToolsUnionParam")
+		return nil, errors.New("no tools to marshal in mcp allowed tools")
 	}
 }
 
@@ -3048,7 +3048,7 @@ func (t ToolMcpRequireApprovalUnionParam) MarshalJSON() ([]byte, error) {
 	case t.OfMcpToolApprovalSetting != nil:
 		return json.Marshal(t.OfMcpToolApprovalSetting)
 	default:
-		return nil, errors.New("no require approval to marshal in ToolMcpRequireApprovalUnionParam")
+		return nil, errors.New("no tool to marshal in mcp require approval")
 	}
 }
 
@@ -3116,7 +3116,7 @@ func (t ToolCodeInterpreterContainerUnionParam) MarshalJSON() ([]byte, error) {
 	case t.OfCodeInterpreterToolAuto != nil:
 		return json.Marshal(t.OfCodeInterpreterToolAuto)
 	default:
-		return nil, errors.New("no container to marshal in ToolCodeInterpreterContainerUnionParam")
+		return nil, errors.New("no container to marshal in code interpreter")
 	}
 }
 
@@ -3400,7 +3400,7 @@ func (r ResponseNewParamsConversationUnion) MarshalJSON() ([]byte, error) {
 	if r.OfConversationObject != nil {
 		return json.Marshal(r.OfConversationObject)
 	}
-	return nil, errors.New("no conversation parameter to marshal in ResponseNewParamsConversationUnion")
+	return nil, errors.New("no conversation parameter to marshal")
 }
 
 func (r *ResponseNewParamsConversationUnion) UnmarshalJSON(data []byte) error {
@@ -3418,7 +3418,7 @@ func (r *ResponseNewParamsConversationUnion) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	return errors.New("unknown conversation parameter type in ResponseNewParamsConversationUnion")
+	return errors.New("cannot unmarshal conversation parameter")
 }
 
 // The conversation that this response belongs to.
@@ -3550,7 +3550,7 @@ func (r ResponseInputItemUnionParam) MarshalJSON() ([]byte, error) { // nolint:g
 	case r.OfItemReference != nil:
 		return json.Marshal(r.OfItemReference)
 	default:
-		return nil, errors.New("no input item to marshal in ResponseInputItemUnionParam")
+		return nil, errors.New("no input item to marshal")
 	}
 }
 
@@ -3722,7 +3722,7 @@ func (r *ResponseInputItemUnionParam) UnmarshalJSON(data []byte) error {
 		r.OfItemReference = &ir
 	// Add other cases here for different input item types as needed.
 	default:
-		return errors.New("unknown type for ResponseInputItemUnionParam: " + typ.String())
+		return errors.New("cannot unmarshal unknown input type: " + typ.String())
 	}
 	return nil
 }
@@ -3801,7 +3801,7 @@ func (r ResponseInputContentUnionParam) MarshalJSON() ([]byte, error) {
 	case r.OfInputFile != nil:
 		return json.Marshal(r.OfInputFile)
 	default:
-		return nil, errors.New("no input content to marshal in ResponseInputContentUnionParam")
+		return nil, errors.New("no input content to marshal")
 	}
 }
 
@@ -3827,7 +3827,7 @@ func (r *ResponseInputContentUnionParam) UnmarshalJSON(data []byte) error {
 		}
 		r.OfInputFile = &ifp
 	default:
-		return errors.New("unknown type for ResponseInputContentUnionParam: " + typ.String())
+		return errors.New("unknown type for input content: " + typ.String())
 	}
 	return nil
 }
@@ -3887,7 +3887,7 @@ func (r ResponseOutputMessageContentUnion) MarshalJSON() ([]byte, error) {
 	case r.OfRefusal != nil:
 		return json.Marshal(r.OfRefusal)
 	default:
-		return nil, errors.New("no output message content to marshal in ResponseOutputMessageContentUnionParam")
+		return nil, errors.New("no output message content to marshal")
 	}
 }
 
@@ -3907,7 +3907,7 @@ func (r *ResponseOutputMessageContentUnion) UnmarshalJSON(data []byte) error {
 		}
 		r.OfRefusal = &rf
 	default:
-		return errors.New("unknown type for ResponseOutputMessageContentUnionParam: " + typ.String())
+		return errors.New("unknown type for output message content: " + typ.String())
 	}
 	return nil
 }
@@ -3964,7 +3964,7 @@ func (r ResponseOutputTextAnnotationUnionParam) MarshalJSON() ([]byte, error) {
 	case r.OfFilePath != nil:
 		return json.Marshal(r.OfFilePath)
 	default:
-		return nil, errors.New("no text annotation to marshal in ResponseOutputTextAnnotationUnionParam")
+		return nil, errors.New("no text annotation to marshal in output text annotation")
 	}
 }
 
@@ -3996,7 +3996,7 @@ func (r *ResponseOutputTextAnnotationUnionParam) UnmarshalJSON(data []byte) erro
 		}
 		r.OfFilePath = &fp
 	default:
-		return errors.New("unknown type for ResponseOutputTextAnnotationUnionParam: " + typ.String())
+		return errors.New("unknown type for output text annotation: " + typ.String())
 	}
 	return nil
 }
@@ -4127,7 +4127,7 @@ func (r ResponseFileSearchToolCallResultAttributeUnionParam) MarshalJSON() ([]by
 	case r.OfBool != nil:
 		return json.Marshal(r.OfBool)
 	default:
-		return nil, errors.New("no attribute to marshal in ResponseFileSearchToolCallResultAttributeUnionParam")
+		return nil, errors.New("no attribute to marshal in response file search tool call result")
 	}
 }
 
@@ -4153,7 +4153,7 @@ func (r *ResponseFileSearchToolCallResultAttributeUnionParam) UnmarshalJSON(data
 		return nil
 	}
 
-	return errors.New("unknown attribute type in ResponseFileSearchToolCallResultAttributeUnionParam")
+	return errors.New("unknown attribute type in response file search tool call result")
 }
 
 // A tool call to a computer use tool. See the
@@ -4215,7 +4215,7 @@ func (r ResponseComputerToolCallActionUnionParam) MarshalJSON() ([]byte, error) 
 	case r.OfWait != nil:
 		return json.Marshal(r.OfWait)
 	default:
-		return nil, errors.New("no computer tool call action to marshal in ResponseComputerToolCallActionUnionParam")
+		return nil, errors.New("no computer tool call action to marshal in computer tool call action")
 	}
 }
 
@@ -4277,7 +4277,7 @@ func (r *ResponseComputerToolCallActionUnionParam) UnmarshalJSON(data []byte) er
 		}
 		r.OfWait = &w
 	default:
-		return errors.New("unknown type for ResponseComputerToolCallActionUnionParam: " + typ.String())
+		return errors.New("unknown type for computer tool call action: " + typ.String())
 	}
 	return nil
 }
@@ -4508,7 +4508,7 @@ func (r ResponseFunctionWebSearchActionUnionParam) MarshalJSON() ([]byte, error)
 	case r.OfFind != nil:
 		return json.Marshal(r.OfFind)
 	default:
-		return nil, errors.New("no web search action to marshal in ResponseFunctionWebSearchActionUnionParam")
+		return nil, errors.New("no web search action to marshal in websearch action")
 	}
 }
 
@@ -4534,7 +4534,7 @@ func (r *ResponseFunctionWebSearchActionUnionParam) UnmarshalJSON(data []byte) e
 		}
 		r.OfFind = &f
 	default:
-		return errors.New("unknown type for ResponseFunctionWebSearchActionUnionParam: " + typ.String())
+		return errors.New("unknown type for websearch action: " + typ.String())
 	}
 	return nil
 }
@@ -4640,7 +4640,7 @@ func (r ResponseInputItemFunctionCallOutputOutputUnionParam) MarshalJSON() ([]by
 	case r.OfResponseFunctionCallOutputItemArray != nil:
 		return json.Marshal(r.OfResponseFunctionCallOutputItemArray)
 	default:
-		return nil, errors.New("no function call output to marshal in ResponseInputItemFunctionCallOutputOutputUnionParam")
+		return nil, errors.New("no function call output to marshal in input item function call output")
 	}
 }
 
@@ -4659,7 +4659,7 @@ func (r *ResponseInputItemFunctionCallOutputOutputUnionParam) UnmarshalJSON(data
 		}
 		r.OfResponseFunctionCallOutputItemArray = arr
 	default:
-		return errors.New("unknown type for ResponseInputItemFunctionCallOutputOutputUnionParam")
+		return errors.New("unknown type for function call output in input item function call output")
 	}
 	return nil
 }
@@ -4681,7 +4681,7 @@ func (r ResponseFunctionCallOutputItemUnionParam) MarshalJSON() ([]byte, error) 
 	case r.OfInputFile != nil:
 		return json.Marshal(r.OfInputFile)
 	default:
-		return nil, errors.New("no function call output item to marshal in ResponseFunctionCallOutputItemUnionParam")
+		return nil, errors.New("no function call output item to marshal in function call output item")
 	}
 }
 
@@ -4707,7 +4707,7 @@ func (r *ResponseFunctionCallOutputItemUnionParam) UnmarshalJSON(data []byte) er
 		}
 		r.OfInputFile = &ifp
 	default:
-		return errors.New("unknown type for ResponseFunctionCallOutputItemUnionParam: " + typ.String())
+		return errors.New("unknown type for function call output item: " + typ.String())
 	}
 	return nil
 }
@@ -4866,7 +4866,7 @@ func (r ResponseCodeInterpreterToolCallOutputUnionParam) MarshalJSON() ([]byte, 
 	case r.OfImage != nil:
 		return json.Marshal(r.OfImage)
 	default:
-		return nil, errors.New("no code interpreter tool call output to marshal in ResponseCodeInterpreterToolCallOutputUnionParam")
+		return nil, errors.New("no code interpreter tool call output to marshal")
 	}
 }
 
@@ -4886,7 +4886,7 @@ func (r *ResponseCodeInterpreterToolCallOutputUnionParam) UnmarshalJSON(data []b
 		}
 		r.OfImage = &image
 	default:
-		return errors.New("unknown type for ResponseCodeInterpreterToolCallOutputUnionParam: " + typ.String())
+		return errors.New("unknown type for code interpreter tool call output: " + typ.String())
 	}
 	return nil
 }
@@ -5042,7 +5042,7 @@ func (r ResponseFunctionShellCallOutputContentOutcomeUnionParam) MarshalJSON() (
 	case r.OfExit != nil:
 		return json.Marshal(r.OfExit)
 	default:
-		return nil, errors.New("no shell call output content outcome to marshal in ResponseFunctionShellCallOutputContentOutcomeUnionParam")
+		return nil, errors.New("no shell call output content outcome to marshal")
 	}
 }
 
@@ -5062,7 +5062,7 @@ func (r *ResponseFunctionShellCallOutputContentOutcomeUnionParam) UnmarshalJSON(
 		}
 		r.OfExit = &eo
 	default:
-		return errors.New("unknown type for ResponseFunctionShellCallOutputContentOutcomeUnionParam: " + typ.String())
+		return errors.New("unknown type for function shell call output content outcome: " + typ.String())
 	}
 	return nil
 }
@@ -5121,7 +5121,7 @@ func (r ResponseInputItemApplyPatchCallOperationUnionParam) MarshalJSON() ([]byt
 	case r.OfUpdateFile != nil:
 		return json.Marshal(r.OfUpdateFile)
 	default:
-		return nil, errors.New("no apply patch call operation to marshal in ResponseInputItemApplyPatchCallOperationUnionParam")
+		return nil, errors.New("no apply patch call operation to marshal")
 	}
 }
 
@@ -5147,7 +5147,7 @@ func (r *ResponseInputItemApplyPatchCallOperationUnionParam) UnmarshalJSON(data 
 		}
 		r.OfUpdateFile = &uf
 	default:
-		return errors.New("unknown type for ResponseInputItemApplyPatchCallOperationUnionParam: " + typ.String())
+		return errors.New("unknown type for input item apply patch call operation: " + typ.String())
 	}
 	return nil
 }
@@ -5326,7 +5326,7 @@ func (r ResponseCustomToolCallOutputOutputUnionParam) MarshalJSON() ([]byte, err
 	case r.OfOutputContentList != nil:
 		return json.Marshal(r.OfOutputContentList)
 	default:
-		return nil, errors.New("no custom tool call output to marshal in ResponseCustomToolCallOutputOutputUnionParam")
+		return nil, errors.New("no custom tool call output to marshal")
 	}
 }
 
@@ -5365,7 +5365,7 @@ func (r ResponseCustomToolCallOutputContentListItemUnionParam) MarshalJSON() ([]
 	case r.OfInputFile != nil:
 		return json.Marshal(r.OfInputFile)
 	default:
-		return nil, errors.New("no custom tool call output content list item to marshal in ResponseCustomToolCallOutputContentListItemUnionParam")
+		return nil, errors.New("no custom tool call output content list item to marshal")
 	}
 }
 
@@ -5391,7 +5391,7 @@ func (r *ResponseCustomToolCallOutputContentListItemUnionParam) UnmarshalJSON(da
 		}
 		r.OfInputFile = &ifile
 	default:
-		return errors.New("unknown type for ResponseCustomToolCallOutputContentListItemUnionParam: " + typ.String())
+		return errors.New("unknown type for custom tool call output content list item: " + typ.String())
 	}
 	return nil
 }
@@ -5827,7 +5827,7 @@ func (r ResponseInstructionsUnion) MarshalJSON() ([]byte, error) {
 	case r.OfInputItemList != nil:
 		return json.Marshal(r.OfInputItemList)
 	default:
-		return nil, errors.New("no instructions to marshal in ResponseInstructionsUnion")
+		return nil, errors.New("no instructions to marshal")
 	}
 }
 
