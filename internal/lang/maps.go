@@ -21,10 +21,6 @@ func CaseInsensitiveValue(m map[string]any, key string) string {
 		return ""
 	}
 
-	if v, ok := m[key]; ok {
-		return fmt.Sprintf("%v", v)
-	}
-
 	keys := slices.Sorted(maps.Keys(m))
 	for _, k := range keys {
 		if strings.EqualFold(k, key) {

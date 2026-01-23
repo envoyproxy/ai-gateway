@@ -460,13 +460,13 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				require.Equal(t, "some-model", mm.requestModel)
 			})
 			t.Run("ok", func(t *testing.T) {
-				LogRequestHeaderAttributes = map[string]string{"x-session-id": "session.id"}
+				LogRequestHeaderAttributes = map[string]string{"agent-session-id": "session.id"}
 				t.Cleanup(func() { LogRequestHeaderAttributes = nil })
 				someBody := bodyFromModel(t, "some-model", tc.stream, nil)
 				headers := map[string]string{
 					":path":                               "/foo",
 					internalapi.ModelNameHeaderKeyDefault: "some-model",
-					"x-session-id":                        "session-123",
+					"agent-session-id":                    "session-123",
 				}
 				headerMut := []internalapi.Header{{"a", "b"}}
 				bodyMut := []byte("some body")

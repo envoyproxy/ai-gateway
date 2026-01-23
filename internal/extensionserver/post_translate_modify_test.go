@@ -193,7 +193,7 @@ func TestInsertHeaderToMetadataFilter(t *testing.T) {
 	hcm := &httpconnectionmanagerv3.HttpConnectionManager{
 		HttpFilters: []*httpconnectionmanagerv3.HttpFilter{{Name: wellknown.Router}},
 	}
-	filter, err := buildHeaderToMetadataFilter(map[string]string{"x-session-id": "session.id"})
+	filter, err := buildHeaderToMetadataFilter(map[string]string{"agent-session-id": "session.id"})
 	require.NoError(t, err)
 	err = insertHeaderToMetadataFilter(hcm, filter)
 	require.NoError(t, err)

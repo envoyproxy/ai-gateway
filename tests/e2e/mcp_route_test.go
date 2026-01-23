@@ -26,7 +26,7 @@ type mcpTenantRequestHeaderInjector struct{}
 
 // RoundTrip implements [http.RoundTripper.RoundTrip].
 func (h mcpTenantRequestHeaderInjector) RoundTrip(req *http.Request) (*http.Response, error) {
-	req.Header.Set("x-tenant", "tenant-a")
+	req.Header.Set("x-tenant-id", "tenant-a")
 	return http.DefaultTransport.RoundTrip(req)
 }
 

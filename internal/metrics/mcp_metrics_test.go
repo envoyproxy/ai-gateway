@@ -32,7 +32,7 @@ func TestRecordMetricWithCustomAttributes(t *testing.T) {
 
 	m := NewMCP(meter, map[string]string{
 		"x-tracing-enrichment-user-region": "user.region",
-		"X-Session-Id":                     "session.id",
+		"agent-session-id":                 "session.id",
 		"CustomAttr":                       "custom.attr",
 	})
 	require.NotNil(t, m)
@@ -41,17 +41,17 @@ func TestRecordMetricWithCustomAttributes(t *testing.T) {
 	require.NoError(t, err)
 	req.Header.Set("X-Tracing-Enrichment-User-Region", "us-east-1") // should be included in metrics
 	req.Header.Set("X-Other-Attr", "other")                         // should be ignored
-	req.Header.Set("X-Session-Id", "123")                           // should be ignored as the value in the metadata takes precedence
+	req.Header.Set("agent-session-id", "123")                       // should be ignored as the value in the metadata takes precedence
 
 	m = m.WithRequestAttributes(req)
 
 	startAt := time.Now().Add(-1 * time.Minute)
 	m.RecordRequestDuration(t.Context(), startAt, &mcpsdk.InitializeParams{
 		Meta: map[string]any{
-			"x-session-id": "sess-1234", // alphabetical order wins when multiple values match case-insensitively
-			"X-SESSION-ID": "sess-4567",
-			"customattr":   "custom-value1", // exact match should win over case-insensitive match
-			"CustomAttr":   "custom-value2",
+			"Agent-Session-Id": "sess-4567", // alphabetical order wins when multiple values match case-insensitively
+			"agent-session-id": "sess-1234",
+			"customattr":       "custom-value1", // exact match should win over case-insensitive match
+			"CustomAttr":       "custom-value2",
 		},
 	})
 

@@ -74,10 +74,9 @@ services:
     environment:
       - OPENAI_BASE_URL=http://host.docker.internal:11434/v1
       - OPENAI_API_KEY=unused
+      - AIGW_DEBUG
       # session.id is used in logs and traces (not metrics; high-cardinality)
-      - OTEL_AIGW_REQUEST_HEADER_ATTRIBUTES=x-user-id:user.id
-      - OTEL_AIGW_LOG_REQUEST_HEADER_ATTRIBUTES=x-session-id:session.id
-      - OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES=x-session-id:session.id
+      - OTEL_AIGW_REQUEST_HEADER_ATTRIBUTES=x-tenant-id:tenant.id
     configs:
       - source: mcp-config
         target: /etc/aigw/mcp-servers.json
@@ -105,7 +104,7 @@ services:
     environment:
       - OPENAI_BASE_URL=http://aigw:1975/v1
       - OPENAI_API_KEY=unused
-      - AIGW_USER_ID=${AIGW_USER_ID:-team-1}
+      - AIGW_TENANT_ID=${AIGW_TENANT_ID:-tenant-1}
       - AIGW_SESSION_ID=${AIGW_SESSION_ID:-session-123}
 
   # create-embeddings is the standard OpenAI client (`openai` in pip), instrumented
@@ -125,7 +124,7 @@ services:
     environment:
       - OPENAI_BASE_URL=http://aigw:1975/v1
       - OPENAI_API_KEY=unused
-      - AIGW_USER_ID=${AIGW_USER_ID:-team-1}
+      - AIGW_TENANT_ID=${AIGW_TENANT_ID:-tenant-1}
       - AIGW_SESSION_ID=${AIGW_SESSION_ID:-session-123}
 
   # completion is the standard OpenAI client (`openai` in pip), instrumented
@@ -145,7 +144,7 @@ services:
     environment:
       - OPENAI_BASE_URL=http://aigw:1975/v1
       - OPENAI_API_KEY=unused
-      - AIGW_USER_ID=${AIGW_USER_ID:-team-1}
+      - AIGW_TENANT_ID=${AIGW_TENANT_ID:-tenant-1}
       - AIGW_SESSION_ID=${AIGW_SESSION_ID:-session-123}
 
   # mcp is a test client for calling MCP tools through aigw.
@@ -155,7 +154,7 @@ services:
     container_name: mcp
     profiles: ["test"]
     environment:
-      - AIGW_USER_ID=${AIGW_USER_ID:-team-1}
+      - AIGW_TENANT_ID=${AIGW_TENANT_ID:-tenant-1}
       - AIGW_SESSION_ID=${AIGW_SESSION_ID:-session-123}
     entrypoint: sh
     command:
@@ -165,10 +164,10 @@ services:
         node cli/build/cli.js \
           --cli \
           http://aigw:1975/mcp \
-          --header "X-User-Id: $$AIGW_USER_ID" \
-          --header "X-Session-Id: $$AIGW_SESSION_ID" \
-          --metadata x-user-id=$$AIGW_USER_ID \
-          --metadata x-session-id=$$AIGW_SESSION_ID \
+          --header "x-tenant-id: $$AIGW_TENANT_ID" \
+          --header "agent-session-id: $$AIGW_SESSION_ID" \
+          --metadata x-tenant-id=$$AIGW_TENANT_ID \
+          --metadata agent-session-id=$$AIGW_SESSION_ID \
           --method tools/call \
           --tool-name kiwi__search-flight \
           --tool-arg flyFrom=NYC \

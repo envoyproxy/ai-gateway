@@ -55,7 +55,7 @@ var testGatewayConfig = &aigv1a1.GatewayConfig{
 func TestGatewayMutator_Default(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	fakeKube := fake2.NewClientset()
-	g := newTestGatewayMutator(fakeClient, fakeKube, "", "", "", "", "", false)
+	g := newTestGatewayMutator(fakeClient, fakeKube, nil, nil, nil, nil, "", "", "", false)
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-pod", Namespace: "test-namespace"},
 		Spec: corev1.PodSpec{
@@ -74,8 +74,10 @@ func TestGatewayMutator_Default(t *testing.T) {
 func TestGatewayMutator_mutatePod(t *testing.T) {
 	tests := []struct {
 		name                           string
-		metricsRequestHeaderAttributes string
-		spanRequestHeaderAttributes    string
+		requestHeaderAttributes        *string
+		spanRequestHeaderAttributes    *string
+		metricsRequestHeaderAttributes *string
+		logRequestHeaderAttributes     *string
 		endpointPrefixes               string
 		extProcExtraEnvVars            string
 		extProcImagePullSecrets        string
@@ -150,11 +152,22 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 		},
 		{
 			name:                           "with metrics request header labels",
-			metricsRequestHeaderAttributes: "x-team-id:team.id,x-user-id:user.id",
+			metricsRequestHeaderAttributes: strPtr("x-tenant-id:tenant.id,x-tenant-id:tenant.id"),
 			extprocTest: func(t *testing.T, container corev1.Container) {
 				require.Empty(t, container.Env)
 				require.Contains(t, container.Args, "-metricsRequestHeaderAttributes")
-				require.Contains(t, container.Args, "x-team-id:team.id,x-user-id:user.id")
+				require.Contains(t, container.Args, "x-tenant-id:tenant.id,x-tenant-id:tenant.id")
+			},
+			podTest: func(t *testing.T, pod corev1.Pod) {
+				require.Empty(t, pod.Spec.ImagePullSecrets)
+			},
+		},
+		{
+			name:                    "with base request header attributes",
+			requestHeaderAttributes: strPtr("x-tenant-id:tenant.id"),
+			extprocTest: func(t *testing.T, container corev1.Container) {
+				require.Contains(t, container.Args, "-requestHeaderAttributes")
+				require.Contains(t, container.Args, "x-tenant-id:tenant.id")
 			},
 			podTest: func(t *testing.T, pod corev1.Pod) {
 				require.Empty(t, pod.Spec.ImagePullSecrets)
@@ -162,14 +175,14 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 		},
 		{
 			name:                           "with both metrics and env vars",
-			metricsRequestHeaderAttributes: "x-team-id:team.id",
+			metricsRequestHeaderAttributes: strPtr("x-tenant-id:tenant.id"),
 			extProcExtraEnvVars:            "OTEL_SERVICE_NAME=custom-service",
 			extprocTest: func(t *testing.T, container corev1.Container) {
 				require.Equal(t, []corev1.EnvVar{
 					{Name: "OTEL_SERVICE_NAME", Value: "custom-service"},
 				}, container.Env)
 				require.Contains(t, container.Args, "-metricsRequestHeaderAttributes")
-				require.Contains(t, container.Args, "x-team-id:team.id")
+				require.Contains(t, container.Args, "x-tenant-id:tenant.id")
 			},
 			podTest: func(t *testing.T, pod corev1.Pod) {
 				require.Empty(t, pod.Spec.ImagePullSecrets)
@@ -177,11 +190,48 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 		},
 		{
 			name:                        "with tracing request header attributes",
-			spanRequestHeaderAttributes: "x-session-id:session.id,x-user-id:user.id",
+			spanRequestHeaderAttributes: strPtr("x-forwarded-proto:url.scheme"),
 			extprocTest: func(t *testing.T, container corev1.Container) {
 				require.Empty(t, container.Env)
 				require.Contains(t, container.Args, "-spanRequestHeaderAttributes")
-				require.Contains(t, container.Args, "x-session-id:session.id,x-user-id:user.id")
+				require.Contains(t, container.Args, "x-forwarded-proto:url.scheme")
+			},
+			podTest: func(t *testing.T, pod corev1.Pod) {
+				require.Empty(t, pod.Spec.ImagePullSecrets)
+			},
+		},
+		{
+			name:                        "with explicit empty span and log header attributes",
+			spanRequestHeaderAttributes: strPtr(""),
+			logRequestHeaderAttributes:  strPtr(""),
+			extprocTest: func(t *testing.T, container corev1.Container) {
+				var spanValue, logValue *string
+				for i, arg := range container.Args {
+					if arg == "-spanRequestHeaderAttributes" && i+1 < len(container.Args) {
+						value := container.Args[i+1]
+						spanValue = &value
+					}
+					if arg == "-logRequestHeaderAttributes" && i+1 < len(container.Args) {
+						value := container.Args[i+1]
+						logValue = &value
+					}
+				}
+				require.NotNil(t, spanValue)
+				require.NotNil(t, logValue)
+				require.Empty(t, *spanValue)
+				require.Empty(t, *logValue)
+			},
+			podTest: func(t *testing.T, pod corev1.Pod) {
+				require.Empty(t, pod.Spec.ImagePullSecrets)
+			},
+		},
+		{
+			name:                       "with access log request header attributes",
+			logRequestHeaderAttributes: strPtr("x-forwarded-proto:url.scheme"),
+			extprocTest: func(t *testing.T, container corev1.Container) {
+				require.Empty(t, container.Env)
+				require.Contains(t, container.Args, "-logRequestHeaderAttributes")
+				require.Contains(t, container.Args, "x-forwarded-proto:url.scheme")
 			},
 			podTest: func(t *testing.T, pod corev1.Pod) {
 				require.Empty(t, pod.Spec.ImagePullSecrets)
@@ -189,17 +239,20 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 		},
 		{
 			name:                           "with metrics, tracing, and env vars",
-			metricsRequestHeaderAttributes: "x-user-id:user.id",
-			spanRequestHeaderAttributes:    "x-session-id:session.id",
+			spanRequestHeaderAttributes:    strPtr("x-forwarded-proto:url.scheme"),
+			metricsRequestHeaderAttributes: strPtr("x-tenant-id:tenant.id"),
+			logRequestHeaderAttributes:     strPtr("x-forwarded-proto:url.scheme"),
 			extProcExtraEnvVars:            "OTEL_SERVICE_NAME=test-service",
 			extprocTest: func(t *testing.T, container corev1.Container) {
 				require.Equal(t, []corev1.EnvVar{
 					{Name: "OTEL_SERVICE_NAME", Value: "test-service"},
 				}, container.Env)
 				require.Contains(t, container.Args, "-metricsRequestHeaderAttributes")
-				require.Contains(t, container.Args, "x-user-id:user.id")
+				require.Contains(t, container.Args, "x-tenant-id:tenant.id")
 				require.Contains(t, container.Args, "-spanRequestHeaderAttributes")
-				require.Contains(t, container.Args, "x-session-id:session.id")
+				require.Contains(t, container.Args, "x-forwarded-proto:url.scheme")
+				require.Contains(t, container.Args, "-logRequestHeaderAttributes")
+				require.Contains(t, container.Args, "x-forwarded-proto:url.scheme")
 			},
 			podTest: func(t *testing.T, pod corev1.Pod) {
 				require.Empty(t, pod.Spec.ImagePullSecrets)
@@ -265,7 +318,7 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 				t.Run(fmt.Sprintf("sidecar=%v", sidecar), func(t *testing.T) {
 					fakeClient := requireNewFakeClientWithIndexes(t)
 					fakeKube := fake2.NewClientset()
-					g := newTestGatewayMutator(fakeClient, fakeKube, tt.metricsRequestHeaderAttributes, tt.spanRequestHeaderAttributes, tt.endpointPrefixes, tt.extProcExtraEnvVars, tt.extProcImagePullSecrets, sidecar)
+					g := newTestGatewayMutator(fakeClient, fakeKube, tt.requestHeaderAttributes, tt.spanRequestHeaderAttributes, tt.metricsRequestHeaderAttributes, tt.logRequestHeaderAttributes, tt.endpointPrefixes, tt.extProcExtraEnvVars, tt.extProcImagePullSecrets, sidecar)
 
 					const gwName, gwNamespace = "test-gateway", "test-namespace"
 					err := fakeClient.Create(t.Context(), &aigv1a1.AIGatewayRoute{
@@ -372,11 +425,15 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 	}
 }
 
-func newTestGatewayMutator(fakeClient client.Client, fakeKube *fake2.Clientset, metricsRequestHeaderAttributes, spanRequestHeaderAttributes, endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets string, sidecar bool) *gatewayMutator {
+func strPtr(value string) *string {
+	return &value
+}
+
+func newTestGatewayMutator(fakeClient client.Client, fakeKube *fake2.Clientset, requestHeaderAttributes, spanRequestHeaderAttributes, metricsRequestHeaderAttributes, logRequestHeaderAttributes *string, endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets string, sidecar bool) *gatewayMutator {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	return newGatewayMutator(
 		fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
-		"info", "/tmp/extproc.sock", metricsRequestHeaderAttributes, spanRequestHeaderAttributes, "/v1", endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets, 512*1024*1024,
+		"info", "/tmp/extproc.sock", requestHeaderAttributes, spanRequestHeaderAttributes, metricsRequestHeaderAttributes, logRequestHeaderAttributes, "/v1", endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets, 512*1024*1024,
 		sidecar, "seed", 100, "fallback", 200,
 	)
 }
@@ -633,7 +690,7 @@ func TestGatewayMutator_mergeEnvVars(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fakeClient := requireNewFakeClientWithIndexes(t)
 			fakeKube := fake2.NewClientset()
-			g := newTestGatewayMutator(fakeClient, fakeKube, "", "", "", tt.globalEnvVars, "", false)
+			g := newTestGatewayMutator(fakeClient, fakeKube, nil, nil, nil, nil, "", tt.globalEnvVars, "", false)
 
 			result := g.mergeEnvVars(tt.gatewayConfig)
 

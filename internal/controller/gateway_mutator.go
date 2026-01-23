@@ -40,8 +40,10 @@ type gatewayMutator struct {
 	extProcImagePullPolicy         corev1.PullPolicy
 	extProcLogLevel                string
 	udsPath                        string
-	metricsRequestHeaderAttributes string
-	spanRequestHeaderAttributes    string
+	requestHeaderAttributes        *string
+	spanRequestHeaderAttributes    *string
+	metricsRequestHeaderAttributes *string
+	logRequestHeaderAttributes     *string
 	rootPrefix                     string
 	endpointPrefixes               string
 	extProcExtraEnvVars            []corev1.EnvVar
@@ -64,7 +66,7 @@ type gatewayMutator struct {
 
 func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.Logger,
 	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel,
-	udsPath, metricsRequestHeaderAttributes, spanRequestHeaderAttributes, rootPrefix, endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets string, extProcMaxRecvMsgSize int,
+	udsPath string, requestHeaderAttributes, spanRequestHeaderAttributes, metricsRequestHeaderAttributes, logRequestHeaderAttributes *string, rootPrefix, endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets string, extProcMaxRecvMsgSize int,
 	extProcAsSideCar bool,
 	mcpSessionEncryptionSeed string, mcpSessionEncryptionIterations int, mcpFallbackSessionEncryptionSeed string, mcpFallbackSessionEncryptionIterations int,
 ) *gatewayMutator {
@@ -96,8 +98,10 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 		extProcLogLevel:                        extProcLogLevel,
 		logger:                                 logger,
 		udsPath:                                udsPath,
-		metricsRequestHeaderAttributes:         metricsRequestHeaderAttributes,
+		requestHeaderAttributes:                requestHeaderAttributes,
 		spanRequestHeaderAttributes:            spanRequestHeaderAttributes,
+		metricsRequestHeaderAttributes:         metricsRequestHeaderAttributes,
+		logRequestHeaderAttributes:             logRequestHeaderAttributes,
 		rootPrefix:                             rootPrefix,
 		endpointPrefixes:                       endpointPrefixes,
 		extProcExtraEnvVars:                    parsedEnvVars,
@@ -154,17 +158,22 @@ func (g *gatewayMutator) buildExtProcArgs(filterConfigFullPath string, extProcAd
 		}
 	}
 
-	// Add metrics header label mapping if configured.
-	if g.metricsRequestHeaderAttributes != "" {
-		args = append(args, "-metricsRequestHeaderAttributes", g.metricsRequestHeaderAttributes)
+	if g.requestHeaderAttributes != nil {
+		args = append(args, "-requestHeaderAttributes", *g.requestHeaderAttributes)
 	}
 
-	// Add tracing header attribute mapping if configured.
-	if g.spanRequestHeaderAttributes != "" {
-		args = append(args, "-spanRequestHeaderAttributes", g.spanRequestHeaderAttributes)
+	if g.spanRequestHeaderAttributes != nil {
+		args = append(args, "-spanRequestHeaderAttributes", *g.spanRequestHeaderAttributes)
 	}
 
-	// Add endpoint prefixes mapping if configured.
+	if g.metricsRequestHeaderAttributes != nil {
+		args = append(args, "-metricsRequestHeaderAttributes", *g.metricsRequestHeaderAttributes)
+	}
+
+	if g.logRequestHeaderAttributes != nil {
+		args = append(args, "-logRequestHeaderAttributes", *g.logRequestHeaderAttributes)
+	}
+
 	if g.endpointPrefixes != "" {
 		args = append(args, "-endpointPrefixes", g.endpointPrefixes)
 	}

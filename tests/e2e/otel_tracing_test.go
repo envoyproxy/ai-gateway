@@ -42,8 +42,9 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 	// Upgrade the existing "ai-eg" release with new env vars.
 	helm := testsinternal.GoToolCmdContext(ctx, "helm", "upgrade", "ai-eg", "--force",
 		helmChartPath,
-		"--set", "controller.metricsRequestHeaderAttributes=x-user-id:"+userIDAttribute, // existing setting
-		"--set", "controller.spanRequestHeaderAttributes=x-user-id:"+userIDAttribute, // existing setting
+		"--set", "controller.spanRequestHeaderAttributes=x-tenant-id:"+teamIDAttribute,
+		"--set", "controller.metricsRequestHeaderAttributes=x-tenant-id:"+teamIDAttribute,
+		"--set", "controller.logRequestHeaderAttributes=x-tenant-id:"+teamIDAttribute,
 		"--set", "extProc.extraEnvVars[0].name=OTEL_TRACES_EXPORTER",
 		"--set", "extProc.extraEnvVars[0].value=console",
 		"--set", "extProc.extraEnvVars[1].name=OTEL_SERVICE_NAME",
@@ -169,12 +170,16 @@ func TestOTELTracingWithConsoleExporter(t *testing.T) {
 		}
 
 		// Verify that pre-upgrade header attribute args are present in the container args.
-		if !strings.Contains(containerArgs, "-metricsRequestHeaderAttributes") || !strings.Contains(containerArgs, "x-user-id:"+userIDAttribute) {
-			t.Log("Expected -metricsRequestHeaderAttributes x-user-id:" + userIDAttribute + " in extProc container args")
+		if !strings.Contains(containerArgs, "-metricsRequestHeaderAttributes") || !strings.Contains(containerArgs, "x-tenant-id:"+teamIDAttribute) {
+			t.Log("Expected -metricsRequestHeaderAttributes x-tenant-id:" + teamIDAttribute + " in extProc container args")
 			return false
 		}
-		if !strings.Contains(containerArgs, "-spanRequestHeaderAttributes") || !strings.Contains(containerArgs, "x-user-id:"+userIDAttribute) {
-			t.Log("Expected -spanRequestHeaderAttributes x-user-id:" + userIDAttribute + " in extProc container args")
+		if !strings.Contains(containerArgs, "-spanRequestHeaderAttributes") || !strings.Contains(containerArgs, "x-tenant-id:"+teamIDAttribute) {
+			t.Log("Expected -spanRequestHeaderAttributes x-tenant-id:" + teamIDAttribute + " in extProc container args")
+			return false
+		}
+		if !strings.Contains(containerArgs, "-logRequestHeaderAttributes") || !strings.Contains(containerArgs, "x-tenant-id:"+teamIDAttribute) {
+			t.Log("Expected -logRequestHeaderAttributes x-tenant-id:" + teamIDAttribute + " in extProc container args")
 			return false
 		}
 

@@ -257,6 +257,12 @@ func requireEnvoy(t testing.TB,
 		"--base-id", strconv.Itoa(time.Now().Nanosecond()),
 		"--component-log-level", "http:warn",
 	)
+	// Point func-e at the same data dir used by aigw so tests reuse the cached Envoy binary.
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+	cmd.Env = append(os.Environ(),
+		"FUNC_E_DATA_HOME="+filepath.Join(home, ".local", "share", "aigw"),
+	)
 	// func-e will use the version specified in the project root's .envoy-version file.
 	cmd.Dir = internaltesting.FindProjectRoot()
 	version, err := os.ReadFile(filepath.Join(cmd.Dir, ".envoy-version"))

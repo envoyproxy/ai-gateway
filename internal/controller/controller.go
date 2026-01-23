@@ -73,10 +73,14 @@ type Options struct {
 	UDSPath string
 	// DisableMutatingWebhook disables the mutating webhook for the Gateway for testing purposes.
 	DisableMutatingWebhook bool
-	// MetricsRequestHeaderAttributes is the comma-separated key-value pairs for mapping HTTP request headers to Otel metric attributes.
-	MetricsRequestHeaderAttributes string
+	// RequestHeaderAttributes is the comma-separated key-value pairs for mapping HTTP request headers to Otel attributes shared across metrics, spans, and access logs.
+	RequestHeaderAttributes *string
 	// TracingRequestHeaderAttributes is the comma-separated key-value pairs for mapping HTTP request headers to otel span attributes.
-	TracingRequestHeaderAttributes string
+	TracingRequestHeaderAttributes *string
+	// MetricsRequestHeaderAttributes is the comma-separated key-value pairs for mapping HTTP request headers to Otel metric attributes.
+	MetricsRequestHeaderAttributes *string
+	// LogRequestHeaderAttributes is the comma-separated key-value pairs for mapping HTTP request headers to access log attributes.
+	LogRequestHeaderAttributes *string
 	// RootPrefix is the root prefix for all the routes handled by the AI Gateway.
 	RootPrefix string
 	// ExtProcExtraEnvVars is the semicolon-separated key=value pairs for extra environment variables in extProc container.
@@ -241,8 +245,10 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.ExtProcImagePullPolicy,
 			options.ExtProcLogLevel,
 			options.UDSPath,
-			options.MetricsRequestHeaderAttributes,
+			options.RequestHeaderAttributes,
 			options.TracingRequestHeaderAttributes,
+			options.MetricsRequestHeaderAttributes,
+			options.LogRequestHeaderAttributes,
 			options.RootPrefix,
 			options.EndpointPrefixes,
 			options.ExtProcExtraEnvVars,

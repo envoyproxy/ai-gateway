@@ -99,12 +99,12 @@ const (
 // ParseRequestHeaderAttributeMapping parses comma-separated key-value pairs for header-to-attribute mapping.
 // The input format is "header1:attribute1,header2:attribute2" where header names are HTTP request
 // headers and attribute names are Otel span or metric attributes.
-// Example: "x-session-id:session.id,x-user-id:user.id".
+// Example: "agent-session-id:session.id,x-tenant-id:tenant.id".
 //
 // Note: This serves a different purpose than OTEL's OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST,
 // which captures headers as span attributes for tracing.
 //
-// Note: We do not need to convert to Prometheus format (e.g., x-session-id → session.id) here,
+// Note: We do not need to convert to Prometheus format (e.g., agent-session-id → session.id) here,
 // as that's done implicitly in the Prometheus exporter.
 func ParseRequestHeaderAttributeMapping(s string) (map[string]string, error) {
 	if s == "" {
