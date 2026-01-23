@@ -12,9 +12,10 @@ import (
 	"strings"
 	"testing"
 
-	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/stretchr/testify/require"
 	func_e_api "github.com/tetratelabs/func-e/api"
+
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 func Test_downloadEnvoy(t *testing.T) {
