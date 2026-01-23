@@ -435,6 +435,14 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		require.Empty(t, o.buffered)
 	})
 
+	t.Run("valid usage data with cached tokens", func(t *testing.T) {
+		o := &openAIToOpenAITranslatorV1ChatCompletion{}
+		o.buffered = []byte("data: {\"usage\": {\"prompt_tokens\": 5, \"completion_tokens\": 3, \"total_tokens\": 8, \"prompt_tokens_details\": {\"cached_tokens\": 2, \"cache_creation_input_tokens\": 1}}}\n")
+		usedToken := o.extractUsageFromBufferEvent(nil)
+		require.Equal(t, tokenUsageFrom(5, 2, 1, 3, 8), usedToken)
+		require.Empty(t, o.buffered)
+	})
+
 	t.Run("invalid JSON", func(t *testing.T) {
 		o := &openAIToOpenAITranslatorV1ChatCompletion{}
 		o.buffered = []byte("data: invalid\n")

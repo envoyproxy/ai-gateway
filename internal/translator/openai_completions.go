@@ -119,6 +119,14 @@ func (o *openAIToOpenAITranslatorV1Completion) ResponseBody(_ map[string]string,
 		if resp.Usage.TotalTokens >= 0 {
 			tokenUsage.SetTotalTokens(uint32(resp.Usage.TotalTokens)) // #nosec G115
 		}
+		if resp.Usage.PromptTokensDetails != nil {
+			if resp.Usage.PromptTokensDetails.CachedTokens >= 0 {
+				tokenUsage.SetCachedInputTokens(uint32(resp.Usage.PromptTokensDetails.CachedTokens)) //nolint:gosec
+			}
+			if resp.Usage.PromptTokensDetails.CacheCreationTokens >= 0 {
+				tokenUsage.SetCacheCreationInputTokens(uint32(resp.Usage.PromptTokensDetails.CacheCreationTokens)) //nolint:gosec
+			}
+		}
 	}
 
 	// Record non-streaming response to span if tracing is enabled.
