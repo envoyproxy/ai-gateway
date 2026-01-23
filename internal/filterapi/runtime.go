@@ -35,6 +35,8 @@ type RuntimeConfig struct {
 	DeclaredModels []Model
 	// Backends is the map of backends by name.
 	Backends map[string]*RuntimeBackend
+	// ResponseCache is the response cache configuration.
+	ResponseCache *ResponseCacheConfig
 }
 
 // RuntimeBackend is a filter backend with its auth handler that is derived from the filterapi.Backend configuration.
@@ -87,5 +89,6 @@ func NewRuntimeConfig(ctx context.Context, config *Config, fn NewBackendAuthHand
 		Backends:       backends,
 		RequestCosts:   costs,
 		DeclaredModels: config.Models,
+		ResponseCache:  config.ResponseCache,
 	}, nil
 }

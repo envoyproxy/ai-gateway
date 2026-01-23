@@ -393,6 +393,147 @@ func TestGatewayController_reconcileFilterConfigSecret_SkipsDeletedRoutes(t *tes
 	require.Contains(t, fc.Backends[0].Name, "apple")
 }
 
+func TestGatewayController_reconcileFilterConfigSecret_ResponseCache(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+	c := NewGatewayController(fakeClient, kube, ctrl.Log,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	const gwNamespace = "ns"
+
+	t.Run("with ResponseCache enabled", func(t *testing.T) {
+		routes := []aigv1a1.AIGatewayRoute{
+			{
+				ObjectMeta: metav1.ObjectMeta{Name: "route-with-cache", Namespace: gwNamespace},
+				Spec: aigv1a1.AIGatewayRouteSpec{
+					Rules: []aigv1a1.AIGatewayRouteRule{
+						{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "backend1"}}},
+					},
+					ResponseCache: &aigv1a1.ResponseCacheConfig{
+						Enabled: true,
+						TTL:     &metav1.Duration{Duration: 30 * time.Minute},
+					},
+				},
+			},
+		}
+
+		// Create the backend
+		err := fakeClient.Create(t.Context(), &aigv1a1.AIServiceBackend{
+			ObjectMeta: metav1.ObjectMeta{Name: "backend1", Namespace: gwNamespace},
+			Spec: aigv1a1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+			},
+		})
+		require.NoError(t, err)
+
+		const someNamespace = "some-namespace"
+		configName := FilterConfigSecretPerGatewayName("gw-cache", gwNamespace)
+		effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "cache-uuid")
+		require.NoError(t, err)
+		require.True(t, effective)
+
+		secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
+		require.NoError(t, err)
+		configStr, ok := secret.StringData[FilterConfigKeyInSecret]
+		require.True(t, ok)
+
+		var fc filterapi.Config
+		require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
+
+		// Verify ResponseCache configuration is translated
+		require.NotNil(t, fc.ResponseCache)
+		require.True(t, fc.ResponseCache.Enabled)
+		require.Equal(t, 30*time.Minute, fc.ResponseCache.TTL)
+		require.True(t, fc.ResponseCache.RespectCacheControl) // Default is true
+	})
+
+	t.Run("with RespectCacheControl explicitly false", func(t *testing.T) {
+		respectCacheControl := false
+		routes := []aigv1a1.AIGatewayRoute{
+			{
+				ObjectMeta: metav1.ObjectMeta{Name: "route-no-respect-cc", Namespace: gwNamespace},
+				Spec: aigv1a1.AIGatewayRouteSpec{
+					Rules: []aigv1a1.AIGatewayRouteRule{
+						{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "backend2"}}},
+					},
+					ResponseCache: &aigv1a1.ResponseCacheConfig{
+						Enabled:             true,
+						RespectCacheControl: &respectCacheControl,
+					},
+				},
+			},
+		}
+
+		// Create the backend
+		err := fakeClient.Create(t.Context(), &aigv1a1.AIServiceBackend{
+			ObjectMeta: metav1.ObjectMeta{Name: "backend2", Namespace: gwNamespace},
+			Spec: aigv1a1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+			},
+		})
+		require.NoError(t, err)
+
+		const someNamespace = "some-namespace"
+		configName := FilterConfigSecretPerGatewayName("gw-no-cc", gwNamespace)
+		effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "no-cc-uuid")
+		require.NoError(t, err)
+		require.True(t, effective)
+
+		secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
+		require.NoError(t, err)
+		configStr, ok := secret.StringData[FilterConfigKeyInSecret]
+		require.True(t, ok)
+
+		var fc filterapi.Config
+		require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
+
+		require.NotNil(t, fc.ResponseCache)
+		require.True(t, fc.ResponseCache.Enabled)
+		require.False(t, fc.ResponseCache.RespectCacheControl)
+	})
+
+	t.Run("without ResponseCache", func(t *testing.T) {
+		routes := []aigv1a1.AIGatewayRoute{
+			{
+				ObjectMeta: metav1.ObjectMeta{Name: "route-no-cache", Namespace: gwNamespace},
+				Spec: aigv1a1.AIGatewayRouteSpec{
+					Rules: []aigv1a1.AIGatewayRouteRule{
+						{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "backend3"}}},
+					},
+					// No ResponseCache configured
+				},
+			},
+		}
+
+		// Create the backend
+		err := fakeClient.Create(t.Context(), &aigv1a1.AIServiceBackend{
+			ObjectMeta: metav1.ObjectMeta{Name: "backend3", Namespace: gwNamespace},
+			Spec: aigv1a1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+			},
+		})
+		require.NoError(t, err)
+
+		const someNamespace = "some-namespace"
+		configName := FilterConfigSecretPerGatewayName("gw-no-cache", gwNamespace)
+		effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "no-cache-uuid")
+		require.NoError(t, err)
+		require.True(t, effective)
+
+		secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
+		require.NoError(t, err)
+		configStr, ok := secret.StringData[FilterConfigKeyInSecret]
+		require.True(t, ok)
+
+		var fc filterapi.Config
+		require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
+
+		// ResponseCache should be nil when not configured
+		require.Nil(t, fc.ResponseCache)
+	})
+}
+
 func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()

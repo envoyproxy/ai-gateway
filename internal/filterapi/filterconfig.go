@@ -41,6 +41,19 @@ type Config struct {
 	Models []Model `json:"models,omitempty"`
 	// MCPConfig is the configuration for the MCPRoute implementations.
 	MCPConfig *MCPConfig `json:"mcpConfig,omitempty"`
+	// ResponseCache is the configuration for response caching. Optional.
+	ResponseCache *ResponseCacheConfig `json:"responseCache,omitempty"`
+}
+
+// ResponseCacheConfig configures response caching for the AI Gateway filter.
+type ResponseCacheConfig struct {
+	// Enabled controls whether response caching is active.
+	Enabled bool `json:"enabled"`
+	// TTL is the time-to-live for cached responses.
+	TTL time.Duration `json:"ttl,omitempty"`
+	// RespectCacheControl controls whether HTTP Cache-Control headers are honored.
+	// When true (default), request and response Cache-Control headers can override caching behavior.
+	RespectCacheControl bool `json:"respectCacheControl"`
 }
 
 // Model corresponds to the OpenAI model object in the OpenAI-compatible APIs
