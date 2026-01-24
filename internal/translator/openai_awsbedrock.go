@@ -853,6 +853,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 	switch event.EventType {
 	// Usage event.
 	case awsbedrock.ConverseStreamEventTypeMetadata.String():
+		if event.ServiceTier != nil {
+			chunk.ServiceTier = event.ServiceTier.Type
+		}
 		if event.Usage == nil {
 			return chunk, false
 		}
