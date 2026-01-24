@@ -453,7 +453,7 @@ const (
 	// ConverseStreamEventTypeMessageStop signals the end of the entire message.
 	ConverseStreamEventTypeMessageStop ConverseStreamEventType = "messageStop"
 
-	// ConverseStreamEventTypeMetadata contains usage and latency information.
+	// ConverseStreamEventTypeMetadata contains usage, service tier, and latency information.
 	ConverseStreamEventTypeMetadata ConverseStreamEventType = "metadata"
 )
 
