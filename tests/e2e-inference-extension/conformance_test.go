@@ -35,6 +35,7 @@ func TestGatewayAPIInferenceExtension(t *testing.T) {
 		Version:      "latest",
 	}
 	options.ConformanceProfiles.Insert(gie.GatewayLayerProfileName)
+	options.AllowCRDsMismatch = true
 	defaultTimeoutConfig := config.DefaultTimeoutConfig()
 	defaultTimeoutConfig.HTTPRouteMustHaveCondition = 10 * time.Second
 	defaultTimeoutConfig.HTTPRouteMustNotHaveParents = 10 * time.Second

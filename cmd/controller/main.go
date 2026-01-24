@@ -351,7 +351,7 @@ func main() {
 	// Start the extension server running alongside the controller.
 	const extProcUDSPath = "/etc/ai-gateway-extproc-uds/run.sock"
 	s := grpc.NewServer(grpc.MaxRecvMsgSize(parsedFlags.maxRecvMsgSize))
-	extSrv := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false)
+	extSrv := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false, nil)
 	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
 	go func() {
