@@ -261,7 +261,7 @@ func TestNewSession_Success(t *testing.T) {
 	defer backendServer.Close()
 
 	proxy := newTestMCPProxy()
-	proxy.backendListenerURL = backendServer.URL
+	proxy.backendListenerAddr = backendServer.URL
 
 	s, err := proxy.newSession(t.Context(), &mcp.InitializeParams{}, "test-route", "", nil)
 
@@ -301,7 +301,7 @@ data: {"jsonrpc":"2.0","id":"ff3964c5-4c79-4567-96e2-29e905754e58","result":{"ca
 	defer backendServer.Close()
 
 	proxy := newTestMCPProxy()
-	proxy.backendListenerURL = backendServer.URL
+	proxy.backendListenerAddr = backendServer.URL
 
 	s, err := proxy.newSession(t.Context(), &mcp.InitializeParams{}, "test-route", "", nil)
 
@@ -352,7 +352,7 @@ func TestInitializeSession_Success(t *testing.T) {
 	defer backendServer.Close()
 
 	proxy := newTestMCPProxy()
-	proxy.backendListenerURL = backendServer.URL
+	proxy.backendListenerAddr = backendServer.URL
 
 	res, err := proxy.initializeSession(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &mcp.InitializeParams{})
 
@@ -370,7 +370,7 @@ func TestInitializeSession_InitializeFailure(t *testing.T) {
 	defer backendServer.Close()
 
 	proxy := newTestMCPProxy()
-	proxy.backendListenerURL = backendServer.URL
+	proxy.backendListenerAddr = backendServer.URL
 
 	sessionID, err := proxy.initializeSession(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &mcp.InitializeParams{})
 
@@ -398,7 +398,7 @@ func TestInitializeSession_NotificationsInitializedFailure(t *testing.T) {
 	defer backendServer.Close()
 
 	proxy := newTestMCPProxy()
-	proxy.backendListenerURL = backendServer.URL
+	proxy.backendListenerAddr = backendServer.URL
 
 	sessionID, err := proxy.initializeSession(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &mcp.InitializeParams{})
 
@@ -419,7 +419,7 @@ func TestInvokeJSONRPCRequest_Success(t *testing.T) {
 	defer backendServer.Close()
 
 	m := newTestMCPProxy()
-	m.backendListenerURL = backendServer.URL
+	m.backendListenerAddr = backendServer.URL
 	resp, err := m.invokeJSONRPCRequest(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &compositeSessionEntry{
 		sessionID: "test-session",
 	}, &jsonrpc.Request{})
@@ -441,7 +441,7 @@ func TestInvokeJSONRPCRequest_NoSessionID(t *testing.T) {
 	defer backendServer.Close()
 
 	m := newTestMCPProxy()
-	m.backendListenerURL = backendServer.URL
+	m.backendListenerAddr = backendServer.URL
 	resp, err := m.invokeJSONRPCRequest(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &compositeSessionEntry{
 		sessionID: "",
 	}, &jsonrpc.Request{})

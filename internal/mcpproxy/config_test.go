@@ -100,7 +100,7 @@ func TestLoadConfig_BasicConfiguration(t *testing.T) {
 
 	err := proxy.LoadConfig(t.Context(), config)
 	require.NoError(t, err)
-	require.Equal(t, "http://localhost:8080/", proxy.backendListenerURL)
+	require.Equal(t, "http://localhost:8080", proxy.backendListenerAddr)
 	require.Len(t, proxy.routes, 2)
 	require.Contains(t, proxy.routes, filterapi.MCPRouteName("route1"))
 	require.Contains(t, proxy.routes, filterapi.MCPRouteName("route2"))
@@ -126,7 +126,7 @@ func TestLoadConfig_ToolsChangedNotification(t *testing.T) {
 	// Initialize proxy with initial configuration directly
 	proxy := &ProxyConfig{
 		mcpProxyConfig: &mcpProxyConfig{
-			backendListenerURL: "http://localhost:8080",
+			backendListenerAddr: "http://localhost:8080",
 			routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
 				"route1": {
 					backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
@@ -174,7 +174,7 @@ func TestLoadConfig_NoToolsChangedNotification(t *testing.T) {
 	// Initialize proxy with initial configuration directly
 	proxy := &ProxyConfig{
 		mcpProxyConfig: &mcpProxyConfig{
-			backendListenerURL: "http://localhost:8080",
+			backendListenerAddr: "http://localhost:8080",
 			routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
 				"route1": {
 					backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
@@ -251,7 +251,7 @@ func TestLoadConfig_ToolSelectorChange(t *testing.T) {
 	// Initialize proxy with initial configuration directly
 	proxy := &ProxyConfig{
 		mcpProxyConfig: &mcpProxyConfig{
-			backendListenerURL: "http://localhost:8080",
+			backendListenerAddr: "http://localhost:8080",
 			routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
 				"route1": {
 					backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
@@ -313,7 +313,7 @@ func TestLoadConfig_ToolOrderDoesNotMatter(t *testing.T) {
 	// Initialize proxy with initial configuration directly
 	proxy := &ProxyConfig{
 		mcpProxyConfig: &mcpProxyConfig{
-			backendListenerURL: "http://localhost:8080/",
+			backendListenerAddr: "http://localhost:8080/",
 			routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
 				"route1": {
 					backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
