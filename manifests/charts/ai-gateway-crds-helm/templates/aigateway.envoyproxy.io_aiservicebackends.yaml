@@ -321,6 +321,7 @@ spec:
                     - GCPAnthropic
                     - Anthropic
                     - AWSAnthropic
+                    - AWSInvokeOpenAI
                     type: string
                   prefix:
                     description: |-

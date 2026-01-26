@@ -54,13 +54,14 @@ spec:
 
 Different providers require different schema configurations:
 
-| Provider                   | Schema Configuration                                      |
-| -------------------------- | --------------------------------------------------------- |
-| OpenAI                     | `{"name":"OpenAI","version":"v1"}`                        |
-| AWS Bedrock                | `{"name":"AWSBedrock"}`                                   |
-| Azure OpenAI               | `{"name":"AzureOpenAI","version":"2025-01-01-preview"}`   |
-| GCP Vertex AI              | `{"name":"GCPVertexAI"}`                                  |
-| GCP Anthropic on Vertex AI | `{"name":"GCPAnthropic", "version": "vertex-2023-10-16"}` |
+| Provider                       | Schema Configuration                                      |
+| ------------------------------ | --------------------------------------------------------- |
+| OpenAI                         | `{"name":"OpenAI","version":"v1"}`                        |
+| AWS Bedrock                    | `{"name":"AWSBedrock"}`                                   |
+| AWS Bedrock InvokeModel OpenAI | `{"name":"AWSInvokeOpenAI"}`                              |
+| Azure OpenAI                   | `{"name":"AzureOpenAI","version":"2025-01-01-preview"}`   |
+| GCP Vertex AI                  | `{"name":"GCPVertexAI"}`                                  |
+| GCP Anthropic on Vertex AI     | `{"name":"GCPAnthropic", "version": "vertex-2023-10-16"}` |
 
 :::tip
 Many providers offer OpenAI-compatible APIs, which allows them to use the OpenAI schema configuration with provider-specific version paths.
