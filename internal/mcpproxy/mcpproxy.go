@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"strings"
 	"sync"
@@ -22,7 +23,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
+	"github.com/envoyproxy/ai-gateway/internal/lang"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
@@ -30,18 +33,21 @@ import (
 // mcpRequestContext serves /mcp endpoint.
 type mcpRequestContext struct {
 	*ProxyConfig
-	metrics metrics.MCPMetrics
+	metrics        metrics.MCPMetrics
+	requestHeaders http.Header
+	originalPath   string
 }
 
 // NewMCPProxy creates a new MCPProxy instance.
-func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracingapi.MCPTracer, sessionCrypto SessionCrypto) (*ProxyConfig, *http.ServeMux, error) {
+func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracingapi.MCPTracer, sessionCrypto SessionCrypto, logRequestHeaderAttributes map[string]string) (*ProxyConfig, *http.ServeMux, error) {
 	toolChangeSignaler := newMultiWatcherSignaler() // used to signal changes to all active sessions.
 	cfg := &ProxyConfig{
-		toolChangeSignaler: toolChangeSignaler,
-		tracer:             tracer,
-		sessionCrypto:      sessionCrypto,
-		l:                  l,
-		client:             http.Client{}, // No timeout as it's enforced at Envoy level.
+		toolChangeSignaler:         toolChangeSignaler,
+		tracer:                     tracer,
+		sessionCrypto:              sessionCrypto,
+		l:                          l,
+		client:                     http.Client{}, // No timeout as it's enforced at Envoy level.
+		logRequestHeaderAttributes: maps.Clone(logRequestHeaderAttributes),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc(
@@ -49,9 +55,14 @@ func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracingap
 		// set when it reaches here. We use that to select the appropriate backends, so we don't need to have different paths here.
 		//
 		// For example, if we mistakenly set /mcp here, only the route with prefix /mcp will be matched, and other routes
-		// with different prefixes will not be matched, which is not what we want.
+		// with different prefixes will not be matched, which is not desired.
 		"/", func(w http.ResponseWriter, r *http.Request) {
-			proxy := &mcpRequestContext{metrics: mcpMetrics.WithRequestAttributes(r), ProxyConfig: cfg}
+			proxy := &mcpRequestContext{
+				metrics:        mcpMetrics.WithRequestAttributes(r),
+				ProxyConfig:    cfg,
+				requestHeaders: r.Header,
+				originalPath:   originalPathForRequest(r),
+			}
 			switch r.Method {
 			case http.MethodGet:
 				proxy.serveGET(w, r)
@@ -64,6 +75,61 @@ func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracingap
 			}
 		})
 	return cfg, mux, nil
+}
+
+func originalPathForRequest(r *http.Request) string {
+	if r.RequestURI != "" {
+		return r.RequestURI
+	}
+	if r.URL == nil {
+		return ""
+	}
+	return r.URL.RequestURI()
+}
+
+func setHeaderIfMissing(h http.Header, key, value string) {
+	if h.Get(key) != "" {
+		return
+	}
+	h.Set(key, value)
+}
+
+func (m *mcpRequestContext) applyOriginalPathHeaders(req *http.Request) {
+	setHeaderIfMissing(req.Header, internalapi.OriginalPathHeader, m.originalPath)
+	setHeaderIfMissing(req.Header, internalapi.EnvoyOriginalPathHeader, m.originalPath)
+}
+
+func (m *mcpRequestContext) applyLogHeaderMappings(req *http.Request, msg jsonrpc.Message) {
+	if req == nil || len(m.logRequestHeaderAttributes) == 0 {
+		return
+	}
+	meta := extractMetaFromJSONRPCMessage(msg)
+	for header := range m.logRequestHeaderAttributes {
+		if value := lang.CaseInsensitiveValue(meta, header); value != "" {
+			req.Header.Set(header, value)
+			continue
+		}
+		if m.requestHeaders == nil {
+			continue
+		}
+		if value := m.requestHeaders.Get(header); value != "" {
+			req.Header.Set(header, value)
+		}
+	}
+}
+
+func extractMetaFromJSONRPCMessage(msg jsonrpc.Message) map[string]any {
+	req, ok := msg.(*jsonrpc.Request)
+	if !ok || req == nil || len(req.Params) == 0 {
+		return nil
+	}
+	var params struct {
+		Meta map[string]any `json:"_meta"`
+	}
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		return nil
+	}
+	return params.Meta
 }
 
 // newSession creates a new session for a downstream client.
@@ -296,6 +362,8 @@ func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName 
 		return nil, fmt.Errorf("failed to create MCP notifications/initialized request: %w", err)
 	}
 	addMCPHeaders(req, msg, routeName, backend.Name)
+	m.applyLogHeaderMappings(req, msg)
+	m.applyOriginalPathHeaders(req)
 	if cse != nil {
 		if len(cse.sessionID) > 0 {
 			req.Header.Set(sessionIDHeader, string(cse.sessionID))

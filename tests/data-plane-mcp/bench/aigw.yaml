@@ -93,10 +93,11 @@ spec:
               mcp_request_id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_request_id)%"
               mcp_session_id: "%REQ(MCP-SESSION-ID)%"
               mcp_method: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_method)%"
-              mcp_backend: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)%"
+              mcp.provider.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)%"
               # Default fields
               start_time: "%START_TIME%"
               method: "%REQ(:METHOD)%"
+              request.path: "%REQ(:PATH)%"
               x-envoy-origin-path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
               protocol: "%PROTOCOL%"
               response_code: "%RESPONSE_CODE%"

@@ -110,11 +110,13 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 		require.NotNil(t, re)
 		require.NotNil(t, re.RequestBody)
 		setHeaders := re.RequestBody.GetResponse().GetHeaderMutation().SetHeaders
-		require.Len(t, setHeaders, 2)
+		require.Len(t, setHeaders, 3)
 		require.Equal(t, internalapi.ModelNameHeaderKeyDefault, setHeaders[0].Header.Key)
 		require.Equal(t, "some-model", string(setHeaders[0].Header.RawValue))
-		require.Equal(t, "x-ai-eg-original-path", setHeaders[1].Header.Key)
+		require.Equal(t, internalapi.OriginalPathHeader, setHeaders[1].Header.Key)
 		require.Equal(t, "/foo", string(setHeaders[1].Header.RawValue))
+		require.Equal(t, internalapi.EnvoyOriginalPathHeader, setHeaders[2].Header.Key)
+		require.Equal(t, "/foo", string(setHeaders[2].Header.RawValue))
 	})
 
 	t.Run("span creation", func(t *testing.T) {
@@ -458,8 +460,14 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				require.Equal(t, "some-model", mm.requestModel)
 			})
 			t.Run("ok", func(t *testing.T) {
+				LogRequestHeaderAttributes = map[string]string{"x-session-id": "session.id"}
+				t.Cleanup(func() { LogRequestHeaderAttributes = nil })
 				someBody := bodyFromModel(t, "some-model", tc.stream, nil)
-				headers := map[string]string{":path": "/foo", internalapi.ModelNameHeaderKeyDefault: "some-model"}
+				headers := map[string]string{
+					":path":                               "/foo",
+					internalapi.ModelNameHeaderKeyDefault: "some-model",
+					"x-session-id":                        "session-123",
+				}
 				headerMut := []internalapi.Header{{"a", "b"}}
 				bodyMut := []byte("some body")
 
@@ -500,6 +508,11 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				require.Equal(t, []byte("b"), commonRes.HeaderMutation.SetHeaders[0].Header.RawValue)
 				require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[1].Header.Key)
 				require.Equal(t, "mock-auth-handler", string(commonRes.HeaderMutation.SetHeaders[1].Header.RawValue))
+
+				md := resp.DynamicMetadata
+				require.NotNil(t, md)
+				require.Equal(t, "session-123", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
+					GetStructValue().Fields["session.id"].GetStringValue())
 
 				mm.RequireRequestNotCompleted(t)
 				// Verify models were set

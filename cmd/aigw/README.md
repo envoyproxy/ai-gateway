@@ -34,15 +34,19 @@ Here are values we use for Ollama:
    docker compose up --wait -d
    ```
 
+   **Tip (access logs):** Envoy writes access logs to `/dev/stdout`. If you want
+   verbose `aigw` logging while running this stack, append `--debug` to the
+   `aigw` command in `docker-compose.yaml` (or `docker-compose-otel.yaml`).
+
 3. **Make requests to Envoy AI Gateway**:
 
    The following services use `curl` to send requests to the AI Gateway CLI
    (aigw) which routes them to Ollama:
+   Defaults: `AIGW_USER_ID=team-1` and `AIGW_SESSION_ID=session-123` (override by exporting them).
    - Chat completion:
      ```bash
      docker compose run --rm chat-completion
      ```
-   -
    - Completion (legacy):
 
      ```bash
@@ -59,7 +63,8 @@ Here are values we use for Ollama:
      ```bash
      docker compose run --rm mcp
      ```
-     This calls the kiwi MCP server through aigw's MCP Gateway at `/mcp`.
+     This calls the kiwi MCP server through aigw's MCP Gateway at `/mcp` and passes
+     `x-user-id`/`x-session-id` via JSON-RPC `_meta`.
 
 4. **Shutdown the example stack**:
 
@@ -206,7 +211,7 @@ This configures the OTLP gRPC endpoint to otel-tui on port 4317.
    **Access logs with GenAI fields** (always available):
 
    ```bash
-   docker compose -f docker-compose-otel.yaml logs aigw | grep "genai_model_name"
+   docker compose -f docker-compose-otel.yaml logs aigw | grep "gen_ai.request.model"
    ```
 
 ### Shutdown

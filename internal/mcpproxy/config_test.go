@@ -23,39 +23,39 @@ func Test_toolSelector_Allows(t *testing.T) {
 		name     string
 		selector toolSelector
 		tools    []string
-		want     []bool
+		expected []bool
 	}{
 		{
 			name:     "no rules allows all",
 			selector: toolSelector{},
 			tools:    []string{"foo", "bar"},
-			want:     []bool{true, true},
+			expected: []bool{true, true},
 		},
 		{
 			name:     "include specific tool",
 			selector: toolSelector{include: map[string]struct{}{"foo": {}}},
 			tools:    []string{"foo", "bar"},
-			want:     []bool{true, false},
+			expected: []bool{true, false},
 		},
 		{
 			name:     "include regexp",
 			selector: toolSelector{includeRegexps: []*regexp.Regexp{reBa}},
 			tools:    []string{"bar", "foo"},
-			want:     []bool{true, false},
+			expected: []bool{true, false},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			for i, tool := range tt.tools {
-				got := tt.selector.allows(tool)
-				require.Equalf(t, tt.want[i], got, "tool: %s", tool)
+				actual := tt.selector.allows(tool)
+				require.Equalf(t, tt.expected[i], actual, "tool: %s", tool)
 			}
 		})
 	}
 }
 
 func TestLoadConfig_NilMCPConfig(t *testing.T) {
-	proxy, _, err := NewMCPProxy(slog.Default(), stubMetrics{}, noopTracer, NewPBKDF2AesGcmSessionCrypto("test", 100))
+	proxy, _, err := NewMCPProxy(slog.Default(), stubMetrics{}, noopTracer, NewPBKDF2AesGcmSessionCrypto("test", 100), nil)
 	require.NoError(t, err)
 
 	config := &filterapi.Config{MCPConfig: nil}

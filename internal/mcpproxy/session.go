@@ -75,6 +75,7 @@ func (s *session) Close() error {
 			continue
 		}
 		addMCPHeaders(req, nil, s.route, backendName)
+		s.reqCtx.applyOriginalPathHeaders(req)
 		req.Header.Set(sessionIDHeader, sessionID.String())
 		resp, err := s.reqCtx.client.Do(req)
 		if err != nil {
@@ -339,6 +340,8 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *s
 	}
 	sessionID := cse.sessionID.String()
 	addMCPHeaders(req, request, routeName, backend.Name)
+	s.reqCtx.applyLogHeaderMappings(req, request)
+	s.reqCtx.applyOriginalPathHeaders(req)
 	req.Header.Set(protocolVersionHeader, protocolVersion20250618)
 	req.Header.Set(sessionIDHeader, cse.sessionID.String())
 	if httpMethod != http.MethodGet {

@@ -115,8 +115,10 @@ func Test_mustStartExtProc(t *testing.T) {
 }
 
 func Test_mustStartExtProc_withHeaderAttributes(t *testing.T) {
-	t.Setenv("OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES", "x-team-id:team.id,x-user-id:user.id")
-	t.Setenv("OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES", "x-session-id:session.id,x-user-id:user.id")
+	t.Setenv("OTEL_AIGW_REQUEST_HEADER_ATTRIBUTES", "x-user-id:user.id")
+	t.Setenv("OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES", "x-team-id:team.id")
+	t.Setenv("OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES", "x-session-id:session.id")
+	t.Setenv("OTEL_AIGW_LOG_REQUEST_HEADER_ATTRIBUTES", "x-session-id:session.id")
 
 	var capturedArgs []string
 	runCtx := &runCmdContext{
@@ -133,9 +135,10 @@ func Test_mustStartExtProc_withHeaderAttributes(t *testing.T) {
 	done := runCtx.mustStartExtProc(t.Context(), &filterapi.Config{Version: version.Parse()})
 	<-done // Wait for completion
 
-	// Verify both metrics and tracing flags are set
+	// Verify metrics, tracing, and log flags are set
 	require.Contains(t, capturedArgs, "-metricsRequestHeaderAttributes")
 	require.Contains(t, capturedArgs, "-spanRequestHeaderAttributes")
+	require.Contains(t, capturedArgs, "-logRequestHeaderAttributes")
 
 	// Find the index and verify the values
 	for i, arg := range capturedArgs {
@@ -145,6 +148,10 @@ func Test_mustStartExtProc_withHeaderAttributes(t *testing.T) {
 		}
 		if arg == "-spanRequestHeaderAttributes" {
 			require.Less(t, i+1, len(capturedArgs), "spanRequestHeaderAttributes should have a value")
+			require.Equal(t, "x-session-id:session.id,x-user-id:user.id", capturedArgs[i+1])
+		}
+		if arg == "-logRequestHeaderAttributes" {
+			require.Less(t, i+1, len(capturedArgs), "logRequestHeaderAttributes should have a value")
 			require.Equal(t, "x-session-id:session.id,x-user-id:user.id", capturedArgs[i+1])
 		}
 	}
@@ -162,19 +169,19 @@ func TestTryFindEnvoyListenerPort(t *testing.T) {
 	}
 
 	tests := []struct {
-		name string
-		gw   *gwapiv1.Gateway
-		want int
+		name     string
+		gw       *gwapiv1.Gateway
+		expected int
 	}{
 		{
-			name: "gateway with no listeners",
-			gw:   &gwapiv1.Gateway{},
-			want: 0,
+			name:     "gateway with no listeners",
+			gw:       &gwapiv1.Gateway{},
+			expected: 0,
 		},
 		{
-			name: "gateway with listener on port 1975",
-			gw:   gwWithListener(1975),
-			want: 1975,
+			name:     "gateway with listener on port 1975",
+			gw:       gwWithListener(1975),
+			expected: 1975,
 		},
 	}
 
@@ -186,7 +193,7 @@ func TestTryFindEnvoyListenerPort(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			port := runCtx.tryFindEnvoyListenerPort(tt.gw)
-			require.Equal(t, tt.want, port)
+			require.Equal(t, tt.expected, port)
 		})
 	}
 }

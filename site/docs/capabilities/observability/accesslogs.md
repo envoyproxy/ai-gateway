@@ -67,13 +67,13 @@ spec:
             json:
               # AI specific fields. The properties in the dynamic metadata expressions must match the ones
               # defined in the AIGatewayRoute llmRequestCosts field.
-              genai_model_name: "%REQ(X-AI-EG-MODEL)%"
-              genai_model_name_override: "%DYNAMIC_METADATA(io.envoy.ai_gateway:model_name_override)%"
-              genai_backend_name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:backend_name)%"
-              genai_tokens_total: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_total_token)%"
-              genai_tokens_input: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_input_token)%"
-              genai_tokens_output: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_output_token)%"
-              # Default fields
+              gen_ai.request.model: "%REQ(X-AI-EG-MODEL)%"
+              gen_ai.request.model_override: "%DYNAMIC_METADATA(io.envoy.ai_gateway:model_name_override)%"
+              gen_ai.provider.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:backend_name)%"
+              gen_ai.usage.total_tokens: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_total_token)%"
+              gen_ai.usage.input_tokens: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_input_token)%"
+              gen_ai.usage.output_tokens: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_output_token)%"
+              # Common fields
               start_time: "%START_TIME%"
               method: "%REQ(:METHOD)%"
               x-envoy-origin-path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
@@ -100,7 +100,7 @@ spec:
               route_name: "%ROUTE_NAME%"
 ```
 
-In this example we're adding the `genai_*` properties with the values extracted from the filter metadata populated
+In this example we're adding the `gen_ai.*` properties with the values extracted from the filter metadata populated
 by the AI Gateway. The `EnvoyProxy` resource must be attached to the `Gateway` object or to the `GatewayClass`. For
 example:
 
@@ -134,12 +134,12 @@ With this configuration, the access log entries will include the AI Gateway meta
   "downstream_local_address": "127.0.0.1:1975",
   "downstream_remote_address": "127.0.0.1:64484",
   "duration": 1526,
-  "genai_backend_name": "default/tars/route/aigw-run/rule/0/ref/0",
-  "genai_model_name": "gpt-4o-mini",
-  "genai_model_name_override": null,
-  "genai_tokens_input": 15,
-  "genai_tokens_output": 7,
-  "genai_tokens_total": 22,
+  "gen_ai.provider.name": "default/tars/route/aigw-run/rule/0/ref/0",
+  "gen_ai.request.model": "gpt-4o-mini",
+  "gen_ai.request.model_override": null,
+  "gen_ai.usage.input_tokens": 15,
+  "gen_ai.usage.output_tokens": 7,
+  "gen_ai.usage.total_tokens": 22,
   "method": "POST",
   "protocol": "HTTP/1.1",
   "requested_server_name": null,
@@ -199,11 +199,11 @@ spec:
             type: JSON
             json:
               # MCP specific fields
-              mcp_request_id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_request_id)%"
-              mcp_session_id: "%REQ(MCP-SESSION-ID)%"
-              mcp_method: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_method)%"
-              mcp_backend: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)%"
-              # Default fields
+              jsonrpc.request.id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_request_id)%"
+              mcp.session.id: "%REQ(MCP-SESSION-ID)%"
+              mcp.method.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_method)%"
+              mcp.provider.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)%"
+              # Common fields
               start_time: "%START_TIME%"
               method: "%REQ(:METHOD)%"
               x-envoy-origin-path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
@@ -244,15 +244,15 @@ With this configuration, the access log entries will include the AI Gateway meta
   "downstream_local_address": "127.0.0.1:10088",
   "downstream_remote_address": "127.0.0.1:58124",
   "duration": 653,
-  "genai_backend_name": null,
-  "genai_model_name": null,
-  "genai_model_name_override": null,
-  "genai_tokens_input": null,
-  "genai_tokens_output": null,
-  "mcp_backend": "context7",
-  "mcp_method": "tools/call",
-  "mcp_request_id": "3",
-  "mcp_session_id": null,
+  "gen_ai.provider.name": null,
+  "gen_ai.request.model": null,
+  "gen_ai.request.model_override": null,
+  "gen_ai.usage.input_tokens": null,
+  "gen_ai.usage.output_tokens": null,
+  "mcp.provider.name": "context7",
+  "mcp.method.name": "tools/call",
+  "jsonrpc.request.id": "3",
+  "mcp.session.id": null,
   "method": "POST",
   "response_code": 200,
   "start_time": "2025-10-08T10:42:11.430Z",

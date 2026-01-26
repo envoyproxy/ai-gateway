@@ -137,6 +137,9 @@ func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTra
 	if err = s.maybeGenerateResourcesForMCPGateway(req); err != nil {
 		return nil, fmt.Errorf("failed to generate resources for MCP Gateway: %w", err)
 	}
+	if err = s.insertRequestHeaderToMetadataFilters(req.Listeners); err != nil {
+		return nil, fmt.Errorf("failed to insert request header metadata filter: %w", err)
+	}
 
 	response := &egextension.PostTranslateModifyResponse{Clusters: req.Clusters, Secrets: req.Secrets, Listeners: req.Listeners, Routes: req.Routes}
 	return response, nil
