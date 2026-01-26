@@ -107,7 +107,7 @@ func TestUpgrade(t *testing.T) {
 		{
 			name: "control-plane upgrade",
 			initFunc: func(ctx context.Context) string {
-				const previousEnvoyAIGatewayVersion = "v0.4.0"
+				const previousEnvoyAIGatewayVersion = "v0.5.0"
 				const kindClusterName = "envoy-ai-gateway-cp-upgrade"
 				require.NoError(t, e2elib.SetupAll(ctx, kindClusterName, e2elib.AIGatewayHelmOption{
 					ChartVersion: previousEnvoyAIGatewayVersion,
