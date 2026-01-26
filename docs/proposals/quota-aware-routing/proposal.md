@@ -522,26 +522,13 @@ spec:
   # Retry policy for backend failover
   retry:
     numRetries: 3
+    numAttemptsPerPriority: 1
     retryOn:
       - "retriable-status-codes"
       - "5xx"
     retriableStatusCodes:
       - 429  # Returned by upstream rate limit when backend quota exceeded
     perTryTimeout: 30s
-
-    # Skip hosts that were already attempted
-    retryHostPredicate:
-      - name: envoy.retry_host_predicates.previous_hosts
-
-    # Skip priority levels where all hosts failed
-    retryPriority:
-      name: envoy.retry_priorities.previous_priorities
-      typedConfig:
-        "@type": type.googleapis.com/envoy.extensions.retry.priority.previous_priorities.v3.PreviousPrioritiesConfig
-        updateFrequency: 2  # Update priority load after every 2 retries
-
-    # Allow multiple host selection attempts within each retry
-    hostSelectionRetryMaxAttempts: 5
 ```
 
 ### How Priority Failover Works
@@ -671,8 +658,8 @@ descriptors:
 
 ```
 ┌──────┐  ┌────────────┐  ┌─────────────┐  ┌────────┐  ┌──────────────┐  ┌──────────────┐  ┌─────────┐
-│Client│  │Router RL   │  │Router ExtProc│ │Router/LB│ │Upstream RL   │  │RateLimit Svc │  │ Backend │
-│      │  │Filter      │  │              │  │         │  │Filter        │  │              │  │         │
+│Client│  │Router RL   │  │RouterExtProc│  │RouterLB│  │Upstream RL   │  │RateLimit Svc │  │ Backend │
+│      │  │Filter      │  │             │  │        │  │Filter        │  │              │  │         │
 └──┬───┘  └─────┬──────┘  └──────┬──────┘  └───┬────┘  └───────┬──────┘  └──────┬───────┘  └────┬────┘
    │             │                │             │                │                │               │
    │ POST /chat  │                │             │                │                │               │
@@ -689,28 +676,28 @@ descriptors:
    │             │                │             │                │                │               │
    │             │                │ Detect soft limit exceeded   │                │               │
    │             │                │ Check PT pool availability   │                │               │
-   │             │                │─────────────────────────────────────────────>│               │
+   │             │                │─────────────────────────────────────────────->│               │
    │             │                │             │                │                │               │
    │             │                │ PT pool OK (quota available) │                │               │
-   │             │                │<─────────────────────────────────────────────│               │
+   │             │                │<─────────────────────────────────────────────-│               │
    │             │                │             │                │                │               │
    │             │                │ Set: x-endpoint-pool=provisioned              │               │
    │             │                │────────────>│                │                │               │
    │             │                │             │                │                │               │
-   │             │                │             │ Select Priority 0: PT-east-1   │               │
+   │             │                │             │ Select Priority 0: PT-east-1    │               │
    │             │                │             │───────────────>│                │               │
    │             │                │             │                │                │               │
-   │             │                │             │                │ Check backend quota (normal)  │
+   │             │                │             │                │ Check backend quota (normal)   │
    │             │                │             │                │───────────────>│               │
    │             │                │             │                │                │               │
-   │             │                │             │                │ OVER_LIMIT (429)              │
+   │             │                │             │                │ OVER_LIMIT (429)               │
    │             │                │             │                │<───────────────│               │
    │             │                │             │                │                │               │
    │             │                │             │ 429 Response   │                │               │
    │             │                │             │<───────────────│                │               │
    │             │                │             │                │                │               │
-   │             │                │             │ Retry: previous_hosts skips PT-east-1          │
-   │             │                │             │ Select PT-west-2                               │
+   │             │                │             │ Retry: previous_hosts skips PT-east-1           │
+   │             │                │             │ Select PT-west-2                                │
    │             │                │             │───────────────>│                │               │
    │             │                │             │                │                │               │
    │             │                │             │                │ Check quota    │               │
@@ -719,15 +706,15 @@ descriptors:
    │             │                │             │                │ OK             │               │
    │             │                │             │                │<───────────────│               │
    │             │                │             │                │                │               │
-   │             │                │             │                │ Forward request──────────────>│
+   │             │                │             │                │ Forward request──────────────> │
    │             │                │             │                │                │               │
    │             │                │             │                │                │   Response    │
    │             │                │             │                │                │<──────────────│
    │             │                │             │                │                │               │
-   │             │                │             │                │ Record token usage            │
+   │             │                │             │                │ Record token usage             │
    │             │                │             │                │───────────────>│               │
    │             │                │             │                │                │               │
-   │<────────────────────────────────────────────────────────────────────────────────────────────│
+   │<────────────────────────────────────────────────────────────────────────────────────────────-│
    │  Response   │                │             │                │                │               │
 ```
 
@@ -802,14 +789,10 @@ var (
 
 ## Open Questions
 
-1. How to handle the latency overhead of quota check on each request?
-   - Option: Cache quota status with short TTL
-   - Option: Async quota check with optimistic routing
+1. Should fallback be transparent to the client or return a header indicating fallback occurred?
 
-2. Should fallback be transparent to the client or return a header indicating fallback occurred?
-
-3. How to handle streaming requests where token count is unknown upfront?
+2. How to handle streaming requests where token count is unknown upfront?
    - Option: Estimate based on input tokens
    - Option: Reserve capacity and reconcile after response
 
-4. Should there be a "sticky" preference to avoid flip-flopping between backends near quota boundary?
+3. Should there be a "sticky" preference to avoid flip-flopping between backends near quota boundary?
