@@ -15,9 +15,9 @@ func TestMain(m *testing.M) {
 	e2elib.TestMain(m, e2elib.AIGatewayHelmOption{
 		AdditionalArgs: []string{
 			// Configure the additional span, access log, and metrics label for user ID.
-			"--set", "controller.spanRequestHeaderAttributes=x-tenant-id:" + teamIDAttribute,
-			"--set", "controller.metricsRequestHeaderAttributes=x-tenant-id:" + teamIDAttribute,
-			"--set", "controller.logRequestHeaderAttributes=x-tenant-id:" + teamIDAttribute,
+			"--set", "controller.spanRequestHeaderAttributes=x-tenant-id:" + tenantIDAttribute,
+			"--set", "controller.metricsRequestHeaderAttributes=x-tenant-id:" + tenantIDAttribute,
+			"--set", "controller.logRequestHeaderAttributes=x-tenant-id:" + tenantIDAttribute,
 		},
 	}, false, true,
 	)
