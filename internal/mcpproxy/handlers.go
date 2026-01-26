@@ -118,7 +118,7 @@ func (m *mcpRequestContext) serveGET(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing session ID", http.StatusBadRequest)
 		return
 	}
-	s, err := m.sessionFromID(secureClientToGatewaySessionID(sessionID), secureClientToGatewayEventID(lastEventID))
+	s, err := m.sessionFromID(secureClientToGatewaySessionID(sessionID), secureClientToGatewayEventID(lastEventID), r)
 	if err != nil {
 		m.l.Error("invalid session ID in GET request", slog.String("session_id", sessionID), slog.String("error", err.Error()))
 		http.Error(w, fmt.Sprintf("invalid session ID: %v", err), http.StatusBadRequest)
@@ -152,7 +152,7 @@ func (m *mcpRequestContext) serverDELETE(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	// we didn't care about last event id in DELETE.
-	s, err := m.sessionFromID(secureClientToGatewaySessionID(sessionID), "")
+	s, err := m.sessionFromID(secureClientToGatewaySessionID(sessionID), "", r)
 	if err != nil {
 		m.l.Error("invalid session ID in DELETE request", slog.String("session_id", sessionID), slog.String("error", err.Error()))
 		http.Error(w, fmt.Sprintf("invalid session ID: %v", err), http.StatusBadRequest)
@@ -223,7 +223,7 @@ func (m *mcpRequestContext) servePOST(w http.ResponseWriter, r *http.Request) {
 		m.metrics.RecordMethodCount(ctx, requestMethod, params)
 	}()
 	if sessionID := r.Header.Get(sessionIDHeader); sessionID != "" {
-		s, err = m.sessionFromID(secureClientToGatewaySessionID(sessionID), secureClientToGatewayEventID(r.Header.Get(lastEventIDHeader)))
+		s, err = m.sessionFromID(secureClientToGatewaySessionID(sessionID), secureClientToGatewayEventID(r.Header.Get(lastEventIDHeader)), r)
 		if err != nil {
 			errType = metrics.MCPErrorInvalidSessionID
 			m.l.Error("invalid session ID in POST request", slog.String("session_id", sessionID), slog.String("error", err.Error()))
@@ -326,7 +326,12 @@ func (m *mcpRequestContext) servePOST(w http.ResponseWriter, r *http.Request) {
 				onErrorResponse(w, http.StatusInternalServerError, "missing route header")
 				return
 			}
-			err = m.handleInitializeRequest(ctx, w, msg, params.(*mcp.InitializeParams), route, extractSubject(r), span)
+			// Extract JWT claim headers configured for this route to forward to backends.
+			var claimHeaders map[string]string
+			if routeConfig := m.routes[route]; routeConfig != nil {
+				claimHeaders = extractClaimHeaders(r, routeConfig.claimToHeaders)
+			}
+			err = m.handleInitializeRequest(ctx, w, msg, params.(*mcp.InitializeParams), route, extractSubject(r), claimHeaders, span)
 		case "notifications/initialized":
 			// According to the MCP spec, when the server receives a JSON-RPC response or notification from the client
 			// and accepts it, the server MUST return HTTP 202 Accepted with an empty body.
@@ -493,9 +498,9 @@ func errorType(err error) metrics.MCPErrorType {
 }
 
 // handleInitializeRequest handles the "initialize" JSON-RPC method.
-func (m *mcpRequestContext) handleInitializeRequest(ctx context.Context, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.InitializeParams, route, subject string, span tracingapi.MCPSpan) error {
+func (m *mcpRequestContext) handleInitializeRequest(ctx context.Context, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.InitializeParams, route, subject string, claimHeaders map[string]string, span tracingapi.MCPSpan) error {
 	m.metrics.RecordClientCapabilities(ctx, p.Capabilities, p)
-	s, err := m.newSession(ctx, p, route, subject, span)
+	s, err := m.newSession(ctx, p, route, subject, claimHeaders, span)
 	if err != nil {
 		m.l.Error("failed to create new session", slog.String("error", err.Error()))
 		onErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("failed to create new session: %v", err))
@@ -622,7 +627,7 @@ func (m *mcpRequestContext) handleClientToServerResponse(ctx context.Context, s 
 		onErrorResponse(w, http.StatusNotFound, fmt.Sprintf("unknown backend %s", backendName))
 		return fmt.Errorf("%w: unknown backend %s", errBackendNotFound, backendName)
 	}
-	resp, err := m.invokeJSONRPCRequest(ctx, s.route, backend, cse, res)
+	resp, err := m.invokeJSONRPCRequest(ctx, s.route, backend, cse, res, s.claimHeaders)
 	if err != nil {
 		onErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("failed to send: %v", err))
 		return err
@@ -1188,6 +1193,91 @@ func extractSubject(r *http.Request) string {
 	return claims.Subject
 }
 
+// extractClaimHeaders extracts JWT claims from the Authorization header and maps them to HTTP headers.
+// This is used for forwarding user identity to backend MCP servers.
+// The function assumes the JWT has already been validated by the gateway's security policy.
+func extractClaimHeaders(r *http.Request, claimToHeaders []filterapi.ClaimToHeader) map[string]string {
+	if len(claimToHeaders) == 0 {
+		return nil
+	}
+
+	authzHeader := r.Header.Get("Authorization")
+	if authzHeader == "" {
+		return nil
+	}
+	parts := strings.SplitN(authzHeader, " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
+		return nil
+	}
+
+	// Parse JWT without validation (already validated by security policy).
+	var claims jwt.MapClaims
+	_, _, err := jwt.NewParser().ParseUnverified(parts[1], &claims)
+	if err != nil {
+		return nil
+	}
+
+	result := make(map[string]string)
+	for _, mapping := range claimToHeaders {
+		if value := getNestedClaim(claims, mapping.Claim); value != "" {
+			result[mapping.Header] = value
+		}
+	}
+	return result
+}
+
+// getNestedClaim extracts a claim value using dot notation for nested claims.
+// For example, "realm_access.roles" would access claims["realm_access"]["roles"].
+// Array values are JSON-encoded, other values are converted to strings.
+func getNestedClaim(claims jwt.MapClaims, path string) string {
+	parts := strings.Split(path, ".")
+	var current interface{} = map[string]interface{}(claims)
+
+	for _, part := range parts {
+		switch v := current.(type) {
+		case map[string]interface{}:
+			current = v[part]
+		case jwt.MapClaims:
+			current = v[part]
+		default:
+			return ""
+		}
+		if current == nil {
+			return ""
+		}
+	}
+
+	// Convert the final value to string.
+	switch v := current.(type) {
+	case string:
+		return v
+	case float64:
+		// JSON numbers are decoded as float64.
+		if v == float64(int64(v)) {
+			return fmt.Sprintf("%d", int64(v))
+		}
+		return fmt.Sprintf("%v", v)
+	case bool:
+		return fmt.Sprintf("%t", v)
+	case []interface{}:
+		// Encode arrays as JSON.
+		encoded, err := json.Marshal(v)
+		if err != nil {
+			return ""
+		}
+		return string(encoded)
+	case map[string]interface{}:
+		// Encode objects as JSON.
+		encoded, err := json.Marshal(v)
+		if err != nil {
+			return ""
+		}
+		return string(encoded)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
 // handlePromptGetRequest handles the "prompts/get" JSON-RPC method.
 func (m *mcpRequestContext) handlePromptGetRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.GetPromptParams) error {
 	backendName, promptName, err := upstreamResourceName(p.Name)
@@ -1328,7 +1418,7 @@ func (m *mcpRequestContext) handleClientToServerNotificationsProgress(ctx contex
 // invokeAndProxyResponse invokes the given JSON-RPC request to the given backend and proxies the response back to the client
 // via w ResponseWriter.
 func (m *mcpRequestContext) invokeAndProxyResponse(ctx context.Context, s *session, w http.ResponseWriter, backend filterapi.MCPBackend, sess *compositeSessionEntry, req *jsonrpc.Request) error {
-	resp, err := m.invokeJSONRPCRequest(ctx, s.route, backend, sess, req)
+	resp, err := m.invokeJSONRPCRequest(ctx, s.route, backend, sess, req, s.claimHeaders)
 	if err != nil {
 		onErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("call to %s failed: %v", backend.Name, err))
 		return err
