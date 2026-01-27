@@ -22,6 +22,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
@@ -93,6 +94,7 @@ type (
 		// This is used to determine if the request is a retry request.
 		upstreamFilterCount int
 		stream              bool
+		debugLogEnabled     bool
 	}
 	// upstreamProcessor implements [Processor] for the upstream filter for the standard LLM endpoints.
 	//
@@ -123,12 +125,14 @@ func newRouterProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.
 	logger *slog.Logger,
 	tracer tracingapi.RequestTracer[ReqT, RespT, RespChunkT],
 ) *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT] {
+	debugLogEnabled := logger.Enabled(context.Background(), slog.LevelDebug)
 	return &routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]{
 		config:            config,
 		requestHeaders:    requestHeaders,
 		logger:            logger,
 		tracer:            tracer,
 		forceBodyMutation: false,
+		debugLogEnabled:   debugLogEnabled,
 	}
 }
 
@@ -171,6 +175,24 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
+
+	if r.debugLogEnabled {
+		// Use the request-scoped logger from context if available, otherwise fall back to processor logger
+		logger := loggerFromContext(ctx)
+		if logger == nil {
+			logger = r.logger
+		}
+		if redactedBody, err := r.eh.RedactSensitiveInfoFromRequest(body); err != nil {
+			logger.Warn("failed to redact sensitive info from request, ignoring and continuing", slog.Any("error", err))
+		} else {
+			if jsonBody, err := json.Marshal(redactedBody); err != nil {
+				logger.Error("failed to marshal redacted request for logging, ignoring and continuing", slog.Any("error", err))
+			} else {
+				logger.Debug("request body processing", slog.Any("request", string(jsonBody)))
+			}
+		}
+	}
+
 	if mutatedOriginalBody != nil {
 		r.originalRequestBodyRaw = mutatedOriginalBody
 		r.forceBodyMutation = true
