@@ -5206,6 +5206,11 @@ type ResponseInputItemApplyPatchCallOutputParam struct {
 	Type string `json:"type"`
 }
 
+// A tool available on an MCP server.
+
+// The properties InputSchema, Name are required.
+type ResponseOutputItemMcpListTools = ResponseInputItemMcpListToolsToolParam
+
 // A list of tools available on an MCP server.
 //
 // The properties ID, ServerLabel, Tools, Type are required.
@@ -5215,7 +5220,7 @@ type ResponseMcpListTools struct {
 	// The label of the MCP server.
 	ServerLabel string `json:"server_label"`
 	// The tools available on the server.
-	Tools []ResponseInputItemMcpListToolsToolParam `json:"tools,omitzero"`
+	Tools []ResponseOutputItemMcpListTools `json:"tools,omitzero"`
 	// Error message if the server could not list tools.
 	Error string `json:"error,omitzero"`
 	// The type of the item. Always `mcp_list_tools`.
@@ -5984,7 +5989,7 @@ func (r *ResponseOutputItemUnion) UnmarshalJSON(data []byte) error {
 		r.OfShellCall = &s
 	case "shell_call_output":
 		var s ResponseFunctionShellToolCallOutput
-		if err := json.Unmarshal(data, s); err != nil {
+		if err := json.Unmarshal(data, &s); err != nil {
 			return err
 		}
 		r.OfShellCallOutput = &s
@@ -6038,7 +6043,7 @@ type ResponseCompactionItem struct {
 	EncryptedContent string `json:"encrypted_content"`
 	// The type of the item. Always `compaction`.
 	Type      string `json:"type"`
-	CreatedBy string `json:"created_by"`
+	CreatedBy string `json:"created_by,omitzero"`
 }
 
 // An image generation request made by the model.
@@ -6080,11 +6085,11 @@ type ResponseOutputItemLocalShellCallAction struct {
 	// The type of the local shell action. Always `exec`.
 	Type string `json:"type"`
 	// Optional timeout in milliseconds for the command.
-	TimeoutMs int64 `json:"timeout_ms"`
+	TimeoutMs int64 `json:"timeout_ms,omitempty"`
 	// Optional user to run the command as.
-	User string `json:"user"`
+	User string `json:"user,omitzero"`
 	// Optional working directory to run the command in.
-	WorkingDirectory string `json:"working_directory"`
+	WorkingDirectory string `json:"working_directory,omitzero"`
 }
 
 // The output of a shell tool call.
@@ -6101,7 +6106,7 @@ type ResponseFunctionShellToolCallOutput struct {
 	Output []ResponseFunctionShellToolCallOutputOutput `json:"output"`
 	// The type of the shell call output. Always `shell_call_output`.
 	Type      string `json:"type"`
-	CreatedBy string `json:"created_by"`
+	CreatedBy string `json:"created_by,omitzero"`
 }
 
 // The content of a shell call output.
@@ -6111,7 +6116,7 @@ type ResponseFunctionShellToolCallOutputOutput struct {
 	Outcome   ResponseFunctionShellToolCallOutputOutputOutcomeUnion `json:"outcome"`
 	Stderr    string                                                `json:"stderr"`
 	Stdout    string                                                `json:"stdout"`
-	CreatedBy string                                                `json:"created_by"`
+	CreatedBy string                                                `json:"created_by,omitzero"`
 }
 
 // ResponseFunctionShellToolCallOutputOutputOutcomeUnion contains all possible
@@ -6128,13 +6133,13 @@ func (r ResponseFunctionShellToolCallOutputOutputOutcomeUnion) MarshalJSON() ([]
 	case r.OfResponseFunctionShellToolCallOutputOutputOutcomeExit != nil:
 		return json.Marshal(r.OfResponseFunctionShellToolCallOutputOutputOutcomeExit)
 	case r.OfResponseFunctionShellToolCallOutputOutputOutcomeTimeout != nil:
-		return json.Marshal(r.OfResponseFunctionShellToolCallOutputOutputOutcomeExit)
+		return json.Marshal(r.OfResponseFunctionShellToolCallOutputOutputOutcomeTimeout)
 	default:
-		return nil, errors.New("no function tool call output outcome to marshall")
+		return nil, errors.New("no function tool call output outcome to marshal")
 	}
 }
 
-func (r *ResponseFunctionShellToolCallOutputOutputOutcomeUnion) Unmarshal(data []byte) error {
+func (r *ResponseFunctionShellToolCallOutputOutputOutcomeUnion) UnmarshalJSON(data []byte) error {
 	typ := gjson.GetBytes(data, "type")
 	switch typ.String() {
 	case "timeout":
@@ -6186,7 +6191,7 @@ type ResponseApplyPatchToolCall struct {
 	// The type of the item. Always `apply_patch_call`.
 	Type string `json:"type"`
 	// The ID of the entity that created this tool call.
-	CreatedBy string `json:"created_by"`
+	CreatedBy string `json:"created_by,omitzero"`
 }
 
 // ResponseApplyPatchToolCallOperationUnion contains all possible properties and
@@ -6281,7 +6286,7 @@ type ResponseApplyPatchToolCallOutput struct {
 	// The type of the item. Always `apply_patch_call_output`.
 	Type string `json:"type"`
 	// The ID of the entity that created this tool call output.
-	CreatedBy string `json:"created_by"`
+	CreatedBy string `json:"created_by,omitzero"`
 	// Optional textual output returned by the apply patch tool.
 	Output string `json:"output"`
 }
@@ -6303,16 +6308,16 @@ type ResponseFunctionShellToolCall struct {
 	// The type of the item. Always `shell_call`.
 	Type string `json:"type"`
 	// The ID of the entity that created this tool call.
-	CreatedBy string `json:"created_by"`
+	CreatedBy string `json:"created_by,omitzero"`
 }
 
 // The shell commands and limits that describe how to run the tool call.
 type ResponseFunctionShellToolCallAction struct {
 	Commands []string `json:"commands"`
 	// Optional maximum number of characters to return from each command.
-	MaxOutputLength int64 `json:"max_output_length"`
+	MaxOutputLength int64 `json:"max_output_length,omitempty"`
 	// Optional timeout in milliseconds for the commands.
-	TimeoutMs int64 `json:"timeout_ms"`
+	TimeoutMs int64 `json:"timeout_ms,omitempty"`
 }
 
 // Represents token usage details including input tokens, output tokens, a
