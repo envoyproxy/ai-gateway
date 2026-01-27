@@ -245,6 +245,10 @@ func TestMCPRoutes(t *testing.T) {
 			expErr: "spec.backendRefs[0].securityPolicy.apiKey: Invalid value: \"object\": exactly one of secretRef or inline must be set",
 		},
 		{
+			name:   "backend_api_key_both_header_and_query.yaml",
+			expErr: "only one of header or queryParam can be set",
+		},
+		{
 			name:   "jwks_missing.yaml",
 			expErr: "spec.securityPolicy.oauth.jwks: Invalid value: \"object\": either remoteJWKS or localJWKS must be specified.",
 		},
