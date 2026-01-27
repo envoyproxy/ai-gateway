@@ -229,9 +229,15 @@ metadata:
   namespace: default
 spec:
   endpoints:
+    {{- if .IP }}
+    - ip:
+        address: {{ .IP }}
+        port: {{ .Port }}
+    {{- else }}
     - fqdn:
         hostname: {{ .Hostname }}
         port: {{ .Port }}
+    {{- end }}
 ---
 {{- end }}
 {{- if .OpenAI }}
@@ -302,7 +308,7 @@ spec:
       name: {{ .Name }}
   validation:
     wellKnownCACertificates: "System"
-    hostname: {{ .Hostname }}
+    hostname: {{ if .Hostname }}{{ .Hostname }}{{ else }}{{ .IP }}{{ end }}
 ---
 {{- end }}
 {{- end }}

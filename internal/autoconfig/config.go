@@ -9,6 +9,7 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -22,7 +23,8 @@ var configTemplate string
 // Backends are rendered as Kubernetes Backend resources with optional TLS policy.
 type Backend struct {
 	Name     string // Backend resource name (e.g., "openai", "github")
-	Hostname string // Hostname for Backend endpoint
+	Hostname string // Hostname for Backend endpoint (FQDN only)
+	IP       string // IP address for Backend endpoint (IPv4/IPv6 literal)
 	Port     int    // Port number
 	NeedsTLS bool   // Whether to generate BackendTLSPolicy resource
 }
@@ -85,9 +87,21 @@ func WriteConfig(data *ConfigData) (string, error) {
 // parsedURL holds parsed URL components for creating Backend, OpenAIConfig, and AnthropicConfig.
 type parsedURL struct {
 	hostname string
+	ip       string
 	port     int
 	version  string
 	needsTLS bool
+}
+
+func splitHost(host string) (string, string) {
+	if host == "" {
+		return "", ""
+	}
+	addr, err := netip.ParseAddr(host)
+	if err == nil {
+		return "", addr.String()
+	}
+	return host, ""
 }
 
 // parseURL extracts hostname, port, and version from the base URL.
@@ -98,10 +112,11 @@ func parseURL(baseURL string) (*parsedURL, error) {
 	}
 
 	// Extract hostname
-	hostname := u.Hostname()
-	if hostname == "" {
+	host := u.Hostname()
+	if host == "" {
 		return nil, fmt.Errorf("invalid base URL: missing hostname")
 	}
+	hostname, ip := splitHost(host)
 
 	// Determine port
 	portStr := u.Port()
@@ -133,6 +148,7 @@ func parseURL(baseURL string) (*parsedURL, error) {
 
 	return &parsedURL{
 		hostname: hostname,
+		ip:       ip,
 		port:     port,
 		version:  version,
 		needsTLS: u.Scheme == "https",
