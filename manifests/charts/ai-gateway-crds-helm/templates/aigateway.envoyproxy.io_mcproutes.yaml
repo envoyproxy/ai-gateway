@@ -213,8 +213,8 @@ spec:
                           - message: exactly one of secretRef or inline must be set
                             rule: (has(self.secretRef) && !has(self.inline)) || (!has(self.secretRef)
                               && has(self.inline))
-                          - message: only one of header or query can be set
-                            rule: '!(has(self.header) && has(self.query))'
+                          - message: only one of header or queryParam can be set
+                            rule: '!(has(self.header) && has(self.queryParam))'
                       type: object
                     toolSelector:
                       description: |-

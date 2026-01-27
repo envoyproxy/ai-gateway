@@ -152,10 +152,10 @@ type MCPBackendSecurityPolicy struct {
 }
 
 // MCPBackendAPIKey defines the configuration for the API Key Authentication to a backend.
-// When both `header` and `query` are unspecified, the API key will be injected into the "Authorization" header by default.
+// When both `header` and `queryParam` are unspecified, the API key will be injected into the "Authorization" header by default.
 //
 // +kubebuilder:validation:XValidation:rule="(has(self.secretRef) && !has(self.inline)) || (!has(self.secretRef) && has(self.inline))", message="exactly one of secretRef or inline must be set"
-// +kubebuilder:validation:XValidation:rule="!(has(self.header) && has(self.query))", message="only one of header or query can be set"
+// +kubebuilder:validation:XValidation:rule="!(has(self.header) && has(self.queryParam))", message="only one of header or queryParam can be set"
 type MCPBackendAPIKey struct {
 	// secretRef is the Kubernetes secret which contains the API keys.
 	// The key of the secret should be "apiKey".
