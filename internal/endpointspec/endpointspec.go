@@ -9,7 +9,6 @@ package endpointspec
 
 import (
 	"fmt"
-	"hash/crc32"
 
 	"github.com/tidwall/sjson"
 
@@ -19,6 +18,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
+	"github.com/envoyproxy/ai-gateway/internal/redaction"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
@@ -158,11 +158,11 @@ func (ChatCompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Ch
 			redacted.Tools[i] = tool
 			if tool.Function != nil {
 				redactedFunc := *tool.Function
-				redactedFunc.Description = redactString(redactedFunc.Description)
+				redactedFunc.Description = redaction.RedactString(redactedFunc.Description)
 				// Redact parameters by replacing with a placeholder map to preserve type safety
 				// while hiding sensitive schema information
 				if redactedFunc.Parameters != nil {
-					hash := computeContentHash(fmt.Sprintf("%v", redactedFunc.Parameters))
+					hash := redaction.ComputeContentHash(fmt.Sprintf("%v", redactedFunc.Parameters))
 					redactedFunc.Parameters = map[string]any{
 						"_redacted": fmt.Sprintf("REDACTED HASH=%s", hash),
 					}
@@ -186,7 +186,7 @@ func (ChatCompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Ch
 
 	// Redact guided JSON schema (contains raw JSON schema definition)
 	if len(req.GuidedJSON) > 0 {
-		hash := computeContentHash(string(req.GuidedJSON))
+		hash := redaction.ComputeContentHash(string(req.GuidedJSON))
 		redacted.GuidedJSON = []byte(fmt.Sprintf(`{"_redacted":"REDACTED LENGTH=%d HASH=%s"}`, len(req.GuidedJSON), hash))
 	}
 
@@ -376,37 +376,6 @@ func (RerankEndpointSpec) RedactSensitiveInfoFromRequest(req *cohereschema.Reran
 	return req, nil
 }
 
-// computeContentHash computes a fast, non-cryptographic hash for content uniqueness tracking.
-// This hash is used for debugging purposes, particularly for:
-// - Tracking cache hits/misses by correlating identical content across requests
-// - Identifying duplicate or similar requests without exposing actual content
-// - Debugging issues by matching redacted logs to specific content patterns
-//
-// We use CRC32 instead of cryptographic hashes (SHA256) because:
-// - Much faster computation (important when redacting large messages with many parts)
-// - Sufficient collision resistance for debugging and uniqueness tracking
-// - Not used for security purposes, only for correlation and debugging
-//
-// Returns an 8-character hex string representation of the CRC32 hash.
-func computeContentHash(s string) string {
-	return fmt.Sprintf("%08x", crc32.ChecksumIEEE([]byte(s)))
-}
-
-// redactString replaces sensitive string content with a placeholder containing length and hash.
-// The hash allows correlating logs with specific content for debugging without exposing
-// the actual sensitive data.
-//
-// Format: [REDACTED LENGTH=n HASH=xxxxxxxx]
-//
-// Example: "secret API key 12345" becomes "[REDACTED LENGTH=19 HASH=a3f5e8c2]"
-func redactString(s string) string {
-	if s == "" {
-		return ""
-	}
-	hash := computeContentHash(s)
-	return fmt.Sprintf("[REDACTED LENGTH=%d HASH=%s]", len(s), hash)
-}
-
 // redactMessage redacts sensitive content from a chat message while preserving its type and structure.
 // This dispatches to role-specific redaction functions based on the message type.
 func redactMessage(msg openai.ChatCompletionMessageParamUnion) openai.ChatCompletionMessageParamUnion {
@@ -442,8 +411,8 @@ func redactAssistantMessage(msg openai.ChatCompletionMessageParamUnion) openai.C
 		redactedMsg.ToolCalls = make([]openai.ChatCompletionMessageToolCallParam, len(msg.OfAssistant.ToolCalls))
 		for i, tc := range msg.OfAssistant.ToolCalls {
 			redactedToolCall := tc
-			redactedToolCall.Function.Name = redactString(tc.Function.Name)
-			redactedToolCall.Function.Arguments = redactString(tc.Function.Arguments)
+			redactedToolCall.Function.Name = redaction.RedactString(tc.Function.Name)
+			redactedToolCall.Function.Arguments = redaction.RedactString(tc.Function.Arguments)
 			redactedMsg.ToolCalls[i] = redactedToolCall
 		}
 	}
@@ -475,12 +444,12 @@ func redactToolMessage(msg openai.ChatCompletionMessageParamUnion) openai.ChatCo
 func redactContentUnion(content openai.ContentUnion) openai.ContentUnion {
 	switch v := content.Value.(type) {
 	case string:
-		return openai.ContentUnion{Value: redactString(v)}
+		return openai.ContentUnion{Value: redaction.RedactString(v)}
 	case []openai.ChatCompletionContentPartTextParam:
 		redactedParts := make([]openai.ChatCompletionContentPartTextParam, len(v))
 		for i, part := range v {
 			redactedPart := part
-			redactedPart.Text = redactString(part.Text)
+			redactedPart.Text = redaction.RedactString(part.Text)
 			redactedParts[i] = redactedPart
 		}
 		return openai.ContentUnion{Value: redactedParts}
@@ -493,7 +462,7 @@ func redactContentUnion(content openai.ContentUnion) openai.ContentUnion {
 func redactStringOrUserRoleContentUnion(content openai.StringOrUserRoleContentUnion) openai.StringOrUserRoleContentUnion {
 	switch v := content.Value.(type) {
 	case string:
-		return openai.StringOrUserRoleContentUnion{Value: redactString(v)}
+		return openai.StringOrUserRoleContentUnion{Value: redaction.RedactString(v)}
 	case []openai.ChatCompletionContentPartUserUnionParam:
 		redactedParts := make([]openai.ChatCompletionContentPartUserUnionParam, len(v))
 		for i, part := range v {
@@ -509,17 +478,17 @@ func redactStringOrUserRoleContentUnion(content openai.StringOrUserRoleContentUn
 func redactStringOrAssistantRoleContentUnion(content openai.StringOrAssistantRoleContentUnion) openai.StringOrAssistantRoleContentUnion {
 	switch v := content.Value.(type) {
 	case string:
-		return openai.StringOrAssistantRoleContentUnion{Value: redactString(v)}
+		return openai.StringOrAssistantRoleContentUnion{Value: redaction.RedactString(v)}
 	case []openai.ChatCompletionAssistantMessageParamContent:
 		redactedParts := make([]openai.ChatCompletionAssistantMessageParamContent, len(v))
 		for i, part := range v {
 			redactedPart := part
 			if part.Text != nil {
-				redactedText := redactString(*part.Text)
+				redactedText := redaction.RedactString(*part.Text)
 				redactedPart.Text = &redactedText
 			}
 			if part.Refusal != nil {
-				redactedRefusal := redactString(*part.Refusal)
+				redactedRefusal := redaction.RedactString(*part.Refusal)
 				redactedPart.Refusal = &redactedRefusal
 			}
 			redactedParts[i] = redactedPart
@@ -528,11 +497,11 @@ func redactStringOrAssistantRoleContentUnion(content openai.StringOrAssistantRol
 	case openai.ChatCompletionAssistantMessageParamContent:
 		redactedPart := v
 		if v.Text != nil {
-			redactedText := redactString(*v.Text)
+			redactedText := redaction.RedactString(*v.Text)
 			redactedPart.Text = &redactedText
 		}
 		if v.Refusal != nil {
-			redactedRefusal := redactString(*v.Refusal)
+			redactedRefusal := redaction.RedactString(*v.Refusal)
 			redactedPart.Refusal = &redactedRefusal
 		}
 		return openai.StringOrAssistantRoleContentUnion{Value: redactedPart}
@@ -552,14 +521,14 @@ func redactResponseFormat(format *openai.ChatCompletionResponseFormatUnion) *ope
 		redactedInnerSchema := redactedJSONSchema.JSONSchema
 
 		// Redact the schema name and description (may reveal internal structure)
-		redactedInnerSchema.Name = redactString(redactedInnerSchema.Name)
+		redactedInnerSchema.Name = redaction.RedactString(redactedInnerSchema.Name)
 		if redactedInnerSchema.Description != "" {
-			redactedInnerSchema.Description = redactString(redactedInnerSchema.Description)
+			redactedInnerSchema.Description = redaction.RedactString(redactedInnerSchema.Description)
 		}
 
 		// Redact the actual JSON schema (contains sensitive data model structure)
 		if len(redactedInnerSchema.Schema) > 0 {
-			hash := computeContentHash(string(redactedInnerSchema.Schema))
+			hash := redaction.ComputeContentHash(string(redactedInnerSchema.Schema))
 			redactedInnerSchema.Schema = []byte(fmt.Sprintf(`{"_redacted":"REDACTED LENGTH=%d HASH=%s"}`, len(redactedInnerSchema.Schema), hash))
 		}
 
@@ -579,21 +548,21 @@ func redactUserContentPart(part openai.ChatCompletionContentPartUserUnionParam) 
 	// Redact plain text content
 	if part.OfText != nil {
 		redactedText := *part.OfText
-		redactedText.Text = redactString(part.OfText.Text)
+		redactedText.Text = redaction.RedactString(part.OfText.Text)
 		redacted.OfText = &redactedText
 	}
 
 	// Redact image URLs (may be data URLs with embedded base64 image data)
 	if part.OfImageURL != nil {
 		redactedImage := *part.OfImageURL
-		redactedImage.ImageURL.URL = redactString(part.OfImageURL.ImageURL.URL)
+		redactedImage.ImageURL.URL = redaction.RedactString(part.OfImageURL.ImageURL.URL)
 		redacted.OfImageURL = &redactedImage
 	}
 
 	// Redact audio data (typically base64-encoded audio)
 	if part.OfInputAudio != nil {
 		redactedAudio := *part.OfInputAudio
-		redactedAudio.InputAudio.Data = redactString(part.OfInputAudio.InputAudio.Data)
+		redactedAudio.InputAudio.Data = redaction.RedactString(part.OfInputAudio.InputAudio.Data)
 		redacted.OfInputAudio = &redactedAudio
 	}
 
@@ -601,7 +570,7 @@ func redactUserContentPart(part openai.ChatCompletionContentPartUserUnionParam) 
 	if part.OfFile != nil {
 		redactedFile := *part.OfFile
 		if part.OfFile.File.FileData != "" {
-			redactedFile.File.FileData = redactString(part.OfFile.File.FileData)
+			redactedFile.File.FileData = redaction.RedactString(part.OfFile.File.FileData)
 		}
 		redacted.OfFile = &redactedFile
 	}

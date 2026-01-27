@@ -516,6 +516,18 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	if err != nil {
 		return fmt.Errorf("failed to create translator for backend %s: %w", b.Name, err)
 	}
+
+	switch redactor := u.translator.(type) {
+	case translator.ResponseRedactor:
+		enableRedaction := u.parent.config != nil && u.parent.config.EnableRedaction
+		redactor.SetRedactionConfig(u.parent.debugLogEnabled, enableRedaction, u.logger)
+	case translator.AnthropicResponseRedactor:
+		enableRedaction := u.parent.config != nil && u.parent.config.EnableRedaction
+		redactor.SetRedactionConfig(u.parent.debugLogEnabled, enableRedaction, u.logger)
+	default:
+		// Ignore if the translator does not support redaction.
+	}
+
 	return
 }
 

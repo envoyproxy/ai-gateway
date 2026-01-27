@@ -15,6 +15,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
+	"github.com/envoyproxy/ai-gateway/internal/redaction"
 )
 
 func TestChatCompletionsEndpointSpec_ParseBody(t *testing.T) {
@@ -800,7 +801,7 @@ func TestChatCompletionsEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T
 
 func TestRedactString(t *testing.T) {
 	t.Run("redact_non_empty_string", func(t *testing.T) {
-		result := redactString("sensitive data")
+		result := redaction.RedactString("sensitive data")
 		require.Contains(t, result, "[REDACTED LENGTH=14")
 		require.Contains(t, result, "HASH=")
 	})
