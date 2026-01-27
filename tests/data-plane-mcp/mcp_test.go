@@ -118,13 +118,13 @@ func TestMCP_differentPath(t *testing.T) {
 }
 
 func TestMCPAccessLogMetadata(t *testing.T) {
-	env := requireNewMCPEnv(t, false, 1200*time.Second, defaultMCPPath, "-logRequestHeaderAttributes", "x-session-id:session.id")
+	env := requireNewMCPEnv(t, false, 1200*time.Second, defaultMCPPath)
 	session := env.newSession(t)
 
 	const sessionID = "session-123"
 	_, err := session.session.CallTool(t.Context(), &mcp.CallToolParams{
 		Meta: mcp.Meta{
-			"x-session-id": sessionID,
+			"agent-session-id": sessionID,
 		},
 		Name:      defaultMCPBackendResourcePrefix + testmcp.ToolEcho.Tool.Name,
 		Arguments: testmcp.ToolEchoArgs{Text: "log test"},
@@ -148,16 +148,16 @@ func TestMCPAccessLogMetadata(t *testing.T) {
 }
 
 func TestMCPAccessLogStreamGET(t *testing.T) {
-	env := requireNewMCPEnv(t, false, 1200*time.Second, defaultMCPPath, "-logRequestHeaderAttributes", "x-session-id:session.id")
+	env := requireNewMCPEnv(t, false, 1200*time.Second, defaultMCPPath)
 	session := env.newSession(t)
 	sessionID := session.session.ID()
 
 	req, err := http.NewRequest(http.MethodGet, env.baseURL, nil)
 	require.NoError(t, err)
 	req.Header.Set("Accept", "text/event-stream")
-	// MCP GET requires Mcp-Session-Id for the stream; X-Session-Id is the log-mapping header.
+	// MCP GET requires Mcp-Session-Id for the stream; agent-session-id is the log-mapping header.
 	req.Header.Set("Mcp-Session-Id", sessionID)
-	req.Header.Set("X-Session-Id", sessionID)
+	req.Header.Set("agent-session-id", sessionID)
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)

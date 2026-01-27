@@ -132,7 +132,8 @@ Flags:
       --runtime-dir=STRING    Ephemeral runtime files directory. Defaults to
                               /tmp/aigw-$UID ($AIGW_RUNTIME_DIR)
 
-      --debug                 Enable debug logging emitted to stderr.
+      --debug                 Enable debug logging emitted to stderr
+                              ($AIGW_DEBUG).
       --admin-port=1064       HTTP port for the admin server (serves /metrics
                               and /health endpoints).
       --mcp-config=STRING     Path to MCP servers configuration file.

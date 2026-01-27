@@ -84,7 +84,7 @@ func TestMCPProxy_HTTPMethods(t *testing.T) {
 }
 
 func Test_applyLogHeaderMappings(t *testing.T) {
-	logAttrs := map[string]string{"x-session-id": "session.id"}
+	logAttrs := map[string]string{"agent-session-id": "session.id"}
 	proxyCfg := &ProxyConfig{logRequestHeaderAttributes: logAttrs}
 
 	t.Run("meta only", func(t *testing.T) {
@@ -97,17 +97,17 @@ func Test_applyLogHeaderMappings(t *testing.T) {
 		msg := &jsonrpc.Request{
 			ID:     id,
 			Method: "tools/call",
-			Params: []byte(`{"_meta":{"x-session-id":"meta-session"}}`),
+			Params: []byte(`{"_meta":{"agent-session-id":"meta-session"}}`),
 		}
 
 		reqCtx.applyLogHeaderMappings(req, msg)
-		require.Equal(t, "meta-session", req.Header.Get("x-session-id"))
+		require.Equal(t, "meta-session", req.Header.Get("agent-session-id"))
 	})
 
 	t.Run("header fallback", func(t *testing.T) {
 		reqCtx := &mcpRequestContext{
 			ProxyConfig:    proxyCfg,
-			requestHeaders: http.Header{"X-Session-Id": []string{"header-session"}},
+			requestHeaders: http.Header{"Agent-Session-Id": []string{"header-session"}},
 		}
 		req, err := http.NewRequest(http.MethodPost, "http://example", nil)
 		require.NoError(t, err)
@@ -121,7 +121,7 @@ func Test_applyLogHeaderMappings(t *testing.T) {
 		}
 
 		reqCtx.applyLogHeaderMappings(req, msg)
-		require.Equal(t, "header-session", req.Header.Get("x-session-id"))
+		require.Equal(t, "header-session", req.Header.Get("agent-session-id"))
 	})
 }
 
@@ -180,9 +180,9 @@ func Test_extractMetaFromJSONRPCMessage(t *testing.T) {
 	t.Run("meta present", func(t *testing.T) {
 		id, err := jsonrpc.MakeID("1")
 		require.NoError(t, err)
-		req := &jsonrpc.Request{ID: id, Method: "tools/call", Params: []byte(`{"_meta":{"x-session-id":"s1"}}`)}
+		req := &jsonrpc.Request{ID: id, Method: "tools/call", Params: []byte(`{"_meta":{"agent-session-id":"s1"}}`)}
 		meta := extractMetaFromJSONRPCMessage(req)
-		require.Equal(t, "s1", meta["x-session-id"])
+		require.Equal(t, "s1", meta["agent-session-id"])
 	})
 }
 

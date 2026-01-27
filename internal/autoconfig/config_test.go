@@ -34,6 +34,9 @@ var (
 	//go:embed testdata/openai.yaml
 	openaiDefaultYAML string
 
+	//go:embed testdata/openai-ip.yaml
+	openaiIPYAML string
+
 	//go:embed testdata/tars.yaml
 	tarsYAML string
 
@@ -95,6 +98,25 @@ func TestWriteConfig(t *testing.T) {
 				},
 			},
 			expected: openaiDefaultYAML,
+		},
+		{
+			name: "OpenAI with IP endpoint",
+			input: ConfigData{
+				Backends: []Backend{
+					{
+						Name:     "openai",
+						IP:       "127.0.0.1",
+						Port:     11434,
+						NeedsTLS: false,
+					},
+				},
+				OpenAI: &OpenAIConfig{
+					BackendName: "openai",
+					SchemaName:  "OpenAI",
+					Version:     "",
+				},
+			},
+			expected: openaiIPYAML,
 		},
 		{
 			name: "Azure OpenAI",

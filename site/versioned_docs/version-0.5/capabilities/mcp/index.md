@@ -344,7 +344,7 @@ authorization:
         tools:
           - backend: mcp-backend
             tool: echo
-      cel: request.mcp.params.arguments.text.matches("^Hello, .*!$") && request.headers["x-tenant"] == "t-123"
+      cel: request.mcp.params.arguments.text.matches("^Hello, .*!$") && request.headers["x-tenant-id"] == "t-123"
     - source:
         jwt:
           scopes:

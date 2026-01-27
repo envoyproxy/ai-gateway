@@ -198,7 +198,7 @@ static_resources:
                             key: mcp_request_id
                             type: STRING
                           remove: true
-                        - header: x-session-id
+                        - header: agent-session-id
                           on_header_present:
                             metadata_namespace: io.envoy.ai_gateway
                             key: session.id

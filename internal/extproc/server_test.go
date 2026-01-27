@@ -29,7 +29,9 @@ import (
 )
 
 func requireNewServerWithMockProcessor(t *testing.T) (*Server, *mockProcessor) {
-	s, err := NewServer(slog.Default())
+	s, err := NewServer(slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	})))
 	require.NoError(t, err)
 	require.NotNil(t, s)
 	s.config = &filterapi.RuntimeConfig{}
@@ -230,6 +232,7 @@ func TestServer_Process(t *testing.T) {
 	t.Run("without going through request headers phase", func(t *testing.T) {
 		// This is a regression test as in #419.
 		s, _ := requireNewServerWithMockProcessor(t)
+		s.debugLogEnabled = false // Disable debug log path to avoid redacted header logging interfering with the test.
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{}}
 		req := &extprocv3.ProcessingRequest{Request: &extprocv3.ProcessingRequest_ResponseHeaders{
 			ResponseHeaders: &extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":status", Value: "403"}}}},

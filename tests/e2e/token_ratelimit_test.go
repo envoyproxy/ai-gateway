@@ -27,13 +27,13 @@ import (
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
-// userIDAttribute is the attribute used for user ID in otel span and metrics.
+// tenantIDAttribute is the attribute used for team ID in otel span and metrics.
 // This is passed via a helm value to the AI Gateway deployment.
-const userIDAttribute = "user.id"
+const tenantIDAttribute = "tenant.id"
 
-// userIDMetricsLabel is the Prometheus label the userIDAttribute becomes when
+// tenantIDMetricsLabel is the Prometheus label the tenantIDAttribute becomes when
 // exported as a metric.
-const userIDMetricsLabel = "user_id"
+const tenantIDMetricsLabel = "tenant_id"
 
 func Test_Examples_TokenRateLimit(t *testing.T) {
 	const manifestDir = "../../examples/token_ratelimit"
@@ -81,7 +81,7 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 		require.NoError(t, err)
 		req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(fakeResponseBody)))
 		req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte("/v1/chat/completions")))
-		req.Header.Set("x-user-id", userID)
+		req.Header.Set("x-tenant-id", userID)
 		req.Header.Set("Host", "openai.com")
 
 		resp, err := http.DefaultClient.Do(req)
@@ -156,7 +156,7 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 		// notice all labels are snake_case in Prometheus even though the otel inputs are dotted.
 		query := fmt.Sprintf(
 			`sum(gen_ai_client_token_usage_sum{gateway_envoyproxy_io_owning_gateway_name = "envoy-ai-gateway-token-ratelimit"}) by (gen_ai_request_model, gen_ai_token_type, %s)`,
-			userIDMetricsLabel)
+			tenantIDMetricsLabel)
 		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/v1/query?query=%s", fwd.Address(), url.QueryEscape(query)), nil)
 		require.NoError(t, err)
 		resp, err := http.DefaultClient.Do(req)
@@ -192,8 +192,8 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 			typ := result.Metric["gen_ai_token_type"]
 			actualTypes = append(actualTypes, typ)
 			// Look up based on the label, not the attribute name it was derived from!
-			uID, ok := result.Metric[userIDMetricsLabel]
-			require.True(t, ok, userIDMetricsLabel+" should be present in the metric")
+			uID, ok := result.Metric[tenantIDMetricsLabel]
+			require.True(t, ok, tenantIDMetricsLabel+" should be present in the metric")
 			t.Logf("Type: %s, Value: %v, User ID: %s", typ, result.Value, uID)
 		}
 		// Metrics should include input, cached_input and output (total is a response

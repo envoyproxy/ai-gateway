@@ -221,7 +221,7 @@ func (s *Server) processMsg(ctx context.Context, l *slog.Logger, p Processor, re
 	case *extprocv3.ProcessingRequest_RequestHeaders:
 		requestHdrs := req.GetRequestHeaders().Headers
 		// If DEBUG log level is enabled, filter sensitive headers before logging.
-		if l.Enabled(ctx, slog.LevelDebug) {
+		if s.debugLogEnabled {
 			filteredHdrs := filterSensitiveHeadersForLogging(requestHdrs, sensitiveHeaderKeys)
 			l.Debug("request headers processing", slog.Any("request_headers", filteredHdrs))
 		}
@@ -267,7 +267,7 @@ func (s *Server) processMsg(ctx context.Context, l *slog.Logger, p Processor, re
 		}
 		resp, err := p.ProcessRequestBody(ctx, value.RequestBody)
 		// If the DEBUG log level is enabled, filter the sensitive body before logging.
-		if l.Enabled(ctx, slog.LevelDebug) {
+		if s.debugLogEnabled {
 			filteredBody := filterSensitiveRequestBodyForLogging(resp, l, sensitiveHeaderKeys)
 			l.Debug("request body processed", slog.Any("response", filteredBody))
 		}

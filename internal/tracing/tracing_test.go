@@ -573,8 +573,8 @@ func TestNewTracingFromEnv_HeaderAttributeMapping(t *testing.T) {
 	collector.SetEnv(t.Setenv)
 
 	mapping := map[string]string{
-		"x-session-id": "session.id",
-		"x-user-id":    "user.id",
+		"agent-session-id": "session.id",
+		"x-tenant-id":      "tenant.id",
 	}
 
 	result, err := NewTracingFromEnv(t.Context(), io.Discard, mapping)
@@ -582,8 +582,8 @@ func TestNewTracingFromEnv_HeaderAttributeMapping(t *testing.T) {
 	t.Cleanup(func() { _ = result.Shutdown(context.Background()) })
 
 	headers := map[string]string{
-		"x-session-id": "abc123",
-		"x-user-id":    "user456",
+		"agent-session-id": "abc123",
+		"x-tenant-id":      "user456",
 	}
 	carrier := propagation.MapCarrier{}
 
@@ -601,7 +601,7 @@ func TestNewTracingFromEnv_HeaderAttributeMapping(t *testing.T) {
 		attrs[kv.Key] = kv.Value.GetStringValue()
 	}
 	require.Equal(t, "abc123", attrs["session.id"])
-	require.Equal(t, "user456", attrs["user.id"])
+	require.Equal(t, "user456", attrs["tenant.id"])
 }
 
 // TestNewTracingFromEnv_Embeddings_Redaction tests that the OpenInference

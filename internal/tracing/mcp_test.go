@@ -27,21 +27,21 @@ func TestTracer_StartSpanAndInjectMeta(t *testing.T) {
 	tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(),
 		map[string]string{
 			"x-tracing-enrichment-user-region": "user.region",
-			"X-Session-Id":                     "session.id",
+			"agent-session-id":                 "session.id",
 			"CustomAttr":                       "custom.attr",
 		})
 
 	headers := make(http.Header)
 	headers.Add("X-Tracing-Enrichment-User-Region", "us-east-1")
-	headers.Add("X-Session-Id", "123") // should be ignored as the value in the metadata takes precedence
+	headers.Add("Agent-Session-Id", "123") // should be ignored as the value in the metadata takes precedence
 
 	reqID, _ := jsonrpc.MakeID("id")
 	r := &jsonrpc.Request{ID: reqID, Method: "initialize"}
 	p := &mcp.InitializeParams{Meta: map[string]any{
-		"x-session-id": "sess-1234", // alphabetical order wins when multiple values match case-insensitively
-		"X-SESSION-ID": "sess-4567",
-		"customattr":   "custom-value1", // exact match should win over case-insensitive match
-		"CustomAttr":   "custom-value2",
+		"Agent-Session-Id": "sess-4567", // alphabetical order wins when multiple values match case-insensitively
+		"agent-session-id": "sess-1234",
+		"customattr":       "custom-value1", // exact match should win over case-insensitive match
+		"CustomAttr":       "custom-value2",
 	}}
 	span := tracer.StartSpanAndInjectMeta(t.Context(), r, p, headers)
 
@@ -71,12 +71,12 @@ func TestTracer_StartSpanAndInjectMeta_MetaAndHeaderFallback(t *testing.T) {
 	}{
 		{
 			name:     "meta only",
-			meta:     map[string]any{"x-session-id": "meta-session"},
+			meta:     map[string]any{"agent-session-id": "meta-session"},
 			expected: "meta-session",
 		},
 		{
 			name:     "header fallback",
-			headers:  http.Header{"X-Session-Id": []string{"header-session"}},
+			headers:  http.Header{"Agent-Session-Id": []string{"header-session"}},
 			expected: "header-session",
 		},
 	}
@@ -86,7 +86,7 @@ func TestTracer_StartSpanAndInjectMeta_MetaAndHeaderFallback(t *testing.T) {
 			exporter := tracetest.NewInMemoryExporter()
 			tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
 			tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(),
-				map[string]string{"x-session-id": "session.id"})
+				map[string]string{"agent-session-id": "session.id"})
 
 			reqID, _ := jsonrpc.MakeID("id")
 			r := &jsonrpc.Request{ID: reqID, Method: "initialize"}

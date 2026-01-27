@@ -279,8 +279,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 	}
 
 	// Apply body mutations from the route and also restore original body on retry.
-	bodyMutation = applyBodyMutation(u.bodyMutator, bodyMutation,
-		u.parent.originalRequestBodyRaw, forceBodyMutation, u.logger)
+	bodyMutation = applyBodyMutation(u.bodyMutator, bodyMutation, u.parent.originalRequestBodyRaw, u.logger)
 
 	// Ensure bodyMutation is not nil for subsequent processing
 	if bodyMutation == nil {

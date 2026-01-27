@@ -73,10 +73,14 @@ type Options struct {
 	UDSPath string
 	// DisableMutatingWebhook disables the mutating webhook for the Gateway for testing purposes.
 	DisableMutatingWebhook bool
-	// MetricsRequestHeaderAttributes is the comma-separated key-value pairs for mapping HTTP request headers to Otel metric attributes.
-	MetricsRequestHeaderAttributes string
+	// RequestHeaderAttributes is the comma-separated key-value pairs for mapping HTTP request headers to Otel attributes shared across metrics, spans, and access logs.
+	RequestHeaderAttributes *string
 	// TracingRequestHeaderAttributes is the comma-separated key-value pairs for mapping HTTP request headers to otel span attributes.
-	TracingRequestHeaderAttributes string
+	TracingRequestHeaderAttributes *string
+	// MetricsRequestHeaderAttributes is the comma-separated key-value pairs for mapping HTTP request headers to Otel metric attributes.
+	MetricsRequestHeaderAttributes *string
+	// LogRequestHeaderAttributes is the comma-separated key-value pairs for mapping HTTP request headers to access log attributes.
+	LogRequestHeaderAttributes *string
 	// RootPrefix is the root prefix for all the routes handled by the AI Gateway.
 	RootPrefix string
 	// ExtProcExtraEnvVars is the semicolon-separated key=value pairs for extra environment variables in extProc container.
@@ -196,9 +200,9 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			return fmt.Errorf("failed to create controller for InferencePool: %w", err)
 		}
 	}
-
+	mcpRouteEventChan := make(chan event.GenericEvent, 100)
 	secretC := NewSecretController(c, kubernetes.NewForConfigOrDie(config), logger.
-		WithName("secret"), backendSecurityPolicyEventChan)
+		WithName("secret"), backendSecurityPolicyEventChan, mcpRouteEventChan)
 	// Do not use TypedControllerBuilderForCRD for secret, as changing a secret content doesn't change the generation.
 	if err = ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Secret{}).
@@ -212,6 +216,10 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.MCPRoute{}).
 		Owns(&gwapiv1.HTTPRoute{}).
 		Owns(&egv1a1.Backend{}).
+		WatchesRawSource(source.Channel(
+			mcpRouteEventChan,
+			&handler.EnqueueRequestForObject{},
+		)).
 		Complete(mcpRouteC); err != nil {
 		return fmt.Errorf("failed to create controller for MCPRoute: %w", err)
 	}
@@ -237,8 +245,10 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.ExtProcImagePullPolicy,
 			options.ExtProcLogLevel,
 			options.UDSPath,
-			options.MetricsRequestHeaderAttributes,
+			options.RequestHeaderAttributes,
 			options.TracingRequestHeaderAttributes,
+			options.MetricsRequestHeaderAttributes,
+			options.LogRequestHeaderAttributes,
 			options.RootPrefix,
 			options.EndpointPrefixes,
 			options.ExtProcExtraEnvVars,
@@ -280,6 +290,9 @@ const (
 	// k8sClientIndexSecretToReferencingBackendSecurityPolicy is the index name that maps
 	// from a Secret to the BackendSecurityPolicy that references it.
 	k8sClientIndexSecretToReferencingBackendSecurityPolicy = "SecretToReferencingBackendSecurityPolicy"
+	// k8sClientIndexSecretToReferencingMCPRoute is the index name that maps
+	// from a Secret to the MCPRoute that references it.
+	k8sClientIndexSecretToReferencingMCPRoute = "SecretToReferencingMCPRoute"
 	// k8sClientIndexBackendToReferencingAIGatewayRoute is the index name that maps from a Backend to the
 	// AIGatewayRoute that references it.
 	k8sClientIndexBackendToReferencingAIGatewayRoute = "BackendToReferencingAIGatewayRoute"
@@ -329,16 +342,19 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 		return fmt.Errorf("failed to create index from GatewayConfig to Gateway: %w", err)
 	}
 
-	// Apply indexes for ReferenceGrant.
 	err = indexer(ctx, &gwapiv1b1.ReferenceGrant{},
 		k8sClientIndexReferenceGrantToTargetKind, referenceGrantToTargetKindIndexFunc)
 	if err != nil {
 		return fmt.Errorf("failed to create index from target kind to ReferenceGrant: %w", err)
 	}
 
-	// Apply indexes to MCP Gateways.
 	err = indexer(ctx, &aigv1a1.MCPRoute{},
 		k8sClientIndexMCPRouteToAttachedGateway, mcpRouteToAttachedGatewayIndexFunc)
+	if err != nil {
+		return fmt.Errorf("failed to create index from Gateway to MCPRoute: %w", err)
+	}
+	err = indexer(ctx, &aigv1a1.MCPRoute{},
+		k8sClientIndexSecretToReferencingMCPRoute, mcpRouteToReferencedSecret)
 	if err != nil {
 		return fmt.Errorf("failed to create index from Gateway to MCPRoute: %w", err)
 	}
@@ -355,6 +371,24 @@ func mcpRouteToAttachedGatewayIndexFunc(o client.Object) []string {
 			namespace = string(*ref.Namespace)
 		}
 		ret = append(ret, fmt.Sprintf("%s.%s", ref.Name, namespace))
+	}
+	return ret
+}
+
+func mcpRouteToReferencedSecret(o client.Object) []string {
+	mcpRoute := o.(*aigv1a1.MCPRoute)
+	var ret []string
+	for _, ref := range mcpRoute.Spec.BackendRefs {
+		if ref.SecurityPolicy == nil || ref.SecurityPolicy.APIKey == nil || ref.SecurityPolicy.APIKey.SecretRef == nil {
+			continue
+		}
+		apiKeyRef := ref.SecurityPolicy.APIKey.SecretRef
+		// Use the namespace from parentRef if specified, otherwise use the route's namespace.
+		namespace := mcpRoute.Namespace
+		if apiKeyRef.Namespace != nil && *apiKeyRef.Namespace != "" {
+			namespace = string(*apiKeyRef.Namespace)
+		}
+		ret = append(ret, fmt.Sprintf("%s.%s", apiKeyRef.Name, namespace))
 	}
 	return ret
 }

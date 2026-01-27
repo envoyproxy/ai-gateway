@@ -91,7 +91,7 @@ func (t *tracingImpl) Shutdown(ctx context.Context) error {
 // variables and optional header attribute mapping.
 //
 // Parameters:
-//   - headerAttributeMapping: maps HTTP headers to otel span attributes (e.g. map["x-session-id"]="session.id").
+//   - headerAttributeMapping: maps HTTP headers to otel span attributes (e.g. map["agent-session-id"]="session.id").
 //     If nil, no header mapping is applied.
 //
 // Returns a tracing graph that is noop when disabled.

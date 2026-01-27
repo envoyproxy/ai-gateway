@@ -44,7 +44,7 @@ func TestMCP_standalone(t *testing.T) {
 	exampleYaml := path.Join(examplesDir, "mcp_example.yaml")
 	startAIGWCLI(t, aigwBin, nil, "run", "--debug", exampleYaml)
 
-	url := fmt.Sprintf("http://localhost:%d/mcp", 1975)
+	url := fmt.Sprintf("http://127.0.0.1:%d/mcp", 1975)
 	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "public-mcp-client", Version: "0.1.0"}, &mcp.ClientOptions{})
 	session, err := mcpClient.Connect(t.Context(), &mcp.StreamableClientTransport{
 		Endpoint: url,
@@ -148,7 +148,7 @@ func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 func TestMCP_standalone_oauth(t *testing.T) {
 	startAIGWCLI(t, aigwBin, nil, "run", "--debug", path.Join(examplesDir, "mcp_oauth_example.yaml"))
 
-	url := fmt.Sprintf("http://localhost:%d/mcp", 1975)
+	url := fmt.Sprintf("http://127.0.0.1:%d/mcp", 1975)
 
 	t.Run("fail to connect to MCP server without token", func(t *testing.T) {
 		mcpClient := mcp.NewClient(&mcp.Implementation{Name: "public-mcp-client", Version: "0.1.0"}, &mcp.ClientOptions{})

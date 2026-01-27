@@ -25,8 +25,8 @@ func TestBuildHeaderToMetadataFilter(t *testing.T) {
 	})
 	t.Run("sorted", func(t *testing.T) {
 		filter, err := buildHeaderToMetadataFilter(map[string]string{
-			"x-session-id": "session.id",
-			"x-user-id":    "user.id",
+			"agent-session-id": "session.id",
+			"x-tenant-id":      "tenant.id",
 		})
 		require.NoError(t, err)
 		require.NotNil(t, filter)
@@ -35,12 +35,12 @@ func TestBuildHeaderToMetadataFilter(t *testing.T) {
 		cfg := &htomv3.Config{}
 		require.NoError(t, filter.GetTypedConfig().UnmarshalTo(cfg))
 		require.Len(t, cfg.RequestRules, 2)
-		require.Equal(t, "x-session-id", cfg.RequestRules[0].GetHeader())
-		require.Equal(t, "x-user-id", cfg.RequestRules[1].GetHeader())
+		require.Equal(t, "agent-session-id", cfg.RequestRules[0].GetHeader())
+		require.Equal(t, "x-tenant-id", cfg.RequestRules[1].GetHeader())
 		require.Equal(t, aigv1a1.AIGatewayFilterMetadataNamespace, cfg.RequestRules[0].GetOnHeaderPresent().MetadataNamespace)
 		require.Equal(t, "session.id", cfg.RequestRules[0].GetOnHeaderPresent().Key)
 		require.Equal(t, aigv1a1.AIGatewayFilterMetadataNamespace, cfg.RequestRules[1].GetOnHeaderPresent().MetadataNamespace)
-		require.Equal(t, "user.id", cfg.RequestRules[1].GetOnHeaderPresent().Key)
+		require.Equal(t, "tenant.id", cfg.RequestRules[1].GetOnHeaderPresent().Key)
 	})
 }
 
@@ -89,36 +89,36 @@ func TestFindHeaderToMetadataFilter(t *testing.T) {
 
 func TestMergeHeaderToMetadataRules(t *testing.T) {
 	t.Run("nil-config", func(t *testing.T) {
-		require.False(t, mergeHeaderToMetadataRules(nil, map[string]string{"x-user-id": "user.id"}))
+		require.False(t, mergeHeaderToMetadataRules(nil, map[string]string{"x-tenant-id": "tenant.id"}))
 	})
 	t.Run("empty-attrs", func(t *testing.T) {
 		require.False(t, mergeHeaderToMetadataRules(&htomv3.Config{}, nil))
 	})
 	t.Run("no-missing", func(t *testing.T) {
 		cfg := &htomv3.Config{
-			RequestRules: []*htomv3.Config_Rule{{Header: "x-user-id"}},
+			RequestRules: []*htomv3.Config_Rule{{Header: "x-tenant-id"}},
 		}
-		changed := mergeHeaderToMetadataRules(cfg, map[string]string{"X-USER-ID": "user.id"})
+		changed := mergeHeaderToMetadataRules(cfg, map[string]string{"x-tenant-id": "tenant.id"})
 		require.False(t, changed)
 		require.Len(t, cfg.RequestRules, 1)
-		require.Equal(t, "x-user-id", cfg.RequestRules[0].GetHeader())
+		require.Equal(t, "x-tenant-id", cfg.RequestRules[0].GetHeader())
 	})
 	t.Run("append-missing-sorted", func(t *testing.T) {
 		cfg := &htomv3.Config{
-			RequestRules: []*htomv3.Config_Rule{{Header: "x-user-id"}},
+			RequestRules: []*htomv3.Config_Rule{{Header: "x-tenant-id"}},
 		}
 		changed := mergeHeaderToMetadataRules(cfg, map[string]string{
-			"x-session-id": "session.id",
-			"x-user-id":    "user.id",
-			"x-team-id":    "team.id",
+			"agent-session-id":  "session.id",
+			"x-forwarded-proto": "url.scheme",
+			"x-tenant-id":       "tenant.id",
 		})
 		require.True(t, changed)
 		require.Len(t, cfg.RequestRules, 3)
-		require.Equal(t, "x-user-id", cfg.RequestRules[0].GetHeader())
-		require.Equal(t, "x-session-id", cfg.RequestRules[1].GetHeader())
-		require.Equal(t, "x-team-id", cfg.RequestRules[2].GetHeader())
+		require.Equal(t, "x-tenant-id", cfg.RequestRules[0].GetHeader())
+		require.Equal(t, "agent-session-id", cfg.RequestRules[1].GetHeader())
+		require.Equal(t, "x-forwarded-proto", cfg.RequestRules[2].GetHeader())
 		require.Equal(t, "session.id", cfg.RequestRules[1].GetOnHeaderPresent().Key)
-		require.Equal(t, "team.id", cfg.RequestRules[2].GetOnHeaderPresent().Key)
+		require.Equal(t, "url.scheme", cfg.RequestRules[2].GetOnHeaderPresent().Key)
 		require.Equal(t, aigv1a1.AIGatewayFilterMetadataNamespace, cfg.RequestRules[1].GetOnHeaderPresent().MetadataNamespace)
 		require.Equal(t, aigv1a1.AIGatewayFilterMetadataNamespace, cfg.RequestRules[2].GetOnHeaderPresent().MetadataNamespace)
 	})
@@ -126,7 +126,7 @@ func TestMergeHeaderToMetadataRules(t *testing.T) {
 
 func TestInsertRequestHeaderToMetadataFilter(t *testing.T) {
 	t.Run("missing-typed-config", func(t *testing.T) {
-		s := &Server{logRequestHeaderAttributes: map[string]string{"x-user-id": "user.id"}}
+		s := &Server{logRequestHeaderAttributes: map[string]string{"x-tenant-id": "tenant.id"}}
 		filter := &httpconnectionmanagerv3.HttpFilter{Name: headerToMetadataFilterName}
 		hcm := &httpconnectionmanagerv3.HttpConnectionManager{
 			HttpFilters: []*httpconnectionmanagerv3.HttpFilter{filter, {Name: wellknown.Router}},

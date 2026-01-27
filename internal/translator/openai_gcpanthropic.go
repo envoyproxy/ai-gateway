@@ -395,7 +395,7 @@ func processAssistantContent(content openai.ChatCompletionAssistantMessageParamC
 	case openai.ChatCompletionAssistantMessageParamContentTypeThinking:
 		// thinking can not be cached: https://platform.claude.com/docs/en/build-with-claude/prompt-caching
 		if content.Text != nil && content.Signature != nil {
-			thinkBlock := anthropic.NewThinkingBlock(*content.Text, *content.Signature)
+			thinkBlock := anthropic.NewThinkingBlock(*content.Signature, *content.Text)
 			return &thinkBlock, nil
 		}
 	case openai.ChatCompletionAssistantMessageParamContentTypeRedactedThinking:

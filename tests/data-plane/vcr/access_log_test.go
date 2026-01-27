@@ -27,13 +27,13 @@ type accessLogLine struct {
 func TestAccessLogSessionID(t *testing.T) {
 	env := dataplaneenv.StartTestEnvironment(t,
 		requireUpstream, map[string]int{"upstream": 11434},
-		extprocConfig, nil, envoyConfig, true, false, 120*time.Second, "-logRequestHeaderAttributes", "x-session-id:session.id",
+		extprocConfig, nil, envoyConfig, true, false, 120*time.Second,
 	)
 	listenerPort := env.EnvoyListenerPort()
 
 	req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://localhost:%d", listenerPort), testopenai.CassetteChatBasic)
 	require.NoError(t, err)
-	req.Header.Set("X-Session-Id", "session-123")
+	req.Header.Set("agent-session-id", "session-123")
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)

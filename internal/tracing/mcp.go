@@ -82,7 +82,6 @@ func (m mcpTracer) StartSpanAndInjectMeta(ctx context.Context, req *jsonrpc.Requ
 	}
 	attrs = append(attrs, getMCPParamsAsAttributes(param)...)
 
-	// Apply header-to-attribute mapping if configured.
 	for srcName, targetName := range m.attributeMappings {
 		// Check if the attribute is present in the metadata first, as this is the common place to add custom attributes
 		// in MCP requests. Fall back to headers if not found in metadata.

@@ -112,6 +112,28 @@ func TestPopulateOpenAIEnvConfig(t *testing.T) {
 			},
 		},
 		{
+			name: "OpenAI with IP base URL",
+			envVars: map[string]string{
+				"OPENAI_API_KEY":  "sk-test123",
+				"OPENAI_BASE_URL": "http://127.0.0.1:11434/v1",
+			},
+			expected: ConfigData{
+				Backends: []Backend{
+					{
+						Name:     "openai",
+						IP:       "127.0.0.1",
+						Port:     11434,
+						NeedsTLS: false,
+					},
+				},
+				OpenAI: &OpenAIConfig{
+					BackendName: "openai",
+					SchemaName:  "OpenAI",
+					Version:     "",
+				},
+			},
+		},
+		{
 			name: "OpenAI with organization ID",
 			envVars: map[string]string{
 				"OPENAI_API_KEY": "sk-test123",
