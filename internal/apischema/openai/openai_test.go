@@ -643,7 +643,9 @@ func TestEmbeddingRequestInputUnmarshal(t *testing.T) {
 func TestEmbeddingRequestInputMarshal(t *testing.T) {
 	for _, tc := range embeddingRequestInputBenchmarkCases {
 		t.Run(tc.name, func(t *testing.T) {
-			data, err := json.Marshal(tc.expected)
+			// Wrap the expected value in EmbeddingRequestInput to test MarshalJSON
+			input := EmbeddingRequestInput{Value: tc.expected}
+			data, err := json.Marshal(input)
 			require.NoError(t, err)
 			require.JSONEq(t, string(tc.data), string(data))
 		})
@@ -1641,6 +1643,95 @@ func TestEmbeddingUnionUnmarshal(t *testing.T) {
 					t.Errorf("EmbeddingUnion Unmarshal Error. got = %v, want %v", eu.Value, tt.want)
 				}
 			}
+		})
+	}
+}
+
+func TestEmbeddingUnionMarshal(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    any
+		expected string
+	}{
+		{
+			name:     "marshal array of floats",
+			value:    []float64{1.0, 2.0, 3.0},
+			expected: `[1,2,3]`,
+		},
+		{
+			name:     "marshal string",
+			value:    "base64response",
+			expected: `"base64response"`,
+		},
+		{
+			name:     "marshal empty array",
+			value:    []float64{},
+			expected: `[]`,
+		},
+		{
+			name:     "marshal array with negative floats",
+			value:    []float64{-0.5, 0.0, 0.5},
+			expected: `[-0.5,0,0.5]`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			eu := EmbeddingUnion{Value: tt.value}
+			data, err := json.Marshal(eu)
+			require.NoError(t, err)
+			require.JSONEq(t, tt.expected, string(data))
+		})
+	}
+}
+
+func TestEmbeddingRequestInputRoundTrip(t *testing.T) {
+	tests := []struct {
+		name  string
+		input EmbeddingRequestInput
+	}{
+		{
+			name:  "string input",
+			input: EmbeddingRequestInput{Value: "test string"},
+		},
+		{
+			name:  "array of strings",
+			input: EmbeddingRequestInput{Value: []string{"hello", "world"}},
+		},
+		{
+			name:  "array of ints",
+			input: EmbeddingRequestInput{Value: []int64{1, 2, 3, 4, 5}},
+		},
+		{
+			name: "EmbeddingInputItem",
+			input: EmbeddingRequestInput{Value: EmbeddingInputItem{
+				Content:  EmbeddingContent{Value: "test content"},
+				TaskType: "RETRIEVAL_QUERY",
+				Title:    "Test Title",
+			}},
+		},
+		{
+			name: "array of EmbeddingInputItem",
+			input: EmbeddingRequestInput{Value: []EmbeddingInputItem{
+				{Content: EmbeddingContent{Value: "first"}, TaskType: "RETRIEVAL_QUERY"},
+				{Content: EmbeddingContent{Value: "second"}, TaskType: "RETRIEVAL_DOCUMENT", Title: "Doc"},
+			}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Marshal
+			data, err := json.Marshal(tt.input)
+			require.NoError(t, err)
+
+			// Unmarshal
+			var result EmbeddingRequestInput
+			err = json.Unmarshal(data, &result)
+			require.NoError(t, err)
+
+			// Compare
+			require.Equal(t, tt.input.Value, result.Value)
 		})
 	}
 }

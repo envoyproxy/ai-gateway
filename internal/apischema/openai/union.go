@@ -14,6 +14,7 @@ import (
 
 // unmarshalJSONNestedUnion is tuned to be faster with substantially reduced
 // allocations vs openai-go which has heavy use of reflection.
+// This is used by completion API prompts and only supports: string, []string, []int64, [][]int64
 func unmarshalJSONNestedUnion(typ string, data []byte) (interface{}, error) {
 	idx, err := skipLeadingWhitespace(typ, data, 0)
 	if err != nil {
@@ -62,6 +63,86 @@ func unmarshalJSONNestedUnion(typ string, data []byte) (interface{}, error) {
 
 	default:
 		return nil, fmt.Errorf("invalid %s type (must be string or array)", typ)
+	}
+}
+
+// unmarshalJSONEmbeddingInput is specialized for embedding API input parsing.
+// It supports: string, []string, EmbeddingInputItem, []EmbeddingInputItem, []int64, [][]int64
+func unmarshalJSONEmbeddingInput(typ string, data []byte) (interface{}, error) {
+	idx, err := skipLeadingWhitespace(typ, data, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	switch data[idx] {
+	case '"':
+		return unquoteOrUnmarshalJSONString(typ, data)
+
+	case '{':
+		// Single object with content/task_type/title
+		var item EmbeddingInputItem
+		err = json.Unmarshal(data, &item)
+		if err != nil {
+			return nil, fmt.Errorf("cannot unmarshal %s as EmbeddingInputItem: %w", typ, err)
+		}
+		// Validate that the content field is not empty
+		if item.Content.IsEmpty() {
+			return nil, fmt.Errorf("invalid %s type (must be string, object, or array)", typ)
+		}
+		return item, nil
+
+	case '[':
+		// Array: skip to first element
+		idx++
+		if idx, err = skipLeadingWhitespace(typ, data, idx); err != nil {
+			return nil, err
+		}
+
+		// Empty array - default to string array
+		if data[idx] == ']' {
+			return []string{}, nil
+		}
+
+		// Determine element type
+		switch data[idx] {
+		case '"':
+			// []string
+			var strs []string
+			if err := json.Unmarshal(data, &strs); err != nil {
+				return nil, fmt.Errorf("cannot unmarshal %s as []string: %w", typ, err)
+			}
+			return strs, nil
+
+		case '{':
+			// []EmbeddingInputItem
+			var items []EmbeddingInputItem
+			if err := json.Unmarshal(data, &items); err != nil {
+				return nil, fmt.Errorf("cannot unmarshal %s as []EmbeddingInputItem: %w", typ, err)
+			}
+			// Validate that all items have non-empty content
+			for _, item := range items {
+				if item.Content.IsEmpty() {
+					return nil, fmt.Errorf("invalid %s array element", typ)
+				}
+			}
+			return items, nil
+
+		case '[':
+			// [][]int64
+			var intArrays [][]int64
+			if err := json.Unmarshal(data, &intArrays); err != nil {
+				return nil, fmt.Errorf("cannot unmarshal %s as [][]int64: %w", typ, err)
+			}
+			return intArrays, nil
+
+		case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+			return unmarshalJSONInt64s(typ, data)
+		default:
+			return nil, fmt.Errorf("invalid %s array element", typ)
+		}
+
+	default:
+		return nil, fmt.Errorf("invalid %s type (must be string, object, or array)", typ)
 	}
 }
 
