@@ -155,7 +155,7 @@ spec:
                               description: Inline contains the API key as an inline
                                 string.
                               type: string
-                            query:
+                            queryParam:
                               description: |-
                                 QueryParam is the HTTP query parameter to inject the API key into.
                                 For example, if QueryParam is set to "api_key", and the API key is "mysecretkey", the request URL will be modified to include

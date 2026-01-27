@@ -188,7 +188,7 @@ type MCPBackendAPIKey struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MinLength=1
 	// +optional
-	QueryParam *string `json:"query,omitempty"`
+	QueryParam *string `json:"queryParam,omitempty"`
 }
 
 // MCPRouteSecurityPolicy defines the security policy for a MCPRoute.
