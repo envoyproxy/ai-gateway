@@ -8894,3 +8894,3842 @@ func TestResponseInstructionsUnionUnmarshalJSON(t *testing.T) {
 		})
 	}
 }
+
+func TestResponseOutputItemUnionMarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		expect []byte
+		input  ResponseOutputItemUnion
+		expErr string
+	}{
+		{
+			name:   "output message",
+			expect: []byte(`{"id":"msg_123","type":"message","role":"assistant","content": [{"text": "Hello! How can I assist you ?", "type": "output_text"}], "status":"completed"}`),
+			input: ResponseOutputItemUnion{
+				OfOutputMessage: &ResponseOutputMessage{
+					ID:   "msg_123",
+					Type: "message",
+					Role: "assistant",
+					Content: []ResponseOutputMessageContentUnion{
+						{OfOutputText: &ResponseOutputTextParam{Text: "Hello! How can I assist you ?", Type: "output_text"}},
+					},
+					Status: "completed",
+				},
+			},
+		},
+		{
+			name:   "reasoning item",
+			expect: []byte(`{"id":"reasoning_123","type":"reasoning","status":"completed","content": [{"text": "the capital of France is Paris.", "type": "reasoning_text"}], "summary": [{"text": "looking at a straightforward question: the capital of France is Paris", "type": "summary_text"}]}`),
+			input: ResponseOutputItemUnion{
+				OfReasoning: &ResponseReasoningItem{
+					ID:     "reasoning_123",
+					Type:   "reasoning",
+					Status: "completed",
+					Content: []ResponseReasoningItemContentParam{
+						{Text: "the capital of France is Paris.", Type: "reasoning_text"},
+					},
+					Summary: []ResponseReasoningItemSummaryParam{
+						{Text: "looking at a straightforward question: the capital of France is Paris", Type: "summary_text"},
+					},
+				},
+			},
+		},
+		{
+			name:   "function call",
+			expect: []byte(`{"type":"function_call","id":"func_123","call_id": "call-789","name":"get_weather","arguments": "{\"arg1\": \"value\"}"}`),
+			input: ResponseOutputItemUnion{
+				OfFunctionCall: &ResponseFunctionToolCall{
+					Type:      "function_call",
+					ID:        "func_123",
+					Name:      "get_weather",
+					CallID:    "call-789",
+					Arguments: `{"arg1": "value"}`,
+				},
+			},
+		},
+		{
+			name:   "code interpreter call",
+			expect: []byte(`{"type": "code_interpreter_call", "id": "resp-123", "container_id": "cntr_320", "status": "completed", "code": "print(\"Hello, World!\")", "outputs": [{"type": "logs", "logs": "log contents"}]}`),
+			input: ResponseOutputItemUnion{
+				OfCodeInterpreterCall: &ResponseCodeInterpreterToolCall{
+					Type:        "code_interpreter_call",
+					ID:          "resp-123",
+					ContainerID: "cntr_320",
+					Status:      "completed",
+					Code:        "print(\"Hello, World!\")",
+					Outputs: []ResponseCodeInterpreterToolCallOutputUnion{
+						{OfResponseCodeInterpreterToolCallOutputLogs: &ResponseCodeInterpreterToolCallOutputLogs{
+							Type: "logs",
+							Logs: "log contents",
+						}},
+					},
+				},
+			},
+		},
+		{
+			name: "computer_call",
+			input: ResponseOutputItemUnion{
+				OfComputerCall: &ResponseComputerToolCall{
+					Type:   "computer_call",
+					CallID: "call-456",
+					ID:     "rs-123",
+					Action: ResponseComputerToolCallActionUnionParam{
+						OfClick: &ResponseComputerToolCallActionClickParam{
+							Button: "left",
+							X:      100,
+							Y:      200,
+							Type:   "click",
+						},
+					},
+				},
+			},
+			expect: []byte(`{"type": "computer_call", "call_id": "call-456", "id": "rs-123", "action": {"type": "click", "button": "left", "x": 100, "y": 200}}`),
+		},
+		{
+			name:   "file search call",
+			expect: []byte(`{"type":"file_search_call","id":"search_123","queries": ["What is deep research?"], "results": [{"file_id": "file-2d", "filename": "deep_research_blog.pdf"}]}`),
+			input: ResponseOutputItemUnion{
+				OfFileSearchCall: &ResponseFileSearchToolCall{
+					Type: "file_search_call",
+					ID:   "search_123",
+					Results: []ResponseFileSearchToolCallResultParam{
+						{FileID: "file-2d", Filename: "deep_research_blog.pdf"},
+					},
+					Queries: []string{"What is deep research?"},
+				},
+			},
+		},
+		{
+			name:   "web search call",
+			expect: []byte(`{"type":"web_search_call","id":"web_123","action": {"type": "search", "query": "What is deep research?", "sources": [{"type": "url", "url": "https://example.com"}]}}`),
+			input: ResponseOutputItemUnion{
+				OfWebSearchCall: &ResponseFunctionWebSearch{
+					Type: "web_search_call",
+					ID:   "web_123",
+					Action: ResponseFunctionWebSearchActionUnionParam{
+						OfSearch: &ResponseFunctionWebSearchActionSearchParam{
+							Type:  "search",
+							Query: "What is deep research?",
+							Sources: []ResponseFunctionWebSearchActionSearchSourceParam{
+								{Type: "url", URL: "https://example.com"},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "compaction",
+			input: ResponseOutputItemUnion{
+				OfCompaction: &ResponseCompactionItem{
+					Type:             "compaction",
+					ID:               "resp-123",
+					EncryptedContent: "encrypted_content",
+				},
+			},
+			expect: []byte(`{"type": "compaction", "id": "resp-123", "encrypted_content": "encrypted_content"}`),
+		},
+		{
+			name: "image_generation_call",
+			input: ResponseOutputItemUnion{
+				OfImageGenerationCall: &ResponseOutputItemImageGenerationCall{
+					Type:   "image_generation_call",
+					ID:     "rs-123",
+					Status: "completed",
+					Result: "data:image/png;base64,encoded_image",
+				},
+			},
+			expect: []byte(`{"type": "image_generation_call", "id": "rs-123", "status": "completed", "result": "data:image/png;base64,encoded_image"}`),
+		},
+		{
+			name: "local_shell_call",
+			input: ResponseOutputItemUnion{
+				OfLocalShellCall: &ResponseOutputItemLocalShellCall{
+					Type:   "local_shell_call",
+					CallID: "call-123",
+					ID:     "rs-123",
+					Status: "in_progress",
+					Action: ResponseOutputItemLocalShellCallAction{
+						Type:    "exec",
+						Command: []string{"ls", "-a"},
+						Env:     map[string]string{"TEST": "test"},
+					},
+				},
+			},
+			expect: []byte(`{"type": "local_shell_call", "call_id": "call-123", "id": "rs-123", "status": "in_progress", "action": {"type": "exec", "command": ["ls", "-a"], "env": {"TEST": "test"}}}`),
+		},
+		{
+			name: "shell_call",
+			input: ResponseOutputItemUnion{
+				OfShellCall: &ResponseFunctionShellToolCall{
+					Type:   "shell_call",
+					CallID: "call-123",
+					ID:     "resp-123",
+					Status: "completed",
+					Action: ResponseFunctionShellToolCallAction{
+						Commands:        []string{"ls", "-a"},
+						MaxOutputLength: 200,
+					},
+				},
+			},
+			expect: []byte(`{"type": "shell_call", "call_id": "call-123", "id": "resp-123","status": "completed", "action": {"commands": ["ls", "-a"],"max_output_length":200}}`),
+		},
+		{
+			name: "shell_call_output",
+			input: ResponseOutputItemUnion{
+				OfShellCallOutput: &ResponseFunctionShellToolCallOutput{
+					Type:            "shell_call_output",
+					CallID:          "call-123",
+					ID:              "resp-123",
+					MaxOutputLength: 200,
+					Output: []ResponseFunctionShellToolCallOutputOutput{
+						{
+							Stderr: "",
+							Stdout: "Documents\nDownloads",
+							Outcome: ResponseFunctionShellToolCallOutputOutputOutcomeUnion{
+								OfResponseFunctionShellToolCallOutputOutputOutcomeExit: &ResponseFunctionShellToolCallOutputOutputOutcomeExit{
+									Type:     "exit",
+									ExitCode: 0,
+								},
+							},
+						},
+					},
+				},
+			},
+			expect: []byte(`{"type": "shell_call_output", "call_id": "call-123", "id": "resp-123", "max_output_length": 200, "output": [{"stderr": "", "stdout": "Documents\nDownloads", "outcome": {"type": "exit", "exit_code": 0}}]}`),
+		},
+		{
+			name: "apply_patch_call",
+			input: ResponseOutputItemUnion{
+				OfApplyPatchCall: &ResponseApplyPatchToolCall{
+					Type:   "apply_patch_call",
+					ID:     "resp-123",
+					CallID: "call-123",
+					Status: "completed",
+					Operation: ResponseApplyPatchToolCallOperationUnion{
+						OfResponseApplyPatchToolCallOperationCreateFile: &ResponseApplyPatchToolCallOperationCreateFile{
+							Type: "create_file",
+							Path: "/home/Documents",
+							Diff: "",
+						},
+					},
+				},
+			},
+			expect: []byte(`{"type": "apply_patch_call", "id": "resp-123", "call_id": "call-123", "status": "completed", "operation": {"type": "create_file", "path": "/home/Documents", "diff": ""} }`),
+		},
+		{
+			name: "apply_patch_call_output",
+			input: ResponseOutputItemUnion{
+				OfApplyPatchCallOutput: &ResponseApplyPatchToolCallOutput{
+					Type:   "apply_patch_call_output",
+					ID:     "resp-123",
+					CallID: "call-123",
+					Status: "completed",
+					Output: "log contents",
+				},
+			},
+			expect: []byte(`{"type": "apply_patch_call_output", "id": "resp-123", "call_id": "call-123", "status": "completed", "output": "log contents"}`),
+		},
+		{
+			name: "mcp_list_tools",
+			input: ResponseOutputItemUnion{
+				OfMcpListTools: &ResponseMcpListTools{
+					Type:        "mcp_list_tools",
+					ID:          "id-123",
+					ServerLabel: "test-server",
+					Tools: []ResponseOutputItemMcpListTools{
+						{InputSchema: "{\"schemaVersion\": \"1.0\"}", Name: "test"},
+					},
+				},
+			},
+			expect: []byte(`{"type": "mcp_list_tools", "id": "id-123", "server_label": "test-server", "tools": [{"input_schema": "{\"schemaVersion\": \"1.0\"}", "name": "test"}]}`),
+		},
+		{
+			name: "mcp_approval_request",
+			input: ResponseOutputItemUnion{
+				OfMcpApprovalRequest: &ResponseMcpApprovalRequest{
+					Type:        "mcp_approval_request",
+					ID:          "id-123",
+					ServerLabel: "test-server",
+					Name:        "test",
+					Arguments:   "{\"arg1\": \"val\"}",
+				},
+			},
+			expect: []byte(`{"type": "mcp_approval_request", "id": "id-123", "server_label": "test-server", "name": "test", "arguments": "{\"arg1\": \"val\"}"}`),
+		},
+		{
+			name:   "mcp call",
+			expect: []byte(`{"type":"mcp_call","id":"mcp_123","server_label": "test-server", "name": "test", "arguments": "{\"arg1\": \"val\"}", "approval_request_id": "req-123"}`),
+			input: ResponseOutputItemUnion{
+				OfMcpCall: &ResponseMcpCall{
+					Type:              "mcp_call",
+					ID:                "mcp_123",
+					ServerLabel:       "test-server",
+					Name:              "test",
+					Arguments:         "{\"arg1\": \"val\"}",
+					ApprovalRequestID: "req-123",
+				},
+			},
+		},
+		{
+			name:   "custom tool call",
+			expect: []byte(`{"type":"custom_tool_call","name":"test","id":"custom_123","call_id":"call-123","input": "some input"}`),
+			input: ResponseOutputItemUnion{
+				OfCustomToolCall: &ResponseCustomToolCall{
+					Type:   "custom_tool_call",
+					ID:     "custom_123",
+					CallID: "call-123",
+					Input:  "some input",
+					Name:   "test",
+				},
+			},
+		},
+		{
+			name:   "nil union",
+			input:  ResponseOutputItemUnion{},
+			expErr: "no output item to marshal",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := json.Marshal(tc.input)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, string(tc.expect), string(data))
+		})
+	}
+}
+
+func TestResponseOutputItemUnionUnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  []byte
+		expect ResponseOutputItemUnion
+		expErr string
+	}{
+		{
+			name:  "output message",
+			input: []byte(`{"id":"msg_123","type":"message","role":"assistant","content": [{"text": "Hello! How can I assist you ?", "type": "output_text"}], "status":"completed"}`),
+			expect: ResponseOutputItemUnion{
+				OfOutputMessage: &ResponseOutputMessage{
+					ID:   "msg_123",
+					Type: "message",
+					Role: "assistant",
+					Content: []ResponseOutputMessageContentUnion{
+						{OfOutputText: &ResponseOutputTextParam{Text: "Hello! How can I assist you ?", Type: "output_text"}},
+					},
+					Status: "completed",
+				},
+			},
+		},
+		{
+			name:  "reasoning item",
+			input: []byte(`{"id":"reasoning_123","type":"reasoning","status":"completed","content": [{"text": "the capital of France is Paris.", "type": "reasoning_text"}], "summary": [{"text": "looking at a straightforward question: the capital of France is Paris", "type": "summary_text"}]}`),
+			expect: ResponseOutputItemUnion{
+				OfReasoning: &ResponseReasoningItem{
+					ID:     "reasoning_123",
+					Type:   "reasoning",
+					Status: "completed",
+					Content: []ResponseReasoningItemContentParam{
+						{Text: "the capital of France is Paris.", Type: "reasoning_text"},
+					},
+					Summary: []ResponseReasoningItemSummaryParam{
+						{Text: "looking at a straightforward question: the capital of France is Paris", Type: "summary_text"},
+					},
+				},
+			},
+		},
+		{
+			name:  "function call",
+			input: []byte(`{"type":"function_call","id":"func_123","call_id": "call-789","name":"get_weather","arguments": "{\"arg1\": \"value\"}"}`),
+			expect: ResponseOutputItemUnion{
+				OfFunctionCall: &ResponseFunctionToolCall{
+					Type:      "function_call",
+					ID:        "func_123",
+					Name:      "get_weather",
+					CallID:    "call-789",
+					Arguments: `{"arg1": "value"}`,
+				},
+			},
+		},
+		{
+			name:  "code interpreter call",
+			input: []byte(`{"type": "code_interpreter_call", "id": "resp-123", "container_id": "cntr_320", "status": "completed", "code": "print(\"Hello, World!\")", "outputs": [{"type": "logs", "logs": "log contents"}]}`),
+			expect: ResponseOutputItemUnion{
+				OfCodeInterpreterCall: &ResponseCodeInterpreterToolCall{
+					Type:        "code_interpreter_call",
+					ID:          "resp-123",
+					ContainerID: "cntr_320",
+					Status:      "completed",
+					Code:        "print(\"Hello, World!\")",
+					Outputs: []ResponseCodeInterpreterToolCallOutputUnion{
+						{OfResponseCodeInterpreterToolCallOutputLogs: &ResponseCodeInterpreterToolCallOutputLogs{
+							Type: "logs",
+							Logs: "log contents",
+						}},
+					},
+				},
+			},
+		},
+		{
+			name: "computer_call",
+			expect: ResponseOutputItemUnion{
+				OfComputerCall: &ResponseComputerToolCall{
+					Type:   "computer_call",
+					CallID: "call-456",
+					ID:     "rs-123",
+					Action: ResponseComputerToolCallActionUnionParam{
+						OfClick: &ResponseComputerToolCallActionClickParam{
+							Button: "left",
+							X:      100,
+							Y:      200,
+							Type:   "click",
+						},
+					},
+				},
+			},
+			input: []byte(`{"type": "computer_call", "call_id": "call-456", "id": "rs-123", "action": {"type": "click", "button": "left", "x": 100, "y": 200}}`),
+		},
+		{
+			name:  "file search call",
+			input: []byte(`{"type":"file_search_call","id":"search_123","queries": ["What is deep research?"], "results": [{"file_id": "file-2d", "filename": "deep_research_blog.pdf"}]}`),
+			expect: ResponseOutputItemUnion{
+				OfFileSearchCall: &ResponseFileSearchToolCall{
+					Type: "file_search_call",
+					ID:   "search_123",
+					Results: []ResponseFileSearchToolCallResultParam{
+						{FileID: "file-2d", Filename: "deep_research_blog.pdf"},
+					},
+					Queries: []string{"What is deep research?"},
+				},
+			},
+		},
+		{
+			name:  "web search call",
+			input: []byte(`{"type":"web_search_call","id":"web_123","action": {"type": "search", "query": "What is deep research?", "sources": [{"type": "url", "url": "https://example.com"}]}}`),
+			expect: ResponseOutputItemUnion{
+				OfWebSearchCall: &ResponseFunctionWebSearch{
+					Type: "web_search_call",
+					ID:   "web_123",
+					Action: ResponseFunctionWebSearchActionUnionParam{
+						OfSearch: &ResponseFunctionWebSearchActionSearchParam{
+							Type:  "search",
+							Query: "What is deep research?",
+							Sources: []ResponseFunctionWebSearchActionSearchSourceParam{
+								{Type: "url", URL: "https://example.com"},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "compaction",
+			expect: ResponseOutputItemUnion{
+				OfCompaction: &ResponseCompactionItem{
+					Type:             "compaction",
+					ID:               "resp-123",
+					EncryptedContent: "encrypted_content",
+				},
+			},
+			input: []byte(`{"type": "compaction", "id": "resp-123", "encrypted_content": "encrypted_content"}`),
+		},
+		{
+			name: "image_generation_call",
+			expect: ResponseOutputItemUnion{
+				OfImageGenerationCall: &ResponseOutputItemImageGenerationCall{
+					Type:   "image_generation_call",
+					ID:     "rs-123",
+					Status: "completed",
+					Result: "data:image/png;base64,encoded_image",
+				},
+			},
+			input: []byte(`{"type": "image_generation_call", "id": "rs-123", "status": "completed", "result": "data:image/png;base64,encoded_image"}`),
+		},
+		{
+			name: "local_shell_call",
+			expect: ResponseOutputItemUnion{
+				OfLocalShellCall: &ResponseOutputItemLocalShellCall{
+					Type:   "local_shell_call",
+					CallID: "call-123",
+					ID:     "rs-123",
+					Status: "in_progress",
+					Action: ResponseOutputItemLocalShellCallAction{
+						Type:    "exec",
+						Command: []string{"ls", "-a"},
+						Env:     map[string]string{"TEST": "test"},
+					},
+				},
+			},
+			input: []byte(`{"type": "local_shell_call", "call_id": "call-123", "id": "rs-123", "status": "in_progress", "action": {"type": "exec", "command": ["ls", "-a"], "env": {"TEST": "test"}}}`),
+		},
+		{
+			name: "shell_call",
+			expect: ResponseOutputItemUnion{
+				OfShellCall: &ResponseFunctionShellToolCall{
+					Type:   "shell_call",
+					CallID: "call-123",
+					ID:     "resp-123",
+					Status: "completed",
+					Action: ResponseFunctionShellToolCallAction{
+						Commands:        []string{"ls", "-a"},
+						MaxOutputLength: 200,
+					},
+				},
+			},
+			input: []byte(`{"type": "shell_call", "call_id": "call-123", "id": "resp-123","status": "completed", "action": {"commands": ["ls", "-a"],"max_output_length":200}}`),
+		},
+		{
+			name: "shell_call_output",
+			expect: ResponseOutputItemUnion{
+				OfShellCallOutput: &ResponseFunctionShellToolCallOutput{
+					Type:            "shell_call_output",
+					CallID:          "call-123",
+					ID:              "resp-123",
+					MaxOutputLength: 200,
+					Output: []ResponseFunctionShellToolCallOutputOutput{
+						{
+							Stderr: "",
+							Stdout: "Documents\nDownloads",
+							Outcome: ResponseFunctionShellToolCallOutputOutputOutcomeUnion{
+								OfResponseFunctionShellToolCallOutputOutputOutcomeExit: &ResponseFunctionShellToolCallOutputOutputOutcomeExit{
+									Type:     "exit",
+									ExitCode: 0,
+								},
+							},
+						},
+					},
+				},
+			},
+			input: []byte(`{"type": "shell_call_output", "call_id": "call-123", "id": "resp-123", "max_output_length": 200, "output": [{"stderr": "", "stdout": "Documents\nDownloads", "outcome": {"type": "exit", "exit_code": 0}}]}`),
+		},
+		{
+			name: "apply_patch_call",
+			expect: ResponseOutputItemUnion{
+				OfApplyPatchCall: &ResponseApplyPatchToolCall{
+					Type:   "apply_patch_call",
+					ID:     "resp-123",
+					CallID: "call-123",
+					Status: "completed",
+					Operation: ResponseApplyPatchToolCallOperationUnion{
+						OfResponseApplyPatchToolCallOperationCreateFile: &ResponseApplyPatchToolCallOperationCreateFile{
+							Type: "create_file",
+							Path: "/home/Documents",
+							Diff: "",
+						},
+					},
+				},
+			},
+			input: []byte(`{"type": "apply_patch_call", "id": "resp-123", "call_id": "call-123", "status": "completed", "operation": {"type": "create_file", "path": "/home/Documents", "diff": ""} }`),
+		},
+		{
+			name: "apply_patch_call_output",
+			expect: ResponseOutputItemUnion{
+				OfApplyPatchCallOutput: &ResponseApplyPatchToolCallOutput{
+					Type:   "apply_patch_call_output",
+					ID:     "resp-123",
+					CallID: "call-123",
+					Status: "completed",
+					Output: "log contents",
+				},
+			},
+			input: []byte(`{"type": "apply_patch_call_output", "id": "resp-123", "call_id": "call-123", "status": "completed", "output": "log contents"}`),
+		},
+		{
+			name: "mcp_list_tools",
+			expect: ResponseOutputItemUnion{
+				OfMcpListTools: &ResponseMcpListTools{
+					Type:        "mcp_list_tools",
+					ID:          "id-123",
+					ServerLabel: "test-server",
+					Tools: []ResponseOutputItemMcpListTools{
+						{InputSchema: "{\"schemaVersion\": \"1.0\"}", Name: "test"},
+					},
+				},
+			},
+			input: []byte(`{"type": "mcp_list_tools", "id": "id-123", "server_label": "test-server", "tools": [{"input_schema": "{\"schemaVersion\": \"1.0\"}", "name": "test"}]}`),
+		},
+		{
+			name: "mcp_approval_request",
+			expect: ResponseOutputItemUnion{
+				OfMcpApprovalRequest: &ResponseMcpApprovalRequest{
+					Type:        "mcp_approval_request",
+					ID:          "id-123",
+					ServerLabel: "test-server",
+					Name:        "test",
+					Arguments:   "{\"arg1\": \"val\"}",
+				},
+			},
+			input: []byte(`{"type": "mcp_approval_request", "id": "id-123", "server_label": "test-server", "name": "test", "arguments": "{\"arg1\": \"val\"}"}`),
+		},
+		{
+			name:  "mcp call",
+			input: []byte(`{"type":"mcp_call","id":"mcp_123","server_label": "test-server", "name": "test", "arguments": "{\"arg1\": \"val\"}", "approval_request_id": "req-123"}`),
+			expect: ResponseOutputItemUnion{
+				OfMcpCall: &ResponseMcpCall{
+					Type:              "mcp_call",
+					ID:                "mcp_123",
+					ServerLabel:       "test-server",
+					Name:              "test",
+					Arguments:         "{\"arg1\": \"val\"}",
+					ApprovalRequestID: "req-123",
+				},
+			},
+		},
+		{
+			name:  "custom tool call",
+			input: []byte(`{"type":"custom_tool_call","name":"test","id":"custom_123","call_id":"call-123","input": "some input"}`),
+			expect: ResponseOutputItemUnion{
+				OfCustomToolCall: &ResponseCustomToolCall{
+					Type:   "custom_tool_call",
+					ID:     "custom_123",
+					CallID: "call-123",
+					Input:  "some input",
+					Name:   "test",
+				},
+			},
+		},
+		{
+			name:   "empty type",
+			input:  []byte(`{"type": ""}`),
+			expErr: "unknown type field value '' for response output item union",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var result ResponseOutputItemUnion
+			err := json.Unmarshal(tc.input, &result)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expect, result)
+		})
+	}
+}
+
+func TestResponseFunctionShellToolCallOutputOutputOutcomeUnionMarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		expect []byte
+		input  ResponseFunctionShellToolCallOutputOutputOutcomeUnion
+		expErr string
+	}{
+		{
+			name:   "exit outcome",
+			expect: []byte(`{"type":"exit","exit_code":0}`),
+			input: ResponseFunctionShellToolCallOutputOutputOutcomeUnion{
+				OfResponseFunctionShellToolCallOutputOutputOutcomeExit: &ResponseFunctionShellToolCallOutputOutputOutcomeExit{
+					Type:     "exit",
+					ExitCode: 0,
+				},
+			},
+		},
+		{
+			name:   "exit outcome with non-zero exit code",
+			expect: []byte(`{"type":"exit","exit_code":127}`),
+			input: ResponseFunctionShellToolCallOutputOutputOutcomeUnion{
+				OfResponseFunctionShellToolCallOutputOutputOutcomeExit: &ResponseFunctionShellToolCallOutputOutputOutcomeExit{
+					Type:     "exit",
+					ExitCode: 127,
+				},
+			},
+		},
+		{
+			name:   "timeout outcome",
+			expect: []byte(`{"type":"timeout"}`),
+			input: ResponseFunctionShellToolCallOutputOutputOutcomeUnion{
+				OfResponseFunctionShellToolCallOutputOutputOutcomeTimeout: &ResponseFunctionShellToolCallOutputOutputOutcomeTimeout{
+					Type: "timeout",
+				},
+			},
+		},
+		{
+			name:   "nil union",
+			input:  ResponseFunctionShellToolCallOutputOutputOutcomeUnion{},
+			expErr: "no function tool call output outcome to marshal",
+		},
+		{
+			name:   "exit outcome with large exit code",
+			expect: []byte(`{"type":"exit","exit_code":255}`),
+			input: ResponseFunctionShellToolCallOutputOutputOutcomeUnion{
+				OfResponseFunctionShellToolCallOutputOutputOutcomeExit: &ResponseFunctionShellToolCallOutputOutputOutcomeExit{
+					Type:     "exit",
+					ExitCode: 255,
+				},
+			},
+		},
+		{
+			name:   "exit outcome with negative exit code",
+			expect: []byte(`{"type":"exit","exit_code":-1}`),
+			input: ResponseFunctionShellToolCallOutputOutputOutcomeUnion{
+				OfResponseFunctionShellToolCallOutputOutputOutcomeExit: &ResponseFunctionShellToolCallOutputOutputOutcomeExit{
+					Type:     "exit",
+					ExitCode: -1,
+				},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := json.Marshal(tc.input)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, string(tc.expect), string(data))
+		})
+	}
+}
+
+func TestResponseFunctionShellToolCallOutputOutputOutcomeUnionUnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  []byte
+		expect ResponseFunctionShellToolCallOutputOutputOutcomeUnion
+		expErr string
+	}{
+		{
+			name:  "exit outcome",
+			input: []byte(`{"type":"exit","exit_code":0}`),
+			expect: ResponseFunctionShellToolCallOutputOutputOutcomeUnion{
+				OfResponseFunctionShellToolCallOutputOutputOutcomeExit: &ResponseFunctionShellToolCallOutputOutputOutcomeExit{
+					Type:     "exit",
+					ExitCode: 0,
+				},
+			},
+		},
+		{
+			name:  "exit outcome with non-zero exit code",
+			input: []byte(`{"type":"exit","exit_code":127}`),
+			expect: ResponseFunctionShellToolCallOutputOutputOutcomeUnion{
+				OfResponseFunctionShellToolCallOutputOutputOutcomeExit: &ResponseFunctionShellToolCallOutputOutputOutcomeExit{
+					Type:     "exit",
+					ExitCode: 127,
+				},
+			},
+		},
+		{
+			name:  "timeout outcome",
+			input: []byte(`{"type":"timeout"}`),
+			expect: ResponseFunctionShellToolCallOutputOutputOutcomeUnion{
+				OfResponseFunctionShellToolCallOutputOutputOutcomeTimeout: &ResponseFunctionShellToolCallOutputOutputOutcomeTimeout{
+					Type: "timeout",
+				},
+			},
+		},
+		{
+			name:   "empty type",
+			input:  []byte(`{"type": ""}`),
+			expErr: "unknown type field value '' for function shell tool call output outcome",
+		},
+		{
+			name:  "exit outcome with large exit code",
+			input: []byte(`{"type":"exit","exit_code":255}`),
+			expect: ResponseFunctionShellToolCallOutputOutputOutcomeUnion{
+				OfResponseFunctionShellToolCallOutputOutputOutcomeExit: &ResponseFunctionShellToolCallOutputOutputOutcomeExit{
+					Type:     "exit",
+					ExitCode: 255,
+				},
+			},
+		},
+		{
+			name:  "exit outcome with negative exit code",
+			input: []byte(`{"type":"exit","exit_code":-1}`),
+			expect: ResponseFunctionShellToolCallOutputOutputOutcomeUnion{
+				OfResponseFunctionShellToolCallOutputOutputOutcomeExit: &ResponseFunctionShellToolCallOutputOutputOutcomeExit{
+					Type:     "exit",
+					ExitCode: -1,
+				},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var result ResponseFunctionShellToolCallOutputOutputOutcomeUnion
+			err := json.Unmarshal(tc.input, &result)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expect, result)
+		})
+	}
+}
+
+func TestResponseApplyPatchToolCallOperationUnionMarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		expect []byte
+		input  ResponseApplyPatchToolCallOperationUnion
+		expErr string
+	}{
+		{
+			name:   "create file operation",
+			expect: []byte(`{"diff":"--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new","path":"src/file.txt","type":"create_file"}`),
+			input: ResponseApplyPatchToolCallOperationUnion{
+				OfResponseApplyPatchToolCallOperationCreateFile: &ResponseApplyPatchToolCallOperationCreateFile{
+					Diff: "--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new",
+					Path: "src/file.txt",
+					Type: "create_file",
+				},
+			},
+		},
+		{
+			name:   "create file operation with simple diff",
+			expect: []byte(`{"diff":"@@ -1 +1 @@\n-hello\n+goodbye","path":"test.txt","type":"create_file"}`),
+			input: ResponseApplyPatchToolCallOperationUnion{
+				OfResponseApplyPatchToolCallOperationCreateFile: &ResponseApplyPatchToolCallOperationCreateFile{
+					Diff: "@@ -1 +1 @@\n-hello\n+goodbye",
+					Path: "test.txt",
+					Type: "create_file",
+				},
+			},
+		},
+		{
+			name:   "delete file operation",
+			expect: []byte(`{"path":"src/old_file.txt","type":"delete_file"}`),
+			input: ResponseApplyPatchToolCallOperationUnion{
+				OfResponseApplyPatchToolCallOperationDeleteFile: &ResponseApplyPatchToolCallOperationDeleteFile{
+					Path: "src/old_file.txt",
+					Type: "delete_file",
+				},
+			},
+		},
+		{
+			name:   "delete file operation with nested path",
+			expect: []byte(`{"path":"src/components/button.tsx","type":"delete_file"}`),
+			input: ResponseApplyPatchToolCallOperationUnion{
+				OfResponseApplyPatchToolCallOperationDeleteFile: &ResponseApplyPatchToolCallOperationDeleteFile{
+					Path: "src/components/button.tsx",
+					Type: "delete_file",
+				},
+			},
+		},
+		{
+			name:   "update file operation",
+			expect: []byte(`{"diff":"--- a/config.yaml\n+++ b/config.yaml\n@@ -1,3 +1,4 @@\n version: 1\n+enabled: true","path":"config.yaml","type":"update_file"}`),
+			input: ResponseApplyPatchToolCallOperationUnion{
+				OfResponseApplyPatchToolCallOperationUpdateFile: &ResponseApplyPatchToolCallOperationUpdateFile{
+					Diff: "--- a/config.yaml\n+++ b/config.yaml\n@@ -1,3 +1,4 @@\n version: 1\n+enabled: true",
+					Path: "config.yaml",
+					Type: "update_file",
+				},
+			},
+		},
+		{
+			name:   "update file operation with empty diff",
+			expect: []byte(`{"diff":"","path":"empty.txt","type":"update_file"}`),
+			input: ResponseApplyPatchToolCallOperationUnion{
+				OfResponseApplyPatchToolCallOperationUpdateFile: &ResponseApplyPatchToolCallOperationUpdateFile{
+					Diff: "",
+					Path: "empty.txt",
+					Type: "update_file",
+				},
+			},
+		},
+		{
+			name:   "update file operation with multi-line diff",
+			expect: []byte(`{"diff":"--- a/main.go\n+++ b/main.go\n@@ -10,5 +10,6 @@\n package main\n import (\n \"fmt\"\n +\"os\"\n )\n func main() {","path":"main.go","type":"update_file"}`),
+			input: ResponseApplyPatchToolCallOperationUnion{
+				OfResponseApplyPatchToolCallOperationUpdateFile: &ResponseApplyPatchToolCallOperationUpdateFile{
+					Diff: "--- a/main.go\n+++ b/main.go\n@@ -10,5 +10,6 @@\n package main\n import (\n \"fmt\"\n +\"os\"\n )\n func main() {",
+					Path: "main.go",
+					Type: "update_file",
+				},
+			},
+		},
+		{
+			name:   "nil union",
+			input:  ResponseApplyPatchToolCallOperationUnion{},
+			expErr: "no apply patch tool call operation to marshal",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := json.Marshal(tc.input)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, string(tc.expect), string(data))
+		})
+	}
+}
+
+func TestResponseApplyPatchToolCallOperationUnionUnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  []byte
+		expect ResponseApplyPatchToolCallOperationUnion
+		expErr string
+	}{
+		{
+			name:  "create file operation",
+			input: []byte(`{"diff":"--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new","path":"src/file.txt","type":"create_file"}`),
+			expect: ResponseApplyPatchToolCallOperationUnion{
+				OfResponseApplyPatchToolCallOperationCreateFile: &ResponseApplyPatchToolCallOperationCreateFile{
+					Diff: "--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new",
+					Path: "src/file.txt",
+					Type: "create_file",
+				},
+			},
+		},
+		{
+			name:  "create file operation with simple diff",
+			input: []byte(`{"diff":"@@ -1 +1 @@\n-hello\n+goodbye","path":"test.txt","type":"create_file"}`),
+			expect: ResponseApplyPatchToolCallOperationUnion{
+				OfResponseApplyPatchToolCallOperationCreateFile: &ResponseApplyPatchToolCallOperationCreateFile{
+					Diff: "@@ -1 +1 @@\n-hello\n+goodbye",
+					Path: "test.txt",
+					Type: "create_file",
+				},
+			},
+		},
+		{
+			name:  "delete file operation",
+			input: []byte(`{"path":"src/old_file.txt","type":"delete_file"}`),
+			expect: ResponseApplyPatchToolCallOperationUnion{
+				OfResponseApplyPatchToolCallOperationDeleteFile: &ResponseApplyPatchToolCallOperationDeleteFile{
+					Path: "src/old_file.txt",
+					Type: "delete_file",
+				},
+			},
+		},
+		{
+			name:  "delete file operation with nested path",
+			input: []byte(`{"path":"src/components/button.tsx","type":"delete_file"}`),
+			expect: ResponseApplyPatchToolCallOperationUnion{
+				OfResponseApplyPatchToolCallOperationDeleteFile: &ResponseApplyPatchToolCallOperationDeleteFile{
+					Path: "src/components/button.tsx",
+					Type: "delete_file",
+				},
+			},
+		},
+		{
+			name:  "update file operation",
+			input: []byte(`{"diff":"--- a/config.yaml\n+++ b/config.yaml\n@@ -1,3 +1,4 @@\n version: 1\n+enabled: true","path":"config.yaml","type":"update_file"}`),
+			expect: ResponseApplyPatchToolCallOperationUnion{
+				OfResponseApplyPatchToolCallOperationUpdateFile: &ResponseApplyPatchToolCallOperationUpdateFile{
+					Diff: "--- a/config.yaml\n+++ b/config.yaml\n@@ -1,3 +1,4 @@\n version: 1\n+enabled: true",
+					Path: "config.yaml",
+					Type: "update_file",
+				},
+			},
+		},
+		{
+			name:  "update file operation with empty diff",
+			input: []byte(`{"diff":"","path":"empty.txt","type":"update_file"}`),
+			expect: ResponseApplyPatchToolCallOperationUnion{
+				OfResponseApplyPatchToolCallOperationUpdateFile: &ResponseApplyPatchToolCallOperationUpdateFile{
+					Diff: "",
+					Path: "empty.txt",
+					Type: "update_file",
+				},
+			},
+		},
+		{
+			name:  "update file operation with multi-line diff",
+			input: []byte(`{"diff":"--- a/main.go\n+++ b/main.go\n@@ -10,5 +10,6 @@\n package main\n import (\n \"fmt\"\n +\"os\"\n )\n func main() {","path":"main.go","type":"update_file"}`),
+			expect: ResponseApplyPatchToolCallOperationUnion{
+				OfResponseApplyPatchToolCallOperationUpdateFile: &ResponseApplyPatchToolCallOperationUpdateFile{
+					Diff: "--- a/main.go\n+++ b/main.go\n@@ -10,5 +10,6 @@\n package main\n import (\n \"fmt\"\n +\"os\"\n )\n func main() {",
+					Path: "main.go",
+					Type: "update_file",
+				},
+			},
+		},
+		{
+			name:   "empty type",
+			input:  []byte(`{"type": ""}`),
+			expErr: "unknown type field value '' for apply patch tool call operation",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var result ResponseApplyPatchToolCallOperationUnion
+			err := json.Unmarshal(tc.input, &result)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expect, result)
+		})
+	}
+}
+
+func TestResponseStreamEventUnionUnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  []byte
+		expect ResponseStreamEventUnion
+		expErr string
+	}{
+		{
+			name:  "audio delta event",
+			input: []byte(`{"delta":"base64data","sequence_number":1,"type":"response.audio.delta"}`),
+			expect: ResponseStreamEventUnion{
+				OfAudioDelta: &ResponseAudioDeltaEvent{
+					Delta:          "base64data",
+					SequenceNumber: 1,
+					Type:           "response.audio.delta",
+				},
+			},
+		},
+		{
+			name:  "audio done event",
+			input: []byte(`{"sequence_number":2,"type":"response.audio.done"}`),
+			expect: ResponseStreamEventUnion{
+				OfAudioDone: &ResponseAudioDoneEvent{
+					SequenceNumber: 2,
+					Type:           "response.audio.done",
+				},
+			},
+		},
+		{
+			name:  "audio transcript delta event",
+			input: []byte(`{"delta":"hello world","sequence_number":3,"type":"response.audio.transcript.delta"}`),
+			expect: ResponseStreamEventUnion{
+				OfAudioTranscriptDelta: &ResponseAudioTranscriptDeltaEvent{
+					Delta:          "hello world",
+					SequenceNumber: 3,
+					Type:           "response.audio.transcript.delta",
+				},
+			},
+		},
+		{
+			name:  "audio transcript done event",
+			input: []byte(`{"sequence_number":4,"type":"response.audio.transcript.done"}`),
+			expect: ResponseStreamEventUnion{
+				OfAudioTranscriptDone: &ResponseAudioTranscriptDoneEvent{
+					SequenceNumber: 4,
+					Type:           "response.audio.transcript.done",
+				},
+			},
+		},
+		{
+			name:  "response created event",
+			input: []byte(`{"response":{"id":"resp_123", "object": "response","created_at": 1741487325,"model": "gpt-4o-2024-08-06","status": "in_progress","temperature":1,"parallel_tool_calls":true,"top_p":1,"text":{"format": {"type": "text"}}},"sequence_number":1,"type":"response.created"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseCreated: &ResponseCreatedEvent{
+					Response: Response{
+						ID:                "resp_123",
+						Object:            "response",
+						Model:             "gpt-4o-2024-08-06",
+						CreatedAt:         JSONUNIXTime(time.Unix(int64(1741487325), 0).UTC()),
+						ParallelToolCalls: ptr.To(true),
+						Temperature:       1,
+						Status:            "in_progress",
+						TopP:              1,
+						Text: ResponseTextConfig{
+							Format: ResponseFormatTextConfigUnionParam{
+								OfText: &ResponseFormatTextParam{
+									Type: "text",
+								},
+							},
+						},
+					},
+					SequenceNumber: 1,
+					Type:           "response.created",
+				},
+			},
+		},
+		{
+			name:  "response completed event",
+			input: []byte(`{"response":{"id":"resp_123","object": "response","created_at": 1741487325,"completed_at": 1741487326,"model":"gpt-4o-2024-08-06","status":"completed","temperature":1,"parallel_tool_calls":true,"top_p":1,"output":[{"type":"message","id":"msg-123","role":"assistant","content":[{"type":"output_text","text":"Hello World!"}]}],"text":{"format": {"type": "text"}}},"sequence_number":6,"type":"response.completed"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseCompleted: &ResponseCompletedEvent{
+					Response: Response{
+						ID:                "resp_123",
+						Object:            "response",
+						Model:             "gpt-4o-2024-08-06",
+						CreatedAt:         JSONUNIXTime(time.Unix(int64(1741487325), 0).UTC()),
+						CompletedAt:       ptr.To(JSONUNIXTime(time.Unix(int64(1741487326), 0).UTC())),
+						ParallelToolCalls: ptr.To(true),
+						Temperature:       1,
+						Status:            "completed",
+						TopP:              1,
+						Output: []ResponseOutputItemUnion{
+							{
+								OfOutputMessage: &ResponseOutputMessage{
+									Type: "message",
+									ID:   "msg-123",
+									Role: "assistant",
+									Content: []ResponseOutputMessageContentUnion{
+										{
+											OfOutputText: &ResponseOutputTextParam{
+												Type: "output_text",
+												Text: "Hello World!",
+											},
+										},
+									},
+								},
+							},
+						},
+						Text: ResponseTextConfig{
+							Format: ResponseFormatTextConfigUnionParam{
+								OfText: &ResponseFormatTextParam{
+									Type: "text",
+								},
+							},
+						},
+					},
+					SequenceNumber: 6,
+					Type:           "response.completed",
+				},
+			},
+		},
+		{
+			name:  "response failed event",
+			input: []byte(`{"sequence_number":7,"type":"response.failed","response":{"id":"resp_123","object": "response","created_at": 1741487325,"model":"gpt-4o-2024-08-06","status":"failed","temperature":1,"parallel_tool_calls":true,"top_p":1,"error":{"code":"server_error","message":"The model failed to generate a response."},"text":{"format": {"type": "text"}}}}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseFailed: &ResponseFailedEvent{
+					SequenceNumber: 7,
+					Type:           "response.failed",
+					Response: Response{
+						ID:        "resp_123",
+						Object:    "response",
+						Model:     "gpt-4o-2024-08-06",
+						CreatedAt: JSONUNIXTime(time.Unix(int64(1741487325), 0).UTC()),
+						Error: ResponseError{
+							Code:    "server_error",
+							Message: "The model failed to generate a response.",
+						},
+						ParallelToolCalls: ptr.To(true),
+						Temperature:       1,
+						Status:            "failed",
+						TopP:              1,
+						Text: ResponseTextConfig{
+							Format: ResponseFormatTextConfigUnionParam{
+								OfText: &ResponseFormatTextParam{
+									Type: "text",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "response incomplete event",
+			input: []byte(`{"response":{"id":"resp_123","object": "response","created_at": 1741487325,"model":"gpt-4o-2024-08-06","status":"incomplete","temperature":1,"parallel_tool_calls":true,"top_p":1,"incomplete_details":{"reason":"max_output_tokens"},"text":{"format": {"type": "text"}}},"sequence_number":8,"type":"response.incomplete"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseIncomplete: &ResponseIncompleteEvent{
+					Response: Response{
+						ID:        "resp_123",
+						Object:    "response",
+						Model:     "gpt-4o-2024-08-06",
+						CreatedAt: JSONUNIXTime(time.Unix(int64(1741487325), 0).UTC()),
+						IncompleteDetails: ResponseIncompleteDetails{
+							Reason: "max_output_tokens",
+						},
+						ParallelToolCalls: ptr.To(true),
+						Temperature:       1,
+						Status:            "incomplete",
+						TopP:              1,
+						Text: ResponseTextConfig{
+							Format: ResponseFormatTextConfigUnionParam{
+								OfText: &ResponseFormatTextParam{
+									Type: "text",
+								},
+							},
+						},
+					},
+					SequenceNumber: 8,
+					Type:           "response.incomplete",
+				},
+			},
+		},
+		{
+			name:  "response in progress event",
+			input: []byte(`{"sequence_number":9,"type":"response.in_progress","response":{"id":"resp_123", "object": "response","created_at": 1741487325,"model": "gpt-4o-2024-08-06","status": "in_progress","temperature":1,"parallel_tool_calls":true,"top_p":1,"text":{"format": {"type": "text"}}}}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseInProgress: &ResponseInProgressEvent{
+					SequenceNumber: 9,
+					Type:           "response.in_progress",
+					Response: Response{
+						ID:                "resp_123",
+						Object:            "response",
+						Model:             "gpt-4o-2024-08-06",
+						CreatedAt:         JSONUNIXTime(time.Unix(int64(1741487325), 0).UTC()),
+						ParallelToolCalls: ptr.To(true),
+						Temperature:       1,
+						Status:            "in_progress",
+						TopP:              1,
+						Text: ResponseTextConfig{
+							Format: ResponseFormatTextConfigUnionParam{
+								OfText: &ResponseFormatTextParam{
+									Type: "text",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "response queued event",
+			input: []byte(`{"response":{"id":"resp_123", "object": "response","created_at": 1741487325,"model": "gpt-4o-2024-08-06","status": "queued","temperature":1,"parallel_tool_calls":true,"top_p":1,"text":{"format": {"type": "text"}}},"sequence_number":10,"type":"response.queued"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseQueued: &ResponseQueuedEvent{
+					Response: Response{
+						ID:                "resp_123",
+						Object:            "response",
+						Model:             "gpt-4o-2024-08-06",
+						CreatedAt:         JSONUNIXTime(time.Unix(int64(1741487325), 0).UTC()),
+						ParallelToolCalls: ptr.To(true),
+						Temperature:       1,
+						Status:            "queued",
+						TopP:              1,
+						Text: ResponseTextConfig{
+							Format: ResponseFormatTextConfigUnionParam{
+								OfText: &ResponseFormatTextParam{
+									Type: "text",
+								},
+							},
+						},
+					},
+					SequenceNumber: 10,
+					Type:           "response.queued",
+				},
+			},
+		},
+		{
+			name:  "error event",
+			input: []byte(`{"code":"invalid_request_error","message":"Invalid request","param":"model","sequence_number":11,"type":"error"}`),
+			expect: ResponseStreamEventUnion{
+				OfError: &ResponseErrorEvent{
+					Code:           "invalid_request_error",
+					Message:        "Invalid request",
+					Param:          "model",
+					SequenceNumber: 11,
+					Type:           "error",
+				},
+			},
+		},
+		{
+			name:  "response text delta event",
+			input: []byte(`{"delta":"test","sequence_number":1,"content_index":0,"item_id":"msg-1","output_index":0,"type":"response.output_text.delta"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseTextDelta: &ResponseTextDeltaEvent{
+					Delta:          "test",
+					SequenceNumber: 1,
+					Type:           "response.output_text.delta",
+					ContentIndex:   0,
+					ItemID:         "msg-1",
+					OutputIndex:    0,
+				},
+			},
+		},
+		{
+			name:  "response text done event",
+			input: []byte(`{"sequence_number":13,"text":"Hello World!","content_index":0,"output_index":0,"item_id":"msg_123","type":"response.output_text.done"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseTextDone: &ResponseTextDoneEvent{
+					SequenceNumber: 13,
+					Type:           "response.output_text.done",
+					Text:           "Hello World!",
+					ItemID:         "msg_123",
+					ContentIndex:   0,
+					OutputIndex:    0,
+				},
+			},
+		},
+		{
+			name:  "response refusal delta event",
+			input: []byte(`{"delta":"I can't","sequence_number":14,"content_index":0,"output_index":0,"item_id":"msg_123","type":"response.refusal.delta"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseRefusalDelta: &ResponseRefusalDeltaEvent{
+					Delta:          "I can't",
+					SequenceNumber: 14,
+					Type:           "response.refusal.delta",
+					ContentIndex:   0,
+					OutputIndex:    0,
+					ItemID:         "msg_123",
+				},
+			},
+		},
+		{
+			name:  "response refusal done event",
+			input: []byte(`{"sequence_number":15,"content_index":0,"output_index":0,"item_id":"msg_123","refusal":"final refusal text","type":"response.refusal.done"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseRefusalDone: &ResponseRefusalDoneEvent{
+					SequenceNumber: 15,
+					Type:           "response.refusal.done",
+					ContentIndex:   0,
+					OutputIndex:    0,
+					ItemID:         "msg_123",
+					Refusal:        "final refusal text",
+				},
+			},
+		},
+		{
+			name:  "response content part added event",
+			input: []byte(`{"content_index":0,"item_id":"item_1","output_index":0,"part":{"type":"output_text","text":""},"sequence_number":16,"type":"response.content_part.added"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseContentPartAdded: &ResponseContentPartAddedEvent{
+					ContentIndex: 0,
+					ItemID:       "item_1",
+					OutputIndex:  0,
+					Part: ResponseContentPartAddedEventPartUnion{
+						OfResponseOutputText: &ResponseOutputTextParam{
+							Type: "output_text",
+							Text: "",
+						},
+					},
+					SequenceNumber: 16,
+					Type:           "response.content_part.added",
+				},
+			},
+		},
+		{
+			name:  "response content part done event",
+			input: []byte(`{"content_index":0,"item_id":"item_1","output_index":0,"part":{"type":"output_text","text":"Hello World!"},"sequence_number":17,"type":"response.content_part.done"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseContentPartDone: &ResponseContentPartDoneEvent{
+					ContentIndex: 0,
+					ItemID:       "item_1",
+					OutputIndex:  0,
+					Part: ResponseContentPartDoneEventPartUnion{
+						OfResponseOutputText: &ResponseOutputTextParam{
+							Text: "Hello World!",
+							Type: "output_text",
+						},
+					},
+					SequenceNumber: 17,
+					Type:           "response.content_part.done",
+				},
+			},
+		},
+		{
+			name:  "response output item added event",
+			input: []byte(`{"item":{"type":"message","id":"msg_123","status":"in_progress","role":"assistant"},"output_index":0,"sequence_number":18,"type":"response.output_item.added"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseOutputItemAdded: &ResponseOutputItemAddedEvent{
+					Item: ResponseOutputItemUnion{
+						OfOutputMessage: &ResponseOutputMessage{
+							Type:   "message",
+							ID:     "msg_123",
+							Status: "in_progress",
+							Role:   "assistant",
+						},
+					},
+					OutputIndex:    0,
+					SequenceNumber: 18,
+					Type:           "response.output_item.added",
+				},
+			},
+		},
+		{
+			name:  "response output item done event",
+			input: []byte(`{"item":{"type":"message","id":"msg_123","status":"in_progress","role":"assistant","content":[{"type":"output_text", "text":"Hello World!"}]},"output_index":1,"sequence_number":19,"type":"response.output_item.done"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseOutputItemDone: &ResponseOutputItemDoneEvent{
+					Item: ResponseOutputItemUnion{
+						OfOutputMessage: &ResponseOutputMessage{
+							Type:   "message",
+							ID:     "msg_123",
+							Status: "in_progress",
+							Role:   "assistant",
+							Content: []ResponseOutputMessageContentUnion{
+								{
+									OfOutputText: &ResponseOutputTextParam{
+										Type: "output_text",
+										Text: "Hello World!",
+									},
+								},
+							},
+						},
+					},
+					OutputIndex:    1,
+					SequenceNumber: 19,
+					Type:           "response.output_item.done",
+				},
+			},
+		},
+		{
+			name:  "response function call arguments delta event",
+			input: []byte(`{"delta":"{","item_id":"item_1","output_index":0,"sequence_number":20,"type":"response.function_call_arguments.delta"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseFunctionCallArgumentsDelta: &ResponseFunctionCallArgumentsDeltaEvent{
+					Delta:          "{",
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 20,
+					Type:           "response.function_call_arguments.delta",
+				},
+			},
+		},
+		{
+			name:  "response function call arguments done event",
+			input: []byte(`{"arguments":"{}","item_id":"item_1","name":"test_function","output_index":0,"sequence_number":21,"type":"response.function_call_arguments.done"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseFunctionCallArgumentsDone: &ResponseFunctionCallArgumentsDoneEvent{
+					Arguments:      "{}",
+					ItemID:         "item_1",
+					Name:           "test_function",
+					OutputIndex:    0,
+					SequenceNumber: 21,
+					Type:           "response.function_call_arguments.done",
+				},
+			},
+		},
+		{
+			name:  "response reasoning text delta event",
+			input: []byte(`{"content_index":0,"delta":"thinking","item_id":"item_1","output_index":0,"sequence_number":22,"type":"response.reasoning_text.delta"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseReasoningTextDelta: &ResponseReasoningTextDeltaEvent{
+					ContentIndex:   0,
+					Delta:          "thinking",
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 22,
+					Type:           "response.reasoning_text.delta",
+				},
+			},
+		},
+		{
+			name:  "response reasoning text done event",
+			input: []byte(`{"content_index":0,"item_id":"item_1","output_index":0,"sequence_number":23,"text":"reasoning text","type":"response.reasoning_text.done"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseReasoningTextDone: &ResponseReasoningTextDoneEvent{
+					ContentIndex:   0,
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 23,
+					Text:           "reasoning text",
+					Type:           "response.reasoning_text.done",
+				},
+			},
+		},
+		{
+			name:  "response reasoning summary text delta event",
+			input: []byte(`{"delta":"summary","item_id":"item_1","output_index":0,"summary_index":0,"sequence_number":24,"type":"response.reasoning_summary_text.delta"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseReasoningSummaryTextDelta: &ResponseReasoningSummaryTextDeltaEvent{
+					Delta:          "summary",
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 24,
+					SummaryIndex:   0,
+					Type:           "response.reasoning_summary_text.delta",
+				},
+			},
+		},
+		{
+			name:  "response reasoning summary text done event",
+			input: []byte(`{"item_id":"item_1","output_index":0,"summary_index":0,"sequence_number":25,"text":"summary done","type":"response.reasoning_summary_text.done"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseReasoningSummaryTextDone: &ResponseReasoningSummaryTextDoneEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 25,
+					Text:           "summary done",
+					SummaryIndex:   0,
+					Type:           "response.reasoning_summary_text.done",
+				},
+			},
+		},
+		{
+			name:  "response reasoning summary part added event",
+			input: []byte(`{"item_id":"item_1","output_index":0,"part":{"text":"text","type":"summary_text"},"sequence_number":26,"summary_index":0,"type":"response.reasoning_summary_part.added"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseReasoningSummaryPartAdded: &ResponseReasoningSummaryPartAddedEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					Part:           ResponseReasoningSummaryPartAddedEventPart{Text: "text", Type: "summary_text"},
+					SequenceNumber: 26,
+					SummaryIndex:   0,
+					Type:           "response.reasoning_summary_part.added",
+				},
+			},
+		},
+		{
+			name:  "response reasoning summary part done event",
+			input: []byte(`{"item_id":"item_1","output_index":0,"part":{"text":"text","type":"summary_text"},"sequence_number":27,"summary_index":0,"type":"response.reasoning_summary_part.done"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseReasoningSummaryPartDone: &ResponseReasoningSummaryPartDoneEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					Part:           ResponseReasoningSummaryPartDoneEventPart{Text: "text", Type: "summary_text"},
+					SequenceNumber: 27,
+					SummaryIndex:   0,
+					Type:           "response.reasoning_summary_part.done",
+				},
+			},
+		},
+		{
+			name:  "code interpreter call code delta event",
+			input: []byte(`{"delta":"code","item_id":"item_1","output_index":0,"sequence_number":28,"type":"response.code_interpreter_call_code.delta"}`),
+			expect: ResponseStreamEventUnion{
+				OfCodeInterpreterCallCodeDelta: &ResponseCodeInterpreterCallCodeDeltaEvent{
+					Delta:          "code",
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 28,
+					Type:           "response.code_interpreter_call_code.delta",
+				},
+			},
+		},
+		{
+			name:  "code interpreter call code done event",
+			input: []byte(`{"code":"print('hello')","item_id":"item_1","output_index":0,"sequence_number":29,"type":"response.code_interpreter_call_code.done"}`),
+			expect: ResponseStreamEventUnion{
+				OfCodeInterpreterCallCodeDone: &ResponseCodeInterpreterCallCodeDoneEvent{
+					Code:           "print('hello')",
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 29,
+					Type:           "response.code_interpreter_call_code.done",
+				},
+			},
+		},
+		{
+			name:  "code interpreter call in progress event",
+			input: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":30,"type":"response.code_interpreter_call.in_progress"}`),
+			expect: ResponseStreamEventUnion{
+				OfCodeInterpreterCallInprogress: &ResponseCodeInterpreterCallInProgressEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 30,
+					Type:           "response.code_interpreter_call.in_progress",
+				},
+			},
+		},
+		{
+			name:  "code interpreter call interpreting event",
+			input: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":31,"type":"response.code_interpreter_call.interpreting"}`),
+			expect: ResponseStreamEventUnion{
+				OfCodeInterpreterCallInterpreting: &ResponseCodeInterpreterCallInterpretingEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 31,
+					Type:           "response.code_interpreter_call.interpreting",
+				},
+			},
+		},
+		{
+			name:  "code interpreter call completed event",
+			input: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":32,"type":"response.code_interpreter_call.completed"}`),
+			expect: ResponseStreamEventUnion{
+				OfCodeInterpreterCallCompleted: &ResponseCodeInterpreterCallCompletedEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 32,
+					Type:           "response.code_interpreter_call.completed",
+				},
+			},
+		},
+		{
+			name:  "response file search call searching event",
+			input: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":33,"type":"response.file_search_call.searching"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseFileSearchCallSearching: &ResponseFileSearchCallSearchingEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 33,
+					Type:           "response.file_search_call.searching",
+				},
+			},
+		},
+		{
+			name:  "response file search call in progress event",
+			input: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":34,"type":"response.file_search_call.in_progress"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseFileSearchCallInProgress: &ResponseFileSearchCallInProgressEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 34,
+					Type:           "response.file_search_call.in_progress",
+				},
+			},
+		},
+		{
+			name:  "response file search call completed event",
+			input: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":35,"type":"response.file_search_call.completed"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseFileSearchCallCompleted: &ResponseFileSearchCallCompletedEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 35,
+					Type:           "response.file_search_call.completed",
+				},
+			},
+		},
+		{
+			name:  "response web search call searching event",
+			input: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":36,"type":"response.web_search_call.searching"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseWebSearchCallSearching: &ResponseWebSearchCallSearchingEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 36,
+					Type:           "response.web_search_call.searching",
+				},
+			},
+		},
+		{
+			name:  "response web search call in progress event",
+			input: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":37,"type":"response.web_search_call.in_progress"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseWebSearchCallInProgress: &ResponseWebSearchCallInProgressEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 37,
+					Type:           "response.web_search_call.in_progress",
+				},
+			},
+		},
+		{
+			name:  "response web search call completed event",
+			input: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":38,"type":"response.web_search_call.completed"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseWebSearchCallCompleted: &ResponseWebSearchCallCompletedEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 38,
+					Type:           "response.web_search_call.completed",
+				},
+			},
+		},
+		{
+			name:  "response image gen call in progress event",
+			input: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":39,"type":"response.image_generation_call.in_progress"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseImageGenCallInProgress: &ResponseImageGenCallInProgressEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 39,
+					Type:           "response.image_generation_call.in_progress",
+				},
+			},
+		},
+		{
+			name:  "response image gen call generating event",
+			input: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":40,"type":"response.image_generation_call.generating"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseImageGenCallGenerating: &ResponseImageGenCallGeneratingEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 40,
+					Type:           "response.image_generation_call.generating",
+				},
+			},
+		},
+		{
+			name:  "response image gen call partial image event",
+			input: []byte(`{"item_id":"item_1","output_index":0,"partial_image_index":0,"partial_image_b64":"bas64encodedImage","sequence_number":41,"type":"response.image_generation_call.partial_image"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseImageGenCallPartialImage: &ResponseImageGenCallPartialImageEvent{
+					ItemID:            "item_1",
+					OutputIndex:       0,
+					SequenceNumber:    41,
+					PartialImageIndex: 0,
+					PartialImageB64:   "bas64encodedImage",
+					Type:              "response.image_generation_call.partial_image",
+				},
+			},
+		},
+		{
+			name:  "response image gen call completed event",
+			input: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":42,"type":"response.image_generation_call.completed"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseImageGenCallCompleted: &ResponseImageGenCallCompletedEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 42,
+					Type:           "response.image_generation_call.completed",
+				},
+			},
+		},
+		{
+			name:  "response mcp call arguments delta event",
+			input: []byte(`{"delta":"{","item_id":"item_1","output_index":0,"sequence_number":43,"type":"response.mcp_call_arguments.delta"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseMcpCallArgumentsDelta: &ResponseMcpCallArgumentsDeltaEvent{
+					Delta:          "{",
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 43,
+					Type:           "response.mcp_call_arguments.delta",
+				},
+			},
+		},
+		{
+			name:  "response mcp call arguments done event",
+			input: []byte(`{"arguments":"{}","item_id":"item_1","output_index":0,"sequence_number":44,"type":"response.mcp_call_arguments.done"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseMcpCallArgumentsDone: &ResponseMcpCallArgumentsDoneEvent{
+					Arguments:      "{}",
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 44,
+					Type:           "response.mcp_call_arguments.done",
+				},
+			},
+		},
+		{
+			name:  "response mcp call in progress event",
+			input: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":45,"type":"response.mcp_call.in_progress"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseMcpCallInProgress: &ResponseMcpCallInProgressEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 45,
+					Type:           "response.mcp_call.in_progress",
+				},
+			},
+		},
+		{
+			name:  "response mcp call completed event",
+			input: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":46,"type":"response.mcp_call.completed"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseMcpCallCompleted: &ResponseMcpCallCompletedEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 46,
+					Type:           "response.mcp_call.completed",
+				},
+			},
+		},
+		{
+			name:  "response mcp call failed event",
+			input: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":47,"type":"response.mcp_call.failed"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseMcpCallFailed: &ResponseMcpCallFailedEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 47,
+					Type:           "response.mcp_call.failed",
+				},
+			},
+		},
+		{
+			name:  "response mcp list tools in progress event",
+			input: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":48,"type":"response.mcp_list_tools.in_progress"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseMcpListToolsInProgress: &ResponseMcpListToolsInProgressEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 48,
+					Type:           "response.mcp_list_tools.in_progress",
+				},
+			},
+		},
+		{
+			name:  "response mcp list tools completed event",
+			input: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":49,"type":"response.mcp_list_tools.completed"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseMcpListToolsCompleted: &ResponseMcpListToolsCompletedEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 49,
+					Type:           "response.mcp_list_tools.completed",
+				},
+			},
+		},
+		{
+			name:  "response mcp list tools failed event",
+			input: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":50,"type":"response.mcp_list_tools.failed"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseMcpListToolsFailed: &ResponseMcpListToolsFailedEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 50,
+					Type:           "response.mcp_list_tools.failed",
+				},
+			},
+		},
+		{
+			name:  "response output text annotation added event",
+			input: []byte(`{"annotation":{"type":"test"},"annotation_index":0,"content_index":0,"item_id":"item_1","output_index":0,"sequence_number":51,"type":"response.output_text.annotation.added"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseOutputTextAnnotationAdded: &ResponseOutputTextAnnotationAddedEvent{
+					Annotation:      map[string]any{"type": "test"},
+					AnnotationIndex: 0,
+					ContentIndex:    0,
+					ItemID:          "item_1",
+					OutputIndex:     0,
+					SequenceNumber:  51,
+					Type:            "response.output_text.annotation.added",
+				},
+			},
+		},
+		{
+			name:  "response custom tool call input delta event",
+			input: []byte(`{"delta":"{","item_id":"item_1","output_index":0,"sequence_number":52,"type":"response.custom_tool_call_input.delta"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseCustomToolCallInputDelta: &ResponseCustomToolCallInputDeltaEvent{
+					Delta:          "{",
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 52,
+					Type:           "response.custom_tool_call_input.delta",
+				},
+			},
+		},
+		{
+			name:  "response custom tool call input done event",
+			input: []byte(`{"input":"{}","item_id":"item_1","output_index":0,"sequence_number":53,"type":"response.custom_tool_call_input.done"}`),
+			expect: ResponseStreamEventUnion{
+				OfResponseCustomToolCallInputDone: &ResponseCustomToolCallInputDoneEvent{
+					Input:          "{}",
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 53,
+					Type:           "response.custom_tool_call_input.done",
+				},
+			},
+		},
+		{
+			name:   "empty type",
+			input:  []byte(`{"type": ""}`),
+			expErr: "unknown type field value '' for response stream event",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var result ResponseStreamEventUnion
+			err := json.Unmarshal(tc.input, &result)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expect, result)
+		})
+	}
+}
+
+func TestResponseStreamEventUnionMarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		expect []byte
+		input  ResponseStreamEventUnion
+		expErr string
+	}{
+		{
+			name:   "audio delta event",
+			expect: []byte(`{"delta":"base64data","sequence_number":1,"type":"response.audio.delta"}`),
+			input: ResponseStreamEventUnion{
+				OfAudioDelta: &ResponseAudioDeltaEvent{
+					Delta:          "base64data",
+					SequenceNumber: 1,
+					Type:           "response.audio.delta",
+				},
+			},
+		},
+		{
+			name:   "audio done event",
+			expect: []byte(`{"sequence_number":2,"type":"response.audio.done"}`),
+			input: ResponseStreamEventUnion{
+				OfAudioDone: &ResponseAudioDoneEvent{
+					SequenceNumber: 2,
+					Type:           "response.audio.done",
+				},
+			},
+		},
+		{
+			name:   "audio transcript delta event",
+			expect: []byte(`{"delta":"hello world","sequence_number":3,"type":"response.audio.transcript.delta"}`),
+			input: ResponseStreamEventUnion{
+				OfAudioTranscriptDelta: &ResponseAudioTranscriptDeltaEvent{
+					Delta:          "hello world",
+					SequenceNumber: 3,
+					Type:           "response.audio.transcript.delta",
+				},
+			},
+		},
+		{
+			name:   "audio transcript done event",
+			expect: []byte(`{"sequence_number":4,"type":"response.audio.transcript.done"}`),
+			input: ResponseStreamEventUnion{
+				OfAudioTranscriptDone: &ResponseAudioTranscriptDoneEvent{
+					SequenceNumber: 4,
+					Type:           "response.audio.transcript.done",
+				},
+			},
+		},
+		{
+			name:   "response created event",
+			expect: []byte(`{"response":{"id":"resp_123", "object": "response","created_at": 1741487325,"model": "gpt-4o-2024-08-06","status": "in_progress","temperature":1,"parallel_tool_calls":true,"top_p":1,"text":{"format": {"type": "text"}}},"sequence_number":1,"type":"response.created"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseCreated: &ResponseCreatedEvent{
+					Response: Response{
+						ID:                "resp_123",
+						Object:            "response",
+						Model:             "gpt-4o-2024-08-06",
+						CreatedAt:         JSONUNIXTime(time.Unix(int64(1741487325), 0).UTC()),
+						ParallelToolCalls: ptr.To(true),
+						Temperature:       1,
+						Status:            "in_progress",
+						TopP:              1,
+						Text: ResponseTextConfig{
+							Format: ResponseFormatTextConfigUnionParam{
+								OfText: &ResponseFormatTextParam{
+									Type: "text",
+								},
+							},
+						},
+					},
+					SequenceNumber: 1,
+					Type:           "response.created",
+				},
+			},
+		},
+		{
+			name:   "response completed event",
+			expect: []byte(`{"response":{"id":"resp_123","object": "response","created_at": 1741487325,"completed_at": 1741487326,"model":"gpt-4o-2024-08-06","status":"completed","temperature":1,"parallel_tool_calls":true,"top_p":1,"output":[{"type":"message","id":"msg-123","role":"assistant","content":[{"type":"output_text","text":"Hello World!"}]}],"text":{"format": {"type": "text"}}},"sequence_number":6,"type":"response.completed"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseCompleted: &ResponseCompletedEvent{
+					Response: Response{
+						ID:                "resp_123",
+						Object:            "response",
+						Model:             "gpt-4o-2024-08-06",
+						CreatedAt:         JSONUNIXTime(time.Unix(int64(1741487325), 0).UTC()),
+						CompletedAt:       ptr.To(JSONUNIXTime(time.Unix(int64(1741487326), 0).UTC())),
+						ParallelToolCalls: ptr.To(true),
+						Temperature:       1,
+						Status:            "completed",
+						TopP:              1,
+						Output: []ResponseOutputItemUnion{
+							{
+								OfOutputMessage: &ResponseOutputMessage{
+									Type: "message",
+									ID:   "msg-123",
+									Role: "assistant",
+									Content: []ResponseOutputMessageContentUnion{
+										{
+											OfOutputText: &ResponseOutputTextParam{
+												Type: "output_text",
+												Text: "Hello World!",
+											},
+										},
+									},
+								},
+							},
+						},
+						Text: ResponseTextConfig{
+							Format: ResponseFormatTextConfigUnionParam{
+								OfText: &ResponseFormatTextParam{
+									Type: "text",
+								},
+							},
+						},
+					},
+					SequenceNumber: 6,
+					Type:           "response.completed",
+				},
+			},
+		},
+		{
+			name:   "response failed event",
+			expect: []byte(`{"sequence_number":7,"type":"response.failed","response":{"id":"resp_123","object": "response","created_at": 1741487325,"model":"gpt-4o-2024-08-06","status":"failed","temperature":1,"parallel_tool_calls":true,"top_p":1,"error":{"code":"server_error","message":"The model failed to generate a response."},"text":{"format": {"type": "text"}}}}`),
+			input: ResponseStreamEventUnion{
+				OfResponseFailed: &ResponseFailedEvent{
+					SequenceNumber: 7,
+					Type:           "response.failed",
+					Response: Response{
+						ID:        "resp_123",
+						Object:    "response",
+						Model:     "gpt-4o-2024-08-06",
+						CreatedAt: JSONUNIXTime(time.Unix(int64(1741487325), 0).UTC()),
+						Error: ResponseError{
+							Code:    "server_error",
+							Message: "The model failed to generate a response.",
+						},
+						ParallelToolCalls: ptr.To(true),
+						Temperature:       1,
+						Status:            "failed",
+						TopP:              1,
+						Text: ResponseTextConfig{
+							Format: ResponseFormatTextConfigUnionParam{
+								OfText: &ResponseFormatTextParam{
+									Type: "text",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:   "response incomplete event",
+			expect: []byte(`{"response":{"id":"resp_123","object": "response","created_at": 1741487325,"model":"gpt-4o-2024-08-06","status":"incomplete","temperature":1,"parallel_tool_calls":true,"top_p":1,"incomplete_details":{"reason":"max_output_tokens"},"text":{"format": {"type": "text"}}},"sequence_number":8,"type":"response.incomplete"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseIncomplete: &ResponseIncompleteEvent{
+					Response: Response{
+						ID:        "resp_123",
+						Object:    "response",
+						Model:     "gpt-4o-2024-08-06",
+						CreatedAt: JSONUNIXTime(time.Unix(int64(1741487325), 0).UTC()),
+						IncompleteDetails: ResponseIncompleteDetails{
+							Reason: "max_output_tokens",
+						},
+						ParallelToolCalls: ptr.To(true),
+						Temperature:       1,
+						Status:            "incomplete",
+						TopP:              1,
+						Text: ResponseTextConfig{
+							Format: ResponseFormatTextConfigUnionParam{
+								OfText: &ResponseFormatTextParam{
+									Type: "text",
+								},
+							},
+						},
+					},
+					SequenceNumber: 8,
+					Type:           "response.incomplete",
+				},
+			},
+		},
+		{
+			name:   "response in progress event",
+			expect: []byte(`{"sequence_number":9,"type":"response.in_progress","response":{"id":"resp_123", "object": "response","created_at": 1741487325,"model": "gpt-4o-2024-08-06","status": "in_progress","temperature":1,"parallel_tool_calls":true,"top_p":1,"text":{"format": {"type": "text"}}}}`),
+			input: ResponseStreamEventUnion{
+				OfResponseInProgress: &ResponseInProgressEvent{
+					SequenceNumber: 9,
+					Type:           "response.in_progress",
+					Response: Response{
+						ID:                "resp_123",
+						Object:            "response",
+						Model:             "gpt-4o-2024-08-06",
+						CreatedAt:         JSONUNIXTime(time.Unix(int64(1741487325), 0).UTC()),
+						ParallelToolCalls: ptr.To(true),
+						Temperature:       1,
+						Status:            "in_progress",
+						TopP:              1,
+						Text: ResponseTextConfig{
+							Format: ResponseFormatTextConfigUnionParam{
+								OfText: &ResponseFormatTextParam{
+									Type: "text",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:   "response queued event",
+			expect: []byte(`{"response":{"id":"resp_123", "object": "response","created_at": 1741487325,"model": "gpt-4o-2024-08-06","status": "queued","temperature":1,"parallel_tool_calls":true,"top_p":1,"text":{"format": {"type": "text"}}},"sequence_number":10,"type":"response.queued"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseQueued: &ResponseQueuedEvent{
+					Response: Response{
+						ID:                "resp_123",
+						Object:            "response",
+						Model:             "gpt-4o-2024-08-06",
+						CreatedAt:         JSONUNIXTime(time.Unix(int64(1741487325), 0).UTC()),
+						ParallelToolCalls: ptr.To(true),
+						Temperature:       1,
+						Status:            "queued",
+						TopP:              1,
+						Text: ResponseTextConfig{
+							Format: ResponseFormatTextConfigUnionParam{
+								OfText: &ResponseFormatTextParam{
+									Type: "text",
+								},
+							},
+						},
+					},
+					SequenceNumber: 10,
+					Type:           "response.queued",
+				},
+			},
+		},
+		{
+			name:   "error event",
+			expect: []byte(`{"code":"invalid_request_error","message":"Invalid request","param":"model","sequence_number":11,"type":"error"}`),
+			input: ResponseStreamEventUnion{
+				OfError: &ResponseErrorEvent{
+					Code:           "invalid_request_error",
+					Message:        "Invalid request",
+					Param:          "model",
+					SequenceNumber: 11,
+					Type:           "error",
+				},
+			},
+		},
+		{
+			name:   "response text delta event",
+			expect: []byte(`{"delta":"test","sequence_number":1,"content_index":0,"item_id":"msg-1","output_index":0,"type":"response.output_text.delta"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseTextDelta: &ResponseTextDeltaEvent{
+					Delta:          "test",
+					SequenceNumber: 1,
+					Type:           "response.output_text.delta",
+					ContentIndex:   0,
+					ItemID:         "msg-1",
+					OutputIndex:    0,
+				},
+			},
+		},
+		{
+			name:   "response text done event",
+			expect: []byte(`{"sequence_number":13,"text":"Hello World!","content_index":0,"output_index":0,"item_id":"msg_123","type":"response.output_text.done"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseTextDone: &ResponseTextDoneEvent{
+					SequenceNumber: 13,
+					Type:           "response.output_text.done",
+					Text:           "Hello World!",
+					ItemID:         "msg_123",
+					ContentIndex:   0,
+					OutputIndex:    0,
+				},
+			},
+		},
+		{
+			name:   "response refusal delta event",
+			expect: []byte(`{"delta":"I can't","sequence_number":14,"content_index":0,"output_index":0,"item_id":"msg_123","type":"response.refusal.delta"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseRefusalDelta: &ResponseRefusalDeltaEvent{
+					Delta:          "I can't",
+					SequenceNumber: 14,
+					Type:           "response.refusal.delta",
+					ContentIndex:   0,
+					OutputIndex:    0,
+					ItemID:         "msg_123",
+				},
+			},
+		},
+		{
+			name:   "response refusal done event",
+			expect: []byte(`{"sequence_number":15,"content_index":0,"output_index":0,"item_id":"msg_123","refusal":"final refusal text","type":"response.refusal.done"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseRefusalDone: &ResponseRefusalDoneEvent{
+					SequenceNumber: 15,
+					Type:           "response.refusal.done",
+					ContentIndex:   0,
+					OutputIndex:    0,
+					ItemID:         "msg_123",
+					Refusal:        "final refusal text",
+				},
+			},
+		},
+		{
+			name:   "response content part added event",
+			expect: []byte(`{"content_index":0,"item_id":"item_1","output_index":0,"part":{"type":"output_text","text":""},"sequence_number":16,"type":"response.content_part.added"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseContentPartAdded: &ResponseContentPartAddedEvent{
+					ContentIndex: 0,
+					ItemID:       "item_1",
+					OutputIndex:  0,
+					Part: ResponseContentPartAddedEventPartUnion{
+						OfResponseOutputText: &ResponseOutputTextParam{
+							Type: "output_text",
+							Text: "",
+						},
+					},
+					SequenceNumber: 16,
+					Type:           "response.content_part.added",
+				},
+			},
+		},
+		{
+			name:   "response content part done event",
+			expect: []byte(`{"content_index":0,"item_id":"item_1","output_index":0,"part":{"type":"output_text","text":"Hello World!"},"sequence_number":17,"type":"response.content_part.done"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseContentPartDone: &ResponseContentPartDoneEvent{
+					ContentIndex: 0,
+					ItemID:       "item_1",
+					OutputIndex:  0,
+					Part: ResponseContentPartDoneEventPartUnion{
+						OfResponseOutputText: &ResponseOutputTextParam{
+							Text: "Hello World!",
+							Type: "output_text",
+						},
+					},
+					SequenceNumber: 17,
+					Type:           "response.content_part.done",
+				},
+			},
+		},
+		{
+			name:   "response output item added event",
+			expect: []byte(`{"item":{"type":"message","id":"msg_123","status":"in_progress","role":"assistant"},"output_index":0,"sequence_number":18,"type":"response.output_item.added"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseOutputItemAdded: &ResponseOutputItemAddedEvent{
+					Item: ResponseOutputItemUnion{
+						OfOutputMessage: &ResponseOutputMessage{
+							Type:   "message",
+							ID:     "msg_123",
+							Status: "in_progress",
+							Role:   "assistant",
+						},
+					},
+					OutputIndex:    0,
+					SequenceNumber: 18,
+					Type:           "response.output_item.added",
+				},
+			},
+		},
+		{
+			name:   "response output item done event",
+			expect: []byte(`{"item":{"type":"message","id":"msg_123","status":"in_progress","role":"assistant","content":[{"type":"output_text", "text":"Hello World!"}]},"output_index":1,"sequence_number":19,"type":"response.output_item.done"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseOutputItemDone: &ResponseOutputItemDoneEvent{
+					Item: ResponseOutputItemUnion{
+						OfOutputMessage: &ResponseOutputMessage{
+							Type:   "message",
+							ID:     "msg_123",
+							Status: "in_progress",
+							Role:   "assistant",
+							Content: []ResponseOutputMessageContentUnion{
+								{
+									OfOutputText: &ResponseOutputTextParam{
+										Type: "output_text",
+										Text: "Hello World!",
+									},
+								},
+							},
+						},
+					},
+					OutputIndex:    1,
+					SequenceNumber: 19,
+					Type:           "response.output_item.done",
+				},
+			},
+		},
+		{
+			name:   "response function call arguments delta event",
+			expect: []byte(`{"delta":"{","item_id":"item_1","output_index":0,"sequence_number":20,"type":"response.function_call_arguments.delta"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseFunctionCallArgumentsDelta: &ResponseFunctionCallArgumentsDeltaEvent{
+					Delta:          "{",
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 20,
+					Type:           "response.function_call_arguments.delta",
+				},
+			},
+		},
+		{
+			name:   "response function call arguments done event",
+			expect: []byte(`{"arguments":"{}","item_id":"item_1","name":"test_function","output_index":0,"sequence_number":21,"type":"response.function_call_arguments.done"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseFunctionCallArgumentsDone: &ResponseFunctionCallArgumentsDoneEvent{
+					Arguments:      "{}",
+					ItemID:         "item_1",
+					Name:           "test_function",
+					OutputIndex:    0,
+					SequenceNumber: 21,
+					Type:           "response.function_call_arguments.done",
+				},
+			},
+		},
+		{
+			name:   "response reasoning text delta event",
+			expect: []byte(`{"content_index":0,"delta":"thinking","item_id":"item_1","output_index":0,"sequence_number":22,"type":"response.reasoning_text.delta"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseReasoningTextDelta: &ResponseReasoningTextDeltaEvent{
+					ContentIndex:   0,
+					Delta:          "thinking",
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 22,
+					Type:           "response.reasoning_text.delta",
+				},
+			},
+		},
+		{
+			name:   "response reasoning text done event",
+			expect: []byte(`{"content_index":0,"item_id":"item_1","output_index":0,"sequence_number":23,"text":"reasoning text","type":"response.reasoning_text.done"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseReasoningTextDone: &ResponseReasoningTextDoneEvent{
+					ContentIndex:   0,
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 23,
+					Text:           "reasoning text",
+					Type:           "response.reasoning_text.done",
+				},
+			},
+		},
+		{
+			name:   "response reasoning summary text delta event",
+			expect: []byte(`{"delta":"summary","item_id":"item_1","output_index":0,"summary_index":0,"sequence_number":24,"type":"response.reasoning_summary_text.delta"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseReasoningSummaryTextDelta: &ResponseReasoningSummaryTextDeltaEvent{
+					Delta:          "summary",
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 24,
+					SummaryIndex:   0,
+					Type:           "response.reasoning_summary_text.delta",
+				},
+			},
+		},
+		{
+			name:   "response reasoning summary text done event",
+			expect: []byte(`{"item_id":"item_1","output_index":0,"summary_index":0,"sequence_number":25,"text":"summary done","type":"response.reasoning_summary_text.done"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseReasoningSummaryTextDone: &ResponseReasoningSummaryTextDoneEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 25,
+					Text:           "summary done",
+					SummaryIndex:   0,
+					Type:           "response.reasoning_summary_text.done",
+				},
+			},
+		},
+		{
+			name:   "response reasoning summary part added event",
+			expect: []byte(`{"item_id":"item_1","output_index":0,"part":{"text":"text","type":"summary_text"},"sequence_number":26,"summary_index":0,"type":"response.reasoning_summary_part.added"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseReasoningSummaryPartAdded: &ResponseReasoningSummaryPartAddedEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					Part:           ResponseReasoningSummaryPartAddedEventPart{Text: "text", Type: "summary_text"},
+					SequenceNumber: 26,
+					SummaryIndex:   0,
+					Type:           "response.reasoning_summary_part.added",
+				},
+			},
+		},
+		{
+			name:   "response reasoning summary part done event",
+			expect: []byte(`{"item_id":"item_1","output_index":0,"part":{"text":"text","type":"summary_text"},"sequence_number":27,"summary_index":0,"type":"response.reasoning_summary_part.done"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseReasoningSummaryPartDone: &ResponseReasoningSummaryPartDoneEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					Part:           ResponseReasoningSummaryPartDoneEventPart{Text: "text", Type: "summary_text"},
+					SequenceNumber: 27,
+					SummaryIndex:   0,
+					Type:           "response.reasoning_summary_part.done",
+				},
+			},
+		},
+		{
+			name:   "code interpreter call code delta event",
+			expect: []byte(`{"delta":"code","item_id":"item_1","output_index":0,"sequence_number":28,"type":"response.code_interpreter_call_code.delta"}`),
+			input: ResponseStreamEventUnion{
+				OfCodeInterpreterCallCodeDelta: &ResponseCodeInterpreterCallCodeDeltaEvent{
+					Delta:          "code",
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 28,
+					Type:           "response.code_interpreter_call_code.delta",
+				},
+			},
+		},
+		{
+			name:   "code interpreter call code done event",
+			expect: []byte(`{"code":"print('hello')","item_id":"item_1","output_index":0,"sequence_number":29,"type":"response.code_interpreter_call_code.done"}`),
+			input: ResponseStreamEventUnion{
+				OfCodeInterpreterCallCodeDone: &ResponseCodeInterpreterCallCodeDoneEvent{
+					Code:           "print('hello')",
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 29,
+					Type:           "response.code_interpreter_call_code.done",
+				},
+			},
+		},
+		{
+			name:   "code interpreter call in progress event",
+			expect: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":30,"type":"response.code_interpreter_call.in_progress"}`),
+			input: ResponseStreamEventUnion{
+				OfCodeInterpreterCallInprogress: &ResponseCodeInterpreterCallInProgressEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 30,
+					Type:           "response.code_interpreter_call.in_progress",
+				},
+			},
+		},
+		{
+			name:   "code interpreter call interpreting event",
+			expect: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":31,"type":"response.code_interpreter_call.interpreting"}`),
+			input: ResponseStreamEventUnion{
+				OfCodeInterpreterCallInterpreting: &ResponseCodeInterpreterCallInterpretingEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 31,
+					Type:           "response.code_interpreter_call.interpreting",
+				},
+			},
+		},
+		{
+			name:   "code interpreter call completed event",
+			expect: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":32,"type":"response.code_interpreter_call.completed"}`),
+			input: ResponseStreamEventUnion{
+				OfCodeInterpreterCallCompleted: &ResponseCodeInterpreterCallCompletedEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 32,
+					Type:           "response.code_interpreter_call.completed",
+				},
+			},
+		},
+		{
+			name:   "response file search call searching event",
+			expect: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":33,"type":"response.file_search_call.searching"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseFileSearchCallSearching: &ResponseFileSearchCallSearchingEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 33,
+					Type:           "response.file_search_call.searching",
+				},
+			},
+		},
+		{
+			name:   "response file search call in progress event",
+			expect: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":34,"type":"response.file_search_call.in_progress"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseFileSearchCallInProgress: &ResponseFileSearchCallInProgressEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 34,
+					Type:           "response.file_search_call.in_progress",
+				},
+			},
+		},
+		{
+			name:   "response file search call completed event",
+			expect: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":35,"type":"response.file_search_call.completed"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseFileSearchCallCompleted: &ResponseFileSearchCallCompletedEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 35,
+					Type:           "response.file_search_call.completed",
+				},
+			},
+		},
+		{
+			name:   "response web search call searching event",
+			expect: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":36,"type":"response.web_search_call.searching"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseWebSearchCallSearching: &ResponseWebSearchCallSearchingEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 36,
+					Type:           "response.web_search_call.searching",
+				},
+			},
+		},
+		{
+			name:   "response web search call in progress event",
+			expect: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":37,"type":"response.web_search_call.in_progress"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseWebSearchCallInProgress: &ResponseWebSearchCallInProgressEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 37,
+					Type:           "response.web_search_call.in_progress",
+				},
+			},
+		},
+		{
+			name:   "response web search call completed event",
+			expect: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":38,"type":"response.web_search_call.completed"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseWebSearchCallCompleted: &ResponseWebSearchCallCompletedEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 38,
+					Type:           "response.web_search_call.completed",
+				},
+			},
+		},
+		{
+			name:   "response image gen call in progress event",
+			expect: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":39,"type":"response.image_generation_call.in_progress"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseImageGenCallInProgress: &ResponseImageGenCallInProgressEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 39,
+					Type:           "response.image_generation_call.in_progress",
+				},
+			},
+		},
+		{
+			name:   "response image gen call generating event",
+			expect: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":40,"type":"response.image_generation_call.generating"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseImageGenCallGenerating: &ResponseImageGenCallGeneratingEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 40,
+					Type:           "response.image_generation_call.generating",
+				},
+			},
+		},
+		{
+			name:   "response image gen call partial image event",
+			expect: []byte(`{"item_id":"item_1","output_index":0,"partial_image_index":0,"partial_image_b64":"bas64encodedImage","sequence_number":41,"type":"response.image_generation_call.partial_image"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseImageGenCallPartialImage: &ResponseImageGenCallPartialImageEvent{
+					ItemID:            "item_1",
+					OutputIndex:       0,
+					SequenceNumber:    41,
+					PartialImageIndex: 0,
+					PartialImageB64:   "bas64encodedImage",
+					Type:              "response.image_generation_call.partial_image",
+				},
+			},
+		},
+		{
+			name:   "response image gen call completed event",
+			expect: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":42,"type":"response.image_generation_call.completed"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseImageGenCallCompleted: &ResponseImageGenCallCompletedEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 42,
+					Type:           "response.image_generation_call.completed",
+				},
+			},
+		},
+		{
+			name:   "response mcp call arguments delta event",
+			expect: []byte(`{"delta":"{","item_id":"item_1","output_index":0,"sequence_number":43,"type":"response.mcp_call_arguments.delta"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseMcpCallArgumentsDelta: &ResponseMcpCallArgumentsDeltaEvent{
+					Delta:          "{",
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 43,
+					Type:           "response.mcp_call_arguments.delta",
+				},
+			},
+		},
+		{
+			name:   "response mcp call arguments done event",
+			expect: []byte(`{"arguments":"{}","item_id":"item_1","output_index":0,"sequence_number":44,"type":"response.mcp_call_arguments.done"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseMcpCallArgumentsDone: &ResponseMcpCallArgumentsDoneEvent{
+					Arguments:      "{}",
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 44,
+					Type:           "response.mcp_call_arguments.done",
+				},
+			},
+		},
+		{
+			name:   "response mcp call in progress event",
+			expect: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":45,"type":"response.mcp_call.in_progress"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseMcpCallInProgress: &ResponseMcpCallInProgressEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 45,
+					Type:           "response.mcp_call.in_progress",
+				},
+			},
+		},
+		{
+			name:   "response mcp call completed event",
+			expect: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":46,"type":"response.mcp_call.completed"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseMcpCallCompleted: &ResponseMcpCallCompletedEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 46,
+					Type:           "response.mcp_call.completed",
+				},
+			},
+		},
+		{
+			name:   "response mcp call failed event",
+			expect: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":47,"type":"response.mcp_call.failed"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseMcpCallFailed: &ResponseMcpCallFailedEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 47,
+					Type:           "response.mcp_call.failed",
+				},
+			},
+		},
+		{
+			name:   "response mcp list tools in progress event",
+			expect: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":48,"type":"response.mcp_list_tools.in_progress"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseMcpListToolsInProgress: &ResponseMcpListToolsInProgressEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 48,
+					Type:           "response.mcp_list_tools.in_progress",
+				},
+			},
+		},
+		{
+			name:   "response mcp list tools completed event",
+			expect: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":49,"type":"response.mcp_list_tools.completed"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseMcpListToolsCompleted: &ResponseMcpListToolsCompletedEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 49,
+					Type:           "response.mcp_list_tools.completed",
+				},
+			},
+		},
+		{
+			name:   "response mcp list tools failed event",
+			expect: []byte(`{"item_id":"item_1","output_index":0,"sequence_number":50,"type":"response.mcp_list_tools.failed"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseMcpListToolsFailed: &ResponseMcpListToolsFailedEvent{
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 50,
+					Type:           "response.mcp_list_tools.failed",
+				},
+			},
+		},
+		{
+			name:   "response output text annotation added event",
+			expect: []byte(`{"annotation":{"type":"test"},"annotation_index":0,"content_index":0,"item_id":"item_1","output_index":0,"sequence_number":51,"type":"response.output_text.annotation.added"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseOutputTextAnnotationAdded: &ResponseOutputTextAnnotationAddedEvent{
+					Annotation:      map[string]any{"type": "test"},
+					AnnotationIndex: 0,
+					ContentIndex:    0,
+					ItemID:          "item_1",
+					OutputIndex:     0,
+					SequenceNumber:  51,
+					Type:            "response.output_text.annotation.added",
+				},
+			},
+		},
+		{
+			name:   "response custom tool call input delta event",
+			expect: []byte(`{"delta":"{","item_id":"item_1","output_index":0,"sequence_number":52,"type":"response.custom_tool_call_input.delta"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseCustomToolCallInputDelta: &ResponseCustomToolCallInputDeltaEvent{
+					Delta:          "{",
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 52,
+					Type:           "response.custom_tool_call_input.delta",
+				},
+			},
+		},
+		{
+			name:   "response custom tool call input done event",
+			expect: []byte(`{"input":"{}","item_id":"item_1","output_index":0,"sequence_number":53,"type":"response.custom_tool_call_input.done"}`),
+			input: ResponseStreamEventUnion{
+				OfResponseCustomToolCallInputDone: &ResponseCustomToolCallInputDoneEvent{
+					Input:          "{}",
+					ItemID:         "item_1",
+					OutputIndex:    0,
+					SequenceNumber: 53,
+					Type:           "response.custom_tool_call_input.done",
+				},
+			},
+		},
+		{
+			name:   "nil union",
+			input:  ResponseStreamEventUnion{},
+			expErr: "no response stream event to marshal",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := json.Marshal(tc.input)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, string(tc.expect), string(data))
+		})
+	}
+}
+
+func TestResponseStreamEventUnionGetEventType(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    ResponseStreamEventUnion
+		expected string
+	}{
+		{
+			name: "audio delta event",
+			input: ResponseStreamEventUnion{
+				OfAudioDelta: &ResponseAudioDeltaEvent{
+					Type: "response.audio.delta",
+				},
+			},
+			expected: "response.audio.delta",
+		},
+		{
+			name: "audio done event",
+			input: ResponseStreamEventUnion{
+				OfAudioDone: &ResponseAudioDoneEvent{
+					Type: "response.audio.done",
+				},
+			},
+			expected: "response.audio.done",
+		},
+		{
+			name: "audio transcript delta event",
+			input: ResponseStreamEventUnion{
+				OfAudioTranscriptDelta: &ResponseAudioTranscriptDeltaEvent{
+					Type: "response.audio.transcript.delta",
+				},
+			},
+			expected: "response.audio.transcript.delta",
+		},
+		{
+			name: "audio transcript done event",
+			input: ResponseStreamEventUnion{
+				OfAudioTranscriptDone: &ResponseAudioTranscriptDoneEvent{
+					Type: "response.audio.transcript.done",
+				},
+			},
+			expected: "response.audio.transcript.done",
+		},
+		{
+			name: "code interpreter call code delta event",
+			input: ResponseStreamEventUnion{
+				OfCodeInterpreterCallCodeDelta: &ResponseCodeInterpreterCallCodeDeltaEvent{
+					Type: "response.code_interpreter_call_code.delta",
+				},
+			},
+			expected: "response.code_interpreter_call_code.delta",
+		},
+		{
+			name: "code interpreter call code done event",
+			input: ResponseStreamEventUnion{
+				OfCodeInterpreterCallCodeDone: &ResponseCodeInterpreterCallCodeDoneEvent{
+					Type: "response.code_interpreter_call_code.done",
+				},
+			},
+			expected: "response.code_interpreter_call_code.done",
+		},
+		{
+			name: "code interpreter call completed event",
+			input: ResponseStreamEventUnion{
+				OfCodeInterpreterCallCompleted: &ResponseCodeInterpreterCallCompletedEvent{
+					Type: "response.code_interpreter_call.completed",
+				},
+			},
+			expected: "response.code_interpreter_call.completed",
+		},
+		{
+			name: "code interpreter call in progress event",
+			input: ResponseStreamEventUnion{
+				OfCodeInterpreterCallInprogress: &ResponseCodeInterpreterCallInProgressEvent{
+					Type: "response.code_interpreter_call.in_progress",
+				},
+			},
+			expected: "response.code_interpreter_call.in_progress",
+		},
+		{
+			name: "code interpreter call interpreting event",
+			input: ResponseStreamEventUnion{
+				OfCodeInterpreterCallInterpreting: &ResponseCodeInterpreterCallInterpretingEvent{
+					Type: "response.code_interpreter_call.interpreting",
+				},
+			},
+			expected: "response.code_interpreter_call.interpreting",
+		},
+		{
+			name: "response completed event",
+			input: ResponseStreamEventUnion{
+				OfResponseCompleted: &ResponseCompletedEvent{
+					Type: "response.completed",
+				},
+			},
+			expected: "response.completed",
+		},
+		{
+			name: "response content part added event",
+			input: ResponseStreamEventUnion{
+				OfResponseContentPartAdded: &ResponseContentPartAddedEvent{
+					Type: "response.content_part.added",
+				},
+			},
+			expected: "response.content_part.added",
+		},
+		{
+			name: "response content part done event",
+			input: ResponseStreamEventUnion{
+				OfResponseContentPartDone: &ResponseContentPartDoneEvent{
+					Type: "response.content_part.done",
+				},
+			},
+			expected: "response.content_part.done",
+		},
+		{
+			name: "response created event",
+			input: ResponseStreamEventUnion{
+				OfResponseCreated: &ResponseCreatedEvent{
+					Type: "response.created",
+				},
+			},
+			expected: "response.created",
+		},
+		{
+			name: "error event",
+			input: ResponseStreamEventUnion{
+				OfError: &ResponseErrorEvent{
+					Type: "error",
+				},
+			},
+			expected: "error",
+		},
+		{
+			name: "response file search call completed event",
+			input: ResponseStreamEventUnion{
+				OfResponseFileSearchCallCompleted: &ResponseFileSearchCallCompletedEvent{
+					Type: "response.file_search_call.completed",
+				},
+			},
+			expected: "response.file_search_call.completed",
+		},
+		{
+			name: "response file search call in progress event",
+			input: ResponseStreamEventUnion{
+				OfResponseFileSearchCallInProgress: &ResponseFileSearchCallInProgressEvent{
+					Type: "response.file_search_call.in_progress",
+				},
+			},
+			expected: "response.file_search_call.in_progress",
+		},
+		{
+			name: "response file search call searching event",
+			input: ResponseStreamEventUnion{
+				OfResponseFileSearchCallSearching: &ResponseFileSearchCallSearchingEvent{
+					Type: "response.file_search_call.searching",
+				},
+			},
+			expected: "response.file_search_call.searching",
+		},
+		{
+			name: "response function call arguments delta event",
+			input: ResponseStreamEventUnion{
+				OfResponseFunctionCallArgumentsDelta: &ResponseFunctionCallArgumentsDeltaEvent{
+					Type: "response.function_call_arguments.delta",
+				},
+			},
+			expected: "response.function_call_arguments.delta",
+		},
+		{
+			name: "response function call arguments done event",
+			input: ResponseStreamEventUnion{
+				OfResponseFunctionCallArgumentsDone: &ResponseFunctionCallArgumentsDoneEvent{
+					Type: "response.function_call_arguments.done",
+				},
+			},
+			expected: "response.function_call_arguments.done",
+		},
+		{
+			name: "response in progress event",
+			input: ResponseStreamEventUnion{
+				OfResponseInProgress: &ResponseInProgressEvent{
+					Type: "response.in_progress",
+				},
+			},
+			expected: "response.in_progress",
+		},
+		{
+			name: "response failed event",
+			input: ResponseStreamEventUnion{
+				OfResponseFailed: &ResponseFailedEvent{
+					Type: "response.failed",
+				},
+			},
+			expected: "response.failed",
+		},
+		{
+			name: "response incomplete event",
+			input: ResponseStreamEventUnion{
+				OfResponseIncomplete: &ResponseIncompleteEvent{
+					Type: "response.incomplete",
+				},
+			},
+			expected: "response.incomplete",
+		},
+		{
+			name: "response output item added event",
+			input: ResponseStreamEventUnion{
+				OfResponseOutputItemAdded: &ResponseOutputItemAddedEvent{
+					Type: "response.output_item.added",
+				},
+			},
+			expected: "response.output_item.added",
+		},
+		{
+			name: "response output item done event",
+			input: ResponseStreamEventUnion{
+				OfResponseOutputItemDone: &ResponseOutputItemDoneEvent{
+					Type: "response.output_item.done",
+				},
+			},
+			expected: "response.output_item.done",
+		},
+		{
+			name: "response reasoning summary part added event",
+			input: ResponseStreamEventUnion{
+				OfResponseReasoningSummaryPartAdded: &ResponseReasoningSummaryPartAddedEvent{
+					Type: "response.reasoning_summary_part.added",
+				},
+			},
+			expected: "response.reasoning_summary_part.added",
+		},
+		{
+			name: "response reasoning summary part done event",
+			input: ResponseStreamEventUnion{
+				OfResponseReasoningSummaryPartDone: &ResponseReasoningSummaryPartDoneEvent{
+					Type: "response.reasoning_summary_part.done",
+				},
+			},
+			expected: "response.reasoning_summary_part.done",
+		},
+		{
+			name: "response reasoning summary text delta event",
+			input: ResponseStreamEventUnion{
+				OfResponseReasoningSummaryTextDelta: &ResponseReasoningSummaryTextDeltaEvent{
+					Type: "response.reasoning_summary_text.delta",
+				},
+			},
+			expected: "response.reasoning_summary_text.delta",
+		},
+		{
+			name: "response reasoning summary text done event",
+			input: ResponseStreamEventUnion{
+				OfResponseReasoningSummaryTextDone: &ResponseReasoningSummaryTextDoneEvent{
+					Type: "response.reasoning_summary_text.done",
+				},
+			},
+			expected: "response.reasoning_summary_text.done",
+		},
+		{
+			name: "response reasoning text delta event",
+			input: ResponseStreamEventUnion{
+				OfResponseReasoningTextDelta: &ResponseReasoningTextDeltaEvent{
+					Type: "response.reasoning_text.delta",
+				},
+			},
+			expected: "response.reasoning_text.delta",
+		},
+		{
+			name: "response reasoning text done event",
+			input: ResponseStreamEventUnion{
+				OfResponseReasoningTextDone: &ResponseReasoningTextDoneEvent{
+					Type: "response.reasoning_text.done",
+				},
+			},
+			expected: "response.reasoning_text.done",
+		},
+		{
+			name: "response refusal delta event",
+			input: ResponseStreamEventUnion{
+				OfResponseRefusalDelta: &ResponseRefusalDeltaEvent{
+					Type: "response.refusal.delta",
+				},
+			},
+			expected: "response.refusal.delta",
+		},
+		{
+			name: "response refusal done event",
+			input: ResponseStreamEventUnion{
+				OfResponseRefusalDone: &ResponseRefusalDoneEvent{
+					Type: "response.refusal.done",
+				},
+			},
+			expected: "response.refusal.done",
+		},
+		{
+			name: "response text delta event",
+			input: ResponseStreamEventUnion{
+				OfResponseTextDelta: &ResponseTextDeltaEvent{
+					Type: "response.output_text.delta",
+				},
+			},
+			expected: "response.output_text.delta",
+		},
+		{
+			name: "response text done event",
+			input: ResponseStreamEventUnion{
+				OfResponseTextDone: &ResponseTextDoneEvent{
+					Type: "response.output_text.done",
+				},
+			},
+			expected: "response.output_text.done",
+		},
+		{
+			name: "response web search call completed event",
+			input: ResponseStreamEventUnion{
+				OfResponseWebSearchCallCompleted: &ResponseWebSearchCallCompletedEvent{
+					Type: "response.web_search_call.completed",
+				},
+			},
+			expected: "response.web_search_call.completed",
+		},
+		{
+			name: "response web search call in progress event",
+			input: ResponseStreamEventUnion{
+				OfResponseWebSearchCallInProgress: &ResponseWebSearchCallInProgressEvent{
+					Type: "response.web_search_call.in_progress",
+				},
+			},
+			expected: "response.web_search_call.in_progress",
+		},
+		{
+			name: "response web search call searching event",
+			input: ResponseStreamEventUnion{
+				OfResponseWebSearchCallSearching: &ResponseWebSearchCallSearchingEvent{
+					Type: "response.web_search_call.searching",
+				},
+			},
+			expected: "response.web_search_call.searching",
+		},
+		{
+			name: "response image gen call completed event",
+			input: ResponseStreamEventUnion{
+				OfResponseImageGenCallCompleted: &ResponseImageGenCallCompletedEvent{
+					Type: "response.image_generation_call.completed",
+				},
+			},
+			expected: "response.image_generation_call.completed",
+		},
+		{
+			name: "response image gen call generating event",
+			input: ResponseStreamEventUnion{
+				OfResponseImageGenCallGenerating: &ResponseImageGenCallGeneratingEvent{
+					Type: "response.image_generation_call.generating",
+				},
+			},
+			expected: "response.image_generation_call.generating",
+		},
+		{
+			name: "response image gen call in progress event",
+			input: ResponseStreamEventUnion{
+				OfResponseImageGenCallInProgress: &ResponseImageGenCallInProgressEvent{
+					Type: "response.image_generation_call.in_progress",
+				},
+			},
+			expected: "response.image_generation_call.in_progress",
+		},
+		{
+			name: "response image gen call partial image event",
+			input: ResponseStreamEventUnion{
+				OfResponseImageGenCallPartialImage: &ResponseImageGenCallPartialImageEvent{
+					Type: "response.image_generation_call.partial_image",
+				},
+			},
+			expected: "response.image_generation_call.partial_image",
+		},
+		{
+			name: "response mcp call arguments delta event",
+			input: ResponseStreamEventUnion{
+				OfResponseMcpCallArgumentsDelta: &ResponseMcpCallArgumentsDeltaEvent{
+					Type: "response.mcp_call_arguments.delta",
+				},
+			},
+			expected: "response.mcp_call_arguments.delta",
+		},
+		{
+			name: "response mcp call arguments done event",
+			input: ResponseStreamEventUnion{
+				OfResponseMcpCallArgumentsDone: &ResponseMcpCallArgumentsDoneEvent{
+					Type: "response.mcp_call_arguments.done",
+				},
+			},
+			expected: "response.mcp_call_arguments.done",
+		},
+		{
+			name: "response mcp call completed event",
+			input: ResponseStreamEventUnion{
+				OfResponseMcpCallCompleted: &ResponseMcpCallCompletedEvent{
+					Type: "response.mcp_call.completed",
+				},
+			},
+			expected: "response.mcp_call.completed",
+		},
+		{
+			name: "response mcp call failed event",
+			input: ResponseStreamEventUnion{
+				OfResponseMcpCallFailed: &ResponseMcpCallFailedEvent{
+					Type: "response.mcp_call.failed",
+				},
+			},
+			expected: "response.mcp_call.failed",
+		},
+		{
+			name: "response mcp call in progress event",
+			input: ResponseStreamEventUnion{
+				OfResponseMcpCallInProgress: &ResponseMcpCallInProgressEvent{
+					Type: "response.mcp_call.in_progress",
+				},
+			},
+			expected: "response.mcp_call.in_progress",
+		},
+		{
+			name: "response mcp list tools completed event",
+			input: ResponseStreamEventUnion{
+				OfResponseMcpListToolsCompleted: &ResponseMcpListToolsCompletedEvent{
+					Type: "response.mcp_list_tools.completed",
+				},
+			},
+			expected: "response.mcp_list_tools.completed",
+		},
+		{
+			name: "response mcp list tools failed event",
+			input: ResponseStreamEventUnion{
+				OfResponseMcpListToolsFailed: &ResponseMcpListToolsFailedEvent{
+					Type: "response.mcp_list_tools.failed",
+				},
+			},
+			expected: "response.mcp_list_tools.failed",
+		},
+		{
+			name: "response mcp list tools in progress event",
+			input: ResponseStreamEventUnion{
+				OfResponseMcpListToolsInProgress: &ResponseMcpListToolsInProgressEvent{
+					Type: "response.mcp_list_tools.in_progress",
+				},
+			},
+			expected: "response.mcp_list_tools.in_progress",
+		},
+		{
+			name: "response output text annotation added event",
+			input: ResponseStreamEventUnion{
+				OfResponseOutputTextAnnotationAdded: &ResponseOutputTextAnnotationAddedEvent{
+					Type: "response.output_text.annotation.added",
+				},
+			},
+			expected: "response.output_text.annotation.added",
+		},
+		{
+			name: "response queued event",
+			input: ResponseStreamEventUnion{
+				OfResponseQueued: &ResponseQueuedEvent{
+					Type: "response.queued",
+				},
+			},
+			expected: "response.queued",
+		},
+		{
+			name: "response custom tool call input delta event",
+			input: ResponseStreamEventUnion{
+				OfResponseCustomToolCallInputDelta: &ResponseCustomToolCallInputDeltaEvent{
+					Type: "response.custom_tool_call_input.delta",
+				},
+			},
+			expected: "response.custom_tool_call_input.delta",
+		},
+		{
+			name: "response custom tool call input done event",
+			input: ResponseStreamEventUnion{
+				OfResponseCustomToolCallInputDone: &ResponseCustomToolCallInputDoneEvent{
+					Type: "response.custom_tool_call_input.done",
+				},
+			},
+			expected: "response.custom_tool_call_input.done",
+		},
+		{
+			name:     "nil union",
+			input:    ResponseStreamEventUnion{},
+			expected: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := tc.input.GetEventType()
+			require.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestResponseCodeInterpreterToolCallOutputUnionMarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		expect []byte
+		input  ResponseCodeInterpreterToolCallOutputUnion
+		expErr string
+	}{
+		{
+			name:   "logs output",
+			expect: []byte(`{"logs":"output from code execution","type":"logs"}`),
+			input: ResponseCodeInterpreterToolCallOutputUnion{
+				OfResponseCodeInterpreterToolCallOutputLogs: &ResponseCodeInterpreterToolCallOutputLogs{
+					Logs: "output from code execution",
+					Type: "logs",
+				},
+			},
+		},
+		{
+			name:   "logs output with empty value",
+			expect: []byte(`{"logs":"","type":"logs"}`),
+			input: ResponseCodeInterpreterToolCallOutputUnion{
+				OfResponseCodeInterpreterToolCallOutputLogs: &ResponseCodeInterpreterToolCallOutputLogs{
+					Logs: "",
+					Type: "logs",
+				},
+			},
+		},
+		{
+			name:   "logs output with special characters",
+			expect: []byte(`{"logs":"error: \"file not found\"\nstack trace:\nline 1","type":"logs"}`),
+			input: ResponseCodeInterpreterToolCallOutputUnion{
+				OfResponseCodeInterpreterToolCallOutputLogs: &ResponseCodeInterpreterToolCallOutputLogs{
+					Logs: "error: \"file not found\"\nstack trace:\nline 1",
+					Type: "logs",
+				},
+			},
+		},
+		{
+			name:   "logs output with multiline content",
+			expect: []byte(`{"logs":"line1\nline2\nline3","type":"logs"}`),
+			input: ResponseCodeInterpreterToolCallOutputUnion{
+				OfResponseCodeInterpreterToolCallOutputLogs: &ResponseCodeInterpreterToolCallOutputLogs{
+					Logs: "line1\nline2\nline3",
+					Type: "logs",
+				},
+			},
+		},
+		{
+			name:   "image output",
+			expect: []byte(`{"type":"image","url":"https://example.com/image.png"}`),
+			input: ResponseCodeInterpreterToolCallOutputUnion{
+				OfResponseCodeInterpreterToolCallOutputImage: &ResponseCodeInterpreterToolCallOutputImage{
+					Type: "image",
+					URL:  "https://example.com/image.png",
+				},
+			},
+		},
+		{
+			name:   "image output with data url",
+			expect: []byte(`{"type":"image","url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="}`),
+			input: ResponseCodeInterpreterToolCallOutputUnion{
+				OfResponseCodeInterpreterToolCallOutputImage: &ResponseCodeInterpreterToolCallOutputImage{
+					Type: "image",
+					URL:  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+				},
+			},
+		},
+		{
+			name:   "nil union",
+			input:  ResponseCodeInterpreterToolCallOutputUnion{},
+			expErr: "no output to marshal in code interpreter tool call output",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := json.Marshal(tc.input)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, string(tc.expect), string(data))
+		})
+	}
+}
+
+func TestResponseCodeInterpreterToolCallOutputUnionUnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  []byte
+		expect ResponseCodeInterpreterToolCallOutputUnion
+		expErr string
+	}{
+		{
+			name:  "logs output",
+			input: []byte(`{"logs":"output from code execution","type":"logs"}`),
+			expect: ResponseCodeInterpreterToolCallOutputUnion{
+				OfResponseCodeInterpreterToolCallOutputLogs: &ResponseCodeInterpreterToolCallOutputLogs{
+					Logs: "output from code execution",
+					Type: "logs",
+				},
+			},
+		},
+		{
+			name:  "logs output with empty value",
+			input: []byte(`{"logs":"","type":"logs"}`),
+			expect: ResponseCodeInterpreterToolCallOutputUnion{
+				OfResponseCodeInterpreterToolCallOutputLogs: &ResponseCodeInterpreterToolCallOutputLogs{
+					Logs: "",
+					Type: "logs",
+				},
+			},
+		},
+		{
+			name:  "logs output with special characters",
+			input: []byte(`{"logs":"error: \"file not found\"\nstack trace:\nline 1","type":"logs"}`),
+			expect: ResponseCodeInterpreterToolCallOutputUnion{
+				OfResponseCodeInterpreterToolCallOutputLogs: &ResponseCodeInterpreterToolCallOutputLogs{
+					Logs: "error: \"file not found\"\nstack trace:\nline 1",
+					Type: "logs",
+				},
+			},
+		},
+		{
+			name:  "logs output with multiline content",
+			input: []byte(`{"logs":"line1\nline2\nline3","type":"logs"}`),
+			expect: ResponseCodeInterpreterToolCallOutputUnion{
+				OfResponseCodeInterpreterToolCallOutputLogs: &ResponseCodeInterpreterToolCallOutputLogs{
+					Logs: "line1\nline2\nline3",
+					Type: "logs",
+				},
+			},
+		},
+		{
+			name:  "image output",
+			input: []byte(`{"type":"image","url":"https://example.com/image.png"}`),
+			expect: ResponseCodeInterpreterToolCallOutputUnion{
+				OfResponseCodeInterpreterToolCallOutputImage: &ResponseCodeInterpreterToolCallOutputImage{
+					Type: "image",
+					URL:  "https://example.com/image.png",
+				},
+			},
+		},
+		{
+			name:  "image output with data url",
+			input: []byte(`{"type":"image","url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="}`),
+			expect: ResponseCodeInterpreterToolCallOutputUnion{
+				OfResponseCodeInterpreterToolCallOutputImage: &ResponseCodeInterpreterToolCallOutputImage{
+					Type: "image",
+					URL:  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+				},
+			},
+		},
+		{
+			name:   "empty type",
+			input:  []byte(`{"type": ""}`),
+			expErr: "unknown type for code interpreter tool call output: ",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var result ResponseCodeInterpreterToolCallOutputUnion
+			err := json.Unmarshal(tc.input, &result)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expect, result)
+		})
+	}
+}
+
+func TestResponseContentPartAddedEventPartUnionMarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		expect []byte
+		input  ResponseContentPartAddedEventPartUnion
+		expErr string
+	}{
+		{
+			name:   "response output text part",
+			expect: []byte(`{"text":"Hello World!","type":"output_text"}`),
+			input: ResponseContentPartAddedEventPartUnion{
+				OfResponseOutputText: &ResponseOutputTextParam{
+					Text: "Hello World!",
+					Type: "output_text",
+				},
+			},
+		},
+		{
+			name:   "response output text part with annotations",
+			expect: []byte(`{"text":"Test content","type":"output_text","annotations":[{"type":"file_citation","file_id":"file_123","index":0,"filename":"test.txt"}]}`),
+			input: ResponseContentPartAddedEventPartUnion{
+				OfResponseOutputText: &ResponseOutputTextParam{
+					Text: "Test content",
+					Type: "output_text",
+					Annotations: []ResponseOutputTextAnnotationUnionParam{
+						{
+							OfFileCitation: &ResponseOutputTextAnnotationFileCitationParam{
+								Type:     "file_citation",
+								FileID:   "file_123",
+								Index:    0,
+								Filename: "test.txt",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:   "response output text part with logprobs",
+			expect: []byte(`{"text":"token","type":"output_text","logprobs":[{"token":"a","logprob":0.5}]}`),
+			input: ResponseContentPartAddedEventPartUnion{
+				OfResponseOutputText: &ResponseOutputTextParam{
+					Text: "token",
+					Type: "output_text",
+					Logprobs: []ResponseOutputTextLogprobParam{
+						{
+							Token:   "a",
+							Logprob: 0.5,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:   "response output refusal part",
+			expect: []byte(`{"refusal":"I can't do that","type":"refusal"}`),
+			input: ResponseContentPartAddedEventPartUnion{
+				OfResponseOutputRefusal: &ResponseOutputRefusalParam{
+					Refusal: "I can't do that",
+					Type:    "refusal",
+				},
+			},
+		},
+		{
+			name:   "response reasoning text part",
+			expect: []byte(`{"text":"thinking about this...","type":"reasoning_text"}`),
+			input: ResponseContentPartAddedEventPartUnion{
+				OfResponsContentPartAddedEventPartReasoningText: &ResponseContentPartAddedEventPartReasoningText{
+					Text: "thinking about this...",
+					Type: "reasoning_text",
+				},
+			},
+		},
+		{
+			name:   "response output text with empty string",
+			expect: []byte(`{"text":"","type":"output_text"}`),
+			input: ResponseContentPartAddedEventPartUnion{
+				OfResponseOutputText: &ResponseOutputTextParam{
+					Text: "",
+					Type: "output_text",
+				},
+			},
+		},
+		{
+			name:   "response reasoning text with empty string",
+			expect: []byte(`{"text":"","type":"reasoning_text"}`),
+			input: ResponseContentPartAddedEventPartUnion{
+				OfResponsContentPartAddedEventPartReasoningText: &ResponseContentPartAddedEventPartReasoningText{
+					Text: "",
+					Type: "reasoning_text",
+				},
+			},
+		},
+		{
+			name:   "response refusal with empty string",
+			expect: []byte(`{"refusal":"","type":"refusal"}`),
+			input: ResponseContentPartAddedEventPartUnion{
+				OfResponseOutputRefusal: &ResponseOutputRefusalParam{
+					Refusal: "",
+					Type:    "refusal",
+				},
+			},
+		},
+		{
+			name:   "nil union",
+			input:  ResponseContentPartAddedEventPartUnion{},
+			expErr: "no part to marshal in content part added event",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := json.Marshal(tc.input)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, string(tc.expect), string(data))
+		})
+	}
+}
+
+func TestResponseContentPartAddedEventPartUnionUnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  []byte
+		expect ResponseContentPartAddedEventPartUnion
+		expErr string
+	}{
+		{
+			name:  "response output text part",
+			input: []byte(`{"text":"Hello World!","type":"output_text"}`),
+			expect: ResponseContentPartAddedEventPartUnion{
+				OfResponseOutputText: &ResponseOutputTextParam{
+					Text: "Hello World!",
+					Type: "output_text",
+				},
+			},
+		},
+		{
+			name:  "response output text part with annotations",
+			input: []byte(`{"text":"Test content","type":"output_text","annotations":[{"type":"file_citation","file_id":"file_123","index":0,"filename":"test.txt"}]}`),
+			expect: ResponseContentPartAddedEventPartUnion{
+				OfResponseOutputText: &ResponseOutputTextParam{
+					Text: "Test content",
+					Type: "output_text",
+					Annotations: []ResponseOutputTextAnnotationUnionParam{
+						{
+							OfFileCitation: &ResponseOutputTextAnnotationFileCitationParam{
+								Type:     "file_citation",
+								FileID:   "file_123",
+								Index:    0,
+								Filename: "test.txt",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "response output text part with logprobs",
+			input: []byte(`{"text":"token","type":"output_text","logprobs":[{"token":"a","logprob":0.5}]}`),
+			expect: ResponseContentPartAddedEventPartUnion{
+				OfResponseOutputText: &ResponseOutputTextParam{
+					Text: "token",
+					Type: "output_text",
+					Logprobs: []ResponseOutputTextLogprobParam{
+						{
+							Token:   "a",
+							Logprob: 0.5,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "response output refusal part",
+			input: []byte(`{"refusal":"I can't do that","type":"refusal"}`),
+			expect: ResponseContentPartAddedEventPartUnion{
+				OfResponseOutputRefusal: &ResponseOutputRefusalParam{
+					Refusal: "I can't do that",
+					Type:    "refusal",
+				},
+			},
+		},
+		{
+			name:  "response reasoning text part",
+			input: []byte(`{"text":"thinking about this...","type":"reasoning_text"}`),
+			expect: ResponseContentPartAddedEventPartUnion{
+				OfResponsContentPartAddedEventPartReasoningText: &ResponseContentPartAddedEventPartReasoningText{
+					Text: "thinking about this...",
+					Type: "reasoning_text",
+				},
+			},
+		},
+		{
+			name:  "response output text with empty string",
+			input: []byte(`{"text":"","type":"output_text"}`),
+			expect: ResponseContentPartAddedEventPartUnion{
+				OfResponseOutputText: &ResponseOutputTextParam{
+					Text: "",
+					Type: "output_text",
+				},
+			},
+		},
+		{
+			name:  "response reasoning text with empty string",
+			input: []byte(`{"text":"","type":"reasoning_text"}`),
+			expect: ResponseContentPartAddedEventPartUnion{
+				OfResponsContentPartAddedEventPartReasoningText: &ResponseContentPartAddedEventPartReasoningText{
+					Text: "",
+					Type: "reasoning_text",
+				},
+			},
+		},
+		{
+			name:  "response refusal with empty string",
+			input: []byte(`{"refusal":"","type":"refusal"}`),
+			expect: ResponseContentPartAddedEventPartUnion{
+				OfResponseOutputRefusal: &ResponseOutputRefusalParam{
+					Refusal: "",
+					Type:    "refusal",
+				},
+			},
+		},
+		{
+			name:   "empty type",
+			input:  []byte(`{"type": ""}`),
+			expErr: "unknown type for content part added event part: ",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var result ResponseContentPartAddedEventPartUnion
+			err := json.Unmarshal(tc.input, &result)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expect, result)
+		})
+	}
+}
+
+func TestResponseContentPartDoneEventPartUnionMarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		expect []byte
+		input  ResponseContentPartDoneEventPartUnion
+		expErr string
+	}{
+		{
+			name:   "response output text part",
+			expect: []byte(`{"text":"Hello World!","type":"output_text"}`),
+			input: ResponseContentPartDoneEventPartUnion{
+				OfResponseOutputText: &ResponseOutputTextParam{
+					Text: "Hello World!",
+					Type: "output_text",
+				},
+			},
+		},
+		{
+			name:   "response output text part with empty string",
+			expect: []byte(`{"text":"","type":"output_text"}`),
+			input: ResponseContentPartDoneEventPartUnion{
+				OfResponseOutputText: &ResponseOutputTextParam{
+					Text: "",
+					Type: "output_text",
+				},
+			},
+		},
+		{
+			name:   "response output refusal part",
+			expect: []byte(`{"refusal":"I can't do that","type":"refusal"}`),
+			input: ResponseContentPartDoneEventPartUnion{
+				OfResponseOutputRefusal: &ResponseOutputRefusalParam{
+					Refusal: "I can't do that",
+					Type:    "refusal",
+				},
+			},
+		},
+		{
+			name:   "response output refusal part with empty string",
+			expect: []byte(`{"refusal":"","type":"refusal"}`),
+			input: ResponseContentPartDoneEventPartUnion{
+				OfResponseOutputRefusal: &ResponseOutputRefusalParam{
+					Refusal: "",
+					Type:    "refusal",
+				},
+			},
+		},
+		{
+			name:   "response reasoning text part",
+			expect: []byte(`{"text":"thinking about this...","type":"reasoning_text"}`),
+			input: ResponseContentPartDoneEventPartUnion{
+				OfResponsContentPartDoneEventPartReasoningText: &ResponseContentPartDoneEventPartReasoningText{
+					Text: "thinking about this...",
+					Type: "reasoning_text",
+				},
+			},
+		},
+		{
+			name:   "response reasoning text with empty string",
+			expect: []byte(`{"text":"","type":"reasoning_text"}`),
+			input: ResponseContentPartDoneEventPartUnion{
+				OfResponsContentPartDoneEventPartReasoningText: &ResponseContentPartDoneEventPartReasoningText{
+					Text: "",
+					Type: "reasoning_text",
+				},
+			},
+		},
+		{
+			name:   "response output text with special characters",
+			expect: []byte(`{"text":"Line 1\nLine 2\nLine 3","type":"output_text"}`),
+			input: ResponseContentPartDoneEventPartUnion{
+				OfResponseOutputText: &ResponseOutputTextParam{
+					Text: "Line 1\nLine 2\nLine 3",
+					Type: "output_text",
+				},
+			},
+		},
+		{
+			name:   "response reasoning text with special characters",
+			expect: []byte(`{"text":"error: \"test\"\nstack trace","type":"reasoning_text"}`),
+			input: ResponseContentPartDoneEventPartUnion{
+				OfResponsContentPartDoneEventPartReasoningText: &ResponseContentPartDoneEventPartReasoningText{
+					Text: "error: \"test\"\nstack trace",
+					Type: "reasoning_text",
+				},
+			},
+		},
+		{
+			name:   "response output text with annotations",
+			expect: []byte(`{"text":"This is a very long text content that contains multiple sentences and should be properly marshaled into JSON format without any issues or truncation.","type":"output_text","annotations":[{"type":"file_citation","file_id":"file_123","index":0,"filename":"test.txt"}]}`),
+			input: ResponseContentPartDoneEventPartUnion{
+				OfResponseOutputText: &ResponseOutputTextParam{
+					Text: "This is a very long text content that contains multiple sentences and should be properly marshaled into JSON format without any issues or truncation.",
+					Type: "output_text",
+					Annotations: []ResponseOutputTextAnnotationUnionParam{
+						{
+							OfFileCitation: &ResponseOutputTextAnnotationFileCitationParam{
+								Type:     "file_citation",
+								FileID:   "file_123",
+								Index:    0,
+								Filename: "test.txt",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:   "nil union",
+			input:  ResponseContentPartDoneEventPartUnion{},
+			expErr: "no part to marshal in content part done event",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := json.Marshal(tc.input)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, string(tc.expect), string(data))
+		})
+	}
+}
+
+func TestResponseContentPartDoneEventPartUnionUnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  []byte
+		expect ResponseContentPartDoneEventPartUnion
+		expErr string
+	}{
+		{
+			name:  "response output text part",
+			input: []byte(`{"text":"Hello World!","type":"output_text"}`),
+			expect: ResponseContentPartDoneEventPartUnion{
+				OfResponseOutputText: &ResponseOutputTextParam{
+					Text: "Hello World!",
+					Type: "output_text",
+				},
+			},
+		},
+		{
+			name:  "response output text part with empty string",
+			input: []byte(`{"text":"","type":"output_text"}`),
+			expect: ResponseContentPartDoneEventPartUnion{
+				OfResponseOutputText: &ResponseOutputTextParam{
+					Text: "",
+					Type: "output_text",
+				},
+			},
+		},
+		{
+			name:  "response output refusal part",
+			input: []byte(`{"refusal":"I can't do that","type":"refusal"}`),
+			expect: ResponseContentPartDoneEventPartUnion{
+				OfResponseOutputRefusal: &ResponseOutputRefusalParam{
+					Refusal: "I can't do that",
+					Type:    "refusal",
+				},
+			},
+		},
+		{
+			name:  "response output refusal part with empty string",
+			input: []byte(`{"refusal":"","type":"refusal"}`),
+			expect: ResponseContentPartDoneEventPartUnion{
+				OfResponseOutputRefusal: &ResponseOutputRefusalParam{
+					Refusal: "",
+					Type:    "refusal",
+				},
+			},
+		},
+		{
+			name:  "response reasoning text part",
+			input: []byte(`{"text":"thinking about this...","type":"reasoning_text"}`),
+			expect: ResponseContentPartDoneEventPartUnion{
+				OfResponsContentPartDoneEventPartReasoningText: &ResponseContentPartDoneEventPartReasoningText{
+					Text: "thinking about this...",
+					Type: "reasoning_text",
+				},
+			},
+		},
+		{
+			name:  "response reasoning text with empty string",
+			input: []byte(`{"text":"","type":"reasoning_text"}`),
+			expect: ResponseContentPartDoneEventPartUnion{
+				OfResponsContentPartDoneEventPartReasoningText: &ResponseContentPartDoneEventPartReasoningText{
+					Text: "",
+					Type: "reasoning_text",
+				},
+			},
+		},
+		{
+			name:  "response output text with special characters",
+			input: []byte(`{"text":"Line 1\nLine 2\nLine 3","type":"output_text"}`),
+			expect: ResponseContentPartDoneEventPartUnion{
+				OfResponseOutputText: &ResponseOutputTextParam{
+					Text: "Line 1\nLine 2\nLine 3",
+					Type: "output_text",
+				},
+			},
+		},
+		{
+			name:  "response reasoning text with special characters",
+			input: []byte(`{"text":"error: \"test\"\nstack trace","type":"reasoning_text"}`),
+			expect: ResponseContentPartDoneEventPartUnion{
+				OfResponsContentPartDoneEventPartReasoningText: &ResponseContentPartDoneEventPartReasoningText{
+					Text: "error: \"test\"\nstack trace",
+					Type: "reasoning_text",
+				},
+			},
+		},
+		{
+			name:  "response output text with annotations",
+			input: []byte(`{"text":"This is a very long text content that contains multiple sentences and should be properly marshaled into JSON format without any issues or truncation.","type":"output_text","annotations":[{"type":"file_citation","file_id":"file_123","index":0,"filename":"test.txt"}]}`),
+			expect: ResponseContentPartDoneEventPartUnion{
+				OfResponseOutputText: &ResponseOutputTextParam{
+					Text: "This is a very long text content that contains multiple sentences and should be properly marshaled into JSON format without any issues or truncation.",
+					Type: "output_text",
+					Annotations: []ResponseOutputTextAnnotationUnionParam{
+						{
+							OfFileCitation: &ResponseOutputTextAnnotationFileCitationParam{
+								Type:     "file_citation",
+								FileID:   "file_123",
+								Index:    0,
+								Filename: "test.txt",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:   "empty type",
+			input:  []byte(`{"type": ""}`),
+			expErr: "unknown type for content part done event part: ",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var result ResponseContentPartDoneEventPartUnion
+			err := json.Unmarshal(tc.input, &result)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expect, result)
+		})
+	}
+}
