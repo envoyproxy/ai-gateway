@@ -306,9 +306,6 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) error {
 	extProcConfig.RequestAttributes = []string{
 		internalapi.XDSUpstreamHostMetadataBackendNamePath,
 		internalapi.XDSClusterMetadataBackendNamePath,
-		// These two are for backward compatibility. TODO: remove them after v0.5 is released.
-		internalapi.XDSUpstreamHostMetadataKey,
-		internalapi.XDSClusterMetadataKey,
 	}
 	extProcConfig.ProcessingMode = &extprocv3.ProcessingMode{
 		RequestHeaderMode: extprocv3.ProcessingMode_SEND,
