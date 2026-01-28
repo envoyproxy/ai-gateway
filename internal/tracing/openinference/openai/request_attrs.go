@@ -622,9 +622,15 @@ func setComputerCallAttrs(c *openai.ResponseComputerToolCall, attrs []attribute.
 func setComputerCallOutputAttrs(c *openai.ResponseInputItemComputerCallOutputParam, attrs []attribute.KeyValue, config *openinference.TraceConfig, messageIndex int) []attribute.KeyValue {
 	attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageRole), "tool"))
 	if config.HideInputText {
-		attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.ToolCallID), openinference.RedactedValue))
+		attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.ToolCallID), openinference.RedactedValue),
+			attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageContent), openinference.RedactedValue),
+		)
 	} else {
 		attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.ToolCallID), c.CallID))
+		// output is a screenshot - serialize to JSON
+		if content, err := json.Marshal(c.Output); err == nil {
+			attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(messageIndex, openinference.MessageContent), string(content)))
+		}
 	}
 	return attrs
 }
