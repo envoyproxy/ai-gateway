@@ -889,3 +889,209 @@ func TestBuildCompletionRequestAttributes(t *testing.T) {
 		})
 	}
 }
+
+func TestSetCustomToolCallOutputAttrs(t *testing.T) {
+	tests := []struct {
+		name          string
+		callOutput    *openai.ResponseCustomToolCallOutputParam
+		messageIndex  int
+		config        *openinference.TraceConfig
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name: "basic string output without redaction",
+			callOutput: &openai.ResponseCustomToolCallOutputParam{
+				CallID: "tool_call_123",
+				Output: openai.ResponseCustomToolCallOutputOutputUnionParam{
+					OfString: ptr("Tool execution result"),
+				},
+			},
+			messageIndex: 0,
+			config:       openinference.NewTraceConfig(),
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "tool"),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.ToolCallID), "tool_call_123"),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), `"Tool execution result"`),
+			},
+		},
+		{
+			name: "output with HideInputText enabled",
+			callOutput: &openai.ResponseCustomToolCallOutputParam{
+				CallID: "tool_call_789",
+				Output: openai.ResponseCustomToolCallOutputOutputUnionParam{
+					OfString: ptr("Sensitive output data"),
+				},
+			},
+			messageIndex: 2,
+			config:       &openinference.TraceConfig{HideInputText: true},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(2, openinference.MessageRole), "tool"),
+				attribute.String(openinference.InputMessageAttribute(2, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.InputMessageAttribute(2, openinference.MessageContent), openinference.RedactedValue),
+			},
+		},
+		{
+			name: "output with empty string",
+			callOutput: &openai.ResponseCustomToolCallOutputParam{
+				CallID: "tool_call_empty",
+				Output: openai.ResponseCustomToolCallOutputOutputUnionParam{
+					OfString: ptr(""),
+				},
+			},
+			messageIndex: 3,
+			config:       openinference.NewTraceConfig(),
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(3, openinference.MessageRole), "tool"),
+				attribute.String(openinference.InputMessageAttribute(3, openinference.ToolCallID), "tool_call_empty"),
+				attribute.String(openinference.InputMessageAttribute(3, openinference.MessageContent), `""`),
+			},
+		},
+		{
+			name: "output with complex message",
+			callOutput: &openai.ResponseCustomToolCallOutputParam{
+				CallID: "tool_call_complex",
+				Output: openai.ResponseCustomToolCallOutputOutputUnionParam{
+					OfString: ptr("Status: OK, Result: {\"computed\": true}"),
+				},
+			},
+			messageIndex: 4,
+			config:       openinference.NewTraceConfig(),
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(4, openinference.MessageRole), "tool"),
+				attribute.String(openinference.InputMessageAttribute(4, openinference.ToolCallID), "tool_call_complex"),
+				attribute.String(openinference.InputMessageAttribute(4, openinference.MessageContent), `"Status: OK, Result: {\"computed\": true}"`),
+			},
+		},
+		{
+			name: "different message index at index 10",
+			callOutput: &openai.ResponseCustomToolCallOutputParam{
+				CallID: "tool_call_10",
+				Output: openai.ResponseCustomToolCallOutputOutputUnionParam{
+					OfString: ptr("output at index 10"),
+				},
+			},
+			messageIndex: 10,
+			config:       openinference.NewTraceConfig(),
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(10, openinference.MessageRole), "tool"),
+				attribute.String(openinference.InputMessageAttribute(10, openinference.ToolCallID), "tool_call_10"),
+				attribute.String(openinference.InputMessageAttribute(10, openinference.MessageContent), `"output at index 10"`),
+			},
+		},
+		{
+			name: "with HideInputText disabled explicitly",
+			callOutput: &openai.ResponseCustomToolCallOutputParam{
+				CallID: "tool_call_unhidden",
+				Output: openai.ResponseCustomToolCallOutputOutputUnionParam{
+					OfString: ptr("visible data"),
+				},
+			},
+			messageIndex: 11,
+			config:       &openinference.TraceConfig{HideInputText: false},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(11, openinference.MessageRole), "tool"),
+				attribute.String(openinference.InputMessageAttribute(11, openinference.ToolCallID), "tool_call_unhidden"),
+				attribute.String(openinference.InputMessageAttribute(11, openinference.MessageContent), `"visible data"`),
+			},
+		},
+		{
+			name: "long output text",
+			callOutput: &openai.ResponseCustomToolCallOutputParam{
+				CallID: "tool_call_long",
+				Output: openai.ResponseCustomToolCallOutputOutputUnionParam{
+					OfString: ptr("This is a long output message with special characters like !@#$%^&*()"),
+				},
+			},
+			messageIndex: 5,
+			config:       openinference.NewTraceConfig(),
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(5, openinference.MessageRole), "tool"),
+				attribute.String(openinference.InputMessageAttribute(5, openinference.ToolCallID), "tool_call_long"),
+				attribute.String(openinference.InputMessageAttribute(5, openinference.MessageContent), `"This is a long output message with special characters like !@#$%^&*()"`),
+			},
+		},
+		{
+			name: "output with HideInputText for long text",
+			callOutput: &openai.ResponseCustomToolCallOutputParam{
+				CallID: "tool_call_secret",
+				Output: openai.ResponseCustomToolCallOutputOutputUnionParam{
+					OfString: ptr("This contains sensitive data that should be redacted"),
+				},
+			},
+			messageIndex: 6,
+			config:       &openinference.TraceConfig{HideInputText: true},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(6, openinference.MessageRole), "tool"),
+				attribute.String(openinference.InputMessageAttribute(6, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.InputMessageAttribute(6, openinference.MessageContent), openinference.RedactedValue),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var initialAttrs []attribute.KeyValue
+			attrs := setCustomToolCallOutputAttrs(tt.callOutput, initialAttrs, tt.config, tt.messageIndex)
+
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
+		})
+	}
+}
+
+// TestSetCustomToolCallOutputAttrsWithInitialAttrs tests the function when initial attributes are provided
+func TestSetCustomToolCallOutputAttrsWithInitialAttrs(t *testing.T) {
+	tests := []struct {
+		name             string
+		initialAttrs     []attribute.KeyValue
+		callOutput       *openai.ResponseCustomToolCallOutputParam
+		messageIndex     int
+		config           *openinference.TraceConfig
+		expectedNumAttrs int // Verify that attributes are appended correctly
+	}{
+		{
+			name: "appends to existing attributes",
+			initialAttrs: []attribute.KeyValue{
+				attribute.String("existing", "value"),
+			},
+			callOutput: &openai.ResponseCustomToolCallOutputParam{
+				CallID: "call_001",
+				Output: openai.ResponseCustomToolCallOutputOutputUnionParam{
+					OfString: ptr("result"),
+				},
+			},
+			messageIndex:     0,
+			config:           openinference.NewTraceConfig(),
+			expectedNumAttrs: 4, // existing + role + toolcallid + messagecontent
+		},
+		{
+			name: "appends with redaction to existing attributes",
+			initialAttrs: []attribute.KeyValue{
+				attribute.String("prior", "attr"),
+				attribute.String("another", "one"),
+			},
+			callOutput: &openai.ResponseCustomToolCallOutputParam{
+				CallID: "call_002",
+				Output: openai.ResponseCustomToolCallOutputOutputUnionParam{
+					OfString: ptr("secret"),
+				},
+			},
+			messageIndex:     1,
+			config:           &openinference.TraceConfig{HideInputText: true},
+			expectedNumAttrs: 5, // 2 initial + role + toolcallid(redacted) + messagecontent(redacted)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs := setCustomToolCallOutputAttrs(tt.callOutput, tt.initialAttrs, tt.config, tt.messageIndex)
+
+			require.Len(t, attrs, tt.expectedNumAttrs, "expected number of attributes")
+			// Verify attributes include the expected components
+			// Count the number of attributes to verify they were appended correctly
+			initialCount := len(tt.initialAttrs)
+			newAttrsCount := len(attrs) - initialCount
+			// Should add: MessageRole, ToolCallID, and MessageContent (either visible or redacted)
+			require.GreaterOrEqual(t, newAttrsCount, 2, "should have at least MessageRole and ToolCallID added")
+		})
+	}
+}
