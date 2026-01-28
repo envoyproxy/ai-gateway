@@ -55,6 +55,7 @@ func loggerFromContext(ctx context.Context) *slog.Logger {
 type Server struct {
 	logger                        *slog.Logger
 	debugLogEnabled               bool
+	enableRedaction               bool
 	config                        *filterapi.RuntimeConfig
 	processorFactories            map[string]ProcessorFactory
 	routerProcessorsPerReqID      map[string]Processor
@@ -63,11 +64,12 @@ type Server struct {
 }
 
 // NewServer creates a new external processor server.
-func NewServer(logger *slog.Logger) (*Server, error) {
+func NewServer(logger *slog.Logger, enableRedaction bool) (*Server, error) {
 	debugLogEnabled := logger.Enabled(context.Background(), slog.LevelDebug)
 	srv := &Server{
 		logger:                   logger,
 		debugLogEnabled:          debugLogEnabled,
+		enableRedaction:          enableRedaction,
 		processorFactories:       make(map[string]ProcessorFactory),
 		routerProcessorsPerReqID: make(map[string]Processor),
 		uuidFn:                   uuid.NewString,
@@ -111,7 +113,7 @@ func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFi
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", errNoProcessor, path)
 	}
-	return newProcessor(s.config, requestHeaders, s.logger, isUpstreamFilter)
+	return newProcessor(s.config, requestHeaders, s.logger, isUpstreamFilter, s.enableRedaction)
 }
 
 // originalPathHeader is the header used to pass the original path to the processor.
@@ -280,7 +282,7 @@ func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.Pro
 		}
 		if s.debugLogEnabled {
 			var logContent any
-			if s.config != nil && s.config.EnableRedaction {
+			if s.enableRedaction {
 				rh := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
 				logContent = redactProcessingResponseRequestHeaders(rh, s.logger, sensitiveHeaderKeys)
 			} else {
@@ -290,15 +292,14 @@ func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.Pro
 		}
 		return resp, nil
 	case *extprocv3.ProcessingRequest_RequestBody:
-		if s.debugLogEnabled && s.config != nil && !s.config.EnableRedaction {
+		if s.debugLogEnabled && !s.enableRedaction {
 			l.Debug("request body processing", slog.Any("request", req))
 		}
 		resp, err := p.ProcessRequestBody(ctx, value.RequestBody)
 		// If the DEBUG log level is enabled, filter the sensitive data before logging.
 		if s.debugLogEnabled {
 			rb := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
-			redactBody := s.config != nil && s.config.EnableRedaction
-			logContent := redactRequestBodyResponse(rb, l, sensitiveHeaderKeys, redactBody)
+			logContent := redactRequestBodyResponse(rb, l, sensitiveHeaderKeys, s.enableRedaction)
 			l.Debug("request body processed", slog.Any("response", logContent))
 		}
 		if err != nil {
@@ -319,7 +320,7 @@ func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.Pro
 		}
 		return resp, nil
 	case *extprocv3.ProcessingRequest_ResponseBody:
-		if s.debugLogEnabled && s.config != nil && !s.config.EnableRedaction {
+		if s.debugLogEnabled && !s.enableRedaction {
 			l.Debug("response body processing", slog.Any("request", req))
 		}
 		resp, err := p.ProcessResponseBody(ctx, value.ResponseBody)
@@ -328,9 +329,9 @@ func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.Pro
 		}
 
 		// If the DEBUG log level is enabled, filter the sensitive data before logging.
-		if l.Enabled(ctx, slog.LevelDebug) && resp != nil && resp.Response != nil {
+		if s.debugLogEnabled && resp != nil && resp.Response != nil {
 			var logContent any
-			if s.config != nil && s.config.EnableRedaction {
+			if s.enableRedaction {
 				switch val := resp.Response.(type) {
 				case *extprocv3.ProcessingResponse_ResponseBody:
 					logContent = redactResponseBodyResponseFull(val, l, sensitiveHeaderKeys)

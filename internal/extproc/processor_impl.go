@@ -53,10 +53,10 @@ func NewFactory[ReqT any, RespT any, RespChunkT any, EndpointSpecT endpointspec.
 	tracer tracingapi.RequestTracer[ReqT, RespT, RespChunkT],
 	_ EndpointSpecT, // This is a type marker to bind EndpointSpecT without specifying ReqT, RespT, RespChunkT explicitly.
 ) ProcessorFactory {
-	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
+	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool, enableRedaction bool) (Processor, error) {
 		logger = logger.With("isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
-			return newRouterProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](config, requestHeaders, logger, tracer), nil
+			return newRouterProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](config, requestHeaders, logger, tracer, enableRedaction), nil
 		}
 		return newUpstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](requestHeaders, f.NewMetrics(), logger), nil
 	}
@@ -95,6 +95,7 @@ type (
 		upstreamFilterCount int
 		stream              bool
 		debugLogEnabled     bool
+		enableRedaction     bool
 	}
 	// upstreamProcessor implements [Processor] for the upstream filter for the standard LLM endpoints.
 	//
@@ -124,6 +125,7 @@ func newRouterProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.
 	requestHeaders map[string]string,
 	logger *slog.Logger,
 	tracer tracingapi.RequestTracer[ReqT, RespT, RespChunkT],
+	enableRedaction bool,
 ) *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT] {
 	debugLogEnabled := logger.Enabled(context.Background(), slog.LevelDebug)
 	return &routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]{
@@ -133,6 +135,7 @@ func newRouterProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.
 		tracer:            tracer,
 		forceBodyMutation: false,
 		debugLogEnabled:   debugLogEnabled,
+		enableRedaction:   enableRedaction,
 	}
 }
 
@@ -183,7 +186,7 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 	}
 
 	// Only log parsed request body when redaction is enabled
-	if r.debugLogEnabled && r.config != nil && r.config.EnableRedaction {
+	if r.debugLogEnabled && r.enableRedaction {
 		if redactedBody, err := r.eh.RedactSensitiveInfoFromRequest(body); err != nil {
 			logger.Warn("failed to redact sensitive info from request, ignoring and continuing", slog.Any("error", err))
 		} else {
@@ -519,11 +522,9 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 
 	switch redactor := u.translator.(type) {
 	case translator.ResponseRedactor:
-		enableRedaction := u.parent.config != nil && u.parent.config.EnableRedaction
-		redactor.SetRedactionConfig(u.parent.debugLogEnabled, enableRedaction, u.logger)
+		redactor.SetRedactionConfig(u.parent.debugLogEnabled, u.parent.enableRedaction, u.logger)
 	case translator.AnthropicResponseRedactor:
-		enableRedaction := u.parent.config != nil && u.parent.config.EnableRedaction
-		redactor.SetRedactionConfig(u.parent.debugLogEnabled, enableRedaction, u.logger)
+		redactor.SetRedactionConfig(u.parent.debugLogEnabled, u.parent.enableRedaction, u.logger)
 	default:
 		// Ignore if the translator does not support redaction.
 	}

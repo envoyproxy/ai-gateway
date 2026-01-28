@@ -35,9 +35,6 @@ type RuntimeConfig struct {
 	DeclaredModels []Model
 	// Backends is the map of backends by name.
 	Backends map[string]*RuntimeBackend
-	// EnableRedaction controls whether sensitive information is redacted in debug logs.
-	// Inherited from filterapi.Config.
-	EnableRedaction bool
 }
 
 // RuntimeBackend is a filter backend with its auth handler that is derived from the filterapi.Backend configuration.
@@ -86,10 +83,9 @@ func NewRuntimeConfig(ctx context.Context, config *Config, fn NewBackendAuthHand
 	}
 
 	return &RuntimeConfig{
-		UUID:            config.UUID,
-		Backends:        backends,
-		RequestCosts:    costs,
-		DeclaredModels:  config.Models,
-		EnableRedaction: config.EnableRedaction,
+		UUID:           config.UUID,
+		Backends:       backends,
+		RequestCosts:   costs,
+		DeclaredModels: config.Models,
 	}, nil
 }
