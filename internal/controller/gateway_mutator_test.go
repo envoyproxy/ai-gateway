@@ -372,10 +372,164 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 	}
 }
 
+func TestGatewayMutator_mutatePod_UsesNoCacheReader(t *testing.T) {
+	cacheClient := requireNewFakeClientWithIndexes(t)
+	noCacheReader := requireNewFakeClientWithIndexes(t)
+	fakeKube := fake2.NewClientset()
+	g := newGatewayMutator(
+		cacheClient, noCacheReader, fakeKube, ctrl.Log,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
+		"info", "/tmp/extproc.sock", "", "", "/v1", "", "", "", 512*1024*1024,
+		false, "seed", 100, "fallback", 200,
+	)
+
+	const gwName, gwNamespace = "test-gateway", "test-namespace"
+	err := noCacheReader.Create(t.Context(), &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "route-1", Namespace: gwNamespace},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			ParentRefs: []gwapiv1a2.ParentReference{
+				{
+					Name:  gwName,
+					Kind:  ptr.To(gwapiv1a2.Kind("Gateway")),
+					Group: ptr.To(gwapiv1a2.Group("gateway.networking.k8s.io")),
+				},
+			},
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
+			},
+			FilterConfig: &aigv1a1.AIGatewayFilterConfig{},
+		},
+	})
+	require.NoError(t, err)
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-pod", Namespace: gwNamespace},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{Name: "envoy"}},
+		},
+	}
+	_, err = g.kube.CoreV1().Secrets(gwNamespace).Create(t.Context(),
+		&corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: FilterConfigSecretPerGatewayName(
+				gwName, gwNamespace,
+			), Namespace: gwNamespace},
+		}, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	err = g.mutatePod(t.Context(), pod, gwName, gwNamespace)
+	require.NoError(t, err)
+	require.Len(t, pod.Spec.Containers, 2)
+	require.Equal(t, "ai-gateway-extproc", pod.Spec.Containers[1].Name)
+}
+
+func TestGatewayMutator_listAIGatewayRoutesForGateway_NoCacheReaderFallback(t *testing.T) {
+	cacheClient := requireNewFakeClientWithIndexes(t)
+	noCacheReader := requireNewFakeClientWithIndexes(t)
+	fakeKube := fake2.NewClientset()
+	g := newGatewayMutator(
+		cacheClient, noCacheReader, fakeKube, ctrl.Log,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
+		"info", "/tmp/extproc.sock", "", "", "/v1", "", "", "", 512*1024*1024,
+		false, "seed", 100, "fallback", 200,
+	)
+
+	const gwName, gwNamespace = "test-gateway", "test-namespace"
+	err := noCacheReader.Create(t.Context(), &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "route-matching", Namespace: gwNamespace},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			ParentRefs: []gwapiv1.ParentReference{
+				{Name: gwapiv1.ObjectName(gwName)},
+			},
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
+			},
+			FilterConfig: &aigv1a1.AIGatewayFilterConfig{},
+		},
+	})
+	require.NoError(t, err)
+
+	otherNamespace := gwapiv1.Namespace("other")
+	err = noCacheReader.Create(t.Context(), &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "route-non-matching", Namespace: gwNamespace},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			ParentRefs: []gwapiv1.ParentReference{
+				{Name: gwapiv1.ObjectName(gwName), Namespace: &otherNamespace},
+			},
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "orange"}}},
+			},
+			FilterConfig: &aigv1a1.AIGatewayFilterConfig{},
+		},
+	})
+	require.NoError(t, err)
+
+	routes, err := g.listAIGatewayRoutesForGateway(t.Context(), gwName, gwNamespace)
+	require.NoError(t, err)
+	require.Len(t, routes.Items, 1)
+	require.Equal(t, "route-matching", routes.Items[0].Name)
+}
+
+func TestGatewayMutator_listMCPRoutesForGateway_NoCacheReaderFallback(t *testing.T) {
+	cacheClient := requireNewFakeClientWithIndexes(t)
+	noCacheReader := requireNewFakeClientWithIndexes(t)
+	fakeKube := fake2.NewClientset()
+	g := newGatewayMutator(
+		cacheClient, noCacheReader, fakeKube, ctrl.Log,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
+		"info", "/tmp/extproc.sock", "", "", "/v1", "", "", "", 512*1024*1024,
+		false, "seed", 100, "fallback", 200,
+	)
+
+	const gwName, gwNamespace = "test-gateway", "test-namespace"
+	err := noCacheReader.Create(t.Context(), &aigv1a1.MCPRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "mcp-matching", Namespace: gwNamespace},
+		Spec: aigv1a1.MCPRouteSpec{
+			ParentRefs: []gwapiv1.ParentReference{
+				{Name: gwapiv1.ObjectName(gwName)},
+			},
+			BackendRefs: []aigv1a1.MCPRouteBackendRef{
+				{BackendObjectReference: gwapiv1.BackendObjectReference{Name: gwapiv1.ObjectName("server")}},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	err = noCacheReader.Create(t.Context(), &aigv1a1.MCPRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "mcp-non-matching", Namespace: gwNamespace},
+		Spec: aigv1a1.MCPRouteSpec{
+			ParentRefs: []gwapiv1.ParentReference{
+				{Name: gwapiv1.ObjectName("other-gw")},
+			},
+			BackendRefs: []aigv1a1.MCPRouteBackendRef{
+				{BackendObjectReference: gwapiv1.BackendObjectReference{Name: gwapiv1.ObjectName("other")}},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	routes, err := g.listMCPRoutesForGateway(t.Context(), gwName, gwNamespace)
+	require.NoError(t, err)
+	require.Len(t, routes.Items, 1)
+	require.Equal(t, "mcp-matching", routes.Items[0].Name)
+}
+
+func TestGatewayMutator_NoCacheReaderRemainsNil(t *testing.T) {
+	cacheClient := requireNewFakeClientWithIndexes(t)
+	fakeKube := fake2.NewClientset()
+	g := newGatewayMutator(
+		cacheClient, nil, fakeKube, ctrl.Log,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
+		"info", "/tmp/extproc.sock", "", "", "/v1", "", "", "", 512*1024*1024,
+		false, "seed", 100, "fallback", 200,
+	)
+
+	require.Nil(t, g.noCacheReader)
+}
+
 func newTestGatewayMutator(fakeClient client.Client, fakeKube *fake2.Clientset, metricsRequestHeaderAttributes, spanRequestHeaderAttributes, endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets string, sidecar bool) *gatewayMutator {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	return newGatewayMutator(
-		fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
+		fakeClient, fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
 		"info", "/tmp/extproc.sock", metricsRequestHeaderAttributes, spanRequestHeaderAttributes, "/v1", endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets, 512*1024*1024,
 		sidecar, "seed", 100, "fallback", 200,
 	)

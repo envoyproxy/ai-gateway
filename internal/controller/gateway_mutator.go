@@ -7,6 +7,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -31,10 +32,12 @@ import (
 
 // gatewayMutator implements [admission.CustomDefaulter].
 type gatewayMutator struct {
-	codec  serializer.CodecFactory
-	c      client.Client
-	kube   kubernetes.Interface
-	logger logr.Logger
+	codec serializer.CodecFactory
+	c     client.Client
+	// noCacheReader avoids cache sync races during admission. Optional.
+	noCacheReader client.Reader
+	kube          kubernetes.Interface
+	logger        logr.Logger
 
 	extProcImage                   string
 	extProcImagePullPolicy         corev1.PullPolicy
@@ -62,7 +65,7 @@ type gatewayMutator struct {
 	extProcAsSideCar bool
 }
 
-func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.Logger,
+func newGatewayMutator(c client.Client, noCacheReader client.Reader, kube kubernetes.Interface, logger logr.Logger,
 	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel,
 	udsPath, metricsRequestHeaderAttributes, spanRequestHeaderAttributes, rootPrefix, endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets string, extProcMaxRecvMsgSize int,
 	extProcAsSideCar bool,
@@ -89,7 +92,7 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 	}
 
 	return &gatewayMutator{
-		c: c, codec: serializer.NewCodecFactory(Scheme),
+		c: c, noCacheReader: noCacheReader, codec: serializer.NewCodecFactory(Scheme),
 		kube:                                   kube,
 		extProcImage:                           extProcImage,
 		extProcImagePullPolicy:                 extProcImagePullPolicy,
@@ -109,6 +112,95 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 		mcpFallbackSessionEncryptionSeed:       mcpFallbackSessionEncryptionSeed,
 		mcpFallbackSessionEncryptionIterations: mcpFallbackSessionEncryptionIterations,
 	}
+}
+
+func (g *gatewayMutator) listAIGatewayRoutesForGateway(ctx context.Context, gatewayName, gatewayNamespace string) (aigv1a1.AIGatewayRouteList, error) {
+	var routes aigv1a1.AIGatewayRouteList
+	key := fmt.Sprintf("%s.%s", gatewayName, gatewayNamespace)
+	cacheErr := g.c.List(ctx, &routes, client.MatchingFields{
+		k8sClientIndexAIGatewayRouteToAttachedGateway: key,
+	})
+	if cacheErr == nil && len(routes.Items) > 0 {
+		return routes, nil
+	}
+	if g.noCacheReader == nil {
+		return routes, cacheErr
+	}
+
+	var all aigv1a1.AIGatewayRouteList
+	// noCacheReader doesn't have access to cache indexes, so list then filter.
+	if err := g.noCacheReader.List(ctx, &all); err != nil {
+		if cacheErr != nil {
+			return routes, errors.Join(
+				fmt.Errorf("failed to list routes from cache: %w", cacheErr),
+				fmt.Errorf("failed to list routes from noCacheReader: %w", err),
+			)
+		}
+		return routes, fmt.Errorf("failed to list routes: %w", err)
+	}
+	routes.Items = filterAIGatewayRoutesForGateway(all.Items, gatewayName, gatewayNamespace)
+	return routes, nil
+}
+
+func (g *gatewayMutator) listMCPRoutesForGateway(ctx context.Context, gatewayName, gatewayNamespace string) (aigv1a1.MCPRouteList, error) {
+	var routes aigv1a1.MCPRouteList
+	key := fmt.Sprintf("%s.%s", gatewayName, gatewayNamespace)
+	cacheErr := g.c.List(ctx, &routes, client.MatchingFields{
+		k8sClientIndexMCPRouteToAttachedGateway: key,
+	})
+	if cacheErr == nil && len(routes.Items) > 0 {
+		return routes, nil
+	}
+	if g.noCacheReader == nil {
+		return routes, cacheErr
+	}
+
+	var all aigv1a1.MCPRouteList
+	// noCacheReader doesn't have access to cache indexes, so list then filter.
+	if err := g.noCacheReader.List(ctx, &all); err != nil {
+		if cacheErr != nil {
+			return routes, errors.Join(
+				fmt.Errorf("failed to list MCP routes from cache: %w", cacheErr),
+				fmt.Errorf("failed to list MCP routes from noCacheReader: %w", err),
+			)
+		}
+		return routes, fmt.Errorf("failed to list MCP routes: %w", err)
+	}
+	routes.Items = filterMCPRoutesForGateway(all.Items, gatewayName, gatewayNamespace)
+	return routes, nil
+}
+
+func filterAIGatewayRoutesForGateway(routes []aigv1a1.AIGatewayRoute, gatewayName, gatewayNamespace string) []aigv1a1.AIGatewayRoute {
+	var filtered []aigv1a1.AIGatewayRoute
+	for i := range routes {
+		if parentRefsMatchGateway(routes[i].Namespace, routes[i].Spec.ParentRefs, gatewayName, gatewayNamespace) {
+			filtered = append(filtered, routes[i])
+		}
+	}
+	return filtered
+}
+
+func filterMCPRoutesForGateway(routes []aigv1a1.MCPRoute, gatewayName, gatewayNamespace string) []aigv1a1.MCPRoute {
+	var filtered []aigv1a1.MCPRoute
+	for i := range routes {
+		if parentRefsMatchGateway(routes[i].Namespace, routes[i].Spec.ParentRefs, gatewayName, gatewayNamespace) {
+			filtered = append(filtered, routes[i])
+		}
+	}
+	return filtered
+}
+
+func parentRefsMatchGateway(routeNamespace string, parentRefs []gwapiv1.ParentReference, gatewayName, gatewayNamespace string) bool {
+	for _, ref := range parentRefs {
+		namespace := routeNamespace
+		if ref.Namespace != nil && *ref.Namespace != "" {
+			namespace = string(*ref.Namespace)
+		}
+		if string(ref.Name) == gatewayName && namespace == gatewayNamespace {
+			return true
+		}
+	}
+	return false
 }
 
 // Default implements [admission.CustomDefaulter].
@@ -239,18 +331,12 @@ func ParseImagePullSecrets(s string) ([]corev1.LocalObjectReference, error) {
 }
 
 func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gatewayName, gatewayNamespace string) error {
-	var routes aigv1a1.AIGatewayRouteList
-	err := g.c.List(ctx, &routes, client.MatchingFields{
-		k8sClientIndexAIGatewayRouteToAttachedGateway: fmt.Sprintf("%s.%s", gatewayName, gatewayNamespace),
-	})
+	routes, err := g.listAIGatewayRoutesForGateway(ctx, gatewayName, gatewayNamespace)
 	if err != nil {
 		return fmt.Errorf("failed to list routes: %w", err)
 	}
 
-	var mcpRoutes aigv1a1.MCPRouteList
-	err = g.c.List(ctx, &mcpRoutes, client.MatchingFields{
-		k8sClientIndexMCPRouteToAttachedGateway: fmt.Sprintf("%s.%s", gatewayName, gatewayNamespace),
-	})
+	mcpRoutes, err := g.listMCPRoutesForGateway(ctx, gatewayName, gatewayNamespace)
 	if err != nil {
 		return fmt.Errorf("failed to list routes: %w", err)
 	}
@@ -421,9 +507,14 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 
 // fetchGatewayConfig returns the referenced GatewayConfig (if present).
 func (g *gatewayMutator) fetchGatewayConfig(ctx context.Context, gatewayName, gatewayNamespace string) *aigv1a1.GatewayConfig {
+	var reader client.Reader = g.c
+	if g.noCacheReader != nil {
+		reader = g.noCacheReader
+	}
+
 	// Fetch the Gateway object.
 	var gateway gwapiv1.Gateway
-	if err := g.c.Get(ctx, client.ObjectKey{Name: gatewayName, Namespace: gatewayNamespace}, &gateway); err != nil {
+	if err := reader.Get(ctx, client.ObjectKey{Name: gatewayName, Namespace: gatewayNamespace}, &gateway); err != nil {
 		if apierrors.IsNotFound(err) {
 			g.logger.Info("Gateway not found, using global default configuration",
 				"gateway_name", gatewayName, "gateway_namespace", gatewayNamespace)
@@ -441,7 +532,7 @@ func (g *gatewayMutator) fetchGatewayConfig(ctx context.Context, gatewayName, ga
 
 	// Fetch the GatewayConfig (must be in same namespace as Gateway).
 	var gatewayConfig aigv1a1.GatewayConfig
-	if err := g.c.Get(ctx, client.ObjectKey{Name: configName, Namespace: gatewayNamespace}, &gatewayConfig); err != nil {
+	if err := reader.Get(ctx, client.ObjectKey{Name: configName, Namespace: gatewayNamespace}, &gatewayConfig); err != nil {
 		if apierrors.IsNotFound(err) {
 			g.logger.Info("GatewayConfig referenced by Gateway not found, using global defaults",
 				"gateway_name", gatewayName, "gatewayconfig_name", configName)

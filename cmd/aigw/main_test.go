@@ -25,6 +25,7 @@ func Test_doMain(t *testing.T) {
 		env          map[string]string
 		rf           runFn
 		hf           healthcheckFn
+		df           downloadEnvoyFn
 		expOut       string
 		expPanicCode *int
 	}{
@@ -55,6 +56,9 @@ Commands:
 
   healthcheck [flags]
     Docker HEALTHCHECK command.
+
+  download-envoy [flags]
+    Download Envoy binary for the Envoy Gateway default version.
 
 Run "aigw <command> --help" for more information on a command.
 `,
@@ -152,6 +156,35 @@ Flags:
 				return nil
 			},
 		},
+		{
+			name: "download-envoy",
+			args: []string{"download-envoy"},
+			df: func(_ context.Context, c *cmdDownloadEnvoy, _, _ io.Writer) error {
+				require.NotNil(t, c)
+				require.NotEmpty(t, c.dataHome)
+				return nil
+			},
+		},
+		{
+			name:         "download-envoy help",
+			args:         []string{"download-envoy", "--help"},
+			expPanicCode: ptr.To(0),
+			expOut: `Usage: aigw download-envoy [flags]
+
+Download Envoy binary for the Envoy Gateway default version.
+
+Flags:
+  -h, --help                  Show context-sensitive help.
+      --config-home=STRING    Configuration files directory. Defaults to
+                              ~/.config/aigw ($AIGW_CONFIG_HOME)
+      --data-home=STRING      Downloaded Envoy binaries directory. Defaults to
+                              ~/.local/share/aigw ($AIGW_DATA_HOME)
+      --state-home=STRING     Persistent state and logs directory. Defaults to
+                              ~/.local/state/aigw ($AIGW_STATE_HOME)
+      --runtime-dir=STRING    Ephemeral runtime files directory. Defaults to
+                              /tmp/aigw-$UID ($AIGW_RUNTIME_DIR)
+`,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -162,10 +195,10 @@ Flags:
 			out := &bytes.Buffer{}
 			if tt.expPanicCode != nil {
 				require.PanicsWithValue(t, *tt.expPanicCode, func() {
-					doMain(t.Context(), out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.rf, tt.hf)
+					doMain(t.Context(), out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.rf, tt.hf, tt.df)
 				})
 			} else {
-				doMain(t.Context(), out, os.Stderr, tt.args, nil, tt.rf, tt.hf)
+				doMain(t.Context(), out, os.Stderr, tt.args, nil, tt.rf, tt.hf, tt.df)
 			}
 			fmt.Println(out.String())
 			require.Equal(t, tt.expOut, out.String())

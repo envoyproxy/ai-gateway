@@ -28,6 +28,10 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
+// LogRequestHeaderAttributes is the mapping of request headers to log as dynamic metadata attributes.
+// This is configured at the startup of the extproc server.
+var LogRequestHeaderAttributes map[string]string
+
 // NewFactory creates a ProcessorFactory with the given parameters.
 //
 // Type Parameters:
@@ -180,9 +184,20 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
 		// Set the original model to the request header with the key `x-ai-eg-model`.
 		Header: &corev3.HeaderValue{Key: internalapi.ModelNameHeaderKeyDefault, RawValue: []byte(originalModel)},
-	}, &corev3.HeaderValueOption{
-		Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(r.requestHeaders[":path"])},
 	})
+	originalPath := r.requestHeaders[":path"]
+	if r.requestHeaders[originalPathHeader] == "" {
+		r.requestHeaders[originalPathHeader] = originalPath
+		additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
+			Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(originalPath)},
+		})
+	}
+	if r.requestHeaders[internalapi.EnvoyOriginalPathHeader] == "" {
+		r.requestHeaders[internalapi.EnvoyOriginalPathHeader] = originalPath
+		additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
+			Header: &corev3.HeaderValue{Key: internalapi.EnvoyOriginalPathHeader, RawValue: []byte(originalPath)},
+		})
+	}
 	r.originalModel = originalModel
 	r.originalRequestBody = body
 	r.stream = stream
@@ -294,6 +309,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 	if bm := bodyMutation.GetBody(); bm != nil {
 		dm = buildContentLengthDynamicMetadataOnRequest(len(bm))
 	}
+	dm = mergeDynamicMetadata(dm, buildRequestHeaderDynamicMetadata(u.requestHeaders))
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
 			RequestHeaders: &extprocv3.HeadersResponse{
@@ -517,6 +533,54 @@ func buildContentLengthDynamicMetadataOnRequest(contentLength int) *structpb.Str
 		},
 	}
 	return metadata
+}
+
+func buildRequestHeaderDynamicMetadata(requestHeaders map[string]string) *structpb.Struct {
+	if len(LogRequestHeaderAttributes) == 0 {
+		return nil
+	}
+	fields := make(map[string]*structpb.Value, len(LogRequestHeaderAttributes))
+	for header, attr := range LogRequestHeaderAttributes {
+		value, ok := requestHeaders[header]
+		if !ok || value == "" {
+			continue
+		}
+		fields[attr] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: value}}
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	return &structpb.Struct{
+		Fields: map[string]*structpb.Value{
+			internalapi.AIGatewayFilterMetadataNamespace: {
+				Kind: &structpb.Value_StructValue{
+					StructValue: &structpb.Struct{Fields: fields},
+				},
+			},
+		},
+	}
+}
+
+func mergeDynamicMetadata(base, extra *structpb.Struct) *structpb.Struct {
+	if base == nil {
+		return extra
+	}
+	if extra == nil {
+		return base
+	}
+	baseFields := base.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+	if baseFields == nil {
+		baseFields = &structpb.Struct{Fields: map[string]*structpb.Value{}}
+		base.Fields[internalapi.AIGatewayFilterMetadataNamespace] = structpb.NewStructValue(baseFields)
+	}
+	extraFields := extra.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+	if extraFields == nil {
+		return base
+	}
+	for k, v := range extraFields.Fields {
+		baseFields.Fields[k] = v
+	}
+	return base
 }
 
 // buildDynamicMetadata creates metadata for rate limiting and cost tracking.

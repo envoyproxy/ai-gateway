@@ -44,6 +44,7 @@ type extProcFlags struct {
 	adminPort                              int           // HTTP port for the admin server (metrics and health).
 	metricsRequestHeaderAttributes         string        // comma-separated key-value pairs for mapping HTTP request headers to otel metric attributes.
 	spanRequestHeaderAttributes            string        // comma-separated key-value pairs for mapping HTTP request headers to otel span attributes.
+	logRequestHeaderAttributes             string        // comma-separated key-value pairs for mapping HTTP request headers to access log attributes.
 	mcpAddr                                string        // address for the MCP proxy server which can be either tcp or unix domain socket.
 	mcpSessionEncryptionSeed               string        // Seed for deriving the key for encrypting MCP sessions.
 	mcpSessionEncryptionIterations         int           // Number of iterations to use for PBKDF2 key derivation for MCP session encryption.
@@ -93,6 +94,11 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		"",
 		"Comma-separated key-value pairs for mapping HTTP request headers to otel span attributes. Format: x-session-id:session.id,x-user-id:user.id.",
 	)
+	fs.StringVar(&flags.logRequestHeaderAttributes,
+		"logRequestHeaderAttributes",
+		"",
+		"Comma-separated key-value pairs for mapping HTTP request headers to access log attributes. Format: x-session-id:session.id,x-user-id:user.id.",
+	)
 	fs.StringVar(&flags.rootPrefix,
 		"rootPrefix",
 		"/",
@@ -133,6 +139,11 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 	if flags.spanRequestHeaderAttributes != "" {
 		if _, err := internalapi.ParseRequestHeaderAttributeMapping(flags.spanRequestHeaderAttributes); err != nil {
 			errs = append(errs, fmt.Errorf("failed to parse tracing header mapping: %w", err))
+		}
+	}
+	if flags.logRequestHeaderAttributes != "" {
+		if _, err := internalapi.ParseRequestHeaderAttributeMapping(flags.logRequestHeaderAttributes); err != nil {
+			errs = append(errs, fmt.Errorf("failed to parse access log header mapping: %w", err))
 		}
 	}
 	if flags.endpointPrefixes != "" {
@@ -219,6 +230,12 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to parse tracing header mapping: %w", err)
 	}
+	// Parse header mapping for access logs.
+	logRequestHeaderAttributes, err := internalapi.ParseRequestHeaderAttributeMapping(flags.logRequestHeaderAttributes)
+	if err != nil {
+		return fmt.Errorf("failed to parse access log header mapping: %w", err)
+	}
+	extproc.LogRequestHeaderAttributes = logRequestHeaderAttributes
 
 	// Parse endpoint prefixes and apply defaults for any missing values.
 	endpointPrefixes, err := internalapi.ParseEndpointPrefixes(flags.endpointPrefixes)
@@ -273,10 +290,6 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Anthropic, "/v1/messages"), extproc.NewFactory(
 		messagesMetricsFactory, tracing.MessageTracer(), endpointspec.MessagesEndpointSpec{}))
 
-	if watchErr := filterapi.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); watchErr != nil {
-		return fmt.Errorf("failed to start config watcher: %w", watchErr)
-	}
-
 	// Create and register gRPC server with ExternalProcessorServer (the service Envoy calls).
 	if err = filterapi.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {
 		return fmt.Errorf("failed to start config watcher: %w", err)
@@ -298,7 +311,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		var mcpProxyMux *http.ServeMux
 		var mcpProxyConfig *mcpproxy.ProxyConfig
 		mcpProxyConfig, mcpProxyMux, err = mcpproxy.NewMCPProxy(l.With("component", "mcp-proxy"), mcpMetrics,
-			tracing.MCPTracer(), mcpSessionCrypto)
+			tracing.MCPTracer(), mcpSessionCrypto, logRequestHeaderAttributes)
 		if err != nil {
 			return fmt.Errorf("failed to create MCP proxy: %w", err)
 		}

@@ -11,8 +11,10 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -102,24 +104,71 @@ func (c *InferencePoolController) routeReferencesInferencePool(route *aigv1a1.AI
 
 // getReferencedGateways returns all Gateways that reference the given InferencePool.
 func (c *InferencePoolController) getReferencedGateways(ctx context.Context, inferencePool *gwaiev1.InferencePool) (map[string]*gwapiv1.Gateway, error) {
-	// Find all Gateways across all namespaces.
-	var gateways gwapiv1.GatewayList
-	if err := c.client.List(ctx, &gateways); err != nil {
-		return nil, fmt.Errorf("failed to list Gateways: %w", err)
+	parentRefs := make(map[string]types.NamespacedName)
+
+	var aiGatewayRoutes aigv1a1.AIGatewayRouteList
+	if err := c.client.List(ctx, &aiGatewayRoutes, client.InNamespace(inferencePool.Namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list AIGatewayRoutes: %w", err)
+	}
+	for i := range aiGatewayRoutes.Items {
+		route := &aiGatewayRoutes.Items[i]
+		if !c.routeReferencesInferencePool(route, inferencePool.Name) {
+			continue
+		}
+		c.collectGatewayRefs(parentRefs, route.Namespace, route.Spec.ParentRefs)
+	}
+
+	var httpRoutes gwapiv1.HTTPRouteList
+	if err := c.client.List(ctx, &httpRoutes, client.InNamespace(inferencePool.Namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list HTTPRoutes: %w", err)
+	}
+	for i := range httpRoutes.Items {
+		route := &httpRoutes.Items[i]
+		if !c.httpRouteReferencesInferencePool(route, inferencePool.Name) {
+			continue
+		}
+		c.collectGatewayRefs(parentRefs, route.Namespace, route.Spec.ParentRefs)
 	}
 
 	referencedGateways := make(map[string]*gwapiv1.Gateway)
-
-	// Check each Gateway to see if it references this InferencePool through routes.
-	for i := range gateways.Items {
-		gw := &gateways.Items[i]
-		if c.gatewayReferencesInferencePool(ctx, gw, inferencePool.Name, inferencePool.Namespace) {
-			gatewayKey := fmt.Sprintf("%s/%s", gw.Namespace, gw.Name)
-			referencedGateways[gatewayKey] = gw
+	for _, nn := range parentRefs {
+		gw := &gwapiv1.Gateway{}
+		if err := c.client.Get(ctx, client.ObjectKey{Namespace: nn.Namespace, Name: nn.Name}, gw); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return nil, fmt.Errorf("failed to get Gateway %s/%s: %w", nn.Namespace, nn.Name, err)
 		}
+		gatewayKey := fmt.Sprintf("%s/%s", gw.Namespace, gw.Name)
+		referencedGateways[gatewayKey] = gw
 	}
 
 	return referencedGateways, nil
+}
+
+func (c *InferencePoolController) collectGatewayRefs(parentRefs map[string]types.NamespacedName, routeNamespace string, refs []gwapiv1.ParentReference) {
+	for _, ref := range refs {
+		if ref.Name == "" {
+			continue
+		}
+		if ref.Group != nil && string(*ref.Group) != "gateway.networking.k8s.io" {
+			continue
+		}
+		if ref.Kind != "" && string(ref.Kind) != "Gateway" {
+			continue
+		}
+
+		namespace := routeNamespace
+		if ref.Namespace != nil && *ref.Namespace != "" {
+			namespace = string(*ref.Namespace)
+		}
+
+		key := fmt.Sprintf("%s/%s", namespace, ref.Name)
+		parentRefs[key] = types.NamespacedName{
+			Namespace: namespace,
+			Name:      string(ref.Name),
+		}
+	}
 }
 
 // validateExtensionReference checks if the ExtensionReference service exists.

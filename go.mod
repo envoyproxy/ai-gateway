@@ -1,7 +1,7 @@
 module github.com/envoyproxy/ai-gateway
 
 // Explicitly specify the Go patch version to be able to purge the CI cache correctly.
-go 1.25.5
+go 1.25.6
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.0
@@ -38,7 +38,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.40.0
 	github.com/tetratelabs/func-e v1.3.0
 	github.com/tidwall/gjson v1.18.0
-	github.com/tidwall/sjson v1.2.5
+	github.com/tidwall/sjson v1.2.6-0.20251103175603-13f6455cf849
 	go.opentelemetry.io/contrib/exporters/autoexport v0.64.0
 	go.opentelemetry.io/contrib/propagators/autoprop v0.64.0
 	go.opentelemetry.io/otel v1.39.0
@@ -56,9 +56,9 @@ require (
 	golang.org/x/oauth2 v0.34.0
 	golang.org/x/sync v0.19.0
 	golang.org/x/tools v0.41.0
-	google.golang.org/api v0.260.0
-	google.golang.org/genai v1.41.1
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20251222181119-0a764e51fe1b
+	google.golang.org/api v0.261.0
+	google.golang.org/genai v1.43.0
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260120174246-409b4a993575
 	google.golang.org/grpc v1.78.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/dnaeon/go-vcr.v4 v4.0.6
@@ -68,7 +68,7 @@ require (
 	k8s.io/apimachinery v0.35.0
 	k8s.io/client-go v0.35.0
 	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
-	sigs.k8s.io/controller-runtime v0.22.4
+	sigs.k8s.io/controller-runtime v0.23.0
 	sigs.k8s.io/gateway-api v1.4.0
 	sigs.k8s.io/gateway-api-inference-extension v1.0.2
 	sigs.k8s.io/yaml v1.6.0
@@ -166,7 +166,7 @@ require (
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/go-containerregistry v0.20.6 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
-	github.com/googleapis/enterprise-certificate-proxy v0.3.9 // indirect
+	github.com/googleapis/enterprise-certificate-proxy v0.3.11 // indirect
 	github.com/googleapis/gax-go/v2 v2.16.0 // indirect
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect

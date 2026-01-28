@@ -80,7 +80,7 @@ func (e *TestEnvironment) ExtProcAdminPort() int {
 func StartTestEnvironment(t testing.TB,
 	requireNewUpstream func(t testing.TB, out io.Writer, miscPorts map[string]int), miscPortDefauls map[string]int,
 	extprocConfig string, extprocEnv []string, envoyConfig string, okToDumpLogOnFailure, extProcInProcess bool,
-	mcpWriteTimeout time.Duration,
+	mcpWriteTimeout time.Duration, extprocArgs ...string,
 ) *TestEnvironment {
 	// Get random ports for all services.
 	const defaultPortCount = 5
@@ -142,6 +142,7 @@ func StartTestEnvironment(t testing.TB,
 		env.extprocOut,
 		env.extprocConfig,
 		env.extprocEnv,
+		extprocArgs,
 		env.extProcPort,
 		env.extProcAdminPort,
 		env.extProcMCPPort,
@@ -174,7 +175,7 @@ func StartTestEnvironment(t testing.TB,
 		}
 		t.Logf("All services are up and running")
 		return true
-	}, time.Second*5, time.Millisecond*500, "failed to connect to all services in the test environment")
+	}, time.Second*60, time.Millisecond*500, "failed to connect to all services in the test environment")
 	return env
 }
 
@@ -201,7 +202,7 @@ func (e *TestEnvironment) checkAllConnections() error {
 }
 
 func (e *TestEnvironment) checkConnection(port int, name string) error {
-	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s on port %d: %w", name, port, err)
 	}
@@ -281,7 +282,7 @@ func requireEnvoy(t testing.TB,
 }
 
 // requireExtProc starts the external processor with the given configuration.
-func requireExtProc(t testing.TB, out io.Writer, config string, env []string, port, adminPort, mcpPort int, mcpWriteTimeout time.Duration, inProcess bool) {
+func requireExtProc(t testing.TB, out io.Writer, config string, env []string, extraArgs []string, port, adminPort, mcpPort int, mcpWriteTimeout time.Duration, inProcess bool) {
 	configPath := t.TempDir() + "/extproc-config.yaml"
 	require.NoError(t, os.WriteFile(configPath, []byte(config), 0o600))
 
@@ -293,6 +294,7 @@ func requireExtProc(t testing.TB, out io.Writer, config string, env []string, po
 		"-mcpWriteTimeout", mcpWriteTimeout.String(),
 		"-logLevel", "info",
 	}
+	args = append(args, extraArgs...)
 	// Disable pprof for tests to avoid port conflicts.
 	env = append(env, fmt.Sprintf("%s=true", pprof.DisableEnvVarKey))
 	t.Logf("Starting ExtProc with args: %v", args)

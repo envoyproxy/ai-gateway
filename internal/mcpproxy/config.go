@@ -25,11 +25,12 @@ type (
 	// This implements [filterapi.ConfigReceiver] to gets the up-to-date configuration.
 	ProxyConfig struct {
 		*mcpProxyConfig
-		toolChangeSignaler changeSignaler // signals tool changes to active sessions.
-		l                  *slog.Logger
-		sessionCrypto      SessionCrypto
-		tracer             tracingapi.MCPTracer
-		client             http.Client
+		toolChangeSignaler         changeSignaler // signals tool changes to active sessions.
+		l                          *slog.Logger
+		sessionCrypto              SessionCrypto
+		tracer                     tracingapi.MCPTracer
+		client                     http.Client
+		logRequestHeaderAttributes map[string]string
 	}
 
 	mcpProxyConfig struct {

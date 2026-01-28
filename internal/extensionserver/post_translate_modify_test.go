@@ -189,6 +189,19 @@ func TestInsertAIGatewayExtProcFilter(t *testing.T) {
 	}
 }
 
+func TestInsertHeaderToMetadataFilter(t *testing.T) {
+	hcm := &httpconnectionmanagerv3.HttpConnectionManager{
+		HttpFilters: []*httpconnectionmanagerv3.HttpFilter{{Name: wellknown.Router}},
+	}
+	filter, err := buildHeaderToMetadataFilter(map[string]string{"x-session-id": "session.id"})
+	require.NoError(t, err)
+	err = insertHeaderToMetadataFilter(hcm, filter)
+	require.NoError(t, err)
+	require.Len(t, hcm.HttpFilters, 2)
+	require.Equal(t, headerToMetadataFilterName, hcm.HttpFilters[0].Name)
+	require.Equal(t, wellknown.Router, hcm.HttpFilters[1].Name)
+}
+
 func TestServer_isRouteGeneratedByAIGateway(t *testing.T) {
 	emptyStruct, err := structpb.NewStruct(map[string]any{})
 	require.NoError(t, err)

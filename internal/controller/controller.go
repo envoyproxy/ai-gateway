@@ -231,7 +231,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	}
 
 	if !options.DisableMutatingWebhook {
-		h := admission.WithCustomDefaulter(Scheme, &corev1.Pod{}, newGatewayMutator(c, kube,
+		h := admission.WithCustomDefaulter(Scheme, &corev1.Pod{}, newGatewayMutator(c, mgr.GetAPIReader(), kube,
 			logger.WithName("gateway-mutator"),
 			options.ExtProcImage,
 			options.ExtProcImagePullPolicy,
