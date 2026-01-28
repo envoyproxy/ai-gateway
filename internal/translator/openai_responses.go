@@ -163,17 +163,17 @@ func (o *openAIToOpenAITranslatorV1Responses) extractUsageFromBufferEvent(span t
 				continue // skip invalid JSON
 			}
 
-			switch eventUnion.Type {
+			switch eventUnion.GetEventType() {
 			case "response.created":
 				// Extract model from the first streaming event.
-				respCreatedEvent := eventUnion.AsResponseCreated()
+				respCreatedEvent := eventUnion.OfResponseCreated
 				if respCreatedEvent.Response.Model != "" {
 					o.streamingResponseModel = respCreatedEvent.Response.Model
 				}
 			case "response.completed":
 				// Extract token usage from response.completed event.
 				// Only response.completed contains usage information.
-				respComplEvent := eventUnion.AsResponseCompleted()
+				respComplEvent := eventUnion.OfResponseCompleted
 				tokenUsage.SetInputTokens(uint32(respComplEvent.Response.Usage.InputTokens))                           // #nosec G115
 				tokenUsage.SetOutputTokens(uint32(respComplEvent.Response.Usage.OutputTokens))                         // #nosec G115
 				tokenUsage.SetTotalTokens(uint32(respComplEvent.Response.Usage.TotalTokens))                           // #nosec G115

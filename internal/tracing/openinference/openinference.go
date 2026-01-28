@@ -189,6 +189,11 @@ func InputMessageContentAttribute(messageIndex, contentIndex int, suffix string)
 	return fmt.Sprintf("%s.%d.message.contents.%d.message_content.%s", LLMInputMessages, messageIndex, contentIndex, suffix)
 }
 
+// InputMessageToolCallAttribute creates an attribute key for a input tool call.
+func InputMessageToolCallAttribute(messageIndex, toolCallIndex int, suffix string) string {
+	return fmt.Sprintf("%s.%d.%s.%d.%s", LLMInputMessages, messageIndex, MessageToolCalls, toolCallIndex, suffix)
+}
+
 // OutputMessageAttribute creates an attribute key for output messages.
 func OutputMessageAttribute(index int, suffix string) string {
 	return fmt.Sprintf("%s.%d.%s", LLMOutputMessages, index, suffix)
@@ -197,6 +202,16 @@ func OutputMessageAttribute(index int, suffix string) string {
 // OutputMessageToolCallAttribute creates an attribute key for a tool call.
 func OutputMessageToolCallAttribute(messageIndex, toolCallIndex int, suffix string) string {
 	return fmt.Sprintf("%s.%d.%s.%d.%s", LLMOutputMessages, messageIndex, MessageToolCalls, toolCallIndex, suffix)
+}
+
+// OutputMessageContentAttribute creates an attribute key for input message content.
+func OutputMessageContentAttribute(messageIndex, contentIndex int, suffix string) string {
+	return fmt.Sprintf("%s.%d.message.contents.%d.message_content.%s", LLMOutputMessages, messageIndex, contentIndex, suffix)
+}
+
+// InputToolsAttribute creates an attribute key for input tools.
+func InputToolsAttribute(index int) string {
+	return fmt.Sprintf("%s.%d.tool.json_schema", LLMTools, index)
 }
 
 // Embedding Operation constants.
