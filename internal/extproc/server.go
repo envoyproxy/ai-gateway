@@ -314,7 +314,6 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 		return status.Error(codes.Internal, "missing attributes in request")
 	}
 	// metadataFieldKey is the key for the entire metadata field in the attributes for backward compatibility.
-	// backendNamePath is the path to the backend name in the metadata.
 	var backendNamePath string
 	if isEndpointPicker {
 		backendNamePath = internalapi.XDSClusterMetadataBackendNamePath
