@@ -7,6 +7,7 @@ package openai
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -4234,6 +4235,7 @@ func TestSetInputMsgContentAttrs(t *testing.T) {
 		})
 	}
 }
+
 func TestSetEasyInputMsgAttrs(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -5396,6 +5398,242 @@ func TestRedactImageFromResponseRequestParameters(t *testing.T) {
 
 			// Verify the result is valid JSON
 			require.NoError(t, json.Unmarshal(result, &map[string]any{}))
+		})
+	}
+}
+
+func TestBuildResponsesRequestAttributes(t *testing.T) {
+	tests := []struct {
+		name   string
+		req    *openai.ResponseRequest
+		body   []byte
+		config *openinference.TraceConfig
+		check  func(t *testing.T, attrs []attribute.KeyValue)
+	}{
+		{
+			name: "basic response request with model",
+			req: &openai.ResponseRequest{
+				Model: "gpt-4o",
+				Input: openai.ResponseNewParamsInputUnion{
+					OfString: ptr("Hello!"),
+				},
+			},
+			body:   mustJSON(map[string]any{"model": "gpt-4o", "input": "Hello!"}),
+			config: openinference.NewTraceConfig(),
+			check: func(t *testing.T, attrs []attribute.KeyValue) {
+				require.Contains(t, attrs, attribute.String(openinference.SpanKind, openinference.SpanKindLLM))
+				require.Contains(t, attrs, attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI))
+				require.Contains(t, attrs, attribute.String(openinference.LLMModelName, "gpt-4o"))
+				require.Contains(t, attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
+				require.Contains(t, attrs, attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "user"))
+				require.Contains(t, attrs, attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "Hello!"))
+			},
+		},
+		{
+			name: "response request without model",
+			req: &openai.ResponseRequest{
+				Input: openai.ResponseNewParamsInputUnion{
+					OfString: ptr("Test input"),
+				},
+			},
+			body:   mustJSON(map[string]any{"input": "Test input"}),
+			config: openinference.NewTraceConfig(),
+			check: func(t *testing.T, attrs []attribute.KeyValue) {
+				require.Contains(t, attrs, attribute.String(openinference.SpanKind, openinference.SpanKindLLM))
+				require.Contains(t, attrs, attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI))
+				require.Contains(t, attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
+				require.Contains(t, attrs, attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "user"))
+				require.Contains(t, attrs, attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "Test input"))
+			},
+		},
+		{
+			name: "response request with instructions",
+			req: &openai.ResponseRequest{
+				Model:        "gpt-4o",
+				Instructions: "You are a helpful assistant.",
+				Input: openai.ResponseNewParamsInputUnion{
+					OfString: ptr("What is AI?"),
+				},
+			},
+			body:   mustJSON(map[string]any{"model": "gpt-4o", "instructions": "You are a helpful assistant.", "input": "What is AI?"}),
+			config: openinference.NewTraceConfig(),
+			check: func(t *testing.T, attrs []attribute.KeyValue) {
+				require.Contains(t, attrs, attribute.String(openinference.SpanKind, openinference.SpanKindLLM))
+				require.Contains(t, attrs, attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI))
+				require.Contains(t, attrs, attribute.String(openinference.LLMModelName, "gpt-4o"))
+				require.Contains(t, attrs, attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "system"))
+				require.Contains(t, attrs, attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "You are a helpful assistant."))
+				require.Contains(t, attrs, attribute.String(openinference.InputMessageAttribute(1, openinference.MessageRole), "user"))
+				require.Contains(t, attrs, attribute.String(openinference.InputMessageAttribute(1, openinference.MessageContent), "What is AI?"))
+			},
+		},
+		{
+			name: "response request with hidden inputs",
+			req: &openai.ResponseRequest{
+				Model: "gpt-4o",
+				Input: openai.ResponseNewParamsInputUnion{
+					OfString: ptr("Secret input"),
+				},
+			},
+			body:   mustJSON(map[string]any{"model": "gpt-4o", "input": "Secret input"}),
+			config: &openinference.TraceConfig{HideInputs: true},
+			check: func(t *testing.T, attrs []attribute.KeyValue) {
+				require.Contains(t, attrs, attribute.String(openinference.InputValue, openinference.RedactedValue))
+				require.Contains(t, attrs, attribute.String(openinference.LLMModelName, "gpt-4o"))
+			},
+		},
+		{
+			name: "response request with hidden input text",
+			req: &openai.ResponseRequest{
+				Model: "gpt-4o",
+				Input: openai.ResponseNewParamsInputUnion{
+					OfString: ptr("Private text"),
+				},
+			},
+			body:   mustJSON(map[string]any{"model": "gpt-4o", "input": "Private text"}),
+			config: &openinference.TraceConfig{HideInputText: true},
+			check: func(t *testing.T, attrs []attribute.KeyValue) {
+				require.Contains(t, attrs, attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "user"))
+				require.Contains(t, attrs, attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), openinference.RedactedValue))
+			},
+		},
+		{
+			name: "response request with hidden input messages",
+			req: &openai.ResponseRequest{
+				Model: "gpt-4o",
+				Input: openai.ResponseNewParamsInputUnion{
+					OfString: ptr("Test"),
+				},
+			},
+			body:   mustJSON(map[string]any{"model": "gpt-4o", "input": "Test"}),
+			config: &openinference.TraceConfig{HideInputMessages: true},
+			check: func(t *testing.T, attrs []attribute.KeyValue) {
+				require.Contains(t, attrs, attribute.String(openinference.LLMModelName, "gpt-4o"))
+				require.Contains(t, attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
+				// Verify no message attributes are present
+				for _, attr := range attrs {
+					require.NotContains(t, string(attr.Key), "llm.input_messages")
+				}
+			},
+		},
+		{
+			name: "response request with hidden invocation parameters",
+			req: &openai.ResponseRequest{
+				Model: "gpt-4o",
+				Input: openai.ResponseNewParamsInputUnion{
+					OfString: ptr("Test"),
+				},
+				Temperature: ptr(0.7),
+			},
+			body:   mustJSON(map[string]any{"model": "gpt-4o", "input": "Test", "temperature": 0.7}),
+			config: &openinference.TraceConfig{HideLLMInvocationParameters: true},
+			check: func(t *testing.T, attrs []attribute.KeyValue) {
+				require.Contains(t, attrs, attribute.String(openinference.LLMModelName, "gpt-4o"))
+				// Verify invocation parameters not present
+				for _, attr := range attrs {
+					require.NotEqual(t, openinference.LLMInvocationParameters, attr.Key)
+				}
+			},
+		},
+		{
+			name: "empty input string",
+			req: &openai.ResponseRequest{
+				Model: "gpt-4o",
+				Input: openai.ResponseNewParamsInputUnion{
+					OfString: ptr(""),
+				},
+			},
+			body:   mustJSON(map[string]any{"model": "gpt-4o", "input": ""}),
+			config: openinference.NewTraceConfig(),
+			check: func(t *testing.T, attrs []attribute.KeyValue) {
+				require.Contains(t, attrs, attribute.String(openinference.LLMModelName, "gpt-4o"))
+				require.Contains(t, attrs, attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "user"))
+				require.Contains(t, attrs, attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), ""))
+			},
+		},
+		{
+			name: "empty instructions (should not create system message)",
+			req: &openai.ResponseRequest{
+				Model:        "gpt-4o",
+				Instructions: "",
+				Input: openai.ResponseNewParamsInputUnion{
+					OfString: ptr("Hello"),
+				},
+			},
+			body:   mustJSON(map[string]any{"model": "gpt-4o", "input": "Hello"}),
+			config: openinference.NewTraceConfig(),
+			check: func(t *testing.T, attrs []attribute.KeyValue) {
+				require.Contains(t, attrs, attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "user"))
+				require.Contains(t, attrs, attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), "Hello"))
+			},
+		},
+		{
+			name: "nil input",
+			req: &openai.ResponseRequest{
+				Model: "gpt-4o",
+			},
+			body:   mustJSON(map[string]any{"model": "gpt-4o"}),
+			config: openinference.NewTraceConfig(),
+			check: func(t *testing.T, attrs []attribute.KeyValue) {
+				require.Contains(t, attrs, attribute.String(openinference.LLMModelName, "gpt-4o"))
+				require.Contains(t, attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
+			},
+		},
+		{
+			name: "with temperature parameter",
+			req: &openai.ResponseRequest{
+				Model:       "gpt-4o",
+				Temperature: ptr(0.8),
+				Input: openai.ResponseNewParamsInputUnion{
+					OfString: ptr("What's the weather?"),
+				},
+			},
+			body:   mustJSON(map[string]any{"model": "gpt-4o", "temperature": 0.8, "input": "What's the weather?"}),
+			config: openinference.NewTraceConfig(),
+			check: func(t *testing.T, attrs []attribute.KeyValue) {
+				require.Contains(t, attrs, attribute.String(openinference.LLMModelName, "gpt-4o"))
+				require.Contains(t, attrs, attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "user"))
+				// Verify invocation params include temperature
+				var foundTemp bool
+				for _, attr := range attrs {
+					if attr.Key == openinference.LLMInvocationParameters && strings.Contains(attr.Value.AsString(), "temperature") {
+						foundTemp = true
+						break
+					}
+				}
+				require.True(t, foundTemp, "should have temperature in invocation parameters")
+			},
+		},
+		{
+			name: "with max_output_tokens parameter",
+			req: &openai.ResponseRequest{
+				Model:           "gpt-4o",
+				MaxOutputTokens: ptr(int64(100)),
+				Input: openai.ResponseNewParamsInputUnion{
+					OfString: ptr("Generate text"),
+				},
+			},
+			body:   mustJSON(map[string]any{"model": "gpt-4o", "max_output_tokens": 100, "input": "Generate text"}),
+			config: openinference.NewTraceConfig(),
+			check: func(t *testing.T, attrs []attribute.KeyValue) {
+				require.Contains(t, attrs, attribute.String(openinference.LLMModelName, "gpt-4o"))
+				// Verify invocation params include max_output_tokens
+				var foundMaxTokens bool
+				for _, attr := range attrs {
+					if attr.Key == openinference.LLMInvocationParameters && strings.Contains(attr.Value.AsString(), "max_output_tokens") {
+						foundMaxTokens = true
+						break
+					}
+				}
+				require.True(t, foundMaxTokens, "should have max_output_tokens in invocation parameters")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildResponsesRequestAttributes(tt.req, tt.body, tt.config)
+			tt.check(t, got)
 		})
 	}
 }
