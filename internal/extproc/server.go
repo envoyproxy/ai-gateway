@@ -194,6 +194,8 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 			if logger == nil {
 				logger = s.logger.With("request_id", originalReqID, "is_upstream_filter", isUpstreamFilter)
 			}
+			// Add logger to context so processMsg can access it
+			ctx = context.WithValue(ctx, loggerContextKey, logger)
 
 			p, err = s.processorForPath(headersMap, isUpstreamFilter, logger)
 			if err != nil {

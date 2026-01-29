@@ -215,6 +215,12 @@ func (CompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema
 	}
 }
 
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (CompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.CompletionRequest) (redactedReq *openai.CompletionRequest, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
+}
+
 // ParseBody implements [EndpointSpec.ParseBody].
 func (EmbeddingsEndpointSpec) ParseBody(
 	body []byte,
@@ -241,6 +247,12 @@ func (EmbeddingsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema,
 	}
 }
 
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (EmbeddingsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.EmbeddingRequest) (redactedReq *openai.EmbeddingRequest, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
+}
+
 func (ImageGenerationEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
@@ -260,6 +272,12 @@ func (ImageGenerationEndpointSpec) GetTranslator(schema filterapi.VersionedAPISc
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (ImageGenerationEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.ImageGenerationRequest) (redactedReq *openai.ImageGenerationRequest, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
 }
 
 // ParseBody implements [EndpointSpec.ParseBody].
@@ -282,6 +300,12 @@ func (ResponsesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, 
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (ResponsesEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.ResponseRequest) (redactedReq *openai.ResponseRequest, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
 }
 
 // ParseBody implements [EndpointSpec.ParseBody].
@@ -318,6 +342,12 @@ func (MessagesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, m
 	}
 }
 
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (MessagesEndpointSpec) RedactSensitiveInfoFromRequest(req *anthropic.MessagesRequest) (redactedReq *anthropic.MessagesRequest, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
+}
+
 // ParseBody implements [EndpointSpec.ParseBody].
 func (RerankEndpointSpec) ParseBody(
 	body []byte,
@@ -338,6 +368,12 @@ func (RerankEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, mod
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (RerankEndpointSpec) RedactSensitiveInfoFromRequest(req *cohereschema.RerankV2Request) (redactedReq *cohereschema.RerankV2Request, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
 }
 
 // redactMessage redacts sensitive content from a chat message while preserving its type and structure.
