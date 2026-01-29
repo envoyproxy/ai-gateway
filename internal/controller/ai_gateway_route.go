@@ -176,9 +176,9 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 				}
 				// Create the filter if it does not exist.
 				if err = c.client.Create(ctx, base); err != nil {
-					return fmt.Errorf("failed to create HTTPRouteFilter %s: %w", f.Name, err)
+					return fmt.Errorf("failed to create HTTPRouteFilter %s: %w", base.Name, err)
 				}
-				c.logger.Info("Created HTTPRouteFilter", "name", f.Name, "namespace", f.Namespace)
+				c.logger.Info("Created HTTPRouteFilter", "name", base.Name, "namespace", base.Namespace)
 			} else {
 				return fmt.Errorf("failed to get HTTPRouteFilter %s: %w", base.Name, err)
 			}
