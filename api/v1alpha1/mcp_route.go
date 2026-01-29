@@ -247,6 +247,40 @@ type MCPRouteOAuth struct {
 	//
 	// +kubebuilder:validation:Required
 	ProtectedResourceMetadata ProtectedResourceMetadata `json:"protectedResourceMetadata"`
+
+	// ClaimToHeaders specifies JWT claims to extract and forward as HTTP headers to backend MCP servers.
+	// This enables backends to access user identity for authorization, auditing, or personalization.
+	//
+	// Security considerations:
+	// - Any client-provided headers matching the configured header names will be stripped to prevent forgery
+	// - Only the specified claims are extracted; the full JWT is not forwarded to backends
+	// - Consider using a header prefix (e.g., "X-Jwt-Claim-") to avoid conflicts with other headers
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxItems=16
+	// +optional
+	ClaimToHeaders []ClaimToHeader `json:"claimToHeaders,omitempty"`
+}
+
+// ClaimToHeader defines a mapping from a JWT claim to an HTTP header.
+type ClaimToHeader struct {
+	// Claim is the JWT claim name to extract. Supports nested claims using dot notation
+	// (e.g., "realm_access.roles", "resource_access.my-client.roles").
+	// For array claims, the values will be JSON-encoded in the header.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
+	Claim string `json:"claim"`
+
+	// Header is the HTTP header name to forward the claim value as.
+	// The header name should follow HTTP header naming conventions.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$`
+	Header string `json:"header"`
 }
 
 // MCPRouteAuthorization defines the authorization configuration for a MCPRoute.

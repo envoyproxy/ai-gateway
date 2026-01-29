@@ -915,7 +915,7 @@ data: %s
 	rr := httptest.NewRecorder()
 	sessionID := secureID(t, proxy, "@@backend1:"+base64.StdEncoding.EncodeToString([]byte("test-session")))
 	eventID := secureID(t, proxy, "@@backend1:"+base64.StdEncoding.EncodeToString([]byte("_1")))
-	s, err := proxy.sessionFromID(secureClientToGatewaySessionID(sessionID), secureClientToGatewayEventID(eventID))
+	s, err := proxy.sessionFromID(secureClientToGatewaySessionID(sessionID), secureClientToGatewayEventID(eventID), nil)
 	require.NoError(t, err)
 
 	proxy.proxyResponseBody(t.Context(), s, rr, httpResp, &jsonrpc.Request{Method: "test", ID: id}, filterapi.MCPBackend{Name: "mybackend"}) //nolint:errcheck
@@ -1224,6 +1224,98 @@ func TestExtractSubject(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, extractSubject(req))
 	})
+}
+
+func TestExtractClaimHeaders(t *testing.T) {
+	// Test that extractClaimHeaders correctly reads headers from the request.
+	// These headers are set by Envoy's JWT filter based on ClaimToHeaders configuration.
+	tests := []struct {
+		name           string
+		requestHeaders map[string]string
+		claimToHeaders []filterapi.ClaimToHeader
+		wantHeaders    map[string]string
+	}{
+		{
+			name: "extract configured headers",
+			requestHeaders: map[string]string{
+				"X-User-Id":    "user123",
+				"X-User-Email": "user@example.com",
+			},
+			claimToHeaders: []filterapi.ClaimToHeader{
+				{Claim: "sub", Header: "X-User-Id"},
+				{Claim: "email", Header: "X-User-Email"},
+			},
+			wantHeaders: map[string]string{
+				"X-User-Id":    "user123",
+				"X-User-Email": "user@example.com",
+			},
+		},
+		{
+			name: "extract nested claim header",
+			requestHeaders: map[string]string{
+				"X-User-Roles": `["admin","user"]`,
+			},
+			claimToHeaders: []filterapi.ClaimToHeader{
+				{Claim: "realm_access.roles", Header: "X-User-Roles"},
+			},
+			wantHeaders: map[string]string{
+				"X-User-Roles": `["admin","user"]`,
+			},
+		},
+		{
+			name:           "missing header returns nil",
+			requestHeaders: map[string]string{
+				// X-Missing is not set
+			},
+			claimToHeaders: []filterapi.ClaimToHeader{
+				{Claim: "nonexistent", Header: "X-Missing"},
+			},
+			wantHeaders: nil,
+		},
+		{
+			name: "mixed existing and missing headers",
+			requestHeaders: map[string]string{
+				"X-User-Id": "user123",
+				// X-Missing is not set
+			},
+			claimToHeaders: []filterapi.ClaimToHeader{
+				{Claim: "sub", Header: "X-User-Id"},
+				{Claim: "nonexistent", Header: "X-Missing"},
+			},
+			wantHeaders: map[string]string{
+				"X-User-Id": "user123",
+			},
+		},
+		{
+			name:           "empty claim mappings",
+			requestHeaders: map[string]string{"X-User-Id": "user123"},
+			claimToHeaders: []filterapi.ClaimToHeader{},
+			wantHeaders:    nil,
+		},
+		{
+			name:           "no headers on request",
+			requestHeaders: map[string]string{},
+			claimToHeaders: []filterapi.ClaimToHeader{
+				{Claim: "sub", Header: "X-User-Id"},
+			},
+			wantHeaders: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest("GET", "/mcp", nil)
+			require.NoError(t, err)
+
+			// Set headers on the request (simulating what Envoy's JWT filter does)
+			for header, value := range tt.requestHeaders {
+				req.Header.Set(header, value)
+			}
+
+			result := extractClaimHeaders(req, tt.claimToHeaders)
+			require.Equal(t, tt.wantHeaders, result)
+		})
+	}
 }
 
 func secureID(t *testing.T, proxy *mcpRequestContext, sessionID string) string {

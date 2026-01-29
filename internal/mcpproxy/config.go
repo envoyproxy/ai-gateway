@@ -39,9 +39,10 @@ type (
 	}
 
 	mcpProxyConfigRoute struct {
-		backends      map[filterapi.MCPBackendName]filterapi.MCPBackend
-		toolSelectors map[filterapi.MCPBackendName]*toolSelector
-		authorization *compiledAuthorization
+		backends       map[filterapi.MCPBackendName]filterapi.MCPBackend
+		toolSelectors  map[filterapi.MCPBackendName]*toolSelector
+		authorization  *compiledAuthorization
+		claimToHeaders []filterapi.ClaimToHeader
 	}
 
 	// toolSelector filters tools using include patterns with exact matches or regular expressions.
@@ -151,9 +152,10 @@ func (p *ProxyConfig) LoadConfig(_ context.Context, config *filterapi.Config) er
 		}
 
 		r := &mcpProxyConfigRoute{
-			backends:      make(map[filterapi.MCPBackendName]filterapi.MCPBackend, len(route.Backends)),
-			toolSelectors: make(map[filterapi.MCPBackendName]*toolSelector, len(route.Backends)),
-			authorization: compiledAuth,
+			backends:       make(map[filterapi.MCPBackendName]filterapi.MCPBackend, len(route.Backends)),
+			toolSelectors:  make(map[filterapi.MCPBackendName]*toolSelector, len(route.Backends)),
+			authorization:  compiledAuth,
+			claimToHeaders: route.ClaimToHeaders,
 		}
 		for _, backend := range route.Backends {
 			r.backends[backend.Name] = backend
