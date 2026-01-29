@@ -6,6 +6,7 @@
 package openai
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/tidwall/gjson"
@@ -406,8 +407,8 @@ func buildResponsesRequestAttributes(req *openai.ResponseRequest, body []byte, c
 }
 
 func redactImageFromResponseRequestParameters(requestJSON []byte, hideInputImages bool, base64ImageMaxLength int) ([]byte, error) {
-	// Return if hide input image or base64 image max length is not set
-	if !hideInputImages || base64ImageMaxLength <= 0 {
+	// Return if hide input image is false and base64 image max length is not set
+	if !hideInputImages && base64ImageMaxLength <= 0 {
 		return requestJSON, nil
 	}
 
@@ -416,21 +417,31 @@ func redactImageFromResponseRequestParameters(requestJSON []byte, hideInputImage
 	copy(modifiedJSON, requestJSON)
 
 	// Iterate over input[]
-	gjson.GetBytes(requestJSON, "input").ForEach(func(_, inputItem gjson.Result) bool {
+	inputArray := gjson.GetBytes(requestJSON, "input")
+	if !inputArray.IsArray() {
+		return modifiedJSON, nil
+	}
+
+	inputIdx := 0
+	inputArray.ForEach(func(_, inputItem gjson.Result) bool {
 		content := inputItem.Get("content")
 		// skip if content is not array
 		if !content.IsArray() {
+			inputIdx++
 			return true
 		}
 
 		// Iterate over content[]
+		contentIdx := 0
 		content.ForEach(func(_, contentItem gjson.Result) bool {
 			if contentItem.Get("type").String() != "input_image" {
+				contentIdx++
 				return true
 			}
 
 			imageURL := contentItem.Get("image_url")
 			if !imageURL.Exists() || imageURL.Type != gjson.String {
+				contentIdx++
 				return true
 			}
 
@@ -440,18 +451,21 @@ func redactImageFromResponseRequestParameters(requestJSON []byte, hideInputImage
 				(isBase64URL(url) && len(url) > base64ImageMaxLength)
 
 			if shouldRedact {
-				// Build JSON path dynamically
-				path := contentItem.Path("image_url")
+				// Build JSON path dynamically - construct full path from root
+				path := fmt.Sprintf("input.%d.content.%d.image_url", inputIdx, contentIdx)
 				var err error
 				modifiedJSON, err = sjson.SetBytesOptions(modifiedJSON, path, openinference.RedactedValue, &sjson.Options{ReplaceInPlace: true, Optimistic: true})
 				if err != nil {
+					contentIdx++
 					return false
 				}
 			}
 
+			contentIdx++
 			return true
 		})
 
+		inputIdx++
 		return true
 	})
 

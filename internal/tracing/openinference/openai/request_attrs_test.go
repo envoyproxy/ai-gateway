@@ -10,9 +10,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 )
 
@@ -5007,6 +5009,393 @@ func TestHandleInputItemUnionAttrs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			attrs := handleInputItemUnionAttrs(tc.item, []attribute.KeyValue{}, tc.config, tc.index)
 			openinference.RequireAttributesEqual(t, tc.expectedAttrs, attrs)
+		})
+	}
+}
+
+func TestRedactImageFromResponseRequestParameters(t *testing.T) {
+	tests := []struct {
+		name                 string
+		input                any
+		hideInputImages      bool
+		base64ImageMaxLength int
+		expectedImageURLS    map[string]string // path -> expected value
+		shouldRedactImages   bool
+		shouldHaveError      bool
+	}{
+		{
+			name: "both flags false - should return unchanged",
+			input: map[string]any{
+				"input": []map[string]any{
+					{
+						"content": []map[string]any{
+							{
+								"type":      "input_image",
+								"image_url": "https://example.com/image.jpg",
+							},
+						},
+					},
+				},
+			},
+			hideInputImages:      false,
+			base64ImageMaxLength: 0,
+			expectedImageURLS: map[string]string{
+				"input.0.content.0.image_url": "https://example.com/image.jpg",
+			},
+			shouldRedactImages: false,
+			shouldHaveError:    false,
+		},
+		{
+			name: "hideInputImages true - should redact all images",
+			input: map[string]any{
+				"input": []map[string]any{
+					{
+						"content": []map[string]any{
+							{
+								"type":      "input_image",
+								"image_url": "https://example.com/image.jpg",
+							},
+						},
+					},
+				},
+			},
+			hideInputImages:      true,
+			base64ImageMaxLength: 0,
+			expectedImageURLS: map[string]string{
+				"input.0.content.0.image_url": openinference.RedactedValue,
+			},
+			shouldRedactImages: true,
+			shouldHaveError:    false,
+		},
+		{
+			name: "base64ImageMaxLength set - should redact long base64 images",
+			input: map[string]any{
+				"input": []map[string]any{
+					{
+						"content": []map[string]any{
+							{
+								"type":      "input_image",
+								"image_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA",
+							},
+						},
+					},
+				},
+			},
+			hideInputImages:      false,
+			base64ImageMaxLength: 10,
+			expectedImageURLS: map[string]string{
+				"input.0.content.0.image_url": openinference.RedactedValue,
+			},
+			shouldRedactImages: true,
+			shouldHaveError:    false,
+		},
+		{
+			name: "base64ImageMaxLength set but URL too short - should not redact",
+			input: map[string]any{
+				"input": []map[string]any{
+					{
+						"content": []map[string]any{
+							{
+								"type":      "input_image",
+								"image_url": "data:image/png;base64,abc",
+							},
+						},
+					},
+				},
+			},
+			hideInputImages:      false,
+			base64ImageMaxLength: 1000,
+			expectedImageURLS: map[string]string{
+				"input.0.content.0.image_url": "data:image/png;base64,abc",
+			},
+			shouldRedactImages: false,
+			shouldHaveError:    false,
+		},
+		{
+			name: "both hideInputImages and base64ImageMaxLength set",
+			input: map[string]any{
+				"input": []map[string]any{
+					{
+						"content": []map[string]any{
+							{
+								"type":      "input_image",
+								"image_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA",
+							},
+						},
+					},
+				},
+			},
+			hideInputImages:      true,
+			base64ImageMaxLength: 1000,
+			expectedImageURLS: map[string]string{
+				"input.0.content.0.image_url": openinference.RedactedValue,
+			},
+			shouldRedactImages: true,
+			shouldHaveError:    false,
+		},
+		{
+			name: "non-image content type - should not redact",
+			input: map[string]any{
+				"input": []map[string]any{
+					{
+						"content": []map[string]any{
+							{
+								"type": "input_text",
+								"text": "Some text",
+							},
+						},
+					},
+				},
+			},
+			hideInputImages:      true,
+			base64ImageMaxLength: 0,
+			expectedImageURLS:    map[string]string{},
+			shouldRedactImages:   false,
+			shouldHaveError:      false,
+		},
+		{
+			name: "missing image_url field - should not error",
+			input: map[string]any{
+				"input": []map[string]any{
+					{
+						"content": []map[string]any{
+							{
+								"type": "input_image",
+							},
+						},
+					},
+				},
+			},
+			hideInputImages:      true,
+			base64ImageMaxLength: 0,
+			expectedImageURLS:    map[string]string{},
+			shouldRedactImages:   false,
+			shouldHaveError:      false,
+		},
+		{
+			name: "content is not array - should skip",
+			input: map[string]any{
+				"input": []map[string]any{
+					{
+						"content": map[string]any{
+							"type":      "input_image",
+							"image_url": "https://example.com/image.jpg",
+						},
+					},
+				},
+			},
+			hideInputImages:      true,
+			base64ImageMaxLength: 0,
+			expectedImageURLS:    map[string]string{},
+			shouldRedactImages:   false,
+			shouldHaveError:      false,
+		},
+		{
+			name: "missing input field - should return unchanged",
+			input: map[string]any{
+				"model": "gpt-4",
+			},
+			hideInputImages:      true,
+			base64ImageMaxLength: 0,
+			expectedImageURLS:    map[string]string{},
+			shouldRedactImages:   false,
+			shouldHaveError:      false,
+		},
+		{
+			name: "empty input array - should return unchanged",
+			input: map[string]any{
+				"input": []map[string]any{},
+			},
+			hideInputImages:      true,
+			base64ImageMaxLength: 0,
+			expectedImageURLS:    map[string]string{},
+			shouldRedactImages:   false,
+			shouldHaveError:      false,
+		},
+		{
+			name: "multiple images mixed with other content",
+			input: map[string]any{
+				"input": []map[string]any{
+					{
+						"content": []map[string]any{
+							{
+								"type": "input_text",
+								"text": "What is this?",
+							},
+							{
+								"type":      "input_image",
+								"image_url": "https://example.com/image1.jpg",
+							},
+							{
+								"type": "input_text",
+								"text": "And this?",
+							},
+							{
+								"type":      "input_image",
+								"image_url": "https://example.com/image2.jpg",
+							},
+						},
+					},
+				},
+			},
+			hideInputImages:      true,
+			base64ImageMaxLength: 0,
+			expectedImageURLS: map[string]string{
+				"input.0.content.1.image_url": openinference.RedactedValue,
+				"input.0.content.3.image_url": openinference.RedactedValue,
+			},
+			shouldRedactImages: true,
+			shouldHaveError:    false,
+		},
+		{
+			name: "multiple input items with different content",
+			input: map[string]any{
+				"input": []map[string]any{
+					{
+						"content": []map[string]any{
+							{
+								"type":      "input_image",
+								"image_url": "https://example.com/image1.jpg",
+							},
+						},
+					},
+					{
+						"content": []map[string]any{
+							{
+								"type":      "input_image",
+								"image_url": "https://example.com/image2.jpg",
+							},
+						},
+					},
+				},
+			},
+			hideInputImages:      true,
+			base64ImageMaxLength: 0,
+			expectedImageURLS: map[string]string{
+				"input.0.content.0.image_url": openinference.RedactedValue,
+				"input.1.content.0.image_url": openinference.RedactedValue,
+			},
+			shouldRedactImages: true,
+			shouldHaveError:    false,
+		},
+		{
+			name: "base64 URL not matching pattern - should not redact by base64 check",
+			input: map[string]any{
+				"input": []map[string]any{
+					{
+						"content": []map[string]any{
+							{
+								"type":      "input_image",
+								"image_url": "data:application/json;base64,eyJrZXkiOiAidmFsdWUifQ==",
+							},
+						},
+					},
+				},
+			},
+			hideInputImages:      false,
+			base64ImageMaxLength: 10,
+			expectedImageURLS: map[string]string{
+				"input.0.content.0.image_url": "data:application/json;base64,eyJrZXkiOiAidmFsdWUifQ==",
+			},
+			shouldRedactImages: false,
+			shouldHaveError:    false,
+		},
+		{
+			name: "empty image_url string - should not redact",
+			input: map[string]any{
+				"input": []map[string]any{
+					{
+						"content": []map[string]any{
+							{
+								"type":      "input_image",
+								"image_url": "",
+							},
+						},
+					},
+				},
+			},
+			hideInputImages:      true,
+			base64ImageMaxLength: 0,
+			expectedImageURLS: map[string]string{
+				"input.0.content.0.image_url": openinference.RedactedValue,
+			},
+			shouldRedactImages: true,
+			shouldHaveError:    false,
+		},
+		{
+			name: "complex nested structure with multiple levels",
+			input: map[string]any{
+				"model": "gpt-4",
+				"input": []map[string]any{
+					{
+						"role": "user",
+						"content": []map[string]any{
+							{
+								"type": "input_text",
+								"text": "First question",
+							},
+							{
+								"type":      "input_image",
+								"image_url": "https://example.com/img1.jpg",
+							},
+						},
+					},
+					{
+						"role": "assistant",
+						"content": []map[string]any{
+							{
+								"type": "input_text",
+								"text": "My response",
+							},
+						},
+					},
+					{
+						"role": "user",
+						"content": []map[string]any{
+							{
+								"type":      "input_image",
+								"image_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+							},
+						},
+					},
+				},
+			},
+			hideInputImages:      true,
+			base64ImageMaxLength: 0,
+			expectedImageURLS: map[string]string{
+				"input.0.content.1.image_url": openinference.RedactedValue,
+				"input.2.content.0.image_url": openinference.RedactedValue,
+			},
+			shouldRedactImages: true,
+			shouldHaveError:    false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			inputBytes := mustJSON(tc.input)
+			result, err := redactImageFromResponseRequestParameters(inputBytes, tc.hideInputImages, tc.base64ImageMaxLength)
+
+			if tc.shouldHaveError {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+
+			// Verify expected URLs
+			for path, expectedValue := range tc.expectedImageURLS {
+				actualValue := gjson.GetBytes(result, path).String()
+				require.Equal(t, expectedValue, actualValue, "mismatch at path %s", path)
+			}
+
+			// If not redacting, the output should match the input
+			if !tc.shouldRedactImages {
+				require.Equal(t, string(inputBytes), string(result))
+			}
+
+			// Verify the result is valid JSON
+			require.NoError(t, json.Unmarshal(result, &map[string]any{}))
 		})
 	}
 }
