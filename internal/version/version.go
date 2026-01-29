@@ -16,14 +16,12 @@ var version string
 
 // Current version with the Git information.
 func Current() Git {
-	// return parseGit(version)
 	return parseGit(version)
 }
 
 // Parse returns the parsed service's version information. (from raw git label)
 func Parse() string {
-	// return Current().String()
-	return "dev"
+	return Current().String()
 }
 
 // Git contains the version information extracted from a Git SHA.

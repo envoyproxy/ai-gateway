@@ -226,9 +226,6 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 			}
 		}
 
-		// Add the request-scoped logger to context so processors can access it
-		ctx = context.WithValue(ctx, loggerContextKey, logger)
-
 		// At this point, p is guaranteed to be a valid processor either from the concrete processor or the passThroughProcessor.
 		resp, err := s.processMsg(ctx, p, req, internalReqID, isUpstreamFilter)
 		if err != nil {
@@ -501,8 +498,6 @@ func redactHeaderMutation(originalHeaderMutation *extprocv3.HeaderMutation, logg
 // The hash allows debugging cache hits/misses and correlating requests without exposing sensitive content.
 //
 // Format: [REDACTED LENGTH=n HASH=xxxxxxxx]
-//
-// Uses CRC32 for fast, non-cryptographic hashing since this is only for debugging purposes.
 func redactBodyMutation(bodyMutation *extprocv3.BodyMutation) *extprocv3.BodyMutation {
 	if bodyMutation == nil {
 		return nil
