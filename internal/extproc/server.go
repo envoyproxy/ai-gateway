@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"hash/crc32"
 	"io"
 	"log/slog"
 	"slices"
@@ -29,6 +28,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/redaction"
 )
 
 var (
@@ -97,7 +97,7 @@ var errNoProcessor = errors.New("no processor registered for the given path")
 
 // processorForPath returns the processor for the given path.
 // Only exact path matching is supported currently.
-func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFilter bool) (Processor, error) {
+func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFilter bool, logger *slog.Logger) (Processor, error) {
 	pathHeader := ":path"
 	if isUpstreamFilter {
 		pathHeader = originalPathHeader
@@ -113,7 +113,7 @@ func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFi
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", errNoProcessor, path)
 	}
-	return newProcessor(s.config, requestHeaders, s.logger, isUpstreamFilter, s.enableRedaction)
+	return newProcessor(s.config, requestHeaders, logger, isUpstreamFilter, s.enableRedaction)
 }
 
 // originalPathHeader is the header used to pass the original path to the processor.
@@ -188,7 +188,14 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 				// with duplicate x-request-id values by appending a UUID suffix to the original request ID
 				internalReqID = originalReqID + "-" + s.uuidFn()
 			}
-			p, err = s.processorForPath(headersMap, isUpstreamFilter)
+
+			// Create request-scoped logger with request_id before creating processor
+			// so that the logger passed to translators includes the request_id field.
+			if logger == nil {
+				logger = s.logger.With("request_id", originalReqID, "is_upstream_filter", isUpstreamFilter)
+			}
+
+			p, err = s.processorForPath(headersMap, isUpstreamFilter, logger)
 			if err != nil {
 				if errors.Is(err, errNoProcessor) {
 					path := headersMap[":path"]
@@ -217,9 +224,6 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 				s.routerProcessorsPerReqID[internalReqID] = p
 				s.routerProcessorsPerReqIDMutex.Unlock()
 			}
-		}
-		if logger == nil {
-			logger = s.logger.With("request_id", originalReqID, "is_upstream_filter", isUpstreamFilter)
 		}
 
 		// Add the request-scoped logger to context so processors can access it
@@ -296,14 +300,14 @@ func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.Pro
 			l.Debug("request body processing", slog.Any("request", req))
 		}
 		resp, err := p.ProcessRequestBody(ctx, value.RequestBody)
+		if err != nil {
+			return nil, fmt.Errorf("cannot process request body: %w", err)
+		}
 		// If the DEBUG log level is enabled, filter the sensitive data before logging.
-		if s.debugLogEnabled {
+		if s.debugLogEnabled && resp != nil && resp.Response != nil {
 			rb := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
 			logContent := redactRequestBodyResponse(rb, l, sensitiveHeaderKeys, s.enableRedaction)
 			l.Debug("request body processed", slog.Any("response", logContent))
-		}
-		if err != nil {
-			return nil, fmt.Errorf("cannot process request body: %w", err)
 		}
 		return resp, nil
 	case *extprocv3.ProcessingRequest_ResponseHeaders:
@@ -509,8 +513,7 @@ func redactBodyMutation(bodyMutation *extprocv3.BodyMutation) *extprocv3.BodyMut
 		if len(m.Body) == 0 {
 			return bodyMutation
 		}
-		// Use CRC32 for fast hashing - sufficient for uniqueness tracking in logs
-		hash := fmt.Sprintf("%08x", crc32.ChecksumIEEE(m.Body))
+		hash := redaction.ComputeContentHash(string(m.Body))
 		redactedBody := []byte(fmt.Sprintf("[REDACTED LENGTH=%d HASH=%s]", len(m.Body), hash))
 		return &extprocv3.BodyMutation{
 			Mutation: &extprocv3.BodyMutation_Body{
@@ -552,7 +555,7 @@ func redactResponseBodyResponseFull(resp *extprocv3.ProcessingResponse_ResponseB
 // When redactBody is false, only headers are filtered while body content is logged as-is for debugging.
 // When redactBody is true, both headers (API keys, auth tokens) and body content are redacted for production-safe logging.
 func redactRequestBodyResponse(resp *extprocv3.ProcessingResponse_RequestBody, logger *slog.Logger, sensitiveKeys []string, redactBody bool) *extprocv3.ProcessingResponse_RequestBody {
-	if resp == nil {
+	if resp == nil || resp.RequestBody == nil || resp.RequestBody.Response == nil {
 		return &extprocv3.ProcessingResponse_RequestBody{}
 	}
 

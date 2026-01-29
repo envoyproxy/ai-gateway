@@ -8,24 +8,27 @@
 package redaction
 
 import (
+	"crypto/sha256"
 	"fmt"
-	"hash/crc32"
 )
 
-// ComputeContentHash computes a fast, non-cryptographic hash for content uniqueness tracking.
-// This hash is used for debugging purposes, particularly for:
+// ComputeContentHash computes a cryptographic hash for content uniqueness tracking.
+// This hash is used for debugging purposes and unique content detection, particularly for:
 // - Tracking cache hits/misses by correlating identical content across requests
 // - Identifying duplicate or similar requests without exposing actual content
 // - Debugging issues by matching redacted logs to specific content patterns
+// - Unique detection of content for deduplication and analysis
 //
-// We use CRC32 instead of cryptographic hashes (SHA256) because:
-// - Much faster computation (important when redacting large messages with many parts)
-// - Sufficient collision resistance for debugging and uniqueness tracking
-// - Not used for security purposes, only for correlation and debugging
+// We use SHA256 for:
+// - Strong collision resistance for reliable unique detection
+// - Cryptographic properties suitable for content identification
+// - Standard hash function widely used for content addressing
 //
-// Returns an 8-character hex string representation of the CRC32 hash.
+// Returns a 16-character hex string (first 64 bits of SHA256 hash) for compact representation
+// while maintaining strong collision resistance.
 func ComputeContentHash(s string) string {
-	return fmt.Sprintf("%08x", crc32.ChecksumIEEE([]byte(s)))
+	hash := sha256.Sum256([]byte(s))
+	return fmt.Sprintf("%x", hash)[:16]
 }
 
 // RedactString replaces sensitive string content with a placeholder containing length and hash.
