@@ -145,6 +145,11 @@ func (c *MCPRouteController) ensureSecurityPolicy(ctx context.Context, mcpRoute 
 			}
 		}
 
+		// Add ClaimToHeaders to extract JWT claims and set them as HTTP headers.
+		// Envoy's JWT filter will extract these claims and add them to the request headers,
+		// which can then be forwarded to backend MCP servers.
+		jwtProvider.ClaimToHeaders = append(jwtProvider.ClaimToHeaders, oauth.ClaimToHeaders...)
+
 		securityPolicySpec.JWT = &egv1a1.JWT{
 			Providers: []egv1a1.JWTProvider{jwtProvider},
 		}

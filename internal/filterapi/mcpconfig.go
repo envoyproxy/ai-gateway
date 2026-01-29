@@ -30,6 +30,9 @@ type MCPRoute struct {
 
 	// Authorization is the authorization configuration for this route.
 	Authorization *MCPRouteAuthorization `json:"authorization,omitempty"`
+
+	// ForwardHeaders specifies HTTP headers to extract from the incoming request and forward to backend MCP servers.
+	ForwardHeaders []string `json:"forwardHeaders,omitempty"`
 }
 
 // MCPBackend is the MCP backend configuration.

@@ -566,6 +566,12 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 				mcpRoute.Authorization.Rules = append(mcpRoute.Authorization.Rules, mcpRule)
 			}
 		}
+		// Add headers to forward from the incoming request to backend MCP servers.
+		if route.Spec.SecurityPolicy != nil && route.Spec.SecurityPolicy.OAuth != nil {
+			for _, ctoh := range route.Spec.SecurityPolicy.OAuth.ClaimToHeaders {
+				mcpRoute.ForwardHeaders = append(mcpRoute.ForwardHeaders, ctoh.Header)
+			}
+		}
 		mc.Routes = append(mc.Routes, mcpRoute)
 	}
 	return mc, hasEffectiveRoute

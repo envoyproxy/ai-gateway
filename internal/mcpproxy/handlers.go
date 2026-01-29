@@ -1184,6 +1184,25 @@ func extractSubject(r *http.Request) string {
 	return claims.Subject
 }
 
+// extractForwardHeaders reads the configured headers from the incoming request to forward to backends.
+func extractForwardHeaders(reqHeaders http.Header, headers []string) map[string]string {
+	if len(headers) == 0 {
+		return nil
+	}
+
+	result := make(map[string]string)
+	for _, header := range headers {
+		if value := reqHeaders.Get(header); value != "" {
+			result[header] = value
+		}
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
 // handlePromptGetRequest handles the "prompts/get" JSON-RPC method.
 func (m *mcpRequestContext) handlePromptGetRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.GetPromptParams) error {
 	backendName, promptName, err := upstreamResourceName(p.Name)

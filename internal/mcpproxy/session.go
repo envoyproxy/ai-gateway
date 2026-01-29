@@ -45,6 +45,11 @@ type session struct {
 	reqCtx             *mcpRequestContext
 	mu                 sync.RWMutex
 	perBackendSessions map[filterapi.MCPBackendName]*compositeSessionEntry
+	// extraHeaders contains header values extracted from the current HTTP request to be forwarded to backends.
+	// These are derived from the route's configured forward headers and the current request's headers.
+	// The key is the HTTP header name, the value is the header value.
+	// Note: extraHeaders is NOT encoded in the session ID. It is re-extracted from each incoming request.
+	extraHeaders map[string]string
 }
 
 // Close implements [io.Closer.Close].
@@ -339,6 +344,14 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *s
 	}
 	req.Header.Set("Accept", "text/event-stream, application/json")
 	req.Header.Set("Accept-encoding", "gzip, br, zstd, deflate")
+
+	// Forward configured headers to the backend.
+	// First, strip any client-provided headers that match configured forward headers to prevent forgery.
+	// Then set the values extracted from the original request.
+	for header, value := range s.extraHeaders {
+		req.Header.Del(header) // Prevent forgery by stripping client-provided headers.
+		req.Header.Set(header, value)
+	}
 
 	if lastEventID := cse.lastEventID; lastEventID != "" {
 		req.Header.Set(lastEventIDHeader, lastEventID)

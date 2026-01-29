@@ -122,20 +122,20 @@ codegen: ## Generate typed client, listers, and informers for the API.
 		--clientset-name="versioned" \
 		--input-base="" \
 		--input="github.com/envoyproxy/ai-gateway/api/v1alpha1" \
-		--go-header-file=/dev/null \
+		--go-header-file=hack/boilerplate.go.txt \
 		--output-dir="./api/v1alpha1/client/clientset" \
 		--output-pkg="github.com/envoyproxy/ai-gateway/api/v1alpha1/client/clientset" \
 		--plural-exceptions="BackendSecurityPolicy:BackendSecurityPolicies"
 	@echo "codegen => generating listers..."
 	@$(GO_TOOL) lister-gen \
-		--go-header-file=/dev/null \
+		--go-header-file=hack/boilerplate.go.txt \
 		--output-dir="./api/v1alpha1/client/listers" \
 		--output-pkg="github.com/envoyproxy/ai-gateway/api/v1alpha1/client/listers" \
 		--plural-exceptions="BackendSecurityPolicy:BackendSecurityPolicies" \
 		"github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	@echo "codegen => generating informers..."
 	@$(GO_TOOL) informer-gen \
-		--go-header-file=/dev/null \
+		--go-header-file=hack/boilerplate.go.txt \
 		--versioned-clientset-package="github.com/envoyproxy/ai-gateway/api/v1alpha1/client/clientset/versioned" \
 		--listers-package="github.com/envoyproxy/ai-gateway/api/v1alpha1/client/listers" \
 		--output-dir="./api/v1alpha1/client/informers" \
