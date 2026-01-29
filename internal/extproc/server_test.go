@@ -336,6 +336,110 @@ func TestServer_setBackend(t *testing.T) {
 	}
 }
 
+func TestResolveBackendName(t *testing.T) {
+	const backendName = "default/openai/route/aigw-run/rule/0/ref/0"
+
+	legacyMetadata := &corev3.Metadata{
+		FilterMetadata: map[string]*structpb.Struct{
+			internalapi.InternalEndpointMetadataNamespace: {
+				Fields: map[string]*structpb.Value{
+					internalapi.InternalMetadataBackendNameKey: structpb.NewStringValue(backendName),
+				},
+			},
+		},
+	}
+	legacyProtoText, err := prototext.Marshal(legacyMetadata)
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		name             string
+		attributes       map[string]*structpb.Value
+		isEndpointPicker bool
+		backendNamePath  string
+		metadataFieldKey string
+		expected         string
+		expectedErr      string
+	}{
+		{
+			name: "direct metadata path (upstream host)",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSUpstreamHostMetadataBackendNamePath: structpb.NewStringValue(backendName),
+			},
+			backendNamePath:  internalapi.XDSUpstreamHostMetadataBackendNamePath,
+			metadataFieldKey: internalapi.XDSUpstreamHostMetadataKey,
+			expected:         backendName,
+		},
+		{
+			name: "direct metadata path (cluster, endpoint picker)",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSClusterMetadataBackendNamePath: structpb.NewStringValue(backendName),
+			},
+			isEndpointPicker: true,
+			backendNamePath:  internalapi.XDSClusterMetadataBackendNamePath,
+			metadataFieldKey: internalapi.XDSClusterMetadataKey,
+			expected:         backendName,
+		},
+		{
+			name: "legacy proto text unmarshal",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSUpstreamHostMetadataKey: structpb.NewStringValue(string(legacyProtoText)),
+			},
+			backendNamePath:  internalapi.XDSUpstreamHostMetadataBackendNamePath,
+			metadataFieldKey: internalapi.XDSUpstreamHostMetadataKey,
+			expected:         backendName,
+		},
+		{
+			name: "NULL upstream host metadata falls back to cluster metadata",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSUpstreamHostMetadataKey:        structpb.NewStringValue("NULL"),
+				internalapi.XDSClusterMetadataBackendNamePath: structpb.NewStringValue(backendName),
+			},
+			backendNamePath:  internalapi.XDSUpstreamHostMetadataBackendNamePath,
+			metadataFieldKey: internalapi.XDSUpstreamHostMetadataKey,
+			expected:         backendName,
+		},
+		{
+			name: "NULL cluster metadata with no backend name for endpoint picker",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSClusterMetadataKey: structpb.NewStringValue("NULL"),
+			},
+			isEndpointPicker: true,
+			backendNamePath:  internalapi.XDSClusterMetadataBackendNamePath,
+			metadataFieldKey: internalapi.XDSClusterMetadataKey,
+			expectedErr:      "rpc error: code = Internal desc = cannot unmarshal host metadata 'NULL': proto: unexpected EOF",
+		},
+		{
+			name:             "empty attributes",
+			attributes:       map[string]*structpb.Value{},
+			backendNamePath:  internalapi.XDSUpstreamHostMetadataBackendNamePath,
+			metadataFieldKey: internalapi.XDSUpstreamHostMetadataKey,
+			expectedErr:      "rpc error: code = Internal desc = missing xds.upstream_host_metadata in request",
+		},
+		{
+			name: "invalid proto text returns error",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSUpstreamHostMetadataKey: structpb.NewStringValue("not valid proto"),
+			},
+			backendNamePath:  internalapi.XDSUpstreamHostMetadataBackendNamePath,
+			metadataFieldKey: internalapi.XDSUpstreamHostMetadataKey,
+			expectedErr:      "rpc error: code = Internal desc = cannot unmarshal host metadata 'not valid proto': proto: unexpected EOF",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			actual, err := resolveBackendName(
+				&structpb.Struct{Fields: tc.attributes},
+				tc.backendNamePath, tc.metadataFieldKey, tc.isEndpointPicker,
+			)
+			if tc.expectedErr != "" {
+				require.EqualError(t, err, tc.expectedErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
 func TestServer_ProcessorSelection(t *testing.T) {
 	s, err := NewServer(slog.Default())
 	require.NoError(t, err)

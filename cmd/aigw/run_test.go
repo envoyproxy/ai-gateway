@@ -23,6 +23,7 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/envoyproxy/ai-gateway/internal/version"
 )
 
@@ -30,6 +31,7 @@ import (
 //
 // The real e2e tests are in tests/e2e-aigw.
 func TestRun(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	// Note: we do not make any real requests here!
 	t.Setenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 	t.Setenv("OPENAI_API_KEY", "unused")
@@ -42,6 +44,7 @@ func TestRun(t *testing.T) {
 }
 
 func TestRunExtprocStartFailure(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	t.Setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
 	t.Setenv("OPENAI_API_KEY", "unused")
 
@@ -63,6 +66,7 @@ func TestRunExtprocStartFailure(t *testing.T) {
 }
 
 func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	t.Setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
 	t.Setenv("OPENAI_API_KEY", "unused")
 
@@ -136,6 +140,7 @@ func Test_mustStartExtProc_defaultHeaderAttributes(t *testing.T) {
 }
 
 func Test_mustStartExtProc_withHeaderAttributes(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	t.Setenv("OTEL_AIGW_REQUEST_HEADER_ATTRIBUTES", "x-tenant-id:tenant.id")
 	t.Setenv("OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES", "x-forwarded-proto:url.scheme")
 	t.Setenv("OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES", "x-tenant-id:tenant.id")
@@ -171,6 +176,7 @@ func Test_mustStartExtProc_withHeaderAttributes(t *testing.T) {
 }
 
 func Test_mustStartExtProc_emptyHeaderAttributesClearsDefaults(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	t.Setenv("OTEL_AIGW_REQUEST_HEADER_ATTRIBUTES", "x-tenant-id:tenant.id")
 	t.Setenv("OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES", "")
 	t.Setenv("OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES", "x-tenant-id:tenant.id")

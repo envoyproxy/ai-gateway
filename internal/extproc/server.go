@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/prototext"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -325,36 +326,9 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 		backendNamePath = internalapi.XDSUpstreamHostMetadataBackendNamePath
 	}
 
-	var backendName string
-	if b, ok := attributes.Fields[backendNamePath]; ok {
-		backendName = b.GetStringValue()
-	} else if hostMetadata, ok := attributes.Fields[metadataFieldKey]; ok {
-		// This is the backward compatible path where we read the full host metadata, which
-		// can be fragile due to how unstable proto text format can be. After v0.5 is release,
-		// we can remove this code path.
-
-		// Unmarshal the text into the struct since the metadata is encoded as a proto string.
-		var metadata corev3.Metadata
-		opt := prototext.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
-		err := opt.Unmarshal([]byte(hostMetadata.GetStringValue()), &metadata)
-		if err != nil {
-			return status.Errorf(codes.Internal,
-				"cannot unmarshal host metadata '%s': %v",
-				hostMetadata.GetStringValue(),
-				err)
-		}
-
-		aiGatewayEndpointMetadata, ok := metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
-		if !ok {
-			return status.Errorf(codes.Internal, "missing %s metadata", internalapi.InternalEndpointMetadataNamespace)
-		}
-		b, ok := aiGatewayEndpointMetadata.Fields[internalapi.InternalMetadataBackendNameKey]
-		if !ok {
-			return status.Errorf(codes.Internal, "missing %s in endpoint metadata", internalapi.InternalMetadataBackendNameKey)
-		}
-		backendName = b.GetStringValue()
-	} else {
-		return status.Errorf(codes.Internal, "missing %s in request", metadataFieldKey)
+	backendName, err := resolveBackendName(attributes, backendNamePath, metadataFieldKey, isEndpointPicker)
+	if err != nil {
+		return err
 	}
 
 	backend, ok := s.config.Backends[backendName]
@@ -374,6 +348,56 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 		return status.Errorf(codes.Internal, "cannot set backend: %v", err)
 	}
 	return nil
+}
+
+// resolveBackendName extracts the backend name from ext_proc request attributes.
+func resolveBackendName(attributes *structpb.Struct, backendNamePath, metadataFieldKey string, isEndpointPicker bool) (string, error) {
+	// 1. Try the direct metadata path first. (e.g. xds.upstream_host_metadata...['per_route_rule_backend_name'])
+	if b, ok := attributes.Fields[backendNamePath]; ok {
+		return b.GetStringValue(), nil
+	}
+
+	// 2. Try the legacy full metadata unmarshal path (backward compat with older deployments).
+	if hostMetadata, ok := attributes.Fields[metadataFieldKey]; ok {
+		raw := hostMetadata.GetStringValue()
+		// Envoy returns "NULL" when metadata is not available (e.g. EDS-managed endpoints
+		// without endpoint-level metadata). Attempt cluster fallback first.
+		if raw == "" || raw == "NULL" {
+			if !isEndpointPicker {
+				if b, ok := attributes.Fields[internalapi.XDSClusterMetadataBackendNamePath]; ok {
+					return b.GetStringValue(), nil
+				}
+			}
+		}
+
+		var metadata corev3.Metadata
+		opt := prototext.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
+		if err := opt.Unmarshal([]byte(raw), &metadata); err != nil {
+			return "", status.Errorf(codes.Internal,
+				"cannot unmarshal host metadata '%s': %v",
+				raw,
+				err)
+		}
+
+		aiGatewayEndpointMetadata, ok := metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
+		if !ok {
+			return "", status.Errorf(codes.Internal, "missing %s metadata", internalapi.InternalEndpointMetadataNamespace)
+		}
+		b, ok := aiGatewayEndpointMetadata.Fields[internalapi.InternalMetadataBackendNameKey]
+		if !ok {
+			return "", status.Errorf(codes.Internal, "missing %s in endpoint metadata", internalapi.InternalMetadataBackendNameKey)
+		}
+		return b.GetStringValue(), nil
+	}
+
+	// 3. Fallback to cluster metadata when upstream host metadata is unavailable.
+	if !isEndpointPicker {
+		if b, ok := attributes.Fields[internalapi.XDSClusterMetadataBackendNamePath]; ok {
+			return b.GetStringValue(), nil
+		}
+	}
+
+	return "", status.Errorf(codes.Internal, "missing %s in request", metadataFieldKey)
 }
 
 // Check implements [grpc_health_v1.HealthServer].

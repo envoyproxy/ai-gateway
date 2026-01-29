@@ -3,18 +3,15 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-package vcr
+package e2emcp
 
 import (
-	"bytes"
-	_ "embed"
 	"fmt"
 	"io"
 	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/sjson"
 	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
 	metricsv1 "go.opentelemetry.io/proto/otlp/metrics/v1"
 	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
@@ -22,53 +19,74 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
+	"github.com/envoyproxy/ai-gateway/tests/internal/testopenai"
 )
 
-// otelTestEnvironment holds all the services needed for OTEL tests.
 type otelTestEnvironment struct {
 	listenerPort int
 	collector    *testotel.OTLPCollector
 }
 
-// setupOtelTestEnvironment starts all required services and returns ports and a closer.
-func setupOtelTestEnvironment(t *testing.T, extraExtProcEnv ...string) *otelTestEnvironment {
+func setupOtelTestEnvironment(t *testing.T) *otelTestEnvironment {
+	t.Helper()
+
 	internaltesting.ClearTestEnv(t)
 
 	collector := testotel.StartOTLPCollector()
 	t.Cleanup(collector.Close)
 
-	extprocEnv := append(collector.Env(), extraExtProcEnv...)
+	buffers := internaltesting.DumpLogsOnFail(t, "testopenai")
 
-	port := startTestEnvironment(t, extprocEnv)
+	openAIServer, err := testopenai.NewServer(buffers[0], 0)
+	require.NoError(t, err)
+	t.Cleanup(openAIServer.Close)
+
+	env := append(collector.Env(),
+		fmt.Sprintf("OPENAI_BASE_URL=http://127.0.0.1:%d/v1", openAIServer.Port()),
+		"OPENAI_API_KEY=unused",
+	)
+
+	startAIGWCLI(t, aigwBin, env, "run")
 
 	return &otelTestEnvironment{
-		listenerPort: port.EnvoyListenerPort(),
+		listenerPort: 1975,
 		collector:    collector,
 	}
 }
 
-// failIf5xx because 5xx errors are likely a sign of a broken ExtProc or Envoy.
-func failIf5xx(t *testing.T, resp *http.Response, was5xx *bool) {
-	if resp.StatusCode >= 500 && resp.StatusCode < 600 {
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
+func TestAIGWRun_OTLPChatCompletions(t *testing.T) {
+	env := setupOtelTestEnvironment(t)
+	listenerPort := env.listenerPort
 
-		*was5xx = true
-		t.Fatalf("received %d response with body: %s", resp.StatusCode, string(body))
-	}
+	req, err := testopenai.NewRequest(t.Context(), fmt.Sprintf("http://127.0.0.1:%d", listenerPort), testopenai.CassetteChatBasic)
+	require.NoError(t, err)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Response body: %s", string(body))
+
+	// Get the span to extract actual token counts and duration.
+	span := env.collector.TakeSpan()
+	require.NotNil(t, span)
+
+	expectedCount := 2 // token usage + request duration
+	allMetrics := env.collector.TakeMetrics(expectedCount)
+	metrics := requireScopeMetrics(t, allMetrics)
+
+	originalModel := getInvocationModel(span.Attributes, "llm.invocation_parameters")
+	responseModel := getSpanAttributeString(span.Attributes, "llm.model_name")
+
+	verifyTokenUsageMetrics(t, "chat", span, metrics, originalModel, responseModel)
+	verifyRequestDurationMetrics(t, "chat", span, metrics, originalModel, responseModel)
 }
 
-// verifyTokenUsageMetricsWithOriginal verifies token usage metrics including original model attribute
-func verifyTokenUsageMetricsWithOriginal(t *testing.T, op string, metrics *metricsv1.ScopeMetrics, span *tracev1.Span, originalModel, requestModel, responseModel string, isError bool) {
-	verifyTokenUsageMetricsWithProvider(t, op, "openai", metrics, span, originalModel, requestModel, responseModel, isError)
-}
-
-// verifyTokenUsageMetricsWithProvider verifies token usage metrics including original model attribute and provider name
-func verifyTokenUsageMetricsWithProvider(t *testing.T, op string, provider string, metrics *metricsv1.ScopeMetrics, span *tracev1.Span, originalModel, requestModel, responseModel string, isError bool) {
+func verifyTokenUsageMetrics(t *testing.T, op string, span *tracev1.Span, metrics *metricsv1.ScopeMetrics, originalModel, responseModel string) {
 	t.Helper()
-	if isError {
-		return // Token usage metrics are not verified for error cases.
-	}
 
 	inputTokens := getSpanAttributeInt(span.Attributes, "llm.token_count.prompt")
 	outputTokens := getSpanAttributeInt(span.Attributes, "llm.token_count.completion")
@@ -86,9 +104,9 @@ func verifyTokenUsageMetricsWithProvider(t *testing.T, op string, provider strin
 				if tokenType == "input" || tokenType == "output" {
 					expected := map[string]string{
 						"gen_ai.operation.name": op,
-						"gen_ai.provider.name":  provider,
+						"gen_ai.provider.name":  "openai",
 						"gen_ai.original.model": originalModel,
-						"gen_ai.request.model":  requestModel,
+						"gen_ai.request.model":  originalModel,
 						"gen_ai.response.model": responseModel,
 						"gen_ai.token.type":     tokenType,
 					}
@@ -100,13 +118,7 @@ func verifyTokenUsageMetricsWithProvider(t *testing.T, op string, provider strin
 	}
 }
 
-// verifyRequestDurationMetricsWithOriginal verifies request duration metrics including original model attribute
-func verifyRequestDurationMetricsWithOriginal(t *testing.T, op string, metrics *metricsv1.ScopeMetrics, span *tracev1.Span, originalModel, requestModel, responseModel string, isError bool) {
-	verifyRequestDurationMetricsWithProvider(t, op, "openai", metrics, span, originalModel, requestModel, responseModel, isError)
-}
-
-// verifyRequestDurationMetricsWithProvider verifies request duration metrics including original model attribute and provider name
-func verifyRequestDurationMetricsWithProvider(t *testing.T, op string, provider string, metrics *metricsv1.ScopeMetrics, span *tracev1.Span, originalModel, requestModel, responseModel string, isError bool) {
+func verifyRequestDurationMetrics(t *testing.T, op string, span *tracev1.Span, metrics *metricsv1.ScopeMetrics, originalModel, responseModel string) {
 	t.Helper()
 
 	spanDurationSec := float64(span.EndTimeUnixNano-span.StartTimeUnixNano) / 1e9
@@ -114,38 +126,11 @@ func verifyRequestDurationMetricsWithProvider(t *testing.T, op string, provider 
 	require.Greater(t, metricDurationSec, 0.0)
 	require.InDelta(t, spanDurationSec, metricDurationSec, 0.3)
 
-	// For error cases, don't validate response model since we don't get one from the backend
-	if isError {
-		// Just verify the error type is present
-		for _, metric := range metrics.Metrics {
-			if metric.Name == "gen_ai.server.request.duration" {
-				histogram := metric.GetHistogram()
-				require.NotNil(t, histogram)
-				require.NotEmpty(t, histogram.DataPoints)
-				for _, dp := range histogram.DataPoints {
-					attrs := getAttributeStringMap(dp.Attributes)
-					expected := map[string]string{
-						"error.type":            "_OTHER", // we don't set specific error types yet
-						"gen_ai.operation.name": op,
-						"gen_ai.provider.name":  provider,
-						"gen_ai.request.model":  requestModel,
-						"gen_ai.original.model": originalModel,
-						"gen_ai.response.model": attrs["gen_ai.response.model"],
-					}
-					require.Equal(t, expected, attrs)
-				}
-				return
-			}
-		}
-		t.Fatalf("gen_ai.server.request.duration metric not found")
-		return
-	}
-
 	expectedAttrs := map[string]string{
 		"gen_ai.operation.name": op,
-		"gen_ai.provider.name":  provider,
+		"gen_ai.provider.name":  "openai",
 		"gen_ai.original.model": originalModel,
-		"gen_ai.request.model":  requestModel,
+		"gen_ai.request.model":  originalModel,
 		"gen_ai.response.model": responseModel,
 	}
 	verifyMetricAttributes(t, metrics, "gen_ai.server.request.duration", expectedAttrs)
@@ -158,6 +143,18 @@ func getSpanAttributeInt(attrs []*commonv1.KeyValue, key string) int64 {
 		}
 	}
 	return 0
+}
+
+type invocationParameters struct {
+	Model string `json:"model"`
+}
+
+// getRequestModelFromSpan extracts the request model from llm.invocation_parameters JSON.
+func getInvocationModel(attrs []*commonv1.KeyValue, key string) string {
+	invocationParams := getSpanAttributeString(attrs, key)
+	var params invocationParameters
+	_ = json.Unmarshal([]byte(invocationParams), &params)
+	return params.Model
 }
 
 func getSpanAttributeString(attrs []*commonv1.KeyValue, key string) string {
@@ -247,28 +244,4 @@ func getAttributeStringMap(attrs []*commonv1.KeyValue) map[string]string {
 		}
 	}
 	return m
-}
-
-type invocationParameters struct {
-	Model string `json:"model"`
-}
-
-// getRequestModelFromSpan extracts the request model from llm.invocation_parameters JSON.
-func getInvocationModel(attrs []*commonv1.KeyValue, key string) string {
-	invocationParams := getSpanAttributeString(attrs, key)
-	var params invocationParameters
-	_ = json.Unmarshal([]byte(invocationParams), &params)
-	return params.Model
-}
-
-func replaceRequestModel(t *testing.T, req *http.Request, requestModel string) {
-	body, err := io.ReadAll(req.Body)
-	require.NoError(t, err)
-
-	modifiedBody, err := sjson.SetBytes(body, "model", requestModel)
-	require.NoError(t, err)
-
-	req.Body = io.NopCloser(bytes.NewReader(modifiedBody))
-	req.ContentLength = int64(len(modifiedBody))
-	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(modifiedBody)))
 }
