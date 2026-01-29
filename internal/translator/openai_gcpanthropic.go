@@ -858,22 +858,7 @@ func redactGCPAnthropicResponseMessage(msg *openai.ChatCompletionResponseChoiceM
 
 	// Redact reasoning content if present (thinking blocks from Anthropic)
 	if msg.ReasoningContent != nil {
-		if reasoningContent, ok := msg.ReasoningContent.Value.(*openai.ReasoningContent); ok {
-			if reasoningContent.ReasoningContent != nil {
-				if reasoningText := reasoningContent.ReasoningContent.ReasoningText; reasoningText != nil {
-					redactedMsg.ReasoningContent = &openai.ReasoningContentUnion{
-						Value: &openai.ReasoningContent{
-							ReasoningContent: &awsbedrock.ReasoningContentBlock{
-								ReasoningText: &awsbedrock.ReasoningTextBlock{
-									Text:      redaction.RedactString(reasoningText.Text),
-									Signature: reasoningText.Signature,
-								},
-							},
-						},
-					}
-				}
-			}
-		}
+		redactedMsg.ReasoningContent = redactReasoningContent(msg.ReasoningContent)
 	}
 
 	return redactedMsg

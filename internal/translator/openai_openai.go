@@ -17,6 +17,7 @@ import (
 
 	"github.com/tidwall/sjson"
 
+	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
@@ -266,5 +267,43 @@ func redactResponseMessage(msg *openai.ChatCompletionResponseChoiceMessage) open
 		redactedMsg.Audio = &redactedAudio
 	}
 
+	// Redact reasoning content if present
+	if msg.ReasoningContent != nil {
+		redactedMsg.ReasoningContent = redactReasoningContent(msg.ReasoningContent)
+	}
+
 	return redactedMsg
+}
+
+// redactReasoningContent redacts sensitive content from reasoning content union.
+func redactReasoningContent(rc *openai.ReasoningContentUnion) *openai.ReasoningContentUnion {
+	if rc == nil {
+		return nil
+	}
+
+	switch reasoningContent := rc.Value.(type) {
+	// Handle string type (e.g., from qwen model)
+	case string:
+		return &openai.ReasoningContentUnion{
+			Value: redaction.RedactString(reasoningContent),
+		}
+	// Handle ReasoningContent type (e.g., from AWS Bedrock)
+	case *openai.ReasoningContent:
+		if reasoningContent.ReasoningContent != nil {
+			if reasoningText := reasoningContent.ReasoningContent.ReasoningText; reasoningText != nil {
+				return &openai.ReasoningContentUnion{
+					Value: &openai.ReasoningContent{
+						ReasoningContent: &awsbedrock.ReasoningContentBlock{
+							ReasoningText: &awsbedrock.ReasoningTextBlock{
+								Text:      redaction.RedactString(reasoningText.Text),
+								Signature: reasoningText.Signature,
+							},
+						},
+					},
+				}
+			}
+		}
+	}
+
+	return rc
 }

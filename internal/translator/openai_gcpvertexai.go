@@ -713,11 +713,7 @@ func redactGCPResponseMessage(msg *openai.ChatCompletionResponseChoiceMessage) o
 
 	// Redact reasoning content if present (GCP-specific extended thinking)
 	if msg.ReasoningContent != nil {
-		if v, ok := msg.ReasoningContent.Value.(string); ok {
-			redactedMsg.ReasoningContent = &openai.ReasoningContentUnion{
-				Value: redaction.RedactString(v),
-			}
-		}
+		redactedMsg.ReasoningContent = redactReasoningContent(msg.ReasoningContent)
 	}
 
 	return redactedMsg
