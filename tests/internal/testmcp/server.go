@@ -83,7 +83,11 @@ func NewServer(opts *Options) (*http.Server, *mcp.Server) {
 		},
 	)
 
-	if apiKey := os.Getenv("TEST_API_KEY"); apiKey != "" {
+	// Setup API key auth when environment variable TEST_API_KEY is set.
+	apiKey := os.Getenv("TEST_API_KEY")
+	apiKeyQueryParam := os.Getenv("TEST_API_KEY_QUERY_PARAM")
+	// Query param auth takes precedence over header.
+	if apiKey != "" && apiKeyQueryParam == "" {
 		header := strings.ToLower(cmp.Or(os.Getenv("TEST_API_KEY_HEADER"), "Authorization"))
 		expectedValue := apiKey
 		if header == "authorization" {
@@ -119,7 +123,18 @@ func NewServer(opts *Options) (*http.Server, *mcp.Server) {
 	notificationsCounts := newToolNotificationCounts(handlerCounts)
 	mcp.AddTool(s, notificationsCounts.Tool, notificationsCounts.Handler)
 
-	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
+	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		// Check for API key in query param if configured.
+		if apiKey != "" && apiKeyQueryParam != "" {
+			log.Printf("checking for API key in query param %q\n", apiKeyQueryParam)
+			queryParam := r.URL.Query().Get(apiKeyQueryParam)
+			if queryParam != apiKey {
+				// Returning nil will cause 400 response in the current implementation of NewStreamableHTTPHandler.
+				log.Printf("invalid API key in query param %q: %q\n", apiKeyQueryParam, queryParam)
+				return nil
+			}
+			log.Printf("valid API key in query param %q\n", apiKeyQueryParam)
+		}
 		return s
 	}, &mcp.StreamableHTTPOptions{JSONResponse: opts.ForceJSONResponse})
 
