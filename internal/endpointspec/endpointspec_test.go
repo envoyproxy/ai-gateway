@@ -458,7 +458,8 @@ func TestChatCompletionsEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T
 		require.True(t, ok, "Parameters should be a map[string]any")
 		redactedValue, exists := paramsMap["_redacted"]
 		require.True(t, exists, "Should have _redacted key")
-		require.Contains(t, redactedValue, "REDACTED HASH=")
+		require.Contains(t, redactedValue, "REDACTED LENGTH=")
+		require.Contains(t, redactedValue, "HASH=")
 	})
 
 	t.Run("empty_request", func(t *testing.T) {

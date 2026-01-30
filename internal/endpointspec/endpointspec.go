@@ -162,9 +162,10 @@ func (ChatCompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Ch
 				// Redact parameters by replacing with a placeholder map to preserve type safety
 				// while hiding sensitive schema information
 				if redactedFunc.Parameters != nil {
-					hash := redaction.ComputeContentHash(fmt.Sprintf("%v", redactedFunc.Parameters))
+					params := fmt.Sprintf("%v", redactedFunc.Parameters)
+					hash := redaction.ComputeContentHash(params)
 					redactedFunc.Parameters = map[string]any{
-						"_redacted": fmt.Sprintf("REDACTED HASH=%s", hash),
+						"_redacted": fmt.Sprintf("REDACTED LENGTH=%d HASH=%s", len(params), hash),
 					}
 				}
 				redacted.Tools[i].Function = &redactedFunc
