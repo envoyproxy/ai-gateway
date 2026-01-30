@@ -564,6 +564,58 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy_DisableOAuthKeepsAPIKey(t
 	require.True(t, apierrors.IsNotFound(err))
 }
 
+func TestMCPRouteController_syncMCPRouteSecurityPolicy_ClaimToHeaders(t *testing.T) {
+	// Test that ClaimToHeaders from MCPRoute OAuth config are correctly configured
+	// in the SecurityPolicy's JWTProvider.
+	fakeClient := requireNewFakeClientWithIndexesForMCP(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewMCPRouteController(fakeClient, nil, logr.Discard(), eventCh.Ch)
+
+	mcpRoute := &aigv1a1.MCPRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
+		Spec: aigv1a1.MCPRouteSpec{
+			SecurityPolicy: &aigv1a1.MCPRouteSecurityPolicy{
+				OAuth: &aigv1a1.MCPRouteOAuth{
+					Issuer:    "https://auth.example.com",
+					Audiences: []string{"test-audience"},
+					JWKS: &aigv1a1.JWKS{
+						RemoteJWKS: &egv1a1.RemoteJWKS{
+							URI: "https://auth.example.com/.well-known/jwks.json",
+						},
+					},
+					ProtectedResourceMetadata: aigv1a1.ProtectedResourceMetadata{
+						Resource: "https://api.example.com/mcp",
+					},
+					ClaimToHeaders: []aigv1a1.ClaimToHeader{
+						{Claim: "sub", Header: "X-User-Id"},
+						{Claim: "email", Header: "X-User-Email"},
+						{Claim: "realm_access.roles", Header: "X-User-Roles"},
+					},
+				},
+			},
+		},
+	}
+
+	require.NoError(t, fakeClient.Create(t.Context(), mcpRoute))
+
+	httpRouteName := "test-http-route"
+	require.NoError(t, c.syncMCPRouteSecurityPolicy(t.Context(), mcpRoute, httpRouteName))
+
+	// Verify SecurityPolicy was created with ClaimToHeaders.
+	securityPolicyName := internalapi.MCPGeneratedResourceCommonPrefix + mcpRoute.Name
+	var sp egv1a1.SecurityPolicy
+	require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKey{Name: securityPolicyName, Namespace: mcpRoute.Namespace}, &sp))
+
+	require.NotNil(t, sp.Spec.JWT)
+	require.Len(t, sp.Spec.JWT.Providers, 1)
+
+	provider := sp.Spec.JWT.Providers[0]
+	require.Len(t, provider.ClaimToHeaders, 3)
+	require.Equal(t, egv1a1.ClaimToHeader{Claim: "sub", Header: "X-User-Id"}, provider.ClaimToHeaders[0])
+	require.Equal(t, egv1a1.ClaimToHeader{Claim: "email", Header: "X-User-Email"}, provider.ClaimToHeaders[1])
+	require.Equal(t, egv1a1.ClaimToHeader{Claim: "realm_access.roles", Header: "X-User-Roles"}, provider.ClaimToHeaders[2])
+}
+
 func Test_buildOAuthProtectedResourceMetadataJSON(t *testing.T) {
 	auth := &aigv1a1.MCPRouteOAuth{
 		Issuer: "https://auth.example.com",
