@@ -15,12 +15,15 @@ import (
 
 	egextension "github.com/envoyproxy/gateway/proto/extension"
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
+	mutation_rulesv3 "github.com/envoyproxy/go-control-plane/envoy/config/common/mutation_rules/v3"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	listenerv3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
+	header_mutationv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/header_mutation/v3"
 	htomv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/header_to_metadata/v3"
+	upstream_codecv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/upstream_codec/v3"
 	httpconnectionmanagerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	httpv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
@@ -115,7 +118,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 	c := newFakeClient()
 
 	// Create some fake AIGatewayRoute objects.
-	err := c.Create(t.Context(), &aigv1a1.AIGatewayRoute{
+	require.NoError(t, c.Create(t.Context(), &aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "myroute",
 			Namespace: "ns",
@@ -131,8 +134,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 				},
 			},
 		},
-	})
-	require.NoError(t, err)
+	}))
 
 	for _, tc := range []struct {
 		c      *clusterv3.Cluster
@@ -159,43 +161,258 @@ func Test_maybeModifyCluster(t *testing.T) {
 			require.Contains(t, buf.String(), tc.errLog)
 		})
 	}
-	t.Run("ok", func(t *testing.T) {
-		cluster := &clusterv3.Cluster{
-			Name: "httproute/ns/myroute/rule/0",
-			LoadAssignment: &endpointv3.ClusterLoadAssignment{
-				Endpoints: []*endpointv3.LocalityLbEndpoints{
-					{
-						LbEndpoints: []*endpointv3.LbEndpoint{
-							{},
+	for _, tc := range []struct {
+		name        string
+		cluster     *clusterv3.Cluster
+		expectedLog string
+		expected    *clusterv3.Cluster
+	}{
+		{
+			name: "nil LoadAssignment sets cluster metadata",
+			// In standalone mode (aigw run), EDS-managed endpoints have LoadAssignment=nil.
+			// The extension server must set cluster-level metadata so the upstream ext_proc
+			// filter can resolve the backend name via the cluster metadata fallback path.
+			cluster: &clusterv3.Cluster{
+				Name: "httproute/ns/myroute/rule/0",
+			},
+			expectedLog: "msg=\"LoadAssignment is nil, setting cluster-level metadata\" logger=envoy-gateway-extension-server cluster_name=httproute/ns/myroute/rule/0\n",
+			expected: &clusterv3.Cluster{
+				Name: "httproute/ns/myroute/rule/0",
+				Metadata: &corev3.Metadata{
+					FilterMetadata: map[string]*structpb.Struct{
+						internalapi.InternalEndpointMetadataNamespace: {
+							Fields: map[string]*structpb.Value{
+								internalapi.InternalMetadataBackendNameKey: structpb.NewStringValue(
+									internalapi.PerRouteRuleRefBackendName("ns", "aaa", "myroute", 0, 0),
+								),
+							},
 						},
 					},
-					{
-						LbEndpoints: []*endpointv3.LbEndpoint{
-							{},
+				},
+				TypedExtensionProtocolOptions: map[string]*anypb.Any{
+					"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(t, &httpv3.HttpProtocolOptions{
+						UpstreamProtocolOptions: &httpv3.HttpProtocolOptions_ExplicitHttpConfig_{ExplicitHttpConfig: &httpv3.HttpProtocolOptions_ExplicitHttpConfig{
+							ProtocolConfig: &httpv3.HttpProtocolOptions_ExplicitHttpConfig_HttpProtocolOptions{},
+						}},
+						HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
+							{
+								Name: aiGatewayExtProcName,
+								ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
+									TypedConfig: mustToAny(t, &extprocv3.ExternalProcessor{
+										MetadataOptions: &extprocv3.MetadataOptions{
+											ReceivingNamespaces: &extprocv3.MetadataOptions_MetadataNamespaces{
+												Untyped: []string{aigv1a1.AIGatewayFilterMetadataNamespace},
+											},
+										},
+										AllowModeOverride: true,
+										RequestAttributes: []string{
+											internalapi.XDSUpstreamHostMetadataBackendNamePath,
+											internalapi.XDSClusterMetadataBackendNamePath,
+										},
+										ProcessingMode: &extprocv3.ProcessingMode{
+											RequestHeaderMode:  extprocv3.ProcessingMode_SEND,
+											RequestBodyMode:    extprocv3.ProcessingMode_NONE,
+											ResponseHeaderMode: extprocv3.ProcessingMode_SKIP,
+											ResponseBodyMode:   extprocv3.ProcessingMode_NONE,
+										},
+										MessageTimeout: durationpb.New(10 * time.Second),
+										GrpcService: &corev3.GrpcService{
+											TargetSpecifier: &corev3.GrpcService_EnvoyGrpc_{
+												EnvoyGrpc: &corev3.GrpcService_EnvoyGrpc{
+													ClusterName: extProcUDSClusterName,
+												},
+											},
+											Timeout: durationpb.New(30 * time.Second),
+										},
+									}),
+								},
+							},
+							{
+								Name: "envoy.filters.http.header_mutation",
+								ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
+									TypedConfig: mustToAny(t, &header_mutationv3.HeaderMutation{
+										Mutations: &header_mutationv3.Mutations{
+											RequestMutations: []*mutation_rulesv3.HeaderMutation{
+												{
+													Action: &mutation_rulesv3.HeaderMutation_Append{
+														Append: &corev3.HeaderValueOption{
+															AppendAction: corev3.HeaderValueOption_ADD_IF_ABSENT,
+															Header: &corev3.HeaderValue{
+																Key:   "content-length",
+																Value: `%DYNAMIC_METADATA(` + aigv1a1.AIGatewayFilterMetadataNamespace + `:content_length)%`,
+															},
+														},
+													},
+												},
+											},
+										},
+									}),
+								},
+							},
+							{
+								Name: "envoy.filters.http.upstream_codec",
+								ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
+									TypedConfig: mustToAny(t, &upstream_codecv3.UpstreamCodec{}),
+								},
+							},
+						},
+					}),
+				},
+			},
+		},
+		{
+			name: "ok with LoadAssignment",
+			cluster: &clusterv3.Cluster{
+				Name: "httproute/ns/myroute/rule/0",
+				LoadAssignment: &endpointv3.ClusterLoadAssignment{
+					Endpoints: []*endpointv3.LocalityLbEndpoints{
+						{
+							LbEndpoints: []*endpointv3.LbEndpoint{
+								{},
+							},
+						},
+						{
+							LbEndpoints: []*endpointv3.LbEndpoint{
+								{},
+							},
 						},
 					},
 				},
 			},
-		}
-		var buf bytes.Buffer
-		s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil)
-		require.NoError(t, err)
-		err = s.maybeModifyCluster(cluster)
-		require.NoError(t, err)
-		require.Empty(t, buf.String())
+			expectedLog: "",
+			expected: &clusterv3.Cluster{
+				Name: "httproute/ns/myroute/rule/0",
+				LoadAssignment: &endpointv3.ClusterLoadAssignment{
+					Endpoints: []*endpointv3.LocalityLbEndpoints{
+						{
+							Priority: 0,
+							LbEndpoints: []*endpointv3.LbEndpoint{
+								{
+									Metadata: &corev3.Metadata{
+										FilterMetadata: map[string]*structpb.Struct{
+											internalapi.InternalEndpointMetadataNamespace: {
+												Fields: map[string]*structpb.Value{
+													internalapi.InternalMetadataBackendNameKey: structpb.NewStringValue(
+														internalapi.PerRouteRuleRefBackendName("ns", "aaa", "myroute", 0, 0),
+													),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+						{
+							Priority: 1,
+							LbEndpoints: []*endpointv3.LbEndpoint{
+								{
+									Metadata: &corev3.Metadata{
+										FilterMetadata: map[string]*structpb.Struct{
+											internalapi.InternalEndpointMetadataNamespace: {
+												Fields: map[string]*structpb.Value{
+													internalapi.InternalMetadataBackendNameKey: structpb.NewStringValue(
+														internalapi.PerRouteRuleRefBackendName("ns", "bbb", "myroute", 0, 2),
+													),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				TypedExtensionProtocolOptions: map[string]*anypb.Any{
+					"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(t, &httpv3.HttpProtocolOptions{
+						UpstreamProtocolOptions: &httpv3.HttpProtocolOptions_ExplicitHttpConfig_{ExplicitHttpConfig: &httpv3.HttpProtocolOptions_ExplicitHttpConfig{
+							ProtocolConfig: &httpv3.HttpProtocolOptions_ExplicitHttpConfig_HttpProtocolOptions{},
+						}},
+						HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
+							{
+								Name: aiGatewayExtProcName,
+								ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
+									TypedConfig: mustToAny(t, &extprocv3.ExternalProcessor{
+										MetadataOptions: &extprocv3.MetadataOptions{
+											ReceivingNamespaces: &extprocv3.MetadataOptions_MetadataNamespaces{
+												Untyped: []string{aigv1a1.AIGatewayFilterMetadataNamespace},
+											},
+										},
+										AllowModeOverride: true,
+										RequestAttributes: []string{
+											internalapi.XDSUpstreamHostMetadataBackendNamePath,
+											internalapi.XDSClusterMetadataBackendNamePath,
+										},
+										ProcessingMode: &extprocv3.ProcessingMode{
+											RequestHeaderMode:  extprocv3.ProcessingMode_SEND,
+											RequestBodyMode:    extprocv3.ProcessingMode_NONE,
+											ResponseHeaderMode: extprocv3.ProcessingMode_SKIP,
+											ResponseBodyMode:   extprocv3.ProcessingMode_NONE,
+										},
+										MessageTimeout: durationpb.New(10 * time.Second),
+										GrpcService: &corev3.GrpcService{
+											TargetSpecifier: &corev3.GrpcService_EnvoyGrpc_{
+												EnvoyGrpc: &corev3.GrpcService_EnvoyGrpc{
+													ClusterName: extProcUDSClusterName,
+												},
+											},
+											Timeout: durationpb.New(30 * time.Second),
+										},
+									}),
+								},
+							},
+							{
+								Name: "envoy.filters.http.header_mutation",
+								ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
+									TypedConfig: mustToAny(t, &header_mutationv3.HeaderMutation{
+										Mutations: &header_mutationv3.Mutations{
+											RequestMutations: []*mutation_rulesv3.HeaderMutation{
+												{
+													Action: &mutation_rulesv3.HeaderMutation_Append{
+														Append: &corev3.HeaderValueOption{
+															AppendAction: corev3.HeaderValueOption_ADD_IF_ABSENT,
+															Header: &corev3.HeaderValue{
+																Key:   "content-length",
+																Value: `%DYNAMIC_METADATA(` + aigv1a1.AIGatewayFilterMetadataNamespace + `:content_length)%`,
+															},
+														},
+													},
+												},
+											},
+										},
+									}),
+								},
+							},
+							{
+								Name: "envoy.filters.http.upstream_codec",
+								ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
+									TypedConfig: mustToAny(t, &upstream_codecv3.UpstreamCodec{}),
+								},
+							},
+						},
+					}),
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			handler := slog.NewTextHandler(&buf, &slog.HandlerOptions{
+				ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+					if a.Key == slog.TimeKey || a.Key == slog.LevelKey {
+						return slog.Attr{}
+					}
+					return a
+				},
+			})
+			s, err := New(c, logr.FromSlogHandler(handler), udsPath, false, nil, nil)
+			require.NoError(t, err)
+			err = s.maybeModifyCluster(tc.cluster)
+			require.NoError(t, err)
 
-		require.Len(t, cluster.LoadAssignment.Endpoints, 2)
-		require.Len(t, cluster.LoadAssignment.Endpoints[0].LbEndpoints, 1)
-		require.Equal(t, uint32(0), cluster.LoadAssignment.Endpoints[0].Priority)
-		require.Equal(t, uint32(1), cluster.LoadAssignment.Endpoints[1].Priority)
-		md := cluster.LoadAssignment.Endpoints[0].LbEndpoints[0].Metadata
-		require.NotNil(t, md)
-		require.Len(t, md.FilterMetadata, 1)
-		mmd, ok := md.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
-		require.True(t, ok)
-		require.Len(t, mmd.Fields, 1)
-		require.Equal(t, "ns/aaa/route/myroute/rule/0/ref/0", mmd.Fields[internalapi.InternalMetadataBackendNameKey].GetStringValue())
-	})
+			require.Equal(t, tc.expectedLog, buf.String())
+			require.Equal(t, tc.expected, tc.cluster)
+		})
+	}
 }
 
 // Helper function to create an InferencePool ExtensionResource.

@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -313,19 +314,10 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 	if attributes == nil || len(attributes.Fields) == 0 { // coverage-ignore
 		return status.Error(codes.Internal, "missing attributes in request")
 	}
-	// metadataFieldKey is the key for the entire metadata field in the attributes for backward compatibility.
-	var backendNamePath string
-	if isEndpointPicker {
-		backendNamePath = internalapi.XDSClusterMetadataBackendNamePath
-	} else {
-		backendNamePath = internalapi.XDSUpstreamHostMetadataBackendNamePath
-	}
 
-	var backendName string
-	if b, ok := attributes.Fields[backendNamePath]; ok {
-		backendName = b.GetStringValue()
-	} else {
-		return status.Errorf(codes.Internal, "missing backend name in attributes at path: %s", backendNamePath)
+	backendName, err := resolveBackendName(isEndpointPicker, attributes)
+	if err != nil {
+		return err
 	}
 
 	backend, ok := s.config.Backends[backendName]
@@ -345,6 +337,29 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 		return status.Errorf(codes.Internal, "cannot set backend: %v", err)
 	}
 	return nil
+}
+
+func resolveBackendName(isEndpointPicker bool, attributes *structpb.Struct) (string, error) {
+	var backendNamePath string
+	if isEndpointPicker {
+		backendNamePath = internalapi.XDSClusterMetadataBackendNamePath
+	} else {
+		backendNamePath = internalapi.XDSUpstreamHostMetadataBackendNamePath
+	}
+
+	// Try the direct metadata path first. (e.g. xds.upstream_host_metadata...['per_route_rule_backend_name'])
+	if b, ok := attributes.Fields[backendNamePath]; ok {
+		return b.GetStringValue(), nil
+	}
+
+	// Fallback to cluster metadata when upstream host metadata is unavailable.
+	if !isEndpointPicker {
+		if b, ok := attributes.Fields[internalapi.XDSClusterMetadataBackendNamePath]; ok {
+			return b.GetStringValue(), nil
+		}
+	}
+
+	return "", status.Errorf(codes.Internal, "missing backend name in attributes at path: %s", backendNamePath)
 }
 
 // Check implements [grpc_health_v1.HealthServer].

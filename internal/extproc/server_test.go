@@ -274,6 +274,65 @@ func TestServer_setBackend(t *testing.T) {
 	}
 }
 
+func TestResolveBackendName(t *testing.T) {
+	const backendName = "default/openai/route/aigw-run/rule/0/ref/0"
+
+	for _, tc := range []struct {
+		name             string
+		attributes       map[string]*structpb.Value
+		isEndpointPicker bool
+		expected         string
+		expectedErr      string
+	}{
+		{
+			name: "direct metadata path (upstream host)",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSUpstreamHostMetadataBackendNamePath: structpb.NewStringValue(backendName),
+			},
+			expected: backendName,
+		},
+		{
+			name: "direct metadata path (cluster, endpoint picker)",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSClusterMetadataBackendNamePath: structpb.NewStringValue(backendName),
+			},
+			isEndpointPicker: true,
+			expected:         backendName,
+		},
+		{
+			name: "fallback to cluster metadata when upstream host metadata missing",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSClusterMetadataBackendNamePath: structpb.NewStringValue(backendName),
+			},
+			expected: backendName,
+		},
+		{
+			name:        "missing backend name for router",
+			attributes:  map[string]*structpb.Value{},
+			expectedErr: "rpc error: code = Internal desc = missing backend name in attributes at path: xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']",
+		},
+		{
+			name:             "missing backend name for endpoint picker",
+			attributes:       map[string]*structpb.Value{},
+			isEndpointPicker: true,
+			expectedErr:      "rpc error: code = Internal desc = missing backend name in attributes at path: xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			actual, err := resolveBackendName(
+				tc.isEndpointPicker,
+				&structpb.Struct{Fields: tc.attributes},
+			)
+			if tc.expectedErr != "" {
+				require.EqualError(t, err, tc.expectedErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
 func TestServer_ProcessorSelection(t *testing.T) {
 	s, err := NewServer(slog.Default())
 	require.NoError(t, err)
