@@ -882,7 +882,7 @@ func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			processor, err := s.processorForPath(tt.requestHeaders, tt.isUpstream)
+			processor, err := s.processorForPath(tt.requestHeaders, tt.isUpstream, slog.Default())
 
 			if tt.expectSuccess {
 				require.NoError(t, err)
