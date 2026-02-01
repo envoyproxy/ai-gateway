@@ -187,8 +187,9 @@ func (ChatCompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Ch
 
 	// Redact guided JSON schema (contains raw JSON schema definition)
 	if len(req.GuidedJSON) > 0 {
+		originalLen := len(req.GuidedJSON)
 		hash := redaction.ComputeContentHash(string(req.GuidedJSON))
-		redacted.GuidedJSON = []byte(fmt.Sprintf(`{"_redacted":"REDACTED LENGTH=%d HASH=%s"}`, len(req.GuidedJSON), hash))
+		redacted.GuidedJSON = []byte(fmt.Sprintf(`{"_redacted":"[REDACTED LENGTH=%d HASH=%s]"}`, originalLen, hash))
 	}
 
 	return &redacted, nil
@@ -529,8 +530,9 @@ func redactResponseFormat(format *openai.ChatCompletionResponseFormatUnion) *ope
 
 		// Redact the actual JSON schema (contains sensitive data model structure)
 		if len(redactedInnerSchema.Schema) > 0 {
+			originalLen := len(redactedInnerSchema.Schema)
 			hash := redaction.ComputeContentHash(string(redactedInnerSchema.Schema))
-			redactedInnerSchema.Schema = []byte(fmt.Sprintf(`{"_redacted":"REDACTED LENGTH=%d HASH=%s"}`, len(redactedInnerSchema.Schema), hash))
+			redactedInnerSchema.Schema = []byte(fmt.Sprintf(`{"_redacted":"[REDACTED LENGTH=%d HASH=%s]"}`, originalLen, hash))
 		}
 
 		redactedJSONSchema.JSONSchema = redactedInnerSchema

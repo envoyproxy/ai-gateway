@@ -526,7 +526,9 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	case translator.AnthropicResponseRedactor:
 		redactor.SetRedactionConfig(u.parent.debugLogEnabled, u.parent.enableRedaction, u.logger)
 	default:
-		// Ignore if the translator does not support redaction.
+		if u.parent.debugLogEnabled && u.parent.enableRedaction {
+			u.logger.Debug("translator does not support redaction", slog.String("backend", b.Name))
+		}
 	}
 
 	return

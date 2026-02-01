@@ -510,8 +510,7 @@ func redactBodyMutation(bodyMutation *extprocv3.BodyMutation) *extprocv3.BodyMut
 		if len(m.Body) == 0 {
 			return bodyMutation
 		}
-		hash := redaction.ComputeContentHash(string(m.Body))
-		redactedBody := []byte(fmt.Sprintf("[REDACTED LENGTH=%d HASH=%s]", len(m.Body), hash))
+		redactedBody := []byte(redaction.RedactString(string(m.Body)))
 		return &extprocv3.BodyMutation{
 			Mutation: &extprocv3.BodyMutation_Body{
 				Body: redactedBody,
@@ -530,7 +529,7 @@ func redactBodyMutation(bodyMutation *extprocv3.BodyMutation) *extprocv3.BodyMut
 // The original response is never modified to ensure the actual AI provider response flows through unchanged.
 // Both headers (API keys, auth tokens) and body content (AI-generated text, images, etc.) are redacted.
 func redactResponseBodyResponseFull(resp *extprocv3.ProcessingResponse_ResponseBody, logger *slog.Logger, sensitiveKeys []string) *extprocv3.ProcessingResponse_ResponseBody {
-	if resp == nil {
+	if resp == nil || resp.ResponseBody == nil || resp.ResponseBody.Response == nil {
 		return &extprocv3.ProcessingResponse_ResponseBody{}
 	}
 
