@@ -271,7 +271,56 @@ spec:
         - name: envoy-ai-gateway-basic-aws
 ```
 
-## Using Anthropic Native API
+## API Schema Options
+
+AWS Bedrock supports multiple API formats:
+
+### 1. AWSBedrock Schema (Converse API Format)
+
+The default `AWSBedrock` schema uses AWS Bedrock's Converse API format. This works with all Bedrock models.
+
+### 2. AWSInvokeOpenAI Schema (OpenAI-Compatible Models)
+
+For OpenAI-compatible models on AWS Bedrock (like certain foundation models that accept OpenAI format), use the `AWSInvokeOpenAI` schema. This uses AWS Bedrock's InvokeModel API with OpenAI-formatted requests.
+
+Example configuration:
+
+```yaml
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-basic-aws-openai
+  namespace: default
+spec:
+  schema:
+    name: AWSInvokeOpenAI
+  backendRef:
+    name: envoy-ai-gateway-basic-aws-openai
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: envoy-ai-gateway-basic-aws-openai
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: bedrock-runtime.us-west-2.amazonaws.com
+        port: 443
+```
+
+Then send OpenAI-formatted requests to models that support it:
+
+```shell
+curl -H "Content-Type: application/json" -d '{
+  "model": "openai.gpt-oss-20b-1:0",
+  "messages": [{"role": "user", "content": "Hello!"}]
+}' http://$GATEWAY_URL/v1/chat/completions
+```
+
+### 3. Using Anthropic Native API
 
 When using Anthropic models on AWS Bedrock, you have two options:
 
