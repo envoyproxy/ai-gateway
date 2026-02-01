@@ -8,6 +8,7 @@ package extproc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/propagation"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -89,9 +91,16 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 		p := &chatCompletionProcessorRouterFilter{
 			tracer: tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
 			config: &filterapi.RuntimeConfig{},
+			logger: slog.Default(),
 		}
-		_, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: []byte("nonjson")})
-		require.ErrorContains(t, err, "failed to parse request body")
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: []byte("nonjson")})
+		require.NoError(t, err, "Should not return error when returning immediate response")
+		require.NotNil(t, resp, "Response should not be nil")
+
+		immediateResp, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
+		require.True(t, ok, "Response should be an immediate response")
+		require.Equal(t, typev3.StatusCode(400), immediateResp.ImmediateResponse.Status.Code)
+		require.JSONEq(t, `{"type":"error","error":{"type":"BadRequest","code":"400","message":"malformed request: failed to parse JSON for /v1/chat/completions"}}`, string(immediateResp.ImmediateResponse.Body))
 	})
 
 	t.Run("ok", func(t *testing.T) {
@@ -431,12 +440,12 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 		{name: "streaming with forced include usage", stream: true, forcedIncludeUsage: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Run("translator error", func(t *testing.T) {
+			t.Run("translator error - internal", func(t *testing.T) {
 				headers := map[string]string{":path": "/foo", internalapi.ModelNameHeaderKeyDefault: "some-model"}
 				someBody := bodyFromModel(t, "some-model", tc.stream, nil)
 				var body openai.ChatCompletionRequest
 				require.NoError(t, json.Unmarshal(someBody, &body))
-				tr := &mockTranslator{t: t, retErr: errors.New("test error"), expRequestBody: &body}
+				tr := &mockTranslator{t: t, retErr: errors.New("internal database error with credentials"), expRequestBody: &body}
 				mm := &mockMetrics{}
 				p := &chatCompletionProcessorUpstreamFilter{
 					parent: &chatCompletionProcessorRouterFilter{
@@ -451,11 +460,84 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 					metrics:        mm,
 					translator:     tr,
 				}
-				_, err := p.ProcessRequestHeaders(t.Context(), nil)
-				require.ErrorContains(t, err, "failed to transform request: test error")
+				resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+				require.Error(t, err, "Should return an error")
+				require.Contains(t, err.Error(), "failed to transform request")
+				// Internal errors should use the normal error path (nil response)
+				require.Nil(t, resp, "Response should be nil for internal errors")
+
 				mm.RequireRequestFailure(t)
 				require.Zero(t, mm.inputTokenCount)
 				// Verify models were set even though processing failed
+				require.Equal(t, "some-model", mm.originalModel)
+				require.Equal(t, "some-model", mm.requestModel)
+			})
+			t.Run("translator error - user facing", func(t *testing.T) {
+				headers := map[string]string{":path": "/foo", internalapi.ModelNameHeaderKeyDefault: "some-model"}
+				someBody := bodyFromModel(t, "some-model", tc.stream, nil)
+				var body openai.ChatCompletionRequest
+				require.NoError(t, json.Unmarshal(someBody, &body))
+				tr := &mockTranslator{t: t, retErr: fmt.Errorf("%w: missing required field", internalapi.ErrInvalidRequestBody), expRequestBody: &body}
+				mm := &mockMetrics{}
+				p := &chatCompletionProcessorUpstreamFilter{
+					parent: &chatCompletionProcessorRouterFilter{
+						config:                 &filterapi.RuntimeConfig{},
+						logger:                 slog.Default(),
+						originalRequestBodyRaw: someBody,
+						originalRequestBody:    &body,
+						originalModel:          "some-model",
+						stream:                 tc.stream,
+					},
+					requestHeaders: headers,
+					metrics:        mm,
+					translator:     tr,
+					logger:         slog.Default(),
+				}
+				resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+				require.NoError(t, err, "Should not return error when returning immediate response")
+				require.NotNil(t, resp, "Response should not be nil")
+
+				immediateResp, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
+				require.True(t, ok, "Response should be an immediate response")
+				require.Equal(t, typev3.StatusCode(422), immediateResp.ImmediateResponse.Status.Code)
+				require.JSONEq(t, `{"type":"error","error":{"type":"UnprocessableEntity","code":"422","message":"invalid request body: missing required field"}}`, string(immediateResp.ImmediateResponse.Body))
+
+				mm.RequireRequestFailure(t)
+				require.Zero(t, mm.inputTokenCount)
+				// Verify models were set even though processing failed
+				require.Equal(t, "some-model", mm.originalModel)
+				require.Equal(t, "some-model", mm.requestModel)
+			})
+			t.Run("auth handler error", func(t *testing.T) {
+				headers := map[string]string{":path": "/foo", internalapi.ModelNameHeaderKeyDefault: "some-model"}
+				someBody := bodyFromModel(t, "some-model", tc.stream, nil)
+				var body openai.ChatCompletionRequest
+				require.NoError(t, json.Unmarshal(someBody, &body))
+				tr := &mockTranslator{t: t, expRequestBody: &body}
+				mm := &mockMetrics{}
+				// Create a mock auth handler that returns an error
+				authHandler := &mockBackendAuthHandlerError{err: errors.New("authentication failed")}
+				p := &chatCompletionProcessorUpstreamFilter{
+					parent: &chatCompletionProcessorRouterFilter{
+						config:                 &filterapi.RuntimeConfig{},
+						logger:                 slog.Default(),
+						originalRequestBodyRaw: someBody,
+						originalRequestBody:    &body,
+						originalModel:          "some-model",
+						stream:                 tc.stream,
+					},
+					requestHeaders: headers,
+					metrics:        mm,
+					translator:     tr,
+					handler:        authHandler,
+				}
+				resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+				require.Error(t, err, "Should return an error")
+				require.Contains(t, err.Error(), "failed to do auth request: authentication failed")
+				require.Nil(t, resp, "Response should be nil for auth errors")
+
+				mm.RequireRequestFailure(t)
+				require.Zero(t, mm.inputTokenCount)
 				require.Equal(t, "some-model", mm.originalModel)
 				require.Equal(t, "some-model", mm.requestModel)
 			})

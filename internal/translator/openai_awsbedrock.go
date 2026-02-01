@@ -213,7 +213,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIToolsToBedrockToolC
 				},
 			}
 		} else {
-			return fmt.Errorf("unexpected type: %T", openAIReq.ToolChoice.Value)
+			return fmt.Errorf("%w: tool_choice type not supported", internalapi.ErrInvalidRequestBody)
 		}
 	}
 	return nil
@@ -251,7 +251,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 				imageContentPart := contentPart.OfImageURL
 				contentType, b, err := parseDataURI(imageContentPart.ImageURL.URL)
 				if err != nil {
-					return nil, fmt.Errorf("failed to parse image URL: %s %w", imageContentPart.ImageURL.URL, err)
+					return nil, fmt.Errorf("%w: invalid image data URI", internalapi.ErrInvalidRequestBody)
 				}
 				var format string
 				switch contentType {
@@ -264,8 +264,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 				case mimeTypeImageWEBP:
 					format = "webp"
 				default:
-					return nil, fmt.Errorf("unsupported image type: %s please use one of [png, jpeg, gif, webp]",
-						contentType)
+					return nil, fmt.Errorf("%w: unsupported image format %s", internalapi.ErrInvalidRequestBody, contentType)
 				}
 
 				block := &awsbedrock.ContentBlock{
@@ -287,7 +286,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 		}
 		return chatMessage, nil
 	}
-	return nil, fmt.Errorf("unexpected content type")
+	return nil, fmt.Errorf("%w: unexpected content type for user message", internalapi.ErrInvalidRequestBody)
 }
 
 // unmarshalToolCallArguments is a helper method to unmarshal tool call arguments.
@@ -373,9 +372,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 					}
 
 				case string:
-					return nil, fmt.Errorf("AWS Bedrock does not support string format for RedactedContent, expected []byte")
+					return nil, fmt.Errorf("%w: redacted_content must be a binary/bytes value in bedrock", internalapi.ErrInvalidRequestBody)
 				default:
-					return nil, fmt.Errorf("unsupported RedactedContent type: %T, expected []byte", v)
+					return nil, fmt.Errorf("%w: redacted_content must be a binary/bytes value in bedrock", internalapi.ErrInvalidRequestBody)
 				}
 			}
 		case openai.ChatCompletionAssistantMessageParamContentTypeRefusal:
@@ -438,7 +437,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 			}
 		}
 	} else {
-		return fmt.Errorf("unexpected content type for system message")
+		return fmt.Errorf("%w: unexpected content type for system message", internalapi.ErrInvalidRequestBody)
 	}
 	return nil
 }
@@ -465,7 +464,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 		}
 
 	default:
-		return nil, fmt.Errorf("unexpected content type for tool message: %T", openAiMessage.Content.Value)
+		return nil, fmt.Errorf("%w: message 'content' must be a string or an array", internalapi.ErrInvalidRequestBody)
 	}
 
 	return &awsbedrock.Message{
@@ -542,7 +541,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 						}
 					}
 				} else {
-					return fmt.Errorf("unexpected content type for developer message")
+					return fmt.Errorf("%w: unexpected content type for developer message", internalapi.ErrInvalidRequestBody)
 				}
 			}
 		case msg.OfTool != nil:
@@ -572,7 +571,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 
 			bedrockReq.Messages = append(bedrockReq.Messages, bedrockMessage)
 		default:
-			return fmt.Errorf("unexpected role: %s", msg.ExtractMessgaeRole())
+			return fmt.Errorf("%w: unexpected role: %s", internalapi.ErrInvalidRequestBody, msg.ExtractMessgaeRole())
 		}
 
 		i++

@@ -22,7 +22,7 @@ func TestChatCompletionsEndpointSpec_ParseBody(t *testing.T) {
 
 	t.Run("invalid json", func(t *testing.T) {
 		_, _, _, _, err := spec.ParseBody([]byte("not-json"), false)
-		require.ErrorContains(t, err, "failed to unmarshal chat completion request")
+		require.ErrorContains(t, err, "malformed request")
 	})
 
 	t.Run("streaming_without_include_usage", func(t *testing.T) {
@@ -106,7 +106,7 @@ func TestCompletionsEndpointSpec_ParseBody(t *testing.T) {
 
 	t.Run("invalid json", func(t *testing.T) {
 		_, _, _, _, err := spec.ParseBody([]byte("{bad"), false)
-		require.ErrorContains(t, err, "failed to unmarshal completion request")
+		require.ErrorContains(t, err, "malformed request")
 	})
 
 	t.Run("streaming", func(t *testing.T) {
@@ -138,7 +138,7 @@ func TestEmbeddingsEndpointSpec_ParseBody(t *testing.T) {
 
 	t.Run("invalid json", func(t *testing.T) {
 		_, _, _, _, err := spec.ParseBody([]byte("{"), false)
-		require.ErrorContains(t, err, "failed to unmarshal embedding request")
+		require.ErrorContains(t, err, "malformed request")
 	})
 
 	t.Run("success", func(t *testing.T) {
@@ -173,7 +173,7 @@ func TestImageGenerationEndpointSpec_ParseBody(t *testing.T) {
 
 	t.Run("invalid json", func(t *testing.T) {
 		_, _, _, _, err := spec.ParseBody([]byte("{"), false)
-		require.ErrorContains(t, err, "failed to unmarshal image generation request")
+		require.ErrorContains(t, err, "malformed request")
 	})
 
 	t.Run("success", func(t *testing.T) {
@@ -204,7 +204,7 @@ func TestMessagesEndpointSpec_ParseBody(t *testing.T) {
 
 	t.Run("invalid json", func(t *testing.T) {
 		_, _, _, _, err := spec.ParseBody([]byte("["), false)
-		require.ErrorContains(t, err, "failed to unmarshal Anthropic Messages body")
+		require.ErrorContains(t, err, "malformed request")
 	})
 
 	t.Run("missing model", func(t *testing.T) {
@@ -248,7 +248,7 @@ func TestRerankEndpointSpec_ParseBody(t *testing.T) {
 	spec := RerankEndpointSpec{}
 	t.Run("invalid json", func(t *testing.T) {
 		_, _, _, _, err := spec.ParseBody([]byte("{"), false)
-		require.ErrorContains(t, err, "failed to unmarshal rerank request")
+		require.ErrorContains(t, err, "malformed request")
 	})
 
 	t.Run("success", func(t *testing.T) {
@@ -279,7 +279,7 @@ func TestResponsesEndpointSpec_ParseBody(t *testing.T) {
 	spec := ResponsesEndpointSpec{}
 	t.Run("invalid json", func(t *testing.T) {
 		_, _, _, _, err := spec.ParseBody([]byte("{"), false)
-		require.ErrorContains(t, err, "failed to unmarshal responses request")
+		require.ErrorContains(t, err, "malformed request")
 	})
 
 	t.Run("success", func(t *testing.T) {

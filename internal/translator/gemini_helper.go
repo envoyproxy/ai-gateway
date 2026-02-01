@@ -62,7 +62,7 @@ func openAIMessagesToGeminiContents(messages []openai.ChatCompletionMessageParam
 			msg := msgUnion.OfDeveloper
 			inst, err := developerMsgToGeminiParts(*msg)
 			if err != nil {
-				return nil, nil, fmt.Errorf("error converting developer message: %w", err)
+				return nil, nil, fmt.Errorf("invalid developer message: %w", err)
 			}
 			if len(inst) != 0 {
 				if systemInstruction == nil {
@@ -75,7 +75,7 @@ func openAIMessagesToGeminiContents(messages []openai.ChatCompletionMessageParam
 			devMsg := systemMsgToDeveloperMsg(*msg)
 			inst, err := developerMsgToGeminiParts(devMsg)
 			if err != nil {
-				return nil, nil, fmt.Errorf("error converting developer message: %w", err)
+				return nil, nil, fmt.Errorf("invalid system message: %w", err)
 			}
 			if len(inst) != 0 {
 				if systemInstruction == nil {
@@ -87,14 +87,14 @@ func openAIMessagesToGeminiContents(messages []openai.ChatCompletionMessageParam
 			msg := msgUnion.OfUser
 			parts, err := userMsgToGeminiParts(*msg, requestModel)
 			if err != nil {
-				return nil, nil, fmt.Errorf("error converting user message: %w", err)
+				return nil, nil, fmt.Errorf("invalid user message: %w", err)
 			}
 			gcpParts = append(gcpParts, parts...)
 		case msgUnion.OfTool != nil:
 			msg := msgUnion.OfTool
 			part, err := toolMsgToGeminiParts(*msg, knownToolCalls)
 			if err != nil {
-				return nil, nil, fmt.Errorf("error converting tool message: %w", err)
+				return nil, nil, fmt.Errorf("invalid tool message: %w", err)
 			}
 			gcpParts = append(gcpParts, part)
 		case msgUnion.OfAssistant != nil:
@@ -106,12 +106,12 @@ func openAIMessagesToGeminiContents(messages []openai.ChatCompletionMessageParam
 			msg := msgUnion.OfAssistant
 			assistantParts, toolCalls, err := assistantMsgToGeminiParts(msg)
 			if err != nil {
-				return nil, nil, fmt.Errorf("error converting assistant message: %w", err)
+				return nil, nil, fmt.Errorf("invalid assistant message: %w", err)
 			}
 			maps.Copy(knownToolCalls, toolCalls)
 			gcpContents = append(gcpContents, genai.Content{Role: genai.RoleModel, Parts: assistantParts})
 		default:
-			return nil, nil, fmt.Errorf("invalid role in message")
+			return nil, nil, fmt.Errorf("%w: invalid role in message", internalapi.ErrInvalidRequestBody)
 		}
 	}
 
@@ -137,7 +137,7 @@ func mapDetailMediaResolution(detail openai.ChatCompletionContentPartImageImageU
 		// Return unspecified to indicate no specific resolution should be set
 		return genai.PartMediaResolutionLevelMediaResolutionUnspecified, nil
 	default:
-		return "", fmt.Errorf("unsupported detail level: %q (supported: low, medium, high, auto)", detail)
+		return "", fmt.Errorf("%w: unsupported detail level: %q (supported: low, medium, high, auto)", internalapi.ErrInvalidRequestBody, detail)
 	}
 }
 
@@ -159,7 +159,7 @@ func developerMsgToGeminiParts(msg openai.ChatCompletionDeveloperMessageParam) (
 			}
 		}
 	default:
-		return nil, fmt.Errorf("unsupported content type in developer message: %T", contentValue)
+		return nil, fmt.Errorf("%w: message 'content' must be a string or an array", internalapi.ErrInvalidRequestBody)
 
 	}
 	return parts, nil
@@ -187,14 +187,14 @@ func userMsgToGeminiParts(msg openai.ChatCompletionUserMessageParam, requestMode
 
 				parsedURL, err := url.Parse(imgURL)
 				if err != nil {
-					return nil, fmt.Errorf("invalid image URL: %w", err)
+					return nil, fmt.Errorf("%w: invalid image URL", internalapi.ErrInvalidRequestBody)
 				}
 
 				var p *genai.Part
 				if parsedURL.Scheme == "data" {
 					mimeType, imgBytes, parseErr := parseDataURI(imgURL)
 					if parseErr != nil {
-						return nil, fmt.Errorf("failed to parse data URI: %w", parseErr)
+						return nil, fmt.Errorf("%w: invalid image data URI", internalapi.ErrInvalidRequestBody)
 					}
 					p = genai.NewPartFromBytes(imgBytes, mimeType)
 				} else {
@@ -210,7 +210,7 @@ func userMsgToGeminiParts(msg openai.ChatCompletionUserMessageParam, requestMode
 				if content.OfImageURL.ImageURL.Detail != "" && mediaResolutionAvailable(requestModel) {
 					mediaResolution, err := mapDetailMediaResolution(content.OfImageURL.ImageURL.Detail)
 					if err != nil {
-						return nil, fmt.Errorf("invalid Detail: %w", err)
+						return nil, fmt.Errorf("%w: invalid detail", internalapi.ErrInvalidRequestBody)
 					}
 					// Always set MediaResolution when Detail is specified
 					p.MediaResolution = &genai.PartMediaResolution{
@@ -220,14 +220,14 @@ func userMsgToGeminiParts(msg openai.ChatCompletionUserMessageParam, requestMode
 				parts = append(parts, p)
 			case content.OfInputAudio != nil:
 				// Audio content is currently not supported in this implementation.
-				return nil, fmt.Errorf("audio content not supported yet")
+				return nil, fmt.Errorf("%w: audio content not supported yet", internalapi.ErrInvalidRequestBody)
 			case content.OfFile != nil:
 				// File content is currently not supported in this implementation.
-				return nil, fmt.Errorf("file content not supported yet")
+				return nil, fmt.Errorf("%w: file content not supported yet", internalapi.ErrInvalidRequestBody)
 			}
 		}
 	default:
-		return nil, fmt.Errorf("unsupported content type in user message: %T", contentValue)
+		return nil, fmt.Errorf("%w: message 'content' must be a string or an array", internalapi.ErrInvalidRequestBody)
 	}
 	return parts, nil
 }
@@ -247,7 +247,7 @@ func toolMsgToGeminiParts(msg openai.ChatCompletionToolMessageParam, knownToolCa
 			}
 		}
 	default:
-		return nil, fmt.Errorf("unsupported content type in tool message: %T", contentValue)
+		return nil, fmt.Errorf("%w: message 'content' must be a string or an array", internalapi.ErrInvalidRequestBody)
 	}
 
 	part = genai.NewPartFromFunctionResponse(name, map[string]any{"output": funcResponse})
@@ -282,7 +282,7 @@ func assistantMsgToGeminiParts(msg *openai.ChatCompletionAssistantMessageParam) 
 		knownToolCalls[*toolCall.ID] = toolCall.Function.Name
 		var parsedArgs map[string]any
 		if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &parsedArgs); err != nil {
-			return nil, nil, fmt.Errorf("function arguments should be valid json string. failed to parse function arguments: %w", err)
+			return nil, nil, fmt.Errorf("%w: function arguments must be valid JSON", internalapi.ErrInvalidRequestBody)
 		}
 
 		funcCallPart := genai.NewPartFromFunctionCall(toolCall.Function.Name, parsedArgs)
@@ -327,13 +327,13 @@ func assistantMsgToGeminiParts(msg *openai.ChatCompletionAssistantMessageParam) 
 			case openai.ChatCompletionAssistantMessageParamContentTypeRefusal:
 				// Refusal messages are currently ignored in this implementation.
 			default:
-				return nil, nil, fmt.Errorf("unsupported content type in assistant message: %s", contPart.Type)
+				return nil, nil, fmt.Errorf("%w: unsupported content type in assistant message: %s", internalapi.ErrInvalidRequestBody, contPart.Type)
 			}
 		}
 	case nil:
 		// No content provided, this is valid.
 	default:
-		return nil, nil, fmt.Errorf("unsupported content type in assistant message: %T", v)
+		return nil, nil, fmt.Errorf("%w: message 'content' must be a string or an array", internalapi.ErrInvalidRequestBody)
 	}
 
 	return parts, knownToolCalls, nil
@@ -423,7 +423,7 @@ func openAIToolsToGeminiTools(openaiTools []openai.Tool, parametersJSONSchemaAva
 				} else if tool.Function.Parameters != nil {
 					paramsMap, ok := tool.Function.Parameters.(map[string]any)
 					if !ok {
-						return nil, fmt.Errorf("invalid JSON schema for parameters in tool %s: expected map[string]any, got %T", tool.Function.Name, tool.Function.Parameters)
+						return nil, fmt.Errorf("%w: tool %s parameters must be a JSON object", internalapi.ErrInvalidRequestBody, tool.Function.Name)
 					}
 
 					if len(paramsMap) > 0 {
@@ -436,7 +436,7 @@ func openAIToolsToGeminiTools(openaiTools []openai.Tool, parametersJSONSchemaAva
 				functionDecls = append(functionDecls, functionDecl)
 			}
 		case openai.ToolTypeImageGeneration:
-			return nil, fmt.Errorf("tool-type image generation not supported yet when translating OpenAI req to Gemini")
+			return nil, fmt.Errorf("%w: tool-type image generation not supported yet", internalapi.ErrInvalidRequestBody)
 		case openai.ToolTypeEnterpriseWebSearch:
 			genaiTools = append(genaiTools, genai.Tool{
 				EnterpriseWebSearch: &genai.EnterpriseWebSearch{},
@@ -456,7 +456,7 @@ func openAIToolsToGeminiTools(openaiTools []openai.Tool, parametersJSONSchemaAva
 				GoogleSearch: gs,
 			})
 		default:
-			return nil, fmt.Errorf("unsupported tool type: %s", tool.Type)
+			return nil, fmt.Errorf("%w: unsupported tool type: %s", internalapi.ErrInvalidRequestBody, tool.Type)
 		}
 	}
 	// Only return nil if there are no tools at all (neither function declarations nor other tools)
@@ -526,7 +526,7 @@ func openAIToolChoiceToGeminiToolConfig(toolChoice *openai.ChatCompletionToolCho
 		case "required":
 			return &genai.ToolConfig{FunctionCallingConfig: &genai.FunctionCallingConfig{Mode: genai.FunctionCallingConfigModeAny}}, nil
 		default:
-			return nil, fmt.Errorf("unsupported tool choice: '%s'", tc)
+			return nil, fmt.Errorf("%w: unsupported tool_choice value '%s'", internalapi.ErrInvalidRequestBody, tc)
 		}
 	case openai.ChatCompletionNamedToolChoice:
 		return &genai.ToolConfig{
@@ -537,7 +537,7 @@ func openAIToolChoiceToGeminiToolConfig(toolChoice *openai.ChatCompletionToolCho
 			RetrievalConfig: nil,
 		}, nil
 	default:
-		return nil, fmt.Errorf("unsupported tool choice type: %T", toolChoice)
+		return nil, fmt.Errorf("%w: tool_choice type not supported", internalapi.ErrInvalidRequestBody)
 	}
 }
 
@@ -580,7 +580,7 @@ func mapReasoningEffortToThinkingLevel(reasonEffort openaisdk.ReasoningEffort) (
 	case openaisdk.ReasoningEffortMedium:
 		return genai.ThinkingLevelHigh, nil
 	default:
-		return "", fmt.Errorf("unsupported reasoning effort level: %q (supported: low, medium)", reasonEffort)
+		return "", fmt.Errorf("%w: unsupported reasoning effort level: %q (supported: low, medium)", internalapi.ErrInvalidRequestBody, reasonEffort)
 	}
 }
 
@@ -626,7 +626,7 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest, 
 			gc.ResponseMIMEType = mimeTypeApplicationJSON
 			var schemaMap map[string]any
 			if err := json.Unmarshal([]byte(openAIReq.ResponseFormat.OfJSONSchema.JSONSchema.Schema), &schemaMap); err != nil {
-				return nil, responseMode, fmt.Errorf("invalid JSON schema: %w", err)
+				return nil, responseMode, fmt.Errorf("%w: invalid json schema", internalapi.ErrInvalidRequestBody)
 			}
 
 			responseMode = responseModeJSON
@@ -647,7 +647,7 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest, 
 	if openAIReq.GuidedChoice != nil {
 		formatSpecifiedCount++
 		if existSchema := gc.ResponseSchema != nil || gc.ResponseJsonSchema != nil; existSchema {
-			return nil, responseMode, fmt.Errorf("duplicate json scheme specifications")
+			return nil, responseMode, fmt.Errorf("%w: duplicate json schema specifications", internalapi.ErrInvalidRequestBody)
 		}
 
 		responseMode = responseModeEnum
@@ -657,7 +657,7 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest, 
 	if openAIReq.GuidedRegex != "" {
 		formatSpecifiedCount++
 		if existSchema := gc.ResponseSchema != nil || gc.ResponseJsonSchema != nil; existSchema {
-			return nil, responseMode, fmt.Errorf("duplicate json scheme specifications")
+			return nil, responseMode, fmt.Errorf("%w: duplicate json schema specifications", internalapi.ErrInvalidRequestBody)
 		}
 		responseMode = responseModeRegex
 		gc.ResponseMIMEType = mimeTypeApplicationJSON
@@ -666,7 +666,7 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest, 
 	if openAIReq.GuidedJSON != nil {
 		formatSpecifiedCount++
 		if existSchema := gc.ResponseSchema != nil || gc.ResponseJsonSchema != nil; existSchema {
-			return nil, responseMode, fmt.Errorf("duplicate json scheme specifications")
+			return nil, responseMode, fmt.Errorf("%w: duplicate json schema specifications", internalapi.ErrInvalidRequestBody)
 		}
 		responseMode = responseModeJSON
 
@@ -676,7 +676,7 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest, 
 	if openAIReq.ReasoningEffort != "" && reasoningEffortAvailable(requestModel) {
 		thinkLevel, err := mapReasoningEffortToThinkingLevel(openAIReq.ReasoningEffort)
 		if err != nil {
-			return nil, responseMode, fmt.Errorf("reasoning effort: %w", err)
+			return nil, responseMode, fmt.Errorf("invalid reasoning effort: %w", err)
 		}
 		gc.ThinkingConfig = &genai.ThinkingConfig{
 			ThinkingLevel: thinkLevel,
@@ -686,7 +686,7 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest, 
 	// ResponseFormat and guidedJSON/guidedChoice/guidedRegex are mutually exclusive.
 	// Verify only one is specified.
 	if formatSpecifiedCount > 1 {
-		return nil, responseMode, fmt.Errorf("multiple format specifiers specified. only one of responseFormat, guidedChoice, guidedRegex, guidedJSON can be specified")
+		return nil, responseMode, fmt.Errorf("%w: only one of responseFormat, guidedChoice, guidedRegex, guidedJSON can be specified", internalapi.ErrInvalidRequestBody)
 	}
 
 	if openAIReq.N != nil {
