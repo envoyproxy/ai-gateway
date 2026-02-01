@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	openaigo "github.com/openai/openai-go/v2"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	"k8s.io/utils/ptr"
@@ -28,11 +30,11 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/json"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 const (
 	claudeTestModel = "claude-3-opus-20240229"
-	testTool        = "test_123"
 )
 
 // TestResponseModel_GCPAnthropic tests that GCP Anthropic (non-streaming) returns the request model
@@ -1213,873 +1215,859 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseError(t *testing
 	}
 }
 
-// New test function for helper coverage.
-func TestHelperFunctions(t *testing.T) {
-	t.Run("anthropicToOpenAIFinishReason invalid reason", func(t *testing.T) {
-		_, err := anthropicToOpenAIFinishReason("unknown_reason")
+func TestAnthropicStreamParser_ErrorHandling(t *testing.T) {
+	runStreamErrTest := func(t *testing.T, sseStream string, endOfStream bool) error {
+		openAIReq := &openai.ChatCompletionRequest{Stream: true, Model: "test-model", MaxTokens: new(int64)}
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
+		_, _, err := translator.RequestBody(nil, openAIReq, false)
+		require.NoError(t, err)
+
+		_, _, _, _, err = translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), endOfStream, nil)
+		return err
+	}
+
+	tests := []struct {
+		name          string
+		sseStream     string
+		endOfStream   bool
+		expectedError string
+	}{
+		{
+			name:          "malformed message_start event",
+			sseStream:     "event: message_start\ndata: {invalid\n\n",
+			expectedError: "unmarshal message_start",
+		},
+		{
+			name:          "malformed content_block_start event",
+			sseStream:     "event: content_block_start\ndata: {invalid\n\n",
+			expectedError: "failed to unmarshal content_block_start",
+		},
+		{
+			name:          "malformed content_block_delta event",
+			sseStream:     "event: content_block_delta\ndata: {invalid\n\n",
+			expectedError: "unmarshal content_block_delta",
+		},
+		{
+			name:          "malformed content_block_stop event",
+			sseStream:     "event: content_block_stop\ndata: {invalid\n\n",
+			expectedError: "unmarshal content_block_stop",
+		},
+		{
+			name:          "malformed error event data",
+			sseStream:     "event: error\ndata: {invalid\n\n",
+			expectedError: "unparsable error event",
+		},
+		{
+			name:        "unknown stop reason",
+			endOfStream: true,
+			sseStream: `event: message_delta
+data: {"type": "message_delta", "delta": {"stop_reason": "some_future_reason"}, "usage": {"output_tokens": 0}}
+
+event: message_stop
+data: {"type": "message_stop"}
+`,
+			expectedError: "received invalid stop reason",
+		},
+		{
+			name:          "malformed_final_event_block",
+			sseStream:     "event: message_stop\ndata: {invalid", // No trailing \n\n.
+			endOfStream:   true,
+			expectedError: "unmarshal message_stop",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := runStreamErrTest(t, tt.sseStream, tt.endOfStream)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.expectedError)
+		})
+	}
+
+	t.Run("body read error", func(t *testing.T) {
+		parser := newAnthropicStreamParser("test-model")
+		_, _, _, _, err := parser.Process(&mockErrorReader{}, false, nil)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "received invalid stop reason")
+		require.Contains(t, err.Error(), "failed to read from stream body")
+	})
+}
+
+// TestResponseModel_GCPAnthropicStreaming tests that GCP Anthropic streaming returns the request model
+// GCP Anthropic uses deterministic model mapping without virtualization
+func TestResponseModel_GCPAnthropicStreaming(t *testing.T) {
+	modelName := "claude-sonnet-4@20250514"
+	sseStream := `event: message_start
+data: {"type": "message_start", "message": {"id": "msg_1nZdL29xx5MUA1yADyHTEsnR8uuvGzszyY", "type": "message", "role": "assistant", "content": [], "model": "claude-sonnet-4@20250514", "stop_reason": null, "stop_sequence": null, "usage": {"input_tokens": 10, "output_tokens": 1}}}
+
+event: content_block_start
+data: {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hello"}}
+
+event: content_block_stop
+data: {"type": "content_block_stop", "index": 0}
+
+event: message_delta
+data: {"type": "message_delta", "delta": {"stop_reason": "end_turn", "stop_sequence":null}, "usage": {"output_tokens": 5}}
+
+event: message_stop
+data: {"type": "message_stop"}
+
+`
+	openAIReq := &openai.ChatCompletionRequest{
+		Stream:    true,
+		Model:     modelName, // Use the actual model name from documentation
+		MaxTokens: new(int64),
+	}
+
+	translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
+	_, _, err := translator.RequestBody(nil, openAIReq, false)
+	require.NoError(t, err)
+
+	// Test streaming response - GCP Anthropic doesn't return model in response, uses request model
+	_, _, tokenUsage, responseModel, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
+	require.NoError(t, err)
+	require.Equal(t, modelName, responseModel) // Returns the request model since no virtualization
+	inputTokens, ok := tokenUsage.InputTokens()
+	require.True(t, ok)
+	require.Equal(t, uint32(10), inputTokens)
+	outputTokens, ok := tokenUsage.OutputTokens()
+	require.True(t, ok)
+	require.Equal(t, uint32(5), outputTokens)
+}
+
+func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody_Streaming(t *testing.T) {
+	t.Run("handles simple text stream", func(t *testing.T) {
+		sseStream := `
+event: message_start
+data: {"type": "message_start", "message": {"id": "msg_1nZdL29xx5MUA1yADyHTEsnR8uuvGzszyY", "type": "message", "role": "assistant", "content": [], "model": "claude-opus-4-20250514", "stop_reason": null, "stop_sequence": null, "usage": {"input_tokens": 25, "output_tokens": 1}}}
+
+event: content_block_start
+data: {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
+
+event: ping
+data: {"type": "ping"}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hello"}}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "!"}}
+
+event: content_block_stop
+data: {"type": "content_block_stop", "index": 0}
+
+event: message_delta
+data: {"type": "message_delta", "delta": {"stop_reason": "end_turn", "stop_sequence":null}, "usage": {"output_tokens": 15}}
+
+event: message_stop
+data: {"type": "message_stop"}
+
+`
+		openAIReq := &openai.ChatCompletionRequest{
+			Stream:    true,
+			Model:     "test-model",
+			MaxTokens: new(int64),
+		}
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
+		_, _, err := translator.RequestBody(nil, openAIReq, false)
+		require.NoError(t, err)
+
+		_, bm, _, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
+		require.NoError(t, err)
+		require.NotNil(t, bm)
+
+		bodyStr := string(bm)
+		require.Contains(t, bodyStr, `"content":"Hello"`)
+		require.Contains(t, bodyStr, `"finish_reason":"stop"`)
+		require.Contains(t, bodyStr, `"prompt_tokens":25`)
+		require.Contains(t, bodyStr, `"completion_tokens":15`)
+		require.Contains(t, bodyStr, string(sseDoneMessage))
 	})
 
-	t.Run("anthropicRoleToOpenAIRole invalid role", func(t *testing.T) {
-		_, err := anthropicRoleToOpenAIRole("unknown_role")
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "invalid anthropic role")
+	t.Run("handles text and tool use stream", func(t *testing.T) {
+		sseStream := `event: message_start
+data: {"type":"message_start","message":{"id":"msg_014p7gG3wDgGV9EUtLvnow3U","type":"message","role":"assistant","model":"claude-opus-4-20250514","stop_sequence":null,"usage":{"input_tokens":472,"output_tokens":2},"content":[],"stop_reason":null}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: ping
+data: {"type": "ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Okay"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":","}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" let"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"'s"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" check"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" the"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" weather"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" for"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" San"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" Francisco"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":","}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" CA"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":":"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_01T1x1fJ34qAmk2tNTrN7Up6","name":"get_weather","input":{}}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"location\":"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":" \"San"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":" Francisc"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"o,"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":" CA\""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":", "}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\"unit\": \"fah"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"renheit\"}"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":89}}
+
+event: message_stop
+data: {"type":"message_stop"}
+`
+
+		openAIReq := &openai.ChatCompletionRequest{Stream: true, Model: "test-model", MaxTokens: new(int64)}
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
+		_, _, err := translator.RequestBody(nil, openAIReq, false)
+		require.NoError(t, err)
+
+		_, bm, _, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
+		require.NoError(t, err)
+		require.NotNil(t, bm)
+		bodyStr := string(bm)
+
+		// Parse all streaming events to verify the event flow
+		var chunks []openai.ChatCompletionResponseChunk
+		var textChunks []string
+		var toolCallStarted bool
+		var hasRole bool
+		var toolCallCompleted bool
+		var finalFinishReason openai.ChatCompletionChoicesFinishReason
+		var finalUsageChunk *openai.ChatCompletionResponseChunk
+		var toolCallChunks []string // Track partial JSON chunks
+
+		lines := strings.SplitSeq(strings.TrimSpace(bodyStr), "\n\n")
+		for line := range lines {
+			if !strings.HasPrefix(line, "data: ") || strings.Contains(line, "[DONE]") {
+				continue
+			}
+			jsonBody := strings.TrimPrefix(line, "data: ")
+
+			var chunk openai.ChatCompletionResponseChunk
+			err = json.Unmarshal([]byte(jsonBody), &chunk)
+			require.NoError(t, err, "Failed to unmarshal chunk: %s", jsonBody)
+			chunks = append(chunks, chunk)
+
+			// Check if this is the final usage chunk
+			if strings.Contains(jsonBody, `"usage"`) {
+				finalUsageChunk = &chunk
+			}
+
+			if len(chunk.Choices) > 0 {
+				choice := chunk.Choices[0]
+				// Check for role in first content chunk
+				if choice.Delta != nil && choice.Delta.Content != nil && *choice.Delta.Content != "" && !hasRole {
+					require.NotNil(t, choice.Delta.Role, "Role should be present on first content chunk")
+					require.Equal(t, openai.ChatMessageRoleAssistant, choice.Delta.Role)
+					hasRole = true
+				}
+
+				// Collect text content
+				if choice.Delta != nil && choice.Delta.Content != nil {
+					textChunks = append(textChunks, *choice.Delta.Content)
+				}
+
+				// Check tool calls - start and accumulate partial JSON
+				if choice.Delta != nil && len(choice.Delta.ToolCalls) > 0 {
+					toolCall := choice.Delta.ToolCalls[0]
+
+					// Check tool call initiation
+					if toolCall.Function.Name == "get_weather" && !toolCallStarted {
+						require.Equal(t, "get_weather", toolCall.Function.Name)
+						require.NotNil(t, toolCall.ID)
+						require.Equal(t, "toolu_01T1x1fJ34qAmk2tNTrN7Up6", *toolCall.ID)
+						require.Equal(t, int64(0), toolCall.Index, "Tool call should be at index 1 (after text content at index 0)")
+						toolCallStarted = true
+					}
+
+					// Accumulate partial JSON arguments - these should also be at index 1
+					if toolCall.Function.Arguments != "" {
+						toolCallChunks = append(toolCallChunks, toolCall.Function.Arguments)
+
+						// Verify the index remains consistent at 1 for all tool call chunks
+						require.Equal(t, int64(0), toolCall.Index, "Tool call argument chunks should be at index 1")
+					}
+				}
+
+				// Track finish reason
+				if choice.FinishReason != "" {
+					finalFinishReason = choice.FinishReason
+					if finalFinishReason == "tool_calls" {
+						toolCallCompleted = true
+					}
+				}
+			}
+		}
+
+		// Check the final usage chunk for accumulated tool call arguments
+		if finalUsageChunk != nil {
+			require.Equal(t, 472, finalUsageChunk.Usage.PromptTokens)
+			require.Equal(t, 89, finalUsageChunk.Usage.CompletionTokens)
+		}
+
+		// Verify partial JSON accumulation in streaming chunks
+		if len(toolCallChunks) > 0 {
+			// Verify we got multiple partial JSON chunks during streaming
+			require.GreaterOrEqual(t, len(toolCallChunks), 2, "Should receive multiple partial JSON chunks for tool arguments")
+
+			// Verify some expected partial content appears in the chunks
+			fullPartialJSON := strings.Join(toolCallChunks, "")
+			require.Contains(t, fullPartialJSON, `"location":`, "Partial JSON should contain location field")
+			require.Contains(t, fullPartialJSON, `"unit":`, "Partial JSON should contain unit field")
+			require.Contains(t, fullPartialJSON, "San Francisco", "Partial JSON should contain location value")
+			require.Contains(t, fullPartialJSON, "fahrenheit", "Partial JSON should contain unit value")
+		}
+
+		// Verify streaming event assertions
+		require.GreaterOrEqual(t, len(chunks), 5, "Should have multiple streaming chunks")
+		require.True(t, hasRole, "Should have role in first content chunk")
+		require.True(t, toolCallStarted, "Tool call should have been initiated")
+		require.True(t, toolCallCompleted, "Tool call should have complete arguments in final chunk")
+		require.Equal(t, openai.ChatCompletionChoicesFinishReasonToolCalls, finalFinishReason, "Final finish reason should be tool_calls")
+
+		// Verify text content was streamed correctly
+		fullText := strings.Join(textChunks, "")
+		require.Contains(t, fullText, "Okay, let's check the weather for San Francisco, CA:")
+		require.GreaterOrEqual(t, len(textChunks), 3, "Text should be streamed in multiple chunks")
+
+		// Original aggregate response assertions
+		require.Contains(t, bodyStr, `"content":"Okay"`)
+		require.Contains(t, bodyStr, `"name":"get_weather"`)
+		require.Contains(t, bodyStr, "\"arguments\":\"{\\\"location\\\":")
+		require.NotContains(t, bodyStr, "\"arguments\":\"{}\"")
+		require.Contains(t, bodyStr, "renheit\\\"}\"")
+		require.Contains(t, bodyStr, `"finish_reason":"tool_calls"`)
+		require.Contains(t, bodyStr, string(sseDoneMessage))
+	})
+
+	t.Run("handles streaming with web search tool use", func(t *testing.T) {
+		sseStream := `event: message_start
+data: {"type":"message_start","message":{"id":"msg_01G...","type":"message","role":"assistant","usage":{"input_tokens":2679,"output_tokens":3}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"I'll check"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" the current weather in New York City for you"}}
+
+event: ping
+data: {"type": "ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"."}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"server_tool_use","id":"srvtoolu_014hJH82Qum7Td6UV8gDXThB","name":"web_search","input":{}}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"query\":\"weather NYC today\"}"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1}
+
+event: content_block_start
+data: {"type":"content_block_start","index":2,"content_block":{"type":"web_search_tool_result","tool_use_id":"srvtoolu_014hJH82Qum7Td6UV8gDXThB","content":[{"type":"web_search_result","title":"Weather in New York City in May 2025 (New York)","url":"https://world-weather.info/forecast/usa/new_york/may-2025/","page_age":null}]}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":2}
+
+event: content_block_start
+data: {"type":"content_block_start","index":3,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":3,"delta":{"type":"text_delta","text":"Here's the current weather information for New York"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":3,"delta":{"type":"text_delta","text":" City."}}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":510}}
+
+event: message_stop
+data: {"type":"message_stop"}
+`
+		openAIReq := &openai.ChatCompletionRequest{Stream: true, Model: "test-model", MaxTokens: new(int64)}
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
+		_, _, err := translator.RequestBody(nil, openAIReq, false)
+		require.NoError(t, err)
+
+		_, bm, _, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
+		require.NoError(t, err)
+		require.NotNil(t, bm)
+		bodyStr := string(bm)
+
+		require.Contains(t, bodyStr, `"content":"I'll check"`)
+		require.Contains(t, bodyStr, `"content":" the current weather in New York City for you"`)
+		require.Contains(t, bodyStr, `"name":"web_search"`)
+		require.Contains(t, bodyStr, "\"arguments\":\"{\\\"query\\\":\\\"weather NYC today\\\"}\"")
+		require.NotContains(t, bodyStr, "\"arguments\":\"{}\"")
+		require.Contains(t, bodyStr, `"content":"Here's the current weather information for New York"`)
+		require.Contains(t, bodyStr, `"finish_reason":"stop"`)
+		require.Contains(t, bodyStr, string(sseDoneMessage))
+	})
+
+	t.Run("handles unterminated tool call at end of stream", func(t *testing.T) {
+		// This stream starts a tool call but ends without a content_block_stop or message_stop.
+		sseStream := `event: message_start
+data: {"type":"message_start","message":{"id":"msg_123","usage":{"input_tokens":10}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"tool_abc","name":"get_weather"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"location\": \"SF\"}"}}
+`
+		openAIReq := &openai.ChatCompletionRequest{Stream: true, Model: "test-model", MaxTokens: new(int64)}
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
+		_, _, err := translator.RequestBody(nil, openAIReq, false)
+		require.NoError(t, err)
+
+		_, bm, _, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
+		require.NoError(t, err)
+		require.NotNil(t, bm)
+		bodyStr := string(bm)
+
+		var finalToolCallChunk openai.ChatCompletionResponseChunk
+
+		// Split the response into individual SSE messages and find the final data chunk.
+		lines := strings.SplitSeq(strings.TrimSpace(bodyStr), "\n\n")
+		for line := range lines {
+			if !strings.HasPrefix(line, "data: ") || strings.HasPrefix(line, "data: [DONE]") {
+				continue
+			}
+			jsonBody := strings.TrimPrefix(line, "data: ")
+			// The final chunk with the accumulated tool call is the only one with a "usage" field.
+			if strings.Contains(jsonBody, `"usage"`) {
+				err := json.Unmarshal([]byte(jsonBody), &finalToolCallChunk)
+				require.NoError(t, err, "Failed to unmarshal final tool call chunk")
+				break
+			}
+		}
+
+		require.NotEmpty(t, finalToolCallChunk.Choices, "Final chunk should have choices")
+		require.NotNil(t, finalToolCallChunk.Choices[0].Delta.ToolCalls, "Final chunk should have tool calls")
+
+		finalToolCall := finalToolCallChunk.Choices[0].Delta.ToolCalls[0]
+		require.Equal(t, "tool_abc", *finalToolCall.ID)
+		require.Equal(t, "get_weather", finalToolCall.Function.Name)
+		require.JSONEq(t, `{"location": "SF"}`, finalToolCall.Function.Arguments)
+	})
+	t.Run("handles  thinking and tool use stream", func(t *testing.T) {
+		sseStream := `
+event: message_start
+data: {"type": "message_start", "message": {"id": "msg_123", "type": "message", "role": "assistant", "usage": {"input_tokens": 50, "output_tokens": 1}}}
+
+event: content_block_start
+data: {"type": "content_block_start", "index": 0, "content_block": {"type": "thinking", "name": "web_searcher"}}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "text": "Searching for information..."}}
+
+event: content_block_stop
+data: {"type": "content_block_stop", "index": 0}
+
+event: content_block_start
+data: {"type": "content_block_start", "index": 1, "content_block": {"type": "tool_use", "id": "toolu_abc123", "name": "get_weather", "input": {"location": "San Francisco, CA"}}}
+
+event: message_delta
+data: {"type": "message_delta", "delta": {"stop_reason": "tool_use"}, "usage": {"output_tokens": 35}}
+
+event: message_stop
+data: {"type": "message_stop"}
+`
+		openAIReq := &openai.ChatCompletionRequest{Stream: true, Model: "test-model", MaxTokens: new(int64)}
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
+		_, _, err := translator.RequestBody(nil, openAIReq, false)
+		require.NoError(t, err)
+
+		_, bm, _, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), true, nil)
+		require.NoError(t, err)
+		require.NotNil(t, bm)
+		bodyStr := string(bm)
+
+		var contentDeltas []string
+		var foundToolCallWithArgs bool
+		var finalFinishReason openai.ChatCompletionChoicesFinishReason
+
+		lines := strings.SplitSeq(strings.TrimSpace(bodyStr), "\n\n")
+		for line := range lines {
+			if !strings.HasPrefix(line, "data: ") || strings.Contains(line, "[DONE]") {
+				continue
+			}
+			jsonBody := strings.TrimPrefix(line, "data: ")
+
+			var chunk openai.ChatCompletionResponseChunk
+			err = json.Unmarshal([]byte(jsonBody), &chunk)
+			require.NoError(t, err, "Failed to unmarshal chunk: %s", jsonBody)
+
+			if len(chunk.Choices) == 0 {
+				continue
+			}
+			choice := chunk.Choices[0]
+			if choice.Delta != nil {
+				if choice.Delta.Content != nil {
+					contentDeltas = append(contentDeltas, *choice.Delta.Content)
+				}
+				if len(choice.Delta.ToolCalls) > 0 {
+					toolCall := choice.Delta.ToolCalls[0]
+					// Check if this is the tool chunk that contains the arguments.
+					if toolCall.Function.Arguments != "" {
+						expectedArgs := `{"location":"San Francisco, CA"}`
+						assert.JSONEq(t, expectedArgs, toolCall.Function.Arguments, "Tool call arguments do not match")
+						assert.Equal(t, "get_weather", toolCall.Function.Name)
+						assert.Equal(t, "toolu_abc123", *toolCall.ID)
+						foundToolCallWithArgs = true
+					} else {
+						// This should be the initial tool call chunk with empty arguments since input is provided upfront
+						assert.Equal(t, "get_weather", toolCall.Function.Name)
+						assert.Equal(t, "toolu_abc123", *toolCall.ID)
+					}
+				}
+			}
+			if choice.FinishReason != "" {
+				finalFinishReason = choice.FinishReason
+			}
+		}
+
+		fullContent := strings.Join(contentDeltas, "")
+		assert.Contains(t, fullContent, "Searching for information...")
+		require.True(t, foundToolCallWithArgs, "Did not find a tool call chunk with arguments to assert against")
+		assert.Equal(t, openai.ChatCompletionChoicesFinishReasonToolCalls, finalFinishReason, "Final finish reason should be 'tool_calls'")
 	})
 }
 
-func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
-	anthropicTestTool := []anthropic.ToolUnionParam{
-		{OfTool: &anthropic.ToolParam{Name: "get_weather", Description: anthropic.String("")}},
-	}
-	openaiTestTool := []openai.Tool{
-		{Type: "function", Function: &openai.FunctionDefinition{Name: "get_weather"}},
-	}
-	tests := []struct {
-		name               string
-		openAIReq          *openai.ChatCompletionRequest
-		expectedTools      []anthropic.ToolUnionParam
-		expectedToolChoice anthropic.ToolChoiceUnionParam
-		expectErr          bool
-	}{
-		{
-			name: "auto tool choice",
-			openAIReq: &openai.ChatCompletionRequest{
-				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
-				Tools:      openaiTestTool,
-			},
-			expectedTools: anthropicTestTool,
-			expectedToolChoice: anthropic.ToolChoiceUnionParam{
-				OfAuto: &anthropic.ToolChoiceAutoParam{
-					DisableParallelToolUse: anthropic.Bool(false),
-				},
-			},
-		},
-		{
-			name: "any tool choice",
-			openAIReq: &openai.ChatCompletionRequest{
-				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "any"},
-				Tools:      openaiTestTool,
-			},
-			expectedTools: anthropicTestTool,
-			expectedToolChoice: anthropic.ToolChoiceUnionParam{
-				OfAny: &anthropic.ToolChoiceAnyParam{},
-			},
-		},
-		{
-			name: "specific tool choice by name",
-			openAIReq: &openai.ChatCompletionRequest{
-				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: openai.ChatCompletionNamedToolChoice{Type: "function", Function: openai.ChatCompletionNamedToolChoiceFunction{Name: "my_func"}}},
-				Tools:      openaiTestTool,
-			},
-			expectedTools: anthropicTestTool,
-			expectedToolChoice: anthropic.ToolChoiceUnionParam{
-				OfTool: &anthropic.ToolChoiceToolParam{Type: "tool", Name: "my_func"},
-			},
-		},
-		{
-			name: "tool definition",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "get_weather",
-							Description: "Get the weather",
-							Parameters: map[string]any{
-								"type": "object",
-								"properties": map[string]any{
-									"location": map[string]any{"type": "string"},
-								},
-							},
-						},
-					},
-				},
-			},
-			expectedTools: []anthropic.ToolUnionParam{
-				{
-					OfTool: &anthropic.ToolParam{
-						Name:        "get_weather",
-						Description: anthropic.String("Get the weather"),
-						InputSchema: anthropic.ToolInputSchemaParam{
-							Type: "object",
-							Properties: map[string]any{
-								"location": map[string]any{"type": "string"},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "tool_definition_with_required_field",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "get_weather",
-							Description: "Get the weather with a required location",
-							Parameters: map[string]any{
-								"type": "object",
-								"properties": map[string]any{
-									"location": map[string]any{"type": "string"},
-									"unit":     map[string]any{"type": "string"},
-								},
-								"required": []any{"location"},
-							},
-						},
-					},
-				},
-			},
-			expectedTools: []anthropic.ToolUnionParam{
-				{
-					OfTool: &anthropic.ToolParam{
-						Name:        "get_weather",
-						Description: anthropic.String("Get the weather with a required location"),
-						InputSchema: anthropic.ToolInputSchemaParam{
-							Type: "object",
-							Properties: map[string]any{
-								"location": map[string]any{"type": "string"},
-								"unit":     map[string]any{"type": "string"},
-							},
-							Required: []string{"location"},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "tool definition with no parameters",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "get_time",
-							Description: "Get the current time",
-						},
-					},
-				},
-			},
-			expectedTools: []anthropic.ToolUnionParam{
-				{
-					OfTool: &anthropic.ToolParam{
-						Name:        "get_time",
-						Description: anthropic.String("Get the current time"),
-					},
-				},
-			},
-		},
-		{
-			name: "disable parallel tool calls",
-			openAIReq: &openai.ChatCompletionRequest{
-				ToolChoice:        &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
-				Tools:             openaiTestTool,
-				ParallelToolCalls: ptr.To(false),
-			},
-			expectedTools: anthropicTestTool,
-			expectedToolChoice: anthropic.ToolChoiceUnionParam{
-				OfAuto: &anthropic.ToolChoiceAutoParam{
-					DisableParallelToolUse: anthropic.Bool(true),
-				},
-			},
-		},
-		{
-			name: "explicitly enable parallel tool calls",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools:             openaiTestTool,
-				ToolChoice:        &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
-				ParallelToolCalls: ptr.To(true),
-			},
-			expectedTools: anthropicTestTool,
-			expectedToolChoice: anthropic.ToolChoiceUnionParam{
-				OfAuto: &anthropic.ToolChoiceAutoParam{DisableParallelToolUse: anthropic.Bool(false)},
-			},
-		},
-		{
-			name: "default disable parallel tool calls to false (nil)",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools:      openaiTestTool,
-				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
-			},
-			expectedTools: anthropicTestTool,
-			expectedToolChoice: anthropic.ToolChoiceUnionParam{
-				OfAuto: &anthropic.ToolChoiceAutoParam{DisableParallelToolUse: anthropic.Bool(false)},
-			},
-		},
-		{
-			name: "none tool choice",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools:      openaiTestTool,
-				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "none"},
-			},
-			expectedTools: anthropicTestTool,
-			expectedToolChoice: anthropic.ToolChoiceUnionParam{
-				OfNone: &anthropic.ToolChoiceNoneParam{},
-			},
-		},
-		{
-			name: "function tool choice",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools:      openaiTestTool,
-				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "function"},
-			},
-			expectedTools: anthropicTestTool,
-			expectedToolChoice: anthropic.ToolChoiceUnionParam{
-				OfTool: &anthropic.ToolChoiceToolParam{Name: "function"},
-			},
-		},
-		{
-			name: "invalid tool choice string",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools:      openaiTestTool,
-				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "invalid_choice"},
-			},
-			expectErr: true,
-		},
-		{
-			name: "skips function tool with nil function definition",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type:     "function",
-						Function: nil, // This tool has the correct type but a nil definition and should be skipped.
-					},
-					{
-						Type:     "function",
-						Function: &openai.FunctionDefinition{Name: "get_weather"}, // This is a valid tool.
-					},
-				},
-			},
-			// We expect only the valid function tool to be translated.
-			expectedTools: []anthropic.ToolUnionParam{
-				{OfTool: &anthropic.ToolParam{Name: "get_weather", Description: anthropic.String("")}},
-			},
-			expectErr: false,
-		},
-		{
-			name: "skips non-function tools",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "retrieval",
-					},
-					{
-						Type:     "function",
-						Function: &openai.FunctionDefinition{Name: "get_weather"},
-					},
-				},
-			},
-			expectedTools: []anthropic.ToolUnionParam{
-				{OfTool: &anthropic.ToolParam{Name: "get_weather", Description: anthropic.String("")}},
-			},
-			expectErr: false,
-		},
-		{
-			name: "tool definition without type field",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "get_weather",
-							Description: "Get the weather without type",
-							Parameters: map[string]any{
-								"properties": map[string]any{
-									"location": map[string]any{"type": "string"},
-								},
-								"required": []any{"location"},
-							},
-						},
-					},
-				},
-			},
-			expectedTools: []anthropic.ToolUnionParam{
-				{
-					OfTool: &anthropic.ToolParam{
-						Name:        "get_weather",
-						Description: anthropic.String("Get the weather without type"),
-						InputSchema: anthropic.ToolInputSchemaParam{
-							Type: "",
-							Properties: map[string]any{
-								"location": map[string]any{"type": "string"},
-							},
-							Required: []string{"location"},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "tool definition without properties field",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "get_weather",
-							Description: "Get the weather without properties",
-							Parameters: map[string]any{
-								"type":     "object",
-								"required": []any{"location"},
-							},
-						},
-					},
-				},
-			},
-			expectedTools: []anthropic.ToolUnionParam{
-				{
-					OfTool: &anthropic.ToolParam{
-						Name:        "get_weather",
-						Description: anthropic.String("Get the weather without properties"),
-						InputSchema: anthropic.ToolInputSchemaParam{
-							Type:     "object",
-							Required: []string{"location"},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "unsupported tool_choice type",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools:      openaiTestTool,
-				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: 123}, // Use an integer to trigger the default case.
-			},
-			expectErr: true,
-		},
+func TestAnthropicStreamParser_EventTypes(t *testing.T) {
+	runStreamTest := func(t *testing.T, sseStream string, endOfStream bool) ([]byte, metrics.TokenUsage, error) {
+		openAIReq := &openai.ChatCompletionRequest{Stream: true, Model: "test-model", MaxTokens: new(int64)}
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
+		_, _, err := translator.RequestBody(nil, openAIReq, false)
+		require.NoError(t, err)
+
+		_, bm, tokenUsage, _, err := translator.ResponseBody(map[string]string{}, strings.NewReader(sseStream), endOfStream, nil)
+		return bm, tokenUsage, err
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tools, toolChoice, err := translateOpenAItoAnthropicTools(tt.openAIReq.Tools, tt.openAIReq.ToolChoice, tt.openAIReq.ParallelToolCalls)
-			if tt.expectErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				if tt.openAIReq.ToolChoice != nil {
-					require.NotNil(t, toolChoice)
-					require.Equal(t, *tt.expectedToolChoice.GetType(), *toolChoice.GetType())
-					if tt.expectedToolChoice.GetName() != nil {
-						require.Equal(t, *tt.expectedToolChoice.GetName(), *toolChoice.GetName())
-					}
-					if tt.expectedToolChoice.OfTool != nil {
-						require.Equal(t, tt.expectedToolChoice.OfTool.Name, toolChoice.OfTool.Name)
-					}
-					if tt.expectedToolChoice.OfAuto != nil {
-						require.Equal(t, tt.expectedToolChoice.OfAuto.DisableParallelToolUse, toolChoice.OfAuto.DisableParallelToolUse)
-					}
-				}
-				if tt.openAIReq.Tools != nil {
-					require.NotNil(t, tools)
-					require.Len(t, tools, len(tt.expectedTools))
-					require.Equal(t, tt.expectedTools[0].GetName(), tools[0].GetName())
-					require.Equal(t, tt.expectedTools[0].GetType(), tools[0].GetType())
-					require.Equal(t, tt.expectedTools[0].GetDescription(), tools[0].GetDescription())
-					if tt.expectedTools[0].GetInputSchema().Properties != nil {
-						require.Equal(t, tt.expectedTools[0].GetInputSchema().Properties, tools[0].GetInputSchema().Properties)
-					}
+	t.Run("handles message_start event", func(t *testing.T) {
+		sseStream := `event: message_start
+data: {"type": "message_start", "message": {"id": "msg_123", "usage": {"input_tokens": 15}}}
+
+`
+		bm, _, err := runStreamTest(t, sseStream, false)
+		require.NoError(t, err)
+		assert.Empty(t, string(bm), "message_start should produce an empty chunk")
+	})
+
+	t.Run("handles content_block events for tool use", func(t *testing.T) {
+		sseStream := `event: message_start
+data: {"type":"message_start","message":{"id":"msg_123","usage":{"input_tokens":10}}}
+
+event: content_block_start
+data: {"type": "content_block_start", "index": 0, "content_block": {"type": "tool_use", "id": "tool_abc", "name": "get_weather", "input":{}}}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "input_json_delta", "partial_json": "{\"location\": \"SF\"}"}}
+
+event: content_block_stop
+data: {"type": "content_block_stop", "index": 0}
+
+`
+		bm, _, err := runStreamTest(t, sseStream, false)
+		require.NoError(t, err)
+		require.NotNil(t, bm)
+		bodyStr := string(bm)
+
+		// 1. Split the stream into individual data chunks
+		//    and remove the "data: " prefix.
+		var chunks []openai.ChatCompletionResponseChunk
+		lines := strings.SplitSeq(strings.TrimSpace(bodyStr), "\n\n")
+		for line := range lines {
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			jsonBody := strings.TrimPrefix(line, "data: ")
+
+			var chunk openai.ChatCompletionResponseChunk
+			err = json.Unmarshal([]byte(jsonBody), &chunk)
+			require.NoError(t, err, "Failed to unmarshal chunk: %s", jsonBody)
+			chunks = append(chunks, chunk)
+		}
+
+		// 2. Inspect the Go structs directly.
+		require.Len(t, chunks, 2, "Expected two data chunks for this tool call stream")
+
+		// Check the first chunk (the tool call initiation).
+		firstChunk := chunks[0]
+		require.NotNil(t, firstChunk.Choices[0].Delta.ToolCalls)
+		require.Equal(t, "tool_abc", *firstChunk.Choices[0].Delta.ToolCalls[0].ID)
+		require.Equal(t, "get_weather", firstChunk.Choices[0].Delta.ToolCalls[0].Function.Name)
+		// With empty input, arguments should be empty string, not "{}"
+		require.Empty(t, firstChunk.Choices[0].Delta.ToolCalls[0].Function.Arguments)
+
+		// Check the second chunk (the arguments delta).
+		secondChunk := chunks[1]
+		require.NotNil(t, secondChunk.Choices[0].Delta.ToolCalls)
+		argumentsJSON := secondChunk.Choices[0].Delta.ToolCalls[0].Function.Arguments
+
+		// 3. Unmarshal the arguments string to verify its contents.
+		var args map[string]string
+		err = json.Unmarshal([]byte(argumentsJSON), &args)
+		require.NoError(t, err)
+		require.Equal(t, "SF", args["location"])
+	})
+
+	t.Run("handles ping event", func(t *testing.T) {
+		sseStream := `event: ping
+data: {"type": "ping"}
+
+`
+		bm, _, err := runStreamTest(t, sseStream, false)
+		require.NoError(t, err)
+		require.Empty(t, bm, "ping should produce an empty chunk")
+	})
+
+	t.Run("handles error event", func(t *testing.T) {
+		sseStream := `event: error
+data: {"type": "error", "error": {"type": "overloaded_error", "message": "Overloaded"}}
+
+`
+		_, _, err := runStreamTest(t, sseStream, false)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "anthropic stream error: overloaded_error - Overloaded")
+	})
+
+	t.Run("gracefully handles unknown event types", func(t *testing.T) {
+		sseStream := `event: future_event_type
+data: {"some_new_data": "value"}
+
+`
+		bm, _, err := runStreamTest(t, sseStream, false)
+		require.NoError(t, err)
+		require.Empty(t, bm, "unknown events should be ignored and produce an empty chunk")
+	})
+
+	t.Run("handles message_stop event", func(t *testing.T) {
+		sseStream := `event: message_delta
+data: {"type": "message_delta", "delta": {"stop_reason": "max_tokens"}, "usage": {"output_tokens": 1}}
+
+event: message_stop
+data: {"type": "message_stop"}
+
+`
+		bm, _, err := runStreamTest(t, sseStream, false)
+		require.NoError(t, err)
+		require.NotNil(t, bm)
+		require.Contains(t, string(bm), `"finish_reason":"length"`)
+	})
+
+	t.Run("handles chunked input_json_delta for tool use", func(t *testing.T) {
+		sseStream := `event: message_start
+data: {"type":"message_start","message":{"id":"msg_123","usage":{"input_tokens":10}}}
+
+event: content_block_start
+data: {"type": "content_block_start", "index": 0, "content_block": {"type": "tool_use", "id": "tool_123", "name": "get_weather"}}
+
+event: content_block_delta
+data: {"type": "content_block_delta","index": 0,"delta": {"type": "input_json_delta","partial_json": "{\"location\": \"San Fra"}}
+
+event: content_block_delta
+data: {"type": "content_block_delta","index": 0,"delta": {"type": "input_json_delta","partial_json": "ncisco\"}"}}
+
+event: content_block_stop
+data: {"type": "content_block_stop", "index": 0}
+`
+		bm, _, err := runStreamTest(t, sseStream, false)
+		require.NoError(t, err)
+		require.NotNil(t, bm)
+		bodyStr := string(bm)
+
+		// 1. Unmarshal all the chunks from the stream response.
+		var chunks []openai.ChatCompletionResponseChunk
+		lines := strings.SplitSeq(strings.TrimSpace(bodyStr), "\n\n")
+		for line := range lines {
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			jsonBody := strings.TrimPrefix(line, "data: ")
+
+			var chunk openai.ChatCompletionResponseChunk
+			err := json.Unmarshal([]byte(jsonBody), &chunk)
+			require.NoError(t, err, "Failed to unmarshal chunk: %s", jsonBody)
+			chunks = append(chunks, chunk)
+		}
+
+		// 2. We expect 3 chunks: start, delta part 1, delta part 2.
+		require.Len(t, chunks, 3, "Expected three data chunks for this stream")
+
+		// 3. Verify the contents of each relevant chunk.
+
+		// Chunk 1: Tool call start.
+		chunk1ToolCalls := chunks[0].Choices[0].Delta.ToolCalls
+		require.NotNil(t, chunk1ToolCalls)
+		require.Equal(t, "get_weather", chunk1ToolCalls[0].Function.Name)
+
+		// Chunk 2: First part of the arguments.
+		chunk2Args := chunks[1].Choices[0].Delta.ToolCalls[0].Function.Arguments
+		require.Equal(t, `{"location": "San Fra`, chunk2Args) //nolint:testifylint
+
+		// Chunk 3: Second part of the arguments.
+		chunk3Args := chunks[2].Choices[0].Delta.ToolCalls[0].Function.Arguments
+		require.Equal(t, `ncisco"}`, chunk3Args)
+	})
+	t.Run("sends role on first chunk", func(t *testing.T) {
+		sseStream := `event: message_start
+data: {"type":"message_start","message":{"id":"msg_123","usage":{"input_tokens":10}}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}
+`
+		// Set endOfStream to true to ensure all events in the buffer are processed.
+		bm, _, err := runStreamTest(t, sseStream, true)
+		require.NoError(t, err)
+		require.NotNil(t, bm)
+		bodyStr := string(bm)
+
+		var contentChunk openai.ChatCompletionResponseChunk
+		foundChunk := false
+
+		lines := strings.SplitSeq(strings.TrimSpace(bodyStr), "\n\n")
+		for line := range lines {
+			if after, ok := strings.CutPrefix(line, "data: "); ok {
+				jsonBody := after
+				// We only care about the chunk that has the text content.
+				if strings.Contains(jsonBody, `"content"`) {
+					err := json.Unmarshal([]byte(jsonBody), &contentChunk)
+					require.NoError(t, err, "Failed to unmarshal content chunk")
+					foundChunk = true
+					break
 				}
 			}
-		})
-	}
-}
+		}
 
-// TestFinishReasonTranslation covers specific cases for the anthropicToOpenAIFinishReason function.
-func TestFinishReasonTranslation(t *testing.T) {
-	tests := []struct {
-		name                 string
-		input                anthropic.StopReason
-		expectedFinishReason openai.ChatCompletionChoicesFinishReason
-		expectErr            bool
-	}{
-		{
-			name:                 "max tokens stop reason",
-			input:                anthropic.StopReasonMaxTokens,
-			expectedFinishReason: openai.ChatCompletionChoicesFinishReasonLength,
-		},
-		{
-			name:                 "refusal stop reason",
-			input:                anthropic.StopReasonRefusal,
-			expectedFinishReason: openai.ChatCompletionChoicesFinishReasonContentFilter,
-		},
-	}
+		require.True(t, foundChunk, "Did not find a data chunk with content in the output")
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			reason, err := anthropicToOpenAIFinishReason(tt.input)
-			if tt.expectErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tt.expectedFinishReason, reason)
-			}
-		})
-	}
-}
+		require.NotNil(t, contentChunk.Choices[0].Delta.Role, "Role should be present on the first chunk")
+		require.Equal(t, openai.ChatMessageRoleAssistant, contentChunk.Choices[0].Delta.Role)
+	})
 
-// TestToolParameterDereferencing tests the JSON schema dereferencing functionality
-// for tool parameters when translating from OpenAI to GCP Anthropic.
-func TestToolParameterDereferencing(t *testing.T) {
-	tests := []struct {
-		name               string
-		openAIReq          *openai.ChatCompletionRequest
-		expectedTools      []anthropic.ToolUnionParam
-		expectedToolChoice anthropic.ToolChoiceUnionParam
-		expectErr          bool
-		expectedErrMsg     string
-	}{
-		{
-			name: "tool with complex nested $ref - successful dereferencing",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "complex_tool",
-							Description: "Tool with complex nested references",
-							Parameters: map[string]any{
-								"type": "object",
-								"$defs": map[string]any{
-									"BaseType": map[string]any{
-										"type": "object",
-										"properties": map[string]any{
-											"id": map[string]any{
-												"type": "string",
-											},
-											"required": []any{"id"},
-										},
-									},
-									"NestedType": map[string]any{
-										"allOf": []any{
-											map[string]any{"$ref": "#/$defs/BaseType"},
-											map[string]any{
-												"properties": map[string]any{
-													"name": map[string]any{
-														"type": "string",
-													},
-												},
-											},
-										},
-									},
-								},
-								"properties": map[string]any{
-									"nested": map[string]any{
-										"$ref": "#/$defs/NestedType",
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			expectedTools: []anthropic.ToolUnionParam{
-				{
-					OfTool: &anthropic.ToolParam{
-						Name:        "complex_tool",
-						Description: anthropic.String("Tool with complex nested references"),
-						InputSchema: anthropic.ToolInputSchemaParam{
-							Type: "object",
-							Properties: map[string]any{
-								"nested": map[string]any{
-									"allOf": []any{
-										map[string]any{
-											"type": "object",
-											"properties": map[string]any{
-												"id": map[string]any{
-													"type": "string",
-												},
-												"required": []any{"id"},
-											},
-										},
-										map[string]any{
-											"properties": map[string]any{
-												"name": map[string]any{
-													"type": "string",
-												},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "tool with invalid $ref - dereferencing error",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "invalid_ref_tool",
-							Description: "Tool with invalid reference",
-							Parameters: map[string]any{
-								"type": "object",
-								"properties": map[string]any{
-									"location": map[string]any{
-										"$ref": "#/$defs/NonExistent",
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			expectErr:      true,
-			expectedErrMsg: "failed to dereference tool parameters",
-		},
-		{
-			name: "tool with circular $ref - dereferencing error",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "circular_ref_tool",
-							Description: "Tool with circular reference",
-							Parameters: map[string]any{
-								"type": "object",
-								"$defs": map[string]any{
-									"A": map[string]any{
-										"type": "object",
-										"properties": map[string]any{
-											"b": map[string]any{
-												"$ref": "#/$defs/B",
-											},
-										},
-									},
-									"B": map[string]any{
-										"type": "object",
-										"properties": map[string]any{
-											"a": map[string]any{
-												"$ref": "#/$defs/A",
-											},
-										},
-									},
-								},
-								"properties": map[string]any{
-									"circular": map[string]any{
-										"$ref": "#/$defs/A",
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			expectErr:      true,
-			expectedErrMsg: "failed to dereference tool parameters",
-		},
-		{
-			name: "tool without $ref - no dereferencing needed",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "simple_tool",
-							Description: "Simple tool without references",
-							Parameters: map[string]any{
-								"type": "object",
-								"properties": map[string]any{
-									"location": map[string]any{
-										"type": "string",
-									},
-								},
-								"required": []any{"location"},
-							},
-						},
-					},
-				},
-			},
-			expectedTools: []anthropic.ToolUnionParam{
-				{
-					OfTool: &anthropic.ToolParam{
-						Name:        "simple_tool",
-						Description: anthropic.String("Simple tool without references"),
-						InputSchema: anthropic.ToolInputSchemaParam{
-							Type: "object",
-							Properties: map[string]any{
-								"location": map[string]any{
-									"type": "string",
-								},
-							},
-							Required: []string{"location"},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "tool parameter dereferencing returns non-map type - casting error",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "problematic_tool",
-							Description: "Tool with parameters that can't be properly dereferenced to map",
-							// This creates a scenario where jsonSchemaDereference might return a non-map type
-							// though this is a contrived example since normally the function should return map[string]any
-							Parameters: map[string]any{
-								"$ref": "#/$defs/StringType", // This would resolve to a string, not a map
-								"$defs": map[string]any{
-									"StringType": "not-a-map", // This would cause the casting to fail
-								},
-							},
-						},
-					},
-				},
-			},
-			expectErr:      true,
-			expectedErrMsg: "failed to cast dereferenced tool parameters",
-		},
-	}
+	t.Run("accumulates output tokens", func(t *testing.T) {
+		sseStream := `event: message_start
+data: {"type":"message_start","message":{"id":"msg_123","usage":{"input_tokens":20}}}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tools, toolChoice, err := translateOpenAItoAnthropicTools(tt.openAIReq.Tools, tt.openAIReq.ToolChoice, tt.openAIReq.ParallelToolCalls)
+event: message_delta
+data: {"type":"message_delta","delta":{},"usage":{"output_tokens":10}}
 
-			if tt.expectErr {
-				require.Error(t, err)
-				if tt.expectedErrMsg != "" {
-					require.Contains(t, err.Error(), tt.expectedErrMsg)
-				}
-				return
-			}
+event: message_delta
+data: {"type":"message_delta","delta":{},"usage":{"output_tokens":5}}
 
-			require.NoError(t, err)
+event: message_stop
+data: {"type":"message_stop"}
+`
+		// Run with endOfStream:true to get the final usage chunk.
+		bm, _, err := runStreamTest(t, sseStream, true)
+		require.NoError(t, err)
+		require.NotNil(t, bm)
+		bodyStr := string(bm)
 
-			if tt.openAIReq.Tools != nil {
-				require.NotNil(t, tools)
-				require.Len(t, tools, len(tt.expectedTools))
+		// The final usage chunk should sum the tokens from all message_delta events.
+		require.Contains(t, bodyStr, `"completion_tokens":15`)
+		require.Contains(t, bodyStr, `"prompt_tokens":20`)
+		require.Contains(t, bodyStr, `"total_tokens":35`)
+	})
 
-				for i, expectedTool := range tt.expectedTools {
-					actualTool := tools[i]
-					require.Equal(t, expectedTool.GetName(), actualTool.GetName())
-					require.Equal(t, expectedTool.GetType(), actualTool.GetType())
-					require.Equal(t, expectedTool.GetDescription(), actualTool.GetDescription())
+	t.Run("ignores SSE comments", func(t *testing.T) {
+		sseStream := `event: message_start
+data: {"type":"message_start","message":{"id":"msg_123","usage":{"input_tokens":10}}}
 
-					expectedSchema := expectedTool.GetInputSchema()
-					actualSchema := actualTool.GetInputSchema()
+: this is a comment and should be ignored
 
-					require.Equal(t, expectedSchema.Type, actualSchema.Type)
-					require.Equal(t, expectedSchema.Required, actualSchema.Required)
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}
+`
+		bm, _, err := runStreamTest(t, sseStream, true)
+		require.NoError(t, err)
+		require.NotNil(t, bm)
+		bodyStr := string(bm)
 
-					// For properties, we'll do a deep comparison to verify dereferencing worked
-					if expectedSchema.Properties != nil {
-						require.NotNil(t, actualSchema.Properties)
-						require.Equal(t, expectedSchema.Properties, actualSchema.Properties)
-					}
-				}
-			}
+		require.Contains(t, bodyStr, `"content":"Hello"`)
+		require.NotContains(t, bodyStr, "this is a comment")
+	})
+	t.Run("handles data-only event as a message event", func(t *testing.T) {
+		sseStream := `data: some text
 
-			if tt.openAIReq.ToolChoice != nil {
-				require.NotNil(t, toolChoice)
-				require.Equal(t, *tt.expectedToolChoice.GetType(), *toolChoice.GetType())
-			}
-		})
-	}
-}
-
-// TestContentTranslationCoverage adds specific coverage for the openAIToAnthropicContent helper.
-func TestContentTranslationCoverage(t *testing.T) {
-	tests := []struct {
-		name            string
-		inputContent    any
-		expectedContent []anthropic.ContentBlockParamUnion
-		expectErr       bool
-	}{
-		{
-			name:         "nil content",
-			inputContent: nil,
-		},
-		{
-			name:         "empty string content",
-			inputContent: "",
-		},
-		{
-			name: "pdf data uri",
-			inputContent: []openai.ChatCompletionContentPartUserUnionParam{
-				{OfImageURL: &openai.ChatCompletionContentPartImageParam{ImageURL: openai.ChatCompletionContentPartImageImageURLParam{URL: "data:application/pdf;base64,dGVzdA=="}}},
-			},
-			expectedContent: []anthropic.ContentBlockParamUnion{
-				{
-					OfDocument: &anthropic.DocumentBlockParam{
-						Source: anthropic.DocumentBlockParamSourceUnion{
-							OfBase64: &anthropic.Base64PDFSourceParam{
-								Type:      constant.ValueOf[constant.Base64](),
-								MediaType: constant.ValueOf[constant.ApplicationPDF](),
-								Data:      "dGVzdA==",
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "pdf url",
-			inputContent: []openai.ChatCompletionContentPartUserUnionParam{
-				{OfImageURL: &openai.ChatCompletionContentPartImageParam{ImageURL: openai.ChatCompletionContentPartImageImageURLParam{URL: "https://example.com/doc.pdf"}}},
-			},
-			expectedContent: []anthropic.ContentBlockParamUnion{
-				{
-					OfDocument: &anthropic.DocumentBlockParam{
-						Source: anthropic.DocumentBlockParamSourceUnion{
-							OfURL: &anthropic.URLPDFSourceParam{
-								Type: constant.ValueOf[constant.URL](),
-								URL:  "https://example.com/doc.pdf",
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "image url",
-			inputContent: []openai.ChatCompletionContentPartUserUnionParam{
-				{OfImageURL: &openai.ChatCompletionContentPartImageParam{ImageURL: openai.ChatCompletionContentPartImageImageURLParam{URL: "https://example.com/image.png"}}},
-			},
-			expectedContent: []anthropic.ContentBlockParamUnion{
-				{
-					OfImage: &anthropic.ImageBlockParam{
-						Source: anthropic.ImageBlockParamSourceUnion{
-							OfURL: &anthropic.URLImageSourceParam{
-								Type: constant.ValueOf[constant.URL](),
-								URL:  "https://example.com/image.png",
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name:         "audio content error",
-			inputContent: []openai.ChatCompletionContentPartUserUnionParam{{OfInputAudio: &openai.ChatCompletionContentPartInputAudioParam{}}},
-			expectErr:    true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			content, err := openAIToAnthropicContent(tt.inputContent)
-			if tt.expectErr {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-
-			// Use direct assertions instead of cmp.Diff to avoid panics on unexported fields.
-			require.Len(t, content, len(tt.expectedContent), "Number of content blocks should match")
-
-			// Use direct assertions instead of cmp.Diff to avoid panics on unexported fields.
-			require.Len(t, content, len(tt.expectedContent), "Number of content blocks should match")
-			for i, expectedBlock := range tt.expectedContent {
-				actualBlock := content[i]
-				require.Equal(t, expectedBlock.GetType(), actualBlock.GetType(), "Content block types should match")
-				if expectedBlock.OfDocument != nil {
-					require.NotNil(t, actualBlock.OfDocument, "Expected a document block, but got nil")
-					require.NotNil(t, actualBlock.OfDocument.Source, "Document source should not be nil")
-
-					if expectedBlock.OfDocument.Source.OfBase64 != nil {
-						require.NotNil(t, actualBlock.OfDocument.Source.OfBase64, "Expected a base64 source")
-						require.Equal(t, expectedBlock.OfDocument.Source.OfBase64.Data, actualBlock.OfDocument.Source.OfBase64.Data)
-					}
-					if expectedBlock.OfDocument.Source.OfURL != nil {
-						require.NotNil(t, actualBlock.OfDocument.Source.OfURL, "Expected a URL source")
-						require.Equal(t, expectedBlock.OfDocument.Source.OfURL.URL, actualBlock.OfDocument.Source.OfURL.URL)
-					}
-				}
-				if expectedBlock.OfImage != nil {
-					require.NotNil(t, actualBlock.OfImage, "Expected an image block, but got nil")
-					require.NotNil(t, actualBlock.OfImage.Source, "Image source should not be nil")
-
-					if expectedBlock.OfImage.Source.OfURL != nil {
-						require.NotNil(t, actualBlock.OfImage.Source.OfURL, "Expected a URL image source")
-						require.Equal(t, expectedBlock.OfImage.Source.OfURL.URL, actualBlock.OfImage.Source.OfURL.URL)
-					}
-				}
-			}
-
-			for i, expectedBlock := range tt.expectedContent {
-				actualBlock := content[i]
-				if expectedBlock.OfDocument != nil {
-					require.NotNil(t, actualBlock.OfDocument, "Expected a document block, but got nil")
-					require.NotNil(t, actualBlock.OfDocument.Source, "Document source should not be nil")
-
-					if expectedBlock.OfDocument.Source.OfBase64 != nil {
-						require.NotNil(t, actualBlock.OfDocument.Source.OfBase64, "Expected a base64 source")
-						require.Equal(t, expectedBlock.OfDocument.Source.OfBase64.Data, actualBlock.OfDocument.Source.OfBase64.Data)
-					}
-					if expectedBlock.OfDocument.Source.OfURL != nil {
-						require.NotNil(t, actualBlock.OfDocument.Source.OfURL, "Expected a URL source")
-						require.Equal(t, expectedBlock.OfDocument.Source.OfURL.URL, actualBlock.OfDocument.Source.OfURL.URL)
-					}
-				}
-				if expectedBlock.OfImage != nil {
-					require.NotNil(t, actualBlock.OfImage, "Expected an image block, but got nil")
-					require.NotNil(t, actualBlock.OfImage.Source, "Image source should not be nil")
-
-					if expectedBlock.OfImage.Source.OfURL != nil {
-						require.NotNil(t, actualBlock.OfImage.Source.OfURL, "Expected a URL image source")
-						require.Equal(t, expectedBlock.OfImage.Source.OfURL.URL, actualBlock.OfImage.Source.OfURL.URL)
-					}
-				}
-			}
-		})
-	}
-}
-
-// TestSystemPromptExtractionCoverage adds specific coverage for the extractSystemPromptFromDeveloperMsg helper.
-func TestSystemPromptExtractionCoverage(t *testing.T) {
-	tests := []struct {
-		name           string
-		inputMsg       openai.ChatCompletionDeveloperMessageParam
-		expectedPrompt string
-	}{
-		{
-			name: "developer message with content parts",
-			inputMsg: openai.ChatCompletionDeveloperMessageParam{
-				Content: openai.ContentUnion{Value: []openai.ChatCompletionContentPartTextParam{
-					{Type: "text", Text: "part 1"},
-					{Type: "text", Text: " part 2"},
-				}},
-			},
-			expectedPrompt: "part 1 part 2",
-		},
-		{
-			name:           "developer message with nil content",
-			inputMsg:       openai.ChatCompletionDeveloperMessageParam{Content: openai.ContentUnion{Value: nil}},
-			expectedPrompt: "",
-		},
-		{
-			name: "developer message with string content",
-			inputMsg: openai.ChatCompletionDeveloperMessageParam{
-				Content: openai.ContentUnion{Value: "simple string"},
-			},
-			expectedPrompt: "simple string",
-		},
-		{
-			name: "developer message with text parts array",
-			inputMsg: openai.ChatCompletionDeveloperMessageParam{
-				Content: openai.ContentUnion{Value: []openai.ChatCompletionContentPartTextParam{
-					{Type: "text", Text: "text part"},
-				}},
-			},
-			expectedPrompt: "text part",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			prompt, _ := extractSystemPromptFromDeveloperMsg(tt.inputMsg)
-			require.Equal(t, tt.expectedPrompt, prompt)
-		})
-	}
+data: another message with two lines
+`
+		bm, _, err := runStreamTest(t, sseStream, false)
+		require.NoError(t, err)
+		require.Empty(t, bm, "data-only events should be treated as no-op 'message' events and produce an empty chunk")
+	})
 }
 
 func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_Cache(t *testing.T) {
