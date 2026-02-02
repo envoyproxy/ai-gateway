@@ -207,68 +207,57 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) error {
 	// Only process LoadAssignment for non-InferencePool backends.
 	if pool == nil {
 		if cluster.LoadAssignment == nil {
-			s.log.Info("LoadAssignment is nil", "cluster_name", cluster.Name)
-			return nil
-		}
-		// Populate the metadata for each endpoint in the LoadAssignment.
-		var lbEndpointIndex int
-		for i, backendRef := range httpRouteRule.BackendRefs {
-			// The weight of 0 means this backend is disabled and is not included in the LoadAssignment by EG,
-			// so we skip it here.
-			if backendRef.Weight != nil && *backendRef.Weight == 0 {
-				continue
+			// When LoadAssignment is nil (e.g. EDS-managed endpoints in standalone mode),
+			// set backend name on cluster-level metadata so the upstream ext_proc filter
+			// can resolve the backend via XDSClusterMetadataBackendNamePath fallback.
+			s.log.Info("LoadAssignment is nil, setting cluster-level metadata", "cluster_name", cluster.Name)
+			if len(httpRouteRule.BackendRefs) > 0 {
+				backendRef := httpRouteRule.BackendRefs[0]
+				setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, 0)
 			}
-			endpoints := cluster.LoadAssignment.Endpoints[lbEndpointIndex]
-			lbEndpointIndex++
-			name := backendRef.Name
-			namespace := aigwRoute.Namespace
-			if backendRef.Priority != nil {
-				endpoints.Priority = *backendRef.Priority
-			}
-			// We populate the same metadata for all endpoints in the LoadAssignment.
-			// This is because currently, an extproc cannot retrieve the endpoint set level metadata.
-			for _, endpoint := range endpoints.LbEndpoints {
-				if endpoint.Metadata == nil {
-					endpoint.Metadata = &corev3.Metadata{}
+		} else {
+			// Populate the metadata for each endpoint in the LoadAssignment.
+			var lbEndpointIndex int
+			for i, backendRef := range httpRouteRule.BackendRefs {
+				// The weight of 0 means this backend is disabled and is not included in the LoadAssignment by EG,
+				// so we skip it here.
+				if backendRef.Weight != nil && *backendRef.Weight == 0 {
+					continue
 				}
-				if endpoint.Metadata.FilterMetadata == nil {
-					endpoint.Metadata.FilterMetadata = make(map[string]*structpb.Struct)
+				endpoints := cluster.LoadAssignment.Endpoints[lbEndpointIndex]
+				lbEndpointIndex++
+				name := backendRef.Name
+				namespace := aigwRoute.Namespace
+				if backendRef.Priority != nil {
+					endpoints.Priority = *backendRef.Priority
 				}
-				m, ok := endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
-				if !ok {
-					m = &structpb.Struct{}
-					endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace] = m
+				// We populate the same metadata for all endpoints in the LoadAssignment.
+				// This is because currently, an extproc cannot retrieve the endpoint set level metadata.
+				for _, endpoint := range endpoints.LbEndpoints {
+					if endpoint.Metadata == nil {
+						endpoint.Metadata = &corev3.Metadata{}
+					}
+					if endpoint.Metadata.FilterMetadata == nil {
+						endpoint.Metadata.FilterMetadata = make(map[string]*structpb.Struct)
+					}
+					m, ok := endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
+					if !ok {
+						m = &structpb.Struct{}
+						endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace] = m
+					}
+					if m.Fields == nil {
+						m.Fields = make(map[string]*structpb.Value)
+					}
+					m.Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
+						internalapi.PerRouteRuleRefBackendName(namespace, name, aigwRoute.Name, httpRouteRuleIndex, i),
+					)
 				}
-				if m.Fields == nil {
-					m.Fields = make(map[string]*structpb.Value)
-				}
-				m.Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
-					internalapi.PerRouteRuleRefBackendName(namespace, name, aigwRoute.Name, httpRouteRuleIndex, i),
-				)
 			}
 		}
 	} else {
 		// we can only specify one backend in a rule for InferencePool.
 		backendRef := httpRouteRule.BackendRefs[0]
-		name := backendRef.Name
-		namespace := aigwRoute.Namespace
-		if cluster.Metadata == nil {
-			cluster.Metadata = &corev3.Metadata{}
-		}
-		if cluster.Metadata.FilterMetadata == nil {
-			cluster.Metadata.FilterMetadata = make(map[string]*structpb.Struct)
-		}
-		m, ok := cluster.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
-		if !ok {
-			m = &structpb.Struct{}
-			cluster.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace] = m
-		}
-		if m.Fields == nil {
-			m.Fields = make(map[string]*structpb.Value)
-		}
-		m.Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
-			internalapi.PerRouteRuleRefBackendName(namespace, name, aigwRoute.Name, httpRouteRuleIndex, 0),
-		)
+		setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, 0)
 	}
 
 	if cluster.TypedExtensionProtocolOptions == nil {
@@ -306,9 +295,6 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) error {
 	extProcConfig.RequestAttributes = []string{
 		internalapi.XDSUpstreamHostMetadataBackendNamePath,
 		internalapi.XDSClusterMetadataBackendNamePath,
-		// These two are for backward compatibility. TODO: remove them after v0.5 is released.
-		internalapi.XDSUpstreamHostMetadataKey,
-		internalapi.XDSClusterMetadataKey,
 	}
 	extProcConfig.ProcessingMode = &extprocv3.ProcessingMode{
 		RequestHeaderMode: extprocv3.ProcessingMode_SEND,
@@ -749,6 +735,29 @@ func (s *Server) isRouteGeneratedByAIGateway(route *routev3.Route) bool {
 		}
 	}
 	return false
+}
+
+// setClusterMetadataBackendName sets the backend name on cluster-level metadata.
+// This is used when endpoint-level metadata is unavailable (e.g. LoadAssignment is nil)
+// or for InferencePool backends where cluster-level metadata is preferred.
+func setClusterMetadataBackendName(cluster *clusterv3.Cluster, namespace, name, routeName string, routeRuleIndex, refIndex int) {
+	if cluster.Metadata == nil {
+		cluster.Metadata = &corev3.Metadata{}
+	}
+	if cluster.Metadata.FilterMetadata == nil {
+		cluster.Metadata.FilterMetadata = make(map[string]*structpb.Struct)
+	}
+	m, ok := cluster.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
+	if !ok {
+		m = &structpb.Struct{}
+		cluster.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace] = m
+	}
+	if m.Fields == nil {
+		m.Fields = make(map[string]*structpb.Value)
+	}
+	m.Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
+		internalapi.PerRouteRuleRefBackendName(namespace, name, routeName, routeRuleIndex, refIndex),
+	)
 }
 
 func shouldAIGatewayExtProcBeInserted(filters []*httpconnectionmanagerv3.HttpFilter) bool {

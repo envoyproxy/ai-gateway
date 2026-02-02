@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestUnmarshalJSONNestedUnion tests the completion API prompt parsing.
+// This function only supports: string, []string, []int64, [][]int64
 func TestUnmarshalJSONNestedUnion(t *testing.T) {
 	additionalSuccessCases := []struct {
 		name     string
@@ -126,7 +128,7 @@ func TestUnmarshalJSONNestedUnion_Errors(t *testing.T) {
 			expectedErr: "cannot unmarshal prompt as [][]int64",
 		},
 		{
-			name:        "invalid type - object",
+			name:        "invalid type - object (objects not supported for completion prompts)",
 			data:        []byte(`{"key": "value"}`),
 			expectedErr: "invalid prompt type (must be string or array)",
 		},
@@ -155,6 +157,128 @@ func TestUnmarshalJSONNestedUnion_Errors(t *testing.T) {
 	for _, tc := range errorTestCases {
 		t.Run(tc.name, func(t *testing.T) {
 			val, err := unmarshalJSONNestedUnion("prompt", tc.data)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.expectedErr)
+			require.Zero(t, val)
+		})
+	}
+}
+
+// TestUnmarshalJSONEmbeddingInput tests the embedding API input parsing.
+// This function supports: string, []string, EmbeddingInputItem, []EmbeddingInputItem, []int64, [][]int64
+func TestUnmarshalJSONEmbeddingInput(t *testing.T) {
+	successCases := []struct {
+		name     string
+		data     []byte
+		expected interface{}
+	}{
+		{
+			name:     "simple string",
+			data:     []byte(`"hello world"`),
+			expected: "hello world",
+		},
+		{
+			name:     "array of strings",
+			data:     []byte(`["aa", "bb", "cc"]`),
+			expected: []string{"aa", "bb", "cc"},
+		},
+		{
+			name:     "empty array",
+			data:     []byte(`[]`),
+			expected: []string{},
+		},
+		{
+			name:     "array of tokens",
+			data:     []byte(`[1, 2, 3]`),
+			expected: []int64{1, 2, 3},
+		},
+		{
+			name:     "array of token arrays",
+			data:     []byte(`[[1, 2], [3, 4]]`),
+			expected: [][]int64{{1, 2}, {3, 4}},
+		},
+		{
+			name: "array of EmbeddingInputItem objects",
+			data: []byte(`[{"content":"hello"},{"content":"world","task_type":"RETRIEVAL_QUERY"}]`),
+			expected: []EmbeddingInputItem{
+				{Content: EmbeddingContent{Value: "hello"}},
+				{Content: EmbeddingContent{Value: "world"}, TaskType: "RETRIEVAL_QUERY"},
+			},
+		},
+		{
+			name: "single EmbeddingInputItem object with string content",
+			data: []byte(`{"content":"test content","task_type":"RETRIEVAL_DOCUMENT","title":"Test"}`),
+			expected: EmbeddingInputItem{
+				Content:  EmbeddingContent{Value: "test content"},
+				TaskType: "RETRIEVAL_DOCUMENT",
+				Title:    "Test",
+			},
+		},
+		{
+			name: "single EmbeddingInputItem object with array content",
+			data: []byte(`{"content":["text1","text2"],"task_type":"RETRIEVAL_QUERY"}`),
+			expected: EmbeddingInputItem{
+				Content:  EmbeddingContent{Value: []string{"text1", "text2"}},
+				TaskType: "RETRIEVAL_QUERY",
+			},
+		},
+	}
+
+	for _, tc := range successCases {
+		t.Run(tc.name, func(t *testing.T) {
+			val, err := unmarshalJSONEmbeddingInput("input", tc.data)
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, val)
+		})
+	}
+}
+
+func TestUnmarshalJSONEmbeddingInput_Errors(t *testing.T) {
+	errorTestCases := []struct {
+		name        string
+		data        []byte
+		expectedErr string
+	}{
+		{
+			name:        "truncated data",
+			data:        []byte{},
+			expectedErr: "truncated input data",
+		},
+		{
+			name:        "object without content field",
+			data:        []byte(`{"task_type":"RETRIEVAL_QUERY"}`),
+			expectedErr: "invalid input type",
+		},
+		{
+			name:        "object with empty content",
+			data:        []byte(`{"content":""}`),
+			expectedErr: "invalid input type",
+		},
+		{
+			name:        "object with empty array content",
+			data:        []byte(`{"content":[]}`),
+			expectedErr: "invalid input type",
+		},
+		{
+			name:        "array of objects with empty content",
+			data:        []byte(`[{"content":"valid"},{"content":""}]`),
+			expectedErr: "invalid input array element",
+		},
+		{
+			name:        "invalid type - null",
+			data:        []byte(`null`),
+			expectedErr: "invalid input type (must be string, object, or array)",
+		},
+		{
+			name:        "invalid type - boolean",
+			data:        []byte(`true`),
+			expectedErr: "invalid input type (must be string, object, or array)",
+		},
+	}
+
+	for _, tc := range errorTestCases {
+		t.Run(tc.name, func(t *testing.T) {
+			val, err := unmarshalJSONEmbeddingInput("input", tc.data)
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tc.expectedErr)
 			require.Zero(t, val)

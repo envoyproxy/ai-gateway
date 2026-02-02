@@ -46,6 +46,9 @@ spec:
             - --extProcImage={{ .Values.extProc.image.repository }}:{{ .Values.extProc.image.tag | default .Chart.AppVersion }}
             - --extProcImagePullPolicy={{ .Values.extProc.imagePullPolicy }}
             - --extProcLogLevel={{ .Values.extProc.logLevel }}
+            {{- if .Values.extProc.enableRedaction }}
+            - --extProcEnableRedaction=true
+            {{- end }}
             {{- with (include "ai-gateway-helm.extProc.imagePullSecretsString" .) }}
             - --extProcImagePullSecrets={{ . }}
             {{- end }}

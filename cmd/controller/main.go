@@ -38,6 +38,7 @@ import (
 
 type flags struct {
 	extProcLogLevel                string
+	extProcEnableRedaction         bool
 	extProcImage                   string
 	extProcImagePullPolicy         corev1.PullPolicy
 	enableLeaderElection           bool
@@ -105,6 +106,11 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		"extProcLogLevel",
 		"info",
 		"The log level for the external processor. One of 'debug', 'info', 'warn', or 'error'.",
+	)
+	extProcEnableRedactionPtr := fs.Bool(
+		"extProcEnableRedaction",
+		false,
+		"Enable redaction of sensitive information in debug logs for the external processor.",
 	)
 	extProcImagePtr := fs.String(
 		"extProcImage",
@@ -306,6 +312,7 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 
 	return &flags{
 		extProcLogLevel:                        *extProcLogLevelPtr,
+		extProcEnableRedaction:                 *extProcEnableRedactionPtr,
 		extProcImage:                           *extProcImagePtr,
 		extProcImagePullPolicy:                 extProcPullPolicy,
 		enableLeaderElection:                   *enableLeaderElectionPtr,
@@ -410,6 +417,7 @@ func main() {
 		ExtProcImage:                           parsedFlags.extProcImage,
 		ExtProcImagePullPolicy:                 parsedFlags.extProcImagePullPolicy,
 		ExtProcLogLevel:                        parsedFlags.extProcLogLevel,
+		ExtProcEnableRedaction:                 parsedFlags.extProcEnableRedaction,
 		EnableLeaderElection:                   parsedFlags.enableLeaderElection,
 		UDSPath:                                extProcUDSPath,
 		RequestHeaderAttributes:                parsedFlags.requestHeaderAttributes,

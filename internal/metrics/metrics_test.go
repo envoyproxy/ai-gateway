@@ -19,20 +19,15 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
-)
 
-// clearEnv clears any OTEL configuration that could exist in the environment.
-func clearEnv(t *testing.T) {
-	t.Helper()
-	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
-	t.Setenv("OTEL_METRICS_EXPORTER", "")
-	t.Setenv("OTEL_SERVICE_NAME", "")
-}
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
+)
 
 // TestNewMeterFromEnv_ConsoleExporter tests console/none exporter configuration.
 // We use synctest here because console output relies on time.Sleep to wait for
 // the periodic exporter, and synctest makes these sleeps instant in wall-clock time.
 func TestNewMeterFromEnv_ConsoleExporter(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	tests := []struct {
 		name                    string
 		env                     map[string]string
@@ -103,7 +98,6 @@ func TestNewMeterFromEnv_ConsoleExporter(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				t.Helper()
-				clearEnv(t)
 				t.Setenv("OTEL_METRIC_EXPORT_INTERVAL", "100")
 				for k, v := range tt.env {
 					t.Setenv(k, v)
@@ -173,9 +167,9 @@ func TestNewMeterFromEnv_ConsoleExporter(t *testing.T) {
 // TestNewMeterFromEnv_ConsoleExporter_NoMetrics tests that the console exporter
 // does not output anything when no metrics are recorded.
 func TestNewMeterFromEnv_ConsoleExporter_NoMetrics(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	synctest.Test(t, func(t *testing.T) {
 		t.Helper()
-		clearEnv(t)
 		t.Setenv("OTEL_METRIC_EXPORT_INTERVAL", "100")
 		t.Setenv("OTEL_METRICS_EXPORTER", "console")
 
@@ -214,6 +208,7 @@ func TestNewMeterFromEnv_ConsoleExporter_NoMetrics(t *testing.T) {
 // This happens because the HTTP client used by OTLP exporters uses net.Resolver which
 // spawns goroutines for DNS resolution that escape the synctest bubble.
 func TestNewMeterFromEnv_NetworkExporters(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	// Create a test server to avoid real network access
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -265,7 +260,6 @@ func TestNewMeterFromEnv_NetworkExporters(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clearEnv(t)
 			for k, v := range tt.env {
 				t.Setenv(k, v)
 			}
@@ -319,6 +313,7 @@ func TestNewMeterFromEnv_NetworkExporters(t *testing.T) {
 // TestNewMeterFromEnv_PrometheusReader tests that the prometheus reader
 // is always included and functional.
 func TestNewMeterFromEnv_PrometheusReader(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	// Create a test server to avoid real network access
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -355,7 +350,6 @@ func TestNewMeterFromEnv_PrometheusReader(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clearEnv(t)
 			for k, v := range tt.env {
 				t.Setenv(k, v)
 			}
@@ -411,6 +405,7 @@ func TestNewMeterFromEnv_PrometheusReader(t *testing.T) {
 
 // TestNewMeterFromEnv_ErrorHandling verifies error handling for invalid configurations.
 func TestNewMeterFromEnv_ErrorHandling(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	tests := []struct {
 		name        string
 		env         map[string]string
@@ -428,7 +423,6 @@ func TestNewMeterFromEnv_ErrorHandling(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clearEnv(t)
 			for k, v := range tt.env {
 				t.Setenv(k, v)
 			}
@@ -452,7 +446,7 @@ func TestNewMeterFromEnv_OTLPHeaders(t *testing.T) {
 	}))
 	t.Cleanup(ts.Close)
 
-	clearEnv(t)
+	internaltesting.ClearTestEnv(t)
 	t.Setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization="+expectedAuthorization)
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", ts.URL)
 	t.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")

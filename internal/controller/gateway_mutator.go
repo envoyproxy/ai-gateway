@@ -39,6 +39,7 @@ type gatewayMutator struct {
 	extProcImage                   string
 	extProcImagePullPolicy         corev1.PullPolicy
 	extProcLogLevel                string
+	extProcEnableRedaction         bool
 	udsPath                        string
 	requestHeaderAttributes        *string
 	spanRequestHeaderAttributes    *string
@@ -65,7 +66,7 @@ type gatewayMutator struct {
 }
 
 func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.Logger,
-	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel,
+	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel string, extProcEnableRedaction bool,
 	udsPath string, requestHeaderAttributes, spanRequestHeaderAttributes, metricsRequestHeaderAttributes, logRequestHeaderAttributes *string, rootPrefix, endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets string, extProcMaxRecvMsgSize int,
 	extProcAsSideCar bool,
 	mcpSessionEncryptionSeed string, mcpSessionEncryptionIterations int, mcpFallbackSessionEncryptionSeed string, mcpFallbackSessionEncryptionIterations int,
@@ -96,6 +97,7 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 		extProcImage:                           extProcImage,
 		extProcImagePullPolicy:                 extProcImagePullPolicy,
 		extProcLogLevel:                        extProcLogLevel,
+		extProcEnableRedaction:                 extProcEnableRedaction,
 		logger:                                 logger,
 		udsPath:                                udsPath,
 		requestHeaderAttributes:                requestHeaderAttributes,
@@ -176,6 +178,10 @@ func (g *gatewayMutator) buildExtProcArgs(filterConfigFullPath string, extProcAd
 
 	if g.endpointPrefixes != "" {
 		args = append(args, "-endpointPrefixes", g.endpointPrefixes)
+	}
+
+	if g.extProcEnableRedaction {
+		args = append(args, "-enableRedaction")
 	}
 
 	return args

@@ -45,6 +45,8 @@ extProc:
   imagePullSecrets: []
   # One of "info", "debug", "trace", "warn", "error", "fatal", "panic".
   logLevel: info
+  # Enable redaction of sensitive information in debug logs (only takes effect when logLevel is "debug").
+  enableRedaction: false
 
   ## @param extProc.extraEnvVars Array with extra environment variables to add to extProc containers
   ## e.g:

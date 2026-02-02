@@ -39,7 +39,7 @@ func TestNewFactory(t *testing.T) {
 		t.Parallel()
 
 		factory := NewFactory(nil, tracingapi.NoopChatCompletionTracer{}, endpointspec.ChatCompletionsEndpointSpec{})
-		proc, err := factory(cfg, headers, slog.Default(), false)
+		proc, err := factory(cfg, headers, slog.Default(), false, false)
 		require.NoError(t, err)
 		require.IsType(t, &chatCompletionProcessorRouterFilter{}, proc)
 
@@ -54,7 +54,7 @@ func TestNewFactory(t *testing.T) {
 		t.Parallel()
 
 		factory := NewFactory(&mockMetricsFactory{}, tracingapi.NoopChatCompletionTracer{}, endpointspec.ChatCompletionsEndpointSpec{})
-		proc, err := factory(cfg, headers, slog.Default(), true)
+		proc, err := factory(cfg, headers, slog.Default(), true, false)
 		require.NoError(t, err)
 		require.IsType(t, &chatCompletionProcessorUpstreamFilter{}, proc)
 
